@@ -22,6 +22,11 @@ interface FormData {
   mail: string;
 }
 
+// Resolvable name of the backend default wallet (wallet table: "DFX Wallet", Config.defaultWalletId = 1).
+// Sent when no explicit `wallet` URL param is present, so POST /v1/auth/mail resolves the login wallet by
+// name rather than via getDefault(). Partner embeds that pass `?wallet=` keep their value (??).
+const DFX_WALLET_NAME = 'DFX Wallet';
+
 export default function ConnectMail({ onCancel }: ConnectProps): JSX.Element {
   const { translate, translateError } = useSettingsContext();
   const { signInWithMail } = useAuth();
@@ -62,7 +67,7 @@ export default function ConnectMail({ onCancel }: ConnectProps): JSX.Element {
   async function submit({ mail }: FormData): Promise<void> {
     setIsLoading(true);
     setError(undefined);
-    signInWithMail(mail, redirectUri, recommendationCode, wallet)
+    signInWithMail(mail, redirectUri, recommendationCode, wallet ?? DFX_WALLET_NAME)
       .then(() => setMailSent(true))
       .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
       .finally(() => setIsLoading(false));
