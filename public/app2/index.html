@@ -7,7 +7,7 @@
      even if markup were ever injected, it could not exfiltrate to an arbitrary origin.
      Note: frame-ancestors / HSTS / X-Content-Type-Options are HTTP-header-only and must be set at
      the edge on deploy (see _headers). Framing is intentionally OPEN — see the widget note below. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: https://*.coingecko.com; script-src 'self' 'wasm-unsafe-eval' https://connect.trezor.io https://static.sumsub.com 'sha256-Kg0tmUiuQKU3IL4HiuPfpQfVyvNbfGeHsuKaBrWI0IA='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://connect.trezor.io https://verify.walletconnect.com https://verify.walletconnect.org https://*.sumsub.com; connect-src 'self' https://api.dfx.swiss https://api.coingecko.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://verify.walletconnect.com https://verify.walletconnect.org https://rpc.walletconnect.com https://rpc.walletconnect.org https://connect.trezor.io https://*.sumsub.com" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: https://*.coingecko.com; script-src 'self' 'wasm-unsafe-eval' https://connect.trezor.io https://static.sumsub.com 'sha256-K6GWbmBgy0WD/UCUqKmjeqIQanSOY9mETvF500zHu5k='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://connect.trezor.io https://verify.walletconnect.com https://verify.walletconnect.org https://*.sumsub.com; connect-src 'self' https://api.dfx.swiss https://api.coingecko.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://verify.walletconnect.com https://verify.walletconnect.org https://rpc.walletconnect.com https://rpc.walletconnect.org https://connect.trezor.io https://*.sumsub.com" />
 <meta name="referrer" content="strict-origin-when-cross-origin" />
 <meta name="description" content="Buy, sell and swap crypto directly with your own wallet — Swiss, non-custodial, powered by DFX." />
 <meta name="theme-color" content="#0A3055" />
@@ -1797,8 +1797,10 @@ function ibanErr(v){return v.reason==="checksum"?t("ibanChecksum"):(v.cc?t("iban
 function mono(label,c){return "data:image/svg+xml;utf8,"+encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='16' fill='${c||"#16456f"}'/><text x='16' y='21' font-family='Inter,Arial' font-size='11' font-weight='700' fill='#fff' text-anchor='middle'>${(label||"?").slice(0,4)}</text></svg>`).replace(/'/g,"%27").replace(/"/g,"%22");}
 function setImg(img,src,label,color){img.onerror=()=>{img.onerror=null;img.src=mono(label,color);};img.src=src;}
 /* CSP-safe image fallback: one delegated (capture-phase) handler replaces all inline onerror= attributes.
-   data-fb="hide" → display:none · data-fb="vhide" → visibility:hidden · data-fb="<url>" → swap src once. */
-document.addEventListener("error",function(e){var el=e.target;if(!el||el.tagName!=="IMG")return;var fb=el.getAttribute("data-fb");if(!fb||el.dataset.fbDone)return;el.dataset.fbDone="1";if(fb==="hide")el.style.display="none";else if(fb==="vhide")el.style.visibility="hidden";else el.src=fb;},true);
+   data-fb="hide" → display:none · data-fb="vhide" → visibility:hidden · data-fb="label|color" → rebuild a
+   mono placeholder. We never assign the DOM attribute straight to .src — the placeholder is regenerated via
+   mono(), whose encodeURIComponent neutralises any injected markup (no DOM-text-to-src flow). */
+document.addEventListener("error",function(e){var el=e.target;if(!el||el.tagName!=="IMG")return;var fb=el.getAttribute("data-fb");if(!fb||el.dataset.fbDone)return;el.dataset.fbDone="1";if(fb==="hide")el.style.display="none";else if(fb==="vhide")el.style.visibility="hidden";else{var p=fb.lastIndexOf("|");el.src=mono(p<0?fb:fb.slice(0,p),p<0?"":fb.slice(p+1));}},true);
 const cap=m=>m==="sell"?"sell":"buy";
 /* picker shows ALL DFX assets/chains (you can always pick BTC etc.) — filtered only by buy/sell capability */
 const availTokens=(c)=>TOKENS.filter(tk=>(!ASSET_FILTER||ASSET_FILTER.has(tk.code.toUpperCase()))&&tk.chains.some(x=>(c?(c==="sell"?x.sellable:x.buyable):(x.buyable||x.sellable))));
@@ -1809,7 +1811,7 @@ function assetId(tk,bc,c){const m=tk.chains.find(x=>x.blockchain===bc&&(c==="sel
 function capId(tk,bc,c){const m=tk&&tk.chains.find(x=>x.blockchain===bc&&(c==="sell"?x.sellable:x.buyable));return m&&m.id;}
 const CARET=`<span class="caret"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M7 10l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
 const fiatPillHTML=fi=>`<span class="glyph"><img class="coin" width="30" height="30" src="assets/flags/${esc(fi.flag||(fi.code==="CHF"?"ch":"eu"))}.svg" data-fb="hide"></span><span class="meta"><b>${esc(fi.code)}</b><s>${esc(fi.name)}</s></span>${CARET}`;
-const assetPillHTML=(tk,bc)=>`<span class="glyph"><img class="coin" width="30" height="30" src="${esc(tk.icon)}" data-fb="${esc(mono(tk.code,CH[bc]?CH[bc].color:'#16456f'))}"><img class="badge" width="15" height="15" src="${esc(CH[bc].img)}" data-fb="hide"></span><span class="meta"><b>${esc(tk.code)}</b><s>${esc(CH[bc].name)}</s></span>${CARET}`;
+const assetPillHTML=(tk,bc)=>`<span class="glyph"><img class="coin" width="30" height="30" src="${esc(tk.icon)}" data-fb="${esc(tk.code)}|${CH[bc]?CH[bc].color:'#16456f'}"><img class="badge" width="15" height="15" src="${esc(CH[bc].img)}" data-fb="hide"></span><span class="meta"><b>${esc(tk.code)}</b><s>${esc(CH[bc].name)}</s></span>${CARET}`;
 
 /* ===================== INIT / CONFIG ===================== */
 async function loadConfig(){
@@ -3108,7 +3110,7 @@ function buildWallets(){const root=$("walletList");root.innerHTML="";
     items.forEach(w=>{const r=document.createElement("div");r.className="crow"+(w.soon?" soon":"");
       const ctx=w.hint||(w.type==="evm"?"EVM · "+EVM_CH.length+" "+t("networks"):"");
       const badge=w.soon?`<span class="pill-chip ina" style="margin-left:auto">${esc(t("comingSoon"))}</span>`:"";
-      r.innerHTML=`<span class="glyph"><img class="coin" width="38" height="38" src="${esc(w.img)}" data-fb="${esc(mono(w.id,'#16456f'))}"></span><div class="ci"><b>${esc(w.id)}</b><div class="net">${esc(ctx)}</div></div>${badge}`;
+      r.innerHTML=`<span class="glyph"><img class="coin" width="38" height="38" src="${esc(w.img)}" data-fb="${esc(w.id)}|#16456f"></span><div class="ci"><b>${esc(w.id)}</b><div class="net">${esc(ctx)}</div></div>${badge}`;
       if(w.soon){r.setAttribute("aria-disabled","true");r.style.opacity=".5";r.style.pointerEvents="none";}   // muted, non-clickable — no dead-end toast
       else r.onclick=()=>connectWallet(w);
       root.appendChild(r);});});
@@ -3524,7 +3526,7 @@ const WALLET_LOGOS={pecunity:"assets/wallets/pecunity.png",bricktowers:"assets/w
 function walletLogoByName(name){if(!name)return null;const k=(name+"").toLowerCase().replace(/[^a-z0-9]/g,"");for(const key in WALLET_LOGOS){if(k.includes(key))return WALLET_LOGOS[key];}return null;}
 function walletDefFor(e){const img=walletLogoByName(e.name)||walletLogoByName(e.wallet)||walletLogoByName(e.id);if(img)return {img};return ALLWALLETS.find(x=>x.id===e.id)||ALLWALLETS.find(x=>sameWallet(e.wallet||"",x.id))||{};}
 function switcherEntries(){
-  const cur=SESSION&&SESSION.address.toLowerCase();const map={};
+  const cur=SESSION&&SESSION.address.toLowerCase();const map=Object.create(null);   // null-proto: URL-seeded addresses can't reach Object.prototype
   // linked addresses on the DFX account (authoritative — every wallet on the account)
   ((ACCT2&&ACCT2.addresses)||[]).forEach(a=>{if(!a||!a.address||a.isCustody)return;const k=a.address.toLowerCase();   // custody addresses aren't user-switchable wallets
     map[k]={address:a.address,name:a.label||a.wallet||"Wallet",wallet:a.wallet,blockchains:a.blockchains||[],linked:true};});
@@ -3626,7 +3628,7 @@ async function loadUser(){
 /* ===================== LOGIN STRIP / EMAIL ===================== */
 (function(){const w=$("wstrip");STRIP_IDS.forEach(id=>{const wal=ALLW.find(x=>x.id===id);if(!wal)return;
   const c=document.createElement("button");c.className="wchip";c.type="button";c.title=id;c.setAttribute("aria-label",id);
-  c.innerHTML=`<img src="${wal.img}" alt="" data-fb="${esc(mono(id,'#16456f'))}">`;
+  c.innerHTML=`<img src="${wal.img}" alt="" data-fb="${esc(id)}|#16456f">`;
   c.onclick=()=>connectWallet(wal);w.appendChild(c);});})();
 /* invite code: reveal field, prefill from ?code= link */
 $("inviteToggle").onclick=()=>{const w=$("inviteWrap");w.classList.toggle("open");if(w.classList.contains("open"))setTimeout(()=>$("inviteInput").focus(),250);};
@@ -3861,7 +3863,7 @@ $("frowRight").onclick=()=>{$("frow").scrollBy({left:170});setTimeout(updateFrow
 $("frow").addEventListener("scroll",updateFrowArrows);
 function fchip(key,label){const b=document.createElement("button");b.className="fchip"+(key===filt?" on":"");b.innerHTML=label;b.onclick=()=>{filt=key;buildFilters();buildCoins();};return b;}
 function passF(tk){if(filt==="all")return 1;if(filt==="fav")return tk.fav;if(filt==="btc")return tk.btc;if(filt==="stable")return tk.stable;if(filt==="swiss")return tk.swiss;if(filt==="monero")return availChainsFor(tk,sheetCap()).includes("Monero");if(filt.startsWith("chain:"))return availChainsFor(tk,sheetCap()).includes(filt.slice(6));return 1;}
-function glyphHTML(tk,bc){const badge=bc?`<img class="badge" width="15" height="15" loading="lazy" decoding="async" src="${esc(CH[bc].img)}" data-fb="hide">`:"";return `<span class="glyph"><img class="coin" width="38" height="38" loading="lazy" decoding="async" src="${esc(tk.icon)}" data-fb="${esc(mono(tk.code,'#16456f'))}">${badge}</span>`;}
+function glyphHTML(tk,bc){const badge=bc?`<img class="badge" width="15" height="15" loading="lazy" decoding="async" src="${esc(CH[bc].img)}" data-fb="hide">`:"";return `<span class="glyph"><img class="coin" width="38" height="38" loading="lazy" decoding="async" src="${esc(tk.icon)}" data-fb="${esc(tk.code)}|#16456f">${badge}</span>`;}
 function buildCoins(){const q=($("search").value||"").toLowerCase(),list=$("clist");list.innerHTML="";
   const m=sheetPool().filter(tk=>passF(tk)&&(tk.code.toLowerCase().includes(q)||tk.name.toLowerCase().includes(q)));
   m.sort((a,b)=>favRank(a.code)-favRank(b.code)||b.chains.length-a.chains.length||a.code.localeCompare(b.code));
@@ -3879,7 +3881,7 @@ function pickToken(tk){const chs=shownChainsFor(tk);if(chs.length===1)return set
   setImg($("tHeadIcon"),tk.icon,tk.code);$("tHeadName").textContent=`${tk.name} · ${tk.code}`;const g=$("netgrid");g.innerHTML="";
   const cur=S.sheetTarget==="token2"?{c:S.token2.code,k:S.chain2}:{c:S.token.code,k:S.chain};
   chs.forEach(bc=>{const c=CH[bc];const card=document.createElement("div");card.className="netcard"+(cur.c===tk.code&&cur.k===bc?" sel":"");
-    card.innerHTML=`<img src="${esc(c.img)}" data-fb="${esc(mono(c.name[0],c.color))}"><div class="ni"><b>${esc(c.name)}</b><small>${esc(t("network"))}</small></div>`;
+    card.innerHTML=`<img src="${esc(c.img)}" data-fb="${esc(c.name[0])}|${c.color}"><div class="ni"><b>${esc(c.name)}</b><small>${esc(t("network"))}</small></div>`;
     card.onclick=()=>setAsset(tk,bc);g.appendChild(card);});
   chainStep();enhanceA11y();}
 let coinT;$("search").addEventListener("input",()=>{clearTimeout(coinT);coinT=setTimeout(buildCoins,110);});
