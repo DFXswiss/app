@@ -7,7 +7,7 @@
      even if markup were ever injected, it could not exfiltrate to an arbitrary origin.
      Note: frame-ancestors / HSTS / X-Content-Type-Options are HTTP-header-only and must be set at
      the edge on deploy (see _headers). Framing is intentionally OPEN — see the widget note below. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: https://*.coingecko.com; script-src 'self' 'wasm-unsafe-eval' https://connect.trezor.io https://static.sumsub.com 'sha256-K6GWbmBgy0WD/UCUqKmjeqIQanSOY9mETvF500zHu5k='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://connect.trezor.io https://verify.walletconnect.com https://verify.walletconnect.org https://*.sumsub.com; connect-src 'self' https://api.dfx.swiss https://api.coingecko.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://verify.walletconnect.com https://verify.walletconnect.org https://rpc.walletconnect.com https://rpc.walletconnect.org https://connect.trezor.io https://*.sumsub.com" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: https://*.coingecko.com; script-src 'self' 'wasm-unsafe-eval' https://connect.trezor.io https://static.sumsub.com 'sha256-5PqNcA1ns298Dn/QETWieBg2Q7z4VfS/D/k2Y95/jdg='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://connect.trezor.io https://verify.walletconnect.com https://verify.walletconnect.org https://*.sumsub.com; connect-src 'self' https://api.dfx.swiss https://api.coingecko.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://verify.walletconnect.com https://verify.walletconnect.org https://rpc.walletconnect.com https://rpc.walletconnect.org https://connect.trezor.io https://*.sumsub.com" />
 <meta name="referrer" content="strict-origin-when-cross-origin" />
 <meta name="description" content="Buy, sell and swap crypto directly with your own wallet — Swiss, non-custodial, powered by DFX." />
 <meta name="theme-color" content="#0A3055" />
@@ -803,7 +803,7 @@ body.hide-target #walletBar{display:none!important}
             <div class="panel">
               <div class="prow"><span class="plabel" id="payLabel" data-i="youPay">You pay</span><span class="pmeta" id="payMeta"></span></div>
               <div class="pinput">
-                <input class="amt" id="payAmt" inputmode="decimal" value="100" aria-label="Amount you pay"/>
+                <input class="amt" id="payAmt" inputmode="decimal" value="100" placeholder="0" aria-label="Amount you pay"/>
                 <button class="pill" id="payPill" aria-label="Select pay asset"></button>
               </div>
             </div>
@@ -1325,7 +1325,7 @@ const I18N={
    youPay:"You pay",youReceive:"You receive",payMethod:"SEPA bank transfer",payMethodSub:"Free · 0–1 business day",
    fPay:"You pay",fDfx:"DFX fee",fNet:"Network fee",fNetVal:"DFX covers it",fRateL:"Exchange rate",fRecv:"You receive",secured:"Delivered straight to your connected wallet",securedSell:"Paid out directly to your bank account",securedSwap:"Swapped directly in your connected wallet",free:"Free",
    chooseAsset:"Choose what to buy",search:"Search assets",all:"All",popular:"Popular",stable:"Stablecoins",swiss:"Swiss",
-   chooseNet:"Choose network",allAssets:"All assets",netNote:"Same token on multiple networks. Pick where it lands; we flag the cheapest.",cheapest:"cheapest",fee:"fee",networks:"networks",noResults:"No assets found",noAssetsForWallet:"No assets available for this wallet",personalIbanNote:"This is your personal IBAN. No payment reference needed.",yourIban:"Your IBAN",getPersonalIban:"Get your own IBAN",personalIbanCreated:"Your personal IBAN is ready",payDetails:"Details",payQrTab:"QR code",scanToPay:"Scan with your banking app to pay",
+   chooseNet:"Choose network",allAssets:"All assets",netNote:"Same token on multiple networks. Pick where it should land.",cheapest:"cheapest",fee:"fee",networks:"networks",noResults:"No assets found",noAssetsForWallet:"No assets available for this wallet",notForWalletTitle:"Not available with your wallet",notForWalletBody:"This asset settles on a network your connected wallet can't receive. Connect a compatible wallet to buy it.",personalIbanNote:"This is your personal IBAN. No payment reference needed.",yourIban:"Your IBAN",getPersonalIban:"Get your own IBAN",personalIbanCreated:"Your personal IBAN is ready",payDetails:"Details",payQrTab:"QR code",scanToPay:"Scan with your banking app to pay",
    verified:"Verified · Full access",accNo:"Account",kycLevel:"Verification",kycNote:"Identity confirmed",limit:"Trading limit",
    connWallet:"Connected wallet",payRoutes:"Payment routes",referral:"Invite & earn",referralSub:"Earn commission on every friend's trade",haveInvite:"Have an invite code?",inviteApplied:"Invite applied:",commission:"commission",invited:"invited",copiedLink:"Referral link copied",connectFirst:"Connect first to get your code",bic:"BIC",signInForIban:"Connect to get payment details",ibanAfterKyc:"Shown after verification",bankFee:"Bank fee",totalFee:"Total fee",favorites:"Favorites",bitcoin:"Bitcoin",monero:"Monero",confBuyTitle:"Complete your purchase",confSwapTitle:"Swap submitted",confSellTitle:"Sell submitted",payInstr:"Transfer this amount:",payNote:"Always include the reference so we can match your payment.",verifyEmailTitle:"Verify your email to continue",verifyEmailNote:"DFX needs a verified email before your first purchase.",checkLink:"We sent a confirmation link to",iConfirmed:"I have confirmed — show payment details",setupTitle:"One more step",needApproval:"Your DFX account needs a one-time approval before buying. Finish it on app.dfx.swiss, then come back.",needKyc:"This amount needs identity verification (KYC). Complete it on app.dfx.swiss.",needLimit:"This exceeds your current limit. Raise it via verification on app.dfx.swiss.",needSetup:"Finish your account setup on app.dfx.swiss to unlock payments, then come back.",finishOnDfx:"Finish setup on app.dfx.swiss",codeSent:"Code sent to",emailVerified:"Email verified",codeWrong:"Invalid or expired code",mailExists:"This email is already in use",mailErr:"Could not send the code",connectFor:"Connect a {c} wallet",connectWalletFor:"Connect wallet for",walletNoteChain:"Connect a wallet that can receive on {c}.",
    prefs:"Preferences",language:"Language",currency:"Display currency",signOut:"Sign out",
@@ -1352,7 +1352,7 @@ const I18N={
    youPay:"Du zahlst",youReceive:"Du erhältst",payMethod:"SEPA-Banküberweisung",payMethodSub:"Kostenlos · 0–1 Werktag",
    fPay:"Du zahlst",fDfx:"DFX-Gebühr",fNet:"Netzwerkgebühr",fNetVal:"DFX übernimmt sie",fRateL:"Wechselkurs",fRecv:"Du erhältst",secured:"Direkt in deine verbundene Wallet",securedSell:"Direkt auf dein Bankkonto ausbezahlt",securedSwap:"Direkt in deiner verbundenen Wallet getauscht",free:"Kostenlos",bankFee:"Bankgebühr",totalFee:"Gebühren gesamt",
    chooseAsset:"Was möchtest du kaufen?",search:"Krypto suchen",all:"Alle",popular:"Beliebt",stable:"Stablecoins",swiss:"Schweiz",
-   chooseNet:"Netzwerk wählen",allAssets:"Alle",netNote:"Gleicher Token, mehrere Netzwerke. Wähle das Ziel; das günstigste ist markiert.",cheapest:"günstigste",fee:"Gebühr",networks:"Netzwerke",noResults:"Nichts gefunden",noAssetsForWallet:"Keine Assets für dieses Wallet verfügbar",personalIbanNote:"Das ist deine persönliche IBAN. Du brauchst keinen Verwendungszweck.",yourIban:"Deine IBAN",getPersonalIban:"Eigene IBAN erhalten",personalIbanCreated:"Deine persönliche IBAN ist bereit",payDetails:"Details",payQrTab:"QR-Code",scanToPay:"Mit deiner Banking-App scannen und bezahlen",
+   chooseNet:"Netzwerk wählen",allAssets:"Alle",netNote:"Gleicher Token, mehrere Netzwerke. Wähle, wo er ankommen soll.",cheapest:"günstigste",fee:"Gebühr",networks:"Netzwerke",noResults:"Nichts gefunden",noAssetsForWallet:"Keine Assets für dieses Wallet verfügbar",notForWalletTitle:"Mit deinem Wallet nicht möglich",notForWalletBody:"Dieses Asset läuft über ein Netzwerk, das dein verbundenes Wallet nicht empfangen kann. Verbinde ein passendes Wallet, um es zu kaufen.",personalIbanNote:"Das ist deine persönliche IBAN. Du brauchst keinen Verwendungszweck.",yourIban:"Deine IBAN",getPersonalIban:"Eigene IBAN erhalten",personalIbanCreated:"Deine persönliche IBAN ist bereit",payDetails:"Details",payQrTab:"QR-Code",scanToPay:"Mit deiner Banking-App scannen und bezahlen",
    verified:"Verifiziert · Voller Zugang",accNo:"Konto",kycLevel:"Verifizierung",kycNote:"Identität bestätigt",limit:"Handelslimit",
    connWallet:"Verbundene Wallet",payRoutes:"Zahlungswege",referral:"Einladen & verdienen",referralSub:"Verdiene Provision an jedem Kauf deiner Freunde",haveInvite:"Hast du einen Invite-Code?",inviteApplied:"Code aktiv:",commission:"Provision",invited:"eingeladen",copiedLink:"Empfehlungslink kopiert",connectFirst:"Zuerst verbinden für deinen Code",
    prefs:"Einstellungen",language:"Sprache",currency:"Anzeigewährung",signOut:"Abmelden",
@@ -1378,7 +1378,7 @@ const I18N={
    youPay:"Tu paghi",youReceive:"Tu ricevi",payMethod:"Bonifico SEPA",payMethodSub:"Gratis · 0–1 giorno lavorativo",
    fPay:"Tu paghi",fDfx:"Commissione DFX",fNet:"Costo di rete",fNetVal:"Coperto da DFX",fRateL:"Tasso di cambio",fRecv:"Tu ricevi",secured:"Direttamente nel tuo wallet connesso",securedSell:"Accreditato direttamente sul tuo conto bancario",securedSwap:"Scambiato direttamente nel tuo wallet connesso",free:"Gratis",bankFee:"Commissione bancaria",totalFee:"Commissioni totali",
    chooseAsset:"Cosa vuoi comprare?",search:"Cerca asset",all:"Tutti",popular:"Popolari",stable:"Stablecoin",swiss:"Svizzera",
-   chooseNet:"Scegli la rete",allAssets:"Tutti gli asset",netNote:"Stesso token, più reti. Scegli dove riceverlo; segnaliamo la più economica.",cheapest:"più economica",fee:"costo",networks:"reti",noResults:"Nessun asset trovato",noAssetsForWallet:"Nessun asset disponibile per questo wallet",personalIbanNote:"Questo è il tuo IBAN personale. Non serve alcuna causale.",yourIban:"Il tuo IBAN",getPersonalIban:"Ottieni il tuo IBAN",personalIbanCreated:"Il tuo IBAN personale è pronto",payDetails:"Dettagli",payQrTab:"Codice QR",scanToPay:"Scansiona con la tua app bancaria per pagare",
+   chooseNet:"Scegli la rete",allAssets:"Tutti gli asset",netNote:"Stesso token, più reti. Scegli dove riceverlo.",cheapest:"più economica",fee:"costo",networks:"reti",noResults:"Nessun asset trovato",noAssetsForWallet:"Nessun asset disponibile per questo wallet",notForWalletTitle:"Non disponibile con il tuo wallet",notForWalletBody:"Questo asset viaggia su una rete che il tuo wallet collegato non può ricevere. Collega un wallet compatibile per acquistarlo.",personalIbanNote:"Questo è il tuo IBAN personale. Non serve alcuna causale.",yourIban:"Il tuo IBAN",getPersonalIban:"Ottieni il tuo IBAN",personalIbanCreated:"Il tuo IBAN personale è pronto",payDetails:"Dettagli",payQrTab:"Codice QR",scanToPay:"Scansiona con la tua app bancaria per pagare",
    verified:"Verificato · Accesso completo",accNo:"Conto",kycLevel:"Verifica",kycNote:"Identità confermata",limit:"Limite di trading",
    connWallet:"Wallet connesso",payRoutes:"Metodi di pagamento",referral:"Invita e guadagna",referralSub:"Guadagna una commissione su ogni scambio di un amico",haveInvite:"Hai un codice invito?",inviteApplied:"Codice attivo:",commission:"commissione",invited:"invitati",copiedLink:"Link di invito copiato",connectFirst:"Connettiti per ottenere il codice",
    prefs:"Preferenze",language:"Lingua",currency:"Valuta di visualizzazione",signOut:"Esci",
@@ -1404,7 +1404,7 @@ const I18N={
    youPay:"Vous payez",youReceive:"Vous recevez",payMethod:"Virement SEPA",payMethodSub:"Gratuit · 0–1 jour ouvré",
    fPay:"Vous payez",fDfx:"Frais DFX",fNet:"Frais de réseau",fNetVal:"Pris en charge par DFX",fRateL:"Taux de change",fRecv:"Vous recevez",secured:"Livré directement dans votre wallet connecté",securedSell:"Versé directement sur ton compte bancaire",securedSwap:"Échangé directement dans ton wallet connecté",free:"Gratuit",bankFee:"Frais bancaires",totalFee:"Frais totaux",
    chooseAsset:"Que voulez-vous acheter ?",search:"Rechercher un actif",all:"Tous",popular:"Populaires",stable:"Stablecoins",swiss:"Suisse",
-   chooseNet:"Choisir le réseau",allAssets:"Tous les actifs",netNote:"Même token, plusieurs réseaux. Choisis la destination; le moins cher est indiqué.",cheapest:"le moins cher",fee:"frais",networks:"réseaux",noResults:"Aucun actif trouvé",noAssetsForWallet:"Aucun actif disponible pour ce wallet",personalIbanNote:"C'est ton IBAN personnel. Aucune référence de paiement nécessaire.",yourIban:"Ton IBAN",getPersonalIban:"Obtenir ton propre IBAN",personalIbanCreated:"Ton IBAN personnel est prêt",payDetails:"Détails",payQrTab:"Code QR",scanToPay:"Scanne avec ton app bancaire pour payer",
+   chooseNet:"Choisir le réseau",allAssets:"Tous les actifs",netNote:"Même token, plusieurs réseaux. Choisis où le recevoir.",cheapest:"le moins cher",fee:"frais",networks:"réseaux",noResults:"Aucun actif trouvé",noAssetsForWallet:"Aucun actif disponible pour ce wallet",notForWalletTitle:"Indisponible avec ton wallet",notForWalletBody:"Cet actif circule sur un réseau que ton wallet connecté ne peut pas recevoir. Connecte un wallet compatible pour l'acheter.",personalIbanNote:"C'est ton IBAN personnel. Aucune référence de paiement nécessaire.",yourIban:"Ton IBAN",getPersonalIban:"Obtenir ton propre IBAN",personalIbanCreated:"Ton IBAN personnel est prêt",payDetails:"Détails",payQrTab:"Code QR",scanToPay:"Scanne avec ton app bancaire pour payer",
    verified:"Vérifié · Accès complet",accNo:"Compte",kycLevel:"Vérification",kycNote:"Identité confirmée",limit:"Limite de trading",
    connWallet:"Wallet connecté",payRoutes:"Moyens de paiement",referral:"Parrainez et gagnez",referralSub:"Gagne une commission sur chaque opération d'un ami",haveInvite:"As-tu un code d'invitation ?",inviteApplied:"Code actif :",commission:"commission",invited:"invités",copiedLink:"Lien de parrainage copié",connectFirst:"Connecte-toi pour obtenir ton code",
    prefs:"Préférences",language:"Langue",currency:"Devise d'affichage",signOut:"Déconnexion",
@@ -1806,6 +1806,11 @@ const cap=m=>m==="sell"?"sell":"buy";
 const availTokens=(c)=>TOKENS.filter(tk=>(!ASSET_FILTER||ASSET_FILTER.has(tk.code.toUpperCase()))&&tk.chains.some(x=>(c?(c==="sell"?x.sellable:x.buyable):(x.buyable||x.sellable))));
 const availChainsFor=(tk,c)=>{const seen=new Set();return tk.chains.filter(x=>(c?(c==="sell"?x.sellable:x.buyable):(x.buyable||x.sellable))).map(x=>x.blockchain).filter(b=>!seen.has(b)&&seen.add(b));};
 const chainSupported=bc=>S.chains.includes(bc);
+/* Receive-capability of the CONNECTED wallet for a chain. Lightning is special: DFX pairs Bitcoin+Lightning
+   in the JWT for a BTC key, but an on-chain SegWit address (bc1…) cannot settle on Lightning — that needs a
+   Lightning identity (LNURL/LNNID) or a pure-Lightning session. Never infer Lightning from an on-chain address. */
+function lnReachable(){if(!SESSION)return true;if(/^(lnurl|lnnid|lnbc|ln1)/i.test(SESSION.address||""))return true;return (S.chains||[]).length===1&&S.chains[0]==="Lightning";}
+function reachable(bc){if(!SESSION)return true;if(!S.chains.includes(bc))return false;return bc==="Lightning"?lnReachable():true;}
 function assetId(tk,bc,c){const m=tk.chains.find(x=>x.blockchain===bc&&(c==="sell"?x.sellable:x.buyable))||tk.chains.find(x=>x.blockchain===bc);return m&&m.id;}
 /* strict capability id (no cross-capability fallback) — used to refuse a doomed quote */
 function capId(tk,bc,c){const m=tk&&tk.chains.find(x=>x.blockchain===bc&&(c==="sell"?x.sellable:x.buyable));return m&&m.id;}
@@ -1833,8 +1838,8 @@ async function loadAssets(){
   });
   TOKENS=Object.values(map).sort((a,b)=>b.chains.length-a.chains.length);
 }
-function pickDefault(){const all=availTokens("buy");const pool=all.filter(tk=>availChainsFor(tk,"buy").some(chainSupported));const p=pool.length?pool:all;const nat=NATIVE[S.chains[0]];return p.find(tk=>tk.code===nat)||p.find(tk=>["BTC","ETH","SOL","ADA","ICP","XMR","TRX"].includes(tk.code))||p[0];}
-function supportedChainOf(tk,c){const chs=availChainsFor(tk,c);return chs.find(chainSupported)||chs[0];}
+function pickDefault(){const all=availTokens("buy");const pool=all.filter(tk=>availChainsFor(tk,"buy").some(reachable));const p=pool.length?pool:all;const nat=NATIVE[(S.chains.find(reachable))||S.chains[0]];return p.find(tk=>tk.code===nat)||p.find(tk=>["BTC","ETH","SOL","ADA","ICP","XMR","TRX"].includes(tk.code))||p[0];}
+function supportedChainOf(tk,c){const chs=availChainsFor(tk,c);return chs.find(reachable)||chs.find(chainSupported)||chs[0];}
 
 /* ===================== NAV ===================== */
 function go(view){if(view!=="buy"&&typeof stopQuoteCountdown==="function")stopQuoteCountdown();if(view!=="ocp"&&typeof stopPosPoll==="function")stopPosPoll();if(view!=="chat"&&typeof chatStopPoll==="function")chatStopPoll();S.view=view;["login","buy","account","tx","support","ocp","limit","invite","ticket","kyc","chat","merge"].forEach(v=>$("v-"+v).classList.toggle("on",v===view));
@@ -2381,7 +2386,7 @@ function ocpRoutesHtml(){
     ${(USER&&USER.kycLevel!=null&&USER.kycLevel<30)?`<div class="paybox-note warn" style="margin:2px 0 2px">${esc(t("kycNeeded"))}</div>`:""}
     <label class="flabel">${esc(t("payoutIban"))}</label><input id="srIban" class="tinput" placeholder="CH.. / DE.." autocomplete="off"/>
     <label class="flabel">${esc(t("payoutCur"))}</label><select id="srCur" class="tinput">${FIATS.filter(f=>f.sellable!==false).map(f=>`<option value="${esc(f.id||"")}" ${f.code===S.fiat?"selected":""}>${esc(f.code)}</option>`).join("")}</select>
-    <label class="flabel">${esc(t("payoutChain"))}</label><select id="srChain" class="tinput">${(S.chains||[]).filter(c=>CH[c]).map(c=>`<option value="${c}" ${c==="Lightning"?"selected":""}>${esc(CH[c].name)}${c==="Lightning"?" — OpenCryptoPay":""}</option>`).join("")||`<option value="">—</option>`}</select>
+    <label class="flabel">${esc(t("payoutChain"))}</label><select id="srChain" class="tinput">${(()=>{const chs=(S.chains||[]).filter(c=>CH[c]);const def=chs.find(reachable)||chs[0];return chs.map(c=>`<option value="${c}" ${c===def?"selected":""}>${esc(CH[c].name)}${c==="Lightning"?" — OpenCryptoPay":""}</option>`).join("")||`<option value="">—</option>`;})()}</select>
     ${(S.chains||[]).includes("Lightning")?"":`<div class="paybox-note" style="margin-top:8px">${esc(t("ocpLnHint"))}</div>`}
     <button class="btn-primary" id="srAdd" style="margin-top:8px">${esc(t("createRoute"))}</button>
     <div id="srResult" class="paybox-note" style="display:none;margin-top:10px"></div>
@@ -3656,10 +3661,10 @@ function render(){
   $("payMeta").innerHTML="";
   renderWalletBar();
   const se=$("secureTxt");if(se)se.textContent=S.mode==="sell"?t("securedSell"):(S.mode==="swap"?t("securedSwap"):t("secured"));
-  $("payAmt").value=S.amount;
+  $("payAmt").value=S.amount||"";
   // CTA: if the connected wallet can't receive on this chain, prompt the right wallet
-  S.needWallet=(SESSION&&!chainSupported(S.chain))?S.chain:null;
-  if(S.needWallet){$("ctaVerb").textContent=t("connectWalletFor");$("ctaCode").textContent=CH[S.chain].name;}
+  S.needWallet=SESSION?(!reachable(S.chain)?S.chain:(S.mode==="swap"&&!reachable(S.chain2)?S.chain2:null)):null;   // swap output lands in the wallet too → its chain must be reachable
+  if(S.needWallet){$("ctaVerb").textContent=t("connectWalletFor");$("ctaCode").textContent=(CH[S.needWallet]||CH[S.chain]||{}).name||"";}
   else{$("ctaVerb").textContent=t(S.mode);$("ctaCode").textContent=S.mode==="swap"?`${S.token.code} → ${S.token2.code}`:S.token.code;}
   setCtaState();
   $("cta").style.marginTop=S.mode==="buy"?"":"auto";
@@ -3722,7 +3727,7 @@ function applyQuote(q){
   // fee object + value formatter per mode (matches app.dfx.swiss: fees in source for buy, fiat for sell)
   let F,fv,payStr,recvStr;
   if(m==="buy"){F=q.fees||{};fv=v=>fmtFiat(v);payStr=fmtFiat(q.amount||S.amount);recvStr=nfmt(q.estimatedAmount,prec)+" "+S.token.code;}
-  else if(m==="sell"){F=q.feesTarget||q.fees||{};fv=v=>fmtFiat(v);payStr=nfmt(S.amount,8)+" "+S.token.code;recvStr=fmtFiat(q.estimatedAmount);}
+  else if(m==="sell"){F=q.feesTarget||{};fv=v=>fmtFiat(v);payStr=nfmt(S.amount,8)+" "+S.token.code;recvStr=fmtFiat(q.estimatedAmount);}   // feesTarget is fiat-denominated; never fall back to crypto-denominated q.fees under a fiat symbol
   else{F=q.fees||{};fv=v=>nfmt(v,6)+" "+S.token.code;payStr=nfmt(S.amount,8)+" "+S.token.code;recvStr=nfmt(q.estimatedAmount,prec)+" "+S.token2.code;}
   // chip = total fee (the single number, never re-summed)
   $("feeChip").textContent=fv(F.total||0);
@@ -3786,9 +3791,9 @@ function setMode(mode,silent){if(mode==="swap"&&availTokens().length<2)mode="buy
   segInd.style.transform=`translateX(${({buy:0,sell:1,swap:2})[mode]}00%)`;
   // ensure selected chain valid for capability
   const c=mode==="sell"?"sell":"buy";
-  if(!availChainsFor(S.token,c).includes(S.chain)){const av=availTokens(c);if(av[0]){S.token=av.find(x=>x.code===S.token.code)&&availChainsFor(S.token,c).length?S.token:av[0];S.chain=availChainsFor(S.token,c)[0];}}
-  if(mode==="swap"&&S.token2.code===S.token.code){const o=availTokens("buy").find(x=>x.code!==S.token.code);if(o){S.token2=o;S.chain2=availChainsFor(o,"buy")[0];}}
-  S.amount=mode==="buy"?100:(S.token.stable?100:0.1);render();if(!silent&&mode!=="buy")toast(t(mode));
+  if(!availChainsFor(S.token,c).includes(S.chain)){const cap=availTokens(c);const av=cap.filter(tk=>availChainsFor(tk,c).some(reachable));const pool=av.length?av:cap;if(pool[0]){S.token=pool.find(x=>x.code===S.token.code&&availChainsFor(x,c).length)||pool[0];S.chain=supportedChainOf(S.token,c);}}
+  if(mode==="swap"&&S.token2.code===S.token.code){const rest=availTokens("buy").filter(x=>x.code!==S.token.code);const o=rest.find(x=>availChainsFor(x,"buy").some(reachable))||rest[0];if(o){S.token2=o;S.chain2=supportedChainOf(o,"buy");}}
+  S.amount=mode==="buy"?100:(S.token.stable?100:0);render();if(!silent&&mode!=="buy")toast(t(mode));   // don't pre-fill a scary token amount for sell/swap — let the user enter it
 }
 $("seg").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;setMode(b.dataset.i2);});
 
@@ -3835,16 +3840,17 @@ document.addEventListener("keydown",e=>{
 
 /* ===================== ASSET SHEET ===================== */
 const sheet=$("sheet");let filt="fav";
-function openSheet(target){S.sheetTarget=target||"token";filt="fav";$("search").value="";buildFilters();buildCoins();tokenStep();sheet.classList.add("on");$("sheetScrim").classList.add("on");openDialog(sheet,{close:closeSheet});}
+function openSheet(target){S.sheetTarget=target||"token";const pool=sheetPool();filt=(pool.length>1&&pool.some(tk=>tk.fav))?"fav":"all";$("search").value="";buildFilters();buildCoins();tokenStep();sheet.classList.add("on");$("sheetScrim").classList.add("on");openDialog(sheet,{close:closeSheet});}
 function closeSheet(){sheet.classList.remove("on");$("sheetScrim").classList.remove("on");closeDialog(sheet);}
 function tokenStep(){$("stepTokens").style.display="flex";$("stepChains").style.display="none";}
 function chainStep(){$("stepTokens").style.display="none";$("stepChains").style.display="flex";}
 $("sheetScrim").onclick=closeSheet;$("close1").onclick=closeSheet;$("close2").onclick=closeSheet;$("chainBack").onclick=tokenStep;
 function sheetCap(){return S.mode==="sell"?"sell":(S.mode==="swap"&&S.sheetTarget==="token")?"sell":"buy";}
-function sheetPool(){let pool=availTokens(sheetCap());if(S.mode==="swap"){const other=S.sheetTarget==="token2"?S.token:S.token2;pool=pool.filter(tk=>tk.code!==other.code);}if(SESSION)pool=pool.filter(tk=>availChainsFor(tk,sheetCap()).some(chainSupported));return pool;}   // logged in → only assets the connected wallet can receive; guests see everything
-function shownChainsFor(tk){const chs=availChainsFor(tk,sheetCap());if(!SESSION)return chs;const f=chs.filter(chainSupported);return f.length?f:chs;}   // restrict to the wallet's supported chains when logged in
+function sheetPool(){let pool=availTokens(sheetCap());if(S.mode==="swap"){const other=S.sheetTarget==="token2"?S.token:S.token2;pool=pool.filter(tk=>tk.code!==other.code);}if(SESSION)pool=pool.filter(tk=>availChainsFor(tk,sheetCap()).some(reachable));return pool;}   // logged in → only assets the connected wallet can actually settle on; guests see everything
+function shownChainsFor(tk){const chs=availChainsFor(tk,sheetCap());if(!SESSION)return chs;const f=chs.filter(reachable);return f.length?f:chs;}   // restrict to chains the connected wallet can actually settle on (Lightning-aware)
 function chainsOfChips(){const set=new Set();sheetPool().forEach(tk=>shownChainsFor(tk).forEach(c=>set.add(c)));return Object.keys(CH).filter(c=>set.has(c)&&c!=="Bitcoin"&&c!=="Monero"&&c!=="Lightning");}
-function buildFilters(){const row=$("frow");row.innerHTML="";
+function catHas(pool,k){const s=filt;filt=k;const ok=pool.some(passF);filt=s;return ok;}   // does the reachable pool hold any asset in this category?
+function buildFilters(){const row=$("frow");row.innerHTML="";const pool=sheetPool();
   const cats=[
     ["fav",`<svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px"><path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z"/></svg>${esc(t("favorites"))}`],
     ["btc",`<img src="assets/networks/bitcoin.svg">${esc(t("bitcoin"))}`],
@@ -3852,8 +3858,13 @@ function buildFilters(){const row=$("frow");row.innerHTML="";
     ["monero",`<img src="assets/tokens/XMR.svg">${esc(t("monero"))}`],
     ["swiss",`🇨🇭 ${esc(t("swiss"))}`],
   ];
-  cats.forEach(([k,l])=>row.appendChild(fchip(k,l)));
-  chainsOfChips().forEach(k=>row.appendChild(fchip("chain:"+k,`<img src="${esc(CH[k].img)}" data-fb="hide">${esc(CH[k].name)}`)));
+  const catChips=cats.filter(([k])=>catHas(pool,k)),chainChips=chainsOfChips();
+  // no point offering filters for a single reachable asset; and never surface a category the wallet can't fill
+  if(pool.length>1&&(catChips.length||chainChips.length)){
+    row.appendChild(fchip("all",esc(t("allAssets"))));
+    catChips.forEach(([k,l])=>row.appendChild(fchip(k,l)));
+    chainChips.forEach(k=>row.appendChild(fchip("chain:"+k,`<img src="${esc(CH[k].img)}" data-fb="hide">${esc(CH[k].name)}`)));
+  }
   setTimeout(updateFrowArrows,0);}
 function updateFrowArrows(){const f=$("frow");if(!f)return;const max=f.scrollWidth-f.clientWidth,x=f.scrollLeft;
   $("frowLeft").classList.toggle("hide",x<=4);$("frowRight").classList.toggle("hide",max<=4||x>=max-4);
@@ -3861,14 +3872,19 @@ function updateFrowArrows(){const f=$("frow");if(!f)return;const max=f.scrollWid
 $("frowLeft").onclick=()=>{$("frow").scrollBy({left:-170});setTimeout(updateFrowArrows,320);};
 $("frowRight").onclick=()=>{$("frow").scrollBy({left:170});setTimeout(updateFrowArrows,320);};
 $("frow").addEventListener("scroll",updateFrowArrows);
-function fchip(key,label){const b=document.createElement("button");b.className="fchip"+(key===filt?" on":"");b.innerHTML=label;b.onclick=()=>{filt=key;buildFilters();buildCoins();};return b;}
+function fchip(key,label){const b=document.createElement("button");b.className="fchip"+(key===filt?" on":"");b.dataset.k=key;b.innerHTML=label;b.onclick=()=>{filt=key;buildFilters();buildCoins();};return b;}
 function passF(tk){if(filt==="all")return 1;if(filt==="fav")return tk.fav;if(filt==="btc")return tk.btc;if(filt==="stable")return tk.stable;if(filt==="swiss")return tk.swiss;if(filt==="monero")return availChainsFor(tk,sheetCap()).includes("Monero");if(filt.startsWith("chain:"))return availChainsFor(tk,sheetCap()).includes(filt.slice(6));return 1;}
 function glyphHTML(tk,bc){const badge=bc?`<img class="badge" width="15" height="15" loading="lazy" decoding="async" src="${esc(CH[bc].img)}" data-fb="hide">`:"";return `<span class="glyph"><img class="coin" width="38" height="38" loading="lazy" decoding="async" src="${esc(tk.icon)}" data-fb="${esc(tk.code)}|#16456f">${badge}</span>`;}
 function buildCoins(){const q=($("search").value||"").toLowerCase(),list=$("clist");list.innerHTML="";
   const m=sheetPool().filter(tk=>passF(tk)&&(tk.code.toLowerCase().includes(q)||tk.name.toLowerCase().includes(q)));
   m.sort((a,b)=>favRank(a.code)-favRank(b.code)||b.chains.length-a.chains.length||a.code.localeCompare(b.code));
   const frag=document.createDocumentFragment();m.forEach(tk=>frag.appendChild(coinRow(tk)));list.appendChild(frag);
-  if(!m.length){const e=document.createElement("div");e.className="sec";e.style.textAlign="center";e.style.padding="34px";e.textContent=(SESSION&&!sheetPool().length)?t("noAssetsForWallet"):t("noResults");list.appendChild(e);}
+  if(!m.length){const e=document.createElement("div");e.className="sec";e.style.textAlign="center";e.style.padding="30px 22px";
+    const existsElsewhere=SESSION&&q&&availTokens(sheetCap()).some(tk=>tk.code.toLowerCase().includes(q)||tk.name.toLowerCase().includes(q));
+    if(SESSION&&!sheetPool().length)e.textContent=t("noAssetsForWallet");
+    else if(existsElsewhere)e.innerHTML=`<div style="font-weight:600;color:#fff;margin-bottom:5px">${esc(t("notForWalletTitle"))}</div><div style="font-size:13px;color:var(--t-muted);line-height:1.55">${esc(t("notForWalletBody"))}</div>`;
+    else e.textContent=t("noResults");
+    list.appendChild(e);}
   enhanceA11y();}
 function coinRow(tk){const r=document.createElement("div");r.className="crow";const chs=shownChainsFor(tk);const single=chs.length===1;
   const netTxt=single?(CH[chs[0]].name===tk.name?CH[chs[0]].name:`${tk.name} · ${CH[chs[0]].name}`):`${tk.name} · ${chs.length} ${t("networks")}`;
@@ -3951,7 +3967,7 @@ function showConfirm(){const q=S.quote;if(!q||!q.estimatedAmount||S.needWallet)r
   rows.push([t("fRecv"),`${nfmt(q.estimatedAmount,prec)} ${mode==="buy"?S.token.code:mode==="sell"?S.fiat:S.token2.code}`,"pos"]);
   if(mode!=="sell")rows.push([t("network"),CH[mode==="swap"?S.chain2:S.chain].name,""]);
   // total fees, formatted in the right unit (token amount for swap, fiat otherwise) — matches the fee panel
-  const feeObj=mode==="sell"?(q.feesTarget||q.fees||{}):(q.fees||{});
+  const feeObj=mode==="sell"?(q.feesTarget||{}):(q.fees||{});
   const feeFmt=mode==="swap"?(v=>nfmt(v,6)+" "+S.token.code):(v=>fmtFiat(v));
   rows.push([t("totalFee"),feeFmt(feeObj.total||0),""]);
   if(SESSION)rows.push([t(S.mode==="sell"?"fromWallet":"toWallet"),short(SESSION.address),""]);   // on a sell the coins LEAVE the wallet — "to wallet" would mislead
