@@ -7,7 +7,7 @@
      even if markup were ever injected, it could not exfiltrate to an arbitrary origin.
      Note: frame-ancestors / HSTS / X-Content-Type-Options are HTTP-header-only and must be set at
      the edge on deploy (see _headers). Framing is intentionally OPEN — see the widget note below. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: https://*.coingecko.com; script-src 'self' 'wasm-unsafe-eval' https://connect.trezor.io https://static.sumsub.com 'sha256-9Zx8AdmqGaSjkNQRKgG5u/LtbYOf4rwePgA3e4LH46Q='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://connect.trezor.io https://verify.walletconnect.com https://verify.walletconnect.org https://*.sumsub.com; connect-src 'self' https://api.dfx.swiss https://api.coingecko.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://verify.walletconnect.com https://verify.walletconnect.org https://rpc.walletconnect.com https://rpc.walletconnect.org https://connect.trezor.io https://*.sumsub.com" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: https://*.coingecko.com; script-src 'self' 'wasm-unsafe-eval' https://connect.trezor.io https://static.sumsub.com 'sha256-OBg1ADAX2t5hSlykTmTE1mcGNQq+qPZEvjJsrQl0cpE='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://connect.trezor.io https://verify.walletconnect.com https://verify.walletconnect.org https://*.sumsub.com; connect-src 'self' https://api.dfx.swiss https://api.coingecko.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://verify.walletconnect.com https://verify.walletconnect.org https://rpc.walletconnect.com https://rpc.walletconnect.org https://connect.trezor.io https://*.sumsub.com" />
 <meta name="referrer" content="strict-origin-when-cross-origin" />
 <meta name="description" content="Buy, sell and swap crypto directly with your own wallet — Swiss, non-custodial, powered by DFX." />
 <meta name="theme-color" content="#0A3055" />
@@ -1618,7 +1618,7 @@ const MENU=[
     {k:"limitTitle",act:"limit",icon:'<path d="M3 17l5-5 4 4 8-8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 8h5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'},
   ]},
   {g:"mMerchant",items:[
-    {k:"mOcp",act:"ocp",icon:'<path d="M7 7l5-3 5 3v6l-5 3-5-3z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 4v9" stroke="currentColor" stroke-width="1.7"/>'},
+    {k:"mOcp",act:"ocp",svg:'<svg viewBox="0 0 254 192" fill="none" style="width:17px;height:auto"><path d="M179.131 171.762L251.52 99.3729C253.39 97.5036 253.39 94.4693 251.52 92.5729L164.989 6.06858L132.668 38.3892L186.879 92.6C188.748 94.4693 188.748 97.5036 186.879 99.4L146.837 139.442L179.158 171.762H179.131Z" fill="currentColor"/><path d="M158.92 192L66.3203 99.4C64.4509 97.5307 64.4509 94.4964 66.3203 92.6L158.92 0H96.2568C94.9835 0 93.7643 0.514745 92.8703 1.40878L1.652 92.6C-0.217335 94.4693 -0.217335 97.5036 1.652 99.4L92.8432 190.591C93.7372 191.485 94.9564 192 96.2297 192H158.92Z" fill="currentColor"/></svg>'},
     {k:"payRoutes",act:"routes",icon:'<path d="M4 8h16M4 8l3-3M4 8l3 3M20 16H4m16 0-3-3m3 3-3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'},
   ]},
   {g:"mMore",items:[
@@ -3775,7 +3775,7 @@ const FIAT_LABEL={EUR:"curEur",CHF:"curChf",USD:"curUsd"};
 function fiatName(f){if(FIAT_LABEL[f.code])return t(FIAT_LABEL[f.code]);return f.name&&f.name!==f.code?f.name:"";}   // "USD / USD" looked broken
 function buildCurrency(){const L=$("curList");L.innerHTML="";FIATS.forEach(f=>{const r=document.createElement("div");r.className="optrow"+(f.code===S.fiat?" sel":"");
   r.innerHTML=`<img class="flag" src="assets/flags/${esc(f.flag)}.svg" data-fb="hide"><div class="oi"><b>${esc(f.code)}</b><small>${esc(fiatName(f))}</small></div><svg class="ck" viewBox="0 0 24 24" fill="none"><path d="M5 12l4 4 10-10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-  r.onclick=()=>{S.fiat=f.code;try{localStorage.setItem("dfx_fiat",f.code);}catch(e){}if(!payMethods().some(m=>m.id===S.payMethod))S.payMethod="Bank";render();closeCurrency();toast(f.code);};L.appendChild(r);});enhanceA11y();}
+  r.onclick=()=>{S.fiat=f.code;try{localStorage.setItem("dfx_fiat",f.code);}catch(e){}setTxt("acctCur",f.code);if(!payMethods().some(m=>m.id===S.payMethod))S.payMethod="Bank";render();closeCurrency();toast(f.code);};L.appendChild(r);});enhanceA11y();}
 $("curClose").onclick=closeCurrency;$("curScrim").onclick=closeCurrency;
 /* language picker as a bottom sheet (used by the account preferences row, so it opens in context — the header pill keeps its dropdown) */
 function buildLangSheet(){const L=$("langSheetList");L.innerHTML="";LANGS.forEach(([code,label,flag])=>{const r=document.createElement("div");r.className="optrow"+(code===LANG?" sel":"");
@@ -3914,7 +3914,7 @@ function buildMenu(){const root=$("menuList");if(!root)return;root.innerHTML="";
   const who=$("drawerWho");if(who)who.textContent=SESSION?short(SESSION.address):"";
   MENU.forEach(grp=>{const g=document.createElement("div");g.className="dgroup";g.textContent=t(grp.g);root.appendChild(g);
     grp.items.forEach(it=>{const m=document.createElement("div");m.className="mitem"+((S.view===it.act)?" active":"");
-      m.innerHTML=`<span class="micon"><svg viewBox="0 0 24 24" fill="none">${it.icon}</svg></span><span>${t(it.k)}</span>${it.ext?'<svg class="ext" viewBox="0 0 24 24" fill="none"><path d="M7 17L17 7M9 7h8v8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>':''}`;
+      m.innerHTML=`<span class="micon">${it.svg||('<svg viewBox="0 0 24 24" fill="none">'+it.icon+'</svg>')}</span><span>${t(it.k)}</span>${it.ext?'<svg class="ext" viewBox="0 0 24 24" fill="none"><path d="M7 17L17 7M9 7h8v8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>':''}`;
       m.onclick=()=>menuAct(it);root.appendChild(m);});});
   setAvatar();enhanceA11y();}
 function menuAct(it){closeDrawer();
@@ -4177,6 +4177,7 @@ function renderAccount(u){
   const chs=(S.chains||[]).map(c=>CH[c]?CH[c].name:c);
   setTxt("acctChains",chs.length?(chs.length===1?chs[0]:chs.length+" "+t("networks")):"");   // "1 Netzwerke" read broken — show the network's name instead
   setTxt("acctPayRoutes",payMethods().map(m=>t(m.name)).join(" · "));
+  setTxt("acctCur",S.fiat);   // display currency was hard-wired to EUR — reflect the actual selection
   if(u){
     const lvl=(u.kyc&&u.kyc.level!=null)?u.kyc.level:u.kycLevel;
     setTxt("acctKyc",lvl!=null?t("levelN",{n:lvl}):"—");
