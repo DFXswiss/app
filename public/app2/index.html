@@ -7,7 +7,7 @@
      even if markup were ever injected, it could not exfiltrate to an arbitrary origin.
      Note: frame-ancestors / HSTS / X-Content-Type-Options are HTTP-header-only and must be set at
      the edge on deploy (see _headers). Framing is intentionally OPEN — see the widget note below. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: https://*.coingecko.com; script-src 'self' 'wasm-unsafe-eval' https://connect.trezor.io https://static.sumsub.com 'sha256-7wAS3LKx+LSoKtuob3roLCMA062w1wSOCUfLHsRtVV4='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://connect.trezor.io https://verify.walletconnect.com https://verify.walletconnect.org https://*.sumsub.com; connect-src 'self' https://api.dfx.swiss https://api.coingecko.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://verify.walletconnect.com https://verify.walletconnect.org https://rpc.walletconnect.com https://rpc.walletconnect.org https://connect.trezor.io https://*.sumsub.com" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: https://*.coingecko.com; script-src 'self' 'wasm-unsafe-eval' https://connect.trezor.io https://static.sumsub.com 'sha256-ZwY9UJybtdbnOicJ/rtpdklVrD7BbomW8N9/OvH+hh4='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://connect.trezor.io https://verify.walletconnect.com https://verify.walletconnect.org https://*.sumsub.com; connect-src 'self' https://api.dfx.swiss https://api.coingecko.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://verify.walletconnect.com https://verify.walletconnect.org https://rpc.walletconnect.com https://rpc.walletconnect.org https://connect.trezor.io https://*.sumsub.com" />
 <meta name="referrer" content="strict-origin-when-cross-origin" />
 <meta name="description" content="Buy, sell and swap crypto directly with your own wallet — Swiss, non-custodial, powered by DFX." />
 <meta name="theme-color" content="#0A3055" />
@@ -1839,7 +1839,7 @@ const CUR_FLAG={EUR:"eu",CHF:"ch",USD:"us",GBP:"gb"};
 const FIAT_COL={EUR:"#1652d0",CHF:"#d8232a",USD:"#128a4b",GBP:"#4f46e5"};
 function fiatGlyph(code){const fk=CUR_FLAG[code];if(fk&&FLAG_SVG[fk])return FLAG_SVG[fk];
   const s={EUR:"€",USD:"$",GBP:"£"}[code]||(code==="CHF"?"Fr":((code&&code[0])||"¤"));const multi=s.length>1;const col=FIAT_COL[code]||"#2b5c9e";
-  return `<svg class="coin" width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="15" fill="${col}"/><text x="15" y="${multi?19.6:21}" text-anchor="middle" font-family="Inter,-apple-system,Arial,sans-serif" font-size="${multi?13:18}" font-weight="700" fill="#fff">${s}</text></svg>`;}
+  return `<svg class="coin" width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="15" fill="${col}"/><text x="15" y="${multi?19.6:21}" text-anchor="middle" font-family="Inter,-apple-system,Arial,sans-serif" font-size="${multi?13:18}" font-weight="700" fill="#fff">${esc(s)}</text></svg>`;}
 const fiatPillHTML=fi=>`<span class="glyph">${fiatGlyph(fi.code)}</span><span class="meta"><b>${esc(fi.code)}</b><s>${esc(fi.name)}</s></span>${CARET}`;
 // monochrome currency-symbol glyph for the account "Display currency" line-icon (follows the selected fiat)
 function curSymSvg(code){const s={EUR:"€",USD:"$",GBP:"£"}[code]||(code==="CHF"?"Fr":((code&&code[0])||"€"));const multi=s.length>1;return `<svg viewBox="0 0 24 24" fill="none"><text x="12" y="${multi?16.6:18.4}" text-anchor="middle" font-family="Inter,-apple-system,Arial,sans-serif" font-size="${multi?14:21}" font-weight="700" fill="currentColor">${esc(s)}</text></svg>`;}
@@ -3910,7 +3910,9 @@ function buildCoins(){const q=($("search").value||"").toLowerCase(),list=$("clis
   m.sort((a,b)=>{if(byBal){const d=heldBalance(b)-heldBalance(a);if(d)return d>0?1:-1;}return favRank(a.code)-favRank(b.code)||b.chains.length-a.chains.length||a.code.localeCompare(b.code);});
   const frag=document.createDocumentFragment();m.forEach(tk=>frag.appendChild(coinRow(tk)));list.appendChild(frag);
   if(!m.length){const e=document.createElement("div");e.className="sec";e.style.textAlign="center";e.style.padding="30px 22px";
-    const existsElsewhere=SESSION&&q&&availTokens(sheetCap()).some(tk=>tk.code.toLowerCase().includes(q)||tk.name.toLowerCase().includes(q));
+    const qMatch=tk=>tk.code.toLowerCase().includes(q)||tk.name.toLowerCase().includes(q);
+    // "not for your wallet" only when the searched asset exists but is UNreachable — not when a category chip just filtered it out
+    const existsElsewhere=SESSION&&q&&!sheetPool().some(qMatch)&&availTokens(sheetCap()).some(qMatch);
     if(SESSION&&!sheetPool().length)e.textContent=(sheetCap()==="sell"&&hasBalances())?t("sellNoBalance"):t("noAssetsForWallet");
     else if(existsElsewhere)e.innerHTML=`<div style="font-weight:600;color:#fff;margin-bottom:5px">${esc(t("notForWalletTitle"))}</div><div style="font-size:13px;color:var(--t-muted);line-height:1.55">${esc(t("notForWalletBody"))}</div>`;
     else e.textContent=t("noResults");
