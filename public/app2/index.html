@@ -7,7 +7,7 @@
      even if markup were ever injected, it could not exfiltrate to an arbitrary origin.
      Note: frame-ancestors / HSTS / X-Content-Type-Options are HTTP-header-only and must be set at
      the edge on deploy (see _headers). Framing is intentionally OPEN — see the widget note below. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: https://*.coingecko.com; script-src 'self' 'wasm-unsafe-eval' https://connect.trezor.io https://static.sumsub.com 'sha256-1MaBni/e3Aq0OsEzzVYHMsYmj6RQHcOUcDPoWbQurnI='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://connect.trezor.io https://verify.walletconnect.com https://verify.walletconnect.org https://*.sumsub.com; connect-src 'self' https://api.dfx.swiss https://api.coingecko.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://verify.walletconnect.com https://verify.walletconnect.org https://rpc.walletconnect.com https://rpc.walletconnect.org https://connect.trezor.io https://*.sumsub.com" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; img-src 'self' data: https://*.coingecko.com; script-src 'self' 'wasm-unsafe-eval' https://connect.trezor.io https://static.sumsub.com 'sha256-HjUzg1hwSSaNvR48tPqpxuuiyH7Gd0NzjzAgAtT4QOY='; style-src 'self' 'unsafe-inline'; font-src 'self' data:; frame-src 'self' https://connect.trezor.io https://verify.walletconnect.com https://verify.walletconnect.org https://*.sumsub.com; connect-src 'self' https://api.dfx.swiss https://api.coingecko.com wss://relay.walletconnect.com wss://relay.walletconnect.org https://verify.walletconnect.com https://verify.walletconnect.org https://rpc.walletconnect.com https://rpc.walletconnect.org https://connect.trezor.io https://*.sumsub.com" />
 <meta name="referrer" content="strict-origin-when-cross-origin" />
 <meta name="description" content="Buy, sell and swap crypto directly with your own wallet — Swiss, non-custodial, powered by DFX." />
 <meta name="theme-color" content="#0A3055" />
@@ -529,7 +529,8 @@ select.tinput:disabled,.tinput:disabled{opacity:.5;cursor:not-allowed}
 .payseg button:hover{border-color:var(--primary)}
 .payseg button.on{color:#fff;border-color:var(--primary);background:var(--primary-soft)}
 #payQr{display:flex;justify-content:center;padding:12px 0 6px}
-#payQr svg,#payQr img{width:158px;height:158px;max-width:100%;background:#fff;padding:9px;border-radius:12px}
+#payQr svg{width:220px;height:220px;max-width:100%;background:#fff;padding:11px;border-radius:14px}
+#payQr img{width:220px;height:220px;max-width:100%;object-fit:contain;background:#fff;padding:11px;border-radius:14px}
 .btn-mini svg{width:17px;height:17px}
 .limit-now{text-align:center;padding:16px;border-radius:18px;background:var(--card-overlay);border:1px solid var(--hair);margin-bottom:6px}
 .limit-now .lab{font-size:12px;color:var(--t-muted);font-weight:600}
@@ -4074,7 +4075,9 @@ async function loadPaymentInfo(){
       $("cRefRow").style.display="none";$("cIbanLbl").textContent=t("iban");$("payNote").textContent=t("noRefNeeded");$("getPersonalIban").style.display="none";
     }
     if(d.paymentRequest){                                   // Swiss QR-bill SVG or GiroCode BCD text → render a scannable code
-      $("payQr").innerHTML=/<svg/i.test(d.paymentRequest)?d.paymentRequest:qrSvg(d.paymentRequest);
+      // Swiss QR-bill: render the API SVG faithfully as a data-URI image (aspect-preserved, never distorted);
+      // GiroCode/other: encode the text to a QR ourselves. A distorted or too-small QR won't scan.
+      $("payQr").innerHTML=/<svg/i.test(d.paymentRequest)?'<img alt="Swiss QR-bill" src="data:image/svg+xml;utf8,'+encodeURIComponent(d.paymentRequest)+'">':qrSvg(d.paymentRequest);
       $("paySeg").style.display="flex";payShowTab("details");
     }else{$("paySeg").style.display="none";$("payQr").style.display="none";$("payQr").innerHTML="";$("payQrCap").style.display="none";$("payDetailsBlock").style.display="";}
   }catch(e){if(ac.signal.aborted||seq!==pSeq)return;renderGate("","https://app.dfx.swiss");}
