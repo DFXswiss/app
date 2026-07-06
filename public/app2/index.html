@@ -183,7 +183,7 @@ body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
 .seg .ind{position:absolute;top:4px;bottom:4px;width:calc((100% - 8px)/3);left:4px;background:var(--card-overlay);border:1px solid var(--hair);border-radius:11px;transition:transform .32s var(--ease)}
 .seg button{position:relative;z-index:1;flex:1;border:none;background:transparent;font-family:inherit;font-weight:600;font-size:14px;color:var(--t-dim);padding:10px 0;cursor:pointer;transition:color .25s var(--ease)}
 .seg button.on{color:#fff}
-.panels{position:relative;border:1px solid var(--hair);border-radius:22px;background:var(--card-overlay);backdrop-filter:blur(10px);box-shadow:0 6px 18px rgba(0,0,0,.28)}
+.panels{position:relative;border:1px solid var(--hair);border-radius:22px;overflow:hidden;background:var(--card-overlay);backdrop-filter:blur(10px);box-shadow:0 6px 18px rgba(0,0,0,.28)}
 .panel{padding:15px 16px}
 .panel+.panel{border-top:1px solid var(--hair)}
 .panel.recv{background:rgba(8,30,58,.35)}
