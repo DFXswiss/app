@@ -68,3 +68,6 @@ playwright-report-local/
 _handbook-deps/
 docs/handbook/build/
 
+# App 2.0 build output (staged into build/app2 by the deploy workflows)
+/app2-dist
+
