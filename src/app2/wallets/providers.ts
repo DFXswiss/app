@@ -31,6 +31,33 @@ export class WalletConnectorError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Cancellation token — lets a caller abandon a pending connect attempt (e.g. Cancel in the
+// WalletConnect QR view, or the sheet closing on a route change) without waiting for whatever
+// async call is currently in flight. Created *before* any await in the connector function so a
+// cancel() called while e.g. the WC provider is still initializing is never missed.
+// ---------------------------------------------------------------------------
+
+export interface CancelToken {
+  cancelled: boolean;
+  /** Rejects with `error` once, no-op afterwards. Racing this promise against the in-flight
+   * connector call is what lets a cancelled attempt stop waiting immediately. */
+  promise: Promise<never>;
+  cancel: (error: Error) => void;
+}
+
+export function createCancelToken(): CancelToken {
+  const token = { cancelled: false } as CancelToken;
+  token.promise = new Promise<never>((_, reject) => {
+    token.cancel = (error: Error) => {
+      if (token.cancelled) return;
+      token.cancelled = true;
+      reject(error);
+    };
+  });
+  return token;
+}
+
+// ---------------------------------------------------------------------------
 // Injected (EIP-1193) — MetaMask or whatever single provider the browser
 // exposes as window.ethereum. No EIP-6963 multi-wallet disambiguation in
 // this slice: if several extensions fight over window.ethereum the browser
@@ -123,20 +150,40 @@ export interface WalletConnectSession {
 
 /** Starts a WalletConnect v2 pairing. `onUri` is called (possibly several
  * times) with the pairing URI to render as a QR code once it's known.
- * Resolves once the remote wallet approves the session. */
-export async function connectWalletConnect(onUri: (uri: string) => void): Promise<WalletConnectSession> {
-  const provider = await initWalletConnectProvider().catch(() => {
+ * Resolves once the remote wallet approves the session.
+ *
+ * `token` lets the caller abandon this attempt (Cancel in the QR view, or the sheet closing on
+ * a route change) without waiting for `provider.enable()` to settle — which, mid-pairing, may
+ * never happen on its own (the remote wallet simply never responds). `provider.enable()` is
+ * raced against `token.promise` rather than awaited directly for exactly that reason; the
+ * abandoned `enable()` call, if it ever does resolve or reject later, is left with a no-op
+ * `.catch()` so it doesn't surface as an unhandled rejection. There is no SDK-level "abort this
+ * pairing" call to make instead: @walletconnect/universal-provider's `abortPairingAttempt()` is
+ * a documented no-op in the installed version — `disconnectWalletConnect()` (called by the
+ * caller alongside `token.cancel()`) is the most teardown the API allows. */
+export async function connectWalletConnect(
+  onUri: (uri: string) => void,
+  token: CancelToken,
+): Promise<WalletConnectSession> {
+  if (token.cancelled) throw new WalletConnectorError('Connection cancelled', 'rejected');
+
+  const provider = await Promise.race([initWalletConnectProvider(), token.promise]).catch((error: unknown) => {
+    if (token.cancelled) throw error;
     throw new WalletConnectorError('Could not start WalletConnect', 'failed');
   });
+  if (token.cancelled) throw new WalletConnectorError('Connection cancelled', 'rejected');
 
   const handleUri = (uri: string) => onUri(uri);
   provider.on('display_uri', handleUri);
+  const enablePromise = provider.enable();
+  enablePromise.catch(() => undefined); // see doc comment above — avoid an unhandled rejection if we race away from this
   try {
-    const accounts = await provider.enable();
+    const accounts = await Promise.race([enablePromise, token.promise]);
     const address = accounts?.[0];
     if (!address) throw new WalletConnectorError('No account returned', 'no-account');
     return { provider, address };
   } catch (error) {
+    if (error instanceof WalletConnectorError) throw error;
     if (isUserRejection(error)) throw new WalletConnectorError('Connection cancelled', 'rejected');
     throw error;
   } finally {
@@ -152,11 +199,18 @@ export async function signWithWalletConnect(
   return provider.request<string>({ method: 'personal_sign', params: [personalSignHex(message), address] });
 }
 
+/** Tears down the current WalletConnect provider as best the SDK allows (finding #1: cancelling
+ * mid-QR-pairing must not leave a zombie connect attempt around). Resetting `wcProviderPromise`
+ * unconditionally — even when there's no session yet to hand `provider.disconnect()` — is the
+ * real fix here: `EthereumProvider#disconnect()` is a no-op beyond a local state reset until a
+ * session exists, so it can't kill an unapproved pairing on its own, but discarding the cached
+ * provider means the *next* connect attempt always starts from a fresh instance instead of
+ * reusing (and getting stuck behind) this one. */
 export async function disconnectWalletConnect(): Promise<void> {
   if (!wcProviderPromise) return;
-  const provider = await wcProviderPromise.catch(() => undefined);
+  const providerPromise = wcProviderPromise;
   wcProviderPromise = undefined;
-  if (provider?.session) {
-    await provider.disconnect().catch(() => undefined);
-  }
+  const provider = await providerPromise.catch(() => undefined);
+  if (!provider) return;
+  await provider.disconnect().catch(() => undefined);
 }

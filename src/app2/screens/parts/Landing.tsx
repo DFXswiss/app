@@ -11,9 +11,8 @@ import { useWalletSession } from '../../wallets/session';
 import { WALLET_CATALOG } from '../../wallets/catalog';
 
 // Mirrors the static app's STRIP_IDS (public/app2/index.html) — the wallets shown in the
-// "works with your wallet" strip below the auth buttons. TronLink is in the static app's list
-// but has no catalog entry/icon asset in this port, so it's dropped rather than faked.
-const STRIP_IDS = ['MetaMask', 'Coinbase Wallet', 'Rabby', 'Phantom'];
+// "works with your wallet" strip below the auth buttons.
+const STRIP_IDS = ['MetaMask', 'Coinbase Wallet', 'Rabby', 'Phantom', 'TronLink'];
 
 const WALLET_ICON = (
   <svg viewBox="0 0 24 24" fill="none">
@@ -78,6 +77,7 @@ export function Landing() {
   const [emailOpen, setEmailOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
+  const [emailInvalid, setEmailInvalid] = useState(false);
 
   const initialInvite = useMemo(() => new URLSearchParams(window.location.search).get('refcode')?.trim() || '', []);
   const [inviteOpen, setInviteOpen] = useState(() => Boolean(initialInvite));
@@ -89,7 +89,13 @@ export function Landing() {
   const submitEmail = async () => {
     if (sending) return;
     const value = email.trim();
-    if (!value || !value.includes('@')) return;
+    // finding #13: an invalid submit used to just silently no-op, leaving only the native
+    // browser tooltip (if any) to explain why nothing happened — show an inline error instead.
+    if (!value || !value.includes('@')) {
+      setEmailInvalid(true);
+      return;
+    }
+    setEmailInvalid(false);
     setSending(true);
     try {
       // SDK contract mirrors the static app's POST /auth/mail: {mail, redirectUri,
@@ -146,14 +152,19 @@ export function Landing() {
           </button>
           <div className={`emailwrap${emailOpen ? ' open' : ''}`}>
             <div>
-              <div className="efield">
+              <div className={`efield${emailInvalid ? ' invalid' : ''}`}>
                 <input
                   type="email"
                   placeholder="you@email.com"
                   autoComplete="email"
                   aria-label={t('email')}
+                  aria-invalid={emailInvalid || undefined}
+                  aria-describedby={emailInvalid ? 'emailFieldErr' : undefined}
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailInvalid) setEmailInvalid(false);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void submitEmail();
                   }}
@@ -162,6 +173,11 @@ export function Landing() {
                   {SEND_ICON}
                 </button>
               </div>
+              {emailInvalid && (
+                <p className="ferr" id="emailFieldErr" role="alert">
+                  {t('emailInvalid')}
+                </p>
+              )}
             </div>
           </div>
         </div>

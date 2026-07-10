@@ -18,6 +18,7 @@ import iconMetaMask from '../assets/wallets/metamask.svg';
 import iconPhantom from '../assets/wallets/phantom.svg';
 import iconRabby from '../assets/wallets/rabby.svg';
 import iconTrezor from '../assets/wallets/trezor.svg';
+import iconTron from '../assets/wallets/tron.svg';
 import iconTrust from '../assets/wallets/trust.svg';
 import iconWalletConnect from '../assets/wallets/wallet-connect.svg';
 
@@ -92,6 +93,7 @@ export const WALLET_CATALOG: WalletCatalogGroup[] = [
     items: [
       { id: 'Phantom', name: 'Phantom', icon: iconPhantom, hint: 'Solana', connector: 'soon' },
       { id: 'Trust Wallet', name: 'Trust Wallet', icon: iconTrust, hint: 'Solana', connector: 'soon' },
+      { id: 'TronLink', name: 'TronLink', icon: iconTron, hint: 'Tron', connector: 'soon' },
       { id: 'CLI', name: 'CLI', icon: iconCli, hint: 'Manual signing', connector: 'soon' },
     ],
   },

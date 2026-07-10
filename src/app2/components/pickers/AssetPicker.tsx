@@ -267,9 +267,10 @@ function AssetRow({
   language: Language;
   onPick: () => void;
 }) {
+  const { t } = useT();
   const chains = shownChainsFor(token, cap, sessionBlockchain);
   const single = chains.length === 1;
-  const netTxt = single ? chainName(chains[0].blockchain) : `${chains.length} networks`;
+  const netTxt = single ? chainName(chains[0].blockchain) : `${chains.length} ${t('networks')}`;
 
   return (
     <div className="crow" role="button" tabIndex={0} onClick={onPick} onKeyDown={onActivate(onPick)}>
