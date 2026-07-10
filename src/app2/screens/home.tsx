@@ -12,7 +12,7 @@
 // simpler to reason about, and it means switching tabs never loses what you were doing on the
 // other one.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Blockchain,
   FiatPaymentMethod,
@@ -20,11 +20,12 @@ import {
   useBankAccountContext,
   useFiatContext,
 } from '@dfx.swiss/react';
-import type { Asset, BankAccount, Fiat } from '@dfx.swiss/react';
+import type { Asset, BankAccount, Buy, Fiat, Sell, Swap } from '@dfx.swiss/react';
 import { AssetPicker } from '../components/pickers/AssetPicker';
 import { BankAccountPicker } from '../components/pickers/BankAccountPicker';
 import { FiatPicker } from '../components/pickers/FiatPicker';
 import { PaymentMethodPicker, paymentMethodsFor } from '../components/pickers/PaymentMethodPicker';
+import { useToast } from '../components/ui';
 import { formatAmount, formatFiat, parseAmt, quickChipSymbol } from './trade/amount';
 import { assetFor, availableAssets, groupAssets, heldBalance, parseBalances, shownChainsFor } from './trade/asset-pool';
 import { chainName } from './trade/blockchain-meta';
@@ -55,8 +56,27 @@ const WALLET_ICON = (
 type AssetSlot = 'buyReceive' | 'sellPay' | 'swapFrom' | 'swapTo';
 type FiatSlot = 'buyPay' | 'sellReceive';
 
+/** Frozen at the moment the payment sheet opens (finding #2) — the sheet renders exclusively
+ * from this snapshot so the 30s quote auto-refresh (paused while the sheet is open, but this
+ * also covers the debounce window right after opening / an explicit retry) can never silently
+ * swap the displayed IBAN/reference/amount out from under the user. */
+interface PaymentSnapshot {
+  mode: Mode;
+  buy: Buy | null;
+  sell: Sell | null;
+  swap: Swap | null;
+  rawError: unknown;
+  loading: boolean;
+  payAssetCode: string;
+  receiveAssetCode: string;
+  receiveBlockchain?: Blockchain;
+  currency?: Fiat;
+  amount: number;
+}
+
 export default function HomeScreen() {
   const { t, language } = useT();
+  const { showToast } = useToast();
   const session = useWalletSession();
   const { getAssets } = useAssetContext();
   const { currencies } = useFiatContext();
@@ -89,6 +109,9 @@ export default function HomeScreen() {
   const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
   const [bankAccountOpen, setBankAccountOpen] = useState(false);
   const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
+  // Frozen quote snapshot the payment sheet renders from (finding #2) — see PaymentSnapshot.
+  const [sheetSnapshot, setSheetSnapshot] = useState<PaymentSnapshot | null>(null);
+  const sheetWasOpenRef = useRef(false);
 
   // ---- asset pool (real data — useAssetContext(), grouped per ticker; see asset-pool.ts) ---
   const allAssets = useMemo<Asset[]>(() => getAssets(Object.values(Blockchain)), [getAssets]);
@@ -178,6 +201,7 @@ export default function HomeScreen() {
     currency: buyFiat,
     amount: buyAmount,
     paymentMethod: buyMethod,
+    paused: paymentSheetOpen,
   });
   const sellQuote = useSellQuote({
     enabled: session.isLoggedIn,
@@ -185,12 +209,14 @@ export default function HomeScreen() {
     currency: sellFiat,
     amount: sellAmount,
     iban: sellBankAccount?.iban,
+    paused: paymentSheetOpen,
   });
   const swapQuote = useSwapQuote({
     enabled: session.isLoggedIn,
     sourceAsset: swapFromApiAsset,
     targetAsset: swapToApiAsset,
     amount: swapAmount,
+    paused: paymentSheetOpen,
   });
 
   const buyReady = !!buyQuote.data && buyQuote.isFresh && buyQuote.data.isValid !== false;
@@ -206,6 +232,74 @@ export default function HomeScreen() {
         ? swapReady
         : !!sellAmount && !!sellApiAsset && !!sellFiat && (!sellBankAccount || sellReady);
 
+  // ---- payment-sheet snapshot (finding #2) ------------------------------------------------
+  // Everything the sheet renders is captured here on open (and re-captured whenever the live
+  // fetch this mode is showing finishes loading — see the effect below) instead of the sheet
+  // reading buyQuote/sellQuote/swapQuote directly, so the 30s auto-refresh (paused via `paused:
+  // paymentSheetOpen` above) can't silently swap the displayed IBAN/reference/amount out from
+  // under the user while the sheet is on screen.
+  const sheetPayAssetCode =
+    mode === 'sell' ? (sellAsset?.code ?? '') : mode === 'swap' ? (swapFromAsset?.code ?? '') : '';
+  const sheetReceiveAssetCode =
+    mode === 'buy' ? (buyAsset?.code ?? '') : mode === 'swap' ? (swapToAsset?.code ?? '') : '';
+  const sheetReceiveBlockchain = mode === 'buy' ? buyChain : mode === 'swap' ? swapToChain : undefined;
+  const sheetCurrency = mode === 'buy' ? buyFiat : mode === 'sell' ? sellFiat : undefined;
+  const sheetAmount = (mode === 'buy' ? buyAmount : mode === 'sell' ? sellAmount : swapAmount) ?? 0;
+  const sheetLoadingLive = mode === 'buy' ? buyQuote.loading : mode === 'sell' ? sellQuote.loading : swapQuote.loading;
+
+  const latchSnapshot = () => {
+    setSheetSnapshot({
+      mode,
+      buy: mode === 'buy' ? buyQuote.data : null,
+      sell: mode === 'sell' ? sellQuote.data : null,
+      swap: mode === 'swap' ? swapQuote.data : null,
+      rawError: mode === 'buy' ? buyQuote.error : mode === 'sell' ? sellQuote.error : swapQuote.error,
+      loading: sheetLoadingLive,
+      payAssetCode: sheetPayAssetCode,
+      receiveAssetCode: sheetReceiveAssetCode,
+      receiveBlockchain: sheetReceiveBlockchain,
+      currency: sheetCurrency,
+      amount: sheetAmount,
+    });
+  };
+
+  /** Opens the sheet, refusing a stale/missing quote instead of showing numbers that are about
+   * to be wrong (mirrors the static app's showConfirm(): `if(!quoteFresh()...){updateQuote();
+   * toast(t("quoteExpired"));return;}`). Used by the CTA; the bank-account picker's own "pick an
+   * account, then open" path (below) has no prior quote to go stale, so it skips this gate — the
+   * re-latch effect fills the snapshot in once that fetch resolves. */
+  const openPaymentSheet = () => {
+    const quote = mode === 'buy' ? buyQuote : mode === 'sell' ? sellQuote : swapQuote;
+    if (!quote.data || !quote.isFresh) {
+      showToast(t('quoteExpired'));
+      quote.refresh();
+      return;
+    }
+    latchSnapshot();
+    setPaymentSheetOpen(true);
+  };
+
+  // Re-latch whenever the live fetch for the mode on screen finishes loading, while the sheet is
+  // open. With the TTL auto-refresh paused for the duration (`paused: paymentSheetOpen` above),
+  // the only ways `loading` can flip to false here are the initial fetch settling for a
+  // just-opened sheet (bank-account path) or an explicit onRetry() — never a silent background
+  // swap, so re-latching on this transition can't reintroduce the bug this snapshot exists to fix.
+  useEffect(() => {
+    if (!paymentSheetOpen || sheetLoadingLive) return;
+    latchSnapshot();
+  }, [paymentSheetOpen, sheetLoadingLive]);
+
+  // On close: drop the snapshot and resume the engine with an immediate refresh, so the buy/
+  // sell/swap panel behind the (now-closed) sheet isn't left showing whatever was current when
+  // the sheet opened, possibly a while ago.
+  useEffect(() => {
+    if (sheetWasOpenRef.current && !paymentSheetOpen) {
+      setSheetSnapshot(null);
+      (mode === 'buy' ? buyQuote : mode === 'sell' ? sellQuote : swapQuote).refresh();
+    }
+    sheetWasOpenRef.current = paymentSheetOpen;
+  }, [paymentSheetOpen]);
+
   const handleCta = () => {
     if (!session.isLoggedIn) {
       session.openConnect();
@@ -216,7 +310,7 @@ export default function HomeScreen() {
       return;
     }
     if (!ctaEnabled) return;
-    setPaymentSheetOpen(true);
+    openPaymentSheet();
   };
 
   // ---- receive-panel display --------------------------------------------------------------
@@ -547,6 +641,7 @@ export default function HomeScreen() {
         value={sellBankAccount}
         onSelect={(account) => {
           setSellBankAccount(account);
+          latchSnapshot();
           setPaymentSheetOpen(true);
         }}
       />
@@ -555,22 +650,23 @@ export default function HomeScreen() {
         open={paymentSheetOpen}
         onClose={() => setPaymentSheetOpen(false)}
         onDone={() => setPaymentSheetOpen(false)}
-        mode={mode}
-        loading={mode === 'buy' ? buyQuote.loading : mode === 'sell' ? sellQuote.loading : swapQuote.loading}
-        rawError={mode === 'buy' ? buyQuote.error : mode === 'sell' ? sellQuote.error : swapQuote.error}
-        buy={mode === 'buy' ? buyQuote.data : null}
-        sell={mode === 'sell' ? sellQuote.data : null}
-        swap={mode === 'swap' ? swapQuote.data : null}
-        payAssetCode={mode === 'sell' ? (sellAsset?.code ?? '') : mode === 'swap' ? (swapFromAsset?.code ?? '') : ''}
-        receiveAssetCode={mode === 'buy' ? (buyAsset?.code ?? '') : mode === 'swap' ? (swapToAsset?.code ?? '') : ''}
-        receiveBlockchain={mode === 'buy' ? buyChain : mode === 'swap' ? swapToChain : undefined}
-        currency={mode === 'buy' ? buyFiat : mode === 'sell' ? sellFiat : undefined}
+        mode={sheetSnapshot?.mode ?? mode}
+        loading={sheetSnapshot?.loading ?? sheetLoadingLive}
+        rawError={sheetSnapshot?.rawError ?? null}
+        buy={sheetSnapshot?.buy ?? null}
+        sell={sheetSnapshot?.sell ?? null}
+        swap={sheetSnapshot?.swap ?? null}
+        payAssetCode={sheetSnapshot?.payAssetCode ?? sheetPayAssetCode}
+        receiveAssetCode={sheetSnapshot?.receiveAssetCode ?? sheetReceiveAssetCode}
+        receiveBlockchain={sheetSnapshot?.receiveBlockchain ?? sheetReceiveBlockchain}
+        currency={sheetSnapshot?.currency ?? sheetCurrency}
         paymentMethod={buyMethod}
-        amount={(mode === 'buy' ? buyAmount : mode === 'sell' ? sellAmount : swapAmount) ?? 0}
+        amount={sheetSnapshot?.amount ?? sheetAmount}
         sessionAddress={session.address}
-        onRetry={() =>
-          mode === 'buy' ? buyQuote.refresh() : mode === 'sell' ? sellQuote.refresh() : swapQuote.refresh()
-        }
+        onRetry={() => {
+          (mode === 'buy' ? buyQuote : mode === 'sell' ? sellQuote : swapQuote).refresh();
+          // the re-latch effect above picks up the result once `loading` flips back to false
+        }}
         onReconnect={() => session.openConnect()}
       />
     </div>

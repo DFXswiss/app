@@ -677,6 +677,10 @@ export const en: Dict = {
   wcFailed: "Couldn't start WalletConnect — please try again",
   wcCopyUri: 'Copy connection link',
   wcCancel: 'Cancel',
+  notFoundTitle: 'Page not found',
+  notFoundBody: "This link doesn't exist — it may be out of date, or mistyped.",
+  backHome: 'Back to home',
+  emailInvalid: 'Enter a valid email address.',
 };
 export const de: Dict = {
   h1a: 'Krypto kaufen,',
@@ -1354,6 +1358,10 @@ export const de: Dict = {
   wcFailed: 'WalletConnect konnte nicht gestartet werden — bitte erneut versuchen',
   wcCopyUri: 'Verbindungslink kopieren',
   wcCancel: 'Abbrechen',
+  notFoundTitle: 'Seite nicht gefunden',
+  notFoundBody: 'Diesen Link gibt es nicht — er ist vielleicht veraltet oder falsch eingegeben.',
+  backHome: 'Zurück zur Startseite',
+  emailInvalid: 'Gib eine gültige E-Mail-Adresse ein.',
 };
 export const it: Dict = {
   h1a: 'Compra crypto,',
@@ -2030,6 +2038,10 @@ export const it: Dict = {
   wcFailed: 'Impossibile avviare WalletConnect — riprova',
   wcCopyUri: 'Copia link di connessione',
   wcCancel: 'Annulla',
+  notFoundTitle: 'Pagina non trovata',
+  notFoundBody: 'Questo link non esiste — potrebbe essere obsoleto o digitato male.',
+  backHome: 'Torna alla home',
+  emailInvalid: 'Inserisci un indirizzo email valido.',
 };
 export const fr: Dict = {
   h1a: 'Achète des cryptos,',
@@ -2706,6 +2718,10 @@ export const fr: Dict = {
   wcFailed: 'Impossible de démarrer WalletConnect — réessaie',
   wcCopyUri: 'Copier le lien de connexion',
   wcCancel: 'Annuler',
+  notFoundTitle: 'Page introuvable',
+  notFoundBody: "Ce lien n'existe pas — il est peut-être périmé ou mal saisi.",
+  backHome: "Retour à l'accueil",
+  emailInvalid: 'Saisis une adresse e-mail valide.',
 };
 
 export type Language = 'en' | 'de' | 'it' | 'fr';

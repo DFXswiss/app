@@ -19,14 +19,17 @@ import { useToast } from '../components/ui';
 import { useT } from '../i18n';
 import type { WalletCatalogEntry } from './catalog';
 import {
+  type CancelToken,
   connectInjected,
   connectWalletConnect,
+  createCancelToken,
   disconnectWalletConnect,
   getInjectedProvider,
   isUserRejection,
   signWithInjected,
   signWithWalletConnect,
   WalletConnectorError,
+  type WalletConnectSession,
 } from './providers';
 
 /** Connect-sheet state + handlers — rendered by <Shell> (inside `.app`, see finding #3: the
@@ -136,11 +139,29 @@ function apiErrorText(error: unknown): string {
 }
 
 function needsRecommendation(error: unknown): boolean {
-  return /recommend/i.test(apiErrorText(error));
+  // exact literal, matching src/util/api-error.ts's getKycErrorFromMessage — not a loose
+  // /recommend/i regex, which would also match unrelated server messages
+  return apiErrorText(error).includes('RecommendationRequired');
 }
 
 function isUnauthorized(error: unknown): boolean {
   return (error as { statusCode?: unknown } | undefined)?.statusCode === 401;
+}
+
+// ---------------------------------------------------------------------------
+// Sign-message sanity check (mirrors public/app2/index.html's authMsgOk, ~line 3477) — ported
+// verbatim. The server-supplied challenge must actually name our address and look like a real
+// DFX auth phrase before we ever hand it to a wallet to sign; a message that fails this check is
+// refused rather than blindly signed.
+// ---------------------------------------------------------------------------
+
+function authMsgOk(address: string, message: unknown): boolean {
+  const ml = (typeof message === 'string' ? message : '').toLowerCase();
+  return (
+    !!ml &&
+    ml.includes(String(address).toLowerCase()) &&
+    (ml.includes('by_signing_this_message') || ml.includes('dfx.swiss'))
+  );
 }
 
 const METAMASK_INSTALL_URL = 'https://metamask.io/download/';
@@ -176,6 +197,17 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const [view, setView] = useState<ConnectView>({ kind: 'list' });
   const busyRef = useRef(false); // guards against double-sign on rapid repeat clicks
   const bootstrappedRef = useRef(false);
+  // isLoggedIn as of the moment a sign-in attempt *started* (finding #6) — read via a ref
+  // because signInWith is async and the session-context value can move under it.
+  const isLoggedInRef = useRef(isLoggedIn);
+  isLoggedInRef.current = isLoggedIn;
+  // Per-attempt cancellation (finding #1): `attemptIdRef` invalidates whatever
+  // handleSelectWallet() call is in flight so a late resolution after Cancel is discarded
+  // instead of signing in behind the user's back; `wcTokenRef` is the live WalletConnect
+  // attempt's CancelToken (see providers.ts), used to stop connectWalletConnect() from waiting
+  // on a pairing nobody is going to approve.
+  const attemptIdRef = useRef(0);
+  const wcTokenRef = useRef<CancelToken | null>(null);
 
   // ?refcode= (invite/referral) and ?wallet= (partner wallet id) — read once;
   // both map straight onto the /auth body (usedRef, wallet) per auth.d.ts.
@@ -187,23 +219,40 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     setSheetOpen(true);
   }, []);
 
+  /** Abandons whatever connect attempt is currently in flight: bumps the attempt id (so
+   * handleSelectWallet's own post-await checks discard a late resolution), cancels the
+   * WalletConnect pairing's CancelToken if there is one, frees `busyRef` immediately (not in
+   * handleSelectWallet's `finally`, which may not run for a long time — or ever, if the remote
+   * wallet never responds), and tears down the WC provider as best the API allows. */
+  const cancelConnectAttempt = useCallback(() => {
+    attemptIdRef.current += 1;
+    wcTokenRef.current?.cancel(new WalletConnectorError('Connection cancelled', 'rejected'));
+    wcTokenRef.current = null;
+    busyRef.current = false;
+    void disconnectWalletConnect();
+  }, []);
+
   const closeConnect = useCallback(() => {
     setSheetOpen(false);
     setView((current) => {
-      if (current.kind === 'wallet-connect') void disconnectWalletConnect();
+      if (current.kind === 'wallet-connect') cancelConnectAttempt();
       return { kind: 'list' };
     });
-  }, []);
+  }, [cancelConnectAttempt]);
 
   /** Backs out of a sub-view (WalletConnect QR / recommendation form) to the
    * wallet list without closing the sheet — drops any half-open WC pairing. */
   const cancelSubView = useCallback(() => {
-    if (view.kind === 'wallet-connect') void disconnectWalletConnect();
+    if (view.kind === 'wallet-connect') cancelConnectAttempt();
     setView({ kind: 'list' });
-  }, [view.kind]);
+  }, [view.kind, cancelConnectAttempt]);
 
   const signInWith = useCallback(
     async (creds: PendingCredentials, recommendationCode?: string) => {
+      // Captured *before* the request, not read in the catch block: only a session that was
+      // genuinely live when this attempt started should ever be reported as having "expired"
+      // (finding #6) — a failed first-ever login has no session to expire.
+      const wasLoggedIn = isLoggedInRef.current;
       try {
         await createSessionNew(
           creds.address,
@@ -224,7 +273,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           setView({ kind: 'recommend', pending: creds, invalidCode: Boolean(recommendationCode) });
           return;
         }
-        if (isUnauthorized(error)) {
+        if (wasLoggedIn && isUnauthorized(error)) {
           await libLogout();
           showToast(t('sessionExpired'), { assertive: true });
         } else {
@@ -240,6 +289,8 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     async (entry: WalletCatalogEntry) => {
       if (entry.connector === 'soon' || busyRef.current) return;
       busyRef.current = true;
+      const myAttempt = ++attemptIdRef.current;
+      const isCurrent = () => myAttempt === attemptIdRef.current;
       setView({ kind: 'connecting', walletId: entry.id, label: entry.name });
       try {
         let address: string;
@@ -255,20 +306,48 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           }
           address = await connectInjected(provider);
           const message = await getSignMessage(address);
+          if (!isCurrent()) return;
+          if (!authMsgOk(address, message)) {
+            showToast(t('authMsgErr'), { assertive: true });
+            setView({ kind: 'list' });
+            return;
+          }
           signature = await signWithInjected(provider, address, message);
         } else {
           setView({ kind: 'wallet-connect' });
-          const session = await connectWalletConnect((uri) =>
-            setView((current) => (current.kind === 'wallet-connect' ? { ...current, uri } : current)),
-          );
+          const token = createCancelToken();
+          wcTokenRef.current = token;
+          let session: WalletConnectSession;
+          try {
+            session = await connectWalletConnect(
+              (uri) => setView((current) => (current.kind === 'wallet-connect' ? { ...current, uri } : current)),
+              token,
+            );
+          } finally {
+            if (wcTokenRef.current === token) wcTokenRef.current = null;
+          }
+          // Cancelled or superseded while waiting on the QR pairing — an abandoned attempt must
+          // never sign in behind the user (finding #1's "no sign-in may fire" requirement).
+          if (!isCurrent()) return;
           address = session.address;
           setView({ kind: 'connecting', walletId: entry.id, label: entry.name });
           const message = await getSignMessage(address);
+          if (!isCurrent()) return;
+          if (!authMsgOk(address, message)) {
+            showToast(t('authMsgErr'), { assertive: true });
+            setView({ kind: 'list' });
+            return;
+          }
           signature = await signWithWalletConnect(session.provider, address, message);
         }
 
+        if (!isCurrent()) return;
         await signInWith({ address, signature, walletType: entry.walletType });
       } catch (error) {
+        // The attempt was cancelled — cancelConnectAttempt() already freed busyRef and reset the
+        // view; an abandoned attempt's own error handling must not fire a toast for a flow the
+        // user already backed out of.
+        if (!isCurrent()) return;
         if (error instanceof WalletConnectorError) {
           showToast(error.reason === 'rejected' ? t('connCancel') : t('connErr'), { assertive: true });
         } else if (isUserRejection(error)) {
@@ -278,7 +357,9 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         }
         setView({ kind: 'list' });
       } finally {
-        busyRef.current = false;
+        // Guard against a superseded/cancelled attempt's `finally` clobbering the flag for a
+        // genuinely-busy newer attempt (cancelConnectAttempt() already reset it for this one).
+        if (isCurrent()) busyRef.current = false;
       }
     },
     [getSignMessage, showToast, signInWith, t],
