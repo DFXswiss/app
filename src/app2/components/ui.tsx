@@ -74,6 +74,20 @@ const CHECK_ICON = (
     <path d="M5 12l4 4 10-10" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
+// finding #12: an assertive/error toast (role="alert", showToast(..., { assertive: true })) was
+// rendering the same green success checkmark as a normal toast — no visual distinction at all.
+// Gets its own icon + the .err modifier (styles.css) that switches the dot to --error.
+const ERROR_ICON = (
+  <svg viewBox="0 0 24 24" fill="none">
+    <path
+      d="M12 8v5M12 16.5v.01"
+      stroke="currentColor"
+      strokeWidth={2.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [polite, setPolite] = useState({ message: '', open: false });
@@ -112,7 +126,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         <span>{polite.message}</span>
       </div>
       <div className={`toast${assertive.open ? ' on' : ''}`} role="alert" aria-live="assertive">
-        <span className="ok">{CHECK_ICON}</span>
+        <span className="ok err">{ERROR_ICON}</span>
         <span>{assertive.message}</span>
       </div>
     </ToastContext.Provider>
