@@ -23,6 +23,8 @@ export interface BuyQuoteParams {
   amount: number | null;
   paymentMethod: FiatPaymentMethod;
   externalTransactionId?: string;
+  /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh (finding #2). */
+  paused?: boolean;
 }
 
 export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
@@ -38,7 +40,7 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
     return receiveFor(info);
   }, [receiveFor, asset, currency, amount, paymentMethod, externalTransactionId]);
 
-  return useQuoteEngine(params.enabled && ready, key, fetcher);
+  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused);
 }
 
 export interface SellQuoteParams {
@@ -48,6 +50,8 @@ export interface SellQuoteParams {
   amount: number | null;
   iban?: string;
   externalTransactionId?: string;
+  /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh (finding #2). */
+  paused?: boolean;
 }
 
 export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
@@ -64,7 +68,7 @@ export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
     return receiveFor(info);
   }, [receiveFor, asset, currency, amount, iban, externalTransactionId]);
 
-  return useQuoteEngine(params.enabled && ready, key, fetcher);
+  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused);
 }
 
 export interface SwapQuoteParams {
@@ -73,6 +77,8 @@ export interface SwapQuoteParams {
   targetAsset?: Asset;
   amount: number | null;
   externalTransactionId?: string;
+  /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh (finding #2). */
+  paused?: boolean;
 }
 
 export function useSwapQuote(params: SwapQuoteParams): QuoteEngineState<Swap> {
@@ -88,5 +94,5 @@ export function useSwapQuote(params: SwapQuoteParams): QuoteEngineState<Swap> {
     return receiveFor(info);
   }, [receiveFor, sourceAsset, targetAsset, amount, externalTransactionId]);
 
-  return useQuoteEngine(params.enabled && ready, key, fetcher);
+  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused);
 }

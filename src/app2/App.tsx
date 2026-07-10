@@ -11,6 +11,7 @@ import { LanguageProvider } from './i18n';
 import AccountScreen from './screens/account';
 import HomeScreen from './screens/home';
 import KycScreen from './screens/kyc';
+import { NotFound } from './screens/parts/NotFound';
 import SupportScreen from './screens/support';
 import TransactionsScreen from './screens/transactions';
 import { WalletSessionProvider } from './wallets/session';
@@ -24,6 +25,9 @@ const router = createHashRouter([
       { path: '/tx', element: <TransactionsScreen /> },
       { path: '/kyc', element: <KycScreen /> },
       { path: '/support', element: <SupportScreen /> },
+      // Catch-all (finding #7): an unmatched hash path used to fall through to react-router's
+      // own unbranded "Unexpected Application Error!" page instead of rendering inside the Shell.
+      { path: '*', element: <NotFound /> },
     ],
   },
 ]);

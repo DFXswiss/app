@@ -68,3 +68,39 @@ echo "PUBLIC_URL=." >> "$ENV_FILE"
 
 # Build
 react-app-rewired build
+
+# ---------------------------------------------------------------------------
+# Post-build: give app2 its own favicon/manifest identity, not the main app's (verified finding
+# #3). public/index.html is shared with the main app (not ours to edit) and resolves its favicon/
+# apple-touch-icon/manifest tags against %REACT_APP_PUBLIC_URL%, which for this build is the
+# *main* app's origin ($PUBLIC_URL above, e.g. https://app.dfx.swiss) — left as-is, those tags
+# under /app2/ would point at the root app's PWA identity (wrong icon, wrong name, "Add to Home
+# Screen" would install the main app). Rewrite the built output instead of the template, and copy
+# in app2's own icons + manifest — the same ones public/app2/'s static preview already ships.
+# ---------------------------------------------------------------------------
+APP2_DIST="$PROJECT_DIR/app2-dist"
+APP2_HTML="$APP2_DIST/index.html"
+APP2_STATIC_DIR="$PROJECT_DIR/public/app2"
+
+if [ -f "$APP2_HTML" ]; then
+    echo "Rewriting app2-dist/index.html favicon/manifest tags to app2's own identity..."
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' -E 's#<link rel="icon" href="[^"]*/favicon\.ico" */?>#<link rel="icon" href="./favicon.svg" type="image/svg+xml"/><link rel="icon" href="./favicon-32.png" sizes="32x32" type="image/png"/>#' "$APP2_HTML"
+        sed -i '' -E 's#<link rel="apple-touch-icon" href="[^"]*/logo\.png" */?>#<link rel="apple-touch-icon" href="./apple-touch-icon.png"/>#' "$APP2_HTML"
+        sed -i '' -E 's#<link rel="manifest" href="[^"]*/manifest\.json" */?>#<link rel="manifest" href="./manifest.webmanifest"/>#' "$APP2_HTML"
+    else
+        sed -i -E 's#<link rel="icon" href="[^"]*/favicon\.ico" */?>#<link rel="icon" href="./favicon.svg" type="image/svg+xml"/><link rel="icon" href="./favicon-32.png" sizes="32x32" type="image/png"/>#' "$APP2_HTML"
+        sed -i -E 's#<link rel="apple-touch-icon" href="[^"]*/logo\.png" */?>#<link rel="apple-touch-icon" href="./apple-touch-icon.png"/>#' "$APP2_HTML"
+        sed -i -E 's#<link rel="manifest" href="[^"]*/manifest\.json" */?>#<link rel="manifest" href="./manifest.webmanifest"/>#' "$APP2_HTML"
+    fi
+
+    echo "Copying app2 favicons + manifest into app2-dist..."
+    cp "$APP2_STATIC_DIR/favicon.svg" "$APP2_DIST/favicon.svg"
+    cp "$APP2_STATIC_DIR/favicon-32.png" "$APP2_DIST/favicon-32.png"
+    cp "$APP2_STATIC_DIR/apple-touch-icon.png" "$APP2_DIST/apple-touch-icon.png"
+    cp "$APP2_STATIC_DIR/manifest.webmanifest" "$APP2_DIST/manifest.webmanifest"
+    mkdir -p "$APP2_DIST/icons"
+    cp "$APP2_STATIC_DIR"/icons/*.png "$APP2_DIST/icons/"
+else
+    echo "Warning: $APP2_HTML not found — skipping favicon/manifest rewrite" >&2
+fi
