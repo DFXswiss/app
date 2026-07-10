@@ -39,6 +39,11 @@ export function useQuoteEngine<TResult>(
   enabled: boolean,
   key: string,
   fetcher: () => Promise<TResult>,
+  /** Suspends the "quote went stale, auto-refresh it" effect (finding #2: a payment sheet
+   * showing this quote's numbers must not have them silently swap out from under the user while
+   * it's open). Does not affect the input-driven debounced fetch or a manual `refresh()` call —
+   * only the passive 30s-TTL timer. */
+  paused = false,
 ): QuoteEngineState<TResult> {
   const [data, setData] = useState<TResult | null>(null);
   const [dataKey, setDataKey] = useState<string | null>(null);
@@ -53,6 +58,8 @@ export function useQuoteEngine<TResult>(
   const fetchingRef = useRef(false);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
 
   const clearTimers = useCallback(() => {
     clearTimeout(debounceRef.current);
@@ -105,14 +112,22 @@ export function useQuoteEngine<TResult>(
     }
     setLoading(true);
     debounceRef.current = setTimeout(() => execute(key), DEBOUNCE_MS);
-    return clearTimers;
+    return () => {
+      clearTimers();
+      // A fetch already in flight for the key/enabled this effect is tearing down must not be
+      // allowed to land after unmount (or after the next effect run swaps in a new key) — it
+      // would otherwise pass the `seq === seqRef.current` check in execute()'s .then() and start
+      // a countdown `setInterval` that nothing is left to clear (finding #4).
+      seqRef.current += 1;
+    };
     // `execute`/`clearTimers` are intentionally excluded — this effect should only re-run when
     // the caller's inputs (`enabled`/`key`) actually change, not on every render
   }, [enabled, key]);
 
-  // once the held quote goes stale (TTL elapsed) while still current, auto-refresh it
+  // once the held quote goes stale (TTL elapsed) while still current, auto-refresh it — unless
+  // paused (finding #2: a payment sheet showing this quote must own when it refreshes)
   useEffect(() => {
-    if (dataKey !== key || !enabled || fetchingRef.current) return;
+    if (dataKey !== key || !enabled || fetchingRef.current || pausedRef.current) return;
     const ageMs = Date.now() - quoteAtRef.current;
     if (ageMs >= QUOTE_TTL_MS) {
       execute(key);

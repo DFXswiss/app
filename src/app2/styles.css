@@ -123,6 +123,11 @@ body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
 .efield input:focus{border-color:var(--primary);box-shadow:0 0 0 4px var(--primary-soft)}
 .efield button{width:54px;height:54px;border-radius:15px;border:none;background:var(--primary);color:#fff;cursor:pointer;display:grid;place-items:center;transition:filter .2s,transform .15s}
 .efield button:active{transform:scale(.95)}
+/* app2 addition (finding #13): the static app has no inline form-error pattern to port — this
+   gives the email field a visible invalid state to pair with aria-invalid instead of relying on
+   the native browser tooltip alone. */
+.efield.invalid input{border-color:var(--error)}
+.ferr{color:var(--error);font-size:12px;font-weight:600;margin-top:7px;padding:0 2px}
 .login .supported{margin-top:22px}
 .login .cap{display:flex;align-items:center;gap:10px;color:var(--t-dim);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .login .cap::before,.login .cap::after{content:"";height:1px;background:var(--hair);flex:1}
@@ -686,3 +691,8 @@ body.hide-target #walletBar{display:none!important}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 .toast .ok{width:20px;height:20px;border-radius:50%;background:var(--success);display:grid;place-items:center;flex:0 0 auto}
 .toast .ok svg{width:13px;height:13px;color:#06251c}
+/* app2 addition (finding #12): assertive/error toasts reused the success checkmark + green dot
+   with no visual distinction from a normal toast — give role="alert" toasts their own icon +
+   color using the --error token the static app already defines but never wires to the toast. */
+.toast .ok.err{background:var(--error)}
+.toast .ok.err svg{color:#450a0a}

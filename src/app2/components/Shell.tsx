@@ -88,7 +88,17 @@ export function Shell() {
         </div>
 
         <div className="body">
-          <Outlet />
+          {/* Mirrors the static app's per-screen `<section class="view on">` wrapper (public/app2/
+              index.html) — without it, `.login`/`.buy`'s `min-height:100%` resolves against
+              `.body`'s own definite (flex-resolved) height instead of falling back to `auto`
+              against a non-flex, content-sized ancestor, which is what actually makes
+              `.login .hero`'s `margin:auto` vertical-centering produce the reference's tight
+              ~18px gap under the language pill instead of ~190px (finding #8) — a pure CSS
+              percentage-resolution difference from the missing wrapper, not a spacing value to
+              tune. */}
+          <div className="view on">
+            <Outlet />
+          </div>
         </div>
       </div>
 
