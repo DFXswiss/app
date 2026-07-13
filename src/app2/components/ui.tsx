@@ -158,22 +158,76 @@ interface SheetProps {
 
 export function Sheet({ open, onClose, titleId, children, showGrab = true }: SheetProps) {
   const ref = useInertWhenClosed<HTMLDivElement>(open);
+  const scrimRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return undefined;
+    const sheet = ref.current;
+    if (!sheet) return undefined;
+
+    // Mark every background branch inert while leaving the ancestor path to this nested sheet
+    // usable. This works whether a sheet is rendered from a screen or directly under `.app`.
+    const previousInert = new Map<HTMLElement, boolean>();
+    let current: HTMLElement = sheet;
+    while (current.parentElement) {
+      const parent = current.parentElement;
+      Array.from(parent.children).forEach((sibling) => {
+        if (!(sibling instanceof HTMLElement) || sibling === current || sibling === scrimRef.current) return;
+        if (!previousInert.has(sibling)) previousInert.set(sibling, sibling.inert);
+        sibling.inert = true;
+      });
+      if (parent.classList.contains('app')) break;
+      current = parent;
+    }
+
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusableSelector =
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+    const focusFirst = window.requestAnimationFrame(() => {
+      const first = sheet.querySelector<HTMLElement>(focusableSelector);
+      (first ?? sheet).focus();
+    });
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const focusable = Array.from(sheet.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+        (element) => !element.inert && element.getAttribute('aria-hidden') !== 'true',
+      );
+      if (!focusable.length) {
+        e.preventDefault();
+        sheet.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !sheet.contains(document.activeElement))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
       }
     };
     document.addEventListener('keydown', onKeyDown, true);
-    return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [open, onClose]);
+    return () => {
+      window.cancelAnimationFrame(focusFirst);
+      document.removeEventListener('keydown', onKeyDown, true);
+      previousInert.forEach((wasInert, element) => {
+        element.inert = wasInert;
+      });
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [open]);
 
   return (
     <>
-      <div className={`scrim${open ? ' on' : ''}`} onClick={onClose} aria-hidden="true" />
+      <div ref={scrimRef} className={`scrim${open ? ' on' : ''}`} onClick={onClose} aria-hidden="true" />
       <div
         ref={ref}
         className={`sheet${open ? ' on' : ''}`}
@@ -181,6 +235,7 @@ export function Sheet({ open, onClose, titleId, children, showGrab = true }: She
         aria-modal="true"
         aria-labelledby={titleId}
         aria-hidden={!open}
+        tabIndex={-1}
       >
         {showGrab && <div className="grab" />}
         {children}

@@ -2,13 +2,13 @@
 // from the static preview's `MENU` config and `buildMenu()` (public/app2/index.html,
 // around line 1609). Icons are the same inline SVG paths as the static app.
 
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { useInertWhenClosed, useToast } from './ui';
 
 type MenuAction =
-  | { kind: 'route'; path: string }
+  | { kind: 'route'; path: string; mode?: 'buy' | 'sell' | 'swap' }
   | { kind: 'external'; url: string }
   | { kind: 'todo' } // not wired yet in this milestone — shows a "coming soon" toast
   | { kind: 'logout' };
@@ -37,7 +37,7 @@ const MENU: MenuGroup[] = [
     items: [
       {
         key: 'mBuy',
-        action: { kind: 'route', path: '/' },
+        action: { kind: 'route', path: '/', mode: 'buy' },
         icon: (
           <svg {...ICON_PROPS}>
             <path
@@ -52,7 +52,7 @@ const MENU: MenuGroup[] = [
       },
       {
         key: 'mSell',
-        action: { kind: 'route', path: '/' },
+        action: { kind: 'route', path: '/', mode: 'sell' },
         icon: (
           <svg {...ICON_PROPS}>
             <path
@@ -67,7 +67,7 @@ const MENU: MenuGroup[] = [
       },
       {
         key: 'mSwap',
-        action: { kind: 'route', path: '/' },
+        action: { kind: 'route', path: '/', mode: 'swap' },
         icon: (
           <svg {...ICON_PROPS}>
             <path
@@ -264,14 +264,16 @@ interface DrawerProps {
 export function Drawer({ open, onClose, activePath }: DrawerProps) {
   const { t } = useT();
   const navigate = useNavigate();
+  const location = useLocation();
   const { showToast } = useToast();
   const { address, blockchain, logout } = useWalletSession();
   const ref = useInertWhenClosed<HTMLElement>(open);
+  const activeMode = new URLSearchParams(location.search).get('mode') ?? 'buy';
 
   const runAction = (action: MenuAction, label: string) => {
     onClose();
     if (action.kind === 'route') {
-      navigate(action.path);
+      navigate({ pathname: action.path, search: action.mode ? `?mode=${action.mode}` : '' });
       return;
     }
     if (action.kind === 'external') {
@@ -330,7 +332,13 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
               {group.items.map((item) => (
                 <div
                   key={item.key}
-                  className={`mitem${item.action.kind === 'route' && item.action.path === activePath ? ' active' : ''}`}
+                  className={`mitem${
+                    item.action.kind === 'route' &&
+                    item.action.path === activePath &&
+                    (!item.action.mode || item.action.mode === activeMode)
+                      ? ' active'
+                      : ''
+                  }`}
                   role="button"
                   tabIndex={0}
                   onClick={() => runAction(item.action, t(item.key))}

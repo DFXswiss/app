@@ -9,6 +9,7 @@
 // the main app's context.
 
 import { EthereumProvider } from '@walletconnect/ethereum-provider';
+import { getAddress } from 'ethers';
 
 /** Same Reown/WalletConnect Cloud project id as src/wagmi.config.ts
  * (WALLET_CONNECT_PROJECT_ID). Duplicated as a literal rather than imported
@@ -66,6 +67,8 @@ export function createCancelToken(): CancelToken {
 
 export interface Eip1193Provider {
   request<T = unknown>(args: { method: string; params?: unknown[] }): Promise<T>;
+  on?: (event: string, listener: (...args: unknown[]) => void) => void;
+  removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
   isMetaMask?: boolean;
 }
 
@@ -89,6 +92,15 @@ export function isUserRejection(error: unknown): boolean {
   return code === 4001 || code === 5000 || /reject|cancel|denied|abort/i.test(message);
 }
 
+/** Normalizes every EVM entry path to the same EIP-55 representation used by the main app. */
+export function checksumAddress(address: string): string {
+  try {
+    return getAddress(address);
+  } catch {
+    throw new WalletConnectorError('Invalid account returned', 'no-account');
+  }
+}
+
 /** personal_sign wire format: hex-encoded UTF-8 bytes of the message,
  * matching public/app2/index.html's personalHex() — wallets hash the
  * decoded bytes, so the hex prefix must be present. */
@@ -101,7 +113,7 @@ export async function connectInjected(provider: Eip1193Provider): Promise<string
   const accounts = await provider.request<string[]>({ method: 'eth_requestAccounts' });
   const address = accounts?.[0];
   if (!address) throw new WalletConnectorError('No account returned', 'no-account');
-  return address;
+  return checksumAddress(address);
 }
 
 export async function signWithInjected(provider: Eip1193Provider, address: string, message: string): Promise<string> {
@@ -167,6 +179,12 @@ export async function connectWalletConnect(
 ): Promise<WalletConnectSession> {
   if (token.cancelled) throw new WalletConnectorError('Connection cancelled', 'rejected');
 
+  // EthereumProvider restores persisted sessions during init and enable() reuses them. A new
+  // user-initiated pairing must therefore always start from a clean provider, otherwise a
+  // previous visitor's wallet can silently pre-empt the QR flow on a shared browser.
+  await disconnectWalletConnect();
+  if (token.cancelled) throw new WalletConnectorError('Connection cancelled', 'rejected');
+
   const provider = await Promise.race([initWalletConnectProvider(), token.promise]).catch((error: unknown) => {
     if (token.cancelled) throw error;
     throw new WalletConnectorError('Could not start WalletConnect', 'failed');
@@ -181,7 +199,7 @@ export async function connectWalletConnect(
     const accounts = await Promise.race([enablePromise, token.promise]);
     const address = accounts?.[0];
     if (!address) throw new WalletConnectorError('No account returned', 'no-account');
-    return { provider, address };
+    return { provider, address: checksumAddress(address) };
   } catch (error) {
     if (error instanceof WalletConnectorError) throw error;
     if (isUserRejection(error)) throw new WalletConnectorError('Connection cancelled', 'rejected');
