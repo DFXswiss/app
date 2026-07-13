@@ -14,6 +14,7 @@
 import { FiatPaymentMethod, useBuy, useSell, useSwap } from '@dfx.swiss/react';
 import type { Asset, Buy, BuyPaymentInfo, Fiat, Sell, SellPaymentInfo, Swap, SwapPaymentInfo } from '@dfx.swiss/react';
 import { useCallback } from 'react';
+import { hasSellQuoteInputs } from './capabilities';
 import { QuoteEngineState, useQuoteEngine } from './useQuoteEngine';
 
 export interface BuyQuoteParams {
@@ -57,13 +58,12 @@ export interface SellQuoteParams {
 export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
   const { receiveFor } = useSell();
   const { asset, currency, amount, iban, externalTransactionId } = params;
-  const ready = !!asset && !!currency && !!amount;
-  const key = asset && currency && amount ? `${asset.id}:${currency.id}:${amount}:${iban ?? ''}` : '';
+  const ready = hasSellQuoteInputs(asset?.id, currency?.id, amount, iban);
+  const key = ready && asset && currency && amount && iban ? `${asset.id}:${currency.id}:${amount}:${iban}` : '';
 
   const fetcher = useCallback((): Promise<Sell> => {
-    if (!asset || !currency || !amount) return Promise.reject(new Error('sell quote: missing input'));
-    const info: SellPaymentInfo = { asset, currency, amount };
-    if (iban) info.iban = iban;
+    if (!asset || !currency || !amount || !iban) return Promise.reject(new Error('sell quote: missing input'));
+    const info: SellPaymentInfo = { asset, currency, amount, iban };
     if (externalTransactionId) info.externalTransactionId = externalTransactionId;
     return receiveFor(info);
   }, [receiveFor, asset, currency, amount, iban, externalTransactionId]);

@@ -6,6 +6,9 @@
 
 import { Blockchain } from '@dfx.swiss/react';
 import type { Language } from '../../i18n';
+import { isSafeHttpsUrl } from '../../utils/url';
+
+export { isSafeHttpsUrl } from '../../utils/url';
 
 const LOCALES: Record<Language, string> = { en: 'en-US', de: 'de-DE', fr: 'fr-CH', it: 'it-CH' };
 
@@ -78,21 +81,6 @@ export function formatAmount(
 export function formatChf(value: number | undefined | null, language: Language): string {
   if (value == null) return '—';
   return `${formatNumber(Math.round(value), language, 0)} CHF`;
-}
-
-/**
- * True only for well-formed `https:` URLs. Every href built from API data
- * (KYC ident sessions, transaction tx links, ...) must pass this check first
- * — the static app opened `ses.url` / `x.*TxUrl` unchecked, which is exactly
- * the gap this app must not repeat.
- */
-export function isSafeHttpsUrl(value: string | undefined | null): value is string {
-  if (!value) return false;
-  try {
-    return new URL(value).protocol === 'https:';
-  } catch {
-    return false;
-  }
 }
 
 // Hardcoded, well-known block-explorer bases — used only as a fallback to
