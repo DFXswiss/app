@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react';
 import type { Blockchain } from '@dfx.swiss/react';
 import { chainName, isStableAsset, isSwissAsset, POPULAR_ASSETS } from '../../screens/trade/blockchain-meta';
 import { formatAmount } from '../../screens/trade/amount';
-import { chainsFor, heldBalance, shownChainsFor } from '../../screens/trade/asset-pool';
+import { heldBalance, shownChainsFor } from '../../screens/trade/asset-pool';
 import type { Capability, TradeAsset } from '../../screens/trade/types';
 import { AssetChainGlyph, AssetGlyph } from '../../screens/trade/glyphs';
 import { Sheet, SheetHeader, onActivate } from '../ui';
@@ -26,7 +26,7 @@ interface AssetPickerProps {
   titleKey: TranslationKey;
   pool: TradeAsset[];
   cap: Capability;
-  sessionBlockchain?: string;
+  sessionBlockchains?: readonly string[];
   balances?: Record<string, number>;
   sortByBalance?: boolean;
   excludeCode?: string;
@@ -37,8 +37,10 @@ function matchesFilter(
   token: TradeAsset,
   filter: Filter,
   cap: Capability,
-  sessionBlockchain: string | undefined,
+  sessionBlockchains: readonly string[] | undefined,
 ): boolean {
+  const available = shownChainsFor(token, cap, sessionBlockchains);
+  if (!available.length) return false;
   switch (filter) {
     case 'all':
       return true;
@@ -49,7 +51,7 @@ function matchesFilter(
     case 'swiss':
       return isSwissAsset(token.code);
     default:
-      return shownChainsFor(token, cap, sessionBlockchain).some((c) => `chain:${c.blockchain}` === filter);
+      return available.some((c) => `chain:${c.blockchain}` === filter);
   }
 }
 
@@ -60,7 +62,7 @@ export function AssetPicker({
   titleKey,
   pool,
   cap,
-  sessionBlockchain,
+  sessionBlockchains,
   balances,
   sortByBalance,
   excludeCode,
@@ -79,19 +81,19 @@ export function AssetPicker({
   const availableChains = useMemo(() => {
     const seen = new Map<string, Blockchain>();
     candidatePool.forEach((tk) =>
-      shownChainsFor(tk, cap, sessionBlockchain).forEach((c) => seen.set(c.blockchain, c.blockchain)),
+      shownChainsFor(tk, cap, sessionBlockchains).forEach((c) => seen.set(c.blockchain, c.blockchain)),
     );
     return Array.from(seen.values());
-  }, [candidatePool, cap, sessionBlockchain]);
+  }, [candidatePool, cap, sessionBlockchains]);
 
-  const hasPopular = candidatePool.some((tk) => matchesFilter(tk, 'popular', cap, sessionBlockchain));
-  const hasStable = candidatePool.some((tk) => matchesFilter(tk, 'stable', cap, sessionBlockchain));
-  const hasSwiss = candidatePool.some((tk) => matchesFilter(tk, 'swiss', cap, sessionBlockchain));
+  const hasPopular = candidatePool.some((tk) => matchesFilter(tk, 'popular', cap, sessionBlockchains));
+  const hasStable = candidatePool.some((tk) => matchesFilter(tk, 'stable', cap, sessionBlockchains));
+  const hasSwiss = candidatePool.some((tk) => matchesFilter(tk, 'swiss', cap, sessionBlockchains));
   const showFilters = candidatePool.length > 1 && (hasPopular || hasStable || hasSwiss || availableChains.length > 0);
 
   const query = search.trim().toLowerCase();
   const filtered = candidatePool
-    .filter((tk) => matchesFilter(tk, filter, cap, sessionBlockchain))
+    .filter((tk) => matchesFilter(tk, filter, cap, sessionBlockchains))
     .filter((tk) => !query || tk.code.toLowerCase().includes(query) || tk.description.toLowerCase().includes(query));
 
   const sorted =
@@ -107,9 +109,9 @@ export function AssetPicker({
   };
 
   const pick = (token: TradeAsset) => {
-    const chains = shownChainsFor(token, cap, sessionBlockchain);
+    const chains = shownChainsFor(token, cap, sessionBlockchains);
     if (chains.length <= 1) {
-      const chain = chains[0] ?? chainsFor(token, cap)[0];
+      const chain = chains[0];
       if (chain) onSelect(token, chain.blockchain);
       close();
       return;
@@ -117,7 +119,7 @@ export function AssetPicker({
     setChainStepFor(token);
   };
 
-  const chains = chainStepFor ? shownChainsFor(chainStepFor, cap, sessionBlockchain) : [];
+  const chains = chainStepFor ? shownChainsFor(chainStepFor, cap, sessionBlockchains) : [];
 
   return (
     <Sheet open={open} onClose={close} titleId={titleId} showGrab>
@@ -175,7 +177,7 @@ export function AssetPicker({
                 key={tk.code}
                 token={tk}
                 cap={cap}
-                sessionBlockchain={sessionBlockchain}
+                sessionBlockchains={sessionBlockchains}
                 balance={balances ? heldBalance(balances, tk.code) : undefined}
                 language={language}
                 onPick={() => pick(tk)}
@@ -255,20 +257,20 @@ function FilterChip({ active, onClick, label }: { active: boolean; onClick: () =
 function AssetRow({
   token,
   cap,
-  sessionBlockchain,
+  sessionBlockchains,
   balance,
   language,
   onPick,
 }: {
   token: TradeAsset;
   cap: Capability;
-  sessionBlockchain: string | undefined;
+  sessionBlockchains: readonly string[] | undefined;
   balance?: number;
   language: Language;
   onPick: () => void;
 }) {
   const { t } = useT();
-  const chains = shownChainsFor(token, cap, sessionBlockchain);
+  const chains = shownChainsFor(token, cap, sessionBlockchains);
   const single = chains.length === 1;
   const netTxt = single ? chainName(chains[0].blockchain) : `${chains.length} ${t('networks')}`;
 

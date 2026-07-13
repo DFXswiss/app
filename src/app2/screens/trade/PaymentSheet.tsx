@@ -8,8 +8,8 @@
 // useTradeQuote.ts). The bank/deposit/card boxes below read straight off that object.
 
 import { useEffect, useState } from 'react';
-import { FiatPaymentMethod, useUser } from '@dfx.swiss/react';
-import type { Blockchain, Buy, Fiat, Sell, Swap, TransactionError } from '@dfx.swiss/react';
+import { FiatPaymentMethod, TransactionError, useUser } from '@dfx.swiss/react';
+import type { Blockchain, Buy, Fiat, Sell, Swap } from '@dfx.swiss/react';
 import { formatAmount, formatFiat, isHttpsUrl, shortAddress } from './amount';
 import { mapThrownError, mapTransactionError, fiatFormatter, assetFormatter } from './errors';
 import { chainName } from './blockchain-meta';
@@ -183,6 +183,8 @@ export function PaymentSheet({
         : mode === 'swap' && swap
           ? invalidityMessage(t, swap, assetFormatter(payAssetCode, language))
           : undefined;
+  const validityError = mode === 'buy' ? buy?.error : mode === 'sell' ? sell?.error : swap?.error;
+  const gateKind = thrownError?.kind ?? (validityMessage ? (validityError === TransactionError.EMAIL_REQUIRED ? 'email' : 'setup') : undefined);
 
   const sendMail = async () => {
     if (!mailInput.includes('@')) return;
@@ -255,12 +257,12 @@ export function PaymentSheet({
         {showGate && (
           <div className="emailgate">
             <div className="paybox-title">
-              {thrownError?.kind === 'email' ? t('verifyEmailTitle') : t('setupTitle')}
+              {gateKind === 'email' ? t('verifyEmailTitle') : t('setupTitle')}
             </div>
             <p className="paybox-note" style={{ margin: '6px 0 12px' }}>
               {thrownError?.message ?? validityMessage}
             </p>
-            {thrownError?.kind === 'email' && !mailSent && (
+            {gateKind === 'email' && !mailSent && (
               <div className="efield">
                 <input
                   type="email"
@@ -278,7 +280,7 @@ export function PaymentSheet({
                 </button>
               </div>
             )}
-            {thrownError?.kind === 'email' && mailSent && (
+            {gateKind === 'email' && mailSent && (
               <button
                 className="btn-glass"
                 style={{
@@ -293,7 +295,7 @@ export function PaymentSheet({
                 <span>{t('iConfirmed')}</span>
               </button>
             )}
-            {thrownError?.kind === 'session' && (
+            {gateKind === 'session' && (
               <button
                 className="btn-primary"
                 style={{ marginTop: 10 }}
@@ -305,9 +307,12 @@ export function PaymentSheet({
                 <span>{t('connect')}</span>
               </button>
             )}
-            {(thrownError?.kind === 'setup' ||
-              thrownError?.kind === 'generic' ||
-              (!thrownError && validityMessage)) && (
+            {gateKind === 'generic' && (
+              <button className="btn-glass" style={{ marginTop: 10 }} type="button" onClick={onRetry}>
+                <span>{t('retry')}</span>
+              </button>
+            )}
+            {gateKind === 'setup' && (
               <a
                 href="https://app.dfx.swiss"
                 target="_blank"
@@ -380,6 +385,14 @@ function BuyPaymentBox({
 
   const ref = buy.remittanceInfo || '';
   const hasQr = !!buy.paymentRequest;
+  const beneficiary = [
+    buy.name,
+    [buy.street, buy.number].filter(Boolean).join(' '),
+    [buy.zip, buy.city].filter(Boolean).join(' '),
+    buy.country,
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   return (
     <div className="paybox">
@@ -408,6 +421,11 @@ function BuyPaymentBox({
       )}
       {tab === 'details' || !hasQr ? (
         <>
+          <div className="pbrow" style={{ alignItems: 'flex-start' }}>
+            <span>{t('beneficiary')}</span>
+            <b style={{ whiteSpace: 'pre-line', textAlign: 'right', lineHeight: 1.45 }}>{beneficiary || '—'}</b>
+            <CopyButton value={beneficiary} label={t('beneficiary')} />
+          </div>
           <div className="pbrow">
             <span>{t('iban')}</span>
             <b>{buy.iban || '—'}</b>

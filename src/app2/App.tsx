@@ -4,10 +4,12 @@
 // direct/refresh load of e.g. /app2/#/account must resolve without a server
 // round-trip. createBrowserRouter would 404 on refresh; createHashRouter does not.
 
+import { Component, type ReactNode } from 'react';
 import { createHashRouter, RouterProvider } from 'react-router-dom';
+import logoWhite from './assets/brand/logo-white.svg';
 import { Shell } from './components/Shell';
 import { ToastProvider } from './components/ui';
-import { LanguageProvider } from './i18n';
+import { LanguageProvider, useT } from './i18n';
 import AccountScreen from './screens/account';
 import HomeScreen from './screens/home';
 import KycScreen from './screens/kyc';
@@ -32,13 +34,48 @@ const router = createHashRouter([
   },
 ]);
 
+class App2ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    return this.state.failed ? <App2ErrorFallback /> : this.props.children;
+  }
+}
+
+function App2ErrorFallback() {
+  const { t } = useT();
+  return (
+    <div className="app">
+      <div className="layer">
+        <div className="topbar" style={{ justifyContent: 'center' }}>
+          <img className="brand-logo" src={logoWhite} alt="DFX" />
+        </div>
+        <div className="body">
+          <div className="account" style={{ display: 'grid', placeContent: 'center', textAlign: 'center', gap: 14 }}>
+            <div className="paybox-note warn">{t('genErr')}</div>
+            <button className="btn-primary" type="button" onClick={() => window.location.reload()}>
+              {t('retry')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App2() {
   return (
     <LanguageProvider>
       <ToastProvider>
-        <WalletSessionProvider>
-          <RouterProvider router={router} />
-        </WalletSessionProvider>
+        <App2ErrorBoundary>
+          <WalletSessionProvider>
+            <RouterProvider router={router} />
+          </WalletSessionProvider>
+        </App2ErrorBoundary>
       </ToastProvider>
     </LanguageProvider>
   );

@@ -26,13 +26,26 @@ type T = (key: TranslationKey, vars?: Record<string, string | number>) => string
 export function mapThrownError(t: T, err: unknown): TradeErrorInfo {
   if (err instanceof ApiException) {
     if (err.statusCode === 401) return { kind: 'session', message: t('sessionExpired') };
+    const code = String(err.code ?? '')
+      .replace(/[^a-z0-9]/gi, '')
+      .toLowerCase();
+    if (code === 'emailrequired') return { kind: 'email', message: t('verifyEmailNote') };
+    if (code === 'recommendationrequired') return { kind: 'setup', message: t('inviteGateNote') };
+    if (code.includes('kyc') || code === 'namerequired' || code === 'videoidentrequired') {
+      return { kind: 'setup', message: t('needKyc') };
+    }
+    if (code.includes('limit')) return { kind: 'setup', message: t('needLimit') };
+    if (code.includes('iban')) return { kind: 'setup', message: t('ibanInvalid') };
+
+    // Older API deployments did not always provide `code`; retain narrow message fallbacks for
+    // compatibility, but never surface the raw server string in the localized UI.
     const msg = err.message || '';
-    if (/email/i.test(msg)) return { kind: 'email', message: t('verifyEmailNote') };
-    if (/recommend/i.test(msg)) return { kind: 'setup', message: t('inviteGateNote') };
-    if (/kyc/i.test(msg)) return { kind: 'setup', message: t('needKyc') };
-    if (/limit/i.test(msg)) return { kind: 'setup', message: t('needLimit') };
-    if (/iban/i.test(msg)) return { kind: 'setup', message: t('ibanInvalid') };
-    return { kind: 'generic', message: msg || t('genErr') };
+    if (/\bemail\s*required\b/i.test(msg)) return { kind: 'email', message: t('verifyEmailNote') };
+    if (/\brecommendation\s*required\b/i.test(msg)) return { kind: 'setup', message: t('inviteGateNote') };
+    if (/\bkyc\b|identity verification/i.test(msg)) return { kind: 'setup', message: t('needKyc') };
+    if (/\blimit\s*(?:exceeded|required)\b/i.test(msg)) return { kind: 'setup', message: t('needLimit') };
+    if (/\biban\b/i.test(msg)) return { kind: 'setup', message: t('ibanInvalid') };
+    return { kind: 'generic', message: t('genErr') };
   }
   return { kind: 'generic', message: t('genErr') };
 }

@@ -27,6 +27,10 @@ export interface QuoteEngineState<TResult> {
   loading: boolean;
   /** The raw thrown error from the last failed fetch (map with errors.ts). */
   error: unknown;
+  /** True only when `error` belongs to the inputs represented by the current `key`. */
+  errorIsCurrent: boolean;
+  /** Current inputs have produced either a response or an error and are no longer loading. */
+  settled: boolean;
   /** Whether `data` is still within the 30s TTL (only meaningful when `dataKey === key`). */
   isFresh: boolean;
   /** Seconds left until the held quote auto-refreshes (0 once stale/refreshing). */
@@ -49,6 +53,7 @@ export function useQuoteEngine<TResult>(
   const [dataKey, setDataKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   const seqRef = useRef(0);
@@ -71,6 +76,7 @@ export function useQuoteEngine<TResult>(
     fetchingRef.current = true;
     setLoading(true);
     setError(null);
+    setErrorKey(null);
     fetcherRef
       .current()
       .then((result) => {
@@ -79,6 +85,8 @@ export function useQuoteEngine<TResult>(
         quoteAtRef.current = Date.now();
         setData(result);
         setDataKey(forKey);
+        setError(null);
+        setErrorKey(null);
         setLoading(false);
         // tick every second so the "refreshes in Ns" countdown renders live, matching the
         // static app's startQuoteCountdown()
@@ -92,6 +100,7 @@ export function useQuoteEngine<TResult>(
         setDataKey(null);
         setLoading(false);
         setError(err);
+        setErrorKey(forKey);
       });
   }, []);
 
@@ -108,6 +117,7 @@ export function useQuoteEngine<TResult>(
       setDataKey(null);
       setLoading(false);
       setError(null);
+      setErrorKey(null);
       return undefined;
     }
     setLoading(true);
@@ -137,9 +147,11 @@ export function useQuoteEngine<TResult>(
 
   const ageMs = dataKey === key ? Date.now() - quoteAtRef.current : Infinity;
   const isFresh = dataKey === key && ageMs < QUOTE_TTL_MS;
+  const errorIsCurrent = Boolean(key) && errorKey === key;
+  const settled = !loading && (isFresh || errorIsCurrent);
   const secondsLeft = isFresh ? Math.max(0, Math.ceil((QUOTE_TTL_MS - ageMs) / 1000)) : 0;
 
   useEffect(() => clearTimers, [clearTimers]);
 
-  return { data, dataKey, loading, error, isFresh, secondsLeft, refresh };
+  return { data, dataKey, loading, error, errorIsCurrent, settled, isFresh, secondsLeft, refresh };
 }

@@ -20,7 +20,7 @@ export function LoggedOutState({ title }: { title: string }) {
       <p className="tnote" style={{ padding: '0 4px 18px' }}>
         {t('connectToContinue')}
       </p>
-      <button className="btn-primary" onClick={openConnect}>
+      <button className="btn-primary" onClick={() => openConnect()}>
         <span>{t('connect')}</span>
       </button>
     </div>

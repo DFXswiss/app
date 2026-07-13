@@ -21,6 +21,7 @@ import {
   useFiatContext,
 } from '@dfx.swiss/react';
 import type { Asset, BankAccount, Buy, Fiat, Sell, Swap } from '@dfx.swiss/react';
+import { useLocation } from 'react-router-dom';
 import { AssetPicker } from '../components/pickers/AssetPicker';
 import { BankAccountPicker } from '../components/pickers/BankAccountPicker';
 import { FiatPicker } from '../components/pickers/FiatPicker';
@@ -29,6 +30,8 @@ import { useToast } from '../components/ui';
 import { formatAmount, formatFiat, parseAmt, quickChipSymbol } from './trade/amount';
 import { assetFor, availableAssets, groupAssets, heldBalance, parseBalances, shownChainsFor } from './trade/asset-pool';
 import { chainName } from './trade/blockchain-meta';
+import { currenciesForBuy, currenciesForSell } from './trade/capabilities';
+import { assetFormatter, fiatFormatter, mapThrownError, mapTransactionError } from './trade/errors';
 import { AssetChainGlyph, FiatGlyph } from './trade/glyphs';
 import { FeesPanel } from './trade/FeesPanel';
 import { PaymentSheet } from './trade/PaymentSheet';
@@ -81,6 +84,7 @@ export default function HomeScreen() {
   const { getAssets } = useAssetContext();
   const { currencies } = useFiatContext();
   const { bankAccounts } = useBankAccountContext();
+  const location = useLocation();
 
   const [mode, setMode] = useState<Mode>('buy');
 
@@ -89,7 +93,7 @@ export default function HomeScreen() {
   const [buyChain, setBuyChain] = useState<Blockchain>();
   const [buyFiat, setBuyFiat] = useState<Fiat>();
   const [buyMethod, setBuyMethod] = useState<FiatPaymentMethod>(FiatPaymentMethod.BANK);
-  const [buyRaw, setBuyRaw] = useState('100');
+  const [buyRaw, setBuyRaw] = useState('');
 
   const [sellAsset, setSellAsset] = useState<TradeAsset>();
   const [sellChain, setSellChain] = useState<Blockchain>();
@@ -112,11 +116,21 @@ export default function HomeScreen() {
   // Frozen quote snapshot the payment sheet renders from (finding #2) — see PaymentSnapshot.
   const [sheetSnapshot, setSheetSnapshot] = useState<PaymentSnapshot | null>(null);
   const sheetWasOpenRef = useRef(false);
+  const [openAfterBankSelection, setOpenAfterBankSelection] = useState(false);
+  const [sheetRetrying, setSheetRetrying] = useState(false);
+
+  useEffect(() => {
+    const requestedMode =
+      new URLSearchParams(location.search).get('mode') ?? new URLSearchParams(window.location.search).get('mode');
+    if (requestedMode === 'buy' || requestedMode === 'sell' || requestedMode === 'swap') setMode(requestedMode);
+  }, [location.search]);
 
   // ---- asset pool (real data — useAssetContext(), grouped per ticker; see asset-pool.ts) ---
   const allAssets = useMemo<Asset[]>(() => getAssets(Object.values(Blockchain)), [getAssets]);
   const pool = useMemo(() => groupAssets(allAssets), [allAssets]);
   const balances = useMemo(() => parseBalances(window.location.search), []);
+  const buyCurrencies = useMemo(() => currenciesForBuy(currencies), [currencies]);
+  const sellCurrencies = useMemo(() => currenciesForSell(currencies), [currencies]);
 
   const buyPool = useMemo(() => availableAssets(pool, 'buy'), [pool]);
   const sellPoolAll = useMemo(() => availableAssets(pool, 'sell'), [pool]);
@@ -129,48 +143,77 @@ export default function HomeScreen() {
 
   // ---- defaults once the pool/currency list is loaded ---------------------------------------
   useEffect(() => {
-    if (buyAsset || !buyPool.length) return;
-    const def = buyPool.find((tk) => tk.code === 'BTC') ?? buyPool[0];
-    const chains = shownChainsFor(def, 'buy', session.blockchain);
+    if (!buyPool.length) return;
+    const currentChains = buyAsset ? shownChainsFor(buyAsset, 'buy', session.blockchains) : [];
+    if (buyAsset && currentChains.length) {
+      if (!currentChains.some((chain) => chain.blockchain === buyChain)) setBuyChain(currentChains[0].blockchain);
+      return;
+    }
+    const reachable = buyPool.filter((asset) => shownChainsFor(asset, 'buy', session.blockchains).length > 0);
+    const def = reachable.find((tk) => tk.code === 'BTC') ?? reachable[0];
+    if (!def) return;
+    const chains = shownChainsFor(def, 'buy', session.blockchains);
     setBuyAsset(def);
     setBuyChain(chains[0]?.blockchain);
-  }, [buyPool, buyAsset, session.blockchain]);
+  }, [buyPool, buyAsset, buyChain, session.blockchains]);
 
   useEffect(() => {
-    if (sellAsset || !sellPool.length) return;
-    const def = sellPool.find((tk) => tk.code === 'BTC') ?? sellPool[0];
-    const chains = shownChainsFor(def, 'sell', session.blockchain);
+    if (!sellPool.length) return;
+    const currentChains = sellAsset ? shownChainsFor(sellAsset, 'sell', session.blockchains) : [];
+    if (sellAsset && currentChains.length) {
+      if (!currentChains.some((chain) => chain.blockchain === sellChain)) setSellChain(currentChains[0].blockchain);
+      return;
+    }
+    const reachable = sellPool.filter((asset) => shownChainsFor(asset, 'sell', session.blockchains).length > 0);
+    const def = reachable.find((tk) => tk.code === 'BTC') ?? reachable[0];
+    if (!def) return;
+    const chains = shownChainsFor(def, 'sell', session.blockchains);
     setSellAsset(def);
     setSellChain(chains[0]?.blockchain);
-  }, [sellPool, sellAsset, session.blockchain]);
+  }, [sellPool, sellAsset, sellChain, session.blockchains]);
 
   useEffect(() => {
-    if (swapFromAsset || !sellPool.length) return;
-    const def = sellPool[0];
-    const chains = shownChainsFor(def, 'sell', session.blockchain);
+    if (!sellPool.length) return;
+    const currentChains = swapFromAsset ? shownChainsFor(swapFromAsset, 'sell', session.blockchains) : [];
+    if (swapFromAsset && currentChains.length) {
+      if (!currentChains.some((chain) => chain.blockchain === swapFromChain)) {
+        setSwapFromChain(currentChains[0].blockchain);
+      }
+      return;
+    }
+    const def = sellPool.find((asset) => shownChainsFor(asset, 'sell', session.blockchains).length > 0);
+    if (!def) return;
+    const chains = shownChainsFor(def, 'sell', session.blockchains);
     setSwapFromAsset(def);
     setSwapFromChain(chains[0]?.blockchain);
-  }, [sellPool, swapFromAsset, session.blockchain]);
+  }, [sellPool, swapFromAsset, swapFromChain, session.blockchains]);
 
   useEffect(() => {
-    if (swapToAsset || !buyPool.length) return;
-    const rest = buyPool.filter((tk) => tk.code !== swapFromAsset?.code);
-    const def = rest[0] ?? buyPool[0];
+    if (!buyPool.length) return;
+    const currentChains = swapToAsset ? shownChainsFor(swapToAsset, 'buy', session.blockchains) : [];
+    if (swapToAsset && swapToAsset.code !== swapFromAsset?.code && currentChains.length) {
+      if (!currentChains.some((chain) => chain.blockchain === swapToChain)) setSwapToChain(currentChains[0].blockchain);
+      return;
+    }
+    const rest = buyPool.filter(
+      (tk) => tk.code !== swapFromAsset?.code && shownChainsFor(tk, 'buy', session.blockchains).length > 0,
+    );
+    const def = rest[0];
     if (!def) return;
-    const chains = shownChainsFor(def, 'buy', session.blockchain);
+    const chains = shownChainsFor(def, 'buy', session.blockchains);
     setSwapToAsset(def);
     setSwapToChain(chains[0]?.blockchain);
-  }, [buyPool, swapToAsset, swapFromAsset, session.blockchain]);
+  }, [buyPool, swapToAsset, swapToChain, swapFromAsset, session.blockchains]);
 
   useEffect(() => {
-    if (buyFiat || !currencies?.length) return;
-    setBuyFiat(currencies.find((c) => c.name === 'EUR') ?? currencies[0]);
-  }, [currencies, buyFiat]);
+    if (buyFiat || !buyCurrencies.length) return;
+    setBuyFiat(buyCurrencies.find((c) => c.name === 'EUR') ?? buyCurrencies[0]);
+  }, [buyCurrencies, buyFiat]);
 
   useEffect(() => {
-    if (sellFiat || !currencies?.length) return;
-    setSellFiat(currencies.find((c) => c.name === 'EUR') ?? currencies[0]);
-  }, [currencies, sellFiat]);
+    if (sellFiat || !sellCurrencies.length) return;
+    setSellFiat(sellCurrencies.find((c) => c.name === 'EUR') ?? sellCurrencies[0]);
+  }, [sellCurrencies, sellFiat]);
 
   useEffect(() => {
     // only reset when the *fiat* changes, not every time the user picks a method — reading
@@ -196,7 +239,7 @@ export default function HomeScreen() {
 
   // ---- quotes (debounced + stale-guarded — see useQuoteEngine.ts) ---------------------------
   const buyQuote = useBuyQuote({
-    enabled: session.isLoggedIn,
+    enabled: session.isLoggedIn && mode === 'buy' && Boolean(buyRaw.trim()),
     asset: buyApiAsset,
     currency: buyFiat,
     amount: buyAmount,
@@ -204,7 +247,7 @@ export default function HomeScreen() {
     paused: paymentSheetOpen,
   });
   const sellQuote = useSellQuote({
-    enabled: session.isLoggedIn,
+    enabled: session.isLoggedIn && mode === 'sell' && Boolean(sellRaw.trim()),
     asset: sellApiAsset,
     currency: sellFiat,
     amount: sellAmount,
@@ -212,7 +255,7 @@ export default function HomeScreen() {
     paused: paymentSheetOpen,
   });
   const swapQuote = useSwapQuote({
-    enabled: session.isLoggedIn,
+    enabled: session.isLoggedIn && mode === 'swap' && Boolean(swapRaw.trim()),
     sourceAsset: swapFromApiAsset,
     targetAsset: swapToApiAsset,
     amount: swapAmount,
@@ -223,14 +266,45 @@ export default function HomeScreen() {
   const sellReady = !!sellQuote.data && sellQuote.isFresh && sellQuote.data.isValid !== false;
   const swapReady = !!swapQuote.data && swapQuote.isFresh && swapQuote.data.isValid !== false;
 
+  const activeQuote = mode === 'buy' ? buyQuote : mode === 'sell' ? sellQuote : swapQuote;
+  const activeThrownError = activeQuote.errorIsCurrent ? mapThrownError(t, activeQuote.error) : null;
+  const activeValidityMessage =
+    mode === 'buy' && buyQuote.data?.isValid === false && buyQuote.isFresh
+      ? mapTransactionError(
+          t,
+          buyQuote.data.error,
+          buyQuote.data.minVolume,
+          buyQuote.data.maxVolume,
+          fiatFormatter(buyFiat?.name ?? '', language),
+        )
+      : mode === 'sell' && sellQuote.data?.isValid === false && sellQuote.isFresh
+        ? mapTransactionError(
+            t,
+            sellQuote.data.error,
+            sellQuote.data.minVolume,
+            sellQuote.data.maxVolume,
+            assetFormatter(sellAsset?.code ?? '', language),
+          )
+        : mode === 'swap' && swapQuote.data?.isValid === false && swapQuote.isFresh
+          ? mapTransactionError(
+              t,
+              swapQuote.data.error,
+              swapQuote.data.minVolume,
+              swapQuote.data.maxVolume,
+              assetFormatter(swapFromAsset?.code ?? '', language),
+            )
+          : undefined;
+  const activeErrorMessage = activeThrownError?.message ?? activeValidityMessage;
+  const canOpenGate = Boolean(activeValidityMessage || activeThrownError);
+
   // ---- CTA -------------------------------------------------------------------------------
   const ctaEnabled = !session.isLoggedIn
     ? true
     : mode === 'buy'
-      ? buyReady
+      ? buyReady || canOpenGate
       : mode === 'swap'
-        ? swapReady
-        : !!sellAmount && !!sellApiAsset && !!sellFiat && (!sellBankAccount || sellReady);
+        ? swapReady || canOpenGate
+        : !!sellAmount && !!sellApiAsset && !!sellFiat && (!sellBankAccount || sellReady || canOpenGate);
 
   // ---- payment-sheet snapshot (finding #2) ------------------------------------------------
   // Everything the sheet renders is captured here on open (and re-captured whenever the live
@@ -253,7 +327,18 @@ export default function HomeScreen() {
       buy: mode === 'buy' ? buyQuote.data : null,
       sell: mode === 'sell' ? sellQuote.data : null,
       swap: mode === 'swap' ? swapQuote.data : null,
-      rawError: mode === 'buy' ? buyQuote.error : mode === 'sell' ? sellQuote.error : swapQuote.error,
+      rawError:
+        mode === 'buy'
+          ? buyQuote.errorIsCurrent
+            ? buyQuote.error
+            : null
+          : mode === 'sell'
+            ? sellQuote.errorIsCurrent
+              ? sellQuote.error
+              : null
+            : swapQuote.errorIsCurrent
+              ? swapQuote.error
+              : null,
       loading: sheetLoadingLive,
       payAssetCode: sheetPayAssetCode,
       receiveAssetCode: sheetReceiveAssetCode,
@@ -265,12 +350,11 @@ export default function HomeScreen() {
 
   /** Opens the sheet, refusing a stale/missing quote instead of showing numbers that are about
    * to be wrong (mirrors the static app's showConfirm(): `if(!quoteFresh()...){updateQuote();
-   * toast(t("quoteExpired"));return;}`). Used by the CTA; the bank-account picker's own "pick an
-   * account, then open" path (below) has no prior quote to go stale, so it skips this gate — the
-   * re-latch effect fills the snapshot in once that fetch resolves. */
+   * toast(t("quoteExpired"));return;}`). A current thrown gate error is also a settled result:
+   * opening the sheet is how a new user reaches email/KYC/recommendation recovery UI. */
   const openPaymentSheet = () => {
     const quote = mode === 'buy' ? buyQuote : mode === 'sell' ? sellQuote : swapQuote;
-    if (!quote.data || !quote.isFresh) {
+    if ((!quote.data || !quote.isFresh) && !quote.errorIsCurrent) {
       showToast(t('quoteExpired'));
       quote.refresh();
       return;
@@ -279,15 +363,22 @@ export default function HomeScreen() {
     setPaymentSheetOpen(true);
   };
 
-  // Re-latch whenever the live fetch for the mode on screen finishes loading, while the sheet is
-  // open. With the TTL auto-refresh paused for the duration (`paused: paymentSheetOpen` above),
-  // the only ways `loading` can flip to false here are the initial fetch settling for a
-  // just-opened sheet (bank-account path) or an explicit onRetry() — never a silent background
-  // swap, so re-latching on this transition can't reintroduce the bug this snapshot exists to fix.
+  // Selecting the mandatory sell IBAN starts a new keyed request. Open only after that exact
+  // request settles; never latch the previous missing-IBAN state for even one render.
   useEffect(() => {
-    if (!paymentSheetOpen || sheetLoadingLive) return;
+    if (!openAfterBankSelection || mode !== 'sell' || !sellBankAccount || !sellQuote.settled) return;
     latchSnapshot();
-  }, [paymentSheetOpen, sheetLoadingLive]);
+    setOpenAfterBankSelection(false);
+    setPaymentSheetOpen(true);
+  }, [openAfterBankSelection, mode, sellBankAccount, sellQuote.settled]);
+
+  // A frozen sheet changes only after an explicit Retry. Passive TTL refreshes remain paused,
+  // and opening another modal can no longer re-latch live data behind the user's back.
+  useEffect(() => {
+    if (!sheetRetrying || !paymentSheetOpen || !activeQuote.settled) return;
+    latchSnapshot();
+    setSheetRetrying(false);
+  }, [sheetRetrying, paymentSheetOpen, activeQuote.settled]);
 
   // On close: drop the snapshot and resume the engine with an immediate refresh, so the buy/
   // sell/swap panel behind the (now-closed) sheet isn't left showing whatever was current when
@@ -295,6 +386,7 @@ export default function HomeScreen() {
   useEffect(() => {
     if (sheetWasOpenRef.current && !paymentSheetOpen) {
       setSheetSnapshot(null);
+      setSheetRetrying(false);
       (mode === 'buy' ? buyQuote : mode === 'sell' ? sellQuote : swapQuote).refresh();
     }
     sheetWasOpenRef.current = paymentSheetOpen;
@@ -315,8 +407,8 @@ export default function HomeScreen() {
 
   // ---- receive-panel display --------------------------------------------------------------
   // Home only renders once logged in (see the early `<Landing/>` return below), so — matching
-  // the static app's own updateQuote() — an empty/zero amount reads "0", not a dash; "—" is
-  // reserved for a genuine quote error, same as the static app's quoteErr()/`recvAmt` handling.
+  // the static app's own updateQuote() — an empty/zero amount reads "0". Sell uses a dash while
+  // waiting for the mandatory payout account; only settled requests can produce quote errors.
   let receiveValue = '0';
   let receiveMeta = '';
   if (mode === 'buy') {
@@ -328,6 +420,10 @@ export default function HomeScreen() {
     } else receiveValue = t('quoteErr');
   } else if (mode === 'sell') {
     if (!sellAmount) receiveValue = '0';
+    else if (!sellBankAccount) {
+      receiveValue = '—';
+      receiveMeta = t('sellNeedIbanTitle');
+    }
     else if (sellQuote.loading) receiveValue = '…';
     else if (sellQuote.data && sellQuote.isFresh) {
       receiveValue = formatFiat(sellQuote.data.estimatedAmount, sellFiat?.name ?? '', language);
@@ -506,6 +602,12 @@ export default function HomeScreen() {
         </div>
       </div>
 
+      {activeErrorMessage && (
+        <div className="paybox-note warn" role="alert" style={{ margin: '10px 2px 0' }}>
+          {activeErrorMessage}
+        </div>
+      )}
+
       {mode === 'buy' && buyFiat && (
         <div className="quick">
           {QUICK_FIAT_AMOUNTS.map((v) => (
@@ -587,7 +689,7 @@ export default function HomeScreen() {
         buyPool={buyPool}
         sellPool={sellPool}
         balances={balances}
-        sessionBlockchain={session.blockchain}
+        sessionBlockchains={session.blockchains}
         swapFromCode={swapFromAsset?.code}
         swapToCode={swapToAsset?.code}
         onSelectBuyReceive={(tk, bc) => {
@@ -612,7 +714,7 @@ export default function HomeScreen() {
         open={fiatPickerOpen === 'buyPay'}
         onClose={() => setFiatPickerOpen(null)}
         titleId="buyFiatSheetTitle"
-        currencies={currencies?.filter((c) => c.buyable) ?? []}
+        currencies={buyCurrencies}
         value={buyFiat}
         onSelect={setBuyFiat}
       />
@@ -620,7 +722,7 @@ export default function HomeScreen() {
         open={fiatPickerOpen === 'sellReceive'}
         onClose={() => setFiatPickerOpen(null)}
         titleId="sellFiatSheetTitle"
-        currencies={currencies?.filter((c) => c.sellable) ?? []}
+        currencies={sellCurrencies}
         value={sellFiat}
         onSelect={setSellFiat}
       />
@@ -641,8 +743,7 @@ export default function HomeScreen() {
         value={sellBankAccount}
         onSelect={(account) => {
           setSellBankAccount(account);
-          latchSnapshot();
-          setPaymentSheetOpen(true);
+          setOpenAfterBankSelection(true);
         }}
       />
 
@@ -664,8 +765,9 @@ export default function HomeScreen() {
         amount={sheetSnapshot?.amount ?? sheetAmount}
         sessionAddress={session.address}
         onRetry={() => {
+          setSheetSnapshot((snapshot) => (snapshot ? { ...snapshot, loading: true } : snapshot));
+          setSheetRetrying(true);
           (mode === 'buy' ? buyQuote : mode === 'sell' ? sellQuote : swapQuote).refresh();
-          // the re-latch effect above picks up the result once `loading` flips back to false
         }}
         onReconnect={() => session.openConnect()}
       />
@@ -703,7 +805,7 @@ interface AssetPickerSlotProps {
   buyPool: TradeAsset[];
   sellPool: TradeAsset[];
   balances: Record<string, number>;
-  sessionBlockchain?: string;
+  sessionBlockchains?: readonly string[];
   swapFromCode?: string;
   swapToCode?: string;
   onSelectBuyReceive: (asset: TradeAsset, chain: Blockchain) => void;
@@ -721,7 +823,7 @@ function AssetPickerSlot({
   buyPool,
   sellPool,
   balances,
-  sessionBlockchain,
+  sessionBlockchains,
   swapFromCode,
   swapToCode,
   onSelectBuyReceive,
@@ -753,7 +855,7 @@ function AssetPickerSlot({
       titleKey="chooseAsset"
       pool={config.pool}
       cap={config.cap}
-      sessionBlockchain={sessionBlockchain}
+      sessionBlockchains={sessionBlockchains}
       balances={balances}
       sortByBalance={config.sortByBalance}
       excludeCode={config.excludeCode}
