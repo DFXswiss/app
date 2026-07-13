@@ -30,6 +30,16 @@ import { formatDateTime, shortAddress } from './parts/format';
 import { LoggedOutState } from './parts/LoggedOutState';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const SEND_SETTLE_TIMEOUT_MS = 30_000;
+
+interface SendAttempt {
+  issueUid: string;
+  beforeIds: number[];
+  text?: string;
+  file?: File;
+  clearComposer: boolean;
+  startedAt: number;
+}
 
 interface TicketTypeOption {
   key: TranslationKey;
@@ -76,6 +86,15 @@ function isClosed(issue: SupportIssue | undefined): boolean {
 
 function isImageFile(name: string | undefined): boolean {
   return !!name && /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name);
+}
+
+function retryFileFrom(message: SupportMessage): File | undefined {
+  if (!message.fileName || !message.file?.file) return undefined;
+  const encoded = message.file.file.includes(',') ? message.file.file.split(',').pop() : message.file.file;
+  if (!encoded) return undefined;
+  const binary = window.atob(encoded);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return new File([bytes], message.fileName, { type: message.file.type || 'application/octet-stream' });
 }
 
 const ATTACH_ICON = (
@@ -163,12 +182,19 @@ function SupportScreenBody() {
   const [composer, setComposer] = useState('');
   const [pendingFile, setPendingFile] = useState<File | undefined>();
   const [sending, setSending] = useState(false);
+  const [sendAttempt, setSendAttempt] = useState<SendAttempt | undefined>();
+  const [ticketsError, setTicketsError] = useState('');
+  const [threadError, setThreadError] = useState('');
+  const [retryingMessageId, setRetryingMessageId] = useState<number | undefined>();
 
   useEffect(() => {
     // `support` intentionally omitted — SupportChatContextProvider returns a
     // new object whenever tickets/supportIssue/isLoading/isError change, so
     // depending on it would re-trigger this on every poll tick.
-    if (isLoggedIn) support.loadTickets();
+    if (isLoggedIn) {
+      setTicketsError('');
+      void support.loadTickets().catch(() => setTicketsError(t('loadFail')));
+    }
   }, [isLoggedIn]);
 
   useEffect(() => {
@@ -177,6 +203,41 @@ function SupportScreenBody() {
     support.setSync(!!activeUid);
     return () => support.setSync(false);
   }, [activeUid]);
+
+  useEffect(() => {
+    if (!sendAttempt) return;
+    if (support.supportIssue?.uid !== sendAttempt.issueUid) return;
+    const candidate = support.supportIssue?.messages.find((candidateMessage) => {
+      if (sendAttempt.beforeIds.includes(candidateMessage.id)) return false;
+      const createdAt = new Date(candidateMessage.created).getTime();
+      if (Number.isFinite(createdAt) && createdAt < sendAttempt.startedAt - 1_000) return false;
+      const sameText = (candidateMessage.message?.trim() ?? '') === (sendAttempt.text?.trim() ?? '');
+      const sameFile = (candidateMessage.fileName ?? '') === (sendAttempt.file?.name ?? '');
+      return sameText && sameFile;
+    });
+    if (!candidate || candidate.status === SupportMessageStatus.SENT) return;
+
+    const succeeded = candidate.status !== SupportMessageStatus.FAILED;
+    if (succeeded && sendAttempt.clearComposer) {
+      setComposer((current) => (current.trim() === (sendAttempt.text?.trim() ?? '') ? '' : current));
+      setPendingFile((current) => (current === sendAttempt.file ? undefined : current));
+    }
+    if (!succeeded) showToast(t('genErr'), { assertive: true });
+    setSending(false);
+    setRetryingMessageId(undefined);
+    setSendAttempt(undefined);
+  }, [sendAttempt, showToast, support.supportIssue, t]);
+
+  useEffect(() => {
+    if (!sendAttempt) return undefined;
+    const timeout = window.setTimeout(() => {
+      showToast(t('genErr'), { assertive: true });
+      setSending(false);
+      setRetryingMessageId(undefined);
+      setSendAttempt(undefined);
+    }, SEND_SETTLE_TIMEOUT_MS);
+    return () => window.clearTimeout(timeout);
+  }, [sendAttempt, showToast, t]);
 
   if (!isLoggedIn) return <LoggedOutState title={t('mSupport')} />;
 
@@ -191,7 +252,8 @@ function SupportScreenBody() {
 
   const openThread = (uid: string) => {
     setActiveUid(uid);
-    support.loadSupportIssue(uid);
+    setThreadError('');
+    void support.loadSupportIssue(uid).catch(() => setThreadError(t('loadFail')));
   };
 
   const closeThread = () => setActiveUid(undefined);
@@ -247,21 +309,42 @@ function SupportScreenBody() {
     setPendingFile(file);
   };
 
-  const send = () => {
-    const text = composer.trim();
-    if (sending || (!text && !pendingFile) || isClosed(support.supportIssue)) return;
-    setSending(true);
-    support
-      .submitMessage(text || undefined, pendingFile ? [pendingFile] : undefined)
-      .then(() => {
-        setComposer('');
-        setPendingFile(undefined);
-      })
-      .finally(() => setSending(false));
-  };
-
   const issue = support.supportIssue;
   const closed = isClosed(issue);
+
+  const startSend = (text: string | undefined, file: File | undefined, clearComposer: boolean, retryMessageId?: number) => {
+    if (sending || (!text && !file) || closed || !issue) return;
+    const attempt: SendAttempt = {
+      issueUid: issue.uid,
+      beforeIds: issue.messages.map((existing) => existing.id),
+      text,
+      file,
+      clearComposer,
+      startedAt: Date.now(),
+    };
+    setSending(true);
+    setRetryingMessageId(retryMessageId);
+    setSendAttempt(attempt);
+    void support.submitMessage(text, file ? [file] : undefined).catch(() => {
+      showToast(t('genErr'), { assertive: true });
+      setSending(false);
+      setRetryingMessageId(undefined);
+      setSendAttempt(undefined);
+    });
+  };
+
+  const send = () => startSend(composer.trim() || undefined, pendingFile, true);
+
+  const retryMessage = (failedMessage: SupportMessage) => {
+    if (sending) return;
+    try {
+      const file = failedMessage.fileName ? retryFileFrom(failedMessage) : undefined;
+      if (failedMessage.fileName && !file) throw new Error('Missing local attachment');
+      startSend(failedMessage.message?.trim() || undefined, file, false, failedMessage.id);
+    } catch {
+      showToast(t('genErr'), { assertive: true });
+    }
+  };
 
   return (
     <div className="account">
@@ -273,7 +356,21 @@ function SupportScreenBody() {
       </p>
 
       <div className="sectionlabel">{t('myTickets')}</div>
-      {support.isLoading && support.tickets.length === 0 ? (
+      {ticketsError ? (
+        <div className="glass tkempty" style={{ flexDirection: 'column', gap: 10 }}>
+          <span>{ticketsError}</span>
+          <button
+            className="btn-mini"
+            type="button"
+            onClick={() => {
+              setTicketsError('');
+              void support.loadTickets().catch(() => setTicketsError(t('loadFail')));
+            }}
+          >
+            {t('retry')}
+          </button>
+        </div>
+      ) : support.isLoading && support.tickets.length === 0 ? (
         <div className="glass tkempty">
           <LoadingRow label={t('loading')} />
         </div>
@@ -414,7 +511,22 @@ function SupportScreenBody() {
             <h2 id={threadTitleId}>{issue ? issueTypeLabel(t, issue.type) : t('chatTitle')}</h2>
           </div>
           <div className="chatthread" aria-live="polite">
-            {support.isLoading && !issue ? (
+            {support.isError && issue && <div className="paybox-note warn">{t('loadFail')}</div>}
+            {threadError ? (
+              <div className="chatempty">
+                <span>{t('loadFail')}</span>
+                {activeUid && (
+                  <button
+                    className="btn-mini"
+                    type="button"
+                    style={{ marginTop: 10 }}
+                    onClick={() => openThread(activeUid)}
+                  >
+                    {t('retry')}
+                  </button>
+                )}
+              </div>
+            ) : support.isLoading && !issue ? (
               <div className="chatempty">
                 <LoadingRow label={t('loading')} />
               </div>
@@ -422,7 +534,14 @@ function SupportScreenBody() {
               <div className="chatempty">{t('chatEmpty')}</div>
             ) : (
               issue.messages.map((m) => (
-                <ChatBubble key={m.id} message={m} language={language} onLoadFile={() => support.loadFileData(m.id)} />
+                <ChatBubble
+                  key={m.id}
+                  message={m}
+                  language={language}
+                  retrying={retryingMessageId === m.id}
+                  onRetry={() => retryMessage(m)}
+                  onLoadFile={() => support.loadFileData(m.id)}
+                />
               ))
             )}
           </div>
@@ -482,16 +601,22 @@ function SupportScreenBody() {
 function ChatBubble({
   message,
   language,
+  retrying,
+  onRetry,
   onLoadFile,
 }: {
   message: SupportMessage;
   language: Language;
+  retrying: boolean;
+  onRetry: () => void;
   onLoadFile: () => Promise<void>;
 }) {
   const { t } = useT();
+  const { showToast } = useToast();
   const [loadedUrl, setLoadedUrl] = useState<string | undefined>(message.file?.url);
   const [loading, setLoading] = useState(false);
   const mine = message.author === 'Customer';
+  const failed = message.status === SupportMessageStatus.FAILED;
   const timestamp = formatDateTime(message.created, language);
 
   // `onLoadFile` mutates the message inside SupportChatContext and the new
@@ -502,30 +627,63 @@ function ChatBubble({
   }, [message.file?.url]);
 
   const ensureLoaded = () => {
-    if (loadedUrl || loading || !message.fileName) return;
+    if (loading || !message.fileName) return;
+    const image = isImageFile(message.fileName);
+    if (loadedUrl) {
+      if (!image) window.open(loadedUrl, '_blank', 'noopener');
+      return;
+    }
+    // Preserve the user gesture for document popups while the authenticated blob loads.
+    const pendingWindow = image ? null : window.open('', '_blank');
+    if (pendingWindow) pendingWindow.opener = null;
     setLoading(true);
-    onLoadFile().finally(() => setLoading(false));
+    onLoadFile()
+      .then(() => {
+        const nextUrl = message.file?.url;
+        if (!nextUrl) throw new Error('Attachment data missing');
+        setLoadedUrl(nextUrl);
+        if (!image) {
+          if (pendingWindow) pendingWindow.location.href = nextUrl;
+          else window.open(nextUrl, '_blank', 'noopener');
+        }
+      })
+      .catch(() => {
+        pendingWindow?.close();
+        showToast(t('loadFail'), { assertive: true });
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
-    <div className={`msg ${mine ? 'msg-cust' : 'msg-supp'}`}>
+    <div className={`msg ${mine ? 'msg-cust' : 'msg-supp'}${failed ? ' failed' : ''}`}>
       <div className="msg-bubble">
         {message.message && <div className="msg-tx">{message.message}</div>}
         {message.fileName &&
           (isImageFile(message.fileName) && loadedUrl ? (
             <img className="msg-img" alt={message.fileName} src={loadedUrl} />
           ) : (
-            <div className="msg-file" role="button" tabIndex={0} onClick={ensureLoaded}>
+            <div
+              className="msg-file"
+              role="button"
+              tabIndex={0}
+              onClick={ensureLoaded}
+              onKeyDown={onActivate(ensureLoaded)}
+            >
               {FILE_ICON}
               <span>{loading ? t('loading') : message.fileName}</span>
             </div>
           ))}
         <div className="msg-meta">
           {timestamp}
-          {/* SENT = accepted locally, not yet confirmed by the server — the
-              context has no retry hook for FAILED, so that state is left
-              unmarked rather than showing an inert "retry" affordance. */}
           {message.status === SupportMessageStatus.SENT && ` · ${t('chatSending')}`}
+          {failed && (
+            <>
+              {' · '}
+              <button className="msg-retry" type="button" disabled={retrying} onClick={onRetry}>
+                {retrying ? t('chatSending') : t('chatRetry')}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

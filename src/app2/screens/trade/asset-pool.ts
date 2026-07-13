@@ -44,26 +44,24 @@ export function assetFor(token: TradeAsset, blockchain: Blockchain, cap: Capabil
 }
 
 /** A chain is reachable by the connected wallet if there's no session yet (anything is
- * pickable pre-login — the connect step still needs to happen) or if it's the chain the
- * session is actually connected on. The static app tracked every chain a wallet's JWT could
- * settle on (`S.chains`); the `WalletSession` contract here only exposes the single active
- * `blockchain`, so "reachable" narrows to "is the active chain". */
-export function isReachable(blockchain: Blockchain, sessionBlockchain: string | undefined): boolean {
-  if (!sessionBlockchain) return true;
-  return blockchain === sessionBlockchain;
+ * pickable pre-login) or if it appears anywhere in the authenticated JWT's blockchain list.
+ * EVM sessions deliberately carry several chains for the same address, so considering only
+ * the first entry would hide valid routes on Arbitrum, Base, Polygon, and the other EVMs. */
+export function isReachable(blockchain: Blockchain, sessionBlockchains: readonly string[] | undefined): boolean {
+  if (!sessionBlockchains?.length) return true;
+  return sessionBlockchains.includes(blockchain);
 }
 
-/** Chains to actually list for a token: reachable chains if any exist, otherwise every
- * capable chain (so a logged-out user, or a wallet connected on an unrelated chain, still
- * sees every network DFX supports for that asset). */
+/** Chains to actually list for a token. A connected wallet must never fall back to incapable
+ * networks: if none of the capable chains is present in its JWT, the asset is unavailable for
+ * that wallet and callers render their empty/not-available state. */
 export function shownChainsFor(
   token: TradeAsset,
   cap: Capability,
-  sessionBlockchain: string | undefined,
+  sessionBlockchains: readonly string[] | undefined,
 ): AssetChain[] {
   const chains = chainsFor(token, cap);
-  const reachable = chains.filter((c) => isReachable(c.blockchain, sessionBlockchain));
-  return reachable.length ? reachable : chains;
+  return chains.filter((c) => isReachable(c.blockchain, sessionBlockchains));
 }
 
 /** Parses the embed contract's `?balances=amount@asset,amount@asset,...` query param (top-level,

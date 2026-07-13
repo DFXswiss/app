@@ -81,12 +81,4 @@ export function shortAddress(address: string | undefined, head = 6, tail = 4): s
   return `${address.slice(0, head)}…${address.slice(-tail)}`;
 }
 
-/** Only ever call with an `https:` URL from an API response — defence-in-depth before it lands in an `href`. */
-export function isHttpsUrl(value: string | undefined | null): value is string {
-  if (!value) return false;
-  try {
-    return new URL(value).protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+export { isSafeHttpsUrl as isHttpsUrl } from '../../utils/url';

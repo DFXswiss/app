@@ -218,3 +218,6 @@ jobs:
 
       - name: Build widget
         run: npm run widget:dev
+
+      - name: Build DFX App 2.0
+        run: npm run app2:dev

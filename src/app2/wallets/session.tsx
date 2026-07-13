@@ -3,7 +3,14 @@
 // Trade/secondary screens consume ONLY this interface; the wallet-connect
 // implementation (providers, signing, ?session= bootstrap) lives behind it.
 
-import { AuthWalletType, useApiSession, useAuth, useAuthContext, useSessionContext } from '@dfx.swiss/react';
+import {
+  AuthWalletType,
+  type Blockchain,
+  useApiSession,
+  useAuth,
+  useAuthContext,
+  useSessionContext,
+} from '@dfx.swiss/react';
 import {
   createContext,
   PropsWithChildren,
@@ -18,8 +25,10 @@ import {
 import { useToast } from '../components/ui';
 import { useT } from '../i18n';
 import type { WalletCatalogEntry } from './catalog';
+import { normalizeInviteCode } from './invite';
 import {
   type CancelToken,
+  checksumAddress,
   connectInjected,
   connectWalletConnect,
   createCancelToken,
@@ -47,9 +56,11 @@ export interface ConnectSheetState {
 export interface WalletSession {
   isLoggedIn: boolean;
   address?: string;
+  blockchains?: readonly Blockchain[];
+  /** First chain, retained only for compact display labels. Reachability uses `blockchains`. */
   blockchain?: string;
   /** Opens the connect sheet (or focuses it if already open). */
-  openConnect: () => void;
+  openConnect: (recommendationCode?: string) => void;
   /** Closes the connect sheet — call on route change too (finding #4). */
   closeConnect: () => void;
   logout: () => Promise<void>;
@@ -170,6 +181,7 @@ export interface PendingCredentials {
   address: string;
   signature: string;
   walletType?: AuthWalletType;
+  connector?: 'injected' | 'wallet-connect';
 }
 
 export type ConnectView =
@@ -187,7 +199,8 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   // decoded session on the auth context doesn't have that gate.
   const { session: authSession } = useAuthContext();
   const address = authSession?.address;
-  const blockchain = authSession?.blockchains?.[0];
+  const blockchains = authSession?.blockchains as Blockchain[] | undefined;
+  const blockchain = blockchains?.[0];
   const { createSessionNew, updateSession } = useApiSession();
   const { getSignMessage } = useAuth();
   const { t, language } = useT();
@@ -195,6 +208,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [view, setView] = useState<ConnectView>({ kind: 'list' });
+  const [activeConnector, setActiveConnector] = useState<'injected' | 'wallet-connect' | undefined>();
   const busyRef = useRef(false); // guards against double-sign on rapid repeat clicks
   const bootstrappedRef = useRef(false);
   // isLoggedIn as of the moment a sign-in attempt *started* (finding #6) — read via a ref
@@ -208,16 +222,19 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   // on a pairing nobody is going to approve.
   const attemptIdRef = useRef(0);
   const wcTokenRef = useRef<CancelToken | null>(null);
+  const providerChangeRef = useRef(false);
 
   // ?refcode= (invite/referral) and ?wallet= (partner wallet id) — read once;
   // both map straight onto the /auth body (usedRef, wallet) per auth.d.ts.
   const inviteCode = useMemo(() => new URLSearchParams(window.location.search).get('refcode')?.trim() || undefined, []);
   const walletParam = useMemo(() => new URLSearchParams(window.location.search).get('wallet')?.trim() || undefined, []);
+  const activeInviteRef = useRef(normalizeInviteCode(inviteCode));
 
-  const openConnect = useCallback(() => {
+  const openConnect = useCallback((recommendationCode?: string) => {
+    activeInviteRef.current = normalizeInviteCode(recommendationCode) ?? normalizeInviteCode(inviteCode);
     setView({ kind: 'list' });
     setSheetOpen(true);
-  }, []);
+  }, [inviteCode]);
 
   /** Abandons whatever connect attempt is currently in flight: bumps the attempt id (so
    * handleSelectWallet's own post-await checks discard a late resolution), cancels the
@@ -233,22 +250,26 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   }, []);
 
   const closeConnect = useCallback(() => {
+    // Closing during any connector phase is a real cancellation, including injected-wallet
+    // prompts and the post-pairing WalletConnect signature phase (`view.kind === connecting`).
+    if (busyRef.current || wcTokenRef.current) cancelConnectAttempt();
     setSheetOpen(false);
-    setView((current) => {
-      if (current.kind === 'wallet-connect') cancelConnectAttempt();
-      return { kind: 'list' };
-    });
+    setView({ kind: 'list' });
   }, [cancelConnectAttempt]);
 
   /** Backs out of a sub-view (WalletConnect QR / recommendation form) to the
    * wallet list without closing the sheet — drops any half-open WC pairing. */
   const cancelSubView = useCallback(() => {
-    if (view.kind === 'wallet-connect') cancelConnectAttempt();
+    if (busyRef.current || wcTokenRef.current) cancelConnectAttempt();
     setView({ kind: 'list' });
-  }, [view.kind, cancelConnectAttempt]);
+  }, [cancelConnectAttempt]);
 
   const signInWith = useCallback(
-    async (creds: PendingCredentials, recommendationCode?: string) => {
+    async (
+      creds: PendingCredentials,
+      recommendationCode?: string,
+      stillCurrent: () => boolean = () => true,
+    ) => {
       // Captured *before* the request, not read in the catch block: only a session that was
       // genuinely live when this attempt started should ever be reported as having "expired"
       // (finding #6) — a failed first-ever login has no session to expire.
@@ -260,15 +281,24 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           undefined,
           undefined,
           walletParam,
-          inviteCode,
+          activeInviteRef.current,
           creds.walletType,
           recommendationCode,
           language.toUpperCase(),
         );
+        // The auth request itself cannot be aborted by the SDK. If the sheet was closed while
+        // it was in flight, immediately discard the newly created DFX session and do not let a
+        // late response sign in behind the user's back.
+        if (!stillCurrent()) {
+          await libLogout();
+          return;
+        }
+        setActiveConnector(creds.connector);
         setSheetOpen(false);
         setView({ kind: 'list' });
         showToast(`${t('connected')} · ${shortAddress(creds.address)}`);
       } catch (error) {
+        if (!stillCurrent()) return;
         if (needsRecommendation(error)) {
           setView({ kind: 'recommend', pending: creds, invalidCode: Boolean(recommendationCode) });
           return;
@@ -282,7 +312,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         setView({ kind: 'list' });
       }
     },
-    [createSessionNew, inviteCode, language, libLogout, showToast, t, walletParam],
+    [createSessionNew, language, libLogout, showToast, t, walletParam],
   );
 
   const handleSelectWallet = useCallback(
@@ -342,7 +372,16 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         }
 
         if (!isCurrent()) return;
-        await signInWith({ address, signature, walletType: entry.walletType });
+        await signInWith(
+          {
+            address,
+            signature,
+            walletType: entry.walletType,
+            connector: entry.connector === 'injected' ? 'injected' : 'wallet-connect',
+          },
+          undefined,
+          isCurrent,
+        );
       } catch (error) {
         // The attempt was cancelled — cancelConnectAttempt() already freed busyRef and reset the
         // view; an abandoned attempt's own error handling must not fire a toast for a flow the
@@ -369,11 +408,13 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     async (pending: PendingCredentials, code: string) => {
       if (busyRef.current || !code.trim()) return;
       busyRef.current = true;
+      const myAttempt = ++attemptIdRef.current;
+      const isCurrent = () => myAttempt === attemptIdRef.current;
       setView({ kind: 'connecting', walletId: 'recommend', label: t('routeContinue') });
       try {
-        await signInWith(pending, code.trim());
+        await signInWith(pending, normalizeInviteCode(code), isCurrent);
       } finally {
-        busyRef.current = false;
+        if (isCurrent()) busyRef.current = false;
       }
     },
     [signInWith, t],
@@ -410,15 +451,74 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     // params.
   }, []);
 
+  // An authenticated injected-wallet session must never remain pinned to an address after the
+  // extension changes accounts or chains. Re-authentication is required because the DFX JWT,
+  // payment routes, and sell instructions all belong to the signed address.
+  useEffect(() => {
+    if (!isLoggedIn || !address) return undefined;
+    if (activeConnector === 'wallet-connect') return undefined;
+    const provider = getInjectedProvider();
+    if (!provider?.on || !provider.removeListener) return undefined;
+
+    let mounted = true;
+    let monitorsThisSession = activeConnector === 'injected';
+    if (!monitorsThisSession) {
+      provider
+        .request<string[]>({ method: 'eth_accounts' })
+        .then((accounts) => {
+          if (!mounted || !accounts?.[0]) return;
+          try {
+            monitorsThisSession = checksumAddress(accounts[0]) === checksumAddress(address);
+          } catch {
+            monitorsThisSession = false;
+          }
+        })
+        .catch(() => undefined);
+    }
+
+    const invalidate = () => {
+      if (!monitorsThisSession || providerChangeRef.current) return;
+      providerChangeRef.current = true;
+      cancelConnectAttempt();
+      setActiveConnector(undefined);
+      void libLogout()
+        .then(() => showToast(t('sessionExpired'), { assertive: true }))
+        .finally(() => {
+          providerChangeRef.current = false;
+        });
+    };
+    const onAccountsChanged = (accountsValue: unknown) => {
+      const accounts = Array.isArray(accountsValue) ? accountsValue : [];
+      try {
+        if (accounts[0] && checksumAddress(String(accounts[0])) === checksumAddress(address)) return;
+      } catch {
+        // An invalid/empty account is a session change too.
+      }
+      invalidate();
+    };
+    const onChainChanged = () => invalidate();
+
+    provider.on('accountsChanged', onAccountsChanged);
+    provider.on('chainChanged', onChainChanged);
+    return () => {
+      mounted = false;
+      provider.removeListener?.('accountsChanged', onAccountsChanged);
+      provider.removeListener?.('chainChanged', onChainChanged);
+    };
+  }, [activeConnector, address, cancelConnectAttempt, isLoggedIn, libLogout, showToast, t]);
+
   const session = useMemo<WalletSession>(
     () => ({
       isLoggedIn,
       address,
+      blockchains,
       blockchain,
       openConnect,
       closeConnect,
       logout: async () => {
         closeConnect();
+        setActiveConnector(undefined);
+        await disconnectWalletConnect();
         await libLogout();
         showToast(t('signOut'));
       },
@@ -432,6 +532,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     }),
     [
       address,
+      blockchains,
       blockchain,
       cancelSubView,
       closeConnect,

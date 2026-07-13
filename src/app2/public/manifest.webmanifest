@@ -3,7 +3,7 @@
   "short_name": "DFX",
   "description": "Buy, sell and swap crypto directly with your own wallet — Swiss, non-custodial.",
   "id": "./",
-  "start_url": "index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
@@ -12,7 +12,7 @@
   "background_color": "#061c31",
   "theme_color": "#0A3055",
   "shortcuts": [
-    { "name": "Buy crypto", "short_name": "Buy", "url": "index.html?view=buy" }
+    { "name": "Buy crypto", "short_name": "Buy", "url": "./#/?mode=buy" }
   ],
   "icons": [
     { "src": "favicon.svg", "type": "image/svg+xml", "sizes": "any" },
