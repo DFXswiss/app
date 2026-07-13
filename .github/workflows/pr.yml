@@ -261,6 +261,9 @@ jobs:
       - name: Build widget
         run: npm run widget:dev
 
+      - name: Build DFX App 2.0
+        run: npm run app2:dev
+
   # After Build and test so E2E cannot start (and occupy a runner) while unit
   # tests are still queued. Develop without ci:full is an in-job no-op.
   e2e:

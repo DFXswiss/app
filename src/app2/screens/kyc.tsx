@@ -18,6 +18,7 @@ import {
   KycStepSession,
   KycStepStatus,
   TfaSetup,
+  UrlType,
   useKyc,
   useUserContext,
 } from '@dfx.swiss/react';
@@ -55,7 +56,11 @@ function statusLabel(t: (key: TranslationKey) => string, status: KycStepStatus):
 /** Steps that carry an interactive session link (ident, video, ...) — every
  * other step is a data-collection form out of scope for this milestone. */
 function hasSession(step: KycStepSession): boolean {
-  return step.name === KycStepName.IDENT && !!step.session?.url;
+  return step.name === KycStepName.IDENT && !!step.session;
+}
+
+function portalKycUrl(code: string): string {
+  return `https://app.dfx.swiss/kyc?code=${encodeURIComponent(code)}`;
 }
 
 type Phase =
@@ -142,6 +147,8 @@ export default function KycScreen() {
         else setPhase({ kind: 'overview', info: session });
       })
       .catch((err: unknown) => {
+        // `ApiException.code` plus setup2fa/verify2fa are available in @dfx.swiss/react 1.4.1;
+        // package-lock.json pins that exact minimum for local and CI builds.
         if (err instanceof ApiException && err.code === 'TFA_REQUIRED') {
           setPhase({ kind: 'tfa', info, alreadyEnrolled: false });
           setBusy(false);
@@ -318,6 +325,8 @@ export default function KycScreen() {
     }
 
     if (hasSession(step) && step.session) {
+      const browserSession = step.session.type === UrlType.BROWSER && isSafeHttpsUrl(step.session.url);
+      const startUrl = browserSession ? step.session.url : portalKycUrl(code);
       return (
         <div className="account">
           <div className="txhead">
@@ -327,14 +336,15 @@ export default function KycScreen() {
           <div className="paybox-note" style={{ margin: '10px 0' }}>
             {t('kycIdentLead')}
           </div>
-          {/* Only rendered once `isSafeHttpsUrl` confirms this is a real https link —
-              the ident-session URL is API-provided, so it's never trusted unchecked. */}
+          {/* A TOKEN session contains a Sumsub access token, not a URL. Never put it in href;
+              hand that flow to the full portal, which embeds the SDK. Browser sessions are
+              opened directly only after strict https validation. */}
           <SafeExternalLink
-            url={step.session.url}
+            url={startUrl}
             className="btn-primary"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
           >
-            {t('kycIdentOpen')}
+            {t(browserSession ? 'kycIdentOpen' : 'finishOnDfx')}
           </SafeExternalLink>
           <div className="tnote" style={{ marginTop: 10, textAlign: 'center' }}>
             {t('kycIdentWait')}
@@ -363,9 +373,13 @@ export default function KycScreen() {
         <div className="paybox-note" style={{ margin: '10px 0' }}>
           {t('kycLegacyNote')}
         </div>
-        <button className="btn-primary" disabled={busy} onClick={() => runContinue(info)}>
-          {t('xmrContinue')}
-        </button>
+        <SafeExternalLink
+          url={portalKycUrl(code)}
+          className="btn-primary"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
+        >
+          {t('finishOnDfx')}
+        </SafeExternalLink>
         <button className="btn-mini" style={{ marginTop: 10, width: '100%' }} onClick={backToOverview}>
           {t('kycOverview')}
         </button>

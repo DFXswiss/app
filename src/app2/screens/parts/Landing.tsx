@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { useToast } from '../../components/ui';
 import { useT } from '../../i18n';
 import { useWalletSession } from '../../wallets/session';
+import { normalizeInviteCode } from '../../wallets/invite';
 import { WALLET_CATALOG } from '../../wallets/catalog';
 
 // Mirrors the static app's STRIP_IDS (public/app2/index.html) — the wallets shown in the
@@ -85,6 +86,7 @@ export function Landing() {
   // ?wallet= (partner wallet id) — same param WalletSessionProvider reads for the wallet-connect
   // sign-in path (session.tsx), so the mail path stays consistent with it.
   const walletParam = useMemo(() => new URLSearchParams(window.location.search).get('wallet')?.trim() || undefined, []);
+  const normalizedInvite = normalizeInviteCode(invite) ?? '';
 
   const submitEmail = async () => {
     if (sending) return;
@@ -104,7 +106,7 @@ export function Landing() {
       await signInWithMail(
         value,
         window.location.origin + window.location.pathname,
-        invite.trim() || undefined,
+        normalizedInvite || undefined,
         walletParam,
       );
       showToast(t('checkEmail'));
@@ -134,7 +136,7 @@ export function Landing() {
         <p className="lead">{t('lead')}</p>
 
         <div className="auth">
-          <button className="btn-glass cta-wallet" onClick={openConnect}>
+          <button className="btn-glass cta-wallet" onClick={() => openConnect(normalizedInvite || undefined)}>
             <span className="ic">{WALLET_ICON}</span>
             <span className="tx">
               <b>{t('connect')}</b>
@@ -197,7 +199,7 @@ export function Landing() {
                 maxLength={14}
                 style={{ textTransform: 'uppercase' }}
                 value={invite}
-                onChange={(e) => setInvite(e.target.value)}
+                onChange={(e) => setInvite(e.target.value.toUpperCase())}
               />
             </div>
           </div>
@@ -207,7 +209,13 @@ export function Landing() {
           <div className="cap">{t('worksWith')}</div>
           <div className="wstrip">
             {STRIP_ENTRIES.map((entry) => (
-              <button key={entry.id} className="wchip" type="button" title={entry.id} onClick={openConnect}>
+              <button
+                key={entry.id}
+                className="wchip"
+                type="button"
+                title={entry.id}
+                onClick={() => openConnect(normalizedInvite || undefined)}
+              >
                 <img src={entry.icon} alt="" width={25} height={25} />
               </button>
             ))}

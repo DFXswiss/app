@@ -175,6 +175,9 @@ export default function AccountScreen() {
 
   const displayName = user?.mail ?? shortAddress(address);
   const secondaryLine = user?.mail && user.mail !== displayName ? user.mail : shortAddress(address);
+  const referralLink = referral?.code
+    ? `https://app.dfx.swiss/login?code=${encodeURIComponent(referral.code)}`
+    : undefined;
 
   return (
     <div className="account">
@@ -260,8 +263,8 @@ export default function AccountScreen() {
           className="arow"
           role="button"
           tabIndex={0}
-          onClick={() => copy(referral?.code, 'copiedLink')}
-          onKeyDown={onActivate(() => copy(referral?.code, 'copiedLink'))}
+          onClick={() => copy(referralLink, 'copiedLink')}
+          onKeyDown={onActivate(() => copy(referralLink, 'copiedLink'))}
         >
           <span className="ic">{REFERRAL_ICON}</span>
           <span className="tx">

@@ -18,6 +18,9 @@ type LoadState = 'loading' | 'error' | 'loaded';
 
 type StateVariant = 'act' | 'pend' | 'ina' | 'warn';
 
+const HISTORY_WINDOW_DAYS = 90;
+const HISTORY_WINDOW_MS = HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
 const PENDING_STATES = new Set([
   'Processing',
   'LiquidityPending',
@@ -128,15 +131,44 @@ export default function TransactionsScreen() {
   const [state, setState] = useState<LoadState>('loading');
   const [transactions, setTransactions] = useState<DetailTransaction[]>([]);
   const [selected, setSelected] = useState<DetailTransaction | undefined>();
+  const [rangeStart, setRangeStart] = useState<Date>();
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
 
   const load = () => {
+    const to = new Date();
+    const from = new Date(to.getTime() - HISTORY_WINDOW_MS);
     setState('loading');
-    getDetailTransactions()
+    setLoadMoreError(false);
+    getDetailTransactions(from, to)
       .then((list) => {
         setTransactions([...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        setRangeStart(from);
         setState('loaded');
       })
       .catch(() => setState('error'));
+  };
+
+  const loadMore = () => {
+    if (!rangeStart || loadingMore) return;
+    const to = new Date(rangeStart.getTime() - 1);
+    const from = new Date(to.getTime() - HISTORY_WINDOW_MS);
+    setLoadingMore(true);
+    setLoadMoreError(false);
+    getDetailTransactions(from, to)
+      .then((list) => {
+        setTransactions((current) => {
+          const byId = new Map<string, DetailTransaction>();
+          [...current, ...list].forEach((transaction, index) => {
+            const key = transaction.uid || String(transaction.id ?? `${transaction.date}-${index}`);
+            byId.set(key, transaction);
+          });
+          return [...byId.values()].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        });
+        setRangeStart(from);
+      })
+      .catch(() => setLoadMoreError(true))
+      .finally(() => setLoadingMore(false));
   };
 
   useEffect(() => {
@@ -247,6 +279,21 @@ export default function TransactionsScreen() {
             </div>
           ))}
         </div>
+      )}
+
+      {state === 'loaded' && (
+        <>
+          {loadMoreError && <div className="paybox-note warn">{t('loadFail')}</div>}
+          <button
+            className="btn-mini"
+            type="button"
+            style={{ width: '100%', marginTop: 12 }}
+            onClick={loadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore ? <LoadingRow label={t('loading')} /> : t('txLoadMore')}
+          </button>
+        </>
       )}
 
       <Sheet open={!!selected} onClose={() => setSelected(undefined)} titleId={titleId}>
