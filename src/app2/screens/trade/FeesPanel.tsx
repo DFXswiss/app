@@ -80,12 +80,12 @@ export function FeesPanel({
     ? formatFiat(quote.estimatedAmount, currencyCode, language)
     : `${formatAmount(quote.estimatedAmount, recvPrecision, language)} ${recvCode}`;
 
-  const bank = fees.bank ?? (fees.bankFixed ?? 0) + (fees.bankVariable ?? 0);
+  const bank = fees.bank ?? 0;
 
   const rateStr = isSwap
-    ? `${formatAmount(quote.amount ? quote.estimatedAmount / quote.amount : 0, 6, language)} ${receiveAssetCode} / ${payAssetCode}`
+    ? `${formatAmount(quote.exchangeRate, 6, language)} ${receiveAssetCode} / ${payAssetCode}`
     : mode === 'buy'
-      ? `${formatFiat(quote.exchangeRate, currencyCode, language)} / ${payAssetCode}`
+      ? `${formatFiat(quote.exchangeRate, currencyCode, language)} / ${receiveAssetCode}`
       : `${formatFiat(quote.exchangeRate ? 1 / quote.exchangeRate : 0, currencyCode, language)} / ${payAssetCode}`;
 
   return (

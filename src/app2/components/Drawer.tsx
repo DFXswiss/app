@@ -2,10 +2,11 @@
 // from the static preview's `MENU` config and `buildMenu()` (public/app2/index.html,
 // around line 1609). Icons are the same inline SVG paths as the static app.
 
+import { useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
-import { useInertWhenClosed, useToast } from './ui';
+import { useModalDialog, useToast } from './ui';
 
 type MenuAction =
   | { kind: 'route'; path: string; mode?: 'buy' | 'sell' | 'swap' }
@@ -267,7 +268,8 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
   const location = useLocation();
   const { showToast } = useToast();
   const { address, blockchain, logout } = useWalletSession();
-  const ref = useInertWhenClosed<HTMLElement>(open);
+  const scrimRef = useRef<HTMLDivElement>(null);
+  const ref = useModalDialog<HTMLElement>(open, onClose, scrimRef);
   const activeMode = new URLSearchParams(location.search).get('mode') ?? 'buy';
 
   const runAction = (action: MenuAction, label: string) => {
@@ -290,7 +292,7 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
 
   return (
     <>
-      <div className={`scrim${open ? ' on' : ''}`} onClick={onClose} aria-hidden="true" />
+      <div ref={scrimRef} className={`scrim${open ? ' on' : ''}`} onClick={onClose} aria-hidden="true" />
       <aside
         ref={ref}
         className={`drawer${open ? ' on' : ''}`}
@@ -298,6 +300,7 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
         aria-modal="true"
         aria-labelledby="drawerName"
         aria-hidden={!open}
+        tabIndex={-1}
       >
         <div className="dhead">
           <div className="who">

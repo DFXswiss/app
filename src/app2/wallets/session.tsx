@@ -301,6 +301,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         if (!stillCurrent()) return;
         if (needsRecommendation(error)) {
           setView({ kind: 'recommend', pending: creds, invalidCode: Boolean(recommendationCode) });
+          setSheetOpen(true);
           return;
         }
         if (wasLoggedIn && isUnauthorized(error)) {

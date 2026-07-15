@@ -1,21 +1,23 @@
 // DFX App 2.0 — amount parsing/formatting for the trade screens.
 //
-// `parseAmt` is a byte-for-byte port of the static app's shared decimal parser
+// `parseAmt` follows the static app's shared decimal parser
 // (public/app2/index.html: "shared decimal parser: accepts '12,50'/'12.50', rejects
-// thousands separators / stray chars → null (never a partial value)"). Money-path
+// thousands separators / stray chars → null (never a partial value)"), with locale-aware
+// handling for English commas. Money-path
 // safety: a partially-typed or malformed amount must never silently become 0 or NaN —
 // it must be `null`, so callers can tell "no amount yet" apart from "invalid amount".
 
 import type { Language } from '../../i18n';
 
 /** Accepts "12,50" / "12.50", rejects thousands separators or stray characters.
+ * In English, a comma is a grouping separator and is therefore rejected instead of
+ * silently turning an input such as "1,000" into the value `1`.
  * Returns `null` — never a partial/garbage value — for anything that isn't a clean
  * positive decimal. */
-export function parseAmt(raw: string | number | null | undefined): number | null {
-  const s = String(raw ?? '')
-    .trim()
-    .replace(/\s+/g, '')
-    .replace(',', '.');
+export function parseAmt(raw: string | number | null | undefined, language?: Language): number | null {
+  const normalized = String(raw ?? '').trim().replace(/\s+/g, '');
+  if (language === 'en' && normalized.includes(',')) return null;
+  const s = normalized.replace(',', '.');
   if (!/^[0-9]*\.?[0-9]+$/.test(s)) return null;
   const n = parseFloat(s);
   return Number.isFinite(n) && n > 0 ? n : null;

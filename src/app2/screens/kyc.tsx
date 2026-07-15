@@ -10,14 +10,15 @@
 // instead of a full form (see TODO below).
 
 import {
-  ApiException,
   isStepDone,
   KycInfo,
   KycLevel,
   KycStepName,
+  KycStepReason,
   KycStepSession,
   KycStepStatus,
   TfaSetup,
+  TfaType,
   UrlType,
   useKyc,
   useUserContext,
@@ -26,9 +27,17 @@ import { AnchorHTMLAttributes, FormEvent, ReactNode, useEffect, useState } from 
 import QRCode from 'react-qr-code';
 import { LoadingRow } from '../components/ui';
 import { useT, type TranslationKey } from '../i18n';
+import { appUrl, isSafeAppUrl } from '../utils/url';
 import { useWalletSession } from '../wallets/session';
 import { formatChf, isSafeHttpsUrl } from './parts/format';
 import { LoggedOutState } from './parts/LoggedOutState';
+import {
+  apiStatusCode,
+  isTfaAlreadyEnrolledError,
+  isTfaRequiredError,
+  kycHandoffFromError,
+  type KycHandoff,
+} from './kyc-recovery';
 
 const PERIOD_KEY: Record<string, TranslationKey> = { Day: 'perDay', Month: 'perMonth', Year: 'perYear' };
 
@@ -59,20 +68,21 @@ function hasSession(step: KycStepSession): boolean {
   return step.name === KycStepName.IDENT && !!step.session;
 }
 
-function portalKycUrl(code: string): string {
-  return `https://app.dfx.swiss/kyc?code=${encodeURIComponent(code)}`;
+function portalKycUrl(code: string): string | undefined {
+  return appUrl(`/kyc?code=${encodeURIComponent(code)}`);
 }
 
 type Phase =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
+  | { kind: 'handoff'; info: KycInfo; handoff: KycHandoff }
   | { kind: 'overview'; info: KycInfo }
   | { kind: 'step'; info: KycInfo; step: KycStepSession }
-  | { kind: 'tfa'; info: KycInfo; setup?: TfaSetup; alreadyEnrolled: boolean };
+  | { kind: 'tfa'; info: KycInfo; setup?: TfaSetup; alreadyEnrolled: boolean; setupError?: string };
 
 function apiErrorMessage(t: (key: TranslationKey) => string, err: unknown): string {
   // Never surface a raw server string — map to a friendly, translated message.
-  if (err instanceof ApiException && err.statusCode === 0) return t('loadFail');
+  if (apiStatusCode(err) === 0) return t('loadFail');
   return t('genErr');
 }
 
@@ -96,6 +106,21 @@ export default function KycScreen() {
       .getKycInfo(code)
       .then((info) => setPhase({ kind: 'overview', info }))
       .catch((err: unknown) => setPhase({ kind: 'error', message: apiErrorMessage(t, err) }));
+  };
+
+  const beginTfaSetup = (info: KycInfo) => {
+    if (!code) return;
+    setPhase({ kind: 'tfa', info, alreadyEnrolled: false });
+    kyc
+      .setup2fa(code)
+      .then((setup) => setPhase({ kind: 'tfa', info, setup, alreadyEnrolled: false }))
+      .catch((error: unknown) => {
+        if (isTfaAlreadyEnrolledError(error)) {
+          setPhase({ kind: 'tfa', info, alreadyEnrolled: true });
+          return;
+        }
+        setPhase({ kind: 'tfa', info, alreadyEnrolled: false, setupError: apiErrorMessage(t, error) });
+      });
   };
 
   useEffect(() => {
@@ -147,18 +172,16 @@ export default function KycScreen() {
         else setPhase({ kind: 'overview', info: session });
       })
       .catch((err: unknown) => {
-        // `ApiException.code` plus setup2fa/verify2fa are available in @dfx.swiss/react 1.4.1;
-        // package-lock.json pins that exact minimum for local and CI builds.
-        if (err instanceof ApiException && err.code === 'TFA_REQUIRED') {
-          setPhase({ kind: 'tfa', info, alreadyEnrolled: false });
+        // KYC calls return the structured API error body directly. Branch only on its machine
+        // fields; never parse a localized human-readable message.
+        if (isTfaRequiredError(err)) {
           setBusy(false);
-          kyc
-            .setup2fa(code)
-            .then((setup) => setPhase({ kind: 'tfa', info, setup, alreadyEnrolled: false }))
-            .catch((setupErr: unknown) => {
-              const already = setupErr instanceof ApiException && /already/i.test(setupErr.message);
-              setPhase({ kind: 'tfa', info, alreadyEnrolled: already });
-            });
+          beginTfaSetup(info);
+          return;
+        }
+        const handoff = kycHandoffFromError(err);
+        if (handoff) {
+          setPhase({ kind: 'handoff', info, handoff });
           return;
         }
         setPhase({ kind: 'error', message: apiErrorMessage(t, err) });
@@ -210,15 +233,68 @@ export default function KycScreen() {
     );
   }
 
+  if (phase.kind === 'handoff') {
+    const handoffCode = phase.handoff.kind === 'switch' ? phase.handoff.code : code;
+    const messageKey =
+      phase.handoff.kind === 'switch'
+        ? 'kycAccountSwitch'
+        : phase.handoff.kind === 'merge'
+          ? 'kycAccountMerge'
+          : 'kycAccountExists';
+    return (
+      <div className="account">
+        <div className="txhead">
+          <h2>{t('mKyc')}</h2>
+        </div>
+        <div className="paybox-note warn" style={{ margin: '10px 0' }}>
+          {t(messageKey)}
+        </div>
+        <SafeExternalLink
+          url={portalKycUrl(handoffCode)}
+          className="btn-primary"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
+        >
+          {t('finishOnDfx')}
+        </SafeExternalLink>
+        <button
+          className="btn-mini"
+          style={{ marginTop: 10, width: '100%' }}
+          onClick={() => setPhase({ kind: 'overview', info: phase.info })}
+        >
+          {t('kycOverview')}
+        </button>
+      </div>
+    );
+  }
+
   if (phase.kind === 'tfa') {
-    const { setup, alreadyEnrolled, info } = phase;
+    const { setup, alreadyEnrolled, info, setupError } = phase;
+    const appSetup = setup?.type === TfaType.APP;
+    const mailSetup = setup?.type === TfaType.MAIL;
     return (
       <div className="account">
         <div className="txhead">
           <h2>{t('mKyc')}</h2>
         </div>
         <div className="sectionlabel tight">{t('kycTfaTitle')}</div>
-        {!alreadyEnrolled && setup ? (
+        {setupError ? (
+          <>
+            <div className="paybox-note warn" style={{ margin: '10px 0' }}>
+              {t('kycTfaSetupFail')}
+            </div>
+            <button className="btn-primary" type="button" onClick={() => beginTfaSetup(info)}>
+              {t('retry')}
+            </button>
+            <button
+              className="btn-mini"
+              type="button"
+              style={{ marginTop: 10, width: '100%' }}
+              onClick={() => setPhase({ kind: 'overview', info })}
+            >
+              {t('kycOverview')}
+            </button>
+          </>
+        ) : appSetup && setup ? (
           <>
             <p style={{ color: 'var(--t-muted)', fontSize: 13, lineHeight: 1.5, margin: '8px 4px 12px' }}>
               {t('kycTfaLead')}
@@ -247,10 +323,16 @@ export default function KycScreen() {
           </>
         ) : (
           <div className="paybox-note" style={{ margin: '10px 0' }}>
-            {alreadyEnrolled ? t('kycTfaMail') : <LoadingRow label={t('loading')} />}
+            {alreadyEnrolled ? (
+              t('kycTfaExisting')
+            ) : mailSetup ? (
+              t('kycTfaMail')
+            ) : (
+              <LoadingRow label={t('loading')} />
+            )}
           </div>
         )}
-        {(alreadyEnrolled || setup) && (
+        {!setupError && (alreadyEnrolled || setup) && (
           <form className="tform" style={{ marginTop: 12 }} onSubmit={verifyTfa(info)}>
             <label className="flabel">{t('kycTfaCode')}</label>
             <input
@@ -287,6 +369,12 @@ export default function KycScreen() {
     const backToOverview = () => setPhase({ kind: 'overview', info });
 
     if (step.status === KycStepStatus.FAILED) {
+      const handoff =
+        step.reason === KycStepReason.ACCOUNT_MERGE_REQUESTED
+          ? ({ kind: 'merge' } as const)
+          : step.reason === KycStepReason.ACCOUNT_EXISTS
+            ? ({ kind: 'account-exists' } as const)
+            : undefined;
       return (
         <div className="account">
           <div className="txhead">
@@ -294,10 +382,23 @@ export default function KycScreen() {
           </div>
           <div className="sectionlabel tight">{stepNameLabel(t, step.name)}</div>
           <div className="paybox-note warn" style={{ margin: '10px 0' }}>
-            {t('kycFailed')}
+            {t(handoff?.kind === 'merge' ? 'kycAccountMerge' : handoff ? 'kycAccountExists' : 'kycFailed')}
           </div>
-          <button className="btn-primary" disabled={busy} onClick={() => runContinue(info)}>
-            {t('xmrContinue')}
+          {handoff ? (
+            <SafeExternalLink
+              url={portalKycUrl(code)}
+              className="btn-primary"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
+            >
+              {t('finishOnDfx')}
+            </SafeExternalLink>
+          ) : (
+            <button className="btn-primary" disabled={busy} onClick={() => runContinue(info)}>
+              {t('xmrContinue')}
+            </button>
+          )}
+          <button className="btn-mini" style={{ marginTop: 10, width: '100%' }} onClick={backToOverview}>
+            {t('kycOverview')}
           </button>
         </div>
       );
@@ -443,8 +544,8 @@ function SafeExternalLink({
   url,
   children,
   ...rest
-}: { url: string; children: ReactNode } & AnchorHTMLAttributes<HTMLAnchorElement>) {
-  if (!isSafeHttpsUrl(url)) return null;
+}: { url: string | undefined; children: ReactNode } & AnchorHTMLAttributes<HTMLAnchorElement>) {
+  if (!isSafeHttpsUrl(url) && !isSafeAppUrl(url)) return null;
   return (
     <a href={url} target="_blank" rel="noopener noreferrer" {...rest}>
       {children}

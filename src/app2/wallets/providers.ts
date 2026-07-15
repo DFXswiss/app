@@ -10,6 +10,7 @@
 
 import { EthereumProvider } from '@walletconnect/ethereum-provider';
 import { getAddress } from 'ethers';
+import { clearWalletConnectStorage } from './storage';
 
 /** Same Reown/WalletConnect Cloud project id as src/wagmi.config.ts
  * (WALLET_CONNECT_PROJECT_ID). Duplicated as a literal rather than imported
@@ -19,7 +20,7 @@ const WALLET_CONNECT_PROJECT_ID = '8c8a3a14d25438a1e1b8f4d91d8d2674';
 // EVM chain ids WalletConnect may request session permission for. 1 = Ethereum
 // mainnet (required); the rest mirror src/wagmi.config.ts's optional chains.
 const WC_REQUIRED_CHAINS: [number] = [1];
-const WC_OPTIONAL_CHAINS = [10, 56, 137, 8453, 42161];
+const WC_OPTIONAL_CHAINS = [10, 56, 137, 4114, 5115, 8453, 42161];
 
 export class WalletConnectorError extends Error {
   constructor(
@@ -225,10 +226,14 @@ export async function signWithWalletConnect(
  * provider means the *next* connect attempt always starts from a fresh instance instead of
  * reusing (and getting stuck behind) this one. */
 export async function disconnectWalletConnect(): Promise<void> {
+  // A page reload restores the persisted SDK session before this module has a live provider.
+  // Clear storage even in that no-provider case, and repeat after disconnect in case the SDK
+  // wrote state while completing its own teardown.
+  clearWalletConnectStorage();
   if (!wcProviderPromise) return;
   const providerPromise = wcProviderPromise;
   wcProviderPromise = undefined;
   const provider = await providerPromise.catch(() => undefined);
-  if (!provider) return;
-  await provider.disconnect().catch(() => undefined);
+  if (provider) await provider.disconnect().catch(() => undefined);
+  clearWalletConnectStorage();
 }
