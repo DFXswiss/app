@@ -8,6 +8,18 @@ const publicAssets = join(root, 'src', 'app2', 'public');
 
 if (!existsSync(htmlPath)) throw new Error(`Missing App2 build output: ${htmlPath}`);
 
+function apiOrigin(rawUrl) {
+  if (!rawUrl) throw new Error('REACT_APP_API_URL is required when staging the App2 artifact');
+  const url = new URL(rawUrl);
+  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocal)) {
+    throw new Error(`Unsafe App2 API origin: ${url.origin}`);
+  }
+  return url.origin;
+}
+
+const selectedApiOrigin = apiOrigin(process.env.REACT_APP_API_URL);
+
 // CRA copies the shared `public/` directory wholesale. App2 owns a deliberately small public
 // surface, so remove the main app's identity and any legacy nested preview before staging it.
 for (const stale of [
@@ -40,9 +52,7 @@ const csp = [
   "img-src 'self' data: blob:",
   [
     "connect-src 'self'",
-    'http://localhost:3000',
-    'https://api.dfx.swiss',
-    'https://dev.api.dfx.swiss',
+    selectedApiOrigin,
     'wss://relay.walletconnect.com',
     'wss://relay.walletconnect.org',
     'https://rpc.walletconnect.com',
@@ -51,6 +61,8 @@ const csp = [
     'https://verify.walletconnect.org',
     'https://*.walletconnect.com',
     'wss://*.walletconnect.com',
+    'https://*.walletconnect.org',
+    'wss://*.walletconnect.org',
     'https://*.reown.com',
     'wss://*.reown.com',
   ].join(' '),
@@ -94,6 +106,14 @@ if (/<script(?![^>]*\bsrc=)[^>]*>/i.test(html)) throw new Error('App2 CSP requir
 if (!html.includes('Content-Security-Policy')) throw new Error('Failed to inject the App2 CSP');
 if (!html.includes('<div id="root"></div>')) throw new Error('Failed to remove the shared inline loader');
 if (html.includes('loader-container')) throw new Error('Failed to remove all shared loader markup');
+if (html.includes('manifest.json')) throw new Error('Failed to remove the shared main-app manifest');
+if (html.includes('fonts.googleapis.com')) throw new Error('Failed to remove the shared remote font stylesheet');
+const hasAbsoluteAppleTouchIcon = (html.match(/<link\b[^>]*>/gi) ?? []).some(
+  (tag) => /\brel=["']apple-touch-icon["']/i.test(tag) && /\bhref=["']https?:\/\//i.test(tag),
+);
+if (hasAbsoluteAppleTouchIcon) {
+  throw new Error('Failed to remove the shared absolute apple-touch icon');
+}
 
 writeFileSync(htmlPath, html);
 console.log('App2 artifact staged with its own CSP and PWA identity.');
