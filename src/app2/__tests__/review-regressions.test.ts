@@ -19,6 +19,10 @@ jest.mock('@dfx.swiss/react', () => ({
     INSTANT: 'Instant',
     CARD: 'Card',
   },
+  KycStepReason: {
+    ACCOUNT_EXISTS: 'AccountExists',
+    ACCOUNT_MERGE_REQUESTED: 'AccountMergeRequested',
+  },
   TransactionError: {
     AMOUNT_TOO_LOW: 'AmountTooLow',
     AMOUNT_TOO_HIGH: 'AmountTooHigh',
@@ -46,8 +50,14 @@ import { paymentMethodsFor } from '../components/pickers/PaymentMethodPicker';
 import { currenciesForBuy, currenciesForSell, hasSellQuoteInputs } from '../screens/trade/capabilities';
 import { shownChainsFor } from '../screens/trade/asset-pool';
 import { mapThrownError } from '../screens/trade/errors';
+import { parseAmt } from '../screens/trade/amount';
 import type { TradeAsset } from '../screens/trade/types';
+import { apiStatusCode, isTfaAlreadyEnrolledError, isTfaRequiredError, kycHandoffFromError } from '../screens/kyc-recovery';
+import { findSendCandidate, shouldSyncSupportIssue } from '../screens/support-delivery';
+import { appUrl, isSafeAppUrl } from '../utils/url';
 import { normalizeInviteCode } from '../wallets/invite';
+import { clearWalletConnectStorage } from '../wallets/storage';
+import type { SupportIssue, SupportMessage } from '@dfx.swiss/react';
 
 const eur: Fiat = {
   id: 1,
@@ -135,5 +145,85 @@ describe('App2 review regressions', () => {
 
     expect(result).toEqual({ kind: 'generic', message: 'genErr' });
     expect(result.message).not.toContain(secret);
+  });
+
+  it('does not interpret an English thousands-formatted amount as a decimal', () => {
+    expect(parseAmt('1,000', 'en')).toBeNull();
+    expect(parseAmt('1000.50', 'en')).toBe(1000.5);
+    expect(parseAmt('12,50', 'de')).toBe(12.5);
+  });
+
+  it('keeps the English dictionary as the compile-time translation key set', () => {
+    const validKey: TranslationKey = 'buy';
+    // @ts-expect-error unknown translation keys must fail the TypeScript build
+    const invalidKey: TranslationKey = 'definitelyNotATranslation';
+
+    expect(validKey).toBe('buy');
+    expect(invalidKey).toBe('definitelyNotATranslation');
+  });
+
+  it('clears persisted WalletConnect sessions without touching the DFX login', () => {
+    window.localStorage.clear();
+    window.localStorage.setItem('wc@2:client:session', 'session');
+    window.localStorage.setItem('@walletconnect/core', 'core');
+    window.localStorage.setItem('dfx.authenticationToken', 'token');
+
+    clearWalletConnectStorage();
+
+    expect(window.localStorage.getItem('wc@2:client:session')).toBeNull();
+    expect(window.localStorage.getItem('@walletconnect/core')).toBeNull();
+    expect(window.localStorage.getItem('dfx.authenticationToken')).toBe('token');
+  });
+
+  it('builds environment-aware app links and rejects insecure remote origins', () => {
+    const previousOrigin = process.env.REACT_APP_PUBLIC_URL;
+    process.env.REACT_APP_PUBLIC_URL = 'https://dev.app.dfx.swiss';
+
+    expect(appUrl('/kyc?code=abc')).toBe('https://dev.app.dfx.swiss/kyc?code=abc');
+    expect(appUrl('//evil.example/kyc')).toBeUndefined();
+    expect(isSafeAppUrl('http://localhost:3001/kyc')).toBe(true);
+    expect(isSafeAppUrl('http://app.dfx.swiss/kyc')).toBe(false);
+
+    if (previousOrigin === undefined) delete process.env.REACT_APP_PUBLIC_URL;
+    else process.env.REACT_APP_PUBLIC_URL = previousOrigin;
+  });
+
+  it('routes structured KYC recovery states without parsing server messages', () => {
+    expect(apiStatusCode({ statusCode: 0 })).toBe(0);
+    expect(isTfaRequiredError({ code: 'TFA_REQUIRED' })).toBe(true);
+    expect(isTfaAlreadyEnrolledError({ statusCode: 409, message: 'beliebiger Text' })).toBe(true);
+    expect(kycHandoffFromError({ statusCode: 401, switchToCode: 'next-code' })).toEqual({
+      kind: 'switch',
+      code: 'next-code',
+    });
+    expect(kycHandoffFromError({ statusCode: 409 })).toEqual({ kind: 'conflict' });
+  });
+
+  it('does not enable support polling for an empty thread', () => {
+    const emptyIssue = { uid: 'issue-1', messages: [] } as unknown as SupportIssue;
+    const populatedIssue = {
+      ...emptyIssue,
+      messages: [{ id: 1, created: new Date(), message: 'hello' } as SupportMessage],
+    };
+
+    expect(shouldSyncSupportIssue('issue-1', emptyIssue)).toBe(false);
+    expect(shouldSyncSupportIssue('issue-1', populatedIssue)).toBe(true);
+    expect(shouldSyncSupportIssue('another-issue', populatedIssue)).toBe(false);
+  });
+
+  it('matches only the optimistic support message created by the active send attempt', () => {
+    const oldMessage = { id: 1, created: new Date(1), message: 'retry me' } as SupportMessage;
+    const optimisticMessage = { id: -1, created: new Date(2_000), message: 'retry me' } as SupportMessage;
+
+    expect(
+      findSendCandidate([oldMessage, optimisticMessage], {
+        issueUid: 'issue-1',
+        beforeIds: [1],
+        text: 'retry me',
+        clearComposer: false,
+        startedAt: 2_000,
+        replacesMessageId: 1,
+      }),
+    ).toBe(optimisticMessage);
   });
 });
