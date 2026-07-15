@@ -22,24 +22,20 @@ import {
   useSupportChatContext,
   useUserContext,
 } from '@dfx.swiss/react';
-import { ChangeEvent, FormEvent, useEffect, useId, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { LoadingRow, onActivate, Sheet, SheetHeader, useToast } from '../components/ui';
 import { useT, type Language, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { formatDateTime, shortAddress } from './parts/format';
 import { LoggedOutState } from './parts/LoggedOutState';
+import {
+  findSendCandidate,
+  shouldSyncSupportIssue,
+  type SendAttempt,
+} from './support-delivery';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const SEND_SETTLE_TIMEOUT_MS = 30_000;
-
-interface SendAttempt {
-  issueUid: string;
-  beforeIds: number[];
-  text?: string;
-  file?: File;
-  clearComposer: boolean;
-  startedAt: number;
-}
 
 interface TicketTypeOption {
   key: TranslationKey;
@@ -186,6 +182,10 @@ function SupportScreenBody() {
   const [ticketsError, setTicketsError] = useState('');
   const [threadError, setThreadError] = useState('');
   const [retryingMessageId, setRetryingMessageId] = useState<number | undefined>();
+  const [hiddenMessageIds, setHiddenMessageIds] = useState<Set<number>>(() => new Set());
+  const [timedOutMessageIds, setTimedOutMessageIds] = useState<Set<number>>(() => new Set());
+  const supportIssueRef = useRef(support.supportIssue);
+  supportIssueRef.current = support.supportIssue;
 
   useEffect(() => {
     // `support` intentionally omitted — SupportChatContextProvider returns a
@@ -198,23 +198,15 @@ function SupportScreenBody() {
   }, [isLoggedIn]);
 
   useEffect(() => {
-    // Only poll while a thread is open — same reasoning as above. Also stop
-    // on unmount (navigating away from /support entirely).
-    support.setSync(!!activeUid);
+    // The SDK's sync path reads the last message without guarding an empty thread.
+    support.setSync(shouldSyncSupportIssue(activeUid, support.supportIssue));
     return () => support.setSync(false);
-  }, [activeUid]);
+  }, [activeUid, support.supportIssue?.uid, support.supportIssue?.messages.length]);
 
   useEffect(() => {
     if (!sendAttempt) return;
     if (support.supportIssue?.uid !== sendAttempt.issueUid) return;
-    const candidate = support.supportIssue?.messages.find((candidateMessage) => {
-      if (sendAttempt.beforeIds.includes(candidateMessage.id)) return false;
-      const createdAt = new Date(candidateMessage.created).getTime();
-      if (Number.isFinite(createdAt) && createdAt < sendAttempt.startedAt - 1_000) return false;
-      const sameText = (candidateMessage.message?.trim() ?? '') === (sendAttempt.text?.trim() ?? '');
-      const sameFile = (candidateMessage.fileName ?? '') === (sendAttempt.file?.name ?? '');
-      return sameText && sameFile;
-    });
+    const candidate = findSendCandidate(support.supportIssue.messages, sendAttempt);
     if (!candidate || candidate.status === SupportMessageStatus.SENT) return;
 
     const succeeded = candidate.status !== SupportMessageStatus.FAILED;
@@ -222,6 +214,15 @@ function SupportScreenBody() {
       setComposer((current) => (current.trim() === (sendAttempt.text?.trim() ?? '') ? '' : current));
       setPendingFile((current) => (current === sendAttempt.file ? undefined : current));
     }
+    if (sendAttempt.replacesMessageId != null) {
+      const replacedMessageId = sendAttempt.replacesMessageId;
+      setHiddenMessageIds((current) => new Set(current).add(replacedMessageId));
+    }
+    setTimedOutMessageIds((current) => {
+      const next = new Set(current);
+      next.delete(candidate.id);
+      return next;
+    });
     if (!succeeded) showToast(t('genErr'), { assertive: true });
     setSending(false);
     setRetryingMessageId(undefined);
@@ -231,6 +232,18 @@ function SupportScreenBody() {
   useEffect(() => {
     if (!sendAttempt) return undefined;
     const timeout = window.setTimeout(() => {
+      const issueAtTimeout = supportIssueRef.current;
+      const candidate =
+        issueAtTimeout?.uid === sendAttempt.issueUid
+          ? findSendCandidate(issueAtTimeout.messages, sendAttempt)
+          : undefined;
+      if (candidate?.status === SupportMessageStatus.SENT) {
+        setTimedOutMessageIds((current) => new Set(current).add(candidate.id));
+      }
+      if (sendAttempt.replacesMessageId != null) {
+        const replacedMessageId = sendAttempt.replacesMessageId;
+        setHiddenMessageIds((current) => new Set(current).add(replacedMessageId));
+      }
       showToast(t('genErr'), { assertive: true });
       setSending(false);
       setRetryingMessageId(undefined);
@@ -238,6 +251,19 @@ function SupportScreenBody() {
     }, SEND_SETTLE_TIMEOUT_MS);
     return () => window.clearTimeout(timeout);
   }, [sendAttempt, showToast, t]);
+
+  useEffect(() => {
+    if (!support.supportIssue || timedOutMessageIds.size === 0) return;
+    const settledIds = support.supportIssue.messages
+      .filter((message) => timedOutMessageIds.has(message.id) && message.status !== SupportMessageStatus.SENT)
+      .map((message) => message.id);
+    if (!settledIds.length) return;
+    setTimedOutMessageIds((current) => {
+      const next = new Set(current);
+      settledIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, [support.supportIssue, timedOutMessageIds]);
 
   if (!isLoggedIn) return <LoggedOutState title={t('mSupport')} />;
 
@@ -253,6 +279,8 @@ function SupportScreenBody() {
   const openThread = (uid: string) => {
     setActiveUid(uid);
     setThreadError('');
+    setHiddenMessageIds(new Set());
+    setTimedOutMessageIds(new Set());
     void support.loadSupportIssue(uid).catch(() => setThreadError(t('loadFail')));
   };
 
@@ -321,6 +349,7 @@ function SupportScreenBody() {
       file,
       clearComposer,
       startedAt: Date.now(),
+      replacesMessageId: retryMessageId,
     };
     setSending(true);
     setRetryingMessageId(retryMessageId);
@@ -533,12 +562,13 @@ function SupportScreenBody() {
             ) : !issue || issue.messages.length === 0 ? (
               <div className="chatempty">{t('chatEmpty')}</div>
             ) : (
-              issue.messages.map((m) => (
+              issue.messages.filter((message) => !hiddenMessageIds.has(message.id)).map((m) => (
                 <ChatBubble
                   key={m.id}
                   message={m}
                   language={language}
                   retrying={retryingMessageId === m.id}
+                  deliveryTimedOut={timedOutMessageIds.has(m.id)}
                   onRetry={() => retryMessage(m)}
                   onLoadFile={() => support.loadFileData(m.id)}
                 />
@@ -602,12 +632,14 @@ function ChatBubble({
   message,
   language,
   retrying,
+  deliveryTimedOut,
   onRetry,
   onLoadFile,
 }: {
   message: SupportMessage;
   language: Language;
   retrying: boolean;
+  deliveryTimedOut: boolean;
   onRetry: () => void;
   onLoadFile: () => Promise<void>;
 }) {
@@ -616,7 +648,7 @@ function ChatBubble({
   const [loadedUrl, setLoadedUrl] = useState<string | undefined>(message.file?.url);
   const [loading, setLoading] = useState(false);
   const mine = message.author === 'Customer';
-  const failed = message.status === SupportMessageStatus.FAILED;
+  const failed = message.status === SupportMessageStatus.FAILED || deliveryTimedOut;
   const timestamp = formatDateTime(message.created, language);
 
   // `onLoadFile` mutates the message inside SupportChatContext and the new
@@ -675,7 +707,7 @@ function ChatBubble({
           ))}
         <div className="msg-meta">
           {timestamp}
-          {message.status === SupportMessageStatus.SENT && ` · ${t('chatSending')}`}
+          {message.status === SupportMessageStatus.SENT && !deliveryTimedOut && ` · ${t('chatSending')}`}
           {failed && (
             <>
               {' · '}

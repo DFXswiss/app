@@ -1,11 +1,13 @@
 // DFX App 2.0 — language picker, ported from the static app's `langSheet` /
 // `.lopt` rows and `pickLang()` (public/app2/index.html).
 
+import { useLanguageContext, useUserContext } from '@dfx.swiss/react';
 import deFlag from '../assets/flags/de.svg';
 import frFlag from '../assets/flags/fr.svg';
 import gbFlag from '../assets/flags/gb.svg';
 import itFlag from '../assets/flags/it.svg';
 import { LANGUAGES, useT, type Language } from '../i18n';
+import { useWalletSession } from '../wallets/session';
 import { Sheet, SheetHeader, useToast } from './ui';
 
 const FLAGS: Record<string, string> = { gb: gbFlag, de: deFlag, it: itFlag, fr: frFlag };
@@ -18,11 +20,18 @@ interface LanguageSheetProps {
 export function LanguageSheet({ open, onClose }: LanguageSheetProps) {
   const { language, setLanguage, t } = useT();
   const { showToast } = useToast();
+  const { languages } = useLanguageContext();
+  const { updateLanguage } = useUserContext();
+  const { isLoggedIn } = useWalletSession();
 
   const pick = (code: Language, label: string) => {
     setLanguage(code);
     onClose();
     showToast(label);
+    const apiLanguage = languages?.find(({ symbol }) => symbol.toLowerCase() === code);
+    if (isLoggedIn && apiLanguage) {
+      void updateLanguage(apiLanguage).catch(() => showToast(t('genErr'), { assertive: true }));
+    }
   };
 
   return (

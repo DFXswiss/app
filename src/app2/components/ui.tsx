@@ -13,6 +13,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
   type ReactNode,
 } from 'react';
 
@@ -28,6 +29,81 @@ export function useInertWhenClosed<T extends HTMLElement>(open: boolean) {
     const el = ref.current as (HTMLElement & { inert: boolean }) | null;
     if (el) el.inert = !open;
   }, [open]);
+  return ref;
+}
+
+/** Shared modal behavior for sheets and the navigation drawer. */
+export function useModalDialog<T extends HTMLElement>(
+  open: boolean,
+  onClose: () => void,
+  scrimRef: RefObject<HTMLElement>,
+) {
+  const ref = useInertWhenClosed<T>(open);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const dialog = ref.current;
+    if (!dialog) return undefined;
+
+    // Keep the ancestor path to the nested dialog interactive and inert every background branch.
+    const previousInert = new Map<HTMLElement, boolean>();
+    let current: HTMLElement = dialog;
+    while (current.parentElement) {
+      const parent = current.parentElement;
+      Array.from(parent.children).forEach((sibling) => {
+        if (!(sibling instanceof HTMLElement) || sibling === current || sibling === scrimRef.current) return;
+        if (!previousInert.has(sibling)) previousInert.set(sibling, sibling.inert);
+        sibling.inert = true;
+      });
+      if (parent.classList.contains('app')) break;
+      current = parent;
+    }
+
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusableSelector =
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+    const focusFirst = window.requestAnimationFrame(() => {
+      const first = dialog.querySelector<HTMLElement>(focusableSelector);
+      (first ?? dialog).focus();
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+        (element) => !element.inert && element.getAttribute('aria-hidden') !== 'true',
+      );
+      if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(focusFirst);
+      document.removeEventListener('keydown', onKeyDown, true);
+      previousInert.forEach((wasInert, element) => {
+        element.inert = wasInert;
+      });
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [open, scrimRef]);
+
   return ref;
 }
 
@@ -157,73 +233,8 @@ interface SheetProps {
 }
 
 export function Sheet({ open, onClose, titleId, children, showGrab = true }: SheetProps) {
-  const ref = useInertWhenClosed<HTMLDivElement>(open);
   const scrimRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const sheet = ref.current;
-    if (!sheet) return undefined;
-
-    // Mark every background branch inert while leaving the ancestor path to this nested sheet
-    // usable. This works whether a sheet is rendered from a screen or directly under `.app`.
-    const previousInert = new Map<HTMLElement, boolean>();
-    let current: HTMLElement = sheet;
-    while (current.parentElement) {
-      const parent = current.parentElement;
-      Array.from(parent.children).forEach((sibling) => {
-        if (!(sibling instanceof HTMLElement) || sibling === current || sibling === scrimRef.current) return;
-        if (!previousInert.has(sibling)) previousInert.set(sibling, sibling.inert);
-        sibling.inert = true;
-      });
-      if (parent.classList.contains('app')) break;
-      current = parent;
-    }
-
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const focusableSelector =
-      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
-    const focusFirst = window.requestAnimationFrame(() => {
-      const first = sheet.querySelector<HTMLElement>(focusableSelector);
-      (first ?? sheet).focus();
-    });
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onCloseRef.current();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      const focusable = Array.from(sheet.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-        (element) => !element.inert && element.getAttribute('aria-hidden') !== 'true',
-      );
-      if (!focusable.length) {
-        e.preventDefault();
-        sheet.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && (document.activeElement === first || !sheet.contains(document.activeElement))) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      window.cancelAnimationFrame(focusFirst);
-      document.removeEventListener('keydown', onKeyDown, true);
-      previousInert.forEach((wasInert, element) => {
-        element.inert = wasInert;
-      });
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
-  }, [open]);
+  const ref = useModalDialog<HTMLDivElement>(open, onClose, scrimRef);
 
   return (
     <>

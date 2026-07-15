@@ -233,9 +233,9 @@ export default function HomeScreen() {
   const swapFromApiAsset = swapFromAsset && swapFromChain ? assetFor(swapFromAsset, swapFromChain, 'sell') : undefined;
   const swapToApiAsset = swapToAsset && swapToChain ? assetFor(swapToAsset, swapToChain, 'buy') : undefined;
 
-  const buyAmount = parseAmt(buyRaw);
-  const sellAmount = parseAmt(sellRaw);
-  const swapAmount = parseAmt(swapRaw);
+  const buyAmount = parseAmt(buyRaw, language);
+  const sellAmount = parseAmt(sellRaw, language);
+  const swapAmount = parseAmt(swapRaw, language);
 
   // ---- quotes (debounced + stale-guarded — see useQuoteEngine.ts) ---------------------------
   const buyQuote = useBuyQuote({
@@ -371,6 +371,12 @@ export default function HomeScreen() {
     setOpenAfterBankSelection(false);
     setPaymentSheetOpen(true);
   }, [openAfterBankSelection, mode, sellBankAccount, sellQuote.settled]);
+
+  // The one-shot auto-open belongs to the exact sell inputs that armed it. Switching modes or
+  // editing any quote input while the keyed request is in flight cancels that intent.
+  useEffect(() => {
+    setOpenAfterBankSelection(false);
+  }, [mode, sellRaw, sellAsset, sellChain, sellFiat]);
 
   // A frozen sheet changes only after an explicit Retry. Passive TTL refreshes remain paused,
   // and opening another modal can no longer re-latch live data behind the user's back.
@@ -761,7 +767,6 @@ export default function HomeScreen() {
         receiveAssetCode={sheetSnapshot?.receiveAssetCode ?? sheetReceiveAssetCode}
         receiveBlockchain={sheetSnapshot?.receiveBlockchain ?? sheetReceiveBlockchain}
         currency={sheetSnapshot?.currency ?? sheetCurrency}
-        paymentMethod={buyMethod}
         amount={sheetSnapshot?.amount ?? sheetAmount}
         sessionAddress={session.address}
         onRetry={() => {

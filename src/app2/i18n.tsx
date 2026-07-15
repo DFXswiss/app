@@ -9,7 +9,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 
 type Dict = Record<string, string>;
 
-export const en: Dict = {
+export const en = {
   h1a: 'Buy crypto,',
   h1b: 'straight to your wallet',
   lead: 'Sign in once. No exchange account, no custody. You hold the keys the whole way.',
@@ -295,6 +295,9 @@ export const en: Dict = {
   kycAllDone: 'All done — your account is fully verified.',
   kycOverview: 'Back to overview',
   kycFailed: 'This step has failed.',
+  kycAccountSwitch: 'This account was merged. Continue verification with the active account in the DFX portal.',
+  kycAccountMerge: 'Your account merge is in progress. Continue in the DFX portal to complete the process.',
+  kycAccountExists: 'An existing account needs your attention. Continue in the DFX portal.',
   kycInReview: "DFX is reviewing this step — you'll get an email once it's done.",
   kycLegacyNote: 'This step is completed in the DFX portal.',
   kycLegacyOpen: 'Open DFX portal',
@@ -335,8 +338,10 @@ export const en: Dict = {
   kycAddOwner: 'Add person',
   kycOwner: 'Person',
   kycTfaTitle: 'Two-factor authentication',
+  kycTfaSetupFail: 'Two-factor authentication could not be prepared. Try again or return to the overview.',
   kycTfaLead: 'Scan the QR code with an authenticator app (e.g. Google Authenticator), then enter the 6-digit code.',
   kycTfaMail: "We've emailed you a 6-digit code.",
+  kycTfaExisting: 'Enter the current 6-digit code from your authenticator app or email.',
   kycTfaCode: '6-digit code',
   kycTfaWrong: 'Invalid or expired code',
   ks_NotStarted: 'Not started',
@@ -682,7 +687,7 @@ export const en: Dict = {
   notFoundBody: "This link doesn't exist — it may be out of date, or mistyped.",
   backHome: 'Back to home',
   emailInvalid: 'Enter a valid email address.',
-};
+} as const satisfies Dict;
 export const de: Dict = {
   h1a: 'Krypto kaufen,',
   h1b: 'direkt in deine Wallet',
@@ -929,6 +934,9 @@ export const de: Dict = {
   kycAllDone: 'Alles erledigt — dein Konto ist vollständig verifiziert.',
   kycOverview: 'Zurück zur Übersicht',
   kycFailed: 'Dieser Schritt ist fehlgeschlagen.',
+  kycAccountSwitch: 'Dieses Konto wurde zusammengeführt. Setze die Verifizierung mit dem aktiven Konto im DFX-Portal fort.',
+  kycAccountMerge: 'Die Zusammenführung deiner Konten läuft. Schließe den Vorgang im DFX-Portal ab.',
+  kycAccountExists: 'Ein bestehendes Konto erfordert deine Aufmerksamkeit. Fahre im DFX-Portal fort.',
   kycInReview: 'DFX prüft diesen Schritt — du bekommst eine E-Mail, sobald es weitergeht.',
   kycLegacyNote: 'Dieser Schritt wird im DFX-Portal abgeschlossen.',
   kycLegacyOpen: 'DFX-Portal öffnen',
@@ -969,9 +977,11 @@ export const de: Dict = {
   kycAddOwner: 'Person hinzufügen',
   kycOwner: 'Person',
   kycTfaTitle: 'Zwei-Faktor-Authentifizierung',
+  kycTfaSetupFail: 'Die Zwei-Faktor-Authentifizierung konnte nicht vorbereitet werden. Versuche es erneut oder kehre zur Übersicht zurück.',
   kycTfaLead:
     'Scanne den QR-Code mit einer Authenticator-App (z.B. Google Authenticator) und gib den 6-stelligen Code ein.',
   kycTfaMail: 'Wir haben dir einen 6-stelligen Code per E-Mail geschickt.',
+  kycTfaExisting: 'Gib den aktuellen 6-stelligen Code aus deiner Authenticator-App oder E-Mail ein.',
   kycTfaCode: '6-stelliger Code',
   kycTfaWrong: 'Ungültiger oder abgelaufener Code',
   ks_NotStarted: 'Nicht begonnen',
@@ -1611,6 +1621,9 @@ export const it: Dict = {
   kycAllDone: 'Tutto fatto — il tuo account è completamente verificato.',
   kycOverview: 'Torna alla panoramica',
   kycFailed: 'Questo passaggio non è riuscito.',
+  kycAccountSwitch: "Questo account è stato unito. Continua la verifica con l'account attivo nel portale DFX.",
+  kycAccountMerge: 'La fusione dei tuoi account è in corso. Completa la procedura nel portale DFX.',
+  kycAccountExists: 'Un account esistente richiede la tua attenzione. Continua nel portale DFX.',
   kycInReview: "DFX sta esaminando questo passaggio — riceverai un'email appena procede.",
   kycLegacyNote: 'Questo passaggio si completa nel portale DFX.',
   kycLegacyOpen: 'Apri il portale DFX',
@@ -1651,9 +1664,11 @@ export const it: Dict = {
   kycAddOwner: 'Aggiungi persona',
   kycOwner: 'Persona',
   kycTfaTitle: 'Autenticazione a due fattori',
+  kycTfaSetupFail: "Non è stato possibile preparare l'autenticazione a due fattori. Riprova o torna alla panoramica.",
   kycTfaLead:
     "Scansiona il codice QR con un'app authenticator (es. Google Authenticator) e inserisci il codice a 6 cifre.",
   kycTfaMail: 'Ti abbiamo inviato un codice a 6 cifre via email.',
+  kycTfaExisting: "Inserisci il codice attuale a 6 cifre dell'app di autenticazione o dell'email.",
   kycTfaCode: 'Codice a 6 cifre',
   kycTfaWrong: 'Codice non valido o scaduto',
   ks_NotStarted: 'Non iniziato',
@@ -2293,6 +2308,9 @@ export const fr: Dict = {
   kycAllDone: 'Tout est fait — ton compte est entièrement vérifié.',
   kycOverview: "Retour à l'aperçu",
   kycFailed: 'Cette étape a échoué.',
+  kycAccountSwitch: 'Ce compte a été fusionné. Continue la vérification avec le compte actif dans le portail DFX.',
+  kycAccountMerge: 'La fusion de tes comptes est en cours. Termine la procédure dans le portail DFX.',
+  kycAccountExists: 'Un compte existant nécessite ton attention. Continue dans le portail DFX.',
   kycInReview: 'DFX examine cette étape — tu recevras un e-mail dès que ça avance.',
   kycLegacyNote: 'Cette étape se termine dans le portail DFX.',
   kycLegacyOpen: 'Ouvrir le portail DFX',
@@ -2333,9 +2351,11 @@ export const fr: Dict = {
   kycAddOwner: 'Ajouter une personne',
   kycOwner: 'Personne',
   kycTfaTitle: 'Authentification à deux facteurs',
+  kycTfaSetupFail: "L'authentification à deux facteurs n'a pas pu être préparée. Réessaie ou retourne à l'aperçu.",
   kycTfaLead:
     "Scanne le code QR avec une app d'authentification (p. ex. Google Authenticator) et saisis le code à 6 chiffres.",
   kycTfaMail: "Nous t'avons envoyé un code à 6 chiffres par e-mail.",
+  kycTfaExisting: "Saisis le code actuel à 6 chiffres de l'application d'authentification ou de l'e-mail.",
   kycTfaCode: 'Code à 6 chiffres',
   kycTfaWrong: 'Code invalide ou expiré',
   ks_NotStarted: 'Pas commencé',
