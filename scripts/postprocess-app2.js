@@ -1,5 +1,11 @@
 const { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } = require('fs');
 const { join } = require('path');
+const {
+  hasAbsoluteAppleTouchIcon,
+  hasGoogleFontsLink,
+  hasManifestJsonLink,
+  removeSharedIdentityLinks,
+} = require('../src/app2/build/html-links');
 
 const root = join(__dirname, '..');
 const dist = join(root, 'app2-dist');
@@ -72,11 +78,7 @@ const csp = [
 ].join('; ');
 
 let html = readFileSync(htmlPath, 'utf8');
-html = html
-  .replace(/<link rel="icon" href="[^"]+"\s*\/?>(?:<link rel="icon"[^>]+>)?/, '')
-  .replace(/<link rel="apple-touch-icon" href="[^"]+"\s*\/?>/, '')
-  .replace(/<link rel="manifest" href="[^"]+"\s*\/?>/, '')
-  .replace(/<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com[^"]+"\s*\/?>/, '')
+html = removeSharedIdentityLinks(html)
   .replace(/<style>[\s\S]*?<\/style>/, '')
   .replace(
     /<div id="root">\s*<div class="loader-container">\s*<div class="loader">[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/,
@@ -106,14 +108,9 @@ if (/<script(?![^>]*\bsrc=)[^>]*>/i.test(html)) throw new Error('App2 CSP requir
 if (!html.includes('Content-Security-Policy')) throw new Error('Failed to inject the App2 CSP');
 if (!html.includes('<div id="root"></div>')) throw new Error('Failed to remove the shared inline loader');
 if (html.includes('loader-container')) throw new Error('Failed to remove all shared loader markup');
-if (html.includes('manifest.json')) throw new Error('Failed to remove the shared main-app manifest');
-if (html.includes('fonts.googleapis.com')) throw new Error('Failed to remove the shared remote font stylesheet');
-const hasAbsoluteAppleTouchIcon = (html.match(/<link\b[^>]*>/gi) ?? []).some(
-  (tag) => /\brel=["']apple-touch-icon["']/i.test(tag) && /\bhref=["']https?:\/\//i.test(tag),
-);
-if (hasAbsoluteAppleTouchIcon) {
-  throw new Error('Failed to remove the shared absolute apple-touch icon');
-}
+if (hasManifestJsonLink(html)) throw new Error('Failed to remove the shared main-app manifest');
+if (hasGoogleFontsLink(html)) throw new Error('Failed to remove the shared remote font stylesheet');
+if (hasAbsoluteAppleTouchIcon(html)) throw new Error('Failed to remove the shared absolute apple-touch icon');
 
 writeFileSync(htmlPath, html);
 console.log('App2 artifact staged with its own CSP and PWA identity.');
