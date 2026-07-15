@@ -8,9 +8,9 @@
 // useTradeQuote.ts). The bank/deposit/card boxes below read straight off that object.
 
 import { useEffect, useState } from 'react';
-import { FiatPaymentMethod, TransactionError, useUser } from '@dfx.swiss/react';
+import { TransactionError, useUser } from '@dfx.swiss/react';
 import type { Blockchain, Buy, Fiat, Sell, Swap } from '@dfx.swiss/react';
-import { formatAmount, formatFiat, isHttpsUrl, shortAddress } from './amount';
+import { formatAmount, formatFiat, shortAddress } from './amount';
 import { mapThrownError, mapTransactionError, fiatFormatter, assetFormatter } from './errors';
 import { chainName } from './blockchain-meta';
 import { QrBill } from './QrBill';
@@ -18,6 +18,7 @@ import type { Mode } from './types';
 import { Sheet, Spinner, useToast } from '../../components/ui';
 import { useT } from '../../i18n';
 import type { TranslationKey } from '../../i18n';
+import { appUrl } from '../../utils/url';
 
 const CHECK_ICON = (
   <svg viewBox="0 0 24 24" fill="none">
@@ -96,7 +97,6 @@ export interface PaymentSheetProps {
   receiveAssetCode: string;
   receiveBlockchain?: Blockchain;
   currency?: Fiat;
-  paymentMethod: FiatPaymentMethod;
   amount: number;
   sessionAddress?: string;
   onRetry: () => void;
@@ -117,13 +117,13 @@ export function PaymentSheet({
   receiveAssetCode,
   receiveBlockchain,
   currency,
-  paymentMethod,
   amount,
   sessionAddress,
   onRetry,
   onReconnect,
 }: PaymentSheetProps) {
   const { t, language } = useT();
+  const setupUrl = appUrl('/');
   const { showToast } = useToast();
   const { updateMail } = useUser();
   const [tab, setTab] = useState<'details' | 'qr'>('details');
@@ -184,7 +184,11 @@ export function PaymentSheet({
           ? invalidityMessage(t, swap, assetFormatter(payAssetCode, language))
           : undefined;
   const validityError = mode === 'buy' ? buy?.error : mode === 'sell' ? sell?.error : swap?.error;
-  const gateKind = thrownError?.kind ?? (validityMessage ? (validityError === TransactionError.EMAIL_REQUIRED ? 'email' : 'setup') : undefined);
+  const isAmountGate =
+    validityError === TransactionError.AMOUNT_TOO_LOW || validityError === TransactionError.AMOUNT_TOO_HIGH;
+  const gateKind =
+    thrownError?.kind ??
+    (validityMessage ? (validityError === TransactionError.EMAIL_REQUIRED ? 'email' : isAmountGate ? 'amount' : 'setup') : undefined);
 
   const sendMail = async () => {
     if (!mailInput.includes('@')) return;
@@ -228,7 +232,6 @@ export function PaymentSheet({
         {!loading && !showGate && mode === 'buy' && buy && (
           <BuyPaymentBox
             buy={buy}
-            paymentMethod={paymentMethod}
             tab={tab}
             setTab={setTab}
             payAmountLabel={formatFiat(buy.amount ?? amount, currencyCode, language)}
@@ -257,7 +260,7 @@ export function PaymentSheet({
         {showGate && (
           <div className="emailgate">
             <div className="paybox-title">
-              {gateKind === 'email' ? t('verifyEmailTitle') : t('setupTitle')}
+              {gateKind === 'email' ? t('verifyEmailTitle') : gateKind === 'amount' ? t('amount') : t('setupTitle')}
             </div>
             <p className="paybox-note" style={{ margin: '6px 0 12px' }}>
               {thrownError?.message ?? validityMessage}
@@ -312,9 +315,9 @@ export function PaymentSheet({
                 <span>{t('retry')}</span>
               </button>
             )}
-            {gateKind === 'setup' && (
+            {gateKind === 'setup' && setupUrl && (
               <a
-                href="https://app.dfx.swiss"
+                href={setupUrl}
                 target="_blank"
                 rel="noopener"
                 style={{ display: 'block', marginTop: 10, textDecoration: 'none' }}
@@ -349,40 +352,16 @@ export function PaymentSheet({
 
 function BuyPaymentBox({
   buy,
-  paymentMethod,
   tab,
   setTab,
   payAmountLabel,
 }: {
   buy: Buy;
-  paymentMethod: FiatPaymentMethod;
   tab: 'details' | 'qr';
   setTab: (tab: 'details' | 'qr') => void;
   payAmountLabel: string;
 }) {
   const { t } = useT();
-  const isCard = paymentMethod === FiatPaymentMethod.CARD;
-
-  if (isCard) {
-    const url = isHttpsUrl(buy.paymentLink) ? buy.paymentLink : undefined;
-    return (
-      <div className="paybox">
-        <div className="paybox-title">{t('cardTitle')}</div>
-        <p className="paybox-note" style={{ margin: '6px 0 12px' }}>
-          {t('cardNote')}
-        </p>
-        {url ? (
-          <button className="btn-primary" onClick={() => window.open(url, '_blank', 'noopener')}>
-            <span>{t('openCard')}</span>
-            {ARROW_ICON}
-          </button>
-        ) : (
-          <div className="paybox-note warn">{t('cardUnavailable')}</div>
-        )}
-      </div>
-    );
-  }
-
   const ref = buy.remittanceInfo || '';
   const hasQr = !!buy.paymentRequest;
   const beneficiary = [

@@ -71,4 +71,4 @@ react-app-rewired build
 
 # CRA uses the main app's shared public template. Strip that public payload, stage only App2's
 # assets, remove the inline loader, and inject the React artifact's CSP/PWA metadata.
-node "$SCRIPT_DIR/postprocess-app2.js"
+REACT_APP_API_URL="$API_URL" node "$SCRIPT_DIR/postprocess-app2.js"
