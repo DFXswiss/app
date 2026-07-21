@@ -258,7 +258,10 @@ export function useMetaMask(): MetaMaskInterface {
     to: string,
     config?: { isWeiAmount?: boolean; gasPrice?: number },
   ): Promise<string> {
-    const gasPrice = config?.gasPrice != null ? BigInt(config.gasPrice) : undefined;
+    // Force legacy (type 0) gas pricing, matching the previous web3-based implementation
+    // (which explicitly nulled out maxFeePerGas/maxPriorityFeePerGas): some MetaMask/chain
+    // combinations misbehave with EIP-1559 fee fields, see #163 (DEV-2129).
+    const gasPrice = config?.gasPrice != null ? BigInt(config.gasPrice) : await publicClient.getGasPrice();
 
     if (asset.type === AssetType.COIN) {
       const hash = await walletClient.sendTransaction({
