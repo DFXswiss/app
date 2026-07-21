@@ -74,36 +74,6 @@ jest.mock('../hooks/web3.hook', () => ({
   }),
 }));
 
-// Mock Web3 - simplified, no window access
-jest.mock('web3', () => {
-  const mockAccount = '0x1234567890123456789012345678901234567890';
-  const MockWeb3: any = function (this: any) {
-    this.eth = {
-      getAccounts: jest.fn().mockResolvedValue([mockAccount]),
-      getChainId: jest.fn().mockResolvedValue(1),
-      requestAccounts: jest.fn().mockResolvedValue([mockAccount]),
-      getBalance: jest.fn().mockResolvedValue('1000000000000000000'),
-      personal: { sign: jest.fn() },
-      sendTransaction: jest.fn(),
-      Contract: jest.fn().mockReturnValue({ methods: {} }),
-    };
-    this.utils = {
-      toChecksumAddress: (addr: string) => addr,
-      toHex: (val: number) => `0x${val.toString(16)}`,
-      toWei: (val: string) => val,
-      fromWei: (val: string) => val,
-    };
-  };
-  MockWeb3.givenProvider = {};
-  MockWeb3.utils = {
-    toChecksumAddress: (addr: string) => addr,
-    toHex: (val: number) => `0x${val.toString(16)}`,
-    toWei: (val: string) => val,
-    fromWei: (val: string) => val,
-  };
-  return MockWeb3;
-});
-
 // Mock react-device-detect
 jest.mock('react-device-detect', () => ({
   isMobile: false,

@@ -3,9 +3,7 @@ import BigNumber from 'bignumber.js';
 import { Buffer } from 'buffer';
 import { useMemo } from 'react';
 import { isMobile } from 'react-device-detect';
-import Web3 from 'web3';
-import { TransactionConfig } from 'web3-core';
-import { Contract } from 'web3-eth-contract';
+import { Address, createPublicClient, createWalletClient, custom, getAddress, parseEther } from 'viem';
 import { AssetBalance } from '../../contexts/balance.context';
 import ERC20_ABI from '../../static/erc20.abi.json';
 import { AbortError } from '../../util/abort-error';
@@ -72,13 +70,23 @@ interface MetaMaskError {
   message: string;
 }
 
+// No injected wallet: defer the error to first use instead of throwing during client setup.
+const noProvider = { request: () => Promise.reject(new Error('No wallet provider available')) };
+
 export function useMetaMask(): MetaMaskInterface {
-  const web3 = useMemo(() => new Web3(Web3.givenProvider), []);
   const { toBlockchain, toChainHex, toChainObject } = useWeb3();
 
   function ethereum() {
     return (window as any).ethereum;
   }
+
+  function provider() {
+    const eth = ethereum();
+    return typeof eth?.request === 'function' ? eth : noProvider;
+  }
+
+  const publicClient = useMemo(() => createPublicClient({ transport: custom(provider()) }), []);
+  const walletClient = useMemo(() => createWalletClient({ transport: custom(provider()) }), []);
 
   function isInstalled(): boolean {
     const eth = ethereum();
@@ -102,12 +110,14 @@ export function useMetaMask(): MetaMaskInterface {
     onAccountChanged: (account?: string) => void,
     onBlockchainChanged: (blockchain?: Blockchain) => void,
   ) {
-    web3.eth.getAccounts((_err, accounts) => {
-      onAccountChanged(verifyAccount(accounts));
-    });
-    web3.eth.getChainId((_err, chainId) => {
-      onBlockchainChanged(toBlockchain(chainId));
-    });
+    walletClient
+      .getAddresses()
+      .then((accounts) => onAccountChanged(verifyAccount(accounts)))
+      .catch(() => onAccountChanged(undefined));
+    publicClient
+      .getChainId()
+      .then((chainId) => onBlockchainChanged(toBlockchain(chainId)))
+      .catch(() => onBlockchainChanged(undefined));
     ethereum()?.on('accountsChanged', (accounts: string[]) => {
       onAccountChanged(verifyAccount(accounts));
     });
@@ -117,7 +127,7 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function getAccount(): Promise<string | undefined> {
-    return verifyAccount(await web3.eth.getAccounts());
+    return verifyAccount(await walletClient.getAddresses());
   }
 
   async function checkConnection(): Promise<void> {
@@ -128,7 +138,7 @@ export function useMetaMask(): MetaMaskInterface {
     await checkConnection();
 
     try {
-      const accounts = await web3.eth.requestAccounts();
+      const accounts = await walletClient.requestAddresses();
       return verifyAccount(accounts);
     } catch (e) {
       handleError(e as MetaMaskError);
@@ -136,7 +146,7 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function requestBlockchain(): Promise<Blockchain | undefined> {
-    return toBlockchain(await web3.eth.getChainId());
+    return toBlockchain(await publicClient.getChainId());
   }
 
   async function requestChangeToBlockchain(blockchain?: Blockchain): Promise<void> {
@@ -167,11 +177,11 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function requestBalance(account: string): Promise<string | undefined> {
-    return web3.eth.getBalance(account);
+    return (await publicClient.getBalance({ address: account as Address })).toString();
   }
 
   async function sign(address: string, message: string): Promise<string> {
-    return web3.eth.personal.sign(message, address, '').catch(handleError);
+    return walletClient.signMessage({ account: address as Address, message }).catch(handleError);
   }
 
   async function addContract(asset: Asset, svgData: string, currentBlockchain?: Blockchain): Promise<boolean> {
@@ -179,10 +189,9 @@ export function useMetaMask(): MetaMaskInterface {
       await requestChangeToBlockchain(asset.blockchain);
       return false;
     }
-    const tokenContract = createContract(asset.chainId);
 
-    const symbol = await tokenContract.methods.symbol().call();
-    const decimals = await tokenContract.methods.decimals().call();
+    const symbol = await readErc20(asset.chainId, 'symbol');
+    const decimals = await readErc20(asset.chainId, 'decimals');
 
     return ethereum().request({
       method: 'wallet_watchAsset',
@@ -199,14 +208,18 @@ export function useMetaMask(): MetaMaskInterface {
     });
   }
 
-  function verifyAccount(accounts: string[]): string | undefined {
+  function verifyAccount(accounts: readonly string[]): string | undefined {
     if ((accounts?.length ?? 0) <= 0) return undefined;
     // check if address is valid
-    return Web3.utils.toChecksumAddress(accounts[0]);
+    return getAddress(accounts[0]);
   }
 
-  function toUsableNumber(balance: any, decimals = 18): BigNumber {
+  function toUsableNumber(balance: BigNumber.Value, decimals = 18): BigNumber {
     return new BigNumber(balance).dividedBy(Math.pow(10, decimals));
+  }
+
+  function readErc20(tokenAddress: string | undefined, functionName: 'symbol' | 'decimals'): Promise<any> {
+    return publicClient.readContract({ address: tokenAddress as Address, abi: ERC20_ABI, functionName });
   }
 
   async function readBalance(asset: Asset, address?: string, throwExceptions?: boolean): Promise<AssetBalance> {
@@ -218,15 +231,19 @@ export function useMetaMask(): MetaMaskInterface {
 
     try {
       if (asset.type === AssetType.COIN) {
-        return web3.eth.getBalance(address).then((balance) => ({ asset, amount: toUsableNumber(balance).toNumber() }));
+        return publicClient
+          .getBalance({ address: address as Address })
+          .then((balance) => ({ asset, amount: toUsableNumber(balance.toString()).toNumber() }));
       }
 
-      const tokenContract = createContract(asset.chainId);
-      const decimals = await tokenContract.methods.decimals().call();
-      return await tokenContract.methods
-        .balanceOf(address)
-        .call()
-        .then((balance: any) => ({ asset, amount: toUsableNumber(balance, decimals).toNumber() }));
+      const decimals = await readErc20(asset.chainId, 'decimals');
+      const balance = (await publicClient.readContract({
+        address: asset.chainId as Address,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [address as Address],
+      })) as bigint;
+      return { asset, amount: toUsableNumber(balance.toString(), decimals).toNumber() };
     } catch (e) {
       if (throwExceptions) throw e;
 
@@ -241,35 +258,40 @@ export function useMetaMask(): MetaMaskInterface {
     to: string,
     config?: { isWeiAmount?: boolean; gasPrice?: number },
   ): Promise<string> {
-    if (asset.type === AssetType.COIN) {
-      const transactionData: TransactionConfig = {
-        from,
-        to,
-        value: config?.isWeiAmount ? amount.toString() : web3.utils.toWei(amount.toString(), 'ether'),
-        maxPriorityFeePerGas: null as any,
-        maxFeePerGas: null as any,
-        gasPrice: config?.gasPrice,
-      };
+    const gasPrice = config?.gasPrice != null ? BigInt(config.gasPrice) : undefined;
 
-      return web3.eth.sendTransaction(transactionData).then((value) => value.transactionHash);
+    if (asset.type === AssetType.COIN) {
+      const hash = await walletClient.sendTransaction({
+        account: from as Address,
+        chain: null,
+        to: to as Address,
+        value: config?.isWeiAmount ? BigInt(amount.toString()) : parseEther(amount.toString()),
+        gasPrice,
+      });
+
+      await publicClient.waitForTransactionReceipt({ hash });
+      return hash;
     } else {
-      const tokenContract = createContract(asset.chainId);
+      const decimals = await readErc20(asset.chainId, 'decimals');
 
       let adjustedAmount = amount.toString();
       if (!config?.isWeiAmount) {
-        const decimals = await tokenContract.methods.decimals().call();
-        adjustedAmount = amount.multipliedBy(Math.pow(10, decimals)).toFixed();
+        adjustedAmount = amount.multipliedBy(Math.pow(10, decimals)).toFixed(0);
       }
 
-      return tokenContract.methods
-        .transfer(to, adjustedAmount)
-        .send({ from, maxPriorityFeePerGas: null, maxFeePerGas: null, gasPrice: config?.gasPrice })
-        .then((value: any) => value.transactionHash);
-    }
-  }
+      const hash = await walletClient.writeContract({
+        account: from as Address,
+        chain: null,
+        address: asset.chainId as Address,
+        abi: ERC20_ABI,
+        functionName: 'transfer',
+        args: [to as Address, BigInt(adjustedAmount)],
+        gasPrice,
+      });
 
-  function createContract(chainId?: string): Contract {
-    return new web3.eth.Contract(ERC20_ABI as any, chainId);
+      await publicClient.waitForTransactionReceipt({ hash });
+      return hash;
+    }
   }
 
   /**
@@ -426,6 +448,6 @@ export function useMetaMask(): MetaMaskInterface {
       supportsEip5792Paymaster,
       signEip7702Authorization,
     }),
-    [web3, toBlockchain, toChainHex, toChainObject],
+    [publicClient, walletClient, toBlockchain, toChainHex, toChainObject],
   );
 }

@@ -1,6 +1,6 @@
 import { Blockchain } from '@dfx.swiss/react';
 import { useMemo } from 'react';
-import Web3 from 'web3';
+import { numberToHex } from 'viem';
 
 export interface Web3Interface {
   toBlockchain: (chainId: string | number) => Blockchain | undefined;
@@ -38,10 +38,8 @@ export function useWeb3(): Web3Interface {
   }
 
   function toChainHex(blockchain: Blockchain): string | undefined {
-    const web3 = new Web3(Web3.givenProvider);
-
     const id = toChainId(blockchain);
-    return id && web3.utils.toHex(id);
+    return id != null ? numberToHex(Number(id)) : undefined;
   }
 
   function toChainId(blockchain: Blockchain): string | undefined {

@@ -19,3 +19,8 @@ configure({ asyncUtilTimeout: 5000 });
 // 5000 ms" and no diagnostic detail. react-scripts does not accept testTimeout in the jest
 // section of package.json (supportedKeys in createJestConfig.js omits it), so set it here.
 jest.setTimeout(15000);
+
+// jsdom doesn't provide TextEncoder/TextDecoder, which viem needs at import time.
+import { TextDecoder, TextEncoder } from 'util';
+global.TextEncoder ??= TextEncoder;
+global.TextDecoder ??= TextDecoder as typeof global.TextDecoder;
