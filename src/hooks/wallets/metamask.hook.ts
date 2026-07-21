@@ -231,9 +231,8 @@ export function useMetaMask(): MetaMaskInterface {
 
     try {
       if (asset.type === AssetType.COIN) {
-        return publicClient
-          .getBalance({ address: address as Address })
-          .then((balance) => ({ asset, amount: toUsableNumber(balance.toString()).toNumber() }));
+        const balance = await publicClient.getBalance({ address: address as Address });
+        return { asset, amount: toUsableNumber(balance.toString()).toNumber() };
       }
 
       const decimals = await readErc20(asset.chainId, 'decimals');
@@ -258,9 +257,11 @@ export function useMetaMask(): MetaMaskInterface {
     to: string,
     config?: { isWeiAmount?: boolean; gasPrice?: number },
   ): Promise<string> {
-    // Force legacy (type 0) gas pricing, matching the previous web3-based implementation
-    // (which explicitly nulled out maxFeePerGas/maxPriorityFeePerGas): some MetaMask/chain
-    // combinations misbehave with EIP-1559 fee fields, see #163 (DEV-2129).
+    // Always resolve an explicit gasPrice and never set maxFeePerGas/maxPriorityFeePerGas,
+    // mirroring the previous web3-based implementation's approach to the same problem
+    // (which explicitly nulled out both EIP-1559 fields): some MetaMask/chain combinations
+    // misbehaved with EIP-1559 fee fields, see #163 (DEV-2129). Not independently verified
+    // against a live wallet in this port — see PR test plan.
     const gasPrice = config?.gasPrice != null ? BigInt(config.gasPrice) : await publicClient.getGasPrice();
 
     if (asset.type === AssetType.COIN) {
