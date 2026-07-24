@@ -1,3 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" class="web3icons">
-    <path fill="#000" d="M4 16.608v-4.18l3.569-1.452V4.467L11.116 3v10.69zm16 .036v-4.175l-3.569-1.457v-6.51l-3.547-1.457v10.68zm-7.99-1.493-7.094 2.935L12.006 21l7.115-2.93z"/>
+    <g clip-path="url(#bitbox__a)">
+        <path fill="#fff" d="M24 0H0v24h24z"/>
+        <path fill="#000" d="M5 16.096v-3.715l3.123-1.29V5.303L11.226 4v9.501zm14 .032v-3.711l-3.123-1.295V5.336L12.775 4.04v9.493zM12.01 14.8l-6.209 2.61L12.005 20l6.226-2.604z"/>
+    </g>
+    <defs>
+        <clipPath id="bitbox__a">
+            <path fill="#fff" d="M0 0h24v24H0z"/>
+        </clipPath>
+    </defs>
 </svg>
