@@ -24,6 +24,7 @@ import {
 } from '@dfx.swiss/react';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { OcpMark } from '../../components/brand';
 import { useToast } from '../../components/ui';
 import { useT, type TranslationKey } from '../../i18n';
 import { useWalletSession } from '../../wallets/session';
@@ -59,15 +60,9 @@ const BACK_ICON = (
   </svg>
 );
 
-// Brand mark for the hero badge. NOTE: the static preview loads the real
-// `brand/ocp-logo-white.svg`; that asset isn't vendored into app2 yet, so this
-// Lightning glyph stands in (white on the badge's gradient). Swap for the real
-// OpenCryptoPay logo SVG when it lands under assets/brand/.
-const OCP_BADGE = (
-  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M13 2 4 14h7l-1 8 9-12h-7z" stroke="#fff" strokeWidth={1.7} strokeLinejoin="round" />
-  </svg>
-);
+// Brand mark for the hero badge — the official Open CryptoPay mark (components/brand.tsx),
+// white on the badge's OCP-blue gradient, replacing the Lightning stand-in.
+const OCP_BADGE = <OcpMark />;
 
 const COPY_ICON = (
   <svg viewBox="0 0 24 24" fill="none">

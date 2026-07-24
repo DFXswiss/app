@@ -13,6 +13,29 @@ jest.mock('@dfx.swiss/react', () => ({
     BITCOIN: 'Bitcoin',
     ETHEREUM: 'Ethereum',
     ARBITRUM: 'Arbitrum',
+    // Chains the wallet catalog pins its entries to (walletIconFor test below).
+    LIGHTNING: 'Lightning',
+    SOLANA: 'Solana',
+    TRON: 'Tron',
+    CARDANO: 'Cardano',
+    INTERNET_COMPUTER: 'InternetComputer',
+  },
+  // Real values from @dfx.swiss/core (definitions/auth.js) — several catalog entries share
+  // AuthWalletType.CLI, which is exactly what the walletIconFor precedence test covers.
+  AuthWalletType: {
+    METAMASK: 'MetaMask',
+    RABBY: 'Rabby',
+    WALLET_BROWSER: 'WalletBrowser',
+    TRUST: 'Trust',
+    PHANTOM: 'Phantom',
+    TRON_LINK: 'TronLink',
+    CLI: 'CLI',
+    LEDGER: 'Ledger',
+    BIT_BOX: 'BitBox',
+    TREZOR: 'Trezor',
+    ALBY: 'Alby',
+    WALLET_CONNECT: 'WalletConnect',
+    DFX_TARO: 'DfxTaro',
   },
   FiatPaymentMethod: {
     BANK: 'Bank',
@@ -55,6 +78,7 @@ import {
 import { findSendCandidate, shouldSyncSupportIssue } from '../screens/support-delivery';
 import { appUrl, isSafeAppUrl } from '../utils/url';
 import { normalizeInviteCode } from '../wallets/invite';
+import { walletIconFor } from '../wallets/catalog';
 import { clearWalletConnectStorage } from '../wallets/storage';
 import type { SupportIssue, SupportMessage } from '@dfx.swiss/react';
 
@@ -209,6 +233,22 @@ describe('App2 review regressions', () => {
     expect(shouldSyncSupportIssue('issue-1', emptyIssue)).toBe(false);
     expect(shouldSyncSupportIssue('issue-1', populatedIssue)).toBe(true);
     expect(shouldSyncSupportIssue('another-issue', populatedIssue)).toBe(false);
+  });
+
+  it('resolves a wallet icon by its own identity before a shared walletType', () => {
+    // The Cardano entry authenticates via the CLI contract (walletType CLI) and is listed
+    // before the CLI entry, so a single fuzzy pass answered every CLI wallet with the Cardano
+    // logo — DFX Wallet showed the ADA mark in the wallet bar and the switcher.
+    const cli = walletIconFor('CLI');
+    const cardano = walletIconFor('Cardano');
+
+    expect(cli).toBeDefined();
+    expect(cardano).toBeDefined();
+    expect(cli).not.toBe(cardano);
+    // Fuzzy matching still resolves vendor variants, and unknown wallets stay undefined so the
+    // caller can fall back to its own glyph.
+    expect(walletIconFor('MetaMask Mobile')).toBe(walletIconFor('MetaMask'));
+    expect(walletIconFor('Some Partner Wallet')).toBeUndefined();
   });
 
   it('matches only the optimistic support message created by the active send attempt', () => {
