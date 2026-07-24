@@ -66,7 +66,12 @@ export function useModalDialog<T extends HTMLElement>(
       'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
     const focusFirst = window.requestAnimationFrame(() => {
       const first = dialog.querySelector<HTMLElement>(focusableSelector);
-      (first ?? dialog).focus();
+      // preventScroll: the sheets are position:absolute; bottom:0 anchored to the
+      // (overflow:hidden but programmatically scrollable) `.app` frame. A plain
+      // focus() lets the browser scroll `.app` to reveal the focused control,
+      // which drags every bottom-anchored sheet up with it — clipping the first
+      // list item off the top and exposing the next closed sheet at the bottom.
+      (first ?? dialog).focus({ preventScroll: true });
     });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -80,17 +85,17 @@ export function useModalDialog<T extends HTMLElement>(
       );
       if (!focusable.length) {
         event.preventDefault();
-        dialog.focus();
+        dialog.focus({ preventScroll: true });
         return;
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
         event.preventDefault();
-        last.focus();
+        last.focus({ preventScroll: true });
       } else if (!event.shiftKey && document.activeElement === last) {
         event.preventDefault();
-        first.focus();
+        first.focus({ preventScroll: true });
       }
     };
     document.addEventListener('keydown', onKeyDown, true);
@@ -100,7 +105,7 @@ export function useModalDialog<T extends HTMLElement>(
       previousInert.forEach((wasInert, element) => {
         element.inert = wasInert;
       });
-      if (previousFocus?.isConnected) previousFocus.focus();
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
   }, [open, scrimRef]);
 

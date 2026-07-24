@@ -80,8 +80,17 @@ export function FeesPanel({
     ? formatFiat(quote.estimatedAmount, currencyCode, language)
     : `${formatAmount(quote.estimatedAmount, recvPrecision, language)} ${recvCode}`;
 
-  const bank = fees.bank ?? 0;
+  const bank = fees.bank ?? (fees.bankFixed ?? 0) + (fees.bankVariable ?? 0);
 
+  // collapsed summary rate — "1 {code} ≈ {value}" (orig 3728-3730); for sell/swap it is derived
+  // from the quote amounts, not exchangeRate (direction-dependent semantics differ)
+  const summaryRate = isSwap
+    ? `1 ${payAssetCode} ≈ ${formatAmount(quote.amount ? quote.estimatedAmount / quote.amount : 0, 6, language)} ${receiveAssetCode}`
+    : mode === 'buy'
+      ? `1 ${receiveAssetCode} ≈ ${formatFiat(quote.exchangeRate, currencyCode, language)}`
+      : `1 ${payAssetCode} ≈ ${formatFiat(quote.amount && quote.estimatedAmount ? quote.estimatedAmount / quote.amount : 0, currencyCode, language)}`;
+
+  // expanded breakdown rate row — "{value} / {code}" (orig 3740)
   const rateStr = isSwap
     ? `${formatAmount(quote.exchangeRate, 6, language)} ${receiveAssetCode} / ${payAssetCode}`
     : mode === 'buy'
@@ -93,7 +102,7 @@ export function FeesPanel({
       <summary>
         <span className="l">
           {SHIELD_ICON}
-          <span>{t('totalFee')}</span>
+          <span>{summaryRate}</span>
         </span>
         <span className="r">
           <span className="chip-good">{fv(fees.total ?? 0)}</span>
@@ -106,11 +115,12 @@ export function FeesPanel({
           label={`${t('fDfx')}${fees.rate ? ` · ${(fees.rate * 100).toFixed(2)}%` : ''}`}
           value={`−${fv(fees.dfx ?? 0)}`}
         />
-        {bank > 0 ? (
-          <FeeRow label={t('bankFee')} value={`−${fv(bank)}`} />
-        ) : (
-          isSell && <FeeRow label={t('bankFee')} value={t('free')} cls="pos" />
-        )}
+        {!isSwap &&
+          (bank > 0 ? (
+            <FeeRow label={t('bankFee')} value={`−${fv(bank)}`} />
+          ) : (
+            isSell && <FeeRow label={t('bankFee')} value={t('free')} cls="pos" />
+          ))}
         {fees.network > 0 ? (
           <FeeRow label={t('fNet')} value={`−${fv(fees.network)}`} />
         ) : (

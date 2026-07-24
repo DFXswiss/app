@@ -188,7 +188,13 @@ export function PaymentSheet({
     validityError === TransactionError.AMOUNT_TOO_LOW || validityError === TransactionError.AMOUNT_TOO_HIGH;
   const gateKind =
     thrownError?.kind ??
-    (validityMessage ? (validityError === TransactionError.EMAIL_REQUIRED ? 'email' : isAmountGate ? 'amount' : 'setup') : undefined);
+    (validityMessage
+      ? validityError === TransactionError.EMAIL_REQUIRED
+        ? 'email'
+        : isAmountGate
+          ? 'amount'
+          : 'setup'
+      : undefined);
 
   const sendMail = async () => {
     if (!mailInput.includes('@')) return;
