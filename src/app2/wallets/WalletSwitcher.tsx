@@ -78,12 +78,9 @@ function SwitchRow({
     >
       <span className="swlogo">
         {entry.icon && !logoFailed ? (
-          <img
-            src={entry.icon}
-            alt=""
-            onError={() => setLogoFailed(true)}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
+          // Sizing/fit comes from `.swrow .swlogo img` (26px, object-fit: contain); an inline
+          // 100%/cover cropped brand marks to the tile edges.
+          <img src={entry.icon} alt="" onError={() => setLogoFailed(true)} />
         ) : (
           <b style={{ font: '700 15px/1 Inter, sans-serif', color: '#16456f' }}>
             {(entry.name || entry.walletType || 'W').slice(0, 1).toUpperCase()}

@@ -277,20 +277,32 @@ function normalizeWalletKey(value: string): string {
 
 /** Best-effort brand icon for a wallet name / AuthWalletType — used by the wallet bar and the
  * switch-wallet rows. Returns undefined for wallets not in the catalog (e.g. partner wallets),
- * which then fall back to a generic wallet glyph. */
+ * which then fall back to a generic wallet glyph.
+ *
+ * Matching runs in precedence order, because several entries share an AuthWalletType and a
+ * loose prefix match hits the wrong brand otherwise: the Cardano entry authenticates via the
+ * CLI contract (walletType CLI) and sits *before* the CLI entry, so a plain single-pass scan
+ * answered every CLI wallet — including DFX Wallet — with the Cardano logo. Own identity
+ * (id/name) beats a shared walletType, and only then do we fall back to the fuzzy prefix
+ * match that keeps variants like "MetaMask Mobile" resolving. */
 export function walletIconFor(nameOrType?: string): string | undefined {
   if (!nameOrType) return undefined;
   const key = normalizeWalletKey(nameOrType);
   if (!key) return undefined;
-  for (const group of WALLET_CATALOG) {
-    for (const entry of group.items) {
-      const candidates = [entry.walletType, entry.id, entry.name]
-        .filter((value): value is string => Boolean(value))
-        .map(normalizeWalletKey);
-      if (candidates.some((c) => c === key || c.startsWith(key) || key.startsWith(c))) return entry.icon;
-    }
-  }
-  return undefined;
+  const entries = WALLET_CATALOG.flatMap((group) => group.items);
+  const exactIdentity = entries.find((entry) =>
+    [entry.id, entry.name].some((value) => normalizeWalletKey(value) === key),
+  );
+  if (exactIdentity) return exactIdentity.icon;
+  const exactType = entries.find((entry) => entry.walletType && normalizeWalletKey(entry.walletType) === key);
+  if (exactType) return exactType.icon;
+  const fuzzy = entries.find((entry) =>
+    [entry.walletType, entry.id, entry.name]
+      .filter((value): value is string => Boolean(value))
+      .map(normalizeWalletKey)
+      .some((c) => c.startsWith(key) || key.startsWith(c)),
+  );
+  return fuzzy?.icon;
 }
 
 /** Catalog entry for a given AuthWalletType, used to re-authenticate a remembered wallet that

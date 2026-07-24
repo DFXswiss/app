@@ -2,10 +2,11 @@
 //
 // Ported from the static app's `#confirmSheet` (public/app2/index.html: `showConfirm()`,
 // `loadPaymentInfo()`/`loadCardInfo()`/`loadSellInfo()`/`loadSwapInfo()`, `renderGate()`).
-// One real difference from the static app: `receiveFor(...)` (useBuy/useSell/useSwap) already
-// *is* the payment-info response — there's no separate paymentInfos fetch once this sheet
-// opens, it just renders the quote object the trade screen already holds (see
-// useTradeQuote.ts). The bank/deposit/card boxes below read straight off that object.
+// This sheet fetches nothing itself: the trade screen runs the authenticated payment-details
+// request (`receiveFor(...)` → PUT .../paymentInfos, see useTradeQuote.ts) when the user taps
+// the CTA and hands the settled response — or its account-gate error — in as a frozen
+// snapshot. The bank/deposit/card boxes below read straight off that object, and `onRetry`
+// re-runs that same request (never the panel's public display quote).
 
 import { useEffect, useState } from 'react';
 import { TransactionError, useUser } from '@dfx.swiss/react';
@@ -23,6 +24,12 @@ import { appUrl } from '../../utils/url';
 const CHECK_ICON = (
   <svg viewBox="0 0 24 24" fill="none">
     <path d="M5 12l4 4 10-10" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+const ALERT_ICON = (
+  <svg viewBox="0 0 24 24" fill="none">
+    <circle cx={12} cy={12} r={9} stroke="currentColor" strokeWidth={2} />
+    <path d="M12 7.5v5.5M12 16.5h.01" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" />
   </svg>
 );
 const COPY_ICON = (
@@ -183,12 +190,17 @@ export function PaymentSheet({
         : mode === 'swap' && swap
           ? invalidityMessage(t, swap, assetFormatter(payAssetCode, language))
           : undefined;
-  const validityError = mode === 'buy' ? buy?.error : mode === 'sell' ? sell?.error : swap?.error;
+  const quote = mode === 'buy' ? buy : mode === 'sell' ? sell : swap;
+  const validityError = quote?.error;
+  /** Fail closed: a quote the API marked invalid must never get payment details rendered, even
+   * if it arrives without the `error` field the message mapping needs (the API always sets one
+   * today — this is the guard, not the diagnosis). */
+  const isInvalidQuote = quote?.isValid === false;
   const isAmountGate =
     validityError === TransactionError.AMOUNT_TOO_LOW || validityError === TransactionError.AMOUNT_TOO_HIGH;
   const gateKind =
     thrownError?.kind ??
-    (validityMessage
+    (validityMessage || isInvalidQuote
       ? validityError === TransactionError.EMAIL_REQUIRED
         ? 'email'
         : isAmountGate
@@ -210,14 +222,17 @@ export function PaymentSheet({
     }
   };
 
-  const showGate = !loading && (thrownError || validityMessage);
+  const showGate = !loading && (thrownError || validityMessage || isInvalidQuote);
 
   return (
     <Sheet open={open} onClose={onClose} titleId={titleId}>
       <div className="confirm">
-        <div className="confirm-ic">{CHECK_ICON}</div>
+        {/* The header must not promise a payment the sheet isn't showing: with a gate up
+            (e-mail/KYC/amount) there is no "amount below" to transfer, and the green tick reads
+            as confirmation. The gate box carries its own title + instruction. */}
+        <div className={`confirm-ic${showGate ? ' gate' : ''}`}>{showGate ? ALERT_ICON : CHECK_ICON}</div>
         <h3 id={titleId}>{title}</h3>
-        <p className="csub">{sub}</p>
+        {!showGate && <p className="csub">{sub}</p>}
 
         {rows.length > 0 && (
           <div className="glass rowlist" style={{ margin: '16px 0 4px' }}>
@@ -269,7 +284,9 @@ export function PaymentSheet({
               {gateKind === 'email' ? t('verifyEmailTitle') : gateKind === 'amount' ? t('amount') : t('setupTitle')}
             </div>
             <p className="paybox-note" style={{ margin: '6px 0 12px' }}>
-              {thrownError?.message ?? validityMessage}
+              {/* `needSetup` is the fallback for the fail-closed case above: an invalid quote
+                  with no mappable reason still gets a sentence, never an empty gate. */}
+              {thrownError?.message ?? validityMessage ?? t('needSetup')}
             </p>
             {gateKind === 'email' && !mailSent && (
               <div className="efield">

@@ -6,6 +6,7 @@ import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
+import { OcpMark } from './brand';
 import { useModalDialog, useToast } from './ui';
 
 type MenuAction =
@@ -146,12 +147,10 @@ const MENU: MenuGroup[] = [
       {
         key: 'mOcp',
         action: { kind: 'route', path: '/ocp' },
-        icon: (
-          <svg {...ICON_PROPS}>
-            <path d="M7 7l5-3 5 3v6l-5 3-5-3z" stroke="currentColor" strokeWidth={1.7} strokeLinejoin="round" />
-            <path d="M12 4v9" stroke="currentColor" strokeWidth={1.7} />
-          </svg>
-        ),
+        // The product's own mark instead of a generic cube — it's the one menu entry that
+        // stands for a separate brand. Single-color via currentColor, so it sits in the row
+        // with the same weight as the stroke icons around it.
+        icon: <OcpMark className="ocp-mark" />,
       },
       {
         key: 'payRoutes',
