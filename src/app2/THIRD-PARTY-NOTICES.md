@@ -19,4 +19,8 @@ There are no separately vendored browser bundles or WebAssembly files in App 2.0
 ## Icons
 - **Wallet & brand logos** (`assets/wallets/`) — trademarks of their respective owners,
   included solely to identify supported wallets/networks.
+- **DFX mark** (`assets/brand/dfx-mark.svg`) — DFX Services AG, taken from the app's own
+  `assets/brand/logo-dark.svg` artwork.
+- **Open CryptoPay mark** (`components/brand.tsx` › `OcpMark`) — Open CryptoPay Association
+  logo, used per its brand guidelines to identify the OpenCryptoPay merchant suite.
 - **Country flags** (`assets/flags/`) — flag-icons, MIT License.

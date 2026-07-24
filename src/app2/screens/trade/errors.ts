@@ -82,9 +82,23 @@ export function mapTransactionError(
     case TransactionError.IBAN_CURRENCY_MISMATCH:
       return t('ibanInvalid');
     default:
-      return t('needSetup');
+      // The quote endpoints answer an unsupported combination with values the SDK enum doesn't
+      // know (`AssetUnsupported`/`CurrencyUnsupported`/`PaymentMethodNotAllowed`, see api ›
+      // QuoteError). Telling that user to finish their account setup would send them off to fix
+      // something that isn't broken — the combination is.
+      return COMBINATION_ERRORS.has(String(error)) ? t('comboUnavailable') : t('needSetup');
   }
 }
+
+/** Raw `QuoteError` values that mean "this asset/currency/payment-method combination", not
+ * "your account". Compared as strings because they are absent from the SDK's TransactionError. */
+const COMBINATION_ERRORS = new Set([
+  'AssetUnsupported',
+  'CurrencyUnsupported',
+  'PaymentMethodNotAllowed',
+  'CountryNotAllowed',
+  'NationalityNotAllowed',
+]);
 
 /** Convenience formatters for `mapTransactionError`'s `format` param. */
 export function fiatFormatter(currencyCode: string, language: Language): (n: number) => string {

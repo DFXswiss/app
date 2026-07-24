@@ -336,8 +336,13 @@ const FIAT_FLAG: Record<string, string> = { EUR: flagEu, CHF: flagCh, USD: flagU
 
 /** `.glyph>.coin` for a fiat currency — a round country flag for EUR/CHF/USD/GBP (matching the
  * static app's `fiatPillHTML`/currency picker rows); anything else falls back to the currency
- * symbol on a colored circle (EUR/CHF/USD/GBP symbol + brand color, else its first letter). */
-export function FiatGlyph({ code, size = 30 }: { code: string; size?: number }) {
+ * symbol on a colored circle (EUR/CHF/USD/GBP symbol + brand color, else its first letter).
+ *
+ * Same 38px default as AssetGlyph: the pay pill (fiat) and the receive pill (asset) sit above
+ * each other in the buy/sell panels and the pill height is driven purely by its glyph, so a
+ * smaller fiat glyph made the fiat pill visibly shorter than the asset pill. Same for the
+ * fiat vs. asset picker rows. */
+export function FiatGlyph({ code, size = 38 }: { code: string; size?: number }) {
   const flag = FIAT_FLAG[code];
   if (flag) return <img className="coin" src={flag} width={size} height={size} alt="" style={coinImgStyle} />;
   const symbol = FIAT_SYMBOL[code] ?? (code ? code[0] : '¤');
