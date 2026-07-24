@@ -16,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Blockchain,
   FiatPaymentMethod,
+  TransactionError,
   useAssetContext,
   useBankAccountContext,
   useFiatContext,
@@ -29,7 +30,7 @@ import { PaymentMethodPicker, paymentMethodsFor } from '../components/pickers/Pa
 import { useToast } from '../components/ui';
 import { formatAmount, formatFiat, parseAmt, quickChipSymbol } from './trade/amount';
 import { assetFor, availableAssets, groupAssets, heldBalance, parseBalances, shownChainsFor } from './trade/asset-pool';
-import { chainName } from './trade/blockchain-meta';
+import { chainName, isStableAsset } from './trade/blockchain-meta';
 import { currenciesForBuy, currenciesForSell } from './trade/capabilities';
 import { assetFormatter, fiatFormatter, mapThrownError, mapTransactionError } from './trade/errors';
 import { AssetChainGlyph, FiatGlyph } from './trade/glyphs';
@@ -42,6 +43,13 @@ import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 
 const MODES: Mode[] = ['buy', 'sell', 'swap'];
+
+/** A fresh 200 quote whose `isValid:false` is specifically a min/max-volume rejection — the only
+ * validity case the static app surfaces inline in the "You receive" meta line (its `!ok &&
+ * q.minVolume` branch). Account-state validity errors (KYC/email/limit/…) are left to the payment
+ * sheet's gate UI, exactly as in the static app's `startQuoteCountdown()` fall-through. */
+const isAmountValidityError = (error: TransactionError | undefined): boolean =>
+  error === TransactionError.AMOUNT_TOO_LOW || error === TransactionError.AMOUNT_TOO_HIGH;
 const QUICK_FIAT_AMOUNTS = [50, 100, 250, 500];
 
 const CHEVRON_RIGHT = (
@@ -93,7 +101,7 @@ export default function HomeScreen() {
   const [buyChain, setBuyChain] = useState<Blockchain>();
   const [buyFiat, setBuyFiat] = useState<Fiat>();
   const [buyMethod, setBuyMethod] = useState<FiatPaymentMethod>(FiatPaymentMethod.BANK);
-  const [buyRaw, setBuyRaw] = useState('');
+  const [buyRaw, setBuyRaw] = useState('100');
 
   const [sellAsset, setSellAsset] = useState<TradeAsset>();
   const [sellChain, setSellChain] = useState<Blockchain>();
@@ -294,7 +302,6 @@ export default function HomeScreen() {
               assetFormatter(swapFromAsset?.code ?? '', language),
             )
           : undefined;
-  const activeErrorMessage = activeThrownError?.message ?? activeValidityMessage;
   const canOpenGate = Boolean(activeValidityMessage || activeThrownError);
 
   // ---- CTA -------------------------------------------------------------------------------
@@ -413,35 +420,77 @@ export default function HomeScreen() {
 
   // ---- receive-panel display --------------------------------------------------------------
   // Home only renders once logged in (see the early `<Landing/>` return below), so — matching
-  // the static app's own updateQuote() — an empty/zero amount reads "0". Sell uses a dash while
-  // waiting for the mandatory payout account; only settled requests can produce quote errors.
+  // the static app's own updateQuote() — an empty/zero amount reads "0". Sell shows its live
+  // rate before any payout account is chosen (the IBAN is gated at confirm, not here); only
+  // settled requests can produce quote errors.
   let receiveValue = '0';
   let receiveMeta = '';
+  // True only for the live "Refreshes in Ns" countdown — the static app wraps that (and only that)
+  // in `<span class="qcount">` for the tabular/dimmed styling; other meta text stays unwrapped.
+  let receiveMetaCountdown = false;
   if (mode === 'buy') {
     if (!buyAmount) receiveValue = '0';
     else if (buyQuote.loading) receiveValue = '…';
-    else if (buyQuote.data && buyQuote.isFresh) {
+    else if (
+      buyQuote.data &&
+      buyQuote.isFresh &&
+      buyQuote.data.isValid === false &&
+      isAmountValidityError(buyQuote.data.error)
+    ) {
+      receiveValue = '—';
+      if (activeValidityMessage) receiveMeta = activeValidityMessage;
+    } else if (buyQuote.data && buyQuote.isFresh) {
       receiveValue = formatAmount(buyQuote.data.estimatedAmount, 8, language);
-      receiveMeta = buyQuote.secondsLeft > 0 ? t('quoteRefresh', { n: buyQuote.secondsLeft }) : '';
-    } else receiveValue = t('quoteErr');
+      if (buyQuote.secondsLeft > 0) {
+        receiveMeta = t('quoteRefresh', { n: buyQuote.secondsLeft });
+        receiveMetaCountdown = true;
+      }
+    } else {
+      receiveValue = '—';
+      receiveMeta = t('quoteErr');
+    }
   } else if (mode === 'sell') {
     if (!sellAmount) receiveValue = '0';
-    else if (!sellBankAccount) {
-      receiveValue = '—';
-      receiveMeta = t('sellNeedIbanTitle');
-    }
     else if (sellQuote.loading) receiveValue = '…';
-    else if (sellQuote.data && sellQuote.isFresh) {
+    else if (
+      sellQuote.data &&
+      sellQuote.isFresh &&
+      sellQuote.data.isValid === false &&
+      isAmountValidityError(sellQuote.data.error)
+    ) {
+      receiveValue = '—';
+      if (activeValidityMessage) receiveMeta = activeValidityMessage;
+    } else if (sellQuote.data && sellQuote.isFresh) {
       receiveValue = formatFiat(sellQuote.data.estimatedAmount, sellFiat?.name ?? '', language);
-      receiveMeta = sellQuote.secondsLeft > 0 ? t('quoteRefresh', { n: sellQuote.secondsLeft }) : '';
-    } else receiveValue = t('quoteErr');
+      if (sellQuote.secondsLeft > 0) {
+        receiveMeta = t('quoteRefresh', { n: sellQuote.secondsLeft });
+        receiveMetaCountdown = true;
+      }
+    } else {
+      receiveValue = '—';
+      receiveMeta = t('quoteErr');
+    }
   } else {
     if (!swapAmount) receiveValue = '0';
     else if (swapQuote.loading) receiveValue = '…';
-    else if (swapQuote.data && swapQuote.isFresh) {
+    else if (
+      swapQuote.data &&
+      swapQuote.isFresh &&
+      swapQuote.data.isValid === false &&
+      isAmountValidityError(swapQuote.data.error)
+    ) {
+      receiveValue = '—';
+      if (activeValidityMessage) receiveMeta = activeValidityMessage;
+    } else if (swapQuote.data && swapQuote.isFresh) {
       receiveValue = formatAmount(swapQuote.data.estimatedAmount, 6, language);
-      receiveMeta = swapQuote.secondsLeft > 0 ? t('quoteRefresh', { n: swapQuote.secondsLeft }) : '';
-    } else receiveValue = t('quoteErr');
+      if (swapQuote.secondsLeft > 0) {
+        receiveMeta = t('quoteRefresh', { n: swapQuote.secondsLeft });
+        receiveMetaCountdown = true;
+      }
+    } else {
+      receiveValue = '—';
+      receiveMeta = t('quoteErr');
+    }
   }
 
   const modeIndex = MODES.indexOf(mode);
@@ -451,9 +500,26 @@ export default function HomeScreen() {
   const payRaw = mode === 'buy' ? buyRaw : mode === 'sell' ? sellRaw : swapRaw;
   const setPayRaw = mode === 'buy' ? setBuyRaw : mode === 'sell' ? setSellRaw : setSwapRaw;
 
+  // Switch modes, pre-filling the target panel so a quote fires immediately (mirrors the static
+  // app's setMode: `S.amount = mode==='buy' ? 100 : (S.token.stable ? 100 : 0.1)`). Buy already
+  // defaults to '100'; here we only seed sell/swap when their (independent) raw is still empty so
+  // an in-progress amount on that panel is never clobbered.
+  const changeMode = (next: Mode) => {
+    if (next === 'sell' && !sellRaw.trim()) {
+      setSellRaw(sellAsset && isStableAsset(sellAsset.code) ? '100' : '0.1');
+    } else if (next === 'swap' && !swapRaw.trim()) {
+      setSwapRaw(swapFromAsset && isStableAsset(swapFromAsset.code) ? '100' : '0.1');
+    }
+    setMode(next);
+    // Mirror the static app's setMode: any non-silent switch to sell/swap toasts the mode name
+    // (`if(!silent && mode!=="buy") toast(t(mode))`). The deep-link init above uses setMode()
+    // directly, so it stays silent — this only fires on a user tab/flip.
+    if (next !== 'buy') showToast(t(next));
+  };
+
   const flip = () => {
-    if (mode === 'buy') setMode('sell');
-    else if (mode === 'sell') setMode('buy');
+    if (mode === 'buy') changeMode('sell');
+    else if (mode === 'sell') changeMode('buy');
     else {
       const a = swapFromAsset;
       const ac = swapFromChain;
@@ -464,7 +530,11 @@ export default function HomeScreen() {
     }
   };
 
-  const currentBuyMethod = paymentMethodsFor(buyFiat).find((m) => m.id === buyMethod);
+  const buyMethods = paymentMethodsFor(buyFiat);
+  const currentBuyMethod = buyMethods.find((m) => m.id === buyMethod);
+  // Mirrors the static app: only offer the picker when there's a real choice — with a single
+  // method the row drops its caret and stops being interactive (no pointless one-item sheet).
+  const buyMethodPickable = buyMethods.length > 1;
 
   // Pre-login home is the landing hero (finding #1) — the trade form below is the logged-in
   // home only, same split as the static app's `#v-login` vs `#v-buy`. All the hooks above still
@@ -482,7 +552,7 @@ export default function HomeScreen() {
             role="tab"
             aria-selected={mode === m}
             style={m === 'swap' && !swapAvailable ? { opacity: 0.38, pointerEvents: 'none' } : undefined}
-            onClick={() => setMode(m)}
+            onClick={() => changeMode(m)}
           >
             {t(m)}
           </button>
@@ -490,11 +560,30 @@ export default function HomeScreen() {
       </div>
 
       {session.isLoggedIn && (
-        <button className="walletbar" type="button" onClick={() => session.openConnect()}>
-          <span className="wbLogo">{WALLET_ICON}</span>
+        <button className="walletbar" type="button" onClick={() => session.openSwitcher()}>
+          <span className="wbLogo">
+            {session.activeWallet?.icon ? (
+              <img
+                src={session.activeWallet.icon}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : (
+              WALLET_ICON
+            )}
+          </span>
           <span className="wbtx">
-            <b>{session.address ? `${session.address.slice(0, 6)}…${session.address.slice(-4)}` : ''}</b>
-            <small>{session.blockchain ?? ''}</small>
+            {(() => {
+              const short = session.address ? `${session.address.slice(0, 6)}…${session.address.slice(-4)}` : '';
+              const name = session.activeWallet?.name;
+              const showName = Boolean(name && name !== 'Wallet');
+              return (
+                <>
+                  <b>{showName ? name : short}</b>
+                  <small>{showName ? short : (session.blockchain ?? '')}</small>
+                </>
+              );
+            })()}
           </span>
           <span className="wbchg">
             <svg viewBox="0 0 24 24" fill="none">
@@ -570,7 +659,9 @@ export default function HomeScreen() {
         <div className="panel recv" aria-live="polite">
           <div className="prow">
             <span className="plabel">{t('youReceive')}</span>
-            <span className="pmeta">{receiveMeta}</span>
+            <span className="pmeta">
+              {receiveMetaCountdown ? <span className="qcount">{receiveMeta}</span> : receiveMeta}
+            </span>
           </div>
           <div className="pinput">
             <input className="amt" value={receiveValue} readOnly aria-label="Amount you receive" />
@@ -608,12 +699,6 @@ export default function HomeScreen() {
         </div>
       </div>
 
-      {activeErrorMessage && (
-        <div className="paybox-note warn" role="alert" style={{ margin: '10px 2px 0' }}>
-          {activeErrorMessage}
-        </div>
-      )}
-
       {mode === 'buy' && buyFiat && (
         <div className="quick">
           {QUICK_FIAT_AMOUNTS.map((v) => (
@@ -636,7 +721,13 @@ export default function HomeScreen() {
       />
 
       {mode === 'buy' && (
-        <div className="pmethod" role="button" tabIndex={0} onClick={() => setPaymentMethodOpen(true)}>
+        <div
+          className="pmethod"
+          style={buyMethodPickable ? undefined : { cursor: 'default' }}
+          role={buyMethodPickable ? 'button' : undefined}
+          tabIndex={buyMethodPickable ? 0 : undefined}
+          onClick={buyMethodPickable ? () => setPaymentMethodOpen(true) : undefined}
+        >
           <span className="ic">
             <svg viewBox="0 0 24 24" fill="none">
               <rect x={3} y={6} width={18} height={12} rx={2.4} stroke="currentColor" strokeWidth={1.7} />
@@ -647,7 +738,7 @@ export default function HomeScreen() {
             <b>{currentBuyMethod ? t(currentBuyMethod.nameKey) : t('payMethod')}</b>
             <small>{currentBuyMethod ? t(currentBuyMethod.descKey) : t('payMethodSub')}</small>
           </span>
-          <span className="caret">{CHEVRON_RIGHT}</span>
+          {buyMethodPickable && <span className="caret">{CHEVRON_RIGHT}</span>}
         </div>
       )}
 
@@ -698,6 +789,24 @@ export default function HomeScreen() {
         sessionBlockchains={session.blockchains}
         swapFromCode={swapFromAsset?.code}
         swapToCode={swapToAsset?.code}
+        selectedCode={
+          assetPickerOpen === 'buyReceive'
+            ? buyAsset?.code
+            : assetPickerOpen === 'sellPay'
+              ? sellAsset?.code
+              : assetPickerOpen === 'swapFrom'
+                ? swapFromAsset?.code
+                : swapToAsset?.code
+        }
+        selectedBlockchain={
+          assetPickerOpen === 'buyReceive'
+            ? buyChain
+            : assetPickerOpen === 'sellPay'
+              ? sellChain
+              : assetPickerOpen === 'swapFrom'
+                ? swapFromChain
+                : swapToChain
+        }
         onSelectBuyReceive={(tk, bc) => {
           setBuyAsset(tk);
           setBuyChain(bc);
@@ -737,7 +846,7 @@ export default function HomeScreen() {
         open={paymentMethodOpen}
         onClose={() => setPaymentMethodOpen(false)}
         titleId="payMethodSheetTitle"
-        options={paymentMethodsFor(buyFiat)}
+        options={buyMethods}
         value={buyMethod}
         onSelect={setBuyMethod}
       />
@@ -800,7 +909,9 @@ function PillAsset({ asset, chain }: { asset: TradeAsset | undefined; chain: Blo
 }
 
 function fiatDescription(t: (key: TranslationKey) => string, code: string): string {
-  const key = code === 'EUR' ? 'curEur' : code === 'CHF' ? 'curChf' : code === 'USD' ? 'curUsd' : undefined;
+  // Only EUR/CHF get a spelled-out name; everything else (USD, …) shows its raw code, mirroring
+  // the static app's fiatName() (`FIAT_LABEL={EUR,CHF}` → t(); else the currency's own name/code).
+  const key = code === 'EUR' ? 'curEur' : code === 'CHF' ? 'curChf' : undefined;
   return key ? t(key) : code;
 }
 
@@ -813,6 +924,8 @@ interface AssetPickerSlotProps {
   sessionBlockchains?: readonly string[];
   swapFromCode?: string;
   swapToCode?: string;
+  selectedCode?: string;
+  selectedBlockchain?: Blockchain;
   onSelectBuyReceive: (asset: TradeAsset, chain: Blockchain) => void;
   onSelectSellPay: (asset: TradeAsset, chain: Blockchain) => void;
   onSelectSwapFrom: (asset: TradeAsset, chain: Blockchain) => void;
@@ -831,6 +944,8 @@ function AssetPickerSlot({
   sessionBlockchains,
   swapFromCode,
   swapToCode,
+  selectedCode,
+  selectedBlockchain,
   onSelectBuyReceive,
   onSelectSellPay,
   onSelectSwapFrom,
@@ -864,6 +979,8 @@ function AssetPickerSlot({
       balances={balances}
       sortByBalance={config.sortByBalance}
       excludeCode={config.excludeCode}
+      selectedCode={selectedCode}
+      selectedBlockchain={selectedBlockchain}
       onSelect={config.onSelect}
     />
   );

@@ -86,6 +86,8 @@ export const en = {
   totalFee: 'Total fee',
   favorites: 'Favorites',
   bitcoin: 'Bitcoin',
+  ethereum: 'Ethereum',
+  hwChoose: 'Choose the chain to connect',
   monero: 'Monero',
   confBuyTitle: 'Complete your purchase',
   confSwapTitle: 'Swap submitted',
@@ -178,6 +180,9 @@ export const en = {
   cliSignHint:
     'Sign exactly this message with your address in your wallet or CLI, then paste the signature below. Cardano, Arweave and Internet Computer also need the public key.',
   cliBadAddr: "That doesn't look like a valid address.",
+  cliMsg: 'Message to sign',
+  cliSig: 'Signature',
+  cliKey: 'Public key (Cardano · Arweave · ICP)',
   accSecurity: 'Account & security',
   bankAccounts: 'Bank accounts',
   bankAccountsSub: 'For payouts when you sell',
@@ -740,6 +745,8 @@ export const de: Dict = {
     'Dieses Asset läuft über ein Netzwerk, das dein verbundenes Wallet nicht empfangen kann. Verbinde ein passendes Wallet, um es zu kaufen.',
   getPersonalIban: 'Eigene IBAN erhalten',
   personalIbanCreated: 'Deine persönliche IBAN ist bereit',
+  ethereum: 'Ethereum',
+  hwChoose: 'Wähle die Chain zum Verbinden',
   payDetails: 'Details',
   payQrTab: 'QR-Code',
   scanToPay: 'Mit deiner Banking-App scannen und bezahlen',
@@ -816,6 +823,9 @@ export const de: Dict = {
   cliSignHint:
     'Signiere genau diese Nachricht mit deiner Adresse in deiner Wallet oder CLI und füge die Signatur unten ein. Cardano, Arweave und Internet Computer brauchen zusätzlich den Public Key.',
   cliBadAddr: 'Das sieht nicht nach einer gültigen Adresse aus.',
+  cliMsg: 'Zu signierende Nachricht',
+  cliSig: 'Signatur',
+  cliKey: 'Öffentlicher Schlüssel (Cardano · Arweave · ICP)',
   accSecurity: 'Konto & Sicherheit',
   bankAccounts: 'Bankkonten',
   bankAccountsSub: 'Für Auszahlungen beim Verkauf',
@@ -934,7 +944,8 @@ export const de: Dict = {
   kycAllDone: 'Alles erledigt — dein Konto ist vollständig verifiziert.',
   kycOverview: 'Zurück zur Übersicht',
   kycFailed: 'Dieser Schritt ist fehlgeschlagen.',
-  kycAccountSwitch: 'Dieses Konto wurde zusammengeführt. Setze die Verifizierung mit dem aktiven Konto im DFX-Portal fort.',
+  kycAccountSwitch:
+    'Dieses Konto wurde zusammengeführt. Setze die Verifizierung mit dem aktiven Konto im DFX-Portal fort.',
   kycAccountMerge: 'Die Zusammenführung deiner Konten läuft. Schließe den Vorgang im DFX-Portal ab.',
   kycAccountExists: 'Ein bestehendes Konto erfordert deine Aufmerksamkeit. Fahre im DFX-Portal fort.',
   kycInReview: 'DFX prüft diesen Schritt — du bekommst eine E-Mail, sobald es weitergeht.',
@@ -977,7 +988,8 @@ export const de: Dict = {
   kycAddOwner: 'Person hinzufügen',
   kycOwner: 'Person',
   kycTfaTitle: 'Zwei-Faktor-Authentifizierung',
-  kycTfaSetupFail: 'Die Zwei-Faktor-Authentifizierung konnte nicht vorbereitet werden. Versuche es erneut oder kehre zur Übersicht zurück.',
+  kycTfaSetupFail:
+    'Die Zwei-Faktor-Authentifizierung konnte nicht vorbereitet werden. Versuche es erneut oder kehre zur Übersicht zurück.',
   kycTfaLead:
     'Scanne den QR-Code mit einer Authenticator-App (z.B. Google Authenticator) und gib den 6-stelligen Code ein.',
   kycTfaMail: 'Wir haben dir einen 6-stelligen Code per E-Mail geschickt.',
@@ -1503,6 +1515,9 @@ export const it: Dict = {
   cliSignHint:
     'Firma esattamente questo messaggio con il tuo indirizzo nel wallet o nella CLI, poi incolla la firma qui sotto. Cardano, Arweave e Internet Computer richiedono anche la public key.',
   cliBadAddr: 'Non sembra un indirizzo valido.',
+  cliMsg: 'Messaggio da firmare',
+  cliSig: 'Firma',
+  cliKey: 'Chiave pubblica (Cardano · Arweave · ICP)',
   accSecurity: 'Account e sicurezza',
   bankAccounts: 'Conti bancari',
   bankAccountsSub: 'Per gli accrediti sulle vendite',
@@ -2190,6 +2205,9 @@ export const fr: Dict = {
   cliSignHint:
     'Signe exactement ce message avec ton adresse dans ton wallet ou ta CLI, puis colle la signature ci-dessous. Cardano, Arweave et Internet Computer nécessitent aussi la clé publique.',
   cliBadAddr: 'Cela ne ressemble pas à une adresse valide.',
+  cliMsg: 'Message à signer',
+  cliSig: 'Signature',
+  cliKey: 'Clé publique (Cardano · Arweave · ICP)',
   accSecurity: 'Compte et sécurité',
   bankAccounts: 'Comptes bancaires',
   bankAccountsSub: 'Pour les versements lors des ventes',

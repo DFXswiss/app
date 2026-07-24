@@ -19,13 +19,13 @@ export const CHAIN_NAME: Record<Blockchain, string> = {
   [Blockchain.INTERNET_COMPUTER]: 'Internet Computer',
   [Blockchain.ETHEREUM]: 'Ethereum',
   [Blockchain.SEPOLIA]: 'Sepolia',
-  [Blockchain.BINANCE_SMART_CHAIN]: 'BNB Smart Chain',
+  [Blockchain.BINANCE_SMART_CHAIN]: 'BNB Chain',
   [Blockchain.OPTIMISM]: 'Optimism',
   [Blockchain.ARBITRUM]: 'Arbitrum',
   [Blockchain.POLYGON]: 'Polygon',
   [Blockchain.BASE]: 'Base',
   [Blockchain.GNOSIS]: 'Gnosis',
-  [Blockchain.HAQQ]: 'Haqq',
+  [Blockchain.HAQQ]: 'HAQQ',
   [Blockchain.LIQUID]: 'Liquid',
   [Blockchain.ARWEAVE]: 'Arweave',
   [Blockchain.CARDANO]: 'Cardano',
@@ -41,6 +41,20 @@ export function chainName(blockchain: Blockchain): string {
   return CHAIN_NAME[blockchain] ?? blockchain;
 }
 
+// Test networks — never shown or offered to users. The dev API (dev.api.dfx.swiss) exposes
+// Sepolia / Citrea Testnet alongside their mainnets; production only has mainnets, so this filter
+// is a no-op there and a cleanup on dev. EVM addresses always resolve to Ethereum, BTC to Bitcoin.
+export const TESTNET_CHAINS = new Set<Blockchain>([Blockchain.SEPOLIA, Blockchain.CITREA_TESTNET]);
+
+export function isTestnetChain(blockchain: Blockchain): boolean {
+  return TESTNET_CHAINS.has(blockchain);
+}
+
+/** Drops test networks from a chain list (display + selection). */
+export function mainnetOnly<T extends Blockchain>(chains: readonly T[]): T[] {
+  return chains.filter((chain) => !TESTNET_CHAINS.has(chain));
+}
+
 /** Deterministic HSL color for a badge background — every chain/ticker gets a stable, distinct
  * color without maintaining a hand-picked entry per value. */
 export function hashColor(seed: string): string {
@@ -52,7 +66,21 @@ export function hashColor(seed: string): string {
 
 /** Popular tickers shown first / under the "Popular" filter chip — mirrors the static app's
  * hardcoded `FAVS` list (also UI-only curation, not API data). */
-export const POPULAR_ASSETS = ['BTC', 'ETH', 'USDT', 'USDC', 'ZCHF'];
+export const POPULAR_ASSETS = [
+  'BTC',
+  'ETH',
+  'USDT',
+  'USDC',
+  'ZCHF',
+  'SOL',
+  'XMR',
+  'ADA',
+  'cBTC',
+  'DAI',
+  'EURC',
+  'BNB',
+  'LINK',
+];
 
 /** Ticker codes treated as stablecoins for the "Stablecoins" filter chip — ported from the
  * static app's hardcoded `stable` set in `loadAssets()`. */

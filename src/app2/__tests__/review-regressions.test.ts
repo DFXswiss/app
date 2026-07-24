@@ -38,13 +38,7 @@ jest.mock('@dfx.swiss/react', () => ({
   },
 }));
 
-import {
-  ApiException,
-  Blockchain,
-  FiatPaymentMethod,
-  type Asset,
-  type Fiat,
-} from '@dfx.swiss/react';
+import { ApiException, Blockchain, FiatPaymentMethod, type Asset, type Fiat } from '@dfx.swiss/react';
 import type { TranslationKey } from '../i18n';
 import { paymentMethodsFor } from '../components/pickers/PaymentMethodPicker';
 import { currenciesForBuy, currenciesForSell, hasSellQuoteInputs } from '../screens/trade/capabilities';
@@ -52,7 +46,12 @@ import { shownChainsFor } from '../screens/trade/asset-pool';
 import { mapThrownError } from '../screens/trade/errors';
 import { parseAmt } from '../screens/trade/amount';
 import type { TradeAsset } from '../screens/trade/types';
-import { apiStatusCode, isTfaAlreadyEnrolledError, isTfaRequiredError, kycHandoffFromError } from '../screens/kyc-recovery';
+import {
+  apiStatusCode,
+  isTfaAlreadyEnrolledError,
+  isTfaRequiredError,
+  kycHandoffFromError,
+} from '../screens/kyc-recovery';
 import { findSendCandidate, shouldSyncSupportIssue } from '../screens/support-delivery';
 import { appUrl, isSafeAppUrl } from '../utils/url';
 import { normalizeInviteCode } from '../wallets/invite';
@@ -101,7 +100,8 @@ describe('App2 review regressions', () => {
   });
 
   it('passes a canonical invite code to both login paths', () => {
-    expect(normalizeInviteCode('  ab-c12  ')).toBe('AB-C12');
+    // Case-preserving like the static preview's REF_RE (/^[A-Za-z0-9-]{4,14}$/); only trims.
+    expect(normalizeInviteCode('  ab-c12  ')).toBe('ab-c12');
     expect(normalizeInviteCode('   ')).toBeUndefined();
   });
 

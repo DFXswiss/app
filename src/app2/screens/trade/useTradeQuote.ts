@@ -11,10 +11,9 @@
 // details (IBAN/remittanceInfo/paymentRequest for buy, depositAddress for sell/swap) — so the
 // payment sheet never needs a second fetch, it just reads the held quote object.
 
-import { FiatPaymentMethod, useBuy, useSell, useSwap } from '@dfx.swiss/react';
+import { FiatPaymentMethod, SellUrl, useApi, useBuy, useSell, useSwap } from '@dfx.swiss/react';
 import type { Asset, Buy, BuyPaymentInfo, Fiat, Sell, SellPaymentInfo, Swap, SwapPaymentInfo } from '@dfx.swiss/react';
 import { useCallback } from 'react';
-import { hasSellQuoteInputs } from './capabilities';
 import { QuoteEngineState, useQuoteEngine } from './useQuoteEngine';
 
 export interface BuyQuoteParams {
@@ -57,16 +56,31 @@ export interface SellQuoteParams {
 
 export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
   const { receiveFor } = useSell();
+  const { call } = useApi();
   const { asset, currency, amount, iban, externalTransactionId } = params;
-  const ready = hasSellQuoteInputs(asset?.id, currency?.id, amount, iban);
-  const key = ready && asset && currency && amount && iban ? `${asset.id}:${currency.id}:${amount}:${iban}` : '';
+  // Match the static app (`updateQuote()` → token-less `PUT /sell/quote {asset,currency,amount}`):
+  // the sell rate + full fee breakdown are shown as soon as asset+currency+amount are set, with
+  // NO payout IBAN. The IBAN is only needed to create the real payment info (the deposit address
+  // the payment sheet renders) once a bank account is chosen — gated at confirm time, exactly as
+  // the original does. The `key` still includes the iban so selecting/changing the payout account
+  // re-fetches (quote → paymentInfos).
+  const ready = !!asset && !!currency && !!amount;
+  const key = ready && asset && currency && amount ? `${asset.id}:${currency.id}:${amount}:${iban ?? 'quote'}` : '';
 
   const fetcher = useCallback((): Promise<Sell> => {
-    if (!asset || !currency || !amount || !iban) return Promise.reject(new Error('sell quote: missing input'));
-    const info: SellPaymentInfo = { asset, currency, amount, iban };
-    if (externalTransactionId) info.externalTransactionId = externalTransactionId;
-    return receiveFor(info);
-  }, [receiveFor, asset, currency, amount, iban, externalTransactionId]);
+    if (!asset || !currency || !amount) return Promise.reject(new Error('sell quote: missing input'));
+    if (iban) {
+      // With a payout IBAN, fetch the full payment info (carries the deposit address the payment
+      // sheet needs) via the authenticated `PUT /sell/paymentInfos`.
+      const info: SellPaymentInfo = { asset, currency, amount, iban };
+      if (externalTransactionId) info.externalTransactionId = externalTransactionId;
+      return receiveFor(info);
+    }
+    // No payout account yet: the public quote endpoint returns the same `Sell` shape
+    // (estimatedAmount/fees/feesTarget/isValid/minVolume) minus the deposit details.
+    const info: SellPaymentInfo = { asset, currency, amount };
+    return call<Sell>({ url: SellUrl.quote, method: 'PUT', data: info, token: false });
+  }, [receiveFor, call, asset, currency, amount, iban, externalTransactionId]);
 
   return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused);
 }

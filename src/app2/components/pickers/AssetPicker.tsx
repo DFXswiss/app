@@ -7,17 +7,49 @@
 // small "Popular"/"Stablecoins"/"Swiss" UI curation lists (see blockchain-meta.ts — the static
 // app hardcoded the same curation, it was never API data).
 
-import { useMemo, useState } from 'react';
-import type { Blockchain } from '@dfx.swiss/react';
-import { chainName, isStableAsset, isSwissAsset, POPULAR_ASSETS } from '../../screens/trade/blockchain-meta';
-import { formatAmount } from '../../screens/trade/amount';
-import { heldBalance, shownChainsFor } from '../../screens/trade/asset-pool';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Blockchain } from '@dfx.swiss/react';
+import {
+  chainName,
+  isBtcAsset,
+  isStableAsset,
+  isSwissAsset,
+  POPULAR_ASSETS,
+} from '../../screens/trade/blockchain-meta';
+import { shownChainsFor } from '../../screens/trade/asset-pool';
 import type { Capability, TradeAsset } from '../../screens/trade/types';
-import { AssetChainGlyph, AssetGlyph } from '../../screens/trade/glyphs';
+import { AssetChainGlyph, AssetGlyph, NetworkCardGlyph, chainIcon } from '../../screens/trade/glyphs';
 import { Sheet, SheetHeader, onActivate } from '../ui';
-import { useT, type Language, type TranslationKey } from '../../i18n';
+import { useT, type TranslationKey } from '../../i18n';
 
-type Filter = 'all' | 'popular' | 'stable' | 'swiss' | `chain:${string}`;
+// Chain-chip order — mirrors the static app's CH map declaration order (mainstream EVMs lead),
+// excluding Bitcoin/Lightning/Monero which get their own fixed chips (see ORIG_app2.html CH map /
+// `chainsOfChips()`). Kept here rather than reordering the shared CHAIN_NAME map.
+const CHAIN_CHIP_ORDER: Blockchain[] = [
+  Blockchain.ETHEREUM,
+  Blockchain.ARBITRUM,
+  Blockchain.OPTIMISM,
+  Blockchain.POLYGON,
+  Blockchain.BASE,
+  Blockchain.BINANCE_SMART_CHAIN,
+  Blockchain.GNOSIS,
+  Blockchain.HAQQ,
+  Blockchain.SOLANA,
+  Blockchain.TRON,
+  Blockchain.CARDANO,
+  Blockchain.INTERNET_COMPUTER,
+  Blockchain.CITREA,
+  Blockchain.FIRO,
+];
+
+type Filter = 'favorites' | 'btc' | 'stable' | 'monero' | 'swiss' | `chain:${string}`;
+
+/** Favorites rank — index in the curated POPULAR_ASSETS list (non-favorites sort last). Compared
+ * against the raw ticker (e.g. "cBTC"), mirroring the static app's `favRank`. */
+function favRank(code: string): number {
+  const i = POPULAR_ASSETS.indexOf(code);
+  return i < 0 ? 999 : i;
+}
 
 interface AssetPickerProps {
   open: boolean;
@@ -27,9 +59,14 @@ interface AssetPickerProps {
   pool: TradeAsset[];
   cap: Capability;
   sessionBlockchains?: readonly string[];
+  /** Accepted for caller compatibility but intentionally unused — the static picker shows no
+   * held-balance column and never sorts by balance (only favRank → chains → code). */
   balances?: Record<string, number>;
   sortByBalance?: boolean;
   excludeCode?: string;
+  /** Currently-selected asset/chain for this slot — the matching network card gets the `sel` class. */
+  selectedCode?: string;
+  selectedBlockchain?: Blockchain;
   onSelect: (asset: TradeAsset, blockchain: Blockchain) => void;
 }
 
@@ -42,12 +79,14 @@ function matchesFilter(
   const available = shownChainsFor(token, cap, sessionBlockchains);
   if (!available.length) return false;
   switch (filter) {
-    case 'all':
-      return true;
-    case 'popular':
-      return POPULAR_ASSETS.includes(token.code.toUpperCase());
+    case 'favorites':
+      return POPULAR_ASSETS.includes(token.code);
+    case 'btc':
+      return isBtcAsset(token.code);
     case 'stable':
       return isStableAsset(token.code);
+    case 'monero':
+      return available.some((c) => c.blockchain === Blockchain.MONERO);
     case 'swiss':
       return isSwissAsset(token.code);
     default:
@@ -63,14 +102,14 @@ export function AssetPicker({
   pool,
   cap,
   sessionBlockchains,
-  balances,
-  sortByBalance,
   excludeCode,
+  selectedCode,
+  selectedBlockchain,
   onSelect,
 }: AssetPickerProps) {
-  const { t, language } = useT();
+  const { t } = useT();
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
+  const [filter, setFilter] = useState<Filter>('favorites');
   const [chainStepFor, setChainStepFor] = useState<TradeAsset | null>(null);
 
   const candidatePool = useMemo(
@@ -78,33 +117,35 @@ export function AssetPicker({
     [pool, excludeCode],
   );
 
+  // Dynamic chain chips: chains present in the pool, ordered by the static app's CH declaration
+  // order (mainstream EVMs lead) and excluding Bitcoin/Lightning/Monero (those get their own fixed
+  // chips). Mirrors `chainsOfChips()`.
   const availableChains = useMemo(() => {
-    const seen = new Map<string, Blockchain>();
-    candidatePool.forEach((tk) =>
-      shownChainsFor(tk, cap, sessionBlockchains).forEach((c) => seen.set(c.blockchain, c.blockchain)),
-    );
-    return Array.from(seen.values());
+    const seen = new Set<Blockchain>();
+    candidatePool.forEach((tk) => shownChainsFor(tk, cap, sessionBlockchains).forEach((c) => seen.add(c.blockchain)));
+    return CHAIN_CHIP_ORDER.filter((c) => seen.has(c));
   }, [candidatePool, cap, sessionBlockchains]);
 
-  const hasPopular = candidatePool.some((tk) => matchesFilter(tk, 'popular', cap, sessionBlockchains));
-  const hasStable = candidatePool.some((tk) => matchesFilter(tk, 'stable', cap, sessionBlockchains));
-  const hasSwiss = candidatePool.some((tk) => matchesFilter(tk, 'swiss', cap, sessionBlockchains));
-  const showFilters = candidatePool.length > 1 && (hasPopular || hasStable || hasSwiss || availableChains.length > 0);
+  // Logged-in wallets restrict the pool to reachable chains; a guest sees everything (see
+  // isReachable). No token being receivable → the "no assets for this wallet" empty state.
+  const loggedIn = !!sessionBlockchains?.length;
+  const walletCanReceive = candidatePool.some((tk) => shownChainsFor(tk, cap, sessionBlockchains).length > 0);
 
   const query = search.trim().toLowerCase();
   const filtered = candidatePool
     .filter((tk) => matchesFilter(tk, filter, cap, sessionBlockchains))
     .filter((tk) => !query || tk.code.toLowerCase().includes(query) || tk.description.toLowerCase().includes(query));
 
-  const sorted =
-    sortByBalance && balances
-      ? [...filtered].sort((a, b) => heldBalance(balances, b.code) - heldBalance(balances, a.code))
-      : filtered;
+  // Favorites first, then more-chains-first, then alphabetical — mirrors the static app's
+  // `buildCoins()` sort (no balance sort — the static picker never re-orders by held balance).
+  const sorted = [...filtered].sort(
+    (a, b) => favRank(a.code) - favRank(b.code) || b.chains.length - a.chains.length || a.code.localeCompare(b.code),
+  );
 
   const close = () => {
     setChainStepFor(null);
     setSearch('');
-    setFilter('all');
+    setFilter('favorites');
     onClose();
   };
 
@@ -120,6 +161,33 @@ export function AssetPicker({
   };
 
   const chains = chainStepFor ? shownChainsFor(chainStepFor, cap, sessionBlockchains) : [];
+
+  // Horizontal scroll arrows + left-edge fade for the filter row (desktop). Mirrors the static
+  // app's `updateFrowArrows()` / #frowLeft / #frowRight: hide the left arrow at the start, the
+  // right arrow at the end, and add `.scrolled` (drives the left gradient) once scrolled past.
+  const frowRef = useRef<HTMLDivElement>(null);
+  const [frowLeftHidden, setFrowLeftHidden] = useState(true);
+  const [frowRightHidden, setFrowRightHidden] = useState(false);
+  const [frowScrolled, setFrowScrolled] = useState(false);
+
+  const updateFrowArrows = useCallback(() => {
+    const f = frowRef.current;
+    if (!f) return;
+    const max = f.scrollWidth - f.clientWidth;
+    const x = f.scrollLeft;
+    setFrowLeftHidden(x <= 4);
+    setFrowRightHidden(max <= 4 || x >= max - 4);
+    setFrowScrolled(x > 4);
+  }, []);
+
+  useEffect(() => {
+    updateFrowArrows();
+  }, [updateFrowArrows, open, chainStepFor, availableChains]);
+
+  const scrollFrow = (dx: number) => {
+    frowRef.current?.scrollBy({ left: dx });
+    setTimeout(updateFrowArrows, 320);
+  };
 
   return (
     <Sheet open={open} onClose={close} titleId={titleId} showGrab>
@@ -147,30 +215,76 @@ export function AssetPicker({
               />
             </div>
           </div>
-          {showFilters && (
-            <div className="frow-wrap">
-              <div className="frow">
-                <FilterChip active={filter === 'all'} onClick={() => setFilter('all')} label={t('allAssets')} />
-                {hasPopular && (
-                  <FilterChip active={filter === 'popular'} onClick={() => setFilter('popular')} label={t('popular')} />
-                )}
-                {hasStable && (
-                  <FilterChip active={filter === 'stable'} onClick={() => setFilter('stable')} label={t('stable')} />
-                )}
-                {hasSwiss && (
-                  <FilterChip active={filter === 'swiss'} onClick={() => setFilter('swiss')} label={t('swiss')} />
-                )}
-                {availableChains.map((bc) => (
-                  <FilterChip
-                    key={bc}
-                    active={filter === `chain:${bc}`}
-                    onClick={() => setFilter(`chain:${bc}`)}
-                    label={chainName(bc)}
-                  />
-                ))}
-              </div>
+          <div className={`frow-wrap${frowScrolled ? ' scrolled' : ''}`}>
+            <div className="frow" ref={frowRef} onScroll={updateFrowArrows}>
+              <FilterChip
+                active={filter === 'favorites'}
+                onClick={() => setFilter('favorites')}
+                label={t('favorites')}
+                icon={STAR_ICON}
+              />
+              <FilterChip
+                active={filter === 'btc'}
+                onClick={() => setFilter('btc')}
+                label={t('bitcoin')}
+                icon={chipImg(chainIcon(Blockchain.BITCOIN))}
+              />
+              <FilterChip active={filter === 'stable'} onClick={() => setFilter('stable')} label={t('stable')} />
+              <FilterChip
+                active={filter === 'monero'}
+                onClick={() => setFilter('monero')}
+                label={t('monero')}
+                icon={chipImg(chainIcon(Blockchain.MONERO))}
+              />
+              <FilterChip
+                active={filter === 'swiss'}
+                onClick={() => setFilter('swiss')}
+                label={t('swiss')}
+                icon={<span aria-hidden="true">🇨🇭</span>}
+              />
+              {availableChains.map((bc) => (
+                <FilterChip
+                  key={bc}
+                  active={filter === `chain:${bc}`}
+                  onClick={() => setFilter(`chain:${bc}`)}
+                  label={chainName(bc)}
+                  icon={chipImg(chainIcon(bc))}
+                />
+              ))}
             </div>
-          )}
+            <button
+              className={`frow-arrow left${frowLeftHidden ? ' hide' : ''}`}
+              type="button"
+              aria-label="Scroll categories left"
+              onClick={() => scrollFrow(-170)}
+            >
+              <svg viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M15 6l-6 6 6 6"
+                  stroke="currentColor"
+                  strokeWidth={2.4}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            <button
+              className={`frow-arrow right${frowRightHidden ? ' hide' : ''}`}
+              type="button"
+              aria-label="Scroll categories right"
+              onClick={() => scrollFrow(170)}
+            >
+              <svg viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M9 6l6 6-6 6"
+                  stroke="currentColor"
+                  strokeWidth={2.4}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
           <div className="slist">
             {sorted.map((tk) => (
               <AssetRow
@@ -178,12 +292,10 @@ export function AssetPicker({
                 token={tk}
                 cap={cap}
                 sessionBlockchains={sessionBlockchains}
-                balance={balances ? heldBalance(balances, tk.code) : undefined}
-                language={language}
                 onPick={() => pick(tk)}
               />
             ))}
-            {!sorted.length && <EmptyState hasQuery={!!query} />}
+            {!sorted.length && <EmptyState noWalletAssets={loggedIn && !walletCanReceive} />}
           </div>
         </>
       ) : (
@@ -217,27 +329,31 @@ export function AssetPicker({
           </div>
           <p className="tnote">{t('netNote')}</p>
           <div className="netgrid">
-            {chains.map((c) => (
-              <div
-                key={c.blockchain}
-                className="netcard"
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  onSelect(chainStepFor, c.blockchain);
-                  close();
-                }}
-                onKeyDown={onActivate(() => {
-                  onSelect(chainStepFor, c.blockchain);
-                  close();
-                })}
-              >
-                <AssetGlyph code={c.blockchain} size={30} />
-                <div className="ni">
-                  <b>{chainName(c.blockchain)}</b>
+            {chains.map((c) => {
+              const isSel = selectedCode === chainStepFor.code && selectedBlockchain === c.blockchain;
+              return (
+                <div
+                  key={c.blockchain}
+                  className={`netcard${isSel ? ' sel' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    onSelect(chainStepFor, c.blockchain);
+                    close();
+                  }}
+                  onKeyDown={onActivate(() => {
+                    onSelect(chainStepFor, c.blockchain);
+                    close();
+                  })}
+                >
+                  <NetworkCardGlyph blockchain={c.blockchain} size={30} />
+                  <div className="ni">
+                    <b>{chainName(c.blockchain)}</b>
+                    <small>{t('network')}</small>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div style={{ height: 16 }} />
         </>
@@ -246,9 +362,34 @@ export function AssetPicker({
   );
 }
 
-function FilterChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+// Leading star glyph for the Favorites chip — inline SVG (uses currentColor), matching the static
+// app's `buildFilters()` markup. Sized in-line since it is an <svg>, not the `.fchip img` rule.
+const STAR_ICON = (
+  <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 14, height: 14 }} aria-hidden="true">
+    <path d="M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6z" />
+  </svg>
+);
+
+// A brand-logo chip icon (network/token SVG) via the shared `.fchip img` rule; omitted when the
+// chain has no bundled icon.
+function chipImg(src: string | undefined): ReactNode {
+  return src ? <img src={src} alt="" /> : undefined;
+}
+
+function FilterChip({
+  active,
+  onClick,
+  label,
+  icon,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  icon?: ReactNode;
+}) {
   return (
     <button className={`fchip${active ? ' on' : ''}`} type="button" onClick={onClick}>
+      {icon}
       {label}
     </button>
   );
@@ -258,52 +399,50 @@ function AssetRow({
   token,
   cap,
   sessionBlockchains,
-  balance,
-  language,
   onPick,
 }: {
   token: TradeAsset;
   cap: Capability;
   sessionBlockchains: readonly string[] | undefined;
-  balance?: number;
-  language: Language;
   onPick: () => void;
 }) {
   const { t } = useT();
   const chains = shownChainsFor(token, cap, sessionBlockchains);
   const single = chains.length === 1;
-  const netTxt = single ? chainName(chains[0].blockchain) : `${chains.length} ${t('networks')}`;
+  const singleChainName = single ? chainName(chains[0].blockchain) : '';
+  const netTxt = single
+    ? token.description === singleChainName
+      ? singleChainName
+      : `${token.description} · ${singleChainName}`
+    : `${token.description} · ${chains.length} ${t('networks')}`;
 
   return (
     <div className="crow" role="button" tabIndex={0} onClick={onPick} onKeyDown={onActivate(onPick)}>
       <AssetChainGlyph code={token.code} blockchain={single ? chains[0].blockchain : undefined} />
       <div className="ci">
-        <b>{token.code}</b>
+        <b>
+          {token.code}
+          {isSwissAsset(token.code) && (
+            <>
+              {' '}
+              <span className="tag swiss">SWISS</span>
+            </>
+          )}
+        </b>
         <div className="net">{netTxt}</div>
       </div>
-      {balance != null && balance > 0 && (
-        <div
-          style={{
-            marginLeft: 'auto',
-            textAlign: 'right',
-            fontSize: 13.5,
-            fontWeight: 600,
-            color: '#fff',
-            flex: '0 0 auto',
-          }}
-        >
-          {formatAmount(balance, 6, language)}
-        </div>
-      )}
     </div>
   );
 }
 
-function EmptyState({ hasQuery }: { hasQuery: boolean }) {
+// Two-way empty state, matching the static app's `buildCoins()`: logged-in with no wallet-reachable
+// asset → "no assets for this wallet"; every other empty case (incl. an unmatched search/filter) →
+// "no results". The static picker never shows a third "no assets" copy here.
+function EmptyState({ noWalletAssets }: { noWalletAssets: boolean }) {
   const { t } = useT();
   return (
     <div className="sec" style={{ textAlign: 'center', padding: '30px 22px' }}>
-      {hasQuery ? t('noResults') : t('noAssets')}
+      {noWalletAssets ? t('noAssetsForWallet') : t('noResults')}
     </div>
   );
 }
