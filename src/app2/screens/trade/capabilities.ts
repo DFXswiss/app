@@ -11,15 +11,6 @@ export function currenciesForSell(currencies: readonly Fiat[] | undefined): Fiat
   return currencies?.filter((currency) => currency.buyable) ?? [];
 }
 
-export function hasSellQuoteInputs(
-  assetId: number | undefined,
-  currencyId: number | undefined,
-  amount: number | null,
-  iban: string | undefined,
-): boolean {
-  return Boolean(assetId && currencyId && amount && iban?.trim());
-}
-
 /** A fresh 200 quote whose `isValid:false` is specifically a min/max-volume rejection — the only
  * validity case the static app surfaces inline in the "You receive" meta line (its `!ok &&
  * q.minVolume` branch). Account-state validity errors (KYC/email/limit/…) are left to the payment
