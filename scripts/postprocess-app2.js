@@ -52,13 +52,21 @@ const csp = [
   "base-uri 'self'",
   "object-src 'none'",
   "form-action 'self'",
-  "script-src 'self' 'wasm-unsafe-eval'",
+  // static.sumsub.com hosts the Ident (KYC) WebSDK loader script.
+  // connect.trezor.io serves the Trezor Connect popup/iframe app that drives the
+  // Trezor hardware wallet (src/app2/wallets/hardware-providers.ts). This is an
+  // additive, scoped shared-security-surface change: Trezor Connect runs its
+  // device flow in an officially-hosted context at connect.trezor.io only.
+  "script-src 'self' 'wasm-unsafe-eval' https://static.sumsub.com https://connect.trezor.io",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
-  "img-src 'self' data: blob:",
+  // coin-images / assets.coingecko.com host the token brand logos layered over the bundled icons.
+  "img-src 'self' data: blob: https://coin-images.coingecko.com https://assets.coingecko.com",
   [
     "connect-src 'self'",
     selectedApiOrigin,
+    // CoinGecko logo resolution (glyphs.tsx AssetGlyph fallback, 24h cached).
+    'https://api.coingecko.com',
     'wss://relay.walletconnect.com',
     'wss://relay.walletconnect.org',
     'https://rpc.walletconnect.com',
@@ -71,8 +79,13 @@ const csp = [
     'wss://*.walletconnect.org',
     'https://*.reown.com',
     'wss://*.reown.com',
+    // Sumsub Ident WebSDK (XHR + websocket telemetry).
+    'https://*.sumsub.com',
+    'wss://*.sumsub.com',
+    // Trezor Connect: the hosted popup/iframe posts device messages back to connect.trezor.io.
+    'https://connect.trezor.io',
   ].join(' '),
-  "frame-src 'self' https://verify.walletconnect.com https://verify.walletconnect.org",
+  "frame-src 'self' https://verify.walletconnect.com https://verify.walletconnect.org https://*.sumsub.com https://connect.trezor.io",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
 ].join('; ');
