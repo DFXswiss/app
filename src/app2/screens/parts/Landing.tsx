@@ -4,7 +4,7 @@
 // `.login`/`.hero`/`.auth`/`.btn-glass`/`.wstrip`/`.trust` rules apply unchanged.
 
 import { useAuth } from '@dfx.swiss/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../../components/ui';
 import { useT } from '../../i18n';
 import { useWalletSession } from '../../wallets/session';
@@ -69,6 +69,19 @@ const CLOCK_ICON = (
 
 const STRIP_ENTRIES = WALLET_CATALOG.flatMap((group) => group.items).filter((entry) => STRIP_IDS.includes(entry.id));
 
+// CSP-safe broken-icon fallback: a colored initials badge, mirroring the static
+// preview's mono() (public/app2/index.html, ~line 1797) used behind data-fb on
+// the strip <img>. Rendered inline as a data: URI (app2 CSP forbids remote images).
+function monoDataUri(label: string, color = '#16456f'): string {
+  const text = (label || '?').slice(0, 4);
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>` +
+    `<circle cx='16' cy='16' r='16' fill='${color}'/>` +
+    `<text x='16' y='21' font-family='Inter,Arial' font-size='11' font-weight='700' fill='#fff' text-anchor='middle'>${text}</text>` +
+    `</svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg).replace(/'/g, '%27').replace(/"/g, '%22');
+}
+
 export function Landing() {
   const { t } = useT();
   const { openConnect } = useWalletSession();
@@ -80,7 +93,13 @@ export function Landing() {
   const [sending, setSending] = useState(false);
   const [emailInvalid, setEmailInvalid] = useState(false);
 
-  const initialInvite = useMemo(() => new URLSearchParams(window.location.search).get('refcode')?.trim() || '', []);
+  // Match the static preview's INVITE parse (orig 1636-1638): a real DFX referral link is
+  // ?code=DFX-XXXX (REF_BASE 'login?code='); ?ref=/?usedRef= are accepted aliases, and ?refcode=
+  // is kept as our own alias. First hit wins.
+  const initialInvite = useMemo(() => {
+    const qp = new URLSearchParams(window.location.search);
+    return (qp.get('code') || qp.get('ref') || qp.get('usedRef') || qp.get('refcode') || '').trim();
+  }, []);
   const [inviteOpen, setInviteOpen] = useState(() => Boolean(initialInvite));
   const [invite, setInvite] = useState(initialInvite);
   // ?wallet= (partner wallet id) — same param WalletSessionProvider reads for the wallet-connect
@@ -88,13 +107,40 @@ export function Landing() {
   const walletParam = useMemo(() => new URLSearchParams(window.location.search).get('wallet')?.trim() || undefined, []);
   const normalizedInvite = normalizeInviteCode(invite) ?? '';
 
+  // Auto-focus the revealed field ~250ms after the wrap opens (matches the static
+  // preview's setTimeout(()=>$("email"|"inviteInput").focus(),250) on toggle). The
+  // invite field is skipped on the very first render so a ?refcode= that opens it at
+  // load does not steal focus (the preview only focuses on a user toggle).
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const inviteInputRef = useRef<HTMLInputElement>(null);
+  const inviteFirstRun = useRef(true);
+
+  useEffect(() => {
+    if (!emailOpen) return;
+    const id = setTimeout(() => emailInputRef.current?.focus(), 250);
+    return () => clearTimeout(id);
+  }, [emailOpen]);
+
+  useEffect(() => {
+    if (inviteFirstRun.current) {
+      inviteFirstRun.current = false;
+      return;
+    }
+    if (!inviteOpen) return;
+    const id = setTimeout(() => inviteInputRef.current?.focus(), 250);
+    return () => clearTimeout(id);
+  }, [inviteOpen]);
+
   const submitEmail = async () => {
     if (sending) return;
     const value = email.trim();
     // finding #13: an invalid submit used to just silently no-op, leaving only the native
     // browser tooltip (if any) to explain why nothing happened — show an inline error instead.
     if (!value || !value.includes('@')) {
+      // Original refocuses the field on an invalid submit (ORIG_app2.html line 3635); the inline
+      // .ferr alert below is kept as an accessibility enhancement over that bare refocus.
       setEmailInvalid(true);
+      emailInputRef.current?.focus();
       return;
     }
     setEmailInvalid(false);
@@ -156,10 +202,11 @@ export function Landing() {
             <div>
               <div className={`efield${emailInvalid ? ' invalid' : ''}`}>
                 <input
+                  ref={emailInputRef}
                   type="email"
                   placeholder="you@email.com"
                   autoComplete="email"
-                  aria-label={t('email')}
+                  aria-label={t('changeEmail')}
                   aria-invalid={emailInvalid || undefined}
                   aria-describedby={emailInvalid ? 'emailFieldErr' : undefined}
                   value={email}
@@ -184,22 +231,23 @@ export function Landing() {
           </div>
         </div>
 
-        <button className={`invite-toggle${invite ? ' applied' : ''}`} onClick={() => setInviteOpen((v) => !v)}>
+        <button className={`invite-toggle${initialInvite ? ' applied' : ''}`} onClick={() => setInviteOpen((v) => !v)}>
           {INVITE_ICON}
-          <span>{invite ? `${t('inviteApplied')} ${invite}` : t('haveInvite')}</span>
+          <span>{initialInvite ? `${t('inviteApplied')} ${initialInvite}` : t('haveInvite')}</span>
         </button>
         <div className={`emailwrap${inviteOpen ? ' open' : ''}`}>
           <div>
             <div className="efield" style={{ paddingTop: 10 }}>
               <input
+                ref={inviteInputRef}
                 type="text"
                 placeholder="DFX-XXXX"
                 autoComplete="off"
-                aria-label={t('haveInvite')}
+                aria-label={t('inviteCode')}
                 maxLength={14}
                 style={{ textTransform: 'uppercase' }}
                 value={invite}
-                onChange={(e) => setInvite(e.target.value.toUpperCase())}
+                onChange={(e) => setInvite(e.target.value)}
               />
             </div>
           </div>
@@ -214,9 +262,21 @@ export function Landing() {
                 className="wchip"
                 type="button"
                 title={entry.id}
+                aria-label={entry.id}
                 onClick={() => openConnect(normalizedInvite || undefined)}
               >
-                <img src={entry.icon} alt="" width={25} height={25} />
+                <img
+                  src={entry.icon}
+                  alt=""
+                  width={25}
+                  height={25}
+                  onError={(e) => {
+                    const img = e.currentTarget;
+                    if (img.dataset.fbApplied) return;
+                    img.dataset.fbApplied = '1';
+                    img.src = monoDataUri(entry.id);
+                  }}
+                />
               </button>
             ))}
           </div>
