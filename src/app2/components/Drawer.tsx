@@ -3,13 +3,13 @@
 // around line 1609). Icons are the same inline SVG paths as the static app.
 
 import { useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { useModalDialog, useToast } from './ui';
 
 type MenuAction =
-  | { kind: 'route'; path: string; mode?: 'buy' | 'sell' | 'swap' }
+  | { kind: 'route'; path: string; mode?: 'buy' | 'sell' | 'swap'; sub?: string }
   | { kind: 'external'; url: string }
   | { kind: 'todo' } // not wired yet in this milestone — shows a "coming soon" toast
   | { kind: 'logout' };
@@ -124,7 +124,7 @@ const MENU: MenuGroup[] = [
       },
       {
         key: 'limitTitle',
-        action: { kind: 'todo' },
+        action: { kind: 'route', path: '/limit' },
         icon: (
           <svg {...ICON_PROPS}>
             <path
@@ -145,23 +145,17 @@ const MENU: MenuGroup[] = [
     items: [
       {
         key: 'mOcp',
-        action: { kind: 'todo' },
+        action: { kind: 'route', path: '/ocp' },
         icon: (
-          <svg viewBox="0 0 254 192" fill="none" style={{ width: 17, height: 'auto' }}>
-            <path
-              d="M179.131 171.762L251.52 99.3729C253.39 97.5036 253.39 94.4693 251.52 92.5729L164.989 6.06858L132.668 38.3892L186.879 92.6C188.748 94.4693 188.748 97.5036 186.879 99.4L146.837 139.442L179.158 171.762H179.131Z"
-              fill="currentColor"
-            />
-            <path
-              d="M158.92 192L66.3203 99.4C64.4509 97.5307 64.4509 94.4964 66.3203 92.6L158.92 0H96.2568C94.9835 0 93.7643 0.514745 92.8703 1.40878L1.652 92.6C-0.217335 94.4693 -0.217335 97.5036 1.652 99.4L92.8432 190.591C93.7372 191.485 94.9564 192 96.2297 192H158.92Z"
-              fill="currentColor"
-            />
+          <svg {...ICON_PROPS}>
+            <path d="M7 7l5-3 5 3v6l-5 3-5-3z" stroke="currentColor" strokeWidth={1.7} strokeLinejoin="round" />
+            <path d="M12 4v9" stroke="currentColor" strokeWidth={1.7} />
           </svg>
         ),
       },
       {
         key: 'payRoutes',
-        action: { kind: 'todo' },
+        action: { kind: 'route', path: '/ocp', sub: 'routes' },
         icon: (
           <svg {...ICON_PROPS}>
             <path
@@ -265,17 +259,16 @@ interface DrawerProps {
 export function Drawer({ open, onClose, activePath }: DrawerProps) {
   const { t } = useT();
   const navigate = useNavigate();
-  const location = useLocation();
   const { showToast } = useToast();
   const { address, blockchain, logout } = useWalletSession();
   const scrimRef = useRef<HTMLDivElement>(null);
   const ref = useModalDialog<HTMLElement>(open, onClose, scrimRef);
-  const activeMode = new URLSearchParams(location.search).get('mode') ?? 'buy';
 
   const runAction = (action: MenuAction, label: string) => {
     onClose();
     if (action.kind === 'route') {
-      navigate({ pathname: action.path, search: action.mode ? `?mode=${action.mode}` : '' });
+      const search = action.mode ? `?mode=${action.mode}` : action.sub ? `?sub=${action.sub}` : '';
+      navigate({ pathname: action.path, search });
       return;
     }
     if (action.kind === 'external') {
@@ -336,9 +329,11 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
                 <div
                   key={item.key}
                   className={`mitem${
+                    // Match the static app's buildMenu(): active when S.view===it.act. Since buy/sell/swap
+                    // all resolve to the same view, only mBuy (mode 'buy') ever highlights; mSell/mSwap don't.
                     item.action.kind === 'route' &&
                     item.action.path === activePath &&
-                    (!item.action.mode || item.action.mode === activeMode)
+                    (!item.action.mode || item.action.mode === 'buy')
                       ? ' active'
                       : ''
                   }`}

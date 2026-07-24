@@ -13,7 +13,10 @@ import { LanguageProvider, useT } from './i18n';
 import AccountScreen from './screens/account';
 import HomeScreen from './screens/home';
 import KycScreen from './screens/kyc';
+import LimitScreen from './screens/limit';
+import OcpScreen from './screens/ocp/OcpScreen';
 import { NotFound } from './screens/parts/NotFound';
+import ReturnRouteScreen from './screens/return-route';
 import SupportScreen from './screens/support';
 import TransactionsScreen from './screens/transactions';
 import { WalletSessionProvider } from './wallets/session';
@@ -26,7 +29,17 @@ const router = createHashRouter([
       { path: '/account', element: <AccountScreen /> },
       { path: '/tx', element: <TransactionsScreen /> },
       { path: '/kyc', element: <KycScreen /> },
+      { path: '/limit', element: <LimitScreen /> },
+      // OpenCryptoPay merchant suite. The hub is `/ocp`; a sub-view is selected
+      // via `?sub=<name>` (see OcpScreen) so the Drawer can deep-link to one.
+      { path: '/ocp', element: <OcpScreen /> },
       { path: '/support', element: <SupportScreen /> },
+      // External-return handlers (account-merge + Checkout.com card-payment return).
+      // Registered as hash routes so the flows work when reached; the production
+      // real-path deep-link contract is a hosting concern (see return-route.tsx).
+      { path: '/account-merge', element: <ReturnRouteScreen /> },
+      { path: '/buy/success', element: <ReturnRouteScreen /> },
+      { path: '/buy/failure', element: <ReturnRouteScreen /> },
       // Catch-all (finding #7): an unmatched hash path used to fall through to react-router's
       // own unbranded "Unexpected Application Error!" page instead of rendering inside the Shell.
       { path: '*', element: <NotFound /> },

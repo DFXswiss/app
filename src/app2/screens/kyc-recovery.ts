@@ -6,9 +6,7 @@ interface StructuredApiError {
   switchToCode?: unknown;
 }
 
-export type KycHandoff =
-  | { kind: 'switch'; code: string }
-  | { kind: 'merge' | 'account-exists' | 'conflict' };
+export type KycHandoff = { kind: 'switch'; code: string } | { kind: 'merge' | 'account-exists' | 'conflict' };
 
 function fields(error: unknown): StructuredApiError {
   return typeof error === 'object' && error !== null ? (error as StructuredApiError) : {};

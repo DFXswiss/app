@@ -2,35 +2,39 @@
 //
 // Ported from the static preview's `v-kyc` section (public/app2/index.html,
 // markup ~line 1003, `renderKyc()` / `renderKycOverview()` / `renderKycStep()`
-// around line 2685 for behaviour) — scoped down to what this milestone asks
-// for: level + limit, the step list with name/status, a continue action, and
-// the ident session link. The static app's ~15 per-step data-entry forms
-// (ContactData, PersonalData, LegalEntity, ...) are out of scope here; those
-// steps render their name + status and a "check again" continue button
-// instead of a full form (see TODO below).
+// around line 2685 for behaviour). This shell owns the overview (level + limit,
+// the step list, the continue action), the 2FA enrolment flow, failed/in-review
+// states and the account switch/merge hand-offs. The per-step data entry
+// (ContactData, PersonalData, Ident/Sumsub, FinancialData, LegalEntity,
+// BeneficialOwner, document uploads, ...) is completed IN THE APP by
+// `KycStepForm` in `./kyc-steps`; only steps with no in-app form (e.g.
+// PaymentAgreement, the name/address/phone-change flows) still hand off to the
+// portal — see `isInAppStep()`.
 
 import {
   isStepDone,
   KycInfo,
   KycLevel,
+  KycSession,
+  KycStepBase,
   KycStepName,
   KycStepReason,
   KycStepSession,
   KycStepStatus,
   TfaSetup,
   TfaType,
-  UrlType,
   useKyc,
   useUserContext,
 } from '@dfx.swiss/react';
 import { AnchorHTMLAttributes, FormEvent, ReactNode, useEffect, useState } from 'react';
 import QRCode from 'react-qr-code';
-import { LoadingRow } from '../components/ui';
+import { LoadingRow, useToast } from '../components/ui';
 import { useT, type TranslationKey } from '../i18n';
 import { appUrl, isSafeAppUrl } from '../utils/url';
 import { useWalletSession } from '../wallets/session';
 import { formatChf, isSafeHttpsUrl } from './parts/format';
 import { LoggedOutState } from './parts/LoggedOutState';
+import { isInAppStep, KycStepForm } from './kyc-steps';
 import {
   apiStatusCode,
   isTfaAlreadyEnrolledError,
@@ -40,6 +44,13 @@ import {
 } from './kyc-recovery';
 
 const PERIOD_KEY: Record<string, TranslationKey> = { Day: 'perDay', Month: 'perMonth', Year: 'perYear' };
+
+const COPY_ICON = (
+  <svg viewBox="0 0 24 24" fill="none">
+    <rect x={9} y={9} width={11} height={11} rx={2} stroke="currentColor" strokeWidth={1.8} />
+    <path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" />
+  </svg>
+);
 
 // KycStepStatus values whose chip should read as "attention needed".
 const WARN_STATUSES = new Set<string>([KycStepStatus.FAILED, KycStepStatus.OUTDATED, KycStepStatus.DATA_REQUESTED]);
@@ -62,12 +73,6 @@ function statusLabel(t: (key: TranslationKey) => string, status: KycStepStatus):
   return label === key ? status : label;
 }
 
-/** Steps that carry an interactive session link (ident, video, ...) — every
- * other step is a data-collection form out of scope for this milestone. */
-function hasSession(step: KycStepSession): boolean {
-  return step.name === KycStepName.IDENT && !!step.session;
-}
-
 function portalKycUrl(code: string): string | undefined {
   return appUrl(`/kyc?code=${encodeURIComponent(code)}`);
 }
@@ -88,9 +93,21 @@ function apiErrorMessage(t: (key: TranslationKey) => string, err: unknown): stri
 
 export default function KycScreen() {
   const { t, language } = useT();
+  const { showToast } = useToast();
   const { isLoggedIn } = useWalletSession();
   const { user, isUserLoading } = useUserContext();
   const kyc = useKyc();
+
+  const copySecret = (value: string) => {
+    if (!value || !navigator.clipboard) {
+      showToast(t('copyFail'));
+      return;
+    }
+    navigator.clipboard
+      .writeText(value)
+      .then(() => showToast(t('copied')))
+      .catch(() => showToast(t('copyFail')));
+  };
 
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const [busy, setBusy] = useState(false);
@@ -301,35 +318,43 @@ export default function KycScreen() {
             </p>
             {setup.uri && (
               <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0 12px' }}>
-                <div style={{ background: '#fff', padding: 10, borderRadius: 12 }}>
-                  <QRCode value={setup.uri} size={168} bgColor="#ffffff" fgColor="#0a2a4a" />
+                <div style={{ background: '#fff', padding: 14, borderRadius: 16, width: 210 }}>
+                  <QRCode value={setup.uri} size={182} bgColor="#ffffff" fgColor="#0a2a4a" style={{ width: '100%' }} />
                 </div>
               </div>
             )}
-            <div className="tform">
-              <label className="flabel">{t('kycTfaCode')}</label>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                margin: '4px 2px 10px',
+              }}
+            >
               <code
                 style={{
-                  display: 'block',
                   fontSize: 12,
                   color: '#fff',
                   wordBreak: 'break-all',
-                  margin: '4px 2px 10px',
                 }}
               >
                 {setup.secret}
               </code>
+              <button
+                className="btn-mini"
+                type="button"
+                aria-label="Copy"
+                style={{ width: 'auto', flex: 'none', padding: '0 12px' }}
+                onClick={() => copySecret(setup.secret)}
+              >
+                {COPY_ICON}
+              </button>
             </div>
           </>
         ) : (
           <div className="paybox-note" style={{ margin: '10px 0' }}>
-            {alreadyEnrolled ? (
-              t('kycTfaExisting')
-            ) : mailSetup ? (
-              t('kycTfaMail')
-            ) : (
-              <LoadingRow label={t('loading')} />
-            )}
+            {alreadyEnrolled ? t('kycTfaExisting') : mailSetup ? t('kycTfaMail') : <LoadingRow label={t('loading')} />}
           </div>
         )}
         {!setupError && (alreadyEnrolled || setup) && (
@@ -368,6 +393,13 @@ export default function KycScreen() {
     const { step, info } = phase;
     const backToOverview = () => setPhase({ kind: 'overview', info });
 
+    // Apply a session returned by an in-app step (continueKyc auto-step): move to
+    // the next current step, or back to the overview once nothing is pending.
+    const applySession = (session: KycSession) =>
+      session.currentStep
+        ? setPhase({ kind: 'step', info: session, step: session.currentStep })
+        : setPhase({ kind: 'overview', info: session });
+
     if (step.status === KycStepStatus.FAILED) {
       const handoff =
         step.reason === KycStepReason.ACCOUNT_MERGE_REQUESTED
@@ -383,6 +415,13 @@ export default function KycScreen() {
           <div className="sectionlabel tight">{stepNameLabel(t, step.name)}</div>
           <div className="paybox-note warn" style={{ margin: '10px 0' }}>
             {t(handoff?.kind === 'merge' ? 'kycAccountMerge' : handoff ? 'kycAccountExists' : 'kycFailed')}
+            {/* #75: surface the server's failure reason on a non-hand-off failure. */}
+            {!handoff && step.reason && (
+              <>
+                <br />
+                <span style={{ opacity: 0.85 }}>{step.reason}</span>
+              </>
+            )}
           </div>
           {handoff ? (
             <SafeExternalLink
@@ -425,46 +464,29 @@ export default function KycScreen() {
       );
     }
 
-    if (hasSession(step) && step.session) {
-      const browserSession = step.session.type === UrlType.BROWSER && isSafeHttpsUrl(step.session.url);
-      const startUrl = browserSession ? step.session.url : portalKycUrl(code);
+    // In-app data entry (ContactData, PersonalData, Ident/Sumsub, FinancialData,
+    // LegalEntity, BeneficialOwner, document uploads, ...) — done inside the app.
+    if (isInAppStep(step.name)) {
       return (
         <div className="account">
           <div className="txhead">
             <h2>{t('mKyc')}</h2>
           </div>
-          <div className="sectionlabel tight">{stepNameLabel(t, step.name)}</div>
-          <div className="paybox-note" style={{ margin: '10px 0' }}>
-            {t('kycIdentLead')}
-          </div>
-          {/* A TOKEN session contains a Sumsub access token, not a URL. Never put it in href;
-              hand that flow to the full portal, which embeds the SDK. Browser sessions are
-              opened directly only after strict https validation. */}
-          <SafeExternalLink
-            url={startUrl}
-            className="btn-primary"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
-          >
-            {t(browserSession ? 'kycIdentOpen' : 'finishOnDfx')}
-          </SafeExternalLink>
-          <div className="tnote" style={{ marginTop: 10, textAlign: 'center' }}>
-            {t('kycIdentWait')}
-          </div>
-          <button
-            className="btn-mini"
-            style={{ marginTop: 10, width: '100%' }}
-            disabled={busy}
-            onClick={() => runContinue(info)}
-          >
-            {t('kycIdentDone2')}
-          </button>
+          <KycStepForm
+            code={code}
+            step={step}
+            onAdvance={applySession}
+            onFailed={(result: KycStepBase) => setPhase({ kind: 'step', info, step: { ...step, ...result } })}
+            onTfaRequired={() => beginTfaSetup(info)}
+            onHandoff={(handoff) => setPhase({ kind: 'handoff', info, handoff })}
+            onBack={backToOverview}
+          />
         </div>
       );
     }
 
-    // Data-collection steps (ContactData, PersonalData, LegalEntity, ...) —
-    // out of scope for this milestone; show what's happening and let the
-    // user re-check status instead of a full form.
+    // Legacy steps with no in-app form (PaymentAgreement, name/address/phone
+    // change, unknown future steps) — completed in the DFX portal.
     return (
       <div className="account">
         <div className="txhead">
@@ -479,10 +501,15 @@ export default function KycScreen() {
           className="btn-primary"
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
         >
-          {t('finishOnDfx')}
+          {t('kycLegacyOpen')}
         </SafeExternalLink>
-        <button className="btn-mini" style={{ marginTop: 10, width: '100%' }} onClick={backToOverview}>
-          {t('kycOverview')}
+        <button
+          className="btn-mini"
+          style={{ marginTop: 10, width: '100%' }}
+          disabled={busy}
+          onClick={() => runContinue(info)}
+        >
+          {t('kycIdentDone2')}
         </button>
       </div>
     );
@@ -505,7 +532,8 @@ export default function KycScreen() {
       <div className="limit-now">
         <div className="lab">{t('kycYourLevel')}</div>
         <div className="big">
-          {level != null && level >= KycLevel.Completed ? t('kycFull') : t('levelN', { n: level ?? 0 })}
+          {/* #76: show "Level —" when the level is unknown, never "Level 0". */}
+          {level != null && level >= KycLevel.Completed ? t('kycFull') : t('levelN', { n: level ?? '—' })}
         </div>
         <div className="per">{limitLabel}</div>
       </div>
