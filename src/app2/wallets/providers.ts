@@ -60,17 +60,36 @@ export function createCancelToken(): CancelToken {
 }
 
 // ---------------------------------------------------------------------------
-// Injected (EIP-1193) — MetaMask or whatever single provider the browser
-// exposes as window.ethereum. No EIP-6963 multi-wallet disambiguation in
-// this slice: if several extensions fight over window.ethereum the browser
-// resolves that, not us.
+// Injected (EIP-1193) — MetaMask, Rabby, Coinbase Wallet, Brave, Trust and any
+// other browser-extension wallet. Individual wallets are disambiguated via
+// EIP-6963 (each announces its own provider tagged with a stable `rdns`), which
+// is how a click on the "Rabby" tile reaches Rabby even when MetaMask also owns
+// the legacy `window.ethereum`. For older wallets that never announce, we fall
+// back to the single `window.ethereum` provider, matched against the wallet's
+// vendor flag (isRabby / isCoinbaseWallet / …) so we never sign into a
+// different wallet than the one the user tapped.
 // ---------------------------------------------------------------------------
+
+/** Vendor flags an injected provider may expose to identify itself, mirroring
+ * the detection in the main app's metamask.hook.ts (isMetaMask/isRabby/…). */
+type InjectedFlavorFlag = 'isMetaMask' | 'isRabby' | 'isCoinbaseWallet' | 'isTrust' | 'isBraveWallet';
 
 export interface Eip1193Provider {
   request<T = unknown>(args: { method: string; params?: unknown[] }): Promise<T>;
   on?: (event: string, listener: (...args: unknown[]) => void) => void;
   removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
   isMetaMask?: boolean;
+  isRabby?: boolean;
+  isCoinbaseWallet?: boolean;
+  isTrust?: boolean;
+  isBraveWallet?: boolean;
+}
+
+/** How a catalog entry locates its injected provider: the EIP-6963 `rdns` is
+ * tried first, then the vendor flag on `window.ethereum` as a legacy fallback. */
+export interface InjectedTarget {
+  rdns?: string;
+  flavor?: InjectedFlavorFlag;
 }
 
 // `window.ethereum` is already declared `any` by a transitive dependency
@@ -85,6 +104,53 @@ export function getInjectedProvider(): Eip1193Provider | undefined {
   if (typeof window === 'undefined') return undefined;
   const injected: unknown = (window as { ethereum?: unknown }).ethereum;
   return isEip1193Provider(injected) ? injected : undefined;
+}
+
+// EIP-6963 provider discovery — wallets answer an `eip6963:requestProvider`
+// event by dispatching `eip6963:announceProvider` with `{ info: { rdns, … },
+// provider }`. We keep the latest announcement per rdns; several wallets can
+// coexist without fighting over window.ethereum.
+interface Eip6963AnnounceDetail {
+  info?: { rdns?: string; name?: string; icon?: string };
+  provider?: unknown;
+}
+
+const eip6963Providers = new Map<string, Eip1193Provider>();
+let eip6963DiscoveryStarted = false;
+
+function startEip6963Discovery(): void {
+  if (eip6963DiscoveryStarted || typeof window === 'undefined') return;
+  eip6963DiscoveryStarted = true;
+  window.addEventListener('eip6963:announceProvider', (event: Event) => {
+    const detail = (event as CustomEvent<Eip6963AnnounceDetail>).detail;
+    const rdns = detail?.info?.rdns;
+    if (rdns && isEip1193Provider(detail?.provider)) eip6963Providers.set(rdns, detail.provider);
+  });
+  window.dispatchEvent(new Event('eip6963:requestProvider'));
+}
+
+// Begin discovery as soon as this module loads so announcements are collected
+// well before the user opens the connect sheet.
+startEip6963Discovery();
+
+/** Resolves the EIP-1193 provider for a specific injected wallet. Returns
+ * `undefined` when that wallet is not present — the caller surfaces a
+ * "not detected" prompt rather than silently connecting a different wallet. */
+export function resolveInjectedProvider(target: InjectedTarget): Eip1193Provider | undefined {
+  // Re-request in case the wallet extension loaded after the initial dispatch.
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+  if (target.rdns) {
+    const announced = eip6963Providers.get(target.rdns);
+    if (announced) return announced;
+  }
+
+  // Legacy fallback: the single window.ethereum, but only when it actually is
+  // (or, for MetaMask with no flag required, plausibly is) the wallet tapped.
+  const injected = getInjectedProvider();
+  if (!injected) return undefined;
+  if (target.flavor && !injected[target.flavor]) return undefined;
+  return injected;
 }
 
 export function isUserRejection(error: unknown): boolean {
