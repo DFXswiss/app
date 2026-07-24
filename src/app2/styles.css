@@ -1743,6 +1743,12 @@ body::after {
   place-items: center;
   color: var(--success);
 }
+/* A gate (verify e-mail, KYC, amount out of range) is not a success state — the green tick
+   below would read as "done" on a sheet that is asking for one more step. */
+.confirm-ic.gate {
+  background: rgba(255, 190, 80, 0.16);
+  color: #ffbe50;
+}
 .confirm-ic svg {
   width: 32px;
   height: 32px;
@@ -2301,6 +2307,7 @@ select.tinput:disabled,
   place-items: center;
   background: linear-gradient(155deg, #2231ef, #141fb0);
   box-shadow: 0 14px 32px -10px rgba(34, 49, 239, 0.6);
+  color: #fff; /* the OCP mark inside draws in currentColor */
 }
 .ocp-badge svg,
 .ocp-badge img {
@@ -2671,6 +2678,9 @@ select.tinput:disabled,
 }
 .btn-mini {
   height: 46px;
+  /* Content-width buttons ("Verbindung entfernen") had their label touching both edges — the
+     rule never carried horizontal padding, only the full-width variants hid it. */
+  padding: 0 18px;
   border-radius: 13px;
   border: 1px solid var(--hair-strong);
   background: var(--card-overlay);
@@ -3387,6 +3397,13 @@ select.tinput:disabled,
 .mitem .micon svg {
   width: 18px;
   height: 18px;
+}
+/* The Open CryptoPay mark is 170×129, not square — the square icon rule above would squash it.
+   It is a solid mark among 1.8px stroke icons, so it runs slightly smaller to carry the same
+   optical weight in the row. */
+.mitem .micon svg.ocp-mark {
+  width: 17px;
+  height: auto;
 }
 .mitem span {
   flex: 1;

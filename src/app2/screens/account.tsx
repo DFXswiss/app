@@ -165,18 +165,32 @@ const GLOBE_ICON = (
     />
   </svg>
 );
-const CURRENCY_ICON = (
-  <svg viewBox="0 0 24 24" fill="none">
-    <circle cx={12} cy={12} r={9} stroke="currentColor" strokeWidth={1.7} />
-    <path
-      d="M15 9.5C14 8.5 12.5 8.3 11 9c-2 1-2 3.5 0 4.5 2 1 2 3.5 0 4.5-1.5.7-3 .5-4-.5"
-      stroke="currentColor"
-      strokeWidth={1.7}
-      strokeLinecap="round"
-    />
-    <path d="M12 6v12" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" />
-  </svg>
-);
+/** Symbols for the display currencies DFX offers; anything else falls back to the code itself
+ * (e.g. a three-letter ticker), so the row icon always states which currency is set. */
+const CURRENCY_SYMBOLS: Record<string, string> = { EUR: '€', CHF: 'CHF', USD: '$', GBP: '£' };
+
+/** Icon for the "display currency" row: the actual currency's symbol rather than a generic
+ * money glyph, so it matches the value shown on the right (€ for EUR, CHF for CHF, …). */
+function CurrencyIcon({ code }: { code?: string }) {
+  const symbol = (code && (CURRENCY_SYMBOLS[code] ?? code)) || '¤';
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <text
+        x={12}
+        y={12}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontFamily="Inter, -apple-system, Arial, sans-serif"
+        // Multi-character symbols (CHF, tickers) shrink to stay inside the same optical box.
+        fontSize={symbol.length > 1 ? 10 : 20}
+        fontWeight={700}
+        fill="currentColor"
+      >
+        {symbol}
+      </text>
+    </svg>
+  );
+}
 const KEY_ICON = (
   <svg viewBox="0 0 24 24" fill="none">
     <path
@@ -490,7 +504,7 @@ export default function AccountScreen() {
       <div className="glass rowlist">
         <AccountRow icon={GLOBE_ICON} title={t('language')} value={languageLabel} onOpen={() => setSheet('language')} />
         <AccountRow
-          icon={CURRENCY_ICON}
+          icon={<CurrencyIcon code={user?.currency?.name} />}
           title={t('currency')}
           value={currencyLabel}
           onOpen={() => setSheet('currency')}

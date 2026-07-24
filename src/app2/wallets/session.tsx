@@ -27,6 +27,7 @@ import {
 } from 'react';
 import { useToast } from '../components/ui';
 import { useT } from '../i18n';
+import dfxMark from '../assets/brand/dfx-mark.svg';
 import pecunityLogo from '../assets/wallets/pecunity.png';
 import realunitLogo from '../assets/wallets/realunit.svg';
 import urbleLogo from '../assets/wallets/urble.webp';
@@ -199,6 +200,9 @@ function shortAddress(address: string): string {
 // name (fuzzy: lowercased, non-alphanumerics stripped, substring). Mirrors the static preview's
 // WALLET_LOGOS/walletLogoByName (public/app2/index.html).
 const WALLET_LOGOS: Record<string, string> = {
+  // DFX's own wallet (API wallet name "DFX Wallet") — the full key, not a bare "dfx", so
+  // sibling brands like DFX Taro keep their own logo.
+  dfxwallet: dfxMark,
   pecunity: pecunityLogo,
   bricktowers: urbleLogo,
   urble: urbleLogo,
