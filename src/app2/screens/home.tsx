@@ -117,13 +117,12 @@ export default function HomeScreen() {
   // Frozen quote snapshot the payment sheet renders from (finding #2) — see PaymentSnapshot.
   const [sheetSnapshot, setSheetSnapshot] = useState<PaymentSnapshot | null>(null);
   const sheetWasOpenRef = useRef(false);
-  const [openAfterBankSelection, setOpenAfterBankSelection] = useState(false);
   const [sheetRetrying, setSheetRetrying] = useState(false);
-  // Buy/swap only ask the authenticated paymentInfos endpoint once the user moves to pay; the
-  // panel itself runs on the public quote so account gates (no e-mail on file, KYC, …) can no
-  // longer take the rate display down with them. `openAfterPaymentInfo` is the one-shot intent
-  // that opens the sheet as soon as that keyed request settles — same shape as the sell flow's
-  // `openAfterBankSelection` below. Sell needs neither: its IBAN choice already switches it.
+  // All three modes ask the authenticated paymentInfos endpoint only once the user moves to
+  // pay; the panels themselves run on the public quote endpoints, so account gates (no e-mail
+  // on file, KYC, limit, …) can no longer take the rate display down with them.
+  // `openAfterPaymentInfo` is the one-shot intent that opens the sheet as soon as that keyed
+  // request settles — armed by the CTA, or by picking the payout account the sell CTA asked for.
   const [needPaymentInfo, setNeedPaymentInfo] = useState(false);
   const [openAfterPaymentInfo, setOpenAfterPaymentInfo] = useState(false);
 
@@ -271,7 +270,17 @@ export default function HomeScreen() {
     paused: paymentSheetOpen,
   });
   const sellQuote = useSellQuote({
+    // No IBAN on the display engine: the payout account only decides where the money goes, not
+    // what the rate is, and asking the authenticated endpoint for it would put the panel back
+    // behind the account gates (a user without a confirmed e-mail saw no rate at all).
     enabled: session.isLoggedIn && mode === 'sell' && Boolean(sellRaw.trim()),
+    asset: sellApiAsset,
+    currency: sellFiat,
+    amount: sellAmount,
+    paused: paymentSheetOpen || openAfterPaymentInfo,
+  });
+  const sellPayment = useSellQuote({
+    enabled: session.isLoggedIn && mode === 'sell' && needPaymentInfo && Boolean(sellBankAccount?.iban),
     asset: sellApiAsset,
     currency: sellFiat,
     amount: sellAmount,
@@ -299,9 +308,9 @@ export default function HomeScreen() {
   const swapReady = !!swapQuote.data && swapQuote.isFresh && swapQuote.data.isValid !== false;
 
   const activeQuote = mode === 'buy' ? buyQuote : mode === 'sell' ? sellQuote : swapQuote;
-  /** The engine that produces what the payment sheet shows: the payment-details request for
-   * buy/swap, and the (IBAN-bound) sell request, which already is one. */
-  const activePayment = mode === 'buy' ? buyPayment : mode === 'sell' ? sellQuote : swapPayment;
+  /** The engine that produces what the payment sheet shows — the authenticated payment-details
+   * request of the active mode (for sell, the IBAN-bound one). */
+  const activePayment = mode === 'buy' ? buyPayment : mode === 'sell' ? sellPayment : swapPayment;
   const activeThrownError = activeQuote.errorIsCurrent ? mapThrownError(t, activeQuote.error) : null;
   const activeValidityMessage =
     mode === 'buy' && buyQuote.data?.isValid === false && buyQuote.isFresh
@@ -330,9 +339,9 @@ export default function HomeScreen() {
             )
           : undefined;
   const canOpenGate = Boolean(activeValidityMessage || activeThrownError);
-  /** A tap has been made and the sheet is waiting on its keyed request (payment details for
-   * buy/swap, the IBAN-bound sell request) — the CTA stays busy until it settles. */
-  const awaitingPaymentInfo = openAfterPaymentInfo || openAfterBankSelection;
+  /** A tap has been made and the sheet is waiting on the payment-details request it armed —
+   * the CTA stays busy until that request settles. */
+  const awaitingPaymentInfo = openAfterPaymentInfo;
 
   // ---- CTA -------------------------------------------------------------------------------
   const ctaEnabled = !session.isLoggedIn
@@ -341,7 +350,7 @@ export default function HomeScreen() {
       ? buyReady || canOpenGate
       : mode === 'swap'
         ? swapReady || canOpenGate
-        : !!sellAmount && !!sellApiAsset && !!sellFiat && (!sellBankAccount || sellReady || canOpenGate);
+        : !!sellAmount && !!sellApiAsset && !!sellFiat && (sellReady || canOpenGate);
 
   // ---- payment-sheet snapshot (finding #2) ------------------------------------------------
   // Everything the sheet renders is captured here on open (and re-captured whenever the live
@@ -362,7 +371,7 @@ export default function HomeScreen() {
     setSheetSnapshot({
       mode,
       buy: mode === 'buy' ? buyPayment.data : null,
-      sell: mode === 'sell' ? sellQuote.data : null,
+      sell: mode === 'sell' ? sellPayment.data : null,
       swap: mode === 'swap' ? swapPayment.data : null,
       rawError: activePayment.errorIsCurrent ? activePayment.error : null,
       loading: sheetLoadingLive,
@@ -374,47 +383,24 @@ export default function HomeScreen() {
     });
   };
 
-  /** Opens the sheet, refusing a stale/missing quote instead of showing numbers that are about
-   * to be wrong (mirrors the static app's showConfirm(): `if(!quoteFresh()...){updateQuote();
-   * toast(t("quoteExpired"));return;}`). A current thrown gate error is also a settled result:
-   * opening the sheet is how a new user reaches email/KYC/recommendation recovery UI. */
-  const openPaymentSheet = () => {
-    if ((!activePayment.data || !activePayment.isFresh) && !activePayment.errorIsCurrent) {
-      showToast(t('quoteExpired'));
-      activePayment.refresh();
-      return;
-    }
-    latchSnapshot();
-    setPaymentSheetOpen(true);
-  };
-
-  // Selecting the mandatory sell IBAN starts a new keyed request. Open only after that exact
-  // request settles; never latch the previous missing-IBAN state for even one render.
+  // One-shot open, armed by the CTA enabling the payment-details engine (for sell, by picking
+  // the payout account the CTA asked for). `settled` is keyed, so what gets latched is that
+  // exact response — or its account-gate error — never the public quote that was on screen a
+  // moment ago, and never the previous missing-IBAN state.
   useEffect(() => {
-    if (!openAfterBankSelection || mode !== 'sell' || !sellBankAccount || !sellQuote.settled) return;
-    latchSnapshot();
-    setOpenAfterBankSelection(false);
-    setPaymentSheetOpen(true);
-  }, [openAfterBankSelection, mode, sellBankAccount, sellQuote.settled]);
-
-  // Buy/swap: same one-shot open, armed by the CTA enabling the payment-details engine. Its
-  // `settled` is keyed, so what gets latched is that response (or its account-gate error).
-  useEffect(() => {
-    if (!openAfterPaymentInfo || !needPaymentInfo || mode === 'sell' || !activePayment.settled) return;
+    if (!openAfterPaymentInfo || !needPaymentInfo || !activePayment.settled) return;
     latchSnapshot();
     setOpenAfterPaymentInfo(false);
     setPaymentSheetOpen(true);
-  }, [openAfterPaymentInfo, needPaymentInfo, mode, activePayment.settled]);
+  }, [openAfterPaymentInfo, needPaymentInfo, activePayment.settled]);
 
   // A payment-details request that never settles (stalled mobile connection — the engine has no
   // request timeout) would otherwise leave the CTA disabled with a spinner forever, with no way
-  // out but editing an input. Give up after 20s, release the CTA and say so. Covers both armed
-  // intents: buy/swap's payment-details request and sell's IBAN-bound one.
+  // out but editing an input. Give up after 20s, release the CTA and say so.
   useEffect(() => {
     if (!awaitingPaymentInfo) return undefined;
     const timer = setTimeout(() => {
       setOpenAfterPaymentInfo(false);
-      setOpenAfterBankSelection(false);
       setNeedPaymentInfo(false);
       showToast(t('requestTimeout'), { assertive: true });
     }, 20_000);
@@ -426,6 +412,8 @@ export default function HomeScreen() {
   useEffect(() => {
     setOpenAfterPaymentInfo(false);
     setNeedPaymentInfo(false);
+    // `sellBankAccount` is deliberately absent: picking the payout account is what *arms* the
+    // sell intent, so listing it here would cancel the intent in the same commit that sets it.
   }, [
     mode,
     buyRaw,
@@ -433,18 +421,16 @@ export default function HomeScreen() {
     buyChain,
     buyFiat,
     buyMethod,
+    sellRaw,
+    sellAsset,
+    sellChain,
+    sellFiat,
     swapRaw,
     swapFromAsset,
     swapFromChain,
     swapToAsset,
     swapToChain,
   ]);
-
-  // The one-shot auto-open belongs to the exact sell inputs that armed it. Switching modes or
-  // editing any quote input while the keyed request is in flight cancels that intent.
-  useEffect(() => {
-    setOpenAfterBankSelection(false);
-  }, [mode, sellRaw, sellAsset, sellChain, sellFiat]);
 
   // A frozen sheet changes only after an explicit Retry. Passive TTL refreshes remain paused,
   // and opening another modal can no longer re-latch live data behind the user's back.
@@ -480,14 +466,11 @@ export default function HomeScreen() {
       return;
     }
     if (!ctaEnabled) return;
-    // Buy/swap: the panel runs on the public quote, so no payment details exist yet. Start the
-    // payment-details request and let the effect above open the sheet on its response.
-    if (mode !== 'sell' && !needPaymentInfo) {
-      setNeedPaymentInfo(true);
-      setOpenAfterPaymentInfo(true);
-      return;
-    }
-    openPaymentSheet();
+    // The panel runs on the public quote, so no payment details exist yet. Start the
+    // payment-details request; the effect above opens the sheet on that exact response, which
+    // is also what guards against showing numbers that have gone stale in the meantime.
+    setNeedPaymentInfo(true);
+    setOpenAfterPaymentInfo(true);
   };
 
   // ---- receive-panel display --------------------------------------------------------------
@@ -928,7 +911,10 @@ export default function HomeScreen() {
         value={sellBankAccount}
         onSelect={(account) => {
           setSellBankAccount(account);
-          setOpenAfterBankSelection(true);
+          // The user only reached this picker by tapping the sell CTA, so selecting an account
+          // continues that intent: fetch the payment details for it and open the sheet.
+          setNeedPaymentInfo(true);
+          setOpenAfterPaymentInfo(true);
         }}
       />
 
@@ -954,8 +940,9 @@ export default function HomeScreen() {
           // Must be the engine the sheet renders from: refreshing the panel's public quote would
           // never re-run paymentInfos, so a gate the user just cleared (e-mail confirmed, KYC
           // done) could never be re-checked from inside the sheet. Re-arming the flag keeps that
-          // engine enabled — `refresh()` is a no-op on a disabled engine.
-          if (mode !== 'sell') setNeedPaymentInfo(true);
+          // engine enabled — `refresh()` is a no-op on a disabled engine — and applies to all
+          // three modes now that sell asks for its payment details the same way.
+          setNeedPaymentInfo(true);
           activePayment.refresh();
         }}
         onReconnect={() => session.openConnect()}
