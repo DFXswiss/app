@@ -21,7 +21,7 @@ jest.mock('@dfx.swiss/react', () => ({
 
 import { render, waitFor } from '@testing-library/react';
 import { FiatPaymentMethod, type Asset, type Fiat } from '@dfx.swiss/react';
-import { useBuyQuote, useSwapQuote } from '../screens/trade/useTradeQuote';
+import { useBuyQuote, useSellQuote, useSwapQuote } from '../screens/trade/useTradeQuote';
 
 const currency = { id: 2, name: 'EUR' } as Fiat;
 const asset = { id: 123, name: 'USDT' } as Asset;
@@ -52,12 +52,25 @@ function SwapHarness({ withPaymentInfo }: { withPaymentInfo?: boolean }) {
   return null;
 }
 
+function SellHarness({ iban }: { iban?: string }) {
+  useSellQuote({
+    enabled: true,
+    asset,
+    currency,
+    amount: 100,
+    externalTransactionId: 'tx-42',
+    iban,
+  });
+  return null;
+}
+
 describe('App2 trade quote endpoints', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCall.mockResolvedValue({ estimatedAmount: 111 });
     mockReceiveForBuy.mockResolvedValue({ estimatedAmount: 111 });
     mockReceiveForSwap.mockResolvedValue({ estimatedAmount: 99 });
+    mockReceiveForSell.mockResolvedValue({ estimatedAmount: 86 });
   });
 
   it('quotes buy publicly — no token, no payment request created, no transaction id', async () => {
@@ -111,6 +124,34 @@ describe('App2 trade quote endpoints', () => {
       amount: 100,
       externalTransactionId: 'tx-42',
     });
+  });
+
+  it('quotes sell publicly while no payout account is bound to the request', async () => {
+    render(<SellHarness />);
+
+    await waitFor(() => expect(mockCall).toHaveBeenCalledTimes(1));
+    expect(mockCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'sell/quote',
+        token: false,
+        data: { asset, currency, amount: 100 },
+      }),
+    );
+    expect(mockReceiveForSell).not.toHaveBeenCalled();
+  });
+
+  it('asks for sell payment details only once a payout IBAN is bound', async () => {
+    render(<SellHarness iban="CH93 0076 2011 6238 5295 7" />);
+
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalledTimes(1));
+    expect(mockReceiveForSell).toHaveBeenCalledWith({
+      asset,
+      currency,
+      amount: 100,
+      iban: 'CH93 0076 2011 6238 5295 7',
+      externalTransactionId: 'tx-42',
+    });
+    expect(mockCall).not.toHaveBeenCalled();
   });
 
   it('switches endpoints when the caller moves to pay, without losing the input identity', async () => {

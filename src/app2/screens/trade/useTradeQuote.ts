@@ -35,9 +35,12 @@
 //  - `maxVolume` is the generic default limit rather than the account's remaining trading limit
 //    (api › transaction-helper.getLimits: no user ⇒ `kycLimit = MAX_VALUE`).
 //
-// Sell is not part of the split: it needs the payout IBAN for real payment info, so it keeps
-// one engine that switches endpoints on `iban` (below) and still calls paymentInfos per input
-// change once a bank account is selected.
+// All three modes are split the same way, and the consequences above apply to all three. Sell
+// expresses it through its payout IBAN rather than a `withPaymentInfo` flag: the display engine
+// is called without an IBAN (public quote), the payment engine with one (paymentInfos, which
+// carries the deposit address). That also stops sell from creating a route and a transaction
+// request per debounced keystroke (api › sell.service.createSellPaymentInfo), which it did as
+// soon as a default payout account existed.
 //
 // The `enabled` gates in home.tsx stay tied to a session even though the quote endpoints are
 // public: logged-out home renders the landing hero, not the trade form, so a quote fetched
@@ -106,10 +109,9 @@ export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
   const { asset, currency, amount, iban, externalTransactionId } = params;
   // Match the static app (`updateQuote()` → token-less `PUT /sell/quote {asset,currency,amount}`):
   // the sell rate + full fee breakdown are shown as soon as asset+currency+amount are set, with
-  // NO payout IBAN. The IBAN is only needed to create the real payment info (the deposit address
-  // the payment sheet renders) once a bank account is chosen — gated at confirm time, exactly as
-  // the original does. The `key` still includes the iban so selecting/changing the payout account
-  // re-fetches (quote → paymentInfos).
+  // NO payout IBAN. The IBAN is what selects the endpoint — the caller passes it only on the
+  // payment engine (home.tsx › sellPayment), so it also belongs in the `key`: the display and
+  // payment requests must never share cache state.
   const ready = !!asset && !!currency && !!amount;
   const key = ready && asset && currency && amount ? `${asset.id}:${currency.id}:${amount}:${iban ?? 'quote'}` : '';
 
