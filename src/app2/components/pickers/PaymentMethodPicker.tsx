@@ -1,8 +1,8 @@
 // DFX App 2.0 — buy payment-method picker (bank transfer / instant / card).
 //
-// Ported from the static app's `payMethods()`/`#paySheet` (public/app2/index.html) — the
-// The current API rejects card payments and production keeps both card and instant disabled.
-// Keep app2 aligned until those methods are enabled end-to-end server-side.
+// Ported from the static app's `payMethods()`/`#paySheet` (public/app2/index.html) — the offered
+// methods are derived from the selected fiat's capabilities: Bank (SEPA) always, Instant SEPA when
+// `instantBuyable`, Card when `cardBuyable`. Keeps app2 aligned with what each currency supports.
 
 import { FiatPaymentMethod } from '@dfx.swiss/react';
 import type { Fiat } from '@dfx.swiss/react';
@@ -22,11 +22,32 @@ const BANK_ICON = (
     <path d="M3 10h18" stroke="currentColor" strokeWidth={1.7} />
   </svg>
 );
-/** Bank is the only payment method currently accepted by dfx-api. */
-export function paymentMethodsFor(_fiat: Fiat | undefined): PaymentMethodOption[] {
-  return [
+const INSTANT_ICON = (
+  <svg viewBox="0 0 24 24" fill="none">
+    <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" stroke="currentColor" strokeWidth={1.6} strokeLinejoin="round" />
+  </svg>
+);
+const CARD_ICON = (
+  <svg viewBox="0 0 24 24" fill="none">
+    <rect x={3} y={5} width={18} height={14} rx={2.4} stroke="currentColor" strokeWidth={1.7} />
+    <path d="M3 9h18" stroke="currentColor" strokeWidth={1.7} />
+  </svg>
+);
+
+/** Payment methods the selected fiat supports (mirrors the static app's `payMethods()`): Bank
+ * (SEPA) is always offered; Instant SEPA when the fiat is `instantBuyable`; Card when it is
+ * `cardBuyable`. */
+export function paymentMethodsFor(fiat: Fiat | undefined): PaymentMethodOption[] {
+  const out: PaymentMethodOption[] = [
     { id: FiatPaymentMethod.BANK, nameKey: 'payBankN', descKey: 'payBankD', icon: BANK_ICON },
   ];
+  if (fiat?.instantBuyable) {
+    out.push({ id: FiatPaymentMethod.INSTANT, nameKey: 'payInstN', descKey: 'payInstD', icon: INSTANT_ICON });
+  }
+  if (fiat?.cardBuyable) {
+    out.push({ id: FiatPaymentMethod.CARD, nameKey: 'payCardN', descKey: 'payCardD', icon: CARD_ICON });
+  }
+  return out;
 }
 
 interface PaymentMethodPickerProps {

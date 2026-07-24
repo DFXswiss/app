@@ -15,7 +15,9 @@ import type { Language } from '../../i18n';
  * Returns `null` — never a partial/garbage value — for anything that isn't a clean
  * positive decimal. */
 export function parseAmt(raw: string | number | null | undefined, language?: Language): number | null {
-  const normalized = String(raw ?? '').trim().replace(/\s+/g, '');
+  const normalized = String(raw ?? '')
+    .trim()
+    .replace(/\s+/g, '');
   if (language === 'en' && normalized.includes(',')) return null;
   const s = normalized.replace(',', '.');
   if (!/^[0-9]*\.?[0-9]+$/.test(s)) return null;
