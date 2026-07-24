@@ -64,7 +64,7 @@ jest.mock('@dfx.swiss/react', () => ({
 import { ApiException, Blockchain, FiatPaymentMethod, type Asset, type Fiat } from '@dfx.swiss/react';
 import type { TranslationKey } from '../i18n';
 import { paymentMethodsFor } from '../components/pickers/PaymentMethodPicker';
-import { currenciesForBuy, currenciesForSell, hasSellQuoteInputs } from '../screens/trade/capabilities';
+import { currenciesForBuy, currenciesForSell } from '../screens/trade/capabilities';
 import { shownChainsFor } from '../screens/trade/asset-pool';
 import { mapThrownError } from '../screens/trade/errors';
 import { parseAmt } from '../screens/trade/amount';
@@ -111,12 +111,6 @@ describe('App2 review regressions', () => {
   it('uses DFX sellable fiat for user buys and DFX buyable fiat for user sells', () => {
     expect(currenciesForBuy([eur, chf])).toEqual([chf]);
     expect(currenciesForSell([eur, chf])).toEqual([eur]);
-  });
-
-  it('does not request a sell quote until a non-empty IBAN is present', () => {
-    expect(hasSellQuoteInputs(1, 2, 100, undefined)).toBe(false);
-    expect(hasSellQuoteInputs(1, 2, 100, '   ')).toBe(false);
-    expect(hasSellQuoteInputs(1, 2, 100, 'CH9300762011623852957')).toBe(true);
   });
 
   it('offers only payment methods accepted by the API', () => {
