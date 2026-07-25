@@ -102,11 +102,17 @@ export function Landing() {
   }, []);
   const [inviteOpen, setInviteOpen] = useState(() => Boolean(initialInvite));
   const [invite, setInvite] = useState(initialInvite);
+  const classifiedInvite = classifyInviteCode(invite);
   // A non-empty invite that doesn't classify as either real API shape (invite.ts) is silently
   // dropped on submit (finding #4) rather than guaranteeing a 400 — but silent means the user
   // gets no feedback at all if they mistype or follow a wrong example, so this surfaces it inline
   // instead. Not shown for an empty field (nothing typed yet is not "unrecognized").
-  const inviteUnrecognized = invite.trim().length > 0 && !classifyInviteCode(invite);
+  const inviteUnrecognized = invite.trim().length > 0 && !classifiedInvite;
+  // A short partner/ref code (usedRef shape) is a real, valid code — just not one /auth/mail can
+  // ever honor (AuthMailDto has no usedRef field at all, only recommendationCode; see
+  // submitEmail). Surfaced separately from "unrecognized" so the user learns the code itself is
+  // fine, it just needs the wallet-connect path instead of email, rather than assuming it's a typo.
+  const inviteNeedsWalletLogin = classifiedInvite?.kind === 'usedRef';
   // ?wallet= (partner wallet id) — same param WalletSessionProvider reads for the wallet-connect
   // sign-in path (session.tsx), so the mail path stays consistent with it.
   const walletParam = useMemo(() => new URLSearchParams(window.location.search).get('wallet')?.trim() || undefined, []);
@@ -157,8 +163,8 @@ export function Landing() {
       // field at all — only `recommendationCode` (AuthMailDto) — so a short partner ref code
       // typed here can never be honored on this path; sending it anyway is a guaranteed 400
       // (finding #4). Only forward the code when it actually classifies as a full recommendation
-      // code; otherwise the mail sign-in still succeeds, just without referral attribution.
-      const classifiedInvite = classifyInviteCode(invite);
+      // code; otherwise the mail sign-in still succeeds, just without referral attribution (the
+      // inviteNeedsWalletLogin hint above already told the user why, for the usedRef case).
       await signInWithMail(
         value,
         window.location.origin + window.location.pathname,
@@ -263,6 +269,11 @@ export function Landing() {
             {inviteUnrecognized && (
               <p className="csub" style={{ color: 'var(--warning, #FBBF24)' }}>
                 {t('inviteCodeUnrecognized')}
+              </p>
+            )}
+            {inviteNeedsWalletLogin && (
+              <p className="csub" style={{ color: 'var(--warning, #FBBF24)' }}>
+                {t('inviteCodeWalletOnly')}
               </p>
             )}
           </div>

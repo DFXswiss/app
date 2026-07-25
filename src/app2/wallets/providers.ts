@@ -201,6 +201,9 @@ export async function signWithInjected(provider: Eip1193Provider, address: strin
 type WcEthereumProvider = InstanceType<typeof EthereumProvider>;
 
 let wcProviderPromise: Promise<WcEthereumProvider> | undefined;
+// Bumped at the start of every disconnectWalletConnect() call — see the generation check near
+// the end of that function for why a stale, already-superseded call must not run its final clear.
+let teardownGeneration = 0;
 
 function initWalletConnectProvider(): Promise<WcEthereumProvider> {
   wcProviderPromise ??= EthereumProvider.init({
@@ -298,13 +301,27 @@ export async function signWithWalletConnect(
  * object store `@walletconnect/keyvaluestorage` actually writes to once migrated (see
  * `clearWalletConnectIndexedDb`'s doc comment in storage.ts for why that clears the store's
  * contents rather than deleting the database — `idb-keyval` never closes its own connection, so
- * a same-tab delete would otherwise sit on `onblocked` and leave the old session intact). */
+ * a same-tab delete would otherwise sit on `onblocked` and leave the old session intact).
+ *
+ * Concurrency note (finding: an abandoned teardown can destroy a newer session): a caller that
+ * fires this without awaiting it (`cancelConnectAttempt()` in session.tsx) nulls
+ * `wcProviderPromise` immediately but then keeps running — awaiting the *old* provider's own
+ * still-in-flight `init()` — while control returns to the caller. If the user starts a fresh
+ * connect attempt in that window, it sees no provider, proceeds, and establishes a brand new
+ * session (writing fresh pairing data to the same IndexedDB store). Once the old provider's
+ * `init()` finally settles, this call would otherwise reach its own final clear and wipe out
+ * exactly what the newer attempt just wrote. `teardownGeneration` guards against that: it's
+ * bumped at the top of every call, and the final clear only runs if this is still the most recent
+ * call *and* nothing has repopulated `wcProviderPromise` since — either signal means a newer
+ * attempt has taken over and owns its own teardown/cleanup now. */
 export async function disconnectWalletConnect(): Promise<void> {
+  const gen = ++teardownGeneration;
   // A page reload restores the persisted SDK session before this module has a live provider.
   // Clear storage even in that no-provider case, and repeat after disconnect in case the SDK
   // wrote state while completing its own teardown.
   clearWalletConnectStorage();
   if (!wcProviderPromise) {
+    if (gen !== teardownGeneration || wcProviderPromise) return;
     await clearWalletConnectIndexedDb();
     return;
   }
@@ -313,5 +330,6 @@ export async function disconnectWalletConnect(): Promise<void> {
   const provider = await providerPromise.catch(() => undefined);
   if (provider) await provider.disconnect().catch(() => undefined);
   clearWalletConnectStorage();
+  if (gen !== teardownGeneration || wcProviderPromise) return;
   await clearWalletConnectIndexedDb();
 }
