@@ -79,8 +79,8 @@ export async function clearWalletConnectIndexedDb(indexedDbFactory?: IDBFactory)
   // Skip entirely when the database doesn't exist yet, so a browser/user who never touched
   // WalletConnect never gets an empty WALLET_CONNECT_V2_INDEXED_DB created as a side effect of
   // opening it below. Supported in every evergreen browser this app already targets; where it
-  // isn't (or the check itself fails), fall through to open+clear, which tolerates a
-  // just-created empty database fine (see the onupgradeneeded branch below).
+  // isn't (or the check itself fails), fall through to open+clear — see the `onupgradeneeded`
+  // handler below for why that path is still safe even for a database that doesn't exist yet.
   if (typeof idb.databases === 'function') {
     try {
       const existing = await idb.databases();
@@ -102,16 +102,27 @@ export async function clearWalletConnectIndexedDb(indexedDbFactory?: IDBFactory)
 
     try {
       // No version argument: connects at whatever version already exists (no upgrade, so no
-      // exclusive-access requirement, so no `onblocked`). Only fires `onupgradeneeded` if the
-      // database genuinely does not exist yet — in which case there is nothing to clear.
+      // exclusive-access requirement, so no `onblocked`) — *except* when the database doesn't
+      // exist yet (only reachable when `databases()` above was unavailable/threw), where a
+      // versionless open still creates it at version 1 and fires onupgradeneeded once.
       const request = idb.open(WALLET_CONNECT_INDEXED_DB_NAME);
-      let createdEmpty = false;
       request.onupgradeneeded = () => {
-        createdEmpty = true;
+        // Must create the `keyvaluestorage` store here, matching idb-keyval's own
+        // `createStore()` exactly (same name, no options — see the doc comment above): leaving
+        // the database at version 1 *without* this store would be worse than doing nothing.
+        // idb-keyval's `createStore()` also opens with no version argument, so once this
+        // versionless open has claimed version 1, a database that version can never fire
+        // onupgradeneeded again for anyone — the SDK would have no way left to create its own
+        // store, and every future WalletConnect connect attempt in this browser profile would
+        // throw NotFoundError trying to open a transaction against a store that was never made.
+        request.result.createObjectStore(WALLET_CONNECT_STORE_NAME);
       };
       request.onsuccess = () => {
         const db = request.result;
-        if (createdEmpty || !db.objectStoreNames.contains(WALLET_CONNECT_STORE_NAME)) {
+        if (!db.objectStoreNames.contains(WALLET_CONNECT_STORE_NAME)) {
+          // Defensive only — unreachable in practice, since onupgradeneeded above always creates
+          // the store for a new database, and databases() (when available) already skipped an
+          // existing one that somehow lacks it.
           closeQuietly(db);
           finish();
           return;
