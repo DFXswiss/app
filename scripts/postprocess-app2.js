@@ -6,6 +6,7 @@ const {
   hasGoogleFontsLink,
   hasManifestJsonLink,
   hasMainAppIdentity,
+  hasSharedIdentityMeta,
   removeSharedIdentityLinks,
   removeSharedIdentityMeta,
   replaceDescriptionMeta,
@@ -120,6 +121,12 @@ html = removeSharedIdentityLinks(html)
 // template no longer has a matching tag — a template change must fail the build, not ship stale
 // identity.
 html = removeSharedIdentityMeta(html);
+// Structural check, before App2's own twitter:*/alby:* tags are injected below: confirms the
+// removal above actually caught everything, independent of the *value* checks in
+// hasMainAppIdentity at the very end (which only catch the main app's current exact copy — this
+// catches any twitter:*/og:*/alby:* tag surviving at all, so a future copy change on the main
+// app's side can't quietly slip past a value comparison that was never updated for it).
+if (hasSharedIdentityMeta(html)) throw new Error('Failed to remove the inherited social-preview identity');
 html = replaceTitle(html, APP2_TITLE);
 html = replaceDescriptionMeta(html, APP2_DESCRIPTION);
 
