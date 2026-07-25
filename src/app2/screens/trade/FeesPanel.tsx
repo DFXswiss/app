@@ -80,7 +80,9 @@ export function FeesPanel({
     ? formatFiat(quote.estimatedAmount, currencyCode, language)
     : `${formatAmount(quote.estimatedAmount, recvPrecision, language)} ${recvCode}`;
 
-  const bank = fees.bank ?? (fees.bankFixed ?? 0) + (fees.bankVariable ?? 0);
+  // `Fees.bank` is non-optional on the SDK type (definitions/fees.d.ts) — the API always sends
+  // it, so a `bankFixed + bankVariable` fallback for a missing value can never run.
+  const bank = fees.bank;
 
   // collapsed summary rate — "1 {code} ≈ {value}" (orig 3728-3730); for sell/swap it is derived
   // from the quote amounts, not exchangeRate (direction-dependent semantics differ)
@@ -90,9 +92,16 @@ export function FeesPanel({
       ? `1 ${receiveAssetCode} ≈ ${formatFiat(quote.exchangeRate, currencyCode, language)}`
       : `1 ${payAssetCode} ≈ ${formatFiat(quote.amount && quote.estimatedAmount ? quote.estimatedAmount / quote.amount : 0, currencyCode, language)}`;
 
-  // expanded breakdown rate row — "{value} / {code}" (orig 3740)
+  // expanded breakdown rate row — "{value} / {code}" (orig 3740). `exchangeRate` is source-per-
+  // target (api/.../transaction-helper.ts getTargetEstimation: exchangeRate = price.price, and
+  // price.convert(x) = x/price divides a *source* amount by it to get the *target* amount — so
+  // for a swap, source = payAsset, target = receiveAsset, and exchangeRate is "payAsset per 1
+  // receiveAsset"). Inverting it here — matching the summaryRate line above, which is always
+  // receive-per-pay — is what makes "{value} {receiveAssetCode} / {payAssetCode}" read correctly
+  // as "this many receiveAsset per 1 payAsset"; rendering `exchangeRate` directly under that same
+  // label showed the reciprocal rate.
   const rateStr = isSwap
-    ? `${formatAmount(quote.exchangeRate, 6, language)} ${receiveAssetCode} / ${payAssetCode}`
+    ? `${formatAmount(quote.exchangeRate ? 1 / quote.exchangeRate : 0, 6, language)} ${receiveAssetCode} / ${payAssetCode}`
     : mode === 'buy'
       ? `${formatFiat(quote.exchangeRate, currencyCode, language)} / ${receiveAssetCode}`
       : `${formatFiat(quote.exchangeRate ? 1 / quote.exchangeRate : 0, currencyCode, language)} / ${payAssetCode}`;

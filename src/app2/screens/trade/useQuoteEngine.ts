@@ -18,6 +18,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const QUOTE_TTL_MS = 30_000;
 const DEBOUNCE_MS = 400;
+// A failed refresh retries itself on this ladder, then stops — a transient error recovers on its
+// own without an explicit "refresh" tap, but a persistent one doesn't hammer the endpoint forever.
+const RETRY_BACKOFF_MS = [5_000, 15_000, 30_000];
 
 export interface QuoteEngineState<TResult> {
   /** The last successful response, or `null` if none is current. */
@@ -59,6 +62,8 @@ export function useQuoteEngine<TResult>(
   const seqRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const countdownRef = useRef<ReturnType<typeof setInterval>>();
+  const retryRef = useRef<ReturnType<typeof setTimeout>>();
+  const retryAttemptRef = useRef(0);
   const quoteAtRef = useRef(0);
   const fetchingRef = useRef(false);
   const fetcherRef = useRef(fetcher);
@@ -69,6 +74,7 @@ export function useQuoteEngine<TResult>(
   const clearTimers = useCallback(() => {
     clearTimeout(debounceRef.current);
     clearInterval(countdownRef.current);
+    clearTimeout(retryRef.current);
   }, []);
 
   const execute = useCallback((forKey: string) => {
@@ -83,6 +89,7 @@ export function useQuoteEngine<TResult>(
         if (seq !== seqRef.current) return; // superseded by a newer request — discard
         fetchingRef.current = false;
         quoteAtRef.current = Date.now();
+        retryAttemptRef.current = 0; // a successful fetch resets the backoff ladder
         setData(result);
         setDataKey(forKey);
         setError(null);
@@ -101,17 +108,35 @@ export function useQuoteEngine<TResult>(
         setLoading(false);
         setError(err);
         setErrorKey(forKey);
+        // A failed fetch is otherwise a dead end: the TTL auto-refresh effect below only fires
+        // while `dataKey === key`, which just got cleared above, so nothing would ever retry on
+        // its own — while the countdown interval from a *previous* success (if any) would keep
+        // ticking (and re-rendering) forever with nothing left to do. Clearing it here and
+        // scheduling a bounded number of backoff retries instead means a transient failure (a
+        // dropped request, a momentary 5xx) recovers by itself, and a persistent failure stops
+        // retrying rather than hammering the endpoint or leaving a timer running indefinitely.
+        clearInterval(countdownRef.current);
+        const attempt = retryAttemptRef.current;
+        if (attempt < RETRY_BACKOFF_MS.length) {
+          retryAttemptRef.current = attempt + 1;
+          clearTimeout(retryRef.current);
+          retryRef.current = setTimeout(() => {
+            if (seq === seqRef.current) execute(forKey);
+          }, RETRY_BACKOFF_MS[attempt]);
+        }
       });
   }, []);
 
   const refresh = useCallback(() => {
     clearTimers();
+    retryAttemptRef.current = 0; // a manual retry restarts the backoff ladder too
     if (enabled && key) execute(key);
   }, [enabled, key, execute, clearTimers]);
 
   useEffect(() => {
     clearTimers();
     seqRef.current += 1; // invalidate any in-flight request from a previous key
+    retryAttemptRef.current = 0; // new inputs mean a fresh backoff ladder, not a continued one
     if (!enabled || !key) {
       setData(null);
       setDataKey(null);

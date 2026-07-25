@@ -14,6 +14,7 @@ import { useT } from '../i18n';
 import { chainName } from '../screens/trade/blockchain-meta';
 import { EVM_NETWORK_COUNT, WALLET_CATALOG, type WalletCatalogEntry } from './catalog';
 import { isPlausibleCliAddress } from './cli';
+import { RECOMMENDATION_CODE_LENGTH } from './invite';
 import type { HardwareChain } from './hardware-providers';
 import type { ConnectView, PendingCredentials } from './session';
 
@@ -126,6 +127,7 @@ export function ConnectSheet({
         <RecommendationForm
           pending={view.pending}
           invalidCode={view.invalidCode}
+          initialCode={view.initialCode}
           onSubmit={onSubmitRecommendation}
           onCancel={onBackToList}
         />
@@ -484,16 +486,20 @@ function CliConnectForm({
 function RecommendationForm({
   pending,
   invalidCode,
+  initialCode,
   onSubmit,
   onCancel,
 }: {
   pending: PendingCredentials;
   invalidCode?: boolean;
+  /** Whatever the user already typed before this gate appeared (Landing's invite field, or an
+   * earlier attempt) — prefilled so they never have to retype a code they already entered. */
+  initialCode?: string;
   onSubmit: (pending: PendingCredentials, code: string) => void;
   onCancel: () => void;
 }): JSX.Element {
   const { t } = useT();
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(() => initialCode?.trim().toUpperCase() ?? '');
 
   return (
     <div className="confirm tform" style={{ textAlign: 'left' }}>
@@ -507,8 +513,10 @@ function RecommendationForm({
         className="tinput"
         placeholder={t('kycRecPlaceholder')}
         autoComplete="off"
+        maxLength={RECOMMENDATION_CODE_LENGTH}
+        style={{ textTransform: 'uppercase' }}
         value={code}
-        onChange={(e) => setCode(e.target.value)}
+        onChange={(e) => setCode(e.target.value.toUpperCase())}
       />
       {invalidCode && (
         <p className="csub" style={{ color: 'var(--warning, #FBBF24)' }}>
