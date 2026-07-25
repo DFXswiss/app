@@ -13,6 +13,16 @@
 // access and so isn't affected by another open connection in the same tab. The fake IndexedDB
 // below models that distinction faithfully (including `deleteDatabase()` genuinely blocking on
 // an open connection) so the same-tab scenario is proven, not just asserted.
+//
+// Round 3 finding: on the fallback path (databases() unavailable/throws, database doesn't exist
+// yet), the versionless open() from the round-2 fix still creates the database implicitly and
+// fires onupgradeneeded — and `idb-keyval`'s own `createStore()` (see storage.ts) *also* only
+// ever opens without a version. Real IndexedDB never fires onupgradeneeded a second time for a
+// database once it exists at a given version, so leaving the database at version 1 without the
+// `keyvaluestorage` store — which the round-2 code did — permanently broke WalletConnect storage
+// in that browser profile: every future connect attempt's own createStore() would open at
+// version 1 with no upgrade needed, and its own onupgradeneeded (which is the only place it ever
+// creates the store) would simply never fire again.
 
 import { clearWalletConnectIndexedDb } from '../wallets/storage';
 
@@ -48,11 +58,14 @@ interface FakeDbHandle {
 }
 
 /** A small but behaviorally faithful fake of the IndexedDB entry points this module uses (`open`,
- * `deleteDatabase`, `databases`) — faithful specifically on the one property this suite cares
+ * `deleteDatabase`, `databases`) — faithful specifically on two properties this suite cares
  * about: `deleteDatabase()` genuinely blocks (never resolves) while any connection to that
  * database is open, exactly like real IndexedDB, while a versionless `open()` + `readwrite`
- * transaction never does. */
-function makeFakeIndexedDb(options: { withDatabasesApi?: boolean } = {}) {
+ * transaction never does; and a versionless `open()` against a database that does not exist yet
+ * creates it at version 1 and fires `onupgradeneeded` exactly once, never again for that
+ * database — matching the real spec behavior the round-3 finding is about (see
+ * `simulateIdbKeyvalConnectAndTransact` below). */
+function makeFakeIndexedDb(options: { withDatabasesApi?: boolean; databasesThrows?: boolean } = {}) {
   const dbs = new Map<string, { stores: Map<string, Map<string, unknown>> }>();
   const openConnectionCount = new Map<string, number>();
 
@@ -131,7 +144,11 @@ function makeFakeIndexedDb(options: { withDatabasesApi?: boolean } = {}) {
     },
   } as unknown as IDBFactory & { databases?: () => Promise<{ name?: string }[]> };
 
-  if (options.withDatabasesApi !== false) {
+  if (options.databasesThrows) {
+    (idb as { databases: () => Promise<{ name?: string }[]> }).databases = async () => {
+      throw new Error('databases() not supported in this browser');
+    };
+  } else if (options.withDatabasesApi !== false) {
     (idb as { databases: () => Promise<{ name?: string }[]> }).databases = async () =>
       Array.from(dbs.keys()).map((name) => ({ name }));
   }
@@ -165,6 +182,38 @@ function readValue(db: FakeDbHandle, key: string): Promise<unknown> {
     const tx = db.transaction(STORE_NAME, 'readonly');
     const getReq = tx.objectStore(STORE_NAME).get(key);
     getReq.onsuccess = () => resolve(getReq.result);
+  });
+}
+
+/** Replays exactly what `@walletconnect/keyvaluestorage`'s own `createStore()` does on the very
+ * next WalletConnect connect attempt after our cleanup ran: a versionless `open()`, relying on
+ * `onupgradeneeded` to create the store if the database is brand new. Real IndexedDB never fires
+ * `onupgradeneeded` a second time for a database once it exists at a given version — so if our
+ * cleanup had already claimed version 1 without creating the `keyvaluestorage` store (round-3
+ * finding), this `db.transaction()` call throws `NotFoundError` here exactly as it would for the
+ * real SDK, permanently breaking WalletConnect storage in that browser profile. */
+function simulateIdbKeyvalConnectAndTransact(idb: IDBFactory): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = idb.open(DB_NAME) as unknown as FakeRequest<FakeDbHandle>;
+    req.onupgradeneeded = () => (req.result as FakeDbHandle).createObjectStore(STORE_NAME);
+    req.onsuccess = () => {
+      const db = req.result as FakeDbHandle;
+      try {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(new Error('transaction failed'));
+        };
+      } catch (error) {
+        db.close();
+        reject(error as Error);
+      }
+    };
+    req.onerror = () => reject(req.error ?? new Error('open failed'));
   });
 }
 
@@ -223,10 +272,32 @@ describe('clearWalletConnectIndexedDb', () => {
     expect(dbs.has(DB_NAME)).toBe(false);
   });
 
-  it('tolerates a nonexistent database gracefully when databases() is unavailable (may create an empty one, but never throws or hangs)', async () => {
-    const { idb } = makeFakeIndexedDb({ withDatabasesApi: false });
+  it('never leaves the database in a state the SDK itself cannot use — databases() unavailable, database does not exist yet', async () => {
+    const { idb, dbs } = makeFakeIndexedDb({ withDatabasesApi: false });
 
-    await expect(clearWalletConnectIndexedDb(idb)).resolves.toBeUndefined();
+    await clearWalletConnectIndexedDb(idb);
+
+    // A versionless open() on a database that doesn't exist yet unavoidably creates it (that's
+    // just what IndexedDB does) — the assertion that matters is not "it didn't throw" but that
+    // *if* a database now exists, it has the exact store idb-keyval needs, because a database
+    // that version without that store can never get it later (see the helper's doc comment).
+    const created = dbs.get(DB_NAME);
+    if (created) expect(created.stores.has(STORE_NAME)).toBe(true);
+
+    // The real proof: replay the SDK's own connect-time open()+transaction() against the same
+    // factory and confirm it actually succeeds, not just "resolved without throwing" on our side.
+    await expect(simulateIdbKeyvalConnectAndTransact(idb)).resolves.toBeUndefined();
+  });
+
+  it('never leaves the database in a state the SDK itself cannot use — databases() throws, database does not exist yet', async () => {
+    const { idb, dbs } = makeFakeIndexedDb({ databasesThrows: true });
+
+    await clearWalletConnectIndexedDb(idb);
+
+    const created = dbs.get(DB_NAME);
+    if (created) expect(created.stores.has(STORE_NAME)).toBe(true);
+
+    await expect(simulateIdbKeyvalConnectAndTransact(idb)).resolves.toBeUndefined();
   });
 
   it('resolves without touching indexedDB when it is unavailable (jsdom, private mode)', async () => {
