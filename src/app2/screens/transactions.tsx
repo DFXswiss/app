@@ -45,6 +45,7 @@ import { useT } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { formatAmount, formatDate, formatNumber, shortAddress } from './parts/format';
 import { LoggedOutState } from './parts/LoggedOutState';
+import { stateLabel } from './transaction-state-label';
 
 type LoadState = 'loading' | 'error' | 'loaded';
 
@@ -800,7 +801,7 @@ export default function TransactionsScreen() {
                       </div>
                       <div className="ta">
                         <b>{amount}</b>
-                        <small>{tx.state}</small>
+                        <small>{stateLabel(t, tx.state)}</small>
                       </div>
                     </summary>
                     <div className="txbody">
@@ -815,7 +816,7 @@ export default function TransactionsScreen() {
                           />
                           <KvRow label={t('txRate')} value={rate === '—' ? '' : rate} />
                           <KvRow label={t('txFee')} value={formatAmount(feeValue, raw.feeAsset, language, 8)} />
-                          <KvRow label={t('txStatus')} value={tx.state} />
+                          <KvRow label={t('txStatus')} value={stateLabel(t, tx.state)} />
                           <KvRow
                             label={t('txRef')}
                             value={reference}

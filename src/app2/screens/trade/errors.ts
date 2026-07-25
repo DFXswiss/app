@@ -81,24 +81,38 @@ export function mapTransactionError(
       return t('inviteGateNote');
     case TransactionError.IBAN_CURRENCY_MISMATCH:
       return t('ibanInvalid');
-    default:
+    default: {
+      const code = String(error);
       // The quote endpoints answer an unsupported combination with values the SDK enum doesn't
       // know (`AssetUnsupported`/`CurrencyUnsupported`/`PaymentMethodNotAllowed`, see api ›
       // QuoteError). Telling that user to finish their account setup would send them off to fix
       // something that isn't broken — the combination is.
-      return COMBINATION_ERRORS.has(String(error)) ? t('comboUnavailable') : t('needSetup');
+      if (COMBINATION_ERRORS.has(code)) return t('comboUnavailable');
+      // CountryNotAllowed/NationalityNotAllowed are account properties (the address country /
+      // nationality on file — transaction-helper.ts checks `country.dfxEnable` and
+      // `nationality.bankEnable`/`cryptoEnable`), not a combination problem: no other asset,
+      // currency or payment method will change the outcome, so "pick another asset" here would
+      // be actively misleading.
+      if (ACCOUNT_RESTRICTED_ERRORS.has(code)) return t('accountRestricted');
+      // PrimaryEmailRequired/PrimaryEmailNotConfirmed exist in the API's QuoteError enum but
+      // aren't in the SDK's TransactionError yet — route them to the same email-verification
+      // gate as EMAIL_REQUIRED above instead of the generic "finish setup" message.
+      if (PRIMARY_EMAIL_ERRORS.has(code)) return t('verifyEmailNote');
+      return t('needSetup');
+    }
   }
 }
 
 /** Raw `QuoteError` values that mean "this asset/currency/payment-method combination", not
  * "your account". Compared as strings because they are absent from the SDK's TransactionError. */
-const COMBINATION_ERRORS = new Set([
-  'AssetUnsupported',
-  'CurrencyUnsupported',
-  'PaymentMethodNotAllowed',
-  'CountryNotAllowed',
-  'NationalityNotAllowed',
-]);
+const COMBINATION_ERRORS = new Set(['AssetUnsupported', 'CurrencyUnsupported', 'PaymentMethodNotAllowed']);
+
+/** Raw `QuoteError` values that mean "your account", not the combination you picked — see the
+ * `default` branch above for why these were previously (incorrectly) in `COMBINATION_ERRORS`. */
+const ACCOUNT_RESTRICTED_ERRORS = new Set(['CountryNotAllowed', 'NationalityNotAllowed']);
+
+/** Raw `QuoteError` values for the email gate that predate the SDK's `TransactionError` enum. */
+const PRIMARY_EMAIL_ERRORS = new Set(['PrimaryEmailRequired', 'PrimaryEmailNotConfirmed']);
 
 /** Convenience formatters for `mapTransactionError`'s `format` param. */
 export function fiatFormatter(currencyCode: string, language: Language): (n: number) => string {
