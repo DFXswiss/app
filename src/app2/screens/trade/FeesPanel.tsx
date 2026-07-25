@@ -84,13 +84,22 @@ export function FeesPanel({
   // it, so a `bankFixed + bankVariable` fallback for a missing value can never run.
   const bank = fees.bank;
 
-  // collapsed summary rate — "1 {code} ≈ {value}" (orig 3728-3730); for sell/swap it is derived
-  // from the quote amounts, not exchangeRate (direction-dependent semantics differ)
+  // collapsed summary rate — "1 {code} ≈ {value} (incl. fees)" (orig 3728-3730 for the base
+  // format). Round-5 finding: this used to hand-divide estimatedAmount/amount for sell/swap
+  // (fee-inclusive, since both are actual settled amounts) while buy used `exchangeRate` directly
+  // (fee-*exclusive* market price) — two different bases for the same kind of line, and neither
+  // labeled as such. `quote.rate` (api transaction-helper.ts getTargetEstimation:
+  // sourceAmount/targetAmount post-fees, DTO-documented as "Final rate (incl. fees)") is the same
+  // source/target convention as `exchangeRate` below, just fee-inclusive — using it uniformly
+  // here, with the "incl. fees" qualifier spelled out, is what makes this line and the detail row
+  // beneath it two clearly-different, individually-correct numbers instead of an unlabeled
+  // mismatch. Direction per mode mirrors rateStr's `exchangeRate` handling below (same
+  // source/target math, see that comment): buy needs no inversion, sell/swap do.
   const summaryRate = isSwap
-    ? `1 ${payAssetCode} ≈ ${formatAmount(quote.amount ? quote.estimatedAmount / quote.amount : 0, 6, language)} ${receiveAssetCode}`
+    ? `1 ${payAssetCode} ≈ ${formatAmount(quote.rate ? 1 / quote.rate : 0, 6, language)} ${receiveAssetCode} (${t('rateInclFees')})`
     : mode === 'buy'
-      ? `1 ${receiveAssetCode} ≈ ${formatFiat(quote.exchangeRate, currencyCode, language)}`
-      : `1 ${payAssetCode} ≈ ${formatFiat(quote.amount && quote.estimatedAmount ? quote.estimatedAmount / quote.amount : 0, currencyCode, language)}`;
+      ? `1 ${receiveAssetCode} ≈ ${formatFiat(quote.rate, currencyCode, language)} (${t('rateInclFees')})`
+      : `1 ${payAssetCode} ≈ ${formatFiat(quote.rate ? 1 / quote.rate : 0, currencyCode, language)} (${t('rateInclFees')})`;
 
   // expanded breakdown rate row — "{value} / {code}" (orig 3740). `exchangeRate` is source-per-
   // target (api/.../transaction-helper.ts getTargetEstimation: exchangeRate = price.price, and
@@ -99,7 +108,8 @@ export function FeesPanel({
   // receiveAsset"). Inverting it here — matching the summaryRate line above, which is always
   // receive-per-pay — is what makes "{value} {receiveAssetCode} / {payAssetCode}" read correctly
   // as "this many receiveAsset per 1 payAsset"; rendering `exchangeRate` directly under that same
-  // label showed the reciprocal rate.
+  // label showed the reciprocal rate. This is the pre-fee market price (see fRateL's "excl. fees"
+  // label) — deliberately different from summaryRate above, which is fee-inclusive.
   const rateStr = isSwap
     ? `${formatAmount(quote.exchangeRate ? 1 / quote.exchangeRate : 0, 6, language)} ${receiveAssetCode} / ${payAssetCode}`
     : mode === 'buy'

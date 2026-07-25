@@ -33,7 +33,11 @@ export const en = {
   fDfx: 'DFX fee',
   fNet: 'Network fee',
   fNetVal: 'DFX covers it',
-  fRateL: 'Exchange rate',
+  // Round-5 finding: the collapsed summary line showed a fee-inclusive rate while this expanded
+  // row showed the pre-fee market price, with neither labeled as such — two different numbers
+  // for the same pair with no explanation. Both labels below now spell out the difference.
+  fRateL: 'Market rate (excl. fees)',
+  rateInclFees: 'incl. fees',
   fRecv: 'You receive',
   secured: 'Delivered straight to your connected wallet',
   securedSell: 'Paid out directly to your bank account',
@@ -102,15 +106,21 @@ export const en = {
   setupTitle: 'One more step',
   needApproval: 'Your DFX account needs a one-time approval before buying. Finish it on app.dfx.swiss, then come back.',
   inviteGateTitle: 'Invitation needed',
+  // Round-5 finding: this gate submits into the sign-up flow's `recommendationCode` field
+  // (createSessionNew -> OptionalSignUpDto), which only ever accepts the code shape — unlike the
+  // KYC-step recommendation endpoint (handleRecommendationRequest, api's recommendation.service),
+  // which does also accept a ref code or an existing customer's email. Promising "or email" here
+  // (as the copy used to, matching that other endpoint) was never actually true for this form.
   inviteGateNote:
-    'Opening a DFX account is only possible through a referral. Enter the invitation or referral code — or the email — of an existing DFX customer.',
-  kycRecPlaceholder: 'Invitation / referral code or email',
+    'Opening a DFX account is only possible through a referral. Enter the invitation or referral code of an existing DFX customer.',
+  kycRecPlaceholder: 'Invitation or referral code',
   inviteContinueKyc: "A few quick steps first — we'll ask for your invitation there.",
   invitePending: 'Invitation submitted. The person who invited you still has to confirm it before you can trade.',
   inviteNoMatch: 'No matching DFX customer found for this code or email.',
   inviteInvalid: "That invitation code isn't valid.",
   inviteInvalidKey: "We couldn't accept that entry. Check the code or email and try again.",
   inviteCodeUnrecognized: "We don't recognize this code format — check for typos.",
+  inviteCodeWalletOnly: 'This code only works with wallet sign-in, not email — connect your wallet to use it.',
   kycRecLead:
     'Opening a DFX account is only possible through a referral. Enter the code, link or email of an existing DFX customer.',
   kycRecNote: 'Your invitation must be confirmed by the person who invited you before trading opens.',
@@ -738,7 +748,8 @@ export const de = {
   fDfx: 'DFX-Gebühr',
   fNet: 'Netzwerkgebühr',
   fNetVal: 'DFX übernimmt sie',
-  fRateL: 'Wechselkurs',
+  fRateL: 'Marktkurs (exkl. Gebühren)',
+  rateInclFees: 'inkl. Gebühren',
   fRecv: 'Du erhältst',
   secured: 'Direkt in deine verbundene Wallet',
   securedSell: 'Direkt auf dein Bankkonto ausbezahlt',
@@ -1357,14 +1368,16 @@ export const de = {
     'Dein DFX-Konto benötigt eine einmalige Freigabe vor dem Kauf. Schliesse sie auf app.dfx.swiss ab und komm dann zurück.',
   inviteGateTitle: 'Einladung nötig',
   inviteGateNote:
-    'Ein DFX-Konto lässt sich nur über eine Empfehlung eröffnen. Gib den Einladungs- oder Referral-Code — oder die E-Mail — eines bestehenden DFX-Kunden ein.',
-  kycRecPlaceholder: 'Einladungs-/Referral-Code oder E-Mail',
+    'Ein DFX-Konto lässt sich nur über eine Empfehlung eröffnen. Gib den Einladungs- oder Referral-Code eines bestehenden DFX-Kunden ein.',
+  kycRecPlaceholder: 'Einladungs- oder Referral-Code',
   inviteContinueKyc: 'Zuerst ein paar kurze Schritte — dort fragen wir nach deiner Einladung.',
   invitePending: 'Einladung übermittelt. Deine Kontaktperson muss sie noch bestätigen, bevor du handeln kannst.',
   inviteNoMatch: 'Kein passender DFX-Kunde zu diesem Code oder dieser E-Mail gefunden.',
   inviteInvalid: 'Dieser Einladungscode ist ungültig.',
   inviteInvalidKey: 'Diese Eingabe konnten wir nicht annehmen. Prüfe Code oder E-Mail und versuch es erneut.',
   inviteCodeUnrecognized: 'Dieses Code-Format erkennen wir nicht — prüfe auf Tippfehler.',
+  inviteCodeWalletOnly:
+    'Dieser Code funktioniert nur bei der Wallet-Anmeldung, nicht per E-Mail — verbinde deine Wallet, um ihn zu nutzen.',
   kycRecLead:
     'Ein DFX-Konto lässt sich nur über eine Empfehlung eröffnen. Gib den Code, Link oder die E-Mail eines bestehenden DFX-Kunden ein.',
   kycRecNote: 'Deine Einladung muss von deiner Kontaktperson bestätigt werden, bevor der Handel freigeschaltet wird.',
@@ -1452,7 +1465,8 @@ export const it = {
   fDfx: 'Commissione DFX',
   fNet: 'Costo di rete',
   fNetVal: 'Coperto da DFX',
-  fRateL: 'Tasso di cambio',
+  fRateL: 'Tasso di mercato (escl. commissioni)',
+  rateInclFees: 'commissioni incluse',
   fRecv: 'Tu ricevi',
   secured: 'Direttamente nel tuo wallet connesso',
   securedSell: 'Accreditato direttamente sul tuo conto bancario',
@@ -2067,14 +2081,16 @@ export const it = {
     "Il tuo account DFX richiede un'approvazione una tantum prima di acquistare. Completala su app.dfx.swiss e poi torna.",
   inviteGateTitle: 'Serve un invito',
   inviteGateNote:
-    "È possibile aprire un conto DFX solo tramite una segnalazione. Inserisci il codice di invito o referral — o l'email — di un cliente DFX esistente.",
-  kycRecPlaceholder: 'Codice di invito/referral o email',
+    'È possibile aprire un conto DFX solo tramite una segnalazione. Inserisci il codice di invito o referral di un cliente DFX esistente.',
+  kycRecPlaceholder: 'Codice di invito o referral',
   inviteContinueKyc: "Prima alcuni passaggi rapidi — lì ti chiederemo l'invito.",
   invitePending: 'Invito inviato. La persona che ti ha invitato deve ancora confermarlo prima che tu possa operare.',
   inviteNoMatch: 'Nessun cliente DFX corrispondente a questo codice o email.',
   inviteInvalid: 'Questo codice di invito non è valido.',
   inviteInvalidKey: "Non abbiamo potuto accettare questa voce. Controlla il codice o l'email e riprova.",
   inviteCodeUnrecognized: 'Non riconosciamo questo formato di codice — controlla eventuali errori di battitura.',
+  inviteCodeWalletOnly:
+    "Questo codice funziona solo con l'accesso tramite wallet, non con l'email — collega il tuo wallet per usarlo.",
   kycRecLead:
     "È possibile aprire un conto DFX solo tramite una segnalazione. Inserisci il codice, il link o l'email di un cliente DFX esistente.",
   kycRecNote:
@@ -2163,7 +2179,8 @@ export const fr = {
   fDfx: 'Frais DFX',
   fNet: 'Frais de réseau',
   fNetVal: 'Pris en charge par DFX',
-  fRateL: 'Taux de change',
+  fRateL: 'Taux du marché (hors frais)',
+  rateInclFees: 'frais inclus',
   fRecv: 'Vous recevez',
   secured: 'Livré directement dans votre wallet connecté',
   securedSell: 'Versé directement sur ton compte bancaire',
@@ -2779,14 +2796,16 @@ export const fr = {
     "Ton compte DFX a besoin d'une approbation unique avant d'acheter. Termine-la sur app.dfx.swiss, puis reviens.",
   inviteGateTitle: 'Invitation requise',
   inviteGateNote:
-    "Ouvrir un compte DFX n'est possible que par parrainage. Saisis le code d'invitation ou de parrainage — ou l'email — d'un client DFX existant.",
-  kycRecPlaceholder: "Code d'invitation/parrainage ou email",
+    "Ouvrir un compte DFX n'est possible que par parrainage. Saisis le code d'invitation ou de parrainage d'un client DFX existant.",
+  kycRecPlaceholder: "Code d'invitation ou de parrainage",
   inviteContinueKyc: "D'abord quelques étapes rapides — nous y demanderons ton invitation.",
   invitePending: "Invitation envoyée. La personne qui t'a invité doit encore la confirmer avant que tu puisses trader.",
   inviteNoMatch: 'Aucun client DFX correspondant à ce code ou cet email.',
   inviteInvalid: "Ce code d'invitation n'est pas valide.",
   inviteInvalidKey: "Nous n'avons pas pu accepter cette saisie. Vérifie le code ou l'email et réessaie.",
   inviteCodeUnrecognized: 'Nous ne reconnaissons pas ce format de code — vérifie les fautes de frappe.',
+  inviteCodeWalletOnly:
+    "Ce code ne fonctionne qu'avec la connexion par wallet, pas par e-mail — connecte ton wallet pour l'utiliser.",
   kycRecLead:
     "Ouvrir un compte DFX n'est possible que par parrainage. Saisis le code, le lien ou l'email d'un client DFX existant.",
   kycRecNote: "Ton invitation doit être confirmée par la personne qui t'a invité avant l'ouverture du trading.",
