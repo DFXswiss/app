@@ -293,11 +293,12 @@ export async function signWithWalletConnect(
  * reusing (and getting stuck behind) this one.
  *
  * Also clears both persistence layers the SDK restores a session from (finding: a shared browser
- * must not resume the previous owner's session after logout + reload) — localStorage for a
- * pre-migration install, and the IndexedDB database `@walletconnect/keyvaluestorage` actually
- * writes to once migrated (see storage.ts). The IndexedDB delete always runs *after* any live
- * provider has been disconnected: an open connection is exactly what makes the delete hang on
- * `onblocked`. */
+ * must not resume the previous owner's session after logout + reload, including within the same
+ * tab that just used WalletConnect) — localStorage for a pre-migration install, and the IndexedDB
+ * object store `@walletconnect/keyvaluestorage` actually writes to once migrated (see
+ * `clearWalletConnectIndexedDb`'s doc comment in storage.ts for why that clears the store's
+ * contents rather than deleting the database — `idb-keyval` never closes its own connection, so
+ * a same-tab delete would otherwise sit on `onblocked` and leave the old session intact). */
 export async function disconnectWalletConnect(): Promise<void> {
   // A page reload restores the persisted SDK session before this module has a live provider.
   // Clear storage even in that no-provider case, and repeat after disconnect in case the SDK

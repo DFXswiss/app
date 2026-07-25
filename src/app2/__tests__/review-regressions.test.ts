@@ -174,6 +174,14 @@ describe('App2 review regressions', () => {
     expect(classifyInviteCode(undefined)).toBeUndefined();
   });
 
+  it("shows a placeholder on Landing's invite field that is itself a recognized code shape", () => {
+    // Round-2 finding: the old "DFX-XXXX" placeholder matched neither real API regex, so a user
+    // who typed something shaped like it got the code silently dropped with zero feedback. Pins
+    // the replacement placeholder (Landing.tsx) against the same classifier the field itself now
+    // gates its inline hint on, so the two can't drift apart again.
+    expect(classifyInviteCode('ABC-123')).toEqual({ kind: 'usedRef', code: 'ABC-123' });
+  });
+
   it('only invalidates an injected-wallet session for a real account change, not a re-cased echo', () => {
     const active = '0xAbC1230000000000000000000000000000dEaD';
 

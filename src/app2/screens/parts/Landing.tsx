@@ -102,6 +102,11 @@ export function Landing() {
   }, []);
   const [inviteOpen, setInviteOpen] = useState(() => Boolean(initialInvite));
   const [invite, setInvite] = useState(initialInvite);
+  // A non-empty invite that doesn't classify as either real API shape (invite.ts) is silently
+  // dropped on submit (finding #4) rather than guaranteeing a 400 — but silent means the user
+  // gets no feedback at all if they mistype or follow a wrong example, so this surfaces it inline
+  // instead. Not shown for an empty field (nothing typed yet is not "unrecognized").
+  const inviteUnrecognized = invite.trim().length > 0 && !classifyInviteCode(invite);
   // ?wallet= (partner wallet id) — same param WalletSessionProvider reads for the wallet-connect
   // sign-in path (session.tsx), so the mail path stays consistent with it.
   const walletParam = useMemo(() => new URLSearchParams(window.location.search).get('wallet')?.trim() || undefined, []);
@@ -246,7 +251,7 @@ export function Landing() {
               <input
                 ref={inviteInputRef}
                 type="text"
-                placeholder="DFX-XXXX"
+                placeholder="ABC-123"
                 autoComplete="off"
                 aria-label={t('inviteCode')}
                 maxLength={RECOMMENDATION_CODE_LENGTH}
@@ -255,6 +260,11 @@ export function Landing() {
                 onChange={(e) => setInvite(e.target.value)}
               />
             </div>
+            {inviteUnrecognized && (
+              <p className="csub" style={{ color: 'var(--warning, #FBBF24)' }}>
+                {t('inviteCodeUnrecognized')}
+              </p>
+            )}
           </div>
         </div>
 

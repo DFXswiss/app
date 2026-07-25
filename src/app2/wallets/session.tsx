@@ -445,12 +445,17 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         if (!stillCurrent()) return;
         if (needsRecommendation(error)) {
           // Prefill with whatever the user already typed (Landing's invite field, or an earlier
-          // attempt on this form) instead of making them retype a code they already entered.
+          // attempt on this form) instead of making them retype a code they already entered — but
+          // only when it's actually shaped like a recommendation code. A short usedRef-shaped
+          // code (or anything unrecognized) prefilled here would just fail this field's own
+          // validation on submit and bounce the user back to the wallet list.
+          const priorCode = recommendationCode ?? activeInviteRef.current;
+          const priorCodeIsRecommendation = classifyInviteCode(priorCode)?.kind === 'recommendationCode';
           setView({
             kind: 'recommend',
             pending: creds,
             invalidCode: Boolean(recommendationCode),
-            initialCode: recommendationCode ?? activeInviteRef.current,
+            initialCode: priorCodeIsRecommendation ? priorCode : undefined,
           });
           setSheetOpen(true);
           return;
@@ -552,7 +557,17 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         } else if (entry.connector === 'alby') {
           // WebLN / Lightning: a self-custodial node signs locally; a hosted getalby.com
           // account redirects to the DFX Alby OAuth page (which returns ?session= on return).
-          const result = await connectAlby({ apiBaseUrl, wallet: walletParam, usedRef: activeInviteRef.current });
+          // GET /auth/alby validates the same two mutually-exclusive fields as the other login
+          // paths (AlbySignupDto extends OptionalSignUpDto) — an unclassified/wrong-shape code
+          // sent as `usedRef` 400s server-side, and since this is a full-page redirect (not a
+          // fetch this code can catch), the user would land on a raw API error page.
+          const albyInvite = classifyInviteCode(activeInviteRef.current);
+          const result = await connectAlby({
+            apiBaseUrl,
+            wallet: walletParam,
+            usedRef: albyInvite?.kind === 'usedRef' ? albyInvite.code : undefined,
+            recommendationCode: albyInvite?.kind === 'recommendationCode' ? albyInvite.code : undefined,
+          });
           if (result.kind === 'redirected') return; // page is navigating away to the OAuth endpoint
           if (!isCurrent()) return;
           address = result.session.address;
