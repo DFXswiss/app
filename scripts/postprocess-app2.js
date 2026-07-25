@@ -33,16 +33,15 @@ function apiOrigin(rawUrl) {
 const selectedApiOrigin = apiOrigin(process.env.REACT_APP_API_URL);
 
 // CRA copies the shared `public/` directory wholesale. App2 owns a deliberately small public
-// surface, so remove the main app's identity and any legacy nested preview before staging it.
-for (const stale of [
-  'app2',
-  'asset-manifest.json',
-  'favicon.ico',
-  'logo.png',
-  'manifest.json',
-  'robots.txt',
-  'version.json',
-]) {
+// surface, so everything the main app contributes has to go before App2 stages its own.
+//
+// The list is derived from `public/` at build time rather than hand-maintained: a hardcoded
+// denylist silently ships whatever the main app adds next (that is how `_headers`/`_redirects`
+// from the Cloudflare Pages deploy reached the artifact root). `index.html` is the one entry
+// App2 keeps — CRA rewrote it into App2's own document. Generated files that never existed in
+// `public/` are listed explicitly.
+const sharedPublicEntries = readdirSync(join(root, 'public')).filter((entry) => entry !== 'index.html');
+for (const stale of [...sharedPublicEntries, 'app2', 'asset-manifest.json', 'version.json']) {
   rmSync(join(dist, stale), { recursive: true, force: true });
 }
 
