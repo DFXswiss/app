@@ -117,6 +117,8 @@ export const en = {
   needLimit: 'This exceeds your current limit. Raise it via verification on app.dfx.swiss.',
   needSetup: 'Finish your account setup on app.dfx.swiss to unlock payments, then come back.',
   comboUnavailable: 'This combination is not available right now. Pick another asset, currency or payment method.',
+  accountRestricted:
+    "Your account can't trade right now — no other asset or currency will change that. Contact support if this seems wrong.",
   requestTimeout: 'That took too long. Please try again.',
   finishOnDfx: 'Finish setup on app.dfx.swiss',
   codeSent: 'Code sent to',
@@ -679,6 +681,24 @@ export const en = {
   txFee: 'Fees',
   txStatus: 'Status',
   txRef: 'Reference',
+  // TransactionState values (@dfx.swiss/core definitions/transaction.d.ts) — read via
+  // transactions.tsx's stateLabel() so the raw enum string is never shown to a user.
+  txst_Created: 'Created',
+  txst_Processing: 'Processing',
+  txst_LiquidityPending: 'Preparing funds',
+  txst_CheckPending: 'Under review',
+  txst_KycRequired: 'Verification required',
+  txst_LimitExceeded: 'Limit exceeded',
+  txst_FeeTooHigh: 'Fee too high',
+  txst_PriceUndeterminable: 'Price unavailable',
+  txst_PayoutInProgress: 'Payout in progress',
+  txst_Completed: 'Completed',
+  txst_Failed: 'Failed',
+  txst_ReturnPending: 'Refund pending',
+  txst_Returned: 'Refunded',
+  txst_Unassigned: 'Payment not yet matched',
+  txst_WaitingForPayment: 'Waiting for payment',
+  txst_Stopped: 'Stopped',
   asset: 'Asset',
   active: 'Active',
   amount: 'Amount',
@@ -695,7 +715,7 @@ export const en = {
   backHome: 'Back to home',
   emailInvalid: 'Enter a valid email address.',
 } as const satisfies Dict;
-export const de: Dict = {
+export const de = {
   h1a: 'Krypto kaufen,',
   h1b: 'direkt in deine Wallet',
   lead: 'Einmal anmelden. Keine Börse, keine Verwahrung. Du behältst die Schlüssel.',
@@ -1302,6 +1322,22 @@ export const de: Dict = {
   txFee: 'Gebühren',
   txStatus: 'Status',
   txRef: 'Referenz',
+  txst_Created: 'Erstellt',
+  txst_Processing: 'In Bearbeitung',
+  txst_LiquidityPending: 'Liquidität wird vorbereitet',
+  txst_CheckPending: 'Wird geprüft',
+  txst_KycRequired: 'Verifizierung erforderlich',
+  txst_LimitExceeded: 'Limit überschritten',
+  txst_FeeTooHigh: 'Gebühr zu hoch',
+  txst_PriceUndeterminable: 'Preis nicht verfügbar',
+  txst_PayoutInProgress: 'Auszahlung läuft',
+  txst_Completed: 'Abgeschlossen',
+  txst_Failed: 'Fehlgeschlagen',
+  txst_ReturnPending: 'Rückerstattung ausstehend',
+  txst_Returned: 'Zurückerstattet',
+  txst_Unassigned: 'Zahlung noch nicht zugeordnet',
+  txst_WaitingForPayment: 'Wartet auf Zahlung',
+  txst_Stopped: 'Gestoppt',
   bic: 'BIC',
   beneficiary: 'Begünstigter',
   signInForIban: 'Verbinde dich für die Zahlungsdetails',
@@ -1339,6 +1375,8 @@ export const de: Dict = {
   needSetup: 'Schliesse dein Konto-Setup auf app.dfx.swiss ab, um Zahlungen freizuschalten, und komm dann zurück.',
   comboUnavailable:
     'Diese Kombination ist gerade nicht verfügbar. Wähle ein anderes Asset, eine andere Währung oder Zahlungsart.',
+  accountRestricted:
+    'Dein Konto kann gerade nicht handeln — das ändert sich auch mit einem anderen Asset oder einer anderen Währung nicht. Melde dich beim Support, falls das nicht stimmen sollte.',
   requestTimeout: 'Das hat zu lange gedauert. Bitte versuche es nochmal.',
   finishOnDfx: 'Setup auf app.dfx.swiss abschliessen',
   codeSent: 'Code gesendet an',
@@ -1391,8 +1429,8 @@ export const de: Dict = {
   notFoundBody: 'Diesen Link gibt es nicht — er ist vielleicht veraltet oder falsch eingegeben.',
   backHome: 'Zurück zur Startseite',
   emailInvalid: 'Gib eine gültige E-Mail-Adresse ein.',
-};
-export const it: Dict = {
+} satisfies Record<TranslationKey, string>;
+export const it = {
   h1a: 'Compra crypto,',
   h1b: 'dritto nel tuo wallet',
   lead: 'Accedi una volta. Niente exchange, niente custodia. Le chiavi restano tue.',
@@ -1993,12 +2031,30 @@ export const it: Dict = {
   txFee: 'Commissioni',
   txStatus: 'Stato',
   txRef: 'Riferimento',
+  txst_Created: 'Creata',
+  txst_Processing: 'In elaborazione',
+  txst_LiquidityPending: 'Preparazione fondi',
+  txst_CheckPending: 'In verifica',
+  txst_KycRequired: 'Verifica richiesta',
+  txst_LimitExceeded: 'Limite superato',
+  txst_FeeTooHigh: 'Commissione troppo alta',
+  txst_PriceUndeterminable: 'Prezzo non disponibile',
+  txst_PayoutInProgress: 'Pagamento in corso',
+  txst_Completed: 'Completata',
+  txst_Failed: 'Fallita',
+  txst_ReturnPending: 'Rimborso in corso',
+  txst_Returned: 'Rimborsata',
+  txst_Unassigned: 'Pagamento non ancora abbinato',
+  txst_WaitingForPayment: 'In attesa del pagamento',
+  txst_Stopped: 'Interrotta',
   bic: 'BIC',
   beneficiary: 'Beneficiario',
   signInForIban: 'Connettiti per i dettagli di pagamento',
   ibanAfterKyc: 'Mostrato dopo la verifica',
   favorites: 'Preferiti',
   bitcoin: 'Bitcoin',
+  ethereum: 'Ethereum',
+  hwChoose: 'Scegli la blockchain da collegare',
   monero: 'Monero',
   confBuyTitle: "Completa l'acquisto",
   confSwapTitle: 'Scambio inviato',
@@ -2031,6 +2087,8 @@ export const it: Dict = {
   needSetup: 'Completa la configurazione del tuo account su app.dfx.swiss per sbloccare i pagamenti, poi torna.',
   comboUnavailable:
     "Questa combinazione non è disponibile al momento. Scegli un altro asset, un'altra valuta o un altro metodo di pagamento.",
+  accountRestricted:
+    'Il tuo account non può fare trading in questo momento — anche scegliendo un altro asset o un’altra valuta non cambia nulla. Contatta il supporto se ti sembra un errore.',
   requestTimeout: 'Ci è voluto troppo tempo. Riprova.',
   finishOnDfx: 'Completa su app.dfx.swiss',
   codeSent: 'Codice inviato a',
@@ -2083,8 +2141,8 @@ export const it: Dict = {
   notFoundBody: 'Questo link non esiste — potrebbe essere obsoleto o digitato male.',
   backHome: 'Torna alla home',
   emailInvalid: 'Inserisci un indirizzo email valido.',
-};
-export const fr: Dict = {
+} satisfies Record<TranslationKey, string>;
+export const fr = {
   h1a: 'Achète des cryptos,',
   h1b: 'directement dans ton wallet',
   lead: 'Connecte-toi une fois. Pas de plateforme, pas de garde. Tu gardes les clés.',
@@ -2686,12 +2744,30 @@ export const fr: Dict = {
   txFee: 'Frais',
   txStatus: 'Statut',
   txRef: 'Référence',
+  txst_Created: 'Créée',
+  txst_Processing: 'En cours de traitement',
+  txst_LiquidityPending: 'Préparation des fonds',
+  txst_CheckPending: 'En vérification',
+  txst_KycRequired: 'Vérification requise',
+  txst_LimitExceeded: 'Limite dépassée',
+  txst_FeeTooHigh: 'Frais trop élevés',
+  txst_PriceUndeterminable: 'Prix indisponible',
+  txst_PayoutInProgress: 'Paiement en cours',
+  txst_Completed: 'Terminée',
+  txst_Failed: 'Échouée',
+  txst_ReturnPending: 'Remboursement en cours',
+  txst_Returned: 'Remboursée',
+  txst_Unassigned: 'Paiement non encore rapproché',
+  txst_WaitingForPayment: 'En attente de paiement',
+  txst_Stopped: 'Arrêtée',
   bic: 'BIC',
   beneficiary: 'Bénéficiaire',
   signInForIban: 'Connecte-toi pour voir les détails de paiement',
   ibanAfterKyc: 'Affiché après la vérification',
   favorites: 'Favoris',
   bitcoin: 'Bitcoin',
+  ethereum: 'Ethereum',
+  hwChoose: 'Choisis la blockchain à connecter',
   monero: 'Monero',
   confBuyTitle: 'Finalise ton achat',
   confSwapTitle: 'Échange envoyé',
@@ -2723,6 +2799,8 @@ export const fr: Dict = {
   needSetup: 'Termine la configuration de ton compte sur app.dfx.swiss pour débloquer les paiements, puis reviens.',
   comboUnavailable:
     "Cette combinaison n'est pas disponible pour le moment. Choisis un autre actif, une autre devise ou un autre moyen de paiement.",
+  accountRestricted:
+    "Ton compte ne peut pas trader pour le moment — choisir un autre actif ou une autre devise n'y changera rien. Contacte le support si cela te semble incorrect.",
   requestTimeout: 'Cela a pris trop de temps. Réessaie.',
   finishOnDfx: 'Terminer sur app.dfx.swiss',
   codeSent: 'Code envoyé à',
@@ -2775,7 +2853,7 @@ export const fr: Dict = {
   notFoundBody: "Ce lien n'existe pas — il est peut-être périmé ou mal saisi.",
   backHome: "Retour à l'accueil",
   emailInvalid: 'Saisis une adresse e-mail valide.',
-};
+} satisfies Record<TranslationKey, string>;
 
 export type Language = 'en' | 'de' | 'it' | 'fr';
 

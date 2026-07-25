@@ -37,16 +37,16 @@ import { catalogEntryByWalletType, walletIconFor, type WalletCatalogEntry } from
 import { connectChainWallet } from './chain-providers';
 import { isPlausibleCliAddress } from './cli';
 import { connectHardware, isWebHidAvailable, type HardwareChain, type HardwareId } from './hardware-providers';
-import { normalizeInviteCode } from './invite';
+import { classifyInviteCode, normalizeInviteCode } from './invite';
 import { rememberWallet, seenWallets } from './seen';
 import { mainnetOnly } from '../screens/trade/blockchain-meta';
 import {
   type CancelToken,
-  checksumAddress,
   connectInjected,
   connectWalletConnect,
   createCancelToken,
   disconnectWalletConnect,
+  type Eip1193Provider,
   getInjectedProvider,
   isUserRejection,
   resolveInjectedProvider,
@@ -55,6 +55,7 @@ import {
   WalletConnectorError,
   type WalletConnectSession,
 } from './providers';
+import { shouldInvalidateSession } from './session-guards';
 
 /** Connect-sheet state + handlers — rendered by <Shell> (inside `.app`, see finding #3: the
  * sheet's `position:absolute` must resolve against the 420px-wide `.app` frame, not the
@@ -276,7 +277,7 @@ export type ConnectView =
   | { kind: 'hw-chain'; entry: WalletCatalogEntry }
   | { kind: 'hw-pairing'; code?: string; label: string }
   | { kind: 'cli'; entry: WalletCatalogEntry }
-  | { kind: 'recommend'; pending: PendingCredentials; invalidCode?: boolean };
+  | { kind: 'recommend'; pending: PendingCredentials; invalidCode?: boolean; initialCode?: string };
 
 export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Element {
   const { isLoggedIn, logout: libLogout } = useSessionContext();
@@ -321,6 +322,14 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const attemptIdRef = useRef(0);
   const wcTokenRef = useRef<CancelToken | null>(null);
   const providerChangeRef = useRef(false);
+  // The exact EIP-1193 provider instance an injected-wallet session authenticated with (resolved
+  // via EIP-6963 in resolveInjectedProvider — may differ from window.ethereum when several
+  // wallets are installed and another one owns it). The accountsChanged/chainChanged monitor
+  // below must listen on this instance, not re-derive window.ethereum, or it watches the wrong
+  // wallet entirely: MetaMask owning window.ethereum while Rabby is the connected wallet means an
+  // account switch in Rabby fires no event (session sticks to the stale address), while an
+  // unrelated account switch in MetaMask incorrectly logs the intact Rabby session out.
+  const injectedProviderRef = useRef<Eip1193Provider | undefined>(undefined);
 
   // Invite/referral code and ?wallet= (partner wallet id) — read once; both map straight onto the
   // /auth body (usedRef, wallet) per auth.d.ts. A real DFX referral link is ?code= (REF_BASE
@@ -390,6 +399,15 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       // genuinely live when this attempt started should ever be reported as having "expired"
       // (finding #6) — a failed first-ever login has no session to expire.
       const wasLoggedIn = isLoggedInRef.current;
+      // The invite code picked up from the URL/landing field can be either API shape — a short
+      // partner ref (`usedRef`) or a full referral code (`recommendationCode`); the two DTO
+      // fields are mutually exclusive and sending the wrong one is a guaranteed 400 (finding #4).
+      // `recommendationCode` (the function param) is the explicit recommendation-gate retry and
+      // always wins over a classified invite code when present.
+      const classifiedInvite = classifyInviteCode(activeInviteRef.current);
+      const usedRef = classifiedInvite?.kind === 'usedRef' ? classifiedInvite.code : undefined;
+      const inviteRecommendationCode =
+        classifiedInvite?.kind === 'recommendationCode' ? classifiedInvite.code : undefined;
       try {
         const token = await createSessionNew(
           creds.address,
@@ -397,9 +415,9 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           creds.key,
           undefined,
           walletParam,
-          activeInviteRef.current,
+          usedRef,
           creds.walletType,
-          recommendationCode,
+          recommendationCode ?? inviteRecommendationCode,
           language.toUpperCase(),
         );
         // The auth request itself cannot be aborted by the SDK. If the sheet was closed while
@@ -426,7 +444,14 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       } catch (error) {
         if (!stillCurrent()) return;
         if (needsRecommendation(error)) {
-          setView({ kind: 'recommend', pending: creds, invalidCode: Boolean(recommendationCode) });
+          // Prefill with whatever the user already typed (Landing's invite field, or an earlier
+          // attempt on this form) instead of making them retype a code they already entered.
+          setView({
+            kind: 'recommend',
+            pending: creds,
+            invalidCode: Boolean(recommendationCode),
+            initialCode: recommendationCode ?? activeInviteRef.current,
+          });
           setSheetOpen(true);
           return;
         }
@@ -480,6 +505,10 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
             return;
           }
           address = await connectInjected(provider);
+          // Remember the exact instance this session authenticates with (finding #3) — the
+          // accountsChanged/chainChanged monitor below must watch this object, not re-resolve
+          // window.ethereum, which can be a different wallet than the one just connected.
+          injectedProviderRef.current = provider;
           const message = await getSignMessage(address);
           if (!isCurrent()) return;
           if (!authMsgOk(address, message)) {
@@ -855,7 +884,13 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   useEffect(() => {
     if (!isLoggedIn || !address) return undefined;
     if (activeConnector === 'wallet-connect') return undefined;
-    const provider = getInjectedProvider();
+    // A session established via this page's own connect flow (activeConnector === 'injected')
+    // must monitor the exact provider instance it authenticated with — re-deriving
+    // window.ethereum here would watch whichever extension happens to own that global, which is
+    // not necessarily the wallet the user actually connected (finding #3). A session restored
+    // from a reload has no remembered instance to fall back to; window.ethereum plus the
+    // eth_accounts address check below is the best-effort degrade for that case.
+    const provider = activeConnector === 'injected' ? injectedProviderRef.current : getInjectedProvider();
     if (!provider?.on || !provider.removeListener) return undefined;
 
     let mounted = true;
@@ -865,11 +900,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         .request<string[]>({ method: 'eth_accounts' })
         .then((accounts) => {
           if (!mounted || !accounts?.[0]) return;
-          try {
-            monitorsThisSession = checksumAddress(accounts[0]) === checksumAddress(address);
-          } catch {
-            monitorsThisSession = false;
-          }
+          monitorsThisSession = !shouldInvalidateSession(address, [String(accounts[0])]);
         })
         .catch(() => undefined);
     }
@@ -879,6 +910,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       providerChangeRef.current = true;
       cancelConnectAttempt();
       setActiveConnector(undefined);
+      injectedProviderRef.current = undefined;
       void libLogout()
         .then(() => showToast(t('sessionExpired'), { assertive: true }))
         .finally(() => {
@@ -886,13 +918,8 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         });
     };
     const onAccountsChanged = (accountsValue: unknown) => {
-      const accounts = Array.isArray(accountsValue) ? accountsValue : [];
-      try {
-        if (accounts[0] && checksumAddress(String(accounts[0])) === checksumAddress(address)) return;
-      } catch {
-        // An invalid/empty account is a session change too.
-      }
-      invalidate();
+      const accounts = (Array.isArray(accountsValue) ? accountsValue : []).map(String);
+      if (shouldInvalidateSession(address, accounts)) invalidate();
     };
     const onChainChanged = () => invalidate();
 
@@ -918,6 +945,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       logout: async () => {
         closeConnect();
         setActiveConnector(undefined);
+        injectedProviderRef.current = undefined;
         await disconnectWalletConnect();
         await libLogout();
         showToast(t('signOut'));

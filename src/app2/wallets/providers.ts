@@ -10,7 +10,7 @@
 
 import { EthereumProvider } from '@walletconnect/ethereum-provider';
 import { getAddress } from 'ethers';
-import { clearWalletConnectStorage } from './storage';
+import { clearWalletConnectIndexedDb, clearWalletConnectStorage } from './storage';
 
 /** Same Reown/WalletConnect Cloud project id as src/wagmi.config.ts
  * (WALLET_CONNECT_PROJECT_ID). Duplicated as a literal rather than imported
@@ -290,16 +290,27 @@ export async function signWithWalletConnect(
  * real fix here: `EthereumProvider#disconnect()` is a no-op beyond a local state reset until a
  * session exists, so it can't kill an unapproved pairing on its own, but discarding the cached
  * provider means the *next* connect attempt always starts from a fresh instance instead of
- * reusing (and getting stuck behind) this one. */
+ * reusing (and getting stuck behind) this one.
+ *
+ * Also clears both persistence layers the SDK restores a session from (finding: a shared browser
+ * must not resume the previous owner's session after logout + reload) — localStorage for a
+ * pre-migration install, and the IndexedDB database `@walletconnect/keyvaluestorage` actually
+ * writes to once migrated (see storage.ts). The IndexedDB delete always runs *after* any live
+ * provider has been disconnected: an open connection is exactly what makes the delete hang on
+ * `onblocked`. */
 export async function disconnectWalletConnect(): Promise<void> {
   // A page reload restores the persisted SDK session before this module has a live provider.
   // Clear storage even in that no-provider case, and repeat after disconnect in case the SDK
   // wrote state while completing its own teardown.
   clearWalletConnectStorage();
-  if (!wcProviderPromise) return;
+  if (!wcProviderPromise) {
+    await clearWalletConnectIndexedDb();
+    return;
+  }
   const providerPromise = wcProviderPromise;
   wcProviderPromise = undefined;
   const provider = await providerPromise.catch(() => undefined);
   if (provider) await provider.disconnect().catch(() => undefined);
   clearWalletConnectStorage();
+  await clearWalletConnectIndexedDb();
 }

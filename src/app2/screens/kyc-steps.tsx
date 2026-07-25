@@ -26,7 +26,6 @@ import type {
   Country,
   KycAddress,
   KycBeneficialData,
-  KycFileData,
   KycFinancialQuestion,
   KycFinancialResponse,
   KycSession,
@@ -40,6 +39,7 @@ import { SumsubReviewAnswer, SumsubReviewRejectType } from '../../dto/sumsub.dto
 import { LoadingRow } from '../components/ui';
 import { useT, type Language, type TranslationKey } from '../i18n';
 import { appUrl, isSafeAppUrl } from '../utils/url';
+import { readFileAsBase64 } from './kyc-file-upload';
 import { isSafeHttpsUrl } from './parts/format';
 import { apiStatusCode, isTfaRequiredError, kycHandoffFromError, type KycHandoff } from './kyc-recovery';
 
@@ -96,15 +96,6 @@ const IN_APP_STEPS = new Set<KycStepName>([
 function errorMessage(t: TFn, err: unknown): string {
   if (apiStatusCode(err) === 0) return t('loadFail');
   return t('genErr');
-}
-
-function readFileAsBase64(file: File): Promise<KycFileData> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve({ file: String(reader.result).split(',')[1] ?? '', fileName: file.name });
-    reader.onerror = () => reject(reader.error ?? new Error('read failed'));
-    reader.readAsDataURL(file);
-  });
 }
 
 // ---------------------------------------------------------------------------
