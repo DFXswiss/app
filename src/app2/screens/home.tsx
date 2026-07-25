@@ -487,7 +487,11 @@ export default function HomeScreen() {
   let receiveMetaCountdown = false;
   // A failed quote is a dead end without this: the engine retries itself on a short backoff
   // ladder (useQuoteEngine.ts) and then stops, so a persistent failure needs an explicit way
-  // back in rather than leaving the panel stuck on "Rate unavailable" forever.
+  // back in rather than leaving the panel stuck on "Rate unavailable" forever. Gated on
+  // `activeQuote.errorIsCurrent` (not just "reached the catch-all branch below") because that
+  // branch also covers `enabled === false` (inputs not resolved yet) and the one-render window
+  // around a TTL rollover, where `refresh()` would be a no-op — a visible button that does
+  // nothing is worse than none.
   let receiveShowRetry = false;
   if (mode === 'buy') {
     if (!buyAmount) receiveValue = '0';
@@ -508,7 +512,7 @@ export default function HomeScreen() {
     } else {
       receiveValue = '—';
       receiveMeta = t('quoteErr');
-      receiveShowRetry = true;
+      receiveShowRetry = activeQuote.errorIsCurrent;
     }
   } else if (mode === 'sell') {
     if (!sellAmount) receiveValue = '0';
@@ -529,7 +533,7 @@ export default function HomeScreen() {
     } else {
       receiveValue = '—';
       receiveMeta = t('quoteErr');
-      receiveShowRetry = true;
+      receiveShowRetry = activeQuote.errorIsCurrent;
     }
   } else {
     if (!swapAmount) receiveValue = '0';
@@ -550,7 +554,7 @@ export default function HomeScreen() {
     } else {
       receiveValue = '—';
       receiveMeta = t('quoteErr');
-      receiveShowRetry = true;
+      receiveShowRetry = activeQuote.errorIsCurrent;
     }
   }
 

@@ -110,6 +110,7 @@ export const en = {
   inviteNoMatch: 'No matching DFX customer found for this code or email.',
   inviteInvalid: "That invitation code isn't valid.",
   inviteInvalidKey: "We couldn't accept that entry. Check the code or email and try again.",
+  inviteCodeUnrecognized: "We don't recognize this code format — check for typos.",
   kycRecLead:
     'Opening a DFX account is only possible through a referral. Enter the code, link or email of an existing DFX customer.',
   kycRecNote: 'Your invitation must be confirmed by the person who invited you before trading opens.',
@@ -400,8 +401,6 @@ export const en = {
   payBankD: 'Free · 0–1 business day',
   payInstN: 'SEPA Instant',
   payInstD: 'Faster · small fee',
-  payCardN: 'Credit card',
-  payCardD: 'Instant · higher fee',
   supportLead: "Search your topic first. If you can't find it, open a ticket.",
   faqTitle: 'Help topics',
   contactTitle: 'Still need help?',
@@ -1065,8 +1064,6 @@ export const de = {
   payBankD: 'Kostenlos · 0–1 Werktag',
   payInstN: 'SEPA Instant',
   payInstD: 'Schneller · kleine Gebühr',
-  payCardN: 'Kreditkarte',
-  payCardD: 'Sofort · höhere Gebühr',
   supportLead: 'Such zuerst nach deinem Thema. Wirst du nicht fündig, öffne ein Ticket.',
   faqTitle: 'Hilfe-Themen',
   contactTitle: 'Brauchst du noch Hilfe?',
@@ -1324,7 +1321,7 @@ export const de = {
   txRef: 'Referenz',
   txst_Created: 'Erstellt',
   txst_Processing: 'In Bearbeitung',
-  txst_LiquidityPending: 'Liquidität wird vorbereitet',
+  txst_LiquidityPending: 'Mittel werden vorbereitet',
   txst_CheckPending: 'Wird geprüft',
   txst_KycRequired: 'Verifizierung erforderlich',
   txst_LimitExceeded: 'Limit überschritten',
@@ -1367,6 +1364,7 @@ export const de = {
   inviteNoMatch: 'Kein passender DFX-Kunde zu diesem Code oder dieser E-Mail gefunden.',
   inviteInvalid: 'Dieser Einladungscode ist ungültig.',
   inviteInvalidKey: 'Diese Eingabe konnten wir nicht annehmen. Prüfe Code oder E-Mail und versuch es erneut.',
+  inviteCodeUnrecognized: 'Dieses Code-Format erkennen wir nicht — prüfe auf Tippfehler.',
   kycRecLead:
     'Ein DFX-Konto lässt sich nur über eine Empfehlung eröffnen. Gib den Code, Link oder die E-Mail eines bestehenden DFX-Kunden ein.',
   kycRecNote: 'Deine Einladung muss von deiner Kontaktperson bestätigt werden, bevor der Handel freigeschaltet wird.',
@@ -1776,8 +1774,6 @@ export const it = {
   payBankD: 'Gratis · 0–1 giorno',
   payInstN: 'SEPA Instant',
   payInstD: 'Più veloce · piccola commissione',
-  payCardN: 'Carta di credito',
-  payCardD: 'Istantaneo · commissione più alta',
   supportLead: 'Cerca prima il tuo argomento. Se non lo trovi, apri un ticket.',
   faqTitle: 'Argomenti di aiuto',
   contactTitle: 'Hai ancora bisogno di aiuto?',
@@ -2078,6 +2074,7 @@ export const it = {
   inviteNoMatch: 'Nessun cliente DFX corrispondente a questo codice o email.',
   inviteInvalid: 'Questo codice di invito non è valido.',
   inviteInvalidKey: "Non abbiamo potuto accettare questa voce. Controlla il codice o l'email e riprova.",
+  inviteCodeUnrecognized: 'Non riconosciamo questo formato di codice — controlla eventuali errori di battitura.',
   kycRecLead:
     "È possibile aprire un conto DFX solo tramite una segnalazione. Inserisci il codice, il link o l'email di un cliente DFX esistente.",
   kycRecNote:
@@ -2088,7 +2085,7 @@ export const it = {
   comboUnavailable:
     "Questa combinazione non è disponibile al momento. Scegli un altro asset, un'altra valuta o un altro metodo di pagamento.",
   accountRestricted:
-    'Il tuo account non può fare trading in questo momento — anche scegliendo un altro asset o un’altra valuta non cambia nulla. Contatta il supporto se ti sembra un errore.',
+    'Il tuo account non può fare trading in questo momento — cambiare asset o valuta non risolve il problema. Contatta il supporto se ti sembra un errore.',
   requestTimeout: 'Ci è voluto troppo tempo. Riprova.',
   finishOnDfx: 'Completa su app.dfx.swiss',
   codeSent: 'Codice inviato a',
@@ -2489,8 +2486,6 @@ export const fr = {
   payBankD: 'Gratuit · 0–1 jour',
   payInstN: 'SEPA Instant',
   payInstD: 'Plus rapide · frais réduits',
-  payCardN: 'Carte de crédit',
-  payCardD: 'Instantané · frais plus élevés',
   supportLead: "Cherche d'abord ta rubrique. Si tu ne trouves pas, ouvre un ticket.",
   faqTitle: "Rubriques d'aide",
   contactTitle: "Besoin d'aide supplémentaire ?",
@@ -2791,6 +2786,7 @@ export const fr = {
   inviteNoMatch: 'Aucun client DFX correspondant à ce code ou cet email.',
   inviteInvalid: "Ce code d'invitation n'est pas valide.",
   inviteInvalidKey: "Nous n'avons pas pu accepter cette saisie. Vérifie le code ou l'email et réessaie.",
+  inviteCodeUnrecognized: 'Nous ne reconnaissons pas ce format de code — vérifie les fautes de frappe.',
   kycRecLead:
     "Ouvrir un compte DFX n'est possible que par parrainage. Saisis le code, le lien ou l'email d'un client DFX existant.",
   kycRecNote: "Ton invitation doit être confirmée par la personne qui t'a invité avant l'ouverture du trading.",

@@ -32,7 +32,13 @@ interface AlbyRedirectContext {
   apiBaseUrl: string;
   /** Partner wallet id / referral, forwarded onto the OAuth call like the main app. */
   wallet?: string;
+  /** At most one of these is set — GET /auth/alby's `AlbySignupDto extends OptionalSignUpDto`
+   * (api › user/dto/alby.dto.ts), so `usedRef` and `recommendationCode` are the same two
+   * mutually-exclusive, differently-shaped fields as the wallet-connect/mail login paths
+   * (session.tsx, Landing.tsx) — the caller is expected to have already run the invite code
+   * through `classifyInviteCode` (invite.ts) before building this context. */
   usedRef?: string;
+  recommendationCode?: string;
 }
 
 function getWebln(): WebLNProvider | undefined {
@@ -88,6 +94,7 @@ export async function connectAlby(redirect: AlbyRedirectContext): Promise<AlbyCo
     const params = new URLSearchParams({ redirectUri: returnUrl.toString() });
     if (redirect.wallet) params.set('wallet', redirect.wallet);
     if (redirect.usedRef) params.set('usedRef', redirect.usedRef);
+    if (redirect.recommendationCode) params.set('recommendationCode', redirect.recommendationCode);
     window.location.href = `${redirect.apiBaseUrl.replace(/\/$/, '')}/auth/alby?${params.toString()}`;
     return { kind: 'redirected' };
   }
