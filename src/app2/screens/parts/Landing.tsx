@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../../components/ui';
 import { useT } from '../../i18n';
 import { useWalletSession } from '../../wallets/session';
-import { normalizeInviteCode } from '../../wallets/invite';
+import { classifyInviteCode, normalizeInviteCode, RECOMMENDATION_CODE_LENGTH } from '../../wallets/invite';
 import { WALLET_CATALOG } from '../../wallets/catalog';
 
 // Mirrors the static app's STRIP_IDS (public/app2/index.html) — the wallets shown in the
@@ -148,11 +148,16 @@ export function Landing() {
     try {
       // SDK contract mirrors the static app's POST /auth/mail: {mail, redirectUri,
       // recommendationCode?, wallet?} — the emailed magic link returns to redirectUri with the
-      // session token.
+      // session token. Unlike the wallet-connect path (session.tsx), /auth/mail has no `usedRef`
+      // field at all — only `recommendationCode` (AuthMailDto) — so a short partner ref code
+      // typed here can never be honored on this path; sending it anyway is a guaranteed 400
+      // (finding #4). Only forward the code when it actually classifies as a full recommendation
+      // code; otherwise the mail sign-in still succeeds, just without referral attribution.
+      const classifiedInvite = classifyInviteCode(invite);
       await signInWithMail(
         value,
         window.location.origin + window.location.pathname,
-        normalizedInvite || undefined,
+        classifiedInvite?.kind === 'recommendationCode' ? classifiedInvite.code : undefined,
         walletParam,
       );
       showToast(t('checkEmail'));
@@ -244,7 +249,7 @@ export function Landing() {
                 placeholder="DFX-XXXX"
                 autoComplete="off"
                 aria-label={t('inviteCode')}
-                maxLength={14}
+                maxLength={RECOMMENDATION_CODE_LENGTH}
                 style={{ textTransform: 'uppercase' }}
                 value={invite}
                 onChange={(e) => setInvite(e.target.value)}
