@@ -354,13 +354,11 @@ export default function AccountScreen() {
   const realName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ');
   const displayName = realName || user?.mail || shortAddress(address);
   const secondaryLine = user?.mail && user.mail !== displayName ? user.mail : shortAddress(address);
-  // Payment routes available for the user's display currency (Bank always; Instant/Card
-  // when the fiat supports it), mirroring payMethods() in the static preview.
-  const payRoutes = [
-    t('payBankN'),
-    ...(user?.currency?.instantBuyable ? [t('payInstN')] : []),
-    ...(user?.currency?.cardBuyable ? [t('payCardN')] : []),
-  ].join(' · ');
+  // Payment routes available for the user's display currency (Bank always; Instant when the
+  // currency supports it on the sell side — DFX sells the fiat leg on a buy, the same
+  // buy/sell-is-DFX's-side convention as trade/capabilities.ts and PaymentMethodPicker.tsx).
+  // Card is never listed: the API hard-disables it (fiat-dto.mapper.ts, payment-info.service.ts).
+  const payRoutes = [t('payBankN'), ...(user?.currency?.instantSellable ? [t('payInstN')] : [])].join(' · ');
   const languageLabel = LANGUAGES.find((l) => l.code === language)?.label ?? language;
   const currencyLabel = user?.currency?.name ?? '—';
 

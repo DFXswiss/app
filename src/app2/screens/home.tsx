@@ -223,12 +223,6 @@ export default function HomeScreen() {
   }, [sellCurrencies, sellFiat]);
 
   useEffect(() => {
-    // only reset when the *fiat* changes, not every time the user picks a method — reading
-    // buyMethod here (without depending on it) is intentional, not a stale-closure bug
-    if (buyFiat && !paymentMethodsFor(buyFiat).some((m) => m.id === buyMethod)) setBuyMethod(FiatPaymentMethod.BANK);
-  }, [buyFiat]);
-
-  useEffect(() => {
     if (!sellBankAccount && bankAccounts?.length) {
       setSellBankAccount(bankAccounts.find((a) => a.default) ?? bankAccounts[0]);
     }
@@ -239,6 +233,14 @@ export default function HomeScreen() {
   const sellApiAsset = sellAsset && sellChain ? assetFor(sellAsset, sellChain, 'sell') : undefined;
   const swapFromApiAsset = swapFromAsset && swapFromChain ? assetFor(swapFromAsset, swapFromChain, 'sell') : undefined;
   const swapToApiAsset = swapToAsset && swapToChain ? assetFor(swapToAsset, swapToChain, 'buy') : undefined;
+
+  useEffect(() => {
+    // only reset when the *fiat*/asset changes, not every time the user picks a method — reading
+    // buyMethod here (without depending on it) is intentional, not a stale-closure bug
+    if (buyFiat && !paymentMethodsFor(buyFiat, buyApiAsset).some((m) => m.id === buyMethod)) {
+      setBuyMethod(FiatPaymentMethod.BANK);
+    }
+  }, [buyFiat, buyApiAsset]);
 
   const buyAmount = parseAmt(buyRaw, language);
   const sellAmount = parseAmt(sellRaw, language);
@@ -483,6 +485,10 @@ export default function HomeScreen() {
   // True only for the live "Refreshes in Ns" countdown — the static app wraps that (and only that)
   // in `<span class="qcount">` for the tabular/dimmed styling; other meta text stays unwrapped.
   let receiveMetaCountdown = false;
+  // A failed quote is a dead end without this: the engine retries itself on a short backoff
+  // ladder (useQuoteEngine.ts) and then stops, so a persistent failure needs an explicit way
+  // back in rather than leaving the panel stuck on "Rate unavailable" forever.
+  let receiveShowRetry = false;
   if (mode === 'buy') {
     if (!buyAmount) receiveValue = '0';
     else if (buyQuote.loading) receiveValue = '…';
@@ -502,6 +508,7 @@ export default function HomeScreen() {
     } else {
       receiveValue = '—';
       receiveMeta = t('quoteErr');
+      receiveShowRetry = true;
     }
   } else if (mode === 'sell') {
     if (!sellAmount) receiveValue = '0';
@@ -522,6 +529,7 @@ export default function HomeScreen() {
     } else {
       receiveValue = '—';
       receiveMeta = t('quoteErr');
+      receiveShowRetry = true;
     }
   } else {
     if (!swapAmount) receiveValue = '0';
@@ -542,6 +550,7 @@ export default function HomeScreen() {
     } else {
       receiveValue = '—';
       receiveMeta = t('quoteErr');
+      receiveShowRetry = true;
     }
   }
 
@@ -582,7 +591,7 @@ export default function HomeScreen() {
     }
   };
 
-  const buyMethods = paymentMethodsFor(buyFiat);
+  const buyMethods = paymentMethodsFor(buyFiat, buyApiAsset);
   const currentBuyMethod = buyMethods.find((m) => m.id === buyMethod);
   // Mirrors the static app: only offer the picker when there's a real choice — with a single
   // method the row drops its caret and stops being interactive (no pointless one-item sheet).
@@ -707,6 +716,14 @@ export default function HomeScreen() {
             <span className="plabel">{t('youReceive')}</span>
             <span className="pmeta">
               {receiveMetaCountdown ? <span className="qcount">{receiveMeta}</span> : receiveMeta}
+              {receiveShowRetry && (
+                <>
+                  {' · '}
+                  <button className="msg-retry" type="button" onClick={() => activeQuote.refresh()}>
+                    {t('retry')}
+                  </button>
+                </>
+              )}
             </span>
           </div>
           <div className="pinput">

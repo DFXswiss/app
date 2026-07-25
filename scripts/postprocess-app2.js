@@ -46,6 +46,11 @@ cpSync(join(root, 'src', 'app2', 'THIRD-PARTY-NOTICES.md'), join(dist, 'THIRD-PA
 mkdirSync(join(dist, 'icons'), { recursive: true });
 mkdirSync(join(dist, 'licenses'), { recursive: true });
 cpSync(join(root, 'src', 'app2', 'assets', 'fonts', 'OFL.txt'), join(dist, 'licenses', 'Inter-OFL.txt'));
+// Country flags (assets/flags/) — circle-flags by HatScripts, MIT.
+cpSync(join(root, 'src', 'app2', 'assets', 'flags', 'LICENSE.txt'), join(dist, 'licenses', 'circle-flags-MIT.txt'));
+// Token/network/wallet glyphs carrying class="web3icons" (assets/networks/, assets/tokens/,
+// assets/wallets/) — web3icons by 0xa3k5, MIT.
+cpSync(join(root, 'src', 'app2', 'assets', 'web3icons-LICENSE.txt'), join(dist, 'licenses', 'web3icons-MIT.txt'));
 
 const csp = [
   "default-src 'self'",

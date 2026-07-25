@@ -23,4 +23,10 @@ There are no separately vendored browser bundles or WebAssembly files in App 2.0
   `assets/brand/logo-dark.svg` artwork.
 - **Open CryptoPay mark** (`components/brand.tsx` › `OcpMark`) — Open CryptoPay Association
   logo, used per its brand guidelines to identify the OpenCryptoPay merchant suite.
-- **Country flags** (`assets/flags/`) — flag-icons, MIT License.
+- **Country flags** (`assets/flags/`) — [circle-flags](https://github.com/HatScripts/circle-flags)
+  by HatScripts, MIT License. Full license text:
+  [`licenses/circle-flags-MIT.txt`](licenses/circle-flags-MIT.txt).
+- **Token/network/wallet glyphs** (`assets/networks/`, `assets/tokens/`, `assets/wallets/` —
+  every SVG carrying `class="web3icons"`) — [web3icons](https://github.com/0xa3k5/web3icons) by
+  0xa3k5, MIT License. Full license text:
+  [`licenses/web3icons-MIT.txt`](licenses/web3icons-MIT.txt).

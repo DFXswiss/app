@@ -66,7 +66,7 @@ import type { TranslationKey } from '../i18n';
 import { paymentMethodsFor } from '../components/pickers/PaymentMethodPicker';
 import { currenciesForBuy, currenciesForSell } from '../screens/trade/capabilities';
 import { shownChainsFor } from '../screens/trade/asset-pool';
-import { mapThrownError } from '../screens/trade/errors';
+import { mapThrownError, mapTransactionError } from '../screens/trade/errors';
 import { parseAmt } from '../screens/trade/amount';
 import type { TradeAsset } from '../screens/trade/types';
 import {
@@ -77,8 +77,10 @@ import {
 } from '../screens/kyc-recovery';
 import { findSendCandidate, shouldSyncSupportIssue } from '../screens/support-delivery';
 import { appUrl, isSafeAppUrl } from '../utils/url';
-import { normalizeInviteCode } from '../wallets/invite';
+import { classifyInviteCode, normalizeInviteCode } from '../wallets/invite';
+import { readFileAsBase64 } from '../screens/kyc-file-upload';
 import { walletIconFor } from '../wallets/catalog';
+import { shouldInvalidateSession } from '../wallets/session-guards';
 import { clearWalletConnectStorage } from '../wallets/storage';
 import type { SupportIssue, SupportMessage } from '@dfx.swiss/react';
 
@@ -95,12 +97,17 @@ const eur: Fiat = {
 
 const chf: Fiat = { ...eur, id: 2, name: 'CHF', buyable: false, sellable: true };
 
-function asset(id: number, blockchain: Blockchain, flags: { buyable: boolean; sellable: boolean }): Asset {
+function asset(
+  id: number,
+  blockchain: Blockchain,
+  flags: { buyable: boolean; sellable: boolean; instantBuyable?: boolean },
+): Asset {
   return {
     id,
     name: 'USDC',
     description: 'USD Coin',
     blockchain,
+    instantBuyable: false,
     ...flags,
   } as unknown as Asset;
 }
@@ -113,14 +120,72 @@ describe('App2 review regressions', () => {
     expect(currenciesForSell([eur, chf])).toEqual([eur]);
   });
 
-  it('offers only payment methods accepted by the API', () => {
-    expect(paymentMethodsFor(chf).map(({ id }) => id)).toEqual([FiatPaymentMethod.BANK]);
+  it('offers Instant only when both the currency and the selected asset allow it (never Card)', () => {
+    const instantBuyableOnly: Fiat = { ...chf, instantBuyable: true, instantSellable: false };
+    const instantSellableCurrency: Fiat = { ...chf, instantSellable: true };
+    const instantAsset = asset(10, Blockchain.ETHEREUM, { buyable: true, sellable: true, instantBuyable: true });
+    const nonInstantAsset = asset(11, Blockchain.ETHEREUM, { buyable: true, sellable: true, instantBuyable: false });
+
+    // The API checks currency.instantSellable, not currency.instantBuyable
+    // (payment-info.service.ts buyCheck) — a fiat with only the *wrong* flag set must never
+    // offer Instant, no matter what the asset allows.
+    expect(paymentMethodsFor(instantBuyableOnly, instantAsset).map(({ id }) => id)).toEqual([FiatPaymentMethod.BANK]);
+
+    // Both the currency and the chosen asset allow it → Instant is offered.
+    expect(paymentMethodsFor(instantSellableCurrency, instantAsset).map(({ id }) => id)).toEqual([
+      FiatPaymentMethod.BANK,
+      FiatPaymentMethod.INSTANT,
+    ]);
+
+    // Currency allows it, but the chosen asset doesn't — still excluded (the API also checks
+    // asset.instantBuyable, which the ported picker ignored entirely).
+    expect(paymentMethodsFor(instantSellableCurrency, nonInstantAsset).map(({ id }) => id)).toEqual([
+      FiatPaymentMethod.BANK,
+    ]);
+
+    // Card is never offered — the API hard-disables it (fiat-dto.mapper.ts) regardless of any flag.
+    expect(paymentMethodsFor(instantSellableCurrency, instantAsset).map(({ id }) => id)).not.toContain(
+      FiatPaymentMethod.CARD,
+    );
   });
 
   it('passes a canonical invite code to both login paths', () => {
     // Case-preserving like the static preview's REF_RE (/^[A-Za-z0-9-]{4,14}$/); only trims.
     expect(normalizeInviteCode('  ab-c12  ')).toBe('ab-c12');
     expect(normalizeInviteCode('   ')).toBeUndefined();
+  });
+
+  it('classifies an invite code into the exact API field it belongs in, never both', () => {
+    // Short partner/wallet ref — api/src/config/config.ts formats.ref: /^(\w{1,3}-\w{1,3})$/.
+    expect(classifyInviteCode('ab-c12')).toEqual({ kind: 'usedRef', code: 'AB-C12' });
+    // Full referral code — formats.recommendationCode: /[0-9A-Z]{2}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{2}/.
+    expect(classifyInviteCode('xy-ab12-cd34-ef')).toEqual({
+      kind: 'recommendationCode',
+      code: 'XY-AB12-CD34-EF',
+    });
+    // Already upper-case input classifies the same way.
+    expect(classifyInviteCode('XY-AB12-CD34-EF')).toEqual({
+      kind: 'recommendationCode',
+      code: 'XY-AB12-CD34-EF',
+    });
+    // Neither real API shape — must not be guessed into one, or it guarantees a 400.
+    expect(classifyInviteCode('not-a-real-code-at-all')).toBeUndefined();
+    expect(classifyInviteCode('')).toBeUndefined();
+    expect(classifyInviteCode(undefined)).toBeUndefined();
+  });
+
+  it('only invalidates an injected-wallet session for a real account change, not a re-cased echo', () => {
+    const active = '0xAbC1230000000000000000000000000000dEaD';
+
+    // An empty accounts list means the extension locked or revoked the site — no account left to
+    // be signed in as.
+    expect(shouldInvalidateSession(active, [])).toBe(true);
+    // A genuinely different account switched in.
+    expect(shouldInvalidateSession(active, ['0x00000000000000000000000000000000000001'])).toBe(true);
+    // The same account, reported in a different case — EVM addresses are not case-sensitive
+    // identity, so this must never force a re-authentication.
+    expect(shouldInvalidateSession(active, [active.toLowerCase()])).toBe(false);
+    expect(shouldInvalidateSession(active, [active.toUpperCase().replace('0X', '0x')])).toBe(false);
   });
 
   it('uses every authenticated wallet chain when filtering token routes', () => {
@@ -157,6 +222,26 @@ describe('App2 review regressions', () => {
     expect(result).toEqual({ kind: 'email', message: 'verifyEmailNote' });
   });
 
+  it('separates a combination problem from an account restriction (no asset swap fixes the latter)', () => {
+    const format = (n: number) => String(n);
+
+    // Real combination errors (api QuoteError) — a different asset/currency/payment method helps.
+    expect(mapTransactionError(t, 'AssetUnsupported' as TransactionError, 0, 0, format)).toBe('comboUnavailable');
+    expect(mapTransactionError(t, 'CurrencyUnsupported' as TransactionError, 0, 0, format)).toBe('comboUnavailable');
+
+    // Country/nationality restrictions are account properties (transaction-helper.ts checks
+    // country.dfxEnable / nationality.bankEnable|cryptoEnable) — no combination change helps, so
+    // these must map to the honest account message, not "pick another asset".
+    expect(mapTransactionError(t, 'CountryNotAllowed' as TransactionError, 0, 0, format)).toBe('accountRestricted');
+    expect(mapTransactionError(t, 'NationalityNotAllowed' as TransactionError, 0, 0, format)).toBe('accountRestricted');
+
+    // Pre-SDK-enum email-gate codes route to the same message as TransactionError.EMAIL_REQUIRED.
+    expect(mapTransactionError(t, 'PrimaryEmailRequired' as TransactionError, 0, 0, format)).toBe('verifyEmailNote');
+    expect(mapTransactionError(t, 'PrimaryEmailNotConfirmed' as TransactionError, 0, 0, format)).toBe(
+      'verifyEmailNote',
+    );
+  });
+
   it('never exposes an unmapped server error to the user', () => {
     const secret = 'database connection failed at internal-host-17';
     const result = mapThrownError(t, new ApiException(500, secret));
@@ -180,7 +265,11 @@ describe('App2 review regressions', () => {
     expect(invalidKey).toBe('definitelyNotATranslation');
   });
 
-  it('clears persisted WalletConnect sessions without touching the DFX login', () => {
+  it('clears pre-migration WalletConnect localStorage keys without touching the DFX login', () => {
+    // localStorage is only ever the *pre-migration* layer: @walletconnect/keyvaluestorage moves
+    // these keys into IndexedDB on first use and stops writing here afterwards (see storage.ts's
+    // doc comment). The IndexedDB layer that actually matters on a shared browser is covered by
+    // walletconnect-persistence.test.ts, not here.
     window.localStorage.clear();
     window.localStorage.setItem('wc@2:client:session', 'session');
     window.localStorage.setItem('@walletconnect/core', 'core');
@@ -191,6 +280,19 @@ describe('App2 review regressions', () => {
     expect(window.localStorage.getItem('wc@2:client:session')).toBeNull();
     expect(window.localStorage.getItem('@walletconnect/core')).toBeNull();
     expect(window.localStorage.getItem('dfx.authenticationToken')).toBe('token');
+  });
+
+  it('sends the full data URL for a KYC document upload, not the bare base64 payload', async () => {
+    const file = new File(['%PDF-1.4 fake contents'], 'passport.pdf', { type: 'application/pdf' });
+
+    const result = await readFileAsBase64(file);
+
+    // api/src/shared/utils/util.ts Util.fromBase64 splits on ";base64," to recover both the
+    // content type and the payload — a bare base64 string (no "data:" prefix, no ";base64,"
+    // marker) makes that split fail and crashes with Buffer.from(undefined, 'base64') (a 500).
+    expect(result.file).toMatch(/^data:/);
+    expect(result.file).toContain(';base64,');
+    expect(result.fileName).toBe('passport.pdf');
   });
 
   it('builds environment-aware app links and rejects insecure remote origins', () => {
