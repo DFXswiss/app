@@ -56,7 +56,7 @@ jest.mock('react-apexcharts', () => {
 const timeline: PartnerTimeline = {
   period: { from: '2026-06-01T00:00:00.000Z', to: '2026-06-03T23:59:59.000Z' },
   currency: 'CHF',
-  granularity: 'day',
+  granularity: 'Day',
   buckets: [
     {
       date: '2026-06-01T00:00:00.000Z',

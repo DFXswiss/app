@@ -1,5 +1,5 @@
 import { FILTER_ACTIVE_COLOR } from 'src/config/partner-dashboard.config';
-import { PartnerGranularity } from 'src/dto/partner-statistic.dto';
+import { PARTNER_GRANULARITIES, PartnerGranularity } from 'src/dto/partner-statistic.dto';
 
 export type PeriodDays = 30 | 90 | 365;
 
@@ -18,11 +18,15 @@ const PERIOD_OPTIONS: { days: PeriodDays; label: string }[] = [
   { days: 365, label: '365 Tage' },
 ];
 
-const GRANULARITY_OPTIONS: { value: PartnerGranularity; label: string }[] = [
-  { value: 'day', label: 'Tag' },
-  { value: 'week', label: 'Woche' },
-  { value: 'month', label: 'Monat' },
-];
+const GRANULARITY_LABELS: Record<PartnerGranularity, string> = {
+  Day: 'Tag',
+  Week: 'Woche',
+  Month: 'Monat',
+};
+
+const GRANULARITY_OPTIONS: { value: PartnerGranularity; label: string }[] = PARTNER_GRANULARITIES.map(
+  (value) => ({ value, label: GRANULARITY_LABELS[value] }),
+);
 
 export function PeriodControls({
   periodDays,

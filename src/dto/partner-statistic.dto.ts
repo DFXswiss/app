@@ -1,5 +1,20 @@
 /** Partner statistic API contracts (GET /v1/statistic/partner and /timeline). */
 
+/**
+ * API enum values — single source of truth.
+ * Matches backend PartnerStatisticGranularity / direction enums (PascalCase).
+ * JSON field names on volume/transactions/completion maps stay lowercase (see PartnerDirectionField).
+ */
+export const PARTNER_GRANULARITIES = ['Day', 'Week', 'Month'] as const;
+export type PartnerGranularity = (typeof PARTNER_GRANULARITIES)[number];
+
+export const PARTNER_DIRECTIONS = ['Buy', 'Sell', 'Swap'] as const;
+export type PartnerDirection = (typeof PARTNER_DIRECTIONS)[number];
+
+/** Lowercase keys of volume.buy / completion.buy / SERIES_LABELS — not API enum values. */
+export const PARTNER_DIRECTION_FIELDS = ['buy', 'sell', 'swap'] as const;
+export type PartnerDirectionField = (typeof PARTNER_DIRECTION_FIELDS)[number];
+
 export interface PartnerStatisticPeriod {
   from: string;
   to: string;
@@ -48,7 +63,7 @@ export interface PartnerAllTime {
 export interface PartnerAssetBreakdown {
   name: string;
   blockchain: string | null;
-  direction: 'buy' | 'sell' | 'swap';
+  direction: PartnerDirection;
   /** CHF; null when suppressed under k (fixture may include null for UI acceptance). */
   volume: number | null;
   transactions: number | null;
@@ -133,8 +148,6 @@ export interface PartnerTimelineBucket {
   partial: boolean;
 }
 
-export type PartnerGranularity = 'day' | 'week' | 'month';
-
 export interface PartnerTimeline {
   period: PartnerStatisticPeriod;
   currency: 'CHF';
@@ -142,5 +155,3 @@ export interface PartnerTimeline {
   buckets: PartnerTimelineBucket[];
   meta: PartnerStatisticMeta;
 }
-
-export type PartnerDirection = 'buy' | 'sell' | 'swap';

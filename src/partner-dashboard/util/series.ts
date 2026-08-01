@@ -1,4 +1,4 @@
-import { PartnerDirection, PartnerTimelineBucket } from 'src/dto/partner-statistic.dto';
+import { PartnerDirectionField, PartnerTimelineBucket } from 'src/dto/partner-statistic.dto';
 
 /**
  * Build ApexCharts series points for chart geometry.
@@ -14,7 +14,7 @@ import { PartnerDirection, PartnerTimelineBucket } from 'src/dto/partner-statist
 export function timelineSeries(
   buckets: PartnerTimelineBucket[],
   field: 'volume' | 'transactions',
-  direction: PartnerDirection,
+  direction: PartnerDirectionField,
 ): Array<[number, number | null]> {
   const raw: Array<number | null> = buckets.map((bucket) => {
     if (bucket.suppressed) return null;

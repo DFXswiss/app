@@ -28,7 +28,7 @@ export default function PartnerDashboardApp(): JSX.Element {
   const { getPartnerStatistic, getPartnerTimeline, isFixture } = usePartnerDashboard();
 
   const [periodDays, setPeriodDays] = useState<PeriodDays>(30);
-  const [granularity, setGranularity] = useState<PartnerGranularity>('day');
+  const [granularity, setGranularity] = useState<PartnerGranularity>('Day');
   const [statistic, setStatistic] = useState<PartnerStatistic | null>(null);
   const [timeline, setTimeline] = useState<PartnerTimeline | null>(null);
   const [loading, setLoading] = useState(true);

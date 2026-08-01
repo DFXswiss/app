@@ -5,15 +5,16 @@ import {
   STATE_COLORS,
 } from 'src/config/partner-dashboard.config';
 import {
+  PARTNER_DIRECTION_FIELDS,
   PartnerCompletion,
-  PartnerDirection,
+  PartnerDirectionField,
   PartnerPaymentInfoDirection,
   PartnerSettlementDirection,
 } from 'src/dto/partner-statistic.dto';
 import { formatCount, formatPercent } from 'src/partner-dashboard/util/format';
 import { KpiTile } from './kpi-tile';
 
-const DIRECTIONS: PartnerDirection[] = ['buy', 'sell', 'swap'];
+const DIRECTIONS = PARTNER_DIRECTION_FIELDS;
 
 export interface CompletionSegment {
   label: string;
@@ -132,7 +133,7 @@ function StageARow({
   direction,
   data,
 }: {
-  direction: PartnerDirection;
+  direction: PartnerDirectionField;
   data: PartnerPaymentInfoDirection;
 }): JSX.Element {
   return (
@@ -160,7 +161,7 @@ function StageBRow({
   direction,
   data,
 }: {
-  direction: PartnerDirection;
+  direction: PartnerDirectionField;
   data: PartnerSettlementDirection;
 }): JSX.Element {
   return (
@@ -180,9 +181,9 @@ function StageBRow({
 }
 
 function overallRate(
-  directions: PartnerDirection[],
-  pick: (d: PartnerDirection) => number | null,
-  den: (d: PartnerDirection) => number | null,
+  directions: readonly PartnerDirectionField[],
+  pick: (d: PartnerDirectionField) => number | null,
+  den: (d: PartnerDirectionField) => number | null,
 ): number | null {
   let num = 0;
   let denom = 0;

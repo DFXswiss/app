@@ -7,40 +7,81 @@ import {
 
 const SUPPRESSION_THRESHOLD = 5;
 
-function isoDaysAgo(days: number, end = new Date('2026-06-30T23:59:59.000Z')): string {
-  const d = new Date(end);
-  d.setUTCDate(d.getUTCDate() - days);
-  d.setUTCHours(0, 0, 0, 0);
-  return d.toISOString();
+/** Default demo window (30 calendar days ending 2026-06-30) — used when callers omit range. */
+const DEFAULT_PERIOD_TO = '2026-06-30T23:59:59.000Z';
+const DEFAULT_SPAN_DAYS = 30;
+
+export interface FixtureRange {
+  from?: string;
+  to?: string;
 }
 
-const PERIOD_TO = '2026-06-30T23:59:59.000Z';
-const PERIOD_FROM = isoDaysAgo(29, new Date(PERIOD_TO));
+function startOfUtcDay(d: Date): Date {
+  const out = new Date(d);
+  out.setUTCHours(0, 0, 0, 0);
+  return out;
+}
+
+function isoAtUtcMidnight(d: Date): string {
+  return startOfUtcDay(d).toISOString();
+}
+
+/** Inclusive day count between two ISO timestamps (UTC calendar days). */
+function spanDays(fromIso: string, toIso: string): number {
+  const from = startOfUtcDay(new Date(fromIso)).getTime();
+  const to = startOfUtcDay(new Date(toIso)).getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  return Math.max(1, Math.round((to - from) / dayMs) + 1);
+}
+
+function resolveRange(range?: FixtureRange): { from: string; to: string; days: number } {
+  const to = range?.to ?? DEFAULT_PERIOD_TO;
+  let from = range?.from;
+  if (!from) {
+    const end = new Date(to);
+    end.setUTCDate(end.getUTCDate() - (DEFAULT_SPAN_DAYS - 1));
+    from = isoAtUtcMidnight(end);
+  }
+  return { from, to, days: spanDays(from, to) };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function scaleNum(n: number, factor: number): number {
+  return round2(n * factor);
+}
 
 /**
- * Realistic monthly-scale Cake partner fixture.
- * allTime volumes/users are production-checked Cake values.
+ * Realistic Cake partner fixture.
+ * allTime volumes/users are production-checked Cake values (not scaled).
+ * Period totals/breakdown scale with the requested window relative to the 30-day base.
  * Includes nulls for acceptance of suppression UI (asset, timeline bucket, completion counter).
  */
-export function buildPartnerStatisticFixture(): PartnerStatistic {
+export function buildPartnerStatisticFixture(range?: FixtureRange): PartnerStatistic {
+  const { from, to, days } = resolveRange(range);
+  // Scale period metrics vs the 30-day base so 90/365 days show larger period totals
+  const factor = days / DEFAULT_SPAN_DAYS;
+
   return {
-    period: { from: PERIOD_FROM, to: PERIOD_TO },
+    period: { from, to },
     currency: 'CHF',
     totals: {
       volume: {
-        buy: 214_850.4,
-        sell: 22_310.75,
-        swap: 8_640.2,
-        total: 245_801.35,
+        buy: scaleNum(214_850.4, factor),
+        sell: scaleNum(22_310.75, factor),
+        swap: scaleNum(8_640.2, factor),
+        total: scaleNum(245_801.35, factor),
       },
       transactions: {
-        buy: 1_842,
-        sell: 312,
-        swap: 96,
-        total: 2_250,
+        buy: Math.round(1_842 * factor),
+        sell: Math.round(312 * factor),
+        swap: Math.round(96 * factor),
+        total: Math.round(2_250 * factor),
       },
       averageTransactionVolume: 109.25,
-      activeUsers: 1_286,
+      activeUsers: Math.round(1_286 * Math.min(factor, 2)),
       // null = suppressed under threshold (demo of KPI gap)
       newUsers: null,
     },
@@ -55,58 +96,166 @@ export function buildPartnerStatisticFixture(): PartnerStatistic {
     },
     breakdown: {
       assets: [
-        { name: 'BTC', blockchain: 'Bitcoin', direction: 'buy', volume: 98_420.5, transactions: 620 },
-        { name: 'ETH', blockchain: 'Ethereum', direction: 'buy', volume: 54_210.3, transactions: 410 },
-        { name: 'USDT', blockchain: 'Ethereum', direction: 'buy', volume: 28_100.0, transactions: 280 },
-        { name: 'XMR', blockchain: 'Monero', direction: 'buy', volume: 18_450.6, transactions: 190 },
-        { name: 'BTC', blockchain: 'Bitcoin', direction: 'sell', volume: 12_800.4, transactions: 145 },
-        { name: 'LTC', blockchain: 'Litecoin', direction: 'buy', volume: 8_920.0, transactions: 95 },
+        {
+          name: 'BTC',
+          blockchain: 'Bitcoin',
+          direction: 'Buy',
+          volume: scaleNum(98_420.5, factor),
+          transactions: Math.round(620 * factor),
+        },
+        {
+          name: 'ETH',
+          blockchain: 'Ethereum',
+          direction: 'Buy',
+          volume: scaleNum(54_210.3, factor),
+          transactions: Math.round(410 * factor),
+        },
+        {
+          name: 'USDT',
+          blockchain: 'Ethereum',
+          direction: 'Buy',
+          volume: scaleNum(28_100.0, factor),
+          transactions: Math.round(280 * factor),
+        },
+        {
+          name: 'XMR',
+          blockchain: 'Monero',
+          direction: 'Buy',
+          volume: scaleNum(18_450.6, factor),
+          transactions: Math.round(190 * factor),
+        },
+        {
+          name: 'BTC',
+          blockchain: 'Bitcoin',
+          direction: 'Sell',
+          volume: scaleNum(12_800.4, factor),
+          transactions: Math.round(145 * factor),
+        },
+        {
+          name: 'LTC',
+          blockchain: 'Litecoin',
+          direction: 'Buy',
+          volume: scaleNum(8_920.0, factor),
+          transactions: Math.round(95 * factor),
+        },
         // suppressed asset row (null volume/tx) — shown as privacy gap in the bar list
-        { name: 'ZEC', blockchain: 'Zcash', direction: 'buy', volume: null, transactions: null },
-        { name: 'ETH', blockchain: 'Ethereum', direction: 'sell', volume: 5_210.35, transactions: 88 },
-        { name: 'SOL', blockchain: 'Solana', direction: 'swap', volume: 4_120.0, transactions: 52 },
-        { name: 'BNB', blockchain: 'BinanceSmartChain', direction: 'buy', volume: 3_890.2, transactions: 48 },
+        {
+          name: 'ZEC',
+          blockchain: 'Zcash',
+          direction: 'Buy',
+          volume: null,
+          transactions: null,
+        },
+        {
+          name: 'ETH',
+          blockchain: 'Ethereum',
+          direction: 'Sell',
+          volume: scaleNum(5_210.35, factor),
+          transactions: Math.round(88 * factor),
+        },
+        {
+          name: 'SOL',
+          blockchain: 'Solana',
+          direction: 'Swap',
+          volume: scaleNum(4_120.0, factor),
+          transactions: Math.round(52 * factor),
+        },
+        {
+          name: 'BNB',
+          blockchain: 'BinanceSmartChain',
+          direction: 'Buy',
+          volume: scaleNum(3_890.2, factor),
+          transactions: Math.round(48 * factor),
+        },
       ],
       fiatCurrencies: [
-        { name: 'CHF', volume: 142_000.0, transactions: 1_120 },
-        { name: 'EUR', volume: 78_500.5, transactions: 780 },
-        { name: 'USD', volume: 25_300.85, transactions: 350 },
+        {
+          name: 'CHF',
+          volume: scaleNum(142_000.0, factor),
+          transactions: Math.round(1_120 * factor),
+        },
+        {
+          name: 'EUR',
+          volume: scaleNum(78_500.5, factor),
+          transactions: Math.round(780 * factor),
+        },
+        {
+          name: 'USD',
+          volume: scaleNum(25_300.85, factor),
+          transactions: Math.round(350 * factor),
+        },
       ],
       blockchains: [
-        { name: 'Bitcoin', volume: 111_220.9, transactions: 765 },
-        { name: 'Ethereum', volume: 87_520.65, transactions: 778 },
-        { name: 'Monero', volume: 18_450.6, transactions: 190 },
-        { name: 'Litecoin', volume: 8_920.0, transactions: 95 },
-        { name: 'Solana', volume: 4_120.0, transactions: 52 },
-        { name: 'BinanceSmartChain', volume: 3_890.2, transactions: 48 },
+        {
+          name: 'Bitcoin',
+          volume: scaleNum(111_220.9, factor),
+          transactions: Math.round(765 * factor),
+        },
+        {
+          name: 'Ethereum',
+          volume: scaleNum(87_520.65, factor),
+          transactions: Math.round(778 * factor),
+        },
+        {
+          name: 'Monero',
+          volume: scaleNum(18_450.6, factor),
+          transactions: Math.round(190 * factor),
+        },
+        {
+          name: 'Litecoin',
+          volume: scaleNum(8_920.0, factor),
+          transactions: Math.round(95 * factor),
+        },
+        {
+          name: 'Solana',
+          volume: scaleNum(4_120.0, factor),
+          transactions: Math.round(52 * factor),
+        },
+        {
+          name: 'BinanceSmartChain',
+          volume: scaleNum(3_890.2, factor),
+          transactions: Math.round(48 * factor),
+        },
       ],
       paymentMethods: [
-        { name: 'Bank', volume: 156_400.0, transactions: 1_380 },
-        { name: 'Card', volume: 52_100.35, transactions: 520 },
-        { name: 'OnChain', volume: 37_301.0, transactions: 350 },
+        {
+          name: 'Bank',
+          volume: scaleNum(156_400.0, factor),
+          transactions: Math.round(1_380 * factor),
+        },
+        {
+          name: 'Card',
+          volume: scaleNum(52_100.35, factor),
+          transactions: Math.round(520 * factor),
+        },
+        {
+          name: 'OnChain',
+          volume: scaleNum(37_301.0, factor),
+          transactions: Math.round(350 * factor),
+        },
       ],
     },
     referral: {
-      volume: 42_180.5,
-      creditEarned: 1_265.4,
-      creditPaid: 980.0,
-      creditOpen: 285.4,
+      volume: scaleNum(42_180.5, factor),
+      creditEarned: scaleNum(1_265.4, factor),
+      creditPaid: scaleNum(980.0, factor),
+      creditOpen: scaleNum(285.4, factor),
       currency: 'EUR',
     },
     completion: {
       paymentInfoRequests: {
         buy: {
-          requested: 12_480,
-          paymentReceived: 1_920,
-          waitingForPayment: 340,
-          noPaymentReceived: 10_220,
+          requested: Math.round(12_480 * factor),
+          paymentReceived: Math.round(1_920 * factor),
+          waitingForPayment: Math.round(340 * factor),
+          noPaymentReceived: Math.round(10_220 * factor),
           receivedRate: 0.1538,
         },
         sell: {
-          requested: 2_140,
-          paymentReceived: 380,
-          waitingForPayment: 45,
-          noPaymentReceived: 1_715,
+          requested: Math.round(2_140 * factor),
+          paymentReceived: Math.round(380 * factor),
+          waitingForPayment: Math.round(45 * factor),
+          noPaymentReceived: Math.round(1_715 * factor),
           receivedRate: 0.1776,
         },
         swap: {
@@ -120,24 +269,24 @@ export function buildPartnerStatisticFixture(): PartnerStatistic {
       },
       settlement: {
         buy: {
-          received: 1_920,
-          delivered: 1_780,
-          rejected: 42,
-          inProgress: 98,
+          received: Math.round(1_920 * factor),
+          delivered: Math.round(1_780 * factor),
+          rejected: Math.round(42 * factor),
+          inProgress: Math.round(98 * factor),
           deliveredRate: 0.9271,
         },
         sell: {
-          received: 380,
-          delivered: 350,
-          rejected: 8,
-          inProgress: 22,
+          received: Math.round(380 * factor),
+          delivered: Math.round(350 * factor),
+          rejected: Math.round(8 * factor),
+          inProgress: Math.round(22 * factor),
           deliveredRate: 0.9211,
         },
         swap: {
-          received: 110,
-          delivered: 102,
-          rejected: 2,
-          inProgress: 6,
+          received: Math.round(110 * factor),
+          delivered: Math.round(102 * factor),
+          rejected: Math.round(2 * factor),
+          inProgress: Math.round(6 * factor),
           deliveredRate: 0.9273,
         },
       },
@@ -150,14 +299,45 @@ export function buildPartnerStatisticFixture(): PartnerStatistic {
   };
 }
 
-function dayBucket(
-  dayOffset: number,
+const DAY_PATTERN: Array<{ buy: number; sell: number; swap: number }> = [
+  { buy: 6200, sell: 710, swap: 240 },
+  { buy: 7100, sell: 820, swap: 310 },
+  { buy: 5800, sell: 640, swap: 180 },
+  { buy: 8400, sell: 910, swap: 420 },
+  { buy: 0, sell: 0, swap: 0 }, // real zero day (index 4 in pattern; we also force index 5)
+  { buy: 9200, sell: 1050, swap: 380 },
+  { buy: 7800, sell: 880, swap: 290 },
+  { buy: 6500, sell: 720, swap: 210 },
+  { buy: 10100, sell: 1120, swap: 450 },
+  { buy: 8700, sell: 940, swap: 330 },
+  { buy: 7300, sell: 800, swap: 270 },
+  { buy: 9600, sell: 1080, swap: 400 },
+];
+
+/** Indices relative to a 30-day window that tests pin for suppressed / real-zero behaviour. */
+const ZERO_DAY_INDEX = 5;
+const SUPPRESSED_DAY_INDEX = 12;
+
+function stepDaysFor(granularity: PartnerGranularity): number {
+  switch (granularity) {
+    case 'Week':
+      return 7;
+    case 'Month':
+      return 30;
+    case 'Day':
+    default:
+      return 1;
+  }
+}
+
+function makeBucket(
+  dateIso: string,
   volume: { buy: number; sell: number; swap: number } | null,
   transactions: { buy: number; sell: number; swap: number } | null,
   opts: { suppressed?: boolean; partial?: boolean } = {},
 ): PartnerTimelineBucket {
   return {
-    date: isoDaysAgo(29 - dayOffset, new Date(PERIOD_TO)),
+    date: dateIso,
     volume,
     transactions,
     suppressed: opts.suppressed === true,
@@ -166,39 +346,66 @@ function dayBucket(
 }
 
 /**
- * 30 daily buckets.
- * Days 0 and 29 are partial (period edges) — visibly marked in charts.
- * Day 12 is suppressed (null, not zero). Day 5 is a true zero-activity day.
+ * Timeline fixture that honours requested range + granularity.
+ *
+ * - Bucket count grows with the window (30 / 90 / 365 days → distinct series lengths).
+ * - Edge buckets are partial. One suppressed and one real-zero bucket are preserved
+ *   (at fixed offsets from the start when the series is long enough).
+ * - Coarser granularity thins the series (week ≈ every 7 days, month ≈ every 30).
  */
-export function buildPartnerTimelineFixture(granularity: PartnerGranularity = 'day'): PartnerTimeline {
-  const pattern: Array<{ buy: number; sell: number; swap: number }> = [
-    { buy: 6200, sell: 710, swap: 240 },
-    { buy: 7100, sell: 820, swap: 310 },
-    { buy: 5800, sell: 640, swap: 180 },
-    { buy: 8400, sell: 910, swap: 420 },
-    { buy: 0, sell: 0, swap: 0 }, // real zero day
-    { buy: 9200, sell: 1050, swap: 380 },
-    { buy: 7800, sell: 880, swap: 290 },
-    { buy: 6500, sell: 720, swap: 210 },
-    { buy: 10100, sell: 1120, swap: 450 },
-    { buy: 8700, sell: 940, swap: 330 },
-    { buy: 7300, sell: 800, swap: 270 },
-    { buy: 9600, sell: 1080, swap: 400 },
-  ];
+export function buildPartnerTimelineFixture(
+  granularity: PartnerGranularity = 'Day',
+  range?: FixtureRange,
+): PartnerTimeline {
+  const { from, to, days } = resolveRange(range);
+  const step = stepDaysFor(granularity);
+  const bucketCount = Math.max(1, Math.ceil(days / step));
+  // Per-bucket amplitude scales with step so week/month totals stay comparable to day sum
+  const amplitude = step;
 
+  const fromStart = startOfUtcDay(new Date(from));
   const buckets: PartnerTimelineBucket[] = [];
-  for (let i = 0; i < 30; i++) {
-    if (i === 12) {
-      // suppressed bucket: null, not 0
-      buckets.push(dayBucket(i, null, null, { suppressed: true }));
+
+  for (let i = 0; i < bucketCount; i++) {
+    const bucketDate = new Date(fromStart);
+    bucketDate.setUTCDate(bucketDate.getUTCDate() + i * step);
+    const dateIso = isoAtUtcMidnight(bucketDate);
+
+    // Day: fixed offsets (index 5 zero, 12 suppressed) — tests pin these.
+    // Week/Month: distinct mid-series slots so both markers survive coarse thinning.
+    let suppressedIdx = SUPPRESSED_DAY_INDEX;
+    let zeroIdx = ZERO_DAY_INDEX;
+    if (granularity !== 'Day') {
+      zeroIdx = bucketCount >= 3 ? 1 : -1;
+      suppressedIdx = bucketCount >= 4 ? Math.min(2, bucketCount - 2) : -1;
+      if (suppressedIdx === zeroIdx) suppressedIdx = zeroIdx + 1 < bucketCount - 1 ? zeroIdx + 1 : -1;
+    }
+    const suppressed = i === suppressedIdx;
+    const isZero = i === zeroIdx;
+
+    if (suppressed) {
+      buckets.push(makeBucket(dateIso, null, null, { suppressed: true }));
       continue;
     }
-    const base = pattern[i % pattern.length];
-    const scale = 0.85 + (i % 5) * 0.05;
+
+    if (isZero) {
+      buckets.push(
+        makeBucket(
+          dateIso,
+          { buy: 0, sell: 0, swap: 0 },
+          { buy: 0, sell: 0, swap: 0 },
+          { partial: i === 0 || i === bucketCount - 1 },
+        ),
+      );
+      continue;
+    }
+
+    const base = DAY_PATTERN[i % DAY_PATTERN.length];
+    const scale = (0.85 + (i % 5) * 0.05) * amplitude;
     const volume = {
-      buy: Math.round(base.buy * scale * 100) / 100,
-      sell: Math.round(base.sell * scale * 100) / 100,
-      swap: Math.round(base.swap * scale * 100) / 100,
+      buy: round2(base.buy * scale),
+      sell: round2(base.sell * scale),
+      swap: round2(base.swap * scale),
     };
     const transactions = {
       buy: Math.round((base.buy / 110) * scale),
@@ -206,36 +413,26 @@ export function buildPartnerTimelineFixture(granularity: PartnerGranularity = 'd
       swap: Math.round((base.swap / 90) * scale),
     };
     buckets.push(
-      dayBucket(i, volume, transactions, {
-        // Both period edges are partial so the mark is visible at start and end of the chart
-        partial: i === 0 || i === 29,
+      makeBucket(dateIso, volume, transactions, {
+        partial: i === 0 || i === bucketCount - 1,
       }),
     );
   }
 
-  // For week/month fixtures, thin the series to coarser buckets for local demo
-  let resultBuckets = buckets;
-  if (granularity === 'week') {
-    resultBuckets = buckets.filter((_, idx) => idx % 7 === 0).map((b, idx, arr) => ({
-      ...b,
-      partial: idx === 0 || idx === arr.length - 1,
-    }));
-  } else if (granularity === 'month') {
-    resultBuckets = [
-      { ...buckets[0], partial: true },
-      { ...buckets[15], partial: false },
-      { ...buckets[29], partial: true },
-    ];
+  // Guarantee edges are partial even if zero/suppressed landed there
+  if (buckets.length > 0) {
+    buckets[0] = { ...buckets[0], partial: true };
+    buckets[buckets.length - 1] = { ...buckets[buckets.length - 1], partial: true };
   }
 
   return {
-    period: { from: PERIOD_FROM, to: PERIOD_TO },
+    period: { from, to },
     currency: 'CHF',
     granularity,
-    buckets: resultBuckets,
+    buckets,
     meta: {
       suppressionThreshold: SUPPRESSION_THRESHOLD,
-      suppressedCount: resultBuckets.filter((b) => b.suppressed).length,
+      suppressedCount: buckets.filter((b) => b.suppressed).length,
       generatedAt: '2026-07-01T08:00:00.000Z',
     },
   };

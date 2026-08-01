@@ -17,6 +17,7 @@ export interface PartnerQuery {
 }
 
 const AUTH_TOKEN_KEY = 'dfx.authenticationToken';
+const DEFAULT_GRANULARITY: PartnerGranularity = 'Day';
 
 function buildQuery(params: PartnerQuery): string {
   const search = new URLSearchParams();
@@ -65,7 +66,7 @@ export function usePartnerDashboard() {
   const getPartnerStatistic = useCallback(
     async (params: PartnerQuery = {}): Promise<PartnerStatistic> => {
       if (fixture) {
-        return buildPartnerStatisticFixture();
+        return buildPartnerStatisticFixture({ from: params.from, to: params.to });
       }
       return partnerApiGet<PartnerStatistic>(`statistic/partner${buildQuery(params)}`);
     },
@@ -75,7 +76,10 @@ export function usePartnerDashboard() {
   const getPartnerTimeline = useCallback(
     async (params: PartnerQuery = {}): Promise<PartnerTimeline> => {
       if (fixture) {
-        return buildPartnerTimelineFixture(params.granularity ?? 'day');
+        return buildPartnerTimelineFixture(params.granularity ?? DEFAULT_GRANULARITY, {
+          from: params.from,
+          to: params.to,
+        });
       }
       return partnerApiGet<PartnerTimeline>(`statistic/partner/timeline${buildQuery(params)}`);
     },

@@ -64,12 +64,34 @@ describe('partner timeline series', () => {
   });
 
   it('fixture timeline has partial edge buckets at both ends', () => {
-    const tl = buildPartnerTimelineFixture('day');
+    const tl = buildPartnerTimelineFixture('Day');
     expect(tl.buckets[0].partial).toBe(true);
     expect(tl.buckets[tl.buckets.length - 1].partial).toBe(true);
     expect(tl.buckets.some((b) => b.suppressed)).toBe(true);
   });
 
+  it('fixture timeline bucket count grows with the requested period (30 / 90 / 365)', () => {
+    const end = '2026-06-30T23:59:59.000Z';
+    const rangeFor = (days: number) => {
+      const from = new Date(end);
+      from.setUTCDate(from.getUTCDate() - (days - 1));
+      from.setUTCHours(0, 0, 0, 0);
+      return { from: from.toISOString(), to: end };
+    };
+    const d30 = buildPartnerTimelineFixture('Day', rangeFor(30));
+    const d90 = buildPartnerTimelineFixture('Day', rangeFor(90));
+    const d365 = buildPartnerTimelineFixture('Day', rangeFor(365));
+    expect(d30.buckets.length).toBe(30);
+    expect(d90.buckets.length).toBe(90);
+    expect(d365.buckets.length).toBe(365);
+    expect(d30.buckets.length).toBeLessThan(d90.buckets.length);
+    expect(d90.buckets.length).toBeLessThan(d365.buckets.length);
+    // Acceptance fixtures preserved on the default 30-day day series
+    expect(d30.buckets[5].volume).toEqual({ buy: 0, sell: 0, swap: 0 });
+    expect(d30.buckets[5].suppressed).toBe(false);
+    expect(d30.buckets[12].suppressed).toBe(true);
+    expect(d30.buckets[12].volume).toBeNull();
+  });
 
   it('ranks named volumes descending and keeps nulls last', () => {
     const ranked = rankNamedVolumes([
