@@ -22,6 +22,7 @@ test-results/
 # production
 /build
 /widget
+/partner-dist
 /dist
 
 # misc
