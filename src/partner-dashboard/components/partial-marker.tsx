@@ -1,11 +1,13 @@
 import { PARTIAL_BAND_COLOR, SUPPRESSED_BAND_COLOR } from 'src/config/partner-dashboard.config';
 import { PartnerTimelineBucket } from 'src/dto/partner-statistic.dto';
+import { getPartnerLocale, partnerTranslate, usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 
 /**
  * Visual treatment helper for partial timeline buckets (period edge).
  * Used by charts/tooltips; also rendered as a legend note when any bucket is partial.
  */
 export function PartialLegendNote({ hasPartial }: { hasPartial: boolean }): JSX.Element | null {
+  const { translate } = usePartnerTranslation();
   if (!hasPartial) return null;
   return (
     <p className="text-2xs text-dfxGray-700 mt-1" data-testid="partial-legend">
@@ -17,8 +19,9 @@ export function PartialLegendNote({ hasPartial }: { hasPartial: boolean }): JSX.
             'repeating-linear-gradient(135deg, transparent, transparent 2px, rgba(0,0,0,0.25) 2px, rgba(0,0,0,0.25) 4px)',
         }}
       />
-      Blasse / schraffierte Abschnitte sind unvollständig — sie decken den Zeitraum nur teilweise ab
-      (Rand der Periode).
+      {translate(
+        'Pale / hatched sections are incomplete — they only partially cover the period (period edge).',
+      )}
     </p>
   );
 }
@@ -31,6 +34,7 @@ export function isPartialBucket(partial: boolean | undefined): boolean {
  * Visible chips for every partial edge bucket — so partial coverage is obvious without hovering.
  */
 export function PartialBucketMarkers({ buckets }: { buckets: PartnerTimelineBucket[] }): JSX.Element | null {
+  const { translate, locale } = usePartnerTranslation();
   const partials = buckets.filter((b) => b.partial);
   if (partials.length === 0) return null;
 
@@ -38,10 +42,10 @@ export function PartialBucketMarkers({ buckets }: { buckets: PartnerTimelineBuck
     <div
       className="flex flex-wrap gap-1.5 mt-2"
       data-testid="partial-markers"
-      aria-label="Unvollständige Zeitraum-Abschnitte"
+      aria-label={translate('Incomplete period sections')}
     >
       {partials.map((b) => {
-        const label = new Date(b.date).toLocaleDateString('de-CH', {
+        const label = new Date(b.date).toLocaleDateString(locale, {
           day: '2-digit',
           month: 'short',
           year: 'numeric',
@@ -58,7 +62,7 @@ export function PartialBucketMarkers({ buckets }: { buckets: PartnerTimelineBuck
                 'repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(154,165,184,0.15) 3px, rgba(154,165,184,0.15) 6px)',
             }}
           >
-            {label} · unvollständig
+            {label} · {translate('incomplete')}
           </span>
         );
       })}
@@ -150,4 +154,13 @@ export function timelineXAnnotations(
   buckets: PartnerTimelineBucket[],
 ): Array<PartialXAnnotation | SuppressedXAnnotation> {
   return [...partialXAnnotations(buckets), ...suppressedXAnnotations(buckets)];
+}
+
+/** Pure helper for tooltips outside React — uses current i18n language. */
+export function formatPartialValue(base: string): string {
+  return partnerTranslate('{{value}} (incomplete)', { value: base });
+}
+
+export function formatBucketDate(iso: string, locale: string = getPartnerLocale()): string {
+  return new Date(iso).toLocaleDateString(locale);
 }

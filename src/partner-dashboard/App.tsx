@@ -14,6 +14,7 @@ import { DashboardSkeleton } from './components/skeleton';
 import { TransactionsTimeChart } from './components/transactions-time-chart';
 import { VolumeTimeChart } from './components/volume-time-chart';
 import { formatAmount, formatAmountWhole, formatCount } from './util/format';
+import { usePartnerTranslation } from './util/i18n';
 
 function periodRange(days: PeriodDays): { from: string; to: string } {
   const to = new Date();
@@ -26,6 +27,7 @@ function periodRange(days: PeriodDays): { from: string; to: string } {
 export default function PartnerDashboardApp(): JSX.Element {
   const brand = getPartnerBrand();
   const { getPartnerStatistic, getPartnerTimeline, isFixture } = usePartnerDashboard();
+  const { translate, locale } = usePartnerTranslation();
 
   const [periodDays, setPeriodDays] = useState<PeriodDays>(30);
   const [granularity, setGranularity] = useState<PartnerGranularity>('Day');
@@ -49,14 +51,14 @@ export default function PartnerDashboardApp(): JSX.Element {
       const message =
         err instanceof Error && err.message
           ? err.message
-          : 'Die Partner-Kennzahlen konnten nicht geladen werden.';
+          : translate('Partner metrics could not be loaded.');
       setError(message);
       setStatistic(null);
       setTimeline(null);
     } finally {
       setLoading(false);
     }
-  }, [getPartnerStatistic, getPartnerTimeline, range.from, range.to, granularity]);
+  }, [getPartnerStatistic, getPartnerTimeline, range.from, range.to, granularity, translate]);
 
   useEffect(() => {
     void load();
@@ -118,39 +120,39 @@ export default function PartnerDashboardApp(): JSX.Element {
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3" data-testid="kpi-grid">
               <KpiTile
-                label="Gesamtvolumen"
+                label={translate('Total volume')}
                 value={statistic.totals.volume.total}
-                format={(n) => formatAmountWhole(n, currency)}
+                format={(n) => formatAmountWhole(n, currency, locale)}
                 testId="kpi-volume"
               />
               <KpiTile
-                label="Vorgänge"
+                label={translate('Transactions')}
                 value={statistic.totals.transactions.total}
-                format={(n) => formatCount(n)}
+                format={(n) => formatCount(n, locale)}
                 testId="kpi-transactions"
               />
               <KpiTile
-                label="Ø-Vorgangsgröße"
+                label={translate('Average transaction size')}
                 value={statistic.totals.averageTransactionVolume}
-                format={(n) => formatAmount(n, currency)}
+                format={(n) => formatAmount(n, currency, 2, locale)}
                 testId="kpi-avg"
               />
               <KpiTile
-                label="Aktive Nutzer"
+                label={translate('Active users')}
                 value={statistic.totals.activeUsers}
-                format={(n) => formatCount(n)}
+                format={(n) => formatCount(n, locale)}
                 testId="kpi-active-users"
               />
               <KpiTile
-                label="Neue Nutzer"
+                label={translate('New users')}
                 value={statistic.totals.newUsers}
-                format={(n) => formatCount(n)}
+                format={(n) => formatCount(n, locale)}
                 testId="kpi-new-users"
               />
               <KpiTile
-                label="Registrierte Nutzer (gesamt)"
+                label={translate('Registered users (total)')}
                 value={statistic.allTime.registeredUsers}
-                format={(n) => formatCount(n)}
+                format={(n) => formatCount(n, locale)}
                 testId="kpi-registered"
               />
             </div>
@@ -167,27 +169,27 @@ export default function PartnerDashboardApp(): JSX.Element {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               <HorizontalBarList
-                title="Volumen je Kryptowährung"
+                title={translate('Volume by cryptocurrency')}
                 rows={assetRows}
                 currency={currency}
                 testId="bars-assets"
               />
               <HorizontalBarList
-                title="Fiat-Währungen"
+                title={translate('Fiat currencies')}
                 rows={statistic.breakdown.fiatCurrencies}
                 currency={currency}
                 compact
                 testId="bars-fiat"
               />
               <HorizontalBarList
-                title="Blockchains"
+                title={translate('Blockchains')}
                 rows={statistic.breakdown.blockchains}
                 currency={currency}
                 compact
                 testId="bars-blockchains"
               />
               <HorizontalBarList
-                title="Zahlungswege"
+                title={translate('Payment methods')}
                 rows={statistic.breakdown.paymentMethods}
                 currency={currency}
                 compact

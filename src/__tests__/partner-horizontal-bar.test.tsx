@@ -5,7 +5,7 @@ describe('HorizontalBarList suppression', () => {
   it('renders a privacy gap for null volume rows, not a zero-length bar', () => {
     render(
       <HorizontalBarList
-        title="Volumen je Kryptowährung"
+        title="Volume by cryptocurrency"
         currency="CHF"
         rows={[
           { name: 'BTC', volume: 1000, transactions: 20 },

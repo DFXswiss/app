@@ -93,6 +93,6 @@ describe('error boundary keeps the shell usable (D5)', () => {
     expect(screen.getByTestId('partner-error-message')).toHaveTextContent(
       'simulated context bootstrap failure',
     );
-    expect(screen.getByRole('button', { name: /Erneut versuchen/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Try again/i })).toBeInTheDocument();
   });
 });

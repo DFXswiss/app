@@ -119,8 +119,8 @@ describe('timeline charts — suppressed vs real zero', () => {
     render(<VolumeTimeChart timeline={timeline} />);
     expect(screen.getByTestId('volume-time-chart')).toBeInTheDocument();
     // Geometry: continuous value, not null hole
-    expect(screen.getByTestId('point-Kauf-1')).not.toHaveAttribute('data-value', 'null');
-    expect(screen.getByTestId('point-Kauf-2')).toHaveAttribute('data-value', '0');
+    expect(screen.getByTestId('point-Buy-1')).not.toHaveAttribute('data-value', 'null');
+    expect(screen.getByTestId('point-Buy-2')).toHaveAttribute('data-value', '0');
 
     const anns = screen.getAllByTestId('xaxis-annotation');
     // Suppressed band has no text label; identify by x range covering the suppressed day
@@ -132,7 +132,7 @@ describe('timeline charts — suppressed vs real zero', () => {
 
   it('table still shows the absent placeholder for suppressed, not the geometry value', () => {
     render(<VolumeTimeChart timeline={timeline} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Als Tabelle anzeigen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
     // Three directions for the suppressed day — never the interpolated geometry number
     expect(screen.getAllByText('–').length).toBeGreaterThanOrEqual(3);
     expect(screen.queryByText('50')).not.toBeInTheDocument();
@@ -141,8 +141,8 @@ describe('timeline charts — suppressed vs real zero', () => {
   it('renders transactions chart as its own chart (not a second Y-axis)', () => {
     render(<TransactionsTimeChart timeline={timeline} />);
     expect(screen.getByTestId('transactions-time-chart')).toBeInTheDocument();
-    expect(screen.getByText('Anzahl über Zeit')).toBeInTheDocument();
-    expect(screen.getByTestId('point-Kauf-1')).not.toHaveAttribute('data-value', 'null');
+    expect(screen.getByText('Count over time')).toBeInTheDocument();
+    expect(screen.getByTestId('point-Buy-1')).not.toHaveAttribute('data-value', 'null');
     const anns = screen.getAllByTestId('xaxis-annotation');
     const suppressedT = new Date(timeline.buckets[1].date).getTime();
     expect(anns.some((el) => el.getAttribute('data-x') === String(suppressedT))).toBe(true);
@@ -150,7 +150,7 @@ describe('timeline charts — suppressed vs real zero', () => {
 
   it('exposes partial-bucket legend when any bucket is partial', () => {
     render(<PartialLegendNote hasPartial={true} />);
-    expect(screen.getByTestId('partial-legend')).toHaveTextContent(/unvollständig/);
+    expect(screen.getByTestId('partial-legend')).toHaveTextContent(/incomplete/i);
   });
 
   it('renders visible partial markers for edge buckets (not only a legend note)', () => {
@@ -159,6 +159,6 @@ describe('timeline charts — suppressed vs real zero', () => {
     const markers = screen.getAllByTestId('partial-marker');
     expect(markers.length).toBeGreaterThanOrEqual(1);
     expect(markers[0]).toHaveAttribute('data-partial', 'true');
-    expect(markers[0]).toHaveTextContent(/unvollständig/);
+    expect(markers[0]).toHaveTextContent(/incomplete/i);
   });
 });

@@ -1,4 +1,5 @@
 import { formatAmount, formatCount } from 'src/partner-dashboard/util/format';
+import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 import { NamedVolumeRow, rankNamedVolumes, sequentialColor } from 'src/partner-dashboard/util/series';
 import { EmptyState } from './empty-state';
 
@@ -21,6 +22,7 @@ export function HorizontalBarList({
   compact = false,
   testId,
 }: HorizontalBarListProps): JSX.Element {
+  const { translate, locale } = usePartnerTranslation();
   const ranked = rankNamedVolumes(rows);
   const maxVolume = ranked.reduce((m, r) => {
     if (r.volume == null) return m;
@@ -34,7 +36,7 @@ export function HorizontalBarList({
     >
       <h2 className="text-sm font-semibold text-white mb-3">{title}</h2>
       {ranked.length === 0 ? (
-        <EmptyState message="Keine Daten." />
+        <EmptyState message={translate('No data.')} />
       ) : (
         <div className={`overflow-x-auto max-w-full ${compact ? 'max-h-64 overflow-y-auto' : ''}`}>
           <ul className="space-y-2 min-w-[280px]">
@@ -65,10 +67,10 @@ export function HorizontalBarList({
                       {row.name}
                     </span>
                     <span className="text-white font-medium shrink-0 tabular-nums">
-                      {formatAmount(row.volume, currency, 0)}
+                      {formatAmount(row.volume, currency, 0, locale)}
                       {row.transactions != null && (
                         <span className="text-dfxGray-700 font-normal ml-1">
-                          ({formatCount(row.transactions)})
+                          ({formatCount(row.transactions, locale)})
                         </span>
                       )}
                     </span>
@@ -77,7 +79,7 @@ export function HorizontalBarList({
                     <div
                       className="h-full rounded transition-all"
                       style={{ width: `${Math.max(pct, pct > 0 ? 1 : 0)}%`, backgroundColor: color }}
-                      title={formatAmount(row.volume, currency)}
+                      title={formatAmount(row.volume, currency, 2, locale)}
                     />
                   </div>
                 </li>

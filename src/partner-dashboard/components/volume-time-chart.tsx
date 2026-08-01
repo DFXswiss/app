@@ -4,10 +4,11 @@ import Chart from 'react-apexcharts';
 import { SERIES_COLORS, SERIES_LABELS } from 'src/config/partner-dashboard.config';
 import { PartnerTimeline } from 'src/dto/partner-statistic.dto';
 import { ABSENT_LABEL, formatAmount } from 'src/partner-dashboard/util/format';
+import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 import { timelineSeries } from 'src/partner-dashboard/util/series';
 import { CollapsibleTable } from './collapsible-table';
 import { EmptyState } from './empty-state';
-import { PartialBucketMarkers, timelineXAnnotations } from './partial-marker';
+import { formatPartialValue, PartialBucketMarkers, timelineXAnnotations } from './partial-marker';
 
 export interface VolumeTimeChartProps {
   timeline: PartnerTimeline;
@@ -16,19 +17,30 @@ export interface VolumeTimeChartProps {
 export function VolumeTimeChart({ timeline }: VolumeTimeChartProps): JSX.Element {
   const { buckets, currency } = timeline;
   const hasData = buckets.some((b) => b.volume != null);
+  const { translate, locale } = usePartnerTranslation();
+
+  const seriesLabels = useMemo(
+    () => ({
+      buy: translate(SERIES_LABELS.buy),
+      sell: translate(SERIES_LABELS.sell),
+      swap: translate(SERIES_LABELS.swap),
+    }),
+    [translate],
+  );
 
   const series = useMemo(
     () => [
-      { name: SERIES_LABELS.buy, data: timelineSeries(buckets, 'volume', 'buy') },
-      { name: SERIES_LABELS.sell, data: timelineSeries(buckets, 'volume', 'sell') },
-      { name: SERIES_LABELS.swap, data: timelineSeries(buckets, 'volume', 'swap') },
+      { name: seriesLabels.buy, data: timelineSeries(buckets, 'volume', 'buy') },
+      { name: seriesLabels.sell, data: timelineSeries(buckets, 'volume', 'sell') },
+      { name: seriesLabels.swap, data: timelineSeries(buckets, 'volume', 'swap') },
     ],
-    [buckets],
+    [buckets, seriesLabels],
   );
 
   const partialFlags = useMemo(() => buckets.map((b) => b.partial), [buckets]);
   const suppressedFlags = useMemo(() => buckets.map((b) => b.suppressed), [buckets]);
   const xAnnotations = useMemo(() => timelineXAnnotations(buckets), [buckets]);
+  const incompleteWord = translate('incomplete');
 
   const options = useMemo((): ApexOptions => {
     return {
@@ -83,40 +95,42 @@ export function VolumeTimeChart({ timeline }: VolumeTimeChartProps): JSX.Element
               return ABSENT_LABEL;
             }
             const partial = partialFlags[idx] === true;
-            const base = formatAmount(val, currency);
-            return partial ? `${base} (unvollständig)` : base;
+            const base = formatAmount(val, currency, 2, locale);
+            return partial ? formatPartialValue(base) : base;
           },
         },
       },
       markers: { size: 0, hover: { size: 4 } },
     };
-  }, [currency, partialFlags, suppressedFlags, xAnnotations]);
+  }, [currency, locale, partialFlags, suppressedFlags, xAnnotations]);
 
   const tableRows = buckets.map((b) => ({
-    date: new Date(b.date).toLocaleDateString('de-CH'),
-    buy: b.volume == null ? ABSENT_LABEL : formatAmount(b.volume.buy, currency),
-    sell: b.volume == null ? ABSENT_LABEL : formatAmount(b.volume.sell, currency),
-    swap: b.volume == null ? ABSENT_LABEL : formatAmount(b.volume.swap, currency),
-    note: b.partial ? 'unvollständig' : b.suppressed ? ABSENT_LABEL : '',
+    date: new Date(b.date).toLocaleDateString(locale),
+    buy: b.volume == null ? ABSENT_LABEL : formatAmount(b.volume.buy, currency, 2, locale),
+    sell: b.volume == null ? ABSENT_LABEL : formatAmount(b.volume.sell, currency, 2, locale),
+    swap: b.volume == null ? ABSENT_LABEL : formatAmount(b.volume.swap, currency, 2, locale),
+    note: b.partial ? incompleteWord : b.suppressed ? ABSENT_LABEL : '',
   }));
+
+  const title = translate('Volume over time');
 
   return (
     <section className="bg-dfxBlue-700 rounded-lg shadow p-4" data-testid="volume-time-chart">
-      <h2 className="text-sm font-semibold text-white mb-2">Volumen über Zeit</h2>
+      <h2 className="text-sm font-semibold text-white mb-2">{title}</h2>
       {!hasData ? (
-        <EmptyState message="Keine Volumendaten im gewählten Zeitraum." />
+        <EmptyState message={translate('No volume data for the selected period.')} />
       ) : (
         <>
           <Chart type="area" height={300} options={options} series={series} />
           <PartialBucketMarkers buckets={buckets} />
           <CollapsibleTable
-            title="Volumen über Zeit"
+            title={title}
             columns={[
-              { key: 'date', header: 'Datum' },
-              { key: 'buy', header: SERIES_LABELS.buy, align: 'right' },
-              { key: 'sell', header: SERIES_LABELS.sell, align: 'right' },
-              { key: 'swap', header: SERIES_LABELS.swap, align: 'right' },
-              { key: 'note', header: 'Hinweis' },
+              { key: 'date', header: translate('Date') },
+              { key: 'buy', header: seriesLabels.buy, align: 'right' },
+              { key: 'sell', header: seriesLabels.sell, align: 'right' },
+              { key: 'swap', header: seriesLabels.swap, align: 'right' },
+              { key: 'note', header: translate('Note') },
             ]}
             rows={tableRows}
           />

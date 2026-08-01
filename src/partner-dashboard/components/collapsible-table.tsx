@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 
 export interface TableColumn {
   key: string;
@@ -16,6 +17,7 @@ export interface CollapsibleTableProps {
 /** Accessible numbers-as-table toggle for chart series. */
 export function CollapsibleTable({ title, columns, rows, defaultOpen = false }: CollapsibleTableProps): JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
+  const { translate } = usePartnerTranslation();
 
   return (
     <div className="mt-2">
@@ -25,7 +27,7 @@ export function CollapsibleTable({ title, columns, rows, defaultOpen = false }: 
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
-        {open ? 'Tabelle ausblenden' : 'Als Tabelle anzeigen'}
+        {open ? translate('Hide table') : translate('Show as table')}
       </button>
       {open && (
         <div className="mt-2 overflow-x-auto max-w-full">

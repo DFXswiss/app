@@ -1,9 +1,13 @@
+import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
+
 export interface ErrorStateProps {
   message: string;
   onRetry: () => void;
 }
 
 export function ErrorState({ message, onRetry }: ErrorStateProps): JSX.Element {
+  const { translate } = usePartnerTranslation();
+
   return (
     <div
       className="bg-dfxBlue-700 rounded-lg p-8 text-center space-y-4"
@@ -16,7 +20,7 @@ export function ErrorState({ message, onRetry }: ErrorStateProps): JSX.Element {
         onClick={onRetry}
         className="px-4 py-2 rounded text-sm font-medium bg-dfxBlue-400 text-white hover:bg-dfxBlue-300 transition-colors"
       >
-        Wiederholen
+        {translate('Retry')}
       </button>
     </div>
   );

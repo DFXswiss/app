@@ -29,16 +29,16 @@ describe('completion state colours (D1)', () => {
   });
 
   it('maps states identically across stages (good / pending / rejected)', () => {
-    expect(stageA.find((s) => s.label === 'Zahlung eingegangen')?.state).toBe('good');
-    expect(stageB.find((s) => s.label === 'Ausgeliefert')?.state).toBe('good');
-    expect(stageA.find((s) => s.label === 'Wartet auf Zahlung')?.state).toBe('pending');
-    expect(stageB.find((s) => s.label === 'In Bearbeitung')?.state).toBe('pending');
-    expect(stageB.find((s) => s.label === 'Abgelehnt')?.state).toBe('rejected');
-    expect(stageA.find((s) => s.label === 'Keine Zahlung')?.state).toBe('absent');
+    expect(stageA.find((s) => s.label === 'Payment received')?.state).toBe('good');
+    expect(stageB.find((s) => s.label === 'Delivered')?.state).toBe('good');
+    expect(stageA.find((s) => s.label === 'Waiting for payment')?.state).toBe('pending');
+    expect(stageB.find((s) => s.label === 'In progress')?.state).toBe('pending');
+    expect(stageB.find((s) => s.label === 'Rejected')?.state).toBe('rejected');
+    expect(stageA.find((s) => s.label === 'No payment')?.state).toBe('absent');
   });
 
   it('uses red only for rejected — never for a positive or neutral completion state', () => {
-    // Category red (Kauf) may share the hex with rejected, but must not code "good"/"pending"/"absent"
+    // Category red (Buy) may share the hex with rejected, but must not code "good"/"pending"/"absent"
     const nonRejected = [...stageA, ...stageB].filter((s) => s.state !== 'rejected');
     for (const seg of nonRejected) {
       expect(seg.color).not.toBe(SERIES_COLORS.buy);

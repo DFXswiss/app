@@ -38,7 +38,7 @@ describe('partial x-axis annotations (D4)', () => {
       expect(ann.opacity).toBeGreaterThan(0);
       // No label property — text in the plot area overpainted the Y-axis
       expect(ann).not.toHaveProperty('label');
-      expect(JSON.stringify(ann)).not.toMatch(/unvollständig/);
+      expect(JSON.stringify(ann)).not.toMatch(/incomplete|unvollständig/);
     }
   });
 

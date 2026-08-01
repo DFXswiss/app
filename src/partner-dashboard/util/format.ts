@@ -1,15 +1,23 @@
 /**
  * Display formatters for the partner dashboard.
  * null means suppressed (privacy), 0 means a real zero — never conflate them.
+ * Locale follows the active UI language (default: en-US, repo base language).
  */
+
+import { getPartnerLocale } from './i18n';
 
 /** Neutral placeholder when a value is not available (suppressed or otherwise absent). */
 export const ABSENT_LABEL = '–';
 
 /** Amount with thousands separators and currency code, e.g. "123'456.78 CHF". */
-export function formatAmount(value: number | null | undefined, currency: string, fractionDigits = 2): string {
+export function formatAmount(
+  value: number | null | undefined,
+  currency: string,
+  fractionDigits = 2,
+  locale: string = getPartnerLocale(),
+): string {
   if (value == null) return '';
-  const formatted = value.toLocaleString('de-CH', {
+  const formatted = value.toLocaleString(locale, {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   });
@@ -17,21 +25,32 @@ export function formatAmount(value: number | null | undefined, currency: string,
 }
 
 /** Whole-number amount (KPIs), still with currency. */
-export function formatAmountWhole(value: number | null | undefined, currency: string): string {
-  return formatAmount(value, currency, 0);
+export function formatAmountWhole(
+  value: number | null | undefined,
+  currency: string,
+  locale: string = getPartnerLocale(),
+): string {
+  return formatAmount(value, currency, 0, locale);
 }
 
 /** Count with thousands separators. */
-export function formatCount(value: number | null | undefined): string {
+export function formatCount(
+  value: number | null | undefined,
+  locale: string = getPartnerLocale(),
+): string {
   if (value == null) return '';
-  return value.toLocaleString('de-CH', { maximumFractionDigits: 0 });
+  return value.toLocaleString(locale, { maximumFractionDigits: 0 });
 }
 
 /** Rate 0..1 → "12.3 %". */
-export function formatPercent(rate: number | null | undefined, fractionDigits = 1): string {
+export function formatPercent(
+  rate: number | null | undefined,
+  fractionDigits = 1,
+  locale: string = getPartnerLocale(),
+): string {
   if (rate == null) return '';
   const pct = rate * 100;
-  return `${pct.toLocaleString('de-CH', {
+  return `${pct.toLocaleString(locale, {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   })} %`;

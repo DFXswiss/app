@@ -6,7 +6,7 @@ describe('KpiTile null vs zero', () => {
   it('renders a suppressed gap for null — never as 0', () => {
     render(
       <KpiTile
-        label="Neue Nutzer"
+        label="New users"
         value={null}
         format={(n) => formatCount(n)}
         testId="kpi-new"
@@ -24,7 +24,7 @@ describe('KpiTile null vs zero', () => {
   it('renders a real zero as 0', () => {
     render(
       <KpiTile
-        label="Neue Nutzer"
+        label="New users"
         value={0}
         format={(n) => formatCount(n)}
         testId="kpi-new-zero"
@@ -45,7 +45,7 @@ describe('KpiTile full value on narrow widths (D2)', () => {
     render(
       <div style={{ width: 160 }}>
         <KpiTile
-          label="Gesamtvolumen"
+          label="Total volume"
           value={245801.35}
           format={(n) => formatAmountWhole(n, 'CHF')}
           testId="kpi-volume-narrow"
@@ -68,7 +68,7 @@ describe('KpiTile full value on narrow widths (D2)', () => {
     render(
       <div style={{ width: 140 }}>
         <KpiTile
-          label="Ø-Vorgangsgröße"
+          label="Average transaction size"
           value={109.25}
           format={(n) => formatAmount(n, 'CHF')}
           testId="kpi-avg-narrow"

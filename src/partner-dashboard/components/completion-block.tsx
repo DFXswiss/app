@@ -12,6 +12,7 @@ import {
   PartnerSettlementDirection,
 } from 'src/dto/partner-statistic.dto';
 import { formatCount, formatPercent } from 'src/partner-dashboard/util/format';
+import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 import { KpiTile } from './kpi-tile';
 
 const DIRECTIONS = PARTNER_DIRECTION_FIELDS;
@@ -23,21 +24,21 @@ export interface CompletionSegment {
   color: string;
 }
 
-/** Pure helper for tests and rendering — Stage A segments, shared state scale. */
+/** Pure helper for tests and rendering — Stage A segments, shared state scale. English base labels. */
 export function stageASegments(data: PartnerPaymentInfoDirection): CompletionSegment[] {
   return [
-    { label: 'Zahlung eingegangen', value: data.paymentReceived, state: 'good', color: STATE_COLORS.good },
-    { label: 'Wartet auf Zahlung', value: data.waitingForPayment, state: 'pending', color: STATE_COLORS.pending },
-    { label: 'Keine Zahlung', value: data.noPaymentReceived, state: 'absent', color: STATE_COLORS.absent },
+    { label: 'Payment received', value: data.paymentReceived, state: 'good', color: STATE_COLORS.good },
+    { label: 'Waiting for payment', value: data.waitingForPayment, state: 'pending', color: STATE_COLORS.pending },
+    { label: 'No payment', value: data.noPaymentReceived, state: 'absent', color: STATE_COLORS.absent },
   ];
 }
 
 /** Pure helper for tests and rendering — Stage B segments, same state scale as Stage A. */
 export function stageBSegments(data: PartnerSettlementDirection): CompletionSegment[] {
   return [
-    { label: 'Ausgeliefert', value: data.delivered, state: 'good', color: STATE_COLORS.good },
-    { label: 'In Bearbeitung', value: data.inProgress, state: 'pending', color: STATE_COLORS.pending },
-    { label: 'Abgelehnt', value: data.rejected, state: 'rejected', color: STATE_COLORS.rejected },
+    { label: 'Delivered', value: data.delivered, state: 'good', color: STATE_COLORS.good },
+    { label: 'In progress', value: data.inProgress, state: 'pending', color: STATE_COLORS.pending },
+    { label: 'Rejected', value: data.rejected, state: 'rejected', color: STATE_COLORS.rejected },
   ];
 }
 
@@ -47,12 +48,13 @@ export interface CompletionBlockProps {
 
 function InfoTooltip({ text }: { text: string }): JSX.Element {
   const [open, setOpen] = useState(false);
+  const { translate } = usePartnerTranslation();
   return (
     <span className="relative inline-flex ml-1 align-middle">
       <button
         type="button"
         className="w-4 h-4 rounded-full text-2xs bg-dfxBlue-500 text-dfxGray-600 hover:text-white"
-        aria-label="Mehr Informationen"
+        aria-label={translate('More information')}
         onClick={() => setOpen((v) => !v)}
         onBlur={() => setOpen(false)}
       >
@@ -77,8 +79,10 @@ function StackedDirectionBar({
   segments: CompletionSegment[];
   testId: string;
 }): JSX.Element {
+  const { translate, locale } = usePartnerTranslation();
   const known = segments.filter((s): s is CompletionSegment & { value: number } => s.value != null);
   const total = known.reduce((s, x) => s + x.value, 0);
+  const displaySegments = segments.map((s) => ({ ...s, label: translate(s.label) }));
 
   if (known.length === 0) {
     return (
@@ -93,17 +97,18 @@ function StackedDirectionBar({
       <div
         className="flex h-4 rounded overflow-hidden bg-dfxBlue-800"
         role="img"
-        aria-label={segments.map((s) => `${s.label}: ${s.value ?? '–'}`).join(', ')}
+        aria-label={displaySegments.map((s) => `${s.label}: ${s.value ?? '–'}`).join(', ')}
       >
         {known.map((seg) => {
           const pct = total > 0 ? (seg.value / total) * 100 : 0;
           if (pct <= 0) return null;
+          const label = translate(seg.label);
           return (
             <div
               key={seg.label}
               className="h-full"
               style={{ width: `${pct}%`, backgroundColor: seg.color }}
-              title={`${seg.label}: ${formatCount(seg.value)}`}
+              title={`${label}: ${formatCount(seg.value, locale)}`}
               data-state={seg.state}
               data-color={seg.color}
               data-testid={`segment-${seg.state}`}
@@ -112,7 +117,7 @@ function StackedDirectionBar({
         })}
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-2xs text-dfxGray-700">
-        {segments.map((seg) => (
+        {displaySegments.map((seg) => (
           <span
             key={seg.label}
             className="inline-flex items-center gap-1"
@@ -121,7 +126,7 @@ function StackedDirectionBar({
             data-testid={`legend-${seg.state}`}
           >
             <span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: seg.color }} aria-hidden="true" />
-            {seg.label}: {seg.value == null ? '–' : formatCount(seg.value)}
+            {seg.label}: {seg.value == null ? '–' : formatCount(seg.value, locale)}
           </span>
         ))}
       </div>
@@ -136,21 +141,24 @@ function StageARow({
   direction: PartnerDirectionField;
   data: PartnerPaymentInfoDirection;
 }): JSX.Element {
+  const { translate, locale } = usePartnerTranslation();
   return (
     <div className="space-y-1.5" data-testid={`stage-a-${direction}`}>
       <div className="flex items-center justify-between text-xs">
-        <span className="font-medium text-dfxGray-600">{SERIES_LABELS[direction]}</span>
+        <span className="font-medium text-dfxGray-600">{translate(SERIES_LABELS[direction])}</span>
         <span className="text-dfxGray-700">
-          Rate: {data.receivedRate == null ? '–' : formatPercent(data.receivedRate)}
+          {translate('Rate: {{rate}}', {
+            rate: data.receivedRate == null ? '–' : formatPercent(data.receivedRate, 1, locale),
+          })}
         </span>
       </div>
       <StackedDirectionBar testId={`stage-a-bar-${direction}`} segments={stageASegments(data)} />
       <p className="text-2xs text-dfxGray-700">
-        Angefragt:{' '}
+        {translate('Requested:')}{' '}
         {data.requested == null ? (
           <span data-testid={`stage-a-requested-null-${direction}`}>–</span>
         ) : (
-          formatCount(data.requested)
+          formatCount(data.requested, locale)
         )}
       </p>
     </div>
@@ -164,17 +172,20 @@ function StageBRow({
   direction: PartnerDirectionField;
   data: PartnerSettlementDirection;
 }): JSX.Element {
+  const { translate, locale } = usePartnerTranslation();
   return (
     <div className="space-y-1.5" data-testid={`stage-b-${direction}`}>
       <div className="flex items-center justify-between text-xs">
-        <span className="font-medium text-dfxGray-600">{SERIES_LABELS[direction]}</span>
+        <span className="font-medium text-dfxGray-600">{translate(SERIES_LABELS[direction])}</span>
         <span className="text-dfxGray-700">
-          Rate: {data.deliveredRate == null ? '–' : formatPercent(data.deliveredRate)}
+          {translate('Rate: {{rate}}', {
+            rate: data.deliveredRate == null ? '–' : formatPercent(data.deliveredRate, 1, locale),
+          })}
         </span>
       </div>
       <StackedDirectionBar testId={`stage-b-bar-${direction}`} segments={stageBSegments(data)} />
       <p className="text-2xs text-dfxGray-700">
-        Eingegangen: {data.received == null ? '–' : formatCount(data.received)}
+        {translate('Received:')} {data.received == null ? '–' : formatCount(data.received, locale)}
       </p>
     </div>
   );
@@ -205,6 +216,7 @@ function overallRate(
  * State colours come only from STATE_COLORS (not SERIES_COLORS).
  */
 export function CompletionBlock({ completion }: CompletionBlockProps): JSX.Element {
+  const { translate, locale } = usePartnerTranslation();
   const stageARate = overallRate(
     DIRECTIONS,
     (d) => completion.paymentInfoRequests[d].paymentReceived,
@@ -221,14 +233,18 @@ export function CompletionBlock({ completion }: CompletionBlockProps): JSX.Eleme
       <section className="bg-dfxBlue-700 rounded-lg shadow p-4 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h2 className="text-sm font-semibold text-white">
-            Zahlungsinfo-Abrufe mit erfolgter Zahlung
-            <InfoTooltip text="Ein Zahlungsinfo-Abruf entsteht bei jedem Abruf der Zahlungsinformationen (z. B. bei jeder Betragsänderung in der Oberfläche), nicht einmal pro Kaufabsicht. Die Rate ist daher keine Conversion-Rate." />
+            {translate('Payment info requests with successful payment')}
+            <InfoTooltip
+              text={translate(
+                'A payment info request is created every time payment information is retrieved (e.g. on every amount change in the interface), not once per purchase intent. The rate is therefore not a conversion rate.',
+              )}
+            />
           </h2>
           <div className="w-full sm:w-48">
             <KpiTile
-              label="Stufe A — Rate"
+              label={translate('Stage A — rate')}
               value={stageARate}
-              format={(n) => formatPercent(n)}
+              format={(n) => formatPercent(n, 1, locale)}
               testId="stage-a-rate-kpi"
             />
           </div>
@@ -243,14 +259,18 @@ export function CompletionBlock({ completion }: CompletionBlockProps): JSX.Eleme
       <section className="bg-dfxBlue-700 rounded-lg shadow p-4 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h2 className="text-sm font-semibold text-white">
-            Eingegangene Zahlungen, die ausgeliefert wurden
-            <InfoTooltip text="Anteil der eingegangenen Zahlungen, die ausgeliefert wurden — inklusive abgelehnter und noch in Bearbeitung befindlicher Vorgänge." />
+            {translate('Received payments that were delivered')}
+            <InfoTooltip
+              text={translate(
+                'Share of received payments that were delivered — including rejected and still-in-progress transactions.',
+              )}
+            />
           </h2>
           <div className="w-full sm:w-48">
             <KpiTile
-              label="Stufe B — Rate"
+              label={translate('Stage B — rate')}
               value={stageBRate}
-              format={(n) => formatPercent(n)}
+              format={(n) => formatPercent(n, 1, locale)}
               testId="stage-b-rate-kpi"
             />
           </div>

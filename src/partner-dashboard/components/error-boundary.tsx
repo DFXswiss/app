@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
+import { partnerTranslate } from 'src/partner-dashboard/util/i18n';
 
 interface PartnerErrorBoundaryProps {
   children: ReactNode;
@@ -40,17 +41,19 @@ export class PartnerErrorBoundary extends Component<PartnerErrorBoundaryProps, P
         >
           <div className="bg-dfxBlue-700 rounded-lg shadow p-6 max-w-md w-full space-y-3 text-center">
             <p className="text-sm text-dfxGray-600">
-              Beim Laden des Dashboards ist ein Fehler aufgetreten. Die Seite bleibt bedienbar.
+              {partnerTranslate(
+                'An error occurred while loading the dashboard. The page remains usable.',
+              )}
             </p>
             <p className="text-2xs text-dfxGray-700 break-words" data-testid="partner-error-message">
-              {error.message || 'Unbekannter Fehler'}
+              {error.message || partnerTranslate('Unknown error')}
             </p>
             <button
               type="button"
               onClick={this.handleRetry}
               className="px-4 py-2 rounded text-sm font-medium bg-dfxBlue-400 text-white hover:bg-dfxBlue-300"
             >
-              Erneut versuchen
+              {partnerTranslate('Try again')}
             </button>
           </div>
         </div>

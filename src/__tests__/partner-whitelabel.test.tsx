@@ -49,7 +49,7 @@ describe('partner whitelabel header', () => {
     const cake = PARTNER_BRANDS.cake;
     if (!cake) throw new Error('cake brand missing');
     render(<PartnerHeader brand={cake} isFixture={true} />);
-    expect(screen.getByTestId('fixture-badge')).toHaveTextContent('Demodaten');
+    expect(screen.getByTestId('fixture-badge')).toHaveTextContent('Demo data');
     expect(screen.queryByTestId('suppression-notice')).not.toBeInTheDocument();
     expect(screen.getByTestId('partner-title')).toHaveTextContent('Cake');
     expect(document.title).toBe('DFX × Cake');

@@ -65,9 +65,10 @@ export const SERIES_COLORS = {
   swap: '#9AA5B8', // dfxGray-700 — residual, not a third accent (see comment above)
 } as const;
 
+/** English base labels (repo language) — UI translates via screens/partner. */
 export const SERIES_LABELS = {
-  buy: 'Kauf',
-  sell: 'Verkauf',
+  buy: 'Buy',
+  sell: 'Sell',
   swap: 'Swap',
 } as const;
 

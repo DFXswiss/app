@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { FILTER_ACTIVE_COLOR } from 'src/config/partner-dashboard.config';
 import { PARTNER_GRANULARITIES, PartnerGranularity } from 'src/dto/partner-statistic.dto';
+import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 
 export type PeriodDays = 30 | 90 | 365;
 
@@ -12,21 +14,13 @@ export interface PeriodControlsProps {
   onGranularityChange: (g: PartnerGranularity) => void;
 }
 
-const PERIOD_OPTIONS: { days: PeriodDays; label: string }[] = [
-  { days: 30, label: '30 Tage' },
-  { days: 90, label: '90 Tage' },
-  { days: 365, label: '365 Tage' },
-];
+const PERIOD_DAYS: PeriodDays[] = [30, 90, 365];
 
-const GRANULARITY_LABELS: Record<PartnerGranularity, string> = {
-  Day: 'Tag',
-  Week: 'Woche',
-  Month: 'Monat',
+const GRANULARITY_KEYS: Record<PartnerGranularity, string> = {
+  Day: 'Day',
+  Week: 'Week',
+  Month: 'Month',
 };
-
-const GRANULARITY_OPTIONS: { value: PartnerGranularity; label: string }[] = PARTNER_GRANULARITIES.map(
-  (value) => ({ value, label: GRANULARITY_LABELS[value] }),
-);
 
 export function PeriodControls({
   periodDays,
@@ -34,15 +28,35 @@ export function PeriodControls({
   onPeriodChange,
   onGranularityChange,
 }: PeriodControlsProps): JSX.Element {
+  const { translate } = usePartnerTranslation();
+
+  const periodOptions = useMemo(
+    () =>
+      PERIOD_DAYS.map((days) => ({
+        days,
+        label: translate(`${days} days` as '30 days'),
+      })),
+    [translate],
+  );
+
+  const granularityOptions = useMemo(
+    () =>
+      PARTNER_GRANULARITIES.map((value) => ({
+        value,
+        label: translate(GRANULARITY_KEYS[value]),
+      })),
+    [translate],
+  );
+
   return (
     <div
       className="flex flex-wrap gap-4 items-center"
       data-testid="period-controls"
       role="toolbar"
-      aria-label="Zeitraum und Granularität"
+      aria-label={translate('Period and granularity')}
     >
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Zeitraum">
-        {PERIOD_OPTIONS.map((opt) => {
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={translate('Period')}>
+        {periodOptions.map((opt) => {
           const active = opt.days === periodDays;
           return (
             <button
@@ -60,8 +74,8 @@ export function PeriodControls({
           );
         })}
       </div>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Granularität">
-        {GRANULARITY_OPTIONS.map((opt) => {
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={translate('Granularity')}>
+        {granularityOptions.map((opt) => {
           const active = opt.value === granularity;
           return (
             <button

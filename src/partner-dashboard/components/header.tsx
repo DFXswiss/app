@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { PARTNER_PROGRAM_NAME, PartnerBrand } from 'src/config/partner-dashboard.config';
 import { DfxLogo } from 'src/partner-dashboard/logos/dfx-logo';
+import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 
 export interface PartnerHeaderProps {
   brand: PartnerBrand;
@@ -14,6 +15,8 @@ export interface PartnerHeaderProps {
  * The program name is `PARTNER_PROGRAM_NAME`, not per-partner config.
  */
 export function PartnerHeader({ brand, isFixture }: PartnerHeaderProps): JSX.Element {
+  const { translate } = usePartnerTranslation();
+
   useEffect(() => {
     const previous = document.title;
     document.title = brand.title;
@@ -54,7 +57,7 @@ export function PartnerHeader({ brand, isFixture }: PartnerHeaderProps): JSX.Ele
             className="inline-flex items-center px-2 py-0.5 rounded text-2xs font-semibold uppercase tracking-wide bg-dfxYellow-700 text-white"
             data-testid="fixture-badge"
           >
-            Demodaten
+            {translate('Demo data')}
           </span>
         )}
       </div>

@@ -4,10 +4,11 @@ import Chart from 'react-apexcharts';
 import { SERIES_COLORS, SERIES_LABELS } from 'src/config/partner-dashboard.config';
 import { PartnerTimeline } from 'src/dto/partner-statistic.dto';
 import { ABSENT_LABEL, formatCount } from 'src/partner-dashboard/util/format';
+import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 import { timelineSeries } from 'src/partner-dashboard/util/series';
 import { CollapsibleTable } from './collapsible-table';
 import { EmptyState } from './empty-state';
-import { PartialBucketMarkers, timelineXAnnotations } from './partial-marker';
+import { formatPartialValue, PartialBucketMarkers, timelineXAnnotations } from './partial-marker';
 
 export interface TransactionsTimeChartProps {
   timeline: PartnerTimeline;
@@ -17,19 +18,30 @@ export interface TransactionsTimeChartProps {
 export function TransactionsTimeChart({ timeline }: TransactionsTimeChartProps): JSX.Element {
   const { buckets } = timeline;
   const hasData = buckets.some((b) => b.transactions != null);
+  const { translate, locale } = usePartnerTranslation();
+
+  const seriesLabels = useMemo(
+    () => ({
+      buy: translate(SERIES_LABELS.buy),
+      sell: translate(SERIES_LABELS.sell),
+      swap: translate(SERIES_LABELS.swap),
+    }),
+    [translate],
+  );
 
   const series = useMemo(
     () => [
-      { name: SERIES_LABELS.buy, data: timelineSeries(buckets, 'transactions', 'buy') },
-      { name: SERIES_LABELS.sell, data: timelineSeries(buckets, 'transactions', 'sell') },
-      { name: SERIES_LABELS.swap, data: timelineSeries(buckets, 'transactions', 'swap') },
+      { name: seriesLabels.buy, data: timelineSeries(buckets, 'transactions', 'buy') },
+      { name: seriesLabels.sell, data: timelineSeries(buckets, 'transactions', 'sell') },
+      { name: seriesLabels.swap, data: timelineSeries(buckets, 'transactions', 'swap') },
     ],
-    [buckets],
+    [buckets, seriesLabels],
   );
 
   const partialFlags = useMemo(() => buckets.map((b) => b.partial), [buckets]);
   const suppressedFlags = useMemo(() => buckets.map((b) => b.suppressed), [buckets]);
   const xAnnotations = useMemo(() => timelineXAnnotations(buckets), [buckets]);
+  const incompleteWord = translate('incomplete');
 
   const options = useMemo((): ApexOptions => {
     return {
@@ -56,7 +68,7 @@ export function TransactionsTimeChart({ timeline }: TransactionsTimeChartProps):
       yaxis: {
         labels: {
           style: { colors: '#9AA5B8' },
-          formatter: (val: number) => formatCount(Math.round(val)),
+          formatter: (val: number) => formatCount(Math.round(val), locale),
         },
         forceNiceScale: true,
       },
@@ -81,40 +93,42 @@ export function TransactionsTimeChart({ timeline }: TransactionsTimeChartProps):
               return ABSENT_LABEL;
             }
             const partial = partialFlags[idx] === true;
-            const base = formatCount(Math.round(val));
-            return partial ? `${base} (unvollständig)` : base;
+            const base = formatCount(Math.round(val), locale);
+            return partial ? formatPartialValue(base) : base;
           },
         },
       },
       markers: { size: 0, hover: { size: 4 } },
     };
-  }, [partialFlags, suppressedFlags, xAnnotations]);
+  }, [locale, partialFlags, suppressedFlags, xAnnotations]);
 
   const tableRows = buckets.map((b) => ({
-    date: new Date(b.date).toLocaleDateString('de-CH'),
-    buy: b.transactions == null ? ABSENT_LABEL : formatCount(b.transactions.buy),
-    sell: b.transactions == null ? ABSENT_LABEL : formatCount(b.transactions.sell),
-    swap: b.transactions == null ? ABSENT_LABEL : formatCount(b.transactions.swap),
-    note: b.partial ? 'unvollständig' : b.suppressed ? ABSENT_LABEL : '',
+    date: new Date(b.date).toLocaleDateString(locale),
+    buy: b.transactions == null ? ABSENT_LABEL : formatCount(b.transactions.buy, locale),
+    sell: b.transactions == null ? ABSENT_LABEL : formatCount(b.transactions.sell, locale),
+    swap: b.transactions == null ? ABSENT_LABEL : formatCount(b.transactions.swap, locale),
+    note: b.partial ? incompleteWord : b.suppressed ? ABSENT_LABEL : '',
   }));
+
+  const title = translate('Count over time');
 
   return (
     <section className="bg-dfxBlue-700 rounded-lg shadow p-4" data-testid="transactions-time-chart">
-      <h2 className="text-sm font-semibold text-white mb-2">Anzahl über Zeit</h2>
+      <h2 className="text-sm font-semibold text-white mb-2">{title}</h2>
       {!hasData ? (
-        <EmptyState message="Keine Vorgangsdaten im gewählten Zeitraum." />
+        <EmptyState message={translate('No transaction data for the selected period.')} />
       ) : (
         <>
           <Chart type="area" height={280} options={options} series={series} />
           <PartialBucketMarkers buckets={buckets} />
           <CollapsibleTable
-            title="Anzahl über Zeit"
+            title={title}
             columns={[
-              { key: 'date', header: 'Datum' },
-              { key: 'buy', header: SERIES_LABELS.buy, align: 'right' },
-              { key: 'sell', header: SERIES_LABELS.sell, align: 'right' },
-              { key: 'swap', header: SERIES_LABELS.swap, align: 'right' },
-              { key: 'note', header: 'Hinweis' },
+              { key: 'date', header: translate('Date') },
+              { key: 'buy', header: seriesLabels.buy, align: 'right' },
+              { key: 'sell', header: seriesLabels.sell, align: 'right' },
+              { key: 'swap', header: seriesLabels.swap, align: 'right' },
+              { key: 'note', header: translate('Note') },
             ]}
             rows={tableRows}
           />
