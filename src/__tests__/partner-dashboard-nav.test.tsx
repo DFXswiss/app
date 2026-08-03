@@ -1,18 +1,30 @@
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import React from 'react';
 
-// Mock @dfx.swiss/react to avoid ES module issues in jest.
+/**
+ * Burger-entry visibility is gated in the real Navigation menu:
+ * `session?.role && isPartnerDashboardRole(session.role)`.
+ * This renders src/components/navigation.tsx (not a probe) so removing the
+ * role check fails the test.
+ */
+
+let mockSession: { role: string } | undefined;
+
 jest.mock('@dfx.swiss/react', () => ({
   UserRole: {
     ADMIN: 'Admin',
     USER: 'User',
     SUPPORT: 'Support',
+    COMPLIANCE: 'Compliance',
+    MARKETING: 'Marketing',
+    REALUNIT: 'RealUnit',
   },
-  useAuthContext: () => ({}),
-  useSessionContext: () => ({}),
-  useUserContext: () => ({}),
+  useAuthContext: () => ({ session: mockSession }),
+  useSessionContext: () => ({ isLoggedIn: true, logout: jest.fn() }),
+  useUserContext: () => ({ hasCustody: false }),
 }));
 
-// guard.hook imports wallet.context (which pulls deep ESM from @dfx.swiss/react).
 jest.mock('src/contexts/wallet.context', () => ({
   useWalletContext: () => ({ isInitialized: true }),
 }));
@@ -21,46 +33,99 @@ jest.mock('src/hooks/navigation.hook', () => ({
   useNavigation: () => ({ navigate: jest.fn() }),
 }));
 
-import { UserRole } from '@dfx.swiss/react';
-import { isPartnerDashboardRole } from 'src/hooks/guard.hook';
+jest.mock('src/contexts/settings.context', () => ({
+  useSettingsContext: () => ({
+    translate: (_key: string, defaultValue: string) => defaultValue,
+  }),
+}));
 
-/**
- * Burger-entry visibility mirrors navigation.tsx:
- * `session?.role && isPartnerDashboardRole(session.role)`.
- * Full Navigation mounts many providers; this isolates the role gate that
- * decides whether the Non-Custodial Partner Program link is offered.
- */
-function PartnerNavProbe({ role }: { role?: string }): JSX.Element {
-  const show = !!role && isPartnerDashboardRole(role);
-  return (
-    <div>
-      {show && (
-        <a href="/partner/dashboard" data-testid="partner-dashboard-nav">
-          Non-Custodial Partner Program
-        </a>
-      )}
-    </div>
+jest.mock('src/contexts/app-handling.context', () => ({
+  CloseType: { CANCEL: 'cancel' },
+  useAppHandlingContext: () => ({
+    params: {},
+    isEmbedded: false,
+    closeServices: jest.fn(),
+  }),
+}));
+
+jest.mock('@dfx.swiss/react-components', () => {
+  const IconVariant = new Proxy(
+    {},
+    {
+      get: (_t, prop: string) => prop,
+    },
+  );
+  return {
+    IconVariant,
+    IconColor: { BLUE: 'blue', RED: 'red' },
+    IconSize: { LG: 'lg' },
+    DfxIcon: () => <span data-testid="dfx-icon" />,
+    StyledButton: ({ label, onClick }: { label: string; onClick?: () => void }) => (
+      <button type="button" onClick={onClick}>
+        {label}
+      </button>
+    ),
+    StyledButtonColor: { STURDY_WHITE: 'sturdy-white' },
+    StyledButtonWidth: { FULL: 'full' },
+    StyledLink: ({
+      label,
+      onClick,
+      url,
+    }: {
+      label: string;
+      onClick?: () => void;
+      url?: string;
+    }) => (
+      <a href={url} onClick={onClick}>
+        {label}
+      </a>
+    ),
+  };
+});
+
+import { UserRole } from '@dfx.swiss/react';
+import { Navigation } from 'src/components/navigation';
+
+/** Label from navigation.tsx → translate('screens/partner', 'NC Partner Program'). */
+const PARTNER_NAV_LABEL = 'NC Partner Program';
+
+function renderOpenNavigation(): void {
+  render(
+    <MemoryRouter>
+      <Navigation isOpen={true} setIsOpen={jest.fn()} />
+    </MemoryRouter>,
   );
 }
 
-describe('Non-Custodial Partner Program burger entry role gate', () => {
+describe('Non-Custodial Partner Program burger entry (real Navigation)', () => {
+  beforeEach(() => {
+    mockSession = undefined;
+  });
+
   it('hides the entry without a session role', () => {
-    render(<PartnerNavProbe />);
-    expect(screen.queryByTestId('partner-dashboard-nav')).not.toBeInTheDocument();
+    mockSession = undefined;
+    renderOpenNavigation();
+    expect(screen.queryByText(PARTNER_NAV_LABEL)).not.toBeInTheDocument();
   });
 
   it('hides the entry for a non-partner role', () => {
-    const { unmount } = render(<PartnerNavProbe role={UserRole.USER} />);
-    expect(screen.queryByTestId('partner-dashboard-nav')).not.toBeInTheDocument();
+    mockSession = { role: UserRole.USER };
+    const { unmount } = render(
+      <MemoryRouter>
+        <Navigation isOpen={true} setIsOpen={jest.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText(PARTNER_NAV_LABEL)).not.toBeInTheDocument();
     unmount();
 
-    render(<PartnerNavProbe role={UserRole.ADMIN} />);
-    expect(screen.queryByTestId('partner-dashboard-nav')).not.toBeInTheDocument();
+    mockSession = { role: UserRole.ADMIN };
+    renderOpenNavigation();
+    expect(screen.queryByText(PARTNER_NAV_LABEL)).not.toBeInTheDocument();
   });
 
   it('shows the entry for the NonCustodialWalletPartner role', () => {
-    render(<PartnerNavProbe role="NonCustodialWalletPartner" />);
-    expect(screen.getByTestId('partner-dashboard-nav')).toBeInTheDocument();
-    expect(screen.getByTestId('partner-dashboard-nav')).toHaveAttribute('href', '/partner/dashboard');
+    mockSession = { role: 'NonCustodialWalletPartner' };
+    renderOpenNavigation();
+    expect(screen.getByText(PARTNER_NAV_LABEL)).toBeInTheDocument();
   });
 });

@@ -19,8 +19,27 @@ jest.mock('src/hooks/guarded-api.hook', () => ({
   useGuardedApi: () => ({ call: jest.fn() }),
 }));
 
-jest.mock('src/hooks/guard.hook', () => ({
-  usePartnerDashboardGuard: () => undefined,
+// Guard runs for real when the screen mounts — only its dependencies are stubbed.
+// Wiring (redirect without role) is covered in partner-dashboard-screen-wiring.test.tsx.
+jest.mock('@dfx.swiss/react', () => ({
+  UserRole: {
+    ADMIN: 'Admin',
+    USER: 'User',
+    SUPPORT: 'Support',
+    COMPLIANCE: 'Compliance',
+    MARKETING: 'Marketing',
+  },
+  useAuthContext: () => ({ session: { role: 'NonCustodialWalletPartner' } }),
+  useSessionContext: () => ({ isLoggedIn: true }),
+  useUserContext: () => ({}),
+}));
+
+jest.mock('src/contexts/wallet.context', () => ({
+  useWalletContext: () => ({ isInitialized: true }),
+}));
+
+jest.mock('src/hooks/navigation.hook', () => ({
+  useNavigation: () => ({ navigate: jest.fn() }),
 }));
 
 jest.mock('src/hooks/layout-config.hook', () => ({
