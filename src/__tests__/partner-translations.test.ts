@@ -6,6 +6,7 @@ import de from 'src/translations/languages/de.json';
  */
 const PARTNER_KEYS = [
   'Non-Custodial Partner Program',
+  'NC Partner Program',
   'Total volume',
   'This period',
   'All-time totals',
@@ -76,6 +77,7 @@ describe('partner dashboard translations (screens/partner)', () => {
 
   it('keeps a few known German strings that partners already saw', () => {
     expect(partner['Non-Custodial Partner Program']).toBe('Non-Custodial Partnerprogramm');
+    expect(partner['NC Partner Program']).toBe('NC Partner Programm');
     expect(partner['Total volume']).toBe('Gesamtvolumen');
     expect(partner['New users']).toBe('Neue Nutzer');
     expect(partner['Show as table']).toBe('Als Tabelle anzeigen');
