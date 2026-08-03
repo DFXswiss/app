@@ -1,6 +1,10 @@
-import { createElement, ReactNode } from 'react';
-import { CakeLogo } from 'src/partner-dashboard/logos/cake-logo';
+import { SERIES_COLORS_BY_THEME } from 'src/partner-dashboard/util/theme';
 
+/**
+ * Partner brand shape used by the header and period controls.
+ * Branding is resolved at runtime from public/partner-brands/brands.json
+ * (see partner-dashboard/util/brands.ts) — not via REACT_APP_PARTNER_KEY.
+ */
 export interface PartnerBrand {
   key: string;
   displayName: string;
@@ -11,59 +15,26 @@ export interface PartnerBrand {
    * Active filters use FILTER_ACTIVE_COLOR (dfxBlue) instead so two loud fills do not compete.
    */
   accent: string;
-  logo: ReactNode;
-}
-
-/**
- * Whitelabel partner registry. Selection via REACT_APP_PARTNER_KEY (default: cake).
- * Do not branch on partner key outside this module.
- */
-export const PARTNER_BRANDS: Record<string, PartnerBrand> = {
-  cake: {
-    key: 'cake',
-    displayName: 'Cake',
-    title: 'DFX × Cake',
-    // Kept for brand identity; not used as a full-button fill (see FILTER_ACTIVE_COLOR).
-    accent: '#E91E8C',
-    // Larger mark on dark ground (currentColor → white via header). Equal optical weight to DFX wordmark.
-    logo: createElement(CakeLogo, { className: 'h-9 w-auto text-white', title: 'Cake' }),
-  },
-};
-
-export const DEFAULT_PARTNER_KEY = 'cake';
-
-export function resolvePartnerKey(envKey?: string | null): string {
-  const key = (envKey ?? process.env.REACT_APP_PARTNER_KEY ?? DEFAULT_PARTNER_KEY).toLowerCase().trim();
-  if (PARTNER_BRANDS[key]) return key;
-  return DEFAULT_PARTNER_KEY;
-}
-
-export function getPartnerBrand(key?: string | null): PartnerBrand {
-  const resolved = resolvePartnerKey(key);
-  const brand = PARTNER_BRANDS[resolved];
-  if (brand) return brand;
-  const fallback = PARTNER_BRANDS.cake;
-  if (fallback == null) {
-    throw new Error('Default partner brand "cake" is not registered');
-  }
-  return fallback;
+  /**
+   * Absolute (or root-relative) URL of the partner logo under public/partner-brands/.
+   * Null = unknown partner fallback: DFX logo + plain display name only (no empty box).
+   */
+  logoUrl: string | null;
+  /** True when no registry entry matched. */
+  isFallback?: boolean;
 }
 
 /**
  * Series colours for buy / sell / swap — categories only (time-series charts).
  *
- * Kauf/Verkauf use the two checked DFX accents (red + blue). Swap is deliberately
- * dfxGray, not a third accent: at this partner it is by far the smallest series, so
- * grey marks it as a residual category rather than an equal third colour. That is a
- * conscious deviation from the saturation rule and is only acceptable because Swap is
- * always named in the legend, the tooltip, and the collapsible table view — colour is
- * never the sole identity channel.
+ * Validated palette (dataviz skill, both themes pass Helligkeitsband / Chroma / CVD /
+ * Normal-distance / contrast). Dark values are checked against navy surface #0d4070,
+ * not derived from light. Theme-specific values live in SERIES_COLORS_BY_THEME;
+ * this export is the dark default for non-theme callers (e.g. completion tests).
+ *
+ * Red is reserved for brand actions — not for "Buy" on a revenue dashboard.
  */
-export const SERIES_COLORS = {
-  buy: '#F5516C', // DFX-Rot (dfxRed-100)
-  sell: '#1F6FD0', // Blau
-  swap: '#9AA5B8', // dfxGray-700 — residual, not a third accent (see comment above)
-} as const;
+export const SERIES_COLORS = SERIES_COLORS_BY_THEME.dark;
 
 /** English base labels (repo language) — UI translates via screens/partner. */
 export const SERIES_LABELS = {
@@ -94,14 +65,25 @@ export const STATE_COLORS = {
 
 export type CompletionState = keyof typeof STATE_COLORS;
 
-/** Active filter control fill — dfxBlue-400, not the partner magenta accent. */
-export const FILTER_ACTIVE_COLOR = '#124370';
+/**
+ * Active filter control fill — design-pod primary (red in dark, blue in light).
+ * Components should prefer `var(--primary)`; this constant is a dark-theme fallback
+ * for environments without CSS variables (tests).
+ */
+export const FILTER_ACTIVE_COLOR = 'var(--primary)';
 
-/** Partial-bucket band in charts — quiet cool gray, not yellow. */
-export const PARTIAL_BAND_COLOR = '#9AA5B8'; // dfxGray-700
+/**
+ * Partial-bucket band — no longer drawn in charts (edge incompleteness is chips only).
+ * Kept for unit tests of the unused helper.
+ */
+export const PARTIAL_BAND_COLOR = '#9AA5B8';
 
-/** Suppressed-bucket band in charts — darker cool slate so it reads as withheld, not incomplete. */
-export const SUPPRESSED_BAND_COLOR = '#65728A'; // dfxGray-800
+/**
+ * Suppressed-bucket marker — charts use diagonal hatch via SVG pattern
+ * (`#partner-suppressed-hatch`); this solid is only a structural fill placeholder
+ * that CSS immediately replaces with the pattern.
+ */
+export const SUPPRESSED_BAND_COLOR = 'transparent';
 
 /**
  * Product program name — same for every partner. Not part of brand.title (document title only)

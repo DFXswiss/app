@@ -64,7 +64,7 @@ fi
 echo "BUILD_PATH=./partner-dist" >> "$ENV_FILE"
 echo "GENERATE_SOURCEMAP=false" >> "$ENV_FILE"
 echo "PUBLIC_URL=." >> "$ENV_FILE"
-echo "REACT_APP_PARTNER_KEY=cake" >> "$ENV_FILE"
+# Branding is runtime (public/partner-brands/) — no REACT_APP_PARTNER_KEY.
 
 # Build
 react-app-rewired build

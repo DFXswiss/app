@@ -1,0 +1,184 @@
+/**
+ * Partner dashboard surface styles.
+ * Colours, radii, shadows and type come from DFX Design Pod tokens
+ * (tokens.css → --bg, --surface, --card, --text, --primary, --sp-*, --r-*, --sh-*, --font-sans).
+ * Do not hard-code pod hex values here — reference the variables.
+ */
+
+@import './tokens.css';
+
+.partner-dashboard {
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+.partner-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-sm);
+  padding: var(--sp-4);
+}
+
+.partner-card-tight {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-sm);
+  padding: var(--sp-3);
+}
+
+.partner-text-secondary {
+  color: var(--text-secondary);
+}
+
+.partner-text-tertiary {
+  color: var(--text-tertiary);
+}
+
+.partner-muted-fill {
+  background: var(--surface-2, var(--surface));
+}
+
+.partner-track {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.partner-gap-bar {
+  background: color-mix(in srgb, var(--surface) 50%, transparent);
+  border: 1px dashed var(--border);
+}
+
+.partner-btn-active {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+.partner-btn-idle {
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.partner-btn-idle:hover {
+  color: var(--text);
+}
+
+.partner-btn-primary {
+  background: var(--primary);
+  color: var(--primary-text);
+  border-radius: var(--r-sm);
+}
+
+.partner-btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.partner-chip {
+  border: 1px dashed var(--border);
+  color: var(--text-secondary);
+  background: var(--surface);
+}
+
+.partner-tooltip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--r-sm);
+  box-shadow: var(--sh-md);
+}
+
+.partner-table-border {
+  border-color: var(--border);
+}
+
+.partner-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.partner-switcher button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.partner-switcher button[aria-pressed='true'] {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
+.partner-switcher button:hover:not([aria-pressed='true']) {
+  color: var(--text);
+}
+
+.partner-fixture-badge {
+  background: var(--warning);
+  color: var(--n-0);
+}
+
+.partner-input {
+  appearance: none;
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm, 0.875rem);
+  line-height: 1.4;
+}
+
+.partner-input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.partner-input:disabled {
+  opacity: 0.6;
+}
+
+/* Monochrome partner logos (SVG with currentColor) rendered as <img>. */
+.partner-logo-img {
+  height: 2.25rem;
+  width: auto;
+  display: block;
+}
+
+.theme-light .partner-logo-img {
+  filter: brightness(0);
+}
+
+.theme-dark .partner-logo-img {
+  filter: brightness(0) invert(1);
+}
+
+.partner-error-text {
+  color: var(--danger, #f5516c);
+}
+
+/* Suppressed chart band: diagonal hatch via SVG pattern (injected at runtime). */
+.partner-chart-root .apexcharts-xaxis-annotations rect {
+  fill: url(#partner-suppressed-hatch) !important;
+  fill-opacity: 1 !important;
+  stroke: none !important;
+}

@@ -53,7 +53,7 @@ function InfoTooltip({ text }: { text: string }): JSX.Element {
     <span className="relative inline-flex ml-1 align-middle">
       <button
         type="button"
-        className="w-4 h-4 rounded-full text-2xs bg-dfxBlue-500 text-dfxGray-600 hover:text-white"
+        className="w-4 h-4 rounded-full text-2xs partner-muted-fill partner-text-secondary hover:opacity-90"
         aria-label={translate('More information')}
         onClick={() => setOpen((v) => !v)}
         onBlur={() => setOpen(false)}
@@ -63,7 +63,7 @@ function InfoTooltip({ text }: { text: string }): JSX.Element {
       {open && (
         <span
           role="tooltip"
-          className="absolute z-10 left-0 top-5 w-64 p-2 text-2xs leading-snug bg-dfxBlue-800 border border-dfxBlue-500 rounded shadow text-dfxGray-600"
+          className="absolute z-10 left-0 top-5 w-64 p-2 text-2xs leading-snug partner-tooltip"
         >
           {text}
         </span>
@@ -87,7 +87,7 @@ function StackedDirectionBar({
   if (known.length === 0) {
     return (
       <div data-testid={testId}>
-        <div className="h-4 rounded bg-dfxBlue-600/50 border border-dashed border-dfxGray-800" />
+        <div className="h-4 rounded partner-gap-bar" />
       </div>
     );
   }
@@ -95,7 +95,7 @@ function StackedDirectionBar({
   return (
     <div data-testid={testId}>
       <div
-        className="flex h-4 rounded overflow-hidden bg-dfxBlue-800"
+        className="flex h-4 rounded overflow-hidden partner-track"
         role="img"
         aria-label={displaySegments.map((s) => `${s.label}: ${s.value ?? '–'}`).join(', ')}
       >
@@ -116,7 +116,7 @@ function StackedDirectionBar({
           );
         })}
       </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-2xs text-dfxGray-700">
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-2xs partner-text-tertiary">
         {displaySegments.map((seg) => (
           <span
             key={seg.label}
@@ -145,15 +145,15 @@ function StageARow({
   return (
     <div className="space-y-1.5" data-testid={`stage-a-${direction}`}>
       <div className="flex items-center justify-between text-xs">
-        <span className="font-medium text-dfxGray-600">{translate(SERIES_LABELS[direction])}</span>
-        <span className="text-dfxGray-700">
+        <span className="font-medium partner-text-secondary">{translate(SERIES_LABELS[direction])}</span>
+        <span className="partner-text-tertiary">
           {translate('Rate: {{rate}}', {
             rate: data.receivedRate == null ? '–' : formatPercent(data.receivedRate, 1, locale),
           })}
         </span>
       </div>
       <StackedDirectionBar testId={`stage-a-bar-${direction}`} segments={stageASegments(data)} />
-      <p className="text-2xs text-dfxGray-700">
+      <p className="text-2xs partner-text-tertiary">
         {translate('Requested:')}{' '}
         {data.requested == null ? (
           <span data-testid={`stage-a-requested-null-${direction}`}>–</span>
@@ -176,15 +176,15 @@ function StageBRow({
   return (
     <div className="space-y-1.5" data-testid={`stage-b-${direction}`}>
       <div className="flex items-center justify-between text-xs">
-        <span className="font-medium text-dfxGray-600">{translate(SERIES_LABELS[direction])}</span>
-        <span className="text-dfxGray-700">
+        <span className="font-medium partner-text-secondary">{translate(SERIES_LABELS[direction])}</span>
+        <span className="partner-text-tertiary">
           {translate('Rate: {{rate}}', {
             rate: data.deliveredRate == null ? '–' : formatPercent(data.deliveredRate, 1, locale),
           })}
         </span>
       </div>
       <StackedDirectionBar testId={`stage-b-bar-${direction}`} segments={stageBSegments(data)} />
-      <p className="text-2xs text-dfxGray-700">
+      <p className="text-2xs partner-text-tertiary">
         {translate('Received:')} {data.received == null ? '–' : formatCount(data.received, locale)}
       </p>
     </div>
@@ -230,9 +230,9 @@ export function CompletionBlock({ completion }: CompletionBlockProps): JSX.Eleme
 
   return (
     <div className="space-y-4" data-testid="completion-block">
-      <section className="bg-dfxBlue-700 rounded-lg shadow p-4 space-y-4">
+      <section className="partner-card space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h2 className="text-sm font-semibold text-white">
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
             {translate('Payment info requests with successful payment')}
             <InfoTooltip
               text={translate(
@@ -256,9 +256,9 @@ export function CompletionBlock({ completion }: CompletionBlockProps): JSX.Eleme
         </div>
       </section>
 
-      <section className="bg-dfxBlue-700 rounded-lg shadow p-4 space-y-4">
+      <section className="partner-card space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h2 className="text-sm font-semibold text-white">
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
             {translate('Received payments that were delivered')}
             <InfoTooltip
               text={translate(

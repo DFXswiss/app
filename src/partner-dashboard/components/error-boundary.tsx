@@ -35,23 +35,23 @@ export class PartnerErrorBoundary extends Component<PartnerErrorBoundaryProps, P
     if (error) {
       return (
         <div
-          className="min-h-screen w-full bg-dfxBlue-800 text-white flex items-center justify-center p-4"
+          className="partner-dashboard theme-dark min-h-screen w-full flex items-center justify-center p-4"
           data-testid="partner-error-boundary"
           role="alert"
         >
-          <div className="bg-dfxBlue-700 rounded-lg shadow p-6 max-w-md w-full space-y-3 text-center">
-            <p className="text-sm text-dfxGray-600">
+          <div className="partner-card max-w-md w-full space-y-3 text-center">
+            <p className="text-sm partner-text-secondary">
               {partnerTranslate(
                 'An error occurred while loading the dashboard. The page remains usable.',
               )}
             </p>
-            <p className="text-2xs text-dfxGray-700 break-words" data-testid="partner-error-message">
+            <p className="text-2xs partner-text-tertiary break-words" data-testid="partner-error-message">
               {error.message || partnerTranslate('Unknown error')}
             </p>
             <button
               type="button"
               onClick={this.handleRetry}
-              className="px-4 py-2 rounded text-sm font-medium bg-dfxBlue-400 text-white hover:bg-dfxBlue-300"
+              className="px-4 py-2 text-sm font-medium partner-btn-primary"
             >
               {partnerTranslate('Try again')}
             </button>

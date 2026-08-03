@@ -18,18 +18,24 @@ export function ReferralBlock({ referral }: ReferralBlockProps): JSX.Element {
   ];
 
   return (
-    <section className="bg-dfxBlue-700 rounded-lg shadow p-4" data-testid="referral-block">
+    <section className="partner-card" data-testid="referral-block">
       <div className="flex items-center gap-2 mb-3">
-        <h2 className="text-sm font-semibold text-white">{translate('Referral')}</h2>
-        <span className="text-2xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-dfxBlue-500 text-dfxGray-600">
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+          {translate('Referral')}
+        </h2>
+        <span className="text-2xs font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded partner-muted-fill partner-text-secondary">
           {currency}
         </span>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {items.map((item) => (
           <div key={item.key} className="min-w-0">
-            <div className="text-xs text-dfxGray-700">{item.label}</div>
-            <div className="text-base font-bold text-white mt-0.5 tabular-nums" data-testid={`referral-${item.key}`}>
+            <div className="text-xs partner-text-tertiary">{item.label}</div>
+            <div
+              className="text-base font-bold mt-0.5 tabular-nums"
+              style={{ color: 'var(--text)' }}
+              data-testid={`referral-${item.key}`}
+            >
               {formatAmount(item.value, currency, 2, locale)}
             </div>
           </div>

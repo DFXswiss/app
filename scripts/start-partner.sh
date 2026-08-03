@@ -36,7 +36,6 @@ cp "$SRC_DIR/index-partner.tsx" "$SRC_DIR/index.tsx"
 
 export PORT="${PORT:-3010}"
 export REACT_APP_PARTNER_FIXTURE="${REACT_APP_PARTNER_FIXTURE:-true}"
-export REACT_APP_PARTNER_KEY="${REACT_APP_PARTNER_KEY:-cake}"
 export BROWSER="${BROWSER:-none}"
 
 # Clean REACT_APP_API_URL: prefer already-exported value, else read from .env, strip inline comments
@@ -60,8 +59,8 @@ fi
 echo "Starting partner dashboard"
 echo "  PORT=$PORT"
 echo "  REACT_APP_PARTNER_FIXTURE=$REACT_APP_PARTNER_FIXTURE"
-echo "  REACT_APP_PARTNER_KEY=$REACT_APP_PARTNER_KEY"
 echo "  REACT_APP_API_URL=$REACT_APP_API_URL"
+echo "  Branding: public/partner-brands/ (runtime, not build-time)"
 
 cd "$PROJECT_DIR"
 npx react-app-rewired start

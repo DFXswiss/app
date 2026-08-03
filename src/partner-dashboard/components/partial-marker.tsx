@@ -4,23 +4,16 @@ import { getPartnerLocale, partnerTranslate, usePartnerTranslation } from 'src/p
 
 /**
  * Visual treatment helper for partial timeline buckets (period edge).
- * Used by charts/tooltips; also rendered as a legend note when any bucket is partial.
+ * Incomplete coverage is shown as chips under the chart — not as chart bands
+ * (bands doubled the chips and dirtied the volume chart).
  */
 export function PartialLegendNote({ hasPartial }: { hasPartial: boolean }): JSX.Element | null {
   const { translate } = usePartnerTranslation();
   if (!hasPartial) return null;
   return (
-    <p className="text-2xs text-dfxGray-700 mt-1" data-testid="partial-legend">
-      <span
-        className="inline-block w-3 h-2 mr-1 align-middle rounded-sm opacity-50 bg-dfxGray-700"
-        aria-hidden="true"
-        style={{
-          backgroundImage:
-            'repeating-linear-gradient(135deg, transparent, transparent 2px, rgba(0,0,0,0.25) 2px, rgba(0,0,0,0.25) 4px)',
-        }}
-      />
+    <p className="text-2xs partner-text-tertiary mt-1" data-testid="partial-legend">
       {translate(
-        'Pale / hatched sections are incomplete — they only partially cover the period (period edge).',
+        'Dates marked incomplete only partially cover the selected period (start or end of the range).',
       )}
     </p>
   );
@@ -56,11 +49,7 @@ export function PartialBucketMarkers({ buckets }: { buckets: PartnerTimelineBuck
             data-testid="partial-marker"
             data-partial="true"
             data-date={b.date}
-            className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded border border-dashed border-dfxGray-700 text-dfxGray-600 bg-dfxBlue-800"
-            style={{
-              backgroundImage:
-                'repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(154,165,184,0.15) 3px, rgba(154,165,184,0.15) 6px)',
-            }}
+            className="inline-flex items-center gap-1 text-2xs px-1.5 py-0.5 rounded partner-chip"
           >
             {label} · {translate('incomplete')}
           </span>
@@ -85,12 +74,15 @@ export interface SuppressedXAnnotation {
   fillColor: string;
   opacity: number;
   borderColor: string;
+  /** Marks withheld values for chart CSS hatch pattern. */
+  hatch: true;
   /** Intentionally no text label — band alone marks suppressed days vs real zero. */
 }
 
 /**
- * ApexCharts x-axis annotations for partial buckets: pale band only, no in-chart text.
- * Explanation lives in chips under the chart and in tooltips.
+ * ApexCharts x-axis annotations for partial buckets.
+ * No longer used in timeline charts (chips under the chart carry the message).
+ * Kept so existing unit tests of the helper remain meaningful.
  */
 export function partialXAnnotations(buckets: PartnerTimelineBucket[]): PartialXAnnotation[] {
   const annotations: PartialXAnnotation[] = [];
@@ -113,7 +105,8 @@ export function partialXAnnotations(buckets: PartnerTimelineBucket[]): PartialXA
 }
 
 /**
- * ApexCharts x-axis annotations for suppressed buckets: darker band only, no in-chart text.
+ * ApexCharts x-axis annotations for suppressed buckets.
+ * Fill is transparent; CSS + SVG pattern paint a fine 45° hatch in the text colour.
  * Contiguous suppressed days merge into one range so the chart stays quiet.
  * Real zero days (suppressed === false) are never included.
  */
@@ -141,19 +134,22 @@ export function suppressedXAnnotations(buckets: PartnerTimelineBucket[]): Suppre
       x: t,
       x2: t2,
       fillColor: SUPPRESSED_BAND_COLOR,
-      opacity: 0.28,
+      opacity: 1,
       borderColor: 'transparent',
+      hatch: true,
     });
   }
 
   return annotations;
 }
 
-/** Combined x-axis annotations for timeline charts (partial + suppressed). */
-export function timelineXAnnotations(
-  buckets: PartnerTimelineBucket[],
-): Array<PartialXAnnotation | SuppressedXAnnotation> {
-  return [...partialXAnnotations(buckets), ...suppressedXAnnotations(buckets)];
+/**
+ * Combined x-axis annotations for timeline charts.
+ * Partial edge bands are intentionally omitted (chips + tooltips only).
+ * Suppressed bands remain as hatched ranges.
+ */
+export function timelineXAnnotations(buckets: PartnerTimelineBucket[]): SuppressedXAnnotation[] {
+  return suppressedXAnnotations(buckets);
 }
 
 /** Pure helper for tooltips outside React — uses current i18n language. */

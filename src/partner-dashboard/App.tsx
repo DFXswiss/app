@@ -1,20 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getPartnerBrand } from 'src/config/partner-dashboard.config';
+import { PartnerBrand } from 'src/config/partner-dashboard.config';
 import { PartnerGranularity, PartnerStatistic, PartnerTimeline } from 'src/dto/partner-statistic.dto';
-import { usePartnerDashboard } from 'src/hooks/partner-dashboard.hook';
+import { usePartnerAuth } from 'src/hooks/partner-auth.hook';
+import { PartnerApiError, usePartnerDashboard } from 'src/hooks/partner-dashboard.hook';
 import { CompletionBlock } from './components/completion-block';
 import { ErrorState } from './components/error-state';
 import { PartnerHeader } from './components/header';
 import { HorizontalBarList } from './components/horizontal-bar-list';
 import { KpiTile } from './components/kpi-tile';
+import { LoginScreen } from './components/login-screen';
 import { PartialLegendNote } from './components/partial-marker';
 import { PeriodControls, PeriodDays } from './components/period-controls';
 import { ReferralBlock } from './components/referral-block';
 import { DashboardSkeleton } from './components/skeleton';
 import { TransactionsTimeChart } from './components/transactions-time-chart';
 import { VolumeTimeChart } from './components/volume-time-chart';
+import './styles/partner.css';
+import {
+  DEFAULT_BRAND_REGISTRY,
+  loadBrandRegistry,
+  resolveBrandFromToken,
+  resolveFixtureBrand,
+  ResolvedPartnerBrand,
+} from './util/brands';
 import { formatAmount, formatAmountWhole, formatCount } from './util/format';
 import { usePartnerTranslation } from './util/i18n';
+import { ensureSuppressedHatchPattern, usePartnerTheme } from './util/theme';
 
 function periodRange(days: PeriodDays): { from: string; to: string } {
   const to = new Date();
@@ -24,11 +35,30 @@ function periodRange(days: PeriodDays): { from: string; to: string } {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-export default function PartnerDashboardApp(): JSX.Element {
-  const brand = getPartnerBrand();
-  const { getPartnerStatistic, getPartnerTimeline, isFixture } = usePartnerDashboard();
-  const { translate, locale } = usePartnerTranslation();
+function toPartnerBrand(resolved: ResolvedPartnerBrand): PartnerBrand {
+  return {
+    key: resolved.key,
+    displayName: resolved.displayName,
+    title: resolved.title,
+    accent: resolved.accent,
+    logoUrl: resolved.logoUrl,
+    isFallback: resolved.isFallback,
+  };
+}
 
+export default function PartnerDashboardApp(): JSX.Element {
+  const auth = usePartnerAuth();
+  const { getPartnerStatistic, getPartnerTimeline, isFixture } = usePartnerDashboard();
+  const { translate, locale, partnerLanguage, setPartnerLanguage } = usePartnerTranslation();
+  const { theme, setTheme } = usePartnerTheme();
+
+  const [brand, setBrand] = useState<PartnerBrand>(() =>
+    toPartnerBrand(
+      isFixture
+        ? resolveFixtureBrand(DEFAULT_BRAND_REGISTRY)
+        : resolveBrandFromToken(DEFAULT_BRAND_REGISTRY, auth.session),
+    ),
+  );
   const [periodDays, setPeriodDays] = useState<PeriodDays>(30);
   const [granularity, setGranularity] = useState<PartnerGranularity>('Day');
   const [statistic, setStatistic] = useState<PartnerStatistic | null>(null);
@@ -39,7 +69,33 @@ export default function PartnerDashboardApp(): JSX.Element {
 
   const range = useMemo(() => periodRange(periodDays), [periodDays]);
 
+  // Resolve brand from runtime registry + session (or fixture Cake entry).
+  // Fixture mode uses the baked-in DEFAULT registry only — no network, not even brands.json.
+  useEffect(() => {
+    if (isFixture) {
+      setBrand(toPartnerBrand(resolveFixtureBrand(DEFAULT_BRAND_REGISTRY)));
+      return;
+    }
+    let cancelled = false;
+    void loadBrandRegistry().then((registry) => {
+      if (cancelled) return;
+      setBrand(toPartnerBrand(resolveBrandFromToken(registry, auth.session)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isFixture, auth.session, auth.isAuthenticated]);
+
+  const { isAuthenticated, invalidateSession } = auth;
+
   const load = useCallback(async () => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      setStatistic(null);
+      setTimeline(null);
+      setError(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -48,6 +104,13 @@ export default function PartnerDashboardApp(): JSX.Element {
       setStatistic(stat);
       setTimeline(tl);
     } catch (err) {
+      if (err instanceof PartnerApiError && err.status === 401) {
+        invalidateSession();
+        setStatistic(null);
+        setTimeline(null);
+        setError(null);
+        return;
+      }
       const message =
         err instanceof Error && err.message
           ? err.message
@@ -58,18 +121,30 @@ export default function PartnerDashboardApp(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [getPartnerStatistic, getPartnerTimeline, range.from, range.to, granularity, translate]);
+  }, [
+    isAuthenticated,
+    invalidateSession,
+    getPartnerStatistic,
+    getPartnerTimeline,
+    range.from,
+    range.to,
+    granularity,
+    translate,
+  ]);
 
   useEffect(() => {
     void load();
   }, [load, reloadToken]);
+
+  useEffect(() => {
+    ensureSuppressedHatchPattern();
+  }, [theme]);
 
   const currency = statistic?.currency ?? 'CHF';
   const hasPartial = timeline?.buckets.some((b) => b.partial) === true;
 
   const assetRows = useMemo(() => {
     if (!statistic) return [];
-    // Aggregate by asset name across directions for the bar list
     const map = new Map<string, { volume: number | null; transactions: number | null }>();
     for (const a of statistic.breakdown.assets) {
       const key = a.blockchain ? `${a.name} (${a.blockchain})` : a.name;
@@ -86,7 +161,6 @@ export default function PartnerDashboardApp(): JSX.Element {
         a.transactions == null && prev.transactions == null
           ? null
           : (prev.transactions ?? 0) + (a.transactions ?? 0);
-      // If either side was only-null and the other had values, keep the sum; if both null stay null
       const bothNullVolume = a.volume == null && prev.volume == null;
       const bothNullTx = a.transactions == null && prev.transactions == null;
       map.set(key, {
@@ -97,10 +171,50 @@ export default function PartnerDashboardApp(): JSX.Element {
     return Array.from(map.entries()).map(([name, v]) => ({ name, ...v }));
   }, [statistic]);
 
+  const themeClass = theme === 'light' ? 'theme-light' : 'theme-dark';
+
+  // Auth gate: without a valid token (and not fixture), only the login screen is shown.
+  // No KPI markup, no partner brand, no metrics fetch.
+  if (!isAuthenticated) {
+    return (
+      <div
+        id="partner-dashboard-root"
+        className={`partner-dashboard ${themeClass}`}
+        data-theme={theme}
+        data-testid="partner-dashboard-root"
+        data-auth="required"
+      >
+        <LoginScreen
+          theme={theme}
+          onThemeChange={setTheme}
+          language={partnerLanguage}
+          onLanguageChange={setPartnerLanguage}
+          requestChallenge={auth.requestChallenge}
+          signIn={auth.signIn}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen w-full bg-dfxBlue-800 text-white overflow-x-hidden">
+    <div
+      id="partner-dashboard-root"
+      className={`partner-dashboard ${themeClass}`}
+      data-theme={theme}
+      data-testid="partner-dashboard-root"
+      data-auth="ok"
+      data-brand-fallback={brand.isFallback ? 'true' : 'false'}
+    >
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4">
-        <PartnerHeader brand={brand} isFixture={isFixture} />
+        <PartnerHeader
+          brand={brand}
+          isFixture={isFixture}
+          theme={theme}
+          onThemeChange={setTheme}
+          language={partnerLanguage}
+          onLanguageChange={setPartnerLanguage}
+          onLogout={isFixture ? undefined : auth.logout}
+        />
 
         <PeriodControls
           periodDays={periodDays}
@@ -161,8 +275,8 @@ export default function PartnerDashboardApp(): JSX.Element {
 
             {timeline && (
               <div className="space-y-4">
-                <VolumeTimeChart timeline={timeline} />
-                <TransactionsTimeChart timeline={timeline} />
+                <VolumeTimeChart timeline={timeline} theme={theme} />
+                <TransactionsTimeChart timeline={timeline} theme={theme} />
                 <PartialLegendNote hasPartial={hasPartial} />
               </div>
             )}
@@ -172,12 +286,14 @@ export default function PartnerDashboardApp(): JSX.Element {
                 title={translate('Volume by cryptocurrency')}
                 rows={assetRows}
                 currency={currency}
+                theme={theme}
                 testId="bars-assets"
               />
               <HorizontalBarList
                 title={translate('Fiat currencies')}
                 rows={statistic.breakdown.fiatCurrencies}
                 currency={currency}
+                theme={theme}
                 compact
                 testId="bars-fiat"
               />
@@ -185,6 +301,7 @@ export default function PartnerDashboardApp(): JSX.Element {
                 title={translate('Blockchains')}
                 rows={statistic.breakdown.blockchains}
                 currency={currency}
+                theme={theme}
                 compact
                 testId="bars-blockchains"
               />
@@ -192,6 +309,7 @@ export default function PartnerDashboardApp(): JSX.Element {
                 title={translate('Payment methods')}
                 rows={statistic.breakdown.paymentMethods}
                 currency={currency}
+                theme={theme}
                 compact
                 testId="bars-payment-methods"
               />

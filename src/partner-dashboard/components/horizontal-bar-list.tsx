@@ -1,12 +1,14 @@
 import { formatAmount, formatCount } from 'src/partner-dashboard/util/format';
 import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 import { NamedVolumeRow, rankNamedVolumes, sequentialColor } from 'src/partner-dashboard/util/series';
+import { PartnerTheme } from 'src/partner-dashboard/util/theme';
 import { EmptyState } from './empty-state';
 
 export interface HorizontalBarListProps {
   title: string;
   rows: NamedVolumeRow[];
   currency: string;
+  theme?: PartnerTheme;
   compact?: boolean;
   testId?: string;
 }
@@ -19,6 +21,7 @@ export function HorizontalBarList({
   title,
   rows,
   currency,
+  theme = 'dark',
   compact = false,
   testId,
 }: HorizontalBarListProps): JSX.Element {
@@ -30,11 +33,10 @@ export function HorizontalBarList({
   }, 0);
 
   return (
-    <section
-      className="bg-dfxBlue-700 rounded-lg shadow p-4 min-w-0"
-      data-testid={testId ?? 'horizontal-bar-list'}
-    >
-      <h2 className="text-sm font-semibold text-white mb-3">{title}</h2>
+    <section className="partner-card min-w-0" data-testid={testId ?? 'horizontal-bar-list'}>
+      <h2 className="text-sm font-semibold mb-3" style={{ color: 'var(--text)' }}>
+        {title}
+      </h2>
       {ranked.length === 0 ? (
         <EmptyState message={translate('No data.')} />
       ) : (
@@ -49,33 +51,36 @@ export function HorizontalBarList({
                     data-testid="bar-suppressed"
                     data-name={row.name}
                   >
-                    <div className="flex justify-between text-xs text-dfxGray-700">
+                    <div className="flex justify-between text-xs partner-text-tertiary">
                       <span className="truncate pr-2">{row.name}</span>
                       <span className="shrink-0">–</span>
                     </div>
-                    <div className="h-3 rounded bg-dfxBlue-600/50 border border-dashed border-dfxGray-800" />
+                    <div className="h-3 rounded partner-gap-bar" />
                   </li>
                 );
               }
 
               const pct = maxVolume > 0 ? (row.volume / maxVolume) * 100 : 0;
-              const color = sequentialColor(index, ranked.length);
+              const color = sequentialColor(index, ranked.length, theme);
               return (
                 <li key={`${row.name}-${index}`} className="space-y-0.5" data-testid="bar-row" data-name={row.name}>
                   <div className="flex justify-between gap-2 text-xs">
-                    <span className="text-dfxGray-600 truncate min-w-0" title={row.name}>
+                    <span className="partner-text-secondary truncate min-w-0" title={row.name}>
                       {row.name}
                     </span>
-                    <span className="text-white font-medium shrink-0 tabular-nums">
+                    <span
+                      className="font-medium shrink-0 tabular-nums"
+                      style={{ color: 'var(--text)' }}
+                    >
                       {formatAmount(row.volume, currency, 0, locale)}
                       {row.transactions != null && (
-                        <span className="text-dfxGray-700 font-normal ml-1">
+                        <span className="partner-text-tertiary font-normal ml-1">
                           ({formatCount(row.transactions, locale)})
                         </span>
                       )}
                     </span>
                   </div>
-                  <div className="h-3 rounded bg-dfxBlue-800 overflow-hidden" role="presentation">
+                  <div className="h-3 rounded partner-track overflow-hidden" role="presentation">
                     <div
                       className="h-full rounded transition-all"
                       style={{ width: `${Math.max(pct, pct > 0 ? 1 : 0)}%`, backgroundColor: color }}

@@ -14,30 +14,52 @@ export interface CollapsibleTableProps {
   defaultOpen?: boolean;
 }
 
+/** Body rows visible without scrolling; beyond this the body scrolls under a sticky header. */
+export const TABLE_SCROLL_ROW_LIMIT = 20;
+
+/**
+ * Max height for header + N body rows, derived from line-height + vertical cell padding
+ * (py-1.5 → 0.75rem). Uses 1lh so the cap grows when font-size / line-height changes —
+ * not a hard-coded pixel row height.
+ */
+export function tableScrollMaxHeight(rowLimit: number = TABLE_SCROLL_ROW_LIMIT): string {
+  return `calc((1lh + 0.75rem) * ${rowLimit + 1})`;
+}
+
 /** Accessible numbers-as-table toggle for chart series. */
 export function CollapsibleTable({ title, columns, rows, defaultOpen = false }: CollapsibleTableProps): JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
   const { translate } = usePartnerTranslation();
 
+  const needsScroll = rows.length > TABLE_SCROLL_ROW_LIMIT;
+
   return (
     <div className="mt-2">
       <button
         type="button"
-        className="text-xs text-dfxGray-700 hover:text-dfxGray-600 underline"
+        className="text-xs partner-text-tertiary hover:opacity-90 underline"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
         {open ? translate('Hide table') : translate('Show as table')}
       </button>
       {open && (
-        <div className="mt-2 overflow-x-auto max-w-full">
-          <table className="w-full text-xs text-dfxGray-600" aria-label={title}>
-            <thead>
-              <tr className="border-b border-dfxBlue-500">
+        <div
+          className={`mt-2 max-w-full text-xs ${needsScroll ? 'overflow-auto' : 'overflow-x-auto'}`}
+          style={needsScroll ? { maxHeight: tableScrollMaxHeight() } : undefined}
+          data-testid="collapsible-table-scroll"
+          data-scrollable={needsScroll ? 'true' : 'false'}
+        >
+          <table className="w-full text-xs partner-text-secondary" aria-label={title}>
+            <thead
+              className={needsScroll ? 'sticky top-0 z-[1]' : undefined}
+              style={needsScroll ? { background: 'var(--bg)' } : undefined}
+            >
+              <tr className="border-b partner-table-border" style={{ borderColor: 'var(--border)' }}>
                 {columns.map((col) => (
                   <th
                     key={col.key}
-                    className={`py-1.5 px-2 font-semibold text-dfxGray-700 ${
+                    className={`py-1.5 px-2 font-semibold partner-text-tertiary ${
                       col.align === 'right' ? 'text-right' : 'text-left'
                     }`}
                   >
@@ -48,7 +70,7 @@ export function CollapsibleTable({ title, columns, rows, defaultOpen = false }: 
             </thead>
             <tbody>
               {rows.map((row, idx) => (
-                <tr key={idx} className="border-b border-dfxBlue-600/40">
+                <tr key={idx} className="border-b" style={{ borderColor: 'var(--border)' }}>
                   {columns.map((col) => (
                     <td
                       key={col.key}

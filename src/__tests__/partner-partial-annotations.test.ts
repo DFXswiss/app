@@ -103,7 +103,7 @@ describe('suppressed x-axis annotations', () => {
     expect(annotations[0].x2).toBe(new Date(multi[3].date).getTime());
   });
 
-  it('timelineXAnnotations includes both partial and suppressed bands', () => {
+  it('timelineXAnnotations includes only suppressed bands (partial is chips-only)', () => {
     const mixed: PartnerTimelineBucket[] = [
       {
         date: '2026-06-01T00:00:00.000Z',
@@ -121,11 +121,18 @@ describe('suppressed x-axis annotations', () => {
       },
     ];
     const combined = timelineXAnnotations(mixed);
-    expect(combined.length).toBe(2);
-    // Partial + suppressed bands, neither carries an in-chart text label
-    for (const ann of combined) {
-      expect(ann).not.toHaveProperty('label');
-    }
+    expect(combined.length).toBe(1);
+    expect(combined[0].x).toBe(new Date(mixed[1].date).getTime());
+    expect(combined[0].hatch).toBe(true);
+    expect(combined[0]).not.toHaveProperty('label');
+  });
+
+  it('marks suppressed annotations as hatch (not solid gray fill)', () => {
+    const annotations = suppressedXAnnotations(buckets);
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0].hatch).toBe(true);
+    // Structural fill is transparent — CSS pattern paints the hatch
+    expect(annotations[0].fillColor).toBe('transparent');
   });
 });
 

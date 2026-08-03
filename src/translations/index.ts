@@ -13,6 +13,9 @@ export function setupLanguages() {
     .use(LanguageDetector)
     .init({
       resources: {
+        // English UI strings are the keys themselves (defaultValue); empty
+        // bundle keeps fallbackLng / changeLanguage('en') valid for i18next.
+        en: { translation: {} },
         de: { translation: de },
         fr: { translation: fr },
         it: { translation: it },

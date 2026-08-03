@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { FILTER_ACTIVE_COLOR } from 'src/config/partner-dashboard.config';
 import { PARTNER_GRANULARITIES, PartnerGranularity } from 'src/dto/partner-statistic.dto';
 import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 
@@ -8,7 +7,7 @@ export type PeriodDays = 30 | 90 | 365;
 export interface PeriodControlsProps {
   periodDays: PeriodDays;
   granularity: PartnerGranularity;
-  /** @deprecated Ignored — active filters use FILTER_ACTIVE_COLOR (dfxBlue), not partner magenta. */
+  /** @deprecated Ignored — active filters use design-pod --primary, not partner magenta. */
   accent?: string;
   onPeriodChange: (days: PeriodDays) => void;
   onGranularityChange: (g: PartnerGranularity) => void;
@@ -64,9 +63,8 @@ export function PeriodControls({
               type="button"
               onClick={() => onPeriodChange(opt.days)}
               className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                active ? 'text-white' : 'bg-dfxBlue-700 text-dfxGray-600 hover:text-white'
+                active ? 'partner-btn-active' : 'partner-btn-idle'
               }`}
-              style={active ? { backgroundColor: FILTER_ACTIVE_COLOR } : undefined}
               aria-pressed={active}
             >
               {opt.label}
@@ -83,9 +81,8 @@ export function PeriodControls({
               type="button"
               onClick={() => onGranularityChange(opt.value)}
               className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                active ? 'text-white' : 'bg-dfxBlue-700 text-dfxGray-600 hover:text-white'
+                active ? 'partner-btn-active' : 'partner-btn-idle'
               }`}
-              style={active ? { backgroundColor: FILTER_ACTIVE_COLOR } : undefined}
               aria-pressed={active}
             >
               {opt.label}

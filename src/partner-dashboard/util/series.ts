@@ -1,4 +1,5 @@
 import { PartnerDirectionField, PartnerTimelineBucket } from 'src/dto/partner-statistic.dto';
+import { PartnerTheme, SEQUENTIAL_BAR_COLORS_BY_THEME } from './theme';
 
 /**
  * Build ApexCharts series points for chart geometry.
@@ -72,24 +73,19 @@ export function bucketOpacity(partial: boolean): number {
   return partial ? 0.35 : 0.75;
 }
 
-/** Compact sequential shade list from a single hue family (dfxBlue range). */
-export const SEQUENTIAL_BAR_COLORS = [
-  '#0A355C',
-  '#124370',
-  '#1a5a8a',
-  '#2a6fa0',
-  '#3d84b5',
-  '#5A81BB',
-  '#7a9bc9',
-  '#9bb5d6',
-] as const;
+/** @deprecated Prefer sequentialColor(index, total, theme). Dark palette fallback. */
+export const SEQUENTIAL_BAR_COLORS = SEQUENTIAL_BAR_COLORS_BY_THEME.dark;
 
-export function sequentialColor(index: number, total: number): string {
-  if (total <= 1) return SEQUENTIAL_BAR_COLORS[0];
-  const max = SEQUENTIAL_BAR_COLORS.length - 1;
+export function sequentialColor(
+  index: number,
+  total: number,
+  theme: PartnerTheme = 'dark',
+): string {
+  const palette = SEQUENTIAL_BAR_COLORS_BY_THEME[theme];
+  if (total <= 1) return palette[0];
+  const max = palette.length - 1;
   const step = Math.round((index / Math.max(total - 1, 1)) * max);
-  const color = SEQUENTIAL_BAR_COLORS[Math.min(step, max)];
-  return color;
+  return palette[Math.min(step, max)];
 }
 
 export interface NamedVolumeRow {

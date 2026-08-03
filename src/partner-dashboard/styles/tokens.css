@@ -1,0 +1,51 @@
+/* DFX Design Pod — compiled CSS custom properties
+ * Source of truth: ../tokens/primitives.json + themes.json
+ * Consumed by: website (joshua.dfx.swiss), letterhead, email (dark hero), any web surface.
+ * Usage: <html class="theme-dark"> or class="theme-light"; reference var(--bg) etc.
+ * Change a value here ONLY by editing the JSON tokens and recompiling — do not hand-edit consumers.
+ */
+
+:root {
+  /* ---- primitives (theme-agnostic) ---- */
+  --navy-900:#081e3a; --navy-800:#0a3055; --navy-700:#0b3560; --navy-600:#0d4070;
+  --navy-550:#0a4080; --navy-500:#1d3555; --navy-400:#475776;
+  --red-500:#f5516c; --red-600:#e73955; --red-glow:rgba(245,81,108,.18); --red-soft:rgba(245,81,108,.10);
+  --blue-500:#1e6ef7; --blue-600:#0b57cf; --blue-50:#e6f0ff;
+  --n-0:#fff; --n-25:#fbfcff; --n-50:#f6f8fc; --n-100:#eef3fa; --n-150:#eef2f7;
+  --n-200:#dde5f0; --n-500:#8d98aa; --n-600:#566174; --n-900:#0b1426; --n-1000:#000;
+  --dt-high:#f9fafb; --dt-muted:#a8b5c8; --dt-dim:#8a99b7; --dt-faint:#5a6d85;
+  --success:#16a34a; --warning:#eab308; --error:#dc2626; --info:#2f7cf7;
+
+  /* ---- shared brand + type ---- */
+  --brand-navy:var(--navy-800); --brand-accent:var(--red-500); --brand-accent-hover:var(--red-600);
+  --font-sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;
+  --font-mono:'Source Code Pro',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --fw-light:300; --fw-regular:400; --fw-medium:500; --fw-semibold:600; --fw-bold:700; --fw-black:900;
+  --fs-xs:12px; --fs-sm:14px; --fs-base:16px; --fs-lg:20px; --fs-xl:26px; --fs-2xl:30px; --fs-3xl:40px; --fs-4xl:56px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px; --sp-7:48px; --sp-8:64px; --sp-9:96px;
+  --r-sm:6px; --r-md:10px; --r-lg:16px; --r-xl:24px; --r-pill:999px;
+  --sh-sm:0 1px 2px rgba(11,20,38,.06); --sh-md:0 6px 20px rgba(11,20,38,.10); --sh-red:0 8px 28px rgba(245,81,108,.28);
+}
+
+/* ===== dark theme — web / letterhead / email hero ===== */
+.theme-dark {
+  --bg:var(--navy-800); --bg-deep:var(--navy-900);
+  --surface:var(--navy-600); --surface-2:var(--navy-500);
+  --card:linear-gradient(145deg,rgba(29,53,85,.80),rgba(13,64,112,.50));
+  --card-hover:linear-gradient(145deg,rgba(29,53,85,.95),rgba(13,64,112,.70));
+  --border:rgba(255,255,255,.08); --border-strong:rgba(255,255,255,.12);
+  --text:var(--dt-high); --text-secondary:var(--dt-muted); --text-tertiary:var(--dt-dim); --text-faint:var(--dt-faint);
+  --primary:var(--red-500); --primary-hover:var(--red-600); --primary-text:var(--n-0); --cta-glow:var(--red-glow);
+  --nav-bar:linear-gradient(180deg,#0b3560,#0a3055);
+  color-scheme:dark;
+}
+
+/* ===== light theme — DFX Wallet / app surfaces ===== */
+.theme-light {
+  --bg:var(--n-50); --surface:var(--n-0); --surface-2:var(--n-100); --surface-raised:var(--n-25);
+  --card:var(--n-0); --border:var(--n-200); --border-light:var(--n-150);
+  --text:var(--n-900); --text-secondary:var(--n-600); --text-tertiary:var(--n-500);
+  --primary:var(--blue-500); --primary-hover:var(--blue-600); --primary-text:var(--n-0); --primary-soft:var(--blue-50);
+  --accent:var(--red-500); --accent-hover:var(--red-600);
+  color-scheme:light;
+}

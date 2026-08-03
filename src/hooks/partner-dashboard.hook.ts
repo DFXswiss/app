@@ -8,6 +8,7 @@ import {
   buildPartnerStatisticFixture,
   buildPartnerTimelineFixture,
 } from 'src/partner-dashboard/fixtures/partner-statistic.fixture';
+import { AUTH_TOKEN_KEY, clearAuthToken, isTokenValid, readAuthToken } from 'src/partner-dashboard/util/auth';
 import { isFixtureMode } from 'src/partner-dashboard/util/format';
 
 export interface PartnerQuery {
@@ -16,8 +17,23 @@ export interface PartnerQuery {
   granularity?: PartnerGranularity;
 }
 
-const AUTH_TOKEN_KEY = 'dfx.authenticationToken';
 const DEFAULT_GRANULARITY: PartnerGranularity = 'Day';
+
+export class PartnerApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'PartnerApiError';
+    this.status = status;
+  }
+}
+
+export function partnerApiBase(): string {
+  const rawBase = process.env.REACT_APP_API_URL ?? 'https://api.dfx.swiss';
+  // Strip accidental inline comments from .env values (CRA does not strip them).
+  return rawBase.replace(/\s+#.*$/, '').trim().replace(/\/+$/, '');
+}
 
 function buildQuery(params: PartnerQuery): string {
   const search = new URLSearchParams();
@@ -28,34 +44,73 @@ function buildQuery(params: PartnerQuery): string {
   return q ? `?${q}` : '';
 }
 
+async function parseErrorDetail(response: Response): Promise<string> {
+  let detail = response.statusText;
+  try {
+    const body = (await response.json()) as { message?: string };
+    if (body?.message) detail = body.message;
+  } catch {
+    // ignore body parse errors
+  }
+  return detail;
+}
+
 /**
- * Standalone partner API call — does not use DfxContextProvider / useApi,
+ * Standalone partner API GET — does not use DfxContextProvider / useApi,
  * so fixture mode never touches the network and bootstrap endpoints are never hit.
+ *
+ * On 401 the stored token is cleared so the login screen can take over.
  */
 export async function partnerApiGet<T>(path: string): Promise<T> {
-  const rawBase = process.env.REACT_APP_API_URL ?? 'https://api.dfx.swiss';
-  // Strip accidental inline comments from .env values (CRA does not strip them).
-  const base = rawBase.replace(/\s+#.*$/, '').trim().replace(/\/+$/, '');
+  const base = partnerApiBase();
   const url = `${base}/v1/${path.replace(/^\/+/, '')}`;
 
   const headers: Record<string, string> = { Accept: 'application/json' };
-  try {
-    const token = window.localStorage.getItem(AUTH_TOKEN_KEY);
-    if (token) headers.Authorization = `Bearer ${token}`;
-  } catch {
-    // storage blocked — continue unauthenticated
+  const token = readAuthToken();
+  if (token && isTokenValid(token)) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
   const response = await fetch(url, { method: 'GET', headers });
   if (!response.ok) {
-    let detail = response.statusText;
-    try {
-      const body = (await response.json()) as { message?: string };
-      if (body?.message) detail = body.message;
-    } catch {
-      // ignore body parse errors
+    if (response.status === 401) {
+      clearAuthToken();
     }
-    throw new Error(`Partner-API ${response.status}: ${detail}`);
+    const detail = await parseErrorDetail(response);
+    throw new PartnerApiError(response.status, `Partner-API ${response.status}: ${detail}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+export async function partnerApiPost<T>(
+  path: string,
+  body: unknown,
+  options: { auth?: boolean } = {},
+): Promise<T> {
+  const base = partnerApiBase();
+  const url = `${base}/v1/${path.replace(/^\/+/, '')}`;
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  };
+  if (options.auth !== false) {
+    const token = readAuthToken();
+    if (token && isTokenValid(token)) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthToken();
+    }
+    const detail = await parseErrorDetail(response);
+    throw new PartnerApiError(response.status, detail || `Partner-API ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
@@ -91,3 +146,6 @@ export function usePartnerDashboard() {
     [getPartnerStatistic, getPartnerTimeline, fixture],
   );
 }
+
+// Re-export for callers that previously imported the key from this module.
+export { AUTH_TOKEN_KEY };

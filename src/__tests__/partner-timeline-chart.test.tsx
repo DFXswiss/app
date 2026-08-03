@@ -11,12 +11,18 @@ import { timelineSeries } from 'src/partner-dashboard/util/series';
 
 jest.mock('react-apexcharts', () => {
   return function MockChart(props: {
-    series?: Array<{ name: string; data: Array<[number, number | null]> }>;
+    series?: Array<{ name: string; data: Array<number | null | [number, number | null]> }>;
     options?: {
+      xaxis?: {
+        type?: string;
+        categories?: string[];
+        overwriteCategories?: string[];
+        labels?: { formatter?: (value: string, ts?: number, opts?: { i?: number }) => string };
+      };
       annotations?: {
         xaxis?: Array<{
-          x?: number;
-          x2?: number;
+          x?: number | string;
+          x2?: number | string;
           label?: { text?: string };
           fillColor?: string;
         }>;
@@ -24,17 +30,32 @@ jest.mock('react-apexcharts', () => {
     };
   }) {
     const xAnns = props.options?.annotations?.xaxis ?? [];
+    const overwrite = props.options?.xaxis?.overwriteCategories;
+    const categories = props.options?.xaxis?.categories ?? [];
+    const formatter = props.options?.xaxis?.labels?.formatter;
+    const tickLabels =
+      overwrite ??
+      categories.map((cat, i) => (formatter ? formatter(cat, undefined, { i }) : cat));
     return (
       <div data-testid="mock-apex-chart">
+        <span data-testid="xaxis-type" data-type={props.options?.xaxis?.type ?? ''} />
+        <div data-testid="xaxis-tick-labels">
+          {tickLabels.map((label, i) => (
+            <span key={i} data-testid="xaxis-tick-label" data-index={String(i)} data-label={label} />
+          ))}
+        </div>
         {(props.series ?? []).map((s) => (
           <div key={s.name} data-testid={`series-${s.name}`}>
-            {s.data.map((point, i) => (
-              <span
-                key={i}
-                data-testid={`point-${s.name}-${i}`}
-                data-value={point[1] === null ? 'null' : String(point[1])}
-              />
-            ))}
+            {s.data.map((point, i) => {
+              const y = Array.isArray(point) ? point[1] : point;
+              return (
+                <span
+                  key={i}
+                  data-testid={`point-${s.name}-${i}`}
+                  data-value={y === null ? 'null' : String(y)}
+                />
+              );
+            })}
           </div>
         ))}
         <div data-testid="chart-xaxis-annotations">
@@ -116,22 +137,22 @@ describe('timeline charts — suppressed vs real zero', () => {
   });
 
   it('renders volume chart series without a null gap and with suppressed annotation band', () => {
-    render(<VolumeTimeChart timeline={timeline} />);
+    render(<VolumeTimeChart timeline={timeline} theme="dark" />);
     expect(screen.getByTestId('volume-time-chart')).toBeInTheDocument();
     // Geometry: continuous value, not null hole
     expect(screen.getByTestId('point-Buy-1')).not.toHaveAttribute('data-value', 'null');
     expect(screen.getByTestId('point-Buy-2')).toHaveAttribute('data-value', '0');
 
     const anns = screen.getAllByTestId('xaxis-annotation');
-    // Suppressed band has no text label; identify by x range covering the suppressed day
-    const suppressedT = new Date(timeline.buckets[1].date).getTime();
-    const suppressedAnn = anns.find((el) => el.getAttribute('data-x') === String(suppressedT));
+    // Category axis: annotation x is the bucket ISO date string
+    const suppressedDate = timeline.buckets[1].date;
+    const suppressedAnn = anns.find((el) => el.getAttribute('data-x') === suppressedDate);
     expect(suppressedAnn).toBeTruthy();
     expect(suppressedAnn).toHaveAttribute('data-label', '');
   });
 
   it('table still shows the absent placeholder for suppressed, not the geometry value', () => {
-    render(<VolumeTimeChart timeline={timeline} />);
+    render(<VolumeTimeChart timeline={timeline} theme="dark" />);
     fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
     // Three directions for the suppressed day — never the interpolated geometry number
     expect(screen.getAllByText('–').length).toBeGreaterThanOrEqual(3);
@@ -139,13 +160,32 @@ describe('timeline charts — suppressed vs real zero', () => {
   });
 
   it('renders transactions chart as its own chart (not a second Y-axis)', () => {
-    render(<TransactionsTimeChart timeline={timeline} />);
+    render(<TransactionsTimeChart timeline={timeline} theme="dark" />);
     expect(screen.getByTestId('transactions-time-chart')).toBeInTheDocument();
-    expect(screen.getByText('Count over time')).toBeInTheDocument();
+    expect(screen.getByText('Transactions over time')).toBeInTheDocument();
     expect(screen.getByTestId('point-Buy-1')).not.toHaveAttribute('data-value', 'null');
     const anns = screen.getAllByTestId('xaxis-annotation');
-    const suppressedT = new Date(timeline.buckets[1].date).getTime();
-    expect(anns.some((el) => el.getAttribute('data-x') === String(suppressedT))).toBe(true);
+    const suppressedDate = timeline.buckets[1].date;
+    expect(anns.some((el) => el.getAttribute('data-x') === suppressedDate)).toBe(true);
+  });
+
+  it('uses the same shared tick labels on volume and transactions charts', () => {
+    const { unmount } = render(<VolumeTimeChart timeline={timeline} theme="dark" />);
+    expect(screen.getByTestId('xaxis-type')).toHaveAttribute('data-type', 'category');
+    const volumeLabels = screen
+      .getAllByTestId('xaxis-tick-label')
+      .map((el) => el.getAttribute('data-label') ?? '');
+    unmount();
+
+    render(<TransactionsTimeChart timeline={timeline} theme="dark" />);
+    expect(screen.getByTestId('xaxis-type')).toHaveAttribute('data-type', 'category');
+    const txLabels = screen
+      .getAllByTestId('xaxis-tick-label')
+      .map((el) => el.getAttribute('data-label') ?? '');
+    expect(txLabels).toEqual(volumeLabels);
+    // First and last buckets always labeled
+    expect(volumeLabels[0]).not.toBe('');
+    expect(volumeLabels[volumeLabels.length - 1]).not.toBe('');
   });
 
   it('exposes partial-bucket legend when any bucket is partial', () => {
@@ -154,11 +194,19 @@ describe('timeline charts — suppressed vs real zero', () => {
   });
 
   it('renders visible partial markers for edge buckets (not only a legend note)', () => {
-    render(<VolumeTimeChart timeline={timeline} />);
+    render(<VolumeTimeChart timeline={timeline} theme="dark" />);
     expect(screen.getByTestId('partial-markers')).toBeInTheDocument();
     const markers = screen.getAllByTestId('partial-marker');
     expect(markers.length).toBeGreaterThanOrEqual(1);
     expect(markers[0]).toHaveAttribute('data-partial', 'true');
     expect(markers[0]).toHaveTextContent(/incomplete/i);
+  });
+
+  it('does not emit partial edge bands in timeline annotations (chips only)', () => {
+    const combined = timelineXAnnotations(timeline.buckets);
+    // Only suppressed day is annotated; partial day (index 0) is not
+    expect(combined).toHaveLength(1);
+    expect(combined[0].x).toBe(new Date(timeline.buckets[1].date).getTime());
+    expect(combined[0].hatch).toBe(true);
   });
 });

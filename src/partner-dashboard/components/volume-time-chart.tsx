@@ -1,21 +1,29 @@
 import { ApexOptions } from 'apexcharts';
 import { useMemo } from 'react';
 import Chart from 'react-apexcharts';
-import { SERIES_COLORS, SERIES_LABELS } from 'src/config/partner-dashboard.config';
+import { SERIES_LABELS } from 'src/config/partner-dashboard.config';
 import { PartnerTimeline } from 'src/dto/partner-statistic.dto';
+import { baseChartOptions } from 'src/partner-dashboard/util/chart-theme';
 import { ABSENT_LABEL, formatAmount } from 'src/partner-dashboard/util/format';
 import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 import { timelineSeries } from 'src/partner-dashboard/util/series';
+import { PartnerTheme } from 'src/partner-dashboard/util/theme';
+import {
+  annotationsToCategories,
+  buildTimelineXAxis,
+  timelineSeriesValues,
+} from 'src/partner-dashboard/util/timeline-axis';
 import { CollapsibleTable } from './collapsible-table';
 import { EmptyState } from './empty-state';
 import { formatPartialValue, PartialBucketMarkers, timelineXAnnotations } from './partial-marker';
 
 export interface VolumeTimeChartProps {
   timeline: PartnerTimeline;
+  theme: PartnerTheme;
 }
 
-export function VolumeTimeChart({ timeline }: VolumeTimeChartProps): JSX.Element {
-  const { buckets, currency } = timeline;
+export function VolumeTimeChart({ timeline, theme }: VolumeTimeChartProps): JSX.Element {
+  const { buckets, currency, granularity } = timeline;
   const hasData = buckets.some((b) => b.volume != null);
   const { translate, locale } = usePartnerTranslation();
 
@@ -30,63 +38,70 @@ export function VolumeTimeChart({ timeline }: VolumeTimeChartProps): JSX.Element
 
   const series = useMemo(
     () => [
-      { name: seriesLabels.buy, data: timelineSeries(buckets, 'volume', 'buy') },
-      { name: seriesLabels.sell, data: timelineSeries(buckets, 'volume', 'sell') },
-      { name: seriesLabels.swap, data: timelineSeries(buckets, 'volume', 'swap') },
+      { name: seriesLabels.buy, data: timelineSeriesValues(timelineSeries(buckets, 'volume', 'buy')) },
+      { name: seriesLabels.sell, data: timelineSeriesValues(timelineSeries(buckets, 'volume', 'sell')) },
+      { name: seriesLabels.swap, data: timelineSeriesValues(timelineSeries(buckets, 'volume', 'swap')) },
     ],
     [buckets, seriesLabels],
   );
 
   const partialFlags = useMemo(() => buckets.map((b) => b.partial), [buckets]);
   const suppressedFlags = useMemo(() => buckets.map((b) => b.suppressed), [buckets]);
-  const xAnnotations = useMemo(() => timelineXAnnotations(buckets), [buckets]);
+  const xAnnotations = useMemo(
+    () => annotationsToCategories(timelineXAnnotations(buckets), buckets),
+    [buckets],
+  );
   const incompleteWord = translate('incomplete');
 
   const options = useMemo((): ApexOptions => {
+    const base = baseChartOptions(theme);
+    const axisColor = (base.xaxis?.labels?.style?.colors as string) ?? '';
+    const timelineAxis = buildTimelineXAxis({
+      buckets,
+      granularity,
+      locale,
+      axisColor,
+    });
     return {
-      chart: {
-        type: 'area',
-        stacked: true,
-        toolbar: { show: false },
-        background: '0',
-        zoom: { enabled: false },
-        animations: { enabled: false },
-      },
-      theme: { mode: 'dark' },
-      stroke: { width: 1.5, curve: 'smooth' },
-      colors: [SERIES_COLORS.buy, SERIES_COLORS.sell, SERIES_COLORS.swap],
-      dataLabels: { enabled: false },
-      fill: {
-        type: 'solid',
-        opacity: 0.55,
-      },
-      grid: { borderColor: '#0A355C', strokeDashArray: 3 },
+      ...base,
       xaxis: {
-        type: 'datetime',
-        labels: { datetimeUTC: false, style: { colors: '#9AA5B8' } },
-        axisBorder: { color: '#0A355C' },
-        axisTicks: { color: '#0A355C' },
+        ...base.xaxis,
+        ...timelineAxis.xaxis,
+        labels: {
+          ...base.xaxis?.labels,
+          ...timelineAxis.xaxis?.labels,
+          style: {
+            ...base.xaxis?.labels?.style,
+            ...timelineAxis.xaxis?.labels?.style,
+          },
+        },
+        axisBorder: { ...base.xaxis?.axisBorder, ...timelineAxis.xaxis?.axisBorder },
+        axisTicks: { ...base.xaxis?.axisTicks, ...timelineAxis.xaxis?.axisTicks },
+      },
+      grid: {
+        ...base.grid,
+        ...timelineAxis.grid,
+        xaxis: { ...timelineAxis.grid?.xaxis },
       },
       yaxis: {
         labels: {
-          style: { colors: '#9AA5B8' },
+          style: { colors: axisColor },
           formatter: (val: number) =>
             val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val.toFixed(0),
         },
-      },
-      legend: {
-        position: 'top',
-        horizontalAlign: 'left',
-        labels: { colors: '#D6DBE2' },
       },
       annotations: {
         xaxis: xAnnotations,
       },
       tooltip: {
-        shared: true,
-        intersect: false,
-        theme: 'dark',
-        x: { format: 'dd MMM yyyy' },
+        ...base.tooltip,
+        x: {
+          formatter: (_val, opts) => {
+            const idx = opts?.dataPointIndex ?? 0;
+            const iso = buckets[idx]?.date;
+            return iso ? new Date(iso).toLocaleDateString(locale) : '';
+          },
+        },
         y: {
           formatter: (val: number | null, opts) => {
             const idx = opts.dataPointIndex;
@@ -95,14 +110,13 @@ export function VolumeTimeChart({ timeline }: VolumeTimeChartProps): JSX.Element
               return ABSENT_LABEL;
             }
             const partial = partialFlags[idx] === true;
-            const base = formatAmount(val, currency, 2, locale);
-            return partial ? formatPartialValue(base) : base;
+            const amount = formatAmount(val, currency, 2, locale);
+            return partial ? formatPartialValue(amount) : amount;
           },
         },
       },
-      markers: { size: 0, hover: { size: 4 } },
     };
-  }, [currency, locale, partialFlags, suppressedFlags, xAnnotations]);
+  }, [buckets, currency, granularity, locale, partialFlags, suppressedFlags, theme, xAnnotations]);
 
   const tableRows = buckets.map((b) => ({
     date: new Date(b.date).toLocaleDateString(locale),
@@ -113,10 +127,18 @@ export function VolumeTimeChart({ timeline }: VolumeTimeChartProps): JSX.Element
   }));
 
   const title = translate('Volume over time');
+  const description = translate(
+    'Shows how much was traded in each period, split into buy, sell and swap.',
+  );
 
   return (
-    <section className="bg-dfxBlue-700 rounded-lg shadow p-4" data-testid="volume-time-chart">
-      <h2 className="text-sm font-semibold text-white mb-2">{title}</h2>
+    <section className="partner-card partner-chart-root" data-testid="volume-time-chart">
+      <h2 className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>
+        {title}
+      </h2>
+      <p className="text-2xs partner-text-secondary mb-2" data-testid="volume-chart-description">
+        {description}
+      </p>
       {!hasData ? (
         <EmptyState message={translate('No volume data for the selected period.')} />
       ) : (
