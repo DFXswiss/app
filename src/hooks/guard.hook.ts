@@ -30,15 +30,16 @@ export function useSupportDashboardGuard(redirectPath = '/', isActive = true) {
 }
 
 /**
- * API role name for the partner dashboard (`Partner`).
+ * API role name for the partner dashboard (`NonCustodialWalletPartner`).
  *
- * BEFUND: `@dfx.swiss/core@0.6.0-beta.0` (re-exported by `@dfx.swiss/react`) has no
- * `UserRole.PARTNER` / `UserRole.Partner` member — the enum ends at `MONITORING`.
- * The product role is still `"Partner"` on the API. Until the package ships the enum
- * member, this allow-list holds the runtime role string; access checks use
- * `isPartnerDashboardRole` (string equality on `session.role`). No cast onto `UserRole`.
+ * BEFUND: `@dfx.swiss/core` (re-exported by `@dfx.swiss/react`) has no
+ * `UserRole.NonCustodialWalletPartner` member — the enum ends at `MONITORING`.
+ * The product role on the API is `"NonCustodialWalletPartner"`. Until the package
+ * ships the enum member, this allow-list holds the runtime role string; access
+ * checks use `isPartnerDashboardRole` (string equality on `session.role`).
+ * No cast onto `UserRole`. The value must stay character-identical to the API enum.
  */
-export const PARTNER_DASHBOARD_ROLES = ['Partner'] as const;
+export const PARTNER_DASHBOARD_ROLES = ['NonCustodialWalletPartner'] as const;
 
 export function isPartnerDashboardRole(role: UserRole | string | undefined): boolean {
   if (role == null) return false;

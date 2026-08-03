@@ -219,7 +219,7 @@ function NavigationMenu({ setIsNavigationOpen, small = false }: NavigationMenuCo
               {session?.role && isPartnerDashboardRole(session.role) && (
                 <NavigationLink
                   icon={IconVariant.REFERRAL}
-                  label={translate('screens/partner', 'Partner Dashboard')}
+                  label={translate('screens/partner', 'Non-Custodial Partner Program')}
                   url="/partner/dashboard"
                   target="_self"
                   onClose={() => setIsNavigationOpen(false)}

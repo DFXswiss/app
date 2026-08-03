@@ -25,8 +25,3 @@ export const SERIES_LABELS = {
  * for environments without CSS variables (tests).
  */
 export const FILTER_ACTIVE_COLOR = 'var(--primary)';
-
-/**
- * Product program name — same for every partner session.
- */
-export const PARTNER_PROGRAM_NAME = 'Non-Custodial Partner Program';

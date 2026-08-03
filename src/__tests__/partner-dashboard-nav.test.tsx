@@ -28,7 +28,7 @@ import { isPartnerDashboardRole } from 'src/hooks/guard.hook';
  * Burger-entry visibility mirrors navigation.tsx:
  * `session?.role && isPartnerDashboardRole(session.role)`.
  * Full Navigation mounts many providers; this isolates the role gate that
- * decides whether the Partner Dashboard link is offered.
+ * decides whether the Non-Custodial Partner Program link is offered.
  */
 function PartnerNavProbe({ role }: { role?: string }): JSX.Element {
   const show = !!role && isPartnerDashboardRole(role);
@@ -36,20 +36,20 @@ function PartnerNavProbe({ role }: { role?: string }): JSX.Element {
     <div>
       {show && (
         <a href="/partner/dashboard" data-testid="partner-dashboard-nav">
-          Partner Dashboard
+          Non-Custodial Partner Program
         </a>
       )}
     </div>
   );
 }
 
-describe('Partner Dashboard burger entry role gate', () => {
+describe('Non-Custodial Partner Program burger entry role gate', () => {
   it('hides the entry without a session role', () => {
     render(<PartnerNavProbe />);
     expect(screen.queryByTestId('partner-dashboard-nav')).not.toBeInTheDocument();
   });
 
-  it('hides the entry for a non-Partner role', () => {
+  it('hides the entry for a non-partner role', () => {
     const { unmount } = render(<PartnerNavProbe role={UserRole.USER} />);
     expect(screen.queryByTestId('partner-dashboard-nav')).not.toBeInTheDocument();
     unmount();
@@ -58,8 +58,8 @@ describe('Partner Dashboard burger entry role gate', () => {
     expect(screen.queryByTestId('partner-dashboard-nav')).not.toBeInTheDocument();
   });
 
-  it('shows the entry for the Partner role', () => {
-    render(<PartnerNavProbe role="Partner" />);
+  it('shows the entry for the NonCustodialWalletPartner role', () => {
+    render(<PartnerNavProbe role="NonCustodialWalletPartner" />);
     expect(screen.getByTestId('partner-dashboard-nav')).toBeInTheDocument();
     expect(screen.getByTestId('partner-dashboard-nav')).toHaveAttribute('href', '/partner/dashboard');
   });

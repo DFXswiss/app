@@ -29,7 +29,23 @@ jest.mock('src/hooks/navigation.hook', () => ({
 }));
 
 import { UserRole } from '@dfx.swiss/react';
-import { isPartnerDashboardRole, usePartnerDashboardGuard } from 'src/hooks/guard.hook';
+import {
+  isPartnerDashboardRole,
+  PARTNER_DASHBOARD_ROLES,
+  usePartnerDashboardGuard,
+} from 'src/hooks/guard.hook';
+
+/** Character-identical to the API enum value — any drift breaks the guard silently. */
+const API_PARTNER_ROLE = 'NonCustodialWalletPartner';
+
+describe('PARTNER_DASHBOARD_ROLES matches API enum value', () => {
+  it('lists exactly the API role string NonCustodialWalletPartner', () => {
+    expect(PARTNER_DASHBOARD_ROLES).toEqual([API_PARTNER_ROLE]);
+    expect(PARTNER_DASHBOARD_ROLES[0]).toBe(API_PARTNER_ROLE);
+    // Guard path uses string equality — prove the allow-list entry is the live value.
+    expect(isPartnerDashboardRole(API_PARTNER_ROLE)).toBe(true);
+  });
+});
 
 describe('isPartnerDashboardRole', () => {
   it('rejects missing and non-partner roles', () => {
@@ -39,13 +55,18 @@ describe('isPartnerDashboardRole', () => {
     expect(isPartnerDashboardRole(UserRole.SUPPORT)).toBe(false);
   });
 
-  it('accepts the API role name Partner (runtime string)', () => {
-    // BEFUND: UserRole has no PARTNER member yet — compare the runtime string the API sends.
-    expect(isPartnerDashboardRole('Partner')).toBe(true);
+  it('accepts the API role name NonCustodialWalletPartner (runtime string)', () => {
+    // BEFUND: UserRole has no NonCustodialWalletPartner member yet — compare the
+    // runtime string the API sends. Character-identical match is required.
+    expect(isPartnerDashboardRole('NonCustodialWalletPartner')).toBe(true);
+  });
+
+  it('rejects the former role name Partner', () => {
+    expect(isPartnerDashboardRole('Partner')).toBe(false);
   });
 });
 
-describe('usePartnerDashboardGuard — route not reachable without Partner role', () => {
+describe('usePartnerDashboardGuard — route not reachable without NonCustodialWalletPartner role', () => {
   beforeEach(() => {
     mockNavigate.mockReset();
     mockIsLoggedIn = true;
@@ -53,7 +74,7 @@ describe('usePartnerDashboardGuard — route not reachable without Partner role'
     mockSession = { role: UserRole.USER };
   });
 
-  it('redirects when the session role is not Partner', () => {
+  it('redirects when the session role is not NonCustodialWalletPartner', () => {
     renderHook(() => usePartnerDashboardGuard());
     expect(mockNavigate).toHaveBeenCalledWith('/', { setRedirect: true });
   });
@@ -65,8 +86,8 @@ describe('usePartnerDashboardGuard — route not reachable without Partner role'
     expect(mockNavigate).toHaveBeenCalledWith('/', { setRedirect: true });
   });
 
-  it('does not redirect when the session role is Partner', () => {
-    mockSession = { role: 'Partner' };
+  it('does not redirect when the session role is NonCustodialWalletPartner', () => {
+    mockSession = { role: 'NonCustodialWalletPartner' };
     renderHook(() => usePartnerDashboardGuard());
     expect(mockNavigate).not.toHaveBeenCalled();
   });

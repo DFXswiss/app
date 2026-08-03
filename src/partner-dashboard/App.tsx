@@ -118,19 +118,25 @@ export default function PartnerDashboardView(): JSX.Element {
         {!loading && !error && statistic && (
           <>
             <section className="space-y-3" data-testid="kpi-period-section">
-              <h2
-                className="text-sm font-semibold mb-3"
-                style={{ color: 'var(--text)' }}
-                data-testid="kpi-period-heading"
-              >
-                {translate('This period')}
-              </h2>
-              <PeriodControls
-                periodDays={periodDays}
-                granularity={granularity}
-                onPeriodChange={setPeriodDays}
-                onGranularityChange={setGranularity}
-              />
+              {/*
+                Label sits with the period/granularity controls as one toolbar group
+                (left of the buttons, tight gap) so it is not a floating section title.
+              */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <h2
+                  className="text-sm font-semibold shrink-0 m-0"
+                  style={{ color: 'var(--text)' }}
+                  data-testid="kpi-period-heading"
+                >
+                  {translate('This period')}
+                </h2>
+                <PeriodControls
+                  periodDays={periodDays}
+                  granularity={granularity}
+                  onPeriodChange={setPeriodDays}
+                  onGranularityChange={setGranularity}
+                />
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-3" data-testid="kpi-grid">
                 <KpiTile
                   label={translate('Total volume')}

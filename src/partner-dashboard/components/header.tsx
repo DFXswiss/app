@@ -1,6 +1,5 @@
 import { Language } from '@dfx.swiss/react';
 import { useEffect } from 'react';
-import { PARTNER_PROGRAM_NAME } from 'src/config/partner-dashboard.config';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 import { PartnerTheme } from 'src/partner-dashboard/util/theme';
@@ -12,14 +11,14 @@ export interface PartnerHeaderProps {
 }
 
 /**
- * Header: program kicker + title on the left, secondary controls (theme + language)
+ * Header: single bold page title on the left, secondary controls (theme + language)
  * grouped on the right. Language mutates the main-app settings context so the rest
  * of the app stays in sync. Theme is dashboard-local only.
  */
 export function PartnerHeader({ isFixture, theme, onThemeChange }: PartnerHeaderProps): JSX.Element {
   const { translate } = usePartnerTranslation();
   const { language, availableLanguages, changeLanguage } = useSettingsContext();
-  const title = translate('Partner Dashboard');
+  const title = translate('Non-Custodial Partner Program');
 
   useEffect(() => {
     const previous = document.title;
@@ -46,12 +45,6 @@ export function PartnerHeader({ isFixture, theme, onThemeChange }: PartnerHeader
     <header className="partner-header" data-testid="partner-header">
       <div className="partner-header-row">
         <div className="partner-header-copy min-w-0">
-          <p
-            className="text-2xs font-medium uppercase tracking-[0.18em] partner-text-tertiary"
-            data-testid="program-name"
-          >
-            {PARTNER_PROGRAM_NAME}
-          </p>
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <h1
               className="text-xl sm:text-2xl font-bold min-w-0 truncate"
