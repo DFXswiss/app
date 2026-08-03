@@ -7,7 +7,7 @@ import {
 } from 'src/partner-dashboard/util/format';
 
 describe('partner format helpers', () => {
-  it('uses the en-dash placeholder for absent/suppressed values (never a zero or prose label)', () => {
+  it('uses the en-dash placeholder for absent values (never a zero or prose label)', () => {
     expect(ABSENT_LABEL).toBe('–');
     expect(ABSENT_LABEL).not.toBe('0');
     expect(ABSENT_LABEL.toLowerCase()).not.toMatch(/angabe/);
@@ -34,12 +34,12 @@ describe('partner format helpers', () => {
     expect(formatPercent(null)).toBe('');
   });
 
-  it('displayNullable distinguishes null (suppressed) from 0 (real zero)', () => {
-    const suppressed = displayNullable(null, (n) => formatCount(n));
-    expect(suppressed.kind).toBe('suppressed');
-    if (suppressed.kind === 'suppressed') {
-      expect(suppressed.text).toBe('–');
-      expect(suppressed.text).not.toBe('0');
+  it('displayNullable distinguishes null (genuinely absent) from 0 (real zero)', () => {
+    const absent = displayNullable(null, (n) => formatCount(n));
+    expect(absent.kind).toBe('absent');
+    if (absent.kind === 'absent') {
+      expect(absent.text).toBe('–');
+      expect(absent.text).not.toBe('0');
     }
 
     const zero = displayNullable(0, (n) => formatCount(n));

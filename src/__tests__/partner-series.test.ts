@@ -7,16 +7,15 @@ function bucket(
   partial: Partial<PartnerTimelineBucket> & Pick<PartnerTimelineBucket, 'date'>,
 ): PartnerTimelineBucket {
   return {
-    volume: null,
-    transactions: null,
-    suppressed: false,
+    volume: { buy: 0, sell: 0, swap: 0 },
+    transactions: { buy: 0, sell: 0, swap: 0 },
     partial: false,
     ...partial,
   };
 }
 
 describe('partner timeline series', () => {
-  it('interpolates suppressed buckets for geometry (no hole) while real zero stays 0', () => {
+  it('never returns a gap: every point is a real number, a day with no activity is the zero point', () => {
     const buckets: PartnerTimelineBucket[] = [
       bucket({
         date: '2026-06-01T00:00:00.000Z',
@@ -25,49 +24,67 @@ describe('partner timeline series', () => {
       }),
       bucket({
         date: '2026-06-02T00:00:00.000Z',
-        volume: null,
-        transactions: null,
-        suppressed: true,
-      }),
-      bucket({
-        date: '2026-06-03T00:00:00.000Z',
         volume: { buy: 0, sell: 0, swap: 0 },
         transactions: { buy: 0, sell: 0, swap: 0 },
       }),
     ];
 
     const series = timelineSeries(buckets, 'volume', 'buy');
-    expect(series).toHaveLength(3);
+    expect(series).toHaveLength(2);
     expect(series[0][1]).toBe(100);
-    // Geometry bridge — not null (would tear the area) and not forced to 0 (would look like zero-activity)
-    expect(series[1][1]).toBe(50);
-    expect(series[2][1]).toBe(0);
+    // A day with no activity is the zero point on the curve — never a hole
+    expect(series[1][1]).toBe(0);
+    // The return type itself forbids null (Array<[number, number]>) — assert every
+    // value really is a finite number at runtime too, not just at compile time.
+    for (const field of ['volume', 'transactions'] as const) {
+      for (const direction of ['buy', 'sell', 'swap'] as const) {
+        for (const [, y] of timelineSeries(buckets, field, direction)) {
+          expect(typeof y).toBe('number');
+          expect(Number.isFinite(y)).toBe(true);
+        }
+      }
+    }
   });
 
-  it('marks partial buckets separately from suppressed ones', () => {
+  it('passes every non-zero value through unchanged, including thin single-digit days (no withholding by magnitude)', () => {
+    // Deliberately small, non-zero counts — the exact shape a k-anonymity threshold
+    // used to null out. Every one of these must reach the series untouched.
+    const buckets: PartnerTimelineBucket[] = [
+      bucket({
+        date: '2026-06-01T00:00:00.000Z',
+        volume: { buy: 3, sell: 1, swap: 4 },
+        transactions: { buy: 1, sell: 2, swap: 3 },
+      }),
+    ];
+
+    expect(timelineSeries(buckets, 'volume', 'buy')[0][1]).toBe(3);
+    expect(timelineSeries(buckets, 'volume', 'sell')[0][1]).toBe(1);
+    expect(timelineSeries(buckets, 'volume', 'swap')[0][1]).toBe(4);
+    expect(timelineSeries(buckets, 'transactions', 'buy')[0][1]).toBe(1);
+    expect(timelineSeries(buckets, 'transactions', 'sell')[0][1]).toBe(2);
+    expect(timelineSeries(buckets, 'transactions', 'swap')[0][1]).toBe(3);
+  });
+
+  it('isPartialBucket only reacts to the partial flag', () => {
     const partial = bucket({
       date: '2026-06-01T00:00:00.000Z',
       volume: { buy: 50, sell: 5, swap: 1 },
       transactions: { buy: 3, sell: 1, swap: 0 },
       partial: true,
     });
-    const suppressed = bucket({
+    const notPartial = bucket({
       date: '2026-06-02T00:00:00.000Z',
-      suppressed: true,
       partial: false,
     });
 
     expect(isPartialBucket(partial.partial)).toBe(true);
-    expect(isPartialBucket(suppressed.partial)).toBe(false);
-    expect(partial.suppressed).toBe(false);
-    expect(suppressed.suppressed).toBe(true);
+    expect(isPartialBucket(notPartial.partial)).toBe(false);
   });
 
   it('fixture timeline has partial edge buckets at both ends', () => {
     const tl = buildPartnerTimelineFixture('Day');
     expect(tl.buckets[0].partial).toBe(true);
     expect(tl.buckets[tl.buckets.length - 1].partial).toBe(true);
-    expect(tl.buckets.some((b) => b.suppressed)).toBe(true);
   });
 
   it('fixture timeline bucket count grows with the requested period (30 / 90 / 365)', () => {
@@ -86,20 +103,18 @@ describe('partner timeline series', () => {
     expect(d365.buckets.length).toBe(365);
     expect(d30.buckets.length).toBeLessThan(d90.buckets.length);
     expect(d90.buckets.length).toBeLessThan(d365.buckets.length);
-    // Acceptance fixtures preserved on the default 30-day day series
+    // Acceptance fixture preserved on the default 30-day day series
     expect(d30.buckets[5].volume).toEqual({ buy: 0, sell: 0, swap: 0 });
-    expect(d30.buckets[5].suppressed).toBe(false);
-    expect(d30.buckets[12].suppressed).toBe(true);
-    expect(d30.buckets[12].volume).toBeNull();
+    // Every other bucket carries real, non-zero data — the fixture is real throughout
+    expect(d30.buckets[12].volume.buy).toBeGreaterThan(0);
   });
 
-  it('ranks named volumes descending and keeps nulls last', () => {
+  it('ranks named volumes descending', () => {
     const ranked = rankNamedVolumes([
       { name: 'B', volume: 10, transactions: 2 },
-      { name: 'A', volume: null, transactions: null },
       { name: 'C', volume: 50, transactions: 5 },
       { name: 'D', volume: 0, transactions: 0 },
     ]);
-    expect(ranked.map((r) => r.name)).toEqual(['C', 'B', 'D', 'A']);
+    expect(ranked.map((r) => r.name)).toEqual(['C', 'B', 'D']);
   });
 });

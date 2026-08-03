@@ -116,20 +116,19 @@ describe('timeline X-axis tick strategy', () => {
       from: '2026-06-01T00:00:00.000Z',
       to: '2026-06-05T23:59:59.000Z',
     }).buckets;
-    const suppressed = buckets.find((b) => b.suppressed) ?? buckets[1];
-    const idx = buckets.indexOf(suppressed);
-    const next = buckets[idx + 1] ?? suppressed;
+    const marked = buckets[1];
+    const next = buckets[2] ?? marked;
     const anns = annotationsToCategories(
       [
         {
-          x: new Date(suppressed.date).getTime(),
+          x: new Date(marked.date).getTime(),
           x2: new Date(next.date).getTime(),
           fillColor: 'transparent',
         },
       ],
       buckets,
     );
-    expect(anns[0].x).toBe(suppressed.date);
+    expect(anns[0].x).toBe(marked.date);
     expect(anns[0].x2).toBe(next.date);
   });
 
@@ -137,10 +136,10 @@ describe('timeline X-axis tick strategy', () => {
     expect(
       timelineSeriesValues([
         [1, 10],
-        [2, null],
+        [2, 3],
         [3, 0],
       ]),
-    ).toEqual([10, null, 0]);
+    ).toEqual([10, 3, 0]);
   });
 
   it('tick strategy is required: blanking the selector leaves only endpoints when maxTicks is 2', () => {

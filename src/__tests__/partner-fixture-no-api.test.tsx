@@ -73,7 +73,7 @@ describe('error boundary keeps the shell usable (D5)', () => {
     throw new Error('simulated context bootstrap failure');
   }
 
-  // Suppress expected React error-boundary noise
+  // Mute expected React error-boundary noise
   let consoleErrorSpy: jest.SpyInstance;
   beforeEach(() => {
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);

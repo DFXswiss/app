@@ -122,7 +122,7 @@ export function buildTimelineXAxis(params: TimelineXAxisParams): Pick<ApexOption
 
 /**
  * Map timestamp-based x-annotations onto category keys (bucket ISO dates).
- * Keeps suppression-band geometry working after the axis switch to category.
+ * Keeps partial-band geometry working after the axis switch to category.
  */
 export function annotationsToCategories<T extends { x: number; x2?: number }>(
   annotations: T[],
@@ -155,8 +155,6 @@ export function annotationsToCategories<T extends { x: number; x2?: number }>(
 }
 
 /** Y values only — pair with category x-axis from {@link buildTimelineXAxis}. */
-export function timelineSeriesValues(
-  points: Array<[number, number | null]>,
-): Array<number | null> {
+export function timelineSeriesValues(points: Array<[number, number]>): number[] {
   return points.map(([, y]) => y);
 }

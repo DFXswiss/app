@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 export type PartnerTheme = 'light' | 'dark';
 
@@ -124,61 +124,6 @@ export function readThemeCssVar(name: string, theme: PartnerTheme): string {
   }
 }
 
-const HATCH_PATTERN_ID = 'partner-suppressed-hatch';
-
-/**
- * Ensure an SVG diagonal-hatch pattern exists and matches the current text colour.
- * Used for suppressed timeline buckets (second encoding for CVD / print).
- */
-export function ensureSuppressedHatchPattern(root?: Element | null): void {
-  if (typeof document === 'undefined') return;
-  const host = root ?? document.getElementById('partner-dashboard-root');
-  const textColor = readCssVar('--text', host) || '#a8b5c8';
-
-  let svg = document.getElementById('partner-hatch-defs') as SVGSVGElement | null;
-  if (!svg) {
-    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('id', 'partner-hatch-defs');
-    svg.setAttribute('width', '0');
-    svg.setAttribute('height', '0');
-    svg.setAttribute('aria-hidden', 'true');
-    svg.style.position = 'absolute';
-    svg.style.overflow = 'hidden';
-    document.body.appendChild(svg);
-  }
-
-  let defs = svg.querySelector('defs');
-  if (!defs) {
-    defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-    svg.appendChild(defs);
-  }
-
-  let pattern = defs.querySelector(`#${HATCH_PATTERN_ID}`) as SVGPatternElement | null;
-  if (!pattern) {
-    pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern');
-    pattern.setAttribute('id', HATCH_PATTERN_ID);
-    pattern.setAttribute('patternUnits', 'userSpaceOnUse');
-    pattern.setAttribute('width', '8');
-    pattern.setAttribute('height', '8');
-    pattern.setAttribute('patternTransform', 'rotate(45)');
-
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line.setAttribute('x1', '0');
-    line.setAttribute('y1', '0');
-    line.setAttribute('x2', '0');
-    line.setAttribute('y2', '8');
-    line.setAttribute('stroke-width', '1.25');
-    line.setAttribute('stroke-opacity', '0.28');
-    pattern.appendChild(line);
-    defs.appendChild(pattern);
-  }
-
-  const line = pattern.querySelector('line');
-  if (line) {
-    line.setAttribute('stroke', textColor);
-  }
-}
-
 export function usePartnerTheme(): {
   theme: PartnerTheme;
   setTheme: (theme: PartnerTheme) => void;
@@ -198,10 +143,6 @@ export function usePartnerTheme(): {
       return next;
     });
   }, []);
-
-  useEffect(() => {
-    ensureSuppressedHatchPattern();
-  }, [theme]);
 
   return { theme, setTheme, toggleTheme };
 }

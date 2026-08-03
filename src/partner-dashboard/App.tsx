@@ -3,7 +3,6 @@ import { PartnerBrand } from 'src/config/partner-dashboard.config';
 import { PartnerGranularity, PartnerStatistic, PartnerTimeline } from 'src/dto/partner-statistic.dto';
 import { usePartnerAuth } from 'src/hooks/partner-auth.hook';
 import { PartnerApiError, usePartnerDashboard } from 'src/hooks/partner-dashboard.hook';
-import { CompletionBlock } from './components/completion-block';
 import { ErrorState } from './components/error-state';
 import { PartnerHeader } from './components/header';
 import { HorizontalBarList } from './components/horizontal-bar-list';
@@ -25,7 +24,7 @@ import {
 } from './util/brands';
 import { formatAmount, formatAmountWhole, formatCount } from './util/format';
 import { usePartnerTranslation } from './util/i18n';
-import { ensureSuppressedHatchPattern, usePartnerTheme } from './util/theme';
+import { usePartnerTheme } from './util/theme';
 
 function periodRange(days: PeriodDays): { from: string; to: string } {
   const to = new Date();
@@ -136,16 +135,12 @@ export default function PartnerDashboardApp(): JSX.Element {
     void load();
   }, [load, reloadToken]);
 
-  useEffect(() => {
-    ensureSuppressedHatchPattern();
-  }, [theme]);
-
   const currency = statistic?.currency ?? 'CHF';
   const hasPartial = timeline?.buckets.some((b) => b.partial) === true;
 
   const assetRows = useMemo(() => {
     if (!statistic) return [];
-    const map = new Map<string, { volume: number | null; transactions: number | null }>();
+    const map = new Map<string, { volume: number; transactions: number }>();
     for (const a of statistic.breakdown.assets) {
       const key = a.blockchain ? `${a.name} (${a.blockchain})` : a.name;
       const prev = map.get(key);
@@ -153,19 +148,9 @@ export default function PartnerDashboardApp(): JSX.Element {
         map.set(key, { volume: a.volume, transactions: a.transactions });
         continue;
       }
-      const nextVol =
-        a.volume == null && prev.volume == null
-          ? null
-          : (prev.volume ?? 0) + (a.volume ?? 0);
-      const nextTx =
-        a.transactions == null && prev.transactions == null
-          ? null
-          : (prev.transactions ?? 0) + (a.transactions ?? 0);
-      const bothNullVolume = a.volume == null && prev.volume == null;
-      const bothNullTx = a.transactions == null && prev.transactions == null;
       map.set(key, {
-        volume: bothNullVolume ? null : nextVol,
-        transactions: bothNullTx ? null : nextTx,
+        volume: prev.volume + a.volume,
+        transactions: prev.transactions + a.transactions,
       });
     }
     return Array.from(map.entries()).map(([name, v]) => ({ name, ...v }));
@@ -314,8 +299,6 @@ export default function PartnerDashboardApp(): JSX.Element {
                 testId="bars-payment-methods"
               />
             </div>
-
-            <CompletionBlock completion={statistic.completion} />
           </>
         )}
       </div>

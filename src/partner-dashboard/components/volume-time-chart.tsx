@@ -8,14 +8,10 @@ import { ABSENT_LABEL, formatAmount } from 'src/partner-dashboard/util/format';
 import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 import { timelineSeries } from 'src/partner-dashboard/util/series';
 import { PartnerTheme } from 'src/partner-dashboard/util/theme';
-import {
-  annotationsToCategories,
-  buildTimelineXAxis,
-  timelineSeriesValues,
-} from 'src/partner-dashboard/util/timeline-axis';
+import { buildTimelineXAxis, timelineSeriesValues } from 'src/partner-dashboard/util/timeline-axis';
 import { CollapsibleTable } from './collapsible-table';
 import { EmptyState } from './empty-state';
-import { formatPartialValue, PartialBucketMarkers, timelineXAnnotations } from './partial-marker';
+import { formatPartialValue, PartialBucketMarkers } from './partial-marker';
 
 export interface VolumeTimeChartProps {
   timeline: PartnerTimeline;
@@ -24,7 +20,8 @@ export interface VolumeTimeChartProps {
 
 export function VolumeTimeChart({ timeline, theme }: VolumeTimeChartProps): JSX.Element {
   const { buckets, currency, granularity } = timeline;
-  const hasData = buckets.some((b) => b.volume != null);
+  // Every bucket always carries a real volume group — "no data" only means an empty period.
+  const hasData = buckets.length > 0;
   const { translate, locale } = usePartnerTranslation();
 
   const seriesLabels = useMemo(
@@ -46,11 +43,6 @@ export function VolumeTimeChart({ timeline, theme }: VolumeTimeChartProps): JSX.
   );
 
   const partialFlags = useMemo(() => buckets.map((b) => b.partial), [buckets]);
-  const suppressedFlags = useMemo(() => buckets.map((b) => b.suppressed), [buckets]);
-  const xAnnotations = useMemo(
-    () => annotationsToCategories(timelineXAnnotations(buckets), buckets),
-    [buckets],
-  );
   const incompleteWord = translate('incomplete');
 
   const options = useMemo((): ApexOptions => {
@@ -90,9 +82,6 @@ export function VolumeTimeChart({ timeline, theme }: VolumeTimeChartProps): JSX.
             val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val.toFixed(0),
         },
       },
-      annotations: {
-        xaxis: xAnnotations,
-      },
       tooltip: {
         ...base.tooltip,
         x: {
@@ -103,10 +92,9 @@ export function VolumeTimeChart({ timeline, theme }: VolumeTimeChartProps): JSX.
           },
         },
         y: {
-          formatter: (val: number | null, opts) => {
+          formatter: (val: number, opts) => {
             const idx = opts.dataPointIndex;
-            // Geometry may interpolate suppressed points — never surface that as a value.
-            if (suppressedFlags[idx] === true || val == null || Number.isNaN(val)) {
+            if (Number.isNaN(val)) {
               return ABSENT_LABEL;
             }
             const partial = partialFlags[idx] === true;
@@ -116,14 +104,14 @@ export function VolumeTimeChart({ timeline, theme }: VolumeTimeChartProps): JSX.
         },
       },
     };
-  }, [buckets, currency, granularity, locale, partialFlags, suppressedFlags, theme, xAnnotations]);
+  }, [buckets, currency, granularity, locale, partialFlags, theme]);
 
   const tableRows = buckets.map((b) => ({
     date: new Date(b.date).toLocaleDateString(locale),
-    buy: b.volume == null ? ABSENT_LABEL : formatAmount(b.volume.buy, currency, 2, locale),
-    sell: b.volume == null ? ABSENT_LABEL : formatAmount(b.volume.sell, currency, 2, locale),
-    swap: b.volume == null ? ABSENT_LABEL : formatAmount(b.volume.swap, currency, 2, locale),
-    note: b.partial ? incompleteWord : b.suppressed ? ABSENT_LABEL : '',
+    buy: formatAmount(b.volume.buy, currency, 2, locale),
+    sell: formatAmount(b.volume.sell, currency, 2, locale),
+    swap: formatAmount(b.volume.swap, currency, 2, locale),
+    note: b.partial ? incompleteWord : '',
   }));
 
   const title = translate('Volume over time');

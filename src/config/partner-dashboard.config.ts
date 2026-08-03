@@ -30,7 +30,7 @@ export interface PartnerBrand {
  * Validated palette (dataviz skill, both themes pass Helligkeitsband / Chroma / CVD /
  * Normal-distance / contrast). Dark values are checked against navy surface #0d4070,
  * not derived from light. Theme-specific values live in SERIES_COLORS_BY_THEME;
- * this export is the dark default for non-theme callers (e.g. completion tests).
+ * this export is the dark default for non-theme callers.
  *
  * Red is reserved for brand actions — not for "Buy" on a revenue dashboard.
  */
@@ -44,28 +44,6 @@ export const SERIES_LABELS = {
 } as const;
 
 /**
- * Completion state scale — red/blue/gray only (no green, no yellow).
- * Shared by Stage A and Stage B with identical mapping; never code a positive state in red.
- *
- * good      → Zahlung eingegangen / Ausgeliefert   kräftiges Blau  (#1F6FD0)
- * pending   → Wartet auf Zahlung / In Bearbeitung  helles Blau    (dfxGray-600 cool, clearly lighter)
- * absent    → Keine Zahlung                        Grau           (dfxGray-800)
- * rejected  → Abgelehnt                            Rot            (#F5516C / dfxRed-100)
- *
- * Pending uses a much lighter cool tone than good so the two blues separate in a stacked bar
- * (a mid dfxBlue-300 step is too close to #1F6FD0 by ΔE). If they still merge, lighten pending
- * further — do not switch hue family.
- */
-export const STATE_COLORS = {
-  good: '#1F6FD0',
-  pending: '#B8C4D8', // dfxGray-600 — light cool blue-gray, clearly above good on the bar
-  absent: '#65728A', // dfxGray-800
-  rejected: '#F5516C', // dfxRed-100 — negative outcome only
-} as const;
-
-export type CompletionState = keyof typeof STATE_COLORS;
-
-/**
  * Active filter control fill — design-pod primary (red in dark, blue in light).
  * Components should prefer `var(--primary)`; this constant is a dark-theme fallback
  * for environments without CSS variables (tests).
@@ -77,13 +55,6 @@ export const FILTER_ACTIVE_COLOR = 'var(--primary)';
  * Kept for unit tests of the unused helper.
  */
 export const PARTIAL_BAND_COLOR = '#9AA5B8';
-
-/**
- * Suppressed-bucket marker — charts use diagonal hatch via SVG pattern
- * (`#partner-suppressed-hatch`); this solid is only a structural fill placeholder
- * that CSS immediately replaces with the pattern.
- */
-export const SUPPRESSED_BAND_COLOR = 'transparent';
 
 /**
  * Product program name — same for every partner. Not part of brand.title (document title only)

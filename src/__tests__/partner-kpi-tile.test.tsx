@@ -3,20 +3,20 @@ import { KpiTile } from 'src/partner-dashboard/components/kpi-tile';
 import { formatAmount, formatAmountWhole, formatCount } from 'src/partner-dashboard/util/format';
 
 describe('KpiTile null vs zero', () => {
-  it('renders a suppressed gap for null — never as 0', () => {
+  it('renders an absent gap for null — never as 0', () => {
     render(
       <KpiTile
-        label="New users"
+        label="Average transaction size"
         value={null}
         format={(n) => formatCount(n)}
         testId="kpi-new"
       />,
     );
 
-    expect(screen.getByTestId('kpi-suppressed')).toBeInTheDocument();
-    expect(screen.getByTestId('kpi-suppressed')).toHaveTextContent('–');
+    expect(screen.getByTestId('kpi-absent')).toBeInTheDocument();
+    expect(screen.getByTestId('kpi-absent')).toHaveTextContent('–');
     expect(screen.queryByTestId('kpi-value')).not.toBeInTheDocument();
-    expect(screen.getByTestId('kpi-new')).toHaveAttribute('data-kind', 'suppressed');
+    expect(screen.getByTestId('kpi-new')).toHaveAttribute('data-kind', 'absent');
     // Must not claim the value is zero
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
@@ -32,7 +32,7 @@ describe('KpiTile null vs zero', () => {
     );
 
     expect(screen.getByTestId('kpi-value')).toHaveTextContent('0');
-    expect(screen.queryByTestId('kpi-suppressed')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('kpi-absent')).not.toBeInTheDocument();
     expect(screen.getByTestId('kpi-new-zero')).toHaveAttribute('data-kind', 'value');
   });
 });

@@ -1,4 +1,4 @@
-import { PARTIAL_BAND_COLOR, SUPPRESSED_BAND_COLOR } from 'src/config/partner-dashboard.config';
+import { PARTIAL_BAND_COLOR } from 'src/config/partner-dashboard.config';
 import { PartnerTimelineBucket } from 'src/dto/partner-statistic.dto';
 import { getPartnerLocale, partnerTranslate, usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 
@@ -68,17 +68,6 @@ export interface PartialXAnnotation {
   /** Intentionally no text label — labels overpaint the Y-axis (see D4). */
 }
 
-export interface SuppressedXAnnotation {
-  x: number;
-  x2: number;
-  fillColor: string;
-  opacity: number;
-  borderColor: string;
-  /** Marks withheld values for chart CSS hatch pattern. */
-  hatch: true;
-  /** Intentionally no text label — band alone marks suppressed days vs real zero. */
-}
-
 /**
  * ApexCharts x-axis annotations for partial buckets.
  * No longer used in timeline charts (chips under the chart carry the message).
@@ -102,54 +91,6 @@ export function partialXAnnotations(buckets: PartnerTimelineBucket[]): PartialXA
     });
   }
   return annotations;
-}
-
-/**
- * ApexCharts x-axis annotations for suppressed buckets.
- * Fill is transparent; CSS + SVG pattern paint a fine 45° hatch in the text colour.
- * Contiguous suppressed days merge into one range so the chart stays quiet.
- * Real zero days (suppressed === false) are never included.
- */
-export function suppressedXAnnotations(buckets: PartnerTimelineBucket[]): SuppressedXAnnotation[] {
-  const annotations: SuppressedXAnnotation[] = [];
-  let i = 0;
-
-  while (i < buckets.length) {
-    if (!buckets[i].suppressed) {
-      i += 1;
-      continue;
-    }
-    const start = i;
-    while (i < buckets.length && buckets[i].suppressed) {
-      i += 1;
-    }
-    const end = i - 1;
-    const t = new Date(buckets[start].date).getTime();
-    const after = buckets[end + 1];
-    const t2 = after
-      ? new Date(after.date).getTime()
-      : new Date(buckets[end].date).getTime() + 24 * 60 * 60 * 1000;
-
-    annotations.push({
-      x: t,
-      x2: t2,
-      fillColor: SUPPRESSED_BAND_COLOR,
-      opacity: 1,
-      borderColor: 'transparent',
-      hatch: true,
-    });
-  }
-
-  return annotations;
-}
-
-/**
- * Combined x-axis annotations for timeline charts.
- * Partial edge bands are intentionally omitted (chips + tooltips only).
- * Suppressed bands remain as hatched ranges.
- */
-export function timelineXAnnotations(buckets: PartnerTimelineBucket[]): SuppressedXAnnotation[] {
-  return suppressedXAnnotations(buckets);
 }
 
 /** Pure helper for tooltips outside React — uses current i18n language. */

@@ -1,8 +1,4 @@
-import {
-  partialXAnnotations,
-  suppressedXAnnotations,
-  timelineXAnnotations,
-} from 'src/partner-dashboard/components/partial-marker';
+import { partialXAnnotations } from 'src/partner-dashboard/components/partial-marker';
 import { PartnerTimelineBucket } from 'src/dto/partner-statistic.dto';
 
 describe('partial x-axis annotations (D4)', () => {
@@ -11,21 +7,18 @@ describe('partial x-axis annotations (D4)', () => {
       date: '2026-06-01T00:00:00.000Z',
       volume: { buy: 100, sell: 10, swap: 5 },
       transactions: { buy: 4, sell: 1, swap: 1 },
-      suppressed: false,
       partial: true,
     },
     {
       date: '2026-06-02T00:00:00.000Z',
       volume: { buy: 50, sell: 5, swap: 2 },
       transactions: { buy: 2, sell: 1, swap: 0 },
-      suppressed: false,
       partial: false,
     },
     {
       date: '2026-06-30T00:00:00.000Z',
       volume: { buy: 80, sell: 8, swap: 3 },
       transactions: { buy: 3, sell: 1, swap: 1 },
-      suppressed: false,
       partial: true,
     },
   ];
@@ -47,92 +40,3 @@ describe('partial x-axis annotations (D4)', () => {
     expect(onlyMiddle).toHaveLength(0);
   });
 });
-
-describe('suppressed x-axis annotations', () => {
-  const buckets: PartnerTimelineBucket[] = [
-    {
-      date: '2026-06-01T00:00:00.000Z',
-      volume: { buy: 100, sell: 10, swap: 5 },
-      transactions: { buy: 4, sell: 1, swap: 1 },
-      suppressed: false,
-      partial: false,
-    },
-    {
-      date: '2026-06-02T00:00:00.000Z',
-      volume: null,
-      transactions: null,
-      suppressed: true,
-      partial: false,
-    },
-    {
-      date: '2026-06-03T00:00:00.000Z',
-      volume: { buy: 0, sell: 0, swap: 0 },
-      transactions: { buy: 0, sell: 0, swap: 0 },
-      suppressed: false,
-      partial: false,
-    },
-  ];
-
-  it('emits a band only for suppressed buckets, not for real zero — no in-chart text label', () => {
-    const annotations = suppressedXAnnotations(buckets);
-    expect(annotations).toHaveLength(1);
-    expect(annotations[0]).not.toHaveProperty('label');
-    expect(annotations[0].fillColor).toBeTruthy();
-    expect(annotations[0].opacity).toBeGreaterThan(0);
-    expect(annotations[0].x).toBe(new Date(buckets[1].date).getTime());
-    // Real zero day (index 2) is not the annotation start
-    expect(annotations[0].x).not.toBe(new Date(buckets[2].date).getTime());
-  });
-
-  it('merges contiguous suppressed days into one range', () => {
-    const multi: PartnerTimelineBucket[] = [
-      { ...buckets[0], date: '2026-06-01T00:00:00.000Z', suppressed: false },
-      { ...buckets[1], date: '2026-06-02T00:00:00.000Z', suppressed: true },
-      { ...buckets[1], date: '2026-06-03T00:00:00.000Z', suppressed: true },
-      {
-        date: '2026-06-04T00:00:00.000Z',
-        volume: { buy: 10, sell: 1, swap: 0 },
-        transactions: { buy: 1, sell: 0, swap: 0 },
-        suppressed: false,
-        partial: false,
-      },
-    ];
-    const annotations = suppressedXAnnotations(multi);
-    expect(annotations).toHaveLength(1);
-    expect(annotations[0].x).toBe(new Date(multi[1].date).getTime());
-    expect(annotations[0].x2).toBe(new Date(multi[3].date).getTime());
-  });
-
-  it('timelineXAnnotations includes only suppressed bands (partial is chips-only)', () => {
-    const mixed: PartnerTimelineBucket[] = [
-      {
-        date: '2026-06-01T00:00:00.000Z',
-        volume: { buy: 100, sell: 10, swap: 5 },
-        transactions: { buy: 4, sell: 1, swap: 1 },
-        suppressed: false,
-        partial: true,
-      },
-      {
-        date: '2026-06-02T00:00:00.000Z',
-        volume: null,
-        transactions: null,
-        suppressed: true,
-        partial: false,
-      },
-    ];
-    const combined = timelineXAnnotations(mixed);
-    expect(combined.length).toBe(1);
-    expect(combined[0].x).toBe(new Date(mixed[1].date).getTime());
-    expect(combined[0].hatch).toBe(true);
-    expect(combined[0]).not.toHaveProperty('label');
-  });
-
-  it('marks suppressed annotations as hatch (not solid gray fill)', () => {
-    const annotations = suppressedXAnnotations(buckets);
-    expect(annotations).toHaveLength(1);
-    expect(annotations[0].hatch).toBe(true);
-    // Structural fill is transparent — CSS pattern paints the hatch
-    expect(annotations[0].fillColor).toBe('transparent');
-  });
-});
-

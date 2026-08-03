@@ -8,7 +8,7 @@ export interface KpiTileProps {
 }
 
 /**
- * Pure numeric KPI tile. null → privacy gap (never drawn as 0); 0 → real zero.
+ * Pure numeric KPI tile. null → genuinely absent (never drawn as 0); 0 → real zero.
  * Value is never truncated: tile grows in height; type scales down on narrow widths.
  */
 export function KpiTile({ label, value, format, testId }: KpiTileProps): JSX.Element {
@@ -21,10 +21,10 @@ export function KpiTile({ label, value, format, testId }: KpiTileProps): JSX.Ele
       data-kind={display.kind}
     >
       <div className="text-2xs sm:text-xs font-medium partner-text-tertiary leading-snug">{label}</div>
-      {display.kind === 'suppressed' ? (
+      {display.kind === 'absent' ? (
         <div
           className="text-base sm:text-lg md:text-xl font-bold mt-1 partner-text-secondary"
-          data-testid="kpi-suppressed"
+          data-testid="kpi-absent"
         >
           {display.text}
         </div>

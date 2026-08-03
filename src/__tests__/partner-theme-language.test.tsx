@@ -1,14 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import i18n from 'i18next';
 import MainPartner from 'src/Main.partner';
-import { timelineXAnnotations } from 'src/partner-dashboard/components/partial-marker';
 import {
   PARTNER_LANG_STORAGE_KEY,
   PARTNER_THEME_STORAGE_KEY,
   resolveInitialTheme,
   SERIES_COLORS_BY_THEME,
 } from 'src/partner-dashboard/util/theme';
-import { PartnerTimelineBucket } from 'src/dto/partner-statistic.dto';
 
 jest.mock('react-apexcharts', () => {
   return function MockChart() {
@@ -133,35 +131,4 @@ describe('partner theme + language switchers', () => {
     });
   });
 
-  it('suppresses hatching only for suppressed buckets, not real zero', () => {
-    const buckets: PartnerTimelineBucket[] = [
-      {
-        date: '2026-06-01T00:00:00.000Z',
-        volume: { buy: 10, sell: 0, swap: 0 },
-        transactions: { buy: 1, sell: 0, swap: 0 },
-        suppressed: false,
-        partial: false,
-      },
-      {
-        date: '2026-06-02T00:00:00.000Z',
-        volume: null,
-        transactions: null,
-        suppressed: true,
-        partial: false,
-      },
-      {
-        date: '2026-06-03T00:00:00.000Z',
-        volume: { buy: 0, sell: 0, swap: 0 },
-        transactions: { buy: 0, sell: 0, swap: 0 },
-        suppressed: false,
-        partial: false,
-      },
-    ];
-    const anns = timelineXAnnotations(buckets);
-    expect(anns).toHaveLength(1);
-    expect(anns[0].hatch).toBe(true);
-    expect(anns[0].x).toBe(new Date(buckets[1].date).getTime());
-    // Real zero day is not annotated
-    expect(anns[0].x).not.toBe(new Date(buckets[2].date).getTime());
-  });
 });

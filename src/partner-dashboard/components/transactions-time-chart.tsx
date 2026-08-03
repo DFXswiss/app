@@ -8,14 +8,10 @@ import { ABSENT_LABEL, formatCount } from 'src/partner-dashboard/util/format';
 import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
 import { timelineSeries } from 'src/partner-dashboard/util/series';
 import { PartnerTheme } from 'src/partner-dashboard/util/theme';
-import {
-  annotationsToCategories,
-  buildTimelineXAxis,
-  timelineSeriesValues,
-} from 'src/partner-dashboard/util/timeline-axis';
+import { buildTimelineXAxis, timelineSeriesValues } from 'src/partner-dashboard/util/timeline-axis';
 import { CollapsibleTable } from './collapsible-table';
 import { EmptyState } from './empty-state';
-import { formatPartialValue, PartialBucketMarkers, timelineXAnnotations } from './partial-marker';
+import { formatPartialValue, PartialBucketMarkers } from './partial-marker';
 
 export interface TransactionsTimeChartProps {
   timeline: PartnerTimeline;
@@ -25,7 +21,8 @@ export interface TransactionsTimeChartProps {
 /** Separate chart for transaction counts — never a second Y-axis on the volume chart. */
 export function TransactionsTimeChart({ timeline, theme }: TransactionsTimeChartProps): JSX.Element {
   const { buckets, granularity } = timeline;
-  const hasData = buckets.some((b) => b.transactions != null);
+  // Every bucket always carries a real transactions group — "no data" only means an empty period.
+  const hasData = buckets.length > 0;
   const { translate, locale } = usePartnerTranslation();
 
   const seriesLabels = useMemo(
@@ -56,11 +53,6 @@ export function TransactionsTimeChart({ timeline, theme }: TransactionsTimeChart
   );
 
   const partialFlags = useMemo(() => buckets.map((b) => b.partial), [buckets]);
-  const suppressedFlags = useMemo(() => buckets.map((b) => b.suppressed), [buckets]);
-  const xAnnotations = useMemo(
-    () => annotationsToCategories(timelineXAnnotations(buckets), buckets),
-    [buckets],
-  );
   const incompleteWord = translate('incomplete');
 
   const options = useMemo((): ApexOptions => {
@@ -100,9 +92,6 @@ export function TransactionsTimeChart({ timeline, theme }: TransactionsTimeChart
         },
         forceNiceScale: true,
       },
-      annotations: {
-        xaxis: xAnnotations,
-      },
       tooltip: {
         ...base.tooltip,
         x: {
@@ -113,10 +102,9 @@ export function TransactionsTimeChart({ timeline, theme }: TransactionsTimeChart
           },
         },
         y: {
-          formatter: (val: number | null, opts) => {
+          formatter: (val: number, opts) => {
             const idx = opts.dataPointIndex;
-            // Geometry may interpolate suppressed points — never surface that as a value.
-            if (suppressedFlags[idx] === true || val == null || Number.isNaN(val)) {
+            if (Number.isNaN(val)) {
               return ABSENT_LABEL;
             }
             const partial = partialFlags[idx] === true;
@@ -126,14 +114,14 @@ export function TransactionsTimeChart({ timeline, theme }: TransactionsTimeChart
         },
       },
     };
-  }, [buckets, granularity, locale, partialFlags, suppressedFlags, theme, xAnnotations]);
+  }, [buckets, granularity, locale, partialFlags, theme]);
 
   const tableRows = buckets.map((b) => ({
     date: new Date(b.date).toLocaleDateString(locale),
-    buy: b.transactions == null ? ABSENT_LABEL : formatCount(b.transactions.buy, locale),
-    sell: b.transactions == null ? ABSENT_LABEL : formatCount(b.transactions.sell, locale),
-    swap: b.transactions == null ? ABSENT_LABEL : formatCount(b.transactions.swap, locale),
-    note: b.partial ? incompleteWord : b.suppressed ? ABSENT_LABEL : '',
+    buy: formatCount(b.transactions.buy, locale),
+    sell: formatCount(b.transactions.sell, locale),
+    swap: formatCount(b.transactions.swap, locale),
+    note: b.partial ? incompleteWord : '',
   }));
 
   const title = translate('Transactions over time');

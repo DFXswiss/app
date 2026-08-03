@@ -5,8 +5,6 @@ import {
   PartnerTimelineBucket,
 } from 'src/dto/partner-statistic.dto';
 
-const SUPPRESSION_THRESHOLD = 5;
-
 /** Default demo window (30 calendar days ending 2026-06-30) — used when callers omit range. */
 const DEFAULT_PERIOD_TO = '2026-06-30T23:59:59.000Z';
 const DEFAULT_SPAN_DAYS = 30;
@@ -57,7 +55,8 @@ function scaleNum(n: number, factor: number): number {
  * Realistic Cake partner fixture.
  * allTime volumes/users are production-checked Cake values (not scaled).
  * Period totals/breakdown scale with the requested window relative to the 30-day base.
- * Includes nulls for acceptance of suppression UI (asset, timeline bucket, completion counter).
+ * Values are real throughout — averageTransactionVolume is the only field that can be
+ * null (no transactions in the period), per the API contract.
  */
 export function buildPartnerStatisticFixture(range?: FixtureRange): PartnerStatistic {
   const { from, to, days } = resolveRange(range);
@@ -82,8 +81,7 @@ export function buildPartnerStatisticFixture(range?: FixtureRange): PartnerStati
       },
       averageTransactionVolume: 109.25,
       activeUsers: Math.round(1_286 * Math.min(factor, 2)),
-      // null = suppressed under threshold (demo of KPI gap)
-      newUsers: null,
+      newUsers: Math.round(214 * Math.min(factor, 2)),
     },
     allTime: {
       volume: {
@@ -138,13 +136,12 @@ export function buildPartnerStatisticFixture(range?: FixtureRange): PartnerStati
           volume: scaleNum(8_920.0, factor),
           transactions: Math.round(95 * factor),
         },
-        // suppressed asset row (null volume/tx) — shown as privacy gap in the bar list
         {
           name: 'ZEC',
           blockchain: 'Zcash',
           direction: 'Buy',
-          volume: null,
-          transactions: null,
+          volume: scaleNum(2_640.8, factor),
+          transactions: Math.round(31 * factor),
         },
         {
           name: 'ETH',
@@ -242,58 +239,7 @@ export function buildPartnerStatisticFixture(range?: FixtureRange): PartnerStati
       creditOpen: scaleNum(285.4, factor),
       currency: 'EUR',
     },
-    completion: {
-      paymentInfoRequests: {
-        buy: {
-          requested: Math.round(12_480 * factor),
-          paymentReceived: Math.round(1_920 * factor),
-          waitingForPayment: Math.round(340 * factor),
-          noPaymentReceived: Math.round(10_220 * factor),
-          receivedRate: 0.1538,
-        },
-        sell: {
-          requested: Math.round(2_140 * factor),
-          paymentReceived: Math.round(380 * factor),
-          waitingForPayment: Math.round(45 * factor),
-          noPaymentReceived: Math.round(1_715 * factor),
-          receivedRate: 0.1776,
-        },
-        swap: {
-          // suppressed direction (null counters) for acceptance of Stage A null UI
-          requested: null,
-          paymentReceived: null,
-          waitingForPayment: null,
-          noPaymentReceived: null,
-          receivedRate: null,
-        },
-      },
-      settlement: {
-        buy: {
-          received: Math.round(1_920 * factor),
-          delivered: Math.round(1_780 * factor),
-          rejected: Math.round(42 * factor),
-          inProgress: Math.round(98 * factor),
-          deliveredRate: 0.9271,
-        },
-        sell: {
-          received: Math.round(380 * factor),
-          delivered: Math.round(350 * factor),
-          rejected: Math.round(8 * factor),
-          inProgress: Math.round(22 * factor),
-          deliveredRate: 0.9211,
-        },
-        swap: {
-          received: Math.round(110 * factor),
-          delivered: Math.round(102 * factor),
-          rejected: Math.round(2 * factor),
-          inProgress: Math.round(6 * factor),
-          deliveredRate: 0.9273,
-        },
-      },
-    },
     meta: {
-      suppressionThreshold: SUPPRESSION_THRESHOLD,
-      suppressedCount: 3,
       generatedAt: '2026-07-01T08:00:00.000Z',
     },
   };
@@ -314,9 +260,8 @@ const DAY_PATTERN: Array<{ buy: number; sell: number; swap: number }> = [
   { buy: 9600, sell: 1080, swap: 400 },
 ];
 
-/** Indices relative to a 30-day window that tests pin for suppressed / real-zero behaviour. */
+/** Index relative to a 30-day window that tests pin for real-zero behaviour. */
 const ZERO_DAY_INDEX = 5;
-const SUPPRESSED_DAY_INDEX = 12;
 
 function stepDaysFor(granularity: PartnerGranularity): number {
   switch (granularity) {
@@ -332,15 +277,14 @@ function stepDaysFor(granularity: PartnerGranularity): number {
 
 function makeBucket(
   dateIso: string,
-  volume: { buy: number; sell: number; swap: number } | null,
-  transactions: { buy: number; sell: number; swap: number } | null,
-  opts: { suppressed?: boolean; partial?: boolean } = {},
+  volume: { buy: number; sell: number; swap: number },
+  transactions: { buy: number; sell: number; swap: number },
+  opts: { partial?: boolean } = {},
 ): PartnerTimelineBucket {
   return {
     date: dateIso,
     volume,
     transactions,
-    suppressed: opts.suppressed === true,
     partial: opts.partial === true,
   };
 }
@@ -349,8 +293,8 @@ function makeBucket(
  * Timeline fixture that honours requested range + granularity.
  *
  * - Bucket count grows with the window (30 / 90 / 365 days → distinct series lengths).
- * - Edge buckets are partial. One suppressed and one real-zero bucket are preserved
- *   (at fixed offsets from the start when the series is long enough).
+ * - Edge buckets are partial. One real-zero bucket is preserved (at a fixed offset from
+ *   the start when the series is long enough) to keep the null-vs-0 distinction visible.
  * - Coarser granularity thins the series (week ≈ every 7 days, month ≈ every 30).
  */
 export function buildPartnerTimelineFixture(
@@ -371,22 +315,13 @@ export function buildPartnerTimelineFixture(
     bucketDate.setUTCDate(bucketDate.getUTCDate() + i * step);
     const dateIso = isoAtUtcMidnight(bucketDate);
 
-    // Day: fixed offsets (index 5 zero, 12 suppressed) — tests pin these.
-    // Week/Month: distinct mid-series slots so both markers survive coarse thinning.
-    let suppressedIdx = SUPPRESSED_DAY_INDEX;
+    // Day: fixed offset (index 5 zero) — tests pin this.
+    // Week/Month: distinct mid-series slot so the marker survives coarse thinning.
     let zeroIdx = ZERO_DAY_INDEX;
     if (granularity !== 'Day') {
       zeroIdx = bucketCount >= 3 ? 1 : -1;
-      suppressedIdx = bucketCount >= 4 ? Math.min(2, bucketCount - 2) : -1;
-      if (suppressedIdx === zeroIdx) suppressedIdx = zeroIdx + 1 < bucketCount - 1 ? zeroIdx + 1 : -1;
     }
-    const suppressed = i === suppressedIdx;
     const isZero = i === zeroIdx;
-
-    if (suppressed) {
-      buckets.push(makeBucket(dateIso, null, null, { suppressed: true }));
-      continue;
-    }
 
     if (isZero) {
       buckets.push(
@@ -419,7 +354,7 @@ export function buildPartnerTimelineFixture(
     );
   }
 
-  // Guarantee edges are partial even if zero/suppressed landed there
+  // Guarantee edges are partial even if the zero bucket landed there
   if (buckets.length > 0) {
     buckets[0] = { ...buckets[0], partial: true };
     buckets[buckets.length - 1] = { ...buckets[buckets.length - 1], partial: true };
@@ -431,8 +366,6 @@ export function buildPartnerTimelineFixture(
     granularity,
     buckets,
     meta: {
-      suppressionThreshold: SUPPRESSION_THRESHOLD,
-      suppressedCount: buckets.filter((b) => b.suppressed).length,
       generatedAt: '2026-07-01T08:00:00.000Z',
     },
   };

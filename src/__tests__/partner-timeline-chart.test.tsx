@@ -1,12 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { VolumeTimeChart } from 'src/partner-dashboard/components/volume-time-chart';
 import { TransactionsTimeChart } from 'src/partner-dashboard/components/transactions-time-chart';
-import {
-  PartialLegendNote,
-  suppressedXAnnotations,
-  timelineXAnnotations,
-} from 'src/partner-dashboard/components/partial-marker';
+import { PartialLegendNote } from 'src/partner-dashboard/components/partial-marker';
 import { PartnerTimeline } from 'src/dto/partner-statistic.dto';
+import { formatAmount } from 'src/partner-dashboard/util/format';
 import { timelineSeries } from 'src/partner-dashboard/util/series';
 
 jest.mock('react-apexcharts', () => {
@@ -83,90 +80,83 @@ const timeline: PartnerTimeline = {
       date: '2026-06-01T00:00:00.000Z',
       volume: { buy: 100, sell: 10, swap: 5 },
       transactions: { buy: 4, sell: 1, swap: 1 },
-      suppressed: false,
       partial: true,
     },
     {
+      // Deliberately thin — a day with almost no activity, never a hole.
       date: '2026-06-02T00:00:00.000Z',
-      volume: null,
-      transactions: null,
-      suppressed: true,
+      volume: { buy: 3, sell: 1, swap: 2 },
+      transactions: { buy: 1, sell: 1, swap: 1 },
       partial: false,
     },
     {
       date: '2026-06-03T00:00:00.000Z',
       volume: { buy: 0, sell: 0, swap: 0 },
       transactions: { buy: 0, sell: 0, swap: 0 },
-      suppressed: false,
       partial: false,
     },
   ],
-  meta: { suppressionThreshold: 5, suppressedCount: 1 },
+  meta: {},
 };
 
-describe('timeline charts — suppressed vs real zero', () => {
-  it('interpolates suppressed buckets for geometry (no null hole) while real zero stays 0', () => {
+describe('timeline charts — thin day is a low point, no-activity day is the zero point', () => {
+  it('never returns a gap for a thin day; a no-activity day is exactly 0', () => {
     const series = timelineSeries(timeline.buckets, 'volume', 'buy');
-    // Suppressed mid-point is geometry between 100 and 0 — not null (no chart hole)
-    expect(series[1][1]).not.toBeNull();
-    expect(series[1][1]).toBe(50);
-    // Real zero day stays on the zero line
-    expect(series[2][1]).toBe(0);
     expect(series[0][1]).toBe(100);
+    // Thin, non-zero day — a low point on the curve, never bridged/invented, never null
+    expect(series[1][1]).toBe(3);
+    // No-activity day is the zero point — not a hole either
+    expect(series[2][1]).toBe(0);
   });
 
-  it('marks suppressed buckets with an annotation band, not real zero days', () => {
-    const suppressed = suppressedXAnnotations(timeline.buckets);
-    expect(suppressed).toHaveLength(1);
-    expect(suppressed[0]).not.toHaveProperty('label');
-    expect(suppressed[0].x).toBe(new Date(timeline.buckets[1].date).getTime());
-
-    // Real zero (index 2) must not get a suppressed annotation
-    const zeroT = new Date(timeline.buckets[2].date).getTime();
-    for (const ann of suppressed) {
-      // Band is [x, x2); zero day starts at x2 of the suppressed range (next bucket)
-      expect(ann.x).not.toBe(zeroT);
-    }
-
-    const combined = timelineXAnnotations(timeline.buckets);
-    for (const a of combined) {
-      expect(a).not.toHaveProperty('label');
-    }
-    // Suppressed band is present (by x position)
-    expect(combined.some((a) => a.x === new Date(timeline.buckets[1].date).getTime())).toBe(true);
-  });
-
-  it('renders volume chart series without a null gap and with suppressed annotation band', () => {
+  it('renders the thin day as its own low point in the chart series, not a gap', () => {
     render(<VolumeTimeChart timeline={timeline} theme="dark" />);
     expect(screen.getByTestId('volume-time-chart')).toBeInTheDocument();
-    // Geometry: continuous value, not null hole
-    expect(screen.getByTestId('point-Buy-1')).not.toHaveAttribute('data-value', 'null');
+    expect(screen.getByTestId('point-Buy-1')).toHaveAttribute('data-value', '3');
     expect(screen.getByTestId('point-Buy-2')).toHaveAttribute('data-value', '0');
-
-    const anns = screen.getAllByTestId('xaxis-annotation');
-    // Category axis: annotation x is the bucket ISO date string
-    const suppressedDate = timeline.buckets[1].date;
-    const suppressedAnn = anns.find((el) => el.getAttribute('data-x') === suppressedDate);
-    expect(suppressedAnn).toBeTruthy();
-    expect(suppressedAnn).toHaveAttribute('data-label', '');
+    // No chart annotations are emitted anymore (bands are gone; partial edges
+    // are chips-only)
+    expect(screen.queryAllByTestId('xaxis-annotation')).toHaveLength(0);
   });
 
-  it('table still shows the absent placeholder for suppressed, not the geometry value', () => {
+  it('table never shows the absent placeholder — every day is a real value', () => {
     render(<VolumeTimeChart timeline={timeline} theme="dark" />);
     fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
-    // Three directions for the suppressed day — never the interpolated geometry number
-    expect(screen.getAllByText('–').length).toBeGreaterThanOrEqual(3);
-    expect(screen.queryByText('50')).not.toBeInTheDocument();
+    expect(screen.queryByText('–')).not.toBeInTheDocument();
+  });
+
+  it('table row for a thin (small non-zero) day keeps its exact value — never dropped or zeroed', () => {
+    // Deliberately small, non-zero — the exact shape a k-anonymity threshold used to withhold.
+    const thinTimeline: PartnerTimeline = {
+      period: { from: '2026-06-10T00:00:00.000Z', to: '2026-06-10T23:59:59.000Z' },
+      currency: 'CHF',
+      granularity: 'Day',
+      buckets: [
+        {
+          date: '2026-06-10T00:00:00.000Z',
+          volume: { buy: 3, sell: 1, swap: 4 },
+          transactions: { buy: 1, sell: 2, swap: 3 },
+          partial: false,
+        },
+      ],
+      meta: {},
+    };
+
+    render(<VolumeTimeChart timeline={thinTimeline} theme="dark" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
+    expect(screen.getByText(formatAmount(3, 'CHF', 2))).toBeInTheDocument();
+    expect(screen.getByText(formatAmount(1, 'CHF', 2))).toBeInTheDocument();
+    expect(screen.getByText(formatAmount(4, 'CHF', 2))).toBeInTheDocument();
+    // Row must not be represented as absent/withheld
+    expect(screen.queryByText('–')).not.toBeInTheDocument();
   });
 
   it('renders transactions chart as its own chart (not a second Y-axis)', () => {
     render(<TransactionsTimeChart timeline={timeline} theme="dark" />);
     expect(screen.getByTestId('transactions-time-chart')).toBeInTheDocument();
     expect(screen.getByText('Transactions over time')).toBeInTheDocument();
-    expect(screen.getByTestId('point-Buy-1')).not.toHaveAttribute('data-value', 'null');
-    const anns = screen.getAllByTestId('xaxis-annotation');
-    const suppressedDate = timeline.buckets[1].date;
-    expect(anns.some((el) => el.getAttribute('data-x') === suppressedDate)).toBe(true);
+    // The thin day (1 transaction) is a real low point, never a gap
+    expect(screen.getByTestId('point-Buy-1')).toHaveAttribute('data-value', '1');
   });
 
   it('uses the same shared tick labels on volume and transactions charts', () => {
@@ -200,13 +190,5 @@ describe('timeline charts — suppressed vs real zero', () => {
     expect(markers.length).toBeGreaterThanOrEqual(1);
     expect(markers[0]).toHaveAttribute('data-partial', 'true');
     expect(markers[0]).toHaveTextContent(/incomplete/i);
-  });
-
-  it('does not emit partial edge bands in timeline annotations (chips only)', () => {
-    const combined = timelineXAnnotations(timeline.buckets);
-    // Only suppressed day is annotated; partial day (index 0) is not
-    expect(combined).toHaveLength(1);
-    expect(combined[0].x).toBe(new Date(timeline.buckets[1].date).getTime());
-    expect(combined[0].hatch).toBe(true);
   });
 });

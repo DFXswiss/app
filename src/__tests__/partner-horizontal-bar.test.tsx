@@ -1,27 +1,31 @@
 import { render, screen } from '@testing-library/react';
 import { HorizontalBarList } from 'src/partner-dashboard/components/horizontal-bar-list';
 
-describe('HorizontalBarList suppression', () => {
-  it('renders a privacy gap for null volume rows, not a zero-length bar', () => {
+describe('HorizontalBarList — every row is real, none dropped by magnitude', () => {
+  it('renders a thin (small non-zero) row alongside a large one, with its exact value', () => {
     render(
       <HorizontalBarList
         title="Volume by cryptocurrency"
         currency="CHF"
         rows={[
-          { name: 'BTC', volume: 1000, transactions: 20 },
-          { name: 'ZEC', volume: null, transactions: null },
+          { name: 'BTC', volume: 1200, transactions: 20 },
+          // Deliberately thin — the exact shape a k-anonymity threshold used to drop.
+          { name: 'ZEC', volume: 3, transactions: 1 },
           { name: 'EmptyZero', volume: 0, transactions: 0 },
         ]}
       />,
     );
 
-    const suppressed = screen.getByTestId('bar-suppressed');
-    expect(suppressed).toHaveAttribute('data-name', 'ZEC');
-    // Placeholder dash, never a numeric zero for the suppressed row value
-    expect(suppressed).toHaveTextContent('–');
-    expect(suppressed).not.toHaveTextContent(/^0$|0\.00/);
+    const rows = screen.getAllByTestId('bar-row');
+    expect(rows).toHaveLength(3);
 
-    const zeroRow = screen.getAllByTestId('bar-row').find((el) => el.getAttribute('data-name') === 'EmptyZero');
+    const zecRow = rows.find((el) => el.getAttribute('data-name') === 'ZEC');
+    expect(zecRow).toBeTruthy();
+    // Exact pinned amount — never rounded away, never withheld as a gap
+    expect(zecRow).toHaveTextContent('3 CHF');
+    expect(zecRow).not.toHaveTextContent('–');
+
+    const zeroRow = rows.find((el) => el.getAttribute('data-name') === 'EmptyZero');
     expect(zeroRow).toBeTruthy();
   });
 });

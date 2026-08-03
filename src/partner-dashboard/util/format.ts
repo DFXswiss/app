@@ -1,12 +1,13 @@
 /**
  * Display formatters for the partner dashboard.
- * null means suppressed (privacy), 0 means a real zero — never conflate them.
+ * null means the value is genuinely absent (e.g. no transactions to average), 0 means a
+ * real zero — never conflate them.
  * Locale follows the active UI language (default: en-US, repo base language).
  */
 
 import { getPartnerLocale } from './i18n';
 
-/** Neutral placeholder when a value is not available (suppressed or otherwise absent). */
+/** Neutral placeholder when a value is not available. */
 export const ABSENT_LABEL = '–';
 
 /** Amount with thousands separators and currency code, e.g. "123'456.78 CHF". */
@@ -58,7 +59,7 @@ export function formatPercent(
 
 export type DisplayValue =
   | { kind: 'value'; text: string }
-  | { kind: 'suppressed'; text: string }
+  | { kind: 'absent'; text: string }
   | { kind: 'empty'; text: string };
 
 export function displayNullable(
@@ -66,7 +67,7 @@ export function displayNullable(
   format: (n: number) => string,
 ): DisplayValue {
   if (value === null) {
-    return { kind: 'suppressed', text: '–' };
+    return { kind: 'absent', text: '–' };
   }
   if (value === undefined) {
     return { kind: 'empty', text: '–' };

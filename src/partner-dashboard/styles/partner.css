@@ -175,10 +175,3 @@
 .partner-error-text {
   color: var(--danger, #f5516c);
 }
-
-/* Suppressed chart band: diagonal hatch via SVG pattern (injected at runtime). */
-.partner-chart-root .apexcharts-xaxis-annotations rect {
-  fill: url(#partner-suppressed-hatch) !important;
-  fill-opacity: 1 !important;
-  stroke: none !important;
-}
