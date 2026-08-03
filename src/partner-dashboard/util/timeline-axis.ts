@@ -120,40 +120,6 @@ export function buildTimelineXAxis(params: TimelineXAxisParams): Pick<ApexOption
   };
 }
 
-/**
- * Map timestamp-based x-annotations onto category keys (bucket ISO dates).
- * Keeps partial-band geometry working after the axis switch to category.
- */
-export function annotationsToCategories<T extends { x: number; x2?: number }>(
-  annotations: T[],
-  buckets: PartnerTimelineBucket[],
-): Array<Omit<T, 'x' | 'x2'> & { x: string; x2?: string }> {
-  if (buckets.length === 0) {
-    return annotations.map((a) => ({
-      ...a,
-      x: new Date(a.x).toISOString(),
-      x2: a.x2 != null ? new Date(a.x2).toISOString() : undefined,
-    }));
-  }
-
-  const times = buckets.map((b) => new Date(b.date).getTime());
-
-  const toCategory = (ts: number): string => {
-    const exact = times.indexOf(ts);
-    if (exact >= 0) return buckets[exact].date;
-    for (let i = 0; i < times.length; i++) {
-      if (times[i] >= ts) return buckets[i].date;
-    }
-    return buckets[buckets.length - 1].date;
-  };
-
-  return annotations.map((a) => ({
-    ...a,
-    x: toCategory(a.x),
-    x2: a.x2 != null ? toCategory(a.x2) : undefined,
-  }));
-}
-
 /** Y values only — pair with category x-axis from {@link buildTimelineXAxis}. */
 export function timelineSeriesValues(points: Array<[number, number]>): number[] {
   return points.map(([, y]) => y);

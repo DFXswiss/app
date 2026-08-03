@@ -11,7 +11,6 @@ import { PartnerTheme } from 'src/partner-dashboard/util/theme';
 import { buildTimelineXAxis, timelineSeriesValues } from 'src/partner-dashboard/util/timeline-axis';
 import { CollapsibleTable } from './collapsible-table';
 import { EmptyState } from './empty-state';
-import { formatPartialValue, PartialBucketMarkers } from './partial-marker';
 
 export interface TransactionsTimeChartProps {
   timeline: PartnerTimeline;
@@ -51,9 +50,6 @@ export function TransactionsTimeChart({ timeline, theme }: TransactionsTimeChart
     ],
     [buckets, seriesLabels],
   );
-
-  const partialFlags = useMemo(() => buckets.map((b) => b.partial), [buckets]);
-  const incompleteWord = translate('incomplete');
 
   const options = useMemo((): ApexOptions => {
     const base = baseChartOptions(theme);
@@ -102,26 +98,22 @@ export function TransactionsTimeChart({ timeline, theme }: TransactionsTimeChart
           },
         },
         y: {
-          formatter: (val: number, opts) => {
-            const idx = opts.dataPointIndex;
+          formatter: (val: number) => {
             if (Number.isNaN(val)) {
               return ABSENT_LABEL;
             }
-            const partial = partialFlags[idx] === true;
-            const baseCount = formatCount(Math.round(val), locale);
-            return partial ? formatPartialValue(baseCount) : baseCount;
+            return formatCount(Math.round(val), locale);
           },
         },
       },
     };
-  }, [buckets, granularity, locale, partialFlags, theme]);
+  }, [buckets, granularity, locale, theme]);
 
   const tableRows = buckets.map((b) => ({
     date: new Date(b.date).toLocaleDateString(locale),
     buy: formatCount(b.transactions.buy, locale),
     sell: formatCount(b.transactions.sell, locale),
     swap: formatCount(b.transactions.swap, locale),
-    note: b.partial ? incompleteWord : '',
   }));
 
   const title = translate('Transactions over time');
@@ -142,7 +134,6 @@ export function TransactionsTimeChart({ timeline, theme }: TransactionsTimeChart
       ) : (
         <>
           <Chart type="area" height={280} options={options} series={series} />
-          <PartialBucketMarkers buckets={buckets} />
           <CollapsibleTable
             title={title}
             columns={[
@@ -150,7 +141,6 @@ export function TransactionsTimeChart({ timeline, theme }: TransactionsTimeChart
               { key: 'buy', header: seriesLabels.buy, align: 'right' },
               { key: 'sell', header: seriesLabels.sell, align: 'right' },
               { key: 'swap', header: seriesLabels.swap, align: 'right' },
-              { key: 'note', header: translate('Note') },
             ]}
             rows={tableRows}
           />

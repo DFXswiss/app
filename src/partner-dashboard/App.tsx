@@ -8,7 +8,6 @@ import { PartnerHeader } from './components/header';
 import { HorizontalBarList } from './components/horizontal-bar-list';
 import { KpiTile } from './components/kpi-tile';
 import { LoginScreen } from './components/login-screen';
-import { PartialLegendNote } from './components/partial-marker';
 import { PeriodControls, PeriodDays } from './components/period-controls';
 import { ReferralBlock } from './components/referral-block';
 import { DashboardSkeleton } from './components/skeleton';
@@ -22,7 +21,13 @@ import {
   resolveFixtureBrand,
   ResolvedPartnerBrand,
 } from './util/brands';
-import { formatAmount, formatAmountWhole, formatCount } from './util/format';
+import {
+  computeConversionRate,
+  formatAmount,
+  formatAmountWhole,
+  formatCount,
+  formatPercent,
+} from './util/format';
 import { usePartnerTranslation } from './util/i18n';
 import { usePartnerTheme } from './util/theme';
 
@@ -136,7 +141,10 @@ export default function PartnerDashboardApp(): JSX.Element {
   }, [load, reloadToken]);
 
   const currency = statistic?.currency ?? 'CHF';
-  const hasPartial = timeline?.buckets.some((b) => b.partial) === true;
+  const conversionRate =
+    statistic != null
+      ? computeConversionRate(statistic.allTime.tradingUsers, statistic.allTime.registeredUsers)
+      : null;
 
   const assetRows = useMemo(() => {
     if (!statistic) return [];
@@ -201,14 +209,6 @@ export default function PartnerDashboardApp(): JSX.Element {
           onLogout={isFixture ? undefined : auth.logout}
         />
 
-        <PeriodControls
-          periodDays={periodDays}
-          granularity={granularity}
-          accent={brand.accent}
-          onPeriodChange={setPeriodDays}
-          onGranularityChange={setGranularity}
-        />
-
         {loading && <DashboardSkeleton />}
 
         {!loading && error && (
@@ -217,44 +217,91 @@ export default function PartnerDashboardApp(): JSX.Element {
 
         {!loading && !error && statistic && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3" data-testid="kpi-grid">
-              <KpiTile
-                label={translate('Total volume')}
-                value={statistic.totals.volume.total}
-                format={(n) => formatAmountWhole(n, currency, locale)}
-                testId="kpi-volume"
+            <section className="space-y-3" data-testid="kpi-period-section">
+              <h2
+                className="text-sm font-semibold mb-3"
+                style={{ color: 'var(--text)' }}
+                data-testid="kpi-period-heading"
+              >
+                {translate('This period')}
+              </h2>
+              <PeriodControls
+                periodDays={periodDays}
+                granularity={granularity}
+                accent={brand.accent}
+                onPeriodChange={setPeriodDays}
+                onGranularityChange={setGranularity}
               />
-              <KpiTile
-                label={translate('Transactions')}
-                value={statistic.totals.transactions.total}
-                format={(n) => formatCount(n, locale)}
-                testId="kpi-transactions"
-              />
-              <KpiTile
-                label={translate('Average transaction size')}
-                value={statistic.totals.averageTransactionVolume}
-                format={(n) => formatAmount(n, currency, 2, locale)}
-                testId="kpi-avg"
-              />
-              <KpiTile
-                label={translate('Active users')}
-                value={statistic.totals.activeUsers}
-                format={(n) => formatCount(n, locale)}
-                testId="kpi-active-users"
-              />
-              <KpiTile
-                label={translate('New users')}
-                value={statistic.totals.newUsers}
-                format={(n) => formatCount(n, locale)}
-                testId="kpi-new-users"
-              />
-              <KpiTile
-                label={translate('Registered users (total)')}
-                value={statistic.allTime.registeredUsers}
-                format={(n) => formatCount(n, locale)}
-                testId="kpi-registered"
-              />
-            </div>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3" data-testid="kpi-grid">
+                <KpiTile
+                  label={translate('Total volume')}
+                  value={statistic.totals.volume.total}
+                  format={(n) => formatAmountWhole(n, currency, locale)}
+                  testId="kpi-volume"
+                />
+                <KpiTile
+                  label={translate('Transactions')}
+                  value={statistic.totals.transactions.total}
+                  format={(n) => formatCount(n, locale)}
+                  testId="kpi-transactions"
+                />
+                <KpiTile
+                  label={translate('Average transaction size')}
+                  value={statistic.totals.averageTransactionVolume}
+                  format={(n) => formatAmount(n, currency, 2, locale)}
+                  testId="kpi-avg"
+                />
+                <KpiTile
+                  label={translate('Active users')}
+                  value={statistic.totals.activeUsers}
+                  format={(n) => formatCount(n, locale)}
+                  testId="kpi-active-users"
+                />
+                <KpiTile
+                  label={translate('New users')}
+                  value={statistic.totals.newUsers}
+                  format={(n) => formatCount(n, locale)}
+                  testId="kpi-new-users"
+                />
+              </div>
+            </section>
+
+            <section className="space-y-3 mt-1" data-testid="kpi-alltime-section">
+              <h2
+                className="text-xs font-semibold uppercase tracking-wide mb-3 partner-text-tertiary"
+                data-testid="kpi-alltime-heading"
+              >
+                {translate('All-time totals')}
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-testid="kpi-alltime-grid">
+                <KpiTile
+                  label={translate('Registered users (total)')}
+                  value={statistic.allTime.registeredUsers}
+                  format={(n) => formatCount(n, locale)}
+                  testId="kpi-registered"
+                />
+                <KpiTile
+                  label={translate('Trading users (total)')}
+                  value={statistic.allTime.tradingUsers}
+                  format={(n) => formatCount(n, locale)}
+                  caption={
+                    conversionRate == null
+                      ? translate('No registered users yet')
+                      : `${formatPercent(conversionRate, 1, locale)} ${translate('of registered users')}`
+                  }
+                  testId="kpi-trading-users"
+                />
+                <KpiTile
+                  label={translate('Lifetime volume')}
+                  value={statistic.allTime.volume.total}
+                  format={(n) => formatAmountWhole(n, currency, locale)}
+                  caption={`${translate('Buy')}: ${formatAmountWhole(statistic.allTime.volume.buy, currency, locale)} · ${translate(
+                    'Sell',
+                  )}: ${formatAmountWhole(statistic.allTime.volume.sell, currency, locale)}`}
+                  testId="kpi-lifetime-volume"
+                />
+              </div>
+            </section>
 
             <ReferralBlock referral={statistic.referral} />
 
@@ -262,7 +309,6 @@ export default function PartnerDashboardApp(): JSX.Element {
               <div className="space-y-4">
                 <VolumeTimeChart timeline={timeline} theme={theme} />
                 <TransactionsTimeChart timeline={timeline} theme={theme} />
-                <PartialLegendNote hasPartial={hasPartial} />
               </div>
             )}
 

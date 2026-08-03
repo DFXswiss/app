@@ -51,12 +51,6 @@ export const SERIES_LABELS = {
 export const FILTER_ACTIVE_COLOR = 'var(--primary)';
 
 /**
- * Partial-bucket band — no longer drawn in charts (edge incompleteness is chips only).
- * Kept for unit tests of the unused helper.
- */
-export const PARTIAL_BAND_COLOR = '#9AA5B8';
-
-/**
  * Product program name — same for every partner. Not part of brand.title (document title only)
  * and not configured per partner.
  */

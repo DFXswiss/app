@@ -78,3 +78,48 @@ describe('KpiTile full value on narrow widths (D2)', () => {
     expect(screen.getByTestId('kpi-value').textContent).toBe(full);
   });
 });
+
+describe('KpiTile caption', () => {
+  it('renders the caption text with the ${testId}-caption data-testid', () => {
+    render(
+      <KpiTile
+        label="Trading users (total)"
+        value={24360}
+        format={(n) => formatCount(n)}
+        caption="19.2 % of registered users"
+        testId="kpi-trading-users"
+      />,
+    );
+
+    const caption = screen.getByTestId('kpi-trading-users-caption');
+    expect(caption).toBeInTheDocument();
+    expect(caption).toHaveTextContent('19.2 % of registered users');
+  });
+
+  /**
+   * Guard: when registeredUsers is 0 the caption must never surface NaN, Infinity,
+   * or a lone "0 %" — those would claim a conversion rate instead of the empty state.
+   * Mutation target: registeredUsers <= 0 → registeredUsers < 0 (0/0 = NaN would slip through).
+   */
+  it('does not render NaN, Infinity, or a bare 0% for the no-registered-users caption', () => {
+    render(
+      <KpiTile
+        label="Trading users (total)"
+        value={0}
+        format={(n) => formatCount(n)}
+        caption="No registered users yet"
+        testId="kpi-trading-users"
+      />,
+    );
+
+    const caption = screen.getByTestId('kpi-trading-users-caption');
+    const text = caption.textContent ?? '';
+    expect(text).toBe('No registered users yet');
+    expect(text).not.toMatch(/NaN/i);
+    expect(text).not.toMatch(/Infinity/i);
+    // Bare conversion zero must not appear; the empty-state prose must.
+    expect(text).not.toMatch(/(^|[^0-9])0\s*%/);
+    expect(text).not.toMatch(/(^|[^0-9])0%/);
+    expect(text).toMatch(/No registered users yet/);
+  });
+});

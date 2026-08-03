@@ -1,7 +1,6 @@
 import { PartnerTimelineBucket } from 'src/dto/partner-statistic.dto';
-import { isPartialBucket } from 'src/partner-dashboard/components/partial-marker';
 import { buildPartnerTimelineFixture } from 'src/partner-dashboard/fixtures/partner-statistic.fixture';
-import { rankNamedVolumes, timelineSeries } from 'src/partner-dashboard/util/series';
+import { hasActivity, rankNamedVolumes, timelineSeries } from 'src/partner-dashboard/util/series';
 
 function bucket(
   partial: Partial<PartnerTimelineBucket> & Pick<PartnerTimelineBucket, 'date'>,
@@ -65,23 +64,9 @@ describe('partner timeline series', () => {
     expect(timelineSeries(buckets, 'transactions', 'swap')[0][1]).toBe(3);
   });
 
-  it('isPartialBucket only reacts to the partial flag', () => {
-    const partial = bucket({
-      date: '2026-06-01T00:00:00.000Z',
-      volume: { buy: 50, sell: 5, swap: 1 },
-      transactions: { buy: 3, sell: 1, swap: 0 },
-      partial: true,
-    });
-    const notPartial = bucket({
-      date: '2026-06-02T00:00:00.000Z',
-      partial: false,
-    });
-
-    expect(isPartialBucket(partial.partial)).toBe(true);
-    expect(isPartialBucket(notPartial.partial)).toBe(false);
-  });
-
-  it('fixture timeline has partial edge buckets at both ends', () => {
+  it('fixture timeline still carries the partial flag from the API contract (data, not UI)', () => {
+    // The dashboard renders nothing from `partial` anymore, but the API still sends it —
+    // the field must survive on the data model even though no component reads it.
     const tl = buildPartnerTimelineFixture('Day');
     expect(tl.buckets[0].partial).toBe(true);
     expect(tl.buckets[tl.buckets.length - 1].partial).toBe(true);
@@ -116,5 +101,13 @@ describe('partner timeline series', () => {
       { name: 'D', volume: 0, transactions: 0 },
     ]);
     expect(ranked.map((r) => r.name)).toEqual(['C', 'B', 'D']);
+  });
+
+  it('hasActivity drops only rows with zero volume AND zero transactions', () => {
+    expect(hasActivity({ volume: 0, transactions: 0 })).toBe(false);
+    // Either side alone being non-zero is still real activity
+    expect(hasActivity({ volume: 0, transactions: 5 })).toBe(true);
+    expect(hasActivity({ volume: 42, transactions: 0 })).toBe(true);
+    expect(hasActivity({ volume: 42, transactions: 5 })).toBe(true);
   });
 });

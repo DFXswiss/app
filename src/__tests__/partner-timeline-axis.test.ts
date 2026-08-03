@@ -1,6 +1,5 @@
 import { buildPartnerTimelineFixture } from 'src/partner-dashboard/fixtures/partner-statistic.fixture';
 import {
-  annotationsToCategories,
   buildTimelineXAxis,
   formatTimelineTick,
   selectTimelineTickIndices,
@@ -109,27 +108,6 @@ describe('timeline X-axis tick strategy', () => {
     });
     expect(a.xaxis?.categories).toEqual(b.xaxis?.categories);
     expect(a.xaxis?.overwriteCategories).toEqual(b.xaxis?.overwriteCategories);
-  });
-
-  it('maps timestamp annotations onto bucket category strings', () => {
-    const buckets = buildPartnerTimelineFixture('Day', {
-      from: '2026-06-01T00:00:00.000Z',
-      to: '2026-06-05T23:59:59.000Z',
-    }).buckets;
-    const marked = buckets[1];
-    const next = buckets[2] ?? marked;
-    const anns = annotationsToCategories(
-      [
-        {
-          x: new Date(marked.date).getTime(),
-          x2: new Date(next.date).getTime(),
-          fillColor: 'transparent',
-        },
-      ],
-      buckets,
-    );
-    expect(anns[0].x).toBe(marked.date);
-    expect(anns[0].x2).toBe(next.date);
   });
 
   it('timelineSeriesValues strips timestamps for category series data', () => {

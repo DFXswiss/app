@@ -21,16 +21,6 @@ export function timelineSeries(
   });
 }
 
-export function bucketIsPartial(buckets: PartnerTimelineBucket[], index: number): boolean {
-  const bucket = buckets[index];
-  return bucket != null && bucket.partial === true;
-}
-
-/** Opacity for a bucket: partial edge buckets are drawn paler. */
-export function bucketOpacity(partial: boolean): number {
-  return partial ? 0.35 : 0.75;
-}
-
 /** @deprecated Prefer sequentialColor(index, total, theme). Dark palette fallback. */
 export const SEQUENTIAL_BAR_COLORS = SEQUENTIAL_BAR_COLORS_BY_THEME.dark;
 
@@ -50,6 +40,15 @@ export interface NamedVolumeRow {
   name: string;
   volume: number;
   transactions: number;
+}
+
+/**
+ * A row is unused (no activity at all) only when both volume and transactions are
+ * exactly zero. A zero-volume row with real transactions (e.g. free transfers) or a
+ * zero-transaction row with volume is still real activity and must not be dropped.
+ */
+export function hasActivity(row: Pick<NamedVolumeRow, 'volume' | 'transactions'>): boolean {
+  return row.volume !== 0 || row.transactions !== 0;
 }
 
 /** Sort descending by volume. Aggregate tail as "Sonstige" if > maxItems. */

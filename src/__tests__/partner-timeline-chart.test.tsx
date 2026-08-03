@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { VolumeTimeChart } from 'src/partner-dashboard/components/volume-time-chart';
 import { TransactionsTimeChart } from 'src/partner-dashboard/components/transactions-time-chart';
-import { PartialLegendNote } from 'src/partner-dashboard/components/partial-marker';
 import { PartnerTimeline } from 'src/dto/partner-statistic.dto';
 import { formatAmount } from 'src/partner-dashboard/util/format';
 import { timelineSeries } from 'src/partner-dashboard/util/series';
@@ -178,17 +177,19 @@ describe('timeline charts — thin day is a low point, no-activity day is the ze
     expect(volumeLabels[volumeLabels.length - 1]).not.toBe('');
   });
 
-  it('exposes partial-bucket legend when any bucket is partial', () => {
-    render(<PartialLegendNote hasPartial={true} />);
-    expect(screen.getByTestId('partial-legend')).toHaveTextContent(/incomplete/i);
+  it('renders nothing from `partial` even though the first bucket carries it (owner: marking is gone)', () => {
+    render(<VolumeTimeChart timeline={timeline} theme="dark" />);
+    expect(timeline.buckets[0].partial).toBe(true);
+    expect(screen.queryByTestId('partial-legend')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('partial-markers')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('partial-marker')).not.toBeInTheDocument();
+    expect(screen.queryByText(/incomplete/i)).not.toBeInTheDocument();
   });
 
-  it('renders visible partial markers for edge buckets (not only a legend note)', () => {
+  it('table has no "Note" column and no incomplete suffix on the partial bucket', () => {
     render(<VolumeTimeChart timeline={timeline} theme="dark" />);
-    expect(screen.getByTestId('partial-markers')).toBeInTheDocument();
-    const markers = screen.getAllByTestId('partial-marker');
-    expect(markers.length).toBeGreaterThanOrEqual(1);
-    expect(markers[0]).toHaveAttribute('data-partial', 'true');
-    expect(markers[0]).toHaveTextContent(/incomplete/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
+    expect(screen.queryByText('Note')).not.toBeInTheDocument();
+    expect(screen.queryByText(/incomplete/i)).not.toBeInTheDocument();
   });
 });

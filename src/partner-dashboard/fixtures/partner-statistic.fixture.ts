@@ -177,9 +177,10 @@ export function buildPartnerStatisticFixture(range?: FixtureRange): PartnerStati
           transactions: Math.round(780 * factor),
         },
         {
+          // No USD activity in this period — the row must not render (dashboard drops it).
           name: 'USD',
-          volume: scaleNum(25_300.85, factor),
-          transactions: Math.round(350 * factor),
+          volume: 0,
+          transactions: 0,
         },
       ],
       blockchains: [
@@ -221,9 +222,10 @@ export function buildPartnerStatisticFixture(range?: FixtureRange): PartnerStati
           transactions: Math.round(1_380 * factor),
         },
         {
+          // No card payments in this period — the row must not render (dashboard drops it).
           name: 'Card',
-          volume: scaleNum(52_100.35, factor),
-          transactions: Math.round(520 * factor),
+          volume: 0,
+          transactions: 0,
         },
         {
           name: 'OnChain',

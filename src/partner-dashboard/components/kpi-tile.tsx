@@ -4,6 +4,8 @@ export interface KpiTileProps {
   label: string;
   value: number | null | undefined;
   format: (n: number) => string;
+  /** Optional secondary line under the value (e.g. conversion rate, buy/sell split). */
+  caption?: string;
   testId?: string;
 }
 
@@ -11,7 +13,7 @@ export interface KpiTileProps {
  * Pure numeric KPI tile. null → genuinely absent (never drawn as 0); 0 → real zero.
  * Value is never truncated: tile grows in height; type scales down on narrow widths.
  */
-export function KpiTile({ label, value, format, testId }: KpiTileProps): JSX.Element {
+export function KpiTile({ label, value, format, caption, testId }: KpiTileProps): JSX.Element {
   const display = displayNullable(value, format);
 
   return (
@@ -35,6 +37,14 @@ export function KpiTile({ label, value, format, testId }: KpiTileProps): JSX.Ele
           data-testid="kpi-value"
         >
           {display.text}
+        </div>
+      )}
+      {caption != null && (
+        <div
+          className="text-2xs partner-text-tertiary mt-1 tabular-nums"
+          data-testid={`${testId ?? 'kpi-tile'}-caption`}
+        >
+          {caption}
         </div>
       )}
     </div>

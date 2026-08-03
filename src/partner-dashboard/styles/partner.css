@@ -79,12 +79,6 @@
   background: var(--primary-hover);
 }
 
-.partner-chip {
-  border: 1px dashed var(--border);
-  color: var(--text-secondary);
-  background: var(--surface);
-}
-
 .partner-tooltip {
   background: var(--surface);
   border: 1px solid var(--border);

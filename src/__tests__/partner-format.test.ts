@@ -1,5 +1,6 @@
 import {
   ABSENT_LABEL,
+  computeConversionRate,
   displayNullable,
   formatAmount,
   formatCount,
@@ -47,5 +48,26 @@ describe('partner format helpers', () => {
     if (zero.kind === 'value') {
       expect(zero.text).toBe('0');
     }
+  });
+
+  describe('computeConversionRate', () => {
+    it('returns tradingUsers / registeredUsers for a normal partner', () => {
+      const rate = computeConversionRate(24360, 126547);
+      expect(rate).toBeCloseTo(0.1925, 4);
+    });
+
+    it('returns null (not 0, NaN, or Infinity) when there are no registered users', () => {
+      const rate = computeConversionRate(0, 0);
+      expect(rate).toBeNull();
+      expect(rate).not.toBe(0);
+      expect(Number.isNaN(rate as unknown as number)).toBe(false);
+      expect(rate).not.toBe(Infinity);
+    });
+
+    it('returns 0 (distinct from null) when registered users exist but none traded', () => {
+      const rate = computeConversionRate(0, 100);
+      expect(rate).toBe(0);
+      expect(rate).not.toBeNull();
+    });
   });
 });

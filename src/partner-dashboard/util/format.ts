@@ -57,6 +57,20 @@ export function formatPercent(
   })} %`;
 }
 
+/**
+ * Trading-conversion rate: tradingUsers ÷ registeredUsers, as a 0..1 fraction for
+ * formatPercent(). Undefined (not 0, not NaN, not Infinity) when there are no
+ * registered users yet (brand-new partner, no installs) — that state is deliberately
+ * distinct from "0 % conversion", which would claim installs exist and none convert.
+ */
+export function computeConversionRate(
+  tradingUsers: number,
+  registeredUsers: number,
+): number | null {
+  if (registeredUsers <= 0) return null;
+  return tradingUsers / registeredUsers;
+}
+
 export type DisplayValue =
   | { kind: 'value'; text: string }
   | { kind: 'absent'; text: string }

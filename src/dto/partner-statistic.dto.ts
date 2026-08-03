@@ -108,6 +108,11 @@ export interface PartnerTimelineBucket {
   date: string;
   volume: PartnerTimelineVolume;
   transactions: PartnerTimelineVolume;
+  /**
+   * True when the bucket's natural range extends outside the requested period.
+   * The API still sends this; the dashboard deliberately renders nothing from it
+   * (no chip, no legend, no paler opacity, no tooltip suffix — owner decision).
+   */
   partial: boolean;
 }
 

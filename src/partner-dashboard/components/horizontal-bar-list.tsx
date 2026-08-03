@@ -1,6 +1,6 @@
 import { formatAmount, formatCount } from 'src/partner-dashboard/util/format';
 import { usePartnerTranslation } from 'src/partner-dashboard/util/i18n';
-import { NamedVolumeRow, rankNamedVolumes, sequentialColor } from 'src/partner-dashboard/util/series';
+import { hasActivity, NamedVolumeRow, rankNamedVolumes, sequentialColor } from 'src/partner-dashboard/util/series';
 import { PartnerTheme } from 'src/partner-dashboard/util/theme';
 import { EmptyState } from './empty-state';
 
@@ -15,6 +15,8 @@ export interface HorizontalBarListProps {
 
 /**
  * Horizontal bars, descending, sequential single-hue scale, direct value labels.
+ * A category with no activity in the period (zero volume AND zero transactions) is
+ * dropped entirely — it never sits there permanently showing 0.
  */
 export function HorizontalBarList({
   title,
@@ -25,7 +27,7 @@ export function HorizontalBarList({
   testId,
 }: HorizontalBarListProps): JSX.Element {
   const { translate, locale } = usePartnerTranslation();
-  const ranked = rankNamedVolumes(rows);
+  const ranked = rankNamedVolumes(rows.filter(hasActivity));
   const maxVolume = ranked.reduce((m, r) => Math.max(m, r.volume), 0);
 
   return (

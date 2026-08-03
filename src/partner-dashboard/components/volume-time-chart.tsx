@@ -11,7 +11,6 @@ import { PartnerTheme } from 'src/partner-dashboard/util/theme';
 import { buildTimelineXAxis, timelineSeriesValues } from 'src/partner-dashboard/util/timeline-axis';
 import { CollapsibleTable } from './collapsible-table';
 import { EmptyState } from './empty-state';
-import { formatPartialValue, PartialBucketMarkers } from './partial-marker';
 
 export interface VolumeTimeChartProps {
   timeline: PartnerTimeline;
@@ -41,9 +40,6 @@ export function VolumeTimeChart({ timeline, theme }: VolumeTimeChartProps): JSX.
     ],
     [buckets, seriesLabels],
   );
-
-  const partialFlags = useMemo(() => buckets.map((b) => b.partial), [buckets]);
-  const incompleteWord = translate('incomplete');
 
   const options = useMemo((): ApexOptions => {
     const base = baseChartOptions(theme);
@@ -92,26 +88,22 @@ export function VolumeTimeChart({ timeline, theme }: VolumeTimeChartProps): JSX.
           },
         },
         y: {
-          formatter: (val: number, opts) => {
-            const idx = opts.dataPointIndex;
+          formatter: (val: number) => {
             if (Number.isNaN(val)) {
               return ABSENT_LABEL;
             }
-            const partial = partialFlags[idx] === true;
-            const amount = formatAmount(val, currency, 2, locale);
-            return partial ? formatPartialValue(amount) : amount;
+            return formatAmount(val, currency, 2, locale);
           },
         },
       },
     };
-  }, [buckets, currency, granularity, locale, partialFlags, theme]);
+  }, [buckets, currency, granularity, locale, theme]);
 
   const tableRows = buckets.map((b) => ({
     date: new Date(b.date).toLocaleDateString(locale),
     buy: formatAmount(b.volume.buy, currency, 2, locale),
     sell: formatAmount(b.volume.sell, currency, 2, locale),
     swap: formatAmount(b.volume.swap, currency, 2, locale),
-    note: b.partial ? incompleteWord : '',
   }));
 
   const title = translate('Volume over time');
@@ -132,7 +124,6 @@ export function VolumeTimeChart({ timeline, theme }: VolumeTimeChartProps): JSX.
       ) : (
         <>
           <Chart type="area" height={300} options={options} series={series} />
-          <PartialBucketMarkers buckets={buckets} />
           <CollapsibleTable
             title={title}
             columns={[
@@ -140,7 +131,6 @@ export function VolumeTimeChart({ timeline, theme }: VolumeTimeChartProps): JSX.
               { key: 'buy', header: seriesLabels.buy, align: 'right' },
               { key: 'sell', header: seriesLabels.sell, align: 'right' },
               { key: 'swap', header: seriesLabels.swap, align: 'right' },
-              { key: 'note', header: translate('Note') },
             ]}
             rows={tableRows}
           />

@@ -6,11 +6,17 @@ import de from 'src/translations/languages/de.json';
  */
 const PARTNER_KEYS = [
   'Total volume',
+  'This period',
+  'All-time totals',
   'Transactions',
   'Average transaction size',
   'Active users',
   'New users',
   'Registered users (total)',
+  'Trading users (total)',
+  'Lifetime volume',
+  'of registered users',
+  'No registered users yet',
   'Volume by cryptocurrency',
   'Fiat currencies',
   'Blockchains',
@@ -33,11 +39,6 @@ const PARTNER_KEYS = [
   'Shows how much was traded in each period, split into buy, sell and swap.',
   'Shows how many operations happened in each period, split into buy, sell and swap.',
   'Date',
-  'Note',
-  'incomplete',
-  '{{value}} (incomplete)',
-  'Dates marked incomplete only partially cover the selected period (start or end of the range).',
-  'Incomplete period sections',
   'Theme',
   'Language',
   'Light',
@@ -88,6 +89,5 @@ describe('partner dashboard translations (screens/partner)', () => {
     expect(partner['New users']).toBe('Neue Nutzer');
     expect(partner['Show as table']).toBe('Als Tabelle anzeigen');
     expect(partner['Buy']).toBe('Kauf');
-    expect(partner['incomplete']).toBe('unvollständig');
   });
 });
