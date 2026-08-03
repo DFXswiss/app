@@ -1,6 +1,12 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import PartnerDashboardView from 'src/partner-dashboard/App';
 import { formatAmountWhole, formatCount } from 'src/partner-dashboard/util/format';
+import { mockSettingsState } from './helpers/mock-settings-context';
+
+jest.mock('src/contexts/settings.context', () => ({
+  // jest hoists this factory; mock-prefixed import is allowed in scope
+  useSettingsContext: () => mockSettingsState,
+}));
 
 /**
  * Render-path proof for the zero-registered guard.

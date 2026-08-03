@@ -91,37 +91,88 @@
   border-color: var(--border);
 }
 
+/* Header: title left, secondary controls right as one quiet group */
+.partner-header {
+  width: 100%;
+}
+
+.partner-header-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.partner-header-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.partner-header-controls {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+  /* Keep controls on one line; never steal the title's first row alone */
+  max-width: 100%;
+}
+
+/**
+ * Segmented secondary control — not a primary CTA.
+ * Active state is readable without colour alone (weight + surface inset +
+ * hairline ring); idle stays tertiary so numbers keep visual priority.
+ */
 .partner-switcher {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   padding: 2px;
   border-radius: var(--r-pill);
   border: 1px solid var(--border);
   background: var(--surface);
+  height: 2rem; /* 32px — equal height across both switchers */
+  box-sizing: border-box;
 }
 
 .partner-switcher button {
   appearance: none;
   border: 0;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  padding: 4px 10px;
+  font-weight: var(--fw-medium, 500);
+  letter-spacing: 0.04em;
+  /* Touch-friendly min size; compact enough for narrow headers */
+  min-width: 2rem;
+  min-height: calc(2rem - 4px);
+  padding: 0 0.55rem;
   border-radius: var(--r-pill);
-  line-height: 1.2;
+  line-height: 1;
   cursor: pointer;
+  white-space: nowrap;
 }
 
+/* Active: weight + inset surface + hairline — not accent fill */
 .partner-switcher button[aria-pressed='true'] {
-  background: var(--primary);
-  color: var(--primary-text);
+  background: var(--surface-2, var(--surface));
+  color: var(--text);
+  font-weight: var(--fw-bold, 700);
+  box-shadow: inset 0 0 0 1px var(--border-strong, var(--border));
 }
 
 .partner-switcher button:hover:not([aria-pressed='true']) {
-  color: var(--text);
+  color: var(--text-secondary);
+}
+
+.partner-switcher button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 
 .partner-fixture-badge {

@@ -55,6 +55,10 @@ const PARTNER_KEYS = [
   'Unknown error',
   'Retry',
   'Try again',
+  'Theme',
+  'Light',
+  'Dark',
+  'Language',
 ] as const;
 
 const partner = (de as { 'screens/partner': Record<string, string> })['screens/partner'];

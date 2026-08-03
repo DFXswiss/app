@@ -1176,6 +1176,10 @@
     "Try again": "Erneut versuchen",
     "Transactions over time": "Vorgänge über Zeit",
     "Shows how much was traded in each period, split into buy, sell and swap.": "Zeigt, wie viel in jedem Zeitraum gehandelt wurde — aufgeteilt nach Kauf, Verkauf und Swap.",
-    "Shows how many operations happened in each period, split into buy, sell and swap.": "Zeigt, wie viele Vorgänge in jedem Zeitraum stattfanden — aufgeteilt nach Kauf, Verkauf und Swap."
+    "Shows how many operations happened in each period, split into buy, sell and swap.": "Zeigt, wie viele Vorgänge in jedem Zeitraum stattfanden — aufgeteilt nach Kauf, Verkauf und Swap.",
+    "Theme": "Darstellung",
+    "Light": "Hell",
+    "Dark": "Dunkel",
+    "Language": "Sprache"
   }
 }

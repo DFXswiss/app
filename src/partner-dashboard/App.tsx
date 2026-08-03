@@ -19,7 +19,7 @@ import {
   formatPercent,
 } from './util/format';
 import { usePartnerTranslation } from './util/i18n';
-import { resolveInitialTheme } from './util/theme';
+import { themeClassName, usePartnerTheme } from './util/theme';
 
 function periodRange(days: PeriodDays): { from: string; to: string } {
   const to = new Date();
@@ -32,12 +32,12 @@ function periodRange(days: PeriodDays): { from: string; to: string } {
 /**
  * Partner dashboard presentation (charts, KPIs, referral, breakdowns).
  * Auth/role gate lives on the main-app screen; this view assumes a valid session.
- * Theme follows the light default of the main app surface (no local theme switcher).
+ * Theme is dashboard-local (class on this root only) and survives remount via localStorage.
  */
 export default function PartnerDashboardView(): JSX.Element {
   const { getPartnerStatistic, getPartnerTimeline, isFixture } = usePartnerDashboard();
   const { translate, locale } = usePartnerTranslation();
-  const theme = resolveInitialTheme();
+  const { theme, setTheme } = usePartnerTheme();
 
   const [periodDays, setPeriodDays] = useState<PeriodDays>(30);
   const [granularity, setGranularity] = useState<PartnerGranularity>('Day');
@@ -98,18 +98,16 @@ export default function PartnerDashboardView(): JSX.Element {
     return Array.from(map.entries()).map(([name, v]) => ({ name, ...v }));
   }, [statistic]);
 
-  const themeClass = theme === 'light' ? 'theme-light' : 'theme-dark';
-
   return (
     <div
       id="partner-dashboard-root"
-      className={`partner-dashboard ${themeClass}`}
+      className={`partner-dashboard ${themeClassName(theme)}`}
       data-theme={theme}
       data-testid="partner-dashboard-root"
       data-fixture={isFixture ? 'true' : 'false'}
     >
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4">
-        <PartnerHeader isFixture={isFixture} />
+        <PartnerHeader isFixture={isFixture} theme={theme} onThemeChange={setTheme} />
 
         {loading && <DashboardSkeleton />}
 
