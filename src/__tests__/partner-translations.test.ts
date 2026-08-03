@@ -5,6 +5,7 @@ import de from 'src/translations/languages/de.json';
  * Removing any of these from de.json must fail this suite (Gegenprobe).
  */
 const PARTNER_KEYS = [
+  'Partner Dashboard',
   'Total volume',
   'This period',
   'All-time totals',
@@ -39,21 +40,6 @@ const PARTNER_KEYS = [
   'Shows how much was traded in each period, split into buy, sell and swap.',
   'Shows how many operations happened in each period, split into buy, sell and swap.',
   'Date',
-  'Theme',
-  'Language',
-  'Light',
-  'Dark',
-  'Sign in',
-  'Log out',
-  'Wallet address',
-  'Challenge to sign',
-  'Signature',
-  'Public key (optional)',
-  'Request challenge',
-  'Please wait…',
-  'Sign-in failed.',
-  'Enter the partner wallet address, request a challenge, sign it with your wallet, then paste the signature.',
-  'No partner logo',
   'No data.',
   'Show as table',
   'Hide table',
@@ -85,6 +71,7 @@ describe('partner dashboard translations (screens/partner)', () => {
   });
 
   it('keeps a few known German strings that partners already saw', () => {
+    expect(partner['Partner Dashboard']).toBe('Partner-Dashboard');
     expect(partner['Total volume']).toBe('Gesamtvolumen');
     expect(partner['New users']).toBe('Neue Nutzer');
     expect(partner['Show as table']).toBe('Als Tabelle anzeigen');

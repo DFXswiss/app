@@ -81,6 +81,7 @@ const SupportDashboardOverviewScreen = lazy(() => import('./screens/support-dash
 const SupportDashboardScreen = lazy(() => import('./screens/support-dashboard.screen'));
 const SupportDashboardIssueScreen = lazy(() => import('./screens/support-dashboard-issue.screen'));
 const SupportDashboardCreateScreen = lazy(() => import('./screens/support-dashboard-create.screen'));
+const PartnerDashboardScreen = lazy(() => import('./screens/partner-dashboard.screen'));
 const NotesScreen = lazy(() => import('./screens/notes.screen'));
 const TemplatesScreen = lazy(() => import('./screens/support-templates.screen'));
 const RealunitScreen = lazy(() => import('./screens/realunit.screen'));
@@ -488,6 +489,10 @@ export const Routes = [
       {
         path: 'support/dashboard/create',
         element: withSuspense(<SupportDashboardCreateScreen />),
+      },
+      {
+        path: 'partner/dashboard',
+        element: withSuspense(<PartnerDashboardScreen />),
       },
       {
         path: 'notes',

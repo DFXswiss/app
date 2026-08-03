@@ -1127,6 +1127,7 @@
     "Complete verification": "Verifizierung abschliessen"
   },
   "screens/partner": {
+    "Partner Dashboard": "Partner-Dashboard",
     "Total volume": "Gesamtvolumen",
     "This period": "Dieser Zeitraum",
     "All-time totals": "Gesamtwerte",
@@ -1175,21 +1176,6 @@
     "Try again": "Erneut versuchen",
     "Transactions over time": "Vorgänge über Zeit",
     "Shows how much was traded in each period, split into buy, sell and swap.": "Zeigt, wie viel in jedem Zeitraum gehandelt wurde — aufgeteilt nach Kauf, Verkauf und Swap.",
-    "Shows how many operations happened in each period, split into buy, sell and swap.": "Zeigt, wie viele Vorgänge in jedem Zeitraum stattfanden — aufgeteilt nach Kauf, Verkauf und Swap.",
-    "Theme": "Darstellung",
-    "Language": "Sprache",
-    "Light": "Hell",
-    "Dark": "Dunkel",
-    "Sign in": "Anmelden",
-    "Log out": "Abmelden",
-    "Wallet address": "Wallet-Adresse",
-    "Challenge to sign": "Zu signierende Challenge",
-    "Signature": "Signatur",
-    "Public key (optional)": "Öffentlicher Schlüssel (optional)",
-    "Request challenge": "Challenge anfordern",
-    "Please wait…": "Bitte warten…",
-    "Sign-in failed.": "Anmeldung fehlgeschlagen.",
-    "Enter the partner wallet address, request a challenge, sign it with your wallet, then paste the signature.": "Partner-Wallet-Adresse eingeben, Challenge anfordern, mit der Wallet signieren und die Signatur einfügen.",
-    "No partner logo": "Kein Partner-Logo"
+    "Shows how many operations happened in each period, split into buy, sell and swap.": "Zeigt, wie viele Vorgänge in jedem Zeitraum stattfanden — aufgeteilt nach Kauf, Verkauf und Swap."
   }
 }

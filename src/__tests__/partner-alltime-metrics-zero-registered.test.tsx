@@ -1,5 +1,5 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
-import MainPartner from 'src/Main.partner';
+import PartnerDashboardView from 'src/partner-dashboard/App';
 import { formatAmountWhole, formatCount } from 'src/partner-dashboard/util/format';
 
 /**
@@ -8,8 +8,11 @@ import { formatAmountWhole, formatCount } from 'src/partner-dashboard/util/forma
  * Separate file on purpose: mocking `usePartnerDashboard` here would break the
  * real-fixture suite in `partner-alltime-metrics.test.tsx` if co-located.
  */
+jest.mock('src/hooks/guarded-api.hook', () => ({
+  useGuardedApi: () => ({ call: jest.fn() }),
+}));
+
 jest.mock('src/hooks/partner-dashboard.hook', () => {
-  const actual = jest.requireActual('src/hooks/partner-dashboard.hook');
   const { buildPartnerStatisticFixture, buildPartnerTimelineFixture } = jest.requireActual(
     'src/partner-dashboard/fixtures/partner-statistic.fixture',
   );
@@ -22,7 +25,6 @@ jest.mock('src/hooks/partner-dashboard.hook', () => {
     },
   };
   return {
-    ...actual,
     usePartnerDashboard: () => ({
       isFixture: true,
       getPartnerStatistic: async () => zeroAllTimeStatistic,
@@ -54,7 +56,7 @@ describe('partner dashboard all-time metrics with zero registered users', () => 
   });
 
   it('shows a not-applicable conversion caption — never NaN, Infinity, or a percent', async () => {
-    render(<MainPartner />);
+    render(<PartnerDashboardView />);
 
     await waitFor(() => {
       expect(screen.getByTestId('kpi-trading-users')).toBeInTheDocument();

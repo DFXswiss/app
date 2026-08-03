@@ -1,26 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { PartnerBrand } from 'src/config/partner-dashboard.config';
 import { PartnerGranularity, PartnerStatistic, PartnerTimeline } from 'src/dto/partner-statistic.dto';
-import { usePartnerAuth } from 'src/hooks/partner-auth.hook';
-import { PartnerApiError, usePartnerDashboard } from 'src/hooks/partner-dashboard.hook';
+import { usePartnerDashboard } from 'src/hooks/partner-dashboard.hook';
 import { ErrorState } from './components/error-state';
 import { PartnerHeader } from './components/header';
 import { HorizontalBarList } from './components/horizontal-bar-list';
 import { KpiTile } from './components/kpi-tile';
-import { LoginScreen } from './components/login-screen';
 import { PeriodControls, PeriodDays } from './components/period-controls';
 import { ReferralBlock } from './components/referral-block';
 import { DashboardSkeleton } from './components/skeleton';
 import { TransactionsTimeChart } from './components/transactions-time-chart';
 import { VolumeTimeChart } from './components/volume-time-chart';
 import './styles/partner.css';
-import {
-  DEFAULT_BRAND_REGISTRY,
-  loadBrandRegistry,
-  resolveBrandFromToken,
-  resolveFixtureBrand,
-  ResolvedPartnerBrand,
-} from './util/brands';
 import {
   computeConversionRate,
   formatAmount,
@@ -29,7 +19,7 @@ import {
   formatPercent,
 } from './util/format';
 import { usePartnerTranslation } from './util/i18n';
-import { usePartnerTheme } from './util/theme';
+import { resolveInitialTheme } from './util/theme';
 
 function periodRange(days: PeriodDays): { from: string; to: string } {
   const to = new Date();
@@ -39,30 +29,16 @@ function periodRange(days: PeriodDays): { from: string; to: string } {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-function toPartnerBrand(resolved: ResolvedPartnerBrand): PartnerBrand {
-  return {
-    key: resolved.key,
-    displayName: resolved.displayName,
-    title: resolved.title,
-    accent: resolved.accent,
-    logoUrl: resolved.logoUrl,
-    isFallback: resolved.isFallback,
-  };
-}
-
-export default function PartnerDashboardApp(): JSX.Element {
-  const auth = usePartnerAuth();
+/**
+ * Partner dashboard presentation (charts, KPIs, referral, breakdowns).
+ * Auth/role gate lives on the main-app screen; this view assumes a valid session.
+ * Theme follows the light default of the main app surface (no local theme switcher).
+ */
+export default function PartnerDashboardView(): JSX.Element {
   const { getPartnerStatistic, getPartnerTimeline, isFixture } = usePartnerDashboard();
-  const { translate, locale, partnerLanguage, setPartnerLanguage } = usePartnerTranslation();
-  const { theme, setTheme } = usePartnerTheme();
+  const { translate, locale } = usePartnerTranslation();
+  const theme = resolveInitialTheme();
 
-  const [brand, setBrand] = useState<PartnerBrand>(() =>
-    toPartnerBrand(
-      isFixture
-        ? resolveFixtureBrand(DEFAULT_BRAND_REGISTRY)
-        : resolveBrandFromToken(DEFAULT_BRAND_REGISTRY, auth.session),
-    ),
-  );
   const [periodDays, setPeriodDays] = useState<PeriodDays>(30);
   const [granularity, setGranularity] = useState<PartnerGranularity>('Day');
   const [statistic, setStatistic] = useState<PartnerStatistic | null>(null);
@@ -73,33 +49,7 @@ export default function PartnerDashboardApp(): JSX.Element {
 
   const range = useMemo(() => periodRange(periodDays), [periodDays]);
 
-  // Resolve brand from runtime registry + session (or fixture Cake entry).
-  // Fixture mode uses the baked-in DEFAULT registry only — no network, not even brands.json.
-  useEffect(() => {
-    if (isFixture) {
-      setBrand(toPartnerBrand(resolveFixtureBrand(DEFAULT_BRAND_REGISTRY)));
-      return;
-    }
-    let cancelled = false;
-    void loadBrandRegistry().then((registry) => {
-      if (cancelled) return;
-      setBrand(toPartnerBrand(resolveBrandFromToken(registry, auth.session)));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [isFixture, auth.session, auth.isAuthenticated]);
-
-  const { isAuthenticated, invalidateSession } = auth;
-
   const load = useCallback(async () => {
-    if (!isAuthenticated) {
-      setLoading(false);
-      setStatistic(null);
-      setTimeline(null);
-      setError(null);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
@@ -108,13 +58,6 @@ export default function PartnerDashboardApp(): JSX.Element {
       setStatistic(stat);
       setTimeline(tl);
     } catch (err) {
-      if (err instanceof PartnerApiError && err.status === 401) {
-        invalidateSession();
-        setStatistic(null);
-        setTimeline(null);
-        setError(null);
-        return;
-      }
       const message =
         err instanceof Error && err.message
           ? err.message
@@ -125,16 +68,7 @@ export default function PartnerDashboardApp(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [
-    isAuthenticated,
-    invalidateSession,
-    getPartnerStatistic,
-    getPartnerTimeline,
-    range.from,
-    range.to,
-    granularity,
-    translate,
-  ]);
+  }, [getPartnerStatistic, getPartnerTimeline, range.from, range.to, granularity, translate]);
 
   useEffect(() => {
     void load();
@@ -166,48 +100,16 @@ export default function PartnerDashboardApp(): JSX.Element {
 
   const themeClass = theme === 'light' ? 'theme-light' : 'theme-dark';
 
-  // Auth gate: without a valid token (and not fixture), only the login screen is shown.
-  // No KPI markup, no partner brand, no metrics fetch.
-  if (!isAuthenticated) {
-    return (
-      <div
-        id="partner-dashboard-root"
-        className={`partner-dashboard ${themeClass}`}
-        data-theme={theme}
-        data-testid="partner-dashboard-root"
-        data-auth="required"
-      >
-        <LoginScreen
-          theme={theme}
-          onThemeChange={setTheme}
-          language={partnerLanguage}
-          onLanguageChange={setPartnerLanguage}
-          requestChallenge={auth.requestChallenge}
-          signIn={auth.signIn}
-        />
-      </div>
-    );
-  }
-
   return (
     <div
       id="partner-dashboard-root"
       className={`partner-dashboard ${themeClass}`}
       data-theme={theme}
       data-testid="partner-dashboard-root"
-      data-auth="ok"
-      data-brand-fallback={brand.isFallback ? 'true' : 'false'}
+      data-fixture={isFixture ? 'true' : 'false'}
     >
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4">
-        <PartnerHeader
-          brand={brand}
-          isFixture={isFixture}
-          theme={theme}
-          onThemeChange={setTheme}
-          language={partnerLanguage}
-          onLanguageChange={setPartnerLanguage}
-          onLogout={isFixture ? undefined : auth.logout}
-        />
+        <PartnerHeader isFixture={isFixture} />
 
         {loading && <DashboardSkeleton />}
 
@@ -228,7 +130,6 @@ export default function PartnerDashboardApp(): JSX.Element {
               <PeriodControls
                 periodDays={periodDays}
                 granularity={granularity}
-                accent={brand.accent}
                 onPeriodChange={setPeriodDays}
                 onGranularityChange={setGranularity}
               />

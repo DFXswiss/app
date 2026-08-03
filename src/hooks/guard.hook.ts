@@ -29,6 +29,39 @@ export function useSupportDashboardGuard(redirectPath = '/', isActive = true) {
   useUserRoleGuard(SUPPORT_DASHBOARD_ROLES, redirectPath, isActive);
 }
 
+/**
+ * API role name for the partner dashboard (`Partner`).
+ *
+ * BEFUND: `@dfx.swiss/core@0.6.0-beta.0` (re-exported by `@dfx.swiss/react`) has no
+ * `UserRole.PARTNER` / `UserRole.Partner` member — the enum ends at `MONITORING`.
+ * The product role is still `"Partner"` on the API. Until the package ships the enum
+ * member, this allow-list holds the runtime role string; access checks use
+ * `isPartnerDashboardRole` (string equality on `session.role`). No cast onto `UserRole`.
+ */
+export const PARTNER_DASHBOARD_ROLES = ['Partner'] as const;
+
+export function isPartnerDashboardRole(role: UserRole | string | undefined): boolean {
+  if (role == null) return false;
+  const value = String(role);
+  for (const allowed of PARTNER_DASHBOARD_ROLES) {
+    if (value === allowed) return true;
+  }
+  return false;
+}
+
+export function usePartnerDashboardGuard(redirectPath = '/', isActive = true) {
+  const { isLoggedIn } = useSessionContext();
+  const { isInitialized } = useWalletContext();
+  const { navigate } = useNavigation();
+  const { session } = useAuthContext();
+
+  useEffect(() => {
+    if (isActive && isInitialized && (!isLoggedIn || (session && !isPartnerDashboardRole(session.role)))) {
+      navigate(redirectPath, { setRedirect: true });
+    }
+  }, [session, isLoggedIn, isInitialized, navigate, isActive, redirectPath]);
+}
+
 function useUserRoleGuard(requiresUserRoles: UserRole[], redirectPath = '/', isActive = true) {
   const { isLoggedIn } = useSessionContext();
   const { isInitialized } = useWalletContext();

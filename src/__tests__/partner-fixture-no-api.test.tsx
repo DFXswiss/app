@@ -1,7 +1,13 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { usePartnerDashboard } from 'src/hooks/partner-dashboard.hook';
-import MainPartner from 'src/Main.partner';
+import PartnerDashboardView from 'src/partner-dashboard/App';
 import { PartnerErrorBoundary } from 'src/partner-dashboard/components/error-boundary';
+
+const mockCall = jest.fn();
+
+jest.mock('src/hooks/guarded-api.hook', () => ({
+  useGuardedApi: () => ({ call: mockCall }),
+}));
 
 jest.mock('react-apexcharts', () => {
   return function MockChart() {
@@ -34,6 +40,7 @@ describe('fixture mode makes no API calls (D5)', () => {
 
   beforeEach(() => {
     process.env.REACT_APP_PARTNER_FIXTURE = 'true';
+    mockCall.mockReset();
     fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(() => {
       throw new Error('fetch must not be called in fixture mode');
     });
@@ -44,7 +51,7 @@ describe('fixture mode makes no API calls (D5)', () => {
     fetchSpy.mockRestore();
   });
 
-  it('usePartnerDashboard returns fixtures without calling fetch', async () => {
+  it('usePartnerDashboard returns fixtures without calling fetch or guarded API', async () => {
     render(<HookProbe />);
     expect(screen.getByTestId('is-fixture')).toHaveTextContent('true');
 
@@ -53,18 +60,20 @@ describe('fixture mode makes no API calls (D5)', () => {
     });
 
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mockCall).not.toHaveBeenCalled();
   });
 
-  it('MainPartner renders the dashboard in fixture mode without fetch', async () => {
-    render(<MainPartner />);
+  it('PartnerDashboardView renders in fixture mode without network', async () => {
+    render(<PartnerDashboardView />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('partner-shell')).toHaveAttribute('data-fixture', 'true');
+      expect(screen.getByTestId('partner-dashboard-root')).toHaveAttribute('data-fixture', 'true');
     });
     await waitFor(() => {
       expect(screen.getByTestId('partner-header')).toBeInTheDocument();
     });
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mockCall).not.toHaveBeenCalled();
   });
 });
 

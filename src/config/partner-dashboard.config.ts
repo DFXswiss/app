@@ -1,30 +1,6 @@
 import { SERIES_COLORS_BY_THEME } from 'src/partner-dashboard/util/theme';
 
 /**
- * Partner brand shape used by the header and period controls.
- * Branding is resolved at runtime from public/partner-brands/brands.json
- * (see partner-dashboard/util/brands.ts) — not via REACT_APP_PARTNER_KEY.
- */
-export interface PartnerBrand {
-  key: string;
-  displayName: string;
-  /** Full product title (document <title> / meta only — not repeated next to logos). */
-  title: string;
-  /**
-   * Partner brand accent — reserved for rare brand marks, not for full-width UI chrome.
-   * Active filters use FILTER_ACTIVE_COLOR (dfxBlue) instead so two loud fills do not compete.
-   */
-  accent: string;
-  /**
-   * Absolute (or root-relative) URL of the partner logo under public/partner-brands/.
-   * Null = unknown partner fallback: DFX logo + plain display name only (no empty box).
-   */
-  logoUrl: string | null;
-  /** True when no registry entry matched. */
-  isFallback?: boolean;
-}
-
-/**
  * Series colours for buy / sell / swap — categories only (time-series charts).
  *
  * Validated palette (dataviz skill, both themes pass Helligkeitsband / Chroma / CVD /
@@ -51,7 +27,6 @@ export const SERIES_LABELS = {
 export const FILTER_ACTIVE_COLOR = 'var(--primary)';
 
 /**
- * Product program name — same for every partner. Not part of brand.title (document title only)
- * and not configured per partner.
+ * Product program name — same for every partner session.
  */
 export const PARTNER_PROGRAM_NAME = 'Non-Custodial Partner Program';

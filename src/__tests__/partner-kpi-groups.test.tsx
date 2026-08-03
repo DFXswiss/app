@@ -1,11 +1,15 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import MainPartner from 'src/Main.partner';
+import PartnerDashboardView from 'src/partner-dashboard/App';
 
 jest.mock('react-apexcharts', () => {
   return function MockChart() {
     return <div data-testid="mock-apex-chart" />;
   };
 });
+
+jest.mock('src/hooks/guarded-api.hook', () => ({
+  useGuardedApi: () => ({ call: jest.fn() }),
+}));
 
 describe('partner dashboard KPI groups', () => {
   const originalFixture = process.env.REACT_APP_PARTNER_FIXTURE;
@@ -24,7 +28,7 @@ describe('partner dashboard KPI groups', () => {
   });
 
   it('splits period and all-time KPIs into labeled sections with correct membership', async () => {
-    render(<MainPartner />);
+    render(<PartnerDashboardView />);
 
     await waitFor(() => {
       expect(screen.getByTestId('kpi-period-section')).toBeInTheDocument();

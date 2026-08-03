@@ -1,11 +1,4 @@
-import { useCallback, useState } from 'react';
-
 export type PartnerTheme = 'light' | 'dark';
-
-export const PARTNER_THEME_STORAGE_KEY = 'partner-dashboard-theme';
-export const PARTNER_LANG_STORAGE_KEY = 'partner-dashboard-language';
-
-export type PartnerLanguage = 'de' | 'en';
 
 /** Series colours validated for each surface (dataviz skill). Not from the design pod. */
 export const SERIES_COLORS_BY_THEME: Record<
@@ -30,51 +23,12 @@ export const SEQUENTIAL_BAR_COLORS_BY_THEME: Record<PartnerTheme, readonly strin
   dark: ['#3f86fb', '#5a81bb', '#4a6fa0', '#3d5a80', '#2a4a70', '#1d3a5c', '#152d4a', '#0d2240'],
 };
 
-export function readStoredTheme(): PartnerTheme | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(PARTNER_THEME_STORAGE_KEY);
-    if (raw === 'light' || raw === 'dark') return raw;
-  } catch {
-    // ignore storage errors
-  }
-  return null;
-}
-
 /**
- * Partner dashboard defaults to light when nothing is stored.
- * Deliberate product choice: do not follow prefers-color-scheme (even if the
- * OS is dark) so first paint stays light until the user picks a theme.
+ * Embedded in the main app (light wallet surface). No local theme switcher —
+ * main-app chrome has no dark mode to sync with.
  */
 export function resolveInitialTheme(): PartnerTheme {
-  return readStoredTheme() ?? 'light';
-}
-
-export function persistTheme(theme: PartnerTheme): void {
-  try {
-    window.localStorage.setItem(PARTNER_THEME_STORAGE_KEY, theme);
-  } catch {
-    // ignore
-  }
-}
-
-export function readStoredLanguage(): PartnerLanguage | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(PARTNER_LANG_STORAGE_KEY);
-    if (raw === 'de' || raw === 'en') return raw;
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-export function persistLanguage(lang: PartnerLanguage): void {
-  try {
-    window.localStorage.setItem(PARTNER_LANG_STORAGE_KEY, lang);
-  } catch {
-    // ignore
-  }
+  return 'light';
 }
 
 /** Theme class names applied on the partner root (and probe elements). */
@@ -95,13 +49,8 @@ export function readCssVar(name: string, el?: Element | null): string {
 
 /**
  * Read a pod CSS variable for a given theme — never from a stale host class.
- *
- * Chart options are built during React render (useMemo). At that moment the
- * committed DOM may still carry the previous theme class, so reading
- * `#partner-dashboard-root` yields the wrong colours (white legend on light
- * surface after dark→light). Prefer the live root only when its class already
- * matches; otherwise resolve against a short-lived probe that carries the
- * requested theme class (pod tokens live on `.theme-light` / `.theme-dark`).
+ * Chart options are built during React render (useMemo); resolve against a probe
+ * that carries the requested theme class when the live root is not ready.
  */
 export function readThemeCssVar(name: string, theme: PartnerTheme): string {
   if (typeof document === 'undefined' || typeof getComputedStyle === 'undefined') return '';
@@ -122,27 +71,4 @@ export function readThemeCssVar(name: string, theme: PartnerTheme): string {
   } finally {
     probe.remove();
   }
-}
-
-export function usePartnerTheme(): {
-  theme: PartnerTheme;
-  setTheme: (theme: PartnerTheme) => void;
-  toggleTheme: () => void;
-} {
-  const [theme, setThemeState] = useState<PartnerTheme>(() => resolveInitialTheme());
-
-  const setTheme = useCallback((next: PartnerTheme) => {
-    setThemeState(next);
-    persistTheme(next);
-  }, []);
-
-  const toggleTheme = useCallback(() => {
-    setThemeState((prev) => {
-      const next: PartnerTheme = prev === 'dark' ? 'light' : 'dark';
-      persistTheme(next);
-      return next;
-    });
-  }, []);
-
-  return { theme, setTheme, toggleTheme };
 }

@@ -1,5 +1,5 @@
 import { useAuthContext, UserRole, useSessionContext, useUserContext } from '@dfx.swiss/react';
-import { SUPPORT_DASHBOARD_ROLES } from 'src/hooks/guard.hook';
+import { isPartnerDashboardRole, SUPPORT_DASHBOARD_ROLES } from 'src/hooks/guard.hook';
 import {
   DfxIcon,
   IconColor,
@@ -212,6 +212,15 @@ function NavigationMenu({ setIsNavigationOpen, small = false }: NavigationMenuCo
                   icon={IconVariant.SUPPORT}
                   label={translate('screens/support', 'Support Dashboard')}
                   url="/support/dashboard"
+                  target="_self"
+                  onClose={() => setIsNavigationOpen(false)}
+                />
+              )}
+              {session?.role && isPartnerDashboardRole(session.role) && (
+                <NavigationLink
+                  icon={IconVariant.REFERRAL}
+                  label={translate('screens/partner', 'Partner Dashboard')}
+                  url="/partner/dashboard"
                   target="_self"
                   onClose={() => setIsNavigationOpen(false)}
                 />

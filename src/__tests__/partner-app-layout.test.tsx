@@ -1,11 +1,15 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import MainPartner from 'src/Main.partner';
+import PartnerDashboardView from 'src/partner-dashboard/App';
 
 jest.mock('react-apexcharts', () => {
   return function MockChart() {
     return <div data-testid="mock-apex-chart" />;
   };
 });
+
+jest.mock('src/hooks/guarded-api.hook', () => ({
+  useGuardedApi: () => ({ call: jest.fn() }),
+}));
 
 describe('partner dashboard block order', () => {
   const originalFixture = process.env.REACT_APP_PARTNER_FIXTURE;
@@ -24,7 +28,7 @@ describe('partner dashboard block order', () => {
   });
 
   it('places the Referral block after the KPI grid and before the volume chart', async () => {
-    render(<MainPartner />);
+    render(<PartnerDashboardView />);
 
     await waitFor(() => {
       expect(screen.getByTestId('referral-block')).toBeInTheDocument();

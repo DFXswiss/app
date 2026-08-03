@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import MainPartner from 'src/Main.partner';
+import PartnerDashboardView from 'src/partner-dashboard/App';
 import {
   formatAmountWhole,
   formatCount,
@@ -11,6 +11,10 @@ jest.mock('react-apexcharts', () => {
     return <div data-testid="mock-apex-chart" />;
   };
 });
+
+jest.mock('src/hooks/guarded-api.hook', () => ({
+  useGuardedApi: () => ({ call: jest.fn() }),
+}));
 
 describe('partner dashboard all-time metrics (trading users + lifetime volume)', () => {
   const originalFixture = process.env.REACT_APP_PARTNER_FIXTURE;
@@ -29,7 +33,7 @@ describe('partner dashboard all-time metrics (trading users + lifetime volume)',
   });
 
   it('shows trading users, conversion rate caption, and lifetime volume with buy/sell split', async () => {
-    render(<MainPartner />);
+    render(<PartnerDashboardView />);
 
     await waitFor(() => {
       expect(screen.getByTestId('kpi-trading-users')).toBeInTheDocument();
