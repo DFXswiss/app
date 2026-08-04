@@ -1,6 +1,7 @@
-// Regression: setRedirect must remember pathname + search so mail deep-links
-// (e.g. /settings?a=call) return to the same section after login. An explicit
-// options.redirectPath must stay untouched.
+// Regression: setRedirect must remember pathname + allowlisted search so mail deep-links
+// (e.g. /settings?a=call) return to the same section after login, without forwarding
+// sensitive params (e.g. code=) into magic-link / Alby redirectUri.
+// An explicit options.redirectPath must stay untouched.
 
 // utils.ts pulls ESM from @dfx.swiss/react via navigation.hook → relativeUrl; stub it.
 jest.mock('@dfx.swiss/react', () => ({}));
@@ -74,5 +75,69 @@ describe('useNavigation setRedirect query survival', () => {
     expect(mockSetRedirectPath).toHaveBeenCalledTimes(1);
     expect(mockSetRedirectPath).toHaveBeenCalledWith('/settings');
     expect(mockSetRedirectPath.mock.calls[0][0]).not.toContain('?');
+  });
+
+  it('discards code (KYC access hash) when memorizing the return path', () => {
+    mockPathname = '/kyc';
+    mockSearch = '?code=secret-kyc-hash';
+
+    const { result } = renderHook(() => useNavigation());
+
+    act(() => {
+      result.current.navigate('/2fa', { setRedirect: true });
+    });
+
+    expect(mockSetRedirectPath).toHaveBeenCalledTimes(1);
+    expect(mockSetRedirectPath).toHaveBeenCalledWith('/kyc');
+    expect(mockSetRedirectPath.mock.calls[0][0]).not.toContain('code');
+  });
+
+  it('keeps allowlisted params and drops the rest when mixed', () => {
+    mockPathname = '/settings';
+    mockSearch = '?a=call&code=secret-kyc-hash&user=alice@example.com';
+
+    const { result } = renderHook(() => useNavigation());
+
+    act(() => {
+      result.current.navigate('/login', { setRedirect: true });
+    });
+
+    expect(mockSetRedirectPath).toHaveBeenCalledTimes(1);
+    expect(mockSetRedirectPath).toHaveBeenCalledWith('/settings?a=call');
+    const stored: string = mockSetRedirectPath.mock.calls[0][0];
+    expect(stored).not.toContain('code');
+    expect(stored).not.toContain('user');
+  });
+
+  it('navigateTo receives the merged relative target (not the bare path)', () => {
+    mockPathname = '/settings';
+    mockSearch = '?a=call';
+
+    const { result } = renderHook(() => useNavigation());
+
+    act(() => {
+      result.current.navigate('/login', { setRedirect: true });
+    });
+
+    // navigate(string) must call navigateTo(relativeUrl({ path: to, params: live search })),
+    // not navigateTo(to) alone — otherwise live query is dropped on the way to the target.
+    expect(mockNavigateTo).toHaveBeenCalled();
+    expect(mockNavigateTo.mock.calls[0][0]).toBe('/login?a=call');
+  });
+
+  it('goBack navigates to the stored redirectPath, not a hard-coded default', () => {
+    mockRedirectPath = '/settings?a=call';
+    mockPathname = '/login';
+    mockSearch = '';
+
+    const { result } = renderHook(() => useNavigation());
+
+    act(() => {
+      result.current.goBack();
+    });
+
+    expect(mockSetRedirectPath).toHaveBeenCalledWith(undefined);
+    expect(mockNavigateTo).toHaveBeenCalled();
+    expect(mockNavigateTo.mock.calls[0][0]).toBe('/settings?a=call');
   });
 });
