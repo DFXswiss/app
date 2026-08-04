@@ -5,7 +5,7 @@ import {
   formatCount,
   formatPercent,
 } from 'src/partner-dashboard/util/format';
-import { mockSettingsState } from './helpers/mock-settings-context';
+import { mockSettingsState } from 'src/test-helpers/mock-settings-context';
 
 jest.mock('src/contexts/settings.context', () => ({
   // jest allows out-of-scope vars prefixed with `mock` inside the factory
