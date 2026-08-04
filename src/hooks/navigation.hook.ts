@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { NavigateOptions, To, useLocation, useNavigate } from 'react-router-dom';
 import { useAppHandlingContext } from '../contexts/app-handling.context';
-import { relativeUrl } from '../util/utils';
+import { redirectAllowedParams, relativeUrl } from '../util/utils';
 
 interface NavigationOptions extends NavigateOptions {
   clearParams?: string[];
@@ -22,8 +22,11 @@ export function useNavigation(): NavigationInterface {
   const { redirectPath, setRedirectPath } = useAppHandlingContext();
 
   function navigate(to: To | number, options?: NavigationOptions) {
-    // Include search so deep-links (e.g. /settings?a=call) survive login; explicit redirectPath unchanged.
-    if (options?.setRedirect) setRedirectPath(options?.redirectPath ?? `${pathname}${search}`);
+    // Remember only allowlisted query params (e.g. a=call) so deep-links survive login without
+    // leaking code=/user= into magic-link / Alby redirectUri. Explicit redirectPath unchanged.
+    if (options?.setRedirect) {
+      setRedirectPath(options?.redirectPath ?? relativeUrl({ path: pathname, params: redirectAllowedParams(search) }));
+    }
 
     switch (typeof to) {
       case 'number':

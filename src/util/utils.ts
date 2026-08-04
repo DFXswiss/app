@@ -80,6 +80,22 @@ export function relativeUrl({ path, params }: { path: string; params?: URLSearch
   return query ? `${pathname}?${query}` : pathname;
 }
 
+/**
+ * Allowlist for login-return paths stored via setRedirect: only params that may reappear in
+ * mail magic-link redirectUri / Alby redirect. Currently `a` (mail section anchor). Do not copy
+ * the entire live search — that would leak code=/user=/arbitrary into the outbound link.
+ * Explicit options.redirectPath is not filtered by this helper.
+ * Same style as personalIbanOnlyParams (src/util/personal-iban.ts).
+ */
+export function redirectAllowedParams(search: string): URLSearchParams {
+  const params = new URLSearchParams();
+  const a = new URLSearchParams(search).get('a');
+  if (a != null) {
+    params.set('a', a);
+  }
+  return params;
+}
+
 // SDK call path (DfxHttpClient config.url): the leading slash is FORBIDDEN because the client joins
 // baseUrl + '/' + url. A leading slash would produce a double slash (e.g. .../v1//realunit/...) and
 // a 404 before any guard runs. Use for call() configs, never for router navigation.
