@@ -1,8 +1,14 @@
 import de from 'src/translations/languages/de.json';
+import fr from 'src/translations/languages/fr.json';
+import itIT from 'src/translations/languages/it.json';
 
 /**
  * English base keys used by the partner dashboard under screens/partner.
- * Removing any of these from de.json must fail this suite (Gegenprobe).
+ * Removing any of these from a language file must fail this suite (Gegenprobe).
+ *
+ * There is no en.json: partnerTranslate() (src/partner-dashboard/util/i18n.ts)
+ * calls i18next with the English text as both key and defaultValue, so English
+ * falls back to the literal key text itself. Only de/fr/it are checked here.
  */
 const PARTNER_KEYS = [
   'Non-Custodial Partner Program',
@@ -62,20 +68,74 @@ const PARTNER_KEYS = [
   'Language',
 ] as const;
 
-const partner = (de as { 'screens/partner': Record<string, string> })['screens/partner'];
+type PartnerTranslations = Record<string, string>;
 
-describe('partner dashboard translations (screens/partner)', () => {
-  it('defines a non-empty German translation for every partner UI key', () => {
-    expect(partner).toBeDefined();
+function partnerNamespace(doc: unknown): PartnerTranslations {
+  return (doc as { 'screens/partner': PartnerTranslations })['screens/partner'];
+}
+
+const LANGUAGES: Record<string, PartnerTranslations> = {
+  de: partnerNamespace(de),
+  fr: partnerNamespace(fr),
+  it: partnerNamespace(itIT),
+};
+
+/**
+ * Keys whose translated value is deliberately identical to the English source
+ * text. Each entry below was checked against real precedent elsewhere in the
+ * same translation files before being allow-listed — this list must not grow
+ * without that check (that would just soften the test, not verify anything).
+ *
+ * - Blockchains (de, fr): kept as the loanword "Blockchain(s)" everywhere in
+ *   the app, not only here — see screens/compliance, screens/home and
+ *   screens/payment in de.json and fr.json, which all keep the identical
+ *   English spelling.
+ * - Date (fr): French orthography for "date" is spelled identically to
+ *   English; not a missed translation.
+ * - Referral (de, it): kept as an English loanword in both languages,
+ *   consistent with the compound "Referral volume" translations in this same
+ *   screens/partner section ("Referral-Volumen", "Volume referral") — the verb
+ *   stem stays "Referral", only the surrounding word is translated.
+ * - Swap (de): kept as the loanword in German across the app (screens/safe,
+ *   navigation/links), and already used untranslated inside two other
+ *   screens/partner sentences in this very file
+ *   ("aufgeteilt nach Kauf, Verkauf und Swap").
+ *
+ * Blockchains (de) and Swap (de) were not named in the PR review notes that
+ * flagged the other three — flagged here for a human to confirm, not silently
+ * assumed.
+ */
+const ALLOWED_UNTRANSLATED: Record<string, readonly string[]> = {
+  de: ['Blockchains', 'Referral', 'Swap'],
+  fr: ['Blockchains', 'Date'],
+  it: ['Referral'],
+};
+
+describe.each(Object.entries(LANGUAGES))('partner dashboard translations — %s', (lang, table) => {
+  it('defines a non-empty translation for every partner UI key', () => {
+    expect(table).toBeDefined();
     for (const key of PARTNER_KEYS) {
-      const value = partner[key];
+      const value = table[key];
       expect(value).toBeDefined();
       expect(typeof value).toBe('string');
       expect(value.length).toBeGreaterThan(0);
     }
   });
 
+  it('has exactly the canonical screens/partner key set (no missing, no extra keys)', () => {
+    expect(Object.keys(table).sort()).toEqual([...PARTNER_KEYS].sort());
+  });
+
+  it('has no key left as the literal English source text outside the reviewed exceptions', () => {
+    const allowed = new Set(ALLOWED_UNTRANSLATED[lang] ?? []);
+    const untranslated = PARTNER_KEYS.filter((key) => table[key] === key && !allowed.has(key));
+    expect(untranslated).toEqual([]);
+  });
+});
+
+describe('partner dashboard translations (screens/partner)', () => {
   it('keeps a few known German strings that partners already saw', () => {
+    const partner = LANGUAGES.de;
     expect(partner['Non-Custodial Partner Program']).toBe('Non-Custodial Partnerprogramm');
     expect(partner['NC Partner Program']).toBe('NC Partner Programm');
     expect(partner['Total volume']).toBe('Gesamtvolumen');
