@@ -212,6 +212,29 @@ export function getOfferableCollectionIban(info: {
 }
 
 /**
+ * Rewrites a GiroCode (EPC069-12) payment request so line 6 (IBAN) becomes the DFX shared EUR
+ * collection IBAN. Fail-closed: returns undefined unless the payload is a well-formed SCT
+ * GiroCode whose IBAN line matches the given personal IBAN (whitespace/case ignored). Swiss
+ * QR-Bill SVG payloads are never rewritten — callers must treat undefined as "no QR available".
+ */
+export function toCollectionIbanGiroCode(paymentRequest: string, personalIban: string): string | undefined {
+  if (paymentRequest.includes('<svg')) return undefined;
+
+  const lines = paymentRequest.trim().split(/\r?\n/);
+  if (lines.length < 7) return undefined;
+  if (lines[0] !== 'BCD') return undefined;
+  if (lines[3] !== 'SCT') return undefined;
+
+  const normalizedLine = lines[6].replace(/\s+/g, '').toUpperCase();
+  const normalizedPersonal = personalIban.replace(/\s+/g, '').toUpperCase();
+  if (!normalizedPersonal) return undefined;
+  if (normalizedLine !== normalizedPersonal) return undefined;
+
+  lines[6] = FRICK_EUR_COLLECTION_IBAN;
+  return lines.join('\n');
+}
+
+/**
  * Allowlist for external-login callbacks: only forward an explicitly present `personal-iban`.
  * Do not copy the entire live search (would leak `user`, `arbitrary`, etc.).
  */
