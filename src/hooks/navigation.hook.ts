@@ -22,7 +22,8 @@ export function useNavigation(): NavigationInterface {
   const { redirectPath, setRedirectPath } = useAppHandlingContext();
 
   function navigate(to: To | number, options?: NavigationOptions) {
-    if (options?.setRedirect) setRedirectPath(options?.redirectPath ?? pathname);
+    // Include search so deep-links (e.g. /settings?a=call) survive login; explicit redirectPath unchanged.
+    if (options?.setRedirect) setRedirectPath(options?.redirectPath ?? `${pathname}${search}`);
 
     switch (typeof to) {
       case 'number':
