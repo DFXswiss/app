@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { usePartnerDashboard } from 'src/hooks/partner-dashboard.hook';
 import PartnerDashboardView from 'src/partner-dashboard/App';
 import { PartnerErrorBoundary } from 'src/partner-dashboard/components/error-boundary';
-import { mockSettingsState } from 'src/test-helpers/mock-settings-context';
+import { mockSettingsState } from './helpers/mock-settings-context';
 
 jest.mock('src/contexts/settings.context', () => ({
   // jest hoists this factory; mock-prefixed import is allowed in scope

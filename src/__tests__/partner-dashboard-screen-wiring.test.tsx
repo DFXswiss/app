@@ -1,6 +1,6 @@
 import { render, waitFor } from '@testing-library/react';
 import { LayoutConfig } from 'src/contexts/layout-config.context';
-import { mockSettingsState } from 'src/test-helpers/mock-settings-context';
+import { mockSettingsState } from './helpers/mock-settings-context';
 
 /**
  * Wiring test: PartnerDashboardScreen must call usePartnerDashboardGuard.

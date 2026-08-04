@@ -15,7 +15,7 @@ export const mockChangeLanguage = jest.fn();
  * Wire with:
  *   jest.mock('src/contexts/settings.context', () => ({
  *     useSettingsContext: () =>
- *       require('src/test-helpers/mock-settings-context').mockSettingsState,
+ *       require('./helpers/mock-settings-context').mockSettingsState,
  *   }));
  */
 export const mockSettingsState = {

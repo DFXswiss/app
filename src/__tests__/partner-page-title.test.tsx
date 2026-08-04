@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { LayoutConfig } from 'src/contexts/layout-config.context';
 import PartnerDashboardView from 'src/partner-dashboard/App';
-import { mockSettingsState } from 'src/test-helpers/mock-settings-context';
+import { mockSettingsState } from './helpers/mock-settings-context';
 
 const layoutOptionsCalls: LayoutConfig[] = [];
 
