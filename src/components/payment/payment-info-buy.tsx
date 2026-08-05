@@ -52,17 +52,19 @@ export function PaymentInformationContent({ info, showBank }: PaymentInformation
     />
   );
 
+  // Same expression as the Text-branch display: QR image and invoice must not diverge.
+  const showCollectionAccount = offerCollectionIban && showCollectionIban;
+
   const qrTabContent = (() => {
     if (!info.paymentRequest) return null;
-    // Same gate as the Text branch: only rewrite when the collection account is still offerable.
-    if (!offerCollectionIban || !showCollectionIban) {
+    if (!showCollectionAccount) {
       return <PaymentQrCode value={info.paymentRequest} txId={info.id} />;
     }
 
     const collectionGiroCode =
       info.iban !== undefined ? toCollectionIbanGiroCode(info.paymentRequest, info.iban) : undefined;
     if (collectionGiroCode) {
-      return <PaymentQrCode value={collectionGiroCode} txId={info.id} />;
+      return <PaymentQrCode value={collectionGiroCode} txId={info.id} collectionAccount />;
     }
 
     return (

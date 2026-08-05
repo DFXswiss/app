@@ -305,16 +305,20 @@ export function isKycRequiredMessage(message: string | undefined): boolean {
 }
 
 /**
- * Feature-local error copy for reconstructing stored bank/IBAN payment details when
- * opening an invoice or receipt PDF (transaction.screen TransactionList). These tokens
- * describe missing or obsolete stored selection state, not buy-quote failures. Returns
- * untranslated English defaults; callers translate via translate('screens/payment', text).
+ * Feature-local error copy for invoice/receipt PDF failures. Returns untranslated English
+ * defaults; callers translate via translate('screens/payment', text).
  *
- * Maps QuoteError tokens thrown by getBankInfoForRequest only:
+ * Maps QuoteError tokens from getBankInfoForRequest (stored-detail reconstruction):
  * StoredTransactionRequestBankSelectionIncomplete, StoredTransactionRequestBankNoLongerExists,
  * StoredPersonalIbanUserMismatch, StoredPersonalIbanTransactionRequestMismatch,
  * StoredPersonalIbanIsNoLongerActive, StoredBankNoLongerAcceptsPayments.
- * Buy-flow tokens (e.g. KycRequired, CurrencyUnsupported, NoBankAvailableForThisCurrency)
+ *
+ * Also maps collection-account invoice guards from PUT buy/paymentInfos/:id/invoice
+ * (?collectionAccount=true): CollectionAccountInvoiceRequiresPersonalIban,
+ * CollectionAccountInvoiceCurrencyNotSupported, CollectionAccountInvoiceReferenceMissing —
+ * all three share one customer-facing message; tokens stay separate for logs.
+ *
+ * Buy-quote tokens (e.g. KycRequired, CurrencyUnsupported, NoBankAvailableForThisCurrency)
  * are intentionally not matched so invoice/receipt errors never show purchase-flow wording.
  */
 export function getStoredPaymentDetailErrorMessage(message: string | undefined): string | undefined {
@@ -337,6 +341,14 @@ export function getStoredPaymentDetailErrorMessage(message: string | undefined):
   }
   if (message.includes('StoredBankNoLongerAcceptsPayments')) {
     return 'This bank no longer accepts payments. Please start a new purchase.';
+  }
+
+  if (
+    message.includes('CollectionAccountInvoiceRequiresPersonalIban') ||
+    message.includes('CollectionAccountInvoiceCurrencyNotSupported') ||
+    message.includes('CollectionAccountInvoiceReferenceMissing')
+  ) {
+    return 'The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.';
   }
 
   return undefined;

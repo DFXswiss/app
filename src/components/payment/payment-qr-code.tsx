@@ -1,4 +1,4 @@
-import { ApiError, useBuy, useUserContext } from '@dfx.swiss/react';
+import { ApiError, BuyUrl, PdfDocument, useApi, useUserContext } from '@dfx.swiss/react';
 import { SpinnerSize, SpinnerVariant, StyledLoadingSpinner } from '@dfx.swiss/react-components';
 import { useState } from 'react';
 import { RiExternalLinkFill } from 'react-icons/ri';
@@ -12,10 +12,12 @@ import { QrBasic } from './qr-code';
 interface GiroCodeProps {
   value: string;
   txId: number;
+  /** When true, request the PDF against the DFX collection account (API query flag). Omit otherwise. */
+  collectionAccount?: boolean;
 }
 
-export function PaymentQrCode({ value, txId }: GiroCodeProps): JSX.Element {
-  const { invoiceFor } = useBuy();
+export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCodeProps): JSX.Element {
+  const { call } = useApi();
   const { user } = useUserContext();
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
@@ -30,7 +32,11 @@ export function PaymentQrCode({ value, txId }: GiroCodeProps): JSX.Element {
     try {
       setIsLoading(true);
       setInvoiceError(undefined);
-      const response = await invoiceFor(txId);
+      // Only append the query when active: Util.mapBooleanQuery treats any present value as true.
+      const url = collectionAccount
+        ? `${BuyUrl.invoice(txId)}?collectionAccount=true`
+        : BuyUrl.invoice(txId);
+      const response = await call<PdfDocument>({ url, method: 'PUT' });
       openPdfFromString(response.pdfData);
     } catch (err) {
       setInvoiceError(err as ApiError);

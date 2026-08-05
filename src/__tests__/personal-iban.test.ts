@@ -210,6 +210,18 @@ describe('getStoredPaymentDetailErrorMessage', () => {
     ],
     ['StoredPersonalIbanIsNoLongerActive', 'This personal IBAN is no longer active. Please start a new purchase.'],
     ['StoredBankNoLongerAcceptsPayments', 'This bank no longer accepts payments. Please start a new purchase.'],
+    [
+      'CollectionAccountInvoiceRequiresPersonalIban',
+      'The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.',
+    ],
+    [
+      'CollectionAccountInvoiceCurrencyNotSupported',
+      'The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.',
+    ],
+    [
+      'CollectionAccountInvoiceReferenceMissing',
+      'The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.',
+    ],
   ] as const)('maps %s to customer-facing copy', (token, text) => {
     expect(getStoredPaymentDetailErrorMessage(token)).toBe(text);
     expect(getStoredPaymentDetailErrorMessage(token)).toBeTruthy();
@@ -219,6 +231,7 @@ describe('getStoredPaymentDetailErrorMessage', () => {
     'StoredPersonalIbanDoesNotBelongToThisUser',
     'StoredPersonalIbanDoesNotMatchThisTransactionRequest',
     'CurrencyNotFound',
+    'CollectionAccountInvoiceSomethingElse',
   ] as const)('does not match obsolete/wrong token %s', (token) => {
     expect(getStoredPaymentDetailErrorMessage(token)).toBeUndefined();
   });

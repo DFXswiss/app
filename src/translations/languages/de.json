@@ -702,6 +702,7 @@
     "This stored personal IBAN does not match this transaction. Please start a new purchase.": "Diese gespeicherte persönliche IBAN passt nicht zu dieser Transaktion. Bitte starte einen neuen Kauf.",
     "This personal IBAN is no longer active. Please start a new purchase.": "Diese persönliche IBAN ist nicht mehr aktiv. Bitte starte einen neuen Kauf.",
     "This bank no longer accepts payments. Please start a new purchase.": "Diese Bank akzeptiert keine Zahlungen mehr. Bitte starte einen neuen Kauf.",
+    "The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.": "Die Rechnung für das Sammelkonto kann gerade nicht erstellt werden. Bitte nutze die Zahlungsangaben auf diesem Bildschirm.",
     "The selected currency is not available. Please try a different currency or contact support.": "Die gewählte Währung ist nicht verfügbar. Bitte wähle eine andere Währung oder kontaktiere den Support.",
     "No bank is available for this currency. Please try a different currency or contact support.": "Für diese Währung ist keine Bank verfügbar. Bitte wähle eine andere Währung oder kontaktiere den Support.",
 
