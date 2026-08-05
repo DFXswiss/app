@@ -51,6 +51,7 @@ export default function InvoiceScreen(): JSX.Element {
   const [isLoadingPayment, setIsLoadingPayment] = useState(false);
   const [isLoadingRecipient, setIsLoadingRecipient] = useState(false);
   const [validatedRecipient, setValidatedRecipient] = useState<string>();
+  const [isPayerMode, setIsPayerMode] = useState(false);
 
   const {
     watch,
@@ -66,7 +67,9 @@ export default function InvoiceScreen(): JSX.Element {
 
   useEffect(() => {
     const recipient = urlParams.get('recipient');
+    const pay = urlParams.get('pay');
     if (recipient) setValue('recipient', recipient);
+    if (pay !== null && pay !== '0' && pay !== 'false') setIsPayerMode(true);
     setUrlParams(new URLSearchParams());
     setTimeout(() => recipientFieldRef.current?.focus(), 200);
   }, []);
@@ -138,7 +141,9 @@ export default function InvoiceScreen(): JSX.Element {
     amount: Validations.Required,
   });
 
-  useLayoutOptions({ title: translate('screens/payment', 'Create Invoice') });
+  useLayoutOptions({
+    title: translate('screens/payment', isPayerMode ? 'Pay invoice' : 'Create Invoice'),
+  });
 
   return (
     <StyledVerticalStack gap={6} full center>
@@ -154,6 +159,14 @@ export default function InvoiceScreen(): JSX.Element {
       </div>
       <Form control={control} rules={rules} errors={errors} translate={translateError}>
         <StyledVerticalStack gap={6} full center>
+          {isPayerMode && (
+            <p className="text-dfxGray-800 text-sm">
+              {translate(
+                'screens/payment',
+                'Enter the invoice number and invoice amount exactly as printed on your invoice.',
+              )}
+            </p>
+          )}
           <div className="relative w-full">
             <StyledInput
               name="recipient"
@@ -175,8 +188,8 @@ export default function InvoiceScreen(): JSX.Element {
           <StyledInput
             name="invoiceId"
             autocomplete="invoice-id"
-            label={translate('screens/payment', 'Invoice ID')}
-            placeholder={translate('screens/payment', 'Invoice ID')}
+            label={translate('screens/payment', isPayerMode ? 'Invoice number' : 'Invoice ID')}
+            placeholder={translate('screens/payment', isPayerMode ? 'Invoice number' : 'Invoice ID')}
             full
             smallLabel
             disabled={!validatedRecipient}
@@ -184,15 +197,15 @@ export default function InvoiceScreen(): JSX.Element {
           <StyledInput
             type="number"
             name="amount"
-            label={translate('screens/payment', 'Amount')}
-            placeholder={translate('screens/payment', 'Amount')}
+            label={translate('screens/payment', isPayerMode ? 'Invoice amount' : 'Amount')}
+            placeholder={translate('screens/payment', isPayerMode ? 'Invoice amount' : 'Amount')}
             full
             smallLabel
             prefix={currency}
             disabled={!validatedRecipient}
           />
           <StyledButton
-            label={translate('general/actions', 'Open invoice')}
+            label={translate('general/actions', isPayerMode ? 'Continue to payment' : 'Open invoice')}
             onClick={() => callback && navigate(callback)}
             width={StyledButtonWidth.FULL}
             disabled={!isValid || !callback}
