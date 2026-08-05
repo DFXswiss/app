@@ -218,10 +218,6 @@ describe('getStoredPaymentDetailErrorMessage', () => {
       'CollectionAccountInvoiceCurrencyNotSupported',
       'The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.',
     ],
-    [
-      'CollectionAccountInvoiceReferenceMissing',
-      'The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.',
-    ],
   ] as const)('maps %s to customer-facing copy', (token, text) => {
     expect(getStoredPaymentDetailErrorMessage(token)).toBe(text);
     expect(getStoredPaymentDetailErrorMessage(token)).toBeTruthy();

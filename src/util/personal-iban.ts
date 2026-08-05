@@ -314,9 +314,9 @@ export function isKycRequiredMessage(message: string | undefined): boolean {
  * StoredPersonalIbanIsNoLongerActive, StoredBankNoLongerAcceptsPayments.
  *
  * Also maps collection-account invoice guards from PUT buy/paymentInfos/:id/invoice
- * (?collectionAccount=true): CollectionAccountInvoiceRequiresPersonalIban,
- * CollectionAccountInvoiceCurrencyNotSupported, CollectionAccountInvoiceReferenceMissing —
- * all three share one customer-facing message; tokens stay separate for logs.
+ * (?collectionAccount=true): CollectionAccountInvoiceRequiresPersonalIban and
+ * CollectionAccountInvoiceCurrencyNotSupported — both share one customer-facing message;
+ * the tokens stay separate so the logs still say which guard rejected.
  *
  * Buy-quote tokens (e.g. KycRequired, CurrencyUnsupported, NoBankAvailableForThisCurrency)
  * are intentionally not matched so invoice/receipt errors never show purchase-flow wording.
@@ -345,8 +345,7 @@ export function getStoredPaymentDetailErrorMessage(message: string | undefined):
 
   if (
     message.includes('CollectionAccountInvoiceRequiresPersonalIban') ||
-    message.includes('CollectionAccountInvoiceCurrencyNotSupported') ||
-    message.includes('CollectionAccountInvoiceReferenceMissing')
+    message.includes('CollectionAccountInvoiceCurrencyNotSupported')
   ) {
     return 'The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.';
   }
