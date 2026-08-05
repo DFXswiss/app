@@ -85,6 +85,7 @@ import { useAppParams } from 'src/hooks/app-params.hook';
 import { isWebComponent } from 'src/util/web-component-mode';
 import { ErrorHint } from '../components/error-hint';
 import { KycIdentNewTab } from '../components/kyc-ident-new-tab';
+import { KycStepResultHint } from '../components/kyc-step-result-hint';
 import { KycStatusTable } from '../components/kyc-status';
 import { useSettingsContext } from '../contexts/settings.context';
 import { useGeoLocation } from '../hooks/geo-location.hook';
@@ -410,14 +411,7 @@ export default function KycScreen(): JSX.Element {
           />
         ) : (
           <StyledVerticalStack gap={6} full center>
-            {stepInProgress.status === KycStepStatus.FAILED ? (
-              <>
-                <p className="text-dfxRed-100">{translate('screens/kyc', 'This step has failed.')}</p>
-                {stepInProgress.reason && <p className="text-dfxGray-800 text-sm">{stepInProgress.reason}</p>}
-              </>
-            ) : (
-              <p className="text-dfxGray-700">{translate('screens/kyc', 'This step has already been finished.')}</p>
-            )}
+            <KycStepResultHint step={stepInProgress} />
 
             <StyledButton
               width={StyledButtonWidth.MIN}
