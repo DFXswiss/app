@@ -148,7 +148,8 @@ function renderAt(path: string) {
   const router = createMemoryRouter([{ path: '/invoice', element: <InvoiceScreen /> }], {
     initialEntries: [path],
   });
-  return render(<RouterProvider router={router} />);
+  const view = render(<RouterProvider router={router} />);
+  return { router, ...view };
 }
 
 function lastLayoutTitle(): string | undefined {
@@ -231,5 +232,27 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(screen.getByRole('button', { name: 'Open invoice' })).toBeInTheDocument();
     expect(screen.queryByText(PAYER_HINT)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Continue to payment' })).not.toBeInTheDocument();
+  });
+
+  it('payer mode keeps recipient and pay in the URL (survives reload / back)', async () => {
+    const { router } = renderAt('/invoice?recipient=Foo&pay=1');
+
+    await waitFor(() => {
+      expect(lastLayoutTitle()).toBe('Pay invoice');
+    });
+
+    const params = new URLSearchParams(router.state.location.search);
+    expect(params.get('pay')).toBe('1');
+    expect(params.get('recipient')).toBe('Foo');
+  });
+
+  it('merchant mode still clears the query string', async () => {
+    const { router } = renderAt('/invoice?recipient=Foo');
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe('');
+    });
+
+    expect(lastLayoutTitle()).toBe('Create Invoice');
   });
 });

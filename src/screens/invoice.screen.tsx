@@ -68,9 +68,10 @@ export default function InvoiceScreen(): JSX.Element {
   useEffect(() => {
     const recipient = urlParams.get('recipient');
     const pay = urlParams.get('pay');
+    const payerMode = pay !== null && pay !== '0' && pay !== 'false';
     if (recipient) setValue('recipient', recipient);
-    if (pay !== null && pay !== '0' && pay !== 'false') setIsPayerMode(true);
-    setUrlParams(new URLSearchParams());
+    if (payerMode) setIsPayerMode(true);
+    if (!payerMode) setUrlParams(new URLSearchParams());
     setTimeout(() => recipientFieldRef.current?.focus(), 200);
   }, []);
 
