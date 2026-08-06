@@ -41,6 +41,7 @@ import {
 } from '@dfx.swiss/react-components';
 import copy from 'copy-to-clipboard';
 import { useEffect, useRef, useState } from 'react';
+import { isMobile } from 'react-device-detect';
 import { useForm, useWatch } from 'react-hook-form';
 import { LazyLoadImage } from 'react-lazy-load-image-component';
 import 'react-lazy-load-image-component/src/effects/opacity.css';
@@ -517,7 +518,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                           <p>{new Date(payRequest.quote.expiration).toLocaleString()}</p>
                         </StyledDataTableExpandableRow>
                       )}
-                      {paymentHasQuote(payRequest) && !payRequest.displayQr && (
+                      {paymentHasQuote(payRequest) && !payRequest.displayQr && isMobile && (
                         <StyledDataTableExpandableRow
                           label={translate('screens/payment', 'QR Code')}
                           expansionContent={
@@ -608,7 +609,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                   <StyledVerticalStack full gap={8} center>
                     {paymentHasQuote(payRequest) ? (
                       <div className="flex flex-col w-full items-center justify-center">
-                        {payRequest.displayQr && (
+                        {(payRequest.displayQr || !isMobile) && (
                           <div className="w-48 my-3">
                             <QrBasic
                               data={OpenCryptoPayUtils.getOcpUrlByUniqueId(payRequest.id)}
@@ -619,7 +620,9 @@ export default function PaymentLinkScreen(): JSX.Element {
                         <p className="text-base pt-3 text-dfxGray-700">
                           {translate(
                             'screens/payment',
-                            'Scan the QR-Code with a compatible app to complete the payment.',
+                            payRequest.displayQr || !isMobile
+                              ? 'Scan the QR-Code with a compatible app to complete the payment.'
+                              : 'Choose your wallet to open the payment.',
                           )}
                         </p>
                       </div>
