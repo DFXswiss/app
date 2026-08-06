@@ -910,6 +910,7 @@
     "Pay with OpenCryptoPay, Bitcoin Lightning LNURL": "Payer avec OpenCryptoPay, Bitcoin Lightning LNURL",
     "You have no payment routes yet": "Vous n'avez pas encore d'itinéraires de paiement",
     "Scan the QR-Code with a compatible app to complete the payment.": "Scannez le code QR avec une application compatible pour finaliser le paiement.",
+    "Choose your wallet to open the payment.": "Choisissez votre wallet pour ouvrir le paiement.",
     "Tell the cashier that you want to pay with crypto and then scan the QR-Code with a compatible app to complete the payment.": "Dites au caissier que vous souhaitez payer avec de la crypto et scannez ensuite le code QR avec une application compatible pour finaliser le paiement.",
     "Recommended apps": "Applications recommandées",
     "Compatible apps": "Applications compatibles",
