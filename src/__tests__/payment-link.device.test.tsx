@@ -187,7 +187,7 @@ function buildPayRequest(displayQr: boolean) {
     recipient: { name: 'Test Merchant' },
     transferAmounts: [{ method: 'Lightning', minFee: 0, assets: [{ asset: 'BTC', amount: 1 }] }],
     requestedAmount: { asset: 'CHF', amount: 12.5 },
-    quote: { id: 'q1', expiration: new Date('2030-01-01T00:00:00Z'), payment: 'p1' },
+    quote: { id: 'q1', expiration: new Date(Date.now() + 60 * 60 * 1000), payment: 'p1' },
   };
 }
 
