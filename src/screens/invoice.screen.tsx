@@ -56,7 +56,8 @@ export default function InvoiceScreen(): JSX.Element {
   const [validatedRecipient, setValidatedRecipient] = useState<string>();
 
   const recipientFromUrl = urlParams.get('recipient');
-  const isPayerMode = PAYER_PAY_VALUES.includes((urlParams.get('pay') ?? '').trim().toLowerCase());
+  const payParam = urlParams.get('pay');
+  const isPayerMode = payParam != null && PAYER_PAY_VALUES.includes(payParam.trim().toLowerCase());
 
   const {
     watch,
