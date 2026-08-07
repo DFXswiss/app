@@ -446,7 +446,7 @@ export default function PaymentRoutesScreen(): JSX.Element {
                           ),
                       },
                       {
-                        label: translate('screens/payment', 'Display QR code'),
+                        label: translate('screens/payment', 'Always show QR code'),
                         text: translate('general/actions', userPaymentLinksConfig?.displayQr ? 'Yes' : 'No'),
                       },
                       {
@@ -671,7 +671,7 @@ export default function PaymentRoutesScreen(): JSX.Element {
                                       ),
                                   },
                                   {
-                                    label: translate('screens/payment', 'Display QR code'),
+                                    label: translate('screens/payment', 'Always show QR code'),
                                     text: translate('general/actions', linkConfig.displayQr ? 'Yes' : 'No'),
                                   },
                                   {
@@ -1343,7 +1343,7 @@ function PaymentLinkForm({
               <StyledDropdown
                 rootRef={rootRef}
                 name="configDisplayQr"
-                label={translate('screens/payment', 'Display QR code')}
+                label={translate('screens/payment', 'Always show QR code')}
                 smallLabel
                 full
                 placeholder={translate('general/actions', 'Select...')}
@@ -1413,7 +1413,7 @@ function PaymentLinkForm({
                         : naString,
                     },
                     {
-                      label: translate('screens/payment', 'Display QR code'),
+                      label: translate('screens/payment', 'Always show QR code'),
                       text:
                         data.configDisplayQr !== undefined
                           ? translate('general/actions', data.configDisplayQr ? 'Yes' : 'No')
