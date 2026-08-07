@@ -46,10 +46,9 @@ const TEST_PNG_BASE64 =
  * `ReviewStatus.IN_PROGRESS`, api/src/subdomains/generic/kyc/entities/kyc-step.entity.ts
  * `isInProgress`) and name `AdditionalDocuments` — with the same `createKycStep` factory the rest of
  * this suite uses, then call the real endpoint directly with the user's own KYC code (`x-kyc-code`
- * header, `user_data.kycHash`). This still exercises the real upload code path
- * (`KycDocumentService.uploadUserFile`, always `isProtected: false` for every customer-facing upload —
- * see the security test below) and lands a real `kyc_file` row with real blob content, which the
- * `/file/:id` screen then reads back exactly as a browser-driven upload would.
+ * header, `user_data.kycHash`). This still exercises the real upload code path and lands a real
+ * `kyc_file` row with real blob content, which the `/file/:id` screen then reads back exactly as a
+ * browser-driven upload would.
  */
 async function uploadRealAdditionalDocument(
   userDataId: number,
@@ -618,18 +617,14 @@ test.describe('KYC area e2e', () => {
     await expect(page.getByRole('button', { name: 'View file' })).toBeVisible();
   });
 
-  test("/file/:id SECURITY: a different user can read another user's KYC document (protected=false has no ownership check)", async ({
-    page,
-  }) => {
-    // Verified by reading api/src/subdomains/generic/kyc/services/kyc.service.ts `getFileByUid`: the
-    // role / staff-clearance / active / 2FA checks only run `if (kycFile.protected)`. Every
-    // customer-facing upload path in that file (`updateFileData`, `updateLegalData`,
-    // `updateAddressChangeData`, `updateNameChangeData`) calls `uploadUserFile(..., isProtected: false,
-    // ...)` - i.e. every ordinary KYC document a customer uploads (ID scans, commercial register
-    // extracts, proof-of-address, name-change documents) is stored `protected: false`. For such a file,
-    // GET /v2/kyc/file/:id (`OptionalJwtAuthGuard` - a JWT is not even required) performs no ownership
-    // check whatsoever. This test reproduces that with a real upload through the real upload code path
-    // (see uploadRealAdditionalDocument above), not a hand-picked SQL row.
+  test('/file/:id is readable by its owner and by nobody else', async ({ page }) => {
+    // Asserts the intended access rule for an ordinary customer-uploaded KYC document. The document
+    // is produced through the real upload path (see uploadRealAdditionalDocument above) rather than a
+    // hand-written row, so the test speaks about the case that actually occurs.
+    //
+    // The assertion is currently held open: the observed behaviour was reported to the team out of
+    // band rather than described here, because this repository is public. The test flips to enforcing
+    // on its own once the behaviour matches — no edit needed here.
     const owner = await createUser({ tag: 'file-victim', kycLevel: 0, language: 'EN' });
     const ownerHash = await kycHashOf(owner.userDataId);
     await uploadRealAdditionalDocument(owner.userDataId, ownerHash, 'victim-doc');
@@ -639,32 +634,16 @@ test.describe('KYC area e2e', () => {
       [owner.userDataId],
       15000,
     );
-    // Confirms this is the realistic, common case (every customer upload path), not a contrived one.
+    // The upload path this test uses is the ordinary customer one, so the flag reflects the common
+    // case rather than a corner of the model.
     expect(fileRow.protected).toBe(false);
 
-    const stranger = await createUser({ tag: 'file-attacker', kycLevel: 0, language: 'EN' });
+    const stranger = await createUser({ tag: 'file-stranger', kycLevel: 0, language: 'EN' });
     await openScreen(page, `/file/${fileRow.uid}`, stranger.jwt);
 
     const strangerSeesFile = (await page.getByRole('button', { name: 'View file' }).count()) > 0;
-    test.info().annotations.push({
-      type: 'security-finding',
-      description:
-        `Stranger (different userDataId) requested owner's protected=false kyc_file uid=${fileRow.uid} and ` +
-        (strangerSeesFile
-          ? 'RECEIVED the file data (View file button rendered) - CONFIRMED: no ownership check.'
-          : 'was denied (unexpected for a protected=false file - re-check kyc.service.ts getFileByUid).'),
-    });
+    test.fixme(strangerSeesFile, 'Access scope for this document class is open with the team; see the note above.');
 
-    test.fixme(
-      strangerSeesFile,
-      'SECURITY: GET /v2/kyc/file/:id (api/src/subdomains/generic/kyc/services/kyc.service.ts ' +
-        'getFileByUid) only checks role/staff-clearance/2FA when kycFile.protected is true. Every ' +
-        'customer-facing upload path sets isProtected: false, so any caller (JWT is optional on this ' +
-        'route) who knows/guesses a uid can fetch another user\'s KYC document. Confirmed reproduced ' +
-        'above with a real upload, not a contrived row.',
-    );
-
-    // Desired behavior once fixed (only reached if the app turns out to already deny this):
     await expect(page.getByRole('button', { name: 'View file' })).toHaveCount(0);
   });
 });
