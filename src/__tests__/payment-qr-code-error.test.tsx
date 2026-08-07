@@ -1,10 +1,9 @@
-const mockCall = jest.fn();
+const mockInvoiceFor = jest.fn();
 const mockOpenPdf = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
-  useApi: () => ({ call: mockCall }),
+  useBuy: () => ({ invoiceFor: mockInvoiceFor }),
   useUserContext: () => ({ user: { kyc: { dataComplete: true } } }),
-  BuyUrl: { invoice: (txId: number) => `buy/paymentInfos/${txId}/invoice` },
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -39,12 +38,12 @@ import { PaymentQrCode } from '../components/payment/payment-qr-code';
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockCall.mockResolvedValue({ pdfData: 'JVBERi0x' });
+  mockInvoiceFor.mockResolvedValue({ pdfData: 'JVBERi0x' });
 });
 
 describe('PaymentQrCode invoice errors', () => {
   it('shows the stored-payment-detail message when invoice generation rejects with a known token', async () => {
-    mockCall.mockRejectedValue({ message: 'StoredPersonalIbanIsNoLongerActive' });
+    mockInvoiceFor.mockRejectedValue({ message: 'StoredPersonalIbanIsNoLongerActive' });
 
     render(<PaymentQrCode value="<svg>QR bill</svg>" txId={42} />);
 
@@ -59,7 +58,7 @@ describe('PaymentQrCode invoice errors', () => {
   });
 
   it('shows the API message unchanged when the token is not mapped', async () => {
-    mockCall.mockRejectedValue({ message: 'Invoice service is unavailable' });
+    mockInvoiceFor.mockRejectedValue({ message: 'Invoice service is unavailable' });
 
     render(<PaymentQrCode value="<svg>QR bill</svg>" txId={42} />);
 
@@ -74,8 +73,8 @@ describe('PaymentQrCode invoice errors', () => {
   });
 });
 
-describe('PaymentQrCode collection-account invoice URL', () => {
-  it('appends collectionAccount=true when the collection account is active', async () => {
+describe('PaymentQrCode collection-account forwarding', () => {
+  it('forwards collectionAccount=true to the SDK when the collection account is active', async () => {
     render(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
 
     await act(async () => {
@@ -83,15 +82,12 @@ describe('PaymentQrCode collection-account invoice URL', () => {
     });
 
     await waitFor(() => {
-      expect(mockCall).toHaveBeenCalled();
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
     });
-    const config = mockCall.mock.calls[0][0];
-    expect(config.method).toBe('PUT');
-    expect(config.url).toBe('buy/paymentInfos/42/invoice?collectionAccount=true');
-    expect(config.url).toContain('collectionAccount=true');
+    expect(mockInvoiceFor).toHaveBeenCalledWith(42, true);
   });
 
-  it('does not send collectionAccount when the collection account is not active', async () => {
+  it('forwards collectionAccount=false to the SDK when the collection account is not active', async () => {
     render(<PaymentQrCode value="BCD\n001" txId={42} />);
 
     await act(async () => {
@@ -99,11 +95,8 @@ describe('PaymentQrCode collection-account invoice URL', () => {
     });
 
     await waitFor(() => {
-      expect(mockCall).toHaveBeenCalled();
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
     });
-    const config = mockCall.mock.calls[0][0];
-    expect(config.method).toBe('PUT');
-    expect(config.url).toBe('buy/paymentInfos/42/invoice');
-    expect(config.url).not.toContain('collectionAccount');
+    expect(mockInvoiceFor).toHaveBeenCalledWith(42, false);
   });
 });

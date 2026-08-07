@@ -1,4 +1,4 @@
-import { ApiError, BuyUrl, PdfDocument, useApi, useUserContext } from '@dfx.swiss/react';
+import { ApiError, useBuy, useUserContext } from '@dfx.swiss/react';
 import { SpinnerSize, SpinnerVariant, StyledLoadingSpinner } from '@dfx.swiss/react-components';
 import { useState } from 'react';
 import { RiExternalLinkFill } from 'react-icons/ri';
@@ -17,7 +17,7 @@ interface GiroCodeProps {
 }
 
 export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCodeProps): JSX.Element {
-  const { call } = useApi();
+  const { invoiceFor } = useBuy();
   const { user } = useUserContext();
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
@@ -32,11 +32,7 @@ export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCo
     try {
       setIsLoading(true);
       setInvoiceError(undefined);
-      // Only append the query when active: Util.mapBooleanQuery treats any present value as true.
-      const url = collectionAccount
-        ? `${BuyUrl.invoice(txId)}?collectionAccount=true`
-        : BuyUrl.invoice(txId);
-      const response = await call<PdfDocument>({ url, method: 'PUT' });
+      const response = await invoiceFor(txId, collectionAccount);
       openPdfFromString(response.pdfData);
     } catch (err) {
       setInvoiceError(err as ApiError);
