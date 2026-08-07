@@ -202,11 +202,12 @@ describe('PaymentRoutesScreen Always show QR code label', () => {
     mockRoutesState.overrides = {};
   });
 
-  it('renders the renamed global config label (not the old Display QR code)', () => {
+  it('renders the renamed QR label in global config and per-link config (not Display QR code)', () => {
     renderScreen();
 
-    // Label is rendered next to its value inside the same node ("Always show QR code: No").
-    expect(screen.getAllByText(/Always show QR code/).length).toBeGreaterThanOrEqual(1);
+    // Both always-rendered config summaries use the new label (global + per-link merge).
+    // Exact count: a partial rename that leaves only one site updated fails.
+    expect(screen.getAllByText(/Always show QR code/)).toHaveLength(2);
     expect(screen.queryByText(/Display QR code/)).not.toBeInTheDocument();
   });
 
