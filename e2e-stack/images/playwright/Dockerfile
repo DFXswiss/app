@@ -12,8 +12,10 @@ COPY e2e-stack/specs ./specs
 COPY src/App.tsx src/hooks/guard.hook.ts ./app-source/
 
 ENTRYPOINT ["npx", "playwright", "test"]
-# Default args when the caller passes none (`docker compose run --rm tests`): skip the
-# route-coverage gate. Any args the caller does pass (e.g. `--grep @coverage-gate`)
-# replace this default entirely (Docker CMD semantics), not merge with it — see the
-# comment in playwright.config.ts for why this lives here and not in a config grepInvert.
-CMD ["--grep-invert=@coverage-gate"]
+# No default args: a bare `docker compose run --rm tests` runs every project, the route-coverage
+# gate included. The gate was excluded here while the suites were still being written and most
+# routes were unclaimed; now that the claim set is complete, letting it run by default is the
+# point of having it — a route added to the app without a test fails the run.
+#
+# Note for callers: any args you pass replace this line entirely (Docker CMD semantics), they do
+# not merge with it.
