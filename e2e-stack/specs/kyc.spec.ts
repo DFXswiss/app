@@ -625,9 +625,9 @@ test.describe('KYC area e2e', () => {
     // The assertion is currently held open: the observed behaviour was reported to the team out of
     // band rather than described here, because this repository is public. The test flips to enforcing
     // on its own once the behaviour matches — no edit needed here.
-    const owner = await createUser({ tag: 'file-victim', kycLevel: 0, language: 'EN' });
+    const owner = await createUser({ tag: 'file-owner', kycLevel: 0, language: 'EN' });
     const ownerHash = await kycHashOf(owner.userDataId);
-    await uploadRealAdditionalDocument(owner.userDataId, ownerHash, 'victim-doc');
+    await uploadRealAdditionalDocument(owner.userDataId, ownerHash, 'owner-doc');
 
     const fileRow = await waitForRow<{ uid: string; protected: boolean }>(
       `SELECT uid, protected FROM kyc_file WHERE "userDataId" = $1 ORDER BY id DESC LIMIT 1`,
