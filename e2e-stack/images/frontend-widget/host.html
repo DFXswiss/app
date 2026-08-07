@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!--
+    This page intentionally hardcodes content-hashed asset filenames from a verified
+    build of e2e-stack/images/frontend-widget/Dockerfile. If the widget source or build
+    recipe changes, re-verify the build output and update the script/link URLs below.
+    Accepted tradeoff for a disposable E2E-only image — not a production concern.
+  -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DFX Services Widget Host (e2e-stack)</title>
+    <script defer="defer" src="http://frontend-widget/widget/static/js/main.32b6ad21.js"></script>
+    <link rel="stylesheet" href="http://frontend-widget/widget/static/css/main.7b2c3225.css" />
+  </head>
+  <body>
+    <div id="widget-container" style="width: 100%; max-width: 600px; height: 700px">
+      <dfx-services service="buy">Loading ...</dfx-services>
+    </div>
+  </body>
+</html>

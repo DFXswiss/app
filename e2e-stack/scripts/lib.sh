@@ -14,6 +14,15 @@ compose() {
   docker compose -p "$E2E_PROJECT" "${files[@]}" "$@"
 }
 
+# Rebuild the `tests` image so that spec-file edits are actually picked up. The image COPYs
+# spec files in at build time (no bind mounts in this environment), so a stale image silently
+# runs an old spec — this makes a rebuild happen automatically before every test run instead of
+# relying on callers to remember `docker compose ... build tests` by hand.
+build_tests_image() {
+  log_info "Building tests image (picks up spec-file changes)..."
+  compose build tests
+}
+
 # ANSI colors (disabled when stdout is not a TTY)
 if [[ -t 1 ]]; then
   _C_INFO=$'\033[0;32m'

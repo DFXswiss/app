@@ -8,6 +8,7 @@ trap 'bash "$STACK_DIR/scripts/down.sh"' EXIT
 bash "$STACK_DIR/scripts/up.sh"
 
 if compose config --services 2>/dev/null | grep -qx tests; then
+  build_tests_image
   log_info "Running e2e tests..."
   compose run --rm tests "$@"
 else

@@ -62,6 +62,13 @@ Relevant environment variables:
 | `E2E_API_REPO`      | Path to a checked-out API repo; default `../api` (ignored when `E2E_API_IMAGE` is set) |
 | `E2E_PORT_API`      | Host port for the API (default `3000`) — debugging only              |
 | `E2E_PORT_FRONTEND` | Host port for the frontend (default `3001`) — debugging only         |
+| `E2E_WIDGET_URL`    | Internal URL of the widget host (default `http://frontend-widget`)   |
+
+## Frontend widget service
+
+The harness also builds a separate `frontend-widget` image: an isolated build of the widget/web-component entry point (`src/index-widget.tsx`, custom element `<dfx-services>`), which the normal frontend image does not exercise. It is reachable only on the internal Docker `sandbox` network at `http://frontend-widget` (default; overridable via `E2E_WIDGET_URL`). Like `frontend`, it publishes no host port.
+
+Because the widget uses a closed shadow root (`shadow: 'closed'`), inspection from tests is limited to the outside view — custom element registration, element presence/size, and absence of uncaught exceptions. Shadow DOM internals are not reachable from outside the component by design.
 
 ## Writing tests
 
@@ -76,6 +83,16 @@ The suite under `e2e/` is visual-regression testing (screenshot baselines). It d
 This harness checks function, not appearance, and therefore does run in CI on every pull request. Both suites exist side by side and serve different purposes.
 
 ## Troubleshooting
+
+**Spec changes not picked up**
+
+If you edit a spec file and start the test run by hand via `docker compose ... run --rm tests` (bypassing `npm run e2e:stack`, which rebuilds the image automatically via `run.sh`), you **must** rebuild the tests image first:
+
+```bash
+docker compose -p <project> -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml build tests
+```
+
+Otherwise the **old** spec content runs silently: the image `COPY`s spec files in at build time, and there are no bind mounts in this environment. This exact mistake has already cost several people a full test run each.
 
 **Logs**
 
