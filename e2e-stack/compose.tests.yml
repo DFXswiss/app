@@ -1,0 +1,38 @@
+# Override loaded together with compose.yml:
+#   docker compose -p dfx-e2e-stack -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml run --rm tests
+services:
+  tests:
+    build:
+      # Relative to this file's directory (e2e-stack/), so `..` is the repo root.
+      context: ..
+      dockerfile: e2e-stack/images/playwright/Dockerfile
+    networks:
+      - sandbox
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      E2E_FRONTEND_URL: ${E2E_FRONTEND_URL:-http://frontend}
+      E2E_API_URL: ${E2E_API_URL:-http://api:3000}
+      E2E_PG_HOST: ${E2E_PG_HOST:-sql-dfx-api-loc}
+      E2E_PG_PORT: ${E2E_PG_PORT:-5432}
+      E2E_PG_USER: ${E2E_PG_USER:-sa}
+      E2E_PG_PASSWORD: ${E2E_PG_PASSWORD:-LocalDev2026}
+      E2E_PG_DATABASE: ${E2E_PG_DATABASE:-dfx}
+      CI: ${CI:-}
+      # This default MUST stay in sync with EVM_DEPOSIT_SEED in env/api.env (owned by the stack
+      # lane) — deposit addresses are derived from this mnemonic here AND inside the API; a
+      # mismatch produces addresses/keys that silently disagree deep in a buy/forwarding path.
+      # It is a fixed, deterministic, throwaway test mnemonic, never used for real funds.
+      E2E_EVM_DEPOSIT_SEED: ${E2E_EVM_DEPOSIT_SEED:-away under gun lens ice mean sketch absent stand evoke cigar clever}
+    volumes:
+      - e2e-test-results:/work/test-results
+      - e2e-playwright-report:/work/playwright-report
+
+volumes:
+  e2e-test-results:
+  e2e-playwright-report:
+
+# Reference the network declared in compose.yml; do not redefine driver/internal settings.
+networks:
+  sandbox:
