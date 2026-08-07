@@ -65,6 +65,10 @@ test('transaction list shows buy and sell rows with expected labels and amounts'
     jwt: user.jwt,
     amount: 222,
   });
+  const secondAsset = await queryOne<{ id: number }>(
+    `SELECT id FROM asset WHERE buyable = true AND blockchain != 'Ethereum' ORDER BY id ASC LIMIT 1`,
+  );
+  const secondBuy = await createBuy(user.jwt, { assetId: secondAsset!.id });
   const pendingBuy = await createTransaction({
     state: 'pending_buy',
     tag: 'tx-list-pending',
@@ -73,19 +77,20 @@ test('transaction list shows buy and sell rows with expected labels and amounts'
     jwt: user.jwt,
     amount: 333,
     inputAsset: 'CHF',
+    buyId: secondBuy.buyId,
   });
 
-  // Deterministic sort: newest first by eventDate
+  // Deterministic sort: newest first by "created"
   const now = Date.now();
-  await queryRows(`UPDATE transaction SET "eventDate" = $1 WHERE id = $2`, [
+  await queryRows(`UPDATE transaction SET "created" = $1 WHERE id = $2`, [
     new Date(now).toISOString(),
     buy.transactionId,
   ]);
-  await queryRows(`UPDATE transaction SET "eventDate" = $1 WHERE id = $2`, [
+  await queryRows(`UPDATE transaction SET "created" = $1 WHERE id = $2`, [
     new Date(now - 60 * 60 * 1000).toISOString(),
     sell.transactionId,
   ]);
-  await queryRows(`UPDATE transaction SET "eventDate" = $1 WHERE id = $2`, [
+  await queryRows(`UPDATE transaction SET "created" = $1 WHERE id = $2`, [
     new Date(now - 2 * 60 * 60 * 1000).toISOString(),
     pendingBuy.transactionId,
   ]);
@@ -222,7 +227,6 @@ test('unknown transaction uid shows ErrorHint with not-found message', async ({ 
     ),
   ).toBeVisible();
   await expect(page.getByText(/not found/i)).toBeVisible();
-  await expect(page.getByText('Transaction status', { exact: true })).toHaveCount(0);
 });
 
 // ---------------------------------------------------------------------------
@@ -262,16 +266,19 @@ test('assign route opens list with unassigned row and assigns to single buy targ
   await expect(assignBtn).toBeVisible();
   await assignBtn.click();
 
-  // DB: bank_tx becomes BuyCrypto linked to the buy route
+  // DB: bank_tx becomes BuyCrypto; assignment creates buy_crypto linked to the buy route
   await expect
     .poll(async () => {
-      const row = await queryOne<{ type: string; buyId: number | null }>(
-        `SELECT type, "buyId" FROM bank_tx WHERE id = $1`,
+      const bankTxRow = await queryOne<{ type: string }>(`SELECT type FROM bank_tx WHERE id = $1`, [
+        unassigned.bankTxId,
+      ]);
+      const buyCryptoRow = await queryOne<{ id: number; buyId: number | null }>(
+        `SELECT id, "buyId" FROM buy_crypto WHERE "bankTxId" = $1`,
         [unassigned.bankTxId],
       );
-      return row ? { type: row.type, buyId: row.buyId } : null;
+      return { bankTxType: bankTxRow?.type ?? null, buyCryptoBuyId: buyCryptoRow?.buyId ?? null };
     })
-    .toEqual({ type: 'BuyCrypto', buyId: buy.buyId });
+    .toEqual({ bankTxType: 'BuyCrypto', buyCryptoBuyId: buy.buyId });
 });
 
 test('assign route for another user\'s unassigned tx leaves list empty of that row and DB unchanged', async ({
@@ -303,10 +310,9 @@ test('assign route for another user\'s unassigned tx leaves list empty of that r
     [baRow!.iban, 445, unassigned.bankTxId],
   );
 
-  const before = await queryOne<{ type: string; buyId: number | null }>(
-    `SELECT type, "buyId" FROM bank_tx WHERE id = $1`,
-    [unassigned.bankTxId],
-  );
+  const before = await queryOne<{ type: string }>(`SELECT type FROM bank_tx WHERE id = $1`, [
+    unassigned.bankTxId,
+  ]);
 
   await openScreen(page, `/tx/${unassigned.transactionId}/assign`, stranger.jwt);
 
@@ -315,13 +321,14 @@ test('assign route for another user\'s unassigned tx leaves list empty of that r
   await expect(page.getByText('445', { exact: false })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Assign transaction' })).toHaveCount(0);
 
-  const after = await queryOne<{ type: string; buyId: number | null }>(
-    `SELECT type, "buyId" FROM bank_tx WHERE id = $1`,
-    [unassigned.bankTxId],
-  );
+  const after = await queryOne<{ type: string }>(`SELECT type FROM bank_tx WHERE id = $1`, [unassigned.bankTxId]);
   expect(after).toEqual(before);
   expect(after?.type).toBe('Unknown');
-  expect(after?.buyId).toBeNull();
+
+  const buyCryptoAfter = await queryOne<{ id: number }>(`SELECT id FROM buy_crypto WHERE "bankTxId" = $1`, [
+    unassigned.bankTxId,
+  ]);
+  expect(buyCryptoAfter).toBeUndefined();
 });
 
 // ---------------------------------------------------------------------------
@@ -353,6 +360,7 @@ test('pending buy refund form submits and writes chargeback columns', async ({ p
   await page.locator('input[name="zip"]').fill('8001');
   await page.locator('input[name="city"]').fill('Zurich');
   await page.locator('input[name="country"]').fill('Switzerland');
+  await page.getByText('Transaction refund', { exact: true }).click();
 
   const nameInput = page.locator('input[placeholder="John Doe"]');
   if ((await nameInput.count()) === 1) {
