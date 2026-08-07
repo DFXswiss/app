@@ -1,6 +1,6 @@
 import { ApiError, useBuy, useUserContext } from '@dfx.swiss/react';
 import { SpinnerSize, SpinnerVariant, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RiExternalLinkFill } from 'react-icons/ri';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useNavigation } from 'src/hooks/navigation.hook';
@@ -23,21 +23,36 @@ export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCo
   const { translate } = useSettingsContext();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [invoiceError, setInvoiceError] = useState<ApiError>();
+  const invoiceGeneration = useRef(0);
+
+  // Stale-response guard (same pattern as the quote generation in buy.screen.tsx): a PDF must
+  // never open for a mode the UI has left — including unmount via logout navigation.
+  useEffect(() => {
+    invoiceGeneration.current += 1;
+    setInvoiceError(undefined);
+    setIsLoading(false);
+    return () => {
+      invoiceGeneration.current += 1;
+    };
+  }, [txId, collectionAccount]);
 
   async function onInvoiceClick(): Promise<void> {
     if (!user?.kyc.dataComplete) {
       navigate('/profile', { setRedirect: true });
       return;
     }
+    const generation = invoiceGeneration.current;
     try {
       setIsLoading(true);
       setInvoiceError(undefined);
       const response = await invoiceFor(txId, collectionAccount);
+      if (generation !== invoiceGeneration.current) return;
       openPdfFromString(response.pdfData);
     } catch (err) {
+      if (generation !== invoiceGeneration.current) return;
       setInvoiceError(err as ApiError);
     } finally {
-      setIsLoading(false);
+      if (generation === invoiceGeneration.current) setIsLoading(false);
     }
   }
 

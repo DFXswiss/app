@@ -100,3 +100,138 @@ describe('PaymentQrCode collection-account forwarding', () => {
     expect(mockInvoiceFor).toHaveBeenCalledWith(42, false);
   });
 });
+
+describe('PaymentQrCode stale-response guard', () => {
+  let resolveInvoice: (value: unknown) => void;
+
+  beforeEach(() => {
+    mockInvoiceFor.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveInvoice = resolve;
+        }),
+    );
+  });
+
+  it('does not open the PDF when the collection mode changes while the request is in flight', async () => {
+    const { rerender } = render(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(<PaymentQrCode value="BCD\n001" txId={42} />);
+
+    await act(async () => {
+      resolveInvoice({ pdfData: 'JVBERi0x' });
+    });
+
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+  });
+
+  it('releases the loading state when the mode changes while the request is in flight', async () => {
+    const { rerender } = render(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    expect(screen.getByRole('button')).toBeDisabled();
+    expect(screen.getByText('Loading')).toBeInTheDocument();
+
+    rerender(<PaymentQrCode value="BCD\n001" txId={42} />);
+
+    const button = screen.getByRole('button', { name: 'PDF Invoice' });
+    expect(button).toBeEnabled();
+    expect(screen.queryByText('Loading')).not.toBeInTheDocument();
+
+    await act(async () => {
+      if (!resolveInvoice) throw new Error('invoice resolver was not captured');
+      resolveInvoice({ pdfData: 'JVBERi0x' });
+    });
+
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+  });
+
+  it('does not open the PDF when the component unmounts while the request is in flight', async () => {
+    const { unmount } = render(<PaymentQrCode value="BCD\n001" txId={42} />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    unmount();
+
+    await act(async () => {
+      resolveInvoice({ pdfData: 'JVBERi0x' });
+    });
+
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+  });
+
+  it('opens the PDF when the request completes without a mode change', async () => {
+    render(<PaymentQrCode value="BCD\n001" txId={42} />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      resolveInvoice({ pdfData: 'JVBERi0x' });
+    });
+
+    await waitFor(() => {
+      expect(mockOpenPdf).toHaveBeenCalledTimes(1);
+    });
+    expect(mockOpenPdf).toHaveBeenCalledWith('JVBERi0x');
+  });
+
+  it('clears a shown error when the mode changes', async () => {
+    let rejectInvoice: (reason: unknown) => void;
+    mockInvoiceFor.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectInvoice = reject;
+        }),
+    );
+
+    const { rerender } = render(<PaymentQrCode value="BCD\n001" txId={42} />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      if (!rejectInvoice) throw new Error('invoice rejecter was not captured');
+      rejectInvoice({ message: 'Invoice service is unavailable' });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Invoice service is unavailable')).toBeVisible();
+    });
+
+    rerender(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
+
+    expect(screen.queryByText('Invoice service is unavailable')).not.toBeInTheDocument();
+  });
+});

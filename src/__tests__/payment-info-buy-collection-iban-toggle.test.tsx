@@ -65,7 +65,11 @@ jest.mock('../hooks/clipboard.hook', () => ({
 }));
 
 jest.mock('../components/payment/payment-qr-code', () => ({
-  PaymentQrCode: ({ value }: any) => <div data-testid="qr-value">{value}</div>,
+  PaymentQrCode: ({ value, collectionAccount }: any) => (
+    <div data-testid="qr-value" data-collection={collectionAccount ? 'true' : 'false'}>
+      {value}
+    </div>
+  ),
 }));
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -286,6 +290,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     const qrValue = screen.getByTestId('qr-value');
     expect(qrValue).toHaveTextContent(PERSONAL_IBAN);
     expect(qrValue).not.toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
+    expect(screen.getByTestId('qr-value')).toHaveAttribute('data-collection', 'false');
   });
 
   it('switches the QR value to the collection IBAN after the toggle', () => {
@@ -305,6 +310,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     const qrValue = screen.getByTestId('qr-value');
     expect(qrValue).toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
     expect(qrValue).not.toHaveTextContent(PERSONAL_IBAN);
+    expect(screen.getByTestId('qr-value')).toHaveAttribute('data-collection', 'true');
   });
 
   const NO_COLLECTION_QR_HINT =
