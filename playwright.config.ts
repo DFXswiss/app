@@ -38,5 +38,11 @@ export default defineConfig({
     url: 'http://localhost:3001',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
+    // Pin API base URL so QR matrix (and any code reading REACT_APP_API_URL) is baseline-stable.
+    // Same default as scripts/e2e-test.sh; override with E2E_API_URL.
+    env: {
+      ...process.env,
+      REACT_APP_API_URL: process.env.E2E_API_URL ?? 'https://dev.api.dfx.swiss',
+    },
   },
 });
