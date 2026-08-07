@@ -712,16 +712,24 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
   });
 
   async function assignTransaction(txId: number) {
-    if (!transactionTargets) {
+    let targets = transactionTargets;
+
+    if (!targets) {
       setIsTargetsLoading(true);
-      await getTransactionTargets()
-        .then((targets) => {
-          setTransactionTargets(targets);
-          if (targets.length === 1) setValue('target', targets[0]);
-        })
-        .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
-        .finally(() => setIsTargetsLoading(false));
+      try {
+        targets = await getTransactionTargets();
+        setTransactionTargets(targets);
+      } catch (error) {
+        setError((error as ApiError).message ?? 'Unknown error');
+        return;
+      } finally {
+        setIsTargetsLoading(false);
+      }
     }
+
+    // the cached list outlives the reset() of a previous assignment, so the single-target
+    // preselection has to run on every open, not only on the fetch
+    if (targets.length === 1) setValue('target', targets[0]);
 
     setEditTransaction(txId);
   }
