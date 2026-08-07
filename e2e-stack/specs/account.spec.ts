@@ -90,7 +90,7 @@ async function selectStyledDropdown(page: Page, fieldLabel: string, optionLabel:
     .first()
     .locator('xpath=following::button[1]');
   await openBtn.click();
-  await page.getByRole('button', { name: optionLabel, exact: true }).click();
+  await page.getByRole('button', { name: optionLabel }).click();
 }
 
 /**
