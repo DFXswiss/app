@@ -240,7 +240,14 @@ async function waitForQuoteUi(page: Page, timeout = 45000): Promise<QuoteUiState
  * Prefer two buyable assets on the same blockchain (EVM test users can only buy
  * assets on blockchains they hold); if the seed only has one, create the second
  * route on another user for the same asset.
+ *
+ * GET /v1/asset returns DESC id order, so the first buyable item may be Cardano/
+ * Bitcoin/etc. Anchor on an EVM-chain asset only (same set as global.setup EVM_BLOCKCHAINS).
  */
+const EVM_BLOCKCHAINS = new Set(
+  'Ethereum;Sepolia;BinanceSmartChain;Arbitrum;Optimism;Polygon;Base;Gnosis;Haqq'.split(';'),
+);
+
 async function twoDistinctBuyRoutes(
   jwt: string,
   tag: string,
@@ -249,11 +256,20 @@ async function twoDistinctBuyRoutes(
   const buyable = assets.filter((a) => a.buyable && !a.comingSoon);
   expect(buyable.length, 'seed must include at least one buyable asset').toBeGreaterThanOrEqual(1);
 
-  const buy1 = await createBuy(jwt, { assetId: buyable[0].id });
+  // Test users log in with an ethers.Wallet address → user.blockchains is EVM-only.
+  // Picking raw buyable[0] can be Cardano/Bitcoin/etc. and yields HTTP 400.
+  const evmBuyable = buyable.filter((a) => a.blockchain != null && EVM_BLOCKCHAINS.has(a.blockchain));
+  expect(
+    evmBuyable.length,
+    'seed must include at least one buyable EVM-chain asset (Ethereum/Sepolia/…)',
+  ).toBeGreaterThanOrEqual(1);
+
+  const anchor = evmBuyable[0];
+  const buy1 = await createBuy(jwt, { assetId: anchor.id });
   // Same blockchain only — user.blockchains is derived from the login wallet
   // (EVM here), so a non-matching asset yields HTTP 400 "Asset blockchain mismatch".
   const secondAsset = buyable.find(
-    (a) => a.id !== buyable[0].id && a.blockchain === buyable[0].blockchain,
+    (a) => a.id !== anchor.id && a.blockchain === anchor.blockchain,
   );
   if (secondAsset) {
     const buy2 = await createBuy(jwt, { assetId: secondAsset.id });
@@ -262,7 +278,7 @@ async function twoDistinctBuyRoutes(
   }
 
   const otherUser = await createUser({ tag: `${tag}-buy2`, kycLevel: 30, completePersonalData: true });
-  const buy2 = await createBuy(otherUser.jwt, { assetId: buyable[0].id });
+  const buy2 = await createBuy(otherUser.jwt, { assetId: anchor.id });
   expect(buy2.buyId).not.toBe(buy1.buyId);
   return { buyId: buy1.buyId, newBuyId: buy2.buyId };
 }
@@ -740,7 +756,23 @@ test.describe('Buy flow', () => {
     await save.click();
 
     // Expected under DISABLED_PROCESSES=*: staff-KYC allowlist never includes this admin.
-    await expect(page.getByText('Something went wrong')).toBeVisible({ timeout: 15000 });
+    // useGuardedApi catches the 403 STAFF_KYC_REQUIRED and navigates to /staff-kyc-required
+    // (no inline ErrorHint on the form).
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
+      .toBe('/staff-kyc-required');
+    await expect(page.getByText('Identification required', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(
+        'Access to internal tools now requires an identified person behind the account. Your role is unchanged — what is missing is your identification.',
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        'Complete the identification to restore access. This is the same process customers go through and only has to be done once.',
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Start KYC' })).toBeVisible();
 
     const after = await queryOne<{ buyId: number }>(
       `SELECT "buyId" AS "buyId" FROM buy_crypto WHERE id = $1`,
