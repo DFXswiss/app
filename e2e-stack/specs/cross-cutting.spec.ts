@@ -695,7 +695,7 @@ test.describe('Cross-cutting', () => {
       await assertNoHorizontalOverflow(page);
       await openNavMenu(page);
       await expect(
-        page.getByText('Settings', { exact: true }).or(page.getByRole('button', { name: 'Logout' })),
+        page.getByText('Settings', { exact: true }).or(page.getByRole('button', { name: 'Logout' })).first(),
       ).toBeVisible();
       await page
         .locator('div.fixed.inset-0.z-40')
@@ -732,7 +732,7 @@ test.describe('Cross-cutting', () => {
       await page.waitForLoadState('networkidle');
       await assertNoHorizontalOverflow(page);
       await expect(
-        page.getByRole('heading', { name: 'You spend' }).or(page.getByText('Buy', { exact: true }).first()),
+        page.getByRole('heading', { name: 'You spend' }).or(page.getByText('Buy', { exact: true }).first()).first(),
       ).toBeVisible({ timeout: 20000 });
       const amount = page.locator('input[type="number"]').first();
       if ((await amount.count()) > 0) {
