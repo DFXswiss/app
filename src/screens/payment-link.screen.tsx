@@ -41,7 +41,6 @@ import {
 } from '@dfx.swiss/react-components';
 import copy from 'copy-to-clipboard';
 import { useEffect, useRef, useState } from 'react';
-import { isMobile } from 'react-device-detect';
 import { useForm, useWatch } from 'react-hook-form';
 import { LazyLoadImage } from 'react-lazy-load-image-component';
 import 'react-lazy-load-image-component/src/effects/opacity.css';
@@ -60,6 +59,7 @@ import {
   PaymentStandard,
   WalletInfo,
 } from 'src/dto/payment-link.dto';
+import { useIsHandheld } from 'src/hooks/device.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { usePaymentLinkWallets } from 'src/hooks/payment-link-wallets.hook';
 import { useWeb3 } from 'src/hooks/web3.hook';
@@ -117,6 +117,10 @@ export default function PaymentLinkScreen(): JSX.Element {
     isLoading: isLoadingWallets,
     error: walletsError,
   } = usePaymentLinkWallets();
+
+  const isHandheld = useIsHandheld();
+  // displayQr true forces the large QR on every device; otherwise desktop shows QR, handheld shows wallets
+  const showLargeQr = Boolean(payRequest?.displayQr) || !isHandheld;
 
   const [assetObject, setAssetObject] = useState<Asset>();
   const [showContract, setShowContract] = useState(false);
@@ -518,7 +522,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                           <p>{new Date(payRequest.quote.expiration).toLocaleString()}</p>
                         </StyledDataTableExpandableRow>
                       )}
-                      {paymentHasQuote(payRequest) && !payRequest.displayQr && isMobile && (
+                      {paymentHasQuote(payRequest) && !showLargeQr && (
                         <StyledDataTableExpandableRow
                           label={translate('screens/payment', 'QR Code')}
                           expansionContent={
@@ -609,7 +613,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                   <StyledVerticalStack full gap={8} center>
                     {paymentHasQuote(payRequest) ? (
                       <div className="flex flex-col w-full items-center justify-center">
-                        {(payRequest.displayQr || !isMobile) && (
+                        {showLargeQr && (
                           <div className="w-48 my-3">
                             <QrBasic
                               data={OpenCryptoPayUtils.getOcpUrlByUniqueId(payRequest.id)}
@@ -620,7 +624,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                         <p className="text-base pt-3 text-dfxGray-700">
                           {translate(
                             'screens/payment',
-                            payRequest.displayQr || !isMobile
+                            showLargeQr
                               ? 'Scan the QR-Code with a compatible app to complete the payment.'
                               : 'Choose your wallet to open the payment.',
                           )}
@@ -632,7 +636,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                       <p className="text-base pt-3 text-dfxGray-700">
                         {translate(
                           'screens/payment',
-                          'Tell the cashier that you want to pay with crypto and then scan the QR-Code with a compatible app to complete the payment.',
+                          'Tell the cashier that you want to pay with crypto to start the payment.',
                         )}
                       </p>
                     )}
