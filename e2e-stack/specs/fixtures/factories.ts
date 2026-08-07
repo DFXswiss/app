@@ -11,7 +11,7 @@
  */
 
 import { apiGet, apiPost, apiPut } from './api-client';
-import { queryOne, withDb } from './db';
+import { queryOne, queryRows, withDb } from './db';
 import { signatureLogin, testWallet, type TestRole, type TestWallet } from './auth';
 import { TEST_IBAN } from './test-data';
 
@@ -37,6 +37,76 @@ function uniqueTag(tag?: string): string {
 export function e2eMail(tag?: string): string {
   return `e2e+${uniqueTag(tag)}@dfx.swiss`;
 }
+
+/**
+ * Scans the DB for the highest FACTORY_WALLET_INDEX_BASE-relative offset already used by
+ * a "user" row, so a fresh process's factoryCounter can start above it instead of at 0 —
+ * otherwise two separate `docker compose run` processes against the same DB would derive
+ * the same wallet addresses and collide (see docs/test-data.md, "Wallet indices").
+ * Windows grow exponentially so a DB with only a handful of factory accounts resolves in
+ * one query, while one with many still terminates in a bounded number of round trips.
+ * Stops at the first window that comes back with zero hits at all — a real gap that large
+ * (256+ consecutive unused offsets) never happens from normal factory usage, so an empty
+ * window reliably means "past the end", even though usage within used windows is sparse
+ * (createUser consumes more than one counter value per account: one for the wallet index,
+ * more for e2eMail's own tag counter).
+ */
+async function deriveFactoryWalletStart(): Promise<number> {
+  let highest = 0;
+  let windowStart = 1;
+  let windowSize = 256;
+  const maxWindowSize = 8192;
+  const maxOffset = 200_000; // sanity bound against a runaway loop; never expected in practice
+
+  while (windowStart <= maxOffset) {
+    const addressToOffset = new Map<string, number>();
+    const windowEnd = windowStart + windowSize - 1;
+    for (let offset = windowStart; offset <= windowEnd; offset++) {
+      const { address } = testWallet(FACTORY_WALLET_INDEX_BASE + offset);
+      addressToOffset.set(address.toLowerCase(), offset);
+    }
+    const rows = await queryRows<{ address: string }>(
+      `SELECT address FROM "user" WHERE lower(address) = ANY($1::text[])`,
+      [[...addressToOffset.keys()]],
+    );
+    if (rows.length === 0) break;
+    for (const row of rows) {
+      const offset = addressToOffset.get(row.address.toLowerCase());
+      if (offset != null && offset > highest) highest = offset;
+    }
+    windowStart = windowEnd + 1;
+    windowSize = Math.min(windowSize * 2, maxWindowSize);
+  }
+  return highest;
+}
+
+let factoryWalletStartPromise: Promise<number> | null = null;
+let factoryWalletStartApplied = false;
+
+/**
+ * Raises `factoryCounter` (once per process) to the DB-derived starting point so newly
+ * allocated wallet indices never collide with a prior process's accounts in the same DB.
+ * Safe to call more than once or concurrently — memoized via the promise, and only ever
+ * raises the counter, never lowers it (so it composes fine with normal in-process usage
+ * that may have already advanced the counter before this resolves).
+ */
+async function ensureFactoryWalletCounterSeeded(): Promise<void> {
+  if (factoryWalletStartApplied) return;
+  if (!factoryWalletStartPromise) factoryWalletStartPromise = deriveFactoryWalletStart();
+  const start = await factoryWalletStartPromise;
+  if (factoryCounter < start) factoryCounter = start;
+  factoryWalletStartApplied = true;
+}
+
+// Best-effort head start for callers of `e2eMail()` made directly (outside `createUser`,
+// e.g. from other spec files) before any factory call has had a chance to `await` this —
+// `e2eMail` is a synchronous, public export whose signature must not change, so it cannot
+// await this itself. Kicking this off at module load means that by the time any actual
+// Playwright test body runs (after file collection/module resolution/browser startup —
+// reliably slower than one local Postgres round trip), the counter is already raised for
+// every synchronous e2eMail() call that follows. `createUser` below awaits this properly
+// and is therefore always safe regardless of timing.
+void ensureFactoryWalletCounterSeeded();
 
 // TEST_IBAN lives in ./test-data — the single place for shared constants. Re-exported here so
 // callers can keep importing it alongside the factories, but not redeclared: two `export const`s
@@ -465,6 +535,7 @@ export async function ensurePersonalDataComplete(userDataId: number, options?: {
 // ---------------------------------------------------------------------------
 
 export async function createUser(options: CreateUserOptions = {}): Promise<CreateUserResult> {
+  if (options.walletIndex == null) await ensureFactoryWalletCounterSeeded();
   const c = nextCounter();
   const walletIndex = options.walletIndex ?? FACTORY_WALLET_INDEX_BASE + c;
   // Prefer API sign-up: signatureLogin creates the account when the address is new
@@ -485,10 +556,30 @@ export async function createUser(options: CreateUserOptions = {}): Promise<Creat
   track('user', userRow.id);
   track('user_data', userRow.userDataId);
 
-  const mail = options.mail ?? e2eMail(options.tag);
-  // First-time mail set via PUT /v2/user/mail (no verification when mail is null — trySetUserMail).
-  // SignUpDto does not carry mail; this is the real post-signup path.
-  await apiPut<unknown>('user/mail', { mail }, { jwt, version: 'v2', expectOk: true });
+  const existingMailRow = await queryOne<{ mail: string | null }>(
+    `SELECT mail FROM user_data WHERE id = $1`,
+    [userRow.userDataId],
+  );
+  let mail: string;
+  if (existingMailRow?.mail) {
+    // trySetUserMail (api UserDataService) only accepts the FIRST mail on an account without
+    // 2FA; setting a second one 403s with TFA_REQUIRED, which this harness cannot satisfy.
+    // Reuse the account's existing mail instead of blindly retrying the call.
+    mail = existingMailRow.mail;
+    if (options.mail && options.mail.toLowerCase() !== mail.toLowerCase()) {
+      throw new Error(
+        `createUser: account ${userRow.id} (user_data ${userRow.userDataId}, address ${wallet.address}) ` +
+          `already has mail "${mail}" set and cannot be changed to "${options.mail}" without 2FA ` +
+          `(would surface as a bare 403 TFA_REQUIRED). Pass a fresh walletIndex, omit "mail", or ` +
+          `reuse the existing mail instead.`,
+      );
+    }
+  } else {
+    mail = options.mail ?? e2eMail(options.tag);
+    // First-time mail set via PUT /v2/user/mail (no verification when mail is null — trySetUserMail).
+    // SignUpDto does not carry mail; this is the real post-signup path.
+    await apiPut<unknown>('user/mail', { mail }, { jwt, version: 'v2', expectOk: true });
+  }
 
   if (options.language) {
     const languageId = await resolveLanguageId(options.language);

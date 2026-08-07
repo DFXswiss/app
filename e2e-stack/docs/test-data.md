@@ -14,6 +14,22 @@ Import from `e2e-stack/specs/fixtures/factories` (or the fixtures barrel once pu
 Master data (fiats, assets, countries, languages, banks, fees, one wallet) is seeded at API boot.
 `ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and sets `DISABLED_PROCESSES=*` (no crons).
 
+**Staff KYC clearance (elevated roles)**
+
+Elevated API endpoints (Admin / Compliance / Support / RealUnit) also require staff KYC
+clearance: a non-empty `user_data.verifiedName` plus the account's `user_data.id` in the
+in-memory `staffKycClearance` set. `loginAs` sets `verifiedName` on every call.
+`global.setup.ts` seeds the `staffKycClearance` setting for all six harness roles once per
+test run and polls until the API's ~30s `resyncStaffKycClearance` picks it up — so elevated
+roles reach gated endpoints/screens instead of being redirected to `/staff-kyc-required`.
+
+**ChargebackBase fee seed**
+
+`global.setup.ts` also idempotently inserts one unrestricted `fee` row with
+`type = 'ChargebackBase'` (label `E2E-ChargebackBase`). The API's own master-data seed only
+inserts `Base` rows, so without this workaround `GET /transaction/:id/refund` always 500s
+with "Chargeback base fee is missing".
+
 **Naming (Postgres / TypeORM)**
 
 - Tables: snake_case entity names (`user_data`, `buy_crypto`, `payment_link`).
@@ -23,7 +39,13 @@ Master data (fiats, assets, countries, languages, banks, fees, one wallet) is se
 **Wallet indices**
 
 - Sibling `auth.ts` reserves indices `0–6` for `loginAs` / default `testWallet`.
-- Factories use indices `100 + counter` so they never collide.
+- Factories use indices `100 + counter` so they never collide with role wallets.
+- The factory counter no longer starts at `0` in every process: once per process it is raised
+  to a value derived from the DB (highest already-used `FACTORY_WALLET_INDEX_BASE`-relative
+  offset), so two separate `docker compose run` invocations against the same database never
+  collide on wallet addresses. As defense in depth, `createUser` also reuses an account's
+  existing mail instead of calling `PUT /v2/user/mail` again when mail is already set
+  (a second set would 403 with `TFA_REQUIRED`).
 
 **Uniqueness**
 
@@ -38,11 +60,11 @@ Master data (fiats, assets, countries, languages, banks, fees, one wallet) is se
 
 | | |
 |--|--|
-| **Path** | API sign-up via `signatureLogin` → `POST /v1/auth`; mail via `PUT /v2/user/mail`; language via `PUT /v2/user`; country / `kycLevel` / `role` via SQL |
+| **Path** | API sign-up via `signatureLogin` → `POST /v1/auth`; mail via `PUT /v2/user/mail` (first mail only); language via `PUT /v2/user`; country / `kycLevel` / `role` via SQL |
 | **Returns** | `{ userId, userDataId, address, jwt, wallet, mail? }` |
 | **Options** | `tag`, `mail`, `language` (symbol), `country` (symbol), `kycLevel` (0–50 / −10 / −20), `role`, `completePersonalData`, `walletIndex` |
 | **Preconditions** | API + DB up; seed wallet exists |
-| **Why SQL for KYC/role** | `SignUpDto` has no mail/country/kycLevel. Mail is set after sign-up with `PUT /v2/user/mail` (first mail applies without verification). Arbitrary `kycLevel` and `role` are not public-API assignable without the full KYC/admin flow. |
+| **Why SQL for KYC/role** | `SignUpDto` has no mail/country/kycLevel. Mail is set after sign-up with `PUT /v2/user/mail` (first mail applies without verification). If the account already has mail (e.g. wallet index reused across runs), that existing mail is reused instead of calling the API again — a second set would require 2FA (`TFA_REQUIRED`). Arbitrary `kycLevel` and `role` are not public-API assignable without the full KYC/admin flow. |
 
 `completePersonalData: true` (or `kycLevel >= 30`) fills personal columns so `UserData.isDataComplete` is true — **required for `POST /sell`**.
 
@@ -185,7 +207,7 @@ Deletes every row tracked during this process (`{ table, id }`) in reverse creat
 | Mail **verification codes** after first mail | Mail sending disabled; first `PUT /v2/user/mail` applies immediately when mail was null |
 | Real **Lightning** payment-link API path | No Lightning deposits from EVM seed; factory uses SQL synthetic Lightning deposit |
 | Direct **call_queue** row | Derived view only — set phone status / AML reason |
-| Arbitrary **staff 2FA** sessions | Staff mail login + TOTP not automated here; use SQL `role` for data, or sibling `loginAs` if seeded |
+| Mail-login + **TOTP** second factor | Staff/mail login with TOTP is not automated here. Elevated (KYC-gated) access via `loginAs` for Admin/Compliance/Support/RealUnit **is** reliable after global.setup seeds staff KYC clearance — only the mail+TOTP path remains unautomated. |
 | Payout / batch **Complete** with on-chain `txId` from real chain | No blockchain nodes; factory sets placeholder `txId` / amounts for UI only |
 | **Checkout / card** txs | External Checkout provider mocked; not covered by these factories |
 

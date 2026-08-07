@@ -114,8 +114,18 @@ export async function loginAs(
   await signatureLogin(wallet);
 
   // (2) Elevate role — UPDATE is idempotent; always run so a stale role is corrected.
+  // Also set user_data.verifiedName: RoleGuard demands a non-empty verifiedName on every
+  // endpoint whose entry roles are all in KycGatedRoles (see api/src/shared/auth/role.guard.ts
+  // and api/src/shared/auth/staff-kyc-clearance.ts). Without it, loginAs('Support') etc. lands
+  // on /staff-kyc-required instead of the real dashboard. Applied for every role (including
+  // User/Marketing) — harmless where HasStaffKycClearance is never consulted.
   await withDb(async (client) => {
     await client.query('UPDATE "user" SET role = $1 WHERE address = $2', [role, wallet.address]);
+    await client.query(
+      `UPDATE user_data SET "verifiedName" = $1
+       WHERE id = (SELECT "userDataId" FROM "user" WHERE address = $2)`,
+      ['E2E Test Staff', wallet.address],
+    );
   });
 
   // (3) Fresh login so the JWT is minted with the updated role claim.
