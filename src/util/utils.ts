@@ -1,5 +1,6 @@
 import { Asset, Fiat, KycFile, UserAddress, Utils } from '@dfx.swiss/react';
 import { CustodyAsset, CustodyAssetBalance } from 'src/dto/safe.dto';
+import { allowedParamsOnly, LOGIN_RETURN_ALLOWED_PARAMS } from './redirect-params';
 
 export function isDefined<T>(item: T | undefined): item is T {
   return item != null;
@@ -80,24 +81,9 @@ export function relativeUrl({ path, params }: { path: string; params?: URLSearch
   return query ? `${pathname}?${query}` : pathname;
 }
 
-/**
- * Allowlist for login-return paths stored via setRedirect: only params that may reappear in
- * mail magic-link redirectUri / Alby redirect. Currently `a` (mail section anchor, see
- * useAnchor). Note that `a` is double-booked: payment-link routes read it as the `amount`
- * shorthand (payment-link.context.tsx). Those routes are unguarded and never reach setRedirect,
- * so the two uses do not collide today — but check both before adding a key here.
- * Do not copy the entire live search — that would leak code=/user=/arbitrary into the outbound
- * link.
- * Explicit options.redirectPath is not filtered by this helper.
- * Same style as personalIbanOnlyParams (src/util/personal-iban.ts).
- */
+/** Login-return allowlist; see LOGIN_RETURN_ALLOWED_PARAMS in redirect-params.ts. */
 export function redirectAllowedParams(search: string): URLSearchParams {
-  const params = new URLSearchParams();
-  const a = new URLSearchParams(search).get('a');
-  if (a != null) {
-    params.set('a', a);
-  }
-  return params;
+  return allowedParamsOnly(search, LOGIN_RETURN_ALLOWED_PARAMS);
 }
 
 // SDK call path (DfxHttpClient config.url): the leading slash is FORBIDDEN because the client joins
