@@ -254,7 +254,7 @@ function buildPayRequest(displayQr: boolean) {
     possibleStandards: ['OpenCryptoPay'],
     displayQr,
     mode: 'Multiple',
-    route: '26678',
+    route: 'route-handbook-1',
     currency: 'CHF',
     recipient: { name: 'Test Merchant' },
     transferAmounts: [{ method: 'Lightning', minFee: 0, assets: [{ asset: 'BTC', amount: 1 }] }],
@@ -288,6 +288,42 @@ function mockContext(displayQr: boolean) {
     paymentLinkApiUrl: { current: 'https://api.example.com/v1/paymentLink/payment?standard=OpenCryptoPay' },
     callbackUrl: { current: undefined },
     paymentStandards: [{ id: 'OpenCryptoPay', label: 'OpenCryptoPay', description: 'desc' }],
+    paymentIdentifier: 'lnurl1test',
+    isLoadingPaymentIdentifier: false,
+    paymentStatus: 'Pending',
+    isLoadingMetaMask: false,
+    metaMaskInfo: undefined,
+    metaMaskError: undefined,
+    isMetaMaskPaying: false,
+    isMerchantMode: false,
+    showAssets: false,
+    showMap: false,
+    paymentHasQuote: (request: unknown) =>
+      Boolean(request && typeof request === 'object' && 'quote' in (request as object)),
+    setSessionApiUrl: jest.fn(),
+    setPaymentIdentifier: jest.fn(),
+    fetchPayRequest: jest.fn().mockResolvedValue(undefined),
+    fetchPaymentIdentifier: jest.fn().mockResolvedValue(undefined),
+    payWithMetaMask: jest.fn(),
+  });
+
+  mockWallets();
+}
+
+/** Non-OCP standard (PayToAddress) — form selects it from payRequest.standard. */
+function mockContextNonOcp(displayQr: boolean) {
+  mockUsePaymentLinkContext.mockReturnValue({
+    error: undefined,
+    merchant: undefined,
+    payRequest: {
+      ...buildPayRequest(displayQr),
+      standard: 'PayToAddress',
+      possibleStandards: ['PayToAddress'],
+    },
+    timer: { minutes: 5, seconds: 0 },
+    paymentLinkApiUrl: { current: 'https://api.example.com/v1/paymentLink/payment?standard=PayToAddress' },
+    callbackUrl: { current: undefined },
+    paymentStandards: [{ id: 'PayToAddress', label: 'Pay to address', description: 'on-chain' }],
     paymentIdentifier: 'lnurl1test',
     isLoadingPaymentIdentifier: false,
     paymentStatus: 'Pending',
@@ -411,7 +447,7 @@ describe('PaymentLinkScreen device-aware QR', () => {
     expect(screen.queryByText(WALLET_COPY)).not.toBeInTheDocument();
   });
 
-  // Case A: "Request Desktop Site" — UA reports desktop, coarse pointer stays true
+  // "Request Desktop Site": UA reports desktop, coarse pointer stays true → still handheld.
   it('desktop UA + coarse pointer → no large QR and wallet copy (request desktop site)', () => {
     mockDevice.isMobile = false;
     setMatchMedia(true);
@@ -424,7 +460,7 @@ describe('PaymentLinkScreen device-aware QR', () => {
     expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
   });
 
-  // Case B: force semantics still wins over coarse-pointer handheld
+  // displayQr still forces large QR when the pointer reports handheld.
   it('desktop UA + coarse pointer + displayQr true → large QR (force)', () => {
     mockDevice.isMobile = false;
     setMatchMedia(true);
@@ -437,7 +473,7 @@ describe('PaymentLinkScreen device-aware QR', () => {
     expect(screen.queryByText(WALLET_COPY)).not.toBeInTheDocument();
   });
 
-  // Case C: matchMedia missing — fall back to isMobile without throwing
+  // matchMedia missing — fall back to isMobile without throwing.
   it('matchMedia undefined + isMobile true → falls back to isMobile (no throw)', () => {
     mockDevice.isMobile = true;
     setMatchMedia('undefined');
@@ -458,7 +494,7 @@ describe('PaymentLinkScreen device-aware QR', () => {
     expect(screen.getByText(SCAN_COPY)).toBeInTheDocument();
   });
 
-  // Case D: no-quote cashier copy must not mention QR / scan
+  // No quote: cashier copy must not mention QR / scan.
   it('no quote → cashier copy without scan/QR and no QrBasic', () => {
     mockDevice.isMobile = false;
     setMatchMedia(false);
@@ -472,6 +508,46 @@ describe('PaymentLinkScreen device-aware QR', () => {
     const body = document.body.textContent ?? '';
     expect(body.toLowerCase()).not.toMatch(/\bscan\b/);
     expect(body.toLowerCase()).not.toMatch(/\bqr\b/);
+  });
+
+  // Non-OCP: large QR only lives in the OCP section — collapsible row must remain the fallback.
+  it('desktop + non-OCP standard + displayQr false → collapsible QR row, no large QR', async () => {
+    mockDevice.isMobile = false;
+    setMatchMedia(false);
+    mockContextNonOcp(false);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('expandable-QR Code')).toBeInTheDocument();
+    });
+    expect(queryLargePaymentQr()).toBeUndefined();
+    expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
+  });
+
+  it('desktop + non-OCP standard + displayQr true → collapsible QR row, no large QR', async () => {
+    mockDevice.isMobile = false;
+    setMatchMedia(false);
+    mockContextNonOcp(true);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('expandable-QR Code')).toBeInTheDocument();
+    });
+    expect(queryLargePaymentQr()).toBeUndefined();
+    expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
+  });
+
+  it('handheld + non-OCP standard → collapsible QR row, no large QR', async () => {
+    mockDevice.isMobile = true;
+    setMatchMedia(true);
+    mockContextNonOcp(false);
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('expandable-QR Code')).toBeInTheDocument();
+    });
+    expect(queryLargePaymentQr()).toBeUndefined();
+    expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
   });
 });
 
@@ -697,7 +773,9 @@ describe('PaymentLinkScreen branches beyond device QR', () => {
     mockWallets();
     renderAt();
     expect(screen.getByText('LOCATIONS')).toBeInTheDocument();
-    expect(document.querySelector('iframe')).toBeTruthy();
+    const mapFrame = document.querySelector('iframe');
+    expect(mapFrame).toBeTruthy();
+    expect(mapFrame?.getAttribute('src')).toMatch(/google\.com\/maps/);
   });
 
   it('clears wallet data when payment is cancelled', () => {
