@@ -211,7 +211,7 @@ describe('getStoredPaymentDetailErrorMessage', () => {
     ['StoredPersonalIbanIsNoLongerActive', 'This personal IBAN is no longer active. Please start a new purchase.'],
     ['StoredBankNoLongerAcceptsPayments', 'This bank no longer accepts payments. Please start a new purchase.'],
     [
-      'CollectionAccountInvoiceRequiresPersonalIban',
+      'CollectionAccountInvoicePersonalIbanMissing',
       'The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.',
     ],
     [
