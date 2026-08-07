@@ -134,8 +134,16 @@ async function loadRegistryClaims(
 
   for (const file of files) {
     const base = file.replace(/\.ts$/, '');
-    // Dynamic import so each lane can add its own registry file without touching this gate.
-    const mod = (await import(`./registry/${base}`)) as { default: RouteClaim[] };
+    // A dynamic `import()` with a computed specifier is NOT rewritten by Playwright's TS
+    // loader (that loader only patches statically-analyzable import/require calls) — at
+    // runtime it falls through to Node's native ESM loader, which cannot parse a raw .ts
+    // file ("SyntaxError: Unexpected token 'export'"), verified empirically. `require()`
+    // with a computed path goes through the same CommonJS loader Playwright already patches
+    // for every other spec/fixture file in this project, so it works for arbitrary,
+    // not-yet-known-at-authoring-time registry file names — which is exactly what a
+    // distributed per-lane registry needs.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require(path.join(registryDir, base)) as { default: RouteClaim[] };
     const list = mod.default;
     if (!Array.isArray(list)) {
       throw new Error(`Registry file ${file} does not default-export a RouteClaim[]`);
