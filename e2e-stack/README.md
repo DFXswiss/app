@@ -1,3 +1,114 @@
 # Full-stack E2E harness
 
-Work in progress.
+## What this is and what it's for
+
+This harness runs the full application in one pass: the frontend, a real API, and a real Postgres database. A pull request is checked against the real interplay of those parts before merge, not only against unit-test mocks. The goal is confidence that screens, API contracts, and persistence still work together after a change.
+
+## What is real and what is mocked
+
+**Real**
+
+- Postgres — freshly created, ephemeral, and built from the real migrations
+- The API
+- The frontend
+
+**Mocked**
+
+- All external providers: banks, KYC/AML, exchanges, blockchain nodes, pricing, storage, and similar outbound integrations
+
+Mocking happens on two levels at once:
+
+1. The API runs with `ENVIRONMENT=loc` and mocks outbound calls itself.
+2. The stack sits on a Docker network with `internal: true`, which has no route to the internet at all.
+
+A test therefore cannot structurally reach any real payment provider or other external service, even if application code tried to.
+
+## Quickstart
+
+One-shot run (bring the stack up, run the tests, tear everything down):
+
+```bash
+npm run e2e:stack
+```
+
+Manual exploration (leave the stack up, poke around, then tear down):
+
+```bash
+npm run e2e:stack:up
+# … use the app …
+npm run e2e:stack:down
+```
+
+After `e2e:stack:up`, the following host ports are available for debugging (override with env vars if needed):
+
+| Service  | Env var             | Default host URL          |
+| -------- | ------------------- | ------------------------- |
+| API      | `E2E_PORT_API`      | http://localhost:3000     |
+| Frontend | `E2E_PORT_FRONTEND` | http://localhost:3001     |
+
+## Prerequisites
+
+- Docker with Compose v2
+- Node 20
+- Either:
+  - the API repository checked out as a sibling directory (default `../api`, overridable via `E2E_API_REPO`), or
+  - `E2E_API_IMAGE` set to a pre-built API image (skips building from a local checkout)
+
+Relevant environment variables:
+
+| Variable            | Role                                                                 |
+| ------------------- | -------------------------------------------------------------------- |
+| `E2E_API_IMAGE`     | If set, use this pre-built API image instead of building one         |
+| `E2E_API_REPO`      | Path to a checked-out API repo; default `../api` (ignored when `E2E_API_IMAGE` is set) |
+| `E2E_PORT_API`      | Host port for the API (default `3000`) — debugging only              |
+| `E2E_PORT_FRONTEND` | Host port for the frontend (default `3001`) — debugging only         |
+
+## Writing tests
+
+Specs live under `e2e-stack/specs/`.
+
+Fixtures cover common setup needs such as signature login, email login, and database queries. For the authoritative, up-to-date list of fixtures (names, signatures, import paths), see `e2e-stack/specs/fixtures/` — that directory is the source of truth and may grow as the harness matures.
+
+## Relation to the existing suite under `e2e/`
+
+The suite under `e2e/` is visual-regression testing (screenshot baselines). It deliberately does not run in CI, because baselines are platform- and font-dependent.
+
+This harness checks function, not appearance, and therefore does run in CI on every pull request. Both suites exist side by side and serve different purposes.
+
+## Troubleshooting
+
+**Logs**
+
+```bash
+docker compose -p dfx-e2e-stack logs api
+docker compose -p dfx-e2e-stack logs frontend
+docker compose -p dfx-e2e-stack logs
+```
+
+**Traces, screenshots, videos, HTML report**
+
+Playwright writes artifacts inside the `tests` container to `/work/test-results` and `/work/playwright-report`. Those paths are backed by named Docker volumes (bind mounts are not used and are not supported in the environments this harness must run in).
+
+Copy them out before teardown:
+
+```bash
+docker compose -p dfx-e2e-stack -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml cp <tests-container>:/work/test-results ./test-results
+docker compose -p dfx-e2e-stack -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml cp <tests-container>:/work/playwright-report ./playwright-report
+```
+
+Or use `docker cp` against the tests container name. In CI the workflow does this automatically and uploads an artifact named `e2e-stack-report`.
+
+**Stack does not become healthy**
+
+1. Confirm Docker is running and Compose v2 is available (`docker compose version`).
+2. Confirm the API source is reachable: either `E2E_API_REPO` points at a valid checkout, or `E2E_API_IMAGE` is set.
+3. Inspect service health and recent logs (commands above). Look for failed migrations, a port conflict on `E2E_PORT_API` / `E2E_PORT_FRONTEND`, or an image build error.
+4. Tear down and retry from a clean state: `npm run e2e:stack:down`, then `npm run e2e:stack:up` (or `npm run e2e:stack`).
+
+## Cleanup
+
+```bash
+npm run e2e:stack:down
+```
+
+This runs `docker compose down -v --remove-orphans` for the `dfx-e2e-stack` project and is safe to run even if nothing is up.

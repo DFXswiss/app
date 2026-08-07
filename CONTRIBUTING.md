@@ -156,3 +156,21 @@ it at the call site moves endpoint knowledge — verb, query shape, response typ
 into this repository, where it goes stale silently: the SDK gets updated, the call
 site does not, and `call<T>()` type-checks against the generic you asserted
 yourself, so nothing fails at build time.
+
+## Full-stack E2E tests
+
+The full-stack harness under `e2e-stack/` runs the real frontend, API, and
+Postgres together (external providers are mocked). Unlike the visual-regression
+suite under `e2e/` — see [Visual regression tests (Playwright)](#visual-regression-tests-playwright)
+above, which does not run in CI — this harness runs on every pull request in CI.
+
+A pull request that changes a screen or an API contract should bring or update
+the matching full-stack test.
+
+Run locally:
+
+```
+npm run e2e:stack
+```
+
+Details: [`e2e-stack/README.md`](e2e-stack/README.md).

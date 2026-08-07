@@ -1,0 +1,95 @@
+# Full-stack E2E: real frontend + API + Postgres against mocked external providers.
+#
+# Do not add a job-level `if:` skip condition (for draft PRs, path filters, or similar).
+# A skipped GitHub Actions check counts as passing, which would silently defeat the
+# merge gate. If you ever consider adding a skip anywhere in this file, justify it in
+# a comment right there.
+
+name: Full-stack E2E
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      api_ref:
+        description: 'Git ref of DFXswiss/api to check out and build against'
+        required: false
+        default: 'develop'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-stack-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Full-stack E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout services
+        uses: actions/checkout@v4
+
+      - name: Checkout API
+        uses: actions/checkout@v4
+        with:
+          repository: DFXswiss/api
+          ref: ${{ inputs.api_ref || 'develop' }}
+          path: api-repo
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # run.sh is not used here: its EXIT trap tears the stack down with
+      # `docker compose down -v`, which destroys the named volumes that hold
+      # Playwright traces, screenshots, videos, and the HTML report before they
+      # can be copied out. Instead we bring the stack up, run tests, copy
+      # artifacts from the still-present named volumes / tests container, and
+      # only then tear down in a final always() step.
+      - name: Bring stack up
+        run: E2E_API_REPO=$GITHUB_WORKSPACE/api-repo bash e2e-stack/scripts/up.sh
+
+      - name: Run Playwright tests
+        # No continue-on-error: a failed test must fail the job. Later steps use
+        # `if: always()` so artifact collection and teardown still run.
+        run: |
+          docker compose \
+            -p dfx-e2e-stack \
+            -f e2e-stack/compose.yml \
+            -f e2e-stack/compose.tests.yml \
+            run --name dfx-e2e-stack-tests tests
+
+      - name: Collect test artifacts
+        if: always()
+        run: |
+          mkdir -p e2e-stack-artifacts
+          # Named volumes back these paths inside the tests container. Bind mounts
+          # are not used. Copy out before down.sh removes the volumes (-v).
+          docker cp dfx-e2e-stack-tests:/work/test-results e2e-stack-artifacts/test-results \
+            || docker compose -p dfx-e2e-stack cp dfx-e2e-stack-tests:/work/test-results e2e-stack-artifacts/test-results \
+            || true
+          docker cp dfx-e2e-stack-tests:/work/playwright-report e2e-stack-artifacts/playwright-report \
+            || docker compose -p dfx-e2e-stack cp dfx-e2e-stack-tests:/work/playwright-report e2e-stack-artifacts/playwright-report \
+            || true
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-stack-report
+          path: e2e-stack-artifacts
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Tear down stack
+        if: always()
+        run: bash e2e-stack/scripts/down.sh
