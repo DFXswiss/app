@@ -115,7 +115,7 @@ function MenuIcon({ icon, setIsNavigationOpen }: IconContentProps): JSX.Element 
   );
 }
 
-function NavigationMenu({ setIsNavigationOpen, small = false }: NavigationMenuContentProps): JSX.Element {
+function NavigationMenu({ setIsNavigationOpen, small }: NavigationMenuContentProps): JSX.Element {
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
   const { hasCustody } = useUserContext();

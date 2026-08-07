@@ -281,7 +281,7 @@ function makeBucket(
   dateIso: string,
   volume: { buy: number; sell: number; swap: number },
   transactions: { buy: number; sell: number; swap: number },
-  opts: { partial?: boolean } = {},
+  opts: { partial?: boolean },
 ): PartnerTimelineBucket {
   return {
     date: dateIso,
@@ -356,11 +356,10 @@ export function buildPartnerTimelineFixture(
     );
   }
 
-  // Guarantee edges are partial even if the zero bucket landed there
-  if (buckets.length > 0) {
-    buckets[0] = { ...buckets[0], partial: true };
-    buckets[buckets.length - 1] = { ...buckets[buckets.length - 1], partial: true };
-  }
+  // Guarantee edges are partial even if the zero bucket landed there.
+  // bucketCount = Math.max(1, …) ensures at least one push above.
+  buckets[0] = { ...buckets[0], partial: true };
+  buckets[buckets.length - 1] = { ...buckets[buckets.length - 1], partial: true };
 
   return {
     period: { from, to },
