@@ -120,8 +120,6 @@ export default function PaymentLinkScreen(): JSX.Element {
   } = usePaymentLinkWallets();
 
   const isHandheld = useIsHandheld();
-  // displayQr true forces the large QR on every device; otherwise desktop shows QR, handheld shows wallets
-  const showLargeQr = Boolean(payRequest?.displayQr) || !isHandheld;
 
   const [assetObject, setAssetObject] = useState<Asset>();
   const [showContract, setShowContract] = useState(false);
@@ -141,6 +139,15 @@ export default function PaymentLinkScreen(): JSX.Element {
 
   const selectedPaymentStandard = useWatch({ control, name: 'paymentStandard' });
   const selectedAsset = useWatch({ control, name: 'asset' });
+
+  // Large QR only exists inside the OpenCryptoPay section; displayQr forces it there on every device.
+  // Outside OCP (or MetaMask error/info), fall back to the collapsible "QR Code" row.
+  const showsOcpSection =
+    !metaMaskError &&
+    !metaMaskInfo &&
+    (!selectedPaymentStandard ||
+      PaymentStandardType.OPEN_CRYPTO_PAY === (selectedPaymentStandard.id as PaymentStandardType));
+  const showLargeQr = showsOcpSection && (Boolean(payRequest?.displayQr) || !isHandheld);
 
   useEffect(() => {
     const walletIdParam = searchParams.get('wallet-id');
@@ -611,8 +618,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                   />
                 </>
               ) : (
-                (!selectedPaymentStandard ||
-                  PaymentStandardType.OPEN_CRYPTO_PAY === (selectedPaymentStandard.id as PaymentStandardType)) && (
+                showsOcpSection && (
                   <StyledVerticalStack full gap={8} center>
                     {paymentHasQuote(payRequest) ? (
                       <div className="flex flex-col w-full items-center justify-center">
