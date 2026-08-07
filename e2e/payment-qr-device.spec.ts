@@ -6,13 +6,16 @@ import { expect, test, devices, type Page, type Route } from '@playwright/test';
  * Desktop → large QR + scan copy.
  * Handheld (iPhone profile: mobile UA + coarse pointer) → no large QR + wallet copy.
  *
- * All payment APIs are mocked with a fixed quote expiry so the countdown and
- * expiration display stay byte-stable across runs. Wait-polling is held open
- * so it never re-triggers a re-fetch loop.
+ * All payment APIs under /v1/ are mocked. Quote expiry is a fixed ISO string so the
+ * expiration display stays stable. Wait-polling is held open so it never re-triggers
+ * a re-fetch loop.
+ *
+ * API base URL for the QR payload is pinned via playwright.config webServer.env
+ * (E2E_API_URL ?? https://dev.api.dfx.swiss) so baselines stay matrix-stable.
  */
 
 const FIXED_NOW = new Date('2026-06-15T12:00:00.000Z');
-/** 30 minutes after FIXED_NOW — countdown freezes at 30m 0s under page.clock. */
+/** 30 minutes after FIXED_NOW — used as quote.expiration display value. */
 const FIXED_EXPIRATION = '2026-06-15T12:30:00.000Z';
 
 const PAY_REQUEST = {
@@ -24,7 +27,7 @@ const PAY_REQUEST = {
   possibleStandards: ['OpenCryptoPay'],
   displayQr: false,
   mode: 'Multiple',
-  route: '26678',
+  route: 'route-handbook-1',
   currency: 'CHF',
   recipient: { name: 'Handbook Merchant' },
   transferAmounts: [
@@ -73,27 +76,16 @@ const WALLET_APPS = [
 ];
 
 async function installPaymentMocks(page: Page): Promise<void> {
-  // Catch every API call so nothing depends on a live backend.
-  await page.route('**/*', async (route: Route) => {
+  // Repo standard: only intercept /v1/** so unknown API calls cannot slip to a live backend.
+  await page.route('**/v1/**', async (route: Route) => {
     const url = route.request().url();
-    const resourceType = route.request().resourceType();
 
-    // Let the SPA, fonts, and webpack-dev-server through.
-    if (
-      url.includes('localhost:3001') ||
-      url.includes('127.0.0.1:3001') ||
-      resourceType === 'document' ||
-      resourceType === 'stylesheet' ||
-      resourceType === 'script' ||
-      resourceType === 'font' ||
-      resourceType === 'image' ||
-      url.includes('webpack') ||
-      url.includes('hot-update') ||
-      url.includes('sockjs') ||
-      url.includes('ws://') ||
-      url.includes('wss://')
-    ) {
-      await route.continue();
+    // Hold open so wait-polling never completes and re-fetches the quote.
+    // Check wait paths before the general /paymentLink/payment match (POS uses paymentLink/payment/wait).
+    if (url.includes('/lnurlp/wait') || url.includes('paymentLink/payment/wait')) {
+      await new Promise(() => {
+        /* intentionally never resolves */
+      });
       return;
     }
 
@@ -124,14 +116,6 @@ async function installPaymentMocks(page: Page): Promise<void> {
       return;
     }
 
-    // Hold open so wait-polling never completes and re-fetches the quote.
-    if (url.includes('/lnurlp/wait')) {
-      await new Promise(() => {
-        /* intentionally never resolves */
-      });
-      return;
-    }
-
     if (url.includes('/lnurlp/cb') || url.includes('api.example.test')) {
       await route.fulfill({
         status: 200,
@@ -142,16 +126,11 @@ async function installPaymentMocks(page: Page): Promise<void> {
     }
 
     // Languages, assets, settings, etc. — empty JSON so the shell can boot offline.
-    if (url.includes('/v1/') || url.includes('api.dfx.swiss') || url.includes('api.example')) {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: '[]',
-      });
-      return;
-    }
-
-    await route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '[]',
+    });
   });
 }
 
@@ -164,11 +143,12 @@ async function openPaymentPage(page: Page): Promise<void> {
   });
 
   await installPaymentMocks(page);
-  // Freeze wall-clock after routes are ready so countdown + expiry stay stable.
+  // Wall-clock pin for any Date.now() consumers; the rate/timer copy does not render
+  // here because PAYMENT_STANDARDS has no blockchain field (see payment-link.screen rate guard).
   await page.clock.setFixedTime(FIXED_NOW);
 
   // Avoid networkidle: the intentional hang on /lnurlp/wait keeps a connection open forever.
-  await page.goto('/pl?route=26678&externalId=ext-handbook-1&amount=12.5&currency=CHF&lang=en', {
+  await page.goto('/pl?route=route-handbook-1&externalId=ext-handbook-1&amount=12.5&currency=CHF&lang=en', {
     waitUntil: 'domcontentloaded',
   });
 
@@ -176,8 +156,8 @@ async function openPaymentPage(page: Page): Promise<void> {
   await expect(page.getByText('Handbook Merchant')).toBeVisible({ timeout: 30000 });
   await expect(page.getByText('12.5')).toBeVisible({ timeout: 15000 });
 
-  // Wait until the QR is no longer in the loading (near-invisible) state if present.
-  await page.waitForTimeout(500);
+  // QrBasic uses animate-pulse while isLoading; wait until the near-invisible QR state is gone.
+  await expect(page.locator('.animate-pulse')).toHaveCount(0, { timeout: 15000 });
 }
 
 const screenshotOpts = {

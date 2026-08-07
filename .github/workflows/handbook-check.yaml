@@ -8,12 +8,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'e2e/screenshots/**'
-      - 'e2e/payment-qr-device.spec.ts'
       - 'scripts/handbook/**'
       - 'tailwind.config.js'
       - 'src/static/assets/**'
-      - 'src/screens/payment-link.screen.tsx'
-      - 'src/hooks/device.hook.ts'
       - 'public/logo.png'
       - 'docs/**'
       - 'README.md'
