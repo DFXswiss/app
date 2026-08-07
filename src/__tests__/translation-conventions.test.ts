@@ -1,7 +1,7 @@
 /**
  * Convention guards for translation files touched by payment-QR work.
  * Not a full i18n linter — only Anrede capitalization (de) and "wallet" as
- * common noun (fr/it), so Finding-3 regressions fail the suite.
+ * common noun (fr/it), so portefeuille/portafoglio regressions fail the suite.
  */
 
 import de from '../translations/languages/de.json';
@@ -21,12 +21,8 @@ const DE_ANREDE_EXCEPTIONS: readonly string[] = [
   'Die bestehende EUR-IBAN (CH8583019DFXSWISSEURX) hat derzeit technische Probleme. Bitte verwende stattdessen deine persönliche IBAN für EUR-Transaktionen. Du findest deine persönliche IBAN auf der Kaufseite.',
 ];
 
-/** Product-name / placeholder exceptions where the English token "wallet" is intentional. */
-const WALLET_EXCEPTIONS: readonly string[] = [
-  'Login avec votre wallet BTC Taro',
-  // i18n placeholder — the variable name is English by convention.
-  '{{wallet}}',
-];
+/** Full-string product-name exceptions where the English token "wallet" is intentional. */
+const WALLET_EXCEPTIONS: readonly string[] = ['Login avec votre wallet BTC Taro'];
 
 function collectStringValues(node: unknown, out: string[] = []): string[] {
   if (typeof node === 'string') {
@@ -57,10 +53,11 @@ function containsWalletAsWord(value: string): boolean {
 }
 
 function isWalletException(value: string): boolean {
-  if (WALLET_EXCEPTIONS.some((ex) => value.includes(ex) || value === ex)) {
+  // Exact match only — substring exceptions would silence any sentence containing the product name.
+  if (WALLET_EXCEPTIONS.some((ex) => value === ex)) {
     return true;
   }
-  // Pure placeholder-only hits: strip {{wallet}} and re-check.
+  // Placeholder-only hits: strip {{wallet}} and re-check (variable name is English by convention).
   const withoutPlaceholders = value.replace(/\{\{\s*wallet\s*\}\}/gi, '');
   return !/\bwallet\b/i.test(withoutPlaceholders);
 }
@@ -113,7 +110,7 @@ describe('translation conventions (payment-related language quality)', () => {
       expect(violations).toEqual([]);
     });
 
-    it('payment copy uses portefeuille / portafoglio (regression for Finding 3)', () => {
+    it('payment copy uses portefeuille / portafoglio instead of wallet as Gattungswort', () => {
       const frPayment = (fr as { 'screens/payment': Record<string, string> })['screens/payment'];
       const itPayment = (itLang as { 'screens/payment': Record<string, string> })['screens/payment'];
 
