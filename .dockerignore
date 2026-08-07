@@ -1,0 +1,9 @@
+node_modules
+e2e-stack/node_modules
+.git
+build
+dist
+e2e/screenshots
+test-results
+playwright-report
+*.log

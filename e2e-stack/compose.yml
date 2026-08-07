@@ -1,0 +1,76 @@
+# Hermetic full-stack E2E harness: Postgres + DFX API + frontend + debug proxy.
+# The sandbox network is internal (no internet). Only proxy joins the edge network
+# and publishes ports for manual debugging; tests talk to services by DNS name
+# inside sandbox.
+
+networks:
+  sandbox:
+    internal: true
+  edge:
+
+configs:
+  proxy_nginx_conf:
+    file: ./images/proxy/nginx.conf
+
+services:
+  db:
+    image: postgres:16
+    networks:
+      sandbox:
+        aliases:
+          # Required: loc seed allowlist checks SQL_HOST against sql-dfx-api-loc*
+          # (or localhost / *loc*.database.windows.net). A mismatched host causes
+          # the seed script to exit 0 silently with no data inserted.
+          - sql-dfx-api-loc
+    environment:
+      POSTGRES_USER: sa
+      POSTGRES_PASSWORD: LocalDev2026
+      POSTGRES_DB: dfx
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sa -d dfx"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  api:
+    image: ${E2E_API_IMAGE:-dfx-api:e2e}
+    env_file:
+      - env/api.env
+    networks:
+      - sandbox
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # Use /version (not /health — /health returns 503 until MonitoringService has state).
+      # Image has neither curl nor wget; node is always present.
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/version', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    restart: "no"
+
+  frontend:
+    build:
+      # Repo root: Dockerfile needs package.json, lockfile, and full app source.
+      context: ..
+      dockerfile: e2e-stack/images/frontend/Dockerfile
+    networks:
+      - sandbox
+
+  proxy:
+    image: nginx:alpine
+    networks:
+      - sandbox
+      - edge
+    ports:
+      - "${E2E_PORT_API:-3000}:3000"
+      - "${E2E_PORT_FRONTEND:-3001}:3001"
+    configs:
+      - source: proxy_nginx_conf
+        target: /etc/nginx/conf.d/default.conf
+    depends_on:
+      - api
+      - frontend

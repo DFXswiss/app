@@ -98,7 +98,10 @@
     "eject": "react-scripts eject",
     "serve": "serve build -l 4000",
     "analyze": "source-map-explorer 'build/static/js/*.js'",
-    "start-widget": "node start-widget.js"
+    "start-widget": "node start-widget.js",
+    "e2e:stack:up": "bash e2e-stack/scripts/up.sh",
+    "e2e:stack:down": "bash e2e-stack/scripts/down.sh",
+    "e2e:stack": "bash e2e-stack/scripts/run.sh"
   },
   "overrides": {
     "react-scripts": {
