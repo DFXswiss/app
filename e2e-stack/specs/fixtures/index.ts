@@ -1,8 +1,10 @@
 import { test as base, expect, type Page } from '@playwright/test';
 import { gotoWithSession, loginAs, signatureLogin, testWallet, type TestRole } from './auth';
 
+export * from './api-client';
 export * from './auth';
 export * from './db';
+export * from './factories';
 export * from './mail';
 export * from './test-data';
 export { expect };

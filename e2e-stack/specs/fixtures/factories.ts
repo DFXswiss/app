@@ -13,6 +13,7 @@
 import { apiGet, apiPost, apiPut } from './api-client';
 import { queryOne, withDb } from './db';
 import { signatureLogin, testWallet, type TestRole, type TestWallet } from './auth';
+import { TEST_IBAN } from './test-data';
 
 // ---------------------------------------------------------------------------
 // Counters & cleanup registry
@@ -37,8 +38,10 @@ export function e2eMail(tag?: string): string {
   return `e2e+${uniqueTag(tag)}@dfx.swiss`;
 }
 
-/** Default test IBAN accepted by IsDfxIban (CH domestic, valid checksum). */
-export const TEST_IBAN = 'CH9300762011623852957';
+// TEST_IBAN lives in ./test-data — the single place for shared constants. Re-exported here so
+// callers can keep importing it alongside the factories, but not redeclared: two `export const`s
+// of the same name would make `export *` from the barrel drop the name as ambiguous.
+export { TEST_IBAN } from './test-data';
 
 interface CreatedRef {
   table: string;
