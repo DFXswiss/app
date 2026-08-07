@@ -47,8 +47,35 @@ function PaymentLocation() {
   );
 }
 
-describe('useNavigation clearParams (invoice payer continue)', () => {
-  it('lands on /pl with only the payment query — no recipient, no pay', async () => {
+function assertPaymentLocation(router: ReturnType<typeof createMemoryRouter>) {
+  const locationEl = screen.getByTestId('payment-location');
+  const text = locationEl.textContent ?? '';
+  expect(text.startsWith('/pl')).toBe(true);
+
+  const search = text.slice('/pl'.length);
+  // Single query separator (no empty or double ?).
+  expect(search.startsWith('?')).toBe(true);
+  expect(search.indexOf('?')).toBe(0);
+  expect(search.slice(1).includes('?')).toBe(false);
+
+  const params = new URLSearchParams(search.slice(1));
+  expect(params.get('routeId')).toBe('42');
+  expect(params.get('amount')).toBe('10');
+  expect(params.get('message')).toBe('INV-1');
+  expect(params.get('expiryDate')).toBe(EXPIRY);
+  expect(params.get('recipient')).toBeNull();
+  expect(params.get('pay')).toBeNull();
+  expect([...params.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
+
+  expect(router.state.location.pathname).toBe('/pl');
+  const routerParams = new URLSearchParams(router.state.location.search);
+  expect([...routerParams.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
+  expect(router.state.location.search).toMatch(/^\?/);
+  expect(router.state.location.search.slice(1).includes('?')).toBe(false);
+}
+
+describe('useNavigation clearParams (invoice continue)', () => {
+  it('from payer query: lands on /pl with only the payment params — no recipient, no pay', async () => {
     const router = createMemoryRouter(
       [
         { path: '/invoice', element: <ContinueToPaymentProbe /> },
@@ -63,26 +90,26 @@ describe('useNavigation clearParams (invoice payer continue)', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Continue to payment' }));
     });
 
-    const locationEl = await screen.findByTestId('payment-location');
-    const text = locationEl.textContent ?? '';
-    expect(text.startsWith('/pl')).toBe(true);
+    await screen.findByTestId('payment-location');
+    assertPaymentLocation(router);
+  });
 
-    const search = text.slice('/pl'.length);
-    const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  it('from empty query (merchant after mount clear): same four payment params, single ?', async () => {
+    const router = createMemoryRouter(
+      [
+        { path: '/invoice', element: <ContinueToPaymentProbe /> },
+        { path: '/pl', element: <PaymentLocation /> },
+      ],
+      { initialEntries: ['/invoice'] },
+    );
 
-    expect(params.get('routeId')).toBe('42');
-    expect(params.get('amount')).toBe('10');
-    expect(params.get('message')).toBe('INV-1');
-    expect(params.get('expiryDate')).toBe(EXPIRY);
-    expect(params.get('recipient')).toBeNull();
-    expect(params.get('pay')).toBeNull();
-    expect([...params.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
+    render(<RouterProvider router={router} />);
 
-    // Router state agrees with what the destination route renders.
-    expect(router.state.location.pathname).toBe('/pl');
-    const routerParams = new URLSearchParams(router.state.location.search);
-    expect(routerParams.get('recipient')).toBeNull();
-    expect(routerParams.get('pay')).toBeNull();
-    expect([...routerParams.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Continue to payment' }));
+    });
+
+    await screen.findByTestId('payment-location');
+    assertPaymentLocation(router);
   });
 });
