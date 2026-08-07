@@ -30,6 +30,15 @@ roles reach gated endpoints/screens instead of being redirected to `/staff-kyc-r
 inserts `Base` rows, so without this workaround `GET /transaction/:id/refund` always 500s
 with "Chargeback base fee is missing".
 
+**Fresh price_rule timestamps**
+
+`global.setup.ts` also backfills `price_rule.priceTimestamp` (a few hours in the future,
+once per process) and `price_rule.referenceId` (from the API's own seed CSV) for every row
+that has a `currentPrice`. The API's own seed script never writes those two columns even
+though its CSV has them, so every seeded price is born "stale" and the pricing service falls
+through to a live external fetch (e.g. Kraken) that this sandboxed network cannot reach —
+without this workaround `PUT /v1/buy/paymentInfos` hangs or fails.
+
 **Naming (Postgres / TypeORM)**
 
 - Tables: snake_case entity names (`user_data`, `buy_crypto`, `payment_link`).
