@@ -154,6 +154,7 @@ process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import copy from 'copy-to-clipboard';
+import { addYears } from 'date-fns';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import InvoiceScreen from '../screens/invoice.screen';
 
@@ -437,12 +438,62 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(search.get('routeId')).toBe('42');
     expect(search.get('amount')).toBe('10');
     expect(search.get('message')).toBe('INV-1');
-    expect(search.get('expiryDate')).toBeTruthy();
-    expect(search.get('expiryDate')).not.toMatch(/\?/);
+    const expiryDate = search.get('expiryDate');
+    expect(expiryDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(expiryDate).not.toMatch(/\?/);
+    // Screen uses addYears(new Date(), 1) — pin ~1 year ahead, not mere presence.
+    expect(Math.abs(Date.parse(expiryDate as string) - addYears(new Date(), 1).getTime())).toBeLessThan(
+      60_000,
+    );
     expect(search.get('recipient')).toBeNull();
     expect(search.get('pay')).toBeNull();
     // Exactly the payment param set — no payer query leftovers in search string.
     expect([...search.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
+    expect(options).toEqual({ clearParams: ['recipient', 'pay'] });
+  });
+
+  it('merchant mode Open invoice navigates with the same payment param set (object form)', async () => {
+    renderAt('/invoice?recipient=42');
+
+    await waitFor(() => {
+      expect(lastLayoutTitle()).toBe('Create Invoice');
+    });
+
+    // Mount effect pre-fills then clears the query; recipient must still validate.
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice ID' })).not.toBeDisabled();
+    });
+
+    await fillInvoiceFields('INV-1', '10');
+
+    const button = await screen.findByRole('button', { name: 'Open invoice' });
+    await waitFor(() => {
+      expect(button).not.toBeDisabled();
+    });
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    const [to, options] = mockNavigate.mock.calls[0];
+    expect(to).toEqual(expect.objectContaining({ pathname: '/pl' }));
+    const search = new URLSearchParams(to.search);
+    expect(search.get('routeId')).toBe('42');
+    expect(search.get('amount')).toBe('10');
+    expect(search.get('message')).toBe('INV-1');
+    const expiryDate = search.get('expiryDate');
+    expect(expiryDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(Math.abs(Date.parse(expiryDate as string) - addYears(new Date(), 1).getTime())).toBeLessThan(
+      60_000,
+    );
+    expect(search.get('recipient')).toBeNull();
+    expect(search.get('pay')).toBeNull();
+    expect([...search.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
+    // Same navigate options as payer — one code path for both modes.
     expect(options).toEqual({ clearParams: ['recipient', 'pay'] });
   });
 
