@@ -48,8 +48,16 @@ jest.mock('@dfx.swiss/react-components', () => {
     IconColor: { BLUE: 'blue' },
     IconSize: { MD: 'md' },
     IconVariant: { CHECK: 'check' },
-    StyledButton: ({ label, onClick }: { label: string; onClick?: () => void }) => (
-      <button type="button" onClick={onClick}>
+    StyledButton: ({
+      label,
+      onClick,
+      disabled,
+    }: {
+      label: string;
+      onClick?: () => void;
+      disabled?: boolean;
+    }) => (
+      <button type="button" onClick={onClick} disabled={disabled}>
         {label}
       </button>
     ),
@@ -61,11 +69,15 @@ jest.mock('@dfx.swiss/react-components', () => {
         name,
         label,
         placeholder,
+        disabled,
+        type,
       }: {
         control?: unknown;
         name: string;
         label?: string;
         placeholder?: string;
+        disabled?: boolean;
+        type?: string;
       },
       ref: React.Ref<HTMLInputElement>,
     ) {
@@ -75,14 +87,17 @@ jest.mock('@dfx.swiss/react-components', () => {
           name={name}
           render={({ field }: { field: { value?: string; onChange: (v: string) => void; onBlur: () => void } }) => (
             <div>
-              {label ? <label>{label}</label> : null}
+              {label ? <label htmlFor={name}>{label}</label> : null}
               <input
+                id={name}
                 ref={ref}
                 name={name}
+                type={type}
                 placeholder={placeholder}
                 value={field.value ?? ''}
                 onChange={(e) => field.onChange(e.target.value)}
                 onBlur={field.onBlur}
+                disabled={disabled}
               />
             </div>
           )}
@@ -126,7 +141,7 @@ jest.mock('../hooks/debounce.hook', () => ({
 jest.mock('copy-to-clipboard', () => jest.fn());
 
 jest.mock('react-i18next', () => ({
-  Trans: ({ defaults }: { defaults?: string }) => <span>{defaults}</span>,
+  Trans: ({ defaults }: { defaults?: string }) => <span data-testid="recipient-error">{defaults}</span>,
 }));
 
 // Module-level baseUrl in invoice.screen calls url() with Api.url at import time.
@@ -137,17 +152,27 @@ jest.mock('../config/api', () => ({
 
 process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import copy from 'copy-to-clipboard';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import InvoiceScreen from '../screens/invoice.screen';
+
+const mockCopy = copy as jest.MockedFunction<typeof copy>;
 
 const PAYER_HINT =
   'Enter the invoice number and invoice amount exactly as printed on your invoice.';
 
+const INVOICE_ERROR_DEFAULT =
+  'DFX does not recognize a recipient with the name <strong>{{recipient}}</strong>. This service can only be used for recipients who have an active account with DFX and are activated for the invoicing service. If you wish to register as a recipient with DFX, please contact support at <link>{{supportLink}}</link>.';
+
 function renderAt(path: string) {
-  const router = createMemoryRouter([{ path: '/invoice', element: <InvoiceScreen /> }], {
-    initialEntries: [path],
-  });
+  const router = createMemoryRouter(
+    [
+      { path: '/invoice', element: <InvoiceScreen /> },
+      { path: '/other', element: <div>other</div> },
+    ],
+    { initialEntries: [path] },
+  );
   const view = render(<RouterProvider router={router} />);
   return { router, ...view };
 }
@@ -158,11 +183,25 @@ function lastLayoutTitle(): string | undefined {
   return (calls[calls.length - 1][0] as { title?: string } | undefined)?.title;
 }
 
+async function fillInvoiceFields(invoiceId = 'INV-1', amount = '10') {
+  const invoiceInput = document.getElementById('invoiceId') as HTMLInputElement;
+  const amountInput = document.getElementById('amount') as HTMLInputElement;
+  await act(async () => {
+    fireEvent.change(invoiceInput, { target: { value: invoiceId } });
+    fireEvent.blur(invoiceInput);
+    fireEvent.change(amountInput, { target: { value: amount } });
+    fireEvent.blur(amountInput);
+  });
+}
+
 describe('InvoiceScreen payer wording (?pay)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     mockGetPaymentRecipient.mockResolvedValue({ currency: { name: 'CHF' } });
+    global.fetch = jest.fn().mockResolvedValue({
+      json: async () => ({}),
+    }) as jest.Mock;
   });
 
   afterEach(async () => {
@@ -186,6 +225,11 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(screen.getAllByText('Invoice amount').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Continue to payment' })).toBeInTheDocument();
     expect(screen.getByText(PAYER_HINT)).toBeInTheDocument();
+    expect(screen.getByText('Payee')).toBeInTheDocument();
+    expect(screen.queryByText('Recipient')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('John Doe')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('qr-basic')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy Link' })).not.toBeInTheDocument();
 
     expect(screen.queryByText('Create Invoice')).not.toBeInTheDocument();
     expect(screen.queryByText('Invoice ID')).not.toBeInTheDocument();
@@ -203,6 +247,10 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(screen.getAllByText('Amount').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Open invoice' })).toBeInTheDocument();
     expect(screen.queryByText(PAYER_HINT)).not.toBeInTheDocument();
+    expect(screen.getByText('Recipient')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('John Doe')).toBeInTheDocument();
+    expect(screen.getByTestId('qr-basic')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy Link' })).toBeInTheDocument();
 
     expect(screen.queryByText('Pay invoice')).not.toBeInTheDocument();
     expect(screen.queryByText('Invoice number')).not.toBeInTheDocument();
@@ -234,13 +282,76 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(screen.queryByRole('button', { name: 'Continue to payment' })).not.toBeInTheDocument();
   });
 
-  it('payer mode keeps recipient and pay in the URL (survives reload / back)', async () => {
+  it('pay allowlist: only 1/true/yes (case-insensitive, trimmed) enable payer mode', async () => {
+    for (const pay of ['1', 'true', 'TRUE', ' yes ', 'Yes']) {
+      mockUseLayoutOptions.mockClear();
+      const { unmount } = renderAt(`/invoice?recipient=Foo&pay=${encodeURIComponent(pay)}`);
+      await waitFor(() => {
+        expect(lastLayoutTitle()).toBe('Pay invoice');
+      });
+      unmount();
+    }
+
+    for (const pay of ['no', 'False', 'off', '', '2']) {
+      mockUseLayoutOptions.mockClear();
+      const path = pay === '' ? '/invoice?recipient=Foo&pay=' : `/invoice?recipient=Foo&pay=${pay}`;
+      const { unmount } = renderAt(path);
+      await waitFor(() => {
+        expect(lastLayoutTitle()).toBe('Create Invoice');
+      });
+      unmount();
+    }
+  });
+
+  it('payer mode keeps recipient and pay across remount with the same URL (reload)', async () => {
+    const path = '/invoice?recipient=Foo&pay=1';
+    const { router, unmount } = renderAt(path);
+
+    await waitFor(() => {
+      expect(lastLayoutTitle()).toBe('Pay invoice');
+    });
+
+    const searchAfterFirst = router.state.location.search;
+    expect(new URLSearchParams(searchAfterFirst).get('pay')).toBe('1');
+    expect(new URLSearchParams(searchAfterFirst).get('recipient')).toBe('Foo');
+
+    unmount();
+    mockUseLayoutOptions.mockClear();
+
+    // Reload: remount with the URL the router still holds after the first run.
+    const reloadPath = `/invoice${searchAfterFirst}`;
+    renderAt(reloadPath);
+
+    await waitFor(() => {
+      expect(lastLayoutTitle()).toBe('Pay invoice');
+    });
+    expect(screen.getByText(PAYER_HINT)).toBeInTheDocument();
+    expect(screen.getByText('Payee')).toBeInTheDocument();
+  });
+
+  it('payer mode restores payer wording after navigate away and router.navigate(-1) (back)', async () => {
     const { router } = renderAt('/invoice?recipient=Foo&pay=1');
 
     await waitFor(() => {
       expect(lastLayoutTitle()).toBe('Pay invoice');
     });
 
+    await act(async () => {
+      router.navigate('/other');
+    });
+    await waitFor(() => {
+      expect(screen.getByText('other')).toBeInTheDocument();
+    });
+
+    mockUseLayoutOptions.mockClear();
+    await act(async () => {
+      router.navigate(-1);
+    });
+
+    await waitFor(() => {
+      expect(lastLayoutTitle()).toBe('Pay invoice');
+    });
+    expect(screen.getByText(PAYER_HINT)).toBeInTheDocument();
     const params = new URLSearchParams(router.state.location.search);
     expect(params.get('pay')).toBe('1');
     expect(params.get('recipient')).toBe('Foo');
@@ -254,5 +365,221 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     });
 
     expect(lastLayoutTitle()).toBe('Create Invoice');
+  });
+
+  it('payer mode with recipient from URL disables the payee field and still enables the button', async () => {
+    renderAt('/invoice?recipient=Foo&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('Foo');
+    });
+
+    const recipientInput = screen.getByRole('textbox', { name: 'Payee' });
+    expect(recipientInput).toBeDisabled();
+    expect(recipientInput).toHaveValue('Foo');
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+
+    await fillInvoiceFields();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Continue to payment' })).not.toBeDisabled();
+    });
+  });
+
+  it('payer mode without recipient leaves the field editable (no empty locked field)', async () => {
+    renderAt('/invoice?pay=1');
+
+    await waitFor(() => {
+      expect(lastLayoutTitle()).toBe('Pay invoice');
+    });
+
+    const recipientInput = screen.getByRole('textbox', { name: 'Payee' });
+    expect(recipientInput).not.toBeDisabled();
+    expect(recipientInput).toHaveValue('');
+  });
+
+  it('validatePayment success sets callback and enables the button; navigate uses payment params only', async () => {
+    renderAt('/invoice?recipient=42&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+
+    await fillInvoiceFields('INV-1', '10');
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled();
+    });
+
+    const button = await screen.findByRole('button', { name: 'Continue to payment' });
+    await waitFor(() => {
+      expect(button).not.toBeDisabled();
+    });
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    const [to, options] = mockNavigate.mock.calls[0];
+    expect(to).toEqual(
+      expect.objectContaining({
+        pathname: '/pl',
+      }),
+    );
+    const search = new URLSearchParams(to.search);
+    expect(search.get('routeId')).toBe('42');
+    expect(search.get('amount')).toBe('10');
+    expect(search.get('message')).toBe('INV-1');
+    expect(search.get('expiryDate')).toBeTruthy();
+    expect(search.get('expiryDate')).not.toMatch(/\?/);
+    expect(search.get('recipient')).toBeNull();
+    expect(search.get('pay')).toBeNull();
+    // Exactly the payment param set — no payer query leftovers in search string.
+    expect([...search.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
+    expect(options).toEqual({ clearParams: ['recipient', 'pay'] });
+  });
+
+  it('validatePayment response with error shows errorPayment message', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      json: async () => ({ error: true, message: 'Payment failed' }),
+    });
+
+    renderAt('/invoice?recipient=Foo&pay=1');
+    await waitFor(() => expect(mockGetPaymentRecipient).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+    await fillInvoiceFields();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Payment failed');
+    });
+  });
+
+  it('validatePayment response with error and no message shows Unknown Error', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      json: async () => ({ error: true }),
+    });
+
+    renderAt('/invoice?recipient=Foo&pay=1');
+    await waitFor(() => expect(mockGetPaymentRecipient).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+    await fillInvoiceFields();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown Error');
+    });
+  });
+
+  it('validatePayment rejected promise shows error.message', async () => {
+    (global.fetch as jest.Mock).mockRejectedValue({ message: 'Network down' });
+
+    renderAt('/invoice?recipient=Foo&pay=1');
+    await waitFor(() => expect(mockGetPaymentRecipient).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+    await fillInvoiceFields();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Network down');
+    });
+  });
+
+  it('validatePayment rejected promise without message shows Unknown Error', async () => {
+    (global.fetch as jest.Mock).mockRejectedValue({});
+
+    renderAt('/invoice?recipient=Foo&pay=1');
+    await waitFor(() => expect(mockGetPaymentRecipient).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+    await fillInvoiceFields();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown Error');
+    });
+  });
+
+  it('failed recipient validation shows the invoice error hint', async () => {
+    mockGetPaymentRecipient.mockRejectedValue(new Error('not found'));
+
+    renderAt('/invoice?recipient=Unknown&pay=1');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recipient-error')).toHaveTextContent(INVOICE_ERROR_DEFAULT);
+    });
+  });
+
+  it('merchant mode Copy Link copies the full payment URL when callback is set', async () => {
+    renderAt('/invoice?recipient=42');
+
+    // Merchant effect clears query; set recipient manually.
+    await waitFor(() => {
+      expect(lastLayoutTitle()).toBe('Create Invoice');
+    });
+
+    const recipientInput = screen.getByRole('textbox', { name: 'Recipient' });
+    await act(async () => {
+      fireEvent.change(recipientInput, { target: { value: '42' } });
+      fireEvent.blur(recipientInput);
+    });
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice ID' })).not.toBeDisabled();
+    });
+
+    await fillInvoiceFields('INV-9', '25');
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Copy Link' })).not.toBeDisabled();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy Link' }));
+    });
+
+    expect(mockCopy).toHaveBeenCalledTimes(1);
+    const copied = mockCopy.mock.calls[0][0] as string;
+    expect(copied).toContain('https://app.example.com/pl?');
+    expect(copied).toContain('routeId=42');
+    expect(copied).toContain('amount=25');
+    expect(copied).toContain('message=INV-9');
+    expect(copied).toContain('expiryDate=');
+  });
+
+  it('uses route (not routeId) when recipient is non-numeric', async () => {
+    renderAt('/invoice?recipient=AcmeCorp&pay=1');
+
+    await waitFor(() => expect(mockGetPaymentRecipient).toHaveBeenCalledWith('AcmeCorp'));
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+    await fillInvoiceFields();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Continue to payment' })).not.toBeDisabled();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Continue to payment' }));
+    });
+
+    const [to] = mockNavigate.mock.calls[0];
+    const search = new URLSearchParams(to.search);
+    expect(search.get('route')).toBe('AcmeCorp');
+    expect(search.get('routeId')).toBeNull();
   });
 });
