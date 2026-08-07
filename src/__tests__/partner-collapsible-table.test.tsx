@@ -54,4 +54,19 @@ describe('CollapsibleTable scroll cap', () => {
     expect(region.style.maxHeight).toBe(tableScrollMaxHeight(20));
     expect(region.querySelector('thead')?.className).toMatch(/sticky/);
   });
+
+  it('renders the en-dash placeholder when a row is missing a column key', () => {
+    render(
+      <CollapsibleTable
+        title="t"
+        columns={columns}
+        rows={[{ date: '2026-01-01' }]}
+        defaultOpen
+      />,
+    );
+    // Missing `v` key → cell falls back to '–'
+    const cells = screen.getAllByRole('cell');
+    expect(cells.map((c) => c.textContent)).toContain('–');
+    expect(cells.map((c) => c.textContent)).toContain('2026-01-01');
+  });
 });

@@ -43,4 +43,21 @@ describe('usePartnerDashboard via useGuardedApi', () => {
       method: 'GET',
     });
   });
+
+  it('omits the query string when no filter params are provided', async () => {
+    const { result } = renderHook(() => usePartnerDashboard());
+
+    await result.current.getPartnerStatistic({});
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'statistic/partner',
+      method: 'GET',
+    });
+
+    mockCall.mockClear();
+    await result.current.getPartnerTimeline({});
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'statistic/partner/timeline',
+      method: 'GET',
+    });
+  });
 });

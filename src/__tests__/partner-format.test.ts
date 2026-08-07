@@ -50,6 +50,16 @@ describe('partner format helpers', () => {
     }
   });
 
+  it('displayNullable marks undefined as empty (distinct from absent null)', () => {
+    const empty = displayNullable(undefined, (n) => formatCount(n));
+    expect(empty.kind).toBe('empty');
+    if (empty.kind === 'empty') {
+      expect(empty.text).toBe('–');
+    }
+    // null must remain the 'absent' path — not the same kind as undefined
+    expect(displayNullable(null, (n) => formatCount(n)).kind).toBe('absent');
+  });
+
   describe('computeConversionRate', () => {
     it('returns tradingUsers / registeredUsers for a normal partner', () => {
       const rate = computeConversionRate(24360, 126547);

@@ -2,8 +2,32 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { VolumeTimeChart } from 'src/partner-dashboard/components/volume-time-chart';
 import { TransactionsTimeChart } from 'src/partner-dashboard/components/transactions-time-chart';
 import { PartnerTimeline } from 'src/dto/partner-statistic.dto';
-import { formatAmount } from 'src/partner-dashboard/util/format';
+import { ABSENT_LABEL, formatAmount, formatCount } from 'src/partner-dashboard/util/format';
 import { timelineSeries } from 'src/partner-dashboard/util/series';
+
+jest.mock('src/partner-dashboard/util/chart-theme', () => {
+  const actual = jest.requireActual('src/partner-dashboard/util/chart-theme') as typeof import('src/partner-dashboard/util/chart-theme');
+  return {
+    ...actual,
+    // Force missing axis color so the chart's `?? ''` fallback branch is exercised.
+    baseChartOptions: (theme: 'light' | 'dark') => {
+      const base = actual.baseChartOptions(theme);
+      return {
+        ...base,
+        xaxis: {
+          ...base.xaxis,
+          labels: {
+            ...base.xaxis?.labels,
+            style: {
+              ...base.xaxis?.labels?.style,
+              colors: undefined,
+            },
+          },
+        },
+      };
+    },
+  };
+});
 
 jest.mock('react-apexcharts', () => {
   return function MockChart(props: {
@@ -14,6 +38,13 @@ jest.mock('react-apexcharts', () => {
         categories?: string[];
         overwriteCategories?: string[];
         labels?: { formatter?: (value: string, ts?: number, opts?: { i?: number }) => string };
+      };
+      yaxis?: {
+        labels?: { formatter?: (val: number) => string };
+      };
+      tooltip?: {
+        x?: { formatter?: (val: number, opts?: { dataPointIndex?: number }) => string };
+        y?: { formatter?: (val: number) => string };
       };
       annotations?: {
         xaxis?: Array<{
@@ -29,6 +60,9 @@ jest.mock('react-apexcharts', () => {
     const overwrite = props.options?.xaxis?.overwriteCategories;
     const categories = props.options?.xaxis?.categories ?? [];
     const formatter = props.options?.xaxis?.labels?.formatter;
+    const yFormatter = props.options?.yaxis?.labels?.formatter;
+    const tooltipX = props.options?.tooltip?.x?.formatter;
+    const tooltipY = props.options?.tooltip?.y?.formatter;
     const tickLabels =
       overwrite ??
       categories.map((cat, i) => (formatter ? formatter(cat, undefined, { i }) : cat));
@@ -65,6 +99,35 @@ jest.mock('react-apexcharts', () => {
             />
           ))}
         </div>
+        {/* Expose Apex formatters so tests can assert return values with real inputs. */}
+        {yFormatter && (
+          <div data-testid="chart-y-formatters">
+            <span data-testid="y-fmt-1000" data-result={yFormatter(1000)} />
+            <span data-testid="y-fmt-999" data-result={yFormatter(999)} />
+            <span data-testid="y-fmt-0" data-result={yFormatter(0)} />
+            <span data-testid="y-fmt-2500" data-result={yFormatter(2500)} />
+          </div>
+        )}
+        {tooltipY && (
+          <div data-testid="chart-tooltip-y-formatters">
+            <span data-testid="tooltip-y-nan" data-result={tooltipY(Number.NaN)} />
+            <span data-testid="tooltip-y-value" data-result={tooltipY(1234.56)} />
+            <span data-testid="tooltip-y-zero" data-result={tooltipY(0)} />
+          </div>
+        )}
+        {tooltipX && (
+          <div data-testid="chart-tooltip-x-formatters">
+            <span
+              data-testid="tooltip-x-0"
+              data-result={tooltipX(0, { dataPointIndex: 0 })}
+            />
+            <span
+              data-testid="tooltip-x-missing"
+              data-result={tooltipX(0, { dataPointIndex: 99 })}
+            />
+            <span data-testid="tooltip-x-no-opts" data-result={tooltipX(0)} />
+          </div>
+        )}
       </div>
     );
   };
@@ -191,5 +254,102 @@ describe('timeline charts — thin day is a low point, no-activity day is the ze
     fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
     expect(screen.queryByText('Note')).not.toBeInTheDocument();
     expect(screen.queryByText(/incomplete/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('volume chart Apex formatters (y-axis k-rule + tooltip)', () => {
+  it('formats y-axis: 1000 → "1k", values under 1000 stay plain integers', () => {
+    render(<VolumeTimeChart timeline={timeline} theme="dark" />);
+
+    expect(screen.getByTestId('y-fmt-1000')).toHaveAttribute('data-result', '1k');
+    expect(screen.getByTestId('y-fmt-2500')).toHaveAttribute('data-result', '3k');
+    expect(screen.getByTestId('y-fmt-999')).toHaveAttribute('data-result', '999');
+    expect(screen.getByTestId('y-fmt-0')).toHaveAttribute('data-result', '0');
+  });
+
+  it('tooltip y: NaN → ABSENT_LABEL; finite values use formatAmount', () => {
+    render(<VolumeTimeChart timeline={timeline} theme="dark" />);
+
+    expect(screen.getByTestId('tooltip-y-nan')).toHaveAttribute('data-result', ABSENT_LABEL);
+    expect(screen.getByTestId('tooltip-y-value')).toHaveAttribute(
+      'data-result',
+      formatAmount(1234.56, 'CHF', 2),
+    );
+    expect(screen.getByTestId('tooltip-y-zero')).toHaveAttribute(
+      'data-result',
+      formatAmount(0, 'CHF', 2),
+    );
+  });
+
+  it('tooltip x: bucket date via toLocaleDateString; missing index → empty string', () => {
+    render(<VolumeTimeChart timeline={timeline} theme="dark" />);
+
+    // Charts format with the partner locale (en-US under test i18n), not the host default.
+    const expected = new Date(timeline.buckets[0].date).toLocaleDateString('en-US');
+    expect(screen.getByTestId('tooltip-x-0')).toHaveAttribute('data-result', expected);
+    expect(screen.getByTestId('tooltip-x-missing')).toHaveAttribute('data-result', '');
+    // opts undefined → dataPointIndex defaults to 0
+    expect(screen.getByTestId('tooltip-x-no-opts')).toHaveAttribute('data-result', expected);
+  });
+
+  it('empty timeline still builds formatters and shows the empty state (no chart series)', () => {
+    const empty: PartnerTimeline = {
+      period: { from: '2026-06-01T00:00:00.000Z', to: '2026-06-03T23:59:59.000Z' },
+      currency: 'CHF',
+      granularity: 'Day',
+      buckets: [],
+      meta: {},
+    };
+    render(<VolumeTimeChart timeline={empty} theme="dark" />);
+    expect(screen.getByText('No volume data for the selected period.')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-apex-chart')).not.toBeInTheDocument();
+  });
+});
+
+describe('transactions chart Apex formatters', () => {
+  it('formats y-axis via formatCount(Math.round(val))', () => {
+    render(<TransactionsTimeChart timeline={timeline} theme="dark" />);
+
+    expect(screen.getByTestId('y-fmt-1000')).toHaveAttribute(
+      'data-result',
+      formatCount(1000),
+    );
+    expect(screen.getByTestId('y-fmt-999')).toHaveAttribute('data-result', formatCount(999));
+    expect(screen.getByTestId('y-fmt-0')).toHaveAttribute('data-result', formatCount(0));
+  });
+
+  it('tooltip y: NaN → ABSENT_LABEL; finite values use formatCount', () => {
+    render(<TransactionsTimeChart timeline={timeline} theme="dark" />);
+
+    expect(screen.getByTestId('tooltip-y-nan')).toHaveAttribute('data-result', ABSENT_LABEL);
+    expect(screen.getByTestId('tooltip-y-value')).toHaveAttribute(
+      'data-result',
+      formatCount(Math.round(1234.56)),
+    );
+    expect(screen.getByTestId('tooltip-y-zero')).toHaveAttribute(
+      'data-result',
+      formatCount(0),
+    );
+  });
+
+  it('tooltip x: bucket date via toLocaleDateString; missing index → empty string', () => {
+    render(<TransactionsTimeChart timeline={timeline} theme="dark" />);
+
+    const expected = new Date(timeline.buckets[0].date).toLocaleDateString('en-US');
+    expect(screen.getByTestId('tooltip-x-0')).toHaveAttribute('data-result', expected);
+    expect(screen.getByTestId('tooltip-x-missing')).toHaveAttribute('data-result', '');
+  });
+
+  it('empty timeline shows empty state without a chart', () => {
+    const empty: PartnerTimeline = {
+      period: { from: '2026-06-01T00:00:00.000Z', to: '2026-06-03T23:59:59.000Z' },
+      currency: 'CHF',
+      granularity: 'Day',
+      buckets: [],
+      meta: {},
+    };
+    render(<TransactionsTimeChart timeline={empty} theme="dark" />);
+    expect(screen.getByText('No transaction data for the selected period.')).toBeInTheDocument();
+    expect(screen.queryByTestId('mock-apex-chart')).not.toBeInTheDocument();
   });
 });

@@ -94,3 +94,28 @@ describe('HorizontalBarList — a category with no activity at all disappears', 
     expect(screen.getByText('No data.')).toBeInTheDocument();
   });
 });
+
+describe('HorizontalBarList — zero max volume branch', () => {
+  it('renders zero-width bars when every active row has volume 0 (maxVolume === 0)', () => {
+    render(
+      <HorizontalBarList
+        title="Fiat currencies"
+        currency="CHF"
+        compact
+        rows={[
+          // Real transactions, zero CHF volume → stays (hasActivity), but maxVolume is 0
+          { name: 'FreeFiat', volume: 0, transactions: 5 },
+          { name: 'AlsoFree', volume: 0, transactions: 2 },
+        ]}
+      />,
+    );
+
+    const rows = screen.getAllByTestId('bar-row');
+    expect(rows).toHaveLength(2);
+    // Width formula: maxVolume > 0 ? … : 0 — bars must not claim 100%
+    const fills = rows.map((row) => row.querySelector('[role="presentation"] > div') as HTMLElement);
+    for (const fill of fills) {
+      expect(fill.style.width).toBe('0%');
+    }
+  });
+});

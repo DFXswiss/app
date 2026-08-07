@@ -96,6 +96,35 @@ describe('KpiTile caption', () => {
     expect(caption).toHaveTextContent('19.2 % of registered users');
   });
 
+  it('defaults data-testid to kpi-tile (and caption suffix) when testId is omitted', () => {
+    render(
+      <KpiTile
+        label="Active users"
+        value={10}
+        format={(n) => formatCount(n)}
+        caption="secondary line"
+      />,
+    );
+
+    expect(screen.getByTestId('kpi-tile')).toBeInTheDocument();
+    expect(screen.getByTestId('kpi-tile-caption')).toHaveTextContent('secondary line');
+  });
+
+  it('treats undefined value as empty kind (not the absent null path)', () => {
+    render(
+      <KpiTile
+        label="Maybe"
+        value={undefined}
+        format={(n) => formatCount(n)}
+        testId="kpi-maybe"
+      />,
+    );
+    expect(screen.getByTestId('kpi-maybe')).toHaveAttribute('data-kind', 'empty');
+    // empty still uses the value slot (not kpi-absent)
+    expect(screen.getByTestId('kpi-value')).toHaveTextContent('–');
+    expect(screen.queryByTestId('kpi-absent')).not.toBeInTheDocument();
+  });
+
   /**
    * Guard: when registeredUsers is 0 the caption must never surface NaN, Infinity,
    * or a lone "0 %" — those would claim a conversion rate instead of the empty state.

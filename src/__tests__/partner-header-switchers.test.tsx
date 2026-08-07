@@ -119,4 +119,20 @@ describe('partner header language switcher', () => {
     expect(screen.getByTestId('lang-de')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('lang-en')).toHaveAttribute('aria-pressed', 'false');
   });
+
+  it('calls onThemeChange("light") when Light is pressed', async () => {
+    const onThemeChange = jest.fn();
+    render(<PartnerHeader theme="dark" onThemeChange={onThemeChange} />);
+
+    await userEvent.click(screen.getByTestId('theme-light'));
+    expect(onThemeChange).toHaveBeenCalledWith('light');
+  });
+
+  it('hides the language switcher when availableLanguages is empty', () => {
+    mockSettingsState.availableLanguages = [];
+    const onThemeChange = jest.fn();
+    render(<PartnerHeader theme="light" onThemeChange={onThemeChange} />);
+
+    expect(screen.queryByTestId('language-switcher')).not.toBeInTheDocument();
+  });
 });

@@ -130,4 +130,47 @@ describe('timeline X-axis tick strategy', () => {
     // Not every day labeled
     expect(indices.length).toBeLessThan(90);
   });
+
+  it('xaxis labels.formatter formats selected ISO categories and blanks unselected ones', () => {
+    const buckets = Array.from({ length: 10 }, (_, i) => ({
+      date: `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`,
+      volume: { buy: 1, sell: 0, swap: 0 },
+      transactions: { buy: 1, sell: 0, swap: 0 },
+      partial: false,
+    }));
+    const axis = buildTimelineXAxis({
+      buckets,
+      granularity: 'Day',
+      locale: 'en-US',
+      axisColor: '#8a99b7',
+      chartWidthPx: 960,
+    });
+    const formatter = axis.xaxis?.labels?.formatter;
+    expect(formatter).toBeDefined();
+    if (!formatter) return;
+
+    const categories = axis.xaxis?.categories as string[];
+    const overwrite = axis.xaxis?.overwriteCategories as string[];
+    // First index is always selected → non-empty formatted label
+    expect(formatter(categories[0])).toBe(overwrite[0]);
+    expect(formatter(categories[0])).toBe(
+      formatTimelineTick(categories[0], 'Day', 'en-US'),
+    );
+    // Find an unselected mid bucket (empty overwrite)
+    const blankIdx = overwrite.findIndex((l, i) => l === '' && i > 0 && i < overwrite.length - 1);
+    expect(blankIdx).toBeGreaterThan(0);
+    expect(formatter(categories[blankIdx])).toBe('');
+    // Unknown value (already-overwritten label path) is returned as-is
+    expect(formatter('already-formatted')).toBe('already-formatted');
+  });
+
+  it('formatTimelineTick returns empty string for invalid dates', () => {
+    expect(formatTimelineTick('not-a-date', 'Day', 'en-US')).toBe('');
+  });
+
+  it('selectTimelineTickIndices handles empty and single-bucket series', () => {
+    expect(selectTimelineTickIndices(0, 8)).toEqual([]);
+    expect(selectTimelineTickIndices(1, 8)).toEqual([0]);
+    expect(selectTimelineTickIndices(5, 2)).toEqual([0, 4]);
+  });
 });
