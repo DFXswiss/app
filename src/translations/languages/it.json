@@ -830,6 +830,7 @@
     "Invoice ID": "ID della fattura",
     "Invoice number": "Numero della fattura",
     "Invoice amount": "Importo della fattura",
+    "Payee": "Beneficiario",
     "Enter the invoice number and invoice amount exactly as printed on your invoice.": "Inserisci il numero e l'importo della fattura esattamente come indicati sulla fattura.",
     "Recipient not found": "Destinatario non trovato",
     "Route": "Modalità",
