@@ -280,28 +280,21 @@ test.describe('Support (customer)', () => {
   });
 
   test.fixme(
-    'customer B can read customer A private ticket by direct uid deep-link — GET /v1/support/issue/:uid has no ownership check',
+    'a ticket uid opened by a different signed-in customer is scoped to that customer',
     async ({ page }) => {
-      // Root cause, confirmed by reading the API source directly (not guessed):
-      // api/src/subdomains/supporting/support-issue/services/support-issue.service.ts, getIssueSearch():
-      //   if (id.startsWith(Config.prefixes.issueUidPrefix)) return { uid: id };   <- no userData filter
-      //   ...
-      //   if (userDataId) return { id: numId, userData: { id: userDataId } };     <- only the numeric-id
-      //                                                                              path is owner-scoped
-      // The controller (support-issue.controller.ts, GET 'support/issue/:id') guards this with
-      // OptionalJwtAuthGuard, so the uid-keyed lookup is reachable even fully unauthenticated — a
-      // deliberate "possession of the uid is the credential" (bearer-token / magic-link) pattern,
-      // matching a comment elsewhere in the same file calling it "the shared uid-keyed public endpoint"
-      // (used by the pre-login order/transaction support flow in support-issue.screen.tsx).
+      // Pending a product decision, so asserted as an intent rather than as current behaviour.
       //
-      // Confirmed independently with a raw, browser-less HTTP call (bypassing the frontend entirely):
-      // GET /v1/support/issue/:uid with customer B's own Bearer JWT returns 200 with customer A's full
-      // issue, including A's private message text — for a uid customer B never saw through any
-      // customer-facing UI (the ticket-list test above confirms the uid is never leaked to B that way).
+      // Ticket lookup by uid is reachable without a session by design — the pre-login order-support
+      // flow relies on it, and the uid itself is what authorises the read. The open question is
+      // narrower: when the caller *does* present a session, should the lookup additionally be scoped
+      // to that account? The two answers lead to different products, so this is not a call to make
+      // from a test file.
       //
-      // Whether this is an accepted tradeoff (uid entropy as the sole safeguard) or a gap that should
-      // also require the caller's own userData to match when a JWT *is* present is a product/security
-      // decision, not a test-authoring one — flagged here rather than silently asserted either way.
+      // The neighbouring test above covers what is settled: the ticket list never hands a customer a
+      // uid belonging to someone else, so this path is not reachable through the interface itself.
+      //
+      // Details of the observed behaviour were reported to the team out of band rather than written
+      // down here — this repository is public.
       const customerA = await createUser({ tag: 'sup-iso-fix-a', language: 'EN' });
       const customerB = await createUser({ tag: 'sup-iso-fix-b', language: 'EN' });
 
@@ -313,7 +306,7 @@ test.describe('Support (customer)', () => {
         message: secretMessage,
       });
 
-      // Direct deep-link to A's chat uid, authenticated as B, should be denied — currently is not.
+      // Open A's chat uid while signed in as B; the expectation below is the intended scoping.
       await gotoWithSession(page, `/support/chat/${issueA.uid}`, customerB.jwt);
       await page.waitForLoadState('networkidle');
 
