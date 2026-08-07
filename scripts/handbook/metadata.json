@@ -163,6 +163,10 @@
     "title": "Session-Wechsel (Debug)",
     "description": "Debug-Screenshots zum Session-/Account-Wechsel."
   },
+  "payment-qr-device": {
+    "title": "Zahlungs-QR geräteabhängig",
+    "description": "Zahlungsseite mit fester Quote: Desktop zeigt großen QR und Scan-Satz, Handheld nur Wallet-Auswahl."
+  },
   "docs": {
     "docs/EIP7702-Implementierungsplan.md": {
       "title": "EIP-7702 Implementierungsplan"
