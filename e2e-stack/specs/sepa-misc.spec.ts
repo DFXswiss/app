@@ -345,6 +345,7 @@ test.describe('SEPA + misc e2e', () => {
   });
 
   test('/sepa/manual valid form upload stores bank_tx (or fixme with API error)', async ({ page }) => {
+    test.setTimeout(45000);
     const { jwt } = await loginAs('Admin');
     await openScreen(page, '/sepa/manual', jwt);
 
@@ -364,15 +365,26 @@ test.describe('SEPA + misc e2e', () => {
 
     const responsePromise = page.waitForResponse(
       (r) => r.url().includes('/bankTx') && r.request().method() === 'POST',
-      { timeout: 30000 },
+      { timeout: 12000 },
     );
     await uploadBtn.click();
 
     const res = await responsePromise.catch(() => null);
-    const status = res?.status();
-    const body = res ? await res.text().catch(() => '') : '';
+    if (!res) {
+      // No POST observed at all within 12s — the click did not produce a request (or it was much
+      // slower than every other admin-upload call in this suite, which all resolve in well under
+      // a second). Real, reportable behavior either way; do not wait out the full test timeout.
+      test.fixme(
+        true,
+        '/sepa/manual Upload click produced no POST /bankTx request within 12s (button was enabled ' +
+          'and all required fields were filled) — investigate the onSubmit wiring on this screen.',
+      );
+      return;
+    }
+    const status = res.status();
+    const body = await res.text().catch(() => '');
 
-    if (status && status >= 200 && status < 300) {
+    if (status >= 200 && status < 300) {
       await expect(page.getByText('Uploaded', { exact: true })).toBeVisible({ timeout: 15000 });
       const row = await waitForRow<{ id: number }>(
         `SELECT id FROM bank_tx
@@ -538,6 +550,13 @@ test.describe('SEPA + misc e2e', () => {
   });
 
   test('/blockchain/tx submit fails on offline RPC (expected — fixme the on-chain step)', async ({ page }) => {
+    // The screen's own flow after a successful sign call opens a direct JsonRpcProvider to a real
+    // RPC endpoint and awaits the transaction receipt (`provider.waitForTransaction`). The page
+    // fixture answers every off-stack request with a fake empty 200 instead of a network error
+    // (see fixtures/auth.ts isolateFromExternalHosts), so that provider call can hang indefinitely
+    // rather than reject quickly — waiting on any UI signal that depends on it resolving is unsafe.
+    // Only assert what resolves promptly: the initial sign-call request/response.
+    test.setTimeout(30000);
     const { jwt } = await loginAs('Admin');
     await openScreen(page, '/blockchain/tx', jwt);
 
@@ -553,29 +572,21 @@ test.describe('SEPA + misc e2e', () => {
 
     const responsePromise = page.waitForResponse(
       (r) => r.url().includes('contractTransaction') || r.url().includes('gs/evm'),
-      { timeout: 20000 },
+      { timeout: 15000 },
     );
     await signBtn.click();
 
     const res = await responsePromise.catch(() => null);
-    // Wait for either UI error or a terminal network failure (RPC unreachable offline).
-    await page.waitForTimeout(2000);
-    const explorer = page.getByRole('button', { name: 'Open Explorer' });
-    if (await explorer.isVisible().catch(() => false)) {
-      // Unexpected offline success — still a pass for the UI path.
-      return;
-    }
-
-    const errorEl = page.locator('.text-dfxRed-100');
-    const uiError = ((await errorEl.first().textContent().catch(() => null)) ?? '').trim();
     const status = res?.status();
     const body = res ? await res.text().catch(() => '') : '';
 
-    // On-chain signing cannot succeed offline — document the observed failure.
+    // Deliberately do NOT wait on "Open Explorer" / error-text UI signals here: they depend on
+    // the screen's own JsonRpcProvider.waitForTransaction() call settling, which this offline
+    // sandbox cannot guarantee within any bounded time (see comment above).
     test.fixme(
       true,
-      `/blockchain/tx on-chain signing is not achievable offline: HTTP ${status ?? 'no-response'} ` +
-        `${body.slice(0, 300)} UI="${uiError.slice(0, 200)}"`,
+      `/blockchain/tx on-chain signing is not achievable offline (no real RPC reachable): ` +
+        `sign-call response HTTP ${status ?? 'no-response'} ${body.slice(0, 300)}`,
     );
   });
 });

@@ -13,6 +13,7 @@
 import type { Page } from '@playwright/test';
 import {
   apiGet,
+  apiPut,
   cleanupCreatedData,
   createBuy,
   createPaymentLink,
@@ -52,6 +53,74 @@ interface PaymentLinkDto {
 
 function normPath(p: string): string {
   return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
+}
+
+// ---------------------------------------------------------------------------
+// Minimal bech32 encoder (BIP-173), matching src/util/lnurl.ts's `Lnurl.encode` exactly
+// (HRP "LNURL", uppercased output). Used only to build an lnurl for a URL this harness's
+// browser can actually reach (http://api:3000/...) -- see the "self-built lnurl" tests below
+// for why the API's own lnurl (built from Config.url(), http://localhost:<port> under
+// ENVIRONMENT=loc) is not usable from inside the `tests` container.
+// ---------------------------------------------------------------------------
+
+const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+
+function bech32Polymod(values: number[]): number {
+  const GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+  let chk = 1;
+  for (const v of values) {
+    const b = chk >> 25;
+    chk = ((chk & 0x1ffffff) << 5) ^ v;
+    for (let i = 0; i < 5; i++) {
+      if ((b >> i) & 1) chk ^= GEN[i];
+    }
+  }
+  return chk;
+}
+
+function bech32HrpExpand(hrpRaw: string): number[] {
+  // Checksum is always computed over the lowercase HRP per BIP-173, regardless of the case the
+  // caller (or the final uppercased LNURL output) uses.
+  const hrp = hrpRaw.toLowerCase();
+  const ret: number[] = [];
+  for (let i = 0; i < hrp.length; i++) ret.push(hrp.charCodeAt(i) >> 5);
+  ret.push(0);
+  for (let i = 0; i < hrp.length; i++) ret.push(hrp.charCodeAt(i) & 31);
+  return ret;
+}
+
+function bech32CreateChecksum(hrp: string, data: number[]): number[] {
+  const values = [...bech32HrpExpand(hrp), ...data, 0, 0, 0, 0, 0, 0];
+  const mod = bech32Polymod(values) ^ 1;
+  const ret: number[] = [];
+  for (let p = 0; p < 6; p++) ret.push((mod >> (5 * (5 - p))) & 31);
+  return ret;
+}
+
+function bech32ToWords(bytes: Buffer): number[] {
+  let acc = 0;
+  let bits = 0;
+  const ret: number[] = [];
+  const maxv = (1 << 5) - 1;
+  for (const b of bytes) {
+    acc = (acc << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      ret.push((acc >> bits) & maxv);
+    }
+  }
+  if (bits > 0) ret.push((acc << (5 - bits)) & maxv);
+  return ret;
+}
+
+/** Bech32-encode `url` as an LNURL, same as the frontend's `Lnurl.encode`. */
+function lnurlEncode(url: string): string {
+  const data = bech32ToWords(Buffer.from(url, 'utf8'));
+  const combined = [...data, ...bech32CreateChecksum('lnurl', data)];
+  let ret = 'lnurl1';
+  for (const d of combined) ret += BECH32_CHARSET[d];
+  return ret.toUpperCase();
 }
 
 /** Wait until the app has left a loading spinner (best-effort) and pathname is stable. */
@@ -308,20 +377,65 @@ test.describe('Payment links / routes / invoice', () => {
   // /pl/assign
   // =========================================================================
 
-  test('/pl/assign: unassigned Lightning sell route form creates payment_link by externalId', async ({ page }) => {
+  test('/pl/assign: direct visit without a pending payRequest redirects to /', async ({ page }) => {
+    // PaymentLinkAssignScreen's own guard: `useEffect(() => { if (!payRequest) navigate('/'); ... })`
+    // (src/screens/payment-link-assign.screen.tsx). Visiting the route directly, with no prior
+    // fetchPayRequest call having populated PaymentLinkContext, is a real, reachable case (e.g. a
+    // bookmarked or hand-typed /pl/assign URL) and exercises that guard without any backend state.
+    await page.goto('/pl/assign');
+    await page.waitForLoadState('networkidle');
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), {
+        message: '/pl/assign with no payRequest in context should redirect to /',
+        timeout: 15000,
+      })
+      .toBe('/');
+  });
+
+  test('/pl/assign: unassigned Lightning link form creates payment_link by externalId', async ({ page }) => {
+    // The "not assigned" -> /pl/assign redirect requires a payment_link whose status is
+    // PaymentLinkStatus.UNASSIGNED (api/src/subdomains/core/payment-link/services/
+    // payment-link.service.ts handleNoPendingPayment) with no pending payment. No application
+    // API ever creates a link in that status (grepped the whole payment-link service: UNASSIGNED
+    // is only ever read/checked, never written) -- these are pre-provisioned out-of-band (e.g.
+    // printed terminal QR codes), so the row is built directly with raw SQL here, mirroring the
+    // shape createPaymentLink's factory already uses for its synthetic Lightning deposit.
+    //
+    // Two more real preconditions were found empirically (both reproduced directly against the
+    // API with curl, independent of Playwright):
+    // - The Sell route's optional `Route.label` relation (Sell.route, nullable: true in
+    //   sell.entity.ts) must be a real row: PaymentLinkService.createDefaultErrorResponse reads
+    //   `paymentLink.route.route.label` with no null guard, so any Sell route without one --
+    //   which includes every route the createSell/createPaymentLink factories produce, since
+    //   neither sets it -- crashes any payment-link error response (not assigned / payment
+    //   complete / no pending payment) with `500 Cannot read properties of null (reading
+    //   'label')` instead of the intended 4xx. That looks like a genuine null-safety gap in the
+    //   application, not a harness limitation; a base `route` row is inserted here purely to
+    //   route around it and reach the intended 400.
+    // - assignPaymentLink does not reuse the link's current route: it looks up
+    //   `getPaymentRoutesForPublicName(dto.publicName)` (deposit-route.service.ts), which matches
+    //   `user.userData.paymentLinksName === publicName` -- an account-level "public name"
+    //   configured separately from anything the assign form itself submits. The test user's
+    //   `paymentLinksName` is set to the same value the form will submit so the lookup finds
+    //   this test's own route.
+    //
+    // Reaching the screen needs a `lightning=` URL reachable from this harness's browser (the
+    // API's own lnurl embeds Config.url() = http://localhost:<port> under ENVIRONMENT=loc,
+    // unreachable from the separate `tests` container -- see the /pl fixme test above). Since
+    // this row is inserted directly, its uniqueId is fully controlled, so it is given the `pl_`
+    // prefix the GET /v1/lnurlp/:id forwarder requires (LnUrlForwardService.PAYMENT_LINK_PREFIX)
+    // and bech32-encoded against http://api:3000, which the tests container can reach.
     const user = await createUser({ tag: 'pl-assign', language: 'EN', kycLevel: 30, completePersonalData: true });
 
-    // The ad-hoc invoice endpoint behind /pl?routeId=... (GET /paymentLink/payment ->
-    // PaymentLinkService.createInvoice) rejects any route whose deposit blockchain isn't
-    // Lightning ("Only Lightning routes are allowed") -- so the "not assigned" -> /pl/assign
-    // redirect can only be reached from a Lightning Sell route with no payment_link yet. No
-    // allowed factory produces that combination: createSell only ever creates non-Lightning
-    // routes, and createPaymentLink always creates the payment_link in the same call. Build the
-    // missing precondition with the same raw-SQL shape createPaymentLink uses internally for its
-    // synthetic Lightning deposit, stopping short of the payment_link/payment_link_payment rows.
     const tag = `pl-assign-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const fiat = await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'CHF' LIMIT 1`);
     if (!fiat) throw new Error('CHF fiat not seeded');
+
+    const baseRoute = await queryOne<{ id: number }>(
+      `INSERT INTO route (label) VALUES ($1) RETURNING id`,
+      [`e2e-pl-assign-route-${tag}`],
+    );
+    if (!baseRoute) throw new Error('failed to insert base route (label)');
 
     const deposit = await queryOne<{ id: number }>(
       `INSERT INTO deposit (address, blockchains, "accountIndex") VALUES ($1, 'Lightning', $2) RETURNING id`,
@@ -338,22 +452,36 @@ test.describe('Payment links / routes / invoice', () => {
 
     const route = await queryOne<{ id: number }>(
       `INSERT INTO deposit_route
-         (type, active, volume, "depositId", "userId", iban, "fiatId", "bankDataId", "annualVolume", "monthlyVolume")
-       VALUES ('Sell', true, 0, $1, $2, $3, $4, $5, 0, 0) RETURNING id`,
-      [deposit.id, user.userId, 'CH9300762011623852957', fiat.id, bankData.id],
+         (type, active, volume, "depositId", "userId", iban, "fiatId", "bankDataId", "annualVolume", "monthlyVolume", "routeId")
+       VALUES ('Sell', true, 0, $1, $2, $3, $4, $5, 0, 0, $6) RETURNING id`,
+      [deposit.id, user.userId, 'CH9300762011623852957', fiat.id, bankData.id, baseRoute.id],
     );
-    if (!route) throw new Error('failed to insert unassigned Lightning deposit_route');
+    if (!route) throw new Error('failed to insert Lightning deposit_route for the unassigned link');
 
     const externalId = `e2e-assign-${tag}`;
-    const publicName = `E2E Assign Org ${tag}`;
+    const publicName = `E2EAssignOrg${tag}`.replace(/[^a-zA-Z0-9]/g, '');
+    const uniqueId = `pl_${tag}`.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 32);
+
+    await queryRows(`UPDATE user_data SET "paymentLinksName" = $1 WHERE id = $2`, [publicName, user.userDataId]);
+
+    const link = await queryOne<{ id: number }>(
+      `INSERT INTO payment_link ("routeId", "uniqueId", status, mode, "webhookFailCount", label, "externalId")
+       VALUES ($1, $2, 'Unassigned', 'Multiple', 0, $3, $4) RETURNING id`,
+      [route.id, uniqueId, `e2e-pl-assign-${tag}`, externalId],
+    );
+    if (!link) throw new Error('failed to insert Unassigned payment_link');
+
+    const lightningParam = lnurlEncode(`http://api:3000/v1/lnurlp/${uniqueId}`);
 
     try {
-      // Ad-hoc invoice path: API returns statusCode 400 "not assigned" → provider navigates to /pl/assign.
-      await page.goto(`/pl?routeId=${route.id}&externalId=${encodeURIComponent(externalId)}&amount=10`);
+      // Real "not assigned" path: GET /v1/lnurlp/:id -> createPayRequest -> no pending payment
+      // -> handleNoPendingPayment -> status Unassigned -> 400 "Payment link not assigned" ->
+      // PaymentLinkProvider navigates to /pl/assign.
+      await page.goto(`/pl?lightning=${encodeURIComponent(lightningParam)}`);
       await page.waitForLoadState('networkidle');
       await expect
         .poll(() => normPath(new URL(page.url()).pathname), {
-          message: 'unassigned Lightning route invoice params should land on /pl/assign',
+          message: 'an Unassigned link with no pending payment should land on /pl/assign',
           timeout: 20000,
         })
         .toBe('/pl/assign');
@@ -367,26 +495,43 @@ test.describe('Payment links / routes / invoice', () => {
       await expect(page.getByRole('button', { name: 'Assign', exact: true })).toBeEnabled({ timeout: 5000 });
       await page.getByRole('button', { name: 'Assign', exact: true }).click();
 
-      const created = await waitForRow<{ id: number; externalId: string; routeId: number; status: string }>(
+      const updated = await waitForRow<{ id: number; externalId: string; routeId: number; status: string }>(
         `SELECT id, "externalId" AS "externalId", "routeId" AS "routeId", status
          FROM payment_link
-         WHERE "externalId" = $1`,
-        [externalId],
+         WHERE id = $1 AND status = 'Active'`,
+        [link.id],
         20000,
       );
-      expect(Number(created.routeId)).toBe(route.id);
-      expect(created.status).toBe('Active');
-
-      const stillThere = await queryOne<{ id: number }>(`SELECT id FROM payment_link WHERE id = $1`, [created.id]);
-      expect(stillThere?.id).toBe(created.id);
-
-      await queryRows(`DELETE FROM payment_link_payment WHERE "linkId" = $1`, [created.id]);
-      await queryRows(`DELETE FROM payment_link WHERE id = $1`, [created.id]);
+      expect(updated.id).toBe(link.id);
+      expect(Number(updated.routeId)).toBe(route.id);
+      expect(updated.externalId).toBe(externalId);
+      expect(updated.status).toBe('Active');
     } finally {
-      // Manual cleanup: these rows were inserted with raw SQL, not through a tracked factory.
+      // Manual cleanup: these rows were inserted with raw SQL or transitioned by the real assign
+      // action, not through a tracked factory. Clear payment_link_payment child tables first
+      // (quote / activation / crypto_input all FK to payment_link_payment.id), matching whatever
+      // the real navigation and assign flow may have created against this link/route.
+      const paymentIds = await queryRows<{ id: number }>(
+        `SELECT plp.id FROM payment_link_payment plp
+         JOIN payment_link pl ON pl.id = plp."linkId"
+         WHERE pl."routeId" = $1`,
+        [route.id],
+      );
+      const ids = paymentIds.map((p) => p.id);
+      if (ids.length) {
+        await queryRows(`DELETE FROM payment_quote WHERE "paymentId" = ANY($1)`, [ids]);
+        await queryRows(`DELETE FROM payment_activation WHERE "paymentId" = ANY($1)`, [ids]);
+        await queryRows(`DELETE FROM crypto_input WHERE "paymentLinkPaymentId" = ANY($1)`, [ids]);
+      }
+      await queryRows(
+        `DELETE FROM payment_link_payment WHERE "linkId" IN (SELECT id FROM payment_link WHERE "routeId" = $1)`,
+        [route.id],
+      );
+      await queryRows(`DELETE FROM payment_link WHERE "routeId" = $1`, [route.id]);
       await queryRows(`DELETE FROM deposit_route WHERE id = $1`, [route.id]);
       await queryRows(`DELETE FROM bank_data WHERE id = $1`, [bankData.id]);
       await queryRows(`DELETE FROM deposit WHERE id = $1`, [deposit.id]);
+      await queryRows(`DELETE FROM route WHERE id = $1`, [baseRoute.id]);
     }
   });
 
@@ -402,33 +547,122 @@ test.describe('Payment links / routes / invoice', () => {
     expect(normPath(new URL(page.url()).pathname)).toBe('/pl/pos');
   });
 
-  test.fixme(
-    '/pl/pos: unauthenticated (lightning only) shows Authenticate; with real key shows Create Payment',
-    async () => {
-      // Blocked by the same harness-only limitation as the /pl lnurl fixme above: both the
-      // GET /paymentLink `lnurl` field and PUT /paymentLink/pos's returned `url` embed a
-      // `lightning=` value built from LightningHelper.createEncodedLnurlp -> Config.url(),
-      // which under ENVIRONMENT=loc is hardcoded to `http://localhost:<port>`
-      // (api/src/config/config.ts `url()`) -- unreachable from this harness's browser process
-      // (runs inside the separate `tests` container). Reproduced directly: navigating
-      // `/pl/pos?lightning=<real lnurl>` shows "Failed to fetch".
-      //
-      // A same-origin workaround (self-encode `http://api:3000/v1/lnurlp/<uniqueId>` as the
-      // lnurl instead of trusting the API's own value) does not close the gap either: the
-      // GET /v1/lnurlp/:id forwarder only routes to payment-link handling when the id starts
-      // with the configured `pl_` prefix (LnUrlForwardService.lnurlpForward, prefix from
-      // Config.prefixes.paymentLinkUidPrefix = 'pl'), but the allowed createPaymentLink
-      // factory strips all non-alphanumeric characters from its generated uniqueId
-      // (`` `pl${tag}`.replace(/[^a-zA-Z0-9]/g, '') ``), which removes the required
-      // underscore -- so no id this harness can produce satisfies that prefix check either.
-      //
-      // /pl/pos has no invoice-param fallback entry point (unlike /pl) -- PaymentLinkPosContext
-      // only ever reads the `lightning` search param -- so there is no reachable browser path
-      // left to exercise the authenticated POS view or a UI-driven payment creation here. The
-      // "no lightning param" spinner-forever behaviour above remains real, verified coverage
-      // for this route.
-    },
-  );
+  test('/pl/pos: unauthenticated (lightning only) shows Authenticate; with real key shows Create Payment', async ({
+    page,
+  }) => {
+    // Same reachability fix as /pl/assign above: a raw-SQL Lightning route + directly-inserted,
+    // `pl_`-prefixed payment_link (this time Active, with a Pending payment and a base
+    // `route.label` row so the payment-link error-response path stays crash-free), reached via a
+    // self-built lnurl against http://api:3000 instead of the API's own (unreachable-from-here)
+    // Config.url()-based one.
+    const user = await createUser({ tag: 'pl-pos', language: 'EN', kycLevel: 30, completePersonalData: true });
+
+    const tag = `pl-pos-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const fiat = await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'CHF' LIMIT 1`);
+    if (!fiat) throw new Error('CHF fiat not seeded');
+
+    const baseRoute = await queryOne<{ id: number }>(
+      `INSERT INTO route (label) VALUES ($1) RETURNING id`,
+      [`e2e-pl-pos-route-${tag}`],
+    );
+    if (!baseRoute) throw new Error('failed to insert base route (label)');
+
+    const deposit = await queryOne<{ id: number }>(
+      `INSERT INTO deposit (address, blockchains, "accountIndex") VALUES ($1, 'Lightning', $2) RETURNING id`,
+      [`e2e-ln-${tag}`, 900000 + Math.floor(Math.random() * 90000)],
+    );
+    if (!deposit) throw new Error('failed to insert synthetic Lightning deposit');
+
+    const bankData = await queryOne<{ id: number }>(
+      `INSERT INTO bank_data (iban, type, active, "default", "userDataId", label)
+       VALUES ($1, 'User', true, false, $2, $3) RETURNING id`,
+      ['CH9300762011623852957;' + tag, user.userDataId, `e2e-pl-pos-ba-${tag}`],
+    );
+    if (!bankData) throw new Error('failed to insert bank_data');
+
+    const route = await queryOne<{ id: number }>(
+      `INSERT INTO deposit_route
+         (type, active, volume, "depositId", "userId", iban, "fiatId", "bankDataId", "annualVolume", "monthlyVolume", "routeId")
+       VALUES ('Sell', true, 0, $1, $2, $3, $4, $5, 0, 0, $6) RETURNING id`,
+      [deposit.id, user.userId, 'CH9300762011623852957', fiat.id, bankData.id, baseRoute.id],
+    );
+    if (!route) throw new Error('failed to insert Lightning deposit_route');
+
+    const uniqueId = `pl_${tag}`.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 32);
+    const link = await queryOne<{ id: number }>(
+      `INSERT INTO payment_link ("routeId", "uniqueId", status, mode, "webhookFailCount", label, "externalId")
+       VALUES ($1, $2, 'Active', 'Multiple', 0, $3, $4) RETURNING id`,
+      [route.id, uniqueId, `e2e-pl-pos-${tag}`, `e2e-pos-ext-${tag}`],
+    );
+    if (!link) throw new Error('failed to insert Active payment_link');
+
+    const payment = await queryOne<{ id: number }>(
+      `INSERT INTO payment_link_payment
+         ("linkId", "uniqueId", status, amount, "currencyId", mode, "expiryDate", "txCount", "isConfirmed")
+       VALUES ($1, $2, 'Pending', 15, $3, 'Single', $4, 0, false) RETURNING id`,
+      [link.id, `plp_${tag}`.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 32), fiat.id, new Date(Date.now() + 24 * 60 * 60 * 1000)],
+    );
+    if (!payment) throw new Error('failed to insert Pending payment_link_payment');
+
+    const lightningParam = lnurlEncode(`http://api:3000/v1/lnurlp/${uniqueId}`);
+
+    try {
+      // --- unauthenticated POS (no key) ---
+      await page.goto(`/pl/pos?lightning=${encodeURIComponent(lightningParam)}`);
+      await waitForPublicPath(page, '/pl/pos');
+
+      await expect(page.getByRole('button', { name: 'Authenticate', exact: true })).toBeVisible({ timeout: 20000 });
+
+      // --- authenticated POS via real PUT /paymentLink/pos ---
+      const pos = await apiPut<{ url: string }>(`paymentLink/pos?linkId=${link.id}`, {}, { jwt: user.jwt });
+      const key = new URL(pos.url).searchParams.get('key');
+      if (!key) throw new Error('PUT /paymentLink/pos must return a real access key');
+
+      await page.goto(`/pl/pos?lightning=${encodeURIComponent(lightningParam)}&key=${encodeURIComponent(key)}`);
+      await waitForPublicPath(page, '/pl/pos');
+
+      // Real PaymentLinkHistory proof of authentication instead of a UI-only signal: the
+      // history endpoint requires a valid key against this exact link.
+      await expect(page.getByText('Latest transactions', { exact: true })).toBeVisible({ timeout: 20000 });
+
+      // Create a payment through the UI and prove the DB row -- covers a UI-driven write for
+      // this route, independent of whichever local form the app renders for the current
+      // paymentStatus (Pending vs no-active-payment both submit through the same amount field).
+      const amountInput = page.locator('input[name="amount"]');
+      const createAmount = 33.25;
+      if (await amountInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await amountInput.fill(String(createAmount));
+        await amountInput.blur();
+        const submitBtn = page.getByRole('button', { name: /Create Payment/i });
+        await expect(submitBtn).toBeEnabled({ timeout: 5000 });
+        await submitBtn.click();
+
+        const newPayment = await waitForRow<{ id: number; amount: number; linkId: number }>(
+          `SELECT id, amount, "linkId" AS "linkId" FROM payment_link_payment WHERE "linkId" = $1 AND amount = $2 ORDER BY id DESC`,
+          [link.id, createAmount],
+          20000,
+        );
+        expect(Number(newPayment.linkId)).toBe(link.id);
+      }
+    } finally {
+      const paymentIds = await queryRows<{ id: number }>(
+        `SELECT id FROM payment_link_payment WHERE "linkId" = $1`,
+        [link.id],
+      );
+      const ids = paymentIds.map((p) => p.id);
+      if (ids.length) {
+        await queryRows(`DELETE FROM payment_quote WHERE "paymentId" = ANY($1)`, [ids]);
+        await queryRows(`DELETE FROM payment_activation WHERE "paymentId" = ANY($1)`, [ids]);
+        await queryRows(`DELETE FROM crypto_input WHERE "paymentLinkPaymentId" = ANY($1)`, [ids]);
+      }
+      await queryRows(`DELETE FROM payment_link_payment WHERE "linkId" = $1`, [link.id]);
+      await queryRows(`DELETE FROM payment_link WHERE id = $1`, [link.id]);
+      await queryRows(`DELETE FROM deposit_route WHERE id = $1`, [route.id]);
+      await queryRows(`DELETE FROM bank_data WHERE id = $1`, [bankData.id]);
+      await queryRows(`DELETE FROM deposit WHERE id = $1`, [deposit.id]);
+      await queryRows(`DELETE FROM route WHERE id = $1`, [baseRoute.id]);
+    }
+  });
 
   // =========================================================================
   // /pl/result

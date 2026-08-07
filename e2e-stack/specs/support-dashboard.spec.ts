@@ -206,9 +206,12 @@ test.describe('Support dashboard (staff)', () => {
     await expect(page.getByText('Account Data', { exact: true })).toBeVisible();
     await expect(page.getByText(String(issueId), { exact: true }).first()).toBeVisible();
 
-    // Change state to a different internal state (prefer InProgress if currently Created).
+    // Change state to a different internal state. The <select>'s options come from the frontend's
+    // bundled SupportIssueInternalState enum (@dfx.swiss/core, currently only Created/Pending/
+    // Completed/Canceled — narrower than the 7-value backend enum in api/src/.../support-issue.enum.ts,
+    // a real cross-package version skew), so only these four are ever actually selectable here.
     // Form uses <label>State</label><select> — InfoRow uses "State:" in a <td>, so label is unique.
-    const targetState = before!.state === 'InProgress' ? 'Pending' : 'InProgress';
+    const targetState = before!.state === 'Pending' ? 'Completed' : 'Pending';
     await page
       .locator('label')
       .filter({ hasText: /^State$/ })

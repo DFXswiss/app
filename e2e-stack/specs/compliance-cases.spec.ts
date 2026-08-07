@@ -128,7 +128,7 @@ test.describe('Compliance area (cases)', () => {
     await openScreen(page, `/compliance/user/${customer.userDataId}/kyc`, jwt);
 
     // Review header unique fields
-    await expect(page.getByText('UserDataId', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('UserDataId', { exact: true }).first()).toBeVisible({ timeout: 20000 });
     await expect(page.getByText('KYC Level', { exact: true })).toBeVisible();
     await expect(page.getByText(String(customer.userDataId), { exact: true }).first()).toBeVisible();
 

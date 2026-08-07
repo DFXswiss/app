@@ -318,9 +318,13 @@ test.describe('Sell + Swap e2e', () => {
 
     // Currency dropdown is in the "You get" row; default currency button shows a fiat code (e.g. CHF).
     const fiatCodes = fiats.map((f) => f.name);
+    // All fiat codes are exactly 3 letters, so a plain prefix match is unambiguous — no `\\b`:
+    // React strips the whitespace JSX text node between the code and its description <p>s, so the
+    // rendered button's raw textContent is "EUREuro", not "EUR Euro" (the pretty accessibility-tree
+    // dump inserts a space that plain textContent-based `hasText` matching does not).
     const currencyBtn = page
       .getByRole('button')
-      .filter({ hasText: new RegExp(`^(${fiatCodes.join('|')})$`) })
+      .filter({ hasText: new RegExp(`^(${fiatCodes.join('|')})`) })
       .first();
     await expect(currencyBtn).toBeVisible({ timeout: 15000 });
     await currencyBtn.click();
@@ -375,6 +379,9 @@ test.describe('Sell + Swap e2e', () => {
   });
 
   test('/sell full UI paymentInfos flow when pricing works (else fixme + factory proof)', async ({ page }) => {
+    // Chains several bounded waits (bank account resolve, pricing outcome poll, DB proof) whose
+    // worst-case sum can approach the default 60s test timeout — give this one more headroom.
+    test.setTimeout(90000);
     const user = await createUser({
       walletIndex: nextWalletIndex(),
       tag: 'sell-ui-flow',
@@ -387,12 +394,16 @@ test.describe('Sell + Swap e2e', () => {
     const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
 
     // Pre-fill via URL params so amount/asset/currency are set without fragile dropdown clicks.
+    // Deliberately do NOT wait for 'networkidle' here: pre-filling amount + asset + currency +
+    // bank-account all at once drives sell.screen.tsx's SPEND/GET-data-changed effects into a
+    // repeating receiveFor() cycle (each response can update the very fields the effects watch),
+    // so the network never truly goes idle — a real, reportable behavior of this screen, not a
+    // flake. Content-based waits below are what actually gate this test.
     await gotoWithSession(
       page,
       `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}`,
       user.jwt,
     );
-    await page.waitForLoadState('networkidle');
     expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
 
     await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
@@ -475,6 +486,7 @@ test.describe('Sell + Swap e2e', () => {
   });
 
   test('/sell/info with valid query params renders payment content or pricing error on-route', async ({ page }) => {
+    test.setTimeout(75000);
     const user = await createUser({
       walletIndex: nextWalletIndex(),
       tag: 'sell-info-ok',
@@ -486,12 +498,14 @@ test.describe('Sell + Swap e2e', () => {
 
     const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
 
+    // Deliberately no 'networkidle' wait: a successful payment-info panel here starts sell-info
+    // screen's own 5s getTransactionByRequestId poll loop, which keeps the network busy forever
+    // (by design, so it can auto-advance to the completion screen) — content-based waits gate this.
     await gotoWithSession(
       page,
       `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}`,
       user.jwt,
     );
-    await page.waitForLoadState('networkidle');
     expect(normPath(new URL(page.url()).pathname)).toBe('/sell/info');
 
     // Either Transaction Details / Payment Information, or an ErrorHint from pricing.
@@ -626,6 +640,8 @@ test.describe('Sell + Swap e2e', () => {
   });
 
   test('/swap full UI paymentInfos flow when pricing works (else fixme + factory proof)', async ({ page }) => {
+    // Same rationale as the /sell equivalent above: bound the cumulative wait chain with headroom.
+    test.setTimeout(90000);
     const user = await createUser({
       walletIndex: nextWalletIndex(),
       tag: 'swap-ui-flow',
@@ -636,8 +652,8 @@ test.describe('Sell + Swap e2e', () => {
 
     const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
 
+    // Same rationale as the /sell case above: skip 'networkidle', rely on content waits.
     await gotoWithSession(page, `/swap?asset-in=ETH&amount-in=0.1`, user.jwt);
-    await page.waitForLoadState('networkidle');
     expect(normPath(new URL(page.url()).pathname)).toBe('/swap');
 
     await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });

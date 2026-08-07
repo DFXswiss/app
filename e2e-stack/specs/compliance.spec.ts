@@ -235,14 +235,14 @@ test.describe('Compliance area (overview)', () => {
 
     await expect(page.getByText('Database search', { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
-    await expect(page.locator('input[name="key"]')).toBeVisible();
+    await expect(page.getByRole('textbox').first()).toBeVisible();
     // Dashboard sections unique to this screen (Pending Reviews always renders ordered rows)
     await expect(page.getByText('Pending Reviews', { exact: true })).toBeVisible();
     await expect(page.getByText('Quick links', { exact: true })).toBeVisible();
     await expect(page.getByText('Aktennotiz erstellen', { exact: true })).toBeVisible();
 
     // Search by userDataId must surface the seeded customer with correct id
-    await page.locator('input[name="key"]').fill(String(customer.userDataId));
+    await page.getByRole('textbox').first().fill(String(customer.userDataId));
     await page.getByRole('button', { name: 'Search', exact: true }).click();
 
     await expect(page.getByText('Matching Entries', { exact: true })).toBeVisible({ timeout: 15000 });
