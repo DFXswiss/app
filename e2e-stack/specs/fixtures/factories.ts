@@ -1515,8 +1515,58 @@ export async function createCallQueueEntry(
 // 12. cleanupCreatedData
 // ---------------------------------------------------------------------------
 
+interface UserDependentTable {
+  table: string;
+  column: string;
+  referencedTable: 'user' | 'user_data';
+}
+
+let userDependentTablesPromise: Promise<UserDependentTable[]> | null = null;
+
 /**
- * Deletes rows this module created, in reverse order, to respect FKs.
+ * Discovers every table with a foreign key pointing at "user" or user_data straight from
+ * Postgres's own catalog, instead of a hand-maintained list — the API writes rows into several
+ * of these (ip_log on every login; kyc_log / kyc_step / transaction_request on mail-set /
+ * KYC-level / personal-data completion) that no factory tracks, so cleanupCreatedData's own
+ * DELETE of "user"/"user_data" below always failed on them even with the correct user/user_data
+ * delete order. Scoped deliberately to direct references to "user"/user_data only — not a
+ * general recursive schema walk, which would risk reaching into chains other factories already
+ * track and order correctly (transaction/buy_crypto/deposit_route etc.). Queried once per
+ * process and memoized; the schema does not change mid-run.
+ */
+async function getUserDependentTables(): Promise<UserDependentTable[]> {
+  if (!userDependentTablesPromise) {
+    userDependentTablesPromise = queryRows<{
+      table_name: string;
+      column_name: string;
+      referenced_table: string;
+    }>(
+      `SELECT tc.table_name, kcu.column_name, ccu.table_name AS referenced_table
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+       JOIN information_schema.constraint_column_usage ccu
+         ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+       WHERE tc.constraint_type = 'FOREIGN KEY'
+         AND tc.table_schema = 'public'
+         AND ccu.table_name IN ('user', 'user_data')
+         AND tc.table_name NOT IN ('user', 'user_data')`,
+    ).then((rows) =>
+      rows.map((r) => ({
+        table: r.table_name,
+        column: r.column_name,
+        referencedTable: r.referenced_table as 'user' | 'user_data',
+      })),
+    );
+  }
+  return userDependentTablesPromise;
+}
+
+/**
+ * Deletes rows this module created, in reverse order, to respect FKs. For every "user" /
+ * "user_data" row, first clears the API's own untracked dependent rows for exactly that row's id
+ * (see getUserDependentTables) — scoped to that one id, so it can never touch another account's
+ * rows or seed/master data — then deletes the row itself.
  * Best-effort: failures on individual deletes are collected and do not abort the rest.
  */
 export async function cleanupCreatedData(): Promise<{ deleted: number; errors: string[] }> {
@@ -1525,7 +1575,23 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
   const snapshot = [...created].reverse();
   created.length = 0;
 
+  const dependents = await getUserDependentTables().catch(() => [] as UserDependentTable[]);
+
   for (const ref of snapshot) {
+    if (ref.table === 'user' || ref.table === 'user_data') {
+      for (const dep of dependents) {
+        if (dep.referencedTable !== ref.table) continue;
+        const col = needsQuote(dep.column) ? `"${dep.column}"` : dep.column;
+        try {
+          await withDb(async (client) => {
+            await client.query(`DELETE FROM ${tableSql(dep.table)} WHERE ${col} = $1`, [ref.id]);
+          });
+        } catch (e) {
+          errors.push(`${dep.table}.${dep.column}=${ref.id}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    }
+
     try {
       await withDb(async (client) => {
         await client.query(`DELETE FROM ${tableSql(ref.table)} WHERE id = $1`, [ref.id]);
