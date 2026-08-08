@@ -21,7 +21,7 @@ function depositMnemonic(): string {
   const seed = process.env.E2E_EVM_DEPOSIT_SEED;
   if (!seed) {
     throw new Error(
-      'E2E_EVM_DEPOSIT_SEED is not set (expected the public Hardhat/Anvil test mnemonic via compose.tests.yml)',
+      'E2E_EVM_DEPOSIT_SEED is not set (expected a dedicated, deterministic test mnemonic set via compose.tests.yml — not the well-known public Hardhat/Anvil test mnemonic)',
     );
   }
   return seed;
