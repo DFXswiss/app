@@ -159,6 +159,20 @@ function track(table: string, id: number | undefined | null): void {
 
 export type KycLevelValue = 0 | 10 | 20 | 30 | 40 | 50 | -10 | -20;
 
+/**
+ * Generous default for user_data.depositLimit (CHF), applied by createUser whenever kycLevel
+ * reaches 50 (KycLevel.LEVEL_50, "dfx approval") without an explicit depositLimit override.
+ * UserData.tradingLimit (api user-data.entity.ts) only reads depositLimit at level 50 — every
+ * lower level uses a flat Config.tradingLimits.monthlyDefaultWoKyc instead — but at level 50 a
+ * null depositLimit (the column's default) resolves to an available trading limit of exactly 0
+ * (null arithmetic, not "unlimited"), so every trade fails LIMIT_EXCEEDED before any other check.
+ * A real level-50 approval always comes with a support-granted depositLimit
+ * (limit-request.service.ts); this SQL-only shortcut skips that step, hence the default here.
+ * Matches api/src/config/config.ts Config.tradingLimits.yearlyDefault — the API's own
+ * "effectively unrestricted" ceiling — so no realistic test amount ever hits it.
+ */
+const DEFAULT_TEST_DEPOSIT_LIMIT = 1_000_000_000;
+
 export interface CreateUserOptions {
   /** Optional tag embedded in mail addresses for debuggability. */
   tag?: string;
@@ -175,6 +189,13 @@ export interface CreateUserOptions {
   completePersonalData?: boolean;
   /** Force a specific wallet index (still offset by FACTORY_WALLET_INDEX_BASE unless absoluteIndex). */
   walletIndex?: number;
+  /**
+   * Override user_data.depositLimit (CHF). Only meaningful when kycLevel is (or becomes) 50 — see
+   * DEFAULT_TEST_DEPOSIT_LIMIT above for why. When kycLevel is set to 50 and this is omitted,
+   * createUser applies DEFAULT_TEST_DEPOSIT_LIMIT automatically so the account is actually able
+   * to trade. Pass 0 explicitly to test the "no limit granted" case at level 50.
+   */
+  depositLimit?: number;
 }
 
 export interface CreateUserResult {
@@ -631,6 +652,15 @@ export async function createUser(options: CreateUserOptions = {}): Promise<Creat
   if (options.kycLevel != null) {
     // No public endpoint assigns an arbitrary KycLevel; KYC steps advance it. Direct SQL.
     await updateById('user_data', userRow.userDataId, { kycLevel: options.kycLevel });
+  }
+
+  // See DEFAULT_TEST_DEPOSIT_LIMIT above: depositLimit only matters once kycLevel reaches 50, but
+  // an explicit override is always honored regardless of level (e.g. to test level 50 with no
+  // granted limit via `depositLimit: 0`).
+  if (options.depositLimit != null || (options.kycLevel != null && options.kycLevel >= 50)) {
+    await updateById('user_data', userRow.userDataId, {
+      depositLimit: options.depositLimit ?? DEFAULT_TEST_DEPOSIT_LIMIT,
+    });
   }
 
   if (options.role) {

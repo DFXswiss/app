@@ -73,11 +73,22 @@ without this workaround `PUT /v1/buy/paymentInfos` hangs or fails.
 |--|--|
 | **Path** | API sign-up via `signatureLogin` → `POST /v1/auth`; mail via `PUT /v2/user/mail` (first mail only); language via `PUT /v2/user`; country / `kycLevel` / `role` via SQL |
 | **Returns** | `{ userId, userDataId, address, jwt, wallet, mail? }` |
-| **Options** | `tag`, `mail`, `language` (symbol), `country` (symbol), `kycLevel` (0–50 / −10 / −20), `role`, `completePersonalData`, `walletIndex` |
+| **Options** | `tag`, `mail`, `language` (symbol), `country` (symbol), `kycLevel` (0–50 / −10 / −20), `role`, `completePersonalData`, `walletIndex`, `depositLimit` |
 | **Preconditions** | API + DB up; seed wallet exists |
 | **Why SQL for KYC/role** | `SignUpDto` has no mail/country/kycLevel. Mail is set after sign-up with `PUT /v2/user/mail` (first mail applies without verification). If the account already has mail (e.g. wallet index reused across runs), that existing mail is reused instead of calling the API again — a second set would require 2FA (`TFA_REQUIRED`). Arbitrary `kycLevel` and `role` are not public-API assignable without the full KYC/admin flow. |
 
 `completePersonalData: true` (or `kycLevel >= 30`) fills personal columns so `UserData.isDataComplete` is true — **required for `POST /sell`**.
+
+**`depositLimit` (kycLevel 50 only)**: the API's `UserData.tradingLimit` getter only reads
+`user_data.depositLimit` once `kycLevel` reaches `50` (`KycLevel.LEVEL_50`, "dfx approval") — every
+lower level uses a flat default limit instead. A `null` `depositLimit` (the column's default) at
+level 50 resolves to an available trading limit of `0`, so every trade fails `LIMIT_EXCEEDED`
+before any other check runs — a real level-50 approval always comes with a support-granted
+`depositLimit`, which this SQL-only shortcut otherwise skips. `createUser` therefore sets
+`depositLimit` to `1_000_000_000` CHF (matching the API's own
+`Config.tradingLimits.yearlyDefault` "effectively unrestricted" ceiling) whenever `kycLevel` is
+set to `50` and no explicit `depositLimit` is passed. Pass `depositLimit: 0` explicitly to test
+the "level 50 but no limit granted" case instead.
 
 ### `createBankAccount(jwt, options?)`
 
