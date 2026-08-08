@@ -995,6 +995,31 @@ describe('TransactionList row presentation', () => {
     expect(within(amountSummary).getByText(/BTC/)).toBeInTheDocument();
     expect(screen.queryByText(/→/)).not.toBeInTheDocument();
   });
+
+  // Line 825: inputAmount ?? '' fallback when inputAsset is set but inputAmount is undefined.
+  it('renders input-only summary with empty amount fallback when inputAmount is undefined', async () => {
+    mockGetDetailTransactions.mockResolvedValue([
+      makeListTx({
+        state: 'Completed',
+        inputAsset: 'EUR',
+        inputAmount: undefined,
+        outputAsset: undefined,
+        outputAmount: undefined,
+      }),
+    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+
+    renderList();
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    });
+    // `${undefined ?? ''} EUR` → " EUR" in the title summary (ml-auto); TxInfo has the same body text.
+    const amountSummary = document.querySelector('.ml-auto') as HTMLElement;
+    expect(amountSummary).toBeTruthy();
+    expect(within(amountSummary).getByText(/EUR/)).toBeInTheDocument();
+    expect(screen.queryByText(/→/)).not.toBeInTheDocument();
+  });
 });
 
 // Line 909: Open receipt early return when tx.id is falsy.
