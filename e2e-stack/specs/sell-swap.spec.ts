@@ -3,9 +3,11 @@
  *   /sell, /sell/info, /swap
  *
  * Browser drives the real frontend; Postgres proves writes where the UI mutates data.
- * Pricing (`PUT /sell/paymentInfos`, `PUT /swap/paymentInfos`) may fail under ENVIRONMENT=loc
- * (outbound HTTP mocked) — when that happens the UI path is `test.fixme`d with the observed
- * error and the factory (`createSell` / `createSwap`) independently proves the deposit_route write.
+ * UI flows that depend on pricing (`PUT /sell/paymentInfos`, `PUT /swap/paymentInfos`) are split
+ * into two unconditional tests each: (A) form/URL params must produce a deposit_route write
+ * (hard assertion via waitForRow), and (B) the payment panel must render after paymentInfos —
+ * marked with test.fail() because pricing is not reliable under ENVIRONMENT=loc (outbound HTTP
+ * mocked). Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
  */
 
 import type { Page, Response } from '@playwright/test';
@@ -191,6 +193,107 @@ function trackPaymentInfosResponses(
     box.last = { status: res.status(), body: body.slice(0, 500) };
   });
   return box;
+}
+
+type SellSwapUser = Awaited<ReturnType<typeof createUser>>;
+type PaymentInfosTracker = ReturnType<typeof trackPaymentInfosResponses>;
+
+/**
+ * Shared setup for /sell full-UI write-path and payment-panel tests: user + bank account,
+ * paymentInfos response tracking (attached before navigation), form pre-fill via URL params.
+ */
+async function setupSellFullUiFlow(
+  page: Page,
+  tag: string,
+): Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
+  const user = await createUser({
+    walletIndex: nextWalletIndex(),
+    tag,
+    kycLevel: 30,
+    completePersonalData: true,
+    language: 'EN',
+  });
+  await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Sell UI BA' });
+
+  const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
+
+  // Pre-fill via URL params so amount/asset/currency are set without fragile dropdown clicks.
+  // Deliberately do NOT wait for 'networkidle' here: pre-filling amount + asset + currency +
+  // bank-account all at once drives sell.screen.tsx's SPEND/GET-data-changed effects into a
+  // repeating receiveFor() cycle (each response can update the very fields the effects watch),
+  // so the network never truly goes idle — a real, reportable behavior of this screen, not a
+  // flake. Content-based waits below are what actually gate this test.
+  await gotoWithSession(
+    page,
+    `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}`,
+    user.jwt,
+  );
+  expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
+
+  await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+  // Bank account should resolve (pre-created or created from bank-account param).
+  await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
+
+  return { user, paymentInfos };
+}
+
+/**
+ * Shared setup for /sell/info write-path and payment-panel tests: user + bank account,
+ * paymentInfos tracking, navigation with valid query params (no networkidle).
+ */
+async function setupSellInfoUiFlow(
+  page: Page,
+  tag: string,
+): Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
+  const user = await createUser({
+    walletIndex: nextWalletIndex(),
+    tag,
+    kycLevel: 30,
+    completePersonalData: true,
+    language: 'EN',
+  });
+  await createBankAccount(user.jwt, { iban: TEST_IBAN });
+
+  const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
+
+  // Deliberately no 'networkidle' wait: a successful payment-info panel here starts sell-info
+  // screen's own 5s getTransactionByRequestId poll loop, which keeps the network busy forever
+  // (by design, so it can auto-advance to the completion screen) — content-based waits gate this.
+  await gotoWithSession(
+    page,
+    `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}`,
+    user.jwt,
+  );
+  expect(normPath(new URL(page.url()).pathname)).toBe('/sell/info');
+
+  return { user, paymentInfos };
+}
+
+/**
+ * Shared setup for /swap full-UI write-path and payment-panel tests: user (no bank account),
+ * paymentInfos tracking, form pre-fill via URL params (no networkidle).
+ */
+async function setupSwapFullUiFlow(
+  page: Page,
+  tag: string,
+): Promise<{ user: SellSwapUser; paymentInfos: PaymentInfosTracker }> {
+  const user = await createUser({
+    walletIndex: nextWalletIndex(),
+    tag,
+    kycLevel: 30,
+    completePersonalData: true,
+    language: 'EN',
+  });
+
+  const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
+
+  // Same rationale as the /sell case above: skip 'networkidle', rely on content waits.
+  await gotoWithSession(page, `/swap?asset-in=ETH&amount-in=0.1`, user.jwt);
+  expect(normPath(new URL(page.url()).pathname)).toBe('/swap');
+
+  await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+
+  return { user, paymentInfos };
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -415,75 +518,51 @@ test.describe('Sell + Swap e2e', () => {
     expect(row.iban?.replace(/\s/g, '')).toBe(TEST_IBAN);
   });
 
-  test('/sell full UI paymentInfos flow when pricing works (else fixme + factory proof)', async ({ page }) => {
-    // Chains several bounded waits (bank account resolve, pricing outcome poll, DB proof) whose
-    // worst-case sum can approach the default 60s test timeout — give this one more headroom.
-    test.setTimeout(90000);
-    const user = await createUser({
-      walletIndex: nextWalletIndex(),
-      tag: 'sell-ui-flow',
-      kycLevel: 30,
-      completePersonalData: true,
-      language: 'EN',
-    });
-    await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Sell UI BA' });
+  test('/sell full UI flow: form params produce a Sell deposit_route', async ({ page }) => {
+    // Write-path proof only: form/URL params must create a Sell deposit_route. No panel wait.
+    test.setTimeout(60000);
+    const { user } = await setupSellFullUiFlow(page, 'sell-ui-write');
 
-    const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
-
-    // Pre-fill via URL params so amount/asset/currency are set without fragile dropdown clicks.
-    // Deliberately do NOT wait for 'networkidle' here: pre-filling amount + asset + currency +
-    // bank-account all at once drives sell.screen.tsx's SPEND/GET-data-changed effects into a
-    // repeating receiveFor() cycle (each response can update the very fields the effects watch),
-    // so the network never truly goes idle — a real, reportable behavior of this screen, not a
-    // flake. Content-based waits below are what actually gate this test.
-    await gotoWithSession(
-      page,
-      `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}`,
-      user.jwt,
+    const route = await waitForRow<{ id: number; type: string }>(
+      `SELECT id, type FROM deposit_route
+       WHERE "userId" = $1 AND type = 'Sell'
+       ORDER BY id DESC LIMIT 1`,
+      [user.userId],
+      30000,
     );
-    expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
+    expect(route.type).toBe('Sell');
+  });
 
-    await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
-    // Bank account should resolve (pre-created or created from bank-account param).
-    await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
+  test('/sell full UI flow: payment panel renders after paymentInfos', async ({ page }) => {
+    test.fail(
+      true,
+      'PUT /sell/paymentInfos is unreliable under loc (mocked outbound HTTP); payment panel often never renders',
+    );
+    test.setTimeout(90000);
+    const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-ui-panel');
 
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
-
-    if (outcome.kind === 'payment_info') {
-      // paymentInfos already wrote the sell route — prove deposit_route, then click through completion.
-      const route = await waitForRow<{ id: number; type: string }>(
-        `SELECT id, type FROM deposit_route
-         WHERE "userId" = $1 AND type = 'Sell'
-         ORDER BY id DESC LIMIT 1`,
-        [user.userId],
-        20000,
-      );
-      expect(route.type).toBe('Sell');
-
-      const completeBtn = page.getByRole('button', {
-        name: /Click here once you have issued the transaction/i,
-      });
-      if (await completeBtn.isVisible().catch(() => false)) {
-        await completeBtn.click();
-        await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toBeVisible(
-          { timeout: 15000 },
-        );
-      }
-      return;
-    }
-
-    // Pricing path failed or hung — prove DB write via factory; mark the UI step as fixme.
     const apiDetail = paymentInfos.last
       ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
       : 'no PUT paymentInfos response captured';
+    expect(
+      outcome.kind,
+      `expected payment_info panel (${outcome.detail}); ${apiDetail}`,
+    ).toBe('payment_info');
 
-    const sell = await safeCreateSell(user.jwt, { blockchain: 'Ethereum', iban: TEST_IBAN });
-    await waitForRow(`SELECT id FROM deposit_route WHERE id = $1 AND type = 'Sell'`, [sell.sellId]);
+    const completeBtn = page.getByRole('button', {
+      name: /Click here once you have issued the transaction/i,
+    });
+    const paymentHeading = page.getByRole('heading', { name: 'Payment Information', exact: true });
+    await expect(paymentHeading.or(completeBtn).first()).toBeVisible();
 
-    test.fixme(
-      true,
-      `Sell UI paymentInfos did not produce payment panel (${outcome.kind}): ${outcome.detail}; ${apiDetail}`,
-    );
+    // When the complete CTA is the visible panel path, click through and assert success hard.
+    if (await completeBtn.isVisible()) {
+      await completeBtn.click();
+      await expect(
+        page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
+      ).toBeVisible({ timeout: 15000 });
+    }
   });
 
   // ---------------------------------------------------------------------------
@@ -519,58 +598,47 @@ test.describe('Sell + Swap e2e', () => {
     await expect(page.getByText(/Invalid IBAN/i)).toBeVisible({ timeout: 15000 });
   });
 
-  test('/sell/info with valid query params renders payment content or pricing error on-route', async ({ page }) => {
-    test.setTimeout(75000);
-    const user = await createUser({
-      walletIndex: nextWalletIndex(),
-      tag: 'sell-info-ok',
-      kycLevel: 30,
-      completePersonalData: true,
-      language: 'EN',
-    });
-    await createBankAccount(user.jwt, { iban: TEST_IBAN });
+  test('/sell/info with valid query params: form params produce a Sell deposit_route', async ({ page }) => {
+    // Write-path proof only: valid query params must create a Sell deposit_route. No panel wait.
+    test.setTimeout(60000);
+    const { user } = await setupSellInfoUiFlow(page, 'sell-info-write');
 
-    const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
-
-    // Deliberately no 'networkidle' wait: a successful payment-info panel here starts sell-info
-    // screen's own 5s getTransactionByRequestId poll loop, which keeps the network busy forever
-    // (by design, so it can auto-advance to the completion screen) — content-based waits gate this.
-    await gotoWithSession(
-      page,
-      `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}`,
-      user.jwt,
+    const route = await waitForRow<{ id: number; type: string }>(
+      `SELECT id, type FROM deposit_route
+       WHERE "userId" = $1 AND type = 'Sell'
+       ORDER BY id DESC LIMIT 1`,
+      [user.userId],
+      30000,
     );
-    expect(normPath(new URL(page.url()).pathname)).toBe('/sell/info');
+    expect(route.type).toBe('Sell');
+  });
 
-    // Either Transaction Details / Payment Information, or an ErrorHint from pricing.
+  test('/sell/info with valid query params: renders Transaction Details / Payment Information', async ({
+    page,
+  }) => {
+    test.fail(
+      true,
+      'PUT /sell/paymentInfos is unreliable under loc (mocked outbound HTTP); panel content often never renders',
+    );
+    test.setTimeout(75000);
+    const { paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-panel');
+
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
-    const txDetails = page.getByText('Transaction Details', { exact: true });
-    const missing = page.getByText('Missing required information', { exact: true });
-
-    if ((await txDetails.isVisible().catch(() => false)) || outcome.kind === 'payment_info') {
-      // Both "Transaction Details" and the "Payment Information" heading can be visible at once
-      // (they are not mutually exclusive sections of the same successful panel) — `.first()` keeps
-      // this a single-element assertion regardless of how many of the two are present.
-      await expect(txDetails.or(page.getByRole('heading', { name: 'Payment Information' })).first()).toBeVisible();
-      // paymentInfos success also creates a sell deposit_route.
-      await waitForRow(
-        `SELECT id FROM deposit_route WHERE "userId" = $1 AND type = 'Sell' ORDER BY id DESC LIMIT 1`,
-        [user.userId],
-        20000,
-      );
-      return;
-    }
-
-    // Still on /sell/info with an error (not missing-params) — screen handled the request.
-    expect(await missing.isVisible().catch(() => false)).toBe(false);
     const apiDetail = paymentInfos.last
       ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
       : 'no PUT paymentInfos response captured';
-    // Form/params path is proven; pricing failure is the known loc-stack limitation.
-    test.fixme(
-      true,
-      `/sell/info pricing did not render Transaction Details (${outcome.kind}): ${outcome.detail}; ${apiDetail}`,
-    );
+    expect(
+      outcome.kind,
+      `expected payment_info panel (${outcome.detail}); ${apiDetail}`,
+    ).toBe('payment_info');
+
+    // Both "Transaction Details" and the "Payment Information" heading can be visible at once
+    // (they are not mutually exclusive sections of the same successful panel) — `.first()` keeps
+    // this a single-element assertion regardless of how many of the two are present.
+    const txDetails = page.getByText('Transaction Details', { exact: true });
+    await expect(
+      txDetails.or(page.getByRole('heading', { name: 'Payment Information' })).first(),
+    ).toBeVisible();
   });
 
   // ---------------------------------------------------------------------------
@@ -679,57 +747,51 @@ test.describe('Sell + Swap e2e', () => {
     expect(row.type).toBe('Crypto');
   });
 
-  test('/swap full UI paymentInfos flow when pricing works (else fixme + factory proof)', async ({ page }) => {
-    // Same rationale as the /sell equivalent above: bound the cumulative wait chain with headroom.
+  test('/swap full UI flow: form params produce a Crypto deposit_route', async ({ page }) => {
+    // Write-path proof only: form/URL params must create a Crypto deposit_route. No panel wait.
+    test.setTimeout(60000);
+    const { user } = await setupSwapFullUiFlow(page, 'swap-ui-write');
+
+    const route = await waitForRow<{ id: number; type: string }>(
+      `SELECT id, type FROM deposit_route
+       WHERE "userId" = $1 AND type = 'Crypto'
+       ORDER BY id DESC LIMIT 1`,
+      [user.userId],
+      30000,
+    );
+    expect(route.type).toBe('Crypto');
+  });
+
+  test('/swap full UI flow: payment panel renders after paymentInfos', async ({ page }) => {
+    test.fail(
+      true,
+      'PUT /swap/paymentInfos is unreliable under loc (mocked outbound HTTP); payment panel often never renders',
+    );
     test.setTimeout(90000);
-    const user = await createUser({
-      walletIndex: nextWalletIndex(),
-      tag: 'swap-ui-flow',
-      kycLevel: 30,
-      completePersonalData: true,
-      language: 'EN',
-    });
-
-    const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
-
-    // Same rationale as the /sell case above: skip 'networkidle', rely on content waits.
-    await gotoWithSession(page, `/swap?asset-in=ETH&amount-in=0.1`, user.jwt);
-    expect(normPath(new URL(page.url()).pathname)).toBe('/swap');
-
-    await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+    const { paymentInfos } = await setupSwapFullUiFlow(page, 'swap-ui-panel');
 
     const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
-
-    if (outcome.kind === 'payment_info') {
-      const route = await waitForRow<{ id: number; type: string }>(
-        `SELECT id, type FROM deposit_route
-         WHERE "userId" = $1 AND type = 'Crypto'
-         ORDER BY id DESC LIMIT 1`,
-        [user.userId],
-        20000,
-      );
-      expect(route.type).toBe('Crypto');
-
-      const completeBtn = page.getByRole('button', {
-        name: /Click here once you have issued the transaction/i,
-      });
-      if (await completeBtn.isVisible().catch(() => false)) {
-        await completeBtn.click();
-      }
-      return;
-    }
-
     const apiDetail = paymentInfos.last
       ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
       : 'no PUT paymentInfos response captured';
+    expect(
+      outcome.kind,
+      `expected payment_info panel (${outcome.detail}); ${apiDetail}`,
+    ).toBe('payment_info');
 
-    const swap = await safeCreateSwap(user.jwt, { blockchain: 'Ethereum' });
-    await waitForRow(`SELECT id FROM deposit_route WHERE id = $1 AND type = 'Crypto'`, [swap.swapId]);
+    const completeBtn = page.getByRole('button', {
+      name: /Click here once you have issued the transaction/i,
+    });
+    const paymentHeading = page.getByRole('heading', { name: 'Payment Information', exact: true });
+    await expect(paymentHeading.or(completeBtn).first()).toBeVisible();
 
-    test.fixme(
-      true,
-      `Swap UI paymentInfos did not produce payment panel (${outcome.kind}): ${outcome.detail}; ${apiDetail}`,
-    );
+    // When the complete CTA is the visible panel path, click through and assert success hard.
+    if (await completeBtn.isVisible()) {
+      await completeBtn.click();
+      await expect(
+        page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
+      ).toBeVisible({ timeout: 15000 });
+    }
   });
 
   // Sanity: incomplete personal data is redirected off /sell by the API/UI (Ident data incomplete).
