@@ -70,7 +70,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // Message form state
   const [messageText, setMessageText] = useState('');
   const [messageAuthor, setMessageAuthor] = useState<string>('');
-  const [isAuthorPicked, setIsAuthorPicked] = useState(false);
+  // a ref, not state: the effect below may already be scheduled when the clerk picks an author, and
+  // would then run with the state of the render it was scheduled in and overwrite the pick
+  const isAuthorPickedRef = useRef(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -121,11 +123,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // Once the clerk has picked an author themselves, the default stops applying: ticket and clerk list
   // arrive independently, so a late arrival would otherwise overwrite a selection already made.
   useEffect(() => {
-    if (isAuthorPicked) return;
+    if (isAuthorPickedRef.current) return;
     setMessageAuthor((prev) =>
       issueData?.clerk && clerks.includes(issueData.clerk) ? issueData.clerk : prev || clerks[0] || '',
     );
-  }, [issueData?.clerk, clerks, isAuthorPicked]);
+  }, [issueData?.clerk, clerks]);
 
   const loadMessages = useCallback((): void => {
     if (!issueData?.uid) return;
@@ -663,8 +665,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
               className="px-2 py-2 text-xs border border-dfxGray-400 rounded bg-white text-dfxBlue-800"
               value={messageAuthor}
               onChange={(e) => {
+                isAuthorPickedRef.current = true;
                 setMessageAuthor(e.target.value);
-                setIsAuthorPicked(true);
               }}
               title="Author"
             >

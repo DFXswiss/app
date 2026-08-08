@@ -84,8 +84,9 @@ jest.mock('src/contexts/settings.context', () => ({
 }));
 
 const mockGetUserData = jest.fn();
+const mockComplianceHook = { getUserData: mockGetUserData };
 jest.mock('src/hooks/compliance.hook', () => ({
-  useCompliance: () => ({ getUserData: mockGetUserData }),
+  useCompliance: () => mockComplianceHook,
   LimitRequestFinalDecisions: ['Accepted', 'Rejected'],
 }));
 
@@ -98,20 +99,24 @@ const mockGetClerks = jest.fn();
 const mockGetReplySuggestion = jest.fn();
 const mockAcceptReplySuggestion = jest.fn();
 const mockRejectReplySuggestion = jest.fn();
+// One stable object, like the real hook's useMemo: a fresh object on every render would change the
+// identity of every callback, re-run the effects that depend on them and put the screen into a
+// reload loop that no production render ever performs.
+const mockDashboard = {
+  getIssueData: mockGetIssueData,
+  updateIssue: mockUpdateIssue,
+  sendMessage: mockSendMessage,
+  getIssueMessages: mockGetIssueMessages,
+  getMessageFile: mockGetMessageFile,
+  getClerks: mockGetClerks,
+  getReplySuggestion: mockGetReplySuggestion,
+  acceptReplySuggestion: mockAcceptReplySuggestion,
+  rejectReplySuggestion: mockRejectReplySuggestion,
+};
 jest.mock('src/hooks/support-dashboard.hook', () => ({
   ASSIGNABLE_DEPARTMENTS: ['Support', 'Compliance'],
   CustomerAuthor: 'Customer',
-  useSupportDashboard: () => ({
-    getIssueData: mockGetIssueData,
-    updateIssue: mockUpdateIssue,
-    sendMessage: mockSendMessage,
-    getIssueMessages: mockGetIssueMessages,
-    getMessageFile: mockGetMessageFile,
-    getClerks: mockGetClerks,
-    getReplySuggestion: mockGetReplySuggestion,
-    acceptReplySuggestion: mockAcceptReplySuggestion,
-    rejectReplySuggestion: mockRejectReplySuggestion,
-  }),
+  useSupportDashboard: () => mockDashboard,
 }));
 
 const mockToBase64 = jest.fn();
