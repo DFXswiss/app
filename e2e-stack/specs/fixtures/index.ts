@@ -54,10 +54,21 @@ export async function openScreen(page: Page, path: string, jwt: string): Promise
   }
 }
 
-/** Hosts the browser is allowed to reach: the stack itself, nothing else. */
+/**
+ * Hosts the browser is allowed to reach: the stack itself, nothing else.
+ *
+ * A host missing from this list does not error — it gets the empty 200 below, which looks like a
+ * blank page rather than a blocked request. Anything the suite legitimately navigates to therefore
+ * belongs here; the widget host was learned that way.
+ */
 function stackHosts(): Set<string> {
   const hosts = new Set(['localhost', '127.0.0.1']);
-  for (const raw of [process.env.E2E_FRONTEND_URL ?? 'http://frontend', process.env.E2E_API_URL ?? 'http://api:3000']) {
+  const stackUrls = [
+    process.env.E2E_FRONTEND_URL ?? 'http://frontend',
+    process.env.E2E_API_URL ?? 'http://api:3000',
+    process.env.E2E_WIDGET_URL ?? 'http://frontend-widget',
+  ];
+  for (const raw of stackUrls) {
     hosts.add(new URL(raw).hostname);
   }
   return hosts;
