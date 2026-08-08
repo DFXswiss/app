@@ -967,12 +967,26 @@ describe('SupportDashboardIssueScreen', () => {
   // The states a ticket reaches when fields the API marks optional are actually absent, and the
   // paths the screen only takes on the second click or on the way out.
   describe('sparse data and second passes', () => {
-    it('loads no thread for a ticket without a uid', async () => {
-      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, uid: undefined } as unknown as SupportIssueInternalData);
+    it('loads and polls no thread for a ticket without a uid', async () => {
+      jest.useFakeTimers();
+      try {
+        mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, uid: undefined } as unknown as SupportIssueInternalData);
 
-      await renderScreen();
+        render(<SupportDashboardIssueScreen />);
+        await waitFor(() => expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument(), {
+          timeout: 5000,
+        });
 
-      expect(mockGetIssueMessages).not.toHaveBeenCalled();
+        await act(async () => {
+          jest.advanceTimersByTime(15000);
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+
+        expect(mockGetIssueMessages).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('blocks the template button while the account data is still loading', async () => {
@@ -1065,6 +1079,23 @@ describe('SupportDashboardIssueScreen', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    it('has nothing to release when the preview is closed without one open', async () => {
+      await renderScreen();
+
+      fireEvent.click(button('close-preview'));
+
+      expect(global.URL.revokeObjectURL).not.toHaveBeenCalled();
+    });
+
+    it('has nothing to release when the screen goes away without a preview', async () => {
+      const { unmount } = render(<SupportDashboardIssueScreen />);
+      await screen.findByRole('button', { name: 'Update' }, { timeout: 5000 });
+
+      unmount();
+
+      expect(global.URL.revokeObjectURL).not.toHaveBeenCalled();
     });
 
     it('releases an open preview when the screen goes away', async () => {
