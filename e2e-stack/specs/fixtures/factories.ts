@@ -10,7 +10,7 @@
  * testWallet usage; starting at 100 avoids collisions under workers: 1.
  */
 
-import { apiGet, apiPost, apiPut } from './api-client';
+import { apiPost, apiPut } from './api-client';
 import { queryOne, queryRows, withDb } from './db';
 import { signatureLogin, testWallet, type TestRole, type TestWallet } from './auth';
 import { TEST_IBAN } from './test-data';
