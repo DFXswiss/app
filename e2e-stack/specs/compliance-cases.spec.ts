@@ -23,6 +23,7 @@ import {
   createTransaction,
   createUser,
   TEST_IBAN,
+  trackRow,
 } from './fixtures/factories';
 
 test.describe.configure({ mode: 'serial' });
@@ -310,12 +311,16 @@ test.describe('Compliance area (cases)', () => {
     await expect(page.getByRole('button', { name: 'Confirm refund', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
 
-    await styledInput(page, 'Chargeback IBAN').fill(TEST_IBAN);
-    await styledInput(page, 'Name').fill('E2E Creditor');
-    await styledInput(page, 'Street').fill('Bahnhofstrasse');
-    await styledInput(page, 'House nr.').fill('1');
-    await styledInput(page, 'ZIP code').fill('8001');
-    await styledInput(page, 'City').fill('Zurich');
+    // Address the fields by placeholder, not by their label text: the summary block above the form
+    // repeats "Name" and "IBAN" as read-only rows, and resolving a label to the nearest ancestor
+    // holding an input walked up to the form and filled its first field instead — the IBAN field
+    // ended up with a person's name in it and the API answered "Refund iban not valid".
+    await page.getByPlaceholder('CH...').fill(TEST_IBAN);
+    await page.getByPlaceholder('John Doe').fill('E2E Creditor');
+    await page.getByPlaceholder('Street', { exact: true }).fill('Bahnhofstrasse');
+    await page.getByPlaceholder('xx', { exact: true }).fill('1');
+    await page.getByPlaceholder('12345').fill('8001');
+    await page.getByPlaceholder('City', { exact: true }).fill('Zurich');
 
     // Country is a StyledSearchDropdown (autocomplete="country" → input[name="country"]).
     const countryInput = page.locator('input[name="country"]');
@@ -352,6 +357,17 @@ test.describe('Compliance area (cases)', () => {
         { timeout: 20000, message: 'buy_crypto chargeback columns must be written after Confirm refund' },
       )
       .toEqual({ amountPositive: true, hasIban: true });
+
+    // The return writes a recall row that references the bank_tx this test created. Register it so
+    // teardown can remove it first; without that, the bank_tx delete fails on the foreign key.
+    const recall = await queryOne<{ id: number }>(
+      `SELECT r.id FROM recall r
+       JOIN bank_tx b ON b.id = r."bankTxId"
+       WHERE b."transactionId" = $1
+       ORDER BY r.id DESC LIMIT 1`,
+      [tx.transactionId],
+    );
+    if (recall) trackRow('recall', recall.id);
 
     expect(pageErrors, `uncaught pageerror on bank-tx return: ${pageErrors.join('; ')}`).toEqual([]);
   });

@@ -203,6 +203,15 @@ function track(table: string, id: number | undefined | null): void {
   }
 }
 
+/**
+ * Register a row a spec caused the application itself to write, so teardown removes it like any
+ * factory-created row. Deletion runs in reverse registration order, so register a child after the
+ * parent it points at. Use this only for rows a test knowingly produced — never for rows it found.
+ */
+export function trackRow(table: string, id: number | undefined | null): void {
+  track(table, id);
+}
+
 // ---------------------------------------------------------------------------
 // Option / result types
 // ---------------------------------------------------------------------------
