@@ -43,6 +43,8 @@ export default function ChatScreen(): JSX.Element {
   const { id: issueUidParam } = useParams();
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  // First scroll jumps instantly; later message arrivals may animate (unless reduced motion).
+  const hasScrolledToEndRef = useRef(false);
 
   const [sessionUid, setSessionUid] = useState<string>(() => {
     return supportIssueUidStore.get() || '';
@@ -67,7 +69,11 @@ export default function ChatScreen(): JSX.Element {
 
   useEffect(() => {
     if (supportIssue?.messages && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      const prefersReducedMotion =
+        typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const behavior: ScrollBehavior = !hasScrolledToEndRef.current || prefersReducedMotion ? 'auto' : 'smooth';
+      messagesEndRef.current.scrollIntoView({ behavior });
+      hasScrolledToEndRef.current = true;
     }
   }, [supportIssue?.messages.length]);
 
@@ -257,7 +263,7 @@ function InputComponent(): JSX.Element {
   const canSend = !!inputValue && !error;
 
   return (
-    <div className="flex flex-col gap-2 p-4 bg-dfxGray-300 border-t border-dfxGray-500">
+    <div className="flex flex-col gap-2 pt-4 px-4 bg-dfxGray-300 border-t border-dfxGray-500 rounded-t-lg pb-[max(1rem,env(safe-area-inset-bottom))]">
       {selectedFiles.length > 0 && (
         <div className="flex flex-row flex-wrap gap-2">
           {selectedFiles.map((file, index) => (

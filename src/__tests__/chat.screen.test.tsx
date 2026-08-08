@@ -201,6 +201,17 @@ describe('ChatScreen', () => {
     mockTranslate.mockImplementation((_ns: string, key: string) => key);
     mockTranslateError.mockImplementation((message: string) => message);
     Element.prototype.scrollIntoView = jest.fn();
+    // Default: motion allowed so later scrolls can use smooth.
+    window.matchMedia = jest.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    }));
   });
 
   afterEach(() => {
@@ -285,6 +296,50 @@ describe('ChatScreen', () => {
     await waitFor(() => {
       expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
     });
+  });
+
+  it('jumps without animation on the first scroll, then uses smooth for later messages', async () => {
+    const scrollIntoView = Element.prototype.scrollIntoView as jest.Mock;
+    const { rerender } = renderChat();
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: 'auto' });
+
+    // Second open with a longer thread — same mount so hasScrolledToEndRef stays true.
+    mockSupportIssue = makeIssue({
+      messages: [makeMessage({ id: 1, message: 'First' }), makeMessage({ id: 2, message: 'Second' })],
+    });
+    rerender(<ChatScreen />);
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: 'smooth' });
+    });
+  });
+
+  it('always uses auto scroll when the user prefers reduced motion', async () => {
+    (window.matchMedia as jest.Mock).mockImplementation((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    }));
+    const scrollIntoView = Element.prototype.scrollIntoView as jest.Mock;
+    const { rerender } = renderChat();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: 'auto' });
+
+    mockSupportIssue = makeIssue({
+      messages: [makeMessage({ id: 1, message: 'First' }), makeMessage({ id: 2, message: 'Second' })],
+    });
+    rerender(<ChatScreen />);
+    await waitFor(() => {
+      expect(scrollIntoView.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: 'auto' });
   });
 
   // --- B2 DFX colours ---
@@ -559,6 +614,19 @@ describe('ChatScreen', () => {
     expect(bar).toHaveClass('bg-dfxGray-300');
     expect(bar).toHaveClass('border-t');
     expect(bar).toHaveClass('border-dfxGray-500');
+    // Soft top corners only (scale: lg) — not a full pill like the field
+    expect(bar).toHaveClass('rounded-t-lg');
+    // Home-indicator inset (no prior safe-area pattern in the repo)
+    expect(bar?.className).toMatch(/safe-area-inset-bottom/);
+  });
+
+  it('does not send when Enter is pressed on an empty field', () => {
+    // Covers handleSend's early return: the button is disabled when empty, but Enter still
+    // reaches handleSend via handleKeyDown.
+    renderChat();
+    const textarea = screen.getByPlaceholderText('Write a message...');
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+    expect(mockSubmitMessage).not.toHaveBeenCalled();
   });
 
   it('sends on Enter and inserts a newline on Shift+Enter', async () => {
