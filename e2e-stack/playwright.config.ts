@@ -4,16 +4,20 @@ import { defineConfig, devices } from '@playwright/test';
  * Full-stack E2E harness config. The Docker stack (compose.yml) is already running;
  * Playwright must not start servers itself (no webServer).
  *
- * The route-coverage gate (route-coverage.spec.ts, tagged "@coverage-gate") is deliberately
- * excluded from the default run until the functional suite has claimed every App.tsx route.
- * IMPORTANT: this is NOT done via a config-level `grepInvert` here, because Playwright ANDs
- * config-level grep/grepInvert with any CLI --grep/--grep-invert — a CLI --grep can never
- * override a config-level grepInvert, it only narrows it further (verified empirically: with
- * a config-level `grepInvert: /@coverage-gate/`, `playwright test --grep @coverage-gate`
- * still finds zero tests). The exclusion therefore lives in the Dockerfile's default CMD
- * (`CMD ["--grep-invert=@coverage-gate"]`), which `docker compose run --rm tests` uses when
- * no extra args are given, and which is fully replaced (not merged) by any args the caller
- * does pass — so the on-demand command below works as documented:
+ * The route-coverage gate (route-coverage.spec.ts, tagged "@coverage-gate") runs by default
+ * together with the rest of the suite: a bare `docker compose run --rm tests` runs every
+ * project, gate included — images/playwright/Dockerfile has no default CMD args anymore. The
+ * gate WAS excluded by default early on, while the functional suites were still being written
+ * and most routes were unclaimed, via the Dockerfile's then-default CMD
+ * (`["--grep-invert=@coverage-gate"]`). That default is gone now that the claim set is
+ * complete: letting the gate run by default is the point of having it — a route added to the
+ * app without a matching test now fails the run, instead of some unrelated assertion.
+ * IMPORTANT (kept from when the exclusion existed, still true if it is ever reintroduced): it
+ * was never done via a config-level `grepInvert` here, because Playwright ANDs config-level
+ * grep/grepInvert with any CLI --grep/--grep-invert — a CLI --grep can never override a
+ * config-level grepInvert, it only narrows it further (verified empirically: with a
+ * config-level `grepInvert: /@coverage-gate/`, `playwright test --grep @coverage-gate` still
+ * finds zero tests). To run ONLY the gate on demand:
  *   docker compose -p dfx-e2e-stack -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml \
  *     run --rm tests --grep @coverage-gate
  * The gate also lives in its own `coverage-gate` project (see below) so it never runs twice.
