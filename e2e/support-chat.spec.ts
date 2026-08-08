@@ -19,7 +19,9 @@ import { getCachedAuth } from './helpers/auth-cache';
  *   - GET  support/issue/:uid?fromMessageId=…  (sync poller — same body)
  *   - POST support/issue/:uid/message    (submitMessage; not exercised in screenshots)
  *
- * Synthetic fixtures: fixed uid, fixed ISO dates, fake names — no production data.
+ * Synthetic fixtures: fixed uid, fake names — no production data. Most message timestamps are
+ * fixed ISO dates (absolute date-separator labels). The relative-days case builds “yesterday” /
+ * “today” at request time so the Today/Yesterday separators stay correct without rotting.
  *
  * Baselines are produced by the assignee on macOS against a local api; this spec must remain
  * runnable without committed PNGs (toHaveScreenshot creates them on first update run).
@@ -106,19 +108,56 @@ const STATUS_MESSAGES: ChatMessageFixture[] = [
   },
 ];
 
+/**
+ * Local calendar day `daysAgo` ago, at a fixed wall-clock time.
+ * Midday/afternoon hours stay clear of the midnight boundary so relativeDayKey(today/yesterday)
+ * and formatSwissTime (de-CH hour:minute) stay stable for the screenshot.
+ */
+function localIsoDaysAgo(daysAgo: number, hour: number, minute: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  d.setHours(hour, minute, 0, 0);
+  return d.toISOString();
+}
+
+/** Built at call time (route fulfill / test body), not at module load — labels track “now”. */
+function relativeDayMessages(): ChatMessageFixture[] {
+  return [
+    {
+      id: 30,
+      author: CUSTOMER,
+      // Yesterday 12:00 local — fixed hour so the bubble timestamp does not drift with wall clock.
+      created: localIsoDaysAgo(1, 12, 0),
+      message: 'I wrote this yesterday.',
+      status: 'Received',
+    },
+    {
+      id: 31,
+      author: SUPPORT_AUTHOR,
+      // Today 14:30 local — well clear of midnight for both local day and typical UTC offsets.
+      created: localIsoDaysAgo(0, 14, 30),
+      message: 'And this is the reply from today.',
+    },
+  ];
+}
+
 const ISSUE_RE = /\/v1\/support\/issue\/[^/?]+(?:\?|$)/;
 const MESSAGE_RE = /\/v1\/support\/issue\/[^/]+\/message(?:\?|$)/;
 
-async function installChatRoutes(page: Page, issue: SupportIssueFixture): Promise<void> {
+type IssueFixtureOrFactory = SupportIssueFixture | (() => SupportIssueFixture);
+
+async function installChatRoutes(page: Page, issue: IssueFixtureOrFactory): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
     const url = request.url();
 
     if (request.method() === 'GET' && ISSUE_RE.test(url)) {
+      // Resolve factories at fulfill time so relative “today/yesterday” tracks request clock.
+      const body = typeof issue === 'function' ? issue() : issue;
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(issue),
+        body: JSON.stringify(body),
       });
       return;
     }
@@ -199,6 +238,28 @@ test.describe('Support Chat - Visual Regression Tests', () => {
 
     await page.waitForTimeout(1500);
     await expect(page).toHaveScreenshot('support-chat-03-status.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('date separators show Yesterday and Today for relative days', async ({ page }) => {
+    // Messages are dated relative to “now” so separators use the Today/Yesterday labels
+    // (not the absolute “Tue, Jul 9” path covered by support-chat-01-thread).
+    // Factory re-evaluates at each GET fulfill so labels stay aligned with render-time “now”.
+    await installChatRoutes(page, () => issueWithMessages(relativeDayMessages()));
+
+    await page.goto(chatUrl(token));
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByText('I wrote this yesterday.')).toBeVisible();
+    await expect(page.getByText('And this is the reply from today.')).toBeVisible();
+    // lang=en → English keys from screens/support (Today / Yesterday).
+    await expect(page.getByText('Yesterday', { exact: true })).toBeVisible();
+    await expect(page.getByText('Today', { exact: true })).toBeVisible();
+
+    await page.waitForTimeout(1500);
+    await expect(page).toHaveScreenshot('support-chat-04-relative-days.png', {
       fullPage: true,
       maxDiffPixels: 5000,
     });
