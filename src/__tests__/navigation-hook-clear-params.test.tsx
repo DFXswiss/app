@@ -1,6 +1,5 @@
-// Proves that useNavigation's object-form navigate with clearParams actually
-// produces a target URL without the stripped query keys — not merely that a
-// mock was called with clearParams in its options.
+// Proves that useNavigation's object-form navigate with replaceParams builds a target
+// URL only from the provided search — never by merging the current location query.
 
 // navigation.hook imports relativeUrl from utils, which imports @dfx.swiss/react.
 jest.mock('@dfx.swiss/react', () => ({}));
@@ -20,7 +19,7 @@ import { useNavigation } from '../hooks/navigation.hook';
 const EXPIRY = '2027-08-07T00:00:00.000Z';
 const PAYMENT_SEARCH = `routeId=42&amount=10&message=INV-1&expiryDate=${EXPIRY}`;
 
-function ContinueToPaymentProbe() {
+function ContinueToPaymentProbe({ replaceParams }: { replaceParams?: boolean }) {
   const { navigate } = useNavigation();
   return (
     <button
@@ -28,7 +27,7 @@ function ContinueToPaymentProbe() {
       onClick={() =>
         navigate(
           { pathname: '/pl', search: PAYMENT_SEARCH },
-          { clearParams: ['recipient', 'pay'] },
+          replaceParams ? { replaceParams: true } : { clearParams: ['recipient', 'pay'] },
         )
       }
     >
@@ -53,7 +52,6 @@ function assertPaymentLocation(router: ReturnType<typeof createMemoryRouter>) {
   expect(text.startsWith('/pl')).toBe(true);
 
   const search = text.slice('/pl'.length);
-  // Single query separator (no empty or double ?).
   expect(search.startsWith('?')).toBe(true);
   expect(search.indexOf('?')).toBe(0);
   expect(search.slice(1).includes('?')).toBe(false);
@@ -65,6 +63,8 @@ function assertPaymentLocation(router: ReturnType<typeof createMemoryRouter>) {
   expect(params.get('expiryDate')).toBe(EXPIRY);
   expect(params.get('recipient')).toBeNull();
   expect(params.get('pay')).toBeNull();
+  expect(params.get('lightning')).toBeNull();
+  expect(params.get('merchant')).toBeNull();
   expect([...params.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
 
   expect(router.state.location.pathname).toBe('/pl');
@@ -74,11 +74,11 @@ function assertPaymentLocation(router: ReturnType<typeof createMemoryRouter>) {
   expect(router.state.location.search.slice(1).includes('?')).toBe(false);
 }
 
-describe('useNavigation clearParams (invoice continue)', () => {
-  it('from payer query: lands on /pl with only the payment params — no recipient, no pay', async () => {
+describe('useNavigation replaceParams (invoice continue)', () => {
+  it('from payer query with replaceParams: only payment params', async () => {
     const router = createMemoryRouter(
       [
-        { path: '/invoice', element: <ContinueToPaymentProbe /> },
+        { path: '/invoice', element: <ContinueToPaymentProbe replaceParams /> },
         { path: '/pl', element: <PaymentLocation /> },
       ],
       { initialEntries: ['/invoice?recipient=Foo&pay=1'] },
@@ -94,10 +94,10 @@ describe('useNavigation clearParams (invoice continue)', () => {
     assertPaymentLocation(router);
   });
 
-  it('from empty query (merchant after mount clear): same four payment params, single ?', async () => {
+  it('from empty query with replaceParams: same four payment params, single ?', async () => {
     const router = createMemoryRouter(
       [
-        { path: '/invoice', element: <ContinueToPaymentProbe /> },
+        { path: '/invoice', element: <ContinueToPaymentProbe replaceParams /> },
         { path: '/pl', element: <PaymentLocation /> },
       ],
       { initialEntries: ['/invoice'] },
@@ -111,5 +111,33 @@ describe('useNavigation clearParams (invoice continue)', () => {
 
     await screen.findByTestId('payment-location');
     assertPaymentLocation(router);
+  });
+
+  it('strips hijack query (lightning, merchant, forged routeId) when replaceParams is set', async () => {
+    const router = createMemoryRouter(
+      [
+        { path: '/invoice', element: <ContinueToPaymentProbe replaceParams /> },
+        { path: '/pl', element: <PaymentLocation /> },
+      ],
+      {
+        initialEntries: [
+          '/invoice?recipient=Foo&pay=1&lightning=lnurl1attacker&merchant=evil&routeId=999',
+        ],
+      },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Continue to payment' }));
+    });
+
+    await screen.findByTestId('payment-location');
+    assertPaymentLocation(router);
+    // Explicit: attacker values must not survive even as overwritten keys from location.
+    const params = new URLSearchParams(router.state.location.search);
+    expect(params.get('routeId')).toBe('42');
+    expect(params.get('lightning')).toBeNull();
+    expect(params.get('merchant')).toBeNull();
   });
 });

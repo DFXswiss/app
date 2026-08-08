@@ -8,8 +8,10 @@ import {
   StyledButton,
   StyledButtonColor,
   StyledButtonWidth,
+  SpinnerSize,
   StyledInput,
   StyledLink,
+  StyledLoadingSpinner,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
 import copy from 'copy-to-clipboard';
@@ -184,7 +186,12 @@ export default function InvoiceScreen(): JSX.Element {
                 name="recipient"
                 control={control}
                 render={({ field }) => (
-                  <div role="group" aria-labelledby="invoice-payee-label" className="w-full text-start">
+                  <div
+                    role="group"
+                    aria-labelledby="invoice-payee-label"
+                    aria-busy={isLoadingRecipient}
+                    className="w-full text-start"
+                  >
                     <p id="invoice-payee-label" className="text-sm font-semibold pl-3 text-dfxGray-800">
                       {translate('screens/payment', 'Payee')}
                     </p>
@@ -192,7 +199,12 @@ export default function InvoiceScreen(): JSX.Element {
                       <p className={`text-base ${errorRecipient ? 'text-dfxRed-100' : 'text-dfxBlue-800'}`}>
                         {field.value}
                       </p>
-                      {validatedRecipient && (
+                      {isLoadingRecipient && (
+                        <span className="inline-flex" aria-hidden="true">
+                          <StyledLoadingSpinner size={SpinnerSize.SM} />
+                        </span>
+                      )}
+                      {validatedRecipient && !isLoadingRecipient && (
                         <span
                           role="img"
                           aria-label={translate('screens/payment', 'Recipient verified')}
@@ -251,7 +263,8 @@ export default function InvoiceScreen(): JSX.Element {
               callback &&
               navigate(
                 { pathname: relativeBaseUrl, search: callbackSearch },
-                { clearParams: ['recipient', 'pay'] },
+                // Allowlist only: never inherit unrelated query (e.g. lightning/merchant hijack).
+                { replaceParams: true },
               )
             }
             width={StyledButtonWidth.FULL}

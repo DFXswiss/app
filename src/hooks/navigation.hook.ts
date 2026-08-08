@@ -5,6 +5,11 @@ import { relativeUrl } from '../util/utils';
 
 interface NavigationOptions extends NavigateOptions {
   clearParams?: string[];
+  /**
+   * When true, the target search is built only from `to.search` (and optional clearParams),
+   * without inheriting the current location's query. Default false keeps legacy merge behavior.
+   */
+  replaceParams?: boolean;
   setRedirect?: boolean;
   redirectPath?: string;
 }
@@ -32,7 +37,7 @@ export function useNavigation(): NavigationInterface {
         return navigateTo(relativeUrl({ path: to, params: new URLSearchParams(search) }), options);
 
       default:
-        const params = addParams(new URLSearchParams(to.search), options?.clearParams);
+        const params = addParams(new URLSearchParams(to.search), options?.clearParams, options?.replaceParams);
 
         to.search = `?${params}`;
         return navigateTo(to, options);
@@ -50,8 +55,12 @@ export function useNavigation(): NavigationInterface {
     return navigateTo(relativeUrl({ path: pathname, params }));
   }
 
-  function addParams(newParams: URLSearchParams, clearParams?: string[]): URLSearchParams {
-    const params = new URLSearchParams(search);
+  function addParams(
+    newParams: URLSearchParams,
+    clearParams?: string[],
+    replaceParams?: boolean,
+  ): URLSearchParams {
+    const params = replaceParams ? new URLSearchParams() : new URLSearchParams(search);
     newParams.forEach((val, key) => params.set(key, val));
     clearParams?.forEach((s) => params.delete(s));
 
