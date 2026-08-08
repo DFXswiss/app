@@ -12,6 +12,7 @@ import {
   loginAs,
   openScreen,
   queryOne,
+  queryRows,
   test,
   waitForRow,
 } from './fixtures';
@@ -137,14 +138,34 @@ async function chooseFromSectionDropdown(
 ): Promise<void> {
   const trigger = section.locator('button#dropDownButton').first();
   await trigger.click();
+  // Panel is the absolute sibling of the trigger button (StyledDropdown).
   const panel = trigger.locator('xpath=following-sibling::div[1]');
-  const option = panel.locator('button', { hasText: new RegExp(`^${optionName}$`) }).first();
-  if ((await option.count()) > 0) {
-    await option.click();
-  } else {
-    // Fallback: match option anywhere (search dropdown filter can restructure).
-    await page.locator('button', { hasText: new RegExp(`^${optionName}$`) }).last().click();
+  await panel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => undefined);
+
+  // Option buttons render label + description as separate lines (e.g. "CHF\nSwiss Franc");
+  // match on the first line only — hasText: /^Name$/ never matches multi-line content.
+  const optionButtons = panel.locator('button');
+  const count = await optionButtons.count();
+  for (let i = 0; i < count; i++) {
+    const text = (await optionButtons.nth(i).innerText()).trim().split('\n')[0]?.trim();
+    if (text === optionName) {
+      await optionButtons.nth(i).click();
+      return;
+    }
   }
+
+  // Fallback: same first-line comparison anywhere on the page (panel restructure).
+  const pageButtons = page.locator('button');
+  const pageCount = await pageButtons.count();
+  for (let i = 0; i < pageCount; i++) {
+    const text = (await pageButtons.nth(i).innerText()).trim().split('\n')[0]?.trim();
+    if (text === optionName) {
+      await pageButtons.nth(i).click();
+      return;
+    }
+  }
+
+  throw new Error(`chooseFromSectionDropdown: option "${optionName}" not found in dropdown panel`);
 }
 
 /** Pick an option from the asset StyledSearchDropdown (input trigger + panel buttons without #dropDownButton). */
@@ -195,7 +216,7 @@ function attachPaymentInfoCapture(page: Page): { get: () => PaymentInfoPayload |
   return { get: () => last };
 }
 
-type QuoteUiState = 'payment' | 'min-error' | 'error' | 'missing' | 'pending';
+type QuoteUiState = 'payment' | 'min-error' | 'error' | 'missing' | 'kyc' | 'limit' | 'pending';
 
 async function readQuoteUiState(page: Page): Promise<QuoteUiState> {
   if (await page.getByRole('heading', { name: 'Payment Information' }).isVisible().catch(() => false)) {
@@ -217,6 +238,20 @@ async function readQuoteUiState(page: Page): Promise<QuoteUiState> {
   }
   if (await page.getByText('Something went wrong').isVisible().catch(() => false)) {
     return 'error';
+  }
+  if (
+    await page
+      .getByText(
+        'This transaction is only possible with a verified account. Please complete our KYC (Know-Your-Customer) process.',
+      )
+      .isVisible()
+      .catch(() => false)
+  ) {
+    return 'kyc';
+  }
+  // LIMIT_EXCEEDED (quote-error-hint) — {{limit}} makes the full string seed-dependent.
+  if (await page.getByText(/This transaction exceeds your trading limit of/i).isVisible().catch(() => false)) {
+    return 'limit';
   }
   return 'pending';
 }
@@ -369,21 +404,28 @@ test.describe('Buy flow', () => {
     }
   });
 
-  // Pricing-dependent: PUT /buy/paymentInfos triggers a real, unmocked Kraken fetch that times out
-  // past any reasonable poll wait in this network-isolated sandbox (see fixme reason below).
+  // Needs kycLevel 50 + depositLimit SQL (else KYC_REQUIRED / LIMIT_EXCEEDED before min-amount). Body is correct;
+  // fixme: seed has 0 transaction_specification rows → getSpec falls through to TransactionSpecification.default()
+  // (minVolume=0), so AMOUNT_TOO_LOW never fires (confirmed live: 1 and 0.001 CHF both reach Payment Information).
+  // Proper fix is seeding transaction_specification in global.setup.ts (out of scope for this file).
   test.fixme(
-    '/buy: amount below minimum surfaces error (not payment details) — mocked-HTTP gap: outbound Kraken pricing calls in PricingService are real, unmocked, and time out far past any reasonable poll timeout in this network-isolated sandbox (observed via server logs: No valid price found for CHF -> ETH / kraken GET https://api.kraken.com/0/public/AssetPairs fetch failed), arriving too late for the debounced frontend quote effect to surface within any bounded wait',
+    '/buy: amount below minimum surfaces error (not payment details) — AMOUNT_TOO_LOW unreachable: empty transaction_specification table → TransactionSpecification.default() minVolume=0 for every asset pair (confirmed live: 1 and 0.001 CHF both reach Payment Information instead of AMOUNT_TOO_LOW)',
     async ({ page }) => {
-      const user = await createUser({ tag: 'buy-min', kycLevel: 30, completePersonalData: true });
+      const user = await createUser({ tag: 'buy-min', kycLevel: 50, completePersonalData: true });
+      // createUser only sets kycLevel via SQL; depositLimit stays null → tradingLimit.remaining / availableTradingLimit
+      // compute to 0 (user-data.entity getters) and any amount trips LIMIT_EXCEEDED before min-amount / payment info.
+      await queryRows(`UPDATE user_data SET "depositLimit" = 1000000 WHERE id = $1`, [user.userDataId]);
 
       // openScreen cannot take query strings (pathname vs full path comparison would throw).
       await openScreen(page, '/buy', user.jwt);
-      await page.goto('/buy?asset-in=CHF&asset-out=ETH&amount-in=1&blockchain=Ethereum');
+      await page.goto('/buy?asset-in=CHF&asset-out=ETH&amount-in=0.001&blockchain=Ethereum');
       await page.waitForLoadState('networkidle');
       await expect.poll(() => normPath(new URL(page.url()).pathname)).toBe('/buy');
 
-      await setSpendAmount(page, '1');
-      const state = await waitForQuoteUi(page, 30000);
+      // amount-in=0.001 already set via URL; do not re-fill (would bump quote generation and race the
+      // personal-IBAN attempt-and-fallback on PUT /buy/paymentInfos).
+      await expect(spendSection(page).locator('input[type="number"]').first()).toHaveValue('0.001');
+      const state = await waitForQuoteUi(page, 45000);
 
       expect(state, 'quote must resolve to an error path, not payment info').not.toBe('payment');
       expect(state).not.toBe('pending');
@@ -411,71 +453,70 @@ test.describe('Buy flow', () => {
     expect(row.active).toBe(true);
   });
 
-  // Same Kraken pricing timeout as the min-amount fixme: UI never leaves the quote loading spinner
-  // in bounded time, so the payment-info / confirm path cannot be asserted here yet.
-  test.fixme(
-    '/buy: full flow — pick CHF/ETH, amount 100, payment info, prove buy row — mocked-HTTP gap: outbound Kraken pricing calls in PricingService are real, unmocked, and time out far past any reasonable poll timeout in this network-isolated sandbox (observed via server logs: No valid price found for CHF -> ETH / kraken GET https://api.kraken.com/0/public/AssetPairs fetch failed), arriving too late for the debounced frontend quote effect to surface within any bounded wait',
-    async ({ page }) => {
-      test.setTimeout(90000);
-      const user = await createUser({ tag: 'buy-full-ui', kycLevel: 30, completePersonalData: true });
-      const capture = attachPaymentInfoCapture(page);
+  // Needs kycLevel 50: PUT /buy/paymentInfos requires it for BANK-method CHF quotes (buy.service
+  // collectionAccountOrThrow / virtual-iban isUserEligible) so the quote can reach Payment Information.
+  test('/buy: full flow — pick CHF/ETH, amount 100, payment info, prove buy row', async ({ page }) => {
+    test.setTimeout(90000);
+    const user = await createUser({ tag: 'buy-full-ui', kycLevel: 50, completePersonalData: true });
+    // See buy-min: null depositLimit at kycLevel 50 → availableTradingLimit 0 → LIMIT_EXCEEDED on any amount.
+    await queryRows(`UPDATE user_data SET "depositLimit" = 1000000 WHERE id = $1`, [user.userDataId]);
+    const capture = attachPaymentInfoCapture(page);
 
-      await openScreen(page, '/buy', user.jwt);
-      await expect(page.getByRole('heading', { name: 'You spend' })).toBeVisible();
+    await openScreen(page, '/buy', user.jwt);
+    await expect(page.getByRole('heading', { name: 'You spend' })).toBeVisible();
 
-      // Drive selection through the real UI.
-      await chooseFromSectionDropdown(page, spendSection(page), 'CHF');
-      await chooseFromSectionSearchDropdown(page, getSection(page), 'ETH');
-      await setSpendAmount(page, '100');
+    // Drive selection through the real UI.
+    await chooseFromSectionDropdown(page, spendSection(page), 'CHF');
+    await chooseFromSectionSearchDropdown(page, getSection(page), 'ETH');
+    await setSpendAmount(page, '100');
 
-      const state = await waitForQuoteUi(page, 45000);
-      expect(state, 'full buy UI must reach Payment Information once pricing is available').toBe('payment');
+    const state = await waitForQuoteUi(page, 45000);
+    expect(state, 'full buy UI must reach Payment Information once pricing is available').toBe('payment');
 
-      await expect(page.getByRole('heading', { name: 'Payment Information' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Payment Information' })).toBeVisible();
 
-      const apiBuy = capture.get();
-      expect(apiBuy, 'PUT /buy/paymentInfos should have returned a body').toBeTruthy();
+    const apiBuy = capture.get();
+    expect(apiBuy, 'PUT /buy/paymentInfos should have returned a body').toBeTruthy();
 
-      // Displayed values must match the API response (not hardcoded seed IBANs).
-      const ibanCell = dataTableValue(page, 'IBAN');
-      await expect(ibanCell).toBeVisible();
-      const displayedIban = stripIban(await ibanCell.innerText());
-      if (apiBuy?.iban) {
-        expect(displayedIban).toContain(stripIban(apiBuy.iban).slice(0, 8));
-      }
+    // Displayed values must match the API response (not hardcoded seed IBANs).
+    const ibanCell = dataTableValue(page, 'IBAN');
+    await expect(ibanCell).toBeVisible();
+    const displayedIban = stripIban(await ibanCell.innerText());
+    if (apiBuy?.iban) {
+      expect(displayedIban).toContain(stripIban(apiBuy.iban).slice(0, 8));
+    }
 
-      const amountLabel = apiBuy?.currency?.name
-        ? new RegExp(`^Amount in ${apiBuy.currency.name}$`)
-        : /^Amount in /;
-      const amountCell = dataTableValue(page, amountLabel);
-      await expect(amountCell).toBeVisible();
-      const amountText = (await amountCell.innerText()).replace(/[^\d.,-]/g, '');
-      if (apiBuy?.amount != null) {
-        expect(Number(amountText.replace(',', ''))).toBeCloseTo(Number(apiBuy.amount), 2);
-      }
+    const amountLabel = apiBuy?.currency?.name
+      ? new RegExp(`^Amount in ${apiBuy.currency.name}$`)
+      : /^Amount in /;
+    const amountCell = dataTableValue(page, amountLabel);
+    await expect(amountCell).toBeVisible();
+    const amountText = (await amountCell.innerText()).replace(/[^\d.,-]/g, '');
+    if (apiBuy?.amount != null) {
+      expect(Number(amountText.replace(',', ''))).toBeCloseTo(Number(apiBuy.amount), 2);
+    }
 
-      if (apiBuy?.remittanceInfo) {
-        const remCell = dataTableValue(page, 'Remittance info');
-        await expect(remCell).toContainText(apiBuy.remittanceInfo);
-      }
+    if (apiBuy?.remittanceInfo) {
+      const remCell = dataTableValue(page, 'Remittance info');
+      await expect(remCell).toContainText(apiBuy.remittanceInfo);
+    }
 
-      // Prove buy route row exists for this user (created by paymentInfos).
-      const buyRow = await waitForRow<{ id: number; active: boolean; userId: number }>(
-        `SELECT id, active, "userId" AS "userId"
-         FROM buy WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`,
-        [user.userId],
-        30000,
-      );
-      expect(buyRow.active).toBe(true);
-      expect(buyRow.userId).toBe(user.userId);
+    // Prove buy route row exists for this user (created by paymentInfos).
+    const buyRow = await waitForRow<{ id: number; active: boolean; userId: number }>(
+      `SELECT id, active, "userId" AS "userId"
+       FROM buy WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`,
+      [user.userId],
+      30000,
+    );
+    expect(buyRow.active).toBe(true);
+    expect(buyRow.userId).toBe(user.userId);
 
-      // Confirm transfer → in-place completion (BuyCompletion with mail).
-      const confirmBtn = page.getByRole('button', { name: /Click here once you have issued the transfer/i });
-      await expect(confirmBtn).toBeVisible();
-      await confirmBtn.click();
-      await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
-    },
-  );
+    // Confirm transfer → in-place completion (BuyCompletion with mail).
+    const confirmBtn = page.getByRole('button', { name: /Click here once you have issued the transfer/i });
+    await expect(confirmBtn).toBeVisible();
+    await confirmBtn.click();
+    await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
+  });
 
   // =========================================================================
   // /buy/info
@@ -505,7 +546,10 @@ test.describe('Buy flow', () => {
     page,
   }) => {
     test.setTimeout(90000);
-    const user = await createUser({ tag: 'buy-info-ok', kycLevel: 30, completePersonalData: true });
+    // kycLevel 50 required for PUT /buy/paymentInfos on BANK-method CHF (same as full buy UI flow).
+    const user = await createUser({ tag: 'buy-info-ok', kycLevel: 50, completePersonalData: true });
+    // See buy-min: null depositLimit at kycLevel 50 → availableTradingLimit 0 → LIMIT_EXCEEDED on any amount.
+    await queryRows(`UPDATE user_data SET "depositLimit" = 1000000 WHERE id = $1`, [user.userDataId]);
     const capture = attachPaymentInfoCapture(page);
 
     await openScreen(page, '/buy', user.jwt);
@@ -515,26 +559,19 @@ test.describe('Buy flow', () => {
     await expect.poll(() => normPath(new URL(page.url()).pathname)).toBe('/buy/info');
 
     const state = await waitForQuoteUi(page, 45000);
-    expect(['payment', 'min-error', 'error', 'missing']).toContain(state);
+    expect(state, `expected Payment Information for CHF/ETH/100 with kycLevel 50 (got ${state})`).toBe(
+      'payment',
+    );
 
-    if (state === 'payment') {
-      const apiBuy = capture.get();
-      const ibanCell = dataTableValue(page, 'IBAN');
-      await expect(ibanCell).toBeVisible();
-      if (apiBuy?.iban) {
-        expect(stripIban(await ibanCell.innerText())).toContain(stripIban(apiBuy.iban).slice(0, 8));
-      }
-      await expect(
-        page.getByRole('button', { name: /Click here once you have issued the transfer/i }),
-      ).toBeVisible();
-    } else {
-      await expect(
-        page
-          .getByText('Missing required information')
-          .or(page.getByText('Something went wrong'))
-          .or(page.getByText(/Entered amount is below minimum deposit of/i)),
-      ).toBeVisible();
+    const apiBuy = capture.get();
+    const ibanCell = dataTableValue(page, 'IBAN');
+    await expect(ibanCell).toBeVisible();
+    if (apiBuy?.iban) {
+      expect(stripIban(await ibanCell.innerText())).toContain(stripIban(apiBuy.iban).slice(0, 8));
     }
+    await expect(
+      page.getByRole('button', { name: /Click here once you have issued the transfer/i }),
+    ).toBeVisible();
   });
 
   // =========================================================================
@@ -721,88 +758,47 @@ test.describe('Buy flow', () => {
     await expect(save).toBeDisabled();
   });
 
-  test('/buyCrypto/update: Admin save attempt — Staff KYC rejection and unchanged buyId', async ({
-    page,
-  }) => {
-    test.setTimeout(90000);
-    const { jwt: adminJwt } = await loginAs('Admin');
-
-    const user = await createUser({ tag: 'bc-upd', kycLevel: 30, completePersonalData: true });
-    const { buyId: buy1Id, newBuyId } = await twoDistinctBuyRoutes(user.jwt, 'bc-upd');
-
-    const tx = await createTransaction({
-      tag: 'bc-upd',
-      state: 'pending_buy',
-      userId: user.userId,
-      userDataId: user.userDataId,
-      jwt: user.jwt,
-      buyId: buy1Id,
-    });
-    expect(tx.buyCryptoId).toBeTruthy();
-
-    const before = await queryOne<{ buyId: number }>(
-      `SELECT "buyId" AS "buyId" FROM buy_crypto WHERE id = $1`,
-      [tx.buyCryptoId],
-    );
-    expect(before?.buyId).toBe(buy1Id);
-
-    await openScreen(page, '/buyCrypto/update', adminJwt);
-
-    await page.getByPlaceholder('Transaction ID').fill(String(tx.buyCryptoId));
-    await page.getByPlaceholder('Buy Route ID').fill(String(newBuyId));
-
-    const save = page.getByRole('button', { name: 'Save' });
-    await expect(save).toBeEnabled();
-    await save.click();
-
-    // Expected under DISABLED_PROCESSES=*: staff-KYC allowlist never includes this admin.
-    // useGuardedApi catches the 403 STAFF_KYC_REQUIRED and navigates to /staff-kyc-required
-    // (no inline ErrorHint on the form).
-    await expect
-      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
-      .toBe('/staff-kyc-required');
-    await expect(page.getByText('Identification required', { exact: true })).toBeVisible();
-    await expect(
-      page.getByText(
-        'Access to internal tools now requires an identified person behind the account. Your role is unchanged — what is missing is your identification.',
-      ),
-    ).toBeVisible();
-    await expect(
-      page.getByText(
-        'Complete the identification to restore access. This is the same process customers go through and only has to be done once.',
-      ),
-    ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Start KYC' })).toBeVisible();
-
-    const after = await queryOne<{ buyId: number }>(
-      `SELECT "buyId" AS "buyId" FROM buy_crypto WHERE id = $1`,
-      [tx.buyCryptoId],
-    );
-    expect(after?.buyId, 'buyId must not change when PUT /buyCrypto/:id is rejected').toBe(buy1Id);
-    await expect(page.getByText('Saved', { exact: true })).toHaveCount(0);
-  });
-
+  // staffKycClearance is seeded in global.setup for harness Admin — Admin is no longer redirected to
+  // /staff-kyc-required and the PUT reaches BuyCryptoService.update/changeRoute. Body is correct;
+  // fixme: API crashes with 500 TypeError: Cannot read properties of null (reading 'id') in
+  // BuyCryptoService.changeRoute (buy-crypto.service.ts, comparison route.userData.id !==
+  // entity.transaction.userData.id) when changing the buy route under this request shape (confirmed
+  // live: ErrorHint + buyId unchanged). Genuine API bug, not fixable in this file.
   test.fixme(
-    'PUT /buyCrypto/:id always rejects with StaffKycRequiredException here — the staff-KYC-clearance allowlist is populated only by a disabled cron (DISABLED_PROCESSES=*) and primed once at boot before any test account exists, so no admin account can ever pass it in this environment',
+    '/buyCrypto/update: Admin save updates buyId and shows Saved — staff KYC clearance works (no /staff-kyc-required redirect), but API BuyCryptoService.changeRoute throws TypeError: Cannot read properties of null (reading \'id\') (500) at route.userData.id !== entity.transaction.userData.id (buy-crypto.service.ts); confirmed live API log PUT /v1/buyCrypto/1',
     async ({ page }) => {
+      test.setTimeout(90000);
       const { jwt: adminJwt } = await loginAs('Admin');
-      const user = await createUser({ tag: 'bc-fixme', kycLevel: 30, completePersonalData: true });
-      const { buyId: buy1Id, newBuyId } = await twoDistinctBuyRoutes(user.jwt, 'bc-fixme');
+
+      const user = await createUser({ tag: 'bc-upd', kycLevel: 30, completePersonalData: true });
+      const { buyId: buy1Id, newBuyId } = await twoDistinctBuyRoutes(user.jwt, 'bc-upd');
+
       const tx = await createTransaction({
-        tag: 'bc-fixme',
+        tag: 'bc-upd',
         state: 'pending_buy',
         userId: user.userId,
         userDataId: user.userDataId,
         jwt: user.jwt,
         buyId: buy1Id,
       });
+      expect(tx.buyCryptoId).toBeTruthy();
+
+      const before = await queryOne<{ buyId: number }>(
+        `SELECT "buyId" AS "buyId" FROM buy_crypto WHERE id = $1`,
+        [tx.buyCryptoId],
+      );
+      expect(before?.buyId).toBe(buy1Id);
 
       await openScreen(page, '/buyCrypto/update', adminJwt);
+
       await page.getByPlaceholder('Transaction ID').fill(String(tx.buyCryptoId));
       await page.getByPlaceholder('Buy Route ID').fill(String(newBuyId));
-      await page.getByRole('button', { name: 'Save' }).click();
 
-      // Intended success path once staff-KYC clearance can include test admins:
+      const save = page.getByRole('button', { name: 'Save' });
+      await expect(save).toBeEnabled();
+      await save.click();
+
+      // staffKycClearance is seeded in global.setup for harness Admin; save should succeed.
       await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 15000 });
       const updated = await waitForRow<{ buyId: number }>(
         `SELECT "buyId" AS "buyId" FROM buy_crypto WHERE id = $1 AND "buyId" = $2`,
