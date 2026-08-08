@@ -36,9 +36,11 @@ import {
 // (same address -> sign-in, not sign-up). That account already has a mail set, so the mail
 // factories.ts tries to set next fails with 403 TFA_REQUIRED (updateUserMail requires 2FA to
 // change an already-set mail) — a real, reproducible cross-file bug, not a product bug.
-// Reported upstream for a fixtures-level fix (e.g. seeding the counter from something
-// file-unique); worked around here with a file-local, far-separated wallet-index base so this
-// spec's users never collide with another spec file's users regardless of run order.
+// That has since been fixed in factories.ts: wallet offsets now come from their own counter,
+// seeded from the database, so a fresh process continues above what is already there instead of
+// restarting at 1. The file-local base below is kept anyway — it costs nothing, it keeps this
+// suite's accounts recognisable in the database, and it does not depend on the shared counter
+// being right. Remove it if you ever want the suites to share one allocation scheme.
 let __sellSwap_WALLET_SEQ = 0;
 function nextWalletIndex(): number {
   __sellSwap_WALLET_SEQ += 1;

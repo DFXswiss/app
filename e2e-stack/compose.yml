@@ -40,9 +40,13 @@ services:
       # already recognizes and tolerates this exact error ("Channel has been shut down") to keep
       # the process alive — but it never gets the chance, because Node terminates the process on
       # an unhandled rejection by default (since Node 15) before that handler can run. This is an
-      # incompleteness in the API's own error handling, to be fixed properly upstream with an
-      # unhandledRejection handler. Until then, downgrade unhandled rejections to a warning at the
-      # harness level so boot can complete. Remove this once the API repo ships that fix.
+      # incompleteness in the API's own error handling. The proper fix exists in the API repository
+      # — an unhandledRejection handler sharing the same tolerance policy, plus a catch on the two
+      # L2 bridge initialisations that were the next thing to take the process down — and was
+      # measured: with both in place the API boots fully in this network without the line below.
+      # Until they reach the API's default branch, which is what this harness checks out, downgrade
+      # unhandled rejections to a warning so boot can complete. Drop this line then, and confirm by
+      # bringing the stack up once without it.
       NODE_OPTIONS: "--unhandled-rejections=warn"
     networks:
       - sandbox
