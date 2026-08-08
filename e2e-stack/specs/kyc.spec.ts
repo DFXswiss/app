@@ -102,15 +102,22 @@ const KYC_STEP_ERROR_TEXT =
  *
  * Why this race exists: every KYC step's submit target (`KycStep.sessionInfo` ->
  * `Config.url(...)`, api/src/config/config.ts) is built server-side from `Config.url()`, whose
- * `Environment.LOC` branch (the environment this whole stack runs under) hardcodes
- * `http://localhost:${port}` - correct for a developer running both frontend and API on one
- * machine, but unreachable from the browser in this multi-container e2e topology, where
- * `localhost` inside the browser's own container is not the api container. Confirmed by instrumenting
- * the page (`requestfailed`/`console` listeners) during this investigation: the browser's PUT
- * genuinely goes to `http://localhost:3000/v2/kyc/data/personal/<id>` and fails with
- * `net::ERR_CONNECTION_REFUSED`, surfacing as the screen's generic "Failed to fetch" ErrorHint. This
- * is an e2e-stack/environment topology gap (outside the two files this lane owns), not a bug in the
- * test's flow up to submit, and not something curable by a different selector or a longer timeout.
+ * `Environment.LOC` branch hardcodes `http://localhost:${port}` - correct for a developer running
+ * both frontend and API on one machine, but originally unreachable from the browser in this
+ * multi-container e2e topology, where `localhost` inside the browser's own container was not the
+ * api container (confirmed at the time by instrumenting the page: the browser's PUT went to
+ * `http://localhost:3000/...` and failed with `net::ERR_CONNECTION_REFUSED`, surfacing as the
+ * screen's generic "Failed to fetch" ErrorHint).
+ *
+ * That gap is now closed centrally, not in this file: the `tests`/`playwright` image runs a `socat`
+ * forwarder on `127.0.0.1:3000` inside the browser's own container, relaying to the real `api`
+ * service (`e2e-stack/images/playwright/entrypoint.sh`, commit `163fa612`), so `Config.url()`'s
+ * single-machine assumption now actually holds here and the success branch below is the one that
+ * fires. The race stays anyway: this function has no way to know whether it is running against a
+ * harness build that includes the forwarder, and degrading to a `-blocked` result instead of hanging
+ * on `waitForRow` until the outer test timeout is strictly better if that assumption is ever untrue
+ * again (a stripped-down image, a future refactor of the entrypoint, etc.) than a test that can only
+ * pass or hang.
  */
 async function raceRowOrStepUrlError<T>(
   page: Page,
@@ -129,9 +136,10 @@ async function raceRowOrStepUrlError<T>(
 /**
  * After openScreen on /profile or /contact the KYC engine may present ContactData or PersonalData
  * (step order is backend-owned). Detect which form is visible, fill and submit it for real, and
- * either prove the matching user_data write or - if the environment's step-url gap above fires -
- * return a `-blocked` variant so the caller can mark only the write-verification as fixme while the
- * render + fill + real submit attempt still count as executed, real coverage.
+ * either prove the matching user_data write or - if the step-url race above resolves to the error
+ * branch (see raceRowOrStepUrlError; expected not to happen with the current harness, kept as a
+ * fallback) - return a `-blocked` variant so the caller can mark only the write-verification as
+ * fixme while the render + fill + real submit attempt still count as executed, real coverage.
  */
 async function detectAndSubmitKycForm(page: Page, userDataId: number): Promise<VisibleKycForm> {
   const mailInput = page.locator('input[name="email"]');
@@ -321,14 +329,17 @@ test.describe('KYC area e2e', () => {
       await expect(page.locator('body')).not.toBeEmpty();
       return;
     }
-    // Render + fill + real submit attempt happened either way (see detectAndSubmitKycForm). Only the
-    // DB-write proof is unreachable in this environment for the reason recorded in the annotation.
+    // Render + fill + real submit attempt happened either way (see detectAndSubmitKycForm). The
+    // step-url gap that used to block the DB-write proof here is closed by the tests image's socat
+    // forwarder (see raceRowOrStepUrlError's comment) - this fixme is expected to stay inactive and
+    // only guards against that forwarder being missing from a future harness build.
     test.fixme(
       form === 'contact-blocked' || form === 'personal-blocked',
       'KYC step submit target is built server-side from Config.url() (api/src/config/config.ts), whose ' +
-        "Environment.LOC branch hardcodes http://localhost:<port> - unreachable from the browser's " +
-        'container in this e2e topology (confirmed: browser PUT to http://localhost:3000/... fails with ' +
-        'net::ERR_CONNECTION_REFUSED). See the annotation above for the exact observed error.',
+        "Environment.LOC branch hardcodes http://localhost:<port>. The tests image's socat forwarder " +
+        '(e2e-stack/images/playwright/entrypoint.sh) normally makes that reachable from the browser; if ' +
+        'this fires, that forwarder is missing or broken in the harness this ran against. See the ' +
+        'annotation above for the exact observed error.',
     );
     expect(['contact', 'personal']).toContain(form);
   });
