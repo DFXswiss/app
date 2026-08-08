@@ -416,17 +416,12 @@ test.describe('Buy flow', () => {
     }
   });
 
-  // AMOUNT_TOO_LOW needs transaction_specification.minVolume > 0 for Fiat/CHF In.
-  // SQL seed below writes the row, but TransactionHelper loads specs once onModuleInit and only
-  // refreshes via a 5-minute cron — DISABLED_PROCESSES=* disables that cron, so the in-memory
-  // cache stays empty (minVolume=0) for the life of the API process. Expected fail until specs
-  // are present at API boot (e.g. global.setup before start, or master-data seed). Remove test.fail
-  // once minVolume is live in the process.
+  // AMOUNT_TOO_LOW needs transaction_specification.minVolume > 0 for Fiat/CHF In, which the seed
+  // below writes. TransactionHelper reads the specification per request rather than from a cache
+  // filled at boot, so the seeded row takes effect within the same API process — measured against
+  // the running stack, after this test had been marked expected-to-fail on the assumption of a
+  // boot-time cache.
   test('/buy: amount below minimum surfaces error (not payment details)', async ({ page }) => {
-    test.fail(
-      true,
-      'transaction_specification is empty in the API process cache (boot load + DISABLED_PROCESSES=*); minVolume stays 0 so AMOUNT_TOO_LOW never fires.',
-    );
     test.setTimeout(90000);
 
     // Idempotent seed so the DB has the correct row when the process cache can see it.
