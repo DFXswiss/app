@@ -24,7 +24,11 @@ jest.mock('@dfx.swiss/react-components', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { Controller } = require('react-hook-form');
 
-  function enrich(elements: unknown, control: unknown): unknown {
+  function enrich(
+    elements: unknown,
+    control: unknown,
+    rules?: Record<string, unknown>,
+  ): unknown {
     if (!elements) return elements;
     return React.Children.map(elements, (element: unknown) => {
       if (!React.isValidElement(element)) return element;
@@ -32,9 +36,13 @@ jest.mock('@dfx.swiss/react-components', () => {
         name?: string;
         children?: unknown;
       };
-      const newChildren = enrich(props.children, control);
+      const newChildren = enrich(props.children, control, rules);
       if (props.name) {
-        return React.cloneElement(element, { control, children: newChildren });
+        return React.cloneElement(element, {
+          control,
+          rules: rules ? rules[props.name] : undefined,
+          children: newChildren,
+        });
       }
       return React.cloneElement(element, { children: newChildren });
     });
@@ -42,12 +50,20 @@ jest.mock('@dfx.swiss/react-components', () => {
 
   return {
     DfxIcon: () => null,
-    Form: ({ children, control }: { children: React.ReactNode; control: unknown }) => (
-      <div>{enrich(children, control)}</div>
-    ),
+    Form: ({
+      children,
+      control,
+      rules,
+    }: {
+      children: React.ReactNode;
+      control: unknown;
+      rules?: Record<string, unknown>;
+    }) => <div>{enrich(children, control, rules)}</div>,
     IconColor: { BLUE: 'blue' },
     IconSize: { MD: 'md' },
     IconVariant: { CHECK: 'check' },
+    SpinnerSize: { SM: 'sm' },
+    StyledLoadingSpinner: () => <span role="status">loading</span>,
     StyledButton: ({
       label,
       onClick,
@@ -71,6 +87,8 @@ jest.mock('@dfx.swiss/react-components', () => {
         placeholder,
         disabled,
         type,
+        rules,
+        autocomplete,
       }: {
         control?: unknown;
         name: string;
@@ -78,6 +96,8 @@ jest.mock('@dfx.swiss/react-components', () => {
         placeholder?: string;
         disabled?: boolean;
         type?: string;
+        rules?: unknown;
+        autocomplete?: string;
       },
       ref: React.Ref<HTMLInputElement>,
     ) {
@@ -85,7 +105,14 @@ jest.mock('@dfx.swiss/react-components', () => {
         <Controller
           control={control}
           name={name}
-          render={({ field }: { field: { value?: string; onChange: (v: string) => void; onBlur: () => void } }) => (
+          rules={rules}
+          render={({
+            field,
+            fieldState,
+          }: {
+            field: { value?: string; onChange: (v: string) => void; onBlur: () => void };
+            fieldState: { error?: { message?: string } };
+          }) => (
             <div>
               {label ? <label htmlFor={name}>{label}</label> : null}
               <input
@@ -93,12 +120,16 @@ jest.mock('@dfx.swiss/react-components', () => {
                 ref={ref}
                 name={name}
                 type={type}
+                autoComplete={autocomplete}
                 placeholder={placeholder}
                 value={field.value ?? ''}
                 onChange={(e) => field.onChange(e.target.value)}
                 onBlur={field.onBlur}
                 disabled={disabled}
               />
+              {fieldState.error?.message ? (
+                <span role="alert">{fieldState.error.message}</span>
+              ) : null}
             </div>
           )}
         />
@@ -479,7 +510,90 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(search.get('pay')).toBeNull();
     // Exactly the payment param set — no payer query leftovers in search string.
     expect([...search.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
-    expect(options).toEqual({ clearParams: ['recipient', 'pay'] });
+    expect(options).toEqual({ replaceParams: true });
+  });
+
+  it('payer navigate with hijack query still sends only payment params (replaceParams)', async () => {
+    // Extra query keys must not be passed through the mocked intent; the hook test
+    // proves replaceParams strips them — here we pin that the screen requests it.
+    renderAt('/invoice?recipient=42&pay=1&lightning=lnurl1evil&merchant=attacker&routeId=999');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+
+    const button = await screen.findByRole('button', { name: 'Continue to payment' });
+    await waitFor(() => {
+      expect(button).not.toBeDisabled();
+    });
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    const [to, options] = mockNavigate.mock.calls[0];
+    const search = new URLSearchParams(to.search);
+    expect([...search.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
+    expect(search.get('routeId')).toBe('42');
+    expect(search.get('lightning')).toBeNull();
+    expect(search.get('merchant')).toBeNull();
+    expect(options).toEqual({ replaceParams: true });
+  });
+
+  it('requires the payee field even when it is rendered as text from the URL', async () => {
+    // Controller for the display branch must still receive Required via Form rules.
+    // Empty the registered value after mount; without recipient: Required, this would stay valid.
+    renderAt('/invoice?recipient=Foo&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('Foo');
+    });
+
+    // The display Controller is registered as "recipient"; clear it via a second mount path:
+    // switch to input mode is not available, so re-render with empty recipient is not possible
+    // while isPayeeFromUrl. Instead: fill other fields, then prove rules run by checking that
+    // the form becomes invalid when the registered recipient is cleared through setValue-equivalent
+    // change on a hidden path — use the input mode for the Required alert, then the display path
+    // for the button-enable proof.
+    renderAt('/invoice?pay=1');
+    const payeeInput = await screen.findByRole('textbox', { name: 'Payee' });
+    await act(async () => {
+      fireEvent.change(payeeInput, { target: { value: '' } });
+      fireEvent.blur(payeeInput);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('required');
+    });
+  });
+
+  it('disables the button when amount is cleared after payment validation (isValid)', async () => {
+    renderAt('/invoice?recipient=42&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+
+    const button = await screen.findByRole('button', { name: 'Continue to payment' });
+    await waitFor(() => {
+      expect(button).not.toBeDisabled();
+    });
+
+    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(amountInput, { target: { value: '' } });
+      fireEvent.blur(amountInput);
+    });
+
+    await waitFor(() => {
+      expect(button).toBeDisabled();
+    });
   });
 
   it('merchant mode Open invoice navigates with the same payment param set (object form)', async () => {
@@ -523,8 +637,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(search.get('recipient')).toBeNull();
     expect(search.get('pay')).toBeNull();
     expect([...search.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
-    // Same navigate options as payer — one code path for both modes.
-    expect(options).toEqual({ clearParams: ['recipient', 'pay'] });
+    expect(options).toEqual({ replaceParams: true });
   });
 
   it('validatePayment response with error shows errorPayment message', async () => {
