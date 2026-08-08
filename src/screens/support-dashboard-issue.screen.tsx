@@ -66,12 +66,21 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // Reply suggestion state: only the newest suggestion awaiting a decision is offered
   const [suggestion, setSuggestion] = useState<SupportReplySuggestion>();
   const [isSuggestionBusy, setIsSuggestionBusy] = useState(false);
+  // the same state twice, on purpose: the buttons render from the state, the poll reads the ref.
+  // As a dependency of the poll effect it would tear the interval down and set it up again on every
+  // decision, which delays the message poll the interval also carries.
+  const isSuggestionBusyRef = useRef(false);
   // Answers to a request the screen has moved past must not be applied: a decision taken or another
   // ticket opened while a fetch was in flight would otherwise put the suggestion back on screen. The
   // counter is raised on both, and a response whose token no longer matches is dropped — a check of
   // the busy flag alone cannot do this, because that flag is false again by the time such an answer
   // arrives.
   const suggestionEpochRef = useRef(0);
+
+  function setSuggestionBusy(value: boolean): void {
+    isSuggestionBusyRef.current = value;
+    setIsSuggestionBusy(value);
+  }
 
   // Message form state
   const [messageText, setMessageText] = useState('');
@@ -158,10 +167,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
   }, [issueData?.uid, getIssueMessages]);
 
-  const loadSuggestion = useCallback((): void => {
+  const loadSuggestion = useCallback(async (): Promise<void> => {
     if (!id) return;
     const epoch = suggestionEpochRef.current;
-    getReplySuggestion(+id)
+    return getReplySuggestion(+id)
       .then((loaded) => {
         if (suggestionEpochRef.current === epoch) setSuggestion(loaded);
       })
@@ -181,7 +190,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setSuggestion(undefined);
     // the busy state belongs to the decision of the ticket that was left; carried over it would
     // disable this ticket's buttons and pause its poll until that request finally settles
-    setIsSuggestionBusy(false);
+    setSuggestionBusy(false);
     isAuthorPickedRef.current = false;
   }, [id]);
 
@@ -234,10 +243,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   useEffect(() => {
     const interval = setInterval(() => {
       pollForNewMessages();
-      if (!isSuggestionBusy) loadSuggestion();
+      if (!isSuggestionBusyRef.current) loadSuggestion();
     }, 15000);
     return () => clearInterval(interval);
-  }, [pollForNewMessages, loadSuggestion, isSuggestionBusy]);
+  }, [pollForNewMessages, loadSuggestion]);
 
   // Scroll messages container to bottom when messages change (initial load, send, manual reload)
   useEffect(() => {
@@ -318,7 +327,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     const epoch = ++suggestionEpochRef.current;
     const isCurrent = (): boolean => suggestionEpochRef.current === epoch;
 
-    setIsSuggestionBusy(true);
+    setSuggestionBusy(true);
     setActionError(undefined);
     try {
       if (accept) {
@@ -331,15 +340,15 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     } catch (e: unknown) {
       // The server refuses a decision it has already taken — by another clerk, or in another tab.
       // Leaving the panel as it stands would offer that same decision again, and it would be refused
-      // again, so the error comes with what the server actually holds now.
-      if (isCurrent()) {
-        setActionError(e instanceof Error ? e.message : 'Suggestion update failed');
-        loadSuggestion();
-      }
+      // again, so the buttons stay disabled until what the server actually holds is on screen. The
+      // error is set after that, because the reload reports its own failures the same way and the
+      // refusal is the one the clerk needs to read.
+      if (isCurrent()) await loadSuggestion();
+      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Suggestion update failed');
     } finally {
       // only the decision the screen is still on may clear the flag: a late answer from the ticket
       // that was left would otherwise unblock the buttons while this ticket's decision is running
-      if (isCurrent()) setIsSuggestionBusy(false);
+      if (isCurrent()) setSuggestionBusy(false);
     }
   }
 
