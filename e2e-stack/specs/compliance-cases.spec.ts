@@ -51,16 +51,45 @@ async function ensureStaffReady(userId: number, surname = 'Compliance'): Promise
  * GET support/call-queues/clerks reads setting key `complianceClerks` (no default).
  * Seed at least one clerk so Editor/Signature selects are usable.
  */
+/**
+ * The previous value, so afterAll can put it back. This is a shared setting: leaving this suite's
+ * clerks behind would change what every later suite — and every later run against the same
+ * database — sees on the compliance screens.
+ */
+let previousComplianceClerks: { existed: boolean; value: string | null } | undefined;
+
 async function ensureComplianceClerks(clerks: string[] = ['E2E Clerk']): Promise<void> {
   const value = JSON.stringify(clerks);
   await withDb(async (client) => {
-    const existing = await client.query(`SELECT id FROM setting WHERE key = $1 LIMIT 1`, ['complianceClerks']);
+    const existing = await client.query<{ id: number; value: string | null }>(
+      `SELECT id, value FROM setting WHERE key = $1 LIMIT 1`,
+      ['complianceClerks'],
+    );
+    if (previousComplianceClerks === undefined) {
+      previousComplianceClerks =
+        existing.rows.length > 0
+          ? { existed: true, value: existing.rows[0].value }
+          : { existed: false, value: null };
+    }
     if (existing.rows.length > 0) {
       await client.query(`UPDATE setting SET value = $1 WHERE key = $2`, [value, 'complianceClerks']);
     } else {
       await client.query(`INSERT INTO setting (key, value) VALUES ($1, $2)`, ['complianceClerks', value]);
     }
   });
+}
+
+async function restoreComplianceClerks(): Promise<void> {
+  const previous = previousComplianceClerks;
+  if (!previous) return;
+  await withDb(async (client) => {
+    if (previous.existed) {
+      await client.query(`UPDATE setting SET value = $1 WHERE key = $2`, [previous.value, 'complianceClerks']);
+    } else {
+      await client.query(`DELETE FROM setting WHERE key = $1`, ['complianceClerks']);
+    }
+  });
+  previousComplianceClerks = undefined;
 }
 
 /**
@@ -102,6 +131,7 @@ function styledInput(page: Page, fieldLabel: string): Locator {
 
 test.describe('Compliance area (cases)', () => {
   test.afterAll(async () => {
+    await restoreComplianceClerks();
     await cleanupCreatedData();
   });
 

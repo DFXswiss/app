@@ -30,7 +30,9 @@ else
   fi
 fi
 
-socat "TCP-LISTEN:${LISTEN_PORT},fork,reuseaddr" "TCP:${UPSTREAM_HOST}:${UPSTREAM_PORT}" &
+# bind=127.0.0.1: the forwarder exists so the app can reach the API under the hardcoded
+# localhost URL it uses in this environment. Nothing outside this container needs it.
+socat "TCP-LISTEN:${LISTEN_PORT},bind=127.0.0.1,fork,reuseaddr" "TCP:${UPSTREAM_HOST}:${UPSTREAM_PORT}" &
 
 # Wait until the forwarder is actually accepting connections (fail loud if not).
 _max_attempts=20

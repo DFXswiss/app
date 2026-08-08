@@ -269,9 +269,11 @@ test('every app route is claimed by exactly one registry entry @coverage-gate', 
   for (const claim of claims) {
     const registryFile = byPath.get(claim.path) ?? '(unknown)';
     const specPath = path.join(__dirname, claim.spec);
-    if (!fs.existsSync(specPath)) {
+    // A directory or a stray file would satisfy existsSync and let a typo stand as a valid claim.
+    const isSpecFile = claim.spec.endsWith('.spec.ts') && fs.existsSync(specPath) && fs.statSync(specPath).isFile();
+    if (!isSpecFile) {
       missingSpecs.push(
-        `Claim for path "${claim.path}" (registry file ${registryFile}) references spec "${claim.spec}", but ${specPath} does not exist`,
+        `Claim for path "${claim.path}" (registry file ${registryFile}) references spec "${claim.spec}", but ${specPath} is not an existing .spec.ts file`,
       );
     }
   }

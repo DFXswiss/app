@@ -38,9 +38,13 @@ export async function openScreen(page: Page, path: string, jwt: string): Promise
   await page.waitForLoadState('networkidle');
   const spinner = page.locator('[role="status"], .animate-spin').first();
   if ((await spinner.count()) > 0) {
-    await spinner.waitFor({ state: 'detached', timeout: 15000 }).catch(() => {
-      /* spinner still present — pathname check below will surface real failures */
-    });
+    // A screen that never leaves its loading state has not rendered, and the path check below
+    // would still call it a success — so let the wait fail rather than swallowing it.
+    try {
+      await spinner.waitFor({ state: 'detached', timeout: 15000 });
+    } catch {
+      throw new Error(`openScreen: "${path}" was still showing a loading spinner after 15s`);
+    }
   }
 
   const actual = new URL(page.url()).pathname;

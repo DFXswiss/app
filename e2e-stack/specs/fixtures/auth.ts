@@ -73,16 +73,18 @@ export async function gotoWithSession(page: Page, path: string, jwt: string): Pr
   await page.waitForLoadState('domcontentloaded');
 
   try {
+    // Compare against this call's token, not just "some token is set": a page that kept the
+    // previous account's session would otherwise satisfy the wait, and the test would run as
+    // whoever was logged in before — the kind of role mix-up these tests exist to catch.
     await page.waitForFunction(
-      () => {
-        return Boolean(window.localStorage.getItem('dfx.authenticationToken'));
-      },
+      (expected) => window.localStorage.getItem('dfx.authenticationToken') === expected,
+      jwt,
       { timeout: 15000 },
     );
   } catch {
     const actual = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
     throw new Error(
-      `gotoWithSession: expected localStorage["dfx.authenticationToken"] to be set after navigating to "${path}" with session JWT, but got: ${JSON.stringify(actual)}`,
+      `gotoWithSession: expected localStorage["dfx.authenticationToken"] to hold the session JWT after navigating to "${path}", but got: ${JSON.stringify(actual)}`,
     );
   }
 }

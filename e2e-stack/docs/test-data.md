@@ -59,6 +59,11 @@ without this workaround `PUT /v1/buy/paymentInfos` hangs or fails.
   collide on wallet addresses. As defense in depth, `createUser` also reuses an account's
   existing mail instead of calling `PUT /v2/user/mail` again when mail is already set
   (a second set would 403 with `TFA_REQUIRED`).
+- That is defense in depth, not a promise: the harness assumes a database that is thrown away
+  with the stack, which is what `down.sh` and CI both do. Keeping a database across many runs
+  has been observed to leave accounts behind that later runs reuse, and a test that expects to
+  see its own freshly set mail address on screen can then find an empty field. If you keep a
+  stack alive across runs, take an unexpected account-data failure as a hint to recreate it.
 
 **Uniqueness**
 

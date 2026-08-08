@@ -202,9 +202,12 @@ test.describe('SEPA + misc e2e', () => {
   // claim it decodes from the JWT itself; it says nothing about the server. This call proves the
   // server's own RoleGuard(Admin) also rejects a plain User for the same area, independently of
   // whatever the frontend does.
-  test('plain User is denied the underlying admin API behind /sepa, not just the frontend route', async () => {
+  test('plain User is denied an admin-only API, not just the frontend route', async () => {
     const { jwt } = await loginAs('User');
     let status: number | undefined;
+    // Not the endpoint /sepa itself loads: the bankTx controller exposes no GET, so a request
+    // there answers 404 and would prove nothing about the role guard. userData is guarded by the
+    // same RoleGuard(Admin), which is the claim under test.
     await apiGet('userData', { jwt, expectOk: false, onStatus: (s) => (status = s) });
     expect(status, 'GET /v1/userData must reject a plain User role').toBe(403);
   });
