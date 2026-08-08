@@ -16,6 +16,12 @@ import { expect, Page, Route, test } from '@playwright/test';
  *   01 — a suggestion waiting for a decision
  *   02 — a suggestion the conversation has moved past (stale warning)
  *   03 — no suggestion, i.e. the screen as it looked before
+ *
+ * The committed baselines carry the `-chromium-linux` suffix because they were taken on Linux, not
+ * on macOS like the older ones. Playwright compares against the baseline of the platform it runs on,
+ * so a macOS run finds none and writes its own with `--update-snapshots`; committing those next to
+ * these is the way to add the macOS variant. Renaming a Linux capture to `-darwin` would be a claim
+ * about where it came from that the file cannot keep — font rendering differs between the two.
  */
 
 const ISSUE_ID = 7101;
