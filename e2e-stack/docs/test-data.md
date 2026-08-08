@@ -11,6 +11,8 @@ Import from `e2e-stack/specs/fixtures/factories` (or the fixtures barrel once pu
 | Frontend | `http://frontend`                                      |
 | Postgres | `sql-dfx-api-loc:5432`, db `dfx`, user `sa`            |
 
+A local forwarder on `127.0.0.1:3000` (started by the tests image entrypoint) also relays to the real API. That is why `http://localhost:3000` works from inside the container even though no API process runs there — code paths that hit `localhost` directly (e.g. server-built KYC-step URLs under `Environment.LOC`) need it.
+
 Master data (fiats, assets, countries, languages, banks, fees, one wallet) is seeded at API boot.
 `ENVIRONMENT=loc` mocks outbound HTTP, disables mail, and sets `DISABLED_PROCESSES=*` (no crons).
 
