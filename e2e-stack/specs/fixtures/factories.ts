@@ -22,16 +22,37 @@ import { TEST_IBAN } from './test-data';
 /** Sibling auth reserves 0–6 for staff/role wallets; factories start well above that. */
 const FACTORY_WALLET_INDEX_BASE = 100;
 
-let factoryCounter = 0;
+/**
+ * Counter for uniqueTag()/e2eMail() suffixes. Deliberately separate from factoryWalletCounter
+ * below: many factories (createBankTx, createSupportIssue, createPaymentLink,
+ * createLimitRequest, createMrosCase, createCallQueueEntry) call uniqueTag()/e2eMail() without
+ * ever deriving a wallet. Sharing one counter between "tag suffix" and "wallet offset" would
+ * open gaps in the wallet-offset space wide enough to defeat deriveFactoryWalletStart's
+ * empty-window abort below — see the comment on deriveFactoryWalletStart for the failure mode.
+ */
+let factoryTagCounter = 0;
 
-function nextCounter(): number {
-  factoryCounter += 1;
-  return factoryCounter;
+function nextTagCounter(): number {
+  factoryTagCounter += 1;
+  return factoryTagCounter;
 }
 
 function uniqueTag(tag?: string): string {
-  const c = nextCounter();
+  const c = nextTagCounter();
   return tag ? `${tag}-${c}` : String(c);
+}
+
+/**
+ * Counter for wallet offsets only (FACTORY_WALLET_INDEX_BASE + n). Only ever incremented where
+ * a wallet is actually derived (createUser, via nextWalletOffset()) and raised by
+ * ensureFactoryWalletCounterSeeded() below — never by uniqueTag()/e2eMail(). This keeps wallet
+ * offsets densely allocated so deriveFactoryWalletStart's "first empty window" abort is valid.
+ */
+let factoryWalletCounter = 0;
+
+function nextWalletOffset(): number {
+  factoryWalletCounter += 1;
+  return factoryWalletCounter;
 }
 
 export function e2eMail(tag?: string): string {
@@ -40,16 +61,22 @@ export function e2eMail(tag?: string): string {
 
 /**
  * Scans the DB for the highest FACTORY_WALLET_INDEX_BASE-relative offset already used by
- * a "user" row, so a fresh process's factoryCounter can start above it instead of at 0 —
+ * a "user" row, so a fresh process's factoryWalletCounter can start above it instead of at 0 —
  * otherwise two separate `docker compose run` processes against the same DB would derive
- * the same wallet addresses and collide (see docs/test-data.md, "Wallet indices").
+ * the same wallet addresses and collide (see docs/test-data.md, "Wallet indices"). This also
+ * protects a *single* `docker compose run` invocation covering multiple spec files: Playwright
+ * may run different spec files in different worker processes even with `workers: 1` (worker
+ * reuse across files is not guaranteed), and each fresh worker process re-imports this module
+ * with `factoryWalletStartApplied` back at its initial `false`, so it re-derives from the DB —
+ * seeing every wallet a prior file's worker already committed — instead of restarting at 0.
  * Windows grow exponentially so a DB with only a handful of factory accounts resolves in
  * one query, while one with many still terminates in a bounded number of round trips.
  * Stops at the first window that comes back with zero hits at all — a real gap that large
- * (256+ consecutive unused offsets) never happens from normal factory usage, so an empty
- * window reliably means "past the end", even though usage within used windows is sparse
- * (createUser consumes more than one counter value per account: one for the wallet index,
- * more for e2eMail's own tag counter).
+ * (256+ consecutive unused offsets) never happens from normal factory usage now that wallet
+ * offsets are allocated from their own dedicated factoryWalletCounter (via nextWalletOffset()),
+ * kept separate from the uniqueTag()/e2eMail() tag counter: every offset in
+ * [1, factoryWalletCounter] is allocated to exactly one createUser call, so usage within the
+ * used range is dense and an empty window reliably means "past the end".
  */
 async function deriveFactoryWalletStart(): Promise<number> {
   let highest = 0;
@@ -94,18 +121,18 @@ async function ensureFactoryWalletCounterSeeded(): Promise<void> {
   if (factoryWalletStartApplied) return;
   if (!factoryWalletStartPromise) factoryWalletStartPromise = deriveFactoryWalletStart();
   const start = await factoryWalletStartPromise;
-  if (factoryCounter < start) factoryCounter = start;
+  if (factoryWalletCounter < start) factoryWalletCounter = start;
   factoryWalletStartApplied = true;
 }
 
-// Best-effort head start for callers of `e2eMail()` made directly (outside `createUser`,
-// e.g. from other spec files) before any factory call has had a chance to `await` this —
-// `e2eMail` is a synchronous, public export whose signature must not change, so it cannot
-// await this itself. Kicking this off at module load means that by the time any actual
+// Best-effort head start for the wallet counter, kicked off at module load rather than lazily
+// on the first `createUser` call. This is purely a latency optimization: `createUser` always
+// `await`s `ensureFactoryWalletCounterSeeded()` itself and is therefore correct regardless of
+// timing, but starting the DB round trip this early means that by the time any actual
 // Playwright test body runs (after file collection/module resolution/browser startup —
-// reliably slower than one local Postgres round trip), the counter is already raised for
-// every synchronous e2eMail() call that follows. `createUser` below awaits this properly
-// and is therefore always safe regardless of timing.
+// reliably slower than one local Postgres round trip) the promise has typically already
+// resolved. Note this only affects `factoryWalletCounter`; `uniqueTag()`/`e2eMail()` use the
+// independent `factoryTagCounter` and never need to await this.
 void ensureFactoryWalletCounterSeeded();
 
 // TEST_IBAN lives in ./test-data — the single place for shared constants. Re-exported here so
@@ -536,7 +563,7 @@ export async function ensurePersonalDataComplete(userDataId: number, options?: {
 
 export async function createUser(options: CreateUserOptions = {}): Promise<CreateUserResult> {
   if (options.walletIndex == null) await ensureFactoryWalletCounterSeeded();
-  const c = nextCounter();
+  const c = nextWalletOffset();
   const walletIndex = options.walletIndex ?? FACTORY_WALLET_INDEX_BASE + c;
   // Prefer API sign-up: signatureLogin creates the account when the address is new
   // (POST /v1/auth → AuthService.authenticate / doSignUp).
@@ -1151,7 +1178,7 @@ export async function createPaymentLink(
       const depositId = await insertReturningId(
         'deposit',
         ['address', 'blockchains', 'accountIndex'],
-        [`e2e-ln-${tag}`, 'Lightning', 900000 + factoryCounter],
+        [`e2e-ln-${tag}`, 'Lightning', 900000 + factoryTagCounter],
       );
       deposit = { id: depositId };
     } else {
@@ -1433,7 +1460,8 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
   return { deleted, errors };
 }
 
-/** Reset the in-process counter (for isolated test files if needed). */
+/** Reset the in-process counters (for isolated test files if needed). */
 export function resetFactoryCounter(): void {
-  factoryCounter = 0;
+  factoryTagCounter = 0;
+  factoryWalletCounter = 0;
 }
