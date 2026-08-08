@@ -553,8 +553,12 @@ export async function createUser(options: CreateUserOptions = {}): Promise<Creat
         `Auth sign-up may have failed or the address column does not match.`,
     );
   }
-  track('user', userRow.id);
+  // Registration order is the deletion order, reversed: cleanupCreatedData() below deletes in
+  // reverse registration order. user.userDataId -> user_data.id is NOT NULL with
+  // ON DELETE NO ACTION, so the dependent row (user_data) must be registered LAST here to be
+  // deleted FIRST during cleanup — before the "user" row that references it.
   track('user_data', userRow.userDataId);
+  track('user', userRow.id);
 
   const existingMailRow = await queryOne<{ mail: string | null }>(
     `SELECT mail FROM user_data WHERE id = $1`,
