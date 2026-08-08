@@ -72,19 +72,22 @@ export function e2eMail(tag?: string): string {
  * seeing every wallet a prior file's worker already committed — instead of restarting at 0.
  * Windows grow exponentially so a DB with only a handful of factory accounts resolves in
  * few queries, while one with many still terminates in a bounded number of round trips.
- * Always scans through maxOffset (no early exit on an empty window): partial cleanup from a
- * prior run can leave low offsets free while higher offsets remain occupied; stopping at the
- * first empty window would under-report `highest` and reissue those higher addresses. Cost is
- * paid once per process via ensureFactoryWalletCounterSeeded / factoryWalletStartPromise.
+ * Stops after two consecutive empty windows rather than at the first one. A single empty window
+ * is not proof of the end: partial cleanup from a prior run can free low offsets while higher
+ * ones stay occupied, and stopping there would reissue those higher addresses. Two consecutive
+ * empty windows mean at least 768 free offsets in a row, which sequential allocation does not
+ * produce. Scanning to maxOffset instead would derive two hundred thousand keys on every
+ * process start — measured at minutes, enough to time out the first test that needs a user.
  */
 async function deriveFactoryWalletStart(): Promise<number> {
   let highest = 0;
   let windowStart = 1;
   let windowSize = 256;
+  let consecutiveEmptyWindows = 0;
   const maxWindowSize = 8192;
   const maxOffset = 200_000; // sanity bound against a runaway loop; never expected in practice
 
-  while (windowStart <= maxOffset) {
+  while (windowStart <= maxOffset && consecutiveEmptyWindows < 2) {
     const addressToOffset = new Map<string, number>();
     const windowEnd = windowStart + windowSize - 1;
     for (let offset = windowStart; offset <= windowEnd; offset++) {
@@ -95,6 +98,7 @@ async function deriveFactoryWalletStart(): Promise<number> {
       `SELECT address FROM "user" WHERE lower(address) = ANY($1::text[])`,
       [[...addressToOffset.keys()]],
     );
+    consecutiveEmptyWindows = rows.length === 0 ? consecutiveEmptyWindows + 1 : 0;
     for (const row of rows) {
       const offset = addressToOffset.get(row.address.toLowerCase());
       if (offset != null && offset > highest) highest = offset;
