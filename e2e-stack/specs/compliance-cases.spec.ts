@@ -13,13 +13,14 @@
  * Overview / access-control coverage lives in compliance.spec.ts.
  */
 
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, loginAs, openScreen, queryOne, queryRows, test, waitForRow, withDb } from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
   createBankTx,
   createCallQueueEntry,
+  createTransaction,
   createUser,
   TEST_IBAN,
 } from './fixtures/factories';
@@ -46,6 +47,22 @@ async function ensureStaffReady(userId: number, surname = 'Compliance'): Promise
 }
 
 /**
+ * GET support/call-queues/clerks reads setting key `complianceClerks` (no default).
+ * Seed at least one clerk so Editor/Signature selects are usable.
+ */
+async function ensureComplianceClerks(clerks: string[] = ['E2E Clerk']): Promise<void> {
+  const value = JSON.stringify(clerks);
+  await withDb(async (client) => {
+    const existing = await client.query(`SELECT id FROM setting WHERE key = $1 LIMIT 1`, ['complianceClerks']);
+    if (existing.rows.length > 0) {
+      await client.query(`UPDATE setting SET value = $1 WHERE key = $2`, [value, 'complianceClerks']);
+    } else {
+      await client.query(`INSERT INTO setting (key, value) VALUES ($1, $2)`, ['complianceClerks', value]);
+    }
+  });
+}
+
+/**
  * Open a StyledDropdown by its field label, then pick an option by visible label text.
  *
  * The openable button is a sibling of the label's *wrapper*, not of the label itself, so the
@@ -66,7 +83,7 @@ async function selectStyledDropdown(page: Page, fieldLabel: string, optionLabel:
  * nothing. The label is the stable handle; the input sits in the same field container, two levels
  * up from the label text node, exactly like the dropdown button above.
  */
-function styledInput(page: Page, fieldLabel: string) {
+function styledInput(page: Page, fieldLabel: string): Locator {
   // Nearest ancestor that actually holds an input, rather than a fixed number of levels: two
   // levels up lands on a container wide enough to also cover the neighbouring field, so 'Comment'
   // would resolve to the numeric Fee input sitting above it.
@@ -94,6 +111,7 @@ test.describe('Compliance area (cases)', () => {
   test('/compliance/user/:id/kyc approves ManualReview bank data via UI', async ({ page }) => {
     const { jwt, userId } = await loginAs('Compliance');
     await ensureStaffReady(userId);
+    await ensureComplianceClerks(['E2E Clerk']);
 
     const customer = await createUser({
       tag: 'cmp-kyc-bd',
@@ -140,13 +158,16 @@ test.describe('Compliance area (cases)', () => {
     const editorSelect = page.getByText('Editor:', { exact: true }).locator('xpath=following-sibling::select');
     await expect(editorSelect).toBeVisible();
     const editorOptions = editorSelect.locator('option');
-    const optionCount = await editorOptions.count();
-    // Environment seed gap (not a frontend crash): clerks endpoint may return [] in loc.
-    test.skip(optionCount <= 1, 'No clerks from support/call-queues/clerks — cannot complete bank-data approve');
+    await expect
+      .poll(async () => editorOptions.count(), {
+        message: 'Editor select must list at least one clerk from complianceClerks',
+        timeout: 15000,
+      })
+      .toBeGreaterThan(1);
 
     // Pick first non-empty option
     const clerkValue = await editorOptions.nth(1).getAttribute('value');
-    expect(clerkValue).toBeTruthy();
+    expect(clerkValue, 'first clerk option must have a value').toBeTruthy();
     await editorSelect.selectOption(clerkValue!);
 
     const saveBtn = page.getByRole('button', { name: 'Speichern', exact: true });
@@ -254,80 +275,83 @@ test.describe('Compliance area (cases)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // /compliance/bank-tx/:id/return — form render (id = transactionId)
+  // /compliance/bank-tx/:id/return — refund form (id = transactionId)
   // -------------------------------------------------------------------------
 
-  test('/compliance/bank-tx/:id/return renders refund form or load error for unassigned bank tx', async ({ page }) => {
+  test('/compliance/bank-tx/:id/return submits refund for a pending buy transaction', async ({ page }) => {
     const { jwt, userId } = await loginAs('Compliance');
     await ensureStaffReady(userId);
 
-    // Return route uses transactionId (not bankTxId); type must be in BankTxUnassignedTypes
-    const btx = await createBankTx({
+    // Refundable pending buy (amlCheck not PASS) — same shape as customer /tx/:id/refund coverage.
+    // Route param is transactionId; ChargebackBase fee is seeded in global.setup.
+    const customer = await createUser({
       tag: 'cmp-btx-return',
-      amount: 88,
-      type: 'Unknown',
-      withTransaction: true,
+      kycLevel: 30,
+      completePersonalData: true,
     });
-    expect(btx.transactionId, 'createBankTx must create a linked transaction').toBeTruthy();
+    const tx = await createTransaction({
+      state: 'pending_buy',
+      tag: 'cmp-btx-return',
+      userId: customer.userId,
+      userDataId: customer.userDataId,
+      jwt: customer.jwt,
+      amount: 88,
+      inputAsset: 'CHF',
+    });
+    expect(tx.transactionId, 'createTransaction must yield a transaction id').toBeGreaterThan(0);
+    expect(tx.buyCryptoId, 'pending buy must have buy_crypto id').toBeTruthy();
 
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(String(err)));
 
-    await openScreen(page, `/compliance/bank-tx/${btx.transactionId}/return`, jwt);
+    await openScreen(page, `/compliance/bank-tx/${tx.transactionId}/return`, jwt);
 
-    // Either the refund form loads, or the API returns a handled error — both are valid empty-ish states.
-    // A page crash is not.
-    const formMarker = page.getByRole('button', { name: 'Confirm refund', exact: true });
-    const chargebackIban = page.getByText('Chargeback IBAN', { exact: true });
-    const backBtn = page.getByRole('button', { name: 'Back', exact: true });
+    await expect(page.getByText('Chargeback IBAN', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('button', { name: 'Confirm refund', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
 
-    await expect(formMarker.or(chargebackIban).or(backBtn).first()).toBeVisible({ timeout: 20000 });
+    await styledInput(page, 'Chargeback IBAN').fill(TEST_IBAN);
+    await styledInput(page, 'Name').fill('E2E Creditor');
+    await styledInput(page, 'Street').fill('Bahnhofstrasse');
+    await styledInput(page, 'House nr.').fill('1');
+    await styledInput(page, 'ZIP code').fill('8001');
+    await styledInput(page, 'City').fill('Zurich');
 
-    if (await formMarker.isVisible().catch(() => false)) {
-      await expect(page.getByText('Chargeback IBAN', { exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
+    // Country is a StyledSearchDropdown (autocomplete="country" → input[name="country"]).
+    const countryInput = page.locator('input[name="country"]');
+    await expect(countryInput).toBeVisible({ timeout: 10000 });
+    await countryInput.click();
+    await countryInput.fill('Switzerland');
+    await page.getByText('Switzerland', { exact: true }).first().click();
 
-      // Attempt a full refund write when the form is available
-      await styledInput(page, 'Chargeback IBAN').fill(TEST_IBAN);
-      await styledInput(page, 'Name').fill('E2E Creditor');
-      await styledInput(page, 'Street').fill('Bahnhofstrasse');
-      await styledInput(page, 'House nr.').fill('1');
-      await styledInput(page, 'ZIP code').fill('8001');
-      await styledInput(page, 'City').fill('Zurich');
+    const confirm = page.getByRole('button', { name: 'Confirm refund', exact: true });
+    await expect(confirm).toBeEnabled({ timeout: 10000 });
+    await confirm.click();
 
-      // Country search dropdown
-      const countryInput = styledInput(page, 'Country');
-      if ((await countryInput.count()) > 0) {
-        await countryInput.click();
-        await countryInput.fill('Switzerland');
-        await page.getByText('Switzerland', { exact: true }).first().click();
-      }
+    await expect(page.getByText('Return initiated successfully', { exact: true })).toBeVisible({
+      timeout: 20000,
+    });
 
-      const confirm = page.getByRole('button', { name: 'Confirm refund', exact: true });
-      // Form may still be invalid if country select did not bind — only submit when enabled
-      if (await confirm.isEnabled().catch(() => false)) {
-        await confirm.click();
-        const success = page.getByText('Return initiated successfully', { exact: true });
-        const failed = page.locator('body');
-        await expect(success.or(failed)).toBeVisible({ timeout: 20000 });
-        if (await success.isVisible().catch(() => false)) {
-          // Best-effort DB proof: chargeback fields on buy path may vary; record success message
-          test.info().annotations.push({ type: 'note', description: 'Return initiated successfully via UI' });
-        }
-      } else {
-        test.info().annotations.push({
-          type: 'note',
-          description: 'Confirm refund stayed disabled (likely country dropdown not bound in loc)',
-        });
-      }
-    } else {
-      // API could not load refund data for this synthetic bank_tx — screen still rendered without crash
-      test.info().annotations.push({
-        type: 'note',
-        description:
-          'getTransactionRefundData failed for factory bank_tx (type Unknown) — return form not available; empty/error path rendered',
-      });
-    }
+    await expect
+      .poll(
+        async () => {
+          const row = await queryOne<{
+            chargebackAmount: string | number | null;
+            chargebackIban: string | null;
+          }>(
+            `SELECT "chargebackAmount", "chargebackIban"
+             FROM buy_crypto WHERE id = $1`,
+            [tx.buyCryptoId],
+          );
+          if (!row) return null;
+          return {
+            amountPositive: row.chargebackAmount != null && Number(row.chargebackAmount) > 0,
+            hasIban: row.chargebackIban != null && row.chargebackIban.length > 0,
+          };
+        },
+        { timeout: 20000, message: 'buy_crypto chargeback columns must be written after Confirm refund' },
+      )
+      .toEqual({ amountPositive: true, hasIban: true });
 
     expect(pageErrors, `uncaught pageerror on bank-tx return: ${pageErrors.join('; ')}`).toEqual([]);
   });
@@ -398,6 +422,7 @@ test.describe('Compliance area (cases)', () => {
   test('/compliance/call-queues/:queue and detail save a call outcome', async ({ page }) => {
     const { jwt, userId } = await loginAs('Compliance');
     await ensureStaffReady(userId, 'CallClerk');
+    await ensureComplianceClerks(['E2E Clerk']);
 
     const entry = await createCallQueueEntry({
       tag: 'cmp-callq-outcome',
@@ -478,10 +503,15 @@ test.describe('Compliance area (cases)', () => {
     const outcomeSelect = page.getByText('Outcome', { exact: true }).locator('xpath=following-sibling::select');
 
     const sigOptions = signatureSelect.locator('option');
-    const sigCount = await sigOptions.count();
-    test.skip(sigCount <= 1, 'No clerks from support/call-queues/clerks — cannot save call outcome');
+    await expect
+      .poll(async () => sigOptions.count(), {
+        message: 'Signature select must list at least one clerk from complianceClerks',
+        timeout: 15000,
+      })
+      .toBeGreaterThan(1);
 
     const sigValue = await sigOptions.nth(1).getAttribute('value');
+    expect(sigValue, 'first signature/clerk option must have a value').toBeTruthy();
     await signatureSelect.selectOption(sigValue!);
     await outcomeSelect.selectOption('Completed');
     await page.locator('textarea').fill('E2E call outcome: user reached, identity confirmed');

@@ -298,9 +298,13 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText('AccountId', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('KycFileId', { exact: true }).first()).toBeVisible();
 
-    // Seeded row: transaction id and amount appear
-    await expect(page.getByText(String(tx.transactionId), { exact: true }).first()).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(String(customer.userDataId), { exact: true }).first()).toBeVisible();
+    // Seeded row: locate by transaction id and assert amount (CHF Value) + currency/assets in that row
+    const txRow = page.locator('tbody tr', { hasText: String(tx.transactionId) }).first();
+    await expect(txRow).toBeVisible({ timeout: 15000 });
+    await expect(txRow.getByText(String(customer.userDataId), { exact: true }).first()).toBeVisible();
+    // formatChf uses toFixed(2); assets column is the input asset symbol
+    await expect(txRow.getByText('1847.00', { exact: true })).toBeVisible();
+    await expect(txRow.getByText('CHF', { exact: true }).first()).toBeVisible();
   });
 
   // -------------------------------------------------------------------------
@@ -567,34 +571,49 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText('Queue', { exact: true }).first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Count', { exact: true }).first()).toBeVisible();
 
-    // At least one queue row with a non-zero count after seeding
-    const countCells = page.locator('tbody tr td:nth-child(2)');
-    await expect(countCells.first()).toBeVisible({ timeout: 15000 });
+    // At least one queue row after seeding; open non-empty queues until the seeded user appears.
+    const queueRows = page.locator('tbody tr');
+    await expect(queueRows.first()).toBeVisible({ timeout: 15000 });
+    const rowCount = await queueRows.count();
+    expect(rowCount, 'at least one call queue should be listed after seeding').toBeGreaterThan(0);
 
-    // Prove the seeded user is reachable by reading a queue name from the DOM and opening it
-    const firstQueueName = (await page.locator('tbody tr td:nth-child(1)').first().innerText()).trim();
-    expect(firstQueueName.length, 'queue name from DOM must be non-empty').toBeGreaterThan(0);
+    let foundUserInQueue = false;
+    let queueName = '';
 
-    // Navigate into that queue and look for the seeded userDataId if present in this queue
-    await page.locator('tbody tr').first().click();
-    await page.waitForLoadState('networkidle');
-    await expect
-      .poll(() => normPath(new URL(page.url()).pathname), {
-        message: 'clicking a queue row should navigate to /compliance/call-queues/<queue>',
-        timeout: 15000,
-      })
-      .toMatch(new RegExp(`^/compliance/call-queues/${escapeRegExp(firstQueueName)}$`));
+    for (let i = 0; i < rowCount; i++) {
+      const name = (await queueRows.nth(i).locator('td').first().innerText()).trim();
+      const countText = (await queueRows.nth(i).locator('td').nth(1).innerText()).trim();
+      if (!name || countText === '0') continue;
 
-    // Table headers on the queue detail list
-    await expect(page.getByText('User', { exact: true }).first()).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText('Phone', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText('KYC', { exact: true }).first()).toBeVisible();
+      await queueRows.nth(i).click();
+      await page.waitForLoadState('networkidle');
+      await expect
+        .poll(() => normPath(new URL(page.url()).pathname), {
+          message: `queue row should navigate to /compliance/call-queues/${name}`,
+          timeout: 15000,
+        })
+        .toBe(`/compliance/call-queues/${name}`);
 
-    // Seeded Unavailable entry should appear when this is the matching queue
-    const bodyText = await page.locator('body').innerText();
-    if (bodyText.includes(String(entry.userDataId))) {
-      await expect(page.getByText(String(entry.userDataId), { exact: false }).first()).toBeVisible();
+      await expect(page.getByText('User', { exact: true }).first()).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('Phone', { exact: true }).first()).toBeVisible();
+      await expect(page.getByText('KYC', { exact: true }).first()).toBeVisible();
+
+      const userCell = page.getByText(String(entry.userDataId), { exact: false }).first();
+      if (await userCell.isVisible().catch(() => false)) {
+        await expect(userCell).toBeVisible();
+        foundUserInQueue = true;
+        queueName = name;
+        break;
+      }
+
+      await openScreen(page, '/compliance/call-queues', jwt);
+      await expect(page.getByText('Queue', { exact: true }).first()).toBeVisible({ timeout: 15000 });
     }
+
+    expect(
+      foundUserInQueue,
+      `seeded userDataId ${entry.userDataId} must appear in some call queue (got last queue "${queueName}")`,
+    ).toBe(true);
   });
 
   // -------------------------------------------------------------------------
@@ -669,6 +688,3 @@ test.describe('Compliance area (overview)', () => {
   });
 });
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}

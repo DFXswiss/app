@@ -5,7 +5,7 @@
  * UI writes are proven with waitForRow against Postgres where applicable.
  */
 
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, gotoWithSession, loginAs, openScreen, queryOne, queryRows, test, waitForRow } from './fixtures';
 import { apiGet } from './fixtures/api-client';
 import { cleanupCreatedData, createBuy, createTransaction, createUser } from './fixtures/factories';
@@ -50,17 +50,17 @@ function stripIban(value: string): string {
  * Read a StyledDataTableRow value: label is a <p> in a flex-none wrapper;
  * value is the following sibling <div>.
  */
-function dataTableValue(page: Page, label: string | RegExp) {
+function dataTableValue(page: Page, label: string | RegExp): Locator {
   return page.locator('p', { hasText: label }).first().locator('xpath=../following-sibling::div[1]');
 }
 
 /** Spend-side container (currency dropdown + amount). */
-function spendSection(page: Page) {
+function spendSection(page: Page): Locator {
   return page.locator('h2', { hasText: 'You spend' }).locator('..');
 }
 
 /** Get-side container (asset dropdown + target amount). Heading is "You get" or "You get about". */
-function getSection(page: Page) {
+function getSection(page: Page): Locator {
   return page.locator('h2', { hasText: /You get/ }).locator('..');
 }
 
@@ -416,16 +416,31 @@ test.describe('Buy flow', () => {
     }
   });
 
-  // Needs kycLevel 50 + depositLimit SQL (else KYC_REQUIRED / LIMIT_EXCEEDED before min-amount). Body is correct;
-  // fixme: seed has 0 transaction_specification rows → getSpec falls through to TransactionSpecification.default()
-  // (minVolume=0), so AMOUNT_TOO_LOW never fires (confirmed live: 1 and 0.001 CHF both reach Payment Information).
-  // Proper fix is seeding transaction_specification in global.setup.ts (out of scope for this file).
-  test.fixme('/buy: amount below minimum surfaces error (not payment details) — AMOUNT_TOO_LOW unreachable: empty transaction_specification table → TransactionSpecification.default() minVolume=0 for every asset pair (confirmed live: 1 and 0.001 CHF both reach Payment Information instead of AMOUNT_TOO_LOW)', async ({
-    page,
-  }) => {
+  // AMOUNT_TOO_LOW needs transaction_specification.minVolume > 0 for Fiat/CHF In.
+  // SQL seed below writes the row, but TransactionHelper loads specs once onModuleInit and only
+  // refreshes via a 5-minute cron — DISABLED_PROCESSES=* disables that cron, so the in-memory
+  // cache stays empty (minVolume=0) for the life of the API process. Expected fail until specs
+  // are present at API boot (e.g. global.setup before start, or master-data seed). Remove test.fail
+  // once minVolume is live in the process.
+  test('/buy: amount below minimum surfaces error (not payment details)', async ({ page }) => {
+    test.fail(
+      true,
+      'transaction_specification is empty in the API process cache (boot load + DISABLED_PROCESSES=*); minVolume stays 0 so AMOUNT_TOO_LOW never fires.',
+    );
+    test.setTimeout(90000);
+
+    // Idempotent seed so the DB has the correct row when the process cache can see it.
+    await queryRows(
+      `INSERT INTO transaction_specification (system, asset, direction, "minVolume", "minFee")
+       SELECT 'Fiat', 'CHF', 'In', 1, 0
+       WHERE NOT EXISTS (
+         SELECT 1 FROM transaction_specification
+         WHERE system = 'Fiat' AND asset = 'CHF' AND direction = 'In'
+       )`,
+    );
+
     const user = await createUser({ tag: 'buy-min', kycLevel: 50, completePersonalData: true });
-    // createUser only sets kycLevel via SQL; depositLimit stays null → tradingLimit.remaining / availableTradingLimit
-    // compute to 0 (user-data.entity getters) and any amount trips LIMIT_EXCEEDED before min-amount / payment info.
+    // null depositLimit at kycLevel 50 → availableTradingLimit 0 → LIMIT_EXCEEDED before min-amount.
     await queryRows(`UPDATE user_data SET "depositLimit" = 1000000 WHERE id = $1`, [user.userDataId]);
 
     // openScreen cannot take query strings (pathname vs full path comparison would throw).
@@ -441,14 +456,7 @@ test.describe('Buy flow', () => {
 
     expect(state, 'quote must resolve to an error path, not payment info').not.toBe('payment');
     expect(state).not.toBe('pending');
-
-    const minError = page.getByText(/Entered amount is below minimum deposit of/i);
-    if (await minError.isVisible().catch(() => false)) {
-      await expect(minError).toBeVisible();
-    } else {
-      // Pricing mock can produce a generic ErrorHint instead of AMOUNT_TOO_LOW — still not payment info.
-      await expect(page.getByText('Something went wrong').or(page.locator('.text-dfxRed-100').first())).toBeVisible();
-    }
+    await expect(page.getByText(/Entered amount is below minimum deposit of/i)).toBeVisible();
   });
 
   // Does not depend on live pricing — POST /buy creates the route without Kraken.
@@ -771,15 +779,13 @@ test.describe('Buy flow', () => {
     await expect(save).toBeDisabled();
   });
 
-  // staffKycClearance is seeded in global.setup for harness Admin — Admin is no longer redirected to
-  // /staff-kyc-required and the PUT reaches BuyCryptoService.update/changeRoute. Body is correct;
-  // fixme: API crashes with 500 TypeError: Cannot read properties of null (reading 'id') in
-  // BuyCryptoService.changeRoute (buy-crypto.service.ts, comparison route.userData.id !==
-  // entity.transaction.userData.id) when changing the buy route under this request shape (confirmed
-  // live: ErrorHint + buyId unchanged). Genuine API bug, not fixable in this file.
-  test.fixme("/buyCrypto/update: Admin save updates buyId and shows Saved — staff KYC clearance works (no /staff-kyc-required redirect), but API BuyCryptoService.changeRoute throws TypeError: Cannot read properties of null (reading 'id') (500) at route.userData.id !== entity.transaction.userData.id (buy-crypto.service.ts); confirmed live API log PUT /v1/buyCrypto/1", async ({
-    page,
-  }) => {
+  // Known API bug: BuyCryptoService.changeRoute throws when userData on the route is null under
+  // this request shape. test.fail keeps the case running; remove once the API is fixed.
+  test("/buyCrypto/update: Admin save updates buyId and shows Saved", async ({ page }) => {
+    test.fail(
+      true,
+      'BuyCryptoService.changeRoute throws TypeError reading id of null userData on the route (API 500).',
+    );
     test.setTimeout(90000);
     const { jwt: adminJwt } = await loginAs('Admin');
 

@@ -318,29 +318,16 @@ test.describe('KYC area e2e', () => {
     await openScreen(page, '/profile', user.jwt);
 
     const form = await detectAndSubmitKycForm(page, user.userDataId);
-    if (form === 'gap') {
-      // KYC engine presented a different step - document gap; route still rendered under session.
-      test.info().annotations.push({
-        type: 'gap',
-        description:
-          'After openScreen(/profile) neither ContactData (mail) nor PersonalData (Account Type) was visible; write path not exercised.',
-      });
-      await expect(page.locator('body')).not.toBeEmpty();
-      return;
-    }
-    // Render + fill + real submit attempt happened either way (see detectAndSubmitKycForm). The
-    // step-url gap that used to block the DB-write proof here is closed by the tests image's socat
-    // forwarder (see raceRowOrStepUrlError's comment) - this fixme is expected to stay inactive and
-    // only guards against that forwarder being missing from a future harness build.
-    test.fixme(
-      form === 'contact-blocked' || form === 'personal-blocked',
-      'KYC step submit target is built server-side from Config.url() (api/src/config/config.ts), whose ' +
-        "Environment.LOC branch hardcodes http://localhost:<port>. The tests image's socat forwarder " +
-        '(e2e-stack/images/playwright/entrypoint.sh) normally makes that reachable from the browser; if ' +
-        'this fires, that forwarder is missing or broken in the harness this ran against. See the ' +
-        'annotation above for the exact observed error.',
-    );
-    expect(['contact', 'personal']).toContain(form);
+    // Gap or blocked submit means the write path was not exercised — fail loudly rather than
+    // pass on "page loaded but nothing happened".
+    expect(
+      form,
+      'neither ContactData nor PersonalData form appeared within timeout (KYC engine gap)',
+    ).not.toBe('gap');
+    expect(
+      form,
+      'KYC step submit did not persist (ContactData/PersonalData write must succeed)',
+    ).toMatch(/^(contact|personal)$/);
   });
 
   test('/profile navigates away when kycLevel already meets Sell', async ({ page }) => {
@@ -362,18 +349,11 @@ test.describe('KYC area e2e', () => {
   test('/contact attempts the ContactData form; real environment finding: the step is always pre-completed', async ({
     page,
   }) => {
-    // Real, verified finding (checked both a wallet-signature-login account, via createUser, and a
-    // separate mail-login account, via requestMailLogin/completeMailLogin, by instrumenting the
-    // GET /v2/kyc response during this investigation): in this environment, the `ContactData` KYC
-    // step is already `status: "Completed"` on the VERY FIRST `getKycInfo` call for any account
-    // created through either available signup path - not something this account's raw
-    // `user_data.kycLevel` SQL override, or clearing its mail, can undo, because the API recomputes
-    // step/level state live rather than trusting the stored column. Advancing past that
-    // already-completed step (`continueKyc`) immediately raises the level to Link (10), which is
-    // /contact's own required level (`RequiredKycLevel[Mode.CONTACT]`, src/screens/kyc.screen.tsx) -
-    // so `handleReload` calls `goBack()` before any form ever renders. This is server-side, seed/mock
-    // behavior specific to this environment, not a frontend bug and not fixable from the two files
-    // this lane owns.
+    // In this environment ContactData is already Completed on the first getKycInfo for every
+    // account createUser can produce (wallet or mail signup). continueKyc then raises the level
+    // to Link (10), which is /contact's required level, so handleReload calls goBack() before any
+    // form renders. Assert that deterministic bounce instead of a form write that cannot be
+    // reached with the available factories.
     const user = await createUser({
       tag: 'contact-form',
       kycLevel: 0,
@@ -383,14 +363,6 @@ test.describe('KYC area e2e', () => {
     await gotoWithSession(page, '/contact', user.jwt);
     await page.waitForURL((url) => !url.pathname.endsWith('/contact'), { timeout: 15000 });
     expect(new URL(page.url()).pathname.endsWith('/contact')).toBe(false);
-
-    test.fixme(
-      true,
-      'ContactData step is already "Completed" for every account this environment can create (verified ' +
-        'for both wallet-signature and mail-login signup), so /contact always bounces back before any ' +
-        'form renders - the render+fill+persist-write assertion this test name promises is structurally ' +
-        'unreachable here, not a selector or timing problem.',
-    );
   });
 
   test('/contact navigates away when kycLevel already meets Link', async ({ page }) => {
@@ -411,13 +383,9 @@ test.describe('KYC area e2e', () => {
   test('/link for a fresh account: real environment finding - lands on "no matching account" instead of the form', async ({
     page,
   }) => {
-    // Same root cause as the /contact finding above: ContactData is already "Completed" for every
-    // account this environment can create, so the FIRST getKycInfo() LinkScreen reads still reports
-    // kycLevel 0 (handleInitial), takes the continueKyc(kycCode, false) branch, and that call
-    // advances the level to exactly KycLevel.Link (10) as a side effect of the already-completed
-    // step - which LinkScreen's own handleReload (src/screens/link.screen.tsx) treats as "no
-    // matching account was found" (`info.kycLevel === KycLevel.Link`), not as "show me the contact
-    // form". Real, deterministic, reproduced content below - not a selector or timing problem.
+    // Same root cause as /contact: ContactData is already Completed, so continueKyc lands exactly
+    // on KycLevel.Link and LinkScreen shows "no matching account" rather than the contact form.
+    // Assert that deterministic UI instead of a form write that factories cannot reach.
     const user = await createUser({ tag: 'link-form', kycLevel: 0, language: 'EN' });
     await openScreen(page, '/link', user.jwt);
 
@@ -426,16 +394,6 @@ test.describe('KYC area e2e', () => {
     });
     await expect(page.getByRole('button', { name: 'Complete KYC' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Back' })).toBeVisible();
-
-    test.fixme(
-      true,
-      'The contact-information form (mail input + "Please enter your contact information..." copy) ' +
-        "never renders in this environment: LinkScreen's handleInitial only takes that branch when the " +
-        'first getKycInfo() reports kycLevel 0 AND the subsequent continueKyc() does not immediately ' +
-        'land exactly on KycLevel.Link - which never happens here because ContactData starts ' +
-        'pre-completed for every account (see comment above). Structurally unreachable, not fixable ' +
-        'from the two files this lane owns.',
-    );
   });
 
   test('/link navigates away when kycLevel is already > 0', async ({ page }) => {
@@ -626,13 +584,13 @@ test.describe('KYC area e2e', () => {
   });
 
   test('/file/:id is readable by its owner and by nobody else', async ({ page }) => {
-    // Asserts the intended access rule for an ordinary customer-uploaded KYC document. The document
-    // is produced through the real upload path (see uploadRealAdditionalDocument above) rather than a
-    // hand-written row, so the test speaks about the case that actually occurs.
-    //
-    // The assertion is currently held open: the observed behaviour was reported to the team out of
-    // band rather than described here, because this repository is public. The test flips to enforcing
-    // on its own once the behaviour matches — no edit needed here.
+    // Intended access rule: a stranger must not see another user's customer-uploaded KYC document.
+    // Access scope for this document class is open with the team; once fixed, remove test.fail().
+    test.fail(
+      true,
+      'A stranger can currently open another user KYC document; access scope is open with the team.',
+    );
+
     const owner = await createUser({ tag: 'file-owner', kycLevel: 0, language: 'EN' });
     const ownerHash = await kycHashOf(owner.userDataId);
     await uploadRealAdditionalDocument(owner.userDataId, ownerHash, 'owner-doc');
@@ -649,9 +607,7 @@ test.describe('KYC area e2e', () => {
     const stranger = await createUser({ tag: 'file-stranger', kycLevel: 0, language: 'EN' });
     await openScreen(page, `/file/${fileRow.uid}`, stranger.jwt);
 
-    const strangerSeesFile = (await page.getByRole('button', { name: 'View file' }).count()) > 0;
-    test.fixme(strangerSeesFile, 'Access scope for this document class is open with the team; see the note above.');
-
+    // Correct product behaviour: stranger must not get the document viewer.
     await expect(page.getByRole('button', { name: 'View file' })).toHaveCount(0);
   });
 });

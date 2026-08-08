@@ -159,6 +159,8 @@ test.describe('e2e factories', () => {
     });
 
     expect(issue.uid).toBeTruthy();
+    expect(issue.supportIssueId, 'createSupportIssue must return a numeric supportIssueId').toBeTruthy();
+    expect(issue.supportIssueId!).toBeGreaterThan(0);
 
     const row = await queryOne<{ id: number; uid: string; type: string }>(
       `SELECT id, uid, type FROM support_issue WHERE uid = $1`,
@@ -166,12 +168,10 @@ test.describe('e2e factories', () => {
     );
     expect(row?.type).toBe('GenericIssue');
 
-    if (issue.supportIssueId) {
-      const msg = await queryOne<{ id: number }>(`SELECT id FROM support_message WHERE "issueId" = $1 LIMIT 1`, [
-        issue.supportIssueId,
-      ]);
-      expect(msg).toBeTruthy();
-    }
+    const msg = await queryOne<{ id: number }>(`SELECT id FROM support_message WHERE "issueId" = $1 LIMIT 1`, [
+      issue.supportIssueId,
+    ]);
+    expect(msg, 'support_message row must exist for the created issue').toBeTruthy();
   });
 
   test('createPaymentLink inserts payment_link and payment', async () => {
@@ -180,19 +180,20 @@ test.describe('e2e factories', () => {
 
     expect(pl.paymentLinkId).toBeGreaterThan(0);
     expect(pl.uniqueId).toBeTruthy();
+    expect(pl.paymentId, 'createPaymentLink must return a numeric paymentId').toBeTruthy();
+    expect(pl.paymentId!).toBeGreaterThan(0);
 
     const link = await queryOne<{ id: number; status: string }>(`SELECT id, status FROM payment_link WHERE id = $1`, [
       pl.paymentLinkId,
     ]);
     expect(link?.status).toBe('Active');
 
-    if (pl.paymentId) {
-      const pay = await queryOne<{ id: number; amount: number }>(
-        `SELECT id, amount FROM payment_link_payment WHERE id = $1`,
-        [pl.paymentId],
-      );
-      expect(Number(pay?.amount)).toBe(12.5);
-    }
+    const pay = await queryOne<{ id: number; amount: number }>(
+      `SELECT id, amount FROM payment_link_payment WHERE id = $1`,
+      [pl.paymentId],
+    );
+    expect(pay, 'payment_link_payment row must exist').toBeTruthy();
+    expect(Number(pay?.amount)).toBe(12.5);
   });
 
   test('createKycStep inserts kyc_step for user_data', async () => {

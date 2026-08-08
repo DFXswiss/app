@@ -83,28 +83,6 @@ async function selectStyledDropdown(page: Page, fieldLabel: string, optionLabel:
   await page.getByRole('button', { name: optionLabel }).click();
 }
 
-/**
- * createUser() intermittently receives 403 TFA_REQUIRED late in a suite run (order-dependent,
- * not a short sliding-window throttle). Mark the test fixme instead of a false failure.
- */
-async function createUserOrFixme(
-  options: Parameters<typeof createUser>[0],
-): Promise<Awaited<ReturnType<typeof createUser>> | undefined> {
-  try {
-    return await createUser(options);
-  } catch (e) {
-    test.fixme(
-      /TFA_REQUIRED/.test(String(e)),
-      'createUser() itself intermittently receives 403 TFA_REQUIRED for a brand-new, null-mail ' +
-        'account when enough prior mail-related traffic happened earlier in the same suite run ' +
-        '(confirmed order-dependent and NOT a short sliding-window throttle — reproduced even ' +
-        'after a ~90s gap; root trigger not conclusively identified). Passes reliably in isolation.',
-    );
-    if (/TFA_REQUIRED/.test(String(e))) return undefined;
-    throw e;
-  }
-}
-
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Account area e2e', () => {
@@ -117,8 +95,7 @@ test.describe('Account area e2e', () => {
   // ---------------------------------------------------------------------------
 
   test('/account renders activity for authenticated user', async ({ page }) => {
-    const user = await createUserOrFixme({ tag: 'acct-view', language: 'EN' });
-    if (!user) return;
+    const user = await createUser({ tag: 'acct-view', language: 'EN' });
     await openScreen(page, '/account', user.jwt);
 
     // Navigation title from useLayoutOptions + always-on Activity table.
@@ -146,8 +123,7 @@ test.describe('Account area e2e', () => {
   // ---------------------------------------------------------------------------
 
   test('/account/mail without prior 2FA redirects to /2fa', async ({ page }) => {
-    const user = await createUserOrFixme({ tag: 'acct-mail-gate', language: 'EN' });
-    if (!user) return;
+    const user = await createUser({ tag: 'acct-mail-gate', language: 'EN' });
     await gotoWithSession(page, '/account/mail', user.jwt);
     await page.waitForLoadState('networkidle');
 
@@ -162,8 +138,7 @@ test.describe('Account area e2e', () => {
   test('/account/mail after 2FA: change mail → verify code → user_data.mail updated', async ({ page }) => {
     test.setTimeout(120000);
 
-    const user = await createUserOrFixme({ tag: 'acct-mail-chg', language: 'EN' });
-    if (!user) return;
+    const user = await createUser({ tag: 'acct-mail-chg', language: 'EN' });
     const newMail = e2eMail('acct-mail-new');
 
     // Same browser context/IP: complete 2FA first, then open edit-mail.
@@ -182,7 +157,7 @@ test.describe('Account area e2e', () => {
     await mailInput.fill(newMail);
     await page.getByRole('button', { name: 'Save' }).click();
 
-    // Step 2: verification code for the NEW address (EmailVerification notification).
+    // Step 2: verification code for the NEW address (EmailVerification notification in DB).
     await expect(
       page.getByText('We have sent a 6-digit code to your new email address. Please enter it here.', {
         exact: true,
@@ -190,28 +165,8 @@ test.describe('Account area e2e', () => {
     ).toBeVisible({ timeout: 20000 });
     await expect(page.getByPlaceholder('Email code')).toBeVisible();
 
-    // test-data.md flags "mail verification codes after first mail" as hard; try the real path.
-    // If no notification row appears, mark only the apply-assertion fixme — UI transition still covered.
-    let code: string | undefined;
-    try {
-      code = await waitForVerificationCode(user.userDataId, 'EmailVerification', 30000);
-    } catch (e) {
-      test.info().annotations.push({
-        type: 'issue',
-        description: `EmailVerification notification not found after PUT /v2/user/mail: ${e}`,
-      });
-    }
-
-    if (!code) {
-      // UI two-step transition already asserted; DB apply cannot proceed without a code.
-      test.fixme(
-        true,
-        'EmailVerification notification row missing after submitting a new mail on /account/mail ' +
-          '(test-data.md: mail verification codes after first mail may be unavailable under loc). ' +
-          'Two-step UI (EditOverlay → code form) was reached; user_data.mail apply not asserted.',
-      );
-      return;
-    }
+    const code = await waitForVerificationCode(user.userDataId, 'EmailVerification', 30000);
+    expect(code, 'EmailVerification notification must yield a 6-digit code').toBeTruthy();
 
     await page.getByPlaceholder('Email code').fill(code);
     await page.getByRole('button', { name: 'Next' }).click();
@@ -231,10 +186,8 @@ test.describe('Account area e2e', () => {
 
     const mailA = e2eMail('acct-merge-a');
     const mailB = e2eMail('acct-merge-b');
-    const userA = await createUserOrFixme({ tag: 'acct-merge-a', mail: mailA, language: 'EN' });
-    if (!userA) return;
-    const userB = await createUserOrFixme({ tag: 'acct-merge-b', mail: mailB, language: 'EN' });
-    if (!userB) return;
+    const userA = await createUser({ tag: 'acct-merge-a', mail: mailA, language: 'EN' });
+    const userB = await createUser({ tag: 'acct-merge-b', mail: mailB, language: 'EN' });
 
     await openScreen(page, '/2fa', userB.jwt);
     await completeMail2faOnPage(page, userB.userDataId);
@@ -266,8 +219,7 @@ test.describe('Account area e2e', () => {
   test('/settings changes language and updates user_data.languageId', async ({ page }) => {
     test.setTimeout(90000);
 
-    const user = await createUserOrFixme({ tag: 'acct-lang', language: 'EN' });
-    if (!user) return;
+    const user = await createUser({ tag: 'acct-lang', language: 'EN' });
 
     const enId = await queryOne<{ id: number }>(`SELECT id FROM language WHERE symbol = $1 LIMIT 1`, ['EN']);
     const deId = await queryOne<{ id: number }>(`SELECT id FROM language WHERE symbol = $1 LIMIT 1`, ['DE']);
@@ -316,8 +268,7 @@ test.describe('Account area e2e', () => {
   // ---------------------------------------------------------------------------
 
   test('/safe renders portfolio shell for logged-in user with no custody accounts', async ({ page }) => {
-    const user = await createUserOrFixme({ tag: 'acct-safe', language: 'EN' });
-    if (!user) return;
+    const user = await createUser({ tag: 'acct-safe', language: 'EN' });
     await openScreen(page, '/safe', user.jwt);
 
     // Safe-specific chrome: layout title + portfolio header (empty balances still render the shell).
@@ -344,8 +295,7 @@ test.describe('Account area e2e', () => {
   // ---------------------------------------------------------------------------
 
   test('/recommendation with session ends on /account', async ({ page }) => {
-    const user = await createUserOrFixme({ tag: 'acct-reco', language: 'EN' });
-    if (!user) return;
+    const user = await createUser({ tag: 'acct-reco', language: 'EN' });
     await gotoWithSession(page, '/recommendation', user.jwt);
     await page.waitForLoadState('networkidle');
 
