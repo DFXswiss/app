@@ -125,7 +125,7 @@
   },
   "support-dashboard-issue": {
     "title": "Support-Ticket",
-    "description": "Ticket-Ansicht des Supports: Detailpanels, Nachrichtenverlauf und der Antwortvorschlag über dem Eingabefeld — mit Vorschlag, mit veraltetem Vorschlag und ohne."
+    "description": "Ticket-Ansicht des Supports: Detailpanels, Nachrichtenverlauf und der Antwortvorschlag über dem Eingabefeld — mit Vorschlag, mit veraltetem Vorschlag, ohne Vorschlag, während einer laufenden Entscheidung und mit angenommenem Vorschlag im Eingabefeld."
   },
   "support-dashboard-overview": {
     "title": "Support-Dashboard Übersicht",

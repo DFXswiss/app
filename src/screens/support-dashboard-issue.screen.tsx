@@ -76,6 +76,15 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // the busy flag alone cannot do this, because that flag is false again by the time such an answer
   // arrives.
   const suggestionEpochRef = useRef(0);
+  // Two fetches of the same ticket carry the same epoch, so the epoch cannot order them against each
+  // other: a poll that outlives the 15-second interval would let the next one start, and whichever
+  // answered last would win. Every fetch takes a number, and only the newest one may write.
+  const suggestionFetchRef = useRef(0);
+  // The ticket itself needs the same protection as its suggestion. The component stays mounted
+  // across a change of the route parameter, so two ticket loads can be in flight at once, and a
+  // slow answer for the ticket that was left would otherwise replace the one on screen — silently,
+  // because the spinner is long gone by then.
+  const ticketEpochRef = useRef(0);
 
   function setSuggestionBusy(value: boolean): void {
     isSuggestionBusyRef.current = value;
@@ -117,21 +126,52 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   });
 
   useEffect(() => {
-    getClerks().then(setClerks).catch(() => undefined);
+    getClerks()
+      .then(setClerks)
+      .catch(() => undefined);
   }, [getClerks]);
+
+  // Everything tied to one ticket is dropped when another one is opened: react-router keeps this
+  // component mounted across a change of the route parameter, so a suggestion of the previous
+  // ticket would stay on screen, and the author picked there would keep the default from ever
+  // applying again. Declared before every effect that reacts to it, so that
+  // raising the token happens ahead of the fetch it is meant to qualify rather than invalidating it,
+  // and so that the default author applies again before the effect that would re-apply it runs.
+  useEffect(() => {
+    suggestionEpochRef.current++;
+    ticketEpochRef.current++;
+    setSuggestion(undefined);
+    // the busy state belongs to the decision of the ticket that was left; carried over it would
+    // disable this ticket's buttons and pause its poll until that request finally settles
+    setSuggestionBusy(false);
+    isAuthorPickedRef.current = false;
+    // A draft is written for one customer, about one ticket — an accepted suggestion most of all.
+    // Carried into the next ticket it would be sent to someone it was never meant for, so it goes
+    // with the ticket it belongs to, attachment included.
+    setMessageText('');
+    setSelectedFiles([]);
+    setFileInputKey((key) => key + 1);
+  }, [id]);
 
   const loadIssue = useCallback((): void => {
     if (!id) return;
+    const epoch = ticketEpochRef.current;
+    const isCurrent = (): boolean => ticketEpochRef.current === epoch;
     setIsLoading(true);
     getIssueData(+id)
       .then((data) => {
+        if (!isCurrent()) return;
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
         setUpdateClerk(data.clerk ?? '');
       })
-      .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
+      .catch((e: Error) => {
+        if (isCurrent()) setLoadError(e.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (isCurrent()) setIsLoading(false);
+      });
   }, [id, getIssueData]);
 
   // The clerk who last answered is the default author, otherwise the first of the list. Resolved in
@@ -145,7 +185,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setMessageAuthor((prev) =>
       issueData?.clerk && clerks.includes(issueData.clerk) ? issueData.clerk : prev || clerks[0] || '',
     );
-  }, [issueData?.clerk, clerks]);
+    // `id` belongs in here even though it is not read: the pick is reset when the ticket changes, and
+    // two tickets with the same clerk would otherwise leave this effect nothing to react to — the
+    // author picked on the previous ticket would stay selected.
+  }, [id, issueData?.clerk, clerks]);
 
   const loadMessages = useCallback((): void => {
     if (!issueData?.uid) return;
@@ -167,32 +210,22 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
   }, [issueData?.uid, getIssueMessages]);
 
-  const loadSuggestion = useCallback(async (): Promise<void> => {
-    if (!id) return;
+  /** Resolves to whether the server was read — a reconciliation needs to know that it worked. */
+  const loadSuggestion = useCallback(async (): Promise<boolean> => {
+    if (!id) return false;
     const epoch = suggestionEpochRef.current;
+    const fetchNo = ++suggestionFetchRef.current;
+    const isCurrent = (): boolean => suggestionEpochRef.current === epoch && suggestionFetchRef.current === fetchNo;
     return getReplySuggestion(+id)
       .then((loaded) => {
-        if (suggestionEpochRef.current === epoch) setSuggestion(loaded);
+        if (isCurrent()) setSuggestion(loaded);
+        return true;
       })
       .catch((e: Error) => {
-        if (suggestionEpochRef.current === epoch)
-          setActionError(e.message ?? 'Failed to load reply suggestion');
+        if (isCurrent()) setActionError(e.message ?? 'Failed to load reply suggestion');
+        return false;
       });
   }, [id, getReplySuggestion]);
-
-  // Everything tied to one ticket is dropped when another one is opened: react-router keeps this
-  // component mounted across a change of the route parameter, so a suggestion of the previous
-  // ticket would stay on screen, and the author picked there would keep the default from ever
-  // applying again. Declared before the loading effects, so that raising the token happens ahead of
-  // the fetch it is meant to qualify rather than invalidating it.
-  useEffect(() => {
-    suggestionEpochRef.current++;
-    setSuggestion(undefined);
-    // the busy state belongs to the decision of the ticket that was left; carried over it would
-    // disable this ticket's buttons and pause its poll until that request finally settles
-    setSuggestionBusy(false);
-    isAuthorPickedRef.current = false;
-  }, [id]);
 
   useEffect(() => {
     loadIssue();
@@ -254,6 +287,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  /**
+   * `issueId` comes from the route rather than from the loaded ticket. The load is guarded against a
+   * late answer of the ticket that was left, but a write is the wrong place to depend on that being
+   * right: what the clerk is looking at is the ticket in the address bar.
+   */
   async function handleUpdate(issueId: number): Promise<void> {
     setIsUpdating(true);
     setActionError(undefined);
@@ -343,7 +381,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       // again, so the buttons stay disabled until what the server actually holds is on screen. The
       // error is set after that, because the reload reports its own failures the same way and the
       // refusal is the one the clerk needs to read.
-      if (isCurrent()) await loadSuggestion();
+      const reconciled = isCurrent() ? await loadSuggestion() : false;
+      // A reload that failed too leaves the screen with the suggestion the server has just refused a
+      // decision on. Offering it again would only earn the same refusal, so it goes; the next poll
+      // brings back whatever is really there.
+      if (isCurrent() && !reconciled) setSuggestion(undefined);
       if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Suggestion update failed');
     } finally {
       // only the decision the screen is still on may clear the flag: a late answer from the ticket
@@ -604,7 +646,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             </div>
             <button
               className="px-4 py-1.5 bg-dfxBlue-400 text-white rounded text-xs hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
-              onClick={() => handleUpdate(issueData.id)}
+              onClick={() => handleUpdate(Number(id))}
               disabled={isUpdating}
             >
               {isUpdating ? 'Updating...' : 'Update'}
@@ -637,8 +679,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             <ReplySuggestionPanel
               suggestion={suggestion}
               isBusy={isSuggestionBusy}
-              onAccept={() => decideSuggestion(issueData.id, suggestion, true)}
-              onDiscard={() => decideSuggestion(issueData.id, suggestion, false)}
+              onAccept={() => decideSuggestion(Number(id), suggestion, true)}
+              onDiscard={() => decideSuggestion(Number(id), suggestion, false)}
             />
           )}
 

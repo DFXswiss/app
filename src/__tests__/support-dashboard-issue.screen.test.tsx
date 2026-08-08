@@ -137,7 +137,7 @@ jest.mock('react-router-dom', () => ({
   useParams: () => mockParams,
 }));
 
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, RenderResult, screen, waitFor, within } from '@testing-library/react';
 import { SupportIssueInternalData, SupportMessageInfo, SupportReplySuggestion } from 'src/hooks/support-dashboard.hook';
 import SupportDashboardIssueScreen from 'src/screens/support-dashboard-issue.screen';
 
@@ -190,7 +190,14 @@ const FULL_ISSUE: SupportIssueInternalData = {
     wallet: { name: 'DFX', amlRules: '[]', isKycClient: false },
     isComplete: true,
   },
-  limitRequest: { id: 5, limit: 50000, acceptedLimit: 40000, investmentDate: 'Future', fundOrigin: 'Savings', decision: 'Accepted' },
+  limitRequest: {
+    id: 5,
+    limit: 50000,
+    acceptedLimit: 40000,
+    investmentDate: 'Future',
+    fundOrigin: 'Savings',
+    decision: 'Accepted',
+  },
   transactionMissing: { senderIban: 'CH11', receiverIban: 'CH22', date: '2026-07-30T09:00:00.000Z' },
 };
 
@@ -233,8 +240,8 @@ const SUGGESTION: SupportReplySuggestion = {
  * deterministic — the clerk list resolves on its own promise (see `resolveClerks`), and a drain of
  * n microtasks cannot say whether a chain of that length has finished.
  */
-async function renderScreen({ clerks = CLERKS }: { clerks?: string[] | null } = {}): Promise<void> {
-  render(<SupportDashboardIssueScreen />);
+async function renderScreen({ clerks = CLERKS }: { clerks?: string[] | null } = {}): Promise<RenderResult> {
+  const view = render(<SupportDashboardIssueScreen />);
   await waitFor(() => expect(mockGetClerks).toHaveBeenCalled(), { timeout: 5000 });
   // `null` is the case where the list never arrives (rejected); an empty list arrives but is empty
   if (clerks) resolveClerks(clerks);
@@ -243,6 +250,15 @@ async function renderScreen({ clerks = CLERKS }: { clerks?: string[] | null } = 
   if (clerks?.length) await waitFor(() => expect(screen.getByTitle('Author')).not.toHaveValue(''), { timeout: 5000 });
   // the suggestion fetch settles here rather than during the first assertion of a test: whatever it
   // writes belongs to the render the test starts from, not to a state update outside `act`
+  await settle();
+
+  return view;
+}
+
+/** Opening another ticket: react-router only changes the route parameter, the screen stays mounted. */
+async function openOtherTicket(view: RenderResult, ticketId: string): Promise<void> {
+  mockParams.id = ticketId;
+  view.rerender(<SupportDashboardIssueScreen />);
   await settle();
 }
 
@@ -665,9 +681,7 @@ describe('SupportDashboardIssueScreen', () => {
 
       // the reloaded ticket is in once the clerk control shows its clerk — the default-author effect
       // has run by then, and must have left the pick alone
-      await waitFor(() =>
-        expect((document.querySelectorAll('select')[2] as HTMLSelectElement).value).toEqual('Alex'),
-      );
+      await waitFor(() => expect((document.querySelectorAll('select')[2] as HTMLSelectElement).value).toEqual('Alex'));
       expect((screen.getByTitle('Author') as HTMLSelectElement).value).toEqual('Robin');
     });
 
@@ -1032,6 +1046,7 @@ describe('SupportDashboardIssueScreen', () => {
       await waitFor(() => expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument());
       // the click also reloads the ticket; waiting for it keeps that reload inside the test
       await waitFor(() => expect(mockGetIssueData).toHaveBeenCalledTimes(2));
+      await settle();
     });
 
     // A fetch that was already in flight when the decision was taken answers with the state from
@@ -1219,6 +1234,48 @@ describe('SupportDashboardIssueScreen', () => {
       expect(await screen.findByRole('button', { name: 'Accept' })).toBeEnabled();
     });
 
+    // The reconciliation is what keeps a refused decision from being offered again. When it fails
+    // too — one network blip covers both — the panel must go rather than stay with live buttons.
+    it('takes the suggestion off screen when the reconciliation fails as well', async () => {
+      mockGetReplySuggestion.mockResolvedValueOnce(SUGGESTION).mockRejectedValue(new Error('reload boom'));
+      mockAcceptReplySuggestion.mockRejectedValue(new Error('decision boom'));
+
+      await renderScreen();
+      fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+
+      expect(await screen.findByText('decision boom')).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument());
+    });
+
+    // Two polls of the same ticket carry the same epoch, so only their own order can separate them:
+    // the older answer must not overwrite the newer one.
+    it('drops the answer of a fetch a later one has already overtaken', async () => {
+      jest.useFakeTimers();
+      try {
+        let answerFirst: (value: SupportReplySuggestion | undefined) => void = () => undefined;
+        mockGetReplySuggestion
+          .mockReturnValueOnce(new Promise<SupportReplySuggestion | undefined>((r) => (answerFirst = r)))
+          .mockResolvedValue(undefined);
+
+        await renderScreen();
+
+        // the poll starts a second fetch while the first is still open, and it answers first: the
+        // suggestion is gone, because another clerk decided it in the meantime
+        await act(async () => {
+          jest.advanceTimersByTime(15000);
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        expect(mockGetReplySuggestion).toHaveBeenCalledTimes(2);
+
+        await act(async () => answerFirst(SUGGESTION));
+
+        expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('reports a decision failure that is not an error object', async () => {
       mockGetReplySuggestion.mockResolvedValue(SUGGESTION);
       mockRejectReplySuggestion.mockRejectedValue('nope');
@@ -1227,6 +1284,78 @@ describe('SupportDashboardIssueScreen', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
 
       expect(await screen.findByText('Suggestion update failed')).toBeInTheDocument();
+    });
+  });
+
+  // What belongs to one ticket must not follow the clerk to the next one.
+  describe('leaving a ticket', () => {
+    // The screen stays mounted across a change of the route parameter, so two ticket loads can be in
+    // flight at once. The answer for the ticket that was left must not replace the one on screen —
+    // the writes are keyed on the ticket in the address bar, and the display must agree with it.
+    it('drops the answer of a ticket load that belongs to the previous ticket', async () => {
+      let answerFirst: (value: SupportIssueInternalData) => void = () => undefined;
+      mockGetIssueData
+        .mockReturnValueOnce(new Promise<SupportIssueInternalData>((r) => (answerFirst = r)))
+        .mockResolvedValue({ ...FULL_ISSUE, id: 43, name: 'Erika Beispiel' } as SupportIssueInternalData);
+
+      const view = render(<SupportDashboardIssueScreen />);
+      await waitFor(() => expect(mockGetClerks).toHaveBeenCalled(), { timeout: 5000 });
+      resolveClerks(CLERKS);
+
+      await openOtherTicket(view, '43');
+      // the second ticket arrives while the first one is still open, and is what the clerk sees
+      await screen.findByText('Erika Beispiel', undefined, { timeout: 5000 });
+
+      await act(async () => answerFirst(FULL_ISSUE));
+
+      expect(screen.getByText('Erika Beispiel')).toBeInTheDocument();
+    });
+
+    // The same for a load that fails: its error belongs to a ticket the clerk has left, and would
+    // otherwise sit on a screen that is showing something else entirely.
+    it('keeps the failure of the previous ticket off the screen', async () => {
+      let failFirst: (reason: Error) => void = () => undefined;
+      mockGetIssueData
+        .mockReturnValueOnce(new Promise<SupportIssueInternalData>((_, reject) => (failFirst = reject)))
+        .mockResolvedValue({ ...FULL_ISSUE, id: 43, name: 'Erika Beispiel' } as SupportIssueInternalData);
+
+      const view = render(<SupportDashboardIssueScreen />);
+      await waitFor(() => expect(mockGetClerks).toHaveBeenCalled(), { timeout: 5000 });
+      resolveClerks(CLERKS);
+
+      await openOtherTicket(view, '43');
+      await screen.findByText('Erika Beispiel', undefined, { timeout: 5000 });
+
+      await act(async () => failFirst(new Error('ticket boom')));
+
+      expect(screen.queryByText('ticket boom')).not.toBeInTheDocument();
+      expect(screen.getByText('Erika Beispiel')).toBeInTheDocument();
+    });
+
+    it('clears the composer and its attachment', async () => {
+      const view = await renderScreen();
+
+      fireEvent.change(composer(), { target: { value: 'For this customer only' } });
+      const file = new File(['a'], 'a.pdf', { type: 'application/pdf' });
+      fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [file] } });
+      expect(screen.getByText('a.pdf')).toBeInTheDocument();
+
+      await openOtherTicket(view, '43');
+
+      expect(composer().value).toEqual('');
+      expect(screen.queryByText('a.pdf')).not.toBeInTheDocument();
+    });
+
+    // The pick is reset with the ticket, and the default has to apply again — which it cannot react
+    // to when both tickets carry the same clerk, unless the effect follows the ticket itself.
+    it('lets the default author apply again when the next ticket has the same clerk', async () => {
+      const view = await renderScreen();
+      await screen.findAllByRole('option', { name: 'Robin' }, { timeout: 5000 });
+      fireEvent.change(screen.getByTitle('Author'), { target: { value: 'Robin' } });
+
+      await openOtherTicket(view, '43');
+
+      await waitFor(() => expect((screen.getByTitle('Author') as HTMLSelectElement).value).toEqual('Alex'));
     });
   });
 

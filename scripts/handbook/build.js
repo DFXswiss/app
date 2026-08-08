@@ -345,10 +345,11 @@ function resolveGroupKeys(filenames) {
 /**
  * Project / platform badges from Playwright naming conventions.
  *
- * Both parts are read from the name rather than matched against a fixed list: the snapshot path
- * template is `{projectName}-{platform}`, so the platform is whatever the machine that took the
- * baseline reported. Recognising only `darwin` silently dropped both badges for a baseline taken
- * anywhere else — the very case where the badge carries information.
+ * The platform is read from the name rather than matched against a fixed list: the snapshot path
+ * template is `{projectName}-{platform}`, so it is whatever the machine that took the baseline
+ * reported. Recognising only `darwin` silently dropped both badges for a baseline taken anywhere
+ * else — the very case where the badge carries information. The project half stays pinned to the
+ * two this repository configures.
  */
 function parseBadges(filename) {
   const match = filename.match(/-(chromium(?:-metamask)?)-([a-z0-9]+)\.png$/i);

@@ -11,17 +11,17 @@ import { expect, Page, Route, test } from '@playwright/test';
  * therefore deterministic, carry no production data, and — unlike the older staff specs — need no
  * running api and no `npm run setup`.
  *
- * The three variants are the states the suggestion panel can be in, because that is what the change
- * this spec was added for introduces:
+ * The five variants are every visual state the change introduces:
  *   01 — a suggestion waiting for a decision
  *   02 — a suggestion the conversation has moved past (stale warning)
  *   03 — no suggestion, i.e. the screen as it looked before
+ *   04 — a decision in flight, with both buttons closed
+ *   05 — an accepted suggestion sitting in the composer as the clerk's own draft
  *
- * The committed baselines carry the `-chromium-linux` suffix because they were taken on Linux, not
- * on macOS like the older ones. Playwright compares against the baseline of the platform it runs on,
- * so a macOS run finds none and writes its own with `--update-snapshots`; committing those next to
- * these is the way to add the macOS variant. Renaming a Linux capture to `-darwin` would be a claim
- * about where it came from that the file cannot keep — font rendering differs between the two.
+ * No baselines are committed yet: they belong on macOS, where the other 148 in this directory were
+ * taken, and Playwright only ever compares against the baseline of the platform it runs on. Run
+ * `npx playwright test e2e/support-dashboard-issue.spec.ts --update-snapshots` on a Mac and commit
+ * the five `-chromium-darwin.png` files it writes.
  */
 
 const ISSUE_ID = 7101;
@@ -114,6 +114,7 @@ const CLERKS = ['Alex', 'Robin'];
 
 const DATA_RE = /\/v1\/support\/issue\/\d+\/data(?:\?|$)/;
 const SUGGESTION_RE = /\/v1\/support\/issue\/\d+\/suggestion(?:\?|$)/;
+const ACCEPT_RE = /\/v1\/support\/issue\/\d+\/suggestion\/\d+\/accept(?:\?|$)/;
 const CLERKS_RE = /\/v1\/support\/issue\/clerks(?:\?|$)/;
 const CLERK_RE = /\/v1\/support\/issue\/clerk(?:\?|$)/;
 const THREAD_RE = /\/v1\/support\/issue\/S-[\w-]+(?:\?|$)/;
@@ -203,6 +204,37 @@ test.describe('Support issue screen - Visual Regression Tests', () => {
     await expect(page.getByText(/Written before the newest message/)).toBeVisible();
 
     await expect(page).toHaveScreenshot('support-issue-02-suggestion-stale.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('closes both buttons while a decision is in flight', async ({ page }) => {
+    await openIssue(page, SUGGESTION);
+
+    // the decision is never answered, which is exactly the state between the click and the answer
+    await page.route(ACCEPT_RE, () => undefined);
+    await page.getByRole('button', { name: 'Accept' }).click();
+
+    await expect(page.getByRole('button', { name: 'Accept' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Discard' })).toBeDisabled();
+
+    await expect(page).toHaveScreenshot('support-issue-04-decision-in-flight.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('hands an accepted suggestion to the composer', async ({ page }) => {
+    await openIssue(page, SUGGESTION);
+
+    await page.route(ACCEPT_RE, (route: Route) => json(route, { ...SUGGESTION, state: 'Accepted' }));
+    await page.getByRole('button', { name: 'Accept' }).click();
+
+    await expect(page.getByText('Suggested reply')).toHaveCount(0);
+    await expect(page.getByPlaceholder(/Type a message/)).toHaveValue(SUGGESTION.text);
+
+    await expect(page).toHaveScreenshot('support-issue-05-accepted-in-composer.png', {
       fullPage: true,
       maxDiffPixels: 5000,
     });
