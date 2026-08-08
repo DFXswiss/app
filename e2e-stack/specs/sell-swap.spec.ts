@@ -4,10 +4,10 @@
  *
  * Browser drives the real frontend; Postgres proves writes where the UI mutates data.
  * UI flows that depend on pricing (`PUT /sell/paymentInfos`, `PUT /swap/paymentInfos`) are split
- * into two unconditional tests each: (A) form/URL params must produce a deposit_route write
- * (hard assertion via waitForRow), and (B) the payment panel must render after paymentInfos —
- * marked with test.fail() because pricing is not reliable under ENVIRONMENT=loc (outbound HTTP
- * mocked). Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
+ * into two tests each — the deposit_route write and the payment panel — and both assert hard.
+ * Neither is skipped: pricing does work here, once the URL leaves out the bank-account parameter
+ * that sends the sell screen into an endless create-bank-account loop (its own test below).
+ * Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
  */
 
 import type { Page, Response } from '@playwright/test';

@@ -10,3 +10,7 @@ dist
 test-results
 playwright-report
 *.log
+# CI checks the API repository out into the workspace as api-repo/ before building the frontend
+# image from this directory. Without this line the whole of it travels to the Docker daemon as
+# build context on every image build.
+api-repo
