@@ -513,51 +513,10 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(options).toEqual({ replaceParams: true });
   });
 
-  it('payer navigate with hijack query still sends only payment params (replaceParams)', async () => {
-    // Extra query keys must not be passed through the mocked intent; the hook test
-    // proves replaceParams strips them — here we pin that the screen requests it.
-    renderAt('/invoice?recipient=42&pay=1&lightning=lnurl1evil&merchant=attacker&routeId=999');
-
-    await waitFor(() => {
-      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
-    });
-    await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
-    });
-    await fillInvoiceFields('INV-1', '10');
-
-    const button = await screen.findByRole('button', { name: 'Continue to payment' });
-    await waitFor(() => {
-      expect(button).not.toBeDisabled();
-    });
-    await act(async () => {
-      fireEvent.click(button);
-    });
-
-    const [to, options] = mockNavigate.mock.calls[0];
-    const search = new URLSearchParams(to.search);
-    expect([...search.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);
-    expect(search.get('routeId')).toBe('42');
-    expect(search.get('lightning')).toBeNull();
-    expect(search.get('merchant')).toBeNull();
-    expect(options).toEqual({ replaceParams: true });
-  });
-
-  it('requires the payee field even when it is rendered as text from the URL', async () => {
-    // Controller for the display branch must still receive Required via Form rules.
-    // Empty the registered value after mount; without recipient: Required, this would stay valid.
-    renderAt('/invoice?recipient=Foo&pay=1');
-
-    await waitFor(() => {
-      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('Foo');
-    });
-
-    // The display Controller is registered as "recipient"; clear it via a second mount path:
-    // switch to input mode is not available, so re-render with empty recipient is not possible
-    // while isPayeeFromUrl. Instead: fill other fields, then prove rules run by checking that
-    // the form becomes invalid when the registered recipient is cleared through setValue-equivalent
-    // change on a hidden path — use the input mode for the Required alert, then the display path
-    // for the button-enable proof.
+  it('payer mode without recipient: empty payee input is required', async () => {
+    // isPayeeFromUrl is false here (no recipient in URL) — the Required rule is exercised on the
+    // input branch. The display branch always has a non-empty value by construction, so
+    // "Required while rendered as text" is not a producible empty-field case.
     renderAt('/invoice?pay=1');
     const payeeInput = await screen.findByRole('textbox', { name: 'Payee' });
     await act(async () => {

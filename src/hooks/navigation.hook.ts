@@ -34,7 +34,14 @@ export function useNavigation(): NavigationInterface {
         return navigateTo(to);
 
       case 'string':
-        return navigateTo(relativeUrl({ path: to, params: new URLSearchParams(search) }), options);
+        // replaceParams: do not merge location.search (clearParams remains a no-op here — pre-existing).
+        return navigateTo(
+          relativeUrl({
+            path: to,
+            params: options?.replaceParams ? undefined : new URLSearchParams(search),
+          }),
+          options,
+        );
 
       default:
         const params = addParams(new URLSearchParams(to.search), options?.clearParams, options?.replaceParams);
