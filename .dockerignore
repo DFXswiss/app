@@ -1,9 +1,12 @@
+# Applies to every image built from this repository, not just the e2e-stack ones. Anything listed
+# here disappears from the build context of Dockerfile.handbook too — which is how an earlier
+# version of this file, excluding e2e/screenshots, broke the handbook build: that image copies the
+# screenshot baselines in. Check the other Dockerfiles before adding an entry.
 node_modules
 e2e-stack/node_modules
 .git
 build
 dist
-e2e/screenshots
 test-results
 playwright-report
 *.log
