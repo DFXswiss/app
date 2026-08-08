@@ -95,6 +95,26 @@ if ! wait_for_healthy api 360; then
   exit 1
 fi
 
+# Rows the API reads into memory once at boot have to exist before that boot, and the schema only
+# exists after the API has created it — so the API starts, gets seeded, and starts again. The one
+# row that needs this today is the transaction specification behind the minimum-amount check:
+# TransactionHelper fills its cache in onModuleInit and refreshes it only every five minutes, so a
+# row written afterwards stays invisible for the length of a whole test run.
+log_info "Seeding boot-cached master data and restarting the API so it reads it..."
+compose exec -T db psql -v ON_ERROR_STOP=1 -U sa -d dfx <<'SQL'
+INSERT INTO transaction_specification (system, asset, direction, "minVolume", "minFee")
+SELECT 'Fiat', 'CHF', 'In', 1, 0
+WHERE NOT EXISTS (
+  SELECT 1 FROM transaction_specification WHERE system = 'Fiat' AND asset = 'CHF' AND direction = 'In'
+);
+SQL
+compose restart api
+if ! wait_for_healthy api 360; then
+  log_error "API failed to become healthy after the seed restart. Recent API logs:"
+  compose logs --tail=200 api || true
+  exit 1
+fi
+
 if ! wait_for_healthy frontend 60; then
   log_error "Frontend failed to become healthy. Recent frontend logs:"
   compose logs --tail=200 frontend || true

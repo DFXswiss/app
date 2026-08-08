@@ -424,15 +424,14 @@ test.describe('Buy flow', () => {
   test('/buy: amount below minimum surfaces error (not payment details)', async ({ page }) => {
     test.setTimeout(90000);
 
-    // Idempotent seed so the DB has the correct row when the process cache can see it.
-    await queryRows(
-      `INSERT INTO transaction_specification (system, asset, direction, "minVolume", "minFee")
-       SELECT 'Fiat', 'CHF', 'In', 1, 0
-       WHERE NOT EXISTS (
-         SELECT 1 FROM transaction_specification
-         WHERE system = 'Fiat' AND asset = 'CHF' AND direction = 'In'
-       )`,
+    // The transaction specification this check reads is seeded by scripts/up.sh before the API's
+    // final start, because TransactionHelper caches it at boot and refreshes only every five
+    // minutes — a row written from here would stay invisible for the whole run.
+    const spec = await queryOne<{ minVolume: string | number }>(
+      `SELECT "minVolume" FROM transaction_specification
+       WHERE system = 'Fiat' AND asset = 'CHF' AND direction = 'In' LIMIT 1`,
     );
+    expect(Number(spec?.minVolume ?? 0), 'up.sh must have seeded a CHF In minimum volume').toBeGreaterThan(0);
 
     const user = await createUser({ tag: 'buy-min', kycLevel: 50, completePersonalData: true });
     // null depositLimit at kycLevel 50 → availableTradingLimit 0 → LIMIT_EXCEEDED before min-amount.
