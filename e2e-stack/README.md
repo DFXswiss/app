@@ -60,6 +60,16 @@ After `e2e:stack:up`, the following host ports are available for debugging (over
 | API      | `E2E_PORT_API`      | http://localhost:3000     |
 | Frontend | `E2E_PORT_FRONTEND` | http://localhost:3001     |
 
+Open `http://localhost:3001` (default `E2E_PORT_FRONTEND`) in a host browser to load the
+frontend. The frontend's API base URL is baked into its JS bundle at build time
+(`REACT_APP_API_URL`, default `http://localhost:3000`) — the **same** address works for a
+host browser and for the browser running inside the `tests` container: on the host it hits
+the published proxy port that forwards to the API; inside `tests` it hits the `socat`
+loopback forwarder described below that relays to the same API. One address, two networks,
+no branching needed. This only holds with the default ports — if you override
+`E2E_PORT_API`, rebuild the frontend image with a matching
+`--build-arg REACT_APP_API_URL=http://localhost:<port>` for host-browser exploration to work.
+
 ## Prerequisites
 
 - Docker with Compose v2

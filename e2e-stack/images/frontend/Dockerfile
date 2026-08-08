@@ -4,7 +4,15 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY . .
 
-ARG REACT_APP_API_URL=http://api:3000
+# Default is intentionally a loopback address, not "http://api:3000": CRA bakes this value
+# into the JS bundle at build time, so it must be an address the *browser* can reach, not
+# just the container running nginx. "http://api:3000" only resolves from inside the sandbox
+# network; a host browser (manual exploration) cannot resolve "api" at all.
+# "http://localhost:3000" works from both places instead: inside the `tests` container it
+# hits the socat forwarder (images/playwright/entrypoint.sh) relaying to the real API
+# service; on the host it hits the published proxy port that forwards to the same API. See
+# e2e-stack/README.md ("Manual exploration") for the full explanation.
+ARG REACT_APP_API_URL=http://localhost:3000
 ARG REACT_APP_PUBLIC_URL=http://frontend
 ARG REACT_APP_BUILD_ID=e2e-stack
 ENV REACT_APP_API_URL=${REACT_APP_API_URL}
