@@ -356,21 +356,41 @@ test.describe('Payment links / routes / invoice', () => {
     }
   });
 
-  test.fixme(
-    '/pl: real lightning= URLs from GET /paymentLink are unreachable from this harness\'s browser',
-    async () => {
-      // LightningHelper.createLnurlp/createEncodedLnurlp (api/src/integration/lightning/
-      // lightning-helper.ts) build the lnurl from Config.url(), which under ENVIRONMENT=loc is
-      // hardcoded to `http://localhost:${port}` (api/src/config/config.ts `url()`) -- correct
-      // for a single-machine local dev setup where the browser and the API share one host, but
-      // unreachable from this harness: the Playwright browser runs inside the separate `tests`
-      // container, where `localhost` resolves to itself, not to the `api` service. Confirmed by
-      // decoding a real GET /paymentLink `lnurl` and navigating `/pl?lightning=...` to it: the
-      // page shows "Failed to fetch" (PaymentLinkProvider's fetchPayRequest network error). The
-      // same construction is used by PUT /paymentLink/pos for /pl/pos, so this is a structural
-      // harness/environment limitation, not a defect in the reachable-invoice-param test above.
-    },
-  );
+  test('/pl: the real lightning= URL from GET /paymentLink now resolves through the tests-container forwarder', async ({
+    page,
+  }) => {
+    // Previously fixme'd: LightningHelper.createLnurlp/createEncodedLnurlp build the lnurl from
+    // Config.url(), which under ENVIRONMENT=loc is hardcoded to `http://localhost:<port>`
+    // (api/src/config/config.ts `url()`) -- correct for a single-machine local dev setup, and
+    // unreachable from a browser in a separate container. The tests image now runs a socat
+    // forwarder on 127.0.0.1:3000 -> the real api service (commit "Forward localhost:3000 to the
+    // api service in the tests container"), so the browser process -- which runs inside that same
+    // container -- resolves `localhost:3000` correctly too. This is the actual, unmodified value
+    // GET /paymentLink hands out, exercised exactly as a real partner integration would use it
+    // (Lnurl.prependLnurl(link.lnurl) on /routes), not a self-built substitute.
+    const user = await createUser({ tag: 'pl-real-lnurl', language: 'EN', kycLevel: 30, completePersonalData: true });
+    const pl = await createPaymentLink(user.jwt, { tag: 'pl-real-lnurl', amount: 19, label: 'e2e-real-lnurl' });
+    const dto = await fetchPaymentLinkDto(user.jwt, pl.uniqueId, pl.paymentLinkId);
+    expect(dto.lnurl, 'API must return a bech32 lnurl for the link').toBeTruthy();
+
+    await page.goto(`/pl?lightning=${encodeURIComponent(dto.lnurl)}`);
+    await waitForPublicPath(page, '/pl');
+
+    // No "Failed to fetch" anymore -- the real lnurl resolves, and rendering lands on the same
+    // documented pricing boundary as the invoice-param test above (live BTC/Lightning pricing is
+    // unavailable under ENVIRONMENT=loc's mocked outbound HTTP, test-data.md), not a network error.
+    await expect(page.getByText('Failed to fetch', { exact: false })).toHaveCount(0);
+    await expect(page.getByText('NO PAYMENT ACTIVE', { exact: true })).toBeVisible({ timeout: 20000 });
+
+    if (pl.paymentId) {
+      const pay = await queryOne<{ amount: number; status: string }>(
+        `SELECT amount, status FROM payment_link_payment WHERE id = $1`,
+        [pl.paymentId],
+      );
+      expect(Number(pay?.amount)).toBe(19);
+      expect(pay?.status).toBe('Pending');
+    }
+  });
 
   // =========================================================================
   // /pl/assign
@@ -554,100 +574,42 @@ test.describe('Payment links / routes / invoice', () => {
   });
 
   test('/pl/pos: unauthenticated (lightning only) shows Authenticate', async ({ page }) => {
-    // Same reachability fix as /pl/assign above: a raw-SQL Lightning route + directly-inserted,
-    // `pl_`-prefixed, Active payment_link with a Pending payment and a base `route.label` row
-    // (so the payment-link error-response path stays crash-free), reached via a self-built lnurl
-    // against http://api:3000 instead of the API's own (unreachable-from-here)
-    // Config.url()-based one.
+    // Reachable now via the tests-container forwarder (commit "Forward localhost:3000 to the
+    // api service in the tests container") -- uses the real, unmodified lnurl GET /paymentLink
+    // hands out for a factory-created Lightning link, same as the /pl real-lnurl test above, no
+    // self-built substitute or raw-SQL route setup needed anymore.
     const user = await createUser({ tag: 'pl-pos', language: 'EN', kycLevel: 30, completePersonalData: true });
+    const pl = await createPaymentLink(user.jwt, { tag: 'pl-pos', amount: 15, label: 'e2e-pos' });
+    const dto = await fetchPaymentLinkDto(user.jwt, pl.uniqueId, pl.paymentLinkId);
+    expect(dto.lnurl, 'API must return a bech32 lnurl for the link').toBeTruthy();
 
-    const tag = `pl-pos-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-    const fiat = await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'CHF' LIMIT 1`);
-    if (!fiat) throw new Error('CHF fiat not seeded');
-
-    const baseRoute = await queryOne<{ id: number }>(
-      `INSERT INTO route (label) VALUES ($1) RETURNING id`,
-      [`e2e-pl-pos-route-${tag}`],
-    );
-    if (!baseRoute) throw new Error('failed to insert base route (label)');
-
-    const deposit = await queryOne<{ id: number }>(
-      `INSERT INTO deposit (address, blockchains, "accountIndex") VALUES ($1, 'Lightning', $2) RETURNING id`,
-      [`e2e-ln-${tag}`, 900000 + Math.floor(Math.random() * 90000)],
-    );
-    if (!deposit) throw new Error('failed to insert synthetic Lightning deposit');
-
-    const bankData = await queryOne<{ id: number }>(
-      `INSERT INTO bank_data (iban, type, active, "default", "userDataId", label)
-       VALUES ($1, 'User', true, false, $2, $3) RETURNING id`,
-      ['CH9300762011623852957;' + tag, user.userDataId, `e2e-pl-pos-ba-${tag}`],
-    );
-    if (!bankData) throw new Error('failed to insert bank_data');
-
-    const route = await queryOne<{ id: number }>(
-      `INSERT INTO deposit_route
-         (type, active, volume, "depositId", "userId", iban, "fiatId", "bankDataId", "annualVolume", "monthlyVolume", "routeId")
-       VALUES ('Sell', true, 0, $1, $2, $3, $4, $5, 0, 0, $6) RETURNING id`,
-      [deposit.id, user.userId, 'CH9300762011623852957', fiat.id, bankData.id, baseRoute.id],
-    );
-    if (!route) throw new Error('failed to insert Lightning deposit_route');
-
-    const uniqueId = `pl_${tag}`.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 32);
-    const link = await queryOne<{ id: number }>(
-      `INSERT INTO payment_link ("routeId", "uniqueId", status, mode, "webhookFailCount", label, "externalId")
-       VALUES ($1, $2, 'Active', 'Multiple', 0, $3, $4) RETURNING id`,
-      [route.id, uniqueId, `e2e-pl-pos-${tag}`, `e2e-pos-ext-${tag}`],
-    );
-    if (!link) throw new Error('failed to insert Active payment_link');
-
-    const payment = await queryOne<{ id: number }>(
-      `INSERT INTO payment_link_payment
-         ("linkId", "uniqueId", status, amount, "currencyId", mode, "expiryDate", "txCount", "isConfirmed")
-       VALUES ($1, $2, 'Pending', 15, $3, 'Single', $4, 0, false) RETURNING id`,
-      [link.id, `plp_${tag}`.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 32), fiat.id, new Date(Date.now() + 24 * 60 * 60 * 1000)],
-    );
-    if (!payment) throw new Error('failed to insert Pending payment_link_payment');
-
-    const lightningParam = lnurlEncode(`http://api:3000/v1/lnurlp/${uniqueId}`);
-
-    try {
-      await page.goto(`/pl/pos?lightning=${encodeURIComponent(lightningParam)}`);
-      await waitForPublicPath(page, '/pl/pos');
-      await expect(page.getByRole('button', { name: 'Authenticate', exact: true })).toBeVisible({ timeout: 20000 });
-    } finally {
-      const paymentIds = await queryRows<{ id: number }>(
-        `SELECT id FROM payment_link_payment WHERE "linkId" = $1`,
-        [link.id],
-      );
-      const ids = paymentIds.map((p) => p.id);
-      if (ids.length) {
-        await queryRows(`DELETE FROM payment_quote WHERE "paymentId" = ANY($1)`, [ids]);
-        await queryRows(`DELETE FROM payment_activation WHERE "paymentId" = ANY($1)`, [ids]);
-        await queryRows(`DELETE FROM crypto_input WHERE "paymentLinkPaymentId" = ANY($1)`, [ids]);
-      }
-      await queryRows(`DELETE FROM payment_link_payment WHERE "linkId" = $1`, [link.id]);
-      await queryRows(`DELETE FROM payment_link WHERE id = $1`, [link.id]);
-      await queryRows(`DELETE FROM deposit_route WHERE id = $1`, [route.id]);
-      await queryRows(`DELETE FROM bank_data WHERE id = $1`, [bankData.id]);
-      await queryRows(`DELETE FROM deposit WHERE id = $1`, [deposit.id]);
-      await queryRows(`DELETE FROM route WHERE id = $1`, [baseRoute.id]);
-    }
+    await page.goto(`/pl/pos?lightning=${encodeURIComponent(dto.lnurl)}`);
+    await waitForPublicPath(page, '/pl/pos');
+    await expect(page.getByText('Failed to fetch', { exact: false })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Authenticate', exact: true })).toBeVisible({ timeout: 20000 });
   });
 
   test.fixme(
     '/pl/pos: with a real access key shows Create Payment and proves a UI-driven payment',
     async () => {
+      // Re-checked after the tests-container forwarder (commit "Forward localhost:3000 to the
+      // api service in the tests container") and the price_rule freshness fix (commit "Give
+      // staff sessions clearance and seed the data the API expects to already exist") -- both
+      // landed, but this specific gap is unrelated to either and is still open, reproduced fresh
+      // directly against the API with curl on this run: `GET /paymentLink/payment` for a route
+      // with a real Pending payment still answers `404 No BTC transfer amount found`, and
+      // price_rule rows carry the container's own boot timestamp (not stale), so the remaining
+      // blocker is not price staleness -- it looks like Lightning/BTC quote generation itself has
+      // no live counterpart under ENVIRONMENT=loc's mocked outbound HTTP, independent of the
+      // price_rule table.
+      //
       // PaymentPosContext.checkAuthentication calls GET paymentLink/history with
       // `externalLinkId: payRequest?.externalId`. `externalId` is only ever present on the
       // SUCCESS payRequest DTO (PaymentLinkService.createPayRequest, built after
-      // paymentQuoteService.createQuote succeeds) -- the error-shaped response this harness
-      // always gets instead (`404 No BTC transfer amount found`, see the /pl test above) has no
-      // `externalId` field at all, so the request is sent as literally
-      // `externalLinkId=undefined` and never authenticates. Reaching a quote-bearing payRequest
-      // needs live BTC/Lightning pricing, which test-data.md documents as unavailable under
-      // ENVIRONMENT=loc's mocked outbound HTTP -- the same documented boundary as the /pl
-      // "NO PAYMENT ACTIVE" case, not something specific to this route or this suite's setup.
-      // The reachable unauthenticated state is covered by the passing test above instead.
+      // paymentQuoteService.createQuote succeeds) -- the 404 error-shaped response this harness
+      // gets instead has no `externalId` field at all, so the request is sent as literally
+      // `externalLinkId=undefined` and never authenticates. The reachable unauthenticated state
+      // is covered by the passing test above instead.
     },
   );
 
