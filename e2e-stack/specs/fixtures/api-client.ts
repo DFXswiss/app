@@ -1,6 +1,13 @@
 /**
  * Thin typed fetch wrapper for the e2e-stack API.
  * Base URL: E2E_API_URL (default http://api:3000). Paths are relative to /v1 or /v2.
+ *
+ * Deliberately not the `@dfx.swiss/react` SDK that CONTRIBUTING.md requires everywhere else
+ * ("API access goes through the SDK"): that package is a React hooks package built around the
+ * component lifecycle (context providers, hooks) and cannot run outside a mounted React tree.
+ * These fixtures run as plain Node.js code in the Playwright test process, with no component
+ * tree to mount them in, so the SDK is not an option here — this file is the harness's one
+ * deliberate, documented exception to that rule.
  */
 
 export interface ApiOptions {
