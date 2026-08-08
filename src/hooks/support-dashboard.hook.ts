@@ -90,10 +90,10 @@ export interface SupportIssueInternalData {
  * app reads them and records the decision, it never writes one.
  */
 export interface SupportReplySuggestion {
-  id: number;
+  /** the message the suggestion answers — and the id it is addressed by */
+  messageId: number;
   text: string;
   state: string;
-  messageId: number;
   /** the answered message is no longer the newest one — the conversation has moved on */
   isStale: boolean;
   created: string;
@@ -275,16 +275,16 @@ export function useSupportDashboard() {
     return result.suggestion ?? undefined;
   }
 
-  async function acceptReplySuggestion(issueId: number, suggestionId: number): Promise<SupportReplySuggestion> {
+  async function acceptReplySuggestion(issueId: number, messageId: number): Promise<SupportReplySuggestion> {
     return guardedCall<SupportReplySuggestion>({
-      url: `support/issue/${issueId}/suggestion/${suggestionId}/accept`,
+      url: `support/issue/${issueId}/suggestion/${messageId}/accept`,
       method: 'PUT',
     });
   }
 
-  async function rejectReplySuggestion(issueId: number, suggestionId: number): Promise<SupportReplySuggestion> {
+  async function rejectReplySuggestion(issueId: number, messageId: number): Promise<SupportReplySuggestion> {
     return guardedCall<SupportReplySuggestion>({
-      url: `support/issue/${issueId}/suggestion/${suggestionId}/reject`,
+      url: `support/issue/${issueId}/suggestion/${messageId}/reject`,
       method: 'PUT',
     });
   }

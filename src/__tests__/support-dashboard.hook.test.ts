@@ -164,9 +164,9 @@ describe('useSupportDashboard', () => {
 
   describe('reply suggestions', () => {
     it('returns the suggestion awaiting a decision', async () => {
-      mockCall.mockResolvedValue({ suggestion: { id: 3, text: 'Answer' } });
+      mockCall.mockResolvedValue({ suggestion: { messageId: 100, text: 'Answer' } });
 
-      await expect(hook().getReplySuggestion(42)).resolves.toEqual({ id: 3, text: 'Answer' });
+      await expect(hook().getReplySuggestion(42)).resolves.toEqual({ messageId: 100, text: 'Answer' });
       expect(request()).toEqual({ url: 'support/issue/42/suggestion', method: 'GET' });
     });
 
@@ -177,15 +177,15 @@ describe('useSupportDashboard', () => {
     });
 
     it('accepts a suggestion', async () => {
-      await hook().acceptReplySuggestion(42, 3);
+      await hook().acceptReplySuggestion(42, 100);
 
-      expect(request()).toEqual({ url: 'support/issue/42/suggestion/3/accept', method: 'PUT' });
+      expect(request()).toEqual({ url: 'support/issue/42/suggestion/100/accept', method: 'PUT' });
     });
 
     it('rejects a suggestion', async () => {
-      await hook().rejectReplySuggestion(42, 3);
+      await hook().rejectReplySuggestion(42, 100);
 
-      expect(request()).toEqual({ url: 'support/issue/42/suggestion/3/reject', method: 'PUT' });
+      expect(request()).toEqual({ url: 'support/issue/42/suggestion/100/reject', method: 'PUT' });
     });
   });
 });

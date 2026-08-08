@@ -321,10 +321,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setActionError(undefined);
     try {
       if (accept) {
-        await acceptReplySuggestion(issueId, item.id);
+        await acceptReplySuggestion(issueId, item.messageId);
         if (isCurrent()) setMessageText((prev) => (prev ? `${prev}\n${item.text}` : item.text));
       } else {
-        await rejectReplySuggestion(issueId, item.id);
+        await rejectReplySuggestion(issueId, item.messageId);
       }
       if (isCurrent()) setSuggestion(undefined);
     } catch (e: unknown) {

@@ -18,7 +18,6 @@ import { SupportReplySuggestion } from 'src/hooks/support-dashboard.hook';
 // warns when the conversation has moved past it, and offers exactly two decisions. It never offers a
 // way to write one — suggestions enter through the API only.
 const suggestion = (values: Partial<SupportReplySuggestion> = {}): SupportReplySuggestion => ({
-  id: 3,
   text: 'The transfer arrived, please check again.',
   state: 'Pending',
   messageId: 100,

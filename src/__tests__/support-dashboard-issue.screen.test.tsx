@@ -218,7 +218,6 @@ const MESSAGES: SupportMessageInfo[] = [
 ];
 
 const SUGGESTION: SupportReplySuggestion = {
-  id: 3,
   text: 'The transfer arrived, please check again.',
   state: 'Pending',
   messageId: 2,
@@ -925,7 +924,7 @@ describe('SupportDashboardIssueScreen', () => {
       await renderScreen();
       fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
 
-      await waitFor(() => expect(mockAcceptReplySuggestion).toHaveBeenCalledWith(42, 3));
+      await waitFor(() => expect(mockAcceptReplySuggestion).toHaveBeenCalledWith(42, 2));
       await waitFor(() => expect(composer().value).toEqual(SUGGESTION.text));
       expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument();
     });
@@ -947,7 +946,7 @@ describe('SupportDashboardIssueScreen', () => {
       await renderScreen();
       fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
 
-      await waitFor(() => expect(mockRejectReplySuggestion).toHaveBeenCalledWith(42, 3));
+      await waitFor(() => expect(mockRejectReplySuggestion).toHaveBeenCalledWith(42, 2));
       await waitFor(() => expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument());
       expect(composer().value).toEqual('');
     });

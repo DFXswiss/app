@@ -103,7 +103,6 @@ const MESSAGES = [
 ];
 
 const SUGGESTION = {
-  id: 901,
   text: 'Thank you, we found the transfer under TX-12345. It is booked and the payout is on its way — you should see it within the next banking day.',
   state: 'Pending',
   messageId: 503,
