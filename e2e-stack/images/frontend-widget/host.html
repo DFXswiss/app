@@ -6,13 +6,19 @@
     actually produced (main.<hash>.js / main.<hash>.css change whenever the bundle changes),
     and aborts the build loudly if it cannot find exactly one of each — a host page must never
     silently point at a bundle that does not exist.
+
+    The asset URLs are root-relative on purpose. The same nginx that serves this page also
+    serves /widget/static (see nginx.conf), so an absolute http:// URL would name the very
+    origin the page was loaded from while stating a scheme the browser is free to disagree
+    with — and it reads like third-party script inclusion over an unencrypted connection,
+    which is what code scanning flagged it as.
   -->
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DFX Services Widget Host (e2e-stack)</title>
-    <script defer="defer" src="http://frontend-widget/widget/static/js/__WIDGET_JS_FILENAME__"></script>
-    <link rel="stylesheet" href="http://frontend-widget/widget/static/css/__WIDGET_CSS_FILENAME__" />
+    <script defer="defer" src="/widget/static/js/__WIDGET_JS_FILENAME__"></script>
+    <link rel="stylesheet" href="/widget/static/css/__WIDGET_CSS_FILENAME__" />
   </head>
   <body>
     <div id="widget-container" style="width: 100%; max-width: 600px; height: 700px">
