@@ -16,6 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
 import {
+  apiGet,
   expect,
   gotoWithSession,
   loginAs,
@@ -214,6 +215,22 @@ test.describe('Compliance area (overview)', () => {
         })
         .not.toBe(normPath(target));
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // Access control (server layer) — the redirect test above only proves the FRONTEND route
+  // guard (useUserRoleGuard, driven by the JWT role claim decoded in the browser) sends a plain
+  // User away from a compliance screen. That says nothing about the server: if the frontend
+  // guard were ever removed while a server-side gap existed, the redirect-only test above would
+  // keep passing regardless. Call a guarded compliance endpoint directly with the same denied
+  // role and assert the server's own status code, so both layers are covered independently.
+  // -------------------------------------------------------------------------
+
+  test('plain User role is denied the underlying compliance API, not just the frontend route', async () => {
+    const { jwt } = await loginAs('User');
+    let status: number | undefined;
+    await apiGet('support/kycFileStats', { jwt, expectOk: false, onStatus: (s) => (status = s) });
+    expect(status, 'GET /v1/support/kycFileStats must reject a plain User role').toBe(403);
   });
 
   // -------------------------------------------------------------------------

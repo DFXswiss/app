@@ -15,6 +15,14 @@ export interface ApiOptions {
   version?: 'v1' | 'v2';
   /** When true (default), non-2xx responses throw with method, path, status, and body. */
   expectOk?: boolean;
+  /**
+   * Called with the raw HTTP status code of the response, regardless of `expectOk`, and before
+   * any expectOk-driven throw. Lets a caller assert a specific rejection status (e.g. a role
+   * guard returning 403) without needing the response body — pair with `expectOk: false` so the
+   * call does not throw. Purely additive: existing callers that never pass this get their exact
+   * prior behavior.
+   */
+  onStatus?: (status: number) => void;
 }
 
 const DEFAULT_BASE = 'http://api:3000';
@@ -48,6 +56,8 @@ async function request<T>(method: string, path: string, body: unknown | undefine
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+
+  options.onStatus?.(res.status);
 
   const text = await res.text();
   let parsed: unknown = text;

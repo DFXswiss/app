@@ -7,7 +7,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import { expect, gotoWithSession, loginAs, openScreen, queryOne, test } from './fixtures';
+import { apiGet, expect, gotoWithSession, loginAs, openScreen, queryOne, test } from './fixtures';
 
 /** Routes owned by this lane's dashboard half (8 paths). */
 const DASHBOARD_ROUTES = [
@@ -126,6 +126,17 @@ test.describe('Financial dashboard', () => {
         })
         .not.toBe(normPath(target));
     }
+  });
+
+  // Redirect-only coverage (above) proves the FRONTEND guard (useAdminGuard) reacts to the role
+  // claim it decodes from the JWT itself; it says nothing about the server. This call proves the
+  // server's own RoleGuard(Admin) also rejects a plain User for the same area, independently of
+  // whatever the frontend does.
+  test('plain User role is denied the underlying financial dashboard API, not just the frontend route', async () => {
+    const { jwt } = await loginAs('User');
+    let status: number | undefined;
+    await apiGet('dashboard/financial/latest', { jwt, expectOk: false, onStatus: (s) => (status = s) });
+    expect(status, 'GET /v1/dashboard/financial/latest must reject a plain User role').toBe(403);
   });
 
   test('/dashboard renders Financial tile and navigates to /dashboard/financial', async ({ page }) => {

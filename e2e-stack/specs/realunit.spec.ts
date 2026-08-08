@@ -8,7 +8,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import { expect, gotoWithSession, loginAs, openScreen, queryOne, test } from './fixtures';
+import { apiGet, expect, gotoWithSession, loginAs, openScreen, queryOne, test } from './fixtures';
 import { cleanupCreatedData, createSupportIssue, createUser } from './fixtures/factories';
 
 /** Routes owned by this lane's RealUnit half (11 paths). */
@@ -134,6 +134,17 @@ test.describe('RealUnit area', () => {
         })
         .not.toBe(normPath(target));
     }
+  });
+
+  // Redirect-only coverage (above) proves the FRONTEND guard (useRealunitGuard) reacts to the
+  // role claim it decodes from the JWT itself; it says nothing about the server. This call
+  // proves the server's own RoleGuard(RealUnit) also rejects a plain User for the same area,
+  // independently of whatever the frontend does.
+  test('plain User role is denied the underlying RealUnit API, not just the frontend route', async () => {
+    const { jwt } = await loginAs('User');
+    let status: number | undefined;
+    await apiGet('realunit/compliance/customers', { jwt, expectOk: false, onStatus: (s) => (status = s) });
+    expect(status, 'GET /v1/realunit/compliance/customers must reject a plain User role').toBe(403);
   });
 
   // CONFIRMED product bug: screen stuck on loading spinner forever. realunit.screen.tsx gates on

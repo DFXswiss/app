@@ -8,6 +8,7 @@
 
 import type { Page } from '@playwright/test';
 import {
+  apiGet,
   expect,
   gotoWithSession,
   loginAs,
@@ -206,6 +207,17 @@ test.describe('SEPA + misc e2e', () => {
         })
         .not.toBe(normPath(target));
     }
+  });
+
+  // Redirect-only coverage (above) proves the FRONTEND guard (useAdminGuard) reacts to the role
+  // claim it decodes from the JWT itself; it says nothing about the server. This call proves the
+  // server's own RoleGuard(Admin) also rejects a plain User for the same area, independently of
+  // whatever the frontend does.
+  test('plain User is denied the underlying admin API behind /sepa, not just the frontend route', async () => {
+    const { jwt } = await loginAs('User');
+    let status: number | undefined;
+    await apiGet('userData', { jwt, expectOk: false, onStatus: (s) => (status = s) });
+    expect(status, 'GET /v1/userData must reject a plain User role').toBe(403);
   });
 
   test('unauthenticated /sepa, /sepa/manual, /blockchain/tx redirect away', async ({ page }) => {

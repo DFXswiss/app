@@ -9,6 +9,7 @@
 
 import type { Page } from '@playwright/test';
 import {
+  apiGet,
   expect,
   gotoWithSession,
   loginAs,
@@ -79,6 +80,17 @@ test.describe('Support dashboard (staff)', () => {
         })
         .toBe('/');
     }
+  });
+
+  // Redirect-only coverage (above) proves the FRONTEND guard (useSupportDashboardGuard) reacts
+  // to the role claim it decodes from the JWT itself; it says nothing about the server. This
+  // call proves the server's own RoleGuard(Support) also rejects a plain, logged-in User for the
+  // same area, independently of whatever the frontend does.
+  test('plain User role is denied the underlying support API, not just the frontend route', async () => {
+    const { jwt } = await loginAs('User');
+    let status: number | undefined;
+    await apiGet('support', { jwt, expectOk: false, onStatus: (s) => (status = s) });
+    expect(status, 'GET /v1/support must reject a plain User role').toBe(403);
   });
 
   test('/support/dashboard overview renders and navigates to all tickets', async ({ page }) => {
