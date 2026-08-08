@@ -108,6 +108,18 @@ The suite under `e2e/` is visual-regression testing (screenshot baselines). It d
 
 This harness checks function, not appearance, and therefore does run in CI on every pull request. Both suites exist side by side and serve different purposes.
 
+## CI merge order with the API repo
+
+The `Full-stack E2E` workflow in the API repository checks out `DFXswiss/services@develop`
+by default and expects `e2e-stack/` to exist there. That directory only exists on `develop`
+once **this** services pull request has been merged. Until then, the API-repo workflow is
+structurally red for every pull request there.
+
+Merge order: the services pull request that introduces `e2e-stack/` first, then the
+corresponding API-repo pull request. Before the services PR is merged, the API-repo workflow
+can only be exercised meaningfully via `workflow_dispatch` with a `services_ref` input
+pointing at the services branch/commit that has `e2e-stack/`.
+
 ## Troubleshooting
 
 **Spec changes not picked up**

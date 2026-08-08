@@ -4,6 +4,13 @@
 # A skipped GitHub Actions check counts as passing, which would silently defeat the
 # merge gate. If you ever consider adding a skip anywhere in this file, justify it in
 # a comment right there.
+#
+# Merge order with DFXswiss/api: the corresponding API-repo workflow checks out
+# DFXswiss/services@develop by default and expects e2e-stack/ to exist there. That is only
+# true once *this* pull request (which introduces e2e-stack/) has been merged to develop.
+# Merge this services PR first, then the API-repo PR. Until then, the API-repo workflow can
+# only be exercised via workflow_dispatch with a services_ref pointing at a branch/commit
+# that already has e2e-stack/.
 
 name: Full-stack E2E
 
