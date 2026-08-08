@@ -76,9 +76,7 @@ describe('ReplySuggestionPanel', () => {
   it('reports the decision', () => {
     const onAccept = jest.fn();
     const onDiscard = jest.fn();
-    render(
-      <ReplySuggestionPanel suggestion={suggestion()} isBusy={false} onAccept={onAccept} onDiscard={onDiscard} />,
-    );
+    render(<ReplySuggestionPanel suggestion={suggestion()} isBusy={false} onAccept={onAccept} onDiscard={onDiscard} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));

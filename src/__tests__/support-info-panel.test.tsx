@@ -85,11 +85,7 @@ describe('SupportMessageList', () => {
       />,
     );
 
-    expect(screen.getAllByText(/first|second|third/).map((e) => e.textContent)).toEqual([
-      'first',
-      'second',
-      'third',
-    ]);
+    expect(screen.getAllByText(/first|second|third/).map((e) => e.textContent)).toEqual(['first', 'second', 'third']);
   });
 
   it('falls back to the timestamp when the messages carry no id', () => {
@@ -127,12 +123,7 @@ describe('SupportMessageList', () => {
 
   it('offers the file of a message to the handler, with its name settled', () => {
     const onOpenFile = jest.fn();
-    render(
-      <SupportMessageList
-        messages={[message({ id: 1, fileName: 'receipt.pdf' })]}
-        onOpenFile={onOpenFile}
-      />,
-    );
+    render(<SupportMessageList messages={[message({ id: 1, fileName: 'receipt.pdf' })]} onOpenFile={onOpenFile} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'receipt.pdf' }));
 
@@ -152,7 +143,9 @@ describe('SupportMessageList', () => {
   });
 
   it('links a URL inside a message', () => {
-    const { container } = render(<SupportMessageList messages={[message({ id: 1, message: 'see https://dfx.swiss' })]} />);
+    const { container } = render(
+      <SupportMessageList messages={[message({ id: 1, message: 'see https://dfx.swiss' })]} />,
+    );
 
     expect(within(container).getByRole('link', { name: 'https://dfx.swiss' })).toBeInTheDocument();
   });

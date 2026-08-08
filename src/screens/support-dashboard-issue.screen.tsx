@@ -166,11 +166,18 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setSelectedFiles([]);
     setFileInputKey((key) => key + 1);
     // an open document belongs to the customer whose ticket it was opened from, and the panel is
-    // sticky: left standing it would be read as this ticket's attachment
-    setFilePreview((previous) => {
-      if (previous) URL.revokeObjectURL(previous.url);
-      return undefined;
-    });
+    // sticky: left standing it would be read as this ticket's attachment. The effect that watches
+    // this state revokes the url it held.
+    setFilePreview(undefined);
+    // The thread belongs to the ticket that was left just as much. The new one takes a moment
+    // longer than the ticket itself — its fetch only starts once the ticket brings the uid — and
+    // for that moment the conversation of one customer would sit under the ticket of another.
+    setMessages([]);
+    setPendingCount(0);
+    // and what the ticket that was left had to report: a failure of its load blocks this screen
+    // entirely, and its action error would be read as this ticket's
+    setLoadError(undefined);
+    setActionError(undefined);
     // both belong to a request of the ticket that was left; carried over they would disable this
     // ticket's controls until that request settles
     setIsUpdating(false);

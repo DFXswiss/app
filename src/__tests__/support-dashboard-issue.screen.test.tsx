@@ -1418,7 +1418,7 @@ describe('SupportDashboardIssueScreen', () => {
       await act(async () => answerThread(MESSAGES));
 
       expect(screen.getByText('The other conversation')).toBeInTheDocument();
-      expect(screen.queryByText('The reference is TX-12345.')).not.toBeInTheDocument();
+      expect(screen.queryByText('My money is missing')).not.toBeInTheDocument();
     });
 
     it('keeps a thread failure of the previous ticket off the screen', async () => {
@@ -1483,6 +1483,50 @@ describe('SupportDashboardIssueScreen', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    // The thread of the new ticket only starts loading once the ticket itself has brought its uid,
+    // so the previous conversation would sit under the new ticket for as long as that takes.
+    it('takes the thread off screen right away', async () => {
+      mockGetIssueMessages.mockResolvedValueOnce(MESSAGES).mockReturnValue(new Promise(() => undefined));
+
+      const view = await renderScreen();
+      expect(await screen.findByText('My money is missing')).toBeInTheDocument();
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43, uid: 'other-uid' } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      expect(screen.queryByText('My money is missing')).not.toBeInTheDocument();
+    });
+
+    // A load failure blocks this screen entirely, so carried over it would block every ticket the
+    // clerk opens afterwards until they reload the page.
+    it('does not block the next ticket with the failure of the previous one', async () => {
+      mockGetIssueData.mockRejectedValueOnce(new Error('ticket boom'));
+
+      const view = render(<SupportDashboardIssueScreen />);
+      await waitFor(() => expect(mockGetClerks).toHaveBeenCalled(), { timeout: 5000 });
+      resolveClerks(CLERKS);
+      expect(await screen.findByText('ticket boom')).toBeInTheDocument();
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43, name: 'Erika Beispiel' } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      expect(await screen.findByText('Erika Beispiel')).toBeInTheDocument();
+      expect(screen.queryByText('ticket boom')).not.toBeInTheDocument();
+    });
+
+    it('drops the error banner of the previous ticket', async () => {
+      mockUpdateIssue.mockRejectedValue(new Error('update boom'));
+
+      const view = await renderScreen();
+      fireEvent.click(button('Update'));
+      expect(await screen.findByText('update boom')).toBeInTheDocument();
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43 } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      expect(screen.queryByText('update boom')).not.toBeInTheDocument();
     });
 
     it('clears the composer and its attachment', async () => {
