@@ -1186,6 +1186,26 @@ describe('SupportDashboardIssueScreen', () => {
       await waitFor(() => expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument());
     });
 
+    // The point of waiting for the reconciliation: until the server's answer is on screen, the
+    // decision that was just refused must not be offered a second time.
+    it('keeps the buttons closed until the reconciliation is in', async () => {
+      let releaseReload: (suggestion: SupportReplySuggestion) => void = () => undefined;
+      mockGetReplySuggestion
+        .mockResolvedValueOnce(SUGGESTION)
+        .mockImplementationOnce(() => new Promise((resolve) => (releaseReload = resolve)));
+      mockAcceptReplySuggestion.mockRejectedValue(new Error('decision boom'));
+
+      await renderScreen();
+      fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+
+      await waitFor(() => expect(mockGetReplySuggestion).toHaveBeenCalledTimes(2));
+      expect(button('Accept')).toBeDisabled();
+
+      await act(async () => releaseReload(SUGGESTION));
+
+      expect(button('Accept')).toBeEnabled();
+    });
+
     it('keeps offering the suggestion the server still holds after a failed decision', async () => {
       mockGetReplySuggestion.mockResolvedValue(SUGGESTION);
       mockAcceptReplySuggestion.mockRejectedValue(new Error('decision boom'));
