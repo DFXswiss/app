@@ -85,6 +85,21 @@ export interface SupportIssueInternalData {
   transactionMissing?: SupportIssueInternalTransactionMissingData;
 }
 
+/**
+ * A proposed answer offered to the clerk. Suggestions are submitted through the API only — this
+ * app reads them and records the decision, it never writes one.
+ */
+export interface SupportReplySuggestion {
+  id: number;
+  text: string;
+  state: string;
+  messageId: number;
+  /** the answered message is no longer the newest one — the conversation has moved on */
+  isStale: boolean;
+  created: string;
+  handled?: string;
+}
+
 export interface SupportMessageInfo {
   id: number;
   author: string;
@@ -251,6 +266,29 @@ export function useSupportDashboard() {
     return result.messages;
   }
 
+  // the newest suggestion still awaiting a decision (undefined when there is none)
+  async function getReplySuggestion(issueId: number): Promise<SupportReplySuggestion | undefined> {
+    const result = await guardedCall<{ suggestion: SupportReplySuggestion | null }>({
+      url: `support/issue/${issueId}/suggestion`,
+      method: 'GET',
+    });
+    return result.suggestion ?? undefined;
+  }
+
+  async function acceptReplySuggestion(issueId: number, suggestionId: number): Promise<SupportReplySuggestion> {
+    return guardedCall<SupportReplySuggestion>({
+      url: `support/issue/${issueId}/suggestion/${suggestionId}/accept`,
+      method: 'PUT',
+    });
+  }
+
+  async function rejectReplySuggestion(issueId: number, suggestionId: number): Promise<SupportReplySuggestion> {
+    return guardedCall<SupportReplySuggestion>({
+      url: `support/issue/${issueId}/suggestion/${suggestionId}/reject`,
+      method: 'PUT',
+    });
+  }
+
   async function getMessageFile(
     issueId: string,
     messageId: number,
@@ -276,6 +314,9 @@ export function useSupportDashboard() {
       getIssueMessages,
       getMessageFile,
       searchUsers,
+      getReplySuggestion,
+      acceptReplySuggestion,
+      rejectReplySuggestion,
     }),
     [guardedCall],
   );

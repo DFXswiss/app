@@ -6,6 +6,7 @@ import { FilePreviewPanel } from 'src/components/compliance/file-preview-panel';
 import { LimitRequestDecisionForm } from 'src/components/compliance/limit-request-decision-form';
 import { ErrorHint } from 'src/components/error-hint';
 import { InfoPanel, InfoRow, SupportMessageList } from 'src/components/support/info-panel';
+import { ReplySuggestionPanel } from 'src/components/support/reply-suggestion-panel';
 import { TemplateArrayPickerModal } from 'src/components/support-templates/template-array-picker-modal';
 import { TemplatePickerModal } from 'src/components/support-templates/template-picker-modal';
 import { useSettingsContext } from 'src/contexts/settings.context';
@@ -18,6 +19,7 @@ import {
   ASSIGNABLE_DEPARTMENTS,
   SupportIssueInternalData,
   SupportMessageInfo,
+  SupportReplySuggestion,
   useSupportDashboard,
 } from 'src/hooks/support-dashboard.hook';
 import { formatDateTime, statusBadge } from 'src/util/compliance-helpers';
@@ -32,7 +34,17 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const { translate } = useSettingsContext();
   const { session } = useAuthContext();
   const canAccessCompliance = session?.role === UserRole.ADMIN || session?.role === UserRole.COMPLIANCE;
-  const { getIssueData, updateIssue, sendMessage, getIssueMessages, getMessageFile, getClerks } = useSupportDashboard();
+  const {
+    getIssueData,
+    updateIssue,
+    sendMessage,
+    getIssueMessages,
+    getMessageFile,
+    getClerks,
+    getReplySuggestion,
+    acceptReplySuggestion,
+    rejectReplySuggestion,
+  } = useSupportDashboard();
   const { getUserData } = useCompliance();
   const { navigate } = useNavigation();
 
@@ -50,6 +62,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const [updateDepartment, setUpdateDepartment] = useState('');
   const [updateClerk, setUpdateClerk] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Reply suggestion state: only the newest suggestion awaiting a decision is offered
+  const [suggestion, setSuggestion] = useState<SupportReplySuggestion>();
+  const [isSuggestionBusy, setIsSuggestionBusy] = useState(false);
 
   // Message form state
   const [messageText, setMessageText] = useState('');
@@ -80,12 +96,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   });
 
   useEffect(() => {
-    getClerks()
-      .then((list) => {
-        setClerks(list);
-        setMessageAuthor((prev) => prev || list[0] || '');
-      })
-      .catch(() => undefined);
+    getClerks().then(setClerks).catch(() => undefined);
   }, [getClerks]);
 
   const loadIssue = useCallback((): void => {
@@ -97,11 +108,20 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
         setUpdateClerk(data.clerk ?? '');
-        setMessageAuthor((prev) => (data.clerk && clerks.includes(data.clerk) ? data.clerk : prev || clerks[0] || ''));
       })
       .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
       .finally(() => setIsLoading(false));
-  }, [id, getIssueData, clerks]);
+  }, [id, getIssueData]);
+
+  // The clerk who last answered is the default author, otherwise the first of the list. Resolved in
+  // its own effect rather than inside the load: as part of the load it made `loadIssue` depend on the
+  // clerk list, so the list arriving a moment later reloaded the whole ticket and put the screen back
+  // behind its loading spinner — a second request and a visible flash on every ticket that was opened.
+  useEffect(() => {
+    setMessageAuthor((prev) =>
+      issueData?.clerk && clerks.includes(issueData.clerk) ? issueData.clerk : prev || clerks[0] || '',
+    );
+  }, [issueData?.clerk, clerks]);
 
   const loadMessages = useCallback((): void => {
     if (!issueData?.uid) return;
@@ -123,6 +143,13 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
   }, [issueData?.uid, getIssueMessages]);
 
+  const loadSuggestion = useCallback((): void => {
+    if (!id) return;
+    getReplySuggestion(+id)
+      .then(setSuggestion)
+      .catch((e: Error) => setActionError(e.message ?? 'Failed to load reply suggestion'));
+  }, [id, getReplySuggestion]);
+
   useEffect(() => {
     loadIssue();
   }, [loadIssue]);
@@ -130,6 +157,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
+
+  useEffect(() => {
+    loadSuggestion();
+  }, [loadSuggestion]);
 
   // Reset cached UserData when the issue (and thus the account) changes
   useEffect(() => {
@@ -162,11 +193,15 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     visibleIdsRef.current = new Set(messages.map((m) => m.id));
   }, [messages]);
 
-  // Polling for new messages (non-intrusive, sets pendingCount)
+  // Polling for new messages (non-intrusive, sets pendingCount) and for a suggestion that arrived
+  // while the ticket was open — a clerk sitting on the screen must not have to reload to see one.
   useEffect(() => {
-    const interval = setInterval(() => pollForNewMessages(), 15000);
+    const interval = setInterval(() => {
+      pollForNewMessages();
+      loadSuggestion();
+    }, 15000);
     return () => clearInterval(interval);
-  }, [pollForNewMessages]);
+  }, [pollForNewMessages, loadSuggestion]);
 
   // Scroll messages container to bottom when messages change (initial load, send, manual reload)
   useEffect(() => {
@@ -231,6 +266,29 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       setActionError(e instanceof Error ? e.message : 'Send failed');
     } finally {
       setIsSending(false);
+    }
+  }
+
+  /**
+   * Accepting turns the suggestion into the clerk's own draft: the text lands in the composer,
+   * where it is edited and sent like any other message. Discarding only records the decision.
+   * Either way the suggestion stops being offered, and stays on record on the server.
+   */
+  async function decideSuggestion(issueId: number, item: SupportReplySuggestion, accept: boolean): Promise<void> {
+    setIsSuggestionBusy(true);
+    setActionError(undefined);
+    try {
+      if (accept) {
+        await acceptReplySuggestion(issueId, item.id);
+        setMessageText((prev) => (prev ? `${prev}\n${item.text}` : item.text));
+      } else {
+        await rejectReplySuggestion(issueId, item.id);
+      }
+      setSuggestion(undefined);
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : 'Suggestion update failed');
+    } finally {
+      setIsSuggestionBusy(false);
     }
   }
 
@@ -514,6 +572,16 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
           >
             <SupportMessageList messages={messages} onOpenFile={(msg) => openFile(msg as SupportMessageInfo)} />
           </div>
+
+          {/* Reply suggestion — offered above the composer, decided before the reply is written */}
+          {suggestion && (
+            <ReplySuggestionPanel
+              suggestion={suggestion}
+              isBusy={isSuggestionBusy}
+              onAccept={() => decideSuggestion(issueData.id, suggestion, true)}
+              onDiscard={() => decideSuggestion(issueData.id, suggestion, false)}
+            />
+          )}
 
           {/* Message Input */}
           {selectedFiles.length > 0 && (
