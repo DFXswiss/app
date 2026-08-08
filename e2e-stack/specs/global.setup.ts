@@ -7,6 +7,7 @@
 import { test as setup } from '@playwright/test';
 import { ethers } from 'ethers';
 import { Client } from 'pg';
+import type { ClientConfig } from 'pg';
 import { loginAs } from './fixtures/auth';
 import { queryOne, withDb } from './fixtures/db';
 
@@ -26,7 +27,7 @@ function depositMnemonic(): string {
   return seed;
 }
 
-function dbConfig() {
+function dbConfig(): ClientConfig {
   return {
     host: process.env.E2E_PG_HOST ?? 'sql-dfx-api-loc',
     port: Number(process.env.E2E_PG_PORT ?? '5432'),

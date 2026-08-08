@@ -11,20 +11,15 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      # frontend has no healthcheck; service_started is enough here — E2E_FRONTEND_URL points
-      # at it (http://frontend by default), and the header comment above documents a direct
-      # `docker compose ... run --rm tests` invocation, which only reaches the frontend if it
-      # is at least started as a dependency of `tests`.
+      # Wait until nginx is actually accepting requests (healthcheck on `frontend` in compose.yml).
+      # service_started alone can let tests hit the container before nginx is ready.
       frontend:
-        condition: service_started
-      # frontend-widget has no healthcheck; widget tests are a separate concern from the main
-      # suite. service_started is enough to bring the container up as a dependency without
-      # blocking or failing the whole run on widget readiness — the main suite must never be
-      # slowed by the widget image. The condition is spelled out because the long-form
-      # depends_on requires every entry to be a mapping; a bare key fails schema validation
-      # and takes the entire stack with it, not just the widget service.
+        condition: service_healthy
+      # Same for the widget host: wait for its healthcheck so widget tests do not race nginx.
+      # The condition is spelled out because the long-form depends_on requires every entry to
+      # be a mapping; a bare key fails schema validation and takes the entire stack with it.
       frontend-widget:
-        condition: service_started
+        condition: service_healthy
     environment:
       E2E_FRONTEND_URL: ${E2E_FRONTEND_URL:-http://frontend}
       E2E_API_URL: ${E2E_API_URL:-http://api:3000}
@@ -54,6 +49,17 @@ services:
       - sandbox
     # No published ports: only reachable from other containers on the internal `sandbox`
     # network, exactly like `frontend`.
+    healthcheck:
+      # nginx:alpine ships both wget and curl; wget --spider only checks the response status,
+      # it never writes a body anywhere. Target 127.0.0.1 explicitly, not "localhost": BusyBox
+      # wget resolves "localhost" to the IPv6 loopback first, and this nginx config (see
+      # nginx.conf) only listens on the IPv4 wildcard, so "localhost" gets connection refused
+      # even though the server is up and reachable on 127.0.0.1.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
 volumes:
   e2e-test-results:

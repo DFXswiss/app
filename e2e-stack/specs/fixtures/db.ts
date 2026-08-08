@@ -1,6 +1,7 @@
 import { Client } from 'pg';
+import type { ClientConfig } from 'pg';
 
-function dbConfig() {
+function dbConfig(): ClientConfig {
   return {
     host: process.env.E2E_PG_HOST ?? 'sql-dfx-api-loc',
     port: Number(process.env.E2E_PG_PORT ?? '5432'),

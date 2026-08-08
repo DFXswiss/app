@@ -27,6 +27,32 @@ if [[ -z "${E2E_API_IMAGE:-}" ]]; then
 
   log_info "Building API image dfx-api:e2e from ${api_repo} ..."
   docker build -t dfx-api:e2e --build-arg GIT_COMMIT=e2e-stack "$api_repo"
+  # Export so the probe below (and compose.yml's ${E2E_API_IMAGE}) always see a concrete tag,
+  # matching the image we just built — same default as when the caller sets E2E_API_IMAGE.
+  export E2E_API_IMAGE=dfx-api:e2e
+fi
+
+# Probe the API image for the process-error-policy module (the unhandledRejection handler fix).
+# Without it, Spark SDK init rejections kill the process in this network; up.sh then sets
+# E2E_NODE_OPTIONS=--unhandled-rejections=warn for compose. Once the image ships the fix, leave
+# E2E_NODE_OPTIONS empty so real unhandled rejections crash again (no permanent mask).
+if ! probe_output=$(
+  docker run --rm --entrypoint sh "$E2E_API_IMAGE" -c \
+    "find / -xdev -name 'process-error-policy.js' -not -path '*/node_modules/*' -print -quit" 2>&1
+); then
+  log_error "Failed to probe API image '${E2E_API_IMAGE}' for process-error-policy.js."
+  log_error "docker run exited non-zero (image missing/broken, or Docker error). Output:"
+  log_error "${probe_output}"
+  exit 1
+fi
+
+if printf '%s' "$probe_output" | grep -q .; then
+  export E2E_NODE_OPTIONS=""
+else
+  log_warn "API image '${E2E_API_IMAGE}' does not include the unhandledRejection handler (process-error-policy.js)."
+  log_warn "Running with --unhandled-rejections=warn so the API can boot in this network."
+  log_warn "This downgrade disappears automatically once an image with the fix is used."
+  export E2E_NODE_OPTIONS="--unhandled-rejections=warn"
 fi
 
 log_info "Building frontend image..."

@@ -34,20 +34,11 @@ services:
     env_file:
       - env/api.env
     environment:
-      # The Spark SDK's eager wallet init fails fast in this network (sandbox has no internet
-      # route, by design) and that specific failure surfaces as an unhandled promise rejection
-      # rather than an uncaughtException. The API's own uncaughtException handler in src/main.ts
-      # already recognizes and tolerates this exact error ("Channel has been shut down") to keep
-      # the process alive — but it never gets the chance, because Node terminates the process on
-      # an unhandled rejection by default (since Node 15) before that handler can run. This is an
-      # incompleteness in the API's own error handling. The proper fix exists in the API repository
-      # — an unhandledRejection handler sharing the same tolerance policy, plus a catch on the two
-      # L2 bridge initialisations that were the next thing to take the process down — and was
-      # measured: with both in place the API boots fully in this network without the line below.
-      # Until they reach the API's default branch, which is what this harness checks out, downgrade
-      # unhandled rejections to a warning so boot can complete. Drop this line then, and confirm by
-      # bringing the stack up once without it.
-      NODE_OPTIONS: "--unhandled-rejections=warn"
+      # Optional: --unhandled-rejections=warn. Needed only while the API image still lacks the
+      # unhandledRejection handler (process-error-policy). scripts/up.sh probes the image and sets
+      # E2E_NODE_OPTIONS only when that fix is missing; once present, the option is left empty and
+      # disappears automatically so real unhandled rejections can crash the process again.
+      NODE_OPTIONS: ${E2E_NODE_OPTIONS:-}
     networks:
       - sandbox
     depends_on:
@@ -88,9 +79,12 @@ services:
     networks:
       - sandbox
       - edge
+    # Bind debug ports to loopback only. The stack is intentionally network-isolated
+    # (sandbox is internal: true); publishing on 0.0.0.0 would expose API/frontend to anyone
+    # on the same local network and defeat that isolation for the duration of the run.
     ports:
-      - "${E2E_PORT_API:-3000}:3000"
-      - "${E2E_PORT_FRONTEND:-3001}:3001"
+      - "127.0.0.1:${E2E_PORT_API:-3000}:3000"
+      - "127.0.0.1:${E2E_PORT_FRONTEND:-3001}:3001"
     depends_on:
       - api
       - frontend

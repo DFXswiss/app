@@ -59,7 +59,7 @@ wait_for_healthy() {
 
   log_info "Waiting for service '${service}' to become healthy (timeout ${timeout_seconds}s)..."
 
-  while (( elapsed < timeout_seconds )); do
+  while (( elapsed <= timeout_seconds )); do
     cid="$(compose ps -q "$service" 2>/dev/null || true)"
     if [[ -n "$cid" ]]; then
       status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || true)"

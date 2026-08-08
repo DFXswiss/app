@@ -112,17 +112,13 @@ The suite under `e2e/` is visual-regression testing (screenshot baselines). It d
 
 This harness checks function, not appearance, and therefore does run in CI on every pull request. Both suites exist side by side and serve different purposes.
 
-## CI merge order with the API repo
+## Relationship with the API repository
 
-The `Full-stack E2E` workflow in the API repository checks out `DFXswiss/services@develop`
-by default and expects `e2e-stack/` to exist there. That directory only exists on `develop`
-once **this** services pull request has been merged. Until then, the API-repo workflow is
-structurally red for every pull request there.
-
-Merge order: the services pull request that introduces `e2e-stack/` first, then the
-corresponding API-repo pull request. Before the services PR is merged, the API-repo workflow
-can only be exercised meaningfully via `workflow_dispatch` with a `services_ref` input
-pointing at the services branch/commit that has `e2e-stack/`.
+The API repository has its own workflow that checks out this repository (`DFXswiss/services`)
+to obtain `e2e-stack/`. Conversely, this harness builds the API image from a checked-out API
+repo (`E2E_API_REPO`, default `../api`) or uses a pre-built image (`E2E_API_IMAGE`). The two
+repos therefore depend on each other for full-stack CI: the harness lives here; the API image
+and the workflow that drives the stack against API changes live in the API repository.
 
 ## Troubleshooting
 
@@ -160,16 +156,19 @@ docker compose -p dfx-e2e-stack logs
 
 **Traces, screenshots, videos, HTML report**
 
-Playwright writes artifacts inside the `tests` container to `/work/test-results` and `/work/playwright-report`. Those paths are backed by named Docker volumes (bind mounts are not used and are not supported in the environments this harness must run in).
+Playwright writes artifacts inside the `tests` container to `/work/test-results` and `/work/playwright-report`. Those paths are backed by named Docker volumes (`e2e-test-results`, `e2e-playwright-report` in `compose.tests.yml`). Bind mounts are not used and are not supported in the environments this harness must run in.
 
-Copy them out before teardown:
+`scripts/run.sh` starts tests with `compose run --rm tests`, so the container is already gone when you want to copy artifacts. Read the named volumes instead (they outlive the `--rm` container). Do this **before** teardown: `down.sh` / the EXIT trap in `run.sh` run `docker compose down -v` and remove the volumes.
+
+Volume names include the Compose project prefix (`<project>_<name>`; default project `dfx-e2e-stack`). Confirm with `docker volume ls | grep e2e-` if unsure.
 
 ```bash
-docker compose -p dfx-e2e-stack -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml cp <tests-container>:/work/test-results ./test-results
-docker compose -p dfx-e2e-stack -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml cp <tests-container>:/work/playwright-report ./playwright-report
+project=dfx-e2e-stack   # or $E2E_PROJECT, if overridden
+docker run --rm -v "${project}_e2e-test-results:/vol" -v "$(pwd)/test-results:/dest" alpine cp -a /vol/. /dest/
+docker run --rm -v "${project}_e2e-playwright-report:/vol" -v "$(pwd)/playwright-report:/dest" alpine cp -a /vol/. /dest/
 ```
 
-Or use `docker cp` against the tests container name. In CI the workflow does this automatically and uploads an artifact named `e2e-stack-report`.
+In CI the workflow does this automatically and uploads an artifact named `e2e-stack-report`.
 
 **Stack does not become healthy**
 

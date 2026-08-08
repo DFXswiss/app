@@ -1,7 +1,9 @@
 # E2E test data factories
 
 Shared factories for Playwright specs against the `dfx-e2e-stack` Compose project.
-Import from `e2e-stack/specs/fixtures/factories` (or the fixtures barrel once published).
+Import from `./fixtures` (the barrel at `e2e-stack/specs/fixtures/index.ts` re-exports
+factories, auth, db, and the other helpers) or from a specific module such as
+`e2e-stack/specs/fixtures/factories`.
 
 **Environment (inside the test container)**
 
