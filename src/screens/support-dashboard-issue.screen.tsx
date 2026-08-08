@@ -70,6 +70,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // Message form state
   const [messageText, setMessageText] = useState('');
   const [messageAuthor, setMessageAuthor] = useState<string>('');
+  const [isAuthorPicked, setIsAuthorPicked] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -117,11 +118,14 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // its own effect rather than inside the load: as part of the load it made `loadIssue` depend on the
   // clerk list, so the list arriving a moment later reloaded the whole ticket and put the screen back
   // behind its loading spinner — a second request and a visible flash on every ticket that was opened.
+  // Once the clerk has picked an author themselves, the default stops applying: ticket and clerk list
+  // arrive independently, so a late arrival would otherwise overwrite a selection already made.
   useEffect(() => {
+    if (isAuthorPicked) return;
     setMessageAuthor((prev) =>
       issueData?.clerk && clerks.includes(issueData.clerk) ? issueData.clerk : prev || clerks[0] || '',
     );
-  }, [issueData?.clerk, clerks]);
+  }, [issueData?.clerk, clerks, isAuthorPicked]);
 
   const loadMessages = useCallback((): void => {
     if (!issueData?.uid) return;
@@ -658,7 +662,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             <select
               className="px-2 py-2 text-xs border border-dfxGray-400 rounded bg-white text-dfxBlue-800"
               value={messageAuthor}
-              onChange={(e) => setMessageAuthor(e.target.value)}
+              onChange={(e) => {
+                setMessageAuthor(e.target.value);
+                setIsAuthorPicked(true);
+              }}
               title="Author"
             >
               {clerks.map((c) => (

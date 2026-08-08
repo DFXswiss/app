@@ -607,6 +607,20 @@ describe('SupportDashboardIssueScreen', () => {
       await waitFor(() => expect(mockSendMessage).toHaveBeenCalledWith(42, { author: 'Robin', message: 'On its way' }));
     });
 
+    it('keeps the picked author when the clerk list arrives late', async () => {
+      let resolveClerks: (list: string[]) => void = () => undefined;
+      mockGetClerks.mockReturnValue(new Promise<string[]>((r) => (resolveClerks = r)));
+
+      render(<SupportDashboardIssueScreen />);
+      await screen.findByRole('button', { name: 'Update' }, { timeout: 5000 });
+      await act(async () => resolveClerks(['Alex', 'Robin']));
+
+      fireEvent.change(screen.getByTitle('Author'), { target: { value: 'Robin' } });
+      await act(async () => resolveClerks(['Alex', 'Robin']));
+
+      expect((screen.getByTitle('Author') as HTMLSelectElement).value).toEqual('Robin');
+    });
+
     it('opens the file dialog from the attach button', async () => {
       await renderScreen();
 
