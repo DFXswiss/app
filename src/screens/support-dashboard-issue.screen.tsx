@@ -77,6 +77,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const [isSending, setIsSending] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Clearing the selection remounts the input rather than writing to the DOM node: the ref is only
+  // ever null before the first render, so a guard around that write can never be false in practice.
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   // Template state
   const [userDataDetail, setUserDataDetail] = useState<UserDataDetail>();
@@ -174,9 +177,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setUserTransactions([]);
   }, [issueData?.account.id]);
 
-  async function openTemplatePicker(): Promise<void> {
-    const accountId = issueData?.account.id;
-    if (accountId == null || isUserDataLoading) return;
+  async function openTemplatePicker(accountId: number): Promise<void> {
     if (userDataDetail) {
       setTemplatePickerOpen(true);
       return;
@@ -215,12 +216,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  async function handleUpdate(): Promise<void> {
-    if (!id) return;
+  async function handleUpdate(issueId: number): Promise<void> {
     setIsUpdating(true);
     setActionError(undefined);
     try {
-      await updateIssue(+id, {
+      await updateIssue(issueId, {
         state: updateState || undefined,
         department: updateDepartment || undefined,
         clerk: updateClerk || undefined,
@@ -266,7 +266,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
       setMessageText('');
       setSelectedFiles([]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setFileInputKey((key) => key + 1);
       loadMessages();
     } catch (e: unknown) {
       setActionError(e instanceof Error ? e.message : 'Send failed');
@@ -314,10 +314,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setMessageText((prev) => (prev ? `${prev}\n${resolved}` : resolved));
   }
 
-  async function openFile(msg: SupportMessageInfo): Promise<void> {
-    if (!issueData?.uid || !msg.fileName) return;
+  async function openFile(uid: string, msg: SupportMessageInfo & { fileName: string }): Promise<void> {
     try {
-      const { data, contentType } = await getMessageFile(issueData.uid, msg.id);
+      const { data, contentType } = await getMessageFile(uid, msg.id);
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
@@ -551,7 +550,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             </div>
             <button
               className="px-4 py-1.5 bg-dfxBlue-400 text-white rounded text-xs hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
-              onClick={handleUpdate}
+              onClick={() => handleUpdate(issueData.id)}
               disabled={isUpdating}
             >
               {isUpdating ? 'Updating...' : 'Update'}
@@ -576,7 +575,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             ref={messagesContainerRef}
             className="flex flex-col gap-2 max-h-[40vh] overflow-auto mb-4 p-2 scroll-shadow"
           >
-            <SupportMessageList messages={messages} onOpenFile={(msg) => openFile(msg as SupportMessageInfo)} />
+            <SupportMessageList messages={messages} onOpenFile={(msg) => openFile(issueData.uid, msg)} />
           </div>
 
           {/* Reply suggestion — offered above the composer, decided before the reply is written */}
@@ -602,7 +601,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                     className="text-dfxGray-700 hover:text-dfxRed-100"
                     onClick={() => {
                       setSelectedFiles((prev) => prev.filter((_, idx) => idx !== i));
-                      if (fileInputRef.current) fileInputRef.current.value = '';
+                      setFileInputKey((key) => key + 1);
                     }}
                   >
                     &times;
@@ -613,6 +612,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
           )}
           <div className="flex gap-2 items-start">
             <input
+              key={fileInputKey}
               type="file"
               multiple
               ref={fileInputRef}
@@ -628,8 +628,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             </button>
             <button
               className="px-2 py-2 text-dfxGray-700 hover:text-dfxBlue-800 transition-colors disabled:opacity-30"
-              onClick={() => void openTemplatePicker()}
-              disabled={isUserDataLoading || issueData?.account.id == null}
+              onClick={() => void openTemplatePicker(issueData.account.id)}
+              disabled={isUserDataLoading || issueData.account.id == null}
               title={isUserDataLoading ? 'Lade Userdaten...' : 'Vorlage einfügen'}
             >
               <svg

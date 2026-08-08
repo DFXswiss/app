@@ -622,17 +622,22 @@ describe('SupportDashboardIssueScreen', () => {
       await waitFor(() => expect(mockSendMessage).toHaveBeenCalledWith(42, { author: 'Robin', message: 'On its way' }));
     });
 
-    it('keeps the picked author when the clerk list arrives late', async () => {
-      let resolveClerks: (list: string[]) => void = () => undefined;
-      mockGetClerks.mockReturnValue(new Promise<string[]>((r) => (resolveClerks = r)));
+    it('keeps a picked author when the ticket arrives again', async () => {
+      // the ticket carries no clerk at first, so the default is the first of the list; the reload
+      // delivers one, which re-runs the effect that resolves the default author
+      mockGetIssueData.mockResolvedValueOnce({ ...FULL_ISSUE, clerk: undefined } as SupportIssueInternalData);
 
-      render(<SupportDashboardIssueScreen />);
-      await screen.findByRole('button', { name: 'Update' }, { timeout: 5000 });
-      await act(async () => resolveClerks(['Alex', 'Robin']));
-
+      await renderScreen();
+      await screen.findAllByRole('option', { name: 'Robin' }, { timeout: 5000 });
       fireEvent.change(screen.getByTitle('Author'), { target: { value: 'Robin' } });
-      await act(async () => resolveClerks(['Alex', 'Robin']));
 
+      fireEvent.click(button('Update'));
+
+      // the reloaded ticket is in once the clerk control shows its clerk — the default-author effect
+      // has run by then, and must have left the pick alone
+      await waitFor(() =>
+        expect((document.querySelectorAll('select')[2] as HTMLSelectElement).value).toEqual('Alex'),
+      );
       expect((screen.getByTitle('Author') as HTMLSelectElement).value).toEqual('Robin');
     });
 
