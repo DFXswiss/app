@@ -21,6 +21,11 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './specs',
   outputDir: './test-results',
+  // All specs share ONE database and ONE API instance (see e2e-stack/compose.yml) — there is no
+  // per-test or per-file isolation. Running tests in parallel would let concurrent tests stomp on
+  // each other's rows/wallets/state, so this harness runs everything serially. If you are tempted
+  // to raise `workers` "for speed", you are giving up that isolation guarantee; do not do it
+  // without first giving every spec file its own database/schema or equivalent isolation.
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,

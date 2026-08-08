@@ -20,10 +20,15 @@ export const ROLE_WALLET_INDEX = {
   RealUnit: 6,
 } as const;
 
-/** Build a unique deterministic-ish test email so reruns do not collide on the unique mail index. */
+let testEmailCounter = 0;
+
+/** Build a unique test email so reruns/rapid calls do not collide (counter-based, like the
+ * factories' uniqueTag()/e2eMail(), not the previous Date.now()-only scheme which could repeat
+ * within the same millisecond for two calls with the same tag). */
 export function testEmail(tag: string): string {
+  testEmailCounter += 1;
   const safe = tag.replace(/[^a-zA-Z0-9_-]/g, '-');
-  return `e2e+${safe}-${Date.now()}@dfx.swiss`;
+  return `e2e+${safe}-${testEmailCounter}@dfx.swiss`;
 }
 
 /** Public test IBAN (Swiss sample) for payment-related specs. */

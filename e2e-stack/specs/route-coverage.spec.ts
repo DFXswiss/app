@@ -1,16 +1,15 @@
 /**
  * Route-coverage gate.
  *
- * Lives in its own `coverage-gate` Playwright project (see playwright.config.ts) and is
- * deliberately excluded from the default Docker entrypoint via the Dockerfile's default
- * CMD (`--grep-invert=@coverage-gate`), not via a config-level grepInvert — Playwright ANDs
- * config-level grep/grepInvert with CLI flags, so a config-level grepInvert here would make
- * the "run on demand" command below permanently return zero tests. Run on demand with:
+ * Lives in its own `coverage-gate` Playwright project (see playwright.config.ts). It now runs
+ * as part of the standard `docker compose run --rm tests` invocation — the Docker image's
+ * default CMD no longer excludes it (see images/playwright/Dockerfile), so it runs alongside
+ * every other project by default, same as any functional suite. Run it in isolation with:
  *   docker compose -p dfx-e2e-stack -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml \
  *     run --rm tests --grep @coverage-gate
  *
- * Expected state right now: RED (only `/` is claimed by registry/smoke.ts). That is the
- * correct starting state — do not invent fake claims to turn it green.
+ * Current state: GREEN — all 100 routes in App.tsx are claimed by exactly one suite's registry
+ * entry. Do not weaken or remove a claim just to keep this green; add real coverage instead.
  */
 import * as fs from 'fs';
 import * as path from 'path';
