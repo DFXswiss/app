@@ -178,6 +178,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     // entirely, and its action error would be read as this ticket's
     setLoadError(undefined);
     setActionError(undefined);
+    // the picker stands on the account of the ticket it was opened from, and reopens itself on the
+    // next one as long as nothing closes it
+    setTemplatePickerOpen(false);
+    setPendingTemplateContent(undefined);
+    setIsUserDataLoading(false);
     // both belong to a request of the ticket that was left; carried over they would disable this
     // ticket's controls until that request settles
     setIsUpdating(false);
@@ -290,16 +295,20 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       setTemplatePickerOpen(true);
       return;
     }
+    const isCurrent = ticketGuard();
     setIsUserDataLoading(true);
     try {
       const data = await getUserData(accountId);
+      // the account these templates are filled from is the one of the ticket the picker was opened
+      // on: answering onto another ticket would put one customer's figures into another's reply
+      if (!isCurrent()) return;
       setUserDataDetail(data.userData);
       setUserTransactions(data.transactions ?? []);
       setTemplatePickerOpen(true);
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : 'Failed to load user data for templates');
+      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Failed to load user data for templates');
     } finally {
-      setIsUserDataLoading(false);
+      if (isCurrent()) setIsUserDataLoading(false);
     }
   }
 
@@ -458,8 +467,12 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }
 
   async function openFile(uid: string, msg: SupportMessageInfo & { fileName: string }): Promise<void> {
+    const isCurrent = ticketGuard();
     try {
       const { data, contentType } = await getMessageFile(uid, msg.id);
+      // the document belongs to the ticket it was opened from: shown on the next one it would be
+      // read as that customer's, and the ticket change has already cleared the panel once
+      if (!isCurrent()) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
@@ -469,7 +482,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       const url = URL.createObjectURL(blob);
       setFilePreview({ url, contentType, name: msg.fileName });
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : 'Error loading file');
+      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Error loading file');
     }
   }
 

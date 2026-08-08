@@ -1529,6 +1529,88 @@ describe('SupportDashboardIssueScreen', () => {
       expect(screen.queryByText('update boom')).not.toBeInTheDocument();
     });
 
+    // The picker stands on the account of the ticket it was opened from, and nothing closes it: it
+    // would reopen itself over the next ticket, filling templates with the wrong customer's figures.
+    it('closes the template picker', async () => {
+      const view = await renderScreen();
+      fireEvent.click(button('Vorlage einfügen'));
+      await screen.findByTestId('template-picker');
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43 } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      expect(screen.queryByTestId('template-picker')).not.toBeInTheDocument();
+    });
+
+    it('does not open the picker of the previous ticket over the new one', async () => {
+      let answerUserData: (data: { userData: { id: number }; transactions: [] }) => void = () => undefined;
+      mockGetUserData.mockReturnValue(new Promise((resolve) => (answerUserData = resolve)));
+
+      const view = await renderScreen();
+      fireEvent.click(button('Vorlage einfügen'));
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43 } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      await act(async () => answerUserData({ userData: { id: 397328 }, transactions: [] }));
+
+      expect(screen.queryByTestId('template-picker')).not.toBeInTheDocument();
+    });
+
+    it('keeps a user-data failure of the previous ticket off the screen', async () => {
+      let failUserData: (reason: Error) => void = () => undefined;
+      mockGetUserData.mockReturnValue(new Promise((_, reject) => (failUserData = reject)));
+
+      const view = await renderScreen();
+      fireEvent.click(button('Vorlage einfügen'));
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43 } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      await act(async () => failUserData(new Error('user data boom')));
+
+      expect(screen.queryByText('user data boom')).not.toBeInTheDocument();
+    });
+
+    // An attachment opened on the previous ticket, answering after the switch: the panel is sticky,
+    // so the document would sit beside a ticket of an entirely different customer.
+    it('does not show a file of the previous ticket', async () => {
+      mockGetIssueMessages.mockResolvedValue([
+        { id: 1, author: 'Customer', message: 'Receipt', fileName: 'receipt.pdf', created: '2026-08-01T09:05:00.000Z' },
+      ]);
+      let answerFile: (value: { data: { type: string; data: number[] }; contentType: string }) => void = () =>
+        undefined;
+      mockGetMessageFile.mockReturnValue(new Promise((resolve) => (answerFile = resolve)));
+
+      const view = await renderScreen();
+      fireEvent.click(await screen.findByRole('button', { name: 'receipt.pdf' }));
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43 } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      await act(async () => answerFile({ data: { type: 'Buffer', data: [1, 2, 3] }, contentType: 'application/pdf' }));
+
+      expect(screen.queryByTestId('preview-name')).not.toBeInTheDocument();
+    });
+
+    it('keeps a file failure of the previous ticket off the screen', async () => {
+      mockGetIssueMessages.mockResolvedValue([
+        { id: 1, author: 'Customer', message: 'Receipt', fileName: 'receipt.pdf', created: '2026-08-01T09:05:00.000Z' },
+      ]);
+      let failFile: (reason: Error) => void = () => undefined;
+      mockGetMessageFile.mockReturnValue(new Promise((_, reject) => (failFile = reject)));
+
+      const view = await renderScreen();
+      fireEvent.click(await screen.findByRole('button', { name: 'receipt.pdf' }));
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43 } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      await act(async () => failFile(new Error('file boom')));
+
+      expect(screen.queryByText('file boom')).not.toBeInTheDocument();
+    });
+
     it('clears the composer and its attachment', async () => {
       const view = await renderScreen();
 
