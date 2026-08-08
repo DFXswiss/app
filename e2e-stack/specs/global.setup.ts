@@ -39,10 +39,22 @@ function dbConfig() {
 }
 
 /**
- * Mirrors api/scripts/setup.js:256-339:
+ * Number of EVM deposit addresses to seed. api/scripts/setup.js seeds only 5 (indices 0..4),
+ * enough for manual local dev, but that pool is shared read/write by every spec file in a single
+ * e2e run — 11 suites, several calling createSell/createSwap, each of which consumes one unused
+ * deposit via requireUnusedDeposit() — and 5 is exhausted after a handful of calls. Each address
+ * costs one HD derivation plus one idempotent INSERT, so 200 is still cheap up front and takes
+ * "ran out of deposits mid-suite" off the table for the foreseeable size of this suite.
+ */
+const DEPOSIT_ADDRESS_POOL_SIZE = 200;
+
+/**
+ * Mirrors api/scripts/setup.js:256-339, with one deliberate difference:
  * 1) Signature-login an admin wallet derived from E2E_EVM_DEPOSIT_SEED at index 0
  * 2) UPDATE "user" SET role = 'Admin' for that address
- * 3) Idempotently insert deposit addresses for indices 0..4
+ * 3) Idempotently insert deposit addresses for indices 0..DEPOSIT_ADDRESS_POOL_SIZE-1 — the api
+ *    script only seeds 5 (enough for manual local dev); this harness seeds a much larger pool
+ *    (see DEPOSIT_ADDRESS_POOL_SIZE) because 11 e2e suites share one pool in a single run.
  */
 async function seedDepositAddresses(): Promise<void> {
   const mnemonic = depositMnemonic();
@@ -75,7 +87,7 @@ async function seedDepositAddresses(): Promise<void> {
       adminWallet.address,
     ]);
 
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < DEPOSIT_ADDRESS_POOL_SIZE; i++) {
       const hdPath = `m/44'/60'/0'/0/${i}`;
       const wallet = ethers.Wallet.fromMnemonic(mnemonic, hdPath);
       await client.query(
