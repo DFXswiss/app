@@ -214,16 +214,30 @@ export function getOfferableCollectionIban(info: {
 /**
  * Rewrites a GiroCode (EPC069-12) payment request so line 6 (IBAN) becomes the DFX shared EUR
  * collection IBAN. Fail-closed: returns undefined unless the payload is a well-formed SCT
- * GiroCode whose IBAN line matches the given personal IBAN (whitespace/case ignored). Swiss
- * QR-Bill SVG payloads are never rewritten — callers must treat undefined as "no QR available".
+ * GiroCode (full 10+-line shape (index 9 = structured reference; unstructured line 10 may be
+ * omitted), version 001/002) whose IBAN line matches the given personal IBAN
+ * (whitespace/case ignored) and whose remittance line (structured line 9 or unstructured
+ * line 10) equals the quote's remittance info. Swiss QR-Bill SVG payloads are never rewritten —
+ * callers must treat undefined as "no QR available".
  */
-export function toCollectionIbanGiroCode(paymentRequest: string, personalIban: string): string | undefined {
+export function toCollectionIbanGiroCode(
+  paymentRequest: string,
+  personalIban: string,
+  remittanceInfo: string,
+): string | undefined {
   if (paymentRequest.includes('<svg')) return undefined;
 
   const lines = paymentRequest.trim().split(/\r?\n/);
-  if (lines.length < 7) return undefined;
+  if (lines.length < 10) return undefined;
   if (lines[0] !== 'BCD') return undefined;
+  if (lines[1] !== '001' && lines[1] !== '002') return undefined;
   if (lines[3] !== 'SCT') return undefined;
+
+  const trimmedRemittance = remittanceInfo.trim();
+  if (!trimmedRemittance) return undefined;
+  const structuredReference = lines[9].trim();
+  const unstructuredRemittance = lines.length > 10 ? lines[10].trim() : '';
+  if (structuredReference !== trimmedRemittance && unstructuredRemittance !== trimmedRemittance) return undefined;
 
   const normalizedLine = lines[6].replace(/\s+/g, '').toUpperCase();
   const normalizedPersonal = personalIban.replace(/\s+/g, '').toUpperCase();

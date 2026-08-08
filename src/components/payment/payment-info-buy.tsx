@@ -62,7 +62,9 @@ export function PaymentInformationContent({ info, showBank }: PaymentInformation
     }
 
     const collectionGiroCode =
-      info.iban !== undefined ? toCollectionIbanGiroCode(info.paymentRequest, info.iban) : undefined;
+      info.iban !== undefined && info.remittanceInfo
+        ? toCollectionIbanGiroCode(info.paymentRequest, info.iban, info.remittanceInfo)
+        : undefined;
     if (collectionGiroCode) {
       return <PaymentQrCode value={collectionGiroCode} txId={info.id} collectionAccount />;
     }
