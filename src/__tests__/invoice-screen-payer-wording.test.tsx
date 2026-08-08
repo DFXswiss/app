@@ -152,7 +152,7 @@ jest.mock('../config/api', () => ({
 
 process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import copy from 'copy-to-clipboard';
 import { addYears } from 'date-fns';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
@@ -368,16 +368,17 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(lastLayoutTitle()).toBe('Create Invoice');
   });
 
-  it('payer mode with recipient from URL disables the payee field and still enables the button', async () => {
+  it('payer mode with recipient from URL shows payee as text (not an input) and still enables the button', async () => {
     renderAt('/invoice?recipient=Foo&pay=1');
 
     await waitFor(() => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('Foo');
     });
 
-    const recipientInput = screen.getByRole('textbox', { name: 'Payee' });
-    expect(recipientInput).toBeDisabled();
-    expect(recipientInput).toHaveValue('Foo');
+    // No editable/disabled payee input — value is plain text linked to the Payee label.
+    expect(screen.queryByRole('textbox', { name: 'Payee' })).not.toBeInTheDocument();
+    const payeeGroup = screen.getByRole('group', { name: 'Payee' });
+    expect(payeeGroup).toHaveTextContent('Foo');
 
     await waitFor(() => {
       expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
@@ -388,6 +389,35 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Continue to payment' })).not.toBeDisabled();
     });
+  });
+
+  it('payer mode with known recipient from URL shows verification next to the payee value', async () => {
+    renderAt('/invoice?recipient=Foo&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('Foo');
+    });
+
+    const payeeGroup = screen.getByRole('group', { name: 'Payee' });
+    expect(payeeGroup).toHaveTextContent('Foo');
+    await waitFor(() => {
+      expect(
+        within(payeeGroup).getByRole('img', { name: 'Recipient verified' }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('payer mode with unknown recipient from URL does not show verification', async () => {
+    mockGetPaymentRecipient.mockRejectedValue(new Error('not found'));
+    renderAt('/invoice?recipient=Unknown&pay=1');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recipient-error')).toBeInTheDocument();
+    });
+
+    const payeeGroup = screen.getByRole('group', { name: 'Payee' });
+    expect(payeeGroup).toHaveTextContent('Unknown');
+    expect(within(payeeGroup).queryByRole('img', { name: 'Recipient verified' })).not.toBeInTheDocument();
   });
 
   it('payer mode without recipient leaves the field editable (no empty locked field)', async () => {
