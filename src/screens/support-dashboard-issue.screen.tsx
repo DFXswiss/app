@@ -307,7 +307,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   /**
    * Accepting turns the suggestion into the clerk's own draft: the text lands in the composer,
    * where it is edited and sent like any other message. Discarding only records the decision.
-   * Either way the suggestion stops being offered, and stays on record on the server.
+   * Either way the suggestion stops being offered, and stays on record on the server. A refused
+   * decision is reconciled with the server rather than left standing.
    */
   async function decideSuggestion(issueId: number, item: SupportReplySuggestion, accept: boolean): Promise<void> {
     // The decision qualifies itself the same way a fetch does. Opening another ticket while it is
@@ -328,7 +329,13 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       }
       if (isCurrent()) setSuggestion(undefined);
     } catch (e: unknown) {
-      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Suggestion update failed');
+      // The server refuses a decision it has already taken — by another clerk, or in another tab.
+      // Leaving the panel as it stands would offer that same decision again, and it would be refused
+      // again, so the error comes with what the server actually holds now.
+      if (isCurrent()) {
+        setActionError(e instanceof Error ? e.message : 'Suggestion update failed');
+        loadSuggestion();
+      }
     } finally {
       // only the decision the screen is still on may clear the flag: a late answer from the ticket
       // that was left would otherwise unblock the buttons while this ticket's decision is running

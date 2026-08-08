@@ -241,7 +241,17 @@ async function renderScreen({ clerks = CLERKS }: { clerks?: string[] | null } = 
   await screen.findByRole('button', { name: 'Update' }, { timeout: 5000 });
   await waitFor(() => expect(mockGetIssueMessages).toHaveBeenCalled(), { timeout: 5000 });
   if (clerks?.length) await waitFor(() => expect(screen.getByTitle('Author')).not.toHaveValue(''), { timeout: 5000 });
+  // the suggestion fetch settles here rather than during the first assertion of a test: whatever it
+  // writes belongs to the render the test starts from, not to a state update outside `act`
+  await settle();
 }
+
+/**
+ * Lets what the screen still has in flight land inside `act`. A test that stops at a state the
+ * screen reaches before its other fetches answer ends with this, so those answers belong to the
+ * test that caused them instead of updating a component after it.
+ */
+const settle = (): Promise<void> => act(async () => undefined);
 
 const CLERKS = ['Alex', 'Robin'];
 
@@ -274,12 +284,13 @@ describe('SupportDashboardIssueScreen', () => {
   });
 
   describe('loading and failure', () => {
-    it('shows a spinner until the ticket is loaded', () => {
+    it('shows a spinner until the ticket is loaded', async () => {
       mockGetIssueData.mockReturnValue(new Promise(() => undefined));
 
       render(<SupportDashboardIssueScreen />);
 
       expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+      await settle();
     });
 
     it('shows why the ticket could not be loaded', async () => {
@@ -288,6 +299,7 @@ describe('SupportDashboardIssueScreen', () => {
       render(<SupportDashboardIssueScreen />);
 
       expect(await screen.findByText('boom')).toBeInTheDocument();
+      await settle();
     });
 
     it('falls back to a generic message when the failure carries none', async () => {
@@ -296,6 +308,7 @@ describe('SupportDashboardIssueScreen', () => {
       render(<SupportDashboardIssueScreen />);
 
       expect(await screen.findByText('Unknown error')).toBeInTheDocument();
+      await settle();
     });
 
     it('loads nothing without a ticket id', async () => {
@@ -439,6 +452,8 @@ describe('SupportDashboardIssueScreen', () => {
           clerk: undefined,
         }),
       );
+      // an update reloads the ticket; waiting for it here keeps that reload inside the test
+      await waitFor(() => expect(mockGetIssueData).toHaveBeenCalledTimes(2));
     });
 
     it('reassigns the ticket to another department and clerk', async () => {
@@ -461,6 +476,7 @@ describe('SupportDashboardIssueScreen', () => {
           clerk: 'Robin',
         }),
       );
+      await waitFor(() => expect(mockGetIssueData).toHaveBeenCalledTimes(2));
     });
 
     it('reports why an update failed', async () => {
@@ -575,6 +591,8 @@ describe('SupportDashboardIssueScreen', () => {
 
       await waitFor(() => expect(mockSendMessage).toHaveBeenCalledWith(42, { author: 'Alex', message: 'On its way' }));
       await waitFor(() => expect(composer().value).toEqual(''));
+      // sending reloads the thread; waiting for it here keeps that reload inside the test
+      await waitFor(() => expect(mockGetIssueMessages).toHaveBeenCalledTimes(2));
     });
 
     it('sends on Enter and keeps typing on Shift+Enter', async () => {
@@ -586,6 +604,7 @@ describe('SupportDashboardIssueScreen', () => {
 
       fireEvent.keyDown(composer(), { key: 'Enter' });
       await waitFor(() => expect(mockSendMessage).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(mockGetIssueMessages).toHaveBeenCalledTimes(2));
     });
 
     it('ignores an empty message', async () => {
@@ -618,6 +637,7 @@ describe('SupportDashboardIssueScreen', () => {
         file: 'data:application/pdf;base64,AAA',
         fileName: 'b.pdf',
       });
+      await waitFor(() => expect(mockGetIssueMessages).toHaveBeenCalledTimes(2));
     });
 
     it('sends under another clerk name', async () => {
@@ -629,6 +649,7 @@ describe('SupportDashboardIssueScreen', () => {
       fireEvent.click(button('Send'));
 
       await waitFor(() => expect(mockSendMessage).toHaveBeenCalledWith(42, { author: 'Robin', message: 'On its way' }));
+      await waitFor(() => expect(mockGetIssueMessages).toHaveBeenCalledTimes(2));
     });
 
     it('keeps a picked author when the ticket arrives again', async () => {
@@ -1009,6 +1030,8 @@ describe('SupportDashboardIssueScreen', () => {
       fireEvent.click(button('Update'));
 
       await waitFor(() => expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument());
+      // the click also reloads the ticket; waiting for it keeps that reload inside the test
+      await waitFor(() => expect(mockGetIssueData).toHaveBeenCalledTimes(2));
     });
 
     // A fetch that was already in flight when the decision was taken answers with the state from
@@ -1138,6 +1161,7 @@ describe('SupportDashboardIssueScreen', () => {
       await renderScreen();
 
       expect(await screen.findByText('suggestion boom')).toBeInTheDocument();
+      await settle();
     });
 
     it('falls back to a generic message when the load failure carries none', async () => {
@@ -1146,9 +1170,23 @@ describe('SupportDashboardIssueScreen', () => {
       await renderScreen();
 
       expect(await screen.findByText('Failed to load reply suggestion')).toBeInTheDocument();
+      await settle();
     });
 
-    it('reports why a decision could not be recorded', async () => {
+    // A decision is taken once, on the server. Refused because someone else took it, the panel must
+    // follow what the server holds now instead of offering the same decision into the same refusal.
+    it('takes the panel from the server when a decision was refused', async () => {
+      mockGetReplySuggestion.mockResolvedValueOnce(SUGGESTION).mockResolvedValue(undefined);
+      mockAcceptReplySuggestion.mockRejectedValue(new Error('decision boom'));
+
+      await renderScreen();
+      fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+
+      expect(await screen.findByText('decision boom')).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument());
+    });
+
+    it('keeps offering the suggestion the server still holds after a failed decision', async () => {
       mockGetReplySuggestion.mockResolvedValue(SUGGESTION);
       mockAcceptReplySuggestion.mockRejectedValue(new Error('decision boom'));
 
@@ -1156,7 +1194,9 @@ describe('SupportDashboardIssueScreen', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
 
       expect(await screen.findByText('decision boom')).toBeInTheDocument();
+      await waitFor(() => expect(mockGetReplySuggestion).toHaveBeenCalledTimes(2));
       expect(screen.getByText('Suggested reply')).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Accept' })).toBeEnabled();
     });
 
     it('reports a decision failure that is not an error object', async () => {
@@ -1214,6 +1254,7 @@ describe('SupportDashboardIssueScreen', () => {
       await waitFor(() =>
         expect(mockUpdateIssue).toHaveBeenCalledWith(42, { state: undefined, department: undefined, clerk: undefined }),
       );
+      await waitFor(() => expect(mockGetIssueData).toHaveBeenCalledTimes(2));
     });
 
     it('sends an attachment without a text', async () => {
