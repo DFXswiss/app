@@ -36,9 +36,13 @@ fi
 # Without it, Spark SDK init rejections kill the process in this network; up.sh then sets
 # E2E_NODE_OPTIONS=--unhandled-rejections=warn for compose. Once the image ships the fix, leave
 # E2E_NODE_OPTIONS empty so real unhandled rejections crash again (no permanent mask).
+# The image runs as a non-root user, so a search from / walks into directories it may not read
+# and find exits non-zero on those alone. Discard find's own status and its stderr and judge by
+# what it printed; a Docker-level failure (missing or broken image) still surfaces, because then
+# `docker run` never reaches the `exit 0` below.
 if ! probe_output=$(
   docker run --rm --entrypoint sh "$E2E_API_IMAGE" -c \
-    "find / -xdev -name 'process-error-policy.js' -not -path '*/node_modules/*' -print -quit" 2>&1
+    "find / -xdev -name 'process-error-policy.js' -not -path '*/node_modules/*' -print -quit 2>/dev/null; exit 0" 2>&1
 ); then
   log_error "Failed to probe API image '${E2E_API_IMAGE}' for process-error-policy.js."
   log_error "docker run exited non-zero (image missing/broken, or Docker error). Output:"
