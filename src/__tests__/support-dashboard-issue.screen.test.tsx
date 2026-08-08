@@ -226,16 +226,28 @@ const SUGGESTION: SupportReplySuggestion = {
   created: '2026-08-01T09:20:00.000Z',
 };
 
-async function renderScreen(): Promise<void> {
+/**
+ * Renders the screen and waits for the state every test starts from: the ticket loaded, the clerk
+ * list in, the thread fetched.
+ *
+ * Waiting for those conditions rather than for a fixed number of ticks is what keeps the file
+ * deterministic — the clerk list resolves on its own promise (see `resolveClerks`), and a drain of
+ * n microtasks cannot say whether a chain of that length has finished.
+ */
+async function renderScreen({ clerks = CLERKS }: { clerks?: string[] | null } = {}): Promise<void> {
   render(<SupportDashboardIssueScreen />);
   await waitFor(() => expect(mockGetClerks).toHaveBeenCalled(), { timeout: 5000 });
+  // `null` is the case where the list never arrives (rejected); an empty list arrives but is empty
+  if (clerks) resolveClerks(clerks);
   await screen.findByRole('button', { name: 'Update' }, { timeout: 5000 });
-  // the thread and the suggestion are fetched once the ticket is in; drain those promise chains so
-  // every test starts from a settled screen
-  await act(async () => {
-    for (let i = 0; i < 5; i++) await Promise.resolve();
-  });
+  await waitFor(() => expect(mockGetIssueMessages).toHaveBeenCalled(), { timeout: 5000 });
+  if (clerks?.length) await waitFor(() => expect(screen.getByTitle('Author')).not.toHaveValue(''), { timeout: 5000 });
 }
+
+const CLERKS = ['Alex', 'Robin'];
+
+// Set by the mocked getClerks; calling it is what makes the clerk list arrive.
+let resolveClerks: (clerks: string[]) => void = () => undefined;
 
 const composer = (): HTMLTextAreaElement => screen.getByPlaceholderText(/Type a message/) as HTMLTextAreaElement;
 const button = (name: string | RegExp): HTMLElement => screen.getByRole('button', { name });
@@ -247,12 +259,10 @@ describe('SupportDashboardIssueScreen', () => {
     mockUseAuthContext.mockReturnValue({ session: { role: 'Admin' } });
     mockGetIssueData.mockResolvedValue(FULL_ISSUE);
     mockGetIssueMessages.mockResolvedValue(MESSAGES);
-    // resolved a tick late on purpose: the clerk list always arrives after the ticket, and on CI the
-    // gap is wide enough that a test interacting with a clerk dropdown before it is filled sees an
-    // empty one — which is exactly the failure this ordering reproduces locally
-    mockGetClerks.mockImplementation(
-      () => new Promise<string[]>((resolve) => setTimeout(() => resolve(['Alex', 'Robin']), 0)),
-    );
+    // The clerk list resolves only when the test says so, which reproduces the ordering CI runs
+    // into — the list always arrives after the ticket — without a real timer whose callback may or
+    // may not have run by the time an assertion looks.
+    mockGetClerks.mockImplementation(() => new Promise<string[]>((resolve) => (resolveClerks = resolve)));
     mockGetReplySuggestion.mockResolvedValue(undefined);
     mockUpdateIssue.mockResolvedValue(undefined);
     mockSendMessage.mockResolvedValue(undefined);
@@ -303,7 +313,7 @@ describe('SupportDashboardIssueScreen', () => {
     it('survives a clerk list that cannot be loaded', async () => {
       mockGetClerks.mockRejectedValue(new Error('no clerks'));
 
-      await renderScreen();
+      await renderScreen({ clerks: null });
 
       expect(screen.getByText('Issue Details')).toBeInTheDocument();
     });
@@ -960,6 +970,48 @@ describe('SupportDashboardIssueScreen', () => {
       }
     });
 
+    // The answer to a poll started before the decision carries the state from before it; showing
+    // that again would invite a second click, which the API refuses as a conflict.
+    it('does not poll for a suggestion while a decision is in flight', async () => {
+      jest.useFakeTimers();
+      try {
+        mockGetReplySuggestion.mockResolvedValue(SUGGESTION);
+        mockAcceptReplySuggestion.mockReturnValue(new Promise(() => undefined));
+
+        await renderScreen();
+        fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+        const callsBeforePoll = mockGetReplySuggestion.mock.calls.length;
+
+        await act(async () => {
+          jest.advanceTimersByTime(15000);
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+
+        expect(mockGetReplySuggestion).toHaveBeenCalledTimes(callsBeforePoll);
+        expect(mockGetIssueMessages.mock.calls.length).toBeGreaterThan(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    // react-router keeps this component mounted when only the route parameter changes, so what
+    // belongs to the ticket that was open has to go when another one is opened.
+    it('drops the suggestion of the previous ticket', async () => {
+      mockGetReplySuggestion.mockResolvedValue(SUGGESTION);
+
+      render(<SupportDashboardIssueScreen />);
+      await waitFor(() => expect(mockGetClerks).toHaveBeenCalled(), { timeout: 5000 });
+      resolveClerks(CLERKS);
+      expect(await screen.findByText('Suggested reply')).toBeInTheDocument();
+
+      mockGetReplySuggestion.mockReturnValue(new Promise(() => undefined));
+      mockParams.id = '43';
+      fireEvent.click(button('Update'));
+
+      await waitFor(() => expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument());
+    });
+
     it('reports why the suggestion could not be loaded', async () => {
       mockGetReplySuggestion.mockRejectedValue(new Error('suggestion boom'));
 
@@ -1174,10 +1226,9 @@ describe('SupportDashboardIssueScreen', () => {
   });
 
   it('leaves the author empty when there is no clerk at all', async () => {
-    mockGetClerks.mockResolvedValue([]);
     mockGetIssueData.mockResolvedValue(MINIMAL_ISSUE);
 
-    await renderScreen();
+    await renderScreen({ clerks: [] });
 
     expect((screen.getByTitle('Author') as HTMLSelectElement).value).toEqual('');
   });

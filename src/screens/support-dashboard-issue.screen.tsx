@@ -177,6 +177,15 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setUserTransactions([]);
   }, [issueData?.account.id]);
 
+  // Everything tied to one ticket is dropped when another one is opened: react-router keeps this
+  // component mounted across a change of the route parameter, so a suggestion of the previous
+  // ticket would stay on screen, and the author picked there would keep the default from ever
+  // applying again.
+  useEffect(() => {
+    setSuggestion(undefined);
+    isAuthorPickedRef.current = false;
+  }, [id]);
+
   async function openTemplatePicker(accountId: number): Promise<void> {
     if (userDataDetail) {
       setTemplatePickerOpen(true);
@@ -202,13 +211,16 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   // Polling for new messages (non-intrusive, sets pendingCount) and for a suggestion that arrived
   // while the ticket was open — a clerk sitting on the screen must not have to reload to see one.
+  // The suggestion is skipped while a decision is in flight: the answer would carry the state from
+  // before that decision, and putting it back on screen invites a second click, which the API then
+  // refuses as a conflict.
   useEffect(() => {
     const interval = setInterval(() => {
       pollForNewMessages();
-      loadSuggestion();
+      if (!isSuggestionBusy) loadSuggestion();
     }, 15000);
     return () => clearInterval(interval);
-  }, [pollForNewMessages, loadSuggestion]);
+  }, [pollForNewMessages, loadSuggestion, isSuggestionBusy]);
 
   // Scroll messages container to bottom when messages change (initial load, send, manual reload)
   useEffect(() => {
