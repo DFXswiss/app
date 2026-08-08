@@ -179,6 +179,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   useEffect(() => {
     suggestionEpochRef.current++;
     setSuggestion(undefined);
+    // the busy state belongs to the decision of the ticket that was left; carried over it would
+    // disable this ticket's buttons and pause its poll until that request finally settles
+    setIsSuggestionBusy(false);
     isAuthorPickedRef.current = false;
   }, [id]);
 
@@ -327,7 +330,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     } catch (e: unknown) {
       if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Suggestion update failed');
     } finally {
-      setIsSuggestionBusy(false);
+      // only the decision the screen is still on may clear the flag: a late answer from the ticket
+      // that was left would otherwise unblock the buttons while this ticket's decision is running
+      if (isCurrent()) setIsSuggestionBusy(false);
     }
   }
 

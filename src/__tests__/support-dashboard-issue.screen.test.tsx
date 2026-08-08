@@ -1107,6 +1107,10 @@ describe('SupportDashboardIssueScreen', () => {
       });
 
       expect(composer().value).toEqual('');
+      // the suggestion loaded for the ticket now open stays, and its buttons stay usable
+      expect(screen.getByText('Suggested reply')).toBeInTheDocument();
+      expect(button('Accept')).not.toBeDisabled();
+      expect(button('Discard')).not.toBeDisabled();
     });
 
     it('keeps a failed decision of the previous ticket out of the new one', async () => {
