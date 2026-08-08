@@ -1398,7 +1398,9 @@ export async function createLimitRequest(options: CreateLimitRequestOptions = {}
   let userDataId = options.userDataId;
 
   if (!jwt || !userDataId) {
-    const user = await createUser({ tag: options.tag ?? 'limit', kycLevel: 30, completePersonalData: true });
+    // LimitRequestService refuses below KYC level 50 ("Missing KYC"), and the point of this
+    // factory is to go through the real endpoint rather than the SQL fallback below.
+    const user = await createUser({ tag: options.tag ?? 'limit', kycLevel: 50, completePersonalData: true });
     jwt = user.jwt;
     userDataId = user.userDataId;
   }
@@ -1454,13 +1456,14 @@ export async function createLimitRequest(options: CreateLimitRequestOptions = {}
       return { limitRequestId: res.limitRequest.id, supportIssueUid: res.uid };
     }
   } catch (err) {
-    // Fall through to SQL only when the account has no mail (API 400 "Mail is missing").
-    // Any other failure (auth, 5xx, schema change, network) must surface — not look like success.
-    if (
-      !(err instanceof Error && err.message.includes('HTTP 400') && err.message.includes('Mail is missing'))
-    ) {
-      throw err;
-    }
+    // Fall through to SQL only for the two preconditions a caller-supplied account can legitimately
+    // fail: no mail address, or a KYC level below what LimitRequestService requires. Any other
+    // failure (auth, 5xx, schema change, network) must surface — not look like success.
+    const precondition =
+      err instanceof Error &&
+      err.message.includes('HTTP 400') &&
+      (err.message.includes('Mail is missing') || err.message.includes('Missing KYC'));
+    if (!precondition) throw err;
   }
 
   // SQL fallback: limit_request + support_issue (limit_request has OneToOne from support_issue)

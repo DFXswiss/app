@@ -341,6 +341,9 @@ test.describe('SEPA + misc e2e', () => {
   });
 
   test('/sepa/manual valid form upload stores bank_tx', async ({ page }) => {
+    // The Upload button becomes enabled with every required field filled and valid, and clicking
+    // it sends no request at all — reported to the team. Remove test.fail once it does.
+    test.fail(true, 'The /sepa/manual upload button sends no request; nothing reaches the API.');
     test.setTimeout(45000);
     const { jwt } = await loginAs('Admin');
     await openScreen(page, '/sepa/manual', jwt);

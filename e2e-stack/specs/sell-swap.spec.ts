@@ -217,21 +217,16 @@ async function setupSellFullUiFlow(
 
   const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
 
-  // Pre-fill via URL params so amount/asset/currency are set without fragile dropdown clicks.
-  // Deliberately do NOT wait for 'networkidle' here: pre-filling amount + asset + currency +
-  // bank-account all at once drives sell.screen.tsx's SPEND/GET-data-changed effects into a
-  // repeating receiveFor() cycle (each response can update the very fields the effects watch),
-  // so the network never truly goes idle — a real, reportable behavior of this screen, not a
-  // flake. Content-based waits below are what actually gate this test.
-  await gotoWithSession(
-    page,
-    `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}`,
-    user.jwt,
-  );
+  // Pre-fill amount, asset and currency via URL params so the form is complete without fragile
+  // dropdown clicks. The bank account is deliberately NOT passed as a parameter: the account
+  // created above is picked up on its own, and adding `bank-account` to this URL makes the screen
+  // create bank accounts in an endless loop and never price anything — see the dedicated test at
+  // the end of this file. Do not wait for 'networkidle' either: pricing effects keep the network
+  // busy on this screen, so content-based waits are what gate these tests.
+  await gotoWithSession(page, `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1`, user.jwt);
   expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
 
   await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
-  // Bank account should resolve (pre-created or created from bank-account param).
   await expect(page.getByText(/CH93|CH 93/i).first()).toBeVisible({ timeout: 15000 });
 
   return { user, paymentInfos };
@@ -534,10 +529,6 @@ test.describe('Sell + Swap e2e', () => {
   });
 
   test('/sell full UI flow: payment panel renders after paymentInfos', async ({ page }) => {
-    test.fail(
-      true,
-      'PUT /sell/paymentInfos is unreliable under loc (mocked outbound HTTP); payment panel often never renders',
-    );
     test.setTimeout(90000);
     const { paymentInfos } = await setupSellFullUiFlow(page, 'sell-ui-panel');
 
@@ -616,10 +607,6 @@ test.describe('Sell + Swap e2e', () => {
   test('/sell/info with valid query params: renders Transaction Details / Payment Information', async ({
     page,
   }) => {
-    test.fail(
-      true,
-      'PUT /sell/paymentInfos is unreliable under loc (mocked outbound HTTP); panel content often never renders',
-    );
     test.setTimeout(75000);
     const { paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-panel');
 
@@ -763,10 +750,6 @@ test.describe('Sell + Swap e2e', () => {
   });
 
   test('/swap full UI flow: payment panel renders after paymentInfos', async ({ page }) => {
-    test.fail(
-      true,
-      'PUT /swap/paymentInfos is unreliable under loc (mocked outbound HTTP); payment panel often never renders',
-    );
     test.setTimeout(90000);
     const { paymentInfos } = await setupSwapFullUiFlow(page, 'swap-ui-panel');
 
@@ -812,41 +795,70 @@ test.describe('Sell + Swap e2e', () => {
 
     await gotoWithSession(
       page,
-      `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}`,
+      `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1`,
       user.jwt,
     );
 
-    // Must actually redirect to /profile, or show the documented "Ident data incomplete" hint --
-    // remaining on /sell without either is a failure, not an acceptable alternative outcome.
+    // The screen either sends the user to /profile or keeps them on /sell behind an "Enter user
+    // data" call to action. Staying on /sell with neither — and therefore with a payment panel
+    // the account is not entitled to — is a failure, not an acceptable third outcome.
     await expect
       .poll(
         async () => {
-          const currentPath = normPath(new URL(page.url()).pathname);
-          if (currentPath === '/profile') return 'profile';
-          const body = await page.locator('body').innerText();
-          if (/Ident data incomplete/i.test(body)) return 'hint';
+          if (normPath(new URL(page.url()).pathname) === '/profile') return 'profile';
+          if (await page.getByRole('button', { name: 'Enter user data' }).isVisible().catch(() => false)) {
+            return 'cta';
+          }
           return 'pending';
         },
         {
           timeout: 25000,
-          message: 'incomplete personal data must redirect /sell to /profile or show "Ident data incomplete"',
+          message: 'incomplete personal data must send /sell to /profile or show the "Enter user data" call to action',
         },
       )
       .not.toBe('pending');
 
-    const path = normPath(new URL(page.url()).pathname);
-    const body = await page.locator('body').innerText();
-    if (path === '/profile') {
-      expect(path).toBe('/profile');
-    } else {
-      expect(
-        /Ident data incomplete/i.test(body),
-        'must show the "Ident data incomplete" hint if not redirected to /profile',
-      ).toBe(true);
-      // Must not show the completion payment panel without complete data.
+    if (normPath(new URL(page.url()).pathname) !== '/profile') {
+      await expect(page.getByRole('button', { name: 'Enter user data' })).toBeVisible();
+      // Whichever way it goes, the account must not be handed a panel to pay into.
       await expect(
         page.getByRole('button', { name: /Click here once you have issued the transaction/i }),
       ).toHaveCount(0);
     }
+  });
+
+  test('/sell?bank-account=<iban> selects the account once instead of recreating it', async ({ page }) => {
+    // Measured: the screen answers this parameter by posting /v1/bankAccount over and over — more
+    // than thirty times in twenty seconds — and never gets as far as requesting payment
+    // information, so the sell flow cannot complete at all when the link carries the parameter.
+    // Reported to the team. Remove test.fail() once one request is enough.
+    test.fail(true, 'A bank-account deep link makes /sell create bank accounts in a loop and never price.');
+    test.setTimeout(75000);
+
+    const user = await createUser({
+      walletIndex: nextWalletIndex(),
+      tag: 'sell-ba-param',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Sell BA param' });
+
+    let bankAccountPosts = 0;
+    page.on('response', (res) => {
+      if (res.request().method() === 'POST' && res.url().includes('/v1/bankAccount')) bankAccountPosts += 1;
+    });
+    const paymentInfos = trackPaymentInfosResponses(page, 'paymentInfos');
+
+    await gotoWithSession(
+      page,
+      `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=${encodeURIComponent(TEST_IBAN)}`,
+      user.jwt,
+    );
+    await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
+    await page.waitForTimeout(20000);
+
+    expect(bankAccountPosts, 'an existing bank account must not be created again').toBeLessThanOrEqual(1);
+    expect(paymentInfos.last, 'the screen must get as far as requesting payment information').toBeTruthy();
   });
 });
