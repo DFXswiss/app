@@ -56,6 +56,15 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # The suite sits outside the repo's own tsconfig and ESLint globs (both scoped to src/),
+      # so nothing else in CI type-checks it. Doing it here costs under a minute and fails on a
+      # type error before the run spends eight on Docker.
+      - name: Type-check the harness
+        working-directory: e2e-stack
+        run: |
+          npm ci
+          npx tsc --noEmit
+
       # run.sh is not used here: its EXIT trap tears the stack down with
       # `docker compose down -v`, which destroys the named volumes that hold
       # Playwright traces, screenshots, videos, and the HTML report before they
