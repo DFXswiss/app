@@ -7,7 +7,7 @@
  * quotes come from getAdminQuotes backed by the unreachable subgraph; no factory seeds them.
  */
 
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { apiGet, expect, gotoWithSession, loginAs, openScreen, queryOne, test } from './fixtures';
 import { cleanupCreatedData, createSupportIssue, createUser } from './fixtures/factories';
 
@@ -97,7 +97,7 @@ async function ensureStaffKycClearance(userDataId: number, roleLabel: string): P
 }
 
 // thead <th> cells map to ARIA role "cell" in this app, not "columnheader".
-function tableHeader(page: Page, label: string) {
+function tableHeader(page: Page, label: string): Locator {
   return page.locator('thead').getByText(label, { exact: true });
 }
 
@@ -149,7 +149,7 @@ test.describe('RealUnit area', () => {
   // realunit.context.tsx have no .catch(), so a rejected subgraph request leaves holders empty and
   // tokenInfo undefined — the spinner never clears; "RealUnit Support" and the rest never mount.
   // Observed: expect(getByRole('button', { name: 'RealUnit Support' })).toBeVisible() timeout 15s.
-  test.fixme('/realunit empty state — stuck on spinner forever (fetchHolders/fetchTokenInfo no .catch; RealUnit Support never mounts)', async ({
+  test.fail('/realunit empty state — stuck on spinner forever (fetchHolders/fetchTokenInfo no .catch; RealUnit Support never mounts)', async ({
     page,
   }) => {
     const { jwt } = await loginAs('RealUnit');
@@ -171,7 +171,7 @@ test.describe('RealUnit area', () => {
 
   // CONFIRMED product bug (live uncaught pageerror): fetchHolders() has no .catch() in
   // realunit.context.tsx. Observed: ApiException: Cannot read properties of undefined (reading 'document').
-  test.fixme('/realunit/holders empty state — uncaught ApiException from fetchHolders() (no .catch; reading document)', async ({
+  test.fail('/realunit/holders empty state — uncaught ApiException from fetchHolders() (no .catch; reading document)', async ({
     page,
   }) => {
     const { jwt } = await loginAs('RealUnit');
@@ -268,7 +268,7 @@ test.describe('RealUnit area', () => {
   // CONFIRMED product bug (live uncaught pageerror): fetchAccountHistory() has no .catch() in
   // realunit.context.tsx. Observed: ApiException: Cannot read properties of undefined (reading 'document').
   // (fetchAccountSummary does catch and would yield "No data available" if history did not crash first.)
-  test.fixme('/realunit/user/:address empty state — uncaught ApiException from fetchAccountHistory() (no .catch; reading document)', async ({
+  test.fail('/realunit/user/:address empty state — uncaught ApiException from fetchAccountHistory() (no .catch; reading document)', async ({
     page,
   }) => {
     const { jwt } = await loginAs('RealUnit');

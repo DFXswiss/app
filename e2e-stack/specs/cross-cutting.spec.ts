@@ -353,12 +353,17 @@ test.describe('Cross-cutting', () => {
       await expectParamStripped(page, 'assets');
 
       // Observable effect: get-side asset control shows ETH (or Ethereum-chain asset preselection).
+      // The get-side asset field is a StyledSearchDropdown whose trigger is an <input type="text">,
+      // NOT button#dropDownButton -- that id belongs to the wallet-address StyledDropdown, which is
+      // always present and unrelated to asset-out (see buy.spec.ts readOpenSearchDropdownOptions /
+      // chooseFromSectionSearchDropdown). Asserting on button#dropDownButton could pass even if
+      // asset-out had no effect at all.
       await expect(page.getByRole('heading', { name: /You get/ })).toBeVisible({ timeout: 20000 });
       const getSide = page.locator('h2', { hasText: /You get/ }).locator('..');
-      const assetTrigger = getSide.locator('button#dropDownButton').first();
-      await expect(assetTrigger).toBeVisible({ timeout: 15000 });
+      const assetInput = getSide.locator('input[type="text"]').first();
+      await expect(assetInput).toBeVisible({ timeout: 15000 });
       await expect
-        .poll(async () => (await assetTrigger.innerText()).toUpperCase(), {
+        .poll(async () => (await assetInput.inputValue()).toUpperCase(), {
           message: 'asset-out=ETH should preselect an ETH-like asset on the buy form',
           timeout: 20000,
         })
@@ -643,12 +648,14 @@ test.describe('Cross-cutting', () => {
         }
       }
 
-      // Acceptable: never stored, cleared, redirected, login UI, or API rejected the identity.
-      const notEffectivelyAuthed =
-        !tokenAfter || path !== '/account' || path.startsWith('/login') || loginVisible || sawApi401;
+      // Acceptable: token never stored/cleared, redirected away, or login UI shown. A 401 observed
+      // on the wire (sawApi401) does NOT by itself prove the app left the protected state -- it is
+      // reported in the failure message for diagnostics only, not treated as sufficient.
+      const notEffectivelyAuthed = !tokenAfter || path !== '/account' || loginVisible;
       expect(
         notEffectivelyAuthed,
-        `expired JWT must not act as a working session (path=${path}, tokenInitial=${Boolean(tokenInitial)}, tokenAfter=${Boolean(tokenAfter)}, sawApi401=${sawApi401})`,
+        `expired JWT must not act as a working session (path=${path}, tokenInitial=${Boolean(tokenInitial)}, ` +
+          `tokenAfter=${Boolean(tokenAfter)}, sawApi401=${sawApi401})`,
       ).toBe(true);
     });
   });

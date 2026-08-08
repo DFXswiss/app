@@ -35,8 +35,8 @@ test.describe('e2e-stack smoke', () => {
 
     await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
-    // Root shell is present (body rendered). Title may vary by env; body content is the stable check.
-    await expect(page.locator('body')).not.toBeEmpty();
+    // Root shell is present (#app-root from layout.tsx) — not just a non-empty body (nginx errors count too).
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 15000 });
     expect(pageErrors, `uncaught pageerror during load: ${pageErrors.join('; ')}`).toEqual([]);
     expect(consoleErrors, `console error during load: ${consoleErrors.join('; ')}`).toEqual([]);
 
@@ -53,11 +53,11 @@ test.describe('e2e-stack smoke', () => {
     await waitForRow('SELECT id, address, role FROM "user" WHERE address = $1', [wallet.address]);
     await gotoWithSession(page, '/', jwt);
     // gotoWithSession already asserted localStorage["dfx.authenticationToken"].
-    // Additional page-level signal: token still present after hydration and body is non-empty.
+    // Additional page-level signal: token still present after hydration and app shell is visible.
     await page.waitForLoadState('networkidle');
     const tokenAfterSig = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
     expect(tokenAfterSig, 'signature session token should remain in localStorage').toBeTruthy();
-    await expect(page.locator('body')).not.toBeEmpty();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 15000 });
 
     // 4) Mail login -> notification OTP path -> session -> user_data row.
     const email = testEmail('smoke');
@@ -68,6 +68,11 @@ test.describe('e2e-stack smoke', () => {
     await page.waitForLoadState('networkidle');
     const tokenAfterMail = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
     expect(tokenAfterMail, 'mail session token should remain in localStorage').toBeTruthy();
-    await expect(page.locator('body')).not.toBeEmpty();
+    await expect(page.locator('#app-root')).toBeVisible({ timeout: 15000 });
+
+    // Re-assert error lists at the END of the whole chain -- the listeners have stayed active
+    // through every navigation above (steps 2-4), not just the first page load.
+    expect(pageErrors, `uncaught pageerror during full chain: ${pageErrors.join('; ')}`).toEqual([]);
+    expect(consoleErrors, `console error during full chain: ${consoleErrors.join('; ')}`).toEqual([]);
   });
 });

@@ -6,7 +6,7 @@
  * Promise.all; overview / live / liquidity catch load errors and degrade cleanly.
  */
 
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { apiGet, expect, gotoWithSession, loginAs, openScreen, queryOne, test } from './fixtures';
 
 /** Routes owned by this lane's dashboard half (8 paths). */
@@ -94,7 +94,7 @@ async function ensureStaffKycClearance(userDataId: number, roleLabel: string): P
 }
 
 // thead <th> cells map to ARIA role "cell" in this app, not "columnheader".
-function tableHeader(page: Page, label: string) {
+function tableHeader(page: Page, label: string): Locator {
   return page.locator('thead').getByText(label, { exact: true });
 }
 

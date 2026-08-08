@@ -309,12 +309,13 @@ test.describe('Payment links / routes / invoice', () => {
     });
 
     // API contract check: GET /paymentLink must expose a real bech32 lnurl for the link (this is
-    // what the "Payment Links" list on /routes turns into the `?lightning=` param). Navigating
-    // the browser to that lnurl is NOT exercised here: the API bakes it from Config.url(), which
-    // under ENVIRONMENT=loc resolves to `http://localhost:<port>` (see
-    // api/src/config/config.ts `url()`) -- reachable on a developer's own machine, but not from
-    // this harness's browser process, which runs inside the separate `tests` container. See the
-    // dedicated fixme test below for that specific, harness-only limitation.
+    // what the "Payment Links" list on /routes turns into the `?lightning=` param). Navigating the
+    // browser to that lnurl is exercised separately below (see the test "/pl: the real lightning=
+    // URL from GET /paymentLink now resolves through the tests-container forwarder"): the API bakes
+    // the lnurl from Config.url(), which under ENVIRONMENT=loc resolves to `http://localhost:<port>`
+    // (see api/src/config/config.ts `url()`) -- the tests image runs a socat forwarder on
+    // 127.0.0.1:3000 to the real api service, so the browser process, which runs inside that same
+    // container, resolves `localhost:3000` correctly too. Not a harness limitation anymore.
     const dto = await fetchPaymentLinkDto(user.jwt, pl.uniqueId, pl.paymentLinkId);
     expect(dto.lnurl, 'API must return a bech32 lnurl for the link').toBeTruthy();
 

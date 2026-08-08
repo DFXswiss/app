@@ -144,7 +144,10 @@ function buildMinimalCamt053(opts: {
 </Document>`;
 }
 
-async function fillSepaManualRequiredFields(page: Page, opts: { accountIban: string; counterpartyIban: string }) {
+async function fillSepaManualRequiredFields(
+  page: Page,
+  opts: { accountIban: string; counterpartyIban: string },
+): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
 
   // Date / amount inputs (type=date | number) — use labels via nearby text + following input.
@@ -244,7 +247,7 @@ test.describe('SEPA + misc e2e', () => {
     await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 }).toBe('/sepa/manual');
   });
 
-  test('/sepa XML upload stores bank_tx (or fixme with API error)', async ({ page }) => {
+  test('/sepa XML upload stores bank_tx', async ({ page }) => {
     const { jwt } = await loginAs('Admin');
     await openScreen(page, '/sepa', jwt);
 
@@ -281,35 +284,25 @@ test.describe('SEPA + misc e2e', () => {
     await nextBtn.click();
 
     const res = await responsePromise.catch(() => null);
-    const status = res?.status();
-    const body = res ? await res.text().catch(() => '') : '';
+    expect(res, '/sepa Upload click must produce a POST /bankTx request').toBeTruthy();
+    const status = res!.status();
+    const body = await res!.text().catch(() => '');
 
-    if (status && status >= 200 && status < 300) {
-      // Uploaded notification + bank_tx row (accountServiceRef from AcctSvcrRef).
-      await expect(page.getByText('Uploaded', { exact: true })).toBeVisible({ timeout: 15000 });
-      const row = await waitForRow<{ id: number; remittanceInfo: string | null }>(
-        `SELECT id, "remittanceInfo" AS "remittanceInfo" FROM bank_tx
-         WHERE "remittanceInfo" = $1 OR "accountServiceRef" LIKE $2
-         ORDER BY id DESC LIMIT 1`,
-        [remittance, 'e2e-%'],
-        20000,
-      );
-      expect(row.id).toBeGreaterThan(0);
-      return;
-    }
+    // No documented environment limitation applies to this write path (unlike sell/swap pricing,
+    // which depends on mocked outbound HTTP under ENVIRONMENT=loc) -- a non-2xx response here is a
+    // real failure, not an expected gap.
+    expect(status, `POST /bankTx must succeed: HTTP ${status} -- ${body.slice(0, 400)}`).toBeGreaterThanOrEqual(200);
+    expect(status, `POST /bankTx must succeed: HTTP ${status} -- ${body.slice(0, 400)}`).toBeLessThan(300);
 
-    // Screen still handled the upload attempt — surface the real API failure.
-    const errorHint = page.locator('p.text-dfxGray-800.text-sm');
-    const uiError = (
-      (await errorHint
-        .first()
-        .textContent()
-        .catch(() => null)) ?? ''
-    ).trim();
-    test.fixme(
-      true,
-      `/sepa POST bankTx did not succeed: HTTP ${status ?? 'no-response'} — ${body.slice(0, 400) || uiError || 'no body'}`,
+    await expect(page.getByText('Uploaded', { exact: true })).toBeVisible({ timeout: 15000 });
+    const row = await waitForRow<{ id: number; remittanceInfo: string | null }>(
+      `SELECT id, "remittanceInfo" AS "remittanceInfo" FROM bank_tx
+       WHERE "remittanceInfo" = $1 OR "accountServiceRef" LIKE $2
+       ORDER BY id DESC LIMIT 1`,
+      [remittance, 'e2e-%'],
+      20000,
     );
+    expect(row.id).toBeGreaterThan(0);
   });
 
   // ---------------------------------------------------------------------------
@@ -347,7 +340,7 @@ test.describe('SEPA + misc e2e', () => {
     await expect(page.getByRole('button', { name: 'Upload' })).toBeDisabled();
   });
 
-  test('/sepa/manual valid form upload stores bank_tx (or fixme with API error)', async ({ page }) => {
+  test('/sepa/manual valid form upload stores bank_tx', async ({ page }) => {
     test.setTimeout(45000);
     const { jwt } = await loginAs('Admin');
     await openScreen(page, '/sepa/manual', jwt);
@@ -373,44 +366,26 @@ test.describe('SEPA + misc e2e', () => {
     await uploadBtn.click();
 
     const res = await responsePromise.catch(() => null);
-    if (!res) {
-      // No POST observed at all within 12s — the click did not produce a request (or it was much
-      // slower than every other admin-upload call in this suite, which all resolve in well under
-      // a second). Real, reportable behavior either way; do not wait out the full test timeout.
-      test.fixme(
-        true,
-        '/sepa/manual Upload click produced no POST /bankTx request within 12s (button was enabled ' +
-          'and all required fields were filled) — investigate the onSubmit wiring on this screen.',
-      );
-      return;
-    }
-    const status = res.status();
-    const body = await res.text().catch(() => '');
+    expect(
+      res,
+      '/sepa/manual Upload click must produce a POST /bankTx request (button was enabled and all ' +
+        'required fields were filled)',
+    ).toBeTruthy();
+    const status = res!.status();
+    const body = await res!.text().catch(() => '');
 
-    if (status >= 200 && status < 300) {
-      await expect(page.getByText('Uploaded', { exact: true })).toBeVisible({ timeout: 15000 });
-      const row = await waitForRow<{ id: number }>(
-        `SELECT id FROM bank_tx
-         WHERE "remittanceInfo" = $1 OR "accountServiceRef" LIKE $2
-         ORDER BY id DESC LIMIT 1`,
-        [`E2E-MANUAL-${remittanceTag}`, 'e2e-%'],
-        20000,
-      );
-      expect(row.id).toBeGreaterThan(0);
-      return;
-    }
+    expect(status, `POST /bankTx must succeed: HTTP ${status} -- ${body.slice(0, 400)}`).toBeGreaterThanOrEqual(200);
+    expect(status, `POST /bankTx must succeed: HTTP ${status} -- ${body.slice(0, 400)}`).toBeLessThan(300);
 
-    const errorHint = page.locator('p.text-dfxGray-800.text-sm');
-    const uiError = (
-      (await errorHint
-        .first()
-        .textContent()
-        .catch(() => null)) ?? ''
-    ).trim();
-    test.fixme(
-      true,
-      `/sepa/manual POST bankTx did not succeed: HTTP ${status ?? 'no-response'} — ${body.slice(0, 400) || uiError || 'no body'}`,
+    await expect(page.getByText('Uploaded', { exact: true })).toBeVisible({ timeout: 15000 });
+    const row = await waitForRow<{ id: number }>(
+      `SELECT id FROM bank_tx
+       WHERE "remittanceInfo" = $1 OR "accountServiceRef" LIKE $2
+       ORDER BY id DESC LIMIT 1`,
+      [`E2E-MANUAL-${remittanceTag}`, 'e2e-%'],
+      20000,
     );
+    expect(row.id).toBeGreaterThan(0);
   });
 
   // ---------------------------------------------------------------------------
@@ -448,7 +423,7 @@ test.describe('SEPA + misc e2e', () => {
     await expect(page.getByRole('button', { name: 'Download' })).toBeDisabled();
   });
 
-  test('/stickers valid Lightning payment route validates (optional success path)', async ({ page }) => {
+  test('/stickers valid Lightning payment route validates and enables Download', async ({ page }) => {
     // createPaymentLink inserts a Lightning deposit_route + payment_link (SQL factory).
     const user = await createUser({
       walletIndex: nextWalletIndex(),
@@ -466,41 +441,18 @@ test.describe('SEPA + misc e2e', () => {
     await routeInput.fill(String(pl.routeId));
     await routeInput.blur();
 
-    // Success: checkmark icon appears (validatedRecipient set); error paragraph must not show.
-    // Allow either success or a clear API failure (route lookup can be picky about relations).
-    const errorText = page.getByText(/DFX does not recognize a recipient with the name/i);
-    const started = Date.now();
-    let validated = false;
-    while (Date.now() - started < 15000) {
-      if (await errorText.isVisible().catch(() => false)) break;
-      // Checkmark is a DfxIcon next to the route input; presence of validated state also enables
-      // Download only together with externalIds — so assert absence of error after debounce.
-      const stillLoading = await page.locator('.animate-spin').count();
-      if (stillLoading === 0) {
-        // No error after debounce → treat as success if download can eventually enable with externalIds.
-        if (!(await errorText.isVisible().catch(() => false))) {
-          validated = true;
-          break;
-        }
-      }
-      await page.waitForTimeout(400);
-    }
-
-    if (!validated || (await errorText.isVisible().catch(() => false))) {
-      const msg = ((await errorText.textContent().catch(() => null)) ?? 'recipient validation failed').trim();
-      test.fixme(true, `/stickers valid routeId=${pl.routeId} did not validate recipient: ${msg.slice(0, 300)}`);
-      return;
-    }
-
-    // Fill external IDs so Download enables (both route + externalIds required).
+    // Fill external IDs too -- Download requires BOTH a validated route AND isValid (route +
+    // externalIds; see stickers.screen.tsx: disabled={!isValid || !validatedRecipient || ...}), so
+    // an enabled Download button is a real, hard success signal. It cannot be true before the
+    // debounced validation request has even started, unlike "no spinner and no error visible yet".
     await page.locator('input[name="externalIds"]').fill(pl.uniqueId);
     await page.locator('input[name="externalIds"]').blur();
-    // Download may still need validatedRecipient — if enabled, we have proven the success path.
+
+    const errorText = page.getByText(/DFX does not recognize a recipient with the name/i);
     const downloadBtn = page.getByRole('button', { name: 'Download' });
-    // validatedRecipient alone is enough proof; Download also needs isValid + validatedRecipient.
+
+    await expect(downloadBtn).toBeEnabled({ timeout: 15000 });
     await expect(errorText).toHaveCount(0);
-    // Soft: button may remain disabled if language/type defaults incomplete — route validation is the contract.
-    void downloadBtn;
   });
 
   // ---------------------------------------------------------------------------

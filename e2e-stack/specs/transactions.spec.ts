@@ -99,17 +99,33 @@ test('transaction list shows buy and sell rows with expected labels and amounts'
 
   await expect(page.getByRole('heading', { name: 'Your Transactions', exact: true })).toBeVisible();
 
-  const buyRow = page.locator('div').filter({ hasText: '111' }).filter({ hasText: 'CHF' }).first();
+  // Row title containers use this exact class combo (transaction.screen.tsx StyledCollapsible
+  // titleContent) and are siblings, not nested inside each other -- unlike a bare `div` filter,
+  // which also matches enclosing list/date-group containers and can hand back type/status text
+  // belonging to a different transaction than the one identified by amount+asset.
+  const buyRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '111' })
+    .filter({ hasText: 'CHF' })
+    .first();
   await expect(buyRow).toBeVisible();
   await expect(buyRow.getByText('Buy', { exact: true }).first()).toBeVisible();
   await expect(buyRow.getByText('Completed', { exact: true }).first()).toBeVisible();
 
-  const sellRow = page.locator('div').filter({ hasText: '222' }).filter({ hasText: 'ETH' }).first();
+  const sellRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '222' })
+    .filter({ hasText: 'ETH' })
+    .first();
   await expect(sellRow).toBeVisible();
   await expect(sellRow.getByText('Sell', { exact: true }).first()).toBeVisible();
   await expect(sellRow.getByText('DFX check pending', { exact: true }).first()).toBeVisible();
 
-  const pendingRow = page.locator('div').filter({ hasText: '333' }).filter({ hasText: 'CHF' }).first();
+  const pendingRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '333' })
+    .filter({ hasText: 'CHF' })
+    .first();
   await expect(pendingRow).toBeVisible();
   await expect(pendingRow.getByText('Buy', { exact: true }).first()).toBeVisible();
   await expect(pendingRow.getByText('DFX check pending', { exact: true }).first()).toBeVisible();

@@ -182,7 +182,9 @@ test.describe('Widget mode — frontend-widget build', () => {
     expect(pageErrors, `uncaught pageerror on widget mount: ${pageErrors.join('; ')}`).toEqual([]);
   });
 
-  test('widget reacts to attribute changes (lang, session, service) without page URL navigation', async ({ page }) => {
+  test('widget accepts lang/session/service attribute changes at runtime without crashing or navigating the host page', async ({
+    page,
+  }) => {
     await allowWidgetHost(page);
 
     const pageErrors: string[] = [];
@@ -193,23 +195,37 @@ test.describe('Widget mode — frontend-widget build', () => {
 
     const urlBefore = page.url();
 
-    // Light-DOM attributes live outside the closed shadow root — roundtrip is externally observable.
-    // MemoryRouter keeps navigation in memory: attribute changes must not touch the address bar.
+    // Only the light-DOM attributes are externally observable at all (closed shadow root, proven
+    // above). Even that is limited: App.tsx's `hasNavigatedHomeRef` only reads `params.service` on
+    // the FIRST render and never re-navigates afterwards, so a `service` change after mount cannot
+    // be proven to have any internal effect either from out here. What this test can honestly
+    // assert: setting all three attributes after mount does not throw, does not navigate the host
+    // page (MemoryRouter), and the widget stays mounted with a non-zero box. It intentionally does
+    // NOT claim these attributes are "reactive" -- that would require reading rendered content
+    // inside the closed shadow root, which Playwright cannot do.
     await page.evaluate(() => {
       const el = document.querySelector('dfx-services');
       if (!el) throw new Error('dfx-services host missing');
       el.setAttribute('service', 'sell');
       el.setAttribute('lang', 'de');
+      el.setAttribute('session', 'e2e-widget-attr-smoke-session');
     });
     await page.waitForTimeout(1500);
 
     const serviceAttr = await page.evaluate(
       () => document.querySelector('dfx-services')?.getAttribute('service') ?? null,
     );
-    expect(serviceAttr, 'service attribute roundtrip').toBe('sell');
+    expect(serviceAttr, 'service attribute must still be set on the host element').toBe('sell');
 
     const langAttr = await page.evaluate(() => document.querySelector('dfx-services')?.getAttribute('lang') ?? null);
-    expect(langAttr, 'lang attribute roundtrip').toBe('de');
+    expect(langAttr, 'lang attribute must still be set on the host element').toBe('de');
+
+    const sessionAttr = await page.evaluate(
+      () => document.querySelector('dfx-services')?.getAttribute('session') ?? null,
+    );
+    expect(sessionAttr, 'session attribute must still be set on the host element').toBe(
+      'e2e-widget-attr-smoke-session',
+    );
 
     expect(page.url(), 'MemoryRouter must not change the browser URL').toBe(urlBefore);
 

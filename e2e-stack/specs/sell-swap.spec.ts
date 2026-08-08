@@ -41,32 +41,47 @@ function nextWalletIndex(): number {
 }
 
 /**
- * The shared e2e stack seeds a small, fixed pool of EVM deposit addresses (global.setup.ts,
- * typically 5) shared by every blockchain and every spec file in a run. This file alone can
- * exhaust it (two explicit createSell/createSwap proofs, plus incidental background pricing
- * triggered by fully-populated /sell forms in other tests). Treat exhaustion as an environment-
- * capacity limit, not a product bug: surface it as `test.fixme` with the real error instead of
- * failing hard, so a tight pool degrades this file's coverage gracefully instead of breaking it.
+ * The shared e2e stack seeds a large but finite pool of EVM deposit addresses (global.setup.ts,
+ * DEPOSIT_ADDRESS_POOL_SIZE) shared by every blockchain and every spec file in a run. If that pool
+ * is ever exhausted, surface it as a clear, actionable test failure -- not a silent skip -- so a
+ * too-small pool breaks the run loudly instead of quietly degrading coverage. Any other failure
+ * (auth, 500, schema change, ...) is rethrown unchanged.
  */
 async function safeCreateSell(
   jwt: string,
   opts: Parameters<typeof createSell>[1],
-): Promise<{ ok: true; result: Awaited<ReturnType<typeof createSell>> } | { ok: false; reason: string }> {
+): Promise<Awaited<ReturnType<typeof createSell>>> {
   try {
-    return { ok: true, result: await createSell(jwt, opts) };
+    return await createSell(jwt, opts);
   } catch (e: unknown) {
-    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+    const message = e instanceof Error ? e.message : String(e);
+    if (message.includes('No unused deposit address')) {
+      throw new Error(
+        `createSell: shared EVM deposit pool exhausted (${message}). Increase ` +
+          `DEPOSIT_ADDRESS_POOL_SIZE in e2e-stack/specs/global.setup.ts -- the current pool is too ` +
+          `small for this suite.`,
+      );
+    }
+    throw e;
   }
 }
 
 async function safeCreateSwap(
   jwt: string,
   opts: Parameters<typeof createSwap>[1],
-): Promise<{ ok: true; result: Awaited<ReturnType<typeof createSwap>> } | { ok: false; reason: string }> {
+): Promise<Awaited<ReturnType<typeof createSwap>>> {
   try {
-    return { ok: true, result: await createSwap(jwt, opts) };
+    return await createSwap(jwt, opts);
   } catch (e: unknown) {
-    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+    const message = e instanceof Error ? e.message : String(e);
+    if (message.includes('No unused deposit address')) {
+      throw new Error(
+        `createSwap: shared EVM deposit pool exhausted (${message}). Increase ` +
+          `DEPOSIT_ADDRESS_POOL_SIZE in e2e-stack/specs/global.setup.ts -- the current pool is too ` +
+          `small for this suite.`,
+      );
+    }
+    throw e;
   }
 }
 function apiBase(): string {
@@ -337,7 +352,14 @@ test.describe('Sell + Swap e2e', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('/sell currency dropdown vs GET /v1/fiat sellable (reports buyable-filter bug if present)', async ({ page }) => {
+  test('/sell currency dropdown offers non-sellable fiats (sell.hook filters buyable, not sellable)', async ({
+    page,
+  }) => {
+    // CONFIRMED product bug: sell.hook.js's currency dropdown filters options on
+    // buyable || cardBuyable || instantBuyable instead of sellable, so it can offer fiats that
+    // POST /sell would reject. Remove this test.fail() once the hook filters on `sellable`.
+    test.fail(true, 'sell.hook.js filters currency options on buyable||cardBuyable||instantBuyable, not sellable');
+
     const user = await createUser({
       walletIndex: nextWalletIndex(),
       tag: 'sell-fiat',
@@ -347,18 +369,12 @@ test.describe('Sell + Swap e2e', () => {
     });
     const fiats = await fetchFiats();
     const sellableNames = fiats.filter((f) => f.sellable).map((f) => f.name);
-    const buyableFilterNames = fiats.filter((f) => f.buyable || f.cardBuyable || f.instantBuyable).map((f) => f.name);
     expect(sellableNames.length, 'seed must have sellable fiats').toBeGreaterThan(0);
 
     await openScreen(page, '/sell', user.jwt);
     await expect(page.getByText(/You get( about)?/)).toBeVisible({ timeout: 15000 });
 
-    // Currency dropdown is in the "You get" row; default currency button shows a fiat code (e.g. CHF).
     const fiatCodes = fiats.map((f) => f.name);
-    // All fiat codes are exactly 3 letters, so a plain prefix match is unambiguous — no `\\b`:
-    // React strips the whitespace JSX text node between the code and its description <p>s, so the
-    // rendered button's raw textContent is "EUREuro", not "EUR Euro" (the pretty accessibility-tree
-    // dump inserts a space that plain textContent-based `hasText` matching does not).
     const currencyBtn = page
       .getByRole('button')
       .filter({ hasText: new RegExp(`^(${fiatCodes.join('|')})`) })
@@ -371,23 +387,8 @@ test.describe('Sell + Swap e2e', () => {
     const offered = fiatCodes.filter((code) => optionTexts.some((t) => t === code || t.startsWith(code)));
     expect(offered.length, 'currency dropdown should list at least one fiat').toBeGreaterThan(0);
 
-    const nonSellableOffered = offered.filter((name) => !sellableNames.includes(name));
-    const matchesBuyableFilter =
-      offered.every((n) => buyableFilterNames.includes(n)) && buyableFilterNames.some((n) => offered.includes(n));
-
-    if (nonSellableOffered.length > 0) {
-      // sell.hook filters buyable||cardBuyable||instantBuyable instead of sellable — real product bug.
-      test.fixme(
-        true,
-        `Sell currency dropdown offers non-sellable fiats (observed: ${nonSellableOffered.join(', ')}); ` +
-          `sellable seed=[${sellableNames.join(', ')}], buyable-filter seed=[${buyableFilterNames.join(', ')}], ` +
-          `UI offered=[${offered.join(', ')}]. sell.hook.js filters buyable||cardBuyable||instantBuyable, not sellable.` +
-          (matchesBuyableFilter ? ' UI matches the buggy buyable filter.' : ''),
-      );
-      return;
-    }
-
-    // Correct behaviour: every offered currency is sellable.
+    // Correct behaviour: every offered currency must be sellable. Fails today (test.fail above)
+    // because the hook filters on the wrong flag; passes once the hook is fixed.
     for (const name of offered) {
       expect(sellableNames.includes(name), `currency "${name}" must be sellable`).toBe(true);
     }
@@ -403,12 +404,7 @@ test.describe('Sell + Swap e2e', () => {
       kycLevel: 30,
       completePersonalData: true,
     });
-    const outcome = await safeCreateSell(user.jwt, { blockchain: 'Ethereum', iban: TEST_IBAN });
-    if (!outcome.ok) {
-      test.fixme(true, `createSell unavailable (shared deposit pool exhausted?): ${outcome.reason}`);
-      return;
-    }
-    const sell = outcome.result;
+    const sell = await safeCreateSell(user.jwt, { blockchain: 'Ethereum', iban: TEST_IBAN });
     expect(sell.sellId).toBeGreaterThan(0);
 
     const row = await waitForRow<{ id: number; type: string; iban: string }>(
@@ -481,16 +477,8 @@ test.describe('Sell + Swap e2e', () => {
       ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
       : 'no PUT paymentInfos response captured';
 
-    const factoryOutcome = await safeCreateSell(user.jwt, { blockchain: 'Ethereum', iban: TEST_IBAN });
-    if (!factoryOutcome.ok) {
-      test.fixme(
-        true,
-        `Sell UI paymentInfos did not produce payment panel (${outcome.kind}): ${outcome.detail}; ${apiDetail}. ` +
-          `Factory fallback also unavailable: ${factoryOutcome.reason}`,
-      );
-      return;
-    }
-    await waitForRow(`SELECT id FROM deposit_route WHERE id = $1 AND type = 'Sell'`, [factoryOutcome.result.sellId]);
+    const sell = await safeCreateSell(user.jwt, { blockchain: 'Ethereum', iban: TEST_IBAN });
+    await waitForRow(`SELECT id FROM deposit_route WHERE id = $1 AND type = 'Sell'`, [sell.sellId]);
 
     test.fixme(
       true,
@@ -682,12 +670,7 @@ test.describe('Sell + Swap e2e', () => {
       kycLevel: 30,
       completePersonalData: true,
     });
-    const outcome = await safeCreateSwap(user.jwt, { blockchain: 'Ethereum' });
-    if (!outcome.ok) {
-      test.fixme(true, `createSwap unavailable (shared deposit pool exhausted?): ${outcome.reason}`);
-      return;
-    }
-    const swap = outcome.result;
+    const swap = await safeCreateSwap(user.jwt, { blockchain: 'Ethereum' });
     expect(swap.swapId).toBeGreaterThan(0);
 
     const row = await waitForRow<{ id: number; type: string }>(`SELECT id, type FROM deposit_route WHERE id = $1`, [
@@ -740,16 +723,8 @@ test.describe('Sell + Swap e2e', () => {
       ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
       : 'no PUT paymentInfos response captured';
 
-    const factoryOutcome = await safeCreateSwap(user.jwt, { blockchain: 'Ethereum' });
-    if (!factoryOutcome.ok) {
-      test.fixme(
-        true,
-        `Swap UI paymentInfos did not produce payment panel (${outcome.kind}): ${outcome.detail}; ${apiDetail}. ` +
-          `Factory fallback also unavailable: ${factoryOutcome.reason}`,
-      );
-      return;
-    }
-    await waitForRow(`SELECT id FROM deposit_route WHERE id = $1 AND type = 'Crypto'`, [factoryOutcome.result.swapId]);
+    const swap = await safeCreateSwap(user.jwt, { blockchain: 'Ethereum' });
+    await waitForRow(`SELECT id FROM deposit_route WHERE id = $1 AND type = 'Crypto'`, [swap.swapId]);
 
     test.fixme(
       true,
@@ -779,31 +754,37 @@ test.describe('Sell + Swap e2e', () => {
       user.jwt,
     );
 
-    // Either stays on form without pricing, or navigates to /profile after paymentInfos 400.
+    // Must actually redirect to /profile, or show the documented "Ident data incomplete" hint --
+    // remaining on /sell without either is a failure, not an acceptable alternative outcome.
     await expect
       .poll(
         async () => {
-          const path = normPath(new URL(page.url()).pathname);
-          if (path === '/profile') return 'profile';
+          const currentPath = normPath(new URL(page.url()).pathname);
+          if (currentPath === '/profile') return 'profile';
           const body = await page.locator('body').innerText();
-          if (/Ident data incomplete|profile/i.test(body)) return 'hint';
-          if (path === '/sell') return 'sell';
-          return path;
+          if (/Ident data incomplete/i.test(body)) return 'hint';
+          return 'pending';
         },
-        { timeout: 25000 },
+        {
+          timeout: 25000,
+          message: 'incomplete personal data must redirect /sell to /profile or show "Ident data incomplete"',
+        },
       )
-      .not.toBe('');
+      .not.toBe('pending');
 
     const path = normPath(new URL(page.url()).pathname);
-    // Strongest signal: redirect to profile. Accept staying on sell without payment panel as weaker OK.
+    const body = await page.locator('body').innerText();
     if (path === '/profile') {
       expect(path).toBe('/profile');
     } else {
-      expect(path).toBe('/sell');
+      expect(
+        /Ident data incomplete/i.test(body),
+        'must show the "Ident data incomplete" hint if not redirected to /profile',
+      ).toBe(true);
       // Must not show the completion payment panel without complete data.
-      await expect(page.getByRole('button', { name: /Click here once you have issued the transaction/i })).toHaveCount(
-        0,
-      );
+      await expect(
+        page.getByRole('button', { name: /Click here once you have issued the transaction/i }),
+      ).toHaveCount(0);
     }
   });
 });
