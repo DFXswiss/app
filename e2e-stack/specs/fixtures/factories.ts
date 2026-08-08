@@ -509,10 +509,29 @@ async function updateById(table: string, id: number, sets: Record<string, unknow
   });
 }
 
+let uidCounter = 0;
+
+/**
+ * A value that is unique across processes and across runs against the same database, with a
+ * readable label appended for debugging. Used wherever a column carries a unique constraint —
+ * relying on the tag counter alone breaks as soon as a fresh process starts it over.
+ */
+function uniqueRef(label: string): string {
+  uidCounter += 1;
+  return `${Date.now().toString(36)}${uidCounter}-${label}`;
+}
+
 function uid(prefix: string, tag: string): string {
-  // Match Config.prefixes style (T/I/pl/plp) + 16 alnum chars-ish, unique via counter+tag.
-  const raw = `${tag}${Date.now().toString(36)}`.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  return `${prefix}${raw.slice(0, 16).padEnd(16, '0')}`;
+  // Matches the Config.prefixes style (T/I/pl/plp) plus 16 alphanumeric characters.
+  //
+  // The distinguishing part has to come FIRST. The window truncates the tail, and a tag of 16
+  // characters or more pushed the timestamp out entirely — the value then depended on the tag
+  // alone, so a second run against the same database produced the same transaction uid and hit
+  // the unique constraint. The tag now fills whatever space is left and serves readability only.
+  uidCounter += 1;
+  const unique = `${Date.now().toString(36)}${uidCounter}`.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const label = tag.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return `${prefix}${`${unique}${label}`.slice(0, 16).padEnd(16, '0')}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -946,7 +965,7 @@ export async function createTransaction(options: CreateTransactionOptions = {}):
 
   if (state === 'bank_tx_only' || isBuy) {
     // bank_tx: NOT NULL accountServiceRef (bank-tx.entity.ts)
-    const accountServiceRef = `e2e-btx-${tag}`;
+    const accountServiceRef = `e2e-btx-${uniqueRef(tag)}`;
     bankTxId = await insertReturningId(
       'bank_tx',
       [
@@ -1144,7 +1163,7 @@ export async function createBankTx(options: CreateBankTxOptions = {}): Promise<C
     );
   }
 
-  const accountServiceRef = `e2e-banktx-${tag}`;
+  const accountServiceRef = `e2e-banktx-${uniqueRef(tag)}`;
   const bankTxId = await insertReturningId(
     'bank_tx',
     [

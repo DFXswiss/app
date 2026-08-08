@@ -54,33 +54,37 @@ async function ensureStaffReady(userId: number, surname = 'Compliance'): Promise
   });
 }
 
-/** Open a StyledDropdown by its field label, then pick an option by visible label text. */
+/**
+ * Open a StyledDropdown by its field label, then pick an option by visible label text.
+ *
+ * The openable button is a sibling of the label's *wrapper*, not of the label itself, so the
+ * XPath has to step up two levels to the field container first. `#dropDownButton` repeats on
+ * every dropdown on the page, which is why it stays scoped to that container.
+ */
 async function selectStyledDropdown(page: Page, fieldLabel: string, optionLabel: string): Promise<void> {
-  const openBtn = page.getByText(fieldLabel, { exact: true }).locator('xpath=following-sibling::button[1]');
-  await openBtn.click();
-  await page.getByRole('button', { name: optionLabel, exact: true }).click();
+  const fieldContainer = page.getByText(fieldLabel, { exact: true }).locator('xpath=../..');
+  await fieldContainer.locator('#dropDownButton').click();
+  await fieldContainer.getByRole('button', { name: optionLabel, exact: true }).click();
 }
 
 /**
- * Seed sessionStorage bank-tx cache the same way compliance search does
- * (`cacheBankTx` → key `dfx.bankTx.<id>`). Required because bank-tx detail has no refetch API.
+ * The input of a StyledInput, found by its field label.
+ *
+ * `name` on the React component does not become the DOM `name` attribute — StyledInput derives that
+ * from its `autocomplete` prop, which these fields do not set, so `input[name="fee"]` matches
+ * nothing. The label is the stable handle; the input sits in the same field container, two levels
+ * up from the label text node, exactly like the dropdown button above.
  */
-async function seedBankTxCache(
-  page: Page,
-  bankTx: {
-    id: number;
-    transactionId?: number;
-    accountServiceRef: string;
-    amount: number;
-    currency: string;
-    type: string;
-    name?: string;
-    iban?: string;
-  },
-): Promise<void> {
-  await page.evaluate((btx) => {
-    sessionStorage.setItem(`dfx.bankTx.${btx.id}`, JSON.stringify(btx));
-  }, bankTx);
+function styledInput(page: Page, fieldLabel: string) {
+  // Nearest ancestor that actually holds an input, rather than a fixed number of levels: two
+  // levels up lands on a container wide enough to also cover the neighbouring field, so 'Comment'
+  // would resolve to the numeric Fee input sitting above it.
+  return page
+    .getByText(fieldLabel, { exact: true })
+    .first()
+    .locator('xpath=ancestor::*[.//input or .//textarea][1]')
+    .locator('input, textarea')
+    .first();
 }
 
 // ---------------------------------------------------------------------------
@@ -180,22 +184,26 @@ test.describe('Compliance area (cases)', () => {
     const { jwt, userId } = await loginAs('Compliance');
     await ensureStaffReady(userId);
 
-    const btx = await createBankTx({ tag: 'cmp-btx-detail', amount: 321, type: 'BuyCrypto' });
+    const btx = await createBankTx({ tag: 'cmp-btx-detail', amount: 321, type: 'Unknown' });
 
-    // Establish session on a neutral compliance page first, then seed cache
+    // Navigate the real app path: search on /compliance, then click the row's forward icon,
+    // which internally calls cacheBankTx() and routes to /compliance/bank-tx/<id> — sessionStorage
+    // seeded manually across two separate page.goto() calls was not reliably picked up.
     await openScreen(page, '/compliance', jwt);
-    await seedBankTxCache(page, {
-      id: btx.bankTxId,
-      transactionId: btx.transactionId,
-      accountServiceRef: btx.accountServiceRef,
-      amount: 321,
-      currency: 'CHF',
-      type: 'BuyCrypto',
-      name: 'E2E Bank Sender',
-      iban: TEST_IBAN,
-    });
+    await page.getByRole('textbox').first().fill('E2E Bank Sender');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
 
-    await openScreen(page, `/compliance/bank-tx/${btx.bankTxId}`, jwt);
+    const bankTxSection = page.getByText('Bank Transactions', { exact: true }).locator('xpath=following-sibling::div[1]');
+    const bankTxRow = bankTxSection.locator('tbody tr', { hasText: btx.accountServiceRef }).first();
+    await expect(bankTxRow).toBeVisible({ timeout: 15000 });
+    await bankTxRow.locator('button, [role="button"]').last().click();
+
+    await expect
+      .poll(() => new URL(page.url()).pathname, {
+        message: 'clicking the bank-tx row should navigate to /compliance/bank-tx/<id>',
+        timeout: 15000,
+      })
+      .toBe(`/compliance/bank-tx/${btx.bankTxId}`);
 
     await expect(page.getByText('Bank Transaction', { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(String(btx.bankTxId), { exact: true }).first()).toBeVisible();
@@ -223,8 +231,8 @@ test.describe('Compliance area (cases)', () => {
     await expect(page.getByRole('button', { name: 'Create recall', exact: true })).toBeVisible();
 
     await selectStyledDropdown(page, 'Reason', 'DUPL');
-    await page.locator('input[name="fee"]').fill('500');
-    await page.locator('input[name="comment"]').fill(comment);
+    await styledInput(page, 'Fee').fill('500');
+    await styledInput(page, 'Comment').fill(comment);
 
     const submit = page.getByRole('button', { name: 'Create recall', exact: true });
     await expect(submit).toBeEnabled({ timeout: 10000 });
@@ -294,15 +302,15 @@ test.describe('Compliance area (cases)', () => {
       await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
 
       // Attempt a full refund write when the form is available
-      await page.locator('input[name="iban"]').fill(TEST_IBAN);
-      await page.locator('input[name="creditorName"]').fill('E2E Creditor');
-      await page.locator('input[name="creditorStreet"]').fill('Bahnhofstrasse');
-      await page.locator('input[name="creditorHouseNumber"]').fill('1');
-      await page.locator('input[name="creditorZip"]').fill('8001');
-      await page.locator('input[name="creditorCity"]').fill('Zurich');
+      await styledInput(page, 'Chargeback IBAN').fill(TEST_IBAN);
+      await styledInput(page, 'Name').fill('E2E Creditor');
+      await styledInput(page, 'Street').fill('Bahnhofstrasse');
+      await styledInput(page, 'House nr.').fill('1');
+      await styledInput(page, 'ZIP code').fill('8001');
+      await styledInput(page, 'City').fill('Zurich');
 
       // Country search dropdown
-      const countryInput = page.locator('input[name="creditorCountry"]');
+      const countryInput = styledInput(page, 'Country');
       if ((await countryInput.count()) > 0) {
         await countryInput.click();
         await countryInput.fill('Switzerland');
@@ -361,9 +369,9 @@ test.describe('Compliance area (cases)', () => {
     await expect(page.getByText('MROS ID', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create MROS', exact: true })).toBeVisible();
 
-    await page.locator('input[name="userDataId"]').fill(String(customer.userDataId));
+    await styledInput(page, 'User Data ID').fill(String(customer.userDataId));
     // Status defaults to Draft via form defaultValues
-    await page.locator('input[name="authorityReference"]').fill(authorityRef);
+    await styledInput(page, 'MROS ID').fill(authorityRef);
 
     const createBtn = page.getByRole('button', { name: 'Create MROS', exact: true });
     // Disabled while caseManager (from getProfile) is empty

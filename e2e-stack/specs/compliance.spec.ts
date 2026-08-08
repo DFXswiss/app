@@ -237,7 +237,7 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible();
     await expect(page.getByRole('textbox').first()).toBeVisible();
     // Dashboard sections unique to this screen (Pending Reviews always renders ordered rows)
-    await expect(page.getByText('Pending Reviews', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Pending Reviews/)).toBeVisible();
     await expect(page.getByText('Quick links', { exact: true })).toBeVisible();
     await expect(page.getByText('Aktennotiz erstellen', { exact: true })).toBeVisible();
 
@@ -424,7 +424,7 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText('AccountId', { exact: true }).first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Id', { exact: true }).first()).toBeVisible();
     // Empty or populated — both valid; empty must not crash
-    const emptyOrRows = page.getByText('No entries found', { exact: true }).or(page.locator('tbody tr').first());
+    const emptyOrRows = page.getByText('No entries found', { exact: true }).or(page.locator('tbody tr').first()).first();
     await expect(emptyOrRows.first()).toBeVisible();
 
     await openScreen(page, '/compliance/kyc-files/details', jwt);
@@ -472,7 +472,7 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText('Actions', { exact: true })).toBeVisible();
     // Empty state is expected under DISABLED_PROCESSES=*
     await expect(
-      page.getByText('No orders found', { exact: true }).or(page.locator('tbody tr').first()),
+      page.getByText('No orders found', { exact: true }).or(page.locator('tbody tr').first()).first(),
     ).toBeVisible();
 
     expect(pageErrors, `uncaught pageerror on custody-orders: ${pageErrors.join('; ')}`).toEqual([]);
@@ -531,7 +531,7 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText('Reason', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Fee', { exact: true }).first()).toBeVisible();
     await expect(
-      page.getByText('No recalls found', { exact: true }).or(page.locator('tbody tr').first()),
+      page.getByText('No recalls found', { exact: true }).or(page.locator('tbody tr').first()).first(),
     ).toBeVisible();
 
     expect(pageErrors, `uncaught pageerror on recalls: ${pageErrors.join('; ')}`).toEqual([]);
@@ -597,8 +597,8 @@ test.describe('Compliance area (overview)', () => {
 
     await expect(page.getByText('Compliance', { exact: true }).first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Auth & Account', { exact: true })).toBeVisible();
-    await expect(page.getByText('Compliance Dashboard', { exact: true })).toBeVisible();
-    await expect(page.getByText('(/compliance)', { exact: true })).toBeVisible();
+    await expect(page.getByText('Compliance Dashboard')).toBeVisible();
+    await expect(page.getByText('(/compliance)')).toBeVisible();
 
     // Extract link paths from the rendered DOM (the parenthetical path text)
     const linkPaths = await page.locator('a').evaluateAll((anchors) =>
