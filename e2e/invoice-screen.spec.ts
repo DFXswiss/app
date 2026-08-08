@@ -74,13 +74,10 @@ test.describe('Invoice Screen', () => {
     await page.goto('/invoice?recipient=Foo&pay=1');
     await page.waitForLoadState('networkidle');
 
-    // StyledInput paints a visual <label> without htmlFor, so getByRole({ name }) cannot
-    // resolve an accessible name. Confirm the label, then take the first textbox (amount is
-    // type=number → spinbutton; invoice number is the second textbox).
-    await expect(page.getByText(/^(Payee|Zahlungsempfänger)$/)).toBeVisible();
-    const payee = page.getByRole('textbox').first();
-    await expect(payee).toHaveValue('Foo');
-    await expect(payee).toBeDisabled();
+    // Payee from the printed QR is display text, not a disabled input.
+    await expect(page.getByRole('group', { name: /Payee|Zahlungsempfänger/i })).toBeVisible();
+    await expect(page.getByRole('group', { name: /Payee|Zahlungsempfänger/i })).toContainText('Foo');
+    await expect(page.getByRole('textbox', { name: /Payee|Zahlungsempfänger/i })).toHaveCount(0);
 
     // Wait for the API rejection to surface — fixed sleeps would flake the baseline.
     await expect(

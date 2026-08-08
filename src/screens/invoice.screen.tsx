@@ -15,7 +15,7 @@ import {
 import copy from 'copy-to-clipboard';
 import { addYears } from 'date-fns';
 import { useEffect, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { Trans } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { Api } from 'src/config/api';
@@ -58,6 +58,8 @@ export default function InvoiceScreen(): JSX.Element {
   const recipientFromUrl = urlParams.get('recipient');
   const payParam = urlParams.get('pay');
   const isPayerMode = payParam != null && PAYER_PAY_VALUES.includes(payParam.trim().toLowerCase());
+  // Printed QR: payee is information, not an input — show text instead of a disabled field.
+  const isPayeeFromUrl = isPayerMode && !!recipientFromUrl;
 
   const {
     watch,
@@ -177,22 +179,51 @@ export default function InvoiceScreen(): JSX.Element {
             </p>
           )}
           <div className="relative w-full">
-            <StyledInput
-              name="recipient"
-              autocomplete="name"
-              label={translate('screens/payment', isPayerMode ? 'Payee' : 'Recipient')}
-              placeholder={isPayerMode ? undefined : translate('screens/kyc', 'John Doe')}
-              full
-              smallLabel
-              forceError={!!errorRecipient}
-              loading={isLoadingRecipient}
-              disabled={isPayerMode && !!recipientFromUrl}
-              ref={recipientFieldRef}
-            />
-            {validatedRecipient && (
-              <div className="absolute bottom-[19px] right-5">
-                <DfxIcon icon={IconVariant.CHECK} size={IconSize.MD} color={IconColor.BLUE} />
-              </div>
+            {isPayeeFromUrl ? (
+              <Controller
+                name="recipient"
+                control={control}
+                render={({ field }) => (
+                  <div role="group" aria-labelledby="invoice-payee-label" className="w-full text-start">
+                    <p id="invoice-payee-label" className="text-sm font-semibold pl-3 text-dfxGray-800">
+                      {translate('screens/payment', 'Payee')}
+                    </p>
+                    <div className="flex flex-row items-center gap-2 pl-3">
+                      <p className={`text-base ${errorRecipient ? 'text-dfxRed-100' : 'text-dfxBlue-800'}`}>
+                        {field.value}
+                      </p>
+                      {validatedRecipient && (
+                        <span
+                          role="img"
+                          aria-label={translate('screens/payment', 'Recipient verified')}
+                          className="inline-flex"
+                        >
+                          <DfxIcon icon={IconVariant.CHECK} size={IconSize.MD} color={IconColor.BLUE} />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              />
+            ) : (
+              <>
+                <StyledInput
+                  name="recipient"
+                  autocomplete="name"
+                  label={translate('screens/payment', isPayerMode ? 'Payee' : 'Recipient')}
+                  placeholder={isPayerMode ? undefined : translate('screens/kyc', 'John Doe')}
+                  full
+                  smallLabel
+                  forceError={!!errorRecipient}
+                  loading={isLoadingRecipient}
+                  ref={recipientFieldRef}
+                />
+                {validatedRecipient && (
+                  <div className="absolute bottom-[19px] right-5">
+                    <DfxIcon icon={IconVariant.CHECK} size={IconSize.MD} color={IconColor.BLUE} />
+                  </div>
+                )}
+              </>
             )}
           </div>
           <StyledInput
