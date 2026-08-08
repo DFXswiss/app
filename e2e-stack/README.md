@@ -136,6 +136,20 @@ docker compose -p <project> -f e2e-stack/compose.yml -f e2e-stack/compose.tests.
 
 Otherwise the **old** spec content runs silently: the image `COPY`s spec files in at build time, and there are no bind mounts in this environment. This exact mistake has already cost several people a full test run each.
 
+**frontend-widget image not rebuilt**
+
+`frontend-widget` is declared only in `compose.tests.yml`, as a dependency of `tests` — Compose
+builds a *missing* image automatically but never rebuilds an *existing* one on its own. `up.sh`
+therefore rebuilds it explicitly, right after the `frontend` image, once per stack lifetime. If
+you bring the stack up some other way and then change `src/index-widget.tsx` or any file it
+imports, the widget-affecting code changes but the image does not: `widget.spec.ts` keeps
+testing the old bundle and stays green for a reason that has nothing to do with the current
+code. Rebuild explicitly if you suspect this:
+
+```bash
+docker compose -p <project> -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml build frontend-widget
+```
+
 **Logs**
 
 ```bash

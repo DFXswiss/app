@@ -32,6 +32,14 @@ fi
 log_info "Building frontend image..."
 compose build frontend
 
+# Rebuild frontend-widget too: Compose auto-builds a *missing* image, but never rebuilds an
+# *existing* one on its own. Without this, a source change that affects the widget bundle
+# (src/index-widget.tsx or anything it imports) would leave the previous widget image running,
+# and widget.spec.ts would keep testing stale code while staying green — the exact failure mode
+# this harness exists to catch.
+log_info "Building frontend-widget image..."
+compose build frontend-widget
+
 log_info "Starting stack (db, api, frontend, proxy)..."
 compose up -d db api frontend proxy
 
