@@ -1,4 +1,4 @@
-import { RouteClaim } from './types';
+import type { RouteClaim } from './types';
 
 /**
  * Factory infrastructure claims no application screens.

@@ -19,6 +19,15 @@ import type { RouteClaim } from './registry/types';
 
 const APP_SOURCE_PATH = '/work/app-source/App.tsx';
 
+/**
+ * Format a source location as `App.tsx:123` (1-based line) for fail-loud parser errors.
+ * Without line numbers, unsupported constructs would be hard to locate in a large Routes tree.
+ */
+function formatNodeLocation(sourceFile: ts.SourceFile, node: ts.Node): string {
+  const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+  return `${path.basename(sourceFile.fileName)}:${line + 1}`;
+}
+
 function propName(prop: ts.ObjectLiteralElementLike): string | undefined {
   if (!ts.isPropertyAssignment(prop)) return undefined;
   if (ts.isIdentifier(prop.name)) return prop.name.text;
@@ -35,30 +44,86 @@ function joinRoutePath(parent: string, segment: string): string {
 }
 
 /**
+ * Visit every element of a routes/children array. Fail hard on any construct the static parser
+ * cannot resolve (spreads, identifiers, non-literals) so the coverage set cannot silently shrink.
+ */
+function collectPathsFromElements(
+  elements: ts.NodeArray<ts.Expression>,
+  parentPath: string,
+  paths: Set<string>,
+  sourceFile: ts.SourceFile,
+): void {
+  for (const el of elements) {
+    if (ts.isObjectLiteralExpression(el)) {
+      collectPaths(el, parentPath, paths, sourceFile);
+    } else if (ts.isSpreadElement(el)) {
+      throw new Error(
+        `Unsupported route construct: spread element in routes array at ${formatNodeLocation(sourceFile, el)}`,
+      );
+    } else if (ts.isIdentifier(el)) {
+      throw new Error(
+        `Unsupported route construct: route referenced by identifier instead of object literal at ${formatNodeLocation(sourceFile, el)}`,
+      );
+    } else {
+      throw new Error(
+        `Unsupported route construct: non-object-literal route element at ${formatNodeLocation(sourceFile, el)}`,
+      );
+    }
+  }
+}
+
+/**
  * Recursively collect full paths from a react-router route object-literal tree.
  * - Relative segments join under the parent.
  * - `index: true` without `path` claims the parent path (does not invent a new segment).
  * - Duplicate full paths (e.g. two `path: 'support'` siblings) collapse in the Set.
+ *
+ * Unsupported constructs (non-literal path/children, spreads, identifier refs) throw instead of
+ * being skipped — silent skips would let routes disappear from the coverage set unnoticed.
  */
-function collectPaths(node: ts.ObjectLiteralExpression, parentPath: string, paths: Set<string>): void {
+function collectPaths(
+  node: ts.ObjectLiteralExpression,
+  parentPath: string,
+  paths: Set<string>,
+  sourceFile: ts.SourceFile,
+): void {
   let segment: string | undefined;
   let isIndex = false;
   let children: ts.ArrayLiteralExpression | undefined;
 
   for (const prop of node.properties) {
+    // Object-level spreads can inject path/children we never see — fail loud rather than miss them.
+    if (ts.isSpreadAssignment(prop)) {
+      throw new Error(
+        `Unsupported route construct: spread element in route object at ${formatNodeLocation(sourceFile, prop)}`,
+      );
+    }
+
     const name = propName(prop);
     if (!name || !ts.isPropertyAssignment(prop)) continue;
 
     if (name === 'path') {
       if (ts.isStringLiteral(prop.initializer) || ts.isNoSubstitutionTemplateLiteral(prop.initializer)) {
         segment = prop.initializer.text;
+      } else {
+        // A variable/template/call path would leave `segment` undefined and drop the route entirely.
+        throw new Error(
+          `Unsupported route construct: non-literal \`path\` value at ${formatNodeLocation(sourceFile, prop.initializer)}`,
+        );
       }
     } else if (name === 'index') {
       if (prop.initializer.kind === ts.SyntaxKind.TrueKeyword) {
         isIndex = true;
       }
-    } else if (name === 'children' && ts.isArrayLiteralExpression(prop.initializer)) {
-      children = prop.initializer;
+    } else if (name === 'children') {
+      if (ts.isArrayLiteralExpression(prop.initializer)) {
+        children = prop.initializer;
+      } else {
+        // Non-literal children (import, call) would leave the subtree unvisited.
+        throw new Error(
+          `Unsupported route construct: non-literal \`children\` value at ${formatNodeLocation(sourceFile, prop.initializer)}`,
+        );
+      }
     }
   }
 
@@ -73,11 +138,7 @@ function collectPaths(node: ts.ObjectLiteralExpression, parentPath: string, path
   }
 
   if (children) {
-    for (const el of children.elements) {
-      if (ts.isObjectLiteralExpression(el)) {
-        collectPaths(el, fullPath, paths);
-      }
-    }
+    collectPathsFromElements(children.elements, fullPath, paths, sourceFile);
   }
 }
 
@@ -111,11 +172,8 @@ function extractAppRoutes(appTsxPath: string): Set<string> {
   }
 
   const paths = new Set<string>();
-  for (const el of routesArray.elements) {
-    if (ts.isObjectLiteralExpression(el)) {
-      collectPaths(el, '', paths);
-    }
-  }
+  // Top-level Routes array uses the same fail-loud element walk as nested `children`.
+  collectPathsFromElements(routesArray.elements, '', paths, sourceFile);
   return paths;
 }
 
@@ -127,7 +185,9 @@ async function loadRegistryClaims(registryDir: string): Promise<{ claims: RouteC
 
   const claims: RouteClaim[] = [];
   const byPath = new Map<string, string>();
-  const collisions: string[] = [];
+  // path → every claiming file name (one entry per claim, including same-file duplicates).
+  // Closes the gap where two claims in the same file were treated as a single claim.
+  const claimantsByPath = new Map<string, string[]>();
 
   for (const file of files) {
     const base = file.replace(/\.ts$/, '');
@@ -146,18 +206,23 @@ async function loadRegistryClaims(registryDir: string): Promise<{ claims: RouteC
       throw new Error(`Registry file ${file} does not default-export a RouteClaim[]`);
     }
     for (const claim of list) {
-      const existing = byPath.get(claim.path);
-      if (existing && existing !== file) {
-        collisions.push(`path "${claim.path}" claimed by both ${existing} and ${file}`);
-      } else {
-        byPath.set(claim.path, file);
-      }
+      const claimants = claimantsByPath.get(claim.path) ?? [];
+      claimants.push(file);
+      claimantsByPath.set(claim.path, claimants);
+      byPath.set(claim.path, file);
       claims.push(claim);
     }
   }
 
+  const collisions: string[] = [];
+  for (const [routePath, claimants] of claimantsByPath) {
+    if (claimants.length > 1) {
+      collisions.push(`path "${routePath}" claimed ${claimants.length} times: ${claimants.join(', ')}`);
+    }
+  }
+
   if (collisions.length > 0) {
-    throw new Error(`Cross-file route claim collisions:\n  - ${collisions.join('\n  - ')}`);
+    throw new Error(`Route claim collisions:\n  - ${collisions.join('\n  - ')}`);
   }
 
   return { claims, byPath };
@@ -168,12 +233,25 @@ test('every app route is claimed by exactly one registry entry @coverage-gate', 
   expect(fs.existsSync(APP_SOURCE_PATH), `App.tsx missing at ${APP_SOURCE_PATH}`).toBe(true);
   expect(fs.existsSync(registryDir), `registry dir missing at ${registryDir}`).toBe(true);
 
-  const { byPath } = await loadRegistryClaims(registryDir);
+  const { byPath, claims } = await loadRegistryClaims(registryDir);
   const claimed = new Set(byPath.keys());
   const real = extractAppRoutes(APP_SOURCE_PATH);
 
   const unclaimed = [...real].filter((p) => !claimed.has(p)).sort();
   const orphaned = [...claimed].filter((p) => !real.has(p)).sort();
+
+  // A typo or deleted suite file would leave a claim that never runs tests for that route.
+  // Resolve claim.spec relative to this specs/ directory (bare filename, no specs/ prefix).
+  const missingSpecs: string[] = [];
+  for (const claim of claims) {
+    const registryFile = byPath.get(claim.path) ?? '(unknown)';
+    const specPath = path.join(__dirname, claim.spec);
+    if (!fs.existsSync(specPath)) {
+      missingSpecs.push(
+        `Claim for path "${claim.path}" (registry file ${registryFile}) references spec "${claim.spec}", but ${specPath} does not exist`,
+      );
+    }
+  }
 
   const messages: string[] = [];
   if (unclaimed.length > 0) {
@@ -185,6 +263,9 @@ test('every app route is claimed by exactly one registry entry @coverage-gate', 
     messages.push(
       `Orphaned registry claims (${orphaned.length}) — path no longer in App.tsx:\n  - ${orphaned.join('\n  - ')}`,
     );
+  }
+  if (missingSpecs.length > 0) {
+    messages.push(`Missing spec files (${missingSpecs.length}):\n  - ${missingSpecs.join('\n  - ')}`);
   }
 
   expect(messages.join('\n\n'), messages.join('\n\n')).toBe('');

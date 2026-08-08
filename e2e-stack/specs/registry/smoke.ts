@@ -1,4 +1,4 @@
-import { RouteClaim } from './types';
+import type { RouteClaim } from './types';
 
 // The smoke spec proves the harness itself works end to end — frontend, API, database, both login
 // paths. It navigates to `/`, but does not claim it: `/` is covered as a screen by auth.spec.ts, and
