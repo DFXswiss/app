@@ -123,6 +123,10 @@
     "title": "Support-Dashboard",
     "description": "Support-Dashboard: Übersicht und Detailansichten."
   },
+  "support-dashboard-issue": {
+    "title": "Support-Ticket",
+    "description": "Ticket-Ansicht des Supports: Detailpanels, Nachrichtenverlauf und der Antwortvorschlag über dem Eingabefeld — mit Vorschlag, mit veraltetem Vorschlag und ohne."
+  },
   "support-dashboard-overview": {
     "title": "Support-Dashboard Übersicht",
     "description": "Support-Dashboard-Übersicht und Statistiken."
