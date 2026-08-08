@@ -517,6 +517,18 @@ describe('TransactionScreen exportCsv', () => {
     expect(screen.queryByRole('button', { name: 'Compact' })).not.toBeInTheDocument();
   });
 
+  it('shows ErrorHint "Unknown error" when export rejects without a message', async () => {
+    mockGetTransactionCsv.mockRejectedValue({});
+    renderScreen('/tx');
+
+    await openExportMenu();
+    await userEvent.click(screen.getByRole('button', { name: 'Compact' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
+    });
+  });
+
   it('returns early when user is undefined and does not call export services', async () => {
     mockUser = undefined;
     renderScreen('/tx');
@@ -660,6 +672,15 @@ describe('TransactionStatus via TransactionScreen', () => {
     });
   });
 
+  it('surfaces "Unknown error" when getTransactionByUid rejects without a message', async () => {
+    mockGetTransactionByUid.mockRejectedValue({});
+    renderScreen('/tx/T123');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
+    });
+  });
+
   it('navigates directly when logged in on Assign transaction', async () => {
     mockIsLoggedIn = true;
     mockGetTransactionByUid.mockResolvedValue(makeTx({ id: 42, state: 'Unassigned' }));
@@ -763,5 +784,17 @@ describe('TransactionStatus via TransactionScreen', () => {
 
     expect(screen.queryByRole('button', { name: 'Confirm refund' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create support ticket' })).not.toBeInTheDocument();
+  });
+
+  it('treats missing user as non-RealUnit so refund/support still render for Failed', async () => {
+    // user?.activeAddress?.wallet?.startsWith(...) short-circuits to undefined → ?? false.
+    mockUser = undefined;
+    mockGetTransactionByUid.mockResolvedValue(
+      makeTx({ state: 'Failed', reason: undefined, chargebackAmount: undefined }),
+    );
+    renderScreen('/tx/T123');
+
+    expect(await screen.findByRole('button', { name: 'Confirm refund' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create support ticket' })).toBeInTheDocument();
   });
 });
