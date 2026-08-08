@@ -186,7 +186,8 @@ test.describe('Account area e2e', () => {
 
     const mailA = e2eMail('acct-merge-a');
     const mailB = e2eMail('acct-merge-b');
-    const userA = await createUser({ tag: 'acct-merge-a', mail: mailA, language: 'EN' });
+    // The conflict needs mailA to belong to a different account; nothing else here reads it.
+    await createUser({ tag: 'acct-merge-a', mail: mailA, language: 'EN' });
     const userB = await createUser({ tag: 'acct-merge-b', mail: mailB, language: 'EN' });
 
     await openScreen(page, '/2fa', userB.jwt);
