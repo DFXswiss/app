@@ -10,6 +10,7 @@
  * testWallet usage; starting at 100 avoids collisions under workers: 1.
  */
 
+import { randomBytes } from 'node:crypto';
 import { apiPost, apiPut } from './api-client';
 import { queryOne, queryRows, withDb } from './db';
 import { signatureLogin, testWallet, type TestRole, type TestWallet } from './auth';
@@ -27,8 +28,8 @@ const FACTORY_WALLET_INDEX_BASE = 100;
  * below: many factories (createBankTx, createSupportIssue, createPaymentLink,
  * createLimitRequest, createMrosCase, createCallQueueEntry) call uniqueTag()/e2eMail() without
  * ever deriving a wallet. Sharing one counter between "tag suffix" and "wallet offset" would
- * open gaps in the wallet-offset space wide enough to defeat deriveFactoryWalletStart's
- * empty-window abort below — see the comment on deriveFactoryWalletStart for the failure mode.
+ * open gaps in the wallet-offset space (harmless for uniqueness now that deriveFactoryWalletStart
+ * scans the full offset range, but still wasteful). Kept separate so wallet offsets stay dense.
  */
 let factoryTagCounter = 0;
 
@@ -46,7 +47,7 @@ function uniqueTag(tag?: string): string {
  * Counter for wallet offsets only (FACTORY_WALLET_INDEX_BASE + n). Only ever incremented where
  * a wallet is actually derived (createUser, via nextWalletOffset()) and raised by
  * ensureFactoryWalletCounterSeeded() below — never by uniqueTag()/e2eMail(). This keeps wallet
- * offsets densely allocated so deriveFactoryWalletStart's "first empty window" abort is valid.
+ * offsets densely allocated (one offset per createUser, no holes from tag-only factories).
  */
 let factoryWalletCounter = 0;
 
@@ -70,13 +71,11 @@ export function e2eMail(tag?: string): string {
  * with `factoryWalletStartApplied` back at its initial `false`, so it re-derives from the DB —
  * seeing every wallet a prior file's worker already committed — instead of restarting at 0.
  * Windows grow exponentially so a DB with only a handful of factory accounts resolves in
- * one query, while one with many still terminates in a bounded number of round trips.
- * Stops at the first window that comes back with zero hits at all — a real gap that large
- * (256+ consecutive unused offsets) never happens from normal factory usage now that wallet
- * offsets are allocated from their own dedicated factoryWalletCounter (via nextWalletOffset()),
- * kept separate from the uniqueTag()/e2eMail() tag counter: every offset in
- * [1, factoryWalletCounter] is allocated to exactly one createUser call, so usage within the
- * used range is dense and an empty window reliably means "past the end".
+ * few queries, while one with many still terminates in a bounded number of round trips.
+ * Always scans through maxOffset (no early exit on an empty window): partial cleanup from a
+ * prior run can leave low offsets free while higher offsets remain occupied; stopping at the
+ * first empty window would under-report `highest` and reissue those higher addresses. Cost is
+ * paid once per process via ensureFactoryWalletCounterSeeded / factoryWalletStartPromise.
  */
 async function deriveFactoryWalletStart(): Promise<number> {
   let highest = 0;
@@ -96,7 +95,6 @@ async function deriveFactoryWalletStart(): Promise<number> {
       `SELECT address FROM "user" WHERE lower(address) = ANY($1::text[])`,
       [[...addressToOffset.keys()]],
     );
-    if (rows.length === 0) break;
     for (const row of rows) {
       const offset = addressToOffset.get(row.address.toLowerCase());
       if (offset != null && offset > highest) highest = offset;
@@ -176,12 +174,12 @@ async function ensureFactoryTagCounterSeeded(): Promise<void> {
   factoryTagStartApplied = true;
 }
 
-// Same best-effort head start as the wallet counter above, for the same reason: uniqueTag()/
-// e2eMail() are synchronous, public exports whose signatures must not change, so they cannot
-// await this themselves. createUser (below) awaits this properly before it can generate a mail
-// address and is therefore always correct regardless of timing; this just gives every other
-// direct caller (other spec files, other factories) a head start too.
-void ensureFactoryTagCounterSeeded();
+// Best-effort head start for the tag counter at module load (latency only). Factories that call
+// uniqueTag()/e2eMail() await ensureFactoryTagCounterSeeded() themselves before first use, so
+// correctness does not depend on this race; .catch swallows unhandled rejections if the DB is
+// not yet up at import time (the awaited call later will surface a real error if seeding fails).
+// uniqueTag()/e2eMail() remain synchronous public exports and cannot await themselves.
+void ensureFactoryTagCounterSeeded().catch(() => {});
 
 // TEST_IBAN lives in ./test-data — the single place for shared constants. Re-exported here so
 // callers can keep importing it alongside the factories, but not redeclared: two `export const`s
@@ -505,12 +503,14 @@ let uidCounter = 0;
 
 /**
  * A value that is unique across processes and across runs against the same database, with a
- * readable label appended for debugging. Used wherever a column carries a unique constraint —
+ * readable label appended for debugging. Combines Date.now(), an in-process counter, and
+ * crypto random entropy (randomBytes) so two processes hitting the same millisecond with the
+ * same counter value still diverge. Used wherever a column carries a unique constraint —
  * relying on the tag counter alone breaks as soon as a fresh process starts it over.
  */
 function uniqueRef(label: string): string {
   uidCounter += 1;
-  return `${Date.now().toString(36)}${uidCounter}-${label}`;
+  return `${Date.now().toString(36)}${uidCounter}-${randomBytes(4).toString('hex')}-${label}`;
 }
 
 function uid(prefix: string, tag: string): string {
@@ -519,9 +519,12 @@ function uid(prefix: string, tag: string): string {
   // The distinguishing part has to come FIRST. The window truncates the tail, and a tag of 16
   // characters or more pushed the timestamp out entirely — the value then depended on the tag
   // alone, so a second run against the same database produced the same transaction uid and hit
-  // the unique constraint. The tag now fills whatever space is left and serves readability only.
+  // the unique constraint. Entropy (timestamp + in-process counter + randomBytes hex) is
+  // therefore prepended; the tag fills whatever space is left and serves readability only.
   uidCounter += 1;
-  const unique = `${Date.now().toString(36)}${uidCounter}`.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const unique = `${Date.now().toString(36)}${uidCounter}${randomBytes(3).toString('hex')}`
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toUpperCase();
   const label = tag.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   return `${prefix}${`${unique}${label}`.slice(0, 16).padEnd(16, '0')}`;
 }
@@ -649,7 +652,13 @@ export async function createUser(options: CreateUserOptions = {}): Promise<Creat
   // Prefer API sign-up: signatureLogin creates the account when the address is new
   // (POST /v1/auth → AuthService.authenticate / doSignUp).
   const wallet = testWallet(walletIndex);
-  const jwt = await signatureLogin(wallet);
+  // Only track rows this call created. signatureLogin registers a new account when the address
+  // is new; when options.walletIndex points at an already-used wallet, login reuses the row and
+  // must not register it for cleanup (that would delete data owned by another test/run).
+  const preExisting = await queryOne<{ id: number }>(`SELECT id FROM "user" WHERE address = $1 LIMIT 1`, [
+    wallet.address,
+  ]);
+  let jwt = await signatureLogin(wallet);
 
   const userRow = await queryOne<{ id: number; userDataId: number }>(
     `SELECT id, "userDataId" AS "userDataId" FROM "user" WHERE address = $1 LIMIT 1`,
@@ -665,8 +674,11 @@ export async function createUser(options: CreateUserOptions = {}): Promise<Creat
   // reverse registration order. user.userDataId -> user_data.id is NOT NULL with
   // ON DELETE NO ACTION, so the dependent row (user_data) must be registered LAST here to be
   // deleted FIRST during cleanup — before the "user" row that references it.
-  track('user_data', userRow.userDataId);
-  track('user', userRow.id);
+  // Only register when this call created the account (preExisting was empty).
+  if (!preExisting) {
+    track('user_data', userRow.userDataId);
+    track('user', userRow.id);
+  }
 
   const existingMailRow = await queryOne<{ mail: string | null }>(`SELECT mail FROM user_data WHERE id = $1`, [
     userRow.userDataId,
@@ -725,6 +737,8 @@ export async function createUser(options: CreateUserOptions = {}): Promise<Creat
   if (options.role) {
     // Role elevation is admin/support only; SQL for e2e staff-like users without staff login.
     await updateById('user', userRow.id, { role: options.role });
+    // Re-login so the returned JWT carries the elevated role claim (tokens bake role at mint time).
+    jwt = await signatureLogin(wallet);
   }
 
   // Sell routes require isDataComplete; also fill when caller asks or KYC ≥ 30.
@@ -890,6 +904,7 @@ async function userFromJwt(jwt: string): Promise<{ id: number; userDataId: numbe
  * buy_crypto or buy_fiat under DISABLED_PROCESSES=*.
  */
 export async function createTransaction(options: CreateTransactionOptions = {}): Promise<CreateTransactionResult> {
+  await ensureFactoryTagCounterSeeded();
   const state: TransactionState = options.state ?? 'completed_buy';
   const tag = uniqueTag(options.tag);
   const amount = options.amount ?? 100;
@@ -1142,6 +1157,7 @@ export async function createTransaction(options: CreateTransactionOptions = {}):
 // ---------------------------------------------------------------------------
 
 export async function createBankTx(options: CreateBankTxOptions = {}): Promise<CreateBankTxResult> {
+  await ensureFactoryTagCounterSeeded();
   const tag = uniqueTag(options.tag);
   const amount = options.amount ?? 250;
   const withTx = options.withTransaction !== false;
@@ -1207,6 +1223,7 @@ export async function createSupportIssue(
   jwt: string,
   options: CreateSupportIssueOptions = {},
 ): Promise<CreateSupportIssueResult> {
+  await ensureFactoryTagCounterSeeded();
   // POST /v1/support/issue requires mail on user_data (createIssueInternal).
   const user = await userFromJwt(jwt);
   const mailRow = await queryOne<{ mail: string | null }>(`SELECT mail FROM user_data WHERE id = $1`, [
@@ -1257,6 +1274,7 @@ export async function createPaymentLink(
   jwt: string,
   options: CreatePaymentLinkOptions = {},
 ): Promise<CreatePaymentLinkResult> {
+  await ensureFactoryTagCounterSeeded();
   const tag = uniqueTag(options.tag);
   const user = await userFromJwt(jwt);
 
@@ -1267,6 +1285,8 @@ export async function createPaymentLink(
 
   if (!routeId) {
     // Prefer an existing free Lightning deposit; otherwise insert a synthetic one for e2e.
+    // Only track deposits this call inserts — a reused free deposit belongs to the seed/other
+    // tests and must not be deleted on cleanup.
     let deposit = await queryOne<{ id: number }>(
       `SELECT d.id
        FROM deposit d
@@ -1280,9 +1300,8 @@ export async function createPaymentLink(
         ['address', 'blockchains', 'accountIndex'],
         [`e2e-ln-${tag}`, 'Lightning', 900000 + factoryTagCounter],
       );
+      track('deposit', depositId);
       deposit = { id: depositId };
-    } else {
-      track('deposit', deposit.id);
     }
 
     // deposit_route STI: type='Sell' + sell columns (iban, fiatId) on same table.
@@ -1370,6 +1389,7 @@ export async function createKycStep(
 // ---------------------------------------------------------------------------
 
 export async function createLimitRequest(options: CreateLimitRequestOptions = {}): Promise<CreateLimitRequestResult> {
+  await ensureFactoryTagCounterSeeded();
   let jwt = options.jwt;
   let userDataId = options.userDataId;
 
@@ -1384,6 +1404,7 @@ export async function createLimitRequest(options: CreateLimitRequestOptions = {}
     const res = await apiPost<{
       uid: string;
       limitRequest?: { id: number };
+      messages?: { id: number }[];
     }>(
       'support/issue',
       {
@@ -1406,10 +1427,20 @@ export async function createLimitRequest(options: CreateLimitRequestOptions = {}
       [res.uid],
     );
     if (issueRow) {
-      track('support_issue', issueRow.id);
+      // Parent (limit_request) first, then support_issue (child), then support_message (child of
+      // issue) last — cleanupCreatedData deletes in reverse registration order (LIFO).
       if (issueRow.limitRequestId) track('limit_request', issueRow.limitRequestId);
+      track('support_issue', issueRow.id);
+      const msgId = res.messages?.[0]?.id;
+      if (msgId != null) track('support_message', msgId);
+      const limitRequestId = issueRow.limitRequestId ?? res.limitRequest?.id;
+      if (limitRequestId == null) {
+        throw new Error(
+          `createLimitRequest: API created support_issue ${issueRow.id} (uid ${res.uid}) without a limit_request id`,
+        );
+      }
       return {
-        limitRequestId: issueRow.limitRequestId ?? res.limitRequest?.id ?? 0,
+        limitRequestId,
         supportIssueId: issueRow.id,
         supportIssueUid: res.uid,
       };
@@ -1418,8 +1449,14 @@ export async function createLimitRequest(options: CreateLimitRequestOptions = {}
       track('limit_request', res.limitRequest.id);
       return { limitRequestId: res.limitRequest.id, supportIssueUid: res.uid };
     }
-  } catch {
-    // Fall through to SQL if API rejects (e.g. missing mail already handled, or validation).
+  } catch (err) {
+    // Fall through to SQL only when the account has no mail (API 400 "Mail is missing").
+    // Any other failure (auth, 5xx, schema change, network) must surface — not look like success.
+    if (
+      !(err instanceof Error && err.message.includes('HTTP 400') && err.message.includes('Mail is missing'))
+    ) {
+      throw err;
+    }
   }
 
   // SQL fallback: limit_request + support_issue (limit_request has OneToOne from support_issue)
@@ -1634,8 +1671,17 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
   return { deleted, errors };
 }
 
-/** Reset the in-process counters (for isolated test files if needed). */
+/**
+ * Reset the in-process counters and seeding memoization (for isolated test files if needed).
+ * Clearing *StartApplied / *StartPromise forces the next ensureFactory*Seeded() call to re-query
+ * the DB; resetting only the numeric counters would restart at 1 while the seed cache still
+ * claimed "already applied", colliding with values already used earlier in the same process.
+ */
 export function resetFactoryCounter(): void {
   factoryTagCounter = 0;
   factoryWalletCounter = 0;
+  factoryWalletStartApplied = false;
+  factoryTagStartApplied = false;
+  factoryWalletStartPromise = null;
+  factoryTagStartPromise = null;
 }

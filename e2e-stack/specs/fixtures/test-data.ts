@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+
 /**
  * Test-only BIP39 mnemonic for signature-login wallets (testWallet / loginAs).
  * Distinct from E2E_EVM_DEPOSIT_SEED (used only for deposit-address seeding in global.setup).
@@ -22,13 +24,15 @@ export const ROLE_WALLET_INDEX = {
 
 let testEmailCounter = 0;
 
-/** Build a unique test email so reruns/rapid calls do not collide (counter-based, like the
- * factories' uniqueTag()/e2eMail(), not the previous Date.now()-only scheme which could repeat
- * within the same millisecond for two calls with the same tag). */
+/** Build a unique test email so concurrent calls and separate process runs against the same DB
+ * do not collide. Combines an in-process counter (fast uniqueness within one process) with
+ * crypto random entropy (uniqueness across processes/runs that would otherwise restart the
+ * counter at 0 and synthesize the same address). */
 export function testEmail(tag: string): string {
   testEmailCounter += 1;
   const safe = tag.replace(/[^a-zA-Z0-9_-]/g, '-');
-  return `e2e+${safe}-${testEmailCounter}@dfx.swiss`;
+  const entropy = randomBytes(3).toString('hex');
+  return `e2e+${safe}-${testEmailCounter}-${entropy}@dfx.swiss`;
 }
 
 /** Public test IBAN (Swiss sample) for payment-related specs. */
