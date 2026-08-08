@@ -93,17 +93,18 @@ compose build frontend-widget
 log_info "Starting stack (db, api, frontend, proxy)..."
 compose up -d db api frontend proxy
 
-# db healthcheck budget (compose.yml): start_period 10s + retries 20 * interval 5s = 110s.
-if ! wait_for_healthy db 120; then
+# db healthcheck budget (compose.yml): a probe may take its own timeout before it counts as a
+# failure, so the budget is start_period 10s + retries 20 * (interval 5s + timeout 5s) = 210s.
+if ! wait_for_healthy db 240; then
   log_error "Database failed to become healthy. Recent API logs:"
   compose logs --tail=200 api || true
   exit 1
 fi
 
-# API healthcheck budget (compose.yml): start_period 60s + retries 30 * interval 10s = 360s
-# before Docker itself marks the container unhealthy. This timeout must stay >= that budget,
-# or up.sh reports a false failure while the container is still inside its allowed window.
-if ! wait_for_healthy api 360; then
+# API healthcheck budget (compose.yml): start_period 60s + retries 30 * (interval 10s + timeout
+# 5s) = 510s before Docker itself marks the container unhealthy. This wait must stay >= that
+# budget, or up.sh reports a false failure while the container is still inside its allowed window.
+if ! wait_for_healthy api 540; then
   log_error "API failed to become healthy. Recent API logs:"
   compose logs --tail=200 api || true
   exit 1
@@ -123,23 +124,23 @@ WHERE NOT EXISTS (
 );
 SQL
 compose restart api
-if ! wait_for_healthy api 360; then
+if ! wait_for_healthy api 540; then
   log_error "API failed to become healthy after the seed restart. Recent API logs:"
   compose logs --tail=200 api || true
   exit 1
 fi
 
-# frontend healthcheck budget (compose.yml): start_period 5s + retries 10 * interval 5s = 55s;
-# rounded up so a slow first response does not fail the gate on the second.
-if ! wait_for_healthy frontend 90; then
+# frontend healthcheck budget (compose.yml): start_period 5s + retries 10 * (interval 5s +
+# timeout 3s) = 85s, rounded up.
+if ! wait_for_healthy frontend 120; then
   log_error "Frontend failed to become healthy. Recent frontend logs:"
   compose logs --tail=200 frontend || true
   exit 1
 fi
 
-# proxy healthcheck budget (compose.yml): start_period 5s + retries 10 * interval 5s = 55s, plus
-# room for the frontend it proxies to answer.
-if ! wait_for_healthy proxy 90; then
+# proxy healthcheck budget (compose.yml): start_period 5s + retries 10 * (interval 5s + timeout
+# 3s) = 85s, rounded up; it also has to wait on the frontend it proxies to.
+if ! wait_for_healthy proxy 120; then
   log_error "Proxy failed to become healthy. Recent proxy logs:"
   compose logs --tail=200 proxy || true
   exit 1

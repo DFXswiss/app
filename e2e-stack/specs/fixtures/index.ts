@@ -36,10 +36,15 @@ export async function openScreen(page: Page, path: string, jwt: string): Promise
   // networkidle plus a best-effort wait for common spinner markers (role=status / animate-spin)
   // to detach. If no such element exists, networkidle alone is the wait.
   await page.waitForLoadState('networkidle');
+  // A screen that never leaves its loading state has not rendered, and the path check below would
+  // still call it a success — so this wait is allowed to fail rather than being swallowed.
+  //
+  // It watches the first match rather than requiring every match to disappear. Requiring all of
+  // them was tried and measured: some screens keep a `[role="status"]` region for good, so the
+  // wait sat out its full timeout on healthy screens, more than doubled the suite's runtime and
+  // failed tests that had nothing wrong with them.
   const spinner = page.locator('[role="status"], .animate-spin').first();
   if ((await spinner.count()) > 0) {
-    // A screen that never leaves its loading state has not rendered, and the path check below
-    // would still call it a success — so let the wait fail rather than swallowing it.
     try {
       await spinner.waitFor({ state: 'detached', timeout: 15000 });
     } catch {

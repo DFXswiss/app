@@ -416,11 +416,7 @@ test.describe('Buy flow', () => {
     }
   });
 
-  // AMOUNT_TOO_LOW needs transaction_specification.minVolume > 0 for Fiat/CHF In, which the seed
-  // below writes. TransactionHelper reads the specification per request rather than from a cache
-  // filled at boot, so the seeded row takes effect within the same API process — measured against
-  // the running stack, after this test had been marked expected-to-fail on the assumption of a
-  // boot-time cache.
+  // AMOUNT_TOO_LOW needs transaction_specification.minVolume > 0 for Fiat/CHF In.
   test('/buy: amount below minimum surfaces error (not payment details)', async ({ page }) => {
     test.setTimeout(90000);
 
