@@ -66,6 +66,12 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // Reply suggestion state: only the newest suggestion awaiting a decision is offered
   const [suggestion, setSuggestion] = useState<SupportReplySuggestion>();
   const [isSuggestionBusy, setIsSuggestionBusy] = useState(false);
+  // Answers to a request the screen has moved past must not be applied: a decision taken or another
+  // ticket opened while a fetch was in flight would otherwise put the suggestion back on screen. The
+  // counter is raised on both, and a response whose token no longer matches is dropped — a check of
+  // the busy flag alone cannot do this, because that flag is false again by the time such an answer
+  // arrives.
+  const suggestionEpochRef = useRef(0);
 
   // Message form state
   const [messageText, setMessageText] = useState('');
@@ -154,10 +160,27 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   const loadSuggestion = useCallback((): void => {
     if (!id) return;
+    const epoch = suggestionEpochRef.current;
     getReplySuggestion(+id)
-      .then(setSuggestion)
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load reply suggestion'));
+      .then((loaded) => {
+        if (suggestionEpochRef.current === epoch) setSuggestion(loaded);
+      })
+      .catch((e: Error) => {
+        if (suggestionEpochRef.current === epoch)
+          setActionError(e.message ?? 'Failed to load reply suggestion');
+      });
   }, [id, getReplySuggestion]);
+
+  // Everything tied to one ticket is dropped when another one is opened: react-router keeps this
+  // component mounted across a change of the route parameter, so a suggestion of the previous
+  // ticket would stay on screen, and the author picked there would keep the default from ever
+  // applying again. Declared before the loading effects, so that raising the token happens ahead of
+  // the fetch it is meant to qualify rather than invalidating it.
+  useEffect(() => {
+    suggestionEpochRef.current++;
+    setSuggestion(undefined);
+    isAuthorPickedRef.current = false;
+  }, [id]);
 
   useEffect(() => {
     loadIssue();
@@ -176,15 +199,6 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setUserDataDetail(undefined);
     setUserTransactions([]);
   }, [issueData?.account.id]);
-
-  // Everything tied to one ticket is dropped when another one is opened: react-router keeps this
-  // component mounted across a change of the route parameter, so a suggestion of the previous
-  // ticket would stay on screen, and the author picked there would keep the default from ever
-  // applying again.
-  useEffect(() => {
-    setSuggestion(undefined);
-    isAuthorPickedRef.current = false;
-  }, [id]);
 
   async function openTemplatePicker(accountId: number): Promise<void> {
     if (userDataDetail) {
@@ -293,6 +307,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
    * Either way the suggestion stops being offered, and stays on record on the server.
    */
   async function decideSuggestion(issueId: number, item: SupportReplySuggestion, accept: boolean): Promise<void> {
+    suggestionEpochRef.current++;
     setIsSuggestionBusy(true);
     setActionError(undefined);
     try {

@@ -1012,6 +1012,81 @@ describe('SupportDashboardIssueScreen', () => {
       await waitFor(() => expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument());
     });
 
+    // A fetch that was already in flight when the decision was taken answers with the state from
+    // before it; the busy flag is false again by then, so only the token can tell them apart.
+    it('drops the answer of a fetch that was in flight when the decision was taken', async () => {
+      mockGetReplySuggestion.mockResolvedValue(SUGGESTION);
+      await renderScreen();
+      await screen.findByText('Suggested reply');
+
+      // the poll's answer is held back until after the decision has gone through
+      let answerPoll: (value: SupportReplySuggestion) => void = () => undefined;
+      mockGetReplySuggestion.mockReturnValue(new Promise<SupportReplySuggestion>((r) => (answerPoll = r)));
+      jest.useFakeTimers();
+      try {
+        await act(async () => {
+          jest.advanceTimersByTime(15000);
+          await Promise.resolve();
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+
+      fireEvent.click(button('Discard'));
+      await waitFor(() => expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument());
+
+      await act(async () => answerPoll(SUGGESTION));
+
+      expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument();
+    });
+
+    // The same for a fetch of the ticket that was open before: its answer belongs to a screen that
+    // is no longer shown.
+    it('drops the answer of a fetch that belongs to the previous ticket', async () => {
+      let answerFirst: (value: SupportReplySuggestion) => void = () => undefined;
+      mockGetReplySuggestion
+        .mockReturnValueOnce(new Promise<SupportReplySuggestion>((r) => (answerFirst = r)))
+        .mockReturnValue(new Promise(() => undefined));
+
+      render(<SupportDashboardIssueScreen />);
+      await waitFor(() => expect(mockGetClerks).toHaveBeenCalled(), { timeout: 5000 });
+      resolveClerks(CLERKS);
+      await screen.findByRole('button', { name: 'Update' }, { timeout: 5000 });
+
+      mockParams.id = '43';
+      fireEvent.click(button('Update'));
+      await waitFor(() => expect(mockUpdateIssue).toHaveBeenCalled());
+
+      await act(async () => answerFirst(SUGGESTION));
+
+      expect(screen.queryByText('Suggested reply')).not.toBeInTheDocument();
+    });
+
+    // The same rule for a failure: an error from a fetch the screen has moved past is not the
+    // clerk's problem and must not appear on the ticket they are looking at now.
+    it('stays silent about a failure that belongs to the previous ticket', async () => {
+      let failFirst: (reason: Error) => void = () => undefined;
+      mockGetReplySuggestion
+        .mockReturnValueOnce(new Promise<SupportReplySuggestion>((_, reject) => (failFirst = reject)))
+        .mockReturnValue(new Promise(() => undefined));
+
+      render(<SupportDashboardIssueScreen />);
+      await waitFor(() => expect(mockGetClerks).toHaveBeenCalled(), { timeout: 5000 });
+      resolveClerks(CLERKS);
+      await screen.findByRole('button', { name: 'Update' }, { timeout: 5000 });
+
+      mockParams.id = '43';
+      fireEvent.click(button('Update'));
+      await waitFor(() => expect(mockUpdateIssue).toHaveBeenCalled());
+
+      await act(async () => {
+        failFirst(new Error('suggestion boom'));
+        await Promise.resolve();
+      });
+
+      expect(screen.queryByText('suggestion boom')).not.toBeInTheDocument();
+    });
+
     it('reports why the suggestion could not be loaded', async () => {
       mockGetReplySuggestion.mockRejectedValue(new Error('suggestion boom'));
 
