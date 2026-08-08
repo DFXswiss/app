@@ -59,6 +59,13 @@ else
   export E2E_NODE_OPTIONS="--unhandled-rejections=warn"
 fi
 
+# Record the decision where Compose itself will read it. Exporting alone is not enough: the test
+# run is a separate `docker compose` invocation in a separate shell, and a service whose resolved
+# configuration differs from the running container gets recreated — which restarted the API
+# without the option and killed it mid-run. Compose reads this file from the project directory,
+# so every later invocation resolves the same value. It is gitignored and rewritten on each up.
+printf 'E2E_NODE_OPTIONS=%s\n' "$E2E_NODE_OPTIONS" > "$STACK_DIR/.env"
+
 log_info "Building frontend image..."
 compose build frontend
 

@@ -75,9 +75,12 @@ jobs:
       - name: Run Playwright tests
         # No continue-on-error: a failed test must fail the job. Later steps use
         # `if: always()` so artifact collection and teardown still run.
+        # --env-file is not optional here: up.sh writes the values it resolved into that file, and
+        # a compose run that resolves them differently recreates the API container mid-run.
         run: |
           docker compose \
             -p dfx-e2e-stack \
+            --env-file e2e-stack/.env \
             -f e2e-stack/compose.yml \
             -f e2e-stack/compose.tests.yml \
             run --name dfx-e2e-stack-tests tests

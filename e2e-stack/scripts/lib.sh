@@ -11,7 +11,15 @@ compose() {
   if [[ -f "$STACK_DIR/compose.tests.yml" ]]; then
     files+=(-f "$STACK_DIR/compose.tests.yml")
   fi
-  docker compose -p "$E2E_PROJECT" "${files[@]}" "$@"
+  # up.sh writes STACK_DIR/.env with the values it resolved at build time. Naming it explicitly
+  # rather than relying on Compose picking it up keeps every invocation on the same values no
+  # matter which directory it runs from — a service whose resolved configuration differs from the
+  # running container is recreated, which would restart the API in the middle of a test run.
+  local env_file=()
+  if [[ -f "$STACK_DIR/.env" ]]; then
+    env_file=(--env-file "$STACK_DIR/.env")
+  fi
+  docker compose -p "$E2E_PROJECT" "${env_file[@]}" "${files[@]}" "$@"
 }
 
 # Rebuild the `tests` image so that spec-file edits are actually picked up. The image COPYs
