@@ -242,7 +242,12 @@ describe('SupportDashboardIssueScreen', () => {
     mockUseAuthContext.mockReturnValue({ session: { role: 'Admin' } });
     mockGetIssueData.mockResolvedValue(FULL_ISSUE);
     mockGetIssueMessages.mockResolvedValue(MESSAGES);
-    mockGetClerks.mockResolvedValue(['Alex', 'Robin']);
+    // resolved a tick late on purpose: the clerk list always arrives after the ticket, and on CI the
+    // gap is wide enough that a test interacting with a clerk dropdown before it is filled sees an
+    // empty one — which is exactly the failure this ordering reproduces locally
+    mockGetClerks.mockImplementation(
+      () => new Promise<string[]>((resolve) => setTimeout(() => resolve(['Alex', 'Robin']), 0)),
+    );
     mockGetReplySuggestion.mockResolvedValue(undefined);
     mockUpdateIssue.mockResolvedValue(undefined);
     mockSendMessage.mockResolvedValue(undefined);
@@ -425,6 +430,10 @@ describe('SupportDashboardIssueScreen', () => {
     it('reassigns the ticket to another department and clerk', async () => {
       await renderScreen();
 
+      // the clerk list arrives after the ticket; without its options a change event on the select is
+      // dropped, which is what made this test flaky in CI
+      await screen.findAllByRole('option', { name: 'Robin' }, { timeout: 5000 });
+
       // the update controls in order: state, department, clerk (the fourth select is the composer author)
       const selects = document.querySelectorAll('select');
       fireEvent.change(selects[1], { target: { value: 'Support' } });
@@ -599,6 +608,7 @@ describe('SupportDashboardIssueScreen', () => {
 
     it('sends under another clerk name', async () => {
       await renderScreen();
+      await screen.findAllByRole('option', { name: 'Robin' }, { timeout: 5000 });
 
       fireEvent.change(screen.getByTitle('Author'), { target: { value: 'Robin' } });
       fireEvent.change(composer(), { target: { value: 'On its way' } });
