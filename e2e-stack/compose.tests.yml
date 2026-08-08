@@ -11,6 +11,12 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      # frontend has no healthcheck; service_started is enough here — E2E_FRONTEND_URL points
+      # at it (http://frontend by default), and the header comment above documents a direct
+      # `docker compose ... run --rm tests` invocation, which only reaches the frontend if it
+      # is at least started as a dependency of `tests`.
+      frontend:
+        condition: service_started
       # frontend-widget has no healthcheck; widget tests are a separate concern from the main
       # suite. service_started is enough to bring the container up as a dependency without
       # blocking or failing the whole run on widget readiness — the main suite must never be
