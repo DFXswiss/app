@@ -8,16 +8,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import {
-  apiGet,
-  expect,
-  gotoWithSession,
-  loginAs,
-  openScreen,
-  queryOne,
-  test,
-  waitForRow,
-} from './fixtures';
+import { apiGet, expect, gotoWithSession, loginAs, openScreen, queryOne, test, waitForRow } from './fixtures';
 import { cleanupCreatedData, createSupportIssue, createUser } from './fixtures/factories';
 
 function normPath(p: string): string {
@@ -35,17 +26,10 @@ const STAFF_ROUTES = [
 ] as const;
 
 /** Required denial coverage from the task brief (plus the rest for completeness). */
-const EXPLICIT_DENIAL_ROUTES = [
-  '/support/dashboard',
-  '/notes',
-  '/templates',
-  '/support/user/1',
-] as const;
+const EXPLICIT_DENIAL_ROUTES = ['/support/dashboard', '/notes', '/templates', '/support/user/1'] as const;
 
 async function waitForPath(page: Page, expected: string, message: string, timeout = 15000): Promise<void> {
-  await expect
-    .poll(() => normPath(new URL(page.url()).pathname), { message, timeout })
-    .toBe(normPath(expected));
+  await expect.poll(() => normPath(new URL(page.url()).pathname), { message, timeout }).toBe(normPath(expected));
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -155,7 +139,10 @@ test.describe('Support dashboard (staff)', () => {
     await expect(page.getByText(`ID: ${customer.userDataId}`)).toBeVisible();
 
     // Type/Reason option values are the SupportIssueType / SupportIssueReason enum strings.
-    await page.getByText('Type *', { exact: true }).locator('xpath=following-sibling::select').selectOption('GenericIssue');
+    await page
+      .getByText('Type *', { exact: true })
+      .locator('xpath=following-sibling::select')
+      .selectOption('GenericIssue');
     await page.getByText('Reason *', { exact: true }).locator('xpath=following-sibling::select').selectOption('Other');
 
     await page.getByPlaceholder('Issue title').fill(issueTitle);
@@ -312,9 +299,7 @@ test.describe('Support dashboard (staff)', () => {
 
     await expect(page.getByPlaceholder('Name der Vorlage')).toBeVisible();
     await page.getByPlaceholder('Name der Vorlage').fill(name);
-    await page
-      .getByPlaceholder('Inhalt auf Deutsch – Platzhalter wie $userData.firstname einfügen')
-      .fill(contentDe);
+    await page.getByPlaceholder('Inhalt auf Deutsch – Platzhalter wie $userData.firstname einfügen').fill(contentDe);
 
     await page.getByRole('button', { name: 'Vorlage speichern' }).click();
 

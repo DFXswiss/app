@@ -36,9 +36,7 @@ export function testWallet(index = 0): TestWallet {
 /** Full signature login: GET /v1/auth/signMessage -> sign with ethers v5 -> POST /v1/auth. Returns the JWT. */
 export async function signatureLogin(wallet: TestWallet): Promise<string> {
   const base = apiBase();
-  const signRes = await fetch(
-    `${base}/v1/auth/signMessage?address=${encodeURIComponent(wallet.address)}`,
-  );
+  const signRes = await fetch(`${base}/v1/auth/signMessage?address=${encodeURIComponent(wallet.address)}`);
   if (!signRes.ok) {
     const body = await signRes.text();
     throw new Error(`signMessage failed: ${signRes.status} ${body}`);
@@ -142,9 +140,7 @@ export async function loginAs(
   // (5) user id from the JWT `user` claim.
   const userId = payload.user;
   if (typeof userId !== 'number') {
-    throw new Error(
-      `loginAs: JWT payload missing numeric "user" claim (got ${JSON.stringify(payload.user)})`,
-    );
+    throw new Error(`loginAs: JWT payload missing numeric "user" claim (got ${JSON.stringify(payload.user)})`);
   }
 
   return { jwt, wallet, userId };

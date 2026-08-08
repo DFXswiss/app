@@ -119,9 +119,7 @@ function extractAppRoutes(appTsxPath: string): Set<string> {
   return paths;
 }
 
-async function loadRegistryClaims(
-  registryDir: string,
-): Promise<{ claims: RouteClaim[]; byPath: Map<string, string> }> {
+async function loadRegistryClaims(registryDir: string): Promise<{ claims: RouteClaim[]; byPath: Map<string, string> }> {
   const files = fs
     .readdirSync(registryDir)
     .filter((f) => f.endsWith('.ts') && f !== 'types.ts')

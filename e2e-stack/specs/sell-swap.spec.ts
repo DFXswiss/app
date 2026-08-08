@@ -9,13 +9,7 @@
  */
 
 import type { Page, Response } from '@playwright/test';
-import {
-  expect,
-  gotoWithSession,
-  openScreen,
-  test,
-  waitForRow,
-} from './fixtures';
+import { expect, gotoWithSession, openScreen, test, waitForRow } from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -25,7 +19,6 @@ import {
   e2eMail,
   TEST_IBAN,
 } from './fixtures/factories';
-
 
 // Wallet-index isolation: factories.ts's createUser() derives its wallet index from an
 // in-process counter starting at FACTORY_WALLET_INDEX_BASE (100) unless `walletIndex` is
@@ -142,22 +135,38 @@ async function waitForPricingOutcome(
       return { kind: 'payment_info', detail: 'Payment Information heading visible' };
     }
     if (await genericError.isVisible().catch(() => false)) {
-      const detail = ((await errorMsg.first().textContent().catch(() => null)) ?? 'unknown pricing error').trim();
+      const detail = (
+        (await errorMsg
+          .first()
+          .textContent()
+          .catch(() => null)) ?? 'unknown pricing error'
+      ).trim();
       return { kind: 'error', detail };
     }
     // KYC / quote errors also surface text without the generic ErrorHint shell.
     const body = await page.locator('body').innerText();
-    if (/failed|not available|price|timeout|ECONNREFUSED|503|502|500/i.test(body) && !(await completeBtn.isVisible().catch(() => false))) {
+    if (
+      /failed|not available|price|timeout|ECONNREFUSED|503|502|500/i.test(body) &&
+      !(await completeBtn.isVisible().catch(() => false))
+    ) {
       // Keep polling a bit — spinner may still be settling — but capture later.
     }
     await page.waitForTimeout(400);
   }
 
-  const bodySnippet = (await page.locator('body').innerText().catch(() => '')).slice(0, 400);
+  const bodySnippet = (
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => '')
+  ).slice(0, 400);
   return { kind: 'timeout', detail: bodySnippet || 'no payment info and no error within timeout' };
 }
 
-function trackPaymentInfosResponses(page: Page, pathIncludes: string): { last: { status: number; body: string } | null } {
+function trackPaymentInfosResponses(
+  page: Page,
+  pathIncludes: string,
+): { last: { status: number; body: string } | null } {
   const box: { last: { status: number; body: string } | null } = { last: null };
   page.on('response', async (res: Response) => {
     const url = res.url();
@@ -294,9 +303,7 @@ test.describe('Sell + Swap e2e', () => {
       language: 'EN',
     });
     const assets = await fetchAssets();
-    const sellableNames = new Set(
-      assets.filter((a) => a.sellable && !a.comingSoon).map((a) => a.name),
-    );
+    const sellableNames = new Set(assets.filter((a) => a.sellable && !a.comingSoon).map((a) => a.name));
     expect(sellableNames.size, 'seed must have at least one sellable asset').toBeGreaterThan(0);
 
     await openScreen(page, '/sell', user.jwt);
@@ -340,9 +347,7 @@ test.describe('Sell + Swap e2e', () => {
     });
     const fiats = await fetchFiats();
     const sellableNames = fiats.filter((f) => f.sellable).map((f) => f.name);
-    const buyableFilterNames = fiats
-      .filter((f) => f.buyable || f.cardBuyable || f.instantBuyable)
-      .map((f) => f.name);
+    const buyableFilterNames = fiats.filter((f) => f.buyable || f.cardBuyable || f.instantBuyable).map((f) => f.name);
     expect(sellableNames.length, 'seed must have sellable fiats').toBeGreaterThan(0);
 
     await openScreen(page, '/sell', user.jwt);
@@ -368,8 +373,7 @@ test.describe('Sell + Swap e2e', () => {
 
     const nonSellableOffered = offered.filter((name) => !sellableNames.includes(name));
     const matchesBuyableFilter =
-      offered.every((n) => buyableFilterNames.includes(n)) &&
-      buyableFilterNames.some((n) => offered.includes(n));
+      offered.every((n) => buyableFilterNames.includes(n)) && buyableFilterNames.some((n) => offered.includes(n));
 
     if (nonSellableOffered.length > 0) {
       // sell.hook filters buyable||cardBuyable||instantBuyable instead of sellable — real product bug.
@@ -465,9 +469,9 @@ test.describe('Sell + Swap e2e', () => {
       });
       if (await completeBtn.isVisible().catch(() => false)) {
         await completeBtn.click();
-        await expect(
-          page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
-        ).toBeVisible({ timeout: 15000 });
+        await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toBeVisible(
+          { timeout: 15000 },
+        );
       }
       return;
     }
@@ -520,11 +524,7 @@ test.describe('Sell + Swap e2e', () => {
       language: 'EN',
     });
 
-    await gotoWithSession(
-      page,
-      `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=NOTANIBAN`,
-      user.jwt,
-    );
+    await gotoWithSession(page, `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=0.1&bank-account=NOTANIBAN`, user.jwt);
     await page.waitForLoadState('networkidle');
     expect(normPath(new URL(page.url()).pathname)).toBe('/sell/info');
 
@@ -559,13 +559,11 @@ test.describe('Sell + Swap e2e', () => {
     const txDetails = page.getByText('Transaction Details', { exact: true });
     const missing = page.getByText('Missing required information', { exact: true });
 
-    if (await txDetails.isVisible().catch(() => false) || outcome.kind === 'payment_info') {
+    if ((await txDetails.isVisible().catch(() => false)) || outcome.kind === 'payment_info') {
       // Both "Transaction Details" and the "Payment Information" heading can be visible at once
       // (they are not mutually exclusive sections of the same successful panel) — `.first()` keeps
       // this a single-element assertion regardless of how many of the two are present.
-      await expect(
-        txDetails.or(page.getByRole('heading', { name: 'Payment Information' })).first(),
-      ).toBeVisible();
+      await expect(txDetails.or(page.getByRole('heading', { name: 'Payment Information' })).first()).toBeVisible();
       // paymentInfos success also creates a sell deposit_route.
       await waitForRow(
         `SELECT id FROM deposit_route WHERE "userId" = $1 AND type = 'Sell' ORDER BY id DESC LIMIT 1`,
@@ -692,10 +690,9 @@ test.describe('Sell + Swap e2e', () => {
     const swap = outcome.result;
     expect(swap.swapId).toBeGreaterThan(0);
 
-    const row = await waitForRow<{ id: number; type: string }>(
-      `SELECT id, type FROM deposit_route WHERE id = $1`,
-      [swap.swapId],
-    );
+    const row = await waitForRow<{ id: number; type: string }>(`SELECT id, type FROM deposit_route WHERE id = $1`, [
+      swap.swapId,
+    ]);
     expect(row.type).toBe('Crypto');
   });
 
@@ -752,10 +749,7 @@ test.describe('Sell + Swap e2e', () => {
       );
       return;
     }
-    await waitForRow(
-      `SELECT id FROM deposit_route WHERE id = $1 AND type = 'Crypto'`,
-      [factoryOutcome.result.swapId],
-    );
+    await waitForRow(`SELECT id FROM deposit_route WHERE id = $1 AND type = 'Crypto'`, [factoryOutcome.result.swapId]);
 
     test.fixme(
       true,
@@ -807,9 +801,9 @@ test.describe('Sell + Swap e2e', () => {
     } else {
       expect(path).toBe('/sell');
       // Must not show the completion payment panel without complete data.
-      await expect(
-        page.getByRole('button', { name: /Click here once you have issued the transaction/i }),
-      ).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /Click here once you have issued the transaction/i })).toHaveCount(
+        0,
+      );
     }
   });
 });

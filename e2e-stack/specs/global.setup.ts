@@ -10,8 +10,7 @@ import { Client } from 'pg';
 import { loginAs } from './fixtures/auth';
 import { queryOne, withDb } from './fixtures/db';
 
-const EVM_BLOCKCHAINS =
-  'Ethereum;Sepolia;BinanceSmartChain;Arbitrum;Optimism;Polygon;Base;Gnosis;Haqq';
+const EVM_BLOCKCHAINS = 'Ethereum;Sepolia;BinanceSmartChain;Arbitrum;Optimism;Polygon;Base;Gnosis;Haqq';
 
 function apiBase(): string {
   return process.env.E2E_API_URL ?? 'http://api:3000';
@@ -61,9 +60,7 @@ async function seedDepositAddresses(): Promise<void> {
   const adminWallet = ethers.Wallet.fromMnemonic(mnemonic, "m/44'/60'/0'/0/0");
   const base = apiBase();
 
-  const signRes = await fetch(
-    `${base}/v1/auth/signMessage?address=${encodeURIComponent(adminWallet.address)}`,
-  );
+  const signRes = await fetch(`${base}/v1/auth/signMessage?address=${encodeURIComponent(adminWallet.address)}`);
   if (!signRes.ok) {
     throw new Error(`global.setup signMessage failed: ${signRes.status} ${await signRes.text()}`);
   }
@@ -82,10 +79,7 @@ async function seedDepositAddresses(): Promise<void> {
   const client = new Client(dbConfig());
   await client.connect();
   try {
-    await client.query('UPDATE "user" SET role = $1 WHERE address = $2', [
-      'Admin',
-      adminWallet.address,
-    ]);
+    await client.query('UPDATE "user" SET role = $1 WHERE address = $2', ['Admin', adminWallet.address]);
 
     for (let i = 0; i < DEPOSIT_ADDRESS_POOL_SIZE; i++) {
       const hdPath = `m/44'/60'/0'/0/${i}`;
@@ -127,9 +121,7 @@ async function seedStaffKycClearance(): Promise<void> {
       [userId],
     );
     if (!row?.userDataId) {
-      throw new Error(
-        `seedStaffKycClearance: no userDataId for role ${role} (user id ${userId}) after loginAs`,
-      );
+      throw new Error(`seedStaffKycClearance: no userDataId for role ${role} (user id ${userId}) after loginAs`);
     }
     userDataIds.add(row.userDataId);
   }
@@ -160,9 +152,7 @@ async function seedStaffKycClearance(): Promise<void> {
     const body = await res.text();
     if (!(res.status === 403 && body.includes('STAFF_KYC_REQUIRED'))) {
       if (!res.ok) {
-        throw new Error(
-          `seedStaffKycClearance: GET /v1/userData returned unexpected ${res.status}: ${body}`,
-        );
+        throw new Error(`seedStaffKycClearance: GET /v1/userData returned unexpected ${res.status}: ${body}`);
       }
       return;
     }
@@ -176,7 +166,7 @@ async function seedStaffKycClearance(): Promise<void> {
       'ProcessService.resyncStaffKycClearance (api/src/shared/services/process.service.ts) should ' +
       'copy that setting into the in-memory Set used by HasStaffKycClearance ' +
       '(api/src/shared/auth/staff-kyc-clearance.ts) every ~30s. If this timeout is hit, resync ' +
-      'stopped running or the setting write did not take — every later loginAs(\'Support\') etc. ' +
+      "stopped running or the setting write did not take — every later loginAs('Support') etc. " +
       'would otherwise fail confusingly at /staff-kyc-required instead of here.',
   );
 }
@@ -288,10 +278,7 @@ async function seedFreshPrices(): Promise<void> {
     );
 
     for (const [id, referenceId] of Object.entries(referenceByPriceRuleId)) {
-      await client.query(`UPDATE price_rule SET "referenceId" = $1 WHERE id = $2`, [
-        referenceId,
-        Number(id),
-      ]);
+      await client.query(`UPDATE price_rule SET "referenceId" = $1 WHERE id = $2`, [referenceId, Number(id)]);
     }
   });
 }

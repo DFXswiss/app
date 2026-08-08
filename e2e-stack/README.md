@@ -55,10 +55,10 @@ npm run e2e:stack:down
 
 After `e2e:stack:up`, the following host ports are available for debugging (override with env vars if needed):
 
-| Service  | Env var             | Default host URL          |
-| -------- | ------------------- | ------------------------- |
-| API      | `E2E_PORT_API`      | http://localhost:3000     |
-| Frontend | `E2E_PORT_FRONTEND` | http://localhost:3001     |
+| Service  | Env var             | Default host URL      |
+| -------- | ------------------- | --------------------- |
+| API      | `E2E_PORT_API`      | http://localhost:3000 |
+| Frontend | `E2E_PORT_FRONTEND` | http://localhost:3001 |
 
 Open `http://localhost:3001` (default `E2E_PORT_FRONTEND`) in a host browser to load the
 frontend. The frontend's API base URL is baked into its JS bundle at build time
@@ -80,13 +80,13 @@ no branching needed. This only holds with the default ports — if you override
 
 Relevant environment variables:
 
-| Variable            | Role                                                                 |
-| ------------------- | -------------------------------------------------------------------- |
-| `E2E_API_IMAGE`     | If set, use this pre-built API image instead of building one         |
+| Variable            | Role                                                                                   |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| `E2E_API_IMAGE`     | If set, use this pre-built API image instead of building one                           |
 | `E2E_API_REPO`      | Path to a checked-out API repo; default `../api` (ignored when `E2E_API_IMAGE` is set) |
-| `E2E_PORT_API`      | Host port for the API (default `3000`) — debugging only              |
-| `E2E_PORT_FRONTEND` | Host port for the frontend (default `3001`) — debugging only         |
-| `E2E_WIDGET_URL`    | Internal URL of the widget host (default `http://frontend-widget`)   |
+| `E2E_PORT_API`      | Host port for the API (default `3000`) — debugging only                                |
+| `E2E_PORT_FRONTEND` | Host port for the frontend (default `3001`) — debugging only                           |
+| `E2E_WIDGET_URL`    | Internal URL of the widget host (default `http://frontend-widget`)                     |
 
 ## Frontend widget service
 

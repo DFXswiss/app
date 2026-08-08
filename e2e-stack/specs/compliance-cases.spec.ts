@@ -14,16 +14,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import {
-  expect,
-  loginAs,
-  openScreen,
-  queryOne,
-  queryRows,
-  test,
-  waitForRow,
-  withDb,
-} from './fixtures';
+import { expect, loginAs, openScreen, queryOne, queryRows, test, waitForRow, withDb } from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -110,10 +101,7 @@ test.describe('Compliance area (cases)', () => {
       completePersonalData: true,
     });
     // Ensure verifiedName aligns with bank data name to avoid mismatch UI noise
-    await queryRows(
-      `UPDATE user_data SET "verifiedName" = $1 WHERE id = $2`,
-      ['E2E Tester', customer.userDataId],
-    );
+    await queryRows(`UPDATE user_data SET "verifiedName" = $1 WHERE id = $2`, ['E2E Tester', customer.userDataId]);
 
     const ba = await createBankAccount(customer.jwt, { iban: TEST_IBAN, label: 'E2E ManualReview BA' });
     await queryRows(
@@ -123,9 +111,7 @@ test.describe('Compliance area (cases)', () => {
       ['E2E Tester', ba.bankAccountId],
     );
 
-    const before = await queryOne<{ status: string }>(`SELECT status FROM bank_data WHERE id = $1`, [
-      ba.bankAccountId,
-    ]);
+    const before = await queryOne<{ status: string }>(`SELECT status FROM bank_data WHERE id = $1`, [ba.bankAccountId]);
     expect(before?.status).toBe('ManualReview');
 
     // openScreen compares pathname only — do not put ?tab= in the path argument
@@ -193,7 +179,9 @@ test.describe('Compliance area (cases)', () => {
     await page.getByRole('textbox').first().fill('E2E Bank Sender');
     await page.getByRole('button', { name: 'Search', exact: true }).click();
 
-    const bankTxSection = page.getByText('Bank Transactions', { exact: true }).locator('xpath=following-sibling::div[1]');
+    const bankTxSection = page
+      .getByText('Bank Transactions', { exact: true })
+      .locator('xpath=following-sibling::div[1]');
     const bankTxRow = bankTxSection.locator('tbody tr', { hasText: btx.accountServiceRef }).first();
     await expect(bankTxRow).toBeVisible({ timeout: 15000 });
     await bankTxRow.locator('button, [role="button"]').last().click();
@@ -269,9 +257,7 @@ test.describe('Compliance area (cases)', () => {
   // /compliance/bank-tx/:id/return — form render (id = transactionId)
   // -------------------------------------------------------------------------
 
-  test('/compliance/bank-tx/:id/return renders refund form or load error for unassigned bank tx', async ({
-    page,
-  }) => {
+  test('/compliance/bank-tx/:id/return renders refund form or load error for unassigned bank tx', async ({ page }) => {
     const { jwt, userId } = await loginAs('Compliance');
     await ensureStaffReady(userId);
 
@@ -466,7 +452,10 @@ test.describe('Compliance area (cases)', () => {
     expect(queueName.length).toBeGreaterThan(0);
 
     // Open the user detail (row click). Prefer the row that contains the userDataId.
-    const userRow = page.locator('tbody tr').filter({ hasText: String(entry.userDataId) }).first();
+    const userRow = page
+      .locator('tbody tr')
+      .filter({ hasText: String(entry.userDataId) })
+      .first();
     await expect(userRow).toBeVisible();
     await userRow.click();
     await page.waitForLoadState('networkidle');

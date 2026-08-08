@@ -63,10 +63,7 @@ function assertNoErrors(pageErrors: string[], consoleErrors: string[]): void {
  * Sets verifiedName and waits until the background job syncs userDataId into staffKycClearance.
  */
 async function ensureStaffKycClearance(userDataId: number, roleLabel: string): Promise<void> {
-  await queryOne('UPDATE user_data SET "verifiedName" = $1 WHERE id = $2', [
-    `E2E ${roleLabel} Clearance`,
-    userDataId,
-  ]);
+  await queryOne('UPDATE user_data SET "verifiedName" = $1 WHERE id = $2', [`E2E ${roleLabel} Clearance`, userDataId]);
 
   const timeoutMs = 75_000;
   const intervalMs = 3_000;
@@ -149,9 +146,7 @@ test.describe('Financial dashboard', () => {
     await expect(page.getByText('Balance overview, history, liquidity & expenses')).toBeVisible();
 
     await page.getByText('Financial', { exact: true }).click();
-    await expect
-      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
-      .toBe('/dashboard/financial');
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 }).toBe('/dashboard/financial');
 
     assertNoErrors(pageErrors, consoleErrors);
   });
@@ -286,9 +281,7 @@ test.describe('Financial dashboard', () => {
     await page.getByRole('button', { name: 'Confirm' }).click();
 
     await expect(
-      page.getByText(
-        'Something went wrong. Please try again. If the issue persists please reach out to our support.',
-      ),
+      page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.'),
     ).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);

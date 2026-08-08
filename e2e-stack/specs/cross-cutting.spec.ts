@@ -7,15 +7,7 @@
 
 import type { Page, Route } from '@playwright/test';
 import { ethers } from 'ethers';
-import {
-  decodeJwtPayload,
-  expect,
-  gotoWithSession,
-  openScreen,
-  queryOne,
-  test,
-  testWallet,
-} from './fixtures';
+import { decodeJwtPayload, expect, gotoWithSession, openScreen, queryOne, test, testWallet } from './fixtures';
 import { cleanupCreatedData, createUser } from './fixtures/factories';
 
 test.describe.configure({ mode: 'serial' });
@@ -101,10 +93,9 @@ async function assertNoHorizontalOverflow(page: Page, tolerancePx = 8): Promise<
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,
   }));
-  expect(
-    scrollWidth,
-    `horizontal overflow: scrollWidth=${scrollWidth} clientWidth=${clientWidth}`,
-  ).toBeLessThanOrEqual(clientWidth + tolerancePx);
+  expect(scrollWidth, `horizontal overflow: scrollWidth=${scrollWidth} clientWidth=${clientWidth}`).toBeLessThanOrEqual(
+    clientWidth + tolerancePx,
+  );
 }
 
 function isStackApi(url: string): boolean {
@@ -170,9 +161,7 @@ test.describe('Cross-cutting', () => {
   // =========================================================================
 
   test.describe('Language switching', () => {
-    test('settings switcher exposes only DE/EN/FR/IT; switch persists in DB and across reload', async ({
-      page,
-    }) => {
+    test('settings switcher exposes only DE/EN/FR/IT; switch persists in DB and across reload', async ({ page }) => {
       const user = await createUser({ tag: 'cc-lang', language: 'EN', kycLevel: 30, completePersonalData: true });
 
       // Seeded languages (7) vs appLanguages filter (4) in settings.context.tsx.
@@ -185,17 +174,13 @@ test.describe('Cross-cutting', () => {
       expect(Number(langRows?.cnt), 'DE/EN/FR/IT must exist in language table').toBe(4);
 
       const enName =
-        (await queryOne<{ name: string }>(`SELECT name FROM language WHERE symbol = 'EN' LIMIT 1`))?.name ??
-        'English';
+        (await queryOne<{ name: string }>(`SELECT name FROM language WHERE symbol = 'EN' LIMIT 1`))?.name ?? 'English';
       const deName =
-        (await queryOne<{ name: string }>(`SELECT name FROM language WHERE symbol = 'DE' LIMIT 1`))?.name ??
-        'German';
+        (await queryOne<{ name: string }>(`SELECT name FROM language WHERE symbol = 'DE' LIMIT 1`))?.name ?? 'German';
       const frName =
-        (await queryOne<{ name: string }>(`SELECT name FROM language WHERE symbol = 'FR' LIMIT 1`))?.name ??
-        'French';
+        (await queryOne<{ name: string }>(`SELECT name FROM language WHERE symbol = 'FR' LIMIT 1`))?.name ?? 'French';
       const itName =
-        (await queryOne<{ name: string }>(`SELECT name FROM language WHERE symbol = 'IT' LIMIT 1`))?.name ??
-        'Italian';
+        (await queryOne<{ name: string }>(`SELECT name FROM language WHERE symbol = 'IT' LIMIT 1`))?.name ?? 'Italian';
 
       await openScreen(page, '/settings', user.jwt);
       await expect(page.getByText('Settings', { exact: true }).first()).toBeVisible({ timeout: 20000 });
@@ -216,24 +201,20 @@ test.describe('Cross-cutting', () => {
       // PT / ES / SQ are seeded but filtered out of availableLanguages (appLanguages = DE,EN,FR,IT).
       // stickerLanguages adds SQ only for stickers, not the main switcher.
       for (const symbol of ['PT', 'ES', 'SQ'] as const) {
-        const row = await queryOne<{ name: string }>(`SELECT name FROM language WHERE symbol = $1 LIMIT 1`, [
-          symbol,
-        ]);
+        const row = await queryOne<{ name: string }>(`SELECT name FROM language WHERE symbol = $1 LIMIT 1`, [symbol]);
         if (row?.name) {
-          const count = await page
-            .getByRole('button', { name: new RegExp(`^${escapeRegExp(row.name)}$`) })
-            .count();
-          expect(
-            count,
-            `FINDING if >0: ${symbol} (${row.name}) should NOT be in the main language switcher`,
-          ).toBe(0);
+          const count = await page.getByRole('button', { name: new RegExp(`^${escapeRegExp(row.name)}$`) }).count();
+          expect(count, `FINDING if >0: ${symbol} (${row.name}) should NOT be in the main language switcher`).toBe(0);
         }
       }
 
       // Dropdown is already open with all four options visible — select German directly,
       // no need to close and reopen (this custom dropdown does not close on Escape).
       // Finding note: if a string stays English, it is an untranslated key — fail loudly, do not hide.
-      await page.getByRole('button', { name: new RegExp(`^${escapeRegExp(deName)}`) }).first().click();
+      await page
+        .getByRole('button', { name: new RegExp(`^${escapeRegExp(deName)}`) })
+        .first()
+        .click();
       await expect(page.getByText('Einstellungen', { exact: true }).first()).toBeVisible({ timeout: 15000 });
       await expect(page.getByText('Sprache', { exact: true }).first()).toBeVisible({ timeout: 15000 });
 
@@ -307,16 +288,12 @@ test.describe('Cross-cutting', () => {
     test('address+signature params log in and are stripped', async ({ page }) => {
       // Fresh wallet so we exercise the URL credential path, not a pre-minted session JWT.
       const wallet = testWallet(40);
-      const signRes = await fetch(
-        `${apiBase()}/v1/auth/signMessage?address=${encodeURIComponent(wallet.address)}`,
-      );
+      const signRes = await fetch(`${apiBase()}/v1/auth/signMessage?address=${encodeURIComponent(wallet.address)}`);
       expect(signRes.ok, `signMessage status ${signRes.status}`).toBe(true);
       const { message } = (await signRes.json()) as { message: string };
       const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
 
-      await page.goto(
-        `/?address=${encodeURIComponent(wallet.address)}&signature=${encodeURIComponent(signature)}`,
-      );
+      await page.goto(`/?address=${encodeURIComponent(wallet.address)}&signature=${encodeURIComponent(signature)}`);
       await page.waitForLoadState('domcontentloaded');
       await expect
         .poll(async () => Boolean(await authToken(page)), {
@@ -580,7 +557,8 @@ test.describe('Cross-cutting', () => {
         .first()
         .isVisible()
         .catch(() => false);
-      const loggedOutUi = !token || path === '/login' || path === '/' || path.startsWith('/login') || loginBtn || loginText;
+      const loggedOutUi =
+        !token || path === '/login' || path === '/' || path.startsWith('/login') || loginBtn || loginText;
       expect(loggedOutUi, `after 401 expected logged-out UI; token=${token} path=${path}`).toBe(true);
     });
   });
@@ -695,7 +673,10 @@ test.describe('Cross-cutting', () => {
       await assertNoHorizontalOverflow(page);
       await openNavMenu(page);
       await expect(
-        page.getByText('Settings', { exact: true }).or(page.getByRole('button', { name: 'Logout' })).first(),
+        page
+          .getByText('Settings', { exact: true })
+          .or(page.getByRole('button', { name: 'Logout' }))
+          .first(),
       ).toBeVisible();
       await page
         .locator('div.fixed.inset-0.z-40')
@@ -732,7 +713,10 @@ test.describe('Cross-cutting', () => {
       await page.waitForLoadState('networkidle');
       await assertNoHorizontalOverflow(page);
       await expect(
-        page.getByRole('heading', { name: 'You spend' }).or(page.getByText('Buy', { exact: true }).first()).first(),
+        page
+          .getByRole('heading', { name: 'You spend' })
+          .or(page.getByText('Buy', { exact: true }).first())
+          .first(),
       ).toBeVisible({ timeout: 20000 });
       const amount = page.locator('input[type="number"]').first();
       if ((await amount.count()) > 0) {

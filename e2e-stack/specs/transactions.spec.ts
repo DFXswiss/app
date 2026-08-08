@@ -126,7 +126,7 @@ test('transaction list shows buy and sell rows with expected labels and amounts'
   expect(idx222).toBeLessThan(idx333);
 });
 
-test('transaction list does not show another user\'s transactions', async ({ page }) => {
+test("transaction list does not show another user's transactions", async ({ page }) => {
   const owner = await createUser({
     tag: 'tx-list-owner',
     kycLevel: 30,
@@ -221,10 +221,9 @@ test('unknown transaction uid shows ErrorHint with not-found message', async ({ 
   await openScreen(page, '/tx/T0000000000000000', user.jwt);
 
   await expect(
-    page.getByText(
-      'Something went wrong. Please try again. If the issue persists please reach out to our support.',
-      { exact: true },
-    ),
+    page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.', {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(page.getByText(/not found/i)).toBeVisible();
 });
@@ -281,7 +280,7 @@ test('assign route opens list with unassigned row and assigns to single buy targ
     .toEqual({ bankTxType: 'BuyCrypto', buyCryptoBuyId: buy.buyId });
 });
 
-test('assign route for another user\'s unassigned tx leaves list empty of that row and DB unchanged', async ({
+test("assign route for another user's unassigned tx leaves list empty of that row and DB unchanged", async ({
   page,
 }) => {
   const owner = await createUser({
@@ -310,9 +309,7 @@ test('assign route for another user\'s unassigned tx leaves list empty of that r
     [baRow!.iban, 445, unassigned.bankTxId],
   );
 
-  const before = await queryOne<{ type: string }>(`SELECT type FROM bank_tx WHERE id = $1`, [
-    unassigned.bankTxId,
-  ]);
+  const before = await queryOne<{ type: string }>(`SELECT type FROM bank_tx WHERE id = $1`, [unassigned.bankTxId]);
 
   await openScreen(page, `/tx/${unassigned.transactionId}/assign`, stranger.jwt);
 
@@ -462,10 +459,9 @@ test('completed buy is not refundable and shows ErrorHint with DB unchanged', as
   await openScreen(page, `/tx/${tx.uid}/refund`, user.jwt);
 
   await expect(
-    page.getByText(
-      'Something went wrong. Please try again. If the issue persists please reach out to our support.',
-      { exact: true },
-    ),
+    page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.', {
+      exact: true,
+    }),
   ).toBeVisible();
   // Form must not render for non-refundable completed transactions
   await expect(page.locator('input[name="street"]')).toHaveCount(0);

@@ -55,9 +55,7 @@ test.describe('e2e-stack smoke', () => {
     // gotoWithSession already asserted localStorage["dfx.authenticationToken"].
     // Additional page-level signal: token still present after hydration and body is non-empty.
     await page.waitForLoadState('networkidle');
-    const tokenAfterSig = await page.evaluate(() =>
-      window.localStorage.getItem('dfx.authenticationToken'),
-    );
+    const tokenAfterSig = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
     expect(tokenAfterSig, 'signature session token should remain in localStorage').toBeTruthy();
     await expect(page.locator('body')).not.toBeEmpty();
 
@@ -68,9 +66,7 @@ test.describe('e2e-stack smoke', () => {
     await waitForRow('SELECT id, mail FROM user_data WHERE mail = $1', [email]);
     await gotoWithSession(page, '/', mailJwt);
     await page.waitForLoadState('networkidle');
-    const tokenAfterMail = await page.evaluate(() =>
-      window.localStorage.getItem('dfx.authenticationToken'),
-    );
+    const tokenAfterMail = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
     expect(tokenAfterMail, 'mail session token should remain in localStorage').toBeTruthy();
     await expect(page.locator('body')).not.toBeEmpty();
   });

@@ -5,11 +5,11 @@ Import from `e2e-stack/specs/fixtures/factories` (or the fixtures barrel once pu
 
 **Environment (inside the test container)**
 
-| Service  | URL / connection                                      |
-|----------|--------------------------------------------------------|
+| Service  | URL / connection                                                        |
+| -------- | ----------------------------------------------------------------------- |
 | API      | `http://api:3000` (`E2E_API_URL`), routes under `/v1` (KYC under `/v2`) |
-| Frontend | `http://frontend`                                      |
-| Postgres | `sql-dfx-api-loc:5432`, db `dfx`, user `sa`            |
+| Frontend | `http://frontend`                                                       |
+| Postgres | `sql-dfx-api-loc:5432`, db `dfx`, user `sa`                             |
 
 A local forwarder on `127.0.0.1:3000` (started by the tests image entrypoint) also relays to the real API. That is why `http://localhost:3000` works from inside the container even though no API process runs there — code paths that hit `localhost` directly (e.g. server-built KYC-step URLs under `Environment.LOC`) need it.
 
@@ -69,12 +69,12 @@ without this workaround `PUT /v1/buy/paymentInfos` hangs or fails.
 
 ### `createUser(options?)`
 
-| | |
-|--|--|
-| **Path** | API sign-up via `signatureLogin` → `POST /v1/auth`; mail via `PUT /v2/user/mail` (first mail only); language via `PUT /v2/user`; country / `kycLevel` / `role` via SQL |
-| **Returns** | `{ userId, userDataId, address, jwt, wallet, mail? }` |
-| **Options** | `tag`, `mail`, `language` (symbol), `country` (symbol), `kycLevel` (0–50 / −10 / −20), `role`, `completePersonalData`, `walletIndex`, `depositLimit` |
-| **Preconditions** | API + DB up; seed wallet exists |
+|                          |                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Path**                 | API sign-up via `signatureLogin` → `POST /v1/auth`; mail via `PUT /v2/user/mail` (first mail only); language via `PUT /v2/user`; country / `kycLevel` / `role` via SQL                                                                                                                                                                                                                                                          |
+| **Returns**              | `{ userId, userDataId, address, jwt, wallet, mail? }`                                                                                                                                                                                                                                                                                                                                                                           |
+| **Options**              | `tag`, `mail`, `language` (symbol), `country` (symbol), `kycLevel` (0–50 / −10 / −20), `role`, `completePersonalData`, `walletIndex`, `depositLimit`                                                                                                                                                                                                                                                                            |
+| **Preconditions**        | API + DB up; seed wallet exists                                                                                                                                                                                                                                                                                                                                                                                                 |
 | **Why SQL for KYC/role** | `SignUpDto` has no mail/country/kycLevel. Mail is set after sign-up with `PUT /v2/user/mail` (first mail applies without verification). If the account already has mail (e.g. wallet index reused across runs), that existing mail is reused instead of calling the API again — a second set would require 2FA (`TFA_REQUIRED`). Arbitrary `kycLevel` and `role` are not public-API assignable without the full KYC/admin flow. |
 
 `completePersonalData: true` (or `kycLevel >= 30`) fills personal columns so `UserData.isDataComplete` is true — **required for `POST /sell`**.
@@ -92,50 +92,50 @@ the "level 50 but no limit granted" case instead.
 
 ### `createBankAccount(jwt, options?)`
 
-| | |
-|--|--|
-| **Path** | API `POST /v1/bankAccount` |
-| **Returns** | `{ bankAccountId, iban }` (ids are `bank_data` rows) |
-| **Options** | `iban` (default `CH9300762011623852957`), `label` |
-| **Preconditions** | Authenticated JWT; IBAN must pass `IsDfxIban` |
+|                     |                                                                                                                                                                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Path**            | API `POST /v1/bankAccount`                                                                                                                                                                                                                                          |
+| **Returns**         | `{ bankAccountId, iban }` (ids are `bank_data` rows)                                                                                                                                                                                                                |
+| **Options**         | `iban` (default `CH9300762011623852957`), `label`                                                                                                                                                                                                                   |
+| **Preconditions**   | Authenticated JWT; IBAN must pass `IsDfxIban`                                                                                                                                                                                                                       |
 | **IBAN validation** | `IsDfxIban` is **async**: format (`ibantools`) + blacklist from DB + BIC lookup via `BankAccountService` (may call external IBAN service). CH/LI domestic IBANs do not fail solely on missing BIC. Under `loc`, mocked HTTP can still break bank-detail enrichment. |
 
 ### `createBuy(jwt, options?)`
 
-| | |
-|--|--|
-| **Path** | Default **API `POST /v1/buy`** `{ asset }`. Optional `withPaymentInfo: true` → **`PUT /v1/buy/paymentInfos`** (frontend path). |
-| **Returns** | `{ buyId, routeId?, assetId? }` |
-| **Options** | `assetId`, `withPaymentInfo`, `currencyId`, `amount`, `iban` |
-| **Preconditions** | JWT; seeded buyable asset |
+|                                     |                                                                                                                                                                                                             |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Path**                            | Default **API `POST /v1/buy`** `{ asset }`. Optional `withPaymentInfo: true` → **`PUT /v1/buy/paymentInfos`** (frontend path).                                                                              |
+| **Returns**                         | `{ buyId, routeId?, assetId? }`                                                                                                                                                                             |
+| **Options**                         | `assetId`, `withPaymentInfo`, `currencyId`, `amount`, `iban`                                                                                                                                                |
+| **Preconditions**                   | JWT; seeded buyable asset                                                                                                                                                                                   |
 | **Why not paymentInfos by default** | Payment-info creation runs pricing through services that call outbound HTTP. With `HttpService` mocked in `loc`, that path often fails. `POST /buy` still creates a real buy route for list/detail screens. |
 
 ### `createSell(jwt, options?)`
 
-| | |
-|--|--|
-| **Path** | API `POST /v1/sell`; creates bank account internally if needed |
-| **Returns** | `{ sellId, iban, bankAccountId? }` |
-| **Options** | `iban`, `currencyId`, `blockchain` (default `Ethereum`), `bankAccountId` |
+|                   |                                                                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Path**          | API `POST /v1/sell`; creates bank account internally if needed                                                                                    |
+| **Returns**       | `{ sellId, iban, bankAccountId? }`                                                                                                                |
+| **Options**       | `iban`, `currencyId`, `blockchain` (default `Ethereum`), `bankAccountId`                                                                          |
 | **Preconditions** | **Unused** deposit for the blockchain (`deposit` row with no `deposit_route`); user `isDataComplete` (factory calls `ensurePersonalDataComplete`) |
-| **Error** | Clear message if no free deposit (mentions `EVM_DEPOSIT_SEED`) |
+| **Error**         | Clear message if no free deposit (mentions `EVM_DEPOSIT_SEED`)                                                                                    |
 
 ### `createSwap(jwt, options?)`
 
-| | |
-|--|--|
-| **Path** | API `POST /v1/swap`; raises `kycLevel` to 30 via SQL if needed |
-| **Returns** | `{ swapId, assetId }` |
-| **Options** | `assetId`, `blockchain` |
-| **Preconditions** | Unused deposit; KYC ≥ 30 or ACTIVE (factory forces level 30) |
+|                   |                                                                |
+| ----------------- | -------------------------------------------------------------- |
+| **Path**          | API `POST /v1/swap`; raises `kycLevel` to 30 via SQL if needed |
+| **Returns**       | `{ swapId, assetId }`                                          |
+| **Options**       | `assetId`, `blockchain`                                        |
+| **Preconditions** | Unused deposit; KYC ≥ 30 or ACTIVE (factory forces level 30)   |
 
 ### `createTransaction(options?)`
 
-| | |
-|--|--|
-| **Path** | **SQL only** for process rows (creates user/routes via other factories as needed) |
-| **Returns** | `{ transactionId, uid, buyCryptoId?, buyFiatId?, bankTxId?, cryptoInputId?, buyId?, sellId?, userId?, userDataId? }` |
-| **Options** | `state`: `completed_buy` (default) \| `pending_buy` \| `completed_sell` \| `pending_sell` \| `bank_tx_only`; `userId` / `userDataId` / `jwt`; `buyId` / `sellId`; amounts / AML fields |
+|             |                                                                                                                                                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Path**    | **SQL only** for process rows (creates user/routes via other factories as needed)                                                                                                                                 |
+| **Returns** | `{ transactionId, uid, buyCryptoId?, buyFiatId?, bankTxId?, cryptoInputId?, buyId?, sellId?, userId?, userDataId? }`                                                                                              |
+| **Options** | `state`: `completed_buy` (default) \| `pending_buy` \| `completed_sell` \| `pending_sell` \| `bank_tx_only`; `userId` / `userDataId` / `jwt`; `buyId` / `sellId`; amounts / AML fields                            |
 | **Why SQL** | In production, `buy_crypto` / `buy_fiat` are created by crons reacting to bank txs / crypto deposits. Here `DISABLED_PROCESSES=*` disables those jobs. There is no customer API to force a completed process row. |
 
 **Tables involved (completed buy)**
@@ -152,59 +152,59 @@ the "level 50 but no limit granted" case instead.
 
 ### `createBankTx(options?)`
 
-| | |
-|--|--|
-| **Path** | SQL (`bank_tx` + optional `transaction`) |
-| **Returns** | `{ bankTxId, transactionId?, accountServiceRef }` |
+|             |                                                                              |
+| ----------- | ---------------------------------------------------------------------------- |
+| **Path**    | SQL (`bank_tx` + optional `transaction`)                                     |
+| **Returns** | `{ bankTxId, transactionId?, accountServiceRef }`                            |
 | **Why SQL** | Bank bookings arrive from bank integrations / import jobs (disabled in loc). |
 
 ### `createSupportIssue(jwt, options?)`
 
-| | |
-|--|--|
-| **Path** | API `POST /v1/support/issue` |
-| **Returns** | `{ supportIssueId?, uid, messageId? }` |
-| **Options** | `type` (default `GenericIssue`), `reason` (default `Other`), `name`, `message`, `tag` |
-| **Preconditions** | User must have **mail** (factory sets it if missing) |
+|                   |                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------- |
+| **Path**          | API `POST /v1/support/issue`                                                          |
+| **Returns**       | `{ supportIssueId?, uid, messageId? }`                                                |
+| **Options**       | `type` (default `GenericIssue`), `reason` (default `Other`), `name`, `message`, `tag` |
+| **Preconditions** | User must have **mail** (factory sets it if missing)                                  |
 
 ### `createPaymentLink(jwt, options?)`
 
-| | |
-|--|--|
-| **Path** | **SQL** (deposit + `deposit_route` type Sell on Lightning + `payment_link` + `payment_link_payment`) |
-| **Returns** | `{ paymentLinkId, uniqueId, paymentId?, routeId? }` |
+|             |                                                                                                                                                                                                                                                                                                                 |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Path**    | **SQL** (deposit + `deposit_route` type Sell on Lightning + `payment_link` + `payment_link_payment`)                                                                                                                                                                                                            |
+| **Returns** | `{ paymentLinkId, uniqueId, paymentId?, routeId? }`                                                                                                                                                                                                                                                             |
 | **Why SQL** | API `POST /paymentLink` only allows **Lightning** routes and requires free Lightning deposits + `paymentLinksAllowed`. Global EVM deposit seed does not include Lightning, so the API path is usually unavailable. Factory enables `paymentLinksAllowed` and inserts a synthetic Lightning deposit when needed. |
 
 ### `createKycStep(userDataId, options?)`
 
-| | |
-|--|--|
-| **Path** | SQL into `kyc_step` |
-| **Returns** | `{ kycStepId, userDataId }` |
+|             |                                                                                                                |
+| ----------- | -------------------------------------------------------------------------------------------------------------- |
+| **Path**    | SQL into `kyc_step`                                                                                            |
+| **Returns** | `{ kycStepId, userDataId }`                                                                                    |
 | **Options** | `name` (default `ContactData`), `status` (default `InProgress`), `type`, `sequenceNumber`, `result`, `comment` |
-| **Why SQL** | Steps are created by the KYC engine as the user progresses; no public “insert step in status X” API. |
+| **Why SQL** | Steps are created by the KYC engine as the user progresses; no public “insert step in status X” API.           |
 
 ### `createLimitRequest(options?)`
 
-| | |
-|--|--|
-| **Path** | Prefer API support issue `type: LimitRequest` with nested `limitRequest`; SQL fallback |
-| **Returns** | `{ limitRequestId, supportIssueId?, supportIssueUid? }` |
+|             |                                                                                        |
+| ----------- | -------------------------------------------------------------------------------------- |
+| **Path**    | Prefer API support issue `type: LimitRequest` with nested `limitRequest`; SQL fallback |
+| **Returns** | `{ limitRequestId, supportIssueId?, supportIssueUid? }`                                |
 
 ### `createMrosCase(options?)`
 
-| | |
-|--|--|
-| **Path** | SQL into `mros` |
-| **Returns** | `{ mrosId, userDataId }` |
+|             |                                              |
+| ----------- | -------------------------------------------- |
+| **Path**    | SQL into `mros`                              |
+| **Returns** | `{ mrosId, userDataId }`                     |
 | **Why SQL** | Compliance-internal; no customer create API. |
 
 ### `createCallQueueEntry(options?)`
 
-| | |
-|--|--|
-| **Path** | SQL on `user_data."phoneCallStatus"` (+ optional pending `buy_crypto` via `createTransaction`) |
-| **Returns** | `{ userDataId, phoneCallStatus?, transactionId?, buyCryptoId? }` |
+|               |                                                                                                                                                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Path**      | SQL on `user_data."phoneCallStatus"` (+ optional pending `buy_crypto` via `createTransaction`)                                                                                                                                       |
+| **Returns**   | `{ userDataId, phoneCallStatus?, transactionId?, buyCryptoId? }`                                                                                                                                                                     |
 | **Important** | **There is no `call_queue` table.** Support dashboard queues are derived (`support.service.ts`): phone statuses `Unavailable` / `Suspicious`, or pending txs with AML reasons such as `ManualCheckPhone`, `ManualCheckIpPhone`, etc. |
 
 ### `cleanupCreatedData()`
@@ -221,30 +221,30 @@ Deletes every row tracked during this process (`{ table, id }`) in reverse creat
 
 ## States that are **not** achievable (or hard)
 
-| Goal | Why not |
-|------|---------|
-| Real bank/crypto **arrival** → auto process | Crons disabled (`DISABLED_PROCESSES=*`) |
-| Live **price-based** payment infos | Outbound HTTP mocked; CoinGecko/etc. unreliable |
-| Full **Sumsub / IdNow** KYC completion | External ident providers mocked; use `createKycStep` + SQL `kycLevel` |
-| Mail **verification codes** after first mail | Mail sending disabled; first `PUT /v2/user/mail` applies immediately when mail was null |
-| Real **Lightning** payment-link API path | No Lightning deposits from EVM seed; factory uses SQL synthetic Lightning deposit |
-| Direct **call_queue** row | Derived view only — set phone status / AML reason |
-| Mail-login + **TOTP** second factor | Staff/mail login with TOTP is not automated here. Elevated (KYC-gated) access via `loginAs` for Admin/Compliance/Support/RealUnit **is** reliable after global.setup seeds staff KYC clearance — only the mail+TOTP path remains unautomated. |
-| Payout / batch **Complete** with on-chain `txId` from real chain | No blockchain nodes; factory sets placeholder `txId` / amounts for UI only |
-| **Checkout / card** txs | External Checkout provider mocked; not covered by these factories |
+| Goal                                                             | Why not                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Real bank/crypto **arrival** → auto process                      | Crons disabled (`DISABLED_PROCESSES=*`)                                                                                                                                                                                                       |
+| Live **price-based** payment infos                               | Outbound HTTP mocked; CoinGecko/etc. unreliable                                                                                                                                                                                               |
+| Full **Sumsub / IdNow** KYC completion                           | External ident providers mocked; use `createKycStep` + SQL `kycLevel`                                                                                                                                                                         |
+| Mail **verification codes** after first mail                     | Mail sending disabled; first `PUT /v2/user/mail` applies immediately when mail was null                                                                                                                                                       |
+| Real **Lightning** payment-link API path                         | No Lightning deposits from EVM seed; factory uses SQL synthetic Lightning deposit                                                                                                                                                             |
+| Direct **call_queue** row                                        | Derived view only — set phone status / AML reason                                                                                                                                                                                             |
+| Mail-login + **TOTP** second factor                              | Staff/mail login with TOTP is not automated here. Elevated (KYC-gated) access via `loginAs` for Admin/Compliance/Support/RealUnit **is** reliable after global.setup seeds staff KYC clearance — only the mail+TOTP path remains unautomated. |
+| Payout / batch **Complete** with on-chain `txId` from real chain | No blockchain nodes; factory sets placeholder `txId` / amounts for UI only                                                                                                                                                                    |
+| **Checkout / card** txs                                          | External Checkout provider mocked; not covered by these factories                                                                                                                                                                             |
 
 ### Transaction states attempted
 
-| State | Supported? | Notes |
-|-------|------------|--------|
-| `completed_buy` | Yes (SQL) | `buy_crypto` Complete + bank_tx + transaction |
-| `pending_buy` | Yes (SQL) | Created / Pending AML |
-| `completed_sell` | Yes (SQL) | Needs sell route + crypto_input + buy_fiat |
-| `pending_sell` | Yes (SQL) | Same graph, incomplete flags |
-| `bank_tx_only` | Yes (SQL) | Unmatched bank booking for compliance screens |
-| Batched / PayingOut / liquidity pipeline | No | Would need batch entities + LM pipeline crons |
-| Chargeback completed | No | Needs fiat_output + multi-step support flow |
-| CheckoutTx-sourced buy | No | External card provider |
+| State                                    | Supported? | Notes                                         |
+| ---------------------------------------- | ---------- | --------------------------------------------- |
+| `completed_buy`                          | Yes (SQL)  | `buy_crypto` Complete + bank_tx + transaction |
+| `pending_buy`                            | Yes (SQL)  | Created / Pending AML                         |
+| `completed_sell`                         | Yes (SQL)  | Needs sell route + crypto_input + buy_fiat    |
+| `pending_sell`                           | Yes (SQL)  | Same graph, incomplete flags                  |
+| `bank_tx_only`                           | Yes (SQL)  | Unmatched bank booking for compliance screens |
+| Batched / PayingOut / liquidity pipeline | No         | Would need batch entities + LM pipeline crons |
+| Chargeback completed                     | No         | Needs fiat_output + multi-step support flow   |
+| CheckoutTx-sourced buy                   | No         | External card provider                        |
 
 ---
 

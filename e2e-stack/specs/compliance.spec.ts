@@ -15,17 +15,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
-import {
-  apiGet,
-  expect,
-  gotoWithSession,
-  loginAs,
-  openScreen,
-  queryOne,
-  queryRows,
-  test,
-  withDb,
-} from './fixtures';
+import { apiGet, expect, gotoWithSession, loginAs, openScreen, queryOne, queryRows, test, withDb } from './fixtures';
 import {
   cleanupCreatedData,
   createCallQueueEntry,
@@ -397,7 +387,9 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText(/Nodes:/)).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(/Edges:/)).toBeVisible();
     await expect(page.getByText('Current user', { exact: true })).toBeVisible();
-    await expect(page.getByText('Click a node to show details and load its connections', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText('Click a node to show details and load its connections', { exact: true }),
+    ).toBeVisible();
 
     expect(pageErrors, `uncaught pageerror on recommendations empty graph: ${pageErrors.join('; ')}`).toEqual([]);
   });
@@ -441,7 +433,10 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText('AccountId', { exact: true }).first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Id', { exact: true }).first()).toBeVisible();
     // Empty or populated — both valid; empty must not crash
-    const emptyOrRows = page.getByText('No entries found', { exact: true }).or(page.locator('tbody tr').first()).first();
+    const emptyOrRows = page
+      .getByText('No entries found', { exact: true })
+      .or(page.locator('tbody tr').first())
+      .first();
     await expect(emptyOrRows.first()).toBeVisible();
 
     await openScreen(page, '/compliance/kyc-files/details', jwt);

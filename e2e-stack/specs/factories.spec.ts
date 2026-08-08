@@ -167,10 +167,9 @@ test.describe('e2e factories', () => {
     expect(row?.type).toBe('GenericIssue');
 
     if (issue.supportIssueId) {
-      const msg = await queryOne<{ id: number }>(
-        `SELECT id FROM support_message WHERE "issueId" = $1 LIMIT 1`,
-        [issue.supportIssueId],
-      );
+      const msg = await queryOne<{ id: number }>(`SELECT id FROM support_message WHERE "issueId" = $1 LIMIT 1`, [
+        issue.supportIssueId,
+      ]);
       expect(msg).toBeTruthy();
     }
   });
@@ -182,10 +181,9 @@ test.describe('e2e factories', () => {
     expect(pl.paymentLinkId).toBeGreaterThan(0);
     expect(pl.uniqueId).toBeTruthy();
 
-    const link = await queryOne<{ id: number; status: string }>(
-      `SELECT id, status FROM payment_link WHERE id = $1`,
-      [pl.paymentLinkId],
-    );
+    const link = await queryOne<{ id: number; status: string }>(`SELECT id, status FROM payment_link WHERE id = $1`, [
+      pl.paymentLinkId,
+    ]);
     expect(link?.status).toBe('Active');
 
     if (pl.paymentId) {

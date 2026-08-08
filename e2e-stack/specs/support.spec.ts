@@ -7,14 +7,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import {
-  expect,
-  gotoWithSession,
-  openScreen,
-  queryOne,
-  test,
-  waitForRow,
-} from './fixtures';
+import { expect, gotoWithSession, openScreen, queryOne, test, waitForRow } from './fixtures';
 import { cleanupCreatedData, createSupportIssue, createUser } from './fixtures/factories';
 
 function normPath(p: string): string {
@@ -196,9 +189,7 @@ test.describe('Support (customer)', () => {
 
     const issueId =
       issue.supportIssueId ??
-      (
-        await queryOne<{ id: number }>(`SELECT id FROM support_issue WHERE uid = $1`, [issue.uid])
-      )?.id;
+      (await queryOne<{ id: number }>(`SELECT id FROM support_issue WHERE uid = $1`, [issue.uid]))?.id;
     expect(issueId, 'seeded support_issue must have a numeric id').toBeTruthy();
 
     // /support/chat/:id stores uid in session and replace-navigates to /support/chat.
@@ -279,45 +270,42 @@ test.describe('Support (customer)', () => {
     await expect(page.getByText(secretMessage)).toHaveCount(0);
   });
 
-  test.fixme(
-    'a ticket uid opened by a different signed-in customer is scoped to that customer',
-    async ({ page }) => {
-      // Pending a product decision, so asserted as an intent rather than as current behaviour.
-      //
-      // Ticket lookup by uid is reachable without a session by design — the pre-login order-support
-      // flow relies on it, and the uid itself is what authorises the read. The open question is
-      // narrower: when the caller *does* present a session, should the lookup additionally be scoped
-      // to that account? The two answers lead to different products, so this is not a call to make
-      // from a test file.
-      //
-      // The neighbouring test above covers what is settled: the ticket list never hands a customer a
-      // uid belonging to someone else, so this path is not reachable through the interface itself.
-      //
-      // Details of the observed behaviour were reported to the team out of band rather than written
-      // down here — this repository is public.
-      const customerA = await createUser({ tag: 'sup-iso-fix-a', language: 'EN' });
-      const customerB = await createUser({ tag: 'sup-iso-fix-b', language: 'EN' });
+  test.fixme('a ticket uid opened by a different signed-in customer is scoped to that customer', async ({ page }) => {
+    // Pending a product decision, so asserted as an intent rather than as current behaviour.
+    //
+    // Ticket lookup by uid is reachable without a session by design — the pre-login order-support
+    // flow relies on it, and the uid itself is what authorises the read. The open question is
+    // narrower: when the caller *does* present a session, should the lookup additionally be scoped
+    // to that account? The two answers lead to different products, so this is not a call to make
+    // from a test file.
+    //
+    // The neighbouring test above covers what is settled: the ticket list never hands a customer a
+    // uid belonging to someone else, so this path is not reachable through the interface itself.
+    //
+    // Details of the observed behaviour were reported to the team out of band rather than written
+    // down here — this repository is public.
+    const customerA = await createUser({ tag: 'sup-iso-fix-a', language: 'EN' });
+    const customerB = await createUser({ tag: 'sup-iso-fix-b', language: 'EN' });
 
-      const secretMessage = 'SECRET-A-ONLY-MESSAGE-do-not-leak-2';
-      const issueA = await createSupportIssue(customerA.jwt, {
-        tag: 'sup-iso-fix-ticket',
-        type: 'GenericIssue',
-        name: 'Customer A private ticket 2',
-        message: secretMessage,
-      });
+    const secretMessage = 'SECRET-A-ONLY-MESSAGE-do-not-leak-2';
+    const issueA = await createSupportIssue(customerA.jwt, {
+      tag: 'sup-iso-fix-ticket',
+      type: 'GenericIssue',
+      name: 'Customer A private ticket 2',
+      message: secretMessage,
+    });
 
-      // Open A's chat uid while signed in as B; the expectation below is the intended scoping.
-      await gotoWithSession(page, `/support/chat/${issueA.uid}`, customerB.jwt);
-      await page.waitForLoadState('networkidle');
+    // Open A's chat uid while signed in as B; the expectation below is the intended scoping.
+    await gotoWithSession(page, `/support/chat/${issueA.uid}`, customerB.jwt);
+    await page.waitForLoadState('networkidle');
 
-      await expect
-        .poll(() => normPath(new URL(page.url()).pathname), {
-          message: 'customer B must be redirected away from customer A chat',
-          timeout: 15000,
-        })
-        .toBe('/support/issue');
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), {
+        message: 'customer B must be redirected away from customer A chat',
+        timeout: 15000,
+      })
+      .toBe('/support/issue');
 
-      await expect(page.getByText(secretMessage)).toHaveCount(0);
-    },
-  );
+    await expect(page.getByText(secretMessage)).toHaveCount(0);
+  });
 });

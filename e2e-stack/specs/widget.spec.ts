@@ -125,12 +125,7 @@ test.describe('Widget mode — frontend image gap', () => {
     expect(dfxServicesCount, 'no <dfx-services> host element on the SPA shell').toBe(0);
 
     // 2) Plausible built-widget asset paths also fail to deliver a widget bundle.
-    const candidatePaths = [
-      '/static/js/bundle.js',
-      '/widget/v1.0.css',
-      '/main-widget.css',
-      '/index-widget.js',
-    ];
+    const candidatePaths = ['/static/js/bundle.js', '/widget/v1.0.css', '/main-widget.css', '/index-widget.js'];
     for (const assetPath of candidatePaths) {
       const res = await page.request.get(assetPath);
       const contentType = (res.headers()['content-type'] ?? '').toLowerCase();
@@ -138,7 +133,8 @@ test.describe('Widget mode — frontend image gap', () => {
       const isMissing = res.status() === 404 || !res.ok();
       // Real widget CSS/JS would be 200 with a non-HTML content type. SPA fallback HTML or 404
       // is the expected gap for this image.
-      const isUnexpectedRealAsset = res.ok() && !isHtml && (contentType.includes('javascript') || contentType.includes('css'));
+      const isUnexpectedRealAsset =
+        res.ok() && !isHtml && (contentType.includes('javascript') || contentType.includes('css'));
       if (isUnexpectedRealAsset && (assetPath.endsWith('.js') || assetPath.includes('bundle'))) {
         await page.goto('/');
         await page.addScriptTag({ url: assetPath }).catch(() => undefined);
@@ -186,9 +182,7 @@ test.describe('Widget mode — frontend-widget build', () => {
     expect(pageErrors, `uncaught pageerror on widget mount: ${pageErrors.join('; ')}`).toEqual([]);
   });
 
-  test('widget reacts to attribute changes (lang, session, service) without page URL navigation', async ({
-    page,
-  }) => {
+  test('widget reacts to attribute changes (lang, session, service) without page URL navigation', async ({ page }) => {
     await allowWidgetHost(page);
 
     const pageErrors: string[] = [];
@@ -214,9 +208,7 @@ test.describe('Widget mode — frontend-widget build', () => {
     );
     expect(serviceAttr, 'service attribute roundtrip').toBe('sell');
 
-    const langAttr = await page.evaluate(
-      () => document.querySelector('dfx-services')?.getAttribute('lang') ?? null,
-    );
+    const langAttr = await page.evaluate(() => document.querySelector('dfx-services')?.getAttribute('lang') ?? null);
     expect(langAttr, 'lang attribute roundtrip').toBe('de');
 
     expect(page.url(), 'MemoryRouter must not change the browser URL').toBe(urlBefore);

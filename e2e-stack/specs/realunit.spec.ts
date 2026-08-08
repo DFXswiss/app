@@ -66,10 +66,7 @@ function assertNoErrors(pageErrors: string[], consoleErrors: string[]): void {
  * Sets verifiedName and waits until the background job syncs userDataId into staffKycClearance.
  */
 async function ensureStaffKycClearance(userDataId: number, roleLabel: string): Promise<void> {
-  await queryOne('UPDATE user_data SET "verifiedName" = $1 WHERE id = $2', [
-    `E2E ${roleLabel} Clearance`,
-    userDataId,
-  ]);
+  await queryOne('UPDATE user_data SET "verifiedName" = $1 WHERE id = $2', [`E2E ${roleLabel} Clearance`, userDataId]);
 
   const timeoutMs = 75_000;
   const intervalMs = 3_000;
@@ -152,47 +149,45 @@ test.describe('RealUnit area', () => {
   // realunit.context.tsx have no .catch(), so a rejected subgraph request leaves holders empty and
   // tokenInfo undefined — the spinner never clears; "RealUnit Support" and the rest never mount.
   // Observed: expect(getByRole('button', { name: 'RealUnit Support' })).toBeVisible() timeout 15s.
-  test.fixme(
-    '/realunit empty state — stuck on spinner forever (fetchHolders/fetchTokenInfo no .catch; RealUnit Support never mounts)',
-    async ({ page }) => {
-      const { jwt } = await loginAs('RealUnit');
-      const { pageErrors, consoleErrors } = attachErrorListeners(page);
+  test.fixme('/realunit empty state — stuck on spinner forever (fetchHolders/fetchTokenInfo no .catch; RealUnit Support never mounts)', async ({
+    page,
+  }) => {
+    const { jwt } = await loginAs('RealUnit');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
 
-      await openScreen(page, '/realunit', jwt);
+    await openScreen(page, '/realunit', jwt);
 
-      await expect(page.getByRole('button', { name: 'RealUnit Support' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'RealUnit Compliance' })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Top Holders' })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Received Transactions' })).toBeVisible();
-      await expect(page.getByText('No pending transactions found')).toBeVisible();
-      await expect(page.getByText('No received transactions found')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'RealUnit Support' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'RealUnit Compliance' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Top Holders' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Received Transactions' })).toBeVisible();
+    await expect(page.getByText('No pending transactions found')).toBeVisible();
+    await expect(page.getByText('No received transactions found')).toBeVisible();
 
-      assertNoErrors(pageErrors, consoleErrors);
-    },
-  );
+    assertNoErrors(pageErrors, consoleErrors);
+  });
 
   // CONFIRMED product bug (live uncaught pageerror): fetchHolders() has no .catch() in
   // realunit.context.tsx. Observed: ApiException: Cannot read properties of undefined (reading 'document').
-  test.fixme(
-    '/realunit/holders empty state — uncaught ApiException from fetchHolders() (no .catch; reading document)',
-    async ({ page }) => {
-      const { jwt } = await loginAs('RealUnit');
-      const { pageErrors, consoleErrors } = attachErrorListeners(page);
+  test.fixme('/realunit/holders empty state — uncaught ApiException from fetchHolders() (no .catch; reading document)', async ({
+    page,
+  }) => {
+    const { jwt } = await loginAs('RealUnit');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
 
-      await openScreen(page, '/realunit/holders', jwt);
+    await openScreen(page, '/realunit/holders', jwt);
 
-      await expect(page.getByRole('heading', { name: /All Holders/ })).toBeVisible();
-      await expect(tableHeader(page, 'Address')).toBeVisible();
-      await expect(tableHeader(page, 'Balance')).toBeVisible();
-      await expect(tableHeader(page, 'Percentage')).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Previous' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Next' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /All Holders/ })).toBeVisible();
+    await expect(tableHeader(page, 'Address')).toBeVisible();
+    await expect(tableHeader(page, 'Balance')).toBeVisible();
+    await expect(tableHeader(page, 'Percentage')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Previous' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Next' })).toBeVisible();
 
-      assertNoErrors(pageErrors, consoleErrors);
-    },
-  );
+    assertNoErrors(pageErrors, consoleErrors);
+  });
 
   test('/realunit/quotes list renders empty or ErrorHint without crash', async ({ page }) => {
     const { jwt } = await loginAs('RealUnit');
@@ -273,20 +268,19 @@ test.describe('RealUnit area', () => {
   // CONFIRMED product bug (live uncaught pageerror): fetchAccountHistory() has no .catch() in
   // realunit.context.tsx. Observed: ApiException: Cannot read properties of undefined (reading 'document').
   // (fetchAccountSummary does catch and would yield "No data available" if history did not crash first.)
-  test.fixme(
-    '/realunit/user/:address empty state — uncaught ApiException from fetchAccountHistory() (no .catch; reading document)',
-    async ({ page }) => {
-      const { jwt } = await loginAs('RealUnit');
-      const { pageErrors, consoleErrors } = attachErrorListeners(page);
-      const path = `/realunit/user/${NEVER_HELD_ADDRESS}`;
+  test.fixme('/realunit/user/:address empty state — uncaught ApiException from fetchAccountHistory() (no .catch; reading document)', async ({
+    page,
+  }) => {
+    const { jwt } = await loginAs('RealUnit');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    const path = `/realunit/user/${NEVER_HELD_ADDRESS}`;
 
-      await openScreen(page, path, jwt);
+    await openScreen(page, path, jwt);
 
-      await expect(page.getByText('No data available')).toBeVisible();
+    await expect(page.getByText('No data available')).toBeVisible();
 
-      assertNoErrors(pageErrors, consoleErrors);
-    },
-  );
+    assertNoErrors(pageErrors, consoleErrors);
+  });
 
   test('/realunit/support list renders tabs, search, Open Issues (clean empty/scoped state)', async ({ page }) => {
     // Seed a normal DFX support issue so a known uid exists; do not assert it appears in the
@@ -318,9 +312,7 @@ test.describe('RealUnit area', () => {
 
     // getIssueData fails → setLoadError → ErrorHint (error-hint.tsx fixed sentence + raw message).
     await expect(
-      page.getByText(
-        'Something went wrong. Please try again. If the issue persists please reach out to our support.',
-      ),
+      page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.'),
     ).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);
@@ -359,9 +351,7 @@ test.describe('RealUnit area', () => {
     await openScreen(page, path, jwt);
 
     await expect(
-      page.getByText(
-        'Something went wrong. Please try again. If the issue persists please reach out to our support.',
-      ),
+      page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.'),
     ).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);

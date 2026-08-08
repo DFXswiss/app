@@ -36,7 +36,12 @@ function fullPath(path: string, version: 'v1' | 'v2' = 'v1'): string {
   return `/${version}${cleaned}`;
 }
 
-async function request<T>(method: string, path: string, body: unknown | undefined, options: ApiOptions = {}): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  body: unknown | undefined,
+  options: ApiOptions = {},
+): Promise<T> {
   const version = options.version ?? 'v1';
   const relative = fullPath(path, version);
   const url = `${baseUrl()}${relative}`;

@@ -308,12 +308,7 @@ export interface CreateSwapResult {
   assetId: number;
 }
 
-export type TransactionState =
-  | 'completed_buy'
-  | 'pending_buy'
-  | 'completed_sell'
-  | 'pending_sell'
-  | 'bank_tx_only';
+export type TransactionState = 'completed_buy' | 'pending_buy' | 'completed_sell' | 'pending_sell' | 'bank_tx_only';
 
 export interface CreateTransactionOptions {
   tag?: string;
@@ -502,10 +497,7 @@ async function updateById(table: string, id: number, sets: Record<string, unknow
     .join(', ');
   const values = keys.map((k) => sets[k]);
   await withDb(async (client) => {
-    await client.query(`UPDATE ${tableSql(table)} SET ${assignments} WHERE id = $${keys.length + 1}`, [
-      ...values,
-      id,
-    ]);
+    await client.query(`UPDATE ${tableSql(table)} SET ${assignments} WHERE id = $${keys.length + 1}`, [...values, id]);
   });
 }
 
@@ -562,7 +554,10 @@ async function resolveFiatId(nameOrId?: number | string): Promise<number> {
   return row.id;
 }
 
-async function resolveBuyableAsset(assetId?: number, blockchain?: string): Promise<{ id: number; blockchain?: string }> {
+async function resolveBuyableAsset(
+  assetId?: number,
+  blockchain?: string,
+): Promise<{ id: number; blockchain?: string }> {
   if (assetId) {
     const row = await queryOne<{ id: number; blockchain: string }>(
       `SELECT id, blockchain FROM asset WHERE id = $1 LIMIT 1`,
@@ -594,10 +589,7 @@ async function resolveBuyableAsset(assetId?: number, blockchain?: string): Promi
 async function resolveSellableFiatId(nameOrId?: number | string): Promise<number> {
   if (typeof nameOrId === 'number') return nameOrId;
   const name = (nameOrId ?? 'CHF').toUpperCase();
-  const row = await queryOne<{ id: number }>(
-    `SELECT id FROM fiat WHERE name = $1 AND sellable = true LIMIT 1`,
-    [name],
-  );
+  const row = await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = $1 AND sellable = true LIMIT 1`, [name]);
   if (row) return row.id;
   return resolveFiatId(name);
 }
@@ -676,10 +668,9 @@ export async function createUser(options: CreateUserOptions = {}): Promise<Creat
   track('user_data', userRow.userDataId);
   track('user', userRow.id);
 
-  const existingMailRow = await queryOne<{ mail: string | null }>(
-    `SELECT mail FROM user_data WHERE id = $1`,
-    [userRow.userDataId],
-  );
+  const existingMailRow = await queryOne<{ mail: string | null }>(`SELECT mail FROM user_data WHERE id = $1`, [
+    userRow.userDataId,
+  ]);
   let mail: string;
   if (existingMailRow?.mail) {
     // trySetUserMail (api UserDataService) only accepts the FIRST mail on an account without
@@ -943,7 +934,18 @@ export async function createTransaction(options: CreateTransactionOptions = {}):
   // transaction: NOT NULL sourceType, uid (transaction.entity.ts)
   const transactionId = await insertReturningId(
     'transaction',
-    ['sourceType', 'type', 'uid', 'amountInChf', 'assets', 'amlCheck', 'userId', 'userDataId', 'eventDate', 'outputDate'],
+    [
+      'sourceType',
+      'type',
+      'uid',
+      'amountInChf',
+      'assets',
+      'amlCheck',
+      'userId',
+      'userDataId',
+      'eventDate',
+      'outputDate',
+    ],
     [
       sourceType,
       type ?? null,
@@ -1313,15 +1315,7 @@ export async function createPaymentLink(
   const paymentLinkId = await insertReturningId(
     'payment_link',
     ['routeId', 'uniqueId', 'status', 'mode', 'webhookFailCount', 'label', 'externalId'],
-    [
-      routeId,
-      uniqueId,
-      'Active',
-      'Multiple',
-      0,
-      options.label ?? `e2e-pl-${tag}`,
-      options.externalId ?? `ext-${tag}`,
-    ],
+    [routeId, uniqueId, 'Active', 'Multiple', 0, options.label ?? `e2e-pl-${tag}`, options.externalId ?? `ext-${tag}`],
   );
 
   let paymentId: number | undefined;
@@ -1432,7 +1426,12 @@ export async function createLimitRequest(options: CreateLimitRequestOptions = {}
   const limitRequestId = await insertReturningId(
     'limit_request',
     ['limit', 'investmentDate', 'fundOrigin', 'fundOriginText'],
-    [options.limit ?? 50000, options.investmentDate ?? 'Now', options.fundOrigin ?? 'Savings', options.fundOriginText ?? null],
+    [
+      options.limit ?? 50000,
+      options.investmentDate ?? 'Now',
+      options.fundOrigin ?? 'Savings',
+      options.fundOriginText ?? null,
+    ],
   );
 
   const wallet = await queryOne<{ id: number }>(`SELECT id FROM wallet ORDER BY id ASC LIMIT 1`);

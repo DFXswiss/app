@@ -11,14 +11,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import {
-  expect,
-  gotoWithSession,
-  openScreen,
-  queryOne,
-  test,
-  waitForRow,
-} from './fixtures';
+import { expect, gotoWithSession, openScreen, queryOne, test, waitForRow } from './fixtures';
 import { cleanupCreatedData, createUser, e2eMail } from './fixtures/factories';
 
 function normPath(p: string): string {
@@ -85,10 +78,7 @@ async function completeMail2faOnPage(page: Page, userDataId: number): Promise<vo
  */
 async function selectStyledDropdown(page: Page, fieldLabel: string, optionLabel: string): Promise<void> {
   // .first() if nav/header also exposes the same literal (e.g. "Language").
-  const openBtn = page
-    .getByText(fieldLabel, { exact: true })
-    .first()
-    .locator('xpath=following::button[1]');
+  const openBtn = page.getByText(fieldLabel, { exact: true }).first().locator('xpath=following::button[1]');
   await openBtn.click();
   await page.getByRole('button', { name: optionLabel }).click();
 }
@@ -233,9 +223,7 @@ test.describe('Account area e2e', () => {
     );
 
     // Successful verify navigates to /account.
-    await expect
-      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 })
-      .toBe('/account');
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 20000 }).toBe('/account');
   });
 
   test('/account/mail merge conflict when new mail belongs to another account', async ({ page }) => {

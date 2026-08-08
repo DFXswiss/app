@@ -30,8 +30,7 @@ function apiBase(): string {
 
 // 1x1 transparent PNG — the upload path only accepts PNG/JPEG/JPG/PDF
 // (api/src/subdomains/generic/kyc/services/integration/kyc-document.service.ts isPermittedFileType).
-const TEST_PNG_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+const TEST_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
 /**
  * Uploads a real KYC document through the real backend upload path
@@ -605,9 +604,7 @@ test.describe('KYC area e2e', () => {
     await openScreen(page, '/file/e2e-nonexistent-file-id-00000000', user.jwt);
 
     await expect(
-      page.getByText(
-        'Something went wrong. Please try again. If the issue persists please reach out to our support.',
-      ),
+      page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.'),
     ).toBeVisible({ timeout: 15000 });
   });
 

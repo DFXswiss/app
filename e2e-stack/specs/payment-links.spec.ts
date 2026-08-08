@@ -341,9 +341,7 @@ test.describe('Payment links / routes / invoice', () => {
     // message resolve to NoPaymentLinkPaymentStatus.NO_PAYMENT, and PaymentStatusTile shows its
     // real "NO PAYMENT ACTIVE" copy -- screen-specific content proving /pl rendered.
     await expect(page.getByText('NO PAYMENT ACTIVE', { exact: true })).toBeVisible({ timeout: 20000 });
-    await expect(
-      page.getByText(/Tell the cashier that you want to pay with crypto/i),
-    ).toBeVisible();
+    await expect(page.getByText(/Tell the cashier that you want to pay with crypto/i)).toBeVisible();
 
     // The DB row is unaffected by the quote failure and remains the source of truth.
     if (pl.paymentId) {
@@ -450,10 +448,9 @@ test.describe('Payment links / routes / invoice', () => {
     const fiat = await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'CHF' LIMIT 1`);
     if (!fiat) throw new Error('CHF fiat not seeded');
 
-    const baseRoute = await queryOne<{ id: number }>(
-      `INSERT INTO route (label) VALUES ($1) RETURNING id`,
-      [`e2e-pl-assign-route-${tag}`],
-    );
+    const baseRoute = await queryOne<{ id: number }>(`INSERT INTO route (label) VALUES ($1) RETURNING id`, [
+      `e2e-pl-assign-route-${tag}`,
+    ]);
     if (!baseRoute) throw new Error('failed to insert base route (label)');
 
     const deposit = await queryOne<{ id: number }>(
@@ -589,37 +586,32 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByRole('button', { name: 'Authenticate', exact: true })).toBeVisible({ timeout: 20000 });
   });
 
-  test.fixme(
-    '/pl/pos: with a real access key shows Create Payment and proves a UI-driven payment',
-    async () => {
-      // Re-checked after the tests-container forwarder (commit "Forward localhost:3000 to the
-      // api service in the tests container") and the price_rule freshness fix (commit "Give
-      // staff sessions clearance and seed the data the API expects to already exist") -- both
-      // landed, but this specific gap is unrelated to either and is still open, reproduced fresh
-      // directly against the API with curl on this run: `GET /paymentLink/payment` for a route
-      // with a real Pending payment still answers `404 No BTC transfer amount found`, and
-      // price_rule rows carry the container's own boot timestamp (not stale), so the remaining
-      // blocker is not price staleness -- it looks like Lightning/BTC quote generation itself has
-      // no live counterpart under ENVIRONMENT=loc's mocked outbound HTTP, independent of the
-      // price_rule table.
-      //
-      // PaymentPosContext.checkAuthentication calls GET paymentLink/history with
-      // `externalLinkId: payRequest?.externalId`. `externalId` is only ever present on the
-      // SUCCESS payRequest DTO (PaymentLinkService.createPayRequest, built after
-      // paymentQuoteService.createQuote succeeds) -- the 404 error-shaped response this harness
-      // gets instead has no `externalId` field at all, so the request is sent as literally
-      // `externalLinkId=undefined` and never authenticates. The reachable unauthenticated state
-      // is covered by the passing test above instead.
-    },
-  );
+  test.fixme('/pl/pos: with a real access key shows Create Payment and proves a UI-driven payment', async () => {
+    // Re-checked after the tests-container forwarder (commit "Forward localhost:3000 to the
+    // api service in the tests container") and the price_rule freshness fix (commit "Give
+    // staff sessions clearance and seed the data the API expects to already exist") -- both
+    // landed, but this specific gap is unrelated to either and is still open, reproduced fresh
+    // directly against the API with curl on this run: `GET /paymentLink/payment` for a route
+    // with a real Pending payment still answers `404 No BTC transfer amount found`, and
+    // price_rule rows carry the container's own boot timestamp (not stale), so the remaining
+    // blocker is not price staleness -- it looks like Lightning/BTC quote generation itself has
+    // no live counterpart under ENVIRONMENT=loc's mocked outbound HTTP, independent of the
+    // price_rule table.
+    //
+    // PaymentPosContext.checkAuthentication calls GET paymentLink/history with
+    // `externalLinkId: payRequest?.externalId`. `externalId` is only ever present on the
+    // SUCCESS payRequest DTO (PaymentLinkService.createPayRequest, built after
+    // paymentQuoteService.createQuote succeeds) -- the 404 error-shaped response this harness
+    // gets instead has no `externalId` field at all, so the request is sent as literally
+    // `externalLinkId=undefined` and never authenticates. The reachable unauthenticated state
+    // is covered by the passing test above instead.
+  });
 
   // =========================================================================
   // /pl/result
   // =========================================================================
 
-  test('/pl/result: Completed status shows COMPLETED tile; garbage/missing status shows no tile', async ({
-    page,
-  }) => {
+  test('/pl/result: Completed status shows COMPLETED tile; garbage/missing status shows no tile', async ({ page }) => {
     // Success path.
     await page.goto('/pl/result?status=Completed&lightning=dummy');
     await waitForPublicPath(page, '/pl/result');
@@ -627,9 +619,7 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByText('COMPLETED', { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('button', { name: 'Go back to the payment page', exact: true })).toBeVisible();
     // Screen-specific legal footer always present on this route.
-    await expect(
-      page.getByText(/By using this service, the outstanding claim/i),
-    ).toBeVisible();
+    await expect(page.getByText(/By using this service, the outstanding claim/i)).toBeVisible();
 
     // No status: PaymentStatusTile renders nothing for undefined / PENDING.
     await page.goto('/pl/result');
@@ -638,9 +628,7 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByText('CANCELLED', { exact: true })).toHaveCount(0);
     await expect(page.getByText('EXPIRED', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Go back to the payment page', exact: true })).toHaveCount(0);
-    await expect(
-      page.getByText(/By using this service, the outstanding claim/i),
-    ).toBeVisible();
+    await expect(page.getByText(/By using this service, the outstanding claim/i)).toBeVisible();
 
     // Garbage status: no dedicated error UI — tile has no matching label entry.
     await page.goto('/pl/result?status=NotARealStatus');
@@ -648,9 +636,7 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByText('COMPLETED', { exact: true })).toHaveCount(0);
     await expect(page.getByText('CANCELLED', { exact: true })).toHaveCount(0);
     await expect(page.getByText('EXPIRED', { exact: true })).toHaveCount(0);
-    await expect(
-      page.getByText(/By using this service, the outstanding claim/i),
-    ).toBeVisible();
+    await expect(page.getByText(/By using this service, the outstanding claim/i)).toBeVisible();
   });
 
   // =========================================================================

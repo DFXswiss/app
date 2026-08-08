@@ -78,14 +78,10 @@ export async function completeMailLogin(email: string): Promise<string> {
   }
 
   if (!otp) {
-    throw new Error(
-      `completeMailLogin: could not extract otp from notification.data.texts for mail ${email}`,
-    );
+    throw new Error(`completeMailLogin: could not extract otp from notification.data.texts for mail ${email}`);
   }
 
-  const redirectRes = await fetch(
-    `${apiBase()}/v1/auth/mail/redirect?code=${encodeURIComponent(otp)}`,
-  );
+  const redirectRes = await fetch(`${apiBase()}/v1/auth/mail/redirect?code=${encodeURIComponent(otp)}`);
   if (!redirectRes.ok) {
     const text = await redirectRes.text();
     throw new Error(`GET /v1/auth/mail/redirect failed: ${redirectRes.status} ${text}`);
@@ -100,9 +96,7 @@ export async function completeMailLogin(email: string): Promise<string> {
   const parsedRedirect = new URL(redirectUrl, frontendBase());
   const session = parsedRedirect.searchParams.get('session');
   if (!session) {
-    throw new Error(
-      `completeMailLogin: redirectUrl has no session query param: ${redirectUrl}`,
-    );
+    throw new Error(`completeMailLogin: redirectUrl has no session query param: ${redirectUrl}`);
   }
 
   return session;

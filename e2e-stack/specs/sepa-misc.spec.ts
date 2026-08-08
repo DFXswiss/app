@@ -7,23 +7,8 @@
  */
 
 import type { Page } from '@playwright/test';
-import {
-  apiGet,
-  expect,
-  gotoWithSession,
-  loginAs,
-  openScreen,
-  test,
-  waitForRow,
-} from './fixtures';
-import {
-  cleanupCreatedData,
-  createPaymentLink,
-  createUser,
-  e2eMail,
-  TEST_IBAN,
-} from './fixtures/factories';
-
+import { apiGet, expect, gotoWithSession, loginAs, openScreen, test, waitForRow } from './fixtures';
+import { cleanupCreatedData, createPaymentLink, createUser, e2eMail, TEST_IBAN } from './fixtures/factories';
 
 // Wallet-index isolation: factories.ts's createUser() derives its wallet index from an
 // in-process counter starting at FACTORY_WALLET_INDEX_BASE (100) unless `walletIndex` is
@@ -88,9 +73,7 @@ function buildMinimalCamt053(opts: {
                             <CdtrAcct><Id><IBAN>${accountIban}</IBAN></Id></CdtrAcct>`
     : `<Cdtr><Nm>${opts.counterpartyName}</Nm></Cdtr>
                             <CdtrAcct><Id><IBAN>${cleanIban}</IBAN></Id></CdtrAcct>`;
-  const txCode = isCredit
-    ? '<Cd>RCDT</Cd><SubFmlyCd>XBCT</SubFmlyCd>'
-    : '<Cd>ICDT</Cd><SubFmlyCd>DMCT</SubFmlyCd>';
+  const txCode = isCredit ? '<Cd>RCDT</Cd><SubFmlyCd>XBCT</SubFmlyCd>' : '<Cd>ICDT</Cd><SubFmlyCd>DMCT</SubFmlyCd>';
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Document xsi:schemaLocation="urn:iso:std:iso:20022:tech:xsd:camt.053.001.04 camt.053.001.04.xsd" xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.04" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -195,7 +178,10 @@ test.describe('SEPA + misc e2e', () => {
 
   test('plain User is denied /sepa, /sepa/manual, /blockchain/tx', async ({ page }) => {
     const customer = await createUser({
-      walletIndex: nextWalletIndex(), tag: 'sepa-deny', language: 'EN' });
+      walletIndex: nextWalletIndex(),
+      tag: 'sepa-deny',
+      language: 'EN',
+    });
 
     for (const target of ['/sepa', '/sepa/manual', '/blockchain/tx'] as const) {
       await gotoWithSession(page, target, customer.jwt);
@@ -255,9 +241,7 @@ test.describe('SEPA + misc e2e', () => {
     const { jwt } = await loginAs('Admin');
     await openScreen(page, '/sepa', jwt);
     await page.getByRole('button', { name: 'Manual entry' }).click();
-    await expect
-      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
-      .toBe('/sepa/manual');
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 }).toBe('/sepa/manual');
   });
 
   test('/sepa XML upload stores bank_tx (or fixme with API error)', async ({ page }) => {
@@ -316,7 +300,12 @@ test.describe('SEPA + misc e2e', () => {
 
     // Screen still handled the upload attempt — surface the real API failure.
     const errorHint = page.locator('p.text-dfxGray-800.text-sm');
-    const uiError = ((await errorHint.first().textContent().catch(() => null)) ?? '').trim();
+    const uiError = (
+      (await errorHint
+        .first()
+        .textContent()
+        .catch(() => null)) ?? ''
+    ).trim();
     test.fixme(
       true,
       `/sepa POST bankTx did not succeed: HTTP ${status ?? 'no-response'} — ${body.slice(0, 400) || uiError || 'no body'}`,
@@ -412,7 +401,12 @@ test.describe('SEPA + misc e2e', () => {
     }
 
     const errorHint = page.locator('p.text-dfxGray-800.text-sm');
-    const uiError = ((await errorHint.first().textContent().catch(() => null)) ?? '').trim();
+    const uiError = (
+      (await errorHint
+        .first()
+        .textContent()
+        .catch(() => null)) ?? ''
+    ).trim();
     test.fixme(
       true,
       `/sepa/manual POST bankTx did not succeed: HTTP ${status ?? 'no-response'} — ${body.slice(0, 400) || uiError || 'no body'}`,
@@ -449,9 +443,7 @@ test.describe('SEPA + misc e2e', () => {
     await routeInput.blur();
 
     // Debounced validation (~500ms) → errorRecipient text with the unknown name.
-    await expect(
-      page.getByText(/DFX does not recognize a recipient with the name/i),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/DFX does not recognize a recipient with the name/i)).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('e2e-unknown-route-does-not-exist')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Download' })).toBeDisabled();
   });
@@ -496,10 +488,7 @@ test.describe('SEPA + misc e2e', () => {
 
     if (!validated || (await errorText.isVisible().catch(() => false))) {
       const msg = ((await errorText.textContent().catch(() => null)) ?? 'recipient validation failed').trim();
-      test.fixme(
-        true,
-        `/stickers valid routeId=${pl.routeId} did not validate recipient: ${msg.slice(0, 300)}`,
-      );
+      test.fixme(true, `/stickers valid routeId=${pl.routeId} did not validate recipient: ${msg.slice(0, 300)}`);
       return;
     }
 

@@ -29,10 +29,7 @@ export async function queryRows<T = Record<string, unknown>>(sql: string, params
   });
 }
 
-export async function queryOne<T = Record<string, unknown>>(
-  sql: string,
-  params?: unknown[],
-): Promise<T | undefined> {
+export async function queryOne<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | undefined> {
   const rows = await queryRows<T>(sql, params);
   return rows[0];
 }
@@ -59,7 +56,5 @@ export async function waitForRow<T = Record<string, unknown>>(
     await new Promise((r) => setTimeout(r, intervalMs));
   }
 
-  throw new Error(
-    `waitForRow timed out after ${timeoutMs}ms (last row count: ${lastCount}). SQL: ${sql}`,
-  );
+  throw new Error(`waitForRow timed out after ${timeoutMs}ms (last row count: ${lastCount}). SQL: ${sql}`);
 }
