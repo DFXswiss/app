@@ -40,9 +40,12 @@ fi
 # and find exits non-zero on those alone. Discard find's own status and its stderr and judge by
 # what it printed; a Docker-level failure (missing or broken image) still surfaces, because then
 # `docker run` never reaches the `exit 0` below.
+# The probe answers with one exact word so the decision cannot be swayed by anything else the
+# Docker client happens to print: judging on "produced any output at all" would read a client
+# warning as proof the handler is there, leave the option unset, and let the API die at boot.
 if ! probe_output=$(
   docker run --rm --entrypoint sh "$E2E_API_IMAGE" -c \
-    "find / -xdev -name 'process-error-policy.js' -not -path '*/node_modules/*' -print -quit 2>/dev/null; exit 0" 2>&1
+    "if find / -xdev -name 'process-error-policy.js' -not -path '*/node_modules/*' -print -quit 2>/dev/null | grep -q .; then echo E2E_PROBE_FOUND; fi; exit 0" 2>&1
 ); then
   log_error "Failed to probe API image '${E2E_API_IMAGE}' for process-error-policy.js."
   log_error "docker run exited non-zero (image missing/broken, or Docker error). Output:"
@@ -50,7 +53,7 @@ if ! probe_output=$(
   exit 1
 fi
 
-if printf '%s' "$probe_output" | grep -q .; then
+if printf '%s\n' "$probe_output" | grep -qx 'E2E_PROBE_FOUND'; then
   export E2E_NODE_OPTIONS=""
 else
   log_warn "API image '${E2E_API_IMAGE}' does not include the unhandledRejection handler (process-error-policy.js)."
@@ -59,12 +62,22 @@ else
   export E2E_NODE_OPTIONS="--unhandled-rejections=warn"
 fi
 
-# Record the decision where Compose itself will read it. Exporting alone is not enough: the test
-# run is a separate `docker compose` invocation in a separate shell, and a service whose resolved
-# configuration differs from the running container gets recreated — which restarted the API
-# without the option and killed it mid-run. Compose reads this file from the project directory,
-# so every later invocation resolves the same value. It is gitignored and rewritten on each up.
-printf 'E2E_NODE_OPTIONS=%s\n' "$E2E_NODE_OPTIONS" > "$STACK_DIR/.env"
+# Record the decision where every later Compose invocation will read it. Exporting alone is not
+# enough: the test run is a separate `docker compose` call in a separate shell, and a service whose
+# resolved configuration differs from the running container gets recreated — which restarted the
+# API without the option and killed it mid-run.
+#
+# The file is generated and rewritten on every up, so it carries its own name rather than `.env`,
+# which belongs to whoever works here. Because an explicit --env-file replaces Compose's own `.env`
+# handling, a developer's `.env` is copied in first and the generated value appended, so their
+# settings keep working.
+generated_env="$STACK_DIR/.env.generated"
+: > "$generated_env"
+if [[ -f "$STACK_DIR/.env" ]]; then
+  cat "$STACK_DIR/.env" >> "$generated_env"
+  printf '\n' >> "$generated_env"
+fi
+printf 'E2E_NODE_OPTIONS=%s\n' "$E2E_NODE_OPTIONS" >> "$generated_env"
 
 log_info "Building frontend image..."
 compose build frontend
@@ -80,7 +93,8 @@ compose build frontend-widget
 log_info "Starting stack (db, api, frontend, proxy)..."
 compose up -d db api frontend proxy
 
-if ! wait_for_healthy db 60; then
+# db healthcheck budget (compose.yml): start_period 10s + retries 20 * interval 5s = 110s.
+if ! wait_for_healthy db 120; then
   log_error "Database failed to become healthy. Recent API logs:"
   compose logs --tail=200 api || true
   exit 1
@@ -115,13 +129,17 @@ if ! wait_for_healthy api 360; then
   exit 1
 fi
 
-if ! wait_for_healthy frontend 60; then
+# frontend healthcheck budget (compose.yml): start_period 5s + retries 10 * interval 5s = 55s;
+# rounded up so a slow first response does not fail the gate on the second.
+if ! wait_for_healthy frontend 90; then
   log_error "Frontend failed to become healthy. Recent frontend logs:"
   compose logs --tail=200 frontend || true
   exit 1
 fi
 
-if ! wait_for_healthy proxy 60; then
+# proxy healthcheck budget (compose.yml): start_period 5s + retries 10 * interval 5s = 55s, plus
+# room for the frontend it proxies to answer.
+if ! wait_for_healthy proxy 90; then
   log_error "Proxy failed to become healthy. Recent proxy logs:"
   compose logs --tail=200 proxy || true
   exit 1

@@ -80,7 +80,7 @@ jobs:
         run: |
           docker compose \
             -p dfx-e2e-stack \
-            --env-file e2e-stack/.env \
+            --env-file e2e-stack/.env.generated \
             -f e2e-stack/compose.yml \
             -f e2e-stack/compose.tests.yml \
             run --name dfx-e2e-stack-tests tests

@@ -99,8 +99,31 @@ function collectPaths(
       );
     }
 
+    // A shorthand property (`{ path }`) or a computed key carries a name this parser cannot read,
+    // so the route it belongs to would quietly leave the set that needs a claim. Refuse to read
+    // what cannot be read, the same way spreads and non-literal values are refused above.
+    if (ts.isShorthandPropertyAssignment(prop)) {
+      throw new Error(
+        `Unsupported route construct: shorthand property "${prop.name.text}" at ${formatNodeLocation(sourceFile, prop)}`,
+      );
+    }
+    if (!ts.isPropertyAssignment(prop)) {
+      throw new Error(
+        `Unsupported route construct: property is not a plain assignment at ${formatNodeLocation(sourceFile, prop)}`,
+      );
+    }
+    if (ts.isComputedPropertyName(prop.name)) {
+      throw new Error(
+        `Unsupported route construct: computed property name at ${formatNodeLocation(sourceFile, prop.name)}`,
+      );
+    }
+
     const name = propName(prop);
-    if (!name || !ts.isPropertyAssignment(prop)) continue;
+    if (!name) {
+      throw new Error(
+        `Unsupported route construct: unreadable property name at ${formatNodeLocation(sourceFile, prop.name)}`,
+      );
+    }
 
     if (name === 'path') {
       if (ts.isStringLiteral(prop.initializer) || ts.isNoSubstitutionTemplateLiteral(prop.initializer)) {
