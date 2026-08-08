@@ -1587,6 +1587,14 @@ async function getUserDependentTables(): Promise<UserDependentTable[]> {
  * (see getUserDependentTables) — scoped to that one id, so it can never touch another account's
  * rows or seed/master data — then deletes the row itself.
  * Best-effort: failures on individual deletes are collected and do not abort the rest.
+ *
+ * Every `test.afterAll` in this suite calls this function and discards the return value — a
+ * failed delete would otherwise leave rows behind for whichever spec file runs next in the same
+ * shared database with no trace of why. `no-console` only applies as a `warn` under `src/**` and
+ * does not apply at all under `e2e-stack/**`, so logging here — in addition to the existing
+ * `{ deleted, errors }` return value, which a caller that does check it can still use — is the
+ * cheapest way to surface a failed cleanup without touching all fifteen call sites or aborting
+ * the run: a leftover row must never fail the unrelated test that happens to run next.
  */
 export async function cleanupCreatedData(): Promise<{ deleted: number; errors: string[] }> {
   const errors: string[] = [];
@@ -1619,6 +1627,10 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
     } catch (e) {
       errors.push(`${ref.table}#${ref.id}: ${e instanceof Error ? e.message : String(e)}`);
     }
+  }
+
+  if (errors.length > 0) {
+    console.warn(`cleanupCreatedData: ${errors.length} row(s) could not be deleted:\n  ${errors.join('\n  ')}`);
   }
 
   return { deleted, errors };
