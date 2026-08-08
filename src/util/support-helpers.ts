@@ -33,3 +33,33 @@ export function visibleDepartmentsForRole(role?: UserRole): Department[] {
   if (!departments) return [];
   return departments;
 }
+
+// --- Customer chat date separators ---
+
+/** True when both timestamps fall on the same local calendar day (year, month, day). */
+export function isSameCalendarDay(a: Date | string | number, b: Date | string | number): boolean {
+  const da = new Date(a);
+  const db = new Date(b);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+/**
+ * Whether a date separator should appear above `current`. Always true for the first message
+ * (`previous` undefined); otherwise true when the calendar day changes.
+ */
+export function shouldShowDateSeparator(
+  current: Date | string | number,
+  previous: Date | string | number | undefined,
+): boolean {
+  if (previous === undefined) return true;
+  return !isSameCalendarDay(current, previous);
+}
+
+/** English i18n keys for relative day labels; null falls back to a locale date format. */
+export function relativeDayKey(date: Date | string | number, now: Date = new Date()): 'Today' | 'Yesterday' | null {
+  if (isSameCalendarDay(date, now)) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (isSameCalendarDay(date, yesterday)) return 'Yesterday';
+  return null;
+}
