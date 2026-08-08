@@ -1542,6 +1542,23 @@ describe('SupportDashboardIssueScreen', () => {
       expect(screen.queryByTestId('template-picker')).not.toBeInTheDocument();
     });
 
+    // The transaction picker stands on the list of the account it was opened from, and closing the
+    // picker above it does not close it.
+    it('closes the transaction picker as well', async () => {
+      mockGetUserData.mockResolvedValue({ userData: { id: 397328 }, transactions: [{ id: 11 }, { id: 12 }] });
+
+      const view = await renderScreen();
+      fireEvent.click(button('Vorlage einfügen'));
+      await screen.findByTestId('template-picker');
+      fireEvent.click(button('insert-array'));
+      await screen.findByTestId('array-picker');
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43 } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      expect(screen.queryByTestId('array-picker')).not.toBeInTheDocument();
+    });
+
     it('does not open the picker of the previous ticket over the new one', async () => {
       let answerUserData: (data: { userData: { id: number }; transactions: [] }) => void = () => undefined;
       mockGetUserData.mockReturnValue(new Promise((resolve) => (answerUserData = resolve)));
