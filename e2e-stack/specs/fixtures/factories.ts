@@ -111,7 +111,7 @@ let factoryWalletStartPromise: Promise<number> | null = null;
 let factoryWalletStartApplied = false;
 
 /**
- * Raises `factoryCounter` (once per process) to the DB-derived starting point so newly
+ * Raises `factoryWalletCounter` (once per process) to the DB-derived starting point so newly
  * allocated wallet indices never collide with a prior process's accounts in the same DB.
  * Safe to call more than once or concurrently — memoized via the promise, and only ever
  * raises the counter, never lowers it (so it composes fine with normal in-process usage
@@ -132,8 +132,56 @@ async function ensureFactoryWalletCounterSeeded(): Promise<void> {
 // Playwright test body runs (after file collection/module resolution/browser startup —
 // reliably slower than one local Postgres round trip) the promise has typically already
 // resolved. Note this only affects `factoryWalletCounter`; `uniqueTag()`/`e2eMail()` use the
-// independent `factoryTagCounter` and never need to await this.
+// independent `factoryTagCounter`, seeded separately below.
 void ensureFactoryWalletCounterSeeded();
+
+/**
+ * Scans user_data.mail for the highest numeric suffix already used by an e2e-generated address
+ * (uniqueTag()/e2eMail() always end in `-<n>@dfx.swiss`, or just `<n>@dfx.swiss` when no tag is
+ * given), so a fresh process's factoryTagCounter can start above it instead of at 0 — otherwise
+ * two separate `docker compose run` invocations against the same DB synthesize the exact same
+ * mail address, and PUT /v2/user/mail on the second one 409s with "Account already exists" (the
+ * address already belongs to the first run's account). Unlike wallet offsets, no address
+ * derivation/window-scan is needed here — the counter value is stored directly in the mail text,
+ * so one aggregate query reads it back. Does not need to find the *exact* highest value, only a
+ * value guaranteed to be at or above it — MAX() over every matching row already guarantees that,
+ * even though some matches (e.g. from testEmail() in test-data.ts, a separate counter/namespace
+ * that happens to produce the same `e2e+<tag>-<n>@dfx.swiss` shape) aren't actually
+ * factoryTagCounter values; treating them as if they were only pushes the start higher, never
+ * lower, which is safe.
+ */
+async function deriveFactoryTagStart(): Promise<number> {
+  const row = await queryOne<{ highest: number | null }>(
+    `SELECT MAX((regexp_match(mail, '(\\d+)@dfx\\.swiss$'))[1]::int) AS highest
+     FROM user_data
+     WHERE mail LIKE 'e2e+%@dfx.swiss'`,
+  );
+  return row?.highest ?? 0;
+}
+
+let factoryTagStartPromise: Promise<number> | null = null;
+let factoryTagStartApplied = false;
+
+/**
+ * Raises `factoryTagCounter` (once per process) to the DB-derived starting point, mirroring
+ * `ensureFactoryWalletCounterSeeded` above for the same reason — see `deriveFactoryTagStart`.
+ * Safe to call more than once or concurrently — memoized via the promise, and only ever raises
+ * the counter, never lowers it.
+ */
+async function ensureFactoryTagCounterSeeded(): Promise<void> {
+  if (factoryTagStartApplied) return;
+  if (!factoryTagStartPromise) factoryTagStartPromise = deriveFactoryTagStart();
+  const start = await factoryTagStartPromise;
+  if (factoryTagCounter < start) factoryTagCounter = start;
+  factoryTagStartApplied = true;
+}
+
+// Same best-effort head start as the wallet counter above, for the same reason: uniqueTag()/
+// e2eMail() are synchronous, public exports whose signatures must not change, so they cannot
+// await this themselves. createUser (below) awaits this properly before it can generate a mail
+// address and is therefore always correct regardless of timing; this just gives every other
+// direct caller (other spec files, other factories) a head start too.
+void ensureFactoryTagCounterSeeded();
 
 // TEST_IBAN lives in ./test-data — the single place for shared constants. Re-exported here so
 // callers can keep importing it alongside the factories, but not redeclared: two `export const`s
@@ -584,6 +632,7 @@ export async function ensurePersonalDataComplete(userDataId: number, options?: {
 
 export async function createUser(options: CreateUserOptions = {}): Promise<CreateUserResult> {
   if (options.walletIndex == null) await ensureFactoryWalletCounterSeeded();
+  await ensureFactoryTagCounterSeeded();
   const c = nextWalletOffset();
   const walletIndex = options.walletIndex ?? FACTORY_WALLET_INDEX_BASE + c;
   // Prefer API sign-up: signatureLogin creates the account when the address is new
