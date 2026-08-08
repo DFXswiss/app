@@ -8,7 +8,8 @@ This harness runs the full application in one pass: the frontend, a real API, an
 
 **Real**
 
-- Postgres — freshly created, ephemeral, and built from the real migrations
+- Postgres — freshly created, ephemeral, and schema-built via TypeORM's `synchronize` from
+  the entities (not via the real migration chain — see below)
 - The API
 - The frontend
 
@@ -22,6 +23,19 @@ Mocking happens on two levels at once:
 2. The stack sits on a Docker network with `internal: true`, which has no route to the internet at all.
 
 A test therefore cannot structurally reach any real payment provider or other external service, even if application code tried to.
+
+### Schema: synchronize, not migrations
+
+Postgres schema is created via TypeORM's `synchronize: true` (`SQL_SYNCHRONIZE=true` in
+`env/api.env`), directly from the API's entity definitions. The real migration chain does
+**not** run here (`SQL_MIGRATE=false`) — a fresh database fails partway through it, because
+one migration (`1784807670011-AddRealUnitWalletApp.js`) requires a seed row that the loc
+seed step has not created yet at migration time. See `env/api.env` for the full account of
+why `SQL_MIGRATE=true` was tried and reverted.
+
+This means the harness does **not** exercise the migration chain and gives no assurance that
+migrations apply cleanly to an existing database. Migrations are verified by the API
+repository's own test suites, which run against a real Postgres instance there.
 
 ## Quickstart
 
