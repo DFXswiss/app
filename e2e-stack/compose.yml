@@ -66,6 +66,17 @@ services:
       dockerfile: e2e-stack/images/frontend/Dockerfile
     networks:
       - sandbox
+    healthcheck:
+      # nginx:alpine ships both wget and curl; wget --spider only checks the response status,
+      # it never writes a body anywhere. Target 127.0.0.1 explicitly, not "localhost": BusyBox
+      # wget resolves "localhost" to the IPv6 loopback first, and this nginx config (see
+      # nginx.conf) only listens on the IPv4 wildcard, so "localhost" gets connection refused
+      # even though the server is up and reachable on 127.0.0.1.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   proxy:
     build:
@@ -79,3 +90,15 @@ services:
     depends_on:
       - api
       - frontend
+    healthcheck:
+      # Checks the frontend-passthrough listener (port 3001, see images/proxy/nginx.conf):
+      # nginx:alpine ships both wget and curl. This also proves the proxy is actually wired
+      # to `frontend`, not just that its own nginx process is up. Target 127.0.0.1 explicitly,
+      # not "localhost": BusyBox wget resolves "localhost" to the IPv6 loopback first, and
+      # this nginx config only listens on the IPv4 wildcard, so "localhost" gets connection
+      # refused even though the server is up and reachable on 127.0.0.1.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3001/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s

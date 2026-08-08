@@ -41,9 +41,24 @@ if ! wait_for_healthy db 60; then
   exit 1
 fi
 
-if ! wait_for_healthy api 300; then
+# API healthcheck budget (compose.yml): start_period 60s + retries 30 * interval 10s = 360s
+# before Docker itself marks the container unhealthy. This timeout must stay >= that budget,
+# or up.sh reports a false failure while the container is still inside its allowed window.
+if ! wait_for_healthy api 360; then
   log_error "API failed to become healthy. Recent API logs:"
   compose logs --tail=200 api || true
+  exit 1
+fi
+
+if ! wait_for_healthy frontend 60; then
+  log_error "Frontend failed to become healthy. Recent frontend logs:"
+  compose logs --tail=200 frontend || true
+  exit 1
+fi
+
+if ! wait_for_healthy proxy 60; then
+  log_error "Proxy failed to become healthy. Recent proxy logs:"
+  compose logs --tail=200 proxy || true
   exit 1
 fi
 

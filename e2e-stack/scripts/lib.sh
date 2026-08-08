@@ -67,6 +67,11 @@ wait_for_healthy() {
         log_info "Service '${service}' is healthy."
         return 0
       fi
+      if [[ "$status" == "unhealthy" ]]; then
+        log_error "Service '${service}' reported unhealthy after ${elapsed}s; not waiting out the full timeout. Recent logs:"
+        compose logs --tail=50 "$service" || true
+        return 1
+      fi
     fi
     sleep 2
     elapsed=$((elapsed + 2))
