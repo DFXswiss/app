@@ -1087,6 +1087,48 @@ describe('SupportDashboardIssueScreen', () => {
       expect(screen.queryByText('suggestion boom')).not.toBeInTheDocument();
     });
 
+    // A decision that is still running when another ticket is opened belongs to the ticket that was
+    // left: its text must not reach the composer of the new one, and its failure is not shown there.
+    it('keeps a decision of the previous ticket out of the new one', async () => {
+      mockGetReplySuggestion.mockResolvedValue(SUGGESTION);
+      let finishAccept: () => void = () => undefined;
+      mockAcceptReplySuggestion.mockReturnValue(new Promise<void>((resolve) => (finishAccept = resolve)));
+
+      await renderScreen();
+      fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+
+      mockParams.id = '43';
+      fireEvent.click(button('Update'));
+      await waitFor(() => expect(mockUpdateIssue).toHaveBeenCalled());
+
+      await act(async () => {
+        finishAccept();
+        await Promise.resolve();
+      });
+
+      expect(composer().value).toEqual('');
+    });
+
+    it('keeps a failed decision of the previous ticket out of the new one', async () => {
+      mockGetReplySuggestion.mockResolvedValue(SUGGESTION);
+      let failDecision: (reason: Error) => void = () => undefined;
+      mockRejectReplySuggestion.mockReturnValue(new Promise<void>((_, reject) => (failDecision = reject)));
+
+      await renderScreen();
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+
+      mockParams.id = '43';
+      fireEvent.click(button('Update'));
+      await waitFor(() => expect(mockUpdateIssue).toHaveBeenCalled());
+
+      await act(async () => {
+        failDecision(new Error('decision boom'));
+        await Promise.resolve();
+      });
+
+      expect(screen.queryByText('decision boom')).not.toBeInTheDocument();
+    });
+
     it('reports why the suggestion could not be loaded', async () => {
       mockGetReplySuggestion.mockRejectedValue(new Error('suggestion boom'));
 

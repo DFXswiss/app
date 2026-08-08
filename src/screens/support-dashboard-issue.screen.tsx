@@ -307,19 +307,25 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
    * Either way the suggestion stops being offered, and stays on record on the server.
    */
   async function decideSuggestion(issueId: number, item: SupportReplySuggestion, accept: boolean): Promise<void> {
-    suggestionEpochRef.current++;
+    // The decision qualifies itself the same way a fetch does. Opening another ticket while it is
+    // still running raises the token, and what comes back then belongs to a ticket that is no longer
+    // on screen: its text must not land in the composer of the new one, its clearing must not remove
+    // the new one's suggestion, and its error is not about the ticket the clerk is looking at.
+    const epoch = ++suggestionEpochRef.current;
+    const isCurrent = (): boolean => suggestionEpochRef.current === epoch;
+
     setIsSuggestionBusy(true);
     setActionError(undefined);
     try {
       if (accept) {
         await acceptReplySuggestion(issueId, item.id);
-        setMessageText((prev) => (prev ? `${prev}\n${item.text}` : item.text));
+        if (isCurrent()) setMessageText((prev) => (prev ? `${prev}\n${item.text}` : item.text));
       } else {
         await rejectReplySuggestion(issueId, item.id);
       }
-      setSuggestion(undefined);
+      if (isCurrent()) setSuggestion(undefined);
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : 'Suggestion update failed');
+      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Suggestion update failed');
     } finally {
       setIsSuggestionBusy(false);
     }
