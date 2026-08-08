@@ -1589,8 +1589,7 @@ async function getUserDependentTables(): Promise<UserDependentTable[]> {
  *
  * Every `test.afterAll` in this suite calls this function and discards the return value — a
  * failed delete would otherwise leave rows behind for whichever spec file runs next in the same
- * shared database with no trace of why. `no-console` only applies as a `warn` under `src/**` and
- * does not apply at all under `e2e-stack/**`, so logging here — in addition to the existing
+ * shared database with no trace of why. Logging here — in addition to the existing
  * `{ deleted, errors }` return value, which a caller that does check it can still use — is the
  * cheapest way to surface a failed cleanup without touching all fifteen call sites or aborting
  * the run: a leftover row must never fail the unrelated test that happens to run next.
