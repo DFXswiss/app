@@ -1,15 +1,51 @@
 /**
  * Widget-mode feasibility and honest coverage for the e2e-stack harness.
  *
- * The frontend container image builds only the normal app entry (`src/index.tsx` via
- * `react-app-rewired build`). `src/index-widget.tsx` is never the build entry, and
- * repo-root `widget.html` is not under `public/`, so it is not copied into nginx's
- * document root. These tests document that gap empirically rather than inventing passes.
+ * `frontend-widget` now exists and serves a real widget-mode build (`src/index-widget.tsx`
+ * as entry via `e2e-stack/images/frontend-widget/Dockerfile`, host document at
+ * `e2e-stack/images/frontend-widget/host.html`). The three tests under "Widget mode —
+ * frontend-widget build" are therefore real, passing, browser-executed tests against
+ * `E2E_WIDGET_URL` (default `http://frontend-widget`).
+ *
+ * Coverage is deliberately limited to the OUTSIDE view of `<dfx-services>`: custom-element
+ * registration, mounting/rendering (presence + non-zero size), reaction to HTML-attribute
+ * changes on the light-DOM host, and absence of uncaught exceptions. The widget defines
+ * its custom element with `shadow: 'closed'` (see `src/Main.widget.tsx`), so Playwright
+ * cannot reach inside the shadow tree — proven earlier in this file with a synthetic
+ * closed-shadow page, and re-confirmed against the real component below. That is a
+ * property of the component's design, not a testing shortcut left for later.
+ *
+ * Observation (unchanged gap): repo-root `widget.html` is a DIFFERENT file from the new,
+ * correctly-pathed `e2e-stack/images/frontend-widget/host.html` that `frontend-widget`
+ * actually serves. The root file still hardcodes `http://localhost:3000` script/stylesheet
+ * URLs, is not under `public/`, is not copied into any image document root, and is not
+ * built or served by this harness. The new host page is not a fix for that old file; both
+ * coexist, and the gap test against the normal `frontend` service remains valid.
  */
 
+import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 
 test.describe.configure({ mode: 'serial' });
+
+function widgetUrl(): string {
+  return process.env.E2E_WIDGET_URL ?? 'http://frontend-widget';
+}
+
+/**
+ * The shared `page` fixture only allowlists `frontend` and `api`. Without this handler,
+ * navigations to `frontend-widget` get an empty 200 text/plain substitute. Register
+ * after the fixture's route so Playwright runs us first (most-recently-registered-first);
+ * continue widget-host traffic, fallback everything else to the fixture.
+ */
+async function allowWidgetHost(page: Page): Promise<void> {
+  const widgetHost = new URL(widgetUrl()).hostname;
+  await page.route('**/*', async (route) => {
+    const host = new URL(route.request().url()).hostname;
+    if (host === widgetHost) return route.continue();
+    return route.fallback();
+  });
+}
 
 test.describe('Widget mode — closed shadow root', () => {
   test('Playwright cannot interact with content inside a closed shadow root', async ({ page }) => {
@@ -124,26 +160,102 @@ test.describe('Widget mode — frontend image gap', () => {
     await expect(page.locator('body')).not.toBeEmpty();
     expect(pageErrors, `uncaught pageerror probing widget paths: ${pageErrors.join('; ')}`).toEqual([]);
   });
+});
 
-  // Genuinely unreachable without a widget-mode image build (out of scope for allowed files).
-  test('dfx-services custom element registers and mounts Main.widget', async () => {
-    test.fixme(
-      true,
-      'requires a widget-mode build (src/index-widget.tsx as entry) which the e2e-stack frontend image does not produce; out of scope for this lane\'s allowed files',
-    );
+test.describe('Widget mode — frontend-widget build', () => {
+  test('dfx-services custom element registers and mounts Main.widget', async ({ page }) => {
+    await allowWidgetHost(page);
+
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+
+    await page.goto(widgetUrl(), { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle').catch(() => undefined);
+
+    const defined = await page.evaluate(() => typeof customElements.get('dfx-services'));
+    expect(defined, 'customElements.get("dfx-services") must be a function').toBe('function');
+
+    const dfxServices = page.locator('dfx-services');
+    await expect(dfxServices).toHaveCount(1);
+
+    const box = await dfxServices.boundingBox();
+    expect(box, '<dfx-services> must have a bounding box').toBeTruthy();
+    expect(box!.width, 'rendered width > 0').toBeGreaterThan(0);
+    expect(box!.height, 'rendered height > 0').toBeGreaterThan(0);
+
+    expect(pageErrors, `uncaught pageerror on widget mount: ${pageErrors.join('; ')}`).toEqual([]);
   });
 
-  test('widget reacts to attribute changes (lang, session, service) without page URL navigation', async () => {
-    test.fixme(
-      true,
-      'requires a widget-mode build (src/index-widget.tsx as entry) which the e2e-stack frontend image does not produce; out of scope for this lane\'s allowed files',
+  test('widget reacts to attribute changes (lang, session, service) without page URL navigation', async ({
+    page,
+  }) => {
+    await allowWidgetHost(page);
+
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+
+    await page.goto(widgetUrl(), { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle').catch(() => undefined);
+
+    const urlBefore = page.url();
+
+    // Light-DOM attributes live outside the closed shadow root — roundtrip is externally observable.
+    // MemoryRouter keeps navigation in memory: attribute changes must not touch the address bar.
+    await page.evaluate(() => {
+      const el = document.querySelector('dfx-services');
+      if (!el) throw new Error('dfx-services host missing');
+      el.setAttribute('service', 'sell');
+      el.setAttribute('lang', 'de');
+    });
+    await page.waitForTimeout(1500);
+
+    const serviceAttr = await page.evaluate(
+      () => document.querySelector('dfx-services')?.getAttribute('service') ?? null,
     );
+    expect(serviceAttr, 'service attribute roundtrip').toBe('sell');
+
+    const langAttr = await page.evaluate(
+      () => document.querySelector('dfx-services')?.getAttribute('lang') ?? null,
+    );
+    expect(langAttr, 'lang attribute roundtrip').toBe('de');
+
+    expect(page.url(), 'MemoryRouter must not change the browser URL').toBe(urlBefore);
+
+    const dfxServices = page.locator('dfx-services');
+    await expect(dfxServices).toHaveCount(1);
+    const box = await dfxServices.boundingBox();
+    expect(box, '<dfx-services> still mounted after attribute change').toBeTruthy();
+    expect(box!.width).toBeGreaterThan(0);
+    expect(box!.height).toBeGreaterThan(0);
+
+    expect(pageErrors, `uncaught pageerror on attribute change: ${pageErrors.join('; ')}`).toEqual([]);
   });
 
-  test('widget closed shadow tree renders without uncaught exceptions', async () => {
-    test.fixme(
-      true,
-      'requires a widget-mode build (src/index-widget.tsx as entry) which the e2e-stack frontend image does not produce; out of scope for this lane\'s allowed files',
-    );
+  test('widget closed shadow tree renders without uncaught exceptions', async ({ page }) => {
+    await allowWidgetHost(page);
+
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+
+    await page.goto(widgetUrl(), { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle').catch(() => undefined);
+
+    // Real component: shadowRoot is null from the outside (closed mode) — same as the synthetic proof.
+    // Do not use `?? 'missing'` on shadowRoot itself: null is the success value for closed mode.
+    const shadowRoot = await page.evaluate(() => {
+      const el = document.querySelector('dfx-services');
+      if (!el) return 'missing-host';
+      return el.shadowRoot;
+    });
+    expect(shadowRoot, 'real dfx-services.shadowRoot is null (closed)').toBeNull();
+
+    const dfxServices = page.locator('dfx-services');
+    await expect(dfxServices).toHaveCount(1);
+    const box = await dfxServices.boundingBox();
+    expect(box, 'content renders inside closed shadow despite uninspectable tree').toBeTruthy();
+    expect(box!.width).toBeGreaterThan(0);
+    expect(box!.height).toBeGreaterThan(0);
+
+    expect(pageErrors, `uncaught pageerror on closed-shadow widget: ${pageErrors.join('; ')}`).toEqual([]);
   });
 });
