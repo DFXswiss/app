@@ -253,14 +253,17 @@ function InputComponent(): JSX.Element {
     setInputValue(value);
   }
 
+  // Same condition handleSend uses to early-return — also drives disabled + styles.
+  const canSend = !!inputValue && !error;
+
   return (
-    <div className="flex flex-col gap-2 p-4 bg-dfxGray-300">
+    <div className="flex flex-col gap-2 p-4 bg-dfxGray-300 border-t border-dfxGray-500">
       {selectedFiles.length > 0 && (
         <div className="flex flex-row flex-wrap gap-2">
           {selectedFiles.map((file, index) => (
             <div
               key={index}
-              className="flex flex-row gap-1.5 items-center text-dfxGray-800 bg-dfxGray-500 rounded-md p-2 pr-3"
+              className="flex flex-row gap-1.5 items-center text-dfxBlue-800 bg-dfxGray-400 rounded-md p-2 pr-3"
             >
               <HiOutlinePaperClip className="text-lg" />
               <p className="text-left text-sm">{blankedAddress(file.name, { displayLength: 20 })}</p>
@@ -272,17 +275,31 @@ function InputComponent(): JSX.Element {
           ))}
         </div>
       )}
-      <div className="flex flex-row items-center space-x-2">
-        <label className="flex items-center p-2 cursor-pointer">
-          <HiOutlinePaperClip className="text-2xl text-dfxGray-800" />
-          <input className="hidden" type="file" multiple accept=".pdf, .jpeg, .jpg, .png" onChange={handleFileChange} />
+      <div className="flex flex-row items-center gap-2">
+        <label
+          className="relative flex items-center justify-center w-11 h-11 shrink-0 rounded-full cursor-pointer text-dfxGray-800 hover:bg-dfxGray-500 focus-within:ring-2 focus-within:ring-dfxBlue-400"
+          aria-label={translate('screens/support', 'Attach file')}
+        >
+          <HiOutlinePaperClip className="text-2xl" aria-hidden />
+          <input
+            className="absolute w-px h-px p-0 -m-px overflow-hidden whitespace-nowrap border-0"
+            type="file"
+            multiple
+            accept=".pdf, .jpeg, .jpg, .png"
+            onChange={handleFileChange}
+          />
         </label>
 
         <div
           className="
           grid
           w-full
+          min-w-0
           text-sm
+          bg-white
+          border
+          border-dfxGray-500
+          rounded-full
           after:px-3.5
           after:py-2.5
           [&>textarea]:text-inherit
@@ -295,9 +312,8 @@ function InputComponent(): JSX.Element {
           after:invisible
           after:content-[attr(data-cloned-val)_'_']
           after:border
+          after:border-transparent
           text-dfxGray-800
-          outline-none
-          resize-none
           overflow-auto
           max-h-40"
           data-cloned-val={inputValue}
@@ -305,12 +321,15 @@ function InputComponent(): JSX.Element {
           <textarea
             className="
             w-full
-            bg-dfxGray-300
+            bg-transparent
             appearance-none
-            rounded
+            rounded-full
             px-3.5
             py-2.5
-            outline-none"
+            outline-none
+            focus:ring-2
+            focus:ring-inset
+            focus:ring-dfxBlue-400"
             name="message"
             id="message"
             rows={1}
@@ -320,11 +339,19 @@ function InputComponent(): JSX.Element {
             placeholder={translate('screens/support', 'Write a message...')}
             required
           />
-          {error && <p className="text-dfxRed-150 text-xs px-3.5 text-left">{error}</p>}
+          {error && <p className="text-dfxRed-150 text-xs px-3.5 pb-2 text-left">{error}</p>}
         </div>
 
-        <button onClick={handleSend} className="items-center p-2">
-          <MdSend className={`text-2xl ${!inputValue || !!error ? 'text-dfxBlue-800/40' : 'text-dfxBlue-800'}`} />
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={!canSend}
+          aria-label={translate('screens/support', 'Send message')}
+          className={`flex items-center justify-center w-11 h-11 shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-dfxBlue-400 focus-visible:ring-offset-2 ${
+            canSend ? 'bg-dfxBlue-800 text-white cursor-pointer' : 'bg-dfxGray-500 text-dfxGray-700 cursor-not-allowed'
+          }`}
+        >
+          <MdSend className="text-2xl" aria-hidden />
         </button>
       </div>
     </div>

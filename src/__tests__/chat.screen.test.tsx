@@ -493,22 +493,36 @@ describe('ChatScreen', () => {
     renderChat();
     const textarea = screen.getByPlaceholderText('Write a message...');
     fireEvent.change(textarea, { target: { value: 'Need help' } });
-    fireEvent.click(screen.getByRole('button', { name: '' })); // MdSend button has no accessible name
-
-    // The send button is the one wrapping MdSend — click via parent of textarea row
-    const sendButtons = screen.getAllByRole('button');
-    const sendButton = sendButtons[sendButtons.length - 1];
-    fireEvent.click(sendButton);
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
     await waitFor(() => {
       expect(mockSubmitMessage).toHaveBeenCalledWith('Need help', []);
     });
   });
 
+  it('disables the send button when the input is empty and enables it when text is present', () => {
+    renderChat();
+    const sendButton = screen.getByRole('button', { name: 'Send message' });
+    // disabled + inactive styles when empty
+    expect(sendButton).toBeDisabled();
+    expect(sendButton).toHaveClass('bg-dfxGray-500');
+    expect(sendButton).not.toHaveClass('bg-dfxBlue-800');
+    expect(mockTranslate).toHaveBeenCalledWith('screens/support', 'Send message');
+    expect(mockTranslate).toHaveBeenCalledWith('screens/support', 'Attach file');
+
+    // canSend true — active surface
+    fireEvent.change(screen.getByPlaceholderText('Write a message...'), { target: { value: 'Hi' } });
+    expect(sendButton).not.toBeDisabled();
+    expect(sendButton).toHaveClass('bg-dfxBlue-800');
+    expect(sendButton).toHaveClass('text-white');
+    expect(sendButton).toHaveClass('cursor-pointer');
+  });
+
   it('does not submit when the input is empty', () => {
     renderChat();
-    const sendButtons = screen.getAllByRole('button');
-    fireEvent.click(sendButtons[sendButtons.length - 1]);
+    const sendButton = screen.getByRole('button', { name: 'Send message' });
+    expect(sendButton).toBeDisabled();
+    fireEvent.click(sendButton);
     expect(mockSubmitMessage).not.toHaveBeenCalled();
   });
 
@@ -520,13 +534,31 @@ describe('ChatScreen', () => {
     expect(mockTranslateError).toHaveBeenCalledWith('message_length');
     expect(screen.getByText('message_length')).toBeInTheDocument();
 
-    const sendButtons = screen.getAllByRole('button');
-    fireEvent.click(sendButtons[sendButtons.length - 1]);
+    const sendButton = screen.getByRole('button', { name: 'Send message' });
+    expect(sendButton).toBeDisabled();
+    fireEvent.click(sendButton);
     expect(mockSubmitMessage).not.toHaveBeenCalled();
 
     // Clearing the error when value shrinks again
     fireEvent.change(textarea, { target: { value: 'ok' } });
     expect(screen.queryByText('message_length')).not.toBeInTheDocument();
+    expect(sendButton).not.toBeDisabled();
+  });
+
+  it('styles the composer as a white pill on grey with a top separator', () => {
+    renderChat();
+    const textarea = screen.getByPlaceholderText('Write a message...');
+    // Pill surface on the auto-grow grid (parent of the textarea)
+    const pill = textarea.parentElement;
+    expect(pill).toHaveClass('bg-white');
+    expect(pill).toHaveClass('border-dfxGray-500');
+    expect(pill).toHaveClass('rounded-full');
+    expect(textarea).toHaveClass('bg-transparent');
+    // Composer bar — grey ground + top rule separating it from the thread
+    const bar = pill?.parentElement?.parentElement;
+    expect(bar).toHaveClass('bg-dfxGray-300');
+    expect(bar).toHaveClass('border-t');
+    expect(bar).toHaveClass('border-dfxGray-500');
   });
 
   it('sends on Enter and inserts a newline on Shift+Enter', async () => {
@@ -570,10 +602,12 @@ describe('ChatScreen', () => {
       fireEvent.change(fileInput, { target: { files: [file] } });
     });
     expect(screen.getByText('note.pdf')).toBeInTheDocument();
+    // Chip contrast: dfxBlue-800 on dfxGray-400
+    const chip = screen.getByText('note.pdf').parentElement as HTMLElement;
+    expect(chip).toHaveClass('text-dfxBlue-800');
+    expect(chip).toHaveClass('bg-dfxGray-400');
 
     // Chip layout: paperclip svg + name + close svg — click the last svg (MdOutlineClose).
-    const name = screen.getByText('note.pdf');
-    const chip = name.parentElement as HTMLElement;
     const svgs = chip.querySelectorAll('svg');
     expect(svgs.length).toBeGreaterThanOrEqual(2);
     fireEvent.click(svgs[svgs.length - 1]);
