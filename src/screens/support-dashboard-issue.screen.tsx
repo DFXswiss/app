@@ -86,6 +86,17 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // because the spinner is long gone by then.
   const ticketEpochRef = useRef(0);
 
+  /**
+   * Everything tied to the ticket is qualified the same way: take the token when the work starts,
+   * and let only work that still belongs to the ticket on screen write. A request cannot be recalled
+   * once it is out, so this is what keeps an answer for the ticket that was left from landing on the
+   * one the clerk moved to.
+   */
+  function ticketGuard(): () => boolean {
+    const epoch = ticketEpochRef.current;
+    return () => ticketEpochRef.current === epoch;
+  }
+
   function setSuggestionBusy(value: boolean): void {
     isSuggestionBusyRef.current = value;
     setIsSuggestionBusy(value);
@@ -145,18 +156,30 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     // disable this ticket's buttons and pause its poll until that request finally settles
     setSuggestionBusy(false);
     isAuthorPickedRef.current = false;
+    // and the author itself: kept as the fallback the default falls back to, the clerk of the ticket
+    // that was left would stay selected on a ticket that has no clerk of its own
+    setMessageAuthor('');
     // A draft is written for one customer, about one ticket — an accepted suggestion most of all.
     // Carried into the next ticket it would be sent to someone it was never meant for, so it goes
     // with the ticket it belongs to, attachment included.
     setMessageText('');
     setSelectedFiles([]);
     setFileInputKey((key) => key + 1);
+    // an open document belongs to the customer whose ticket it was opened from, and the panel is
+    // sticky: left standing it would be read as this ticket's attachment
+    setFilePreview((previous) => {
+      if (previous) URL.revokeObjectURL(previous.url);
+      return undefined;
+    });
+    // both belong to a request of the ticket that was left; carried over they would disable this
+    // ticket's controls until that request settles
+    setIsUpdating(false);
+    setIsSending(false);
   }, [id]);
 
   const loadIssue = useCallback((): void => {
     if (!id) return;
-    const epoch = ticketEpochRef.current;
-    const isCurrent = (): boolean => ticketEpochRef.current === epoch;
+    const isCurrent = ticketGuard();
     setIsLoading(true);
     getIssueData(+id)
       .then((data) => {
@@ -182,32 +205,42 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // arrive independently, so a late arrival would otherwise overwrite a selection already made.
   useEffect(() => {
     if (isAuthorPickedRef.current) return;
+    // the ticket on screen is the previous one until its replacement arrives, and its clerk would
+    // otherwise become the default author of a ticket it has nothing to do with
+    if (String(issueData?.id) !== id) return;
     setMessageAuthor((prev) =>
       issueData?.clerk && clerks.includes(issueData.clerk) ? issueData.clerk : prev || clerks[0] || '',
     );
     // `id` belongs in here even though it is not read: the pick is reset when the ticket changes, and
     // two tickets with the same clerk would otherwise leave this effect nothing to react to — the
     // author picked on the previous ticket would stay selected.
-  }, [id, issueData?.clerk, clerks]);
+  }, [id, issueData, clerks]);
 
   const loadMessages = useCallback((): void => {
     if (!issueData?.uid) return;
+    const isCurrent = ticketGuard();
     getIssueMessages(issueData.uid)
       .then((fetched) => {
+        if (!isCurrent()) return;
         setMessages(fetched);
         setPendingCount(0);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
+      .catch((e: Error) => {
+        if (isCurrent()) setActionError(e.message ?? 'Failed to load messages');
+      });
   }, [issueData?.uid, getIssueMessages]);
 
   const pollForNewMessages = useCallback((): void => {
     if (!issueData?.uid) return;
+    const isCurrent = ticketGuard();
     getIssueMessages(issueData.uid)
       .then((fetched) => {
         const newCount = fetched.filter((m) => !visibleIdsRef.current.has(m.id)).length;
-        if (newCount > 0) setPendingCount(newCount);
+        if (isCurrent() && newCount > 0) setPendingCount(newCount);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
+      .catch((e: Error) => {
+        if (isCurrent()) setActionError(e.message ?? 'Failed to load messages');
+      });
   }, [issueData?.uid, getIssueMessages]);
 
   /** Resolves to whether the server was read — a reconciliation needs to know that it worked. */
@@ -293,6 +326,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
    * right: what the clerk is looking at is the ticket in the address bar.
    */
   async function handleUpdate(issueId: number): Promise<void> {
+    const isCurrent = ticketGuard();
     setIsUpdating(true);
     setActionError(undefined);
     try {
@@ -301,11 +335,13 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         department: updateDepartment || undefined,
         clerk: updateClerk || undefined,
       });
-      loadIssue();
+      // the reload belongs to the ticket that was updated: run from a ticket the clerk has since
+      // left, it would fetch that one and put it back on screen in place of the one they opened
+      if (isCurrent()) loadIssue();
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : 'Update failed');
+      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Update failed');
     } finally {
-      setIsUpdating(false);
+      if (isCurrent()) setIsUpdating(false);
     }
   }
 
@@ -319,6 +355,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       );
       return;
     }
+    const isCurrent = ticketGuard();
     setIsSending(true);
     setActionError(undefined);
     try {
@@ -340,14 +377,17 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         await sendMessage(+id, { author, message: text });
       }
 
+      // what follows a send belongs to the ticket it was sent from — clearing the composer of the
+      // ticket the clerk moved to would take a draft they are in the middle of writing
+      if (!isCurrent()) return;
       setMessageText('');
       setSelectedFiles([]);
       setFileInputKey((key) => key + 1);
       loadMessages();
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : 'Send failed');
+      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Send failed');
     } finally {
-      setIsSending(false);
+      if (isCurrent()) setIsSending(false);
     }
   }
 

@@ -1332,6 +1332,159 @@ describe('SupportDashboardIssueScreen', () => {
       expect(screen.getByText('Erika Beispiel')).toBeInTheDocument();
     });
 
+    // An update answers after the switch: its reload would fetch the ticket that was updated and put
+    // it back on screen in place of the one the clerk opened.
+    it('keeps the reload after an update on the ticket it belongs to', async () => {
+      let finishUpdate: () => void = () => undefined;
+      mockUpdateIssue.mockReturnValue(new Promise<void>((resolve) => (finishUpdate = resolve)));
+
+      const view = await renderScreen();
+      fireEvent.click(button('Update'));
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43, name: 'Erika Beispiel' } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+      await screen.findByText('Erika Beispiel', undefined, { timeout: 5000 });
+
+      const loadsSoFar = mockGetIssueData.mock.calls.length;
+      await act(async () => finishUpdate());
+
+      expect(mockGetIssueData).toHaveBeenCalledTimes(loadsSoFar);
+      expect(screen.getByText('Erika Beispiel')).toBeInTheDocument();
+    });
+
+    it('keeps the failure of an update on the ticket it belongs to', async () => {
+      let failUpdate: (reason: Error) => void = () => undefined;
+      mockUpdateIssue.mockReturnValue(new Promise<void>((_, reject) => (failUpdate = reject)));
+
+      const view = await renderScreen();
+      fireEvent.click(button('Update'));
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43, name: 'Erika Beispiel' } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      await act(async () => failUpdate(new Error('update boom')));
+
+      expect(screen.queryByText('update boom')).not.toBeInTheDocument();
+    });
+
+    // A send answers after the switch: clearing the composer would take a draft for another customer
+    // that the clerk is in the middle of writing.
+    it('leaves the new ticket composer alone when a send of the previous one lands', async () => {
+      let finishSend: () => void = () => undefined;
+      mockSendMessage.mockReturnValue(new Promise<void>((resolve) => (finishSend = resolve)));
+
+      const view = await renderScreen();
+      fireEvent.change(composer(), { target: { value: 'For the first customer' } });
+      fireEvent.click(button('Send'));
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43 } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+      fireEvent.change(composer(), { target: { value: 'For the second customer' } });
+
+      await act(async () => finishSend());
+
+      expect(composer().value).toEqual('For the second customer');
+    });
+
+    it('keeps the failure of a send on the ticket it belongs to', async () => {
+      let failSend: (reason: Error) => void = () => undefined;
+      mockSendMessage.mockReturnValue(new Promise<void>((_, reject) => (failSend = reject)));
+
+      const view = await renderScreen();
+      fireEvent.change(composer(), { target: { value: 'For the first customer' } });
+      fireEvent.click(button('Send'));
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43 } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      await act(async () => failSend(new Error('send boom')));
+
+      expect(screen.queryByText('send boom')).not.toBeInTheDocument();
+    });
+
+    // The thread of the ticket that was left must not replace the one on screen — nor its failure.
+    it('drops the thread of the previous ticket', async () => {
+      let answerThread: (messages: SupportMessageInfo[]) => void = () => undefined;
+      mockGetIssueMessages
+        .mockReturnValueOnce(new Promise<SupportMessageInfo[]>((resolve) => (answerThread = resolve)))
+        .mockResolvedValue([{ ...MESSAGES[0], id: 900, message: 'The other conversation' }]);
+
+      const view = await renderScreen();
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43, uid: 'other-uid' } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+      await screen.findByText('The other conversation', undefined, { timeout: 5000 });
+
+      await act(async () => answerThread(MESSAGES));
+
+      expect(screen.getByText('The other conversation')).toBeInTheDocument();
+      expect(screen.queryByText('The reference is TX-12345.')).not.toBeInTheDocument();
+    });
+
+    it('keeps a thread failure of the previous ticket off the screen', async () => {
+      let failThread: (reason: Error) => void = () => undefined;
+      mockGetIssueMessages
+        .mockReturnValueOnce(new Promise<SupportMessageInfo[]>((_, reject) => (failThread = reject)))
+        .mockResolvedValue(MESSAGES);
+
+      const view = await renderScreen();
+
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43, uid: 'other-uid' } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      await act(async () => failThread(new Error('thread boom')));
+
+      expect(screen.queryByText('thread boom')).not.toBeInTheDocument();
+    });
+
+    // A document of the customer whose ticket it was opened from, on a sticky panel: left standing it
+    // would be read as an attachment of the ticket now on screen.
+    it('closes an open file preview', async () => {
+      mockGetIssueMessages.mockResolvedValue([
+        { id: 1, author: 'Customer', message: 'Receipt', fileName: 'receipt.pdf', created: '2026-08-01T09:05:00.000Z' },
+      ]);
+      mockGetMessageFile.mockResolvedValue({
+        data: { type: 'Buffer', data: [1, 2, 3] },
+        contentType: 'application/pdf',
+      });
+
+      const view = await renderScreen();
+      fireEvent.click(await screen.findByRole('button', { name: 'receipt.pdf' }));
+      await screen.findByTestId('preview-name');
+
+      await openOtherTicket(view, '43');
+
+      expect(screen.queryByTestId('preview-name')).not.toBeInTheDocument();
+      expect(global.URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
+    });
+
+    // The poll runs on its own clock, so its answer can arrive at any point after a switch.
+    it('keeps a poll failure of the previous ticket off the screen', async () => {
+      jest.useFakeTimers();
+      try {
+        let failPoll: (reason: Error) => void = () => undefined;
+        mockGetIssueMessages
+          .mockResolvedValueOnce(MESSAGES)
+          .mockReturnValueOnce(new Promise<SupportMessageInfo[]>((_, reject) => (failPoll = reject)))
+          .mockResolvedValue(MESSAGES);
+
+        const view = await renderScreen();
+        await act(async () => {
+          jest.advanceTimersByTime(15000);
+          await Promise.resolve();
+        });
+
+        mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43, uid: 'other-uid' } as SupportIssueInternalData);
+        await openOtherTicket(view, '43');
+
+        await act(async () => failPoll(new Error('poll boom')));
+
+        expect(screen.queryByText('poll boom')).not.toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('clears the composer and its attachment', async () => {
       const view = await renderScreen();
 
@@ -1353,8 +1506,24 @@ describe('SupportDashboardIssueScreen', () => {
       await screen.findAllByRole('option', { name: 'Robin' }, { timeout: 5000 });
       fireEvent.change(screen.getByTitle('Author'), { target: { value: 'Robin' } });
 
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, id: 43 } as SupportIssueInternalData);
       await openOtherTicket(view, '43');
 
+      await waitFor(() => expect((screen.getByTitle('Author') as HTMLSelectElement).value).toEqual('Alex'));
+    });
+
+    // The ticket on screen is the previous one until its replacement arrives. Read in that moment,
+    // its clerk would become the default author of a ticket that has none of its own.
+    it('does not carry the previous clerk into a ticket without one', async () => {
+      mockGetIssueData.mockResolvedValue({ ...FULL_ISSUE, clerk: 'Robin' } as SupportIssueInternalData);
+
+      const view = await renderScreen();
+      await waitFor(() => expect((screen.getByTitle('Author') as HTMLSelectElement).value).toEqual('Robin'));
+
+      mockGetIssueData.mockResolvedValue({ ...MINIMAL_ISSUE, id: 43 } as SupportIssueInternalData);
+      await openOtherTicket(view, '43');
+
+      // the first of the list, not the clerk of the ticket that was left
       await waitFor(() => expect((screen.getByTitle('Author') as HTMLSelectElement).value).toEqual('Alex'));
     });
   });
