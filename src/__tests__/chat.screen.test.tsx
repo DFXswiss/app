@@ -767,8 +767,25 @@ describe('ChatScreen', () => {
     });
 
     expect(screen.getByText('screenshot.png')).toBeInTheDocument();
+    // asBlobPreviewUrl true branch: only blob: URLs may reach img src.
     expect(screen.getByTestId('attachment-preview')).toHaveAttribute('src', 'blob:mock-preview');
     expect(URL.createObjectURL).toHaveBeenCalled();
+  });
+
+  it('falls back to the paperclip when a preview URL is not a blob: object URL', async () => {
+    // asBlobPreviewUrl false branch — sink guard for CodeQL js/xss-through-dom at img src.
+    (URL.createObjectURL as jest.Mock).mockReturnValue('https://evil.example/not-a-blob');
+    renderChat();
+    const textarea = screen.getByPlaceholderText('Write a message...');
+    const image = new File(['png-bytes'], 'screenshot.png', { type: 'image/png' });
+    await act(async () => {
+      fireEvent.paste(textarea, {
+        clipboardData: { items: [{ kind: 'file', type: 'image/png', getAsFile: () => image }] },
+      });
+    });
+    expect(screen.getByText('screenshot.png')).toBeInTheDocument();
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect(screen.queryByTestId('attachment-preview')).not.toBeInTheDocument();
   });
 
   it('leaves text-only paste to the default browser behaviour', async () => {
@@ -814,6 +831,44 @@ describe('ChatScreen', () => {
     expect(screen.getByText('scan.pdf')).toBeInTheDocument();
     // Non-image chips keep the paperclip (no preview img).
     expect(screen.queryByTestId('attachment-preview')).not.toBeInTheDocument();
+  });
+
+  it('shows a thumbnail only when the MIME type is image/*, never from the file name alone', async () => {
+    // isImageFile uses file.type only (CodeQL: file.name must not gate img src).
+    renderChat();
+    const zone = screen.getByTestId('composer-drop-zone');
+
+    const image = new File(['png-bytes'], 'shot.png', { type: 'image/png' });
+    await act(async () => {
+      fireEvent.drop(zone, { dataTransfer: { files: [image] } });
+    });
+    expect(screen.getByTestId('attachment-preview')).toHaveAttribute('src', 'blob:mock-preview');
+    expect(URL.createObjectURL).toHaveBeenCalled();
+
+    // Remove image chip (close icon is the last svg on the chip).
+    const imageChip = screen.getByText('shot.png').parentElement as HTMLElement;
+    fireEvent.click(imageChip.querySelectorAll('svg')[imageChip.querySelectorAll('svg').length - 1]);
+    expect(screen.queryByText('shot.png')).not.toBeInTheDocument();
+    (URL.createObjectURL as jest.Mock).mockClear();
+
+    const pdf = new File(['%PDF'], 'doc.pdf', { type: 'application/pdf' });
+    await act(async () => {
+      fireEvent.drop(zone, { dataTransfer: { files: [pdf] } });
+    });
+    expect(screen.getByText('doc.pdf')).toBeInTheDocument();
+    expect(screen.queryByTestId('attachment-preview')).not.toBeInTheDocument();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+
+    // Extension looks like an image but empty MIME — attachable via name fallback, no preview.
+    const pdfChip = screen.getByText('doc.pdf').parentElement as HTMLElement;
+    fireEvent.click(pdfChip.querySelectorAll('svg')[pdfChip.querySelectorAll('svg').length - 1]);
+    const namedOnly = new File(['x'], 'looks-like.png', { type: '' });
+    await act(async () => {
+      fireEvent.drop(zone, { dataTransfer: { files: [namedOnly] } });
+    });
+    expect(screen.getByText('looks-like.png')).toBeInTheDocument();
+    expect(screen.queryByTestId('attachment-preview')).not.toBeInTheDocument();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 
   it('clears the drag highlight when the pointer leaves the composer without dropping', () => {

@@ -46,8 +46,18 @@ function isAcceptedAttachment(file: File): boolean {
   return ACCEPTED_FILE_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
+/** Preview chips use MIME only — never the filename — so a user-controlled name cannot gate img src. */
 function isImageFile(file: File): boolean {
-  return file.type.startsWith('image/') || /\.(jpe?g|png)$/i.test(file.name);
+  return file.type.startsWith('image/');
+}
+
+/**
+ * Only object-URLs may become an <img src>. Values that reach this helper can be
+ * traced from clipboard/drop File objects (CodeQL js/xss-through-dom); createObjectURL
+ * always yields `blob:…`, so this is an explicit sink guard, not a behaviour change.
+ */
+function asBlobPreviewUrl(url: string | undefined): string | undefined {
+  return url && url.startsWith('blob:') ? url : undefined;
 }
 
 /** Pixels from the bottom that still count as “at the end of the thread”. */
@@ -478,28 +488,31 @@ function InputComponent(): JSX.Element {
     >
       {selectedFiles.length > 0 && (
         <div className="flex flex-row flex-wrap gap-2">
-          {selectedFiles.map((file, index) => (
-            <div
-              key={`${file.name}-${index}`}
-              className="flex flex-row gap-1.5 items-center text-dfxBlue-800 bg-dfxGray-400 rounded-md p-2 pr-3"
-            >
-              {previewUrls[index] ? (
-                <img
-                  src={previewUrls[index]}
-                  alt=""
-                  className="w-8 h-8 rounded-sm object-cover shrink-0"
-                  data-testid="attachment-preview"
+          {selectedFiles.map((file, index) => {
+            const previewSrc = asBlobPreviewUrl(previewUrls[index]);
+            return (
+              <div
+                key={`${file.name}-${index}`}
+                className="flex flex-row gap-1.5 items-center text-dfxBlue-800 bg-dfxGray-400 rounded-md p-2 pr-3"
+              >
+                {previewSrc ? (
+                  <img
+                    src={previewSrc}
+                    alt=""
+                    className="w-8 h-8 rounded-sm object-cover shrink-0"
+                    data-testid="attachment-preview"
+                  />
+                ) : (
+                  <HiOutlinePaperClip className="text-lg" />
+                )}
+                <p className="text-left text-sm">{blankedAddress(file.name, { displayLength: 20 })}</p>
+                <MdOutlineClose
+                  className="text-dfxGray-300 text-md ml-1 bg-dfxGray-800/40 rounded-full p-0.5 cursor-pointer"
+                  onClick={() => removeFile(index)}
                 />
-              ) : (
-                <HiOutlinePaperClip className="text-lg" />
-              )}
-              <p className="text-left text-sm">{blankedAddress(file.name, { displayLength: 20 })}</p>
-              <MdOutlineClose
-                className="text-dfxGray-300 text-md ml-1 bg-dfxGray-800/40 rounded-full p-0.5 cursor-pointer"
-                onClick={() => removeFile(index)}
-              />
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       )}
       <div className="flex flex-row items-center gap-2">
