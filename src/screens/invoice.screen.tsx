@@ -197,7 +197,7 @@ export default function InvoiceScreen(): JSX.Element {
                     </p>
                     <div className="flex flex-row items-center gap-2 pl-3">
                       <p className={`text-base ${errorRecipient ? 'text-dfxRed-100' : 'text-dfxBlue-800'}`}>
-                        {field.value}
+                        {field.value ?? recipientFromUrl}
                       </p>
                       {isLoadingRecipient && (
                         <span className="inline-flex" aria-hidden="true">

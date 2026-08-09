@@ -186,6 +186,8 @@ process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import copy from 'copy-to-clipboard';
 import { addYears } from 'date-fns';
+import { createRoot, Root } from 'react-dom/client';
+import { flushSync } from 'react-dom';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import InvoiceScreen from '../screens/invoice.screen';
 
@@ -244,6 +246,30 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     });
     jest.clearAllTimers();
     jest.useRealTimers();
+  });
+
+  it('first paint shows payee from the URL before setValue runs', () => {
+    // RTL's render() flushes useEffect, so field.value would already be set. flushSync only
+    // commits the tree and layout effects — passive useEffect (mount setValue) has not run yet.
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+    const router = createMemoryRouter([{ path: '/invoice', element: <InvoiceScreen /> }], {
+      initialEntries: ['/invoice?recipient=Foo&pay=1'],
+    });
+
+    flushSync(() => {
+      root.render(<RouterProvider router={router} />);
+    });
+
+    const group = container.querySelector('[role="group"]');
+    expect(group?.textContent ?? '').toContain('Payee');
+    expect(group?.textContent ?? '').toContain('Foo');
+
+    flushSync(() => {
+      root.unmount();
+    });
+    container.remove();
   });
 
   it('payer mode (?pay=1): title, field labels, button and hint use payer copy', async () => {
