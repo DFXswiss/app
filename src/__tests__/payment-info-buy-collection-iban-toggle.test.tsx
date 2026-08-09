@@ -275,6 +275,16 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     expect(screen.getByTestId('row-value-IBAN')).not.toHaveTextContent('🔄');
   });
 
+  it('shows the SEPA Instant icon when sepaInstant is true', () => {
+    render(
+      <PaymentInformationContent
+        info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG', sepaInstant: true })}
+      />,
+    );
+
+    expect(within(screen.getByTestId('row-value-IBAN')).getByTestId('icon-sepa')).toBeInTheDocument();
+  });
+
   it('keeps the personal IBAN in the QR value in the initial state', () => {
     render(
       <PaymentInformationContent

@@ -1,4 +1,4 @@
-// Focused unit test for PaymentInformationContent Bank-row gating.
+// Focused unit test for PaymentInformationContent Bank-row gating and copy callbacks.
 // Mounts the REAL component (not mocked) so the explicit showBank prop is exercised.
 // Must NOT gate on generic isPersonalIban — legacy Yapeal personal IBANs also set that flag.
 
@@ -12,7 +12,11 @@ jest.mock('@dfx.swiss/react', () => ({
 
 jest.mock('@dfx.swiss/react-components', () => ({
   AlignContent: { RIGHT: 'right' },
-  CopyButton: () => null,
+  CopyButton: ({ onCopy }: any) => (
+    <button data-testid="copy" onClick={onCopy}>
+      copy
+    </button>
+  ),
   DfxIcon: () => null,
   IconColor: { BLUE: 'blue', RED: 'red' },
   IconVariant: { SEPA_INSTANT: 'sepa' },
@@ -53,7 +57,7 @@ jest.mock('../components/payment/payment-qr-code', () => ({
   PaymentQrCode: () => null,
 }));
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PaymentInformationContent } from '../components/payment/payment-info-buy';
 
 function baseInfo(overrides: Record<string, unknown> = {}) {
@@ -73,6 +77,10 @@ function baseInfo(overrides: Record<string, unknown> = {}) {
     remittanceInfo: 'DFX-BUY-1',
     ...overrides,
   } as any;
+}
+
+function clickCopyInRow(label: string) {
+  fireEvent.click(within(screen.getByTestId(`row-value-${label}`)).getByTestId('copy'));
 }
 
 describe('PaymentInformationContent Bank row', () => {
@@ -120,5 +128,61 @@ describe('PaymentInformationContent Bank row', () => {
     );
 
     expect(screen.queryByTestId('row-Bank')).not.toBeInTheDocument();
+  });
+});
+
+describe('PaymentInformationContent copy callbacks', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('copies the displayed amount, BIC, bank, remittance and recipient fields', () => {
+    const info = baseInfo({
+      amount: 250.5,
+      bic: 'BFRILI22',
+      bank: 'Bank Frick',
+      name: 'DFX AG',
+      street: 'Bahnhofstrasse',
+      number: '7',
+      zip: '6300',
+      city: 'Zug',
+      country: 'CH',
+      remittanceInfo: 'DFX-BUY-99',
+    });
+
+    render(<PaymentInformationContent info={info} showBank />);
+
+    expect(screen.getByTestId('row-value-BIC')).toHaveTextContent('BFRILI22');
+    expect(screen.getByTestId('row-value-Bank')).toHaveTextContent('Bank Frick');
+    expect(screen.getByTestId('row-value-Remittance info')).toHaveTextContent('DFX-BUY-99');
+
+    clickCopyInRow('Amount in EUR');
+    expect(mockCopy).toHaveBeenLastCalledWith('250.5');
+
+    clickCopyInRow('BIC');
+    expect(mockCopy).toHaveBeenLastCalledWith('BFRILI22');
+
+    clickCopyInRow('Bank');
+    expect(mockCopy).toHaveBeenLastCalledWith('Bank Frick');
+
+    clickCopyInRow('Remittance info');
+    expect(mockCopy).toHaveBeenLastCalledWith('DFX-BUY-99');
+
+    clickCopyInRow('Name');
+    expect(mockCopy).toHaveBeenLastCalledWith('DFX AG');
+
+    clickCopyInRow('Address');
+    expect(mockCopy).toHaveBeenLastCalledWith('Bahnhofstrasse 7');
+
+    clickCopyInRow('ZIP code');
+    expect(mockCopy).toHaveBeenLastCalledWith('6300');
+
+    clickCopyInRow('City');
+    expect(mockCopy).toHaveBeenLastCalledWith('Zug');
+
+    clickCopyInRow('Country');
+    expect(mockCopy).toHaveBeenLastCalledWith('CH');
+
+    expect(mockCopy).toHaveBeenCalledTimes(9);
   });
 });

@@ -1,9 +1,11 @@
 const mockInvoiceFor = jest.fn();
 const mockOpenPdf = jest.fn();
+const mockNavigate = jest.fn();
+let mockUser: { kyc: { dataComplete: boolean } } | undefined = { kyc: { dataComplete: true } };
 
 jest.mock('@dfx.swiss/react', () => ({
   useBuy: () => ({ invoiceFor: mockInvoiceFor }),
-  useUserContext: () => ({ user: { kyc: { dataComplete: true } } }),
+  useUserContext: () => ({ user: mockUser }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -21,7 +23,7 @@ jest.mock('../contexts/settings.context', () => ({
 }));
 
 jest.mock('../hooks/navigation.hook', () => ({
-  useNavigation: () => ({ navigate: jest.fn() }),
+  useNavigation: () => ({ navigate: mockNavigate }),
 }));
 
 jest.mock('../util/utils', () => ({
@@ -39,6 +41,24 @@ import { PaymentQrCode } from '../components/payment/payment-qr-code';
 beforeEach(() => {
   jest.clearAllMocks();
   mockInvoiceFor.mockResolvedValue({ pdfData: 'JVBERi0x' });
+  mockUser = { kyc: { dataComplete: true } };
+});
+
+describe('PaymentQrCode incomplete KYC', () => {
+  it('navigates to profile when KYC data is incomplete and does not request or open an invoice', async () => {
+    mockUser = { kyc: { dataComplete: false } };
+
+    render(<PaymentQrCode value="BCD\n001" txId={42} />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith('/profile', { setRedirect: true });
+    expect(mockInvoiceFor).not.toHaveBeenCalled();
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+  });
 });
 
 describe('PaymentQrCode invoice errors', () => {
@@ -130,6 +150,37 @@ describe('PaymentQrCode stale-response guard', () => {
       resolveInvoice({ pdfData: 'JVBERi0x' });
     });
 
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+  });
+
+  it('does not show an error when the collection mode changes while a failing request is in flight', async () => {
+    let rejectInvoice: (reason: unknown) => void;
+    mockInvoiceFor.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectInvoice = reject;
+        }),
+    );
+
+    const { rerender } = render(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    // Mode flip bumps invoiceGeneration before the rejection lands — catch must not surface it.
+    rerender(<PaymentQrCode value="BCD\n001" txId={42} />);
+
+    await act(async () => {
+      if (!rejectInvoice) throw new Error('invoice rejecter was not captured');
+      rejectInvoice({ message: 'Invoice service is unavailable' });
+    });
+
+    expect(screen.queryByText('Invoice service is unavailable')).not.toBeInTheDocument();
     expect(mockOpenPdf).not.toHaveBeenCalled();
   });
 

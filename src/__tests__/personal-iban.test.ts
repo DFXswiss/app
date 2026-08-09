@@ -20,6 +20,7 @@ import de from '../translations/languages/de.json';
 import fr from '../translations/languages/fr.json';
 import italian from '../translations/languages/it.json';
 import {
+  canOfferCollectionIban,
   FRICK_ACCOUNT_HOLDER_NAME,
   FRICK_BANK_NAME,
   FRICK_EUR_COLLECTION_IBAN,
@@ -238,6 +239,27 @@ describe('getStoredPaymentDetailErrorMessage', () => {
 
   it('returns undefined for undefined message', () => {
     expect(getStoredPaymentDetailErrorMessage(undefined)).toBeUndefined();
+  });
+});
+
+describe('canOfferCollectionIban', () => {
+  const verifiedFrickEur = {
+    currency: { name: 'EUR' },
+    isPersonalIban: true,
+    bank: FRICK_BANK_NAME,
+    name: FRICK_ACCOUNT_HOLDER_NAME,
+    remittanceInfo: 'DFX-BUY-1',
+  };
+
+  it('returns false when the personal IBAN is missing', () => {
+    // Attribution on the collection account needs a remittance reference *and* a personal IBAN
+    // to rewrite; without an IBAN the toggle must not appear even if every other guard passes.
+    expect(
+      canOfferCollectionIban({
+        ...verifiedFrickEur,
+        iban: undefined,
+      }),
+    ).toBe(false);
   });
 });
 
