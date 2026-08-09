@@ -229,6 +229,11 @@ async function fillInvoiceFields(invoiceId = 'INV-1', amount = '10') {
 }
 
 describe('InvoiceScreen payer wording (?pay)', () => {
+  // First-paint test mounts outside RTL; cleaned in afterEach so a failed assertion cannot leave
+  // a second InvoiceScreen in document.body for later tests.
+  let firstPaintRoot: Root | undefined;
+  let firstPaintContainer: HTMLDivElement | undefined;
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
@@ -239,6 +244,18 @@ describe('InvoiceScreen payer wording (?pay)', () => {
   });
 
   afterEach(async () => {
+    const root = firstPaintRoot;
+    const container = firstPaintContainer;
+    firstPaintRoot = undefined;
+    firstPaintContainer = undefined;
+    if (root) {
+      flushSync(() => {
+        root.unmount();
+      });
+    }
+    if (container) {
+      container.remove();
+    }
     // Flush the screen's focus setTimeout and any pending getPaymentRecipient resolutions.
     await act(async () => {
       jest.runOnlyPendingTimers();
@@ -253,7 +270,9 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     // commits the tree and layout effects — passive useEffect (mount setValue) has not run yet.
     const container = document.createElement('div');
     document.body.appendChild(container);
-    const root: Root = createRoot(container);
+    firstPaintContainer = container;
+    const root = createRoot(container);
+    firstPaintRoot = root;
     const router = createMemoryRouter([{ path: '/invoice', element: <InvoiceScreen /> }], {
       initialEntries: ['/invoice?recipient=Foo&pay=1'],
     });
@@ -265,11 +284,6 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     const group = container.querySelector('[role="group"]');
     expect(group?.textContent ?? '').toContain('Payee');
     expect(group?.textContent ?? '').toContain('Foo');
-
-    flushSync(() => {
-      root.unmount();
-    });
-    container.remove();
   });
 
   it('payer mode (?pay=1): title, field labels, button and hint use payer copy', async () => {
