@@ -212,6 +212,9 @@ describe('ChatScreen', () => {
       removeEventListener: jest.fn(),
       dispatchEvent: jest.fn(),
     }));
+    // Image attachment previews
+    global.URL.createObjectURL = jest.fn(() => 'blob:mock-preview');
+    global.URL.revokeObjectURL = jest.fn();
   });
 
   afterEach(() => {
@@ -478,6 +481,24 @@ describe('ChatScreen', () => {
     expect(screen.getByTestId('msg-status-failed')).toBeInTheDocument();
   });
 
+  it('renders a failed customer message with an error surface, not as a retry control', () => {
+    // Resend is not on the published SDK yet — failed bubbles stay visible as errors only.
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 77, author: 'Customer', message: 'Lost packet', status: SupportMessageStatus.FAILED }),
+      ],
+    });
+    renderChat();
+
+    const failed = screen.getByTestId('msg-failed');
+    expect(failed).toHaveClass('border-dfxRed-100');
+    expect(failed.className).not.toMatch(/pointer-events-none/);
+    expect(failed.className).not.toMatch(/opacity-60/);
+    expect(screen.queryByRole('button', { name: 'Retry sending message' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Tap to retry')).not.toBeInTheDocument();
+    expect(screen.getByTestId('msg-status-failed')).toBeInTheDocument();
+  });
+
   it('treats a missing author as a customer message (right-aligned, with status)', () => {
     mockSupportIssue = makeIssue({
       messages: [makeMessage({ id: 1, author: undefined, message: 'No author', status: SupportMessageStatus.SENT })],
@@ -571,6 +592,36 @@ describe('ChatScreen', () => {
     expect(sendButton).toHaveClass('bg-dfxBlue-800');
     expect(sendButton).toHaveClass('text-white');
     expect(sendButton).toHaveClass('cursor-pointer');
+  });
+
+  it('enables send for an attachment without text and submits files alone', async () => {
+    // Mirrors the SDK guard: hasText || hasFiles.
+    renderChat();
+    const sendButton = screen.getByRole('button', { name: 'Send message' });
+    expect(sendButton).toBeDisabled();
+
+    const image = new File(['png'], 'shot.png', { type: 'image/png' });
+    await act(async () => {
+      fireEvent.paste(screen.getByPlaceholderText('Write a message...'), {
+        clipboardData: { items: [{ kind: 'file', type: 'image/png', getAsFile: () => image }] },
+      });
+    });
+
+    expect(sendButton).not.toBeDisabled();
+    fireEvent.click(sendButton);
+    await waitFor(() => {
+      expect(mockSubmitMessage).toHaveBeenCalled();
+      const [msg, files] = mockSubmitMessage.mock.calls[0];
+      expect(msg === undefined || msg === '' || msg === null || !String(msg).trim()).toBe(true);
+      expect(files).toHaveLength(1);
+      expect(files[0].name).toBe('shot.png');
+    });
+  });
+
+  it('does not enable send for whitespace-only text without files', () => {
+    renderChat();
+    fireEvent.change(screen.getByPlaceholderText('Write a message...'), { target: { value: '   ' } });
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
   });
 
   it('does not submit when the input is empty', () => {
@@ -692,8 +743,7 @@ describe('ChatScreen', () => {
 
     const textarea = screen.getByPlaceholderText('Write a message...');
     fireEvent.change(textarea, { target: { value: 'With file' } });
-    const sendButtons = screen.getAllByRole('button');
-    fireEvent.click(sendButtons[sendButtons.length - 1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
 
     await waitFor(() => {
       expect(mockSubmitMessage).toHaveBeenCalled();
@@ -702,6 +752,512 @@ describe('ChatScreen', () => {
       expect(files).toHaveLength(1);
       expect(files[0].name).toBe('doc.pdf');
     });
+  });
+
+  it('pastes image files from the clipboard and shows a preview chip', async () => {
+    renderChat();
+    const textarea = screen.getByPlaceholderText('Write a message...');
+    const image = new File(['png-bytes'], 'screenshot.png', { type: 'image/png' });
+    const clipboardData = {
+      items: [{ kind: 'file', type: 'image/png', getAsFile: () => image }],
+    };
+
+    await act(async () => {
+      fireEvent.paste(textarea, { clipboardData });
+    });
+
+    expect(screen.getByText('screenshot.png')).toBeInTheDocument();
+    expect(screen.getByTestId('attachment-preview')).toHaveAttribute('src', 'blob:mock-preview');
+    expect(URL.createObjectURL).toHaveBeenCalled();
+  });
+
+  it('leaves text-only paste to the default browser behaviour', async () => {
+    renderChat();
+    const textarea = screen.getByPlaceholderText('Write a message...');
+    const clipboardData = {
+      items: [{ kind: 'string', type: 'text/plain', getAsFile: () => null }],
+    };
+    await act(async () => {
+      fireEvent.paste(textarea, { clipboardData });
+    });
+    expect(screen.queryByTestId('attachment-preview')).not.toBeInTheDocument();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('rejects disallowed file types on paste with the shared file_type error', async () => {
+    renderChat();
+    const textarea = screen.getByPlaceholderText('Write a message...');
+    const bad = new File(['x'], 'payload.exe', { type: 'application/octet-stream' });
+    const clipboardData = {
+      items: [{ kind: 'file', type: 'application/octet-stream', getAsFile: () => bad }],
+    };
+    await act(async () => {
+      fireEvent.paste(textarea, { clipboardData });
+    });
+    expect(mockTranslateError).toHaveBeenCalledWith('file_type');
+    expect(screen.getByText('file_type')).toBeInTheDocument();
+    expect(screen.queryByText('payload.exe')).not.toBeInTheDocument();
+  });
+
+  it('accepts dropped files on the composer and shows a drag highlight', async () => {
+    renderChat();
+    const zone = screen.getByTestId('composer-drop-zone');
+    const pdf = new File(['%PDF'], 'scan.pdf', { type: 'application/pdf' });
+
+    fireEvent.dragOver(zone);
+    expect(zone.className).toMatch(/ring-dfxBlue-400/);
+
+    await act(async () => {
+      fireEvent.drop(zone, { dataTransfer: { files: [pdf] } });
+    });
+    expect(zone.className).not.toMatch(/ring-dfxBlue-400/);
+    expect(screen.getByText('scan.pdf')).toBeInTheDocument();
+    // Non-image chips keep the paperclip (no preview img).
+    expect(screen.queryByTestId('attachment-preview')).not.toBeInTheDocument();
+  });
+
+  it('clears the drag highlight when the pointer leaves the composer without dropping', () => {
+    // Covers handleDragLeave (chat.screen.tsx ~450–453).
+    renderChat();
+    const zone = screen.getByTestId('composer-drop-zone');
+    fireEvent.dragOver(zone);
+    expect(zone.className).toMatch(/ring-dfxBlue-400/);
+
+    fireEvent.dragLeave(zone);
+    expect(zone.className).not.toMatch(/ring-dfxBlue-400/);
+  });
+
+  it('does nothing when a drop carries an empty file list (addFiles early return)', async () => {
+    // 370: if (files.length === 0) return
+    renderChat();
+    const zone = screen.getByTestId('composer-drop-zone');
+    await act(async () => {
+      fireEvent.drop(zone, { dataTransfer: { files: [] } });
+    });
+    expect(screen.queryByTestId('attachment-preview')).not.toBeInTheDocument();
+    expect(mockTranslateError).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  });
+
+  it('treats a drop with missing dataTransfer.files as an empty list', async () => {
+    // 460: e.dataTransfer.files ?? [] — synthetic events may omit files; keep the fallback.
+    renderChat();
+    const zone = screen.getByTestId('composer-drop-zone');
+    await act(async () => {
+      fireEvent.drop(zone, { dataTransfer: {} });
+    });
+    expect(screen.queryByTestId('attachment-preview')).not.toBeInTheDocument();
+    expect(mockTranslateError).not.toHaveBeenCalled();
+  });
+
+  it('ignores paste when clipboardData has no items list', async () => {
+    // 426: if (!items) return
+    renderChat();
+    const textarea = screen.getByPlaceholderText('Write a message...');
+    await act(async () => {
+      fireEvent.paste(textarea, { clipboardData: {} });
+    });
+    expect(screen.queryByTestId('attachment-preview')).not.toBeInTheDocument();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('skips clipboard file items whose getAsFile() returns null', async () => {
+    // 433: if (file) files.push(file) — false branch when the browser yields no File.
+    renderChat();
+    const textarea = screen.getByPlaceholderText('Write a message...');
+    await act(async () => {
+      fireEvent.paste(textarea, {
+        clipboardData: {
+          items: [{ kind: 'file', type: 'image/png', getAsFile: () => null }],
+        },
+      });
+    });
+    expect(screen.queryByTestId('attachment-preview')).not.toBeInTheDocument();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('clears a prior file_type error when a valid attachment is added', async () => {
+    // 378 true path + 380 true ternary (prev === fileTypeError → undefined).
+    renderChat();
+    const textarea = screen.getByPlaceholderText('Write a message...');
+    const bad = new File(['x'], 'payload.exe', { type: 'application/octet-stream' });
+    await act(async () => {
+      fireEvent.paste(textarea, {
+        clipboardData: { items: [{ kind: 'file', type: 'application/octet-stream', getAsFile: () => bad }] },
+      });
+    });
+    expect(screen.getByText('file_type')).toBeInTheDocument();
+
+    const good = new File(['%PDF'], 'ok.pdf', { type: 'application/pdf' });
+    await act(async () => {
+      fireEvent.paste(textarea, {
+        clipboardData: { items: [{ kind: 'file', type: 'application/pdf', getAsFile: () => good }] },
+      });
+    });
+    expect(screen.queryByText('file_type')).not.toBeInTheDocument();
+    expect(screen.getByText('ok.pdf')).toBeInTheDocument();
+  });
+
+  it('does not clear a message_length error when attaching a file over the limit', async () => {
+    // 378: accepted.length > 0 && length <= 4000 — false when length > 4000 (keep length error).
+    renderChat();
+    const textarea = screen.getByPlaceholderText('Write a message...') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: 'x'.repeat(4001) } });
+    expect(screen.getByText('message_length')).toBeInTheDocument();
+
+    const good = new File(['%PDF'], 'late.pdf', { type: 'application/pdf' });
+    await act(async () => {
+      fireEvent.paste(textarea, {
+        clipboardData: { items: [{ kind: 'file', type: 'application/pdf', getAsFile: () => good }] },
+      });
+    });
+    expect(screen.getByText('message_length')).toBeInTheDocument();
+    expect(screen.getByText('late.pdf')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  });
+
+  it('revokes object URLs when an image chip is removed', async () => {
+    renderChat();
+    const textarea = screen.getByPlaceholderText('Write a message...');
+    const image = new File(['png'], 'a.png', { type: 'image/png' });
+    await act(async () => {
+      fireEvent.paste(textarea, {
+        clipboardData: { items: [{ kind: 'file', type: 'image/png', getAsFile: () => image }] },
+      });
+    });
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    const chip = screen.getByText('a.png').parentElement as HTMLElement;
+    fireEvent.click(chip.querySelectorAll('svg')[chip.querySelectorAll('svg').length - 1]);
+    await waitFor(() => {
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-preview');
+    });
+  });
+
+  // --- Scroll orientation ---
+
+  function scrollThreadAwayFromBottom() {
+    const el = screen.getByTestId('chat-scroll');
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => 1000 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => 200 });
+    Object.defineProperty(el, 'scrollTop', { configurable: true, writable: true, value: 0 });
+    fireEvent.scroll(el);
+  }
+
+  /** Find a React useRef object whose `.current` is `el` (walks fiber ancestors). */
+  function findReactRefFor(el: Element): { current: Element | null } | null {
+    const fiberKey = Object.keys(el).find(
+      (k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'),
+    );
+    if (!fiberKey) return null;
+    let fiber: { memoizedState?: { memoizedState?: unknown; next?: unknown }; return?: unknown } | null = (
+      el as unknown as Record<string, unknown>
+    )[fiberKey] as {
+      memoizedState?: { memoizedState?: unknown; next?: unknown };
+      return?: unknown;
+    };
+    while (fiber) {
+      let hook: { memoizedState?: unknown; next?: unknown } | null | undefined = fiber.memoizedState;
+      while (hook) {
+        const m = hook.memoizedState as { current?: unknown } | null | undefined;
+        if (m && typeof m === 'object' && 'current' in m && m.current === el) {
+          return m as { current: Element | null };
+        }
+        hook = hook.next as typeof hook;
+      }
+      fiber = fiber.return as typeof fiber;
+    }
+    return null;
+  }
+
+  it('keeps the scroll position and shows New + unread when messages arrive while scrolled up', async () => {
+    const scrollIntoView = Element.prototype.scrollIntoView as jest.Mock;
+    const { rerender } = renderChat();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    const callsAfterOpen = scrollIntoView.mock.calls.length;
+
+    scrollThreadAwayFromBottom();
+    expect(screen.getByTestId('scroll-to-bottom')).toBeInTheDocument();
+    expect(screen.queryByTestId('unread-count')).not.toBeInTheDocument();
+
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'Old' }),
+        makeMessage({ id: 2, message: 'New one', author: 'Support Agent', status: undefined }),
+      ],
+    });
+    rerender(<ChatScreen />);
+
+    // No auto-scroll while the user is reading further up.
+    expect(scrollIntoView.mock.calls.length).toBe(callsAfterOpen);
+    expect(screen.getByTestId('new-messages-divider')).toBeInTheDocument();
+    expect(screen.getByText('New')).toBeInTheDocument();
+    expect(screen.getByTestId('unread-count')).toHaveTextContent('1');
+  });
+
+  it('advances the message counter when the end anchor is not mounted, so that batch is not unread later', async () => {
+    // Covers the !messagesEndRef.current early return (chat.screen.tsx ~113–115):
+    // while the spinner is up the anchor is not in the tree, but prevMessageCount must still
+    // move forward so those messages are not treated as unread once the user scrolls up later.
+    const scrollIntoView = Element.prototype.scrollIntoView as jest.Mock;
+
+    // 1) Open the thread once so hasScrolledToEndRef is true.
+    const { rerender } = renderChat();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+
+    // 2) Hide the thread (loading) but keep an issue with one message.
+    mockIsLoading = true;
+    mockSupportIssue = makeIssue({
+      messages: [makeMessage({ id: 1, message: 'While loading start' })],
+    });
+    rerender(<ChatScreen />);
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    // 3) A second message arrives while the end anchor is still unmounted → !end branch.
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'While loading start' }),
+        makeMessage({ id: 2, message: 'Arrived during load', author: 'Support Agent', status: undefined }),
+      ],
+    });
+    rerender(<ChatScreen />);
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    // 4) Show the thread again (same length — effect does not re-fire).
+    mockIsLoading = false;
+    rerender(<ChatScreen />);
+    await waitFor(() => expect(screen.getByTestId('chat-scroll')).toBeInTheDocument());
+    scrollThreadAwayFromBottom();
+
+    // 5) Only a later arrival should count as unread (counter already at 2).
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'While loading start' }),
+        makeMessage({ id: 2, message: 'Arrived during load', author: 'Support Agent', status: undefined }),
+        makeMessage({ id: 3, message: 'After reveal', author: 'Support Agent', status: undefined }),
+      ],
+    });
+    rerender(<ChatScreen />);
+
+    expect(screen.getByTestId('unread-count')).toHaveTextContent('1');
+    expect(screen.getByTestId('new-messages-divider')).toBeInTheDocument();
+    // “New” sits immediately before the post-reveal message, not before the in-load batch.
+    const afterReveal = screen.getByText('After reveal');
+    const divider = screen.getByTestId('new-messages-divider');
+    expect(
+      afterReveal.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+    const duringLoad = screen.getByText('Arrived during load');
+    expect(
+      duringLoad.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('scrolls to the bottom on button click and clears the New marker', async () => {
+    const scrollIntoView = Element.prototype.scrollIntoView as jest.Mock;
+    const { rerender } = renderChat();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    scrollThreadAwayFromBottom();
+
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'Old' }),
+        makeMessage({ id: 2, message: 'New one', author: 'Support Agent', status: undefined }),
+      ],
+    });
+    rerender(<ChatScreen />);
+    expect(screen.getByTestId('new-messages-divider')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('scroll-to-bottom'));
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: 'smooth' });
+    expect(screen.queryByTestId('new-messages-divider')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('scroll-to-bottom')).not.toBeInTheDocument();
+  });
+
+  it('still auto-scrolls when new messages arrive while the user is at the bottom', async () => {
+    const scrollIntoView = Element.prototype.scrollIntoView as jest.Mock;
+    const { rerender } = renderChat();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    // Stay near bottom (default isNearBottomRef = true; ensure scroll metrics agree).
+    const el = screen.getByTestId('chat-scroll');
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => 500 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => 500 });
+    Object.defineProperty(el, 'scrollTop', { configurable: true, writable: true, value: 0 });
+    fireEvent.scroll(el);
+
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'Old' }),
+        makeMessage({ id: 2, message: 'Fresh', author: 'Support Agent', status: undefined }),
+      ],
+    });
+    rerender(<ChatScreen />);
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: 'smooth' });
+    });
+    expect(screen.queryByTestId('new-messages-divider')).not.toBeInTheDocument();
+  });
+
+  it('does not mark unread when the message list shrinks or stays without additions', async () => {
+    // 126: else if (added > 0) — false when length drops (or would for added <= 0).
+    const scrollIntoView = Element.prototype.scrollIntoView as jest.Mock;
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'One' }),
+        makeMessage({ id: 2, message: 'Two', author: 'Support Agent', status: undefined }),
+      ],
+    });
+    const { rerender } = renderChat();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    const callsAfterOpen = scrollIntoView.mock.calls.length;
+    scrollThreadAwayFromBottom();
+
+    mockSupportIssue = makeIssue({
+      messages: [makeMessage({ id: 1, message: 'One' })],
+    });
+    rerender(<ChatScreen />);
+
+    expect(scrollIntoView.mock.calls.length).toBe(callsAfterOpen);
+    expect(screen.queryByTestId('new-messages-divider')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('unread-count')).not.toBeInTheDocument();
+  });
+
+  it('keeps the first New marker when further messages arrive while scrolled up', async () => {
+    // 131: firstUnread already set — do not overwrite on a second batch (else of === undefined && previousLength > 0).
+    const scrollIntoView = Element.prototype.scrollIntoView as jest.Mock;
+    const { rerender } = renderChat();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    scrollThreadAwayFromBottom();
+
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'Old' }),
+        makeMessage({ id: 2, message: 'First new', author: 'Support Agent', status: undefined }),
+      ],
+    });
+    rerender(<ChatScreen />);
+    expect(screen.getByTestId('unread-count')).toHaveTextContent('1');
+    expect(screen.getByTestId('new-messages-divider')).toBeInTheDocument();
+    const firstNew = screen.getByText('First new');
+    const dividerAfterFirst = screen.getByTestId('new-messages-divider');
+    expect(
+      firstNew.compareDocumentPosition(dividerAfterFirst) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'Old' }),
+        makeMessage({ id: 2, message: 'First new', author: 'Support Agent', status: undefined }),
+        makeMessage({ id: 3, message: 'Second new', author: 'Support Agent', status: undefined }),
+      ],
+    });
+    rerender(<ChatScreen />);
+
+    expect(screen.getByTestId('unread-count')).toHaveTextContent('2');
+    // Divider stays anchored before the first new message, not moved to the second batch.
+    const dividerAfterSecond = screen.getByTestId('new-messages-divider');
+    const stillFirst = screen.getByText('First new');
+    const secondNew = screen.getByText('Second new');
+    // compareDocumentPosition(other): PRECEDING means other precedes this node.
+    expect(
+      stillFirst.compareDocumentPosition(dividerAfterSecond) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+    expect(
+      secondNew.compareDocumentPosition(dividerAfterSecond) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+  });
+
+  it('ignores thread scroll events when the scroll container ref is unset', async () => {
+    // 151: if (!el) return in handleThreadScroll — crash guard; ref nulled via fiber.
+    const { rerender } = renderChat();
+    await waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalled());
+    scrollThreadAwayFromBottom();
+
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'Old' }),
+        makeMessage({ id: 2, message: 'New one', author: 'Support Agent', status: undefined }),
+      ],
+    });
+    rerender(<ChatScreen />);
+    expect(screen.getByTestId('unread-count')).toHaveTextContent('1');
+
+    const scrollEl = screen.getByTestId('chat-scroll');
+    const scrollRef = findReactRefFor(scrollEl);
+    if (!scrollRef) throw new Error('expected scrollContainerRef on chat-scroll fiber');
+    scrollRef.current = null;
+
+    // Metrics would clear unread if the handler ran past the guard.
+    Object.defineProperty(scrollEl, 'scrollHeight', { configurable: true, get: () => 200 });
+    Object.defineProperty(scrollEl, 'clientHeight', { configurable: true, get: () => 200 });
+    Object.defineProperty(scrollEl, 'scrollTop', { configurable: true, writable: true, value: 0 });
+    fireEvent.scroll(scrollEl);
+
+    expect(screen.getByTestId('unread-count')).toHaveTextContent('1');
+    expect(screen.getByTestId('scroll-to-bottom')).toBeInTheDocument();
+
+    scrollRef.current = scrollEl;
+  });
+
+  it('no-ops scrollToBottom when the end anchor ref is unset', async () => {
+    // 160: if (!end) return in scrollToBottom.
+    const scrollIntoView = Element.prototype.scrollIntoView as jest.Mock;
+    const { rerender } = renderChat();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    scrollThreadAwayFromBottom();
+
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'Old' }),
+        makeMessage({ id: 2, message: 'New one', author: 'Support Agent', status: undefined }),
+      ],
+    });
+    rerender(<ChatScreen />);
+    expect(screen.getByTestId('scroll-to-bottom')).toBeInTheDocument();
+
+    const scrollEl = screen.getByTestId('chat-scroll');
+    const endEl = scrollEl.lastElementChild as HTMLElement;
+    const endRef = findReactRefFor(endEl);
+    if (!endRef) throw new Error('expected messagesEndRef on end-anchor fiber');
+    endRef.current = null;
+
+    const callsBefore = scrollIntoView.mock.calls.length;
+    fireEvent.click(screen.getByTestId('scroll-to-bottom'));
+
+    expect(scrollIntoView.mock.calls.length).toBe(callsBefore);
+    expect(screen.getByTestId('scroll-to-bottom')).toBeInTheDocument();
+    expect(screen.getByTestId('new-messages-divider')).toBeInTheDocument();
+
+    endRef.current = endEl;
+  });
+
+  it('jumps without animation when scroll-to-bottom is used under reduced motion', async () => {
+    // 161: prefersReducedMotion() ? 'auto' : 'smooth' — auto branch on the jump button.
+    (window.matchMedia as jest.Mock).mockImplementation((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    }));
+    const scrollIntoView = Element.prototype.scrollIntoView as jest.Mock;
+    const { rerender } = renderChat();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    scrollThreadAwayFromBottom();
+
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'Old' }),
+        makeMessage({ id: 2, message: 'New one', author: 'Support Agent', status: undefined }),
+      ],
+    });
+    rerender(<ChatScreen />);
+
+    fireEvent.click(screen.getByTestId('scroll-to-bottom'));
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: 'auto' });
+    expect(screen.queryByTestId('scroll-to-bottom')).not.toBeInTheDocument();
   });
 
   // --- ChatBubbleFileEmbed ---

@@ -23,7 +23,7 @@ import {
 } from '@dfx.swiss/react-components';
 import { useEffect, useRef, useState } from 'react';
 import { HiOutlineDownload, HiOutlinePaperClip } from 'react-icons/hi';
-import { MdAccessTime, MdErrorOutline, MdOutlineClose, MdSend } from 'react-icons/md';
+import { MdAccessTime, MdErrorOutline, MdKeyboardArrowDown, MdOutlineClose, MdSend } from 'react-icons/md';
 import { RiCheckFill } from 'react-icons/ri';
 import { useParams } from 'react-router-dom';
 import { IssueTypeLabels, toPaymentStateLabel } from 'src/config/labels';
@@ -35,6 +35,32 @@ import { blankedAddress, formatBytes, formatSwissTime } from 'src/util/utils';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { TxInfo } from './transaction.screen';
 
+/** Single source for the file picker accept list and paste/drop validation. */
+const ACCEPTED_FILE_EXTENSIONS = ['.pdf', '.jpeg', '.jpg', '.png'] as const;
+const ACCEPTED_FILE_ACCEPT = ACCEPTED_FILE_EXTENSIONS.join(', ');
+const ACCEPTED_MIME_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']);
+
+function isAcceptedAttachment(file: File): boolean {
+  if (file.type && ACCEPTED_MIME_TYPES.has(file.type.toLowerCase())) return true;
+  const name = file.name.toLowerCase();
+  return ACCEPTED_FILE_EXTENSIONS.some((ext) => name.endsWith(ext));
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith('image/') || /\.(jpe?g|png)$/i.test(file.name);
+}
+
+/** Pixels from the bottom that still count as “at the end of the thread”. */
+const SCROLL_BOTTOM_THRESHOLD_PX = 48;
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function isScrollNearBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_BOTTOM_THRESHOLD_PX;
+}
+
 export default function ChatScreen(): JSX.Element {
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
@@ -43,12 +69,21 @@ export default function ChatScreen(): JSX.Element {
   const { id: issueUidParam } = useParams();
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  // First scroll jumps instantly; later message arrivals may animate (unless reduced motion).
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // First scroll jumps instantly; later arrivals animate only when the user was already at the bottom.
   const hasScrolledToEndRef = useRef(false);
+  const isNearBottomRef = useRef(true);
+  const prevMessageCountRef = useRef(0);
+  /** Tracks the first unread id without re-running the message-length effect. */
+  const firstUnreadMessageIdRef = useRef<number | undefined>();
 
   const [sessionUid, setSessionUid] = useState<string>(() => {
     return supportIssueUidStore.get() || '';
   });
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
+  /** Id of the first message that arrived while the user was scrolled up — drives the “New” line. */
+  const [firstUnreadMessageId, setFirstUnreadMessageId] = useState<number | undefined>();
 
   useEffect(() => {
     if (issueUidParam) {
@@ -68,14 +103,66 @@ export default function ChatScreen(): JSX.Element {
   }, [issueUidParam, sessionUid]);
 
   useEffect(() => {
-    if (supportIssue?.messages && messagesEndRef.current) {
-      const prefersReducedMotion =
-        typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const behavior: ScrollBehavior = !hasScrolledToEndRef.current || prefersReducedMotion ? 'auto' : 'smooth';
-      messagesEndRef.current.scrollIntoView({ behavior });
-      hasScrolledToEndRef.current = true;
+    if (!supportIssue?.messages) return;
+
+    const messages = supportIssue.messages;
+    const length = messages.length;
+    const previousLength = prevMessageCountRef.current;
+    const added = length - previousLength;
+    const end = messagesEndRef.current;
+    if (!end) {
+      prevMessageCountRef.current = length;
+      return;
     }
+
+    const reduced = prefersReducedMotion();
+
+    if (!hasScrolledToEndRef.current) {
+      // Initial open: jump to the latest message without animation.
+      end.scrollIntoView({ behavior: 'auto' });
+      hasScrolledToEndRef.current = true;
+      isNearBottomRef.current = true;
+      setIsNearBottom(true);
+    } else if (added > 0) {
+      if (isNearBottomRef.current) {
+        end.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
+      } else {
+        // User is reading older messages — keep position, mark what is new.
+        if (firstUnreadMessageIdRef.current === undefined && previousLength > 0) {
+          const firstNewId = messages[previousLength].id;
+          firstUnreadMessageIdRef.current = firstNewId;
+          setFirstUnreadMessageId(firstNewId);
+        }
+        setUnreadCount((count) => count + added);
+      }
+    }
+
+    prevMessageCountRef.current = length;
   }, [supportIssue?.messages.length]);
+
+  function clearUnreadMarkers() {
+    firstUnreadMessageIdRef.current = undefined;
+    setFirstUnreadMessageId(undefined);
+    setUnreadCount(0);
+  }
+
+  function handleThreadScroll() {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const near = isScrollNearBottom(el);
+    isNearBottomRef.current = near;
+    setIsNearBottom(near);
+    if (near) clearUnreadMarkers();
+  }
+
+  function scrollToBottom() {
+    const end = messagesEndRef.current;
+    if (!end) return;
+    end.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    isNearBottomRef.current = true;
+    setIsNearBottom(true);
+    clearUnreadMarkers();
+  }
 
   useLayoutOptions({
     title: supportIssue && translate('screens/support', IssueTypeLabels[supportIssue?.type]),
@@ -91,25 +178,65 @@ export default function ChatScreen(): JSX.Element {
         </div>
       ) : (
         <div className="flex flex-col gap-2 w-full h-full">
-          <div className="flex flex-col flex-grow gap-1 h-0 overflow-auto p-3.5">
-            {!!supportIssue.transaction && <TransactionComponent transactionUid={supportIssue.transaction.uid} />}
-            {supportIssue.messages.map((message, index) => {
-              const prevSender = index > 0 ? supportIssue.messages[index - 1].author : null;
-              const isNewSender = prevSender !== message.author;
-              const previousCreated = index > 0 ? supportIssue.messages[index - 1].created : undefined;
-              return (
-                <div key={message.id}>
-                  {shouldShowDateSeparator(message.created, previousCreated) && <DateTag date={message.created} />}
-                  <ChatBubble hasHeader={isNewSender} {...message} />
-                </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
+          <div className="relative flex flex-col flex-grow h-0 min-h-0">
+            <div
+              ref={scrollContainerRef}
+              onScroll={handleThreadScroll}
+              className="flex flex-col flex-grow gap-1 h-full overflow-auto p-3.5"
+              data-testid="chat-scroll"
+            >
+              {!!supportIssue.transaction && <TransactionComponent transactionUid={supportIssue.transaction.uid} />}
+              {supportIssue.messages.map((message, index) => {
+                const prevSender = index > 0 ? supportIssue.messages[index - 1].author : null;
+                const isNewSender = prevSender !== message.author;
+                const previousCreated = index > 0 ? supportIssue.messages[index - 1].created : undefined;
+                return (
+                  <div key={message.id}>
+                    {shouldShowDateSeparator(message.created, previousCreated) && <DateTag date={message.created} />}
+                    {firstUnreadMessageId !== undefined && message.id === firstUnreadMessageId && (
+                      <NewMessagesDivider />
+                    )}
+                    <ChatBubble hasHeader={isNewSender} {...message} />
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+            {!isNearBottom && (
+              <button
+                type="button"
+                onClick={scrollToBottom}
+                aria-label={translate(
+                  'screens/support',
+                  unreadCount > 0 ? 'Scroll to new messages' : 'Scroll to bottom',
+                )}
+                className="absolute bottom-3 right-3 z-10 flex items-center justify-center h-11 min-w-[2.75rem] px-2 rounded-full bg-dfxBlue-800 text-white shadow-dfx outline-none focus-visible:ring-2 focus-visible:ring-dfxBlue-400 focus-visible:ring-offset-2 cursor-pointer"
+                data-testid="scroll-to-bottom"
+              >
+                <MdKeyboardArrowDown className="text-2xl" aria-hidden />
+                {unreadCount > 0 && (
+                  <span className="ml-1 text-sm font-semibold tabular-nums" data-testid="unread-count">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
           <InputComponent />
         </div>
       )}
     </>
+  );
+}
+
+function NewMessagesDivider(): JSX.Element {
+  const { translate } = useSettingsContext();
+  return (
+    <div className="flex items-center gap-2 py-3" data-testid="new-messages-divider">
+      <div className="flex-grow h-px bg-dfxBlue-400" />
+      <span className="text-xs font-semibold text-dfxBlue-400 shrink-0">{translate('screens/support', 'New')}</span>
+      <div className="flex-grow h-px bg-dfxBlue-400" />
+    </div>
   );
 }
 
@@ -212,9 +339,25 @@ function InputComponent(): JSX.Element {
   const [inputValue, setInputValue] = useState<string>();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [error, setError] = useState<string>();
+  const [isDragging, setIsDragging] = useState(false);
+  const [previewUrls, setPreviewUrls] = useState<(string | undefined)[]>([]);
+
+  // Object URLs for image chips — revoke on change/unmount (same pattern as compliance previews).
+  useEffect(() => {
+    const urls = selectedFiles.map((file) => (isImageFile(file) ? URL.createObjectURL(file) : undefined));
+    setPreviewUrls(urls);
+    return () => {
+      urls.forEach((url) => {
+        if (url) URL.revokeObjectURL(url);
+      });
+    };
+  }, [selectedFiles]);
 
   function handleSend() {
-    if (!inputValue || error) return;
+    const hasText = !!(inputValue && inputValue.trim() !== '');
+    const hasFiles = selectedFiles.length > 0;
+    // Match the SDK guard: text and/or files, never neither — and never with a validation error.
+    if ((!hasText && !hasFiles) || error) return;
 
     submitMessage(inputValue, selectedFiles);
 
@@ -223,11 +366,30 @@ function InputComponent(): JSX.Element {
     return;
   }
 
+  function addFiles(files: File[]) {
+    if (files.length === 0) return;
+
+    const accepted = files.filter(isAcceptedAttachment);
+    const hasRejected = accepted.length < files.length;
+    const fileTypeError = translateError('file_type');
+
+    if (hasRejected) {
+      setError(fileTypeError);
+    } else if (accepted.length > 0 && (inputValue?.length ?? 0) <= 4000) {
+      // Clear a prior file-type error once a valid batch is added (keep length errors).
+      setError((prev) => (prev === fileTypeError ? undefined : prev));
+    }
+
+    if (accepted.length > 0) {
+      setSelectedFiles((prevFiles) => [...prevFiles, ...accepted]);
+    }
+  }
+
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files as FileList;
 
     if (files && files.length > 0) {
-      setSelectedFiles((prevFiles) => [...prevFiles, ...files]);
+      addFiles(Array.from(files));
       setTimeout(() => (e.target.value = ''), 100);
     }
   }
@@ -259,19 +421,78 @@ function InputComponent(): JSX.Element {
     setInputValue(value);
   }
 
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+
+    // Text-only paste keeps the default behaviour.
+    if (files.length === 0) return;
+
+    e.preventDefault();
+    addFiles(files);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    addFiles(files);
+  }
+
   // Same condition handleSend uses to early-return — also drives disabled + styles.
-  const canSend = !!inputValue && !error;
+  const hasText = !!(inputValue && inputValue.trim() !== '');
+  const hasFiles = selectedFiles.length > 0;
+  const canSend = (hasText || hasFiles) && !error;
 
   return (
-    <div className="flex flex-col gap-2 pt-4 px-4 bg-dfxGray-300 border-t border-dfxGray-500 rounded-t-lg pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div
+      className={`flex flex-col gap-2 pt-4 px-4 bg-dfxGray-300 border-t border-dfxGray-500 rounded-t-lg pb-[max(1rem,env(safe-area-inset-bottom))] ${
+        isDragging ? 'ring-2 ring-inset ring-dfxBlue-400' : ''
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      data-testid="composer-drop-zone"
+    >
       {selectedFiles.length > 0 && (
         <div className="flex flex-row flex-wrap gap-2">
           {selectedFiles.map((file, index) => (
             <div
-              key={index}
+              key={`${file.name}-${index}`}
               className="flex flex-row gap-1.5 items-center text-dfxBlue-800 bg-dfxGray-400 rounded-md p-2 pr-3"
             >
-              <HiOutlinePaperClip className="text-lg" />
+              {previewUrls[index] ? (
+                <img
+                  src={previewUrls[index]}
+                  alt=""
+                  className="w-8 h-8 rounded-sm object-cover shrink-0"
+                  data-testid="attachment-preview"
+                />
+              ) : (
+                <HiOutlinePaperClip className="text-lg" />
+              )}
               <p className="text-left text-sm">{blankedAddress(file.name, { displayLength: 20 })}</p>
               <MdOutlineClose
                 className="text-dfxGray-300 text-md ml-1 bg-dfxGray-800/40 rounded-full p-0.5 cursor-pointer"
@@ -291,7 +512,7 @@ function InputComponent(): JSX.Element {
             className="absolute w-px h-px p-0 -m-px overflow-hidden whitespace-nowrap border-0"
             type="file"
             multiple
-            accept=".pdf, .jpeg, .jpg, .png"
+            accept={ACCEPTED_FILE_ACCEPT}
             onChange={handleFileChange}
           />
         </label>
@@ -342,6 +563,7 @@ function InputComponent(): JSX.Element {
             value={inputValue}
             onKeyDown={handleKeyDown}
             onChange={handleChange}
+            onPaste={handlePaste}
             placeholder={translate('screens/support', 'Write a message...')}
             required
           />
@@ -373,12 +595,21 @@ function ChatBubble({ id, message, fileName, file, created, author, status, hasH
   const hasFile = !!fileName;
   const failedToSend = status === SupportMessageStatus.FAILED;
 
+  // Failed own messages stay visually loud (error border) so the user notices them.
+  // No in-app resend until the published SDK exposes it — do not promise a tap action.
+  const bubbleTone = failedToSend
+    ? 'bg-dfxRed-100/15 border-2 border-dfxRed-100 text-dfxBlue-800 rounded-br-none'
+    : isUser
+      ? 'bg-dfxBlue-800 text-white rounded-br-none'
+      : 'bg-dfxGray-300 text-dfxBlue-800 rounded-bl-none';
+
   return (
     <div className={`flex text-left ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`flex flex-col max-w-xs rounded-lg overflow-clip pb-1.5 gap-1.5 ${
-          isUser ? 'bg-dfxBlue-800 text-white rounded-br-none' : 'bg-dfxGray-300 text-dfxBlue-800 rounded-bl-none'
-        } ${hasHeader || !hasFile ? 'pt-1.5' : ''} ${failedToSend ? 'opacity-60 pointer-events-none' : ''}`}
+        className={`flex flex-col max-w-xs rounded-lg overflow-clip pb-1.5 gap-1.5 text-left ${
+          hasHeader || !hasFile ? 'pt-1.5' : ''
+        } ${bubbleTone}`}
+        data-testid={failedToSend ? 'msg-failed' : undefined}
       >
         {hasHeader && !isUser && <p className="font-semibold text-sm text-dfxBlue-400 px-3">{author}</p>}
         {hasFile && <ChatBubbleFileEmbed messageId={id} fileName={fileName} file={file} />}
@@ -386,7 +617,7 @@ function ChatBubble({ id, message, fileName, file, created, author, status, hasH
         <div className="flex flex-row justify-end items-center px-3 -mt-0.5">
           <div
             className={`flex flex-row items-center justify-center text-xs italic text-end ${
-              isUser ? 'text-white/70' : 'text-dfxGray-800'
+              failedToSend ? 'text-dfxRed-100' : isUser ? 'text-white/70' : 'text-dfxGray-800'
             }`}
           >
             {formatSwissTime(created)}
