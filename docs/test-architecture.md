@@ -36,8 +36,8 @@ Measured on `develop` at `3ca38b33`, 2026-08-10, Node 20, with
 
 947 tests passing across 80 suites, 352 files instrumented.
 
-Read that number together with the coverage rule in
-[CONTRIBUTING.md](../CONTRIBUTING.md#coverage): every file a pull request touches must reach 100 % on
+Read that number together with the coverage rule in `CONTRIBUTING.md`, section
+"Coverage": every file a pull request touches must reach 100 % on
 all four metrics, and CI does not enforce it — it is a review gate. With the repository at 18 %, that
 means touching a long-neglected file makes its whole coverage your obligation. Plan for it rather
 than discovering it in review.

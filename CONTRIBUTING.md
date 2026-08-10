@@ -38,11 +38,13 @@ reason to leave the bug unreported.
 
 ### Test architecture
 
-[docs/test-architecture.md](docs/test-architecture.md) describes the test layers
-this repository owns, with measured numbers for the current state, and links to
-the canonical cross-repository description in `DFXswiss/api`. Read it before
-adding a test layer, moving a test between layers, or extending the full-stack
-harness.
+`docs/test-architecture.md` describes the test layers this repository owns, with
+measured numbers for the current state, and points at the canonical
+cross-repository description in `DFXswiss/api`. Read it before adding a test
+layer, moving a test between layers, or extending the full-stack harness. (Given
+as a path rather than a link on purpose: the handbook build renders every
+markdown file to HTML and its integrity check rejects a link that resolves to a
+`.md` file, which is why no markdown file in this repository links to another.)
 
 Two obligations follow from it for every pull request:
 
