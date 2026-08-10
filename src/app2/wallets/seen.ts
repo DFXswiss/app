@@ -12,6 +12,10 @@ import type { Blockchain } from '@dfx.swiss/react';
 export interface SeenWallet {
   /** AuthWalletType / connector label used to connect — drives the logo and re-auth. */
   walletType?: string;
+  /** Catalog entry `id` (e.g. `'Cardano'`, `'CLI'`, `'MetaMask'`). Preferred over `walletType`
+   * when re-resolving the catalog entry, because Cardano and CLI share `AuthWalletType.CLI`.
+   * Optional so entries written before this field still round-trip. */
+  walletId?: string;
   address: string;
   /** Blockchains this wallet connected with — kept so the switch-wallet sheet can still show the
    * chain chips for a wallet remembered under a *different* DFX account (mirrors the original's

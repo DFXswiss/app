@@ -155,6 +155,14 @@ interface LedgerTransport {
   close: () => Promise<void>;
 }
 
+/** Pack a Ledger ETH personal-message signature into a 65-byte hex string.
+ * `v` must be fixed-width (two hex digits): Ledger may return 0/1 (or 27/28), and
+ * `Number#toString(16)` alone yields a single character for v < 16, producing an
+ * odd-length signature that recoveries reject (C8). */
+export function formatLedgerEthSignature(r: string, s: string, v: number): string {
+  return '0x' + r + s + v.toString(16).padStart(2, '0');
+}
+
 interface LedgerEthClient {
   getAddress: (path: string, display: boolean, chainCode: boolean) => Promise<{ address: string }>;
   signPersonalMessage: (path: string, messageHex: string) => Promise<{ r: string; s: string; v: number }>;
@@ -175,6 +183,14 @@ async function connectLedger(chain: HardwareChain, cb: HardwareCallbacks): Promi
   cb.onStatus?.('unlock');
   const transport = await transportMod.default.create();
 
+  // The transport stays open for the returned `sign` callback (the Ledger client reuses it).
+  // Closing it immediately after a successful derive would break the subsequent personal-message
+  // / BTC sign. Close it (a) on derive failure, and (b) after `sign` settles — success or throw —
+  // so a second connect in the same tab does not hit "device already claimed" (C5). If the user
+  // abandons after connect and never calls `sign`, the transport still leaks until reload; there
+  // is no dispose hook on HardwareSession to close it earlier.
+  const closeTransport = () => transport.close().catch(() => undefined);
+
   try {
     cb.onStatus?.('derive');
     if (chain === 'eth') {
@@ -187,8 +203,12 @@ async function connectLedger(chain: HardwareChain, cb: HardwareCallbacks): Promi
       return {
         address,
         sign: async (message: string) => {
-          const sig = await client.signPersonalMessage(path, Buffer.from(message).toString('hex'));
-          return '0x' + sig.r + sig.s + sig.v.toString(16);
+          try {
+            const sig = await client.signPersonalMessage(path, Buffer.from(message).toString('hex'));
+            return formatLedgerEthSignature(sig.r, sig.s, sig.v);
+          } finally {
+            await closeTransport();
+          }
         },
       };
     }
@@ -205,12 +225,18 @@ async function connectLedger(chain: HardwareChain, cb: HardwareCallbacks): Promi
     const address = await client.getWalletAddress(policy, null, 0, 0, false);
     return {
       address,
-      sign: (message: string) => client.signMessage(Buffer.from(message), path.address(0)),
+      sign: async (message: string) => {
+        try {
+          return await client.signMessage(Buffer.from(message), path.address(0));
+        } finally {
+          await closeTransport();
+        }
+      },
     };
   } catch (error) {
     // A failed derive leaves the transport open; the next attempt would hit
     // "device already open". Close it before surfacing the error.
-    await transport.close().catch(() => undefined);
+    await closeTransport();
     throw error;
   }
 }

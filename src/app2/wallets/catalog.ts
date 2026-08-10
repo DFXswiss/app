@@ -305,14 +305,37 @@ export function walletIconFor(nameOrType?: string): string | undefined {
   return fuzzy?.icon;
 }
 
-/** Catalog entry for a given AuthWalletType, used to re-authenticate a remembered wallet that
- * belongs to a different DFX account (only wired-up connectors, never `'soon'`). */
-export function catalogEntryByWalletType(walletType?: string): WalletCatalogEntry | undefined {
-  if (!walletType) return undefined;
-  for (const group of WALLET_CATALOG) {
-    for (const entry of group.items) {
-      if (entry.connector !== 'soon' && entry.walletType === walletType) return entry;
+/** Catalog entry for a remembered wallet, used to re-authenticate one that belongs to a different
+ * DFX account (only wired-up connectors, never `'soon'`).
+ *
+ * Resolution order:
+ * 1. `walletId` — the catalog entry `id` persisted by `rememberWallet` (disambiguates Cardano vs CLI,
+ *    both of which authenticate as `AuthWalletType.CLI`).
+ * 2. `walletType` — identity (id/name) first, then shared `walletType`. Preferring identity makes
+ *    the production key `'CLI'` resolve to the CLI entry (not Cardano, which is listed first).
+ *    Legacy `SeenWallet` rows written before `walletId` only have this path.
+ *
+ * Callers that only have a type string still work via the single-arg form. */
+export function catalogEntryByWalletType(walletType?: string, walletId?: string): WalletCatalogEntry | undefined {
+  const entries = WALLET_CATALOG.flatMap((group) => group.items).filter((entry) => entry.connector !== 'soon');
+  if (walletId) {
+    const idKey = normalizeWalletKey(walletId);
+    if (idKey) {
+      const byId = entries.find((entry) => normalizeWalletKey(entry.id) === idKey);
+      if (byId) return byId;
     }
   }
-  return undefined;
+  if (!walletType) return undefined;
+  const key = normalizeWalletKey(walletType);
+  if (!key) return undefined;
+  const exactIdentity = entries.find((entry) =>
+    [entry.id, entry.name].some((value) => normalizeWalletKey(value) === key),
+  );
+  if (exactIdentity) return exactIdentity;
+  return entries.find((entry) => entry.walletType && normalizeWalletKey(entry.walletType) === key);
+}
+
+/** Whether a catalog entry is an injected EVM browser wallet (MetaMask / Rabby / Coinbase). */
+export function isInjectedEvmCatalogEntry(entry: WalletCatalogEntry | undefined): boolean {
+  return entry?.connector === 'injected';
 }
