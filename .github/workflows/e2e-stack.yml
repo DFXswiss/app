@@ -48,11 +48,65 @@ jobs:
           ref: ${{ inputs.api_ref || 'develop' }}
           path: api-repo
 
+      # The harness refuses an API image whose process error handling can throw while logging,
+      # because such an image cannot stay up in a network with no route out. That guard lives in
+      # DFXswiss/api#4753 and is not on its default branch yet, so until it lands this job builds
+      # from that pull request instead — the mirror image of what the API repository's own workflow
+      # does with this one. Self-disabling: once the guard is on develop, the check below passes and
+      # this step is skipped. It also refuses to bootstrap from a pull request that is no longer
+      # open, so it cannot quietly re-arm later and build a years-old revision.
+      - name: Resolve the API revision to build
+        id: api_source
+        env:
+          API_REF: ${{ inputs.api_ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -f api-repo/src/shared/utils/safe-log.ts ]; then
+            echo "bootstrap=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "$API_REF" ]; then
+            echo "::error::DFXswiss/api@${API_REF} does not carry the guarded process error handling"
+            echo "::error::(src/shared/utils/safe-log.ts), and api_ref was set explicitly, so no fallback"
+            echo "::error::applies. Point it at a revision that has it, or omit api_ref to use develop."
+            exit 1
+          else
+            err_file="$(mktemp -p "${RUNNER_TEMP}")"
+            if ! state="$(gh api repos/DFXswiss/api/pulls/4753 --jq .state 2>"$err_file")"; then
+              echo "::error::Could not determine the state of DFXswiss/api#4753 (gh api call failed):"
+              echo "::error::$(cat "$err_file")"
+              rm -f "$err_file"
+              exit 1
+            fi
+            rm -f "$err_file"
+            if [ "$state" != "open" ]; then
+              echo "::error::DFXswiss/api#4753 is no longer open (state: ${state}); this fallback is spent."
+              echo "::error::The guard is expected on DFXswiss/api@develop now. Delete this step and the"
+              echo "::error::'Check out the API revision that carries the guard' step below."
+              exit 1
+            fi
+            echo "::warning::DFXswiss/api@develop does not carry the guarded process error handling yet."
+            echo "::warning::Building the API image from DFXswiss/api#4753 instead."
+            echo "::warning::Merge that pull request to remove this temporary fallback."
+            echo "bootstrap=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out the API revision that carries the guard
+        if: steps.api_source.outputs.bootstrap == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: DFXswiss/api
+          ref: refs/pull/4753/head
+          path: api-repo
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
+          # The only `npm ci` in this job runs in e2e-stack/, so the cache key must hash that
+          # lockfile — the repo-root one it defaults to belongs to a dependency set nothing here
+          # installs.
+          cache-dependency-path: e2e-stack/package-lock.json
 
       # The suite sits outside the repo's own tsconfig and ESLint globs (both scoped to src/),
       # so nothing else in CI type-checks it. Doing it here costs under a minute and fails on a
@@ -77,6 +131,9 @@ jobs:
         # `if: always()` so artifact collection and teardown still run.
         # --env-file is not optional here: up.sh writes the values it resolved into that file, and
         # a compose run that resolves them differently recreates the API container mid-run.
+        env:
+          # Every spec is in scope here, so the coverage gate checks navigations, not just claims.
+          E2E_FULL_RUN: '1'
         run: |
           docker compose \
             -p dfx-e2e-stack \

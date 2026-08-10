@@ -8,12 +8,19 @@
  */
 
 import type { Page } from '@playwright/test';
-import { apiGet, expect, gotoWithSession, loginAs, openScreen, queryOne, test, waitForRow } from './fixtures';
+import {
+  apiGet,
+  expect,
+  gotoWithSession,
+  loginAs,
+  normPath,
+  openScreen,
+  queryOne,
+  required,
+  test,
+  waitForRow,
+} from './fixtures';
 import { cleanupCreatedData, createSupportIssue, createUser } from './fixtures/factories';
-
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
-}
 
 const STAFF_ROUTES = [
   '/support/dashboard',
@@ -124,12 +131,13 @@ test.describe('Support dashboard (staff)', () => {
     await expect(page.getByText('Issue Title *', { exact: true })).toBeVisible();
 
     // Search by mail (and fall back to userDataId string) — both match support search keys.
+    const customerMail = required(customer.mail, 'created customer must have a mail address');
     const search = page.getByPlaceholder('Search by name, email, ID, IBAN...');
-    await search.fill(customer.mail!);
+    await search.fill(customerMail);
     // Debounced search (~400ms); result buttons include mail and "ID: <userDataId>".
     const resultBtn = page
       .getByRole('button')
-      .filter({ hasText: customer.mail! })
+      .filter({ hasText: customerMail })
       .or(page.getByRole('button').filter({ hasText: `ID: ${customer.userDataId}` }))
       .first();
     await expect(resultBtn).toBeVisible({ timeout: 15000 });
@@ -210,7 +218,8 @@ test.describe('Support dashboard (staff)', () => {
     // Completed/Canceled — narrower than the 7-value backend enum in api/src/.../support-issue.enum.ts,
     // a real cross-package version skew), so only these four are ever actually selectable here.
     // Form uses <label>State</label><select> — InfoRow uses "State:" in a <td>, so label is unique.
-    const targetState = before!.state === 'Pending' ? 'Completed' : 'Pending';
+    const beforeState = required(before, 'seeded support_issue row must exist').state;
+    const targetState = beforeState === 'Pending' ? 'Completed' : 'Pending';
     await page
       .locator('label')
       .filter({ hasText: /^State$/ })

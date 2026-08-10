@@ -12,10 +12,20 @@
  * Write/decision routes live in compliance-cases.spec.ts.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as ts from 'typescript';
-import { apiGet, expect, gotoWithSession, loginAs, openScreen, queryOne, queryRows, test, withDb } from './fixtures';
+import {
+  apiGet,
+  expect,
+  extractAppRoutes,
+  gotoWithSession,
+  loginAs,
+  normPath,
+  openScreen,
+  queryOne,
+  queryRows,
+  resolveAppSourcePath,
+  test,
+  withDb,
+} from './fixtures';
 import {
   cleanupCreatedData,
   createCallQueueEntry,
@@ -31,10 +41,6 @@ test.describe.configure({ mode: 'serial' });
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
-}
 
 /** Raise staff kycLevel so STAFF_KYC_REQUIRED does not block Compliance/Admin API calls. */
 async function ensureStaffKycComplete(userId: number): Promise<void> {
@@ -77,107 +83,6 @@ const ALL_COMPLIANCE_PATHS = [
   '/compliance/call-queues/placeholder-queue/1',
   '/sitemap',
 ] as const;
-
-// --- Local App.tsx route extraction (minimal variant of route-coverage.spec.ts) ---
-
-function propName(prop: ts.ObjectLiteralElementLike): string | undefined {
-  if (!ts.isPropertyAssignment(prop)) return undefined;
-  if (ts.isIdentifier(prop.name)) return prop.name.text;
-  if (ts.isStringLiteral(prop.name) || ts.isNoSubstitutionTemplateLiteral(prop.name)) {
-    return prop.name.text;
-  }
-  return undefined;
-}
-
-function joinRoutePath(parent: string, segment: string): string {
-  if (segment.startsWith('/')) return segment;
-  if (!parent || parent === '/') return `/${segment}`;
-  return `${parent.replace(/\/$/, '')}/${segment.replace(/^\//, '')}`;
-}
-
-function collectPaths(node: ts.ObjectLiteralExpression, parentPath: string, paths: Set<string>): void {
-  let segment: string | undefined;
-  let isIndex = false;
-  let children: ts.ArrayLiteralExpression | undefined;
-
-  for (const prop of node.properties) {
-    const name = propName(prop);
-    if (!name || !ts.isPropertyAssignment(prop)) continue;
-
-    if (name === 'path') {
-      if (ts.isStringLiteral(prop.initializer) || ts.isNoSubstitutionTemplateLiteral(prop.initializer)) {
-        segment = prop.initializer.text;
-      }
-    } else if (name === 'index') {
-      if (prop.initializer.kind === ts.SyntaxKind.TrueKeyword) {
-        isIndex = true;
-      }
-    } else if (name === 'children' && ts.isArrayLiteralExpression(prop.initializer)) {
-      children = prop.initializer;
-    }
-  }
-
-  let fullPath = parentPath;
-  if (segment !== undefined) {
-    fullPath = joinRoutePath(parentPath, segment);
-    paths.add(fullPath);
-  } else if (isIndex) {
-    if (parentPath) paths.add(parentPath);
-  }
-
-  if (children) {
-    for (const el of children.elements) {
-      if (ts.isObjectLiteralExpression(el)) {
-        collectPaths(el, fullPath, paths);
-      }
-    }
-  }
-}
-
-function extractAppRoutes(appTsxPath: string): Set<string> {
-  const text = fs.readFileSync(appTsxPath, 'utf8');
-  const sourceFile = ts.createSourceFile(appTsxPath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  let routesArray: ts.ArrayLiteralExpression | undefined;
-
-  function visit(node: ts.Node): void {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === 'Routes' &&
-      node.initializer &&
-      ts.isArrayLiteralExpression(node.initializer)
-    ) {
-      routesArray = node.initializer;
-      return;
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(sourceFile);
-
-  if (!routesArray) {
-    throw new Error(`Could not find export const Routes = [...] in ${appTsxPath}`);
-  }
-
-  const paths = new Set<string>();
-  for (const el of routesArray.elements) {
-    if (ts.isObjectLiteralExpression(el)) {
-      collectPaths(el, '', paths);
-    }
-  }
-  return paths;
-}
-
-function resolveAppSourcePath(): string {
-  const candidates = [
-    '/work/app-source/App.tsx',
-    path.join(__dirname, '../../src/App.tsx'),
-    path.join(process.cwd(), 'src/App.tsx'),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  throw new Error(`App.tsx not found. Tried: ${candidates.join(', ')}`);
-}
 
 // ---------------------------------------------------------------------------
 // Suite
@@ -687,4 +592,3 @@ test.describe('Compliance area (overview)', () => {
     expect(dead, `Sitemap has dead links not declared in App.tsx: ${dead.join(', ')}`).toEqual([]);
   });
 });
-

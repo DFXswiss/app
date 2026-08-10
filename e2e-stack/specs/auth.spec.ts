@@ -15,9 +15,11 @@ import {
   completeMailLogin,
   expect,
   gotoWithSession,
+  normPath,
   openScreen,
   queryOne,
   requestMailLogin,
+  required,
   signatureLogin,
   test,
   testEmail,
@@ -25,10 +27,6 @@ import {
   waitForRow,
 } from './fixtures';
 import { cleanupCreatedData, createUser, e2eMail } from './fixtures/factories';
-
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
-}
 
 /** Parse a 6-digit verification code from a notification row (VerificationMail / EmailVerification). */
 function codeFromNotificationData(data: string): string {
@@ -247,7 +245,9 @@ test.describe('Auth area e2e', () => {
     }
     expect(otp, 'OTP should be extractable from Login notification').toBeTruthy();
 
-    await page.goto(`/mail-login?otp=${encodeURIComponent(otp!)}`);
+    await page.goto(
+      `/mail-login?otp=${encodeURIComponent(required(otp, 'OTP must be extractable from the Login notification'))}`,
+    );
     // Full window.location navigation after GET /auth/mail/redirect — land on /account (default).
     await page.waitForURL((url) => normPath(url.pathname) === '/account' || url.searchParams.has('session'), {
       timeout: 30000,

@@ -7,7 +7,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import { apiGet, expect, gotoWithSession, loginAs, openScreen, test, waitForRow } from './fixtures';
+import { apiGet, expect, gotoWithSession, loginAs, normPath, openScreen, required, test, waitForRow } from './fixtures';
 import { cleanupCreatedData, createPaymentLink, createUser, e2eMail, TEST_IBAN } from './fixtures/factories';
 
 // Wallet-index isolation: factories.ts's createUser() derives its wallet index from an
@@ -29,10 +29,6 @@ function nextWalletIndex(): number {
   __sepaMisc_WALLET_SEQ += 1;
   return 8500000 + __sepaMisc_WALLET_SEQ;
 }
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
-}
-
 /**
  * Minimal camt.053.001.04-shaped XML accepted by BankTxService.storeSepaFile / sepaParser.
  * Shape mirrors src/util/camt053-builder.ts (buildCamt053Xml).
@@ -287,9 +283,9 @@ test.describe('SEPA + misc e2e', () => {
     await nextBtn.click();
 
     const res = await responsePromise.catch(() => null);
-    expect(res, '/sepa Upload click must produce a POST /bankTx request').toBeTruthy();
-    const status = res!.status();
-    const body = await res!.text().catch(() => '');
+    const bankTxRes = required(res, '/sepa Upload click must produce a POST /bankTx request');
+    const status = bankTxRes.status();
+    const body = await bankTxRes.text().catch(() => '');
 
     // No documented environment limitation applies to this write path (unlike sell/swap pricing,
     // which depends on mocked outbound HTTP under ENVIRONMENT=loc) -- a non-2xx response here is a
@@ -372,13 +368,13 @@ test.describe('SEPA + misc e2e', () => {
     await uploadBtn.click();
 
     const res = await responsePromise.catch(() => null);
-    expect(
+    const bankTxRes = required(
       res,
       '/sepa/manual Upload click must produce a POST /bankTx request (button was enabled and all ' +
         'required fields were filled)',
-    ).toBeTruthy();
-    const status = res!.status();
-    const body = await res!.text().catch(() => '');
+    );
+    const status = bankTxRes.status();
+    const body = await bankTxRes.text().catch(() => '');
 
     expect(status, `POST /bankTx must succeed: HTTP ${status} -- ${body.slice(0, 400)}`).toBeGreaterThanOrEqual(200);
     expect(status, `POST /bankTx must succeed: HTTP ${status} -- ${body.slice(0, 400)}`).toBeLessThan(300);

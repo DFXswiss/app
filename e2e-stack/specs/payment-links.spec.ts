@@ -19,6 +19,7 @@ import {
   createSell,
   createUser,
   expect,
+  normPath,
   openScreen,
   queryOne,
   queryRows,
@@ -48,10 +49,6 @@ interface PaymentLinkDto {
   externalId?: string;
   label?: string;
   payment?: PaymentLinkPaymentDto | null;
-}
-
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
 }
 
 // ---------------------------------------------------------------------------

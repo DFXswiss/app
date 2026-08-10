@@ -66,9 +66,20 @@ frontend. The frontend's API base URL is baked into its JS bundle at build time
 host browser and for the browser running inside the `tests` container: on the host it hits
 the published proxy port that forwards to the API; inside `tests` it hits the `socat`
 loopback forwarder described below that relays to the same API. One address, two networks,
-no branching needed. This only holds with the default ports — if you override
-`E2E_PORT_API`, rebuild the frontend image with a matching
-`--build-arg REACT_APP_API_URL=http://localhost:<port>` for host-browser exploration to work.
+no branching needed.
+
+That base URL is fixed at `http://localhost:3000` and cannot be changed from the outside:
+`compose.yml` passes no `args` to the frontend build, so the image always gets the Dockerfile
+default, and `up.sh` rebuilds the frontend image on every run, so an image you built by hand
+with a different `--build-arg` is overwritten before the stack starts.
+
+Overriding `E2E_PORT_API` therefore does not move the API for anyone but the host. The tests are
+unaffected — they run inside the container network and reach the API through the `socat`
+forwarder on `127.0.0.1:3000` described under "Writing tests", never through a published host
+port. A host browser is affected: the bundle it loads still calls `http://localhost:3000`, which
+no longer forwards to the API once you move the published port elsewhere. Leave `E2E_PORT_API`
+at its default when you want to explore the app from a host browser; override it only to dodge a
+port conflict when you are not doing so.
 
 ## Prerequisites
 
@@ -102,7 +113,7 @@ Specs live under `e2e-stack/specs/`.
 
 Fixtures cover common setup needs such as signature login, email login, and database queries. For the authoritative, up-to-date list of fixtures (names, signatures, import paths), see `e2e-stack/specs/fixtures/` — that directory is the source of truth and may grow as the harness matures.
 
-`fixtures/api-client.ts` deliberately does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` otherwise requires for API access: the SDK is a React hooks package built around the component lifecycle and cannot run outside a mounted component tree, while these fixtures run as plain Node.js code in the Playwright test process. It builds requests with raw `fetch` instead — the harness's one deliberate, documented exception to that rule.
+The harness does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` otherwise requires for API access: the SDK is a React hooks package built around the component lifecycle and cannot run outside a mounted component tree, while this code runs as plain Node.js in the Playwright test process. It builds requests with raw `fetch` instead. That reasoning covers the whole harness, and the harness uses it accordingly: `fetch` is called from 13 places across 8 files — `fixtures/api-client.ts`, `fixtures/auth.ts`, `fixtures/mail.ts`, `global.setup.ts`, `cross-cutting.spec.ts`, `kyc.spec.ts`, `sell-swap.spec.ts` and `smoke.spec.ts`. `fixtures/api-client.ts` is the preferred entry point for authenticated calls, not the only permitted one; the exception to the SDK rule is scoped to `e2e-stack/` and does not extend to application code under `src/`.
 
 The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (override listen port with `E2E_LOOPBACK_PORT`, upstream with `E2E_API_URL`) that relays to the real API service. Under `Environment.LOC` the API builds some URLs (notably KYC-step endpoints) as `http://localhost:3000/...` because it assumes frontend and API share a host; without the forwarder, the browser inside the Playwright container would hit itself and fail with `net::ERR_CONNECTION_REFUSED`.
 

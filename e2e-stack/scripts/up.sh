@@ -32,34 +32,32 @@ if [[ -z "${E2E_API_IMAGE:-}" ]]; then
   export E2E_API_IMAGE=dfx-api:e2e
 fi
 
-# Probe the API image for the process-error-policy module (the unhandledRejection handler fix).
-# Without it, Spark SDK init rejections kill the process in this network; up.sh then sets
-# E2E_NODE_OPTIONS=--unhandled-rejections=warn for compose. Once the image ships the fix, leave
-# E2E_NODE_OPTIONS empty so real unhandled rejections crash again (no permanent mask).
-# The image runs as a non-root user, so a search from / walks into directories it may not read
-# and find exits non-zero on those alone. Discard find's own status and its stderr and judge by
-# what it printed; a Docker-level failure (missing or broken image) still surfaces, because then
-# `docker run` never reaches the `exit 0` below.
-# The probe answers with one exact word so the decision cannot be swayed by anything else the
-# Docker client happens to print: judging on "produced any output at all" would read a client
-# warning as proof the handler is there, leave the option unset, and let the API die at boot.
+# The API has to be able to survive an unreachable third party on its own. It could not always:
+# a Spark SDK failure reached the process error handler, whose own logging call threw on the value
+# it was handed, and the process exited. An image without that fix cannot come up in this network,
+# and the harness will not paper over it — an earlier version set --unhandled-rejections=warn for
+# the whole process, which silences every unhandled rejection, including ones introduced later.
+#
+# safe-log is the module that closes it, so its presence is what gets probed. The image runs as a
+# non-root user, so a search from / walks into directories it may not read and find exits non-zero
+# on those alone: discard find's own status and its stderr, and answer with one exact word so a
+# stray line from the Docker client cannot be mistaken for a match. A Docker-level failure still
+# surfaces, because then `docker run` never reaches the `exit 0` below.
 if ! probe_output=$(
   docker run --rm --entrypoint sh "$E2E_API_IMAGE" -c \
-    "if find / -xdev -name 'process-error-policy.js' -not -path '*/node_modules/*' -print -quit 2>/dev/null | grep -q .; then echo E2E_PROBE_FOUND; fi; exit 0" 2>&1
+    "if find / -xdev -name 'safe-log.js' -not -path '*/node_modules/*' -print -quit 2>/dev/null | grep -q .; then echo E2E_PROBE_FOUND; fi; exit 0" 2>&1
 ); then
-  log_error "Failed to probe API image '${E2E_API_IMAGE}' for process-error-policy.js."
+  log_error "Failed to probe API image '${E2E_API_IMAGE}' for safe-log.js."
   log_error "docker run exited non-zero (image missing/broken, or Docker error). Output:"
   log_error "${probe_output}"
   exit 1
 fi
 
-if printf '%s\n' "$probe_output" | grep -qx 'E2E_PROBE_FOUND'; then
-  export E2E_NODE_OPTIONS=""
-else
-  log_warn "API image '${E2E_API_IMAGE}' does not include the unhandledRejection handler (process-error-policy.js)."
-  log_warn "Running with --unhandled-rejections=warn so the API can boot in this network."
-  log_warn "This downgrade disappears automatically once an image with the fix is used."
-  export E2E_NODE_OPTIONS="--unhandled-rejections=warn"
+if ! printf '%s\n' "$probe_output" | grep -qx 'E2E_PROBE_FOUND'; then
+  log_error "API image '${E2E_API_IMAGE}' predates the guarded process error handling (no safe-log.js)."
+  log_error "It cannot stay up in this network: the error handler throws while logging and the"
+  log_error "process exits. Build the image from an API revision that carries the fix."
+  exit 1
 fi
 
 # Record the decision where every later Compose invocation will read it. Exporting alone is not
@@ -69,15 +67,14 @@ fi
 #
 # The file is generated and rewritten on every up, so it carries its own name rather than `.env`,
 # which belongs to whoever works here. Because an explicit --env-file replaces Compose's own `.env`
-# handling, a developer's `.env` is copied in first and the generated value appended, so their
-# settings keep working.
+# handling, a developer's `.env` is copied in first, so their settings keep working.
 generated_env="$STACK_DIR/.env.generated"
 : > "$generated_env"
 if [[ -f "$STACK_DIR/.env" ]]; then
   cat "$STACK_DIR/.env" >> "$generated_env"
   printf '\n' >> "$generated_env"
 fi
-printf 'E2E_NODE_OPTIONS=%s\n' "$E2E_NODE_OPTIONS" >> "$generated_env"
+printf 'E2E_API_IMAGE=%s\n' "$E2E_API_IMAGE" >> "$generated_env"
 
 log_info "Building frontend image..."
 compose build frontend

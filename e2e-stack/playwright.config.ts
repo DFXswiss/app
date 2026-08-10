@@ -32,7 +32,11 @@ export default defineConfig({
   // without first giving every spec file its own database/schema or equivalent isolation.
   fullyParallel: false,
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  // No retries, in CI either. With one shared database and no per-test isolation (see above), the
+  // failure this suite is most likely to produce is an order- or state-dependent one — and that is
+  // exactly the failure a retry hides, because the second attempt runs against the state the first
+  // one left behind. A flake here is a report about the harness that has to stay visible.
+  retries: 0,
   timeout: 60000,
   expect: { timeout: 15000 },
   reporter: [['list'], ['html', { open: 'never', outputFolder: './playwright-report' }]],
@@ -57,7 +61,9 @@ export default defineConfig({
     },
     {
       name: 'coverage-gate',
-      // Pure static-analysis test (reads App.tsx, no browser/DB needed) — no `dependencies`.
+      // Depends on chromium because the gate is no longer purely static: it also reads back which
+      // routes the browser actually navigated to during the run, so it has to go last.
+      dependencies: ['chromium'],
       testMatch: /route-coverage\.spec\.ts/,
     },
   ],

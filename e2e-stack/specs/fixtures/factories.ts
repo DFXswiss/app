@@ -1313,7 +1313,8 @@ export async function createPaymentLink(
         ['address', 'blockchains', 'accountIndex'],
         [`e2e-ln-${tag}`, 'Lightning', 900000 + factoryTagCounter],
       );
-      track('deposit', depositId);
+      // insertReturningId registers the row itself; a second track() would queue the same id twice
+      // and make cleanup report a count higher than the number of rows it removed.
       deposit = { id: depositId };
     }
 
@@ -1464,6 +1465,12 @@ export async function createLimitRequest(options: CreateLimitRequestOptions = {}
       track('limit_request', res.limitRequest.id);
       return { limitRequestId: res.limitRequest.id, supportIssueUid: res.uid };
     }
+    // A 2xx that yields no id is a broken contract, not a missing precondition. Falling through
+    // here would let the SQL fallback fabricate the state the API failed to produce, and the test
+    // would pass on data the application never wrote.
+    throw new Error(
+      `createLimitRequest: POST /support/issue answered 2xx (uid ${res.uid}) but produced no limit request id`,
+    );
   } catch (err) {
     // Fall through to SQL only for the two preconditions a caller-supplied account can legitimately
     // fail: no mail address, or a KYC level below what LimitRequestService requires. Any other
@@ -1653,7 +1660,10 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
   const snapshot = [...created].reverse();
   created.length = 0;
 
-  const dependents = await getUserDependentTables().catch(() => [] as UserDependentTable[]);
+  // No catch: an empty dependency list would make cleanup delete nothing for user/user_data and
+  // leave rows behind for the next spec on a shared database — silently, since the caller of
+  // cleanupCreatedData does not read what it returns.
+  const dependents = await getUserDependentTables();
 
   for (const ref of snapshot) {
     if (ref.table === 'user' || ref.table === 'user_data') {

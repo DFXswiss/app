@@ -23,12 +23,20 @@ services:
     environment:
       E2E_FRONTEND_URL: ${E2E_FRONTEND_URL:-http://frontend}
       E2E_API_URL: ${E2E_API_URL:-http://api:3000}
+      # images/playwright/entrypoint.sh reads this to pick the socat listen port; without the
+      # passthrough the variable never reaches the container and an override is silently ignored.
+      # It must stay 3000 unless the frontend image is rebuilt with a matching
+      # REACT_APP_API_URL — the bundle's API base is baked in at build time (see README).
+      E2E_LOOPBACK_PORT: ${E2E_LOOPBACK_PORT:-3000}
       E2E_PG_HOST: ${E2E_PG_HOST:-sql-dfx-api-loc}
       E2E_PG_PORT: ${E2E_PG_PORT:-5432}
       E2E_PG_USER: ${E2E_PG_USER:-sa}
       E2E_PG_PASSWORD: ${E2E_PG_PASSWORD:-LocalDev2026}
       E2E_PG_DATABASE: ${E2E_PG_DATABASE:-dfx}
       CI: ${CI:-}
+      # Set by scripts/run.sh and by both CI workflows. Tells the coverage gate that every spec was
+      # in scope, so it can require each route to have been navigated to and not just claimed.
+      E2E_FULL_RUN: ${E2E_FULL_RUN:-}
       # This default MUST stay in sync with EVM_DEPOSIT_SEED in env/api.env (owned by the stack
       # lane) — deposit addresses are derived from this mnemonic here AND inside the API; a
       # mismatch produces addresses/keys that silently disagree deep in a buy/forwarding path.

@@ -7,12 +7,8 @@
  */
 
 import type { Page } from '@playwright/test';
-import { expect, gotoWithSession, openScreen, queryOne, test, waitForRow } from './fixtures';
+import { expect, gotoWithSession, normPath, openScreen, queryOne, test, waitForRow } from './fixtures';
 import { cleanupCreatedData, createSupportIssue, createUser } from './fixtures/factories';
-
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
-}
 
 /**
  * Open a StyledDropdown by its field label, then pick an option by visible label text.

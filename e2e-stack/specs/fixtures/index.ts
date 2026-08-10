@@ -1,26 +1,33 @@
 import { test as base, expect, type Page } from '@playwright/test';
-import { gotoWithSession, loginAs, signatureLogin, testWallet, type TestRole } from './auth';
+import { gotoWithSession, signatureLogin, testWallet } from './auth';
+import { normPath, recordVisitedRoute } from './routes';
 
 export * from './api-client';
 export * from './auth';
 export * from './db';
 export * from './factories';
 export * from './mail';
+export * from './routes';
 export * from './test-data';
 export { expect };
 
-type RoleFixtures = {
+type AuthFixtures = {
   authedPage: Page;
-  userPage: Page;
-  adminPage: Page;
-  compliancePage: Page;
-  supportPage: Page;
 };
 
-async function pageWithRole(page: Page, role: TestRole): Promise<Page> {
-  const { jwt } = await loginAs(role);
-  await gotoWithSession(page, '/', jwt);
-  return page;
+/**
+ * Narrows away `null`/`undefined` and names what was missing when it is not there.
+ *
+ * The alternative — a `!` non-null assertion on a `queryOne` row, a navigation response or a
+ * bounding box — reports the absence as "Cannot read properties of null", one frame deep in
+ * whatever line happened to dereference it, and says nothing about which seed row or which
+ * request never arrived. `description` names the thing that was expected to exist.
+ */
+export function required<T>(value: T | null | undefined, description: string): T {
+  if (value === null || value === undefined) {
+    throw new Error(`${description} — got ${value === null ? 'null' : 'undefined'}`);
+  }
+  return value;
 }
 
 /**
@@ -54,9 +61,7 @@ export async function openScreen(page: Page, path: string, jwt: string): Promise
 
   const actual = new URL(page.url()).pathname;
   const expected = path.startsWith('/') ? path : `/${path}`;
-  // Normalize trailing slashes for comparison except for the root path.
-  const norm = (p: string) => (p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p);
-  if (norm(actual) !== norm(expected)) {
+  if (normPath(actual) !== normPath(expected)) {
     throw new Error(
       `openScreen: navigated to "${path}" but ended up on "${actual}" — likely a missing role or expired session`,
     );
@@ -103,12 +108,27 @@ async function isolateFromExternalHosts(page: Page): Promise<void> {
 }
 
 /**
- * Extended Playwright test with role-scoped and generic authenticated page fixtures.
+ * Extended Playwright test with a generic authenticated page fixture.
  * workers:1 is enforced in playwright.config.ts, so fresh testWallet() index 0 per test is fine.
+ *
+ * Role-scoped page fixtures (userPage/adminPage/compliancePage/supportPage) existed here and had
+ * no callers: the role-gated specs need the JWT itself (for apiGet) and drive navigation through
+ * openScreen, which loginAs + openScreen already provide. Add one back only with a test that uses it.
  */
-export const test = base.extend<RoleFixtures>({
+export const test = base.extend<AuthFixtures>({
   page: async ({ page }, use) => {
     await isolateFromExternalHosts(page);
+    // Record where the browser actually went. The coverage gate reads this back and requires every
+    // route in App.tsx to have been navigated to by some test — a claim in the registry that points
+    // at a file which never opens the route would otherwise satisfy it.
+    page.on('framenavigated', (frame) => {
+      if (frame !== page.mainFrame()) return;
+      try {
+        recordVisitedRoute(new URL(frame.url()).pathname);
+      } catch {
+        // about:blank and similar non-URL navigations carry no path to record.
+      }
+    });
     await use(page);
   },
   authedPage: async ({ page }, use) => {
@@ -116,17 +136,5 @@ export const test = base.extend<RoleFixtures>({
     const jwt = await signatureLogin(wallet);
     await gotoWithSession(page, '/', jwt);
     await use(page);
-  },
-  userPage: async ({ page }, use) => {
-    await use(await pageWithRole(page, 'User'));
-  },
-  adminPage: async ({ page }, use) => {
-    await use(await pageWithRole(page, 'Admin'));
-  },
-  compliancePage: async ({ page }, use) => {
-    await use(await pageWithRole(page, 'Compliance'));
-  },
-  supportPage: async ({ page }, use) => {
-    await use(await pageWithRole(page, 'Support'));
   },
 });

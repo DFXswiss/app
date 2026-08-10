@@ -725,15 +725,13 @@ test.describe('Buy flow', () => {
       )
       .not.toBe('pending');
 
-    // Leave pure loading only if the request never settled (would fail poll timeout above).
-    expect(
-      outcome === 'success' || outcome === 'error' || outcome === 'kyc',
-      `kycLevel 50 personal-IBAN must end in success, ErrorHint, or KYC gate (got ${outcome})`,
-    ).toBe(true);
-
-    if (outcome === 'success') {
-      await expect(page.locator('p.text-dfxBlue-800.font-bold').first()).not.toBeEmpty();
-    }
+    // One named outcome, not a set. Accepting success, any ErrorHint and the KYC gate alike meant
+    // a regression anywhere in this flow still passed. Measured against this stack, the API answers
+    // "No personal IBAN provider available for this currency" — there is no provider seeded here —
+    // so that is what this asserts: a different error, or a silent success, now fails the test.
+    // Seed a personal-IBAN provider and this becomes an assertion on the generated IBAN instead.
+    expect(outcome, `personal-IBAN request must reach an outcome (got ${outcome})`).toBe('error');
+    await expect(page.getByText('No personal IBAN provider available for this currency')).toBeVisible();
   });
 
   // =========================================================================

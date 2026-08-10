@@ -11,7 +11,7 @@
  */
 
 import type { Page, Response } from '@playwright/test';
-import { expect, gotoWithSession, openScreen, test, waitForRow } from './fixtures';
+import { expect, gotoWithSession, normPath, openScreen, test, waitForRow } from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -88,10 +88,6 @@ async function safeCreateSwap(
 }
 function apiBase(): string {
   return process.env.E2E_API_URL ?? 'http://api:3000';
-}
-
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
 }
 
 interface AssetDto {

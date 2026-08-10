@@ -33,12 +33,10 @@ services:
     image: ${E2E_API_IMAGE:-dfx-api:e2e}
     env_file:
       - env/api.env
-    environment:
-      # Optional: --unhandled-rejections=warn. Needed only while the API image still lacks the
-      # unhandledRejection handler (process-error-policy). scripts/up.sh probes the image and sets
-      # E2E_NODE_OPTIONS only when that fix is missing; once present, the option is left empty and
-      # disappears automatically so real unhandled rejections can crash the process again.
-      NODE_OPTIONS: ${E2E_NODE_OPTIONS:-}
+    # No NODE_OPTIONS here on purpose. An earlier revision downgraded unhandled rejections to
+    # warnings so an API image without guarded error handling could boot; that silences every
+    # unhandled rejection for the whole run, including ones introduced later, which is exactly the
+    # kind of crash this harness exists to catch. scripts/up.sh refuses such an image instead.
     networks:
       - sandbox
     depends_on:

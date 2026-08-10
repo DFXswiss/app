@@ -8,6 +8,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { required } from './fixtures';
 import { queryOne } from './fixtures/db';
 import {
   cleanupCreatedData,
@@ -56,9 +57,9 @@ test.describe('e2e factories', () => {
        WHERE u.id = $1`,
       [user.userId],
     );
-    expect(row).toBeTruthy();
-    expect(row!.kycLevel).toBe(30);
-    expect(row!.mail).toContain('@dfx.swiss');
+    const createdUser = required(row, 'createUser must insert a user with a user_data row');
+    expect(createdUser.kycLevel).toBe(30);
+    expect(createdUser.mail).toContain('@dfx.swiss');
   });
 
   test('createBankAccount stores bank_data with test IBAN', async () => {
@@ -160,7 +161,7 @@ test.describe('e2e factories', () => {
 
     expect(issue.uid).toBeTruthy();
     expect(issue.supportIssueId, 'createSupportIssue must return a numeric supportIssueId').toBeTruthy();
-    expect(issue.supportIssueId!).toBeGreaterThan(0);
+    expect(required(issue.supportIssueId, 'createSupportIssue must return a supportIssueId')).toBeGreaterThan(0);
 
     const row = await queryOne<{ id: number; uid: string; type: string }>(
       `SELECT id, uid, type FROM support_issue WHERE uid = $1`,
@@ -181,7 +182,7 @@ test.describe('e2e factories', () => {
     expect(pl.paymentLinkId).toBeGreaterThan(0);
     expect(pl.uniqueId).toBeTruthy();
     expect(pl.paymentId, 'createPaymentLink must return a numeric paymentId').toBeTruthy();
-    expect(pl.paymentId!).toBeGreaterThan(0);
+    expect(required(pl.paymentId, 'createPaymentLink must return a paymentId')).toBeGreaterThan(0);
 
     const link = await queryOne<{ id: number; status: string }>(`SELECT id, status FROM payment_link WHERE id = $1`, [
       pl.paymentLinkId,

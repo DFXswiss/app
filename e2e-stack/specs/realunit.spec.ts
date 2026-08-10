@@ -8,7 +8,7 @@
  */
 
 import type { Locator, Page } from '@playwright/test';
-import { apiGet, expect, gotoWithSession, loginAs, openScreen, queryOne, test } from './fixtures';
+import { apiGet, expect, gotoWithSession, loginAs, normPath, openScreen, queryOne, test } from './fixtures';
 import { cleanupCreatedData, createSupportIssue, createUser } from './fixtures/factories';
 
 /** Routes owned by this lane's RealUnit half (11 paths). */
@@ -31,10 +31,6 @@ const NEVER_HELD_ADDRESS = '0x0000000000000000000000000000000000000001';
 
 function concretePath(route: string): string {
   return route.replace(':id', IMPLAUSIBLE_ID).replace(':address', NEVER_HELD_ADDRESS);
-}
-
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
 }
 
 function attachErrorListeners(page: Page): { pageErrors: string[]; consoleErrors: string[] } {

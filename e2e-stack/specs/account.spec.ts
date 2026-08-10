@@ -11,12 +11,8 @@
  */
 
 import type { Page } from '@playwright/test';
-import { expect, gotoWithSession, openScreen, queryOne, test, waitForRow } from './fixtures';
+import { expect, gotoWithSession, normPath, openScreen, queryOne, required, test, waitForRow } from './fixtures';
 import { cleanupCreatedData, createUser, e2eMail } from './fixtures/factories';
-
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
-}
 
 function codeFromNotificationData(data: string): string {
   let parsed: { texts?: Array<{ params?: { code?: string } }> };
@@ -152,7 +148,7 @@ test.describe('Account area e2e', () => {
     // Step 1: EditOverlay prefilled with current mail.
     const mailInput = page.getByRole('textbox', { name: 'Email address' });
     await expect(mailInput).toBeVisible({ timeout: 20000 });
-    await expect(mailInput).toHaveValue(user.mail!);
+    await expect(mailInput).toHaveValue(required(user.mail, 'created user must have a mail address'));
 
     await mailInput.fill(newMail);
     await page.getByRole('button', { name: 'Save' }).click();
@@ -226,12 +222,14 @@ test.describe('Account area e2e', () => {
     const deId = await queryOne<{ id: number }>(`SELECT id FROM language WHERE symbol = $1 LIMIT 1`, ['DE']);
     expect(enId?.id, 'seed language EN').toBeTruthy();
     expect(deId?.id, 'seed language DE').toBeTruthy();
-    expect(enId!.id).not.toBe(deId!.id);
+    const enLanguageId = required(enId, 'seed language EN must exist').id;
+    const deLanguageId = required(deId, 'seed language DE must exist').id;
+    expect(enLanguageId).not.toBe(deLanguageId);
 
     // Ensure starting language is EN in DB.
     await waitForRow<{ languageId: number }>(
       `SELECT "languageId" AS "languageId" FROM user_data WHERE id = $1 AND "languageId" = $2`,
-      [user.userDataId, enId!.id],
+      [user.userDataId, enLanguageId],
       15000,
     );
 
@@ -246,7 +244,7 @@ test.describe('Account area e2e', () => {
 
     await waitForRow<{ languageId: number }>(
       `SELECT "languageId" AS "languageId" FROM user_data WHERE id = $1 AND "languageId" = $2`,
-      [user.userDataId, deId!.id],
+      [user.userDataId, deLanguageId],
       20000,
     );
   });

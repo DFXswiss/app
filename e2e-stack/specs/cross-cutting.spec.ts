@@ -7,7 +7,16 @@
 
 import type { Page, Route } from '@playwright/test';
 import { ethers } from 'ethers';
-import { decodeJwtPayload, expect, gotoWithSession, openScreen, queryOne, test, testWallet } from './fixtures';
+import {
+  decodeJwtPayload,
+  expect,
+  gotoWithSession,
+  normPath,
+  openScreen,
+  queryOne,
+  test,
+  testWallet,
+} from './fixtures';
 import { cleanupCreatedData, createUser } from './fixtures/factories';
 
 test.describe.configure({ mode: 'serial' });
@@ -18,10 +27,6 @@ test.describe.configure({ mode: 'serial' });
 
 function apiBase(): string {
   return process.env.E2E_API_URL ?? 'http://api:3000';
-}
-
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
 }
 
 /** Wait until a one-shot query param has been stripped by removeUrlParams (app-handling.context). */
@@ -725,11 +730,11 @@ test.describe('Cross-cutting', () => {
           .or(page.getByText('Buy', { exact: true }).first())
           .first(),
       ).toBeVisible({ timeout: 20000 });
+      // The amount input is the primary action of /buy; if the phone viewport drops it, this test
+      // has found what it is looking for and must fail rather than skip the check.
       const amount = page.locator('input[type="number"]').first();
-      if ((await amount.count()) > 0) {
-        await expect(amount).toBeVisible();
-        await amount.click();
-      }
+      await expect(amount, 'the /buy amount input must be reachable on the phone viewport').toBeVisible();
+      await amount.click();
     });
   });
 });

@@ -7,7 +7,7 @@
  */
 
 import type { Locator, Page } from '@playwright/test';
-import { apiGet, expect, gotoWithSession, loginAs, openScreen, queryOne, test } from './fixtures';
+import { apiGet, expect, gotoWithSession, loginAs, normPath, openScreen, queryOne, test } from './fixtures';
 
 /** Routes owned by this lane's dashboard half (8 paths). */
 const DASHBOARD_ROUTES = [
@@ -29,10 +29,6 @@ const FINANCIAL_HUB_TILES: { title: string; path: string }[] = [
   { title: 'Expenses', path: '/dashboard/financial/history/expenses' },
   { title: 'Log Validity', path: '/dashboard/financial/log-validity' },
 ];
-
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
-}
 
 function attachErrorListeners(page: Page): { pageErrors: string[]; consoleErrors: string[] } {
   const pageErrors: string[] = [];

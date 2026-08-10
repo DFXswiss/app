@@ -14,7 +14,18 @@
  */
 
 import type { Locator, Page } from '@playwright/test';
-import { expect, loginAs, openScreen, queryOne, queryRows, test, waitForRow, withDb } from './fixtures';
+import {
+  expect,
+  loginAs,
+  normPath,
+  openScreen,
+  queryOne,
+  queryRows,
+  required,
+  test,
+  waitForRow,
+  withDb,
+} from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -31,10 +42,6 @@ test.describe.configure({ mode: 'serial' });
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function normPath(p: string): string {
-  return p !== '/' && p.endsWith('/') ? p.slice(0, -1) : p;
-}
 
 /** Raise staff kycLevel + name so clerks lists and MROS caseManager resolve. */
 async function ensureStaffReady(userId: number, surname = 'Compliance'): Promise<void> {
@@ -199,7 +206,7 @@ test.describe('Compliance area (cases)', () => {
     // Pick first non-empty option
     const clerkValue = await editorOptions.nth(1).getAttribute('value');
     expect(clerkValue, 'first clerk option must have a value').toBeTruthy();
-    await editorSelect.selectOption(clerkValue!);
+    await editorSelect.selectOption(required(clerkValue, 'first clerk option must have a value'));
 
     const saveBtn = page.getByRole('button', { name: 'Speichern', exact: true });
     await expect(saveBtn).toBeEnabled({ timeout: 5000 });
@@ -388,8 +395,14 @@ test.describe('Compliance area (cases)', () => {
       )
       .toEqual({ amountPositive: true, hasIban: true });
 
-    // The return writes a recall row that references the bank_tx this test created. Register it so
-    // teardown can remove it first; without that, the bank_tx delete fails on the foreign key.
+    // The return writes rows of its own that point at what this test created: a recall, and a
+    // chargeback bank_tx on the same transaction. Register them so teardown removes them before
+    // their parents — without that, deleting the transaction fails on a foreign key and the rows
+    // stay behind for whatever runs next.
+    const followUpBankTxIds = await queryRows<{ id: number }>(
+      `SELECT id FROM bank_tx WHERE "transactionId" = $1 ORDER BY id ASC`,
+      [tx.transactionId],
+    );
     const recall = await queryOne<{ id: number }>(
       `SELECT r.id FROM recall r
        JOIN bank_tx b ON b.id = r."bankTxId"
@@ -397,6 +410,7 @@ test.describe('Compliance area (cases)', () => {
        ORDER BY r.id DESC LIMIT 1`,
       [tx.transactionId],
     );
+    for (const row of followUpBankTxIds) trackRow('bank_tx', row.id);
     if (recall) trackRow('recall', recall.id);
 
     expect(pageErrors, `uncaught pageerror on bank-tx return: ${pageErrors.join('; ')}`).toEqual([]);
@@ -558,7 +572,7 @@ test.describe('Compliance area (cases)', () => {
 
     const sigValue = await sigOptions.nth(1).getAttribute('value');
     expect(sigValue, 'first signature/clerk option must have a value').toBeTruthy();
-    await signatureSelect.selectOption(sigValue!);
+    await signatureSelect.selectOption(required(sigValue, 'first signature/clerk option must have a value'));
     await outcomeSelect.selectOption('Completed');
     await page.locator('textarea').fill('E2E call outcome: user reached, identity confirmed');
 

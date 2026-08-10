@@ -16,6 +16,7 @@ import * as path from 'path';
 import * as ts from 'typescript';
 import { expect, test } from '@playwright/test';
 import type { RouteClaim } from './registry/types';
+import { readVisitedRoutes, routeMatches, visitedRoutesPath } from './fixtures/routes';
 
 const APP_SOURCE_PATH = '/work/app-source/App.tsx';
 
@@ -291,6 +292,36 @@ test('every app route is claimed by exactly one registry entry @coverage-gate', 
   }
   if (missingSpecs.length > 0) {
     messages.push(`Missing spec files (${missingSpecs.length}):\n  - ${missingSpecs.join('\n  - ')}`);
+  }
+
+  // The checks above are about ownership: every route belongs to exactly one suite, and that suite
+  // exists. They say nothing about whether anything opened the route — a claim pointing at a spec
+  // that never navigates there satisfies all of them. The browser fixture records every navigation
+  // it makes, and this compares that recording against the route list, which is what turns
+  // ownership into coverage.
+  //
+  // Only on a full run: a filtered run (a single spec file while working on it) legitimately visits
+  // a fraction of the routes, and failing there would train people to ignore this gate. run.sh and
+  // both CI workflows set the flag; a partial run says so rather than checking nothing quietly.
+  if (process.env.E2E_FULL_RUN === '1') {
+    const visited = readVisitedRoutes();
+    const unvisited = [...real].filter((route) => !visited.some((v) => routeMatches(route, v))).sort();
+    if (visited.length === 0) {
+      messages.push(
+        `No navigations were recorded (${visitedRoutesPath()} is empty or missing), so route coverage ` +
+          `could not be checked at all on a run that declared itself complete.`,
+      );
+    } else if (unvisited.length > 0) {
+      messages.push(
+        `Routes claimed but never opened (${unvisited.length}) — the claiming suite must navigate ` +
+          `there:\n  - ${unvisited.join('\n  - ')}`,
+      );
+    }
+  } else {
+    console.log(
+      'route-coverage: E2E_FULL_RUN is not set, so only route ownership was checked, not whether ' +
+        'each route was actually opened. run.sh and CI set it.',
+    );
   }
 
   expect(messages.join('\n\n'), messages.join('\n\n')).toBe('');

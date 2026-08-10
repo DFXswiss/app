@@ -24,7 +24,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, required, test } from './fixtures';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -109,9 +109,9 @@ test.describe('Widget mode — frontend image gap', () => {
 
     // 1) /widget.html — SPA fallback serves the normal app index, not a widget host page.
     const widgetHtmlRes = await page.goto('/widget.html', { waitUntil: 'domcontentloaded' });
-    expect(widgetHtmlRes, 'navigation to /widget.html should produce a response').toBeTruthy();
     // nginx try_files falls back to index.html → 200 of the normal SPA, not 404.
-    expect(widgetHtmlRes!.status(), 'SPA fallback typically returns 200 for unknown paths').toBe(200);
+    const widgetHtmlStatus = required(widgetHtmlRes, 'navigation to /widget.html must produce a response').status();
+    expect(widgetHtmlStatus, 'SPA fallback typically returns 200 for unknown paths').toBe(200);
 
     await page.waitForLoadState('networkidle').catch(() => undefined);
 
@@ -175,9 +175,9 @@ test.describe('Widget mode — frontend-widget build', () => {
     await expect(dfxServices).toHaveCount(1);
 
     const box = await dfxServices.boundingBox();
-    expect(box, '<dfx-services> must have a bounding box').toBeTruthy();
-    expect(box!.width, 'rendered width > 0').toBeGreaterThan(0);
-    expect(box!.height, 'rendered height > 0').toBeGreaterThan(0);
+    const mountedBox = required(box, '<dfx-services> must have a bounding box');
+    expect(mountedBox.width, 'rendered width > 0').toBeGreaterThan(0);
+    expect(mountedBox.height, 'rendered height > 0').toBeGreaterThan(0);
 
     expect(pageErrors, `uncaught pageerror on widget mount: ${pageErrors.join('; ')}`).toEqual([]);
   });
@@ -232,9 +232,9 @@ test.describe('Widget mode — frontend-widget build', () => {
     const dfxServices = page.locator('dfx-services');
     await expect(dfxServices).toHaveCount(1);
     const box = await dfxServices.boundingBox();
-    expect(box, '<dfx-services> still mounted after attribute change').toBeTruthy();
-    expect(box!.width).toBeGreaterThan(0);
-    expect(box!.height).toBeGreaterThan(0);
+    const remountedBox = required(box, '<dfx-services> still mounted after attribute change');
+    expect(remountedBox.width).toBeGreaterThan(0);
+    expect(remountedBox.height).toBeGreaterThan(0);
 
     expect(pageErrors, `uncaught pageerror on attribute change: ${pageErrors.join('; ')}`).toEqual([]);
   });
@@ -260,9 +260,9 @@ test.describe('Widget mode — frontend-widget build', () => {
     const dfxServices = page.locator('dfx-services');
     await expect(dfxServices).toHaveCount(1);
     const box = await dfxServices.boundingBox();
-    expect(box, 'content renders inside closed shadow despite uninspectable tree').toBeTruthy();
-    expect(box!.width).toBeGreaterThan(0);
-    expect(box!.height).toBeGreaterThan(0);
+    const shadowBox = required(box, 'content renders inside closed shadow despite uninspectable tree');
+    expect(shadowBox.width).toBeGreaterThan(0);
+    expect(shadowBox.height).toBeGreaterThan(0);
 
     expect(pageErrors, `uncaught pageerror on closed-shadow widget: ${pageErrors.join('; ')}`).toEqual([]);
   });

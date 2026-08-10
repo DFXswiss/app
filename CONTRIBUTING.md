@@ -167,11 +167,15 @@ above, which does not run in CI — this harness runs on every pull request in C
 A pull request that changes a screen or an API contract should bring or update
 the matching full-stack test.
 
-Coverage of the route tree is enforced, not tracked by hand: the suite reads the
+Coverage of the route tree is enforced, not tracked by hand. The suite reads the
 route definitions out of `src/App.tsx` and fails if a route is claimed by no test
-file, or by more than one. Adding a route therefore means adding a claim in
-`e2e-stack/specs/registry/` and a test to back it up — otherwise CI goes red on
-the new route, not on some unrelated assertion.
+file or by more than one, and — on a full run, which is what CI does — if a route
+was never actually opened by any test. The browser records every navigation it
+makes, and the gate compares that recording against the route list, so a claim
+pointing at a file that never visits the route does not satisfy it. Adding a route
+therefore means adding a claim in `e2e-stack/specs/registry/` and a test that
+navigates there; otherwise CI goes red on the new route, not on some unrelated
+assertion.
 
 Run locally:
 

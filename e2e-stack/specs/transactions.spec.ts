@@ -1,4 +1,4 @@
-import { test, expect, openScreen, queryOne, queryRows } from './fixtures';
+import { expect, openScreen, queryOne, queryRows, required, test } from './fixtures';
 import {
   createUser,
   createBankAccount,
@@ -68,7 +68,9 @@ test('transaction list shows buy and sell rows with expected labels and amounts'
   const secondAsset = await queryOne<{ id: number }>(
     `SELECT id FROM asset WHERE buyable = true AND blockchain != 'Ethereum' ORDER BY id ASC LIMIT 1`,
   );
-  const secondBuy = await createBuy(user.jwt, { assetId: secondAsset!.id });
+  const secondBuy = await createBuy(user.jwt, {
+    assetId: required(secondAsset, 'seed must provide a buyable non-Ethereum asset').id,
+  });
   const pendingBuy = await createTransaction({
     state: 'pending_buy',
     tag: 'tx-list-pending',
@@ -267,7 +269,7 @@ test('assign route opens list with unassigned row and assigns to single buy targ
   await queryRows(
     `UPDATE bank_tx SET "senderAccount" = $1, "txAmount" = $2, "txCurrency" = 'CHF', type = 'Unknown'
      WHERE id = $3`,
-    [baRow!.iban, 444, unassigned.bankTxId],
+    [required(baRow, 'created bank_data row must exist').iban, 444, unassigned.bankTxId],
   );
 
   await openScreen(page, `/tx/${unassigned.transactionId}/assign`, user.jwt);
@@ -322,7 +324,7 @@ test("assign route for another user's unassigned tx leaves list empty of that ro
   await queryRows(
     `UPDATE bank_tx SET "senderAccount" = $1, "txAmount" = $2, "txCurrency" = 'CHF', type = 'Unknown'
      WHERE id = $3`,
-    [baRow!.iban, 445, unassigned.bankTxId],
+    [required(baRow, 'created bank_data row must exist').iban, 445, unassigned.bankTxId],
   );
 
   const before = await queryOne<{ type: string }>(`SELECT type FROM bank_tx WHERE id = $1`, [unassigned.bankTxId]);
