@@ -25,6 +25,22 @@ import { useWalletSession } from '../wallets/session';
 
 const SPINNER = <span className="spin" />;
 
+/**
+ * CKO payment poll schedule — same shape as ocp/pos.tsx (`pollPos`):
+ * start 2000ms, ×1.35, capped at 10s, hard stop after 5 minutes.
+ */
+export const CKO_POLL = {
+  deadlineMs: 300_000,
+  initialDelayMs: 2_000,
+  maxDelayMs: 10_000,
+  growth: 1.35,
+} as const;
+
+/** Next backoff delay after a non-terminal poll tick (mirrors pos.tsx). */
+export function nextPollDelay(delayMs: number): number {
+  return Math.min(CKO_POLL.maxDelayMs, Math.round(delayMs * CKO_POLL.growth));
+}
+
 /** JWT sanity check (mirrors session.tsx's isLikelyValidJwt / the static app's
  * tokenValid): the token must decode and still be valid for at least 60s. */
 function isValidJwt(token: string): boolean {
@@ -131,6 +147,33 @@ export default function ReturnRouteScreen() {
     (ckoId: string) => {
       stopPoll();
       setPanel({ kind: 'spinner', msgKey: 'ckoWait' });
+      // Same deadline + backoff as ocp/pos.tsx — never poll a parked tab forever.
+      const deadline = Date.now() + CKO_POLL.deadlineMs;
+      let delay: number = CKO_POLL.initialDelayMs;
+
+      const failWithRetry = (titleKey: TranslationKey) => {
+        setPanel({
+          kind: 'result',
+          variant: 'warn',
+          title: t(titleKey),
+          buttons: [
+            { label: t('retry'), onClick: () => startCkoPoll(ckoId), primary: true },
+            { label: t('done'), onClick: goContinue },
+          ],
+        });
+      };
+
+      const scheduleNext = () => {
+        if (cancelledRef.current) return;
+        if (Date.now() >= deadline) {
+          // Visible stop + retry — never silent, never indefinite.
+          failWithRetry('waitTimedOut');
+          return;
+        }
+        timerRef.current = window.setTimeout(tick, delay);
+        delay = nextPollDelay(delay);
+      };
+
       const tick = async () => {
         try {
           const tx = await call<{ uid?: string; id?: number }>({
@@ -161,25 +204,17 @@ export default function ReturnRouteScreen() {
             });
             return;
           }
-          // No tx id yet — keep polling every 3s.
-          timerRef.current = window.setTimeout(tick, 3000);
+          // No tx id yet — keep polling with backoff until the deadline.
+          scheduleNext();
         } catch (error) {
           if (cancelledRef.current) return;
           if (statusOf(error) === 404) {
-            // Not settled yet — keep polling every 3s.
-            timerRef.current = window.setTimeout(tick, 3000);
+            // Not settled yet — keep polling with backoff until the deadline.
+            scheduleNext();
             return;
           }
           // Any other error → let the user retry.
-          setPanel({
-            kind: 'result',
-            variant: 'warn',
-            title: t('ckoErr'),
-            buttons: [
-              { label: t('retry'), onClick: () => startCkoPoll(ckoId), primary: true },
-              { label: t('done'), onClick: goContinue },
-            ],
-          });
+          failWithRetry('ckoErr');
         }
       };
       void tick();

@@ -9,6 +9,7 @@
 import { useEffect } from 'react';
 import { useT } from '../../i18n';
 import { formatNumber } from '../parts/format';
+import { paymentStatusLabel } from './links';
 import type { OcpHistoryItem, OcpSubViewProps } from './useOcp';
 
 // Status glyphs, ported verbatim from the static app: CHECK_SVG (Completed),
@@ -88,7 +89,7 @@ export default function HistoryView({ ocp }: OcpSubViewProps) {
               </span>
               <span className="hamt">
                 <b>{`${p.currency || ''} ${p.amount}`}</b>
-                <span className={`pill-chip ${statusChipClass(p.status)}`}>{p.status}</span>
+                <span className={`pill-chip ${statusChipClass(p.status)}`}>{paymentStatusLabel(t, p.status)}</span>
               </span>
             </div>
           ))}

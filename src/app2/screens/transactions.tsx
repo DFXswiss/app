@@ -37,8 +37,9 @@ import {
   useCountry,
   useTransaction,
   useUser,
+  useUserContext,
 } from '@dfx.swiss/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LoadingRow, useToast } from '../components/ui';
 import { useT } from '../i18n';
@@ -154,6 +155,18 @@ function refundKind(tx: DetailTransaction): RefundKind {
   return 'bank';
 }
 
+/**
+ * Server-supplied crypto refund target from `getTransactionRefund`.
+ * Empty/whitespace-only values count as missing. Never accepts a session
+ * wallet address — when the API omits a target the UI lets the user pick
+ * from `userAddresses` filtered to the tx input blockchain instead.
+ */
+export function resolveCryptoRefundTarget(refundTarget: string | null | undefined): string | undefined {
+  if (refundTarget == null) return undefined;
+  const trimmed = refundTarget.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function copyToClipboard(value: string, showToast: (m: string) => void, t: (k: 'copied' | 'copyFail') => string) {
   if (!value || !navigator.clipboard) {
     showToast(t('copyFail'));
@@ -192,13 +205,17 @@ function KvRow({ label, value, href, onCopy }: { label: string; value: string; h
 // `startRefund` / `renderRefundForm` / `submitRefund` (index.html ~line 4544-4621).
 // GET /transaction/{id}/refund (getTransactionRefund) fills the form; the confirm
 // PUTs it back via setTransactionRefundTarget.
-function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: () => void }) {
+//
+// Crypto target selection mirrors the main app (`transaction.screen.tsx`): a
+// server-supplied `refundTarget` is locked; otherwise the user picks from
+// `userAddresses` filtered to `tx.inputBlockchain`. Never the session wallet.
+export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: () => void }) {
   const { t, language } = useT();
   const { showToast } = useToast();
-  const { address } = useWalletSession();
   const { getTransactionRefund, setTransactionRefundTarget } = useTransaction();
   const { getCountries } = useCountry();
   const { getProfile } = useUser();
+  const { userAddresses } = useUserContext();
 
   const kind = refundKind(tx);
   const [phase, setPhase] = useState<'loading' | 'error' | 'form' | 'done'>('loading');
@@ -213,11 +230,40 @@ function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: () => vo
   const [zip, setZip] = useState('');
   const [city, setCity] = useState('');
   const [country, setCountry] = useState('CH');
+  // User-chosen crypto refund address (only used when the API omitted refundTarget).
+  const [selectedCryptoAddress, setSelectedCryptoAddress] = useState('');
   const ibanRef = useRef<HTMLInputElement>(null);
 
   // A server-supplied IBAN is locked (the refund must go back to the account that
   // paid); a missing one is editable so the user can enter the payout account.
   const ibanFixed = (data?.refundTarget ?? '') !== '';
+  // Crypto: server target wins; else pick from account addresses on the input chain.
+  const cryptoTarget = resolveCryptoRefundTarget(data?.refundTarget);
+  const allowedCryptoAddresses = useMemo(() => {
+    if (kind !== 'crypto') return [];
+    const chain = tx.inputBlockchain;
+    if (!chain) return [];
+    return (userAddresses ?? []).filter((a) => a.blockchains.includes(chain));
+  }, [kind, tx.inputBlockchain, userAddresses]);
+
+  // Pre-select when exactly one address matches (main-app behaviour). Keep a still-
+  // valid multi-choice selection; clear when the filtered list becomes empty.
+  useEffect(() => {
+    if (cryptoTarget) {
+      setSelectedCryptoAddress('');
+      return;
+    }
+    if (allowedCryptoAddresses.length === 1) {
+      setSelectedCryptoAddress(allowedCryptoAddresses[0].address);
+      return;
+    }
+    setSelectedCryptoAddress((prev) => (prev && allowedCryptoAddresses.some((a) => a.address === prev) ? prev : ''));
+  }, [cryptoTarget, allowedCryptoAddresses]);
+
+  // Fail-closed only when there is neither a server target nor any account address
+  // on the input chain (or the user hasn't picked one yet among several).
+  const cryptoBlocked =
+    kind === 'crypto' && !cryptoTarget && (allowedCryptoAddresses.length === 0 || !selectedCryptoAddress);
 
   const load = useCallback(() => {
     if (tx.id == null) {
@@ -281,7 +327,19 @@ function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: () => vo
     if (submitting || tx.id == null) return;
     let body: TransactionRefundTarget;
     if (kind === 'crypto') {
-      body = { refundTarget: data?.refundTarget ?? address };
+      // Server-supplied target is authoritative. Otherwise only an address from
+      // the account's filtered `userAddresses` list may be sent — never the
+      // currently connected session wallet.
+      if (cryptoTarget) {
+        body = { refundTarget: cryptoTarget };
+      } else {
+        const chosen = allowedCryptoAddresses.find((a) => a.address === selectedCryptoAddress);
+        if (!chosen) {
+          setWarn(t('refundNoTarget'));
+          return;
+        }
+        body = { refundTarget: chosen.address };
+      }
     } else if (kind === 'bank') {
       const cleanIban = iban.replace(/\s+/g, '').trim();
       if (!cleanIban) {
@@ -387,8 +445,31 @@ function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: () => vo
 
       {kind === 'crypto' && (
         <>
-          <label className="flabel">{t('refundTo')}</label>
-          <input className="tinput" value={data?.refundTarget ?? address ?? ''} readOnly aria-readonly="true" />
+          <label className="flabel" htmlFor={cryptoTarget ? undefined : 'refundCryptoAddr'}>
+            {t('refundTo')}
+          </label>
+          {cryptoTarget ? (
+            <input className="tinput" value={cryptoTarget} readOnly aria-readonly="true" />
+          ) : allowedCryptoAddresses.length === 0 ? (
+            <div className="paybox-note warn" style={{ marginTop: 4 }}>
+              {t('refundNoTarget')}
+            </div>
+          ) : (
+            <select
+              id="refundCryptoAddr"
+              className="tinput"
+              value={selectedCryptoAddress}
+              aria-label={t('refundTo')}
+              onChange={(event) => setSelectedCryptoAddress(event.target.value)}
+            >
+              {allowedCryptoAddresses.length > 1 && <option value="">{t('refundTo')}</option>}
+              {allowedCryptoAddresses.map((a) => (
+                <option key={a.address} value={a.address}>
+                  {a.label ? `${a.label} · ${shortAddress(a.address)}` : shortAddress(a.address)}
+                </option>
+              ))}
+            </select>
+          )}
         </>
       )}
       {kind === 'card' && <p className="paybox-note">{t('refundCardNote')}</p>}
@@ -443,7 +524,13 @@ function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: () => vo
       ) : null}
 
       <div className="txactions" style={{ marginTop: 12 }}>
-        <button type="button" className="btn-primary" style={{ flex: 1 }} disabled={submitting} onClick={submit}>
+        <button
+          type="button"
+          className="btn-primary"
+          style={{ flex: 1 }}
+          disabled={submitting || cryptoBlocked}
+          onClick={submit}
+        >
           {t('refundConfirm')}
         </button>
         <button type="button" className="btn-mini" style={{ width: 'auto', flex: '0 0 auto' }} onClick={onClose}>
@@ -768,10 +855,13 @@ export default function TransactionsScreen() {
                       : tx.type === TransactionType.SWAP
                         ? t('mSwap')
                         : tx.type;
-                const inA = formatAmount(tx.inputAmount, tx.inputAsset, language);
-                const outA = formatAmount(tx.outputAmount, tx.outputAsset, language);
+                // 8 fraction digits (not the formatAmount default of 6) so sub-1e-6
+                // amounts — e.g. Lightning sales of tens of sats — don't collapse to "0 BTC".
+                // Same floor for the rate: sub-1e-6 quotes would otherwise also read as 0.
+                const inA = formatAmount(tx.inputAmount, tx.inputAsset, language, 8);
+                const outA = formatAmount(tx.outputAmount, tx.outputAsset, language, 8);
                 const amount = inA && outA ? `${inA} → ${outA}` : inA || outA;
-                const rate = formatNumber(tx.rate ?? tx.exchangeRate, language, 6);
+                const rate = formatNumber(tx.rate ?? tx.exchangeRate, language, 8);
                 // These fields aren't on the typed `DetailTransaction` but the raw
                 // API payload carries them — read them the way the static app does.
                 const raw = tx as {
