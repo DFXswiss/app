@@ -24,17 +24,17 @@ layer in `DFXswiss/api`, which runs against a real database. Do not try to cover
 
 ### Unit suite — `npm run test`
 
-Measured on `develop` at `3ca38b33`, 2026-08-10, Node 20, with
+Measured on `develop` at `4e9544a9`, 2026-08-10, Node 20, with
 `npm test -- --coverage`:
 
 | Metric     | Coverage | Absolute     |
 | ---------- | -------- | ------------ |
-| Statements | 18.12 %  | 2 572/14 191 |
+| Statements | 18.15 %  | 2 578/14 198 |
 | Branches   | 17.31 %  | 2 054/11 861 |
-| Functions  | 14.42 %  | 667/4 624    |
-| Lines      | 18.60 %  | 2 369/12 736 |
+| Functions  | 14.44 %  | 668/4 626    |
+| Lines      | 18.63 %  | 2 375/12 742 |
 
-947 tests passing across 80 suites, 352 files instrumented.
+950 tests passing across 81 suites, 353 files instrumented.
 
 Read that number together with the coverage rule in `CONTRIBUTING.md`, section
 "Coverage": every file a pull request touches must reach 100 % on
@@ -63,9 +63,11 @@ The details — the factories and the states that are deliberately not achievabl
 ### Route coverage is enforced, not tracked by hand
 
 The gate reads the route definitions out of `src/App.tsx`, resolves nested paths, and fails when a route
-is claimed by no test file or by more than one, and on a full run also when a claimed route was never
-actually opened by the browser. Adding a route therefore means adding a claim in
-`e2e-stack/specs/registry/` and a test that navigates there.
+has no registry claim or more than one — including two claims inside the same registry file — or when
+the spec file a claim names does not exist. When `E2E_FULL_RUN=1` is set, it additionally fails for a
+claimed route the browser never opened; note that this flag is self-declared by the run, not a measured
+completeness check. Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a
+test that navigates there.
 
 That gate is the pattern the reality declaration follows: **measure the run, do not trust the
 declaration.** Anything its parser cannot resolve is a hard failure rather than a silent omission.
