@@ -46,6 +46,9 @@ yarn-error.log*
 next-env.d.ts
 .claude/settings.local.json
 
+# local agent instructions (never committed)
+CLAUDE.md
+
 # Synpress cache and test results
 .cache-synpress/
 e2e/synpress-results/
