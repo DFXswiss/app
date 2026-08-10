@@ -1066,6 +1066,8 @@
     "Scroll to bottom": "Nach unten",
     "Scroll to new messages": "Zu neuen Nachrichten",
     "Connection interrupted. New messages cannot be received right now.": "Verbindung unterbrochen. Neue Nachrichten kommen gerade nicht an.",
+    "Tap to retry": "Tippen zum Wiederholen",
+    "Retry sending message": "Nachricht erneut senden",
 
     "Created on": "Erstellt am",
     "Hide completed tickets": "Abgeschlossene Tickets ausblenden",

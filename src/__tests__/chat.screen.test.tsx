@@ -14,10 +14,13 @@ const mockSupportIssueUidGet = jest.fn();
 const mockSupportIssueUidSet = jest.fn();
 const mockUseLayoutOptions = jest.fn();
 const mockReportClientError = jest.fn();
+const mockRetryMessage = jest.fn();
 
 let mockSupportIssue: any;
 let mockIsLoading = false;
 let mockIsError: string | undefined;
+/** When true, the context mock exposes retryMessage (SDK after packages#210). */
+let mockHasRetryMessage = false;
 let mockIssueUidParam: string | undefined;
 const mockChatPathname = '/support/chat';
 
@@ -82,6 +85,8 @@ jest.mock('@dfx.swiss/react', () => {
       setSync: mockSetSync,
       submitMessage: mockSubmitMessage,
       loadFileData: mockLoadFileData,
+      // Only present when tests opt in — mirrors published 1.7.x vs packages#210.
+      ...(mockHasRetryMessage ? { retryMessage: mockRetryMessage } : {}),
     }),
     useTransaction: () => ({
       getTransactionByUid: mockGetTransactionByUid,
@@ -201,6 +206,7 @@ describe('ChatScreen', () => {
     jest.useFakeTimers();
     mockIsLoading = false;
     mockIsError = undefined;
+    mockHasRetryMessage = false;
     mockIssueUidParam = undefined;
     mockSupportIssue = makeIssue();
     mockSupportIssueUidGet.mockReturnValue('issue-uid-1');
@@ -209,6 +215,7 @@ describe('ChatScreen', () => {
     mockLoadFileData.mockResolvedValue(undefined);
     mockGetTransactionByUid.mockReset();
     mockReportClientError.mockReset();
+    mockRetryMessage.mockReset();
     mockTranslate.mockImplementation((_ns: string, key: string) => key);
     mockTranslateError.mockImplementation((message: string) => message);
     Element.prototype.scrollIntoView = jest.fn();
@@ -505,7 +512,8 @@ describe('ChatScreen', () => {
   });
 
   it('renders a failed customer message with an error surface, not as a retry control', () => {
-    // Resend is not on the published SDK yet — failed bubbles stay visible as errors only.
+    // SDK without retryMessage (published 1.7.x) — error surface only, no promised tap action.
+    mockHasRetryMessage = false;
     mockSupportIssue = makeIssue({
       messages: [
         makeMessage({ id: 77, author: 'Customer', message: 'Lost packet', status: SupportMessageStatus.FAILED }),
@@ -517,9 +525,49 @@ describe('ChatScreen', () => {
     expect(failed).toHaveClass('border-dfxRed-100');
     expect(failed.className).not.toMatch(/pointer-events-none/);
     expect(failed.className).not.toMatch(/opacity-60/);
+    expect(failed.tagName).not.toBe('BUTTON');
     expect(screen.queryByRole('button', { name: 'Retry sending message' })).not.toBeInTheDocument();
     expect(screen.queryByText('Tap to retry')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('msg-retry-hint')).not.toBeInTheDocument();
     expect(screen.getByTestId('msg-status-failed')).toBeInTheDocument();
+  });
+
+  it('turns a failed message into a retry control when the SDK exposes retryMessage', () => {
+    // SDK with retryMessage (after DFXswiss/packages#210).
+    mockHasRetryMessage = true;
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 88, author: 'Customer', message: 'Lost packet', status: SupportMessageStatus.FAILED }),
+      ],
+    });
+    renderChat();
+
+    const retry = screen.getByRole('button', { name: 'Retry sending message' });
+    expect(retry).toHaveAttribute('data-testid', 'msg-failed');
+    expect(retry).toHaveClass('border-dfxRed-100');
+    expect(screen.getByTestId('msg-retry-hint')).toHaveTextContent('Tap to retry');
+    expect(mockTranslate).toHaveBeenCalledWith('screens/support', 'Tap to retry');
+    expect(mockTranslate).toHaveBeenCalledWith('screens/support', 'Retry sending message');
+
+    fireEvent.click(retry);
+    expect(mockRetryMessage).toHaveBeenCalledTimes(1);
+    expect(mockRetryMessage).toHaveBeenCalledWith(88);
+  });
+
+  it('does not offer retry while a failed message is already re-sending (SENT)', () => {
+    // After retryMessage, the context marks the bubble SENT — second tap must not re-fire.
+    mockHasRetryMessage = true;
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 88, author: 'Customer', message: 'Re-sending', status: SupportMessageStatus.SENT }),
+      ],
+    });
+    renderChat();
+
+    expect(screen.queryByRole('button', { name: 'Retry sending message' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('msg-retry-hint')).not.toBeInTheDocument();
+    expect(screen.getByTestId('msg-status-sent')).toBeInTheDocument();
+    expect(mockRetryMessage).not.toHaveBeenCalled();
   });
 
   it('treats a missing author as a customer message (right-aligned, with status)', () => {

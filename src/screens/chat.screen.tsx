@@ -649,48 +649,83 @@ interface ChatBubbleProps extends SupportMessage {
   hasHeader: boolean;
 }
 
+/**
+ * `retryMessage` is added in DFXswiss/packages#210. Published @dfx.swiss/react 1.7.x does not
+ * declare it on SupportChatInterface, so we only ever read this one optional field through a
+ * narrow type. Drop the cast when the SDK release ships the method on the interface.
+ */
+type SupportChatRetry = {
+  retryMessage?: (messageId: number) => void;
+};
+
 function ChatBubble({ id, message, fileName, file, created, author, status, hasHeader }: ChatBubbleProps): JSX.Element {
+  const { translate } = useSettingsContext();
+  const supportChat = useSupportChatContext();
+  const retryMessage = (supportChat as SupportChatRetry).retryMessage;
   const isUser = !author || author === 'Customer';
   const hasFile = !!fileName;
   const failedToSend = status === SupportMessageStatus.FAILED;
+  // Offer a control only when the SDK actually provides the function — never promise a no-op.
+  const canRetry = failedToSend && typeof retryMessage === 'function';
 
   // Failed own messages stay visually loud (error border) so the user notices them.
-  // No in-app resend until the published SDK exposes it — do not promise a tap action.
   const bubbleTone = failedToSend
     ? 'bg-dfxRed-100/15 border-2 border-dfxRed-100 text-dfxBlue-800 rounded-br-none'
     : isUser
       ? 'bg-dfxBlue-800 text-white rounded-br-none'
       : 'bg-dfxGray-300 text-dfxBlue-800 rounded-bl-none';
 
-  return (
-    <div className={`flex text-left ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`flex flex-col max-w-xs rounded-lg overflow-clip pb-1.5 gap-1.5 text-left ${
-          hasHeader || !hasFile ? 'pt-1.5' : ''
-        } ${bubbleTone}`}
-        data-testid={failedToSend ? 'msg-failed' : undefined}
-      >
-        {hasHeader && !isUser && <p className="font-semibold text-sm text-dfxBlue-400 px-3">{author}</p>}
-        {hasFile && <ChatBubbleFileEmbed messageId={id} fileName={fileName} file={file} />}
-        {message && <p className="leading-snug text-sm px-3 whitespace-pre-wrap">{message}</p>}
-        <div className="flex flex-row justify-end items-center px-3 -mt-0.5">
-          <div
-            className={`flex flex-row items-center justify-center text-xs italic text-end ${
-              failedToSend ? 'text-dfxRed-100' : isUser ? 'text-white/70' : 'text-dfxGray-800'
-            }`}
-          >
-            {formatMessageTime(created)}
-            {isUser &&
-              (failedToSend ? (
-                <MdErrorOutline className="inline-block text-base ml-1 mb-0.5" data-testid="msg-status-failed" />
-              ) : status === SupportMessageStatus.SENT ? (
-                <MdAccessTime className="inline-block text-base ml-1 mb-0.5" data-testid="msg-status-sent" />
-              ) : (
-                <RiCheckFill className="inline-block text-base ml-1 mb-0.5" data-testid="msg-status-received" />
-              ))}
-          </div>
+  const shellClass = `flex flex-col max-w-xs rounded-lg overflow-clip pb-1.5 gap-1.5 text-left ${
+    hasHeader || !hasFile ? 'pt-1.5' : ''
+  } ${bubbleTone}${canRetry ? ' cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-dfxBlue-400' : ''}`;
+
+  const body = (
+    <>
+      {hasHeader && !isUser && <p className="font-semibold text-sm text-dfxBlue-400 px-3">{author}</p>}
+      {hasFile && <ChatBubbleFileEmbed messageId={id} fileName={fileName} file={file} />}
+      {message && <p className="leading-snug text-sm px-3 whitespace-pre-wrap">{message}</p>}
+      {canRetry && (
+        <p className="text-xs text-dfxRed-100 px-3 text-left" data-testid="msg-retry-hint">
+          {translate('screens/support', 'Tap to retry')}
+        </p>
+      )}
+      <div className="flex flex-row justify-end items-center px-3 -mt-0.5">
+        <div
+          className={`flex flex-row items-center justify-center text-xs italic text-end ${
+            failedToSend ? 'text-dfxRed-100' : isUser ? 'text-white/70' : 'text-dfxGray-800'
+          }`}
+        >
+          {formatMessageTime(created)}
+          {isUser &&
+            (failedToSend ? (
+              <MdErrorOutline className="inline-block text-base ml-1 mb-0.5" data-testid="msg-status-failed" />
+            ) : status === SupportMessageStatus.SENT ? (
+              <MdAccessTime className="inline-block text-base ml-1 mb-0.5" data-testid="msg-status-sent" />
+            ) : (
+              <RiCheckFill className="inline-block text-base ml-1 mb-0.5" data-testid="msg-status-received" />
+            ))}
         </div>
       </div>
+    </>
+  );
+
+  return (
+    <div className={`flex text-left ${isUser ? 'justify-end' : 'justify-start'}`}>
+      {canRetry ? (
+        <button
+          type="button"
+          className={shellClass}
+          data-testid="msg-failed"
+          aria-label={translate('screens/support', 'Retry sending message')}
+          onClick={() => retryMessage(id)}
+        >
+          {body}
+        </button>
+      ) : (
+        <div className={shellClass} data-testid={failedToSend ? 'msg-failed' : undefined}>
+          {body}
+        </div>
+      )}
     </div>
   );
 }
