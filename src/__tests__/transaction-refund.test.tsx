@@ -410,18 +410,6 @@ jest.mock('../util/utils', () => ({
 
 jest.mock('copy-to-clipboard', () => jest.fn());
 
-jest.mock('../screens/transaction.screen', () => {
-  const React = jest.requireActual('react');
-  const actual = jest.requireActual('../screens/transaction.screen');
-  return {
-    __esModule: true,
-    ...actual,
-    default: actual.default,
-    TransactionList: () => React.createElement('div', { 'data-testid': 'transaction-list' }),
-    TxInfo: () => React.createElement('div', { 'data-testid': 'tx-info' }),
-  };
-});
-
 import { Utils } from '@dfx.swiss/react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';

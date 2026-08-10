@@ -189,20 +189,6 @@ jest.mock('../util/validation-rules', () => ({
 
 jest.mock('copy-to-clipboard', () => jest.fn());
 
-// Partial mock: keep real default export (TransactionScreen) and internal TransactionStatus;
-// replace sibling exports that belong to later coverage stages.
-jest.mock('../screens/transaction.screen', () => {
-  const React = jest.requireActual('react');
-  const actual = jest.requireActual('../screens/transaction.screen');
-  return {
-    __esModule: true,
-    ...actual,
-    default: actual.default,
-    TransactionList: () => React.createElement('div', { 'data-testid': 'transaction-list' }),
-    TxInfo: () => React.createElement('div', { 'data-testid': 'tx-info' }),
-  };
-});
-
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
@@ -416,7 +402,6 @@ describe('TransactionScreen render branches', () => {
 
     expect(screen.getByRole('button', { name: 'Cointracking' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument();
-    // TransactionList is module-internal, so the named-export mock is inert; assert real output.
     expect(screen.getByRole('heading', { name: 'Your Transactions' })).toBeInTheDocument();
   });
 
