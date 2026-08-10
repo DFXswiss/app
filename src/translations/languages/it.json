@@ -260,6 +260,9 @@
     "Account merged successfully!": "Account unito con successo!",
     "You can now access your account.": "Ora puoi accedere al tuo account.",
     "My account": "Il mio account",
+    "Reference": "Riferimento",
+    "This is taking longer than usual. You can safely close this page — we will keep working in the background.": "Questo richiede più tempo del solito. Puoi chiudere questa pagina in tutta sicurezza — continueremo a lavorare in background.",
+    "This is taking longer than expected. Please contact support and reference {{reference}}.": "Questo richiede più tempo del previsto. Contatta l'assistenza e indica il riferimento {{reference}}.",
 
     "Upload your SEPA file here": "Carica il tuo file SEPA qui",
     "Uploaded": "Caricato",

@@ -1,8 +1,10 @@
 import { ApiError, useApi, useAuthContext } from '@dfx.swiss/react';
-import { SpinnerSize, StyledButton, StyledLoadingSpinner, StyledVerticalStack } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { StyledButton, StyledVerticalStack } from '@dfx.swiss/react-components';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { JobProgress } from 'src/components/job/job-progress';
 import { useSettingsContext } from 'src/contexts/settings.context';
+import { JOB_TRACKER_TIMEOUT_ERROR, useJobTracker } from 'src/hooks/job.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 
@@ -21,34 +23,53 @@ export default function AccountMerge() {
   const [kycHash, setKycHash] = useState<string>();
 
   const otp = urlParams.get('otp');
+  // Capture once: deleting otp from the URL below re-renders and would rebuild the
+  // fetch closure with code=null, so every subsequent poll would send a null code.
+  const otpRef = useRef(otp);
+
+  const { result, ticket, isOverdue, error, start } = useJobTracker<MergeRedirect>(() =>
+    call<MergeRedirect>({ url: `auth/mail/confirm?code=${otpRef.current}`, method: 'GET' }).catch((e: ApiError) => {
+      // Pre-translate the two known, non-retryable outcomes so the job hook (which stays
+      // translation-agnostic) can just forward `message` verbatim as the terminal error.
+      if (e.statusCode === 400) e.message = translate('screens/error', 'Invalid link');
+      else if (e.statusCode === 409) e.message = translate('screens/error', 'Merge is already completed');
+      throw e;
+    }),
+  );
 
   useEffect(() => {
     if (otp) {
       urlParams.delete('otp');
       setUrlParams(urlParams);
-
-      call<MergeRedirect>({
-        url: `auth/mail/confirm?code=${otp}`,
-        method: 'GET',
-      })
-        .then(({ kycHash, accessToken }: MergeRedirect) => {
-          setAuthToken(accessToken);
-          setKycHash(kycHash);
-        })
-        .catch((error: ApiError) => {
-          const errorMessage =
-            error.statusCode === 400
-              ? translate('screens/error', 'Invalid link')
-              : error.statusCode === 409
-              ? translate('screens/error', 'Merge is already completed')
-              : error.message;
-
-          navigate({ pathname: '/error', search: `msg=${errorMessage}` });
-        });
+      start();
     } else {
       navigate('/kyc');
     }
   }, []);
+
+  useEffect(() => {
+    if (result) {
+      setAuthToken(result.accessToken);
+      setKycHash(result.kycHash);
+    }
+  }, [result]);
+
+  useEffect(() => {
+    if (!error) return;
+
+    const errorMessage =
+      error === JOB_TRACKER_TIMEOUT_ERROR
+        ? ticket
+          ? translate(
+              'screens/kyc',
+              'This is taking longer than expected. Please contact support and reference {{reference}}.',
+              { reference: ticket.uid },
+            )
+          : error
+        : error;
+
+    navigate({ pathname: '/error', search: `msg=${errorMessage}` });
+  }, [error]);
 
   useLayoutOptions({});
 
@@ -67,10 +88,11 @@ export default function AccountMerge() {
           />
         </>
       ) : (
-        <>
-          <StyledLoadingSpinner size={SpinnerSize.LG} />
-          <p className="text-dfxGray-700">{translate('screens/kyc', 'Merging your accounts...')} </p>
-        </>
+        <JobProgress
+          ticket={ticket}
+          isOverdue={isOverdue}
+          message={translate('screens/kyc', 'Merging your accounts...')}
+        />
       )}
     </StyledVerticalStack>
   );
