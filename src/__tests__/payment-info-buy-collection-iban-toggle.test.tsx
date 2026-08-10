@@ -66,7 +66,11 @@ jest.mock('../hooks/clipboard.hook', () => ({
 
 jest.mock('../components/payment/payment-qr-code', () => ({
   PaymentQrCode: ({ value, collectionAccount }: any) => (
-    <div data-testid="qr-value" data-collection={collectionAccount ? 'true' : 'false'}>
+    <div
+      data-testid="qr-value"
+      data-collection={collectionAccount ? 'true' : 'false'}
+      data-has-value={String(value !== undefined)}
+    >
       {value}
     </div>
   ),
@@ -305,7 +309,8 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     const qrValue = screen.getByTestId('qr-value');
     expect(qrValue).toHaveTextContent(PERSONAL_IBAN);
     expect(qrValue).not.toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
-    expect(screen.getByTestId('qr-value')).toHaveAttribute('data-collection', 'false');
+    expect(qrValue).toHaveAttribute('data-collection', 'false');
+    expect(qrValue).toHaveAttribute('data-has-value', 'true');
   });
 
   it('switches the QR value to the collection IBAN after the toggle', () => {
@@ -325,11 +330,9 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     const qrValue = screen.getByTestId('qr-value');
     expect(qrValue).toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
     expect(qrValue).not.toHaveTextContent(PERSONAL_IBAN);
-    expect(screen.getByTestId('qr-value')).toHaveAttribute('data-collection', 'true');
+    expect(qrValue).toHaveAttribute('data-collection', 'true');
+    expect(qrValue).toHaveAttribute('data-has-value', 'true');
   });
-
-  const NO_COLLECTION_QR_HINT =
-    'No QR code is available for the collection account. Please enter the IBAN and the remittance info manually.';
 
   it.each([
     {
@@ -341,7 +344,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
       paymentRequest: sampleGiroCode('LI99088110100000K999E'),
     },
   ])(
-    'shows the no-QR hint and hides the QR when collection is selected and the payload is rejected ($name)',
+    'renders PaymentQrCode without a value when collection is selected and the payload is rejected ($name)',
     ({ paymentRequest }) => {
       const { container } = render(
         <PaymentInformationContent
@@ -356,13 +359,14 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
 
-      expect(screen.queryByTestId('qr-value')).not.toBeInTheDocument();
-      expect(screen.getByText(NO_COLLECTION_QR_HINT)).toBeInTheDocument();
+      const qrValue = screen.getByTestId('qr-value');
+      expect(qrValue).toHaveAttribute('data-has-value', 'false');
+      expect(qrValue).toHaveAttribute('data-collection', 'true');
       expect(container.textContent).not.toContain(paymentRequest);
     },
   );
 
-  it('does not show the no-QR hint when the collection GiroCode rewrite succeeds', () => {
+  it('passes a value to PaymentQrCode when the collection GiroCode rewrite succeeds', () => {
     render(
       <PaymentInformationContent
         info={baseInfo({
@@ -376,15 +380,16 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
 
-    expect(screen.getByTestId('qr-value')).toBeInTheDocument();
-    expect(screen.queryByText(NO_COLLECTION_QR_HINT)).not.toBeInTheDocument();
+    const qrValue = screen.getByTestId('qr-value');
+    expect(qrValue).toHaveAttribute('data-has-value', 'true');
+    expect(qrValue).toHaveAttribute('data-collection', 'true');
   });
 
   it.each([
     { missingField: 'iban', override: { iban: undefined } },
     { missingField: 'remittanceInfo', override: { remittanceInfo: undefined } },
   ])(
-    'shows the no-QR hint when the offer gate passes but $missingField is missing',
+    'renders PaymentQrCode without a value when the offer gate passes but $missingField is missing',
     ({ override }) => {
       (canOfferCollectionIban as jest.Mock).mockReturnValue(true);
 
@@ -402,8 +407,9 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
 
-      expect(screen.getByText(NO_COLLECTION_QR_HINT)).toBeInTheDocument();
-      expect(screen.queryByTestId('qr-value')).not.toBeInTheDocument();
+      const qrValue = screen.getByTestId('qr-value');
+      expect(qrValue).toHaveAttribute('data-has-value', 'false');
+      expect(qrValue).toHaveAttribute('data-collection', 'true');
     },
   );
 

@@ -9,8 +9,10 @@ jest.mock('@dfx.swiss/react', () => ({
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
+  IconColor: { BLUE: 'blue' },
   SpinnerSize: { MD: 'md' },
   SpinnerVariant: { LIGHT_MODE: 'light' },
+  StyledInfoText: ({ children }: any) => <div>{children}</div>,
   StyledLoadingSpinner: () => <span>Loading</span>,
   StyledButton: () => null,
   StyledButtonColor: { GRAY_OUTLINE: 'gray-outline' },
@@ -44,6 +46,9 @@ beforeEach(() => {
   mockUser = { kyc: { dataComplete: true } };
 });
 
+const NO_COLLECTION_QR_HINT =
+  'No QR code is available for the collection account. Please enter the IBAN and the remittance info manually.';
+
 describe('PaymentQrCode incomplete KYC', () => {
   it('navigates to profile when KYC data is incomplete and does not request or open an invoice', async () => {
     mockUser = { kyc: { dataComplete: false } };
@@ -58,6 +63,34 @@ describe('PaymentQrCode incomplete KYC', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/profile', { setRedirect: true });
     expect(mockInvoiceFor).not.toHaveBeenCalled();
     expect(mockOpenPdf).not.toHaveBeenCalled();
+  });
+});
+
+describe('PaymentQrCode missing value', () => {
+  it('renders the no-QR hint, hides the GiroCode caption, and still offers the PDF Invoice button', () => {
+    render(<PaymentQrCode txId={42} collectionAccount />);
+
+    expect(screen.getByText(NO_COLLECTION_QR_HINT)).toBeVisible();
+    expect(screen.queryByText('GiroCode')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'PDF Invoice' })).toBeInTheDocument();
+  });
+
+  it('requests a collection-account invoice and opens the PDF when value is absent', async () => {
+    render(<PaymentQrCode txId={42} collectionAccount />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+    expect(mockInvoiceFor).toHaveBeenCalledWith(42, true);
+
+    await waitFor(() => {
+      expect(mockOpenPdf).toHaveBeenCalledTimes(1);
+    });
+    expect(mockOpenPdf).toHaveBeenCalledWith('JVBERi0x');
   });
 });
 

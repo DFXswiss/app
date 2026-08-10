@@ -1,6 +1,12 @@
 import { ApiError, useBuy, useUserContext } from '@dfx.swiss/react';
-import { SpinnerSize, SpinnerVariant, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { useEffect, useRef, useState } from 'react';
+import {
+  IconColor,
+  SpinnerSize,
+  SpinnerVariant,
+  StyledInfoText,
+  StyledLoadingSpinner,
+} from '@dfx.swiss/react-components';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { RiExternalLinkFill } from 'react-icons/ri';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useNavigation } from 'src/hooks/navigation.hook';
@@ -10,7 +16,8 @@ import { ErrorHint } from '../error-hint';
 import { QrBasic } from './qr-code';
 
 interface GiroCodeProps {
-  value: string;
+  /** When absent, the QR image is unavailable (fail-closed rewrite) but the PDF invoice stays available. */
+  value?: string;
   txId: number;
   /** When true, request the PDF against the DFX collection account (API query flag). Omit otherwise. */
   collectionAccount?: boolean;
@@ -26,8 +33,10 @@ export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCo
   const invoiceGeneration = useRef(0);
 
   // Stale-response guard (same pattern as the quote generation in buy.screen.tsx): a PDF must
-  // never open for a mode the UI has left — including unmount via logout navigation.
-  useEffect(() => {
+  // never open for a mode the UI has left — including unmount via logout navigation. The layout
+  // effect runs synchronously on commit, so a response arriving before the passive-effect flush
+  // cannot slip past the guard.
+  useLayoutEffect(() => {
     invoiceGeneration.current += 1;
     setInvoiceError(undefined);
     setIsLoading(false);
@@ -60,12 +69,21 @@ export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCo
 
   return (
     <>
-      <div className="flex flex-col items-center py-4 gap-1.5">
-        <QrBasic data={value} />
-        <p className="text-dfxBlue-800 font-semibold text-base">
-          {value.includes('<svg') ? translate('screens/buy', 'QR-bill') : 'GiroCode'}
-        </p>
-      </div>
+      {value !== undefined ? (
+        <div className="flex flex-col items-center py-4 gap-1.5">
+          <QrBasic data={value} />
+          <p className="text-dfxBlue-800 font-semibold text-base">
+            {value.includes('<svg') ? translate('screens/buy', 'QR-bill') : 'GiroCode'}
+          </p>
+        </div>
+      ) : (
+        <StyledInfoText iconColor={IconColor.BLUE}>
+          {translate(
+            'screens/payment',
+            'No QR code is available for the collection account. Please enter the IBAN and the remittance info manually.',
+          )}
+        </StyledInfoText>
+      )}
       <div className="flex flex-col items-center gap-1.5">
         <button
           type="button"

@@ -337,6 +337,7 @@ function sampleGiroCode(
   overrides: {
     line0?: string;
     line1?: string;
+    line2?: string;
     line3?: string;
     iban?: string;
     line9?: string;
@@ -346,7 +347,7 @@ function sampleGiroCode(
   return [
     overrides.line0 ?? 'BCD',
     overrides.line1 ?? '001',
-    '2',
+    overrides.line2 ?? '2',
     overrides.line3 ?? 'SCT',
     'BFRILI22',
     'DFX AG, Bahnhofstrasse 7, 6300 Zug, Schweiz',
@@ -437,6 +438,37 @@ describe('toCollectionIbanGiroCode', () => {
 
     expect(result).toBeDefined();
     expect(result).toBe(expected);
+  });
+
+  it('returns undefined when the charset line is 9 (outside EPC069-12 1..8)', () => {
+    expect(
+      toCollectionIbanGiroCode(sampleGiroCode({ line2: '9' }), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when the charset line is empty', () => {
+    expect(
+      toCollectionIbanGiroCode(sampleGiroCode({ line2: '' }), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE),
+    ).toBeUndefined();
+  });
+
+  it('rewrites when the charset line is explicitly 2 (production value)', () => {
+    const result = toCollectionIbanGiroCode(
+      sampleGiroCode({ line2: '2' }),
+      PERSONAL_GIRO_IBAN,
+      SAMPLE_REMITTANCE,
+    );
+    expect(result).toBeDefined();
+    if (result === undefined) return;
+    expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+  });
+
+  it('returns undefined when line 0 has leading whitespace before BCD (fail-closed, no silent trim)', () => {
+    expect(toCollectionIbanGiroCode(' ' + sampleGiroCode(), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE)).toBeUndefined();
+  });
+
+  it('returns undefined when the payload starts with a leading blank line', () => {
+    expect(toCollectionIbanGiroCode('\n' + sampleGiroCode(), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE)).toBeUndefined();
   });
 
   it('returns undefined when line 0 is not BCD', () => {

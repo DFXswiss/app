@@ -65,18 +65,7 @@ export function PaymentInformationContent({ info, showBank }: PaymentInformation
       info.iban !== undefined && info.remittanceInfo
         ? toCollectionIbanGiroCode(info.paymentRequest, info.iban, info.remittanceInfo)
         : undefined;
-    if (collectionGiroCode) {
-      return <PaymentQrCode value={collectionGiroCode} txId={info.id} collectionAccount />;
-    }
-
-    return (
-      <StyledInfoText iconColor={IconColor.BLUE}>
-        {translate(
-          'screens/payment',
-          'No QR code is available for the collection account. Please enter the IBAN and the remittance info manually.',
-        )}
-      </StyledInfoText>
-    );
+    return <PaymentQrCode value={collectionGiroCode} txId={info.id} collectionAccount />;
   })();
 
   return (

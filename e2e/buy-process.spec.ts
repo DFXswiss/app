@@ -385,7 +385,97 @@ test.describe('Buy Process - UI Flow', () => {
       ),
     ).toBeVisible();
     await expect(paymentDetails.getByText('GiroCode')).not.toBeVisible();
+    await expect(paymentDetails.getByRole('button', { name: 'PDF Invoice' })).toBeVisible();
     await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-qr-fail-closed.png');
+  });
+
+  // The collection account's invoice endpoint has its own failure mode independent of the QR
+  // render: even when the GiroCode displays fine, the invoice call can reject with a stored
+  // remittance-info error, and the hint below the button is the only feedback shown for it.
+  test('should show the stored-detail error when the collection invoice cannot be created', async ({
+    page,
+    request,
+  }) => {
+    const token = await getToken(request);
+
+    // Production-shaped GiroCode (api config: version 001, encoding 2).
+    const paymentRequest = [
+      'BCD',
+      '001',
+      '2',
+      'SCT',
+      'BFRILI22XXX',
+      'DFX AG, Bahnhofstrasse 7, 6300 Zug, Schweiz',
+      'LI21088100002324013AA',
+      'EUR100',
+      '',
+      '',
+      'A1B2-C3D4-E5F6',
+    ].join('\n');
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          ...COLLECTION_IBAN_TOGGLE_PAYMENT_INFOS,
+          paymentRequest,
+        },
+      });
+    });
+
+    // The invoice click is KYC-gated (user?.kyc.dataComplete); force it true so the click reaches
+    // the invoice call instead of redirecting to the profile screen.
+    await page.route('**/v2/user', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+
+      const response = await route.fetch();
+      const upstreamUser = (await response.json()) as Record<string, unknown>;
+      const upstreamKyc = upstreamUser.kyc as Record<string, unknown>;
+
+      await route.fulfill({
+        response,
+        json: { ...upstreamUser, kyc: { ...upstreamKyc, dataComplete: true } },
+      });
+    });
+
+    await page.route('**/v1/buy/paymentInfos/*/invoice*', async (route) => {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        json: {
+          statusCode: 400,
+          message: 'CollectionAccountInvoicePersonalIbanMissing',
+          error: 'Bad Request',
+        },
+      });
+    });
+
+    // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
+    );
+
+    const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
+
+    const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
+    await expect(toggle).toBeVisible({ timeout: 15000 });
+    await toggle.click();
+
+    const qrTab = paymentDetails.getByRole('tablist').filter({ hasText: /^QR Code$/ });
+    await qrTab.click();
+    await expect(paymentDetails.getByText('GiroCode')).toBeVisible();
+
+    await paymentDetails.getByRole('button', { name: 'PDF Invoice' }).click();
+    await expect(
+      paymentDetails.getByText(
+        'The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.',
+      ),
+    ).toBeVisible();
+    await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-invoice-error.png');
   });
 });
 
