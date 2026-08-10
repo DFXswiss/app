@@ -555,18 +555,17 @@ describe('toCollectionIbanGiroCode', () => {
     ).toBeUndefined();
   });
 
-  it('rewrites when the remittance is carried on the structured-reference line', () => {
-    const result = toCollectionIbanGiroCode(
-      sampleGiroCode({ line9: SAMPLE_REMITTANCE, line10: '' }),
-      PERSONAL_GIRO_IBAN,
-      SAMPLE_REMITTANCE,
-    );
-    expect(result).toBeDefined();
-    if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+  it('returns undefined when the remittance is carried on the structured-reference line (not the api shape)', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line9: SAMPLE_REMITTANCE, line10: '' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+      ),
+    ).toBeUndefined();
   });
 
-  it('rewrites a 10-line payload ending at the structured reference (line 10 omitted)', () => {
+  it('returns undefined for a 10-line payload ending at the structured reference (line 10 omitted, not the api shape)', () => {
     const tenLinePayload = [
       'BCD',
       '001',
@@ -580,10 +579,7 @@ describe('toCollectionIbanGiroCode', () => {
       SAMPLE_REMITTANCE,
     ].join('\n');
     expect(tenLinePayload.split('\n')).toHaveLength(10);
-    const result = toCollectionIbanGiroCode(tenLinePayload, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE);
-    expect(result).toBeDefined();
-    if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+    expect(toCollectionIbanGiroCode(tenLinePayload, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE)).toBeUndefined();
   });
 
   it('tolerates surrounding whitespace on the payload remittance line', () => {

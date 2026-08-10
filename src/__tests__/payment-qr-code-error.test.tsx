@@ -186,6 +186,29 @@ describe('PaymentQrCode stale-response guard', () => {
     expect(mockOpenPdf).not.toHaveBeenCalled();
   });
 
+  it('does not open the PDF when the txId changes while the request is in flight', async () => {
+    const { rerender } = render(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(<PaymentQrCode value="BCD\n001" txId={43} collectionAccount />);
+
+    await act(async () => {
+      resolveInvoice({ pdfData: 'JVBERi0x' });
+    });
+
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+    expect(screen.queryByText('Invoice service is unavailable')).not.toBeInTheDocument();
+    const button = screen.getByRole('button', { name: 'PDF Invoice' });
+    expect(button).toBeEnabled();
+  });
+
   it('does not show an error when the collection mode changes while a failing request is in flight', async () => {
     let rejectInvoice: (reason: unknown) => void;
     mockInvoiceFor.mockImplementation(

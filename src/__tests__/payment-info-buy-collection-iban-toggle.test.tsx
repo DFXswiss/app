@@ -442,6 +442,8 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     expect(qrValue).toHaveTextContent(PERSONAL_IBAN);
     expect(qrValue).not.toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
     expect(qrValue.textContent).toBe(paymentRequest);
+    expect(qrValue).toHaveAttribute('data-collection', 'false');
+    expect(qrValue).toHaveAttribute('data-has-value', 'true');
   });
 });
 
