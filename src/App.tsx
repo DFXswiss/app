@@ -76,6 +76,7 @@ const ComplianceReviewScreen = lazy(() => import('./screens/compliance-review.sc
 const ComplianceCallQueuesScreen = lazy(() => import('./screens/compliance-call-queues.screen'));
 const ComplianceCallQueueScreen = lazy(() => import('./screens/compliance-call-queue.screen'));
 const ComplianceCallQueueDetailScreen = lazy(() => import('./screens/compliance-call-queue-detail.screen'));
+const ComplianceNotFoundScreen = lazy(() => import('./screens/compliance-not-found.screen'));
 const SupportDashboardOverviewScreen = lazy(() => import('./screens/support-dashboard-overview.screen'));
 const SupportDashboardScreen = lazy(() => import('./screens/support-dashboard.screen'));
 const SupportDashboardIssueScreen = lazy(() => import('./screens/support-dashboard-issue.screen'));
@@ -461,6 +462,12 @@ export const Routes = [
       {
         path: 'compliance/call-queues/:queue/:userDataId',
         element: withSuspense(<ComplianceCallQueueDetailScreen />),
+      },
+      // Must stay last among the compliance routes: React Router ranks static segments above a splat,
+      // so this only matches paths none of the screens above claim.
+      {
+        path: 'compliance/*',
+        element: withSuspense(<ComplianceNotFoundScreen />),
       },
       {
         path: 'sitemap',
