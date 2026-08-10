@@ -119,3 +119,50 @@ describe('HorizontalBarList — zero max volume branch', () => {
     }
   });
 });
+
+describe('HorizontalBarList — bar width proportional to volume', () => {
+  it('pins fill widths to volume/maxVolume (not the inverse)', () => {
+    render(
+      <HorizontalBarList
+        title="Fiat currencies"
+        currency="CHF"
+        theme="light"
+        rows={[
+          { name: 'CHF', volume: 100, transactions: 10 },
+          { name: 'EUR', volume: 50, transactions: 5 },
+        ]}
+      />,
+    );
+
+    const rows = screen.getAllByTestId('bar-row');
+    const chf = rows.find((el) => el.getAttribute('data-name') === 'CHF');
+    const eur = rows.find((el) => el.getAttribute('data-name') === 'EUR');
+    expect(chf).toBeTruthy();
+    expect(eur).toBeTruthy();
+    const chfFill = chf?.querySelector('[role="presentation"] > div') as HTMLElement;
+    const eurFill = eur?.querySelector('[role="presentation"] > div') as HTMLElement;
+    expect(chfFill.style.width).toBe('100%');
+    expect(eurFill.style.width).toBe('50%');
+  });
+
+  it('assigns distinct backgroundColor for each ranked row index', () => {
+    render(
+      <HorizontalBarList
+        title="Blockchains"
+        currency="CHF"
+        theme="light"
+        rows={[
+          { name: 'A', volume: 40, transactions: 4 },
+          { name: 'B', volume: 30, transactions: 3 },
+          { name: 'C', volume: 20, transactions: 2 },
+          { name: 'D', volume: 10, transactions: 1 },
+        ]}
+      />,
+    );
+
+    const fills = screen
+      .getAllByTestId('bar-row')
+      .map((row) => (row.querySelector('[role="presentation"] > div') as HTMLElement).style.backgroundColor);
+    expect(new Set(fills).size).toBe(4);
+  });
+});

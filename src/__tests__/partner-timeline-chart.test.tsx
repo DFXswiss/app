@@ -181,6 +181,17 @@ describe('timeline charts — thin day is a low point, no-activity day is the ze
     expect(screen.queryAllByTestId('xaxis-annotation')).toHaveLength(0);
   });
 
+  it('pins Sell and Swap series to their own direction values (not Buy)', () => {
+    // Catches timelineSeries(..., 'volume', 'sell') → 'buy' and the same for swap.
+    render(<VolumeTimeChart timeline={timeline} theme="dark" />);
+    expect(screen.getByTestId('point-Sell-0')).toHaveAttribute('data-value', '10');
+    expect(screen.getByTestId('point-Sell-1')).toHaveAttribute('data-value', '1');
+    expect(screen.getByTestId('point-Swap-0')).toHaveAttribute('data-value', '5');
+    expect(screen.getByTestId('point-Swap-1')).toHaveAttribute('data-value', '2');
+    // Buy must stay distinct from Sell on day 0
+    expect(screen.getByTestId('point-Buy-0')).toHaveAttribute('data-value', '100');
+  });
+
   it('table never shows the absent placeholder — every day is a real value', () => {
     render(<VolumeTimeChart timeline={timeline} theme="dark" />);
     fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));

@@ -63,7 +63,9 @@ export function usePartnerDashboardGuard(redirectPath = '/', isActive = true) {
   }, [session, isLoggedIn, isInitialized, navigate, isActive, redirectPath]);
 }
 
-function useUserRoleGuard(requiresUserRoles: UserRole[], redirectPath = '/', isActive = true) {
+// Defaults removed: every caller passes redirectPath and isActive explicitly.
+// Keeping defaults left two unreachable branches and blocked 100 % branch coverage.
+function useUserRoleGuard(requiresUserRoles: UserRole[], redirectPath: string, isActive: boolean) {
   const { isLoggedIn } = useSessionContext();
   const { isInitialized } = useWalletContext();
   const { navigate } = useNavigation();
@@ -73,7 +75,9 @@ function useUserRoleGuard(requiresUserRoles: UserRole[], redirectPath = '/', isA
     if (isActive && isInitialized && (!isLoggedIn || (session && !requiresUserRoles.includes(session.role)))) {
       navigate(redirectPath, { setRedirect: true });
     }
-  }, [session, isLoggedIn, isInitialized, navigate, isActive]);
+  // requiresUserRoles is a stable allow-list from the caller (module const or inline
+  // literal); listing it would re-fire every render for `[UserRole.ADMIN]` callers.
+  }, [session, isLoggedIn, isInitialized, navigate, isActive, redirectPath]);
 }
 
 function useSessionGuard(requireActiveAddress: boolean, redirectPath: string, isActive: boolean) {

@@ -31,9 +31,8 @@ export function sequentialColor(
 ): string {
   const palette = SEQUENTIAL_BAR_COLORS_BY_THEME[theme];
   if (total <= 1) return palette[0];
-  const max = palette.length - 1;
-  const step = Math.round((index / Math.max(total - 1, 1)) * max);
-  return palette[Math.min(step, max)];
+  // Cycle the contrast-safe palette so long lists never fall below 3:1.
+  return palette[index % palette.length];
 }
 
 export interface NamedVolumeRow {
@@ -51,8 +50,19 @@ export function hasActivity(row: Pick<NamedVolumeRow, 'volume' | 'transactions'>
   return row.volume !== 0 || row.transactions !== 0;
 }
 
-/** Sort descending by volume. Aggregate tail as "Sonstige" if > maxItems. */
-export function rankNamedVolumes(rows: NamedVolumeRow[], maxItems = 12): NamedVolumeRow[] {
+/**
+ * Sort descending by volume. Aggregate the tail into one "other" row when the list
+ * exceeds `maxItems`, then re-sort so a large aggregate does not sit last and
+ * inflate `maxVolume` for the bar scale.
+ *
+ * `otherLabel` is supplied by the caller so it can go through i18n (default English
+ * base key "Other" — never hard-code a locale-specific word here).
+ */
+export function rankNamedVolumes(
+  rows: NamedVolumeRow[],
+  maxItems = 12,
+  otherLabel = 'Other',
+): NamedVolumeRow[] {
   const sorted = [...rows].sort((a, b) => b.volume - a.volume);
   if (sorted.length <= maxItems) return sorted;
   const head = sorted.slice(0, maxItems - 1);
@@ -63,6 +73,6 @@ export function rankNamedVolumes(rows: NamedVolumeRow[], maxItems = 12): NamedVo
     vol += row.volume;
     tx += row.transactions;
   }
-  head.push({ name: 'Sonstige', volume: vol, transactions: tx });
-  return head;
+  head.push({ name: otherLabel, volume: vol, transactions: tx });
+  return head.sort((a, b) => b.volume - a.volume);
 }

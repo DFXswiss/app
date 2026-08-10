@@ -31,10 +31,17 @@ export function ReferralBlock({ referral }: ReferralBlockProps): JSX.Element {
   const paidPct = paidShare * 100;
   const openPct = openShare * 100;
 
-  const openText = formatAmount(referral.creditOpen, currency, 2, locale);
+  // Hero number is currency-free: the adjacent <span>{currency}</span> owns the unit
+  // (formatAmount would otherwise append it and produce "285.40 EUR EUR").
+  // paid/earned/volume keep formatAmount — they have no second currency marker.
+  const openText = referral.creditOpen.toLocaleString(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
   const paidText = formatAmount(referral.creditPaid, currency, 2, locale);
   const earnedText = formatAmount(referral.creditEarned, currency, 2, locale);
   const volumeText = formatAmount(referral.volume, currency, 2, locale);
+  const openWithCurrency = `${openText} ${currency}`;
 
   return (
     <section className="partner-card" data-testid="referral-block">
@@ -77,14 +84,15 @@ export function ReferralBlock({ referral }: ReferralBlockProps): JSX.Element {
         <div
           className="flex h-3 rounded overflow-hidden partner-track"
           role="img"
-          aria-label={`${translate('Credit paid out')}: ${paidText}, ${translate('Credit open')}: ${openText}`}
+          aria-label={`${translate('Credit paid out')}: ${paidText}, ${translate('Credit open')}: ${openWithCurrency}`}
         >
           {paidPct > 0 && (
             <div
               className="h-full"
-              style={{ width: `${paidPct}%`, backgroundColor: 'var(--surface-2)' }}
+              // --text-secondary: ≥3:1 on --surface in both themes (was --surface-2 ≈ 1.1:1).
+              style={{ width: `${paidPct}%`, backgroundColor: 'var(--text-secondary)' }}
               data-testid="referral-split-paid"
-              data-fill-token="var(--surface-2)"
+              data-fill-token="var(--text-secondary)"
             />
           )}
           {openPct > 0 && (
@@ -100,7 +108,7 @@ export function ReferralBlock({ referral }: ReferralBlockProps): JSX.Element {
           <span className="inline-flex items-center gap-1.5">
             <span
               className="w-2 h-2 rounded-sm inline-block shrink-0"
-              style={{ backgroundColor: 'var(--surface-2)', border: '1px solid var(--border)' }}
+              style={{ backgroundColor: 'var(--text-secondary)' }}
               aria-hidden="true"
             />
             {translate('Credit paid out')}:{' '}
@@ -116,7 +124,7 @@ export function ReferralBlock({ referral }: ReferralBlockProps): JSX.Element {
             />
             {translate('Credit open')}:{' '}
             <span className="tabular-nums" style={{ color: 'var(--text)' }}>
-              {openText}
+              {openWithCurrency}
             </span>
           </span>
         </div>

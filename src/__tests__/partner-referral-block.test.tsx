@@ -19,7 +19,9 @@ describe('ReferralBlock — creditOpen is the hero', () => {
     expect(screen.getByTestId('referral-block')).toBeInTheDocument();
 
     const hero = screen.getByTestId('referral-credit-open');
-    expect(hero).toHaveTextContent('285.40 EUR');
+    // Number only — currency is the sibling span (avoids "EUR EUR" from formatAmount + span).
+    expect(hero).toHaveTextContent('285.40');
+    expect(hero).not.toHaveTextContent('EUR');
     // Hero uses a materially larger type scale than the supporting figures
     expect(hero.className).toMatch(/text-2xl|text-3xl/);
     expect(hero.className).toContain('tabular-nums');
@@ -53,7 +55,9 @@ describe('ReferralBlock — earned/paid/open as one split bar', () => {
   it('labels both segments directly with their exact amounts, not just the bar', () => {
     render(<ReferralBlock referral={referral({ creditEarned: 1000, creditPaid: 750, creditOpen: 250 })} />);
     expect(screen.getByTestId('referral-credit-paid')).toHaveTextContent('750.00 EUR');
-    expect(screen.getByTestId('referral-credit-open')).toHaveTextContent('250.00 EUR');
+    // Hero figure is currency-free; unit sits in the adjacent span
+    expect(screen.getByTestId('referral-credit-open')).toHaveTextContent('250.00');
+    expect(screen.getByTestId('referral-credit-open').closest('div')).toHaveTextContent('EUR');
     expect(screen.getByTestId('referral-credit-earned')).toHaveTextContent('1,000.00 EUR');
   });
 
@@ -75,7 +79,7 @@ describe('ReferralBlock — earned/paid/open as one split bar', () => {
     expect(paidToken).not.toMatch(forbidden);
     expect(openToken).not.toMatch(forbidden);
     // Only theme-neutral tokens back the two segments
-    expect(paidToken).toBe('var(--surface-2)');
+    expect(paidToken).toBe('var(--text-secondary)');
     expect(openToken).toBe('var(--text)');
   });
 });

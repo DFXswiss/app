@@ -1,5 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import PartnerDashboardView from 'src/partner-dashboard/App';
+import { buildPartnerStatisticFixture } from 'src/partner-dashboard/fixtures/partner-statistic.fixture';
+import { formatAmount, formatAmountWhole, formatCount } from 'src/partner-dashboard/util/format';
 import { mockSettingsState } from './helpers/mock-settings-context';
 
 jest.mock('src/contexts/settings.context', () => ({
@@ -78,5 +80,40 @@ describe('partner dashboard KPI groups', () => {
     // Document order: period grid before all-time grid
     const order = periodGrid.compareDocumentPosition(alltimeGrid);
     expect(order & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('pins each period KPI to the matching fixture field (not a sibling)', async () => {
+    // Deterministic fixture values — catches activeUsers↔newUsers, volume.buy↔total,
+    // formatAmountWhole↔formatAmount swaps that membership-only tests miss.
+    const fixture = buildPartnerStatisticFixture();
+    const locale = 'en-US';
+    const currency = fixture.currency;
+
+    render(<PartnerDashboardView />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('kpi-volume')).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('kpi-volume')).toHaveTextContent(
+      formatAmountWhole(fixture.totals.volume.total, currency, locale),
+    );
+    expect(screen.getByTestId('kpi-transactions')).toHaveTextContent(
+      formatCount(fixture.totals.transactions.total, locale),
+    );
+    expect(screen.getByTestId('kpi-avg')).toHaveTextContent(
+      formatAmount(fixture.totals.averageTransactionVolume, currency, 2, locale),
+    );
+    expect(screen.getByTestId('kpi-active-users')).toHaveTextContent(
+      formatCount(fixture.totals.activeUsers, locale),
+    );
+    expect(screen.getByTestId('kpi-new-users')).toHaveTextContent(
+      formatCount(fixture.totals.newUsers, locale),
+    );
+    // active and new must not be interchangeable
+    expect(fixture.totals.activeUsers).not.toBe(fixture.totals.newUsers);
+    expect(screen.getByTestId('kpi-active-users')).not.toHaveTextContent(
+      formatCount(fixture.totals.newUsers, locale),
+    );
   });
 });

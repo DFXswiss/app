@@ -60,4 +60,23 @@ describe('partner i18n helpers', () => {
     expect(result.current.locale).toMatch(/-/);
     expect(typeof result.current.language).toBe('string');
   });
+
+  it('resolves German partner labels and de-CH number locale via screens/partner namespace', async () => {
+    // Catches PARTNER_NS → 'screens/partners' which silently falls back to English keys.
+    const previous = i18n.language;
+    try {
+      await i18n.changeLanguage('de');
+      expect(partnerTranslate('Total volume')).toBe('Gesamtvolumen');
+      expect(partnerTranslate('This period')).toBe('Dieser Zeitraum');
+      expect(getPartnerLocale()).toBe('de-CH');
+      // de-CH formats with apostrophe thousands separators
+      const formatted = (1234.5).toLocaleString(getPartnerLocale(), {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      expect(formatted).toMatch(/1['’\u202f\s]?234/);
+    } finally {
+      await i18n.changeLanguage(previous || 'en');
+    }
+  });
 });

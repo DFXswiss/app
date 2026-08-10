@@ -27,7 +27,7 @@ export function HorizontalBarList({
   testId,
 }: HorizontalBarListProps): JSX.Element {
   const { translate, locale } = usePartnerTranslation();
-  const ranked = rankNamedVolumes(rows.filter(hasActivity));
+  const ranked = rankNamedVolumes(rows.filter(hasActivity), 12, translate('Other'));
   const maxVolume = ranked.reduce((m, r) => Math.max(m, r.volume), 0);
 
   return (

@@ -22,10 +22,16 @@ export const SERIES_COLORS_BY_THEME: Record<
   },
 };
 
-/** Sequential bar shades — cool blue family, theme-aware (not pod hex in component code). */
+/**
+ * Sequential bar shades — cool blue family, theme-aware.
+ * Each step is ≥ 3:1 contrast against `--surface` (WCAG 1.4.11 non-text UI):
+ *   light surface #ffffff: 4.54 / 3.68 / 3.27 / 3.08
+ *   dark surface  #0d4070: 3.03 / 3.78 / 4.74 / 5.87
+ * Longer lists cycle this set (see sequentialColor) rather than fading past the floor.
+ */
 export const SEQUENTIAL_BAR_COLORS_BY_THEME: Record<PartnerTheme, readonly string[]> = {
-  light: ['#1e6ef7', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe', '#dbeafe', '#eff6ff', '#f8fafc'],
-  dark: ['#3f86fb', '#5a81bb', '#4a6fa0', '#3d5a80', '#2a4a70', '#1d3a5c', '#152d4a', '#0d2240'],
+  light: ['#1e6ef7', '#3b82f6', '#4f8cf7', '#5e90f7'],
+  dark: ['#3f86fb', '#5a9cf5', '#7eb0f5', '#a0c4f0'],
 };
 
 export function readStoredTheme(): PartnerTheme | null {

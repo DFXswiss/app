@@ -685,6 +685,36 @@ describe('App.tsx route table coverage', () => {
     expect(screen.getByTestId('layout')).toBeInTheDocument();
   }, 60000);
 
+  it('mounts PartnerDashboardScreen only on /partner/dashboard (path is not decorative)', async () => {
+    // Catches path: 'partner/dashboard' → 'partner/dashboards' which left 1001 tests green.
+    const { factory, getRouter } = createCapturingRouterFactory(['/partner/dashboard']);
+    render(<App routerFactory={factory} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('screen-partner-dashboard.screen')).toBeInTheDocument();
+    });
+    expect(getRouter().state.location.pathname).toBe('/partner/dashboard');
+
+    await act(async () => {
+      await getRouter().navigate('/partner/dashboards');
+    });
+    // Wrong path must not still show the partner screen
+    expect(screen.queryByTestId('screen-partner-dashboard.screen')).not.toBeInTheDocument();
+  });
+
+  it('declares path partner/dashboard on the Routes table (exact string)', () => {
+    type RouteNode = { path?: string; children?: RouteNode[] };
+    function collect(routes: RouteNode[], out: string[] = []): string[] {
+      for (const r of routes) {
+        if (r.path) out.push(r.path);
+        if (r.children) collect(r.children, out);
+      }
+      return out;
+    }
+    const paths = collect(Routes as RouteNode[]);
+    expect(paths).toContain('partner/dashboard');
+    expect(paths).not.toContain('partner/dashboards');
+  });
+
   it('navigates to service home when WidgetParams.service is set (BUY)', async () => {
     const { factory, getRouter } = createCapturingRouterFactory();
     render(<App routerFactory={factory} params={{ service: Service.BUY }} />);

@@ -21,6 +21,9 @@ export default function PartnerDashboardScreen(): JSX.Element {
     backButton: false,
     noMaxWidth: true,
     noPadding: true,
+    // Layout default is text-center; the dashboard is a data surface with
+    // left-aligned labels over left-aligned figures (16 other screens do the same).
+    textStart: true,
   });
 
   return <PartnerDashboardView />;

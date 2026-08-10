@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PartnerGranularity, PartnerStatistic, PartnerTimeline } from 'src/dto/partner-statistic.dto';
 import { usePartnerDashboard } from 'src/hooks/partner-dashboard.hook';
 import { ErrorState } from './components/error-state';
@@ -21,13 +21,17 @@ import {
 import { usePartnerTranslation } from './util/i18n';
 import { themeClassName, usePartnerTheme } from './util/theme';
 
-function periodRange(days: PeriodDays): { from: string; to: string } {
+/** Exported for unit tests that pin the inclusive day window (30 → days-1). */
+export function periodRange(days: PeriodDays): { from: string; to: string } {
   const to = new Date();
   const from = new Date(to);
   from.setUTCDate(from.getUTCDate() - (days - 1));
   from.setUTCHours(0, 0, 0, 0);
   return { from: from.toISOString(), to: to.toISOString() };
 }
+
+/** Load failure: raw API message, or a marker localized only at render time. */
+type LoadError = { kind: 'raw'; message: string } | { kind: 'fallback' };
 
 /**
  * Partner dashboard presentation (charts, KPIs, referral, breakdowns).
@@ -44,35 +48,54 @@ export default function PartnerDashboardView(): JSX.Element {
   const [statistic, setStatistic] = useState<PartnerStatistic | null>(null);
   const [timeline, setTimeline] = useState<PartnerTimeline | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LoadError | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  // Period/granularity can re-trigger load while one is in flight — only the newest write wins
+  // (same pattern as support-dashboard-overview.screen.tsx statsRequestId).
+  const loadRequestId = useRef(0);
 
   const range = useMemo(() => periodRange(periodDays), [periodDays]);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    const requestId = ++loadRequestId.current;
+    const isCurrent = (): boolean => requestId === loadRequestId.current;
+
+    if (isCurrent()) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const query = { from: range.from, to: range.to, granularity };
       const [stat, tl] = await Promise.all([getPartnerStatistic(query), getPartnerTimeline(query)]);
+      if (!isCurrent()) return;
       setStatistic(stat);
       setTimeline(tl);
     } catch (err) {
-      const message =
-        err instanceof Error && err.message
-          ? err.message
-          : translate('Partner metrics could not be loaded.');
-      setError(message);
+      if (!isCurrent()) return;
+      // Store a stable marker / raw message — never call translate() here. Language switches
+      // rebuild `t` and would otherwise re-run load (see support-dashboard-overview).
+      if (err instanceof Error && err.message) {
+        setError({ kind: 'raw', message: err.message });
+      } else {
+        setError({ kind: 'fallback' });
+      }
       setStatistic(null);
       setTimeline(null);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [getPartnerStatistic, getPartnerTimeline, range.from, range.to, granularity, translate]);
+  }, [getPartnerStatistic, getPartnerTimeline, range.from, range.to, granularity]);
 
   useEffect(() => {
     void load();
   }, [load, reloadToken]);
+
+  const errorMessage =
+    error == null
+      ? null
+      : error.kind === 'fallback'
+        ? translate('Partner metrics could not be loaded.')
+        : error.message;
 
   const currency = statistic?.currency ?? 'CHF';
   const conversionRate =
@@ -111,11 +134,11 @@ export default function PartnerDashboardView(): JSX.Element {
 
         {loading && <DashboardSkeleton />}
 
-        {!loading && error && (
-          <ErrorState message={error} onRetry={() => setReloadToken((t) => t + 1)} />
+        {!loading && errorMessage && (
+          <ErrorState message={errorMessage} onRetry={() => setReloadToken((t) => t + 1)} />
         )}
 
-        {!loading && !error && statistic && (
+        {!loading && error == null && statistic && (
           <>
             <section className="space-y-3" data-testid="kpi-period-section">
               {/*

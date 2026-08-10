@@ -140,38 +140,56 @@ describe('partner timeline series', () => {
     expect(ranked.map((r) => r.name)).toEqual(['C', 'B', 'D']);
   });
 
-  it('aggregates the tail as Sonstige when more rows than maxItems', () => {
-    // 15 rows, maxItems 5 → head of 4 + one "Sonstige" summing the remaining 11
+  it('aggregates the tail as Other (caller label) and re-sorts so a large aggregate ranks by volume', () => {
+    // 15 rows, maxItems 5 → head of 4 + one "Other" summing the remaining 11
     const rows = Array.from({ length: 15 }, (_, i) => ({
       name: `Asset-${i}`,
       volume: 100 - i,
       transactions: i + 1,
     }));
-    const ranked = rankNamedVolumes(rows, 5);
+    const ranked = rankNamedVolumes(rows, 5, 'Other');
     expect(ranked).toHaveLength(5);
-    expect(ranked.slice(0, 4).map((r) => r.name)).toEqual([
-      'Asset-0',
-      'Asset-1',
-      'Asset-2',
-      'Asset-3',
-    ]);
-    const sonstige = ranked[4];
-    expect(sonstige.name).toBe('Sonstige');
-    // Tail starts at index 4 (maxItems - 1) of the volume-sorted list
+    // Tail sum is large enough to outrank some head rows after re-sort
+    const other = ranked.find((r) => r.name === 'Other');
+    expect(other).toBeDefined();
     const tail = [...rows].sort((a, b) => b.volume - a.volume).slice(4);
-    expect(sonstige.volume).toBe(tail.reduce((s, r) => s + r.volume, 0));
-    expect(sonstige.transactions).toBe(tail.reduce((s, r) => s + r.transactions, 0));
+    expect(other?.volume).toBe(tail.reduce((s, r) => s + r.volume, 0));
+    expect(other?.transactions).toBe(tail.reduce((s, r) => s + r.transactions, 0));
+    // Full list is volume-descending (Other not stuck at the end by append order)
+    for (let i = 1; i < ranked.length; i++) {
+      expect(ranked[i - 1].volume).toBeGreaterThanOrEqual(ranked[i].volume);
+    }
   });
 
-  it('returns the full sorted list when length equals maxItems (no Sonstige)', () => {
+  it('returns the full sorted list when length equals maxItems (no Other row)', () => {
     const rows = Array.from({ length: 3 }, (_, i) => ({
       name: `R${i}`,
       volume: i + 1,
       transactions: 1,
     }));
-    const ranked = rankNamedVolumes(rows, 3);
+    const ranked = rankNamedVolumes(rows, 3, 'Other');
     expect(ranked).toHaveLength(3);
-    expect(ranked.map((r) => r.name)).not.toContain('Sonstige');
+    expect(ranked.map((r) => r.name)).not.toContain('Other');
+  });
+
+  it('uses a large Other aggregate as maxVolume scale after re-sort (not stuck last)', () => {
+    // 30 equal rows → Other sum dwarfs each single head row
+    const rows = Array.from({ length: 30 }, (_, i) => ({
+      name: `R${i}`,
+      volume: 10,
+      transactions: 1,
+    }));
+    const ranked = rankNamedVolumes(rows, 12, 'Other');
+    expect(ranked[0].name).toBe('Other');
+    expect(ranked[0].volume).toBe(19 * 10);
+  });
+
+  it('sequentialColor yields distinct colours for consecutive indices (cycles contrast-safe palette)', () => {
+    const n = 4;
+    const colors = Array.from({ length: n }, (_, i) => sequentialColor(i, n, 'light'));
+    expect(new Set(colors).size).toBe(n);
+    // Cycle: index n reuses palette[0]
+    expect(sequentialColor(n, n + 1, 'light')).toBe(sequentialColor(0, n + 1, 'light'));
   });
 
   it('hasActivity drops only rows with zero volume AND zero transactions', () => {

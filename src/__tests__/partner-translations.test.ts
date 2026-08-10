@@ -48,6 +48,7 @@ const PARTNER_KEYS = [
   'Shows how many operations happened in each period, split into buy, sell and swap.',
   'Date',
   'No data.',
+  'Other',
   'Show as table',
   'Hide table',
   'Referral',

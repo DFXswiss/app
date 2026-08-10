@@ -46,53 +46,60 @@ const FIAT_CHF = {
   instantSellable: false,
 };
 
-/** Constant filled statistic body — values fixed; not derived from Date.now(). */
+/**
+ * Constant filled statistic body — values fixed; not derived from Date.now().
+ *
+ * All-time figures are deliberately invented round numbers (same order of magnitude
+ * as a busy partner, not production partner data). The presentation fixture under
+ * src/partner-dashboard/fixtures/ documents real production-checked values for unit
+ * tests; handbook screenshots must not republish those figures.
+ */
 const FILLED_STATISTIC = {
   period: { from: PERIOD.from, to: PERIOD.to },
   currency: 'CHF' as const,
   totals: {
-    volume: { buy: 214850.4, sell: 22310.75, swap: 8640.2, total: 245801.35 },
-    transactions: { buy: 1842, sell: 312, swap: 96, total: 2250 },
-    averageTransactionVolume: 109.25,
-    activeUsers: 1286,
-    newUsers: 214,
+    volume: { buy: 180000, sell: 24000, swap: 6000, total: 210000 },
+    transactions: { buy: 1500, sell: 300, swap: 100, total: 1900 },
+    averageTransactionVolume: 110.5,
+    activeUsers: 1200,
+    newUsers: 200,
   },
   allTime: {
-    volume: { buy: 11858002.52, sell: 855027.41, total: 12713029.93 },
-    registeredUsers: 126547,
-    tradingUsers: 24360,
+    volume: { buy: 9_000_000, sell: 1_000_000, total: 10_000_000 },
+    registeredUsers: 100_000,
+    tradingUsers: 20_000,
   },
   breakdown: {
     assets: [
-      { name: 'BTC', blockchain: 'Bitcoin', direction: 'Buy', volume: 98420.5, transactions: 620 },
-      { name: 'ETH', blockchain: 'Ethereum', direction: 'Buy', volume: 54210.3, transactions: 410 },
-      { name: 'USDT', blockchain: 'Ethereum', direction: 'Buy', volume: 28100.0, transactions: 280 },
-      { name: 'XMR', blockchain: 'Monero', direction: 'Buy', volume: 18450.6, transactions: 190 },
-      { name: 'BTC', blockchain: 'Bitcoin', direction: 'Sell', volume: 12800.4, transactions: 145 },
-      { name: 'LTC', blockchain: 'Litecoin', direction: 'Buy', volume: 8920.0, transactions: 95 },
+      { name: 'BTC', blockchain: 'Bitcoin', direction: 'Buy', volume: 80000, transactions: 500 },
+      { name: 'ETH', blockchain: 'Ethereum', direction: 'Buy', volume: 45000, transactions: 350 },
+      { name: 'USDT', blockchain: 'Ethereum', direction: 'Buy', volume: 25000, transactions: 250 },
+      { name: 'XMR', blockchain: 'Monero', direction: 'Buy', volume: 15000, transactions: 150 },
+      { name: 'BTC', blockchain: 'Bitcoin', direction: 'Sell', volume: 12000, transactions: 120 },
+      { name: 'LTC', blockchain: 'Litecoin', direction: 'Buy', volume: 8000, transactions: 80 },
     ],
     fiatCurrencies: [
-      { name: 'CHF', volume: 142000.0, transactions: 1120 },
-      { name: 'EUR', volume: 78500.5, transactions: 780 },
+      { name: 'CHF', volume: 120000, transactions: 1000 },
+      { name: 'EUR', volume: 70000, transactions: 700 },
       { name: 'USD', volume: 0, transactions: 0 },
     ],
     blockchains: [
-      { name: 'Bitcoin', volume: 111220.9, transactions: 765 },
-      { name: 'Ethereum', volume: 87520.65, transactions: 778 },
-      { name: 'Monero', volume: 18450.6, transactions: 190 },
-      { name: 'Litecoin', volume: 8920.0, transactions: 95 },
+      { name: 'Bitcoin', volume: 92000, transactions: 620 },
+      { name: 'Ethereum', volume: 70000, transactions: 600 },
+      { name: 'Monero', volume: 15000, transactions: 150 },
+      { name: 'Litecoin', volume: 8000, transactions: 80 },
     ],
     paymentMethods: [
-      { name: 'Bank', volume: 156400.0, transactions: 1380 },
+      { name: 'Bank', volume: 140000, transactions: 1200 },
       { name: 'Card', volume: 0, transactions: 0 },
-      { name: 'OnChain', volume: 37301.0, transactions: 350 },
+      { name: 'OnChain', volume: 35000, transactions: 300 },
     ],
   },
   referral: {
-    volume: 42180.5,
-    creditEarned: 1265.4,
-    creditPaid: 980.0,
-    creditOpen: 285.4,
+    volume: 40000,
+    creditEarned: 1200,
+    creditPaid: 900,
+    creditOpen: 300,
     currency: 'EUR' as const,
   },
   meta: { generatedAt: '2026-07-01T08:00:00.000Z' },
@@ -257,6 +264,17 @@ async function installPartnerApi(page: Page, mode: PartnerMockMode): Promise<voi
       return;
     }
 
+    // Statistic paths must be explicitly handled — a rename must fail the test loudly,
+    // not return an empty array that crashes the UI with a confusing shape error.
+    if (path.startsWith('/v1/statistic/')) {
+      await fulfillJson(
+        route,
+        { statusCode: 501, message: `Unmocked statistic path in e2e: ${path}` },
+        501,
+      );
+      return;
+    }
+
     // Harmless default for any other bootstrap GET the shell may fire.
     await fulfillJson(route, []);
   });
@@ -388,12 +406,34 @@ const screenshotOpts = {
 test.describe('Partner Dashboard - Visual Regression', () => {
   // Start at the repo-default desktop size; each test grows the viewport to fit content
   // before the shot (see fitViewportToContent).
+  // timezoneId + locale pin axis labels (toLocaleDateString) independent of host TZ.
   test.use({
     viewport: { width: 1280, height: 720 },
     reducedMotion: 'reduce',
+    timezoneId: 'UTC',
+    locale: 'en-US',
   });
 
   const token = partnerJwt();
+
+  test('redirects away when the session role is not NonCustodialWalletPartner', async ({ page }) => {
+    // No screenshot — proves the client guard, not just jsdom unit tests.
+    const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const userToken = `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+      account: 1,
+      user: 1,
+      role: 'User',
+      exp: 4102444800,
+    })}.synthetic`;
+
+    await freezeTime(page);
+    await installPartnerApi(page, 'filled');
+    await page.goto(`/partner/dashboard?session=${userToken}&lang=en`);
+    await page.waitForLoadState('domcontentloaded');
+
+    await expect(page.getByTestId('partner-dashboard-root')).toHaveCount(0, { timeout: 15000 });
+    await expect(page).not.toHaveURL(/\/partner\/dashboard/);
+  });
 
   test('dashboard-light — filled data, light theme', async ({ page }) => {
     await freezeTime(page);
@@ -410,8 +450,10 @@ test.describe('Partner Dashboard - Visual Regression', () => {
     await expect(page.getByTestId('volume-time-chart')).toBeVisible();
     await waitChartsSettled(page);
 
-    // Axis labels come from the frozen period (1 Jun … 30 Jun 2026).
-    await expect(page.locator('.apexcharts-xaxis-texts-g').getByText(/1\s*Jun|Jun\s*1/).first()).toBeVisible();
+    // First non-empty axis label is exactly the period start (UTC + en-US → "Jun 1").
+    // Apex nests a <tspan> so element textContent is sometimes "Jun 1Jun 1"; assert the tspan.
+    const firstTickLabel = page.locator('.apexcharts-xaxis-texts-g text tspan').filter({ hasText: /\S/ }).first();
+    await expect(firstTickLabel).toHaveText(/^Jun 1$/);
 
     await fitViewportToContent(page);
     await expect(page).toHaveScreenshot('dashboard-light.png', screenshotOpts);

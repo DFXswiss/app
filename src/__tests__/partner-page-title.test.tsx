@@ -78,6 +78,7 @@ describe('partner dashboard page title appears once', () => {
     expect(last.noPadding).toBe(true);
     expect(last.noMaxWidth).toBe(true);
     expect(last.backButton).toBe(false);
+    expect(last.textStart).toBe(true);
 
     // Drain async fixture load so the suite does not warn about unwrapped updates.
     await waitFor(() => {
