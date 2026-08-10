@@ -100,26 +100,29 @@ export function canOfferCollectionIban(info: {
  * Rewrites a GiroCode (EPC069-12) payment request so line 6 (IBAN) becomes the DFX shared EUR
  * collection IBAN. The rebuild joins lines with `\n` (normalizing CRLF) and drops trailing blank
  * lines; leading whitespace is NOT tolerated (fail-closed — no silent repair). No other field
- * is altered. Fail-closed: returns undefined when personalIban or remittanceInfo is missing
- * (callers pass quote fields through unchanged; this function is the single gate — attribution
- * and matching are impossible without them). Also returns undefined unless the payload is a
- * well-formed SCT GiroCode (full 11-plus-line shape, version 001/002, charset line index 2 in
- * '1'..'8') whose IBAN line matches the given personal IBAN (whitespace/case ignored) and whose
- * remittance is carried on the unstructured line 10 only and equals the quote's remittance info.
- * This function does not implement ISO 11649 structured-reference validation; the quote
- * reference this frontend receives is a bankUsage string, not an ISO 11649 structured
- * reference. A populated structured-reference carrier (line 9) is therefore outside the shape
- * this function validates and is refused fail-closed — the worst case is no rewritten QR, while
- * manual IBAN entry and the original PDF invoice both remain available. Swiss QR-Bill SVG
- * payloads are never rewritten — callers must treat undefined as "no QR available".
+ * is altered. Fail-closed: returns undefined when personalIban, remittanceInfo or amount is
+ * missing (callers pass quote fields through unchanged; this function is the single gate —
+ * attribution and matching are impossible without them). Also returns undefined unless the
+ * payload is a well-formed SCT GiroCode (full 11-plus-line shape, version 001/002, charset line
+ * index 2 in '1'..'8') whose IBAN line matches the given personal IBAN (whitespace/case ignored),
+ * whose amount line (line 7) matches the quote amount (currency prefix `EUR`, numeric equality —
+ * i.e. `EUR100` and `EUR100.00` both match `100`), and whose remittance is carried on the
+ * unstructured line 10 only and equals the quote's remittance info. This function does not
+ * implement ISO 11649 structured-reference validation; the quote reference this frontend
+ * receives is a bankUsage string, not an ISO 11649 structured reference. A populated
+ * structured-reference carrier (line 9) is therefore outside the shape this function validates
+ * and is refused fail-closed — the worst case is no rewritten QR, while manual IBAN entry and
+ * the original PDF invoice both remain available. Swiss QR-Bill SVG payloads are never
+ * rewritten — callers must treat undefined as "no QR available".
  */
 export function toCollectionIbanGiroCode(
   paymentRequest: string,
   personalIban: string | undefined,
   remittanceInfo: string | undefined,
+  amount: number | undefined,
 ): string | undefined {
   // Attribution/matching are impossible without them; callers narrow nothing.
-  if (personalIban === undefined || remittanceInfo === undefined) return undefined;
+  if (personalIban === undefined || remittanceInfo === undefined || amount === undefined) return undefined;
 
   if (paymentRequest.includes('<svg')) return undefined;
 
@@ -131,6 +134,9 @@ export function toCollectionIbanGiroCode(
   // EPC069-12 character set: values '1'..'8' only.
   if (!/^[1-8]$/.test(lines[2])) return undefined;
   if (lines[3] !== 'SCT') return undefined;
+
+  if (!lines[7].startsWith('EUR')) return undefined;
+  if (Number(lines[7].slice(3)) !== amount) return undefined;
 
   const trimmedRemittance = remittanceInfo.trim();
   if (!trimmedRemittance) return undefined;
