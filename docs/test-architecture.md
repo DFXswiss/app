@@ -53,9 +53,12 @@ suite; the number of tests is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every
 external provider, on two levels — the API mocks its own outbound calls, and the Docker network it sits
-on has no route to the internet at all. The second level is the load-bearing one, because around twenty
-integrations use vendor SDKs, `graphql-request`, ethers providers or bare `fetch` and bypass the API's
-central HTTP wrapper entirely.
+on has no route to the internet at all. The second level is the load-bearing one, and
+`e2e-stack/env/api.env` records why: the `loc` mock covers only calls made through the API's central
+HTTP wrapper, so an integration reaching out through a vendor SDK, `graphql-request`, an ethers provider
+or bare `fetch` goes straight past it. What guarantees that no external system is contacted is therefore
+the network, not the mock. How many integrations bypass the wrapper is a property of the API and not
+verifiable from this repository.
 
 The details — the factories and the states that are deliberately not achievable — are in
 `e2e-stack/README.md` and `e2e-stack/docs/test-data.md`.
