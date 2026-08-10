@@ -42,9 +42,12 @@ reason to leave the bug unreported.
 measured numbers for the current state, and points at the canonical
 cross-repository description in `DFXswiss/api`. Read it before adding a test
 layer, moving a test between layers, or extending the full-stack harness. (Given
-as a path rather than a link on purpose: the handbook build renders every
-markdown file to HTML and its integrity check rejects a link that resolves to a
-`.md` file, which is why no markdown file in this repository links to another.)
+as a path rather than a link on purpose: the handbook build renders every markdown
+file to HTML, and its integrity check then requires every relative reference
+beginning with `docs/`, `assets/` or `screenshots/` to exist in that output — which
+a reference to a `.md` file never does, since only the rendered `.html` is there.
+References outside those three prefixes are unaffected, which is why the link to
+`e2e-stack/README.md` further down is fine.)
 
 Two obligations follow from it for every pull request:
 
