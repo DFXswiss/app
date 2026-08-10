@@ -216,7 +216,7 @@ the "level 50 but no limit granted" case instead.
 
 ### `cleanupCreatedData()`
 
-Deletes every row tracked during this process (`{ table, id }`) in reverse creation order. Best-effort; returns `{ deleted, errors }`.
+Deletes every row tracked during this process (`{ table, id }`) in reverse creation order, descending into rows that reference them by foreign key first — including rows the application itself wrote and no test registered. Returns `{ deleted, errors }` on success and stays silent; if any delete fails, the failed references are re-registered for the next call and it throws an `AggregateError`, so the spec file that caused the leftover goes red rather than an unrelated one later against the shared database.
 
 ### Helpers
 

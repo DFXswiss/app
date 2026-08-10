@@ -1619,67 +1619,181 @@ export async function createCallQueueEntry(
 // 12. cleanupCreatedData
 // ---------------------------------------------------------------------------
 
-interface UserDependentTable {
-  table: string;
-  column: string;
-  referencedTable: 'user' | 'user_data';
+interface ForeignKeyRef {
+  table: string; // child table containing the FK column
+  column: string; // FK column on the child table
+  referencedTable: string; // parent table the FK points at
+  referencedColumn: string; // parent column the FK points at
 }
 
-let userDependentTablesPromise: Promise<UserDependentTable[]> | null = null;
+let foreignKeysPromise: Promise<ForeignKeyRef[]> | null = null;
 
 /**
- * Discovers every table with a foreign key pointing at "user" or user_data straight from
- * Postgres's own catalog, instead of a hand-maintained list — the API writes rows into several
- * of these (ip_log on every login; kyc_log / kyc_step / transaction_request on mail-set /
- * KYC-level / personal-data completion) that no factory tracks, so cleanupCreatedData's own
- * DELETE of "user"/"user_data" below always failed on them even with the correct user/user_data
- * delete order. Scoped deliberately to direct references to "user"/user_data only — not a
- * general recursive schema walk, which would risk reaching into chains other factories already
- * track and order correctly (transaction/buy_crypto/deposit_route etc.). Queried once per
- * process and memoized; the schema does not change mid-run.
+ * Discovers every foreign key in the public schema from Postgres's catalog, once per process.
+ * Memoized: the schema does not change mid-run, and re-querying on every cleanup would add
+ * pointless round trips. Grouping by referencedTable is done cheaply inside cleanupCreatedData
+ * from this flat list — it does not need its own cache.
  */
-async function getUserDependentTables(): Promise<UserDependentTable[]> {
-  if (!userDependentTablesPromise) {
-    userDependentTablesPromise = queryRows<{
+async function getForeignKeys(): Promise<ForeignKeyRef[]> {
+  if (!foreignKeysPromise) {
+    foreignKeysPromise = queryRows<{
       table_name: string;
       column_name: string;
       referenced_table: string;
+      referenced_column: string;
     }>(
-      `SELECT tc.table_name, kcu.column_name, ccu.table_name AS referenced_table
+      `SELECT tc.table_name, kcu.column_name,
+              ccu.table_name AS referenced_table,
+              ccu.column_name AS referenced_column
        FROM information_schema.table_constraints tc
        JOIN information_schema.key_column_usage kcu
          ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
        JOIN information_schema.constraint_column_usage ccu
          ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
        WHERE tc.constraint_type = 'FOREIGN KEY'
-         AND tc.table_schema = 'public'
-         AND ccu.table_name IN ('user', 'user_data')
-         AND tc.table_name NOT IN ('user', 'user_data')`,
+         AND tc.table_schema = 'public'`,
     ).then((rows) =>
       rows.map((r) => ({
         table: r.table_name,
         column: r.column_name,
-        referencedTable: r.referenced_table as 'user' | 'user_data',
+        referencedTable: r.referenced_table,
+        referencedColumn: r.referenced_column,
       })),
     );
   }
-  return userDependentTablesPromise;
+  return foreignKeysPromise;
 }
 
 /**
- * Deletes rows this module created, in reverse order, to respect FKs. For every "user" /
- * "user_data" row, first clears the API's own untracked dependent rows for exactly that row's id
- * (see getUserDependentTables) — scoped to that one id, so it can never touch another account's
- * rows or seed/master data — then deletes the row itself.
+ * Recursively deletes a row and every row that transitively references it via a foreign key.
+ *
+ * For (table, id): find every FK pointing at this table; for each child row with that FK equal
+ * to id, recurse first (which deletes that child and its own descendants); finally delete this
+ * row. Every DELETE is scoped to a concrete id — either the row's own id or a parent id already
+ * known to belong to a row this cleanup is responsible for — so the walk can never reach another
+ * account's rows or seed/master data, no matter how deep it goes.
+ *
+ * `visited` is shared across the entire cleanupCreatedData() invocation. (a) Recursion is finite
+ * because the set only grows, is bounded by the number of distinct (table, id) pairs that exist,
+ * and a pair already in it is never re-entered. (b) Skipping an already-visited pair cannot
+ * silently lose a delete: either that pair was already fully processed on an earlier branch
+ * (nothing left to do), or it is still an ancestor on the current recursion stack — a genuine,
+ * structurally unresolvable FK cycle (some column would need to be nulled first, which is out of
+ * scope). In that case the pair's own DELETE is still attempted where it is owned in the
+ * recursion and fails with a normal Postgres FK-violation error, reported like any other failed
+ * delete.
+ *
+ * Returns whether this row's own DELETE succeeded, and whether anything in its subtree failed
+ * (including unhandled non-id foreign keys). A deeper failure does not skip the attempt to
+ * delete this row or its independent siblings — maximize what gets cleaned up, collect every
+ * error.
+ */
+async function deleteRowAndDescendants(
+  table: string,
+  id: number,
+  childrenByReferencedTable: Map<string, ForeignKeyRef[]>,
+  visited: Set<string>,
+  errors: string[],
+  unhandledForeignKeys: Set<string>,
+): Promise<{ deletedSelf: boolean; failed: boolean }> {
+  const visitKey = `${table}#${id}`;
+  if (visited.has(visitKey)) {
+    return { deletedSelf: true, failed: false };
+  }
+  visited.add(visitKey);
+
+  let failed = false;
+  const fks = childrenByReferencedTable.get(table) ?? [];
+
+  for (const fk of fks) {
+    if (fk.referencedColumn !== 'id') {
+      // Cleanup addresses every row by id only; a FK to a non-id parent column cannot be
+      // resolved from the id we hold. Surface once per distinct child-table.column so a human
+      // reading AggregateError knows which constraint needs an explicit fix.
+      const unhandledKey = `${fk.table}.${fk.column}`;
+      if (!unhandledForeignKeys.has(unhandledKey)) {
+        unhandledForeignKeys.add(unhandledKey);
+        errors.push(
+          `unhandled foreign key ${fk.table}.${fk.column} -> ` +
+            `${fk.referencedTable}.${fk.referencedColumn}: cleanup only resolves rows by id ` +
+            `and cannot follow a reference to "${fk.referencedTable}.${fk.referencedColumn}"`,
+        );
+      }
+      failed = true;
+      continue;
+    }
+
+    const col = needsQuote(fk.column) ? `"${fk.column}"` : fk.column;
+    let childRows: { id: unknown }[];
+    try {
+      childRows = await queryRows<{ id: unknown }>(
+        `SELECT id FROM ${tableSql(fk.table)} WHERE ${col} = $1`,
+        [id],
+      );
+    } catch (e) {
+      errors.push(
+        `${fk.table}.${fk.column}=${id}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      failed = true;
+      continue;
+    }
+
+    for (const childRow of childRows) {
+      const childId = Number(childRow.id);
+      if (!Number.isFinite(childId) || childId <= 0) {
+        errors.push(
+          `${fk.table}.${fk.column}=${id}: expected a finite positive id, got ` +
+            `${JSON.stringify(childRow.id)}`,
+        );
+        failed = true;
+        continue;
+      }
+      const childResult = await deleteRowAndDescendants(
+        fk.table,
+        childId,
+        childrenByReferencedTable,
+        visited,
+        errors,
+        unhandledForeignKeys,
+      );
+      if (childResult.failed) failed = true;
+    }
+  }
+
+  let deletedSelf = false;
+  try {
+    await withDb(async (client) => {
+      await client.query(`DELETE FROM ${tableSql(table)} WHERE id = $1`, [id]);
+    });
+    deletedSelf = true;
+  } catch (e) {
+    errors.push(`${table}#${id}: ${e instanceof Error ? e.message : String(e)}`);
+    failed = true;
+  }
+
+  return { deletedSelf, failed };
+}
+
+/**
+ * Deletes rows this module created, in reverse registration order, to respect FKs. Before
+ * deleting any tracked row, recursively deletes every row that transitively references it —
+ * discovered from the public-schema foreign-key graph (see getForeignKeys), not a hand-picked
+ * table list — so application-written children the factories never registered (e.g.
+ * support_message under support_issue under user_data, buy_crypto under bank_tx under
+ * transaction) are cleared too.
+ *
+ * Every DELETE is scoped to a concrete id (the row itself, or a foreign-key value equal to a
+ * parent id this run is already deleting). The walk therefore cannot touch another account's
+ * rows or seed/master data, no matter how deep it goes.
  *
  * In a shared database, a row that fails to delete is not a cosmetic problem: it is state the
  * next spec file inherits, and it can make that unrelated file fail (or pass) for reasons that
- * have nothing to do with what it actually tests. So a failed delete here throws instead of being
- * swallowed — the file that caused the leftover goes red, not whichever file happens to run next.
- * References whose delete failed — including a "user"/"user_data" row whose own DELETE succeeded
- * but left one of its dependent rows behind — are re-registered into `created`, in their original
- * registration order, so the next call to cleanupCreatedData() retries them. A successful cleanup
- * stays completely silent (no console.log/console.warn either way).
+ * have nothing to do with what it actually tests. So a failed delete here throws instead of
+ * being swallowed — the file that caused the leftover goes red, not whichever file happens to
+ * run next. Top-level references for which anything failed (own delete, a delete underneath, or
+ * an unhandled non-id foreign key reached while processing them) are re-registered into
+ * `created`, in their original registration order, so the next call to cleanupCreatedData()
+ * retries them. A successful cleanup stays completely silent (no console.log/console.warn).
  *
  * Every `test.afterAll` in this suite calls this function and discards the resolved value; the
  * throw is what actually surfaces a failed cleanup to the test runner.
@@ -1691,48 +1805,39 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
   const snapshot = [...created].reverse();
   created.length = 0;
 
-  // No catch: an empty dependency list would make cleanup delete nothing for user/user_data and
-  // leave rows behind for the next spec on a shared database — silently, since the caller of
-  // cleanupCreatedData does not read what it returns.
-  const dependents = await getUserDependentTables();
+  // No catch: failing to load the FK graph would leave dependents behind for the next spec on a
+  // shared database — silently, since callers of cleanupCreatedData do not read the return value.
+  const foreignKeys = await getForeignKeys();
+  const childrenByReferencedTable = new Map<string, ForeignKeyRef[]>();
+  for (const fk of foreignKeys) {
+    const list = childrenByReferencedTable.get(fk.referencedTable);
+    if (list) list.push(fk);
+    else childrenByReferencedTable.set(fk.referencedTable, [fk]);
+  }
+
+  // Shared across every top-level ref in this invocation — not reset per ref or per recurse.
+  const visited = new Set<string>();
+  const unhandledForeignKeys = new Set<string>();
 
   for (const ref of snapshot) {
-    let refFailed = false;
-
-    if (ref.table === 'user' || ref.table === 'user_data') {
-      for (const dep of dependents) {
-        if (dep.referencedTable !== ref.table) continue;
-        const col = needsQuote(dep.column) ? `"${dep.column}"` : dep.column;
-        try {
-          await withDb(async (client) => {
-            await client.query(`DELETE FROM ${tableSql(dep.table)} WHERE ${col} = $1`, [ref.id]);
-          });
-        } catch (e) {
-          errors.push(`${dep.table}.${dep.column}=${ref.id}: ${e instanceof Error ? e.message : String(e)}`);
-          refFailed = true;
-        }
-      }
-    }
-
-    try {
-      await withDb(async (client) => {
-        await client.query(`DELETE FROM ${tableSql(ref.table)} WHERE id = $1`, [ref.id]);
-      });
-      deleted += 1;
-    } catch (e) {
-      errors.push(`${ref.table}#${ref.id}: ${e instanceof Error ? e.message : String(e)}`);
-      refFailed = true;
-    }
-
-    if (refFailed) failed.push(ref);
+    const result = await deleteRowAndDescendants(
+      ref.table,
+      ref.id,
+      childrenByReferencedTable,
+      visited,
+      errors,
+      unhandledForeignKeys,
+    );
+    if (result.deletedSelf) deleted += 1;
+    if (result.failed) failed.push(ref);
   }
 
   if (failed.length > 0) {
     // `failed` was accumulated while iterating `snapshot`, which is already the reverse of the
-    // original registration order — so `failed` itself is in reverse-of-reverse, i.e. it needs one
-    // more reverse() to land back in original registration order before re-entering `created`.
-    // The next cleanupCreatedData() call reverses `created` again, so this is what makes that
-    // second reversal produce a correct, FK-respecting retry order.
+    // original registration order — so `failed` itself is in reverse-of-reverse, i.e. it needs
+    // one more reverse() to land back in original registration order before re-entering
+    // `created`. The next cleanupCreatedData() call reverses `created` again, so this is what
+    // makes that second reversal produce a correct, FK-respecting retry order.
     created.push(...failed.reverse());
   }
 
