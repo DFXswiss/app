@@ -70,9 +70,13 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
   const { call } = useApi();
   const { asset, currency, amount, paymentMethod, externalTransactionId, withPaymentInfo } = params;
   const ready = !!asset && !!currency && !!amount;
+  // `externalTransactionId` identifies a payment attempt — omit the segment when unset so an
+  // undefined id keeps the same key as before (no needless cache invalidation). Leading `:`
+  // when set avoids colliding with the trailing `quote`/`info` token.
+  const extKey = externalTransactionId ? `:${externalTransactionId}` : '';
   const key =
     asset && currency && amount
-      ? `${asset.id}:${currency.id}:${amount}:${paymentMethod}:${withPaymentInfo ? 'info' : 'quote'}`
+      ? `${asset.id}:${currency.id}:${amount}:${paymentMethod}:${withPaymentInfo ? 'info' : 'quote'}${extKey}`
       : '';
 
   const fetcher = useCallback((): Promise<Buy> => {
@@ -113,7 +117,9 @@ export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
   // payment engine (home.tsx › sellPayment), so it also belongs in the `key`: the display and
   // payment requests must never share cache state.
   const ready = !!asset && !!currency && !!amount;
-  const key = ready && asset && currency && amount ? `${asset.id}:${currency.id}:${amount}:${iban ?? 'quote'}` : '';
+  const extKey = externalTransactionId ? `:${externalTransactionId}` : '';
+  const key =
+    ready && asset && currency && amount ? `${asset.id}:${currency.id}:${amount}:${iban ?? 'quote'}${extKey}` : '';
 
   const fetcher = useCallback((): Promise<Sell> => {
     if (!asset || !currency || !amount) return Promise.reject(new Error('sell quote: missing input'));
@@ -151,9 +157,10 @@ export function useSwapQuote(params: SwapQuoteParams): QuoteEngineState<Swap> {
   const { call } = useApi();
   const { sourceAsset, targetAsset, amount, externalTransactionId, withPaymentInfo } = params;
   const ready = !!sourceAsset && !!targetAsset && !!amount && sourceAsset.id !== targetAsset.id;
+  const extKey = externalTransactionId ? `:${externalTransactionId}` : '';
   const key =
     sourceAsset && targetAsset && amount && ready
-      ? `${sourceAsset.id}:${targetAsset.id}:${amount}:${withPaymentInfo ? 'info' : 'quote'}`
+      ? `${sourceAsset.id}:${targetAsset.id}:${amount}:${withPaymentInfo ? 'info' : 'quote'}${extKey}`
       : '';
 
   const fetcher = useCallback((): Promise<Swap> => {
