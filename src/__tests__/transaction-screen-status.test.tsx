@@ -17,6 +17,9 @@ const mockNavigate = jest.fn();
 const mockSetRedirectPath = jest.fn();
 const mockUseLayoutOptions = jest.fn();
 
+// A promise that never settles, used to hold a component in its loading state.
+const neverResolves = <T,>(): Promise<T> => new Promise<T>(() => undefined);
+
 let mockUser: any = {
   activeAddress: { address: '0xabc', wallet: 'SomeWallet' },
   phone: undefined,
@@ -189,7 +192,7 @@ jest.mock('copy-to-clipboard', () => jest.fn());
 // Partial mock: keep real default export (TransactionScreen) and internal TransactionStatus;
 // replace sibling exports that belong to later coverage stages.
 jest.mock('../screens/transaction.screen', () => {
-  const React = require('react');
+  const React = jest.requireActual('react');
   const actual = jest.requireActual('../screens/transaction.screen');
   return {
     __esModule: true,
@@ -258,7 +261,7 @@ beforeEach(() => {
   mockGetTransactionCsv.mockReset();
   mockGetTransactionHistory.mockReset();
   mockGetTransactionByUid.mockReset();
-  mockGetTransactionRefund.mockReturnValue(new Promise(() => {}));
+  mockGetTransactionRefund.mockReturnValue(neverResolves());
   mockSetTransactionRefundTarget.mockReset();
   (global.URL as any).createObjectURL = jest.fn(() => 'blob:mock-url');
   jest.spyOn(window, 'open').mockImplementation(() => null);
@@ -277,7 +280,7 @@ afterEach(() => {
 // Layout title/onBack variants from TransactionScreen (isRefund / isTransaction / cointracking / error / default).
 describe('TransactionScreen layout title and onBack', () => {
   it('sets title "Transaction refund" and onBack navigates to /tx when path is refund', async () => {
-    mockGetTransactionByUid.mockReturnValue(new Promise(() => {}));
+    mockGetTransactionByUid.mockReturnValue(neverResolves());
     renderScreen('/tx/T123/refund');
 
     await waitFor(() => {
@@ -290,7 +293,7 @@ describe('TransactionScreen layout title and onBack', () => {
   });
 
   it('sets title "Transaction status" and onBack navigates to /tx for T/Q ids without refund', async () => {
-    mockGetTransactionByUid.mockReturnValue(new Promise(() => {}));
+    mockGetTransactionByUid.mockReturnValue(neverResolves());
     renderScreen('/tx/T123');
 
     await waitFor(() => {
@@ -367,7 +370,7 @@ describe('TransactionScreen render branches', () => {
   });
 
   it('renders refund branch (loading spinner) for /tx/:id/refund with T/Q id', async () => {
-    mockGetTransactionByUid.mockReturnValue(new Promise(() => {}));
+    mockGetTransactionByUid.mockReturnValue(neverResolves());
     renderScreen('/tx/T123/refund');
 
     await waitFor(() => {
@@ -378,7 +381,7 @@ describe('TransactionScreen render branches', () => {
   });
 
   it('renders TransactionStatus branch for id starting with T (no refund)', async () => {
-    mockGetTransactionByUid.mockReturnValue(new Promise(() => {}));
+    mockGetTransactionByUid.mockReturnValue(neverResolves());
     renderScreen('/tx/T123');
 
     await waitFor(() => {

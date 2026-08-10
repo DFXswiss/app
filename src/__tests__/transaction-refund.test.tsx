@@ -15,6 +15,9 @@ let mockAllowedCountries: any[] = [];
 let mockIsLoggedIn = true;
 let mockWidth = 800;
 
+// A promise that never settles, used to hold a component in its loading state.
+const neverResolves = <T,>(): Promise<T> => new Promise<T>(() => undefined);
+
 jest.mock('@dfx.swiss/react', () => {
   const Utils = {
     formatIban: (v: any) => v,
@@ -402,7 +405,7 @@ jest.mock('../util/utils', () => ({
 jest.mock('copy-to-clipboard', () => jest.fn());
 
 jest.mock('../screens/transaction.screen', () => {
-  const React = require('react');
+  const React = jest.requireActual('react');
   const actual = jest.requireActual('../screens/transaction.screen');
   return {
     __esModule: true,
@@ -1068,7 +1071,7 @@ describe('TransactionRefund add bank account branch', () => {
 // Lines 458-610: loading spinner, bankDetails display rows, form field conditionals, button labels.
 describe('TransactionRefund rendered view', () => {
   it('shows the loading spinner while transaction or refund details are missing', async () => {
-    mockGetTransactionByUid.mockReturnValue(new Promise(() => {}));
+    mockGetTransactionByUid.mockReturnValue(neverResolves());
     renderRefund();
 
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
@@ -1077,7 +1080,7 @@ describe('TransactionRefund rendered view', () => {
 
   it('shows the loading spinner after transaction loads while refund is still pending', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx());
-    mockGetTransactionRefund.mockReturnValue(new Promise(() => {}));
+    mockGetTransactionRefund.mockReturnValue(neverResolves());
     renderRefund();
 
     await waitFor(() => {
