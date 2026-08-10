@@ -14,3 +14,13 @@ playwright-report
 # image from this directory. Without this line the whole of it travels to the Docker daemon as
 # build context on every image build.
 api-repo
+# Gitignore does not protect the Docker build context: context is whatever is on disk, not what
+# Git tracks. An untracked or gitignored .env still reaches the daemon and lands in builder
+# layers — and CRA (frontend / frontend-widget) bakes any REACT_APP_* values it finds in a .env
+# file into the JS bundle at build time. e2e-stack/scripts/up.sh also writes
+# e2e-stack/.env.generated with build-time-resolved values before `compose build frontend`; that
+# file must stay out of the context too.
+.env
+**/.env
+**/.env.*
+e2e-stack/.env.generated

@@ -1645,17 +1645,22 @@ async function getUserDependentTables(): Promise<UserDependentTable[]> {
  * "user_data" row, first clears the API's own untracked dependent rows for exactly that row's id
  * (see getUserDependentTables) — scoped to that one id, so it can never touch another account's
  * rows or seed/master data — then deletes the row itself.
- * Best-effort: failures on individual deletes are collected and do not abort the rest.
  *
- * Every `test.afterAll` in this suite calls this function and discards the return value — a
- * failed delete would otherwise leave rows behind for whichever spec file runs next in the same
- * shared database with no trace of why. Logging here — in addition to the existing
- * `{ deleted, errors }` return value, which a caller that does check it can still use — is the
- * cheapest way to surface a failed cleanup without touching all fifteen call sites or aborting
- * the run: a leftover row must never fail the unrelated test that happens to run next.
+ * In a shared database, a row that fails to delete is not a cosmetic problem: it is state the
+ * next spec file inherits, and it can make that unrelated file fail (or pass) for reasons that
+ * have nothing to do with what it actually tests. So a failed delete here throws instead of being
+ * swallowed — the file that caused the leftover goes red, not whichever file happens to run next.
+ * References whose delete failed — including a "user"/"user_data" row whose own DELETE succeeded
+ * but left one of its dependent rows behind — are re-registered into `created`, in their original
+ * registration order, so the next call to cleanupCreatedData() retries them. A successful cleanup
+ * stays completely silent (no console.log/console.warn either way).
+ *
+ * Every `test.afterAll` in this suite calls this function and discards the resolved value; the
+ * throw is what actually surfaces a failed cleanup to the test runner.
  */
 export async function cleanupCreatedData(): Promise<{ deleted: number; errors: string[] }> {
   const errors: string[] = [];
+  const failed: CreatedRef[] = [];
   let deleted = 0;
   const snapshot = [...created].reverse();
   created.length = 0;
@@ -1666,6 +1671,8 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
   const dependents = await getUserDependentTables();
 
   for (const ref of snapshot) {
+    let refFailed = false;
+
     if (ref.table === 'user' || ref.table === 'user_data') {
       for (const dep of dependents) {
         if (dep.referencedTable !== ref.table) continue;
@@ -1676,6 +1683,7 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
           });
         } catch (e) {
           errors.push(`${dep.table}.${dep.column}=${ref.id}: ${e instanceof Error ? e.message : String(e)}`);
+          refFailed = true;
         }
       }
     }
@@ -1687,11 +1695,26 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
       deleted += 1;
     } catch (e) {
       errors.push(`${ref.table}#${ref.id}: ${e instanceof Error ? e.message : String(e)}`);
+      refFailed = true;
     }
+
+    if (refFailed) failed.push(ref);
+  }
+
+  if (failed.length > 0) {
+    // `failed` was accumulated while iterating `snapshot`, which is already the reverse of the
+    // original registration order — so `failed` itself is in reverse-of-reverse, i.e. it needs one
+    // more reverse() to land back in original registration order before re-entering `created`.
+    // The next cleanupCreatedData() call reverses `created` again, so this is what makes that
+    // second reversal produce a correct, FK-respecting retry order.
+    created.push(...failed.reverse());
   }
 
   if (errors.length > 0) {
-    console.warn(`cleanupCreatedData: ${errors.length} row(s) could not be deleted:\n  ${errors.join('\n  ')}`);
+    throw new AggregateError(
+      errors.map((message) => new Error(message)),
+      `cleanupCreatedData: ${errors.length} row(s) failed to delete and were re-queued for the next cleanup: ${errors.join('; ')}`,
+    );
   }
 
   return { deleted, errors };

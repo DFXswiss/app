@@ -37,6 +37,10 @@ export default defineConfig({
   // exactly the failure a retry hides, because the second attempt runs against the state the first
   // one left behind. A flake here is a report about the harness that has to stay visible.
   retries: 0,
+  // A committed test.only would silently shrink the suite — and with it the coverage-gate
+  // project — to a fraction of its claims while the run still reports green. This harness is a
+  // gate and must not be self-disableable.
+  forbidOnly: true,
   timeout: 60000,
   expect: { timeout: 15000 },
   reporter: [['list'], ['html', { open: 'never', outputFolder: './playwright-report' }]],
