@@ -42,10 +42,16 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ChargebackBlockReason, PendingChargebackEntry } from 'src/dto/chargeback.dto';
 import ComplianceChargebackListScreen from 'src/screens/compliance-chargeback-list.screen';
 
-const REQUESTED = new Date('2026-01-15T10:00:00.000Z');
-const DATE = new Date('2026-01-15T12:00:00.000Z');
+type PendingChargebackPayload = Omit<PendingChargebackEntry, 'requestedDate' | 'date' | 'chargebackDate'> & {
+  requestedDate: string;
+  date: string;
+  chargebackDate?: string;
+};
 
-function baseEntry(overrides: Partial<PendingChargebackEntry> = {}): PendingChargebackEntry {
+const REQUESTED = '2026-01-15T10:00:00.000Z';
+const DATE = '2026-01-15T12:00:00.000Z';
+
+function baseEntry(overrides: Partial<PendingChargebackPayload> = {}): PendingChargebackEntry {
   return {
     txId: 9001,
     uid: 'T-9001',
@@ -61,7 +67,7 @@ function baseEntry(overrides: Partial<PendingChargebackEntry> = {}): PendingChar
     requestedDate: REQUESTED,
     date: DATE,
     ...overrides,
-  };
+  } as unknown as PendingChargebackEntry;
 }
 
 interface Deferred<T> {
@@ -194,7 +200,7 @@ describe('ComplianceChargebackListScreen', () => {
       entityId: 1005,
       blockReasons: [ChargebackBlockReason.MISSING_CREDITOR_DATA],
       userName: 'Sentinel User',
-      chargebackDate: new Date('2026-02-01T00:00:00.000Z'),
+      chargebackDate: '2026-02-01T00:00:00.000Z',
     });
 
     const multiReason = baseEntry({
