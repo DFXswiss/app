@@ -36,14 +36,25 @@ export interface ClassifiedInviteCode {
   code: string;
 }
 
-/** Normalizes (trim + uppercase — recommendation codes are upper-case by definition, and a short
- * ref code's `\w` class matches either case so uppercasing it is safe too) an invite code and
- * classifies which API field it belongs in. Returns `undefined` for anything that matches
- * neither real API shape, so a caller can simply not send it rather than guarantee a 400. */
+/** Classifies which API field an invite code belongs in. Returns `undefined` for anything that
+ * matches neither real API shape, so a caller can simply not send it rather than guarantee a 400.
+ *
+ * Case handling is intentional and asymmetric:
+ * - `recommendationCode` is upper-cased (API regex is `[0-9A-Z]`; codes are upper-case by
+ *   definition). Classification is still tried first so a full recommendation code never falls
+ *   through as `usedRef`.
+ * - `usedRef` is returned with its original case after trim only. The API looks up the referrer
+ *   with an exact `findOne({ where: { ref } })` and nowhere normalizes `ref`/`usedRef` case
+ *   (user.service.ts); live codes in the wild are sometimes lower-case (e.g. `stb-tax`). Whether
+ *   the database comparison itself is case-sensitive depends on collation and was not verified
+ *   here. `USED_REF_RE`'s `\w` class already accepts either case, so upper-casing the payload is
+ *   never required for classification and can only lose a match the API would otherwise find. */
 export function classifyInviteCode(value: string | undefined | null): ClassifiedInviteCode | undefined {
-  const code = value?.trim().toUpperCase();
-  if (!code) return undefined;
-  if (RECOMMENDATION_CODE_RE.test(code)) return { kind: 'recommendationCode', code };
-  if (USED_REF_RE.test(code)) return { kind: 'usedRef', code };
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  // Recommendation first (unchanged priority): upper-case only for that branch's test + payload.
+  const upper = trimmed.toUpperCase();
+  if (RECOMMENDATION_CODE_RE.test(upper)) return { kind: 'recommendationCode', code: upper };
+  if (USED_REF_RE.test(trimmed)) return { kind: 'usedRef', code: trimmed };
   return undefined;
 }
