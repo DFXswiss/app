@@ -218,34 +218,72 @@ export function resolveAppSourcePath(): string {
 }
 
 /**
- * Where the browser fixture records the paths it navigated to, and where the coverage gate reads
- * them back. Written as one path per line so parallel appends cannot corrupt each other and a
- * crashed run still leaves everything up to that point.
+ * Where the browser fixture records the navigations it made, and where the coverage gate reads
+ * them back. Written as one line per navigation (`pathname\tspecFile`) so parallel appends cannot
+ * corrupt each other and a crashed run still leaves everything up to that point.
  */
 export function visitedRoutesPath(): string {
   return path.join(process.env.E2E_ARTIFACT_DIR ?? '/work/test-results', 'visited-routes.log');
 }
 
+export interface VisitedRoute {
+  path: string;
+  specFile: string;
+}
+
+/**
+ * Reduce Playwright's absolute testInfo.file to the form registry claims use (claim.spec, e.g.
+ * "buy.spec.ts"). route-coverage.spec.ts resolves a claim as path.join(<specs dir>, claim.spec), so
+ * the inverse is the path relative to that same directory — not the bare basename, which would
+ * stop matching the moment a suite moves into a subdirectory and would silently make its claims
+ * look unvisited. Recording and evaluation must derive this form identically, which is why both
+ * sides call this one function.
+ */
+export function specClaimName(specFilePath: string): string {
+  return path.relative(path.join(__dirname, '..'), specFilePath);
+}
+
 /** Records one navigation. Errors are swallowed: a test must not fail over bookkeeping. */
-export function recordVisitedRoute(pathname: string): void {
+export function recordVisitedRoute(pathname: string, specFilePath: string): void {
   try {
     const file = visitedRoutesPath();
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.appendFileSync(file, `${normPath(pathname)}\n`);
+    fs.appendFileSync(file, `${normPath(pathname)}\t${specClaimName(specFilePath)}\n`);
   } catch {
     // Nothing to do here — the gate reports an empty recording as missing coverage, which is the
     // outcome that matters, and a broken artifact directory already fails the run elsewhere.
   }
 }
 
-export function readVisitedRoutes(): string[] {
+/**
+ * Reads the navigation log. Empty lines (trailing newline from appendFileSync) are skipped.
+ * A non-empty line that is not exactly `path\tspecFile` fails loud with file, line number and raw
+ * content so a malformed artifact is never silently treated as missing coverage.
+ */
+export function readVisitedRoutes(): VisitedRoute[] {
   const file = visitedRoutesPath();
   if (!fs.existsSync(file)) return [];
-  return fs
-    .readFileSync(file, 'utf8')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  const result: VisitedRoute[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === '') continue;
+    const tab = line.indexOf('\t');
+    if (tab <= 0 || tab === line.length - 1) {
+      throw new Error(
+        `Malformed visited-routes entry in ${file} at line ${i + 1}: expected path\\tspecFile, got ${JSON.stringify(line)}`,
+      );
+    }
+    const pathField = line.slice(0, tab);
+    const specFile = line.slice(tab + 1);
+    if (pathField === '' || specFile === '' || specFile.includes('\t')) {
+      throw new Error(
+        `Malformed visited-routes entry in ${file} at line ${i + 1}: expected path\\tspecFile, got ${JSON.stringify(line)}`,
+      );
+    }
+    result.push({ path: pathField, specFile });
+  }
+  return result;
 }
 
 /**

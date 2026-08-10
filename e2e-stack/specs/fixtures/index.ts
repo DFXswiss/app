@@ -116,15 +116,15 @@ async function isolateFromExternalHosts(page: Page): Promise<void> {
  * openScreen, which loginAs + openScreen already provide. Add one back only with a test that uses it.
  */
 export const test = base.extend<AuthFixtures>({
-  page: async ({ page }, use) => {
+  page: async ({ page }, use, testInfo) => {
     await isolateFromExternalHosts(page);
-    // Record where the browser actually went. The coverage gate reads this back and requires every
-    // route in App.tsx to have been navigated to by some test — a claim in the registry that points
-    // at a file which never opens the route would otherwise satisfy it.
+    // Record where the browser actually went, together with the spec file that drove the page.
+    // The coverage gate requires every claimed route to have been opened by the claiming suite —
+    // not merely by any suite that happened to land on the same path.
     page.on('framenavigated', (frame) => {
       if (frame !== page.mainFrame()) return;
       try {
-        recordVisitedRoute(new URL(frame.url()).pathname);
+        recordVisitedRoute(new URL(frame.url()).pathname, testInfo.file);
       } catch {
         // about:blank and similar non-URL navigations carry no path to record.
       }

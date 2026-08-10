@@ -197,10 +197,24 @@ interface CreatedRef {
 
 const created: CreatedRef[] = [];
 
-function track(table: string, id: number | undefined | null): void {
-  if (id != null && Number.isFinite(Number(id))) {
-    created.push({ table, id: Number(id) });
+/**
+ * Require a finite positive numeric id. A 2xx response without a usable id is a broken API
+ * contract, not a missing caller precondition — fail loud so the test cannot assert on a ghost row
+ * or leave an untracked DB row behind cleanup.
+ */
+function requireId(value: unknown, factory: string, field: string): number {
+  const n = Number(value);
+  if (value == null || !Number.isFinite(n) || n <= 0) {
+    throw new Error(
+      `${factory}: expected a finite positive ${field}, got ${JSON.stringify(value)} — ` +
+        `a 2xx without a usable id is a broken API contract, not a missing caller precondition`,
+    );
   }
+  return n;
+}
+
+function track(table: string, id: number | undefined | null): void {
+  created.push({ table, id: requireId(id, 'track', `id for table "${table}"`) });
 }
 
 /**
@@ -785,8 +799,9 @@ export async function createBankAccount(
   if (options.label) body.label = options.label;
 
   const res = await apiPost<{ id: number; iban: string }>('bankAccount', body, { jwt });
-  track('bank_data', res.id);
-  return { bankAccountId: res.id, iban: res.iban ?? iban };
+  const bankAccountId = requireId(res.id, 'createBankAccount', 'id');
+  track('bank_data', bankAccountId);
+  return { bankAccountId, iban: res.iban ?? iban };
 }
 
 // ---------------------------------------------------------------------------
@@ -812,15 +827,17 @@ export async function createBuy(jwt: string, options: CreateBuyOptions = {}): Pr
       },
       { jwt },
     );
-    track('buy', res.routeId);
-    return { buyId: res.routeId, routeId: res.routeId, assetId: asset.id };
+    const routeId = requireId(res.routeId, 'createBuy', 'routeId');
+    track('buy', routeId);
+    return { buyId: routeId, routeId, assetId: asset.id };
   }
 
   // Default: POST /buy with CreateBuyDto { asset } — creates the buy route without pricing.
   // Chosen over paymentInfos because ENVIRONMENT=loc mocks outbound HTTP and price feeds often fail.
   const res = await apiPost<{ id: number }>('buy', { asset: { id: asset.id } }, { jwt });
-  track('buy', res.id);
-  return { buyId: res.id, assetId: asset.id };
+  const buyId = requireId(res.id, 'createBuy', 'id');
+  track('buy', buyId);
+  return { buyId, assetId: asset.id };
 }
 
 // ---------------------------------------------------------------------------
@@ -854,8 +871,9 @@ export async function createSell(jwt: string, options: CreateSellOptions = {}): 
     },
     { jwt },
   );
-  track('deposit_route', res.id);
-  return { sellId: res.id, iban: res.iban ?? iban, bankAccountId };
+  const sellId = requireId(res.id, 'createSell', 'id');
+  track('deposit_route', sellId);
+  return { sellId, iban: res.iban ?? iban, bankAccountId };
 }
 
 // ---------------------------------------------------------------------------
@@ -880,8 +898,9 @@ export async function createSwap(jwt: string, options: CreateSwapOptions = {}): 
     },
     { jwt },
   );
-  track('deposit_route', res.id);
-  return { swapId: res.id, assetId: asset.id };
+  const swapId = requireId(res.id, 'createSwap', 'id');
+  track('deposit_route', swapId);
+  return { swapId, assetId: asset.id };
 }
 
 async function userFromJwt(jwt: string): Promise<{ id: number; userDataId: number; address: string }> {
@@ -1261,9 +1280,13 @@ export async function createSupportIssue(
   );
 
   const issueRow = await queryOne<{ id: number }>(`SELECT id FROM support_issue WHERE uid = $1 LIMIT 1`, [res.uid]);
+  // CreateSupportIssueResult declares supportIssueId as optional, and this lookup is by uid rather
+  // than by a returned id — so "no row" is a shape this factory is written to tolerate, not a
+  // contract breach like a missing id in a 2xx body. Register only what is there.
   if (issueRow) track('support_issue', issueRow.id);
 
   const msgId = res.messages?.[0]?.id;
+  // messages is optional on the API response type; no first message means nothing to register.
   if (msgId) track('support_message', msgId);
 
   return {
@@ -1445,16 +1468,19 @@ export async function createLimitRequest(options: CreateLimitRequestOptions = {}
     if (issueRow) {
       // Parent (limit_request) first, then support_issue (child), then support_message (child of
       // issue) last — cleanupCreatedData deletes in reverse registration order (LIFO).
-      if (issueRow.limitRequestId) track('limit_request', issueRow.limitRequestId);
-      track('support_issue', issueRow.id);
-      const msgId = res.messages?.[0]?.id;
-      if (msgId != null) track('support_message', msgId);
+      // Track the id we actually return (issue row or response body), not only issueRow.limitRequestId,
+      // so a row resolved from res.limitRequest?.id is still registered for cleanup.
       const limitRequestId = issueRow.limitRequestId ?? res.limitRequest?.id;
       if (limitRequestId == null) {
         throw new Error(
           `createLimitRequest: API created support_issue ${issueRow.id} (uid ${res.uid}) without a limit_request id`,
         );
       }
+      track('limit_request', limitRequestId);
+      track('support_issue', issueRow.id);
+      const msgId = res.messages?.[0]?.id;
+      // messages is optional on the API response type; no message id means nothing to register.
+      if (msgId != null) track('support_message', msgId);
       return {
         limitRequestId,
         supportIssueId: issueRow.id,
