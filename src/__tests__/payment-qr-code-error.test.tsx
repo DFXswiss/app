@@ -5,10 +5,12 @@ let mockUser: { accountId?: number; kyc: { dataComplete: boolean } } | undefined
   accountId: 1,
   kyc: { dataComplete: true },
 };
+let mockSession: { account: number } | undefined = { account: 1 };
 
 jest.mock('@dfx.swiss/react', () => ({
   useBuy: () => ({ invoiceFor: mockInvoiceFor }),
   useUserContext: () => ({ user: mockUser }),
+  useApiSession: () => ({ session: mockSession }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -47,6 +49,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockInvoiceFor.mockResolvedValue({ pdfData: 'JVBERi0x' });
   mockUser = { accountId: 1, kyc: { dataComplete: true } };
+  mockSession = { account: 1 };
 });
 
 const NO_COLLECTION_QR_HINT =
@@ -212,7 +215,7 @@ describe('PaymentQrCode stale-response guard', () => {
     expect(button).toBeEnabled();
   });
 
-  it('does not open the PDF when the session identity changes while the request is in flight', async () => {
+  it('does not open the PDF when the session identity changes while the user data stays stale', async () => {
     const { rerender } = render(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
 
     await act(async () => {
@@ -223,8 +226,9 @@ describe('PaymentQrCode stale-response guard', () => {
       expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
     });
 
-    // Same txId and collectionAccount — only the signed-in identity changes (deep-link session swap).
-    mockUser = { accountId: 2, kyc: { dataComplete: true } };
+    // Same txId, collectionAccount, and user — only the session account changes (in-place token swap).
+    // The user context can lag behind; the guard must key on the session, not user.accountId.
+    mockSession = { account: 2 };
     rerender(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
 
     await act(async () => {

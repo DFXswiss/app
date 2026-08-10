@@ -563,7 +563,7 @@ describe('toCollectionIbanGiroCode', () => {
     ).toBeUndefined();
   });
 
-  it('returns undefined when the remittance is carried on the structured-reference line (not the api shape)', () => {
+  it('returns undefined when the remittance is carried on the structured-reference line (outside the shape this function validates)', () => {
     expect(
       toCollectionIbanGiroCode(
         sampleGiroCode({ line9: SAMPLE_REMITTANCE, line10: '' }),
@@ -573,7 +573,7 @@ describe('toCollectionIbanGiroCode', () => {
     ).toBeUndefined();
   });
 
-  it('returns undefined for a 10-line payload ending at the structured reference (line 10 omitted, not the api shape)', () => {
+  it('returns undefined for a 10-line payload ending at the structured reference (line 10 omitted, outside the shape this function validates)', () => {
     const tenLinePayload = [
       'BCD',
       '001',

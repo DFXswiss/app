@@ -1,4 +1,4 @@
-import { ApiError, useBuy, useUserContext } from '@dfx.swiss/react';
+import { ApiError, useApiSession, useBuy, useUserContext } from '@dfx.swiss/react';
 import {
   IconColor,
   SpinnerSize,
@@ -26,6 +26,7 @@ interface GiroCodeProps {
 export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCodeProps): JSX.Element {
   const { invoiceFor } = useBuy();
   const { user } = useUserContext();
+  const { session } = useApiSession();
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -37,10 +38,9 @@ export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCo
   // effect runs synchronously on commit, so a response arriving before the passive-effect flush
   // cannot slip past the guard. Session identity is part of the mode — a deep-link param swap
   // replaces the session without an unmount (wallet.context.tsx applies it in place), and a PDF
-  // from the previous session must not open after it. Signal is user?.accountId: useApiSession() does
-  // not expose the raw session token string, and the account id changes exactly when the signed-in
-  // identity changes — not on periodic context refreshes (which would discard legitimate in-flight
-  // downloads).
+  // from the previous session must not open after it. The signal is the session, not the user:
+  // the session changes synchronously with an in-place token swap (deep-link param push or
+  // connect flow), while the user context can lag behind and keep serving the previous account.
   useLayoutEffect(() => {
     invoiceGeneration.current += 1;
     setInvoiceError(undefined);
@@ -48,7 +48,7 @@ export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCo
     return () => {
       invoiceGeneration.current += 1;
     };
-  }, [txId, collectionAccount, user?.accountId]);
+  }, [txId, collectionAccount, session?.account]);
 
   async function onInvoiceClick(): Promise<void> {
     if (!user?.kyc.dataComplete) {

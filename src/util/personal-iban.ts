@@ -104,10 +104,12 @@ export function canOfferCollectionIban(info: {
  * well-formed SCT GiroCode (full 10+-line shape, version 001/002, charset line index 2 in
  * '1'..'8') whose IBAN line matches the given personal IBAN (whitespace/case ignored) and whose
  * remittance is carried on the unstructured line 10 only and equals the quote's remittance info.
- * The api emits the reference exclusively on the unstructured line; a populated
- * structured-reference carrier (line 9) is not its shape and is never validated against ISO
- * 11649 here, so it is refused. Swiss QR-Bill SVG payloads are never rewritten — callers must
- * treat undefined as "no QR available".
+ * This function does not implement ISO 11649 structured-reference validation; the quote
+ * reference this frontend receives is a bankUsage string, not an ISO 11649 structured
+ * reference. A populated structured-reference carrier (line 9) is therefore outside the shape
+ * this function validates and is refused fail-closed — the worst case is no rewritten QR, while
+ * manual IBAN entry and the original PDF invoice both remain available. Swiss QR-Bill SVG
+ * payloads are never rewritten — callers must treat undefined as "no QR available".
  */
 export function toCollectionIbanGiroCode(
   paymentRequest: string,
@@ -132,7 +134,7 @@ export function toCollectionIbanGiroCode(
   if (!trimmedRemittance) return undefined;
   const structuredReference = lines[9].trim();
   const unstructuredRemittance = lines.length > 10 ? lines[10].trim() : '';
-  // The api emits the remittance on the unstructured line only; a structured-reference carrier is not its shape.
+  // No ISO 11649 validation here: bankUsage is unstructured; a populated structured carrier is out of shape.
   if (structuredReference) return undefined;
   if (unstructuredRemittance !== trimmedRemittance) return undefined;
 
