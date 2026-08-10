@@ -73,7 +73,7 @@ import { shouldInvalidateSession } from './session-guards';
  * Callers must also gate with {@link isInjectedEvmSession} / `isInjectedEvm`: a non-EVM JWT
  * address (Bitcoin, Cardano, …) will never match an `eth_accounts` result, and the probe runs
  * against `window.ethereum` regardless of which extension owns it — so a mismatch alone must
- * not log those sessions out (F1). */
+ * not log those sessions out. */
 export function shouldInvalidateOnAccountProbe(
   activeAddress: string | undefined,
   accounts: readonly string[],
@@ -86,7 +86,7 @@ export function shouldInvalidateOnAccountProbe(
 
 /** Maps a catalog connector onto the session monitor's three-way active-connector state.
  * Only `'injected'` and `'wallet-connect'` have provider refs to watch; everything else
- * (`'other'`) must not borrow `wcProviderRef` (F2). */
+ * (`'other'`) must not borrow `wcProviderRef`. */
 export function sessionConnectorFor(connector: WalletConnector | undefined): SessionConnector | undefined {
   if (!connector || connector === 'soon') return undefined;
   if (connector === 'injected') return 'injected';
@@ -97,7 +97,7 @@ export function sessionConnectorFor(connector: WalletConnector | undefined): Ses
 export type SessionConnector = 'injected' | 'wallet-connect' | 'other';
 
 /** Clears every live provider binding so a subsequent monitor effect cannot re-attach to the
- * previous wallet's EIP-1193 instance (F3). Used by `switchTo` before `changeAddress`; also the
+ * previous wallet's EIP-1193 instance. Used by `switchTo` before `changeAddress`; also the
  * unit-test surface for that contract (no full React tree required). */
 export function clearSessionProviderBindings(
   setActiveConnector: (connector: SessionConnector | undefined) => void,
@@ -114,7 +114,7 @@ export function clearSessionProviderBindings(
 /** Whether the active JWT address belongs to an injected EVM browser wallet.
  *
  * Used to gate the reload-time `eth_accounts` probe: without a positive association we keep the
- * pre-regression safe behaviour (leave monitoring off, never force logout). Evidence, in order:
+ * safe behaviour (leave monitoring off, never force logout). Evidence, in order:
  * remembered `walletId` / `walletType` for this address, then `userAddresses[].wallet`. */
 export function isInjectedEvmSession(
   address: string | undefined,
@@ -137,7 +137,7 @@ export function isInjectedEvmSession(
   return false;
 }
 
-/** Connect-sheet state + handlers — rendered by <Shell> (inside `.app`, see finding #3: the
+/** Connect-sheet state + handlers — rendered by <Shell> (inside `.app`, so the
  * sheet's `position:absolute` must resolve against the 420px-wide `.app` frame, not the
  * viewport) instead of here, so the state/logic still lives with the rest of the wallet
  * session but the JSX moves down into the app's DOM subtree. */
@@ -192,7 +192,7 @@ export interface WalletSession {
   /** Opens the connect sheet (or focuses it if already open). Pass `filterChain` to restrict the
    * list to wallets that can receive on a specific chain (asset-specific connect). */
   openConnect: (recommendationCode?: string, filterChain?: Blockchain) => void;
-  /** Closes the connect sheet — call on route change too (finding #4). */
+  /** Closes the connect sheet — call on route change too. */
   closeConnect: () => void;
   /** Opens the switch-wallet sheet (previously-connected wallets). */
   openSwitcher: () => void;
@@ -396,11 +396,11 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const [activeConnector, setActiveConnector] = useState<SessionConnector | undefined>();
   const busyRef = useRef(false); // guards against double-sign on rapid repeat clicks
   const bootstrappedRef = useRef(false);
-  // isLoggedIn as of the moment a sign-in attempt *started* (finding #6) — read via a ref
+  // isLoggedIn as of the moment a sign-in attempt *started* — read via a ref
   // because signInWith is async and the session-context value can move under it.
   const isLoggedInRef = useRef(isLoggedIn);
   isLoggedInRef.current = isLoggedIn;
-  // Per-attempt cancellation (finding #1): `attemptIdRef` invalidates whatever
+  // Per-attempt cancellation: `attemptIdRef` invalidates whatever
   // handleSelectWallet() call is in flight so a late resolution after Cancel is discarded
   // instead of signing in behind the user's back; `wcTokenRef` is the live WalletConnect
   // attempt's CancelToken (see providers.ts), used to stop connectWalletConnect() from waiting
@@ -418,13 +418,13 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const injectedProviderRef = useRef<Eip1193Provider | undefined>(undefined);
   // WalletConnect's EthereumProvider from the connect that authenticated this session. Kept so
   // the accountsChanged/chainChanged monitor can subscribe — the connect path previously dropped
-  // the instance after signing, which made WC sessions unmonitored (C4). Cleared on logout /
+  // the instance after signing, which made WC sessions unmonitored. Cleared on logout /
   // forced invalidation. Not restored across reloads (no SDK session is re-hydrated into a live
-  // provider here either). Only set *after* successful sign-in (F2); see pendingWcProviderRef.
+  // provider here either). Only set *after* successful sign-in; see pendingWcProviderRef.
   const wcProviderRef = useRef<Eip1193Provider | undefined>(undefined);
   // WC provider from a pairing that has not yet completed sign-in (incl. recommendation gate).
   // Promoted to `wcProviderRef` on successful `signInWith`; cleared on cancel so an aborted
-  // pairing cannot later log out a non-WC session via a stale `accountsChanged` (F2).
+  // pairing cannot later log out a non-WC session via a stale `accountsChanged`.
   const pendingWcProviderRef = useRef<Eip1193Provider | undefined>(undefined);
 
   // Invite/referral code and ?wallet= (partner wallet id) — read once; both map straight onto the
@@ -464,7 +464,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     wcTokenRef.current?.cancel(new WalletConnectorError('Connection cancelled', 'rejected'));
     wcTokenRef.current = null;
     busyRef.current = false;
-    // Drop any half-open WC provider so a later non-WC session is never watched by it (F2).
+    // Drop any half-open WC provider so a later non-WC session is never watched by it.
     pendingWcProviderRef.current = undefined;
     wcProviderRef.current = undefined;
     void disconnectWalletConnect();
@@ -496,11 +496,11 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     ) => {
       // Captured *before* the request, not read in the catch block: only a session that was
       // genuinely live when this attempt started should ever be reported as having "expired"
-      // (finding #6) — a failed first-ever login has no session to expire.
+      // — a failed first-ever login has no session to expire.
       const wasLoggedIn = isLoggedInRef.current;
       // The invite code picked up from the URL/landing field can be either API shape — a short
       // partner ref (`usedRef`) or a full referral code (`recommendationCode`); the two DTO
-      // fields are mutually exclusive and sending the wrong one is a guaranteed 400 (finding #4).
+      // fields are mutually exclusive and sending the wrong one is a guaranteed 400.
       // `recommendationCode` (the function param) is the explicit recommendation-gate retry and
       // always wins over a classified invite code when present.
       const classifiedInvite = classifyInviteCode(activeInviteRef.current);
@@ -527,7 +527,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           return;
         }
         setActiveConnector(creds.connector);
-        // Promote a pending WC provider only after a successful session (F2) — never while the
+        // Promote a pending WC provider only after a successful session — never while the
         // QR pairing or recommendation gate is still open.
         if (creds.connector === 'wallet-connect' && pendingWcProviderRef.current) {
           wcProviderRef.current = pendingWcProviderRef.current;
@@ -538,8 +538,8 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         // Remember this wallet so the switch-wallet sheet can offer it again (the connector label
         // gives the brand logo + lets a different-account wallet be re-authenticated on switch). The
         // session's blockchains are persisted too, so a wallet remembered here still renders its
-        // chain chips when the switcher shows it under a *different* account (finding #7).
-        // `walletId` disambiguates catalog entries that share a walletType (Cardano vs CLI, F4).
+        // chain chips when the switcher shows it under a *different* account.
+        // `walletId` disambiguates catalog entries that share a walletType (Cardano vs CLI).
         rememberWallet({
           walletType: creds.walletType,
           walletId: creds.walletId,
@@ -617,7 +617,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
             return;
           }
           address = await connectInjected(provider);
-          // Remember the exact instance this session authenticates with (finding #3) — the
+          // Remember the exact instance this session authenticates with — the
           // accountsChanged/chainChanged monitor below must watch this object, not re-resolve
           // window.ethereum, which can be a different wallet than the one just connected.
           injectedProviderRef.current = provider;
@@ -700,10 +700,10 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
             if (wcTokenRef.current === token) wcTokenRef.current = null;
           }
           // Cancelled or superseded while waiting on the QR pairing — an abandoned attempt must
-          // never sign in behind the user (finding #1's "no sign-in may fire" requirement).
+          // never sign in behind the user ("no sign-in may fire").
           if (!isCurrent()) return;
           address = session.address;
-          // Stage the WC provider until sign-in succeeds (F2). Structural cast: EthereumProvider's
+          // Stage the WC provider until sign-in succeeds. Structural cast: EthereumProvider's
           // typed `on` is narrower than our Eip1193Provider listener surface, but the runtime
           // events we subscribe to (accountsChanged/chainChanged) are present on both.
           pendingWcProviderRef.current = session.provider as Eip1193Provider;
@@ -920,7 +920,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           name: e.walletType || 'Wallet',
           walletType: e.walletType,
           walletId: e.walletId,
-          // Chains persisted when this wallet was connected (finding #7) — mirrors the original's
+          // Chains persisted when this wallet was connected — mirrors the original's
           // switcherEntries `blockchains: e.chains||[]` so the chip row (· Bitcoin · Ethereum)
           // still renders for a wallet remembered under a different account.
           blockchains: mainnetOnly(e.chains ?? []),
@@ -961,10 +961,10 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     async (entry: WalletSwitchEntry) => {
       setSwitcherOpen(false);
       if (entry.active) return;
-      // Drop provider bindings for the *previous* address before the JWT address changes (F3).
+      // Drop provider bindings for the *previous* address before the JWT address changes.
       // Leaving them in place would re-register accountsChanged on the old wallet after the
       // effect re-runs. Resetting `activeConnector` to undefined sends the monitor into the
-      // reload probe path, which is safe after F1 (only injected-EVM sessions invalidate).
+      // reload probe path, which is safe (only injected-EVM sessions invalidate).
       clearSessionProviderBindings(setActiveConnector, injectedProviderRef, wcProviderRef, pendingWcProviderRef);
       showToast(`${t('switching')} · ${shortAddress(entry.address)}`);
       try {
@@ -980,7 +980,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           return;
         }
         // Remembered from a different account/device — re-authenticate that specific wallet.
-        // Prefer walletId so Cardano (walletType CLI) does not open the CLI paste form (F4).
+        // Prefer walletId so Cardano (walletType CLI) does not open the CLI paste form.
         const catalogEntry = catalogEntryByWalletType(entry.walletType, entry.walletId);
         openConnect();
         if (catalogEntry) void handleSelectWallet(catalogEntry);
@@ -1026,16 +1026,16 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   //
   // Provider selection:
   // - injected (this page's connect): the exact EIP-1193 instance we authenticated with
-  //   (`injectedProviderRef`) — not a re-derived window.ethereum (finding #3).
+  //   (`injectedProviderRef`) — not a re-derived window.ethereum.
   // - wallet-connect (this page's connect): the EthereumProvider kept in `wcProviderRef` after
   //   successful sign-in. It emits the same accountsChanged/chainChanged events as injected.
   // - `'other'` (hardware / Cardano / Alby / CLI / Solana / Tron): no EVM provider to watch —
-  //   must not fall through to `wcProviderRef` or `getInjectedProvider` as if it were WC (F2).
+  //   must not fall through to `wcProviderRef` or `getInjectedProvider` as if it were WC.
   // - reload / no remembered instance: best-effort `getInjectedProvider()` + eth_accounts probe,
-  //   gated so only injected-EVM sessions force logout on a present-but-different account (F1).
+  //   gated so only injected-EVM sessions force logout on a present-but-different account.
   useEffect(() => {
     if (!isLoggedIn || !address) return undefined;
-    // `'other'` has no EVM provider binding — skip monitoring entirely (F2).
+    // `'other'` has no EVM provider binding — skip monitoring entirely.
     if (activeConnector === 'other') return undefined;
     const provider: Eip1193Provider | undefined =
       activeConnector === 'injected'
@@ -1067,7 +1067,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
 
     if (!monitorsThisSession) {
       // Without a live connector binding we only force logout when the JWT address is known to
-      // belong to an injected EVM wallet. Non-EVM / unknown sessions keep monitoring off (F1).
+      // belong to an injected EVM wallet. Non-EVM / unknown sessions keep monitoring off.
       const injectedEvm = isInjectedEvmSession(address, seenWallets(), userAddresses ?? []);
       provider
         .request<string[]>({ method: 'eth_accounts' })
@@ -1075,7 +1075,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           if (!mounted) return;
           const list = (accounts ?? []).map(String);
           // Empty list (locked / permission revoked): not a mismatch — leave monitoring off.
-          // Present but different account on an injected-EVM session: force logout (C2/F1).
+          // Present but different account on an injected-EVM session: force logout.
           if (shouldInvalidateOnAccountProbe(address, list, injectedEvm)) {
             monitorsThisSession = true;
             invalidate();

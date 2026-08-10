@@ -1,4 +1,4 @@
-// Round-4 D5: AccountSheets' referral prop must reach InviteSheet as a usable
+// AccountSheets' referral prop must reach InviteSheet as a usable
 // summary (code/link/commission/userCount) — typed + commented, previously unwired.
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -53,7 +53,7 @@ jest.mock('../components/pickers/FiatPicker', () => ({
 import { inviteReferralView } from '../components/AccountSheets';
 import type { Referral } from '@dfx.swiss/react';
 
-describe('inviteReferralView (D5 referral prop wiring)', () => {
+describe('inviteReferralView (referral prop wiring)', () => {
   it('builds the shareable summary from a referral with a code', () => {
     const referral = {
       code: 'AB-CDEF-GHIJ-KL',
