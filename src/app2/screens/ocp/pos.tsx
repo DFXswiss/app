@@ -36,11 +36,28 @@ type FailKey = 'posFailed' | 'posExpired';
 
 // The active charge being awaited. A fresh `token` on every charge restarts the
 // polling effect (and its cleanup tears down the previous timer — no leak).
+// `currency` is frozen at charge time so the open QR/paid line keep the till
+// currency the cashier charged — not whatever link is selected afterwards.
 interface Charge {
   token: number;
   linkId: string;
   amount: number;
   lnurl: string;
+  currency: string;
+}
+
+/**
+ * Resolve the display currency for a POS link from its sell route — same source
+ * and fallback as invoice.tsx (`selectedRoute.currency?.name || 'CHF'`).
+ * PaymentLink carries only `routeId`; the currency lives on the matching sell route.
+ */
+export function currencyForPosLink(
+  link: { routeId?: string | number } | null | undefined,
+  sellRoutes: Array<{ id: string | number; currency?: { name?: string } | null }>,
+): string {
+  if (!link) return 'CHF';
+  const route = sellRoutes.find((r) => String(r.id) === String(link.routeId));
+  return route?.currency?.name || 'CHF';
 }
 
 export default function PosView({ ocp, go }: OcpSubViewProps) {
@@ -55,9 +72,10 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
   const [failKey, setFailKey] = useState<FailKey>('posFailed');
   const amountRef = useRef<HTMLInputElement>(null);
 
-  // Load links on entry (the shell doesn't preload them for this sub-view).
+  // Load links + routes on entry — routes supply the currency for the selected link.
   useEffect(() => {
     if (ocp.links === null) void ocp.loadLinks();
+    if (ocp.routes === null) void ocp.loadRoutes();
   }, [ocp]);
 
   const activeLinks = useMemo(
@@ -74,6 +92,13 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
         ? String(activeLinks[0].id)
         : '';
 
+  const selectedLink = activeLinks.find((l) => String(l.id) === selectedId);
+  // Free currency from the currently selected link — correct for the amount
+  // field label (the till the cashier is about to charge). Not used for an
+  // already-open charge display (see Charge.currency).
+  // Same resolution as invoice.tsx: route.currency?.name || 'CHF'.
+  const currency = currencyForPosLink(selectedLink, ocp.sellRoutes);
+
   const doCharge = useCallback(async () => {
     const amt = parseAmt(amount, language);
     if (amt === null) {
@@ -83,11 +108,20 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
       return;
     }
     if (!selectedId) return;
+    // Freeze before the await boundary: after ocp.charge resolves the select may
+    // already point at another link/currency (services#1270 class of bug).
+    const chargeCurrency = currency;
     setNote(null);
     setCharging(true);
     try {
       const { lnurl } = await ocp.charge(selectedId, amt);
-      setCharge({ token: Date.now(), linkId: selectedId, amount: amt, lnurl });
+      setCharge({
+        token: Date.now(),
+        linkId: selectedId,
+        amount: amt,
+        lnurl,
+        currency: chargeCurrency,
+      });
       setStatus('waiting');
       // Live: re-enable immediately so the till can re-charge; demo keeps the
       // button disabled until the fake resolution (mirrors the static app).
@@ -98,7 +132,7 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
       setNote(`${t('genErr')}${msg ? `: ${msg}` : ''}`);
       setCharging(false);
     }
-  }, [amount, language, selectedId, ocp, t]);
+  }, [amount, language, selectedId, currency, ocp, t]);
 
   // Payment polling — runs only while a charge is awaiting payment. The cleanup
   // clears the pending timer on unmount, on leaving the view, and before the
@@ -185,7 +219,9 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
             </option>
           ))}
         </select>
-        <label className="flabel">{t('amount')} (CHF)</label>
+        <label className="flabel">
+          {t('amount')} ({currency})
+        </label>
         <input
           ref={amountRef}
           className="tinput"
@@ -207,11 +243,14 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
           <>
             <div className="qrcard">
               <QRCode value={qrData(charge.lnurl)} size={212} level="M" bgColor="#ffffff" fgColor="#000000" />
-              <div className="qcap">CHF {charge.amount}</div>
+              <div className="qcap">
+                {/* Frozen at charge time — must not track a later select change. */}
+                {charge.currency} {charge.amount}
+              </div>
             </div>
             {status === 'paid' ? (
               <div className="posstat paid">
-                <span className="okbubble">{CHECK_SVG}</span> {t('posPaid')} · CHF {charge.amount}
+                <span className="okbubble">{CHECK_SVG}</span> {t('posPaid')} · {charge.currency} {charge.amount}
               </div>
             ) : status === 'failed' ? (
               <div className="posstat fail">

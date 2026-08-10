@@ -12,9 +12,29 @@ import { ApiException, type PaymentLink, PaymentLinkStatus } from '@dfx.swiss/re
 import { type ReactNode, useEffect, useState } from 'react';
 import QRCode from 'react-qr-code';
 import { useToast } from '../../components/ui';
-import { useT } from '../../i18n';
+import { useT, type TranslationKey } from '../../i18n';
 import { qrData } from './lnurl';
 import type { OcpApi, OcpSubViewProps } from './useOcp';
+
+/**
+ * Translates a PaymentLinkStatus / PaymentLinkPaymentStatus enum value the same
+ * way transaction-state-label's `stateLabel` does for TransactionState: look up
+ * `plst_*` / `payst_*`, fall back to the raw enum string (never an empty label
+ * or a leaked translation-key shape).
+ */
+export function paymentLinkStatusLabel(t: (key: TranslationKey) => string, status: string | undefined): string {
+  if (!status) return '';
+  const key = `plst_${status}` as TranslationKey;
+  const label = t(key);
+  return label === key ? status : label;
+}
+
+export function paymentStatusLabel(t: (key: TranslationKey) => string, status: string | undefined): string {
+  if (!status) return '';
+  const key = `payst_${status}` as TranslationKey;
+  const label = t(key);
+  return label === key ? status : label;
+}
 
 const COPY_ICON = (
   <svg viewBox="0 0 24 24" fill="none">
@@ -78,10 +98,10 @@ function LinkCard({ link, ocp, toggling, onToggle, onPos }: LinkCardProps) {
         <span className="rtt">
           <b>{title}</b>
           <small>
-            {t('route')} {String(link.routeId)} · {String(link.status)}
+            {t('route')} {String(link.routeId)} · {paymentLinkStatusLabel(t, link.status)}
           </small>
         </span>
-        <span className={`pill-chip ${active ? 'act' : 'ina'}`}>{String(link.status)}</span>
+        <span className={`pill-chip ${active ? 'act' : 'ina'}`}>{paymentLinkStatusLabel(t, link.status)}</span>
         <span className="chev">{CHEV_ICON}</span>
       </summary>
       <div className="rbody">
@@ -107,7 +127,7 @@ function LinkCard({ link, ocp, toggling, onToggle, onPos }: LinkCardProps) {
         {pay && (
           <>
             <KvRow label={t('amount')} value={`${payCurrency} ${pay.amount}`.trim()} />
-            <KvRow label={t('state')} value={String(pay.status)} />
+            <KvRow label={t('state')} value={paymentStatusLabel(t, pay.status)} />
           </>
         )}
         <div style={{ padding: '10px 12px 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>

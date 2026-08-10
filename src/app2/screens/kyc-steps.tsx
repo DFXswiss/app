@@ -1174,38 +1174,79 @@ function portalKycUrl(code: string): string | undefined {
   return appUrl(`/kyc?code=${encodeURIComponent(code)}`);
 }
 
+/**
+ * Ident auto-step poll schedule — same shape as ocp/pos.tsx: start 2000ms,
+ * ×1.35, capped at 10s, hard stop after 5 minutes. Exported for unit tests.
+ */
+export const IDENT_POLL = {
+  deadlineMs: 300_000,
+  initialDelayMs: 2_000,
+  maxDelayMs: 10_000,
+  growth: 1.35,
+} as const;
+
+export function nextIdentPollDelay(delayMs: number): number {
+  return Math.min(IDENT_POLL.maxDelayMs, Math.round(delayMs * IDENT_POLL.growth));
+}
+
 function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSession; onBack: () => void }) {
   const { t } = ctx;
   const kyc = useKyc();
   const [failure, setFailure] = useState('');
   const [sdkFailed, setSdkFailed] = useState(false);
+  const [pollTimedOut, setPollTimedOut] = useState(false);
+  const [pollGen, setPollGen] = useState(0);
   const advancedRef = useRef(false);
 
   const session = step.session;
   const tokenUrl = session?.type === UrlType.TOKEN && session.url ? session.url : undefined;
   const browserUrl = session?.type === UrlType.BROWSER && isSafeHttpsUrl(session.url) ? session.url : undefined;
 
-  // 3s auto-step poll — advances as soon as the ident step is no longer current.
+  // Auto-step poll with deadline + backoff (mirrors ocp/pos.tsx) — advances as
+  // soon as the ident step is no longer current; never runs forever on a parked tab.
   useEffect(() => {
-    if (!session) return;
-    const id = setInterval(() => {
-      if (advancedRef.current) return;
-      kyc
-        .continueKyc(ctx.code, true)
-        .then((next) => {
-          const cur = next.currentStep;
-          if (!cur || cur.name !== KycStepName.IDENT || isStepDone(cur)) {
-            advancedRef.current = true;
-            clearInterval(id);
-            ctx.onAdvance(next);
-          }
-        })
-        .catch(() => {
-          /* transient poll error — keep polling */
-        });
-    }, 3000);
-    return () => clearInterval(id);
-  }, [ctx.code, session?.type, session?.url]);
+    if (!session) return undefined;
+    setPollTimedOut(false);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const deadline = Date.now() + IDENT_POLL.deadlineMs;
+    let delay: number = IDENT_POLL.initialDelayMs;
+
+    const tick = async () => {
+      if (advancedRef.current || cancelled) return;
+      try {
+        const next = await kyc.continueKyc(ctx.code, true);
+        if (cancelled || advancedRef.current) return;
+        const cur = next.currentStep;
+        if (!cur || cur.name !== KycStepName.IDENT || isStepDone(cur)) {
+          advancedRef.current = true;
+          ctx.onAdvance(next);
+          return;
+        }
+      } catch {
+        /* transient poll error — keep polling until deadline */
+      }
+      if (cancelled || advancedRef.current) return;
+      if (Date.now() >= deadline) {
+        // Visible stop + retry — never silent, never indefinite.
+        setPollTimedOut(true);
+        return;
+      }
+      timer = setTimeout(tick, delay);
+      delay = nextIdentPollDelay(delay);
+    };
+
+    timer = setTimeout(tick, IDENT_POLL.initialDelayMs);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [ctx.code, session?.type, session?.url, pollGen]);
+
+  const retryPoll = () => {
+    setPollTimedOut(false);
+    setPollGen((g) => g + 1);
+  };
 
   const manualDone = () => {
     advancedRef.current = true;
@@ -1252,6 +1293,17 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
     );
   }
 
+  const pollTimeoutNote = pollTimedOut ? (
+    <div className="paybox-note warn" style={{ margin: '10px 0' }}>
+      {t('waitTimedOut')}
+      <div style={{ marginTop: 10 }}>
+        <button type="button" className="btn-mini" style={{ width: 'auto' }} onClick={retryPoll}>
+          {t('retry')}
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   if (tokenUrl) {
     return (
       <>
@@ -1283,9 +1335,11 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
             />
           </div>
         )}
-        <div className="tnote" style={{ marginTop: 8, textAlign: 'center' }}>
-          {t('kycIdentWait')}
-        </div>
+        {pollTimeoutNote ?? (
+          <div className="tnote" style={{ marginTop: 8, textAlign: 'center' }}>
+            {t('kycIdentWait')}
+          </div>
+        )}
       </>
     );
   }
@@ -1305,9 +1359,11 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
         >
           {t('kycIdentOpen')}
         </a>
-        <div className="tnote" style={{ marginTop: 10, textAlign: 'center' }}>
-          {t('kycIdentWait')}
-        </div>
+        {pollTimeoutNote ?? (
+          <div className="tnote" style={{ marginTop: 10, textAlign: 'center' }}>
+            {t('kycIdentWait')}
+          </div>
+        )}
       </>
     );
   }
@@ -1315,9 +1371,11 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
   // API / None session — nothing to embed; wait for review and let the poll run.
   return (
     <>
-      <div className="paybox-note" style={{ margin: '10px 0' }}>
-        {t('kycInReview')}
-      </div>
+      {pollTimeoutNote ?? (
+        <div className="paybox-note" style={{ margin: '10px 0' }}>
+          {t('kycInReview')}
+        </div>
+      )}
       <button className="btn-mini" style={{ marginTop: 10, width: '100%' }} disabled={ctx.busy} onClick={manualDone}>
         {t('kycIdentDone2')}
       </button>
