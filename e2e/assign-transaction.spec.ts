@@ -159,13 +159,16 @@ async function openAssignForm(page: Page): Promise<void> {
 }
 
 test.describe('Assign unassigned bank transfer', () => {
+  // formatSwissDateTimeWithSeconds has no timeZone option; UNASSIGNED_TX.date is absolute UTC.
+  // Pin Europe/Zurich so the rendered timestamp (and screenshots) match across machines.
+  test.use({ timezoneId: 'Europe/Zurich' });
+
   test('list collapsed with one unassigned transaction', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     const { unexpectedRequests } = await installSyntheticApi(page, []);
 
     await page.goto(`/tx?session=${jwt()}`);
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
 
     await expect(page.getByText('Your Transactions')).toBeVisible();
     await expect(page.getByText('Unassigned')).toBeVisible();
@@ -183,7 +186,6 @@ test.describe('Assign unassigned bank transfer', () => {
 
     await page.goto(`/tx?session=${jwt()}`);
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
 
     await expect(page.getByText('Your Transactions')).toBeVisible();
     await openAssignForm(page);
@@ -197,12 +199,31 @@ test.describe('Assign unassigned bank transfer', () => {
     await expect(submit).toBeEnabled();
 
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot(
       'assign-tx-02-single-target-preselected.png',
       { fullPage: true },
     );
+
+    // Second open uses the cached transactionTargets path (no re-fetch). Before the fix
+    // setValue only ran inside the fetch branch, so the target stayed empty and submit
+    // stayed disabled. After submit, loadTransactions remounts the list (and
+    // StyledCollapsible), so openAssignForm works again on the collapsed remount.
+    await submit.click();
+    await expect(page.getByText('Remittance info')).not.toBeVisible();
+    await expect(page.getByText('Unassigned')).toBeVisible();
+    await page.waitForLoadState('networkidle');
+
+    await openAssignForm(page);
+
+    await expect(page.getByText('REF-SYN-0501')).toBeVisible();
+    await expect(page.getByText('Select...')).toHaveCount(0);
+    await expect(submit).toBeEnabled();
+
+    // Pre-fix this state was empty (no target preselected) with submit permanently
+    // disabled — this second open is what proves the regression is gone. No separate
+    // baseline: the view is pixel-identical to the first open, so it is the same visual
+    // variant and the assertions above carry the proof.
 
     expect(unexpectedRequests).toEqual([]);
   });
@@ -213,7 +234,6 @@ test.describe('Assign unassigned bank transfer', () => {
 
     await page.goto(`/tx?session=${jwt()}`);
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
 
     await expect(page.getByText('Your Transactions')).toBeVisible();
     await openAssignForm(page);
@@ -226,7 +246,6 @@ test.describe('Assign unassigned bank transfer', () => {
     await expect(submit).toBeDisabled();
 
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot(
       'assign-tx-03-multiple-targets-none-preselected.png',
