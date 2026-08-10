@@ -87,6 +87,62 @@ function utf8ToHex(text: string): string {
   return Array.from(new TextEncoder().encode(text), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * CIP-30 `getUsedAddresses` / `getChangeAddress` return hex of a CBOR-encoded byte string
+ * (major type 2) wrapping the raw address bytes — not the raw bytes themselves. Unwrap that
+ * header when present; if the input is already raw address bytes (no CBOR header), return it
+ * unchanged so a non-wrapped wallet still works.
+ *
+ * Handles definite-length byte strings only (additional info 0–26). Indefinite-length and
+ * multi-gig payloads fall through as raw — real CIP-30 addresses are tens of bytes.
+ *
+ * NOTE: not exercised against a live CIP-30 extension in this environment; kept as best-effort
+ * pending a real-wallet pass (see file header).
+ */
+export function unwrapCip30AddressBytes(bytes: Uint8Array): Uint8Array {
+  if (bytes.length === 0) return bytes;
+  const b0 = bytes[0];
+  const major = b0 >> 5;
+  const additional = b0 & 0x1f;
+  if (major !== 2) return bytes; // not a CBOR byte-string header
+  let offset = 1;
+  let len: number;
+  if (additional < 24) {
+    len = additional;
+  } else if (additional === 24 && bytes.length >= 2) {
+    len = bytes[1];
+    offset = 2;
+  } else if (additional === 25 && bytes.length >= 3) {
+    len = (bytes[1] << 8) | bytes[2];
+    offset = 3;
+  } else if (additional === 26 && bytes.length >= 5) {
+    len = ((bytes[1] << 24) | (bytes[2] << 16) | (bytes[3] << 8) | bytes[4]) >>> 0;
+    offset = 5;
+  } else {
+    return bytes;
+  }
+  // Only unwrap when the length field accounts for the entire remainder of the buffer.
+  // A looser `<=` would treat a raw Shelley pointer address (header nibble 4/5 → major type 2)
+  // as a CBOR byte-string and return a 1-byte slice that still bech32-encodes to a plausible
+  // but wrong `addr1…` (F5).
+  if (offset + len !== bytes.length) return bytes;
+  return bytes.subarray(offset, offset + len);
+}
+
+/** Shelley-era header: `(address_type << 4) | network_id`. network_id 1 = mainnet (`addr`),
+ * anything else (0 = testnet/preprod/preview) → `addr_test`. */
+export function cardanoBech32Hrp(addressBytes: Uint8Array): 'addr' | 'addr_test' {
+  if (addressBytes.length === 0) return 'addr';
+  return (addressBytes[0] & 0x0f) === 1 ? 'addr' : 'addr_test';
+}
+
+/** Decode a CIP-30 address hex into the bech32 form the DFX API expects. Exported for unit tests
+ * and so the CBOR unwrap + network-prefix choice stay in one place. */
+export function cip30HexToBech32(hexAddr: string): string {
+  const addressBytes = unwrapCip30AddressBytes(hexToBytes(hexAddr));
+  return bech32Encode(cardanoBech32Hrp(addressBytes), addressBytes);
+}
+
 /** Connects a CIP-30 Cardano wallet and returns its bech32 address plus a signer
  * bound to the same enabled API. Throws WalletConnectorError on failure. */
 export async function connectCardano(): Promise<CardanoWalletSession> {
@@ -106,7 +162,9 @@ export async function connectCardano(): Promise<CardanoWalletSession> {
   if (!hexAddr && api.getChangeAddress) hexAddr = await api.getChangeAddress(); // fresh wallets have no used addresses yet
   if (!hexAddr) throw new WalletConnectorError('No account returned', 'no-account');
 
-  const address = bech32Encode('addr', hexToBytes(hexAddr));
+  // Display/API address: unwrap CBOR, pick network HRP, bech32-encode. Sign path keeps the raw
+  // CIP-30 hex — `signData` expects the same encoding the wallet handed out, not bech32.
+  const address = cip30HexToBech32(hexAddr);
   const signingHexAddr = hexAddr;
 
   return {

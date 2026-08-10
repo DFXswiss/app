@@ -157,7 +157,8 @@ describe('App2 review regressions', () => {
 
   it('classifies an invite code into the exact API field it belongs in, never both', () => {
     // Short partner/wallet ref — api/src/config/config.ts formats.ref: /^(\w{1,3}-\w{1,3})$/.
-    expect(classifyInviteCode('ab-c12')).toEqual({ kind: 'usedRef', code: 'AB-C12' });
+    // Case preserved: API referral lookup is an exact match (round-4 C1; live refs like stb-tax).
+    expect(classifyInviteCode('ab-c12')).toEqual({ kind: 'usedRef', code: 'ab-c12' });
     // Full referral code — formats.recommendationCode: /[0-9A-Z]{2}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{2}/.
     expect(classifyInviteCode('xy-ab12-cd34-ef')).toEqual({
       kind: 'recommendationCode',
