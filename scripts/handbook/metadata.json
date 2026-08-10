@@ -23,6 +23,10 @@
     "title": "Fehlgeschlagener Kauf & Refund",
     "description": "Transaktionsliste, Details und Refund-Formular nach fehlgeschlagenem Crypto-Kauf."
   },
+  "assign-transaction": {
+    "title": "Transaktion zuordnen",
+    "description": "Zuweisungs-Formular für nicht zugeordnete Banküberweisungen: Liste, Vorauswahl bei genau einem Ziel und deaktivierter Button bei mehreren Zielen."
+  },
   "sell-process": {
     "title": "Verkaufsprozess",
     "description": "Sell-Flow: geladene Seite, Betrag und Sepolia-ETH/USDT-Verkaufsschritte."
