@@ -89,15 +89,14 @@ export interface SupportIssueInternalData {
  * A proposed answer offered to the clerk. Suggestions are submitted through the API only — this
  * app reads them and records the decision, it never writes one.
  */
+/** What the screen reads of the API's suggestion; `state` and `handled` are not offered here. */
 export interface SupportReplySuggestion {
   /** the message the suggestion answers — and the id it is addressed by */
   messageId: number;
   text: string;
-  state: string;
   /** the answered message is no longer the newest one — the conversation has moved on */
   isStale: boolean;
   created: string;
-  handled?: string;
 }
 
 export interface SupportMessageInfo {

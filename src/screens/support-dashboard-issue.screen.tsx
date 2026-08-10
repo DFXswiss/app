@@ -785,7 +785,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             <button
               className="px-2 py-2 text-dfxGray-700 hover:text-dfxBlue-800 transition-colors disabled:opacity-30"
               onClick={() => void openTemplatePicker(issueData.account.id)}
-              disabled={isUserDataLoading || issueData.account.id == null}
+              disabled={isUserDataLoading}
               title={isUserDataLoading ? 'Lade Userdaten...' : 'Vorlage einfügen'}
             >
               <svg

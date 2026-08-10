@@ -847,17 +847,6 @@ describe('SupportDashboardIssueScreen', () => {
 
       expect(await screen.findByText('Failed to load user data for templates')).toBeInTheDocument();
     });
-
-    it('does not offer templates for a ticket without an account', async () => {
-      mockGetIssueData.mockResolvedValue({
-        ...MINIMAL_ISSUE,
-        account: { ...MINIMAL_ISSUE.account, id: undefined },
-      } as unknown as SupportIssueInternalData);
-
-      await renderScreen();
-
-      expect(button('Vorlage einfügen')).toBeDisabled();
-    });
   });
 
   describe('attachments', () => {
