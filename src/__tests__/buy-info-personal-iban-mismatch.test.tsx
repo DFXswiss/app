@@ -1,5 +1,6 @@
-// Wiring test: when personalIban is set but currency is not EUR, BuyInfoScreen omits
-// personalIbanProvider from the quote request AND requires continue acknowledgement (A2).
+// Wiring test: when personalIban is set but the currency is outside the Bank Frick currency set
+// (EUR, CHF), BuyInfoScreen omits personalIbanProvider from the quote request AND requires
+// continue acknowledgement (A2).
 // personalIban comes from usePersonalIbanSelection() (not useAppParams).
 
 const mockReceiveFor = jest.fn();
@@ -39,7 +40,7 @@ jest.mock('@dfx.swiss/react', () => ({
     getAssets: () => [{ name: 'BTC', uniqueName: 'Bitcoin' }],
   }),
   useBuy: () => ({
-    currencies: [{ name: 'CHF' }, { name: 'EUR' }],
+    currencies: [{ name: 'CHF' }, { name: 'EUR' }, { name: 'USD' }],
     receiveFor: mockReceiveFor,
   }),
   useFiat: () => ({
@@ -119,7 +120,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import BuyInfoScreen from 'src/screens/buy-info.screen';
 
 const MISMATCH_HINT =
-  'Your requested personal IBAN is only available for EUR bank transfers, so it was not used for this offer.';
+  'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.';
 const CONTINUE_WITHOUT = 'Continue without personal IBAN';
 const VERIFY_HINT =
   'The personal IBAN response could not be verified for this offer. You can continue with the standard payment details, or cancel.';
@@ -142,6 +143,20 @@ function chfOffer() {
     id: 1,
     amount: 100,
     currency: { name: 'CHF' },
+    estimatedAmount: 0.01,
+    asset: { name: 'BTC' },
+    minVolume: 1,
+    maxVolume: 10000,
+    isPersonalIban: false,
+    name: 'DFX AG',
+  };
+}
+
+function usdOffer() {
+  return {
+    id: 3,
+    amount: 100,
+    currency: { name: 'USD' },
     estimatedAmount: 0.01,
     asset: { name: 'BTC' },
     minVolume: 1,
@@ -230,6 +245,12 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
   });
 
   it('omits personalIbanProvider and requires continue acknowledgement before payment details (A2)', async () => {
+    // USD, not the CHF default: after the Bank Frick CHF cutover, CHF is itself Frick-applicable
+    // (see the dedicated CHF test below), so a genuine currency mismatch now needs a currency
+    // outside the Bank Frick set (EUR, CHF) entirely.
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'USD' }));
+    mockReceiveFor.mockResolvedValue(usdOffer());
+
     render(<BuyInfoScreen />);
 
     await waitFor(() => {
@@ -253,6 +274,19 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
 
     await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
     expect(screen.getByText(TRANSFER_BUTTON)).toBeInTheDocument();
+  });
+
+  it('requests a Frick personal IBAN directly for CHF, mirroring the EUR flow', async () => {
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor.mockResolvedValue(frickOffer({ currency: { name: 'CHF' } }));
+
+    render(<BuyInfoScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+    await settle();
+    expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
+    expect(screen.queryByText(MISMATCH_HINT)).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toHaveAttribute('data-show-bank', 'true');
   });
 
   it('does not show the mismatch hint for customers without personal-iban', async () => {

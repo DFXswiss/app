@@ -22,6 +22,7 @@ const mockGetDefaultCurrency = (list: any[]) => list?.[0];
 const mockCurrencies = [
   { name: 'EUR', sellable: true },
   { name: 'CHF', sellable: true },
+  { name: 'USD', sellable: true },
 ];
 // Stable reference: buy.screen currency-selection effect depends on prefCurrency by identity.
 const mockPrefCurrency = { name: 'CHF' };
@@ -319,14 +320,14 @@ describe('BuyScreen quote race protection', () => {
     expect(screen.queryByText('111')).not.toBeInTheDocument();
   });
 
-  it('uses a pending CHF response after the live selector toggles on an offer that cannot carry it (A2)', async () => {
+  it('uses a pending USD response after the live selector toggles on an offer that cannot carry it (A2)', async () => {
     mockPersonalIban.mockReturnValue(undefined);
-    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'USD' }));
 
     const offer = {
       id: 3,
       amount: 333,
-      currency: { name: 'CHF' },
+      currency: { name: 'USD' },
       estimatedAmount: 0.03,
       asset: { name: 'BTC', uniqueName: 'Bitcoin' },
       minVolume: 1,
@@ -359,7 +360,7 @@ describe('BuyScreen quote race protection', () => {
     await waitFor(() =>
       expect(
         screen.getByText(
-          'Your requested personal IBAN is only available for EUR bank transfers, so it was not used for this offer.',
+          'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.',
         ),
       ).toBeInTheDocument(),
     );

@@ -3,6 +3,10 @@
     "title": "Kaufprozess",
     "description": "Buy-Flow: Seitenladezustand, Betragseingabe, Zahlungsdetails und Collection-/Personal-IBAN-Umschaltung."
   },
+  "buy-info": {
+    "title": "Kauf-Infoseite",
+    "description": "Buy-Info-Flow (/buy/info): Personal-IBAN-Mismatch-Hinweis für eine Nicht-Frick-Währung."
+  },
   "buy-bitcoin": {
     "title": "Bitcoin kaufen",
     "description": "Buy-Flow für Bitcoin: geladene Seite, Betrag und Wechselkurs."

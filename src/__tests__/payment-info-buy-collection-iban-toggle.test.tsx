@@ -1,8 +1,9 @@
-// Focused unit test for the EUR collection-IBAN toggle in PaymentInformationContent.
+// Focused unit test for the Bank Frick collection-IBAN toggle in PaymentInformationContent.
 // Mounts the REAL component (not mocked) so the toggle button and the displayed/copied IBAN
 // value are exercised. The toggle must only appear for a verified Bank Frick personal IBAN,
-// EUR currency, and a present remittanceInfo, and never for customers already shown the
-// collection account (isPersonalIban false) or whose displayed IBAN already is that account.
+// a currency with a configured collection account (EUR or CHF), and a present remittanceInfo,
+// and never for customers already shown the collection account (isPersonalIban false) or whose
+// displayed IBAN already is that account.
 
 const mockCopy = jest.fn();
 
@@ -61,7 +62,7 @@ jest.mock('../components/payment/payment-qr-code', () => ({
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PaymentInformationContent } from '../components/payment/payment-info-buy';
-import { canOfferCollectionIban } from '../util/personal-iban';
+import { getOfferableCollectionIban } from '../util/personal-iban';
 
 function baseInfo(overrides: Record<string, unknown> = {}) {
   return {
@@ -122,7 +123,22 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     expect(screen.queryByRole('button', { name: 'Show collection IBAN' })).not.toBeInTheDocument();
   });
 
-  it('does not show the toggle for a non-EUR currency', () => {
+  it('does not show the toggle for a currency without a configured Bank Frick collection account', () => {
+    render(
+      <PaymentInformationContent
+        info={baseInfo({
+          isPersonalIban: true,
+          bank: 'Bank Frick',
+          name: 'DFX AG',
+          currency: { name: 'USD' },
+        })}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Show collection IBAN' })).not.toBeInTheDocument();
+  });
+
+  it('toggles the displayed and copied IBAN between the personal and CHF collection account', () => {
     render(
       <PaymentInformationContent
         info={baseInfo({
@@ -134,7 +150,23 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
       />,
     );
 
-    expect(screen.queryByRole('button', { name: 'Show collection IBAN' })).not.toBeInTheDocument();
+    const ibanRow = screen.getByTestId('row-value-IBAN');
+    expect(ibanRow).toHaveTextContent('LI21088110102979K002E');
+
+    const showCollectionButton = within(ibanRow).getByRole('button', { name: 'Show collection IBAN' });
+    fireEvent.click(showCollectionButton);
+
+    expect(ibanRow).toHaveTextContent('LI32088110105923K000C');
+    expect(ibanRow).not.toHaveTextContent('LI75088110105923K000E');
+    const showPersonalButton = within(ibanRow).getByRole('button', { name: 'Show personal IBAN' });
+    expect(showPersonalButton).toBeInTheDocument();
+
+    fireEvent.click(within(ibanRow).getByTestId('copy'));
+    expect(mockCopy).toHaveBeenLastCalledWith('LI32088110105923K000C');
+
+    fireEvent.click(showPersonalButton);
+
+    expect(ibanRow).toHaveTextContent('LI21088110102979K002E');
   });
 
   it('does not show the toggle when remittanceInfo is absent', () => {
@@ -178,16 +210,24 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
   });
 });
 
-describe('canOfferCollectionIban', () => {
-  it('is true for a verified Bank Frick personal IBAN with EUR currency and remittanceInfo', () => {
+describe('getOfferableCollectionIban', () => {
+  it('returns the EUR collection IBAN for a verified Bank Frick personal IBAN with EUR currency and remittanceInfo', () => {
     expect(
-      canOfferCollectionIban(baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })),
-    ).toBe(true);
+      getOfferableCollectionIban(baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })),
+    ).toBe('LI75088110105923K000E');
   });
 
-  it('is false when the given IBAN is the collection account, ignoring whitespace and case', () => {
+  it('returns the CHF collection IBAN for a verified Bank Frick personal IBAN with CHF currency and remittanceInfo', () => {
     expect(
-      canOfferCollectionIban(
+      getOfferableCollectionIban(
+        baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG', currency: { name: 'CHF' } }),
+      ),
+    ).toBe('LI32088110105923K000C');
+  });
+
+  it('returns undefined when the given IBAN is the collection account, ignoring whitespace and case', () => {
+    expect(
+      getOfferableCollectionIban(
         baseInfo({
           isPersonalIban: true,
           bank: 'Bank Frick',
@@ -195,6 +235,14 @@ describe('canOfferCollectionIban', () => {
           iban: 'li75 0881 1010 5923 k000 e',
         }),
       ),
-    ).toBe(false);
+    ).toBeUndefined();
+  });
+
+  it('returns undefined for a currency without a configured collection IBAN (USD)', () => {
+    expect(
+      getOfferableCollectionIban(
+        baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG', currency: { name: 'USD' } }),
+      ),
+    ).toBeUndefined();
   });
 });

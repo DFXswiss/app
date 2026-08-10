@@ -25,6 +25,7 @@ const mockGetDefaultCurrency = (list: any[]) => list?.[0];
 const mockCurrencies = [
   { name: 'EUR', sellable: true },
   { name: 'CHF', sellable: true },
+  { name: 'USD', sellable: true },
 ];
 // Stable reference: buy.screen currency-selection effect depends on prefCurrency by identity.
 const mockPrefCurrency = { name: 'CHF' };
@@ -276,7 +277,7 @@ function baseAppParams(overrides: Record<string, unknown> = {}) {
 }
 
 const MISMATCH_HINT =
-  'Your requested personal IBAN is only available for EUR bank transfers, so it was not used for this offer.';
+  'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.';
 const CONTINUE_WITHOUT = 'Continue without personal IBAN';
 const VERIFY_HINT =
   'The personal IBAN response could not be verified for this offer. You can continue with the standard payment details, or cancel.';
@@ -287,6 +288,25 @@ function chfOffer() {
     id: 1,
     amount: 300,
     currency: { name: 'CHF' },
+    estimatedAmount: 0.01,
+    asset: { name: 'BTC', uniqueName: 'Bitcoin' },
+    minVolume: 1,
+    maxVolume: 100000,
+    isValid: true,
+    exchangeRate: 1,
+    rate: 1,
+    fees: {},
+    priceSteps: [],
+    isPersonalIban: false,
+    name: 'DFX AG',
+  };
+}
+
+function usdOffer() {
+  return {
+    id: 4,
+    amount: 300,
+    currency: { name: 'USD' },
     estimatedAmount: 0.01,
     asset: { name: 'BTC', uniqueName: 'Bitcoin' },
     minVolume: 1,
@@ -371,8 +391,11 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
   }
 
   it('omits personalIbanProvider and requires continue acknowledgement before payment details (A2)', async () => {
-    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
-    mockReceiveFor.mockResolvedValue(chfOffer());
+    // USD, not CHF: after the Bank Frick CHF cutover, CHF is itself Frick-applicable (see the
+    // dedicated CHF test below), so a genuine currency mismatch now needs a currency outside the
+    // Bank Frick set (EUR, CHF) entirely.
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'USD' }));
+    mockReceiveFor.mockResolvedValue(usdOffer());
 
     render(<BuyScreen />);
 
@@ -393,6 +416,23 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     expect(screen.getByText(TRANSFER_BUTTON)).toBeInTheDocument();
   });
 
+  it('requests a Frick personal IBAN directly for CHF, mirroring the EUR flow, without a confirmation step', async () => {
+    mockPersonalIban.mockReturnValue('Frick');
+    mockRequestedPersonalIban.mockReturnValue('Frick');
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor.mockResolvedValue(frickOffer({ currency: { name: 'CHF' } }));
+
+    render(<BuyScreen />);
+
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
+    expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+    await settle();
+
+    expect(screen.queryByText(MISMATCH_HINT)).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toHaveAttribute('data-show-bank', 'true');
+  });
+
   it('does not show the mismatch hint or personal-IBAN promo for customers without personal-iban', async () => {
     mockPersonalIban.mockReturnValue(undefined);
     mockRequestedPersonalIban.mockReturnValue(undefined);
@@ -404,8 +444,25 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
     await settle();
     expect(screen.queryByText(MISMATCH_HINT)).not.toBeInTheDocument();
+    // CHF is a Bank Frick currency now, same as EUR: the "generate a personal IBAN" promo (the
+    // separate, non-Frick /buy/personal-iban issuance flow) must not offer itself here either.
+    expect(screen.queryByText('New: Personal IBAN in your own name!')).not.toBeInTheDocument();
     expect(mockReceiveFor.mock.calls[0][0]).not.toHaveProperty('personalIbanProvider');
     expect(screen.getByTestId('payment-info')).toHaveAttribute('data-show-bank', 'false');
+  });
+
+  it('shows the personal-IBAN promo for a currency outside the Bank Frick set without a selector', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'USD' }));
+    mockReceiveFor.mockResolvedValue(usdOffer());
+
+    render(<BuyScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+    await settle();
+    expect(screen.getByText('New: Personal IBAN in your own name!')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Generate personal IBAN' })).toBeInTheDocument();
   });
 
   it('does not delay a selector-free quote while wallet initialization is unsettled', async () => {
