@@ -5,6 +5,7 @@
 let mockIsLoggedIn = true;
 const mockGetPendingChargebacks = jest.fn();
 const mockNavigate = jest.fn();
+const mockUseComplianceGuard = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
   useSessionContext: () => ({ isLoggedIn: mockIsLoggedIn }),
@@ -23,7 +24,7 @@ jest.mock('src/components/error-hint', () => ({
 }));
 
 jest.mock('src/hooks/guard.hook', () => ({
-  useComplianceGuard: () => undefined,
+  useComplianceGuard: () => mockUseComplianceGuard(),
 }));
 
 jest.mock('src/hooks/layout-config.hook', () => ({
@@ -102,6 +103,15 @@ describe('ComplianceChargebackListScreen', () => {
     jest.clearAllMocks();
     mockIsLoggedIn = true;
     mockGetPendingChargebacks.mockResolvedValue(asTransport([]));
+  });
+
+  // The role guard is all that stands between an unauthorised role and this screen; it is mocked out
+  // in every other test here. Without this assertion the screen could lose its guard call and the
+  // whole suite would stay green — see issue #1306, where exactly that was suspected.
+  it('calls the compliance guard on render', () => {
+    render(<ComplianceChargebackListScreen />);
+
+    expect(mockUseComplianceGuard).toHaveBeenCalled();
   });
 
   it('does not fetch when not logged in', () => {
