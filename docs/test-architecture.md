@@ -52,13 +52,12 @@ the merge target had gained a route the registry did not claim yet. Re-measure a
 suite; the number of tests is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every
-external provider, on two levels — the API mocks its own outbound calls, and the Docker network it sits
-on has no route to the internet at all. The second level is the load-bearing one, and
-`e2e-stack/env/api.env` records why: the `loc` mock covers only calls made through the API's central
-HTTP wrapper, so an integration reaching out through a vendor SDK, `graphql-request`, an ethers provider
-or bare `fetch` goes straight past it. What guarantees that no external system is contacted is therefore
-the network, not the mock. How many integrations bypass the wrapper is a property of the API and not
-verifiable from this repository.
+external provider twice over: the API mocks its own outbound calls, and the Docker network it sits on has
+no route to the internet at all. The isolation, not the mock, is what carries the guarantee — and
+`e2e-stack/env/api.env` says so itself: the `loc` mock "only covers calls made through the API's central
+HTTP wrapper", while "what guarantees no external system is ever contacted is the network the API sits
+on". Any call that reaches out without going through that wrapper is therefore outside the mock's scope.
+Which calls those are, and how many, is a property of the API and not verifiable from this repository.
 
 The details — the factories and the states that are deliberately not achievable — are in
 `e2e-stack/README.md` and `e2e-stack/docs/test-data.md`.
@@ -77,9 +76,9 @@ declaration.** Anything its parser cannot resolve is a hard failure rather than 
 
 ## Reality declaration — hard requirement
 
-Full definition, including all seven categories that count as a fake and the five mandatory fields
-per entry, is in `DFXswiss/api` under `docs/test-architecture.md`. The short form that binds every
-pull request here:
+Full definition, including the categories that count as a fake and the mandatory fields per entry, is in
+`DFXswiss/api` under `docs/test-architecture.md` — that document owns the taxonomy, and its exact extent
+is not verifiable from this repository. The short form that binds every pull request here:
 
 Whenever you introduce, remove or change a fake — a faked external provider, a disabled cron job, a
 schema built without the migration chain, state written directly with SQL, a placeholder value that
@@ -106,9 +105,9 @@ All four points below concern the full-stack harness.
 - **The harness lives in the wrong repository.** It tests the API as much as this frontend, and
   `DFXswiss/api` has to check this repository out to obtain it. See the target below.
 - **The suite is serialised.** All specs share one database and one API instance with no per-test
-  isolation, so it runs on a single worker with retries disabled — deliberately, since a retry would
-  mask exactly the order-dependent failure this arrangement produces. It bounds how far the suite can
-  grow.
+  isolation, so it runs on a single worker with retries disabled — `workers: 1` and `retries: 0` in
+  `e2e-stack/playwright.config.ts`, which explains the choice: a retry would mask exactly the
+  order-dependent failure this arrangement produces. It bounds how far the suite can grow.
 
 ## Target architecture
 
@@ -126,6 +125,7 @@ Each step is additive; none requires discarding what exists.
 
 ## Keeping this document honest
 
-Every number carries the commit it was measured on and the command that produces it. When a layer
-changes what it proves, or a fake is added, removed or altered, this document changes in the same
-pull request.
+Every **measured** number carries the commit it was measured on and the command that produces it; that
+is what keeps the figures maintainable. Counts that a reader can verify by looking — how many entries an
+adjacent list has, for instance — need no stamp. When a layer changes what it proves, or a fake is added,
+removed or altered, this document changes in the same pull request.
