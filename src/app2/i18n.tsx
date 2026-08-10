@@ -127,6 +127,8 @@ export const en = {
   needKyc: 'This amount needs identity verification (KYC). Complete it on app.dfx.swiss.',
   needLimit: 'This exceeds your current limit. Raise it via verification on app.dfx.swiss.',
   needSetup: 'Finish your account setup on app.dfx.swiss to unlock payments, then come back.',
+  // Valid quote, but deposit address / payment request missing — not an account-setup problem.
+  needPaymentDetails: 'Payment details are missing for this quote. Please try again or pick a different amount.',
   comboUnavailable: 'This combination is not available right now. Pick another asset, currency or payment method.',
   accountRestricted:
     "Your account can't trade right now — no other asset or currency will change that. Contact support if this seems wrong.",
@@ -1384,6 +1386,8 @@ export const de = {
   needKyc: 'Dieser Betrag erfordert eine Identitätsprüfung (KYC). Schliesse sie auf app.dfx.swiss ab.',
   needLimit: 'Das übersteigt dein aktuelles Limit. Erhöhe es per Verifizierung auf app.dfx.swiss.',
   needSetup: 'Schliesse dein Konto-Setup auf app.dfx.swiss ab, um Zahlungen freizuschalten, und komm dann zurück.',
+  needPaymentDetails:
+    'Für dieses Angebot fehlen die Zahlungsdetails. Bitte versuche es erneut oder wähle einen anderen Betrag.',
   comboUnavailable:
     'Diese Kombination ist gerade nicht verfügbar. Wähle ein anderes Asset, eine andere Währung oder Zahlungsart.',
   accountRestricted:
@@ -2098,6 +2102,7 @@ export const it = {
   needKyc: "Questo importo richiede la verifica dell'identità (KYC). Completala su app.dfx.swiss.",
   needLimit: 'Supera il tuo limite attuale. Aumentalo tramite la verifica su app.dfx.swiss.',
   needSetup: 'Completa la configurazione del tuo account su app.dfx.swiss per sbloccare i pagamenti, poi torna.',
+  needPaymentDetails: 'Mancano i dettagli di pagamento per questa quotazione. Riprova o scegli un importo diverso.',
   comboUnavailable:
     "Questa combinazione non è disponibile al momento. Scegli un altro asset, un'altra valuta o un altro metodo di pagamento.",
   accountRestricted:
@@ -2812,6 +2817,7 @@ export const fr = {
   needKyc: "Ce montant nécessite une vérification d'identité (KYC). Termine-la sur app.dfx.swiss.",
   needLimit: 'Cela dépasse ta limite actuelle. Augmente-la via la vérification sur app.dfx.swiss.',
   needSetup: 'Termine la configuration de ton compte sur app.dfx.swiss pour débloquer les paiements, puis reviens.',
+  needPaymentDetails: 'Les détails de paiement manquent pour ce devis. Réessaie ou choisis un autre montant.',
   comboUnavailable:
     "Cette combinaison n'est pas disponible pour le moment. Choisis un autre actif, une autre devise ou un autre moyen de paiement.",
   accountRestricted:

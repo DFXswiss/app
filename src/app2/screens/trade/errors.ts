@@ -22,6 +22,21 @@ export interface TradeErrorInfo {
 
 type T = (key: TranslationKey, vars?: Record<string, string | number>) => string;
 
+/** Raw `QuoteError` values for the email gate that predate the SDK's `TransactionError` enum. */
+const PRIMARY_EMAIL_ERRORS = new Set(['PrimaryEmailRequired', 'PrimaryEmailNotConfirmed']);
+
+/** True for every error code that should open the sheet's inline e-mail field (not the generic
+ * "finish on DFX" setup gate) — `EMAIL_REQUIRED` plus the pre-SDK PrimaryEmail* quote codes. */
+export function isEmailGateError(error: TransactionError | string | undefined): boolean {
+  if (error == null || error === '') return false;
+  if (error === TransactionError.EMAIL_REQUIRED) return true;
+  if (PRIMARY_EMAIL_ERRORS.has(String(error))) return true;
+  const code = String(error)
+    .replace(/[^a-z0-9]/gi, '')
+    .toLowerCase();
+  return code === 'emailrequired' || code === 'primaryemailrequired' || code === 'primaryemailnotconfirmed';
+}
+
 /** Maps a thrown error from `receiveFor(...)` to a friendly, already-translated message. */
 export function mapThrownError(t: T, err: unknown): TradeErrorInfo {
   if (err instanceof ApiException) {
@@ -29,7 +44,9 @@ export function mapThrownError(t: T, err: unknown): TradeErrorInfo {
     const code = String(err.code ?? '')
       .replace(/[^a-z0-9]/gi, '')
       .toLowerCase();
-    if (code === 'emailrequired') return { kind: 'email', message: t('verifyEmailNote') };
+    if (isEmailGateError(err.code) || isEmailGateError(code)) {
+      return { kind: 'email', message: t('verifyEmailNote') };
+    }
     if (code === 'recommendationrequired') return { kind: 'setup', message: t('inviteGateNote') };
     if (code.includes('kyc') || code === 'namerequired' || code === 'videoidentrequired') {
       return { kind: 'setup', message: t('needKyc') };
@@ -110,9 +127,6 @@ const COMBINATION_ERRORS = new Set(['AssetUnsupported', 'CurrencyUnsupported', '
 /** Raw `QuoteError` values that mean "your account", not the combination you picked — see the
  * `default` branch above for why these were previously (incorrectly) in `COMBINATION_ERRORS`. */
 const ACCOUNT_RESTRICTED_ERRORS = new Set(['CountryNotAllowed', 'NationalityNotAllowed']);
-
-/** Raw `QuoteError` values for the email gate that predate the SDK's `TransactionError` enum. */
-const PRIMARY_EMAIL_ERRORS = new Set(['PrimaryEmailRequired', 'PrimaryEmailNotConfirmed']);
 
 /** Convenience formatters for `mapTransactionError`'s `format` param. */
 export function fiatFormatter(currencyCode: string, language: Language): (n: number) => string {
