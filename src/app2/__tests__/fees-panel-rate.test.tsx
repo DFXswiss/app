@@ -81,12 +81,12 @@ describe('FeesPanel exchange-rate row', () => {
   });
 });
 
-// Round-5 finding (Danswar's "one breach of the zero-client-money-math claim"): the collapsed
-// summary line and the expanded detail row showed two *different* numbers for the same pair —
-// the summary hand-divided estimatedAmount/amount (fee-inclusive) while the detail row showed the
-// fee-exclusive exchangeRate — with neither line saying so. Fixtures below give `rate` (the
-// fee-inclusive field the fix now uses) a value distinct from `exchangeRate`, so a regression
-// back to reusing one field for both — or dropping the "incl./excl. fees" labels — fails loudly.
+// The collapsed summary line and the expanded detail row showed two *different* numbers for the
+// same pair — the summary hand-divided estimatedAmount/amount (fee-inclusive) while the detail
+// row showed the fee-exclusive exchangeRate — with neither line saying so. Fixtures below give
+// `rate` (the fee-inclusive field the summary now uses) a value distinct from `exchangeRate`, so
+// a regression back to reusing one field for both — or dropping the "incl./excl. fees" labels —
+// fails loudly.
 describe('FeesPanel summary vs. detail rate — fee-inclusive vs. market rate', () => {
   it('buy: summary shows the fee-inclusive rate, detail shows the market rate, both labeled', () => {
     const buy = {

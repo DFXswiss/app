@@ -1,4 +1,4 @@
-// Round-2 review finding: session.tsx forwarded the raw, unclassified invite code to Alby's
+// session.tsx forwarded the raw, unclassified invite code to Alby's
 // hosted-account OAuth redirect (GET /auth/alby?usedRef=...) unconditionally as `usedRef`. The
 // endpoint validates the same two mutually-exclusive, differently-shaped fields as every other
 // login path (AlbySignupDto extends OptionalSignUpDto, api › user/dto/alby.dto.ts) — a full

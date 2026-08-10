@@ -1,7 +1,7 @@
-// Round-4 C2 + F1: on reload, an eth_accounts probe that returns a *present but different*
+// On reload, an eth_accounts probe that returns a *present but different*
 // account must force logout only for injected-EVM sessions. Non-EVM JWT addresses (Bitcoin,
 // Cardano, Solana, …) and sessions with no positive injected-EVM association must keep the
-// pre-regression safe behaviour (monitoring off, no logout).
+// safe behaviour (monitoring off, no logout).
 //
 // Pure exports from session.tsx; the heavy wallet/session graph is stubbed so Jest never loads
 // @dfx.swiss/react ESM or WalletConnect/viem.
@@ -106,7 +106,7 @@ const other = '0x0000000000000000000000000000000000000001';
 const btc = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
 const cardano = 'addr1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlhxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
 
-describe('shouldInvalidateOnAccountProbe (round-4 C2 / F1)', () => {
+describe('shouldInvalidateOnAccountProbe', () => {
   it('forces logout when eth_accounts returns a different present account on an injected-EVM session', () => {
     expect(shouldInvalidateOnAccountProbe(jwt, [other], true)).toBe(true);
     // Default keeps prior EVM-only callers working.
@@ -124,7 +124,7 @@ describe('shouldInvalidateOnAccountProbe (round-4 C2 / F1)', () => {
     expect(shouldInvalidateOnAccountProbe(jwt, [jwt], true)).toBe(false);
   });
 
-  it('never force-logs-out a non-injected-EVM session on probe mismatch (F1)', () => {
+  it('never force-logs-out a non-injected-EVM session on probe mismatch', () => {
     // Bitcoin / Cardano JWT vs MetaMask eth_accounts — the reload regression.
     expect(shouldInvalidateOnAccountProbe(btc, [other], false)).toBe(false);
     expect(shouldInvalidateOnAccountProbe(cardano, [other], false)).toBe(false);
@@ -134,7 +134,7 @@ describe('shouldInvalidateOnAccountProbe (round-4 C2 / F1)', () => {
   });
 });
 
-describe('isInjectedEvmSession (F1 association)', () => {
+describe('isInjectedEvmSession association', () => {
   it('returns true for a remembered MetaMask address', () => {
     expect(isInjectedEvmSession(jwt, [{ address: jwt, walletType: 'MetaMask', walletId: 'MetaMask' }])).toBe(true);
   });

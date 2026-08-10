@@ -1,15 +1,9 @@
-// B6 — swap flip must refuse a pairing that is not sellable→buyable after the swap, and must
-// clear the typed amount (units of the previous source) on a successful flip.
+// An amount-out-of-range public quote must disable the CTA so a tap cannot arm
+// authenticated paymentInfos (and create a server-side route) for a never-valid amount.
+// Account-state gates stay openable; this test only pins the amount branch.
 
+const mockReceiveForBuy = jest.fn();
 const mockCall = jest.fn();
-const mockAssets: Array<{
-  id: number;
-  name: string;
-  description: string;
-  blockchain: string;
-  buyable: boolean;
-  sellable: boolean;
-}> = [];
 
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: {
@@ -61,12 +55,23 @@ jest.mock('@dfx.swiss/react', () => ({
   SellUrl: { quote: 'sell/quote' },
   SwapUrl: { quote: 'swap/quote' },
   useApi: () => ({ call: mockCall }),
-  useBuy: () => ({ receiveFor: jest.fn() }),
+  useBuy: () => ({ receiveFor: mockReceiveForBuy }),
   useSell: () => ({ receiveFor: jest.fn() }),
   useSwap: () => ({ receiveFor: jest.fn() }),
   useUser: () => ({ updateMail: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
-  useAssetContext: () => ({ getAssets: () => mockAssets }),
+  useAssetContext: () => ({
+    getAssets: () => [
+      {
+        id: 123,
+        name: 'USDT',
+        description: 'Tether',
+        blockchain: 'Ethereum',
+        buyable: true,
+        sellable: true,
+      },
+    ],
+  }),
   useFiatContext: () => ({ currencies: [{ id: 2, name: 'EUR', buyable: true, sellable: true }] }),
   useBankAccountContext: () => ({ bankAccounts: [], isLoading: false, createAccount: jest.fn() }),
 }));
@@ -85,7 +90,7 @@ jest.mock('../wallets/session', () => ({
   }),
 }));
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import HomeScreen from '../screens/home';
 import { LanguageProvider } from '../i18n';
 import { ToastProvider } from '../components/ui';
@@ -100,92 +105,67 @@ function renderHome() {
   );
 }
 
-async function openSwapTab() {
-  fireEvent.click(screen.getByRole('tab', { name: /swap|tausch/i }));
-  await act(async () => {
-    jest.advanceTimersByTime(600);
-  });
-}
-
-describe('App2 B6 swap flip', () => {
+describe('amount CTA gate', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
-    mockAssets.length = 0;
-    mockCall.mockResolvedValue({
-      estimatedAmount: 1,
-      amount: 0.1,
-      isValid: true,
-      fees: { total: 0, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
-      feesTarget: { total: 0, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
-      exchangeRate: 1,
-      rate: 1,
-    });
   });
 
   afterEach(() => {
     jest.useRealTimers();
   });
 
-  it('disables flip when the reversed pairing is not sellable→buyable', async () => {
-    // FROM sell-only, TO buy-only — current swap works, reverse does not.
-    mockAssets.push(
-      {
-        id: 1,
-        name: 'FROM',
-        description: 'From token',
-        blockchain: 'Ethereum',
-        buyable: false,
-        sellable: true,
-      },
-      {
-        id: 2,
-        name: 'TO',
-        description: 'To token',
-        blockchain: 'Ethereum',
-        buyable: true,
-        sellable: false,
-      },
-    );
+  it.each([
+    ['AmountTooLow', 'AmountTooLow'],
+    ['AmountTooHigh', 'AmountTooHigh'],
+  ])('disables the buy CTA and never arms paymentInfos for %s', async (_name, error) => {
+    mockCall.mockResolvedValue({
+      estimatedAmount: 0,
+      amount: 100,
+      fees: { total: 0, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      feesTarget: { total: 0, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      exchangeRate: 1,
+      rate: 1,
+      isValid: false,
+      error,
+      minVolume: 10,
+      maxVolume: 1000,
+    });
 
     renderHome();
-    await openSwapTab();
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
 
-    const flip = screen.getByRole('button', { name: /flip direction/i });
-    expect(flip).toBeDisabled();
+    const cta = screen.getByRole('button', { name: /buy|kaufen/i });
+    expect(cta).toBeDisabled();
+
+    fireEvent.click(cta);
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
   });
 
-  it('clears the typed amount after a successful flip', async () => {
-    mockAssets.push(
-      {
-        id: 10,
-        name: 'AAA',
-        description: 'A',
-        blockchain: 'Ethereum',
-        buyable: true,
-        sellable: true,
-      },
-      {
-        id: 11,
-        name: 'BBB',
-        description: 'B',
-        blockchain: 'Ethereum',
-        buyable: true,
-        sellable: true,
-      },
-    );
+  it('still enables the CTA when the public quote is valid', async () => {
+    mockCall.mockResolvedValue({
+      estimatedAmount: 111,
+      amount: 100,
+      fees: { total: 1.99, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      feesTarget: { total: 1.99, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      exchangeRate: 1.11,
+      rate: 1.11,
+      isValid: true,
+    });
 
     renderHome();
-    await openSwapTab();
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
 
-    const flip = screen.getByRole('button', { name: /flip direction/i });
-    expect(flip).not.toBeDisabled();
-
-    const amountInput = screen.getByRole('textbox', { name: /amount you pay/i });
-    fireEvent.change(amountInput, { target: { value: '42.5' } });
-    expect(amountInput).toHaveValue('42.5');
-
-    fireEvent.click(flip);
-    expect(amountInput).toHaveValue('');
+    const cta = screen.getByRole('button', { name: /buy|kaufen/i });
+    expect(cta).not.toBeDisabled();
   });
 });
