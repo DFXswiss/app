@@ -1627,6 +1627,7 @@ interface ForeignKeyRef {
 }
 
 let foreignKeysPromise: Promise<ForeignKeyRef[]> | null = null;
+let tablesWithIdPromise: Promise<Set<string>> | null = null;
 
 /**
  * Discovers every foreign key in the public schema from Postgres's catalog, once per process.
@@ -1665,6 +1666,21 @@ async function getForeignKeys(): Promise<ForeignKeyRef[]> {
 }
 
 /**
+ * Public-schema tables that have a column literally named `id`. Memoized once per process —
+ * used to treat pure join tables (no own id) as leaves in the delete graph.
+ */
+async function getTablesWithId(): Promise<Set<string>> {
+  if (!tablesWithIdPromise) {
+    tablesWithIdPromise = queryRows<{ table_name: string }>(
+      `SELECT table_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND column_name = 'id'`,
+    ).then((rows) => new Set(rows.map((r) => r.table_name)));
+  }
+  return tablesWithIdPromise;
+}
+
+/**
  * Recursively deletes a row and every row that transitively references it via a foreign key.
  *
  * For (table, id): find every FK pointing at this table; for each child row with that FK equal
@@ -1672,6 +1688,13 @@ async function getForeignKeys(): Promise<ForeignKeyRef[]> {
  * row. Every DELETE is scoped to a concrete id — either the row's own id or a parent id already
  * known to belong to a row this cleanup is responsible for — so the walk can never reach another
  * account's rows or seed/master data, no matter how deep it goes.
+ *
+ * Two independent FK checks must stay separate (parent side vs child side):
+ * - Parent side: FK points at a non-`id` column → unresolvable from the id we hold → error.
+ * - Child side: child table has no `id` of its own → cannot SELECT/recurse by id → delete
+ *   matching rows by FK column and treat the table as a leaf (nothing further can reference
+ *   it by id). A table can fail either check, both, or neither; the first branch continues
+ *   before the second is evaluated.
  *
  * `visited` is shared across the entire cleanupCreatedData() invocation. (a) Recursion is finite
  * because the set only grows, is bounded by the number of distinct (table, id) pairs that exist,
@@ -1695,6 +1718,7 @@ async function deleteRowAndDescendants(
   visited: Set<string>,
   errors: string[],
   unhandledForeignKeys: Set<string>,
+  tablesWithId: Set<string>,
 ): Promise<{ deletedSelf: boolean; failed: boolean }> {
   const visitKey = `${table}#${id}`;
   if (visited.has(visitKey)) {
@@ -1724,6 +1748,27 @@ async function deleteRowAndDescendants(
     }
 
     const col = needsQuote(fk.column) ? `"${fk.column}"` : fk.column;
+
+    // Child has no own `id`: pure join / composite-key table. Parent-side check above already
+    // passed (FK targets `id`); this is only about whether child rows are addressable for
+    // recursion. Delete by FK column and stop — nothing can reference these rows by id.
+    if (!tablesWithId.has(fk.table)) {
+      try {
+        await withDb(async (client) => {
+          await client.query(
+            `DELETE FROM ${tableSql(fk.table)} WHERE ${col} = $1`,
+            [id],
+          );
+        });
+      } catch (e) {
+        errors.push(
+          `${fk.table}.${fk.column}=${id}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        failed = true;
+      }
+      continue;
+    }
+
     let childRows: { id: unknown }[];
     try {
       childRows = await queryRows<{ id: unknown }>(
@@ -1755,6 +1800,7 @@ async function deleteRowAndDescendants(
         visited,
         errors,
         unhandledForeignKeys,
+        tablesWithId,
       );
       if (childResult.failed) failed = true;
     }
@@ -1808,6 +1854,7 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
   // No catch: failing to load the FK graph would leave dependents behind for the next spec on a
   // shared database — silently, since callers of cleanupCreatedData do not read the return value.
   const foreignKeys = await getForeignKeys();
+  const tablesWithId = await getTablesWithId();
   const childrenByReferencedTable = new Map<string, ForeignKeyRef[]>();
   for (const fk of foreignKeys) {
     const list = childrenByReferencedTable.get(fk.referencedTable);
@@ -1827,6 +1874,7 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
       visited,
       errors,
       unhandledForeignKeys,
+      tablesWithId,
     );
     if (result.deletedSelf) deleted += 1;
     if (result.failed) failed.push(ref);
