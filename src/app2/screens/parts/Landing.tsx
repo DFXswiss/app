@@ -1,4 +1,4 @@
-// DFX App 2.0 — pre-login landing hero (finding #1: this whole screen was missing; the trade
+// DFX App 2.0 — pre-login landing hero (this whole screen was missing; the trade
 // form used to render even for a signed-out visitor). Markup/classes ported 1:1 from the
 // static preview's `#v-login` (public/app2/index.html, `.login > .hero`) so styles.css's
 // `.login`/`.hero`/`.auth`/`.btn-glass`/`.wstrip`/`.trust` rules apply unchanged.
@@ -104,7 +104,7 @@ export function Landing() {
   const [invite, setInvite] = useState(initialInvite);
   const classifiedInvite = classifyInviteCode(invite);
   // A non-empty invite that doesn't classify as either real API shape (invite.ts) is silently
-  // dropped on submit (finding #4) rather than guaranteeing a 400 — but silent means the user
+  // dropped on submit rather than guaranteeing a 400 — but silent means the user
   // gets no feedback at all if they mistype or follow a wrong example, so this surfaces it inline
   // instead. Not shown for an empty field (nothing typed yet is not "unrecognized").
   const inviteUnrecognized = invite.trim().length > 0 && !classifiedInvite;
@@ -145,7 +145,7 @@ export function Landing() {
   const submitEmail = async () => {
     if (sending) return;
     const value = email.trim();
-    // finding #13: an invalid submit used to just silently no-op, leaving only the native
+    // An invalid submit used to just silently no-op, leaving only the native
     // browser tooltip (if any) to explain why nothing happened — show an inline error instead.
     if (!value || !value.includes('@')) {
       // Original refocuses the field on an invalid submit (ORIG_app2.html line 3635); the inline
@@ -161,8 +161,8 @@ export function Landing() {
       // recommendationCode?, wallet?} — the emailed magic link returns to redirectUri with the
       // session token. Unlike the wallet-connect path (session.tsx), /auth/mail has no `usedRef`
       // field at all — only `recommendationCode` (AuthMailDto) — so a short partner ref code
-      // typed here can never be honored on this path; sending it anyway is a guaranteed 400
-      // (finding #4). Only forward the code when it actually classifies as a full recommendation
+      // typed here can never be honored on this path; sending it anyway is a guaranteed 400.
+      // Only forward the code when it actually classifies as a full recommendation
       // code; otherwise the mail sign-in still succeeds, just without referral attribution (the
       // inviteNeedsWalletLogin hint above already told the user why, for the usedRef case).
       await signInWithMail(

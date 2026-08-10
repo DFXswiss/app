@@ -287,7 +287,7 @@ export async function signWithWalletConnect(
   return provider.request<string>({ method: 'personal_sign', params: [personalSignHex(message), address] });
 }
 
-/** Tears down the current WalletConnect provider as best the SDK allows (finding #1: cancelling
+/** Tears down the current WalletConnect provider as best the SDK allows (cancelling
  * mid-QR-pairing must not leave a zombie connect attempt around). Resetting `wcProviderPromise`
  * unconditionally — even when there's no session yet to hand `provider.disconnect()` — is the
  * real fix here: `EthereumProvider#disconnect()` is a no-op beyond a local state reset until a
@@ -295,7 +295,7 @@ export async function signWithWalletConnect(
  * provider means the *next* connect attempt always starts from a fresh instance instead of
  * reusing (and getting stuck behind) this one.
  *
- * Also clears both persistence layers the SDK restores a session from (finding: a shared browser
+ * Also clears both persistence layers the SDK restores a session from (a shared browser
  * must not resume the previous owner's session after logout + reload, including within the same
  * tab that just used WalletConnect) — localStorage for a pre-migration install, and the IndexedDB
  * object store `@walletconnect/keyvaluestorage` actually writes to once migrated (see
@@ -303,7 +303,7 @@ export async function signWithWalletConnect(
  * contents rather than deleting the database — `idb-keyval` never closes its own connection, so
  * a same-tab delete would otherwise sit on `onblocked` and leave the old session intact).
  *
- * Concurrency note (finding: an abandoned teardown can destroy a newer session): a caller that
+ * Concurrency note (an abandoned teardown can destroy a newer session): a caller that
  * fires this without awaiting it (`cancelConnectAttempt()` in session.tsx) nulls
  * `wcProviderPromise` immediately but then keeps running — awaiting the *old* provider's own
  * still-in-flight `init()` — while control returns to the caller. If the user starts a fresh

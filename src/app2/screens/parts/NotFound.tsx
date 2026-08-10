@@ -1,4 +1,4 @@
-// DFX App 2.0 — catch-all route (finding #7).
+// DFX App 2.0 — catch-all route.
 //
 // A hard-load of an unmatched hash path (e.g. /app2/#/nonsense) previously fell straight
 // through react-router-dom's own "Unexpected Application Error!" page — unbranded, no Shell, no

@@ -33,7 +33,7 @@ export function Shell() {
   }, []);
 
   // Close any open overlay on navigation, same as the static app's go() — including the
-  // connect sheet (finding #4: it used to survive a route change since it was owned by an
+  // connect sheet (it used to survive a route change since it was owned by an
   // ancestor of the router and never saw location updates).
   useEffect(() => {
     setDrawerOpen(false);
@@ -102,7 +102,7 @@ export function Shell() {
               `.body`'s own definite (flex-resolved) height instead of falling back to `auto`
               against a non-flex, content-sized ancestor, which is what actually makes
               `.login .hero`'s `margin:auto` vertical-centering produce the reference's tight
-              ~18px gap under the language pill instead of ~190px (finding #8) — a pure CSS
+              ~18px gap under the language pill instead of ~190px — a pure CSS
               percentage-resolution difference from the missing wrapper, not a spacing value to
               tune. */}
           <div className="view on">

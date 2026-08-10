@@ -1,4 +1,4 @@
-// Round-4 D3: OCP payment-link / payment status must use translated labels
+// OCP payment-link / payment status must use translated labels
 // (same pattern as transaction-state-label's stateLabel), not raw English enums.
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -17,7 +17,7 @@ jest.mock('react-qr-code', () => () => null);
 import { paymentLinkStatusLabel, paymentStatusLabel } from '../screens/ocp/links';
 import type { TranslationKey } from '../i18n';
 
-describe('paymentLinkStatusLabel / paymentStatusLabel (D3 OCP status i18n)', () => {
+describe('paymentLinkStatusLabel / paymentStatusLabel (OCP status i18n)', () => {
   const t = (key: TranslationKey) => {
     const known: Partial<Record<TranslationKey, string>> = {
       plst_Active: 'Aktiv',

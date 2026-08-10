@@ -62,7 +62,7 @@ describe('App2 postprocess link handling', () => {
   });
 });
 
-// R9: a link-preview unfurl (Slack/X/Telegram/Signal) reads twitter:*/og:* meta tags, not the
+// A link-preview unfurl (Slack/X/Telegram/Signal) reads twitter:*/og:* meta tags, not the
 // visible <title> — the main app's inherited social-preview identity in the shared
 // public/index.html was never stripped, so every shared /app2 link unfurled as the *old* app.
 describe('App2 postprocess social-identity handling', () => {
@@ -143,7 +143,7 @@ describe('App2 postprocess social-identity handling', () => {
   });
 });
 
-// R10: the shared public/ strip in postprocess-app2.js is a hardcoded deny-list — a file added
+// The shared public/ strip in postprocess-app2.js is a hardcoded deny-list — a file added
 // to public/ later would ride along into the App2 artifact unnoticed. findUnexpectedRootEntries
 // is the fail-closed counterpart: an allow-list that must be updated deliberately.
 describe('App2 postprocess artifact-root allow-list', () => {

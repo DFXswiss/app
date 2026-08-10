@@ -1,4 +1,4 @@
-// Round-4 C6 + F4: catalog resolution must prefer walletId (catalog entry id) over shared
+// Catalog resolution must prefer walletId (catalog entry id) over shared
 // walletType. Production rememberWallet persists walletType AuthWalletType.CLI for both Cardano
 // and CLI; without walletId that key alone must open CLI (identity), not Cardano. With walletId
 // 'Cardano' the re-auth path must open the Cardano connector.
@@ -38,7 +38,7 @@ jest.mock('@dfx.swiss/react', () => ({
 
 import { catalogEntryByWalletType, walletIconFor } from '../wallets/catalog';
 
-describe('catalogEntryByWalletType (round-4 C6 / F4)', () => {
+describe('catalogEntryByWalletType', () => {
   it('resolves production key CLI (no walletId) to the CLI entry, not Cardano', () => {
     // Real production key from rememberWallet({ walletType: AuthWalletType.CLI }) — never 'Cardano'.
     const entry = catalogEntryByWalletType('CLI');
@@ -47,7 +47,7 @@ describe('catalogEntryByWalletType (round-4 C6 / F4)', () => {
     expect(entry?.connector).toBe('cli');
   });
 
-  it('resolves a remembered Cardano wallet via walletId despite walletType CLI (F4)', () => {
+  it('resolves a remembered Cardano wallet via walletId despite walletType CLI', () => {
     // Production path: rememberWallet writes walletType:'CLI' + walletId:'Cardano'.
     const entry = catalogEntryByWalletType('CLI', 'Cardano');
     expect(entry).toBeDefined();

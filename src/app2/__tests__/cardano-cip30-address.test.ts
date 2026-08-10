@@ -1,4 +1,4 @@
-// Round-4 C7: CIP-30 address hex is a CBOR byte-string wrapping the raw address bytes. Unwrap
+// CIP-30 address hex is a CBOR byte-string wrapping the raw address bytes. Unwrap
 // before bech32, pick HRP from the network nibble, and leave the raw CIP-30 hex for signData.
 // Not verified against a live CIP-30 wallet in this environment.
 
@@ -26,7 +26,7 @@ function cborByteString(payload: Uint8Array): Uint8Array {
   return Uint8Array.from([0x59, (n >> 8) & 0xff, n & 0xff, ...payload]);
 }
 
-describe('Cardano CIP-30 address decode (round-4 C7)', () => {
+describe('Cardano CIP-30 address decode', () => {
   // Shelley base address: header (type<<4)|network_id, 28-byte payment, 28-byte stake → 57 bytes.
   const mainnetRaw = Uint8Array.from([0x01, ...Array(56).fill(0xab)]);
   const testnetRaw = Uint8Array.from([0x00, ...Array(56).fill(0xcd)]);
@@ -64,7 +64,7 @@ describe('Cardano CIP-30 address decode (round-4 C7)', () => {
     expect(Array.from(unwrapCip30AddressBytes(wrapped))).toEqual(Array.from(mainnetRaw));
   });
 
-  it('does not unwrap a raw Shelley pointer address as a 1-byte CBOR payload (F5)', () => {
+  it('does not unwrap a raw Shelley pointer address as a 1-byte CBOR payload', () => {
     // Type-4 mainnet pointer: header nibble 4 → first byte 0x41. major = 0x41>>5 = 2, additional = 1
     // would look like a CBOR byte-string of length 1 under a loose `offset+len <= bytes.length`
     // check and return a 1-byte slice that still bech32-encodes to a plausible addr1….

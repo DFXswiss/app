@@ -85,7 +85,7 @@ export function FeesPanel({
   const bank = fees.bank;
 
   // collapsed summary rate — "1 {code} ≈ {value} (incl. fees)" (orig 3728-3730 for the base
-  // format). Round-5 finding: this used to hand-divide estimatedAmount/amount for sell/swap
+  // format). This used to hand-divide estimatedAmount/amount for sell/swap
   // (fee-inclusive, since both are actual settled amounts) while buy used `exchangeRate` directly
   // (fee-*exclusive* market price) — two different bases for the same kind of line, and neither
   // labeled as such. `quote.rate` (api transaction-helper.ts getTargetEstimation:

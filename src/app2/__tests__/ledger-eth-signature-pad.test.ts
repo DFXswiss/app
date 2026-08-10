@@ -1,4 +1,4 @@
-// Round-4 C8: Ledger ETH signature packing must zero-pad `v` to two hex digits (consistent with
+// Ledger ETH signature packing must zero-pad `v` to two hex digits (consistent with
 // a fixed-width recovery byte). Without padStart, v=0/1 yields a single hex char and an
 // odd-length signature.
 //
@@ -17,7 +17,7 @@ jest.mock('../wallets/providers', () => ({
 
 import { formatLedgerEthSignature } from '../wallets/hardware-providers';
 
-describe('formatLedgerEthSignature (round-4 C8)', () => {
+describe('formatLedgerEthSignature', () => {
   const r = '11'.repeat(32);
   const s = '22'.repeat(32);
 

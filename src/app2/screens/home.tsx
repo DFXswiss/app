@@ -65,7 +65,7 @@ const WALLET_ICON = (
 type AssetSlot = 'buyReceive' | 'sellPay' | 'swapFrom' | 'swapTo';
 type FiatSlot = 'buyPay' | 'sellReceive';
 
-/** Frozen at the moment the payment sheet opens (finding #2) — the sheet renders exclusively
+/** Frozen at the moment the payment sheet opens — the sheet renders exclusively
  * from this snapshot so the 30s quote auto-refresh (paused while the sheet is open, but this
  * also covers the debounce window right after opening / an explicit retry) can never silently
  * swap the displayed IBAN/reference/amount out from under the user. */
@@ -119,7 +119,7 @@ export default function HomeScreen() {
   const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
   const [bankAccountOpen, setBankAccountOpen] = useState(false);
   const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
-  // Frozen quote snapshot the payment sheet renders from (finding #2) — see PaymentSnapshot.
+  // Frozen quote snapshot the payment sheet renders from — see PaymentSnapshot.
   const [sheetSnapshot, setSheetSnapshot] = useState<PaymentSnapshot | null>(null);
   const sheetWasOpenRef = useRef(false);
   const [sheetRetrying, setSheetRetrying] = useState(false);
@@ -368,7 +368,7 @@ export default function HomeScreen() {
         ? swapReady || canOpenGate
         : !!sellAmount && !!sellApiAsset && !!sellFiat && (sellReady || canOpenGate);
 
-  // ---- payment-sheet snapshot (finding #2) ------------------------------------------------
+  // ---- payment-sheet snapshot -------------------------------------------------------------
   // Everything the sheet renders is captured here on open (and re-captured whenever the live
   // fetch this mode is showing finishes loading — see the effect below) instead of the sheet
   // reading buyQuote/sellQuote/swapQuote directly, so the 30s auto-refresh (paused via `paused:
@@ -629,7 +629,7 @@ export default function HomeScreen() {
   // method the row drops its caret and stops being interactive (no pointless one-item sheet).
   const buyMethodPickable = buyMethods.length > 1;
 
-  // Pre-login home is the landing hero (finding #1) — the trade form below is the logged-in
+  // Pre-login home is the landing hero — the trade form below is the logged-in
   // home only, same split as the static app's `#v-login` vs `#v-buy`. All the hooks above still
   // run unconditionally either way (rules of hooks), they just don't fetch while logged out.
   if (!session.isLoggedIn) return <Landing />;

@@ -157,7 +157,7 @@ describe('App2 review regressions', () => {
 
   it('classifies an invite code into the exact API field it belongs in, never both', () => {
     // Short partner/wallet ref — api/src/config/config.ts formats.ref: /^(\w{1,3}-\w{1,3})$/.
-    // Case preserved: API referral lookup is an exact match (round-4 C1; live refs like stb-tax).
+    // Case preserved: API referral lookup is an exact match (live refs like stb-tax).
     expect(classifyInviteCode('ab-c12')).toEqual({ kind: 'usedRef', code: 'ab-c12' });
     // Full referral code — formats.recommendationCode: /[0-9A-Z]{2}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{2}/.
     expect(classifyInviteCode('xy-ab12-cd34-ef')).toEqual({
@@ -176,7 +176,7 @@ describe('App2 review regressions', () => {
   });
 
   it("shows a placeholder on Landing's invite field that is itself a recognized code shape", () => {
-    // Round-2 finding: the old "DFX-XXXX" placeholder matched neither real API regex, so a user
+    // The old "DFX-XXXX" placeholder matched neither real API regex, so a user
     // who typed something shaped like it got the code silently dropped with zero feedback. Pins
     // the replacement placeholder (Landing.tsx) against the same classifier the field itself now
     // gates its inline hint on, so the two can't drift apart again.
