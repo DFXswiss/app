@@ -54,7 +54,7 @@ async function ensureStaffKycComplete(userId: number): Promise<void> {
 }
 
 /**
- * All 23 compliance routes with concrete placeholders for param segments.
+ * All 25 compliance routes with concrete placeholders for param segments.
  * `:queue` uses a non-enum placeholder — the guard runs before queue validation, so denial
  * still redirects away from the path regardless of whether the queue name is valid.
  */
@@ -77,6 +77,8 @@ const ALL_COMPLIANCE_PATHS = [
   '/compliance/mros/create',
   '/compliance/mros/1',
   '/compliance/recalls',
+  '/compliance/pending-chargebacks',
+  '/compliance/does-not-exist',
   '/compliance/user/1/kyc',
   '/compliance/call-queues',
   '/compliance/call-queues/placeholder-queue',
@@ -94,10 +96,10 @@ test.describe('Compliance area (overview)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Access control — plain User must not see any of the 23 screens
+  // Access control — plain User must not see any of the 25 screens
   // -------------------------------------------------------------------------
 
-  test('plain User role is denied all 23 compliance routes', async ({ page }) => {
+  test('plain User role is denied all 25 compliance routes', async ({ page }) => {
     const { jwt } = await loginAs('User');
 
     for (const target of ALL_COMPLIANCE_PATHS) {
@@ -111,6 +113,7 @@ test.describe('Compliance area (overview)', () => {
         .not.toBe(normPath(target));
     }
   });
+
 
   // -------------------------------------------------------------------------
   // Access control (server layer) — the redirect test above only proves the FRONTEND route
@@ -456,6 +459,49 @@ test.describe('Compliance area (overview)', () => {
     ).toBeVisible();
 
     expect(pageErrors, `uncaught pageerror on recalls: ${pageErrors.join('; ')}`).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // /compliance/* (catch-all)
+  // -------------------------------------------------------------------------
+
+  // Any unknown path below /compliance used to match no route at all, leaving the router's
+  // errorElement to render outside every guard while the address bar kept the compliance URL.
+  // The catch-all mounts a guarded screen instead, so the role check no longer depends on whether
+  // a given compliance screen happens to exist.
+  test('/compliance/* renders the guarded not-found screen for an unknown path', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+
+    await openScreen(page, '/compliance/does-not-exist', jwt);
+
+    await expect(page.getByText('/compliance/does-not-exist', { exact: true })).toBeVisible({ timeout: 15000 });
+
+    expect(pageErrors, `uncaught pageerror on compliance catch-all: ${pageErrors.join('; ')}`).toEqual([]);
+  });
+
+  // /compliance/pending-chargebacks
+  // -------------------------------------------------------------------------
+
+  test('/compliance/pending-chargebacks renders table headers (empty ok)', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+
+    await openScreen(page, '/compliance/pending-chargebacks', jwt);
+
+    await expect(page.getByText('Requested', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Transaction', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Customer', { exact: true })).toBeVisible();
+    await expect(page.getByText('Block reasons', { exact: true })).toBeVisible();
+
+    expect(pageErrors, `uncaught pageerror on pending-chargebacks: ${pageErrors.join('; ')}`).toEqual([]);
   });
 
   // -------------------------------------------------------------------------

@@ -256,7 +256,13 @@ export function readVisitedRoutes(): string[] {
 export function routeMatches(route: string, visited: string): boolean {
   const pattern = normPath(route)
     .split('/')
-    .map((segment) => (segment.startsWith(':') ? '[^/]+' : segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    .map((segment) => {
+      // React Router's splat matches the rest of the path, so a catch-all route is visited by any
+      // URL below it - escaping the asterisk instead would make such a route unreachable forever.
+      if (segment === '*') return '.+';
+      if (segment.startsWith(':')) return '[^/]+';
+      return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    })
     .join('/');
   return new RegExp(`^${pattern}$`).test(normPath(visited));
 }
