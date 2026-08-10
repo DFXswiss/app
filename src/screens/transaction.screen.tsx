@@ -521,7 +521,6 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         control={control}
         rules={rules}
         errors={errors}
-        onSubmit={handleSubmit((data) => onSubmit(data, transactionId))}
       >
         <StyledVerticalStack gap={6} full>
           {!refundDetails.refundTarget && addresses && !isBuy && (
