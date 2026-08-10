@@ -21,12 +21,13 @@ import {
 } from '@dfx.swiss/react';
 import { electronicFormatIBAN, isValidIBAN } from 'ibantools';
 import { useMemo } from 'react';
-import { useGuardedApi } from './guarded-api.hook';
 import { CreateMrosDto, MrosListEntry, UpdateMrosDto } from 'src/dto/mros.dto';
 import { CustodyOrderListEntry } from 'src/dto/order.dto';
+import { PendingChargebackEntry } from 'src/dto/chargeback.dto';
 import { CreateRecallDto, RecallListEntry } from 'src/dto/recall.dto';
 import { buildKycLogMessage, KycLogResult } from 'src/util/compliance-helpers';
 import { downloadFile, downloadPdfFromString, filenameDateFormat } from 'src/util/utils';
+import { useGuardedApi } from './guarded-api.hook';
 
 export interface RefundFeeData {
   dfx: number;
@@ -536,6 +537,8 @@ export interface TransactionInfo {
   amountInChf?: number;
   amountInEur?: number;
   amlCheck?: string;
+  chargebackAllowedDate?: string;
+  chargebackAllowedDateUser?: string;
   chargebackDate?: string;
   amlReason?: string;
   isCompleted: boolean;
@@ -951,6 +954,13 @@ export function useCompliance() {
   async function getRecalls(): Promise<RecallListEntry[]> {
     return call<RecallListEntry[]>({
       url: 'recall',
+      method: 'GET',
+    });
+  }
+
+  async function getPendingChargebacks(): Promise<PendingChargebackEntry[]> {
+    return call<PendingChargebackEntry[]>({
+      url: 'support/pending-chargebacks',
       method: 'GET',
     });
   }
@@ -1532,6 +1542,7 @@ export function useCompliance() {
       createMros,
       updateMros,
       getRecalls,
+      getPendingChargebacks,
       createRecall,
       updateKycStep,
       updateUserData,

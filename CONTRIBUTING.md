@@ -1,5 +1,15 @@
 # Contributing
 
+## Deviating from these guidelines
+
+These guidelines are binding. A pull request that knowingly does not meet one
+of them says so **explicitly in its description**, naming the guideline it
+departs from and the reason. An undeclared deviation is not a discussion point
+— the pull request is rejected.
+
+A declared deviation is the reviewer's call: they may accept it or refuse it at
+their own discretion. Declaring one is not the same as being granted one.
+
 ## Pull requests
 
 ### Every pull request is self-contained

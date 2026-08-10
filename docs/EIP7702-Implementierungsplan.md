@@ -14,17 +14,18 @@
 
 Nach umfangreicher Web-Recherche und Dokumentationsanalyse bestätige ich:
 
-| Frage | Antwort | Quelle |
-|-------|---------|--------|
-| Funktioniert Gas Station für dApp-TXs? | ✅ JA | MetaMask Docs: "Gas Station is also available on dapp transactions and sending crypto" |
-| Wird `atomicRequired: true` unterstützt? | ✅ JA | MetaMask Docs: "MetaMask may prompt users to upgrade their EOA to a MetaMask smart account" |
-| Brauchen wir externe paymasterService? | ❌ NEIN | Gas Station ist proprietär und nutzt keine externen Paymaster |
-| Sind USDT/USDC/DAI unterstützt? | ✅ JA | Offiziell unterstützt: USDT, USDC, DAI, ETH, wETH, wBTC, wstETH, wSOL |
-| Funktioniert es auf Testnets? | ❌ NEIN | Nur Ethereum Mainnet aktuell |
+| Frage                                    | Antwort | Quelle                                                                                      |
+| ---------------------------------------- | ------- | ------------------------------------------------------------------------------------------- |
+| Funktioniert Gas Station für dApp-TXs?   | ✅ JA   | MetaMask Docs: "Gas Station is also available on dapp transactions and sending crypto"      |
+| Wird `atomicRequired: true` unterstützt? | ✅ JA   | MetaMask Docs: "MetaMask may prompt users to upgrade their EOA to a MetaMask smart account" |
+| Brauchen wir externe paymasterService?   | ❌ NEIN | Gas Station ist proprietär und nutzt keine externen Paymaster                               |
+| Sind USDT/USDC/DAI unterstützt?          | ✅ JA   | Offiziell unterstützt: USDT, USDC, DAI, ETH, wETH, wBTC, wstETH, wSOL                       |
+| Funktioniert es auf Testnets?            | ❌ NEIN | Nur Ethereum Mainnet aktuell                                                                |
 
 ### Kritische Bestätigung
 
 **MetaMask Dokumentation (Januar 2026):**
+
 > "Gas Station is also available on dapp transactions and sending crypto.
 > Gas Station is available on Ethereum Mainnet in MetaMask Extension and Mobile
 > when you enable Smart Transactions."
@@ -35,6 +36,7 @@ Nach umfangreicher Web-Recherche und Dokumentationsanalyse bestätige ich:
 ### Warum Error 5700 korrekt war
 
 MetaMask's Gas Station ist **KEIN externer Paymaster**. Es ist ein proprietäres System:
+
 - Nutzt KEINE ERC-7677 paymasterService capability
 - Funktioniert automatisch wenn Smart Transactions aktiviert
 - Daher war das Entfernen von `paymasterService` capability KORREKT
@@ -61,26 +63,27 @@ MetaMask's Gas Station ist **KEIN externer Paymaster**. Es ist ein proprietäres
 ## 1. Executive Summary
 
 ### Ziel
+
 Aktivierung von **Gasless Transactions** für DFXswiss-User, die Token (USDT, USDC, etc.) besitzen aber kein ETH für Gas-Gebühren haben.
 
 ### Aktueller Status
 
-| Komponente | Status | Aktion erforderlich |
-|------------|--------|---------------------|
-| Frontend EIP-5792 Implementation | ✅ Implementiert | Bereits korrigiert |
-| Frontend EIP-7702 Signing | ✅ Implementiert | Keine |
-| Backend Pimlico Integration | ✅ Implementiert | Konfiguration |
-| Backend Balance-Check | ⚠️ Zu restriktiv | Code-Änderung |
-| Environment Variables | ❌ Nicht konfiguriert | Konfiguration |
-| E2E Tests | ⚠️ Unvollständig | Tests erweitern |
+| Komponente                       | Status                | Aktion erforderlich |
+| -------------------------------- | --------------------- | ------------------- |
+| Frontend EIP-5792 Implementation | ✅ Implementiert      | Bereits korrigiert  |
+| Frontend EIP-7702 Signing        | ✅ Implementiert      | Keine               |
+| Backend Pimlico Integration      | ✅ Implementiert      | Konfiguration       |
+| Backend Balance-Check            | ⚠️ Zu restriktiv      | Code-Änderung       |
+| Environment Variables            | ❌ Nicht konfiguriert | Konfiguration       |
+| E2E Tests                        | ⚠️ Unvollständig      | Tests erweitern     |
 
 ### Geschätzter Aufwand
 
-| Phase | Aufwand | Risiko |
-|-------|---------|--------|
-| Phase 1: Kritische Fixes | Gering | Niedrig |
-| Phase 2: Verbesserungen | Mittel | Mittel |
-| Phase 3: Optimierungen | Hoch | Niedrig |
+| Phase                    | Aufwand | Risiko  |
+| ------------------------ | ------- | ------- |
+| Phase 1: Kritische Fixes | Gering  | Niedrig |
+| Phase 2: Verbesserungen  | Mittel  | Mittel  |
+| Phase 3: Optimierungen   | Hoch    | Niedrig |
 
 ---
 
@@ -118,13 +121,13 @@ Die DFXswiss-Codebase enthält eine **vollständige EIP-7702 und EIP-5792 Implem
 
 ### 2.2 Was bereits in dieser Session korrigiert wurde
 
-| Datei | Änderung | Status |
-|-------|----------|--------|
-| `metamask.hook.ts` | `atomicRequired: true` gesetzt | ✅ Erledigt |
-| `metamask.hook.ts` | `paymasterService` capability entfernt | ✅ Erledigt |
-| `tx-helper.hook.ts` | Kommentare für Gas Station aktualisiert | ✅ Erledigt |
-| `eip5792-real-hooks.test.ts` | Unit Tests angepasst | ✅ Erledigt |
-| `gasless-token-transfer-analysis.md` | Dokumentation erstellt | ✅ Erledigt |
+| Datei                                | Änderung                                | Status      |
+| ------------------------------------ | --------------------------------------- | ----------- |
+| `metamask.hook.ts`                   | `atomicRequired: true` gesetzt          | ✅ Erledigt |
+| `metamask.hook.ts`                   | `paymasterService` capability entfernt  | ✅ Erledigt |
+| `tx-helper.hook.ts`                  | Kommentare für Gas Station aktualisiert | ✅ Erledigt |
+| `eip5792-real-hooks.test.ts`         | Unit Tests angepasst                    | ✅ Erledigt |
+| `gasless-token-transfer-analysis.md` | Dokumentation erstellt                  | ✅ Erledigt |
 
 ### 2.3 Warum Gasless noch nicht funktioniert
 
@@ -168,26 +171,26 @@ Trotz vollständiger Implementation gibt es **7 Blocker**:
 
 Ich habe folgende 6 Dokumentationsdateien im Parent-Repository analysiert:
 
-| Datei | Zeilen | Inhalt |
-|-------|--------|--------|
-| `EIP-7702-MetaMask-Integration.md` | ~300 | Web-Recherche zu EIP-7702 |
-| `DFXswiss-EIP7702-Analyse.md` | 781 | Vollständige Architektur-Analyse |
-| `DFXswiss-EIP7702-Fehleranalyse.md` | 660 | Detaillierte Fehleranalyse |
-| `EIP7702-Kritische-Probleme.md` | 323 | Kompakte Problem-Übersicht |
-| `EIP7702-MetaMask-DFX-Machbarkeitsanalyse.md` | 430 | Machbarkeitsbewertung |
-| `EIP7702-Projekt-Zusammenfassung.md` | 729 | Projekt-Zusammenfassung |
+| Datei                                         | Zeilen | Inhalt                           |
+| --------------------------------------------- | ------ | -------------------------------- |
+| `EIP-7702-MetaMask-Integration.md`            | ~300   | Web-Recherche zu EIP-7702        |
+| `DFXswiss-EIP7702-Analyse.md`                 | 781    | Vollständige Architektur-Analyse |
+| `DFXswiss-EIP7702-Fehleranalyse.md`           | 660    | Detaillierte Fehleranalyse       |
+| `EIP7702-Kritische-Probleme.md`               | 323    | Kompakte Problem-Übersicht       |
+| `EIP7702-MetaMask-DFX-Machbarkeitsanalyse.md` | 430    | Machbarkeitsbewertung            |
+| `EIP7702-Projekt-Zusammenfassung.md`          | 729    | Projekt-Zusammenfassung          |
 
 **Gesamtumfang:** ~3.200 Zeilen technische Dokumentation
 
 ### 3.2 Qualitätsbewertung der Dokumentation
 
-| Kriterium | Bewertung | Kommentar |
-|-----------|-----------|-----------|
-| Vollständigkeit | ⭐⭐⭐⭐⭐ | Alle Aspekte abgedeckt |
-| Technische Tiefe | ⭐⭐⭐⭐⭐ | Code-Referenzen mit Zeilennummern |
-| Aktualität | ⭐⭐⭐⭐ | Datiert 2026-01-08 |
-| Konsistenz | ⭐⭐⭐⭐⭐ | Keine Widersprüche gefunden |
-| Umsetzbarkeit | ⭐⭐⭐⭐ | Klare Schritt-für-Schritt Anleitungen |
+| Kriterium        | Bewertung  | Kommentar                             |
+| ---------------- | ---------- | ------------------------------------- |
+| Vollständigkeit  | ⭐⭐⭐⭐⭐ | Alle Aspekte abgedeckt                |
+| Technische Tiefe | ⭐⭐⭐⭐⭐ | Code-Referenzen mit Zeilennummern     |
+| Aktualität       | ⭐⭐⭐⭐   | Datiert 2026-01-08                    |
+| Konsistenz       | ⭐⭐⭐⭐⭐ | Keine Widersprüche gefunden           |
+| Umsetzbarkeit    | ⭐⭐⭐⭐   | Klare Schritt-für-Schritt Anleitungen |
 
 ### 3.3 Kernerkenntnisse aus der Dokumentation
 
@@ -269,25 +272,27 @@ async hasZeroNativeBalance(userAddress: string, blockchain: Blockchain): Promise
 
 ### 4.1 Problem-Matrix
 
-| # | Problem | Schweregrad | Typ | Lösung | Aufwand |
-|---|---------|-------------|-----|--------|---------|
-| 1 | PIMLICO_API_KEY fehlt | KRITISCH | Config | Env Var setzen | 5 min |
-| 2 | Balance === 0n zu strikt | HOCH | Code | Funktion ändern | 30 min |
-| 3 | Gas Station nur Mainnets | MITTEL | Design | Dokumentieren | 10 min |
-| 4 | isDelegationSupported false | MITTEL | Code | Optional reaktivieren | 15 min |
-| 5 | EVM_DELEGATION_ENABLED fehlt | NIEDRIG | Config | Env Var setzen | 5 min |
-| 6 | Tests ohne API Key | NIEDRIG | CI/CD | Secret hinzufügen | 10 min |
-| 7 | EntryPoint v0.7/v0.8 | NIEDRIG | Code | Vereinheitlichen | 20 min |
+| #   | Problem                      | Schweregrad | Typ    | Lösung                | Aufwand |
+| --- | ---------------------------- | ----------- | ------ | --------------------- | ------- |
+| 1   | PIMLICO_API_KEY fehlt        | KRITISCH    | Config | Env Var setzen        | 5 min   |
+| 2   | Balance === 0n zu strikt     | HOCH        | Code   | Funktion ändern       | 30 min  |
+| 3   | Gas Station nur Mainnets     | MITTEL      | Design | Dokumentieren         | 10 min  |
+| 4   | isDelegationSupported false  | MITTEL      | Code   | Optional reaktivieren | 15 min  |
+| 5   | EVM_DELEGATION_ENABLED fehlt | NIEDRIG     | Config | Env Var setzen        | 5 min   |
+| 6   | Tests ohne API Key           | NIEDRIG     | CI/CD  | Secret hinzufügen     | 10 min  |
+| 7   | EntryPoint v0.7/v0.8         | NIEDRIG     | Code   | Vereinheitlichen      | 20 min  |
 
 ### 4.2 Detailanalyse Problem 1: PIMLICO_API_KEY
 
 **Fundstelle:**
+
 ```
 api/src/config/config.ts:717
 api/src/integration/blockchain/shared/evm/paymaster/pimlico-bundler.service.ts:80-83
 ```
 
 **Code:**
+
 ```typescript
 // config.ts
 evm: {
@@ -302,6 +307,7 @@ isGaslessSupported(blockchain: Blockchain): boolean {
 ```
 
 **Auswirkung:**
+
 ```
 Ohne PIMLICO_API_KEY:
 ├── isGaslessSupported() → false
@@ -312,6 +318,7 @@ Ohne PIMLICO_API_KEY:
 ```
 
 **Lösung:**
+
 ```bash
 # In .env.dev, .env.prd oder CI/CD Secrets:
 PIMLICO_API_KEY=pim_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -320,12 +327,14 @@ PIMLICO_API_KEY=pim_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ### 4.3 Detailanalyse Problem 2: Balance-Check
 
 **Fundstelle:**
+
 ```
 api/src/integration/blockchain/shared/evm/paymaster/pimlico-bundler.service.ts:94-113
 api/src/subdomains/core/sell-crypto/route/sell.service.ts:436-456
 ```
 
 **Aktueller Code:**
+
 ```typescript
 async hasZeroNativeBalance(userAddress: string, blockchain: Blockchain): Promise<boolean> {
   try {
@@ -344,6 +353,7 @@ async hasZeroNativeBalance(userAddress: string, blockchain: Blockchain): Promise
 ```
 
 **Problem-Szenario:**
+
 ```
 User Balance: 0.0001 ETH (≈ $0.30)
 ERC20 Transfer Gas: ~65,000 Gas × 30 Gwei = 0.00195 ETH (≈ $6)
@@ -351,6 +361,7 @@ Ergebnis: User hat nicht genug für Gas, bekommt aber KEIN Gasless!
 ```
 
 **Vorgeschlagene Lösung:**
+
 ```typescript
 async needsGaslessTransaction(userAddress: string, blockchain: Blockchain): Promise<boolean> {
   try {
@@ -381,11 +392,13 @@ async needsGaslessTransaction(userAddress: string, blockchain: Blockchain): Prom
 ### 4.4 Detailanalyse Problem 3: Testnet-Support
 
 **Situation:**
+
 - MetaMask Gas Station funktioniert **NUR auf Mainnets**
 - Sepolia, Goerli und andere Testnets sind **NICHT unterstützt**
 - Dies ist eine **MetaMask-Limitierung**, kein DFX-Bug
 
 **Unterstützte Chains:**
+
 ```
 ✅ Ethereum Mainnet (Chain ID: 1)
 ✅ Arbitrum One (Chain ID: 42161)
@@ -401,6 +414,7 @@ async needsGaslessTransaction(userAddress: string, blockchain: Blockchain): Prom
 
 **Lösung für Testnets:**
 Wenn Testnet-Support benötigt wird, muss der **Backend-Pimlico-Flow** (Flow 2) verwendet werden. Dies erfordert:
+
 1. `isDelegationSupported()` reaktivieren
 2. `EVM_DELEGATION_ENABLED=true` setzen
 3. Frontend-Logik für Flow 2 aktivieren
@@ -550,6 +564,7 @@ echo 'PIMLICO_API_KEY=pim_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' >> .env.dev
 ```
 
 **Verifikation:**
+
 ```bash
 # API neu starten
 npm run start:dev
@@ -563,6 +578,7 @@ npm run start:dev
 **Ziel:** Bestätigen dass Gasless funktioniert
 
 **Test-Setup:**
+
 ```
 1. MetaMask Wallet vorbereiten:
    - Adresse mit 0 ETH
@@ -578,6 +594,7 @@ npm run start:dev
 ```
 
 **Erwartetes Verhalten:**
+
 ```
 Step 1: MetaMask zeigt "Upgrade to Smart Account?" Dialog
         → User klickt "Confirm"
@@ -594,6 +611,7 @@ Step 4: DFX zeigt Erfolg
 ```
 
 **API Response Prüfung:**
+
 ```bash
 # POST /sell/paymentInfos Response sollte enthalten:
 {
@@ -625,6 +643,7 @@ Step 4: DFX zeigt Erfolg
 **Datei:** `api/src/integration/blockchain/shared/evm/paymaster/pimlico-bundler.service.ts`
 
 **Aktuelle Funktion (Zeilen 94-113):**
+
 ```typescript
 async hasZeroNativeBalance(userAddress: string, blockchain: Blockchain): Promise<boolean> {
   // ... setup ...
@@ -634,6 +653,7 @@ async hasZeroNativeBalance(userAddress: string, blockchain: Blockchain): Promise
 ```
 
 **Neue Funktion:**
+
 ```typescript
 /**
  * Check if user needs gasless transaction
@@ -684,16 +704,14 @@ async needsGaslessTransaction(userAddress: string, blockchain: Blockchain): Prom
 ```
 
 **Zusätzliche Änderungen in `sell.service.ts`:**
+
 ```typescript
 // Zeile 436-450: hasZeroNativeBalance → needsGaslessTransaction
 if (isValid && this.pimlicoBundlerService.isGaslessSupported(dto.asset.blockchain)) {
   try {
     // ALT: hasZeroBalance = await this.pimlicoBundlerService.hasZeroNativeBalance(...)
     // NEU:
-    const needsGasless = await this.pimlicoBundlerService.needsGaslessTransaction(
-      user.address,
-      dto.asset.blockchain
-    );
+    const needsGasless = await this.pimlicoBundlerService.needsGaslessTransaction(user.address, dto.asset.blockchain);
     sellDto.gaslessAvailable = needsGasless;
 
     if (needsGasless) {
@@ -716,6 +734,7 @@ if (isValid && this.pimlicoBundlerService.isGaslessSupported(dto.asset.blockchai
 **Datei:** `services/src/hooks/wallets/metamask.hook.ts`
 
 **Erweitertes Error Handling:**
+
 ```typescript
 async function sendCallsWithPaymaster(
   calls: Eip5792Call[],
@@ -731,17 +750,19 @@ async function sendCallsWithPaymaster(
 
     const result = await ethereum().request({
       method: 'wallet_sendCalls',
-      params: [{
-        version: '2.0.0',
-        chainId: chainHex,
-        from: account,
-        atomicRequired: true,
-        calls: calls.map((c) => ({
-          to: c.to,
-          data: c.data,
-          value: c.value?.startsWith('0x') ? c.value : `0x${BigInt(c.value || 0).toString(16)}`,
-        })),
-      }],
+      params: [
+        {
+          version: '2.0.0',
+          chainId: chainHex,
+          from: account,
+          atomicRequired: true,
+          calls: calls.map((c) => ({
+            to: c.to,
+            data: c.data,
+            value: c.value?.startsWith('0x') ? c.value : `0x${BigInt(c.value || 0).toString(16)}`,
+          })),
+        },
+      ],
     });
 
     return await waitForCallsStatus(result.id ?? result);
@@ -764,8 +785,7 @@ async function sendCallsWithPaymaster(
         // Interner Fehler - oft Gas Station nicht verfügbar
         if (error.message?.includes('Gas Station')) {
           throw new Error(
-            'MetaMask Gas Station is not available. ' +
-            'Please ensure you have USDT, USDC, or DAI in your wallet.'
+            'MetaMask Gas Station is not available. ' + 'Please ensure you have USDT, USDC, or DAI in your wallet.',
           );
         }
         throw new Error(`MetaMask error: ${error.message}`);
@@ -784,17 +804,19 @@ async function sendCallsWithPaymaster(
 **Datei:** `services/src/screens/sell.screen.tsx` (oder entsprechende Komponente)
 
 **UI-Erweiterung:**
+
 ```tsx
 // Wenn gaslessAvailable === true, Info-Banner anzeigen
-{sell?.gaslessAvailable && (
-  <InfoBanner type="info">
-    <InfoIcon />
-    <span>
-      You don't have enough ETH for gas fees.
-      MetaMask will offer to pay gas with your tokens (USDT, USDC, or DAI).
-    </span>
-  </InfoBanner>
-)}
+{
+  sell?.gaslessAvailable && (
+    <InfoBanner type="info">
+      <InfoIcon />
+      <span>
+        You don't have enough ETH for gas fees. MetaMask will offer to pay gas with your tokens (USDT, USDC, or DAI).
+      </span>
+    </InfoBanner>
+  );
+}
 ```
 
 ---
@@ -808,6 +830,7 @@ async function sendCallsWithPaymaster(
 **Datei 1:** `api/src/integration/blockchain/shared/evm/delegation/eip7702-delegation.service.ts`
 
 **Änderung (Zeile 77-79):**
+
 ```typescript
 // ALT:
 isDelegationSupported(_blockchain: Blockchain): boolean {
@@ -821,6 +844,7 @@ isDelegationSupported(blockchain: Blockchain): boolean {
 ```
 
 **Datei 2:** Environment Variables
+
 ```bash
 EVM_DELEGATION_ENABLED=true
 ```
@@ -828,6 +852,7 @@ EVM_DELEGATION_ENABLED=true
 **Datei 3:** `services/src/hooks/tx-helper.hook.ts`
 
 **Erweiterung für Testnet-Fallback:**
+
 ```typescript
 async function sendTransaction(tx: Sell | Swap): Promise<string> {
   switch (activeWallet) {
@@ -881,6 +906,7 @@ async function executeBackendGaslessFlow(tx: Sell | Swap): Promise<string> {
 **Datei:** `api/src/integration/blockchain/shared/evm/paymaster/pimlico-bundler.service.ts`
 
 **Änderung:**
+
 ```typescript
 // ALT (Zeile 60):
 const ENTRY_POINT_V08 = '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108' as Address;
@@ -898,6 +924,7 @@ const ENTRY_POINT_V07 = '0x0000000071727De22E5E9d8BAf0edAc6f37da032' as Address;
 **Datei:** `.github/workflows/test.yml` (oder äquivalent)
 
 **Änderung:**
+
 ```yaml
 env:
   PIMLICO_API_KEY: ${{ secrets.PIMLICO_API_KEY }}
@@ -918,6 +945,7 @@ jobs:
 **Ziel:** Erfolgsrate von Gasless-Transaktionen tracken
 
 **Metriken:**
+
 ```typescript
 // In sell.service.ts oder analytics.service.ts
 
@@ -951,10 +979,12 @@ this.analyticsService.trackGaslessTransaction({
 ### 9.1 Unit Tests
 
 **Bereits vorhanden:**
+
 - `eip5792-real-hooks.test.ts` - MetaMask Hook Tests ✅
 - `eip5792-flow.test.ts` - Flow Tests ✅
 
 **Zu erweitern:**
+
 ```typescript
 // pimlico-bundler.service.spec.ts
 describe('needsGaslessTransaction', () => {
@@ -1004,6 +1034,7 @@ describe('PimlicoBundlerService Integration', () => {
 ### 9.3 E2E Tests
 
 **Test-Szenario 1: Mainnet Gas Station**
+
 ```typescript
 // e2e/gasless-mainnet.spec.ts
 test('should complete gasless sell on Mainnet', async () => {
@@ -1022,11 +1053,11 @@ test('should complete gasless sell on Mainnet', async () => {
 ```
 
 **Test-Szenario 2: Testnet Backend-Flow**
+
 ```typescript
 // e2e/gasless-testnet.spec.ts
 test('should complete gasless sell on Sepolia via backend', async () => {
   // Setup: Wallet mit 0 ETH + Sepolia USDT
-
   // 1. Sell starten
   // 2. EIP-7702 Authorization signieren
   // 3. Backend executed via Pimlico
@@ -1106,13 +1137,13 @@ Bei kritischem Fehler:
 
 ### 11.1 Risiko-Matrix
 
-| Risiko | Wahrscheinlichkeit | Impact | Mitigation |
-|--------|-------------------|--------|------------|
-| MetaMask Gas Station nicht verfügbar | Niedrig | Hoch | Fallback zu Standard-TX |
-| Pimlico API Ausfall | Niedrig | Mittel | Retry + Alternative Bundler |
-| User hat keine unterstützten Token | Mittel | Niedrig | Klare Fehlermeldung |
-| Smart Account Upgrade scheitert | Niedrig | Mittel | Error Handling + Support |
-| Hohe Pimlico Kosten | Mittel | Mittel | Rate Limiting + Monitoring |
+| Risiko                               | Wahrscheinlichkeit | Impact  | Mitigation                  |
+| ------------------------------------ | ------------------ | ------- | --------------------------- |
+| MetaMask Gas Station nicht verfügbar | Niedrig            | Hoch    | Fallback zu Standard-TX     |
+| Pimlico API Ausfall                  | Niedrig            | Mittel  | Retry + Alternative Bundler |
+| User hat keine unterstützten Token   | Mittel             | Niedrig | Klare Fehlermeldung         |
+| Smart Account Upgrade scheitert      | Niedrig            | Mittel  | Error Handling + Support    |
+| Hohe Pimlico Kosten                  | Mittel             | Mittel  | Rate Limiting + Monitoring  |
 
 ### 11.2 Fallback-Kette
 
@@ -1151,18 +1182,18 @@ Bei kritischem Fehler:
 
 ### 12.1 Zusammenfassung aller Code-Änderungen
 
-| Datei | Änderung | Phase | Status |
-|-------|----------|-------|--------|
-| `.env` | `PIMLICO_API_KEY=pim_xxx` | 1 | TODO |
-| `metamask.hook.ts` | `atomicRequired: true` | - | ✅ Erledigt |
-| `metamask.hook.ts` | `paymasterService` entfernt | - | ✅ Erledigt |
-| `tx-helper.hook.ts` | Kommentare aktualisiert | - | ✅ Erledigt |
-| `eip5792-real-hooks.test.ts` | Tests angepasst | - | ✅ Erledigt |
-| `pimlico-bundler.service.ts` | `needsGaslessTransaction()` | 2 | TODO |
-| `sell.service.ts` | Neue Funktion nutzen | 2 | TODO |
-| `eip7702-delegation.service.ts` | `return false` → Config | 3 | TODO |
-| `.env` | `EVM_DELEGATION_ENABLED=true` | 3 | TODO |
-| `pimlico-bundler.service.ts` | EntryPoint v0.7 | 3 | TODO |
+| Datei                           | Änderung                      | Phase | Status      |
+| ------------------------------- | ----------------------------- | ----- | ----------- |
+| `.env`                          | `PIMLICO_API_KEY=pim_xxx`     | 1     | TODO        |
+| `metamask.hook.ts`              | `atomicRequired: true`        | -     | ✅ Erledigt |
+| `metamask.hook.ts`              | `paymasterService` entfernt   | -     | ✅ Erledigt |
+| `tx-helper.hook.ts`             | Kommentare aktualisiert       | -     | ✅ Erledigt |
+| `eip5792-real-hooks.test.ts`    | Tests angepasst               | -     | ✅ Erledigt |
+| `pimlico-bundler.service.ts`    | `needsGaslessTransaction()`   | 2     | TODO        |
+| `sell.service.ts`               | Neue Funktion nutzen          | 2     | TODO        |
+| `eip7702-delegation.service.ts` | `return false` → Config       | 3     | TODO        |
+| `.env`                          | `EVM_DELEGATION_ENABLED=true` | 3     | TODO        |
+| `pimlico-bundler.service.ts`    | EntryPoint v0.7               | 3     | TODO        |
 
 ### 12.2 Vollständige Diff-Vorschau
 
@@ -1219,7 +1250,7 @@ Dieser Plan bietet eine vollständige Roadmap zur Aktivierung von Gasless Transa
 
 ---
 
-*Dokument erstellt am 2026-01-08 basierend auf der Analyse von 6 Dokumentationsdateien und der DFXswiss Codebase.*
+_Dokument erstellt am 2026-01-08 basierend auf der Analyse von 6 Dokumentationsdateien und der DFXswiss Codebase._
 
 ---
 
@@ -1227,12 +1258,12 @@ Dieser Plan bietet eine vollständige Roadmap zur Aktivierung von Gasless Transa
 
 ### Primärquellen (verifiziert am 2026-01-08)
 
-| Quelle | URL | Kernaussage |
-|--------|-----|-------------|
-| MetaMask Batch Transactions | https://docs.metamask.io/wallet/how-to/send-transactions/send-batch-transactions/ | "MetaMask may prompt users to upgrade their EOA to a MetaMask smart account" |
-| MetaMask Gas Station Feature | https://metamask.io/news/metamask-feature-update-gas-station | "Gas Station is also available on dapp transactions and sending crypto" |
-| MetaMask Gasless dApps | https://metamask.io/news/how-to-build-gasless-dapps | Paymaster Architecture erklärt |
-| EIP-5792 Spezifikation | https://eips.ethereum.org/EIPS/eip-5792 | wallet_sendCalls Standard |
+| Quelle                       | URL                                                                               | Kernaussage                                                                  |
+| ---------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| MetaMask Batch Transactions  | https://docs.metamask.io/wallet/how-to/send-transactions/send-batch-transactions/ | "MetaMask may prompt users to upgrade their EOA to a MetaMask smart account" |
+| MetaMask Gas Station Feature | https://metamask.io/news/metamask-feature-update-gas-station                      | "Gas Station is also available on dapp transactions and sending crypto"      |
+| MetaMask Gasless dApps       | https://metamask.io/news/how-to-build-gasless-dapps                               | Paymaster Architecture erklärt                                               |
+| EIP-5792 Spezifikation       | https://eips.ethereum.org/EIPS/eip-5792                                           | wallet_sendCalls Standard                                                    |
 
 ### Schlüsselerkenntnisse
 
@@ -1263,4 +1294,4 @@ Dieser Plan bietet eine vollständige Roadmap zur Aktivierung von Gasless Transa
 
 ---
 
-*Verifizierung abgeschlossen am 2026-01-08*
+_Verifizierung abgeschlossen am 2026-01-08_

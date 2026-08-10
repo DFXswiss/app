@@ -11,13 +11,13 @@ Das Assembly-Script `scripts/handbook/build.js` **findet** die meisten Artefakte
 `public/logo.png` ist bewusst kuratiert — `public/` enthält viele unzusammenhängende
 Statik-Dateien, die nicht ins Handbook gehören:
 
-| Quelle | Pfad | Inhalt |
-|--------|------|--------|
-| A | `e2e/screenshots/baseline/*.png` | Playwright Visual-Baselines (flach) |
-| B | `e2e/screenshots/*.png` | Top-Level-Screenshots (nicht rekursiv; `baseline/` und `debug/` ausgenommen) |
-| C | `tailwind.config.js` | Farben und Schriftgrössen |
-| D | `src/static/assets/*.svg` (Verzeichnis-Scan) plus `public/logo.png` (kuratiert, einzelne Datei) | Logos |
-| E | rekursiver Scan aller `*.md` ab Repo-Root, mit Ausschlussliste (`node_modules`, `.git`, `_handbook-deps`, `build`, `dist`, `coverage`, `e2e`, `docs/handbook`, sowie jedes mit `.` beginnende Verzeichnis) | Markdown-Doku (gerendert mit `marked`) |
+| Quelle | Pfad                                                                                                                                                                                                       | Inhalt                                                                       |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| A      | `e2e/screenshots/baseline/*.png`                                                                                                                                                                           | Playwright Visual-Baselines (flach)                                          |
+| B      | `e2e/screenshots/*.png`                                                                                                                                                                                    | Top-Level-Screenshots (nicht rekursiv; `baseline/` und `debug/` ausgenommen) |
+| C      | `tailwind.config.js`                                                                                                                                                                                       | Farben und Schriftgrössen                                                    |
+| D      | `src/static/assets/*.svg` (Verzeichnis-Scan) plus `public/logo.png` (kuratiert, einzelne Datei)                                                                                                            | Logos                                                                        |
+| E      | rekursiver Scan aller `*.md` ab Repo-Root, mit Ausschlussliste (`node_modules`, `.git`, `_handbook-deps`, `build`, `dist`, `coverage`, `e2e`, `docs/handbook`, sowie jedes mit `.` beginnende Verzeichnis) | Markdown-Doku (gerendert mit `marked`)                                       |
 
 Ausgabe pro Build:
 

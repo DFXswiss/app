@@ -55,6 +55,10 @@
     "title": "Compliance-Empfehlungsgraph",
     "description": "Initialansicht, Expansion, Load-More und Fehlerzustand des Empfehlungsgraphen."
   },
+  "compliance-chargeback-list": {
+    "title": "Compliance: Offene Chargebacks",
+    "description": "Liste offener Chargebacks mit Blockgründen, Namensvergleich und Leerzustand."
+  },
   "compliance-review-kyc-status": {
     "title": "Compliance KYC-Status",
     "description": "KYC-Status und AML-Reset in der Compliance-Review."
