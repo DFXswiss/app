@@ -42,6 +42,11 @@ type PendingChargebackPayload = Omit<PendingChargebackEntry, 'requestedDate' | '
   chargebackDate?: string;
 };
 
+// JSON round-trip: mirrors real HTTP transport (drops undefined keys, keeps ISO strings, breaks aliasing)
+function asTransport<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 describe('useCompliance().getPendingChargebacks', () => {
   beforeEach(() => {
     // react-scripts sets resetMocks:true, which wipes implementations before each test
@@ -66,7 +71,7 @@ describe('useCompliance().getPendingChargebacks', () => {
         date: '2026-01-15T10:00:00.000Z',
       },
     ];
-    mockCall.mockResolvedValue(payload);
+    mockCall.mockResolvedValue(asTransport(payload));
 
     const { result } = renderHook(() => useCompliance());
 
@@ -78,5 +83,6 @@ describe('useCompliance().getPendingChargebacks', () => {
       method: 'GET',
     });
     expect(entries).toEqual(payload);
+    expect(entries[0].requestedDate).toBe('2026-01-15T10:00:00.000Z');
   });
 });
