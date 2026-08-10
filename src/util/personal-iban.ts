@@ -5,11 +5,22 @@ export const FRICK_BANK_NAME = 'Bank Frick';
 export const FRICK_ACCOUNT_HOLDER_NAME = 'DFX AG';
 
 /**
- * Currencies Bank Frick personal IBANs and the shared collection account are available for.
- * Product decision, single source of truth on the frontend; mirrors the backend's
- * deposit-routing rule for which currencies route through Bank Frick.
+ * Electronic-format IBANs of DFX's shared collection accounts at Bank Frick, keyed by currency
+ * (the same values the public `GET /v1/bank` endpoint serves for the "Bank Frick" EUR/CHF rows).
+ * Display-only alternative next to a Frick personal IBAN; transfers to them are attributable
+ * only via the remittance reference, so one must never be shown without one. Single source of
+ * truth for which currencies Bank Frick serves - `FRICK_CURRENCIES` below is derived from its keys.
  */
-export const FRICK_CURRENCIES: readonly string[] = Object.freeze(['EUR', 'CHF']);
+export const FRICK_COLLECTION_IBANS: Readonly<Record<string, string>> = Object.freeze({
+  EUR: 'LI75088110105923K000E',
+  CHF: 'LI32088110105923K000C',
+});
+
+/**
+ * Currencies Bank Frick personal IBANs and the shared collection account are available for.
+ * Product decision; derived from `FRICK_COLLECTION_IBANS`'s keys so the two can never drift apart.
+ */
+export const FRICK_CURRENCIES: readonly string[] = Object.freeze(Object.keys(FRICK_COLLECTION_IBANS));
 
 export function normalizePersonalIban(value: string | undefined): string | undefined {
   return value?.toLowerCase() === PersonalIbanProvider.FRICK.toLowerCase()
@@ -69,19 +80,15 @@ export function isVerifiedFrickPersonalIbanResponse(info: {
 }
 
 /**
- * Electronic-format IBANs of DFX's shared collection accounts at Bank Frick, keyed by currency
- * (the same values the public `GET /v1/bank` endpoint serves for the "Bank Frick" EUR/CHF rows).
- * Display-only alternative next to a Frick personal IBAN; transfers to them are attributable
- * only via the remittance reference, so one must never be shown without one.
+ * Looks up the Bank Frick collection IBAN for a currency; undefined if none is configured.
+ * Uses an own-property check rather than a bare index access: `currencyName` is caller-controlled,
+ * and a value like `'constructor'` or `'toString'` must resolve to `undefined`, not to whatever
+ * that name happens to mean on the object prototype chain.
  */
-export const FRICK_COLLECTION_IBANS: Readonly<Record<string, string>> = Object.freeze({
-  EUR: 'LI75088110105923K000E',
-  CHF: 'LI32088110105923K000C',
-});
-
-/** Looks up the Bank Frick collection IBAN for a currency; undefined if none is configured. */
 export function getFrickCollectionIban(currencyName: string | undefined): string | undefined {
-  return currencyName === undefined ? undefined : FRICK_COLLECTION_IBANS[currencyName];
+  return currencyName !== undefined && Object.hasOwn(FRICK_COLLECTION_IBANS, currencyName)
+    ? FRICK_COLLECTION_IBANS[currencyName]
+    : undefined;
 }
 
 /**

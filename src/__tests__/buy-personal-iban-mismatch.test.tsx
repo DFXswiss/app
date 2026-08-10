@@ -338,7 +338,7 @@ function frickOffer(overrides: Record<string, unknown> = {}) {
     isPersonalIban: true,
     bank: 'Bank Frick',
     name: 'DFX AG',
-    iban: 'LI21088110102979K002E',
+    iban: 'LI35088110102979K002E',
     bic: 'BFRILI22',
     remittanceInfo: 'DFX-BUY-2',
     ...overrides,

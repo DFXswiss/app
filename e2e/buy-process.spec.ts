@@ -238,8 +238,12 @@ test.describe('Buy Process - UI Flow', () => {
   // CHF mirrors the EUR cutover; collection IBAN is the Bank Frick CHF row.
   test('shows the CHF collection IBAN toggle for a Frick CHF personal IBAN', async ({ page, request }) => {
     const token = await getToken(request);
+    let receivedProvider: unknown;
 
     await page.route('**/v1/buy/paymentInfos', async (route) => {
+      const requestData = route.request().postDataJSON() as Record<string, unknown>;
+      receivedProvider = requestData.personalIbanProvider;
+
       // Fully static quote, same reasoning as the EUR toggle test above: independent of local
       // KYC state, price rules and Bank Frick issuance, deterministic screenshots.
       await route.fulfill({
@@ -299,6 +303,7 @@ test.describe('Buy Process - UI Flow', () => {
 
     const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
     await expect(toggle).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => receivedProvider).toBe('Frick');
 
     // Personal IBAN state, formatted via Utils.formatIban (ibantools friendlyFormat, groups of 4).
     await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible();
@@ -308,6 +313,7 @@ test.describe('Buy Process - UI Flow', () => {
 
     // Collection IBAN state — the Bank Frick CHF row, not the EUR one.
     await expect(paymentDetails.getByText('LI32 0881 1010 5923 K000 C')).toBeVisible();
+    await expect(paymentDetails.getByText('LI75 0881 1010 5923 K000 E')).not.toBeVisible();
     await expect(paymentDetails.getByRole('button', { name: 'Show personal IBAN' })).toBeVisible();
     await expect(paymentDetails.getByText('A1B2-C3D4-E5F6')).toBeVisible();
     await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-toggle-collection-chf.png');
@@ -316,9 +322,15 @@ test.describe('Buy Process - UI Flow', () => {
     await paymentDetails.getByRole('button', { name: 'Show personal IBAN' }).click();
     await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible();
 
-    // Proves visually that a CHF Bank Frick personal IBAN shows neither the currency-mismatch
-    // hint nor the "New: Personal IBAN in your own name!" promo banner (both currency-gated
-    // conditions now include CHF, same as EUR).
+    // Proves both by explicit text assertion AND visually that a CHF Bank Frick personal IBAN
+    // shows neither the currency-mismatch hint nor the "New: Personal IBAN in your own name!"
+    // promo banner (both currency-gated conditions now include CHF, same as EUR).
+    await expect(
+      page.getByText(
+        'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.',
+      ),
+    ).not.toBeVisible();
+    await expect(page.getByText('New: Personal IBAN in your own name!')).not.toBeVisible();
     await expect(page).toHaveScreenshot('buy-chf-frick-page.png', {
       fullPage: true,
       maxDiffPixels: 10000,
@@ -536,17 +548,20 @@ test.describe('Buy Process - UI Flow', () => {
       `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100`,
     );
 
-    await expect(page.getByText('New: Personal IBAN in your own name!')).toBeVisible({ timeout: 15000 });
+    const promoBlock = page
+      .getByRole('heading', { name: 'New: Personal IBAN in your own name!' })
+      .locator('..');
+    await expect(promoBlock.getByRole('heading', { name: 'New: Personal IBAN in your own name!' })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(promoBlock.getByRole('button', { name: 'Generate personal IBAN' })).toBeVisible();
     await expect(
       page.getByText(
         'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.',
       ),
     ).not.toBeVisible();
 
-    await expect(page).toHaveScreenshot('buy-usd-promo-page.png', {
-      fullPage: true,
-      maxDiffPixels: 10000,
-    });
+    await expect(promoBlock).toHaveScreenshot('buy-usd-promo-block.png');
   });
 });
 

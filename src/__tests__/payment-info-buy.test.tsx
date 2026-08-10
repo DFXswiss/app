@@ -61,7 +61,7 @@ function baseInfo(overrides: Record<string, unknown> = {}) {
     id: 1,
     amount: 100,
     currency: { name: 'EUR' },
-    iban: 'LI21088110102979K002E',
+    iban: 'LI35088110102979K002E',
     bic: 'BFRILI22',
     name: 'Test User',
     street: 'Main',

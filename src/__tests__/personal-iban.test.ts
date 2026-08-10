@@ -106,6 +106,10 @@ describe('getFrickCollectionIban', () => {
   it('returns undefined for undefined', () => {
     expect(getFrickCollectionIban(undefined)).toBeUndefined();
   });
+
+  it('returns undefined for an inherited Object property name instead of resolving through the prototype chain', () => {
+    expect(getFrickCollectionIban('constructor')).toBeUndefined();
+  });
 });
 
 describe('getOfferableCollectionIban', () => {
@@ -121,7 +125,7 @@ describe('getOfferableCollectionIban', () => {
       getOfferableCollectionIban({
         ...verifiedFrickBase,
         currency: { name: 'CHF' },
-        iban: 'LI21088110102979K002E',
+        iban: 'LI35088110102979K002E',
       }),
     ).toBe('LI32088110105923K000C');
   });
@@ -141,7 +145,7 @@ describe('getOfferableCollectionIban', () => {
       getOfferableCollectionIban({
         ...verifiedFrickBase,
         currency: { name: 'USD' },
-        iban: 'LI21088110102979K002E',
+        iban: 'LI35088110102979K002E',
       }),
     ).toBeUndefined();
   });
@@ -152,7 +156,7 @@ describe('getOfferableCollectionIban', () => {
         ...verifiedFrickBase,
         isPersonalIban: false,
         currency: { name: 'CHF' },
-        iban: 'LI21088110102979K002E',
+        iban: 'LI35088110102979K002E',
       }),
     ).toBeUndefined();
   });
@@ -163,7 +167,7 @@ describe('getOfferableCollectionIban', () => {
         ...verifiedFrickBase,
         remittanceInfo: undefined,
         currency: { name: 'CHF' },
-        iban: 'LI21088110102979K002E',
+        iban: 'LI35088110102979K002E',
       }),
     ).toBeUndefined();
   });

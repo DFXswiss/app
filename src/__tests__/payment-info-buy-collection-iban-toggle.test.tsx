@@ -69,7 +69,7 @@ function baseInfo(overrides: Record<string, unknown> = {}) {
     id: 1,
     amount: 100,
     currency: { name: 'EUR' },
-    iban: 'LI21088110102979K002E',
+    iban: 'LI35088110102979K002E',
     bic: 'BFRILI22',
     name: 'Test User',
     street: 'Main',
@@ -96,7 +96,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     );
 
     const ibanRow = screen.getByTestId('row-value-IBAN');
-    expect(ibanRow).toHaveTextContent('LI21088110102979K002E');
+    expect(ibanRow).toHaveTextContent('LI35088110102979K002E');
 
     const showCollectionButton = within(ibanRow).getByRole('button', { name: 'Show collection IBAN' });
     fireEvent.click(showCollectionButton);
@@ -110,11 +110,11 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
     fireEvent.click(showPersonalButton);
 
-    expect(ibanRow).toHaveTextContent('LI21088110102979K002E');
+    expect(ibanRow).toHaveTextContent('LI35088110102979K002E');
     expect(within(ibanRow).getByRole('button', { name: 'Show collection IBAN' })).toBeInTheDocument();
 
     fireEvent.click(within(ibanRow).getByTestId('copy'));
-    expect(mockCopy).toHaveBeenLastCalledWith('LI21088110102979K002E');
+    expect(mockCopy).toHaveBeenLastCalledWith('LI35088110102979K002E');
   });
 
   it('does not show the toggle when the customer already sees the collection account (isPersonalIban false)', () => {
@@ -151,7 +151,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     );
 
     const ibanRow = screen.getByTestId('row-value-IBAN');
-    expect(ibanRow).toHaveTextContent('LI21088110102979K002E');
+    expect(ibanRow).toHaveTextContent('LI35088110102979K002E');
 
     const showCollectionButton = within(ibanRow).getByRole('button', { name: 'Show collection IBAN' });
     fireEvent.click(showCollectionButton);
@@ -166,7 +166,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
     fireEvent.click(showPersonalButton);
 
-    expect(ibanRow).toHaveTextContent('LI21088110102979K002E');
+    expect(ibanRow).toHaveTextContent('LI35088110102979K002E');
   });
 
   it('does not show the toggle when remittanceInfo is absent', () => {
