@@ -281,6 +281,7 @@ test.describe('Buy Process - UI Flow', () => {
 
     const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
     await expect(toggle).toBeVisible({ timeout: 15000 });
+    await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-text-tab-personal.png');
 
     // StyledTab sets role="tablist" on each <a> (and the parent <ul>). That role does not take
     // its accessible name from content, so getByRole(..., { name: 'QR Code' }) matches nothing.
@@ -438,6 +439,7 @@ test.describe('Buy Process - UI Flow', () => {
     request,
   }) => {
     const token = await getToken(request);
+    let capturedInvoiceUrl: string | undefined;
 
     // Production-shaped GiroCode (api config: version 001, encoding 2).
     const paymentRequest = [
@@ -484,6 +486,7 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     await page.route('**/v1/buy/paymentInfos/*/invoice*', async (route) => {
+      capturedInvoiceUrl = route.request().url();
       await route.fulfill({
         status: 400,
         contentType: 'application/json',
@@ -516,6 +519,7 @@ test.describe('Buy Process - UI Flow', () => {
         'The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.',
       ),
     ).toBeVisible();
+    await expect.poll(() => capturedInvoiceUrl).toContain('collectionAccount=true');
     await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-invoice-error.png');
   });
 });

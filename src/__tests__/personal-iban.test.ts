@@ -261,6 +261,25 @@ describe('canOfferCollectionIban', () => {
       }),
     ).toBe(false);
   });
+
+  it('returns false when remittanceInfo is whitespace-only', () => {
+    expect(
+      canOfferCollectionIban({
+        ...verifiedFrickEur,
+        remittanceInfo: '   ',
+        iban: 'LI21088110102979K002E',
+      }),
+    ).toBe(false);
+  });
+
+  it('returns false when iban is whitespace-only', () => {
+    expect(
+      canOfferCollectionIban({
+        ...verifiedFrickEur,
+        iban: '  ',
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('isVerifiedFrickPersonalIbanResponse', () => {
@@ -573,7 +592,7 @@ describe('toCollectionIbanGiroCode', () => {
     ).toBeUndefined();
   });
 
-  it('returns undefined for a 10-line payload ending at the structured reference (line 10 omitted, outside the shape this function validates)', () => {
+  it('returns undefined for a 10-line payload — below the 11-line minimum', () => {
     const tenLinePayload = [
       'BCD',
       '001',

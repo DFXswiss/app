@@ -74,7 +74,8 @@ export const FRICK_EUR_COLLECTION_IBAN = 'LI75088110105923K000E';
  * account as an alternative (display, QR rewrite and PDF invoice follow the toggle).
  * `remittanceInfo` must be present: attribution on the shared collection account runs entirely
  * on the reference, and the backend enforces the same rule before it ever shows the collection
- * account itself as the primary IBAN. Customers already on the collection account
+ * account itself as the primary IBAN. Whitespace-only `remittanceInfo` or `iban` is rejected
+ * (same trim/normalize semantics as the rewrite). Customers already on the collection account
  * (`isPersonalIban` false) get no toggle - they already see it.
  */
 export function canOfferCollectionIban(info: {
@@ -87,10 +88,11 @@ export function canOfferCollectionIban(info: {
 }): boolean {
   if (info.currency?.name !== 'EUR') return false;
   if (!isVerifiedFrickPersonalIbanResponse(info)) return false;
-  if (!info.remittanceInfo) return false;
+  if (!info.remittanceInfo || !info.remittanceInfo.trim()) return false;
   if (!info.iban) return false;
 
   const normalized = info.iban.replace(/\s+/g, '').toUpperCase();
+  if (!normalized) return false;
   return normalized !== FRICK_EUR_COLLECTION_IBAN;
 }
 
@@ -101,7 +103,7 @@ export function canOfferCollectionIban(info: {
  * is altered. Fail-closed: returns undefined when personalIban or remittanceInfo is missing
  * (callers pass quote fields through unchanged; this function is the single gate — attribution
  * and matching are impossible without them). Also returns undefined unless the payload is a
- * well-formed SCT GiroCode (full 10+-line shape, version 001/002, charset line index 2 in
+ * well-formed SCT GiroCode (full 11-plus-line shape, version 001/002, charset line index 2 in
  * '1'..'8') whose IBAN line matches the given personal IBAN (whitespace/case ignored) and whose
  * remittance is carried on the unstructured line 10 only and equals the quote's remittance info.
  * This function does not implement ISO 11649 structured-reference validation; the quote
@@ -123,7 +125,7 @@ export function toCollectionIbanGiroCode(
 
   const lines = paymentRequest.split(/\r?\n/);
   while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-  if (lines.length < 10) return undefined;
+  if (lines.length < 11) return undefined;
   if (lines[0] !== 'BCD') return undefined;
   if (lines[1] !== '001' && lines[1] !== '002') return undefined;
   // EPC069-12 character set: values '1'..'8' only.
@@ -133,7 +135,7 @@ export function toCollectionIbanGiroCode(
   const trimmedRemittance = remittanceInfo.trim();
   if (!trimmedRemittance) return undefined;
   const structuredReference = lines[9].trim();
-  const unstructuredRemittance = lines.length > 10 ? lines[10].trim() : '';
+  const unstructuredRemittance = lines[10].trim();
   // No ISO 11649 validation here: bankUsage is unstructured; a populated structured carrier is out of shape.
   if (structuredReference) return undefined;
   if (unstructuredRemittance !== trimmedRemittance) return undefined;

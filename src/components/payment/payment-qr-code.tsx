@@ -41,6 +41,8 @@ export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCo
   // from the previous session must not open after it. The signal is the session, not the user:
   // the session changes synchronously with an in-place token swap (deep-link param push or
   // connect flow), while the user context can lag behind and keep serving the previous account.
+  // Both session identity fields (`account` and `user`) are tracked so a token swap that keeps
+  // one but changes the other still re-arms the guard.
   useLayoutEffect(() => {
     invoiceGeneration.current += 1;
     setInvoiceError(undefined);
@@ -48,7 +50,7 @@ export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCo
     return () => {
       invoiceGeneration.current += 1;
     };
-  }, [txId, collectionAccount, session?.account]);
+  }, [txId, collectionAccount, session?.account, session?.user]);
 
   async function onInvoiceClick(): Promise<void> {
     if (!user?.kyc.dataComplete) {

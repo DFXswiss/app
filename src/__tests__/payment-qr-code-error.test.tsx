@@ -5,7 +5,7 @@ let mockUser: { accountId?: number; kyc: { dataComplete: boolean } } | undefined
   accountId: 1,
   kyc: { dataComplete: true },
 };
-let mockSession: { account: number } | undefined = { account: 1 };
+let mockSession: { account: number; user?: number } | undefined = { account: 1, user: 1 };
 
 jest.mock('@dfx.swiss/react', () => ({
   useBuy: () => ({ invoiceFor: mockInvoiceFor }),
@@ -49,7 +49,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockInvoiceFor.mockResolvedValue({ pdfData: 'JVBERi0x' });
   mockUser = { accountId: 1, kyc: { dataComplete: true } };
-  mockSession = { account: 1 };
+  mockSession = { account: 1, user: 1 };
 });
 
 const NO_COLLECTION_QR_HINT =
@@ -162,12 +162,15 @@ describe('PaymentQrCode collection-account forwarding', () => {
 
 describe('PaymentQrCode stale-response guard', () => {
   let resolveInvoice: (value: unknown) => void;
+  let resolveInvoiceQueue: Array<(value: unknown) => void>;
 
   beforeEach(() => {
+    resolveInvoiceQueue = [];
     mockInvoiceFor.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveInvoice = resolve;
+          resolveInvoiceQueue.push(resolve);
         }),
     );
   });
@@ -228,7 +231,7 @@ describe('PaymentQrCode stale-response guard', () => {
 
     // Same txId, collectionAccount, and user — only the session account changes (in-place token swap).
     // The user context can lag behind; the guard must key on the session, not user.accountId.
-    mockSession = { account: 2 };
+    mockSession = { account: 2, user: 1 };
     rerender(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
 
     await act(async () => {
@@ -372,5 +375,82 @@ describe('PaymentQrCode stale-response guard', () => {
     rerender(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
 
     expect(screen.queryByText('Invoice service is unavailable')).not.toBeInTheDocument();
+  });
+
+  it('does not open the PDF when only the session user identity changes while the user data stays stale', async () => {
+    const { rerender } = render(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    // Same txId, collectionAccount, and session account — only the session user changes
+    // (in-place token swap). The user context can lag behind; the guard must key on both
+    // session identity fields, not only session.account.
+    mockSession = { account: 1, user: 2 };
+    rerender(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
+
+    await act(async () => {
+      resolveInvoice({ pdfData: 'JVBERi0x' });
+    });
+
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+    expect(screen.queryByText('Invoice service is unavailable')).not.toBeInTheDocument();
+    const button = screen.getByRole('button', { name: 'PDF Invoice' });
+    expect(button).toBeEnabled();
+  });
+
+  it('keeps the newer request loading when a stale concurrent response resolves first', async () => {
+    const { rerender } = render(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    // Mode flip bumps generation and resets loading without aborting request A's promise.
+    rerender(<PaymentQrCode value="BCD\n001" txId={42} />);
+
+    const buttonAfterFlip = screen.getByRole('button', { name: 'PDF Invoice' });
+    expect(buttonAfterFlip).toBeEnabled();
+
+    await act(async () => {
+      await userEvent.click(buttonAfterFlip);
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(2);
+    });
+
+    const resolveA = resolveInvoiceQueue[0];
+    if (!resolveA) throw new Error('invoice resolver A was not captured');
+
+    await act(async () => {
+      resolveA({ pdfData: 'JVBERi0x' });
+    });
+
+    // Request B is still in flight — a generation-unguarded finally would clear its spinner here.
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+    expect(screen.queryByText('Invoice service is unavailable')).not.toBeInTheDocument();
+    expect(screen.getByRole('button')).toBeDisabled();
+
+    const resolveB = resolveInvoiceQueue[1];
+    if (!resolveB) throw new Error('invoice resolver B was not captured');
+
+    await act(async () => {
+      resolveB({ pdfData: 'JVBERi0x' });
+    });
+
+    await waitFor(() => {
+      expect(mockOpenPdf).toHaveBeenCalledTimes(1);
+    });
+    expect(mockOpenPdf).toHaveBeenCalledWith('JVBERi0x');
   });
 });
