@@ -359,7 +359,7 @@ function sampleGiroCode(
 }
 
 describe('toCollectionIbanGiroCode', () => {
-  it('replaces only line 6 and leaves all other lines and the line count untouched', () => {
+  it('replaces only line 6 on an LF payload without a trailing blank line, leaving all other lines and the line count untouched', () => {
     const input = sampleGiroCode();
     const originalLines = input.split('\n');
     const result = toCollectionIbanGiroCode(input, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE);
@@ -376,6 +376,67 @@ describe('toCollectionIbanGiroCode', () => {
         expect(resultLines[i]).toBe(originalLines[i]);
       }
     }
+  });
+
+  it('returns undefined when both remittance carriers are populated and structured matches', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line9: SAMPLE_REMITTANCE, line10: 'OTHER-REF' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when both remittance carriers are populated and unstructured matches', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line9: 'OTHER-REF', line10: SAMPLE_REMITTANCE }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when both remittance carriers are populated with the same matching reference', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line9: SAMPLE_REMITTANCE, line10: SAMPLE_REMITTANCE }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('normalizes CRLF input to LF separators and rewrites only line 6', () => {
+    const lfPayload = sampleGiroCode();
+    const originalLines = lfPayload.split('\n');
+    const input = originalLines.join('\r\n');
+    const result = toCollectionIbanGiroCode(input, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE);
+
+    expect(result).toBeDefined();
+    if (result === undefined) return;
+    expect(result).not.toContain('\r');
+    expect(result.includes('\n')).toBe(true);
+    const resultLines = result.split('\n');
+    expect(resultLines[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+    for (let i = 0; i < originalLines.length; i++) {
+      if (i === 6) {
+        expect(resultLines[i]).toBe(FRICK_EUR_COLLECTION_IBAN);
+      } else {
+        expect(resultLines[i]).toBe(originalLines[i]);
+      }
+    }
+  });
+
+  it('silently drops a trailing blank line on rebuild', () => {
+    const base = sampleGiroCode();
+    const withTrailing = base + '\n';
+    const result = toCollectionIbanGiroCode(withTrailing, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE);
+    const expected = toCollectionIbanGiroCode(base, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE);
+
+    expect(result).toBeDefined();
+    expect(result).toBe(expected);
   });
 
   it('returns undefined when line 0 is not BCD', () => {

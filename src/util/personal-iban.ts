@@ -213,12 +213,14 @@ export function getOfferableCollectionIban(info: {
 
 /**
  * Rewrites a GiroCode (EPC069-12) payment request so line 6 (IBAN) becomes the DFX shared EUR
- * collection IBAN. Fail-closed: returns undefined unless the payload is a well-formed SCT
- * GiroCode (full 10+-line shape (index 9 = structured reference; unstructured line 10 may be
- * omitted), version 001/002) whose IBAN line matches the given personal IBAN
- * (whitespace/case ignored) and whose remittance line (structured line 9 or unstructured
- * line 10) equals the quote's remittance info. Swiss QR-Bill SVG payloads are never rewritten —
- * callers must treat undefined as "no QR available".
+ * collection IBAN. The rebuild joins lines with `\n` (normalizing CRLF) and drops trailing blank
+ * lines; no other field is altered. Fail-closed: returns undefined unless the payload is a
+ * well-formed SCT GiroCode (full 10+-line shape (index 9 = structured reference; unstructured
+ * line 10 may be omitted), version 001/002) whose IBAN line matches the given personal IBAN
+ * (whitespace/case ignored) and whose remittance is carried on exactly one of structured line 9
+ * or unstructured line 10 (EPC069-12 allows only one remittance carrier; both populated is
+ * non-compliant) and equals the quote's remittance info. Swiss QR-Bill SVG payloads are never
+ * rewritten — callers must treat undefined as "no QR available".
  */
 export function toCollectionIbanGiroCode(
   paymentRequest: string,
@@ -237,6 +239,8 @@ export function toCollectionIbanGiroCode(
   if (!trimmedRemittance) return undefined;
   const structuredReference = lines[9].trim();
   const unstructuredRemittance = lines.length > 10 ? lines[10].trim() : '';
+  // EPC069-12 allows only one remittance carrier; a payload carrying both is non-compliant, so it is not rewritten.
+  if (structuredReference && unstructuredRemittance) return undefined;
   if (structuredReference !== trimmedRemittance && unstructuredRemittance !== trimmedRemittance) return undefined;
 
   const normalizedLine = lines[6].replace(/\s+/g, '').toUpperCase();
