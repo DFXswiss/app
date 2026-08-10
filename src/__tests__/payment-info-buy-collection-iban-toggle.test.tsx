@@ -72,6 +72,11 @@ jest.mock('../components/payment/payment-qr-code', () => ({
   ),
 }));
 
+jest.mock('../util/personal-iban', () => ({
+  ...jest.requireActual('../util/personal-iban'),
+  canOfferCollectionIban: jest.fn(),
+}));
+
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PaymentInformationContent } from '../components/payment/payment-info-buy';
 import { canOfferCollectionIban, FRICK_EUR_COLLECTION_IBAN } from '../util/personal-iban';
@@ -121,6 +126,9 @@ const COLLECTION_HINT =
 describe('PaymentInformationContent collection-IBAN toggle', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (canOfferCollectionIban as jest.Mock).mockImplementation(
+      jest.requireActual('../util/personal-iban').canOfferCollectionIban,
+    );
   });
 
   it('toggles the displayed and copied IBAN between the personal and collection account', () => {
@@ -245,7 +253,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     expect(screen.queryByTestId('row-info-IBAN')).not.toBeInTheDocument();
   });
 
-  it('mirrors the toggle state in aria-pressed', () => {
+  it('exposes the toggle as a plain action button without aria-pressed', () => {
     render(
       <PaymentInformationContent
         info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })}
@@ -253,14 +261,11 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     );
 
     const button = screen.getByRole('button', { name: 'Show collection IBAN' });
-    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(button).not.toHaveAttribute('aria-pressed');
 
     fireEvent.click(button);
 
-    expect(screen.getByRole('button', { name: 'Show personal IBAN' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    expect(screen.getByRole('button', { name: 'Show personal IBAN' })).not.toHaveAttribute('aria-pressed');
   });
 
   it('renders a SWAP icon instead of the refresh emoji', () => {
@@ -375,6 +380,27 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     expect(screen.queryByText(NO_COLLECTION_QR_HINT)).not.toBeInTheDocument();
   });
 
+  it('shows the no-QR hint when the offer gate passes but iban or remittance info is missing', () => {
+    (canOfferCollectionIban as jest.Mock).mockReturnValue(true);
+
+    render(
+      <PaymentInformationContent
+        info={baseInfo({
+          isPersonalIban: true,
+          bank: 'Bank Frick',
+          name: 'DFX AG',
+          paymentRequest: sampleGiroCode(),
+          iban: undefined,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
+
+    expect(screen.getByText(NO_COLLECTION_QR_HINT)).toBeInTheDocument();
+    expect(screen.queryByTestId('qr-value')).not.toBeInTheDocument();
+  });
+
   it('keeps the original QR value when offerCollectionIban becomes false while still toggled', () => {
     const paymentRequest = sampleGiroCode();
     const offeredInfo = baseInfo({
@@ -408,6 +434,12 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 });
 
 describe('canOfferCollectionIban', () => {
+  beforeEach(() => {
+    (canOfferCollectionIban as jest.Mock).mockImplementation(
+      jest.requireActual('../util/personal-iban').canOfferCollectionIban,
+    );
+  });
+
   it('is true for a verified Bank Frick personal IBAN with EUR currency and remittanceInfo', () => {
     expect(
       canOfferCollectionIban(baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })),

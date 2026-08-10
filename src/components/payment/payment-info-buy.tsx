@@ -167,9 +167,8 @@ function PaymentInformationText({
           {offerCollectionIban && (
             <button
               type="button"
-              className="inline-block flex h-full align-top hover:scale-110 transition ease-in-out delay-100 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dfxRed-100"
+              className="flex h-full hover:scale-110 transition ease-in-out delay-100 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dfxRed-100"
               onClick={onToggleCollectionIban}
-              aria-pressed={showCollectionIban}
               aria-label={translate(
                 'screens/payment',
                 showCollectionIban ? 'Show personal IBAN' : 'Show collection IBAN',
