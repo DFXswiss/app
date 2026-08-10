@@ -185,7 +185,7 @@ describe('missing asset function', () => {
 // unnoticed addition would run the Function's content check against a path public/_headers never
 // justified for it, so both directions have to fail this test, not only a removal.
 describe('public/_routes.json include list', () => {
-  it('content-checks exactly /static/*, /widget/*, /favicon.ico, /logo.png, /robots.txt, /manifest.json, /asset-manifest.json and /version.json, and excludes nothing', () => {
+  it('content-checks exactly the main-app asset paths plus App2 non-HTML assets, and excludes nothing', () => {
     const expectedInclude = [
       '/static/*',
       '/widget/*',
@@ -195,6 +195,16 @@ describe('public/_routes.json include list', () => {
       '/manifest.json',
       '/asset-manifest.json',
       '/version.json',
+      // App2 non-HTML only — /app2/, /app2/index.html and /app2/* stay out so the
+      // Function does not 404 the App2 shell (see public/_headers).
+      '/app2/static/*',
+      '/app2/favicon.svg',
+      '/app2/favicon-32.png',
+      '/app2/apple-touch-icon.png',
+      '/app2/manifest.webmanifest',
+      '/app2/icons/*',
+      '/app2/licenses/*',
+      '/app2/THIRD-PARTY-NOTICES.md',
     ];
 
     expect([...routes.include].sort()).toEqual([...expectedInclude].sort());
