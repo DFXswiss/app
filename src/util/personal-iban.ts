@@ -98,20 +98,25 @@ export function canOfferCollectionIban(info: {
  * Rewrites a GiroCode (EPC069-12) payment request so line 6 (IBAN) becomes the DFX shared EUR
  * collection IBAN. The rebuild joins lines with `\n` (normalizing CRLF) and drops trailing blank
  * lines; leading whitespace is NOT tolerated (fail-closed — no silent repair). No other field
- * is altered. Fail-closed: returns undefined unless the payload is a well-formed SCT GiroCode
- * (full 10+-line shape, version 001/002, charset line index 2 in '1'..'8') whose IBAN line
- * matches the given personal IBAN (whitespace/case ignored) and whose remittance is carried on
- * the unstructured line 10 only and equals the quote's remittance info. The api emits the
- * reference exclusively on the unstructured line; a populated structured-reference carrier
- * (line 9) is not its shape and is never validated against ISO 11649 here, so it is refused.
- * Swiss QR-Bill SVG payloads are never rewritten — callers must treat undefined as "no QR
- * available".
+ * is altered. Fail-closed: returns undefined when personalIban or remittanceInfo is missing
+ * (callers pass quote fields through unchanged; this function is the single gate — attribution
+ * and matching are impossible without them). Also returns undefined unless the payload is a
+ * well-formed SCT GiroCode (full 10+-line shape, version 001/002, charset line index 2 in
+ * '1'..'8') whose IBAN line matches the given personal IBAN (whitespace/case ignored) and whose
+ * remittance is carried on the unstructured line 10 only and equals the quote's remittance info.
+ * The api emits the reference exclusively on the unstructured line; a populated
+ * structured-reference carrier (line 9) is not its shape and is never validated against ISO
+ * 11649 here, so it is refused. Swiss QR-Bill SVG payloads are never rewritten — callers must
+ * treat undefined as "no QR available".
  */
 export function toCollectionIbanGiroCode(
   paymentRequest: string,
-  personalIban: string,
-  remittanceInfo: string,
+  personalIban: string | undefined,
+  remittanceInfo: string | undefined,
 ): string | undefined {
+  // Attribution/matching are impossible without them; callers narrow nothing.
+  if (personalIban === undefined || remittanceInfo === undefined) return undefined;
+
   if (paymentRequest.includes('<svg')) return undefined;
 
   const lines = paymentRequest.split(/\r?\n/);

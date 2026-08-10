@@ -76,11 +76,6 @@ jest.mock('../components/payment/payment-qr-code', () => ({
   ),
 }));
 
-jest.mock('../util/personal-iban', () => ({
-  ...jest.requireActual('../util/personal-iban'),
-  canOfferCollectionIban: jest.fn(),
-}));
-
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PaymentInformationContent } from '../components/payment/payment-info-buy';
 import { canOfferCollectionIban, FRICK_EUR_COLLECTION_IBAN } from '../util/personal-iban';
@@ -130,9 +125,6 @@ const COLLECTION_HINT =
 describe('PaymentInformationContent collection-IBAN toggle', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (canOfferCollectionIban as jest.Mock).mockImplementation(
-      jest.requireActual('../util/personal-iban').canOfferCollectionIban,
-    );
   });
 
   it('toggles the displayed and copied IBAN between the personal and collection account', () => {
@@ -385,34 +377,6 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     expect(qrValue).toHaveAttribute('data-collection', 'true');
   });
 
-  it.each([
-    { missingField: 'iban', override: { iban: undefined } },
-    { missingField: 'remittanceInfo', override: { remittanceInfo: undefined } },
-  ])(
-    'renders PaymentQrCode without a value when the offer gate passes but $missingField is missing',
-    ({ override }) => {
-      (canOfferCollectionIban as jest.Mock).mockReturnValue(true);
-
-      render(
-        <PaymentInformationContent
-          info={baseInfo({
-            isPersonalIban: true,
-            bank: 'Bank Frick',
-            name: 'DFX AG',
-            paymentRequest: sampleGiroCode(),
-            ...override,
-          })}
-        />,
-      );
-
-      fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
-
-      const qrValue = screen.getByTestId('qr-value');
-      expect(qrValue).toHaveAttribute('data-has-value', 'false');
-      expect(qrValue).toHaveAttribute('data-collection', 'true');
-    },
-  );
-
   it('keeps the original QR value when offerCollectionIban becomes false while still toggled', () => {
     const paymentRequest = sampleGiroCode();
     const offeredInfo = baseInfo({
@@ -448,12 +412,6 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 });
 
 describe('canOfferCollectionIban', () => {
-  beforeEach(() => {
-    (canOfferCollectionIban as jest.Mock).mockImplementation(
-      jest.requireActual('../util/personal-iban').canOfferCollectionIban,
-    );
-  });
-
   it('is true for a verified Bank Frick personal IBAN with EUR currency and remittanceInfo', () => {
     expect(
       canOfferCollectionIban(baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })),

@@ -61,11 +61,13 @@ export function PaymentInformationContent({ info, showBank }: PaymentInformation
       return <PaymentQrCode value={info.paymentRequest} txId={info.id} />;
     }
 
-    const collectionGiroCode =
-      info.iban !== undefined && info.remittanceInfo
-        ? toCollectionIbanGiroCode(info.paymentRequest, info.iban, info.remittanceInfo)
-        : undefined;
-    return <PaymentQrCode value={collectionGiroCode} txId={info.id} collectionAccount />;
+    return (
+      <PaymentQrCode
+        value={toCollectionIbanGiroCode(info.paymentRequest, info.iban, info.remittanceInfo)}
+        txId={info.id}
+        collectionAccount
+      />
+    );
   })();
 
   return (

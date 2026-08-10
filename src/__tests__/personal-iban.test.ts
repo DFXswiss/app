@@ -360,6 +360,14 @@ function sampleGiroCode(
 }
 
 describe('toCollectionIbanGiroCode', () => {
+  it('returns undefined when personalIban is undefined', () => {
+    expect(toCollectionIbanGiroCode(sampleGiroCode(), undefined, SAMPLE_REMITTANCE)).toBeUndefined();
+  });
+
+  it('returns undefined when remittanceInfo is undefined', () => {
+    expect(toCollectionIbanGiroCode(sampleGiroCode(), PERSONAL_GIRO_IBAN, undefined)).toBeUndefined();
+  });
+
   it('replaces only line 6 on an LF payload without a trailing blank line, leaving all other lines and the line count untouched', () => {
     const input = sampleGiroCode();
     const originalLines = input.split('\n');
