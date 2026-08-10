@@ -380,26 +380,32 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     expect(screen.queryByText(NO_COLLECTION_QR_HINT)).not.toBeInTheDocument();
   });
 
-  it('shows the no-QR hint when the offer gate passes but iban or remittance info is missing', () => {
-    (canOfferCollectionIban as jest.Mock).mockReturnValue(true);
+  it.each([
+    { missingField: 'iban', override: { iban: undefined } },
+    { missingField: 'remittanceInfo', override: { remittanceInfo: undefined } },
+  ])(
+    'shows the no-QR hint when the offer gate passes but $missingField is missing',
+    ({ override }) => {
+      (canOfferCollectionIban as jest.Mock).mockReturnValue(true);
 
-    render(
-      <PaymentInformationContent
-        info={baseInfo({
-          isPersonalIban: true,
-          bank: 'Bank Frick',
-          name: 'DFX AG',
-          paymentRequest: sampleGiroCode(),
-          iban: undefined,
-        })}
-      />,
-    );
+      render(
+        <PaymentInformationContent
+          info={baseInfo({
+            isPersonalIban: true,
+            bank: 'Bank Frick',
+            name: 'DFX AG',
+            paymentRequest: sampleGiroCode(),
+            ...override,
+          })}
+        />,
+      );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
 
-    expect(screen.getByText(NO_COLLECTION_QR_HINT)).toBeInTheDocument();
-    expect(screen.queryByTestId('qr-value')).not.toBeInTheDocument();
-  });
+      expect(screen.getByText(NO_COLLECTION_QR_HINT)).toBeInTheDocument();
+      expect(screen.queryByTestId('qr-value')).not.toBeInTheDocument();
+    },
+  );
 
   it('keeps the original QR value when offerCollectionIban becomes false while still toggled', () => {
     const paymentRequest = sampleGiroCode();
