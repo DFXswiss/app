@@ -209,8 +209,9 @@ test.describe('Buy Process - UI Flow', () => {
 
     // asset-out is pinned: without it the screen picks the first listed asset, which has
     // no price rule in the local seed and the quote never reaches the payment details.
+    // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     const paymentDetails = page
@@ -301,6 +302,7 @@ test.describe('Buy Process - UI Flow', () => {
     await textTab.click();
     await toggle.click();
     await expect(paymentDetails.getByText('LI75 0881 1010 5923 K000 E')).toBeVisible();
+    await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-text-tab-collection.png');
 
     // Collection IBAN QR state — still a GiroCode, not the fail-closed hint.
     await qrTab.click();
@@ -315,7 +317,8 @@ test.describe('Buy Process - UI Flow', () => {
 
   // Fail-closed state the collection-IBAN rewrite produces when the payload's remittance line
   // does not match the quote's reference — no QR is rendered, the manual-entry hint shows, and
-  // the baseline documents it.
+  // the baseline documents it, together with the combined state where the invoice call also
+  // rejects with the stored-detail error.
   test('should fail closed on the QR tab when the GiroCode does not carry the remittance info', async ({
     page,
     request,
@@ -344,6 +347,36 @@ test.describe('Buy Process - UI Flow', () => {
         json: {
           ...COLLECTION_IBAN_TOGGLE_PAYMENT_INFOS,
           paymentRequest,
+        },
+      });
+    });
+
+    // The invoice click is KYC-gated (user?.kyc.dataComplete); force it true so the click reaches
+    // the invoice call instead of redirecting to the profile screen.
+    await page.route('**/v2/user', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+
+      const response = await route.fetch();
+      const upstreamUser = (await response.json()) as Record<string, unknown>;
+      const upstreamKyc = upstreamUser.kyc as Record<string, unknown>;
+
+      await route.fulfill({
+        response,
+        json: { ...upstreamUser, kyc: { ...upstreamKyc, dataComplete: true } },
+      });
+    });
+
+    await page.route('**/v1/buy/paymentInfos/*/invoice*', async (route) => {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        json: {
+          statusCode: 400,
+          message: 'CollectionAccountInvoicePersonalIbanMissing',
+          error: 'Bad Request',
         },
       });
     });
@@ -387,6 +420,14 @@ test.describe('Buy Process - UI Flow', () => {
     await expect(paymentDetails.getByText('GiroCode')).not.toBeVisible();
     await expect(paymentDetails.getByRole('button', { name: 'PDF Invoice' })).toBeVisible();
     await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-qr-fail-closed.png');
+
+    await paymentDetails.getByRole('button', { name: 'PDF Invoice' }).click();
+    await expect(
+      paymentDetails.getByText(
+        'The invoice for the collection account cannot be created right now. Please use the payment details shown on this screen.',
+      ),
+    ).toBeVisible();
+    await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-qr-fail-closed-invoice-error.png');
   });
 
   // The collection account's invoice endpoint has its own failure mode independent of the QR
