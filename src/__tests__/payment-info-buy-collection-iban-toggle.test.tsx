@@ -12,38 +12,51 @@ jest.mock('@dfx.swiss/react', () => ({
   },
 }));
 
-jest.mock('@dfx.swiss/react-components', () => ({
-  AlignContent: { RIGHT: 'right' },
-  CopyButton: ({ onCopy }: any) => (
-    <button data-testid="copy" onClick={onCopy}>
-      copy
-    </button>
-  ),
-  DfxIcon: ({ icon }: any) => <span data-testid={'icon-' + icon} />,
-  IconColor: { BLUE: 'blue', RED: 'red' },
-  IconVariant: { SEPA_INSTANT: 'sepa', SWAP: 'SWAP' },
-  StyledDataTable: ({ children, label }: any) => (
-    <div data-testid={label ? `table-${label}` : 'table'}>{children}</div>
-  ),
-  StyledDataTableRow: ({ label, children, infoText }: any) => (
-    <div data-testid={`row-${label}`}>
-      <span data-testid={`row-label-${label}`}>{label}</span>
-      <span data-testid={`row-value-${label}`}>{children}</span>
-      {infoText != null && infoText !== '' && (
-        <span data-testid={`row-info-${label}`}>{infoText}</span>
-      )}
-    </div>
-  ),
-  StyledInfoText: ({ children }: any) => <div>{children}</div>,
-  StyledTabContainer: ({ tabs }: any) => (
-    <div>
-      {tabs?.map((tab: any, index: number) => (
-        <div key={index}>{tab.content}</div>
-      ))}
-    </div>
-  ),
-  StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
-}));
+jest.mock('@dfx.swiss/react-components', () => {
+  // babel-plugin-jest-hoist moves this factory above the module's imports, so React is not
+  // yet in scope here and must be required directly instead.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const React = require('react');
+
+  return {
+    AlignContent: { RIGHT: 'right' },
+    CopyButton: ({ onCopy }: any) => (
+      <button data-testid="copy" onClick={onCopy}>
+        copy
+      </button>
+    ),
+    DfxIcon: ({ icon }: any) => <span data-testid={'icon-' + icon} />,
+    IconColor: { BLUE: 'blue', RED: 'red' },
+    IconVariant: { SEPA_INSTANT: 'sepa', SWAP: 'SWAP' },
+    StyledDataTable: ({ children, label }: any) => (
+      <div data-testid={label ? `table-${label}` : 'table'}>{children}</div>
+    ),
+    StyledDataTableRow: ({ label, children, infoText }: any) => (
+      <div data-testid={`row-${label}`}>
+        <span data-testid={`row-label-${label}`}>{label}</span>
+        <span data-testid={`row-value-${label}`}>{children}</span>
+        {infoText != null && infoText !== '' && (
+          <span data-testid={`row-info-${label}`}>{infoText}</span>
+        )}
+      </div>
+    ),
+    StyledInfoText: ({ children }: any) => <div>{children}</div>,
+    StyledTabContainer: ({ tabs }: any) => {
+      const [active, setActive] = React.useState(0);
+      return (
+        <div>
+          {tabs?.map((tab: any, index: number) => (
+            <button key={index} data-testid={`tab-${index}`} onClick={() => setActive(index)}>
+              {tab.title}
+            </button>
+          ))}
+          <div>{tabs?.[active]?.content}</div>
+        </div>
+      );
+    },
+    StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
+  };
+});
 
 jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({
@@ -298,6 +311,8 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
       />,
     );
 
+    fireEvent.click(screen.getByTestId('tab-1'));
+
     const qrValue = screen.getByTestId('qr-value');
     expect(qrValue).toHaveTextContent(PERSONAL_IBAN);
     expect(qrValue).not.toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
@@ -318,6 +333,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
+    fireEvent.click(screen.getByTestId('tab-1'));
 
     const qrValue = screen.getByTestId('qr-value');
     expect(qrValue).toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
@@ -350,6 +366,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
       );
 
       fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
+      fireEvent.click(screen.getByTestId('tab-1'));
 
       const qrValue = screen.getByTestId('qr-value');
       expect(qrValue).toHaveAttribute('data-has-value', 'false');
@@ -371,6 +388,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
+    fireEvent.click(screen.getByTestId('tab-1'));
 
     const qrValue = screen.getByTestId('qr-value');
     expect(qrValue).toHaveAttribute('data-has-value', 'true');
@@ -388,6 +406,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     const { rerender } = render(<PaymentInformationContent info={offeredInfo} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
+    fireEvent.click(screen.getByTestId('tab-1'));
     expect(screen.getByTestId('qr-value')).toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
 
     // State stays toggled; props no longer pass canOfferCollectionIban → QR must not stay rewritten.
