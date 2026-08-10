@@ -155,7 +155,7 @@ const CHECK_ICON = (
     <path d="M5 12l4 4 10-10" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
-// finding #12: an assertive/error toast (role="alert", showToast(..., { assertive: true })) was
+// An assertive/error toast (role="alert", showToast(..., { assertive: true })) was
 // rendering the same green success checkmark as a normal toast — no visual distinction at all.
 // Gets its own icon + the .err modifier (styles.css) that switches the dot to --error.
 const ERROR_ICON = (

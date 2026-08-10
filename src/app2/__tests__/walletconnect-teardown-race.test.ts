@@ -1,4 +1,4 @@
-// Round-5 finding: cancelConnectAttempt() (session.tsx) fires disconnectWalletConnect() without
+// cancelConnectAttempt() (session.tsx) fires disconnectWalletConnect() without
 // awaiting it. That call nulls the module's cached WalletConnect provider promise immediately,
 // then keeps running — awaiting the *old* provider's own still-in-flight init() — while control
 // returns to the caller. If the user starts a fresh connect attempt in that window, it sees no

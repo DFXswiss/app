@@ -165,7 +165,7 @@ function hasMainAppIdentity(html) {
 }
 
 // ---------------------------------------------------------------------------
-// Artifact root allow-list (R10) — the shared public/ payload is stripped by a hardcoded
+// Artifact root allow-list — the shared public/ payload is stripped by a hardcoded
 // deny-list in postprocess-app2.js; this is the fail-closed counterpart: after every known build
 // step has run, anything at the artifact root that isn't explicitly expected is treated as a
 // silent leak (e.g. a file added to public/ later that the deny-list was never updated for) and

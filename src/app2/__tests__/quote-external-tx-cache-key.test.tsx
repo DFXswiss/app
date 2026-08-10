@@ -1,4 +1,4 @@
-// B5 — externalTransactionId must participate in the quote-engine cache key so a new payment
+// externalTransactionId must participate in the quote-engine cache key so a new payment
 // attempt (same asset/amount, new id) cannot reuse a stale cached paymentInfos response.
 
 const mockReceiveForBuy = jest.fn();
@@ -62,7 +62,7 @@ function SwapHarness({ extId, withPaymentInfo }: { extId?: string; withPaymentIn
   return null;
 }
 
-describe('App2 B5 externalTransactionId cache key', () => {
+describe('externalTransactionId cache key', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCall.mockResolvedValue({ estimatedAmount: 111 });
