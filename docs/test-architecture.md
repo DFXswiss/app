@@ -52,12 +52,13 @@ the merge target had gained a route the registry did not claim yet. Re-measure a
 suite; the number of tests is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every
-external provider twice over: the API mocks its own outbound calls, and the Docker network it sits on has
-no route to the internet at all. The isolation, not the mock, is what carries the guarantee — and
-`e2e-stack/env/api.env` says so itself: the `loc` mock "only covers calls made through the API's central
-HTTP wrapper", while "what guarantees no external system is ever contacted is the network the API sits
-on". Any call that reaches out without going through that wrapper is therefore outside the mock's scope.
-Which calls those are, and how many, is a property of the API and not verifiable from this repository.
+external provider through two independent mechanisms: the API mocks its own outbound calls, and the
+Docker network it sits on has no route to the internet at all. The second is what carries the guarantee,
+and `e2e-stack/env/api.env` says so itself: the `loc` mock "only covers calls made through the API's
+central HTTP wrapper", while "[w]hat guarantees no external system is ever contacted is the network the
+API sits on". Any call that reaches out without going through that wrapper is therefore outside the
+mock's scope. Which calls those are, and how many, is a property of the API and not verifiable from this
+repository.
 
 The details — the factories and the states that are deliberately not achievable — are in
 `e2e-stack/README.md` and `e2e-stack/docs/test-data.md`.
@@ -94,8 +95,9 @@ from memory, with omissions.
 
 All four points below concern the full-stack harness.
 
-- **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*`, which
-  switches off every process-gated cron job in the API, so the processing chain never executes;
+- **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*`
+  (`e2e-stack/env/api.env`); what that switches off in the API is described in the companion document
+  there — every process-gated cron job — so the processing chain never executes;
   transaction states are inserted with SQL instead. What is verified is the synchronous path:
   interaction, HTTP, validation, authorisation, persistence, display. (A cron without a `process` field
   is not covered by that switch and keeps running — see the companion document in `DFXswiss/api`.)
@@ -104,10 +106,11 @@ All four points below concern the full-stack harness.
   database. Migrations are covered in `DFXswiss/api` instead.
 - **The harness lives in the wrong repository.** It tests the API as much as this frontend, and
   `DFXswiss/api` has to check this repository out to obtain it. See the target below.
-- **The suite is serialised.** All specs share one database and one API instance with no per-test
-  isolation, so it runs on a single worker with retries disabled — `workers: 1` and `retries: 0` in
-  `e2e-stack/playwright.config.ts`, which explains the choice: a retry would mask exactly the
-  order-dependent failure this arrangement produces. It bounds how far the suite can grow.
+- **The suite is serialised.** All specs share one database and one API instance — `e2e-stack/compose.yml`
+  declares a single `db` and a single `api` service — with no per-test isolation, so it runs on a single
+  worker with retries disabled (`workers: 1` and `retries: 0` in `e2e-stack/playwright.config.ts`, whose
+  comment states the reason): a retry would mask exactly the order-dependent failure this arrangement
+  produces. It bounds how far the suite can grow.
 
 ## Target architecture
 
