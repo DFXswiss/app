@@ -1064,6 +1064,7 @@
     "New": "Nuovo",
     "Scroll to bottom": "Scorri in basso",
     "Scroll to new messages": "Ai nuovi messaggi",
+    "Connection interrupted. New messages cannot be received right now.": "Connessione interrotta. I nuovi messaggi non arrivano al momento.",
 
     "Created on": "Creato il",
     "Hide completed tickets": "Nascondi i ticket completati",

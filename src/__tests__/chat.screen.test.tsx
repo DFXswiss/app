@@ -13,10 +13,13 @@ const mockTranslateError = jest.fn((message: string) => message);
 const mockSupportIssueUidGet = jest.fn();
 const mockSupportIssueUidSet = jest.fn();
 const mockUseLayoutOptions = jest.fn();
+const mockReportClientError = jest.fn();
 
 let mockSupportIssue: any;
 let mockIsLoading = false;
+let mockIsError: string | undefined;
 let mockIssueUidParam: string | undefined;
+const mockChatPathname = '/support/chat';
 
 jest.mock('@dfx.swiss/react', () => {
   const SupportMessageStatus = {
@@ -74,6 +77,7 @@ jest.mock('@dfx.swiss/react', () => {
     useSupportChatContext: () => ({
       supportIssue: mockSupportIssue,
       isLoading: mockIsLoading,
+      isError: mockIsError,
       loadSupportIssue: mockLoadSupportIssue,
       setSync: mockSetSync,
       submitMessage: mockSubmitMessage,
@@ -84,6 +88,10 @@ jest.mock('@dfx.swiss/react', () => {
     }),
   };
 });
+
+jest.mock('src/util/client-error', () => ({
+  reportClientError: (...args: unknown[]) => mockReportClientError(...args),
+}));
 
 jest.mock('@dfx.swiss/react-components', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -151,6 +159,7 @@ jest.mock('react-router-dom', () => {
   return {
     ...actual,
     useParams: () => ({ id: mockIssueUidParam }),
+    useLocation: () => ({ pathname: mockChatPathname }),
   };
 });
 
@@ -191,6 +200,7 @@ describe('ChatScreen', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     mockIsLoading = false;
+    mockIsError = undefined;
     mockIssueUidParam = undefined;
     mockSupportIssue = makeIssue();
     mockSupportIssueUidGet.mockReturnValue('issue-uid-1');
@@ -198,6 +208,7 @@ describe('ChatScreen', () => {
     mockSubmitMessage.mockResolvedValue(undefined);
     mockLoadFileData.mockResolvedValue(undefined);
     mockGetTransactionByUid.mockReset();
+    mockReportClientError.mockReset();
     mockTranslate.mockImplementation((_ns: string, key: string) => key);
     mockTranslateError.mockImplementation((message: string) => message);
     Element.prototype.scrollIntoView = jest.fn();
@@ -272,6 +283,18 @@ describe('ChatScreen', () => {
     mockSupportIssue = undefined;
     renderChat();
     await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/support/issue', { replace: true });
+    });
+  });
+
+  it('reports a failed loadSupportIssue before navigating away', async () => {
+    // reportChatError at loadSupportIssue.catch — customer is redirected without explanation.
+    const loadError = new Error('issue gone');
+    mockLoadSupportIssue.mockRejectedValue(loadError);
+    mockSupportIssue = undefined;
+    renderChat();
+    await waitFor(() => {
+      expect(mockReportClientError).toHaveBeenCalledWith(loadError, mockChatPathname);
       expect(mockNavigate).toHaveBeenCalledWith('/support/issue', { replace: true });
     });
   });
@@ -574,6 +597,40 @@ describe('ChatScreen', () => {
     await waitFor(() => {
       expect(mockSubmitMessage).toHaveBeenCalledWith('Need help', []);
     });
+    expect(mockReportClientError).not.toHaveBeenCalled();
+  });
+
+  it('reports when submitMessage rejects without breaking the composer', async () => {
+    // reportClientError at handleSend.catch — customer still sees the failed bubble from context.
+    const sendError = new Error('network down');
+    mockSubmitMessage.mockRejectedValue(sendError);
+    renderChat();
+    fireEvent.change(screen.getByPlaceholderText('Write a message...'), { target: { value: 'Try me' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+
+    await waitFor(() => {
+      expect(mockReportClientError).toHaveBeenCalledWith(sendError, mockChatPathname);
+    });
+    // Input cleared as before; no second error surface from the report.
+    expect(screen.getByPlaceholderText('Write a message...')).toHaveValue('');
+    expect(screen.queryByTestId('chat-sync-error')).not.toBeInTheDocument();
+  });
+
+  it('does not surface a failed report as a second error for the customer', async () => {
+    // reportClientError is fire-and-forget: after a send failure the only customer-facing
+    // signal stays the context's failed bubble path — the report itself never becomes UI.
+    const sendError = new Error('send failed');
+    mockSubmitMessage.mockRejectedValue(sendError);
+    renderChat();
+    fireEvent.change(screen.getByPlaceholderText('Write a message...'), { target: { value: 'Still here' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => {
+      expect(mockReportClientError).toHaveBeenCalledWith(sendError, mockChatPathname);
+    });
+    expect(screen.getByPlaceholderText('Write a message...')).toHaveValue('');
+    expect(screen.getByTestId('chat-scroll')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-sync-error')).not.toBeInTheDocument();
+    expect(screen.queryByText(/send failed/i)).not.toBeInTheDocument();
   });
 
   it('disables the send button when the input is empty and enables it when text is present', () => {
@@ -814,6 +871,54 @@ describe('ChatScreen', () => {
     expect(mockTranslateError).toHaveBeenCalledWith('file_type');
     expect(screen.getByText('file_type')).toBeInTheDocument();
     expect(screen.queryByText('payload.exe')).not.toBeInTheDocument();
+    // Constructed SupportAttachmentTypeError — no browser Error object on type reject.
+    expect(mockReportClientError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'SupportAttachmentTypeError',
+        message: 'Rejected support chat attachment type',
+      }),
+      mockChatPathname,
+    );
+  });
+
+  it('shows a quiet connection banner and reports when the message sync fails', async () => {
+    // isError banner + reportChatError for SupportSyncError (context sets isError, never cleared UI).
+    mockIsError = 'Error while syncing messages';
+    renderChat();
+    expect(screen.getByTestId('chat-sync-error')).toHaveTextContent(
+      'Connection interrupted. New messages cannot be received right now.',
+    );
+    expect(mockTranslate).toHaveBeenCalledWith(
+      'screens/support',
+      'Connection interrupted. New messages cannot be received right now.',
+    );
+    expect(mockReportClientError).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'SupportSyncError', message: 'Error while syncing messages' }),
+      mockChatPathname,
+    );
+  });
+
+  it('hides the connection banner once isError clears', async () => {
+    mockIsError = 'Error while syncing messages';
+    const { rerender } = renderChat();
+    expect(screen.getByTestId('chat-sync-error')).toBeInTheDocument();
+    mockIsError = undefined;
+    rerender(<ChatScreen />);
+    expect(screen.queryByTestId('chat-sync-error')).not.toBeInTheDocument();
+  });
+
+  it('leaves the bubble timestamp empty when created is not a valid date', () => {
+    // formatMessageTime + DateTag — never show "Invalid Date" (utils.formatSwissTime untouched).
+    mockSupportIssue = makeIssue({
+      messages: [
+        makeMessage({ id: 1, message: 'Broken clock', created: 'not-a-date' }),
+        makeMessage({ id: 2, message: 'No clock', created: undefined }),
+      ],
+    });
+    renderChat();
+    expect(screen.getByText('Broken clock')).toBeInTheDocument();
+    expect(screen.getByText('No clock')).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid Date/i)).not.toBeInTheDocument();
   });
 
   it('accepts dropped files on the composer and shows a drag highlight', async () => {

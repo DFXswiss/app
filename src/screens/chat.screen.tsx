@@ -25,11 +25,12 @@ import { useEffect, useRef, useState } from 'react';
 import { HiOutlineDownload, HiOutlinePaperClip } from 'react-icons/hi';
 import { MdAccessTime, MdErrorOutline, MdKeyboardArrowDown, MdOutlineClose, MdSend } from 'react-icons/md';
 import { RiCheckFill } from 'react-icons/ri';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { IssueTypeLabels, toPaymentStateLabel } from 'src/config/labels';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { useSessionStore } from 'src/hooks/session-store.hook';
+import { reportClientError } from 'src/util/client-error';
 import { relativeDayKey, shouldShowDateSeparator } from 'src/util/support-helpers';
 import { blankedAddress, formatBytes, formatSwissTime } from 'src/util/utils';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
@@ -60,6 +61,14 @@ function asBlobPreviewUrl(url: string | undefined): string | undefined {
   return url && url.startsWith('blob:') ? url : undefined;
 }
 
+/** Bubble timestamps only — leave global formatSwissTime alone (many other call sites). */
+function formatMessageTime(value: Date | string | number | undefined): string {
+  if (value == null) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return formatSwissTime(date);
+}
+
 /** Pixels from the bottom that still count as “at the end of the thread”. */
 const SCROLL_BOTTOM_THRESHOLD_PX = 48;
 
@@ -74,9 +83,11 @@ function isScrollNearBottom(el: HTMLElement): boolean {
 export default function ChatScreen(): JSX.Element {
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
-  const { supportIssue, isLoading, loadSupportIssue, setSync } = useSupportChatContext();
+  const { supportIssue, isLoading, isError, loadSupportIssue, setSync } = useSupportChatContext();
   const { supportIssueUid: supportIssueUidStore } = useSessionStore();
   const { id: issueUidParam } = useParams();
+  // Same route source as error.screen — memory-router safe in widget/library builds.
+  const { pathname } = useLocation();
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -102,7 +113,8 @@ export default function ChatScreen(): JSX.Element {
       navigate('/support/chat', { replace: true });
     } else if (sessionUid) {
       setSync(true);
-      loadSupportIssue(sessionUid).catch(() => {
+      loadSupportIssue(sessionUid).catch((error: unknown) => {
+        reportClientError(error, pathname);
         navigate('/support/issue', { replace: true });
       });
     } else {
@@ -111,6 +123,13 @@ export default function ChatScreen(): JSX.Element {
 
     return () => setSync(false);
   }, [issueUidParam, sessionUid]);
+
+  // Sync failure is silent in the context (isError set, never shown). Report what the customer
+  // is about to see as the connection banner; dedup lives inside reportClientError.
+  useEffect(() => {
+    if (!isError) return;
+    reportClientError(Object.assign(new Error(isError), { name: 'SupportSyncError' }), pathname);
+  }, [isError, pathname]);
 
   useEffect(() => {
     if (!supportIssue?.messages) return;
@@ -195,6 +214,20 @@ export default function ChatScreen(): JSX.Element {
               className="flex flex-col flex-grow gap-1 h-full overflow-auto p-3.5"
               data-testid="chat-scroll"
             >
+              {isError && (
+                <div
+                  className="flex flex-wrap justify-center py-2"
+                  data-testid="chat-sync-error"
+                  role="status"
+                >
+                  <p className="text-xs text-dfxGray-700 text-center px-2">
+                    {translate(
+                      'screens/support',
+                      'Connection interrupted. New messages cannot be received right now.',
+                    )}
+                  </p>
+                </div>
+              )}
               {!!supportIssue.transaction && <TransactionComponent transactionUid={supportIssue.transaction.uid} />}
               {supportIssue.messages.map((message, index) => {
                 const prevSender = index > 0 ? supportIssue.messages[index - 1].author : null;
@@ -326,11 +359,14 @@ interface DateTagProps {
 
 function DateTag({ date }: DateTagProps): JSX.Element {
   const { locale, translate } = useSettingsContext();
+  const parsed = date instanceof Date ? date : new Date(date);
+  // Same rule as the bubble clock: never render the browser's "Invalid Date" string.
+  if (Number.isNaN(parsed.getTime())) return <></>;
 
-  const relativeKey = relativeDayKey(date);
+  const relativeKey = relativeDayKey(parsed);
   const label = relativeKey
     ? translate('screens/support', relativeKey)
-    : new Date(date).toLocaleDateString([locale, 'en-US'], {
+    : parsed.toLocaleDateString([locale, 'en-US'], {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
@@ -346,6 +382,7 @@ function DateTag({ date }: DateTagProps): JSX.Element {
 function InputComponent(): JSX.Element {
   const { translate, translateError } = useSettingsContext();
   const { submitMessage } = useSupportChatContext();
+  const { pathname } = useLocation();
   const [inputValue, setInputValue] = useState<string>();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [error, setError] = useState<string>();
@@ -369,7 +406,11 @@ function InputComponent(): JSX.Element {
     // Match the SDK guard: text and/or files, never neither — and never with a validation error.
     if ((!hasText && !hasFiles) || error) return;
 
-    submitMessage(inputValue, selectedFiles);
+    // Customer already sees a failed bubble from the context on reject — report what they saw.
+    // reportClientError is fire-and-forget (never throws into the UI).
+    void submitMessage(inputValue, selectedFiles).catch((err: unknown) => {
+      reportClientError(err, pathname);
+    });
 
     setInputValue('');
     setSelectedFiles([]);
@@ -385,6 +426,11 @@ function InputComponent(): JSX.Element {
 
     if (hasRejected) {
       setError(fileTypeError);
+      // No Error from the browser for a type reject — still a failure the user reads in the field.
+      reportClientError(
+        Object.assign(new Error('Rejected support chat attachment type'), { name: 'SupportAttachmentTypeError' }),
+        pathname,
+      );
     } else if (accepted.length > 0 && (inputValue?.length ?? 0) <= 4000) {
       // Clear a prior file-type error once a valid batch is added (keep length errors).
       setError((prev) => (prev === fileTypeError ? undefined : prev));
@@ -633,7 +679,7 @@ function ChatBubble({ id, message, fileName, file, created, author, status, hasH
               failedToSend ? 'text-dfxRed-100' : isUser ? 'text-white/70' : 'text-dfxGray-800'
             }`}
           >
-            {formatSwissTime(created)}
+            {formatMessageTime(created)}
             {isUser &&
               (failedToSend ? (
                 <MdErrorOutline className="inline-block text-base ml-1 mb-0.5" data-testid="msg-status-failed" />
