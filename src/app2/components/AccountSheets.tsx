@@ -22,7 +22,7 @@ import {
 } from '@dfx.swiss/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type TranslationKey, useT } from '../i18n';
-import { shortAddress } from '../screens/parts/format';
+import { localeFor, shortAddress } from '../screens/parts/format';
 import { ibanCheck, ibanErrorMessage } from '../screens/trade/iban';
 import { FiatPicker } from './pickers/FiatPicker';
 import { LanguageSheet } from './LanguageSheet';
@@ -948,6 +948,26 @@ function CurrencySheet({ open, onClose }: SheetProps) {
 
 const REF_LINK_BASE = 'https://app.dfx.swiss/login?code=';
 
+/**
+ * View-model for the account's own referral summary (code/link, commission,
+ * invited count) — the data `getRef()` supplies and InviteSheet must render.
+ * Returns `null` when there is no shareable code yet.
+ */
+export function inviteReferralView(referral?: Referral | null): {
+  code: string;
+  link: string;
+  commission: number;
+  userCount: number;
+} | null {
+  if (!referral?.code) return null;
+  return {
+    code: referral.code,
+    link: REF_LINK_BASE + encodeURIComponent(referral.code),
+    commission: referral.commission,
+    userCount: referral.userCount,
+  };
+}
+
 interface Recommendation {
   id: number;
   name?: string;
@@ -996,8 +1016,8 @@ const CROSS_ICON = (
   </svg>
 );
 
-function InviteSheet({ open, onClose }: SheetProps) {
-  const { t } = useT();
+function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Referral }) {
+  const { t, language } = useT();
   const { showToast } = useToast();
   const { user } = useUserContext();
   const { call } = useApi();
@@ -1011,6 +1031,7 @@ function InviteSheet({ open, onClose }: SheetProps) {
   const [formError, setFormError] = useState('');
 
   const [busyId, setBusyId] = useState<number | null>(null);
+  const refView = inviteReferralView(referral);
 
   const load = useCallback(async () => {
     setLoadError(false);
@@ -1086,6 +1107,44 @@ function InviteSheet({ open, onClose }: SheetProps) {
         {level != null && level < KycLevel.Completed && (
           <div className="paybox-note warn" style={{ marginBottom: 12 }}>
             {t('inviteKyc')}
+          </div>
+        )}
+
+        {refView && (
+          <div className="glass" style={{ borderRadius: 18, padding: 14, marginBottom: 12 }}>
+            <div className="kv" style={{ paddingLeft: 0, paddingRight: 0 }}>
+              <span className="kk">{t('inviteCode')}</span>
+              <span className="vv">{refView.code}</span>
+              <button
+                type="button"
+                className="cpy"
+                aria-label={t('inviteCopyLink')}
+                onClick={() => copyToClipboard(refView.link, showToast, t)}
+              >
+                {COPY_ICON}
+              </button>
+            </div>
+            <div className="kv" style={{ paddingLeft: 0, paddingRight: 0 }}>
+              <span className="kk">{t('commission')}</span>
+              <span className="vv">
+                {refView.commission * 100 >= 0.01
+                  ? `${(refView.commission * 100).toLocaleString(localeFor(language), { maximumFractionDigits: 2 })}%`
+                  : '0%'}
+              </span>
+            </div>
+            <div className="kv" style={{ paddingLeft: 0, paddingRight: 0 }}>
+              <span className="kk">{t('invited')}</span>
+              <span className="vv">{String(refView.userCount)}</span>
+            </div>
+            <button
+              type="button"
+              className="btn-mini"
+              style={{ marginTop: 10, width: '100%' }}
+              onClick={() => copyToClipboard(refView.link, showToast, t)}
+            >
+              {COPY_ICON}
+              {t('inviteCopyLink')}
+            </button>
           </div>
         )}
 
@@ -1228,6 +1287,7 @@ function InviteSheet({ open, onClose }: SheetProps) {
 export function AccountSheets({
   open,
   onClose,
+  referral,
 }: {
   open: AccountSheet | null;
   onClose: () => void;
@@ -1242,7 +1302,7 @@ export function AccountSheets({
       <CoinTrackingSheet open={open === 'ctkey'} onClose={onClose} />
       <LanguageSheet open={open === 'language'} onClose={onClose} />
       <CurrencySheet open={open === 'currency'} onClose={onClose} />
-      <InviteSheet open={open === 'referral'} onClose={onClose} />
+      <InviteSheet open={open === 'referral'} onClose={onClose} referral={referral} />
     </>
   );
 }
