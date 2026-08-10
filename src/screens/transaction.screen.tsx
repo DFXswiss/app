@@ -445,6 +445,8 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
     creditorCountry: isBankRefund ? Validations.Required : undefined,
   });
 
+  const inputBlockchain = transaction?.inputBlockchain;
+
   return selectedIban === AddAccount ? (
     <AddBankAccount
       onSubmit={(account) => setValue('iban', account.iban)}
@@ -519,14 +521,14 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
       </StyledDataTable>
       <Form control={control} rules={rules} errors={errors} onSubmit={handleSubmit(onSubmit)}>
         <StyledVerticalStack gap={6} full>
-          {!refundDetails.refundTarget && addresses && !isBuy && (
+          {!refundDetails.refundTarget && addresses && !isBuy && inputBlockchain && (
             <StyledDropdown<UserAddress>
               name="address"
               rootRef={rootRef}
               label={translate('screens/payment', 'Chargeback address')}
               items={addresses}
               labelFunc={(item) => blankedAddress(item.address, { width })}
-              descriptionFunc={(_item) => transaction.inputBlockchain?.toString() ?? ''}
+              descriptionFunc={() => inputBlockchain.toString()}
               full
             />
           )}
@@ -831,12 +833,7 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                                 would open the form on the first render. */}
                             {isUnassigned &&
                               (txId != null && editTransaction === txId ? (
-                                <Form
-                                  control={control}
-                                  errors={errors}
-                                  rules={rules}
-                                  onSubmit={handleSubmit((data) => submitAssignment(data, txId))}
-                                >
+                                <Form control={control} errors={errors} rules={rules}>
                                   <StyledVerticalStack gap={3} full>
                                     <p className="text-dfxGray-700 mt-4">
                                       {translate('screens/payment', 'Remittance info')}

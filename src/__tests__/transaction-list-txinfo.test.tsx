@@ -237,6 +237,7 @@ jest.mock('@dfx.swiss/react-components', () => {
     items,
     labelFunc,
     filterFunc,
+    matchFunc,
     placeholder,
     rules,
     error,
@@ -271,7 +272,15 @@ jest.mock('@dfx.swiss/react-components', () => {
                   'data-testid': `${name}-search`,
                   value: search,
                   onChange: (e: any) => {
-                    setSearch(e.target.value);
+                    const val = e.target.value;
+                    setSearch(val);
+                    // Mirror StyledSearchDropdown: exact matchFunc on full items auto-selects.
+                    if (matchFunc) {
+                      const matches = (items ?? []).filter((i: any) => matchFunc(i, val));
+                      if (matches.length === 1) {
+                        onChange(matches[0]);
+                      }
+                    }
                   },
                 }),
                 filtered.map((item: any, i: number) =>
@@ -630,6 +639,7 @@ describe('TransactionStatus Create support ticket', () => {
 });
 
 // Lines 609-610: creditorCountry filterFunc narrows the visible options to matching countries.
+// matchFunc auto-selects when exactly one item matches the search string exactly.
 describe('TransactionRefund creditorCountry search helpers', () => {
   it('shows only the matching country after searching by name', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
@@ -649,6 +659,26 @@ describe('TransactionRefund creditorCountry search helpers', () => {
     const options = within(screen.getByTestId('creditorCountry-options'));
     expect(options.getByText('Switzerland')).toBeInTheDocument();
     expect(options.queryByText('Germany')).not.toBeInTheDocument();
+  });
+
+  it('auto-selects the country when the search exactly matches one name', async () => {
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
+    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+
+    renderScreen('/tx/T123/refund');
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+      expect(screen.getByTestId('creditorCountry-search-dropdown')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('creditorCountry-trigger'));
+    const search = await screen.findByTestId('creditorCountry-search');
+    fireEvent.change(search, { target: { value: 'Switzerland' } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('creditorCountry-trigger')).toHaveTextContent('Switzerland');
+    });
   });
 });
 

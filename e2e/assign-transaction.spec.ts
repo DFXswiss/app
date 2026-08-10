@@ -11,7 +11,7 @@ import { expect, Page, Route, test } from '@playwright/test';
  * `/v1/**` and `/v2/**` calls are intercepted via page.route(...).
  */
 
-const UNASSIGNED_TX = {
+const UNASSIGNED_TX_A = {
   id: 1,
   uid: 'assign-tx-uid-1',
   date: '2026-01-15T00:00:00.000Z',
@@ -21,6 +21,18 @@ const UNASSIGNED_TX = {
   inputAmount: 250,
   outputAsset: 'BTC',
   outputAmount: 0.004,
+};
+
+const UNASSIGNED_TX_B = {
+  id: 2,
+  uid: 'assign-tx-uid-2',
+  date: '2026-01-16T00:00:00.000Z',
+  type: 'Buy',
+  state: 'Unassigned',
+  inputAsset: 'EUR',
+  inputAmount: 100,
+  outputAsset: 'ETH',
+  outputAmount: 0.05,
 };
 
 const SINGLE_TARGET = {
@@ -75,6 +87,9 @@ async function installSyntheticApi(
   targets: TransactionTarget[],
 ): Promise<{ unexpectedRequests: string[] }> {
   const unexpectedRequests: string[] = [];
+  // Stateful unassigned list: successful PUT removes the assigned tx so a second open
+  // sees only remaining unassigned transactions (mirrors real server behaviour).
+  let unassignedTransactions = [UNASSIGNED_TX_A, UNASSIGNED_TX_B];
 
   await page.route('**/v1/**', async (route) => {
     const request = route.request();
@@ -101,7 +116,7 @@ async function installSyntheticApi(
     }
 
     if (request.method() === 'GET' && path === '/v1/transaction/unassigned') {
-      await fulfillJson(route, [UNASSIGNED_TX]);
+      await fulfillJson(route, unassignedTransactions);
       return;
     }
 
@@ -111,6 +126,11 @@ async function installSyntheticApi(
     }
 
     if (request.method() === 'PUT' && /^\/v1\/transaction\/\d+\/target$/.test(path)) {
+      const idMatch = path.match(/^\/v1\/transaction\/(\d+)\/target$/);
+      if (idMatch) {
+        const assignedId = Number(idMatch[1]);
+        unassignedTransactions = unassignedTransactions.filter((tx) => tx.id !== assignedId);
+      }
       await fulfillJson(route, null);
       return;
     }
@@ -153,17 +173,18 @@ async function installSyntheticApi(
 }
 
 async function openAssignForm(page: Page): Promise<void> {
-  await page.getByText('Unassigned').click();
+  // Prefer the first remaining unassigned row when the list still has more than one.
+  await page.getByText('Unassigned').first().click();
   await page.getByRole('button', { name: 'Assign transaction' }).click();
   await expect(page.getByText('Remittance info')).toBeVisible();
 }
 
 test.describe('Assign unassigned bank transfer', () => {
-  // formatSwissDateTimeWithSeconds has no timeZone option; UNASSIGNED_TX.date is absolute UTC.
+  // formatSwissDateTimeWithSeconds has no timeZone option; fixture dates are absolute UTC.
   // Pin Europe/Zurich so the rendered timestamp (and screenshots) match across machines.
   test.use({ timezoneId: 'Europe/Zurich' });
 
-  test('list collapsed with one unassigned transaction', async ({ page }) => {
+  test('list collapsed with unassigned transactions', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     const { unexpectedRequests } = await installSyntheticApi(page, []);
 
@@ -171,7 +192,7 @@ test.describe('Assign unassigned bank transfer', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(page.getByText('Your Transactions')).toBeVisible();
-    await expect(page.getByText('Unassigned')).toBeVisible();
+    await expect(page.getByText('Unassigned').first()).toBeVisible();
 
     await expect(page).toHaveScreenshot('assign-tx-01-list-collapsed.png', {
       fullPage: true,
@@ -207,8 +228,8 @@ test.describe('Assign unassigned bank transfer', () => {
 
     // Second open uses the cached transactionTargets path (no re-fetch). Before the fix
     // setValue only ran inside the fetch branch, so the target stayed empty and submit
-    // stayed disabled. After submit, loadTransactions remounts the list (and
-    // StyledCollapsible), so openAssignForm works again on the collapsed remount.
+    // stayed disabled. After submit, the assigned tx is removed from the unassigned mock
+    // and loadTransactions remounts the list on the remaining unassigned row.
     await submit.click();
     await expect(page.getByText('Remittance info')).not.toBeVisible();
     await expect(page.getByText('Unassigned')).toBeVisible();
@@ -220,10 +241,9 @@ test.describe('Assign unassigned bank transfer', () => {
     await expect(page.getByText('Select...')).toHaveCount(0);
     await expect(submit).toBeEnabled();
 
-    // Pre-fix this state was empty (no target preselected) with submit permanently
-    // disabled — this second open is what proves the regression is gone. No separate
-    // baseline: the view is pixel-identical to the first open, so it is the same visual
-    // variant and the assertions above carry the proof.
+    // Pre-fix the target stayed empty with submit permanently disabled on the second
+    // open (setValue only ran in the fetch branch). Assertions above prove preselection
+    // still works on the remaining unassigned transaction after a successful assign.
 
     expect(unexpectedRequests).toEqual([]);
   });

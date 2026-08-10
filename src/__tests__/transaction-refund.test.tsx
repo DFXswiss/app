@@ -1280,29 +1280,6 @@ describe('TransactionRefund rendered view', () => {
     expect(screen.getByTestId('row-IBAN')).toHaveTextContent(BANK_IBAN_DE);
   });
 
-  it('shows an empty chargeback-address description when inputBlockchain is nullish for toString', async () => {
-    // Filter requires a truthy inputBlockchain; use an object whose toString() is nullish so
-    // descriptionFunc hits `transaction.inputBlockchain?.toString() ?? ''` on the fallback side.
-    const blockchain = { toString: () => undefined as unknown as string };
-    mockUserAddresses = [{ address: '0xsolo', blockchains: [blockchain] }];
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({
-        type: 'Sell',
-        inputPaymentMethod: 'Crypto',
-        inputBlockchain: blockchain,
-      }),
-    );
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
-
-    renderRefund();
-    await waitForRefundFormLoaded();
-
-    await waitFor(() => {
-      expect(screen.getByTestId('address-trigger')).toHaveTextContent(/0xsolo/);
-    });
-    expect(screen.getByTestId('address-description')).toHaveTextContent('');
-  });
-
   it('uses empty string for IBAN dropdown labels when Utils.formatIban returns falsy', async () => {
     jest.spyOn(Utils, 'formatIban').mockImplementation((v: any) => {
       if (v === BANK_IBAN_DE) return undefined as any;
