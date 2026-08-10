@@ -312,6 +312,81 @@ test.describe('Buy Process - UI Flow', () => {
     ).not.toBeVisible();
     await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-qr-collection.png');
   });
+
+  // Fail-closed state the collection-IBAN rewrite produces when the payload's remittance line
+  // does not match the quote's reference — no QR is rendered, the manual-entry hint shows, and
+  // the baseline documents it.
+  test('should fail closed on the QR tab when the GiroCode does not carry the remittance info', async ({
+    page,
+    request,
+  }) => {
+    const token = await getToken(request);
+
+    // Production-shaped GiroCode (api config: version 001, encoding 2).
+    const paymentRequest = [
+      'BCD',
+      '001',
+      '2',
+      'SCT',
+      'BFRILI22XXX',
+      'DFX AG, Bahnhofstrasse 7, 6300 Zug, Schweiz',
+      'LI21088100002324013AA',
+      'EUR100',
+      '',
+      '',
+      'X9Y8-Z7W6-V5U4',
+    ].join('\n');
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          ...COLLECTION_IBAN_TOGGLE_PAYMENT_INFOS,
+          paymentRequest,
+        },
+      });
+    });
+
+    // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
+    );
+
+    const paymentDetails = page
+      .getByRole('heading', { name: 'Payment Information' })
+      .locator('..');
+
+    const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
+    await expect(toggle).toBeVisible({ timeout: 15000 });
+
+    const qrTab = paymentDetails.getByRole('tablist').filter({ hasText: /^QR Code$/ });
+    const textTab = paymentDetails.getByRole('tablist').filter({ hasText: /^Text$/ });
+
+    // Personal IBAN QR state — no screenshot; that baseline already exists.
+    await qrTab.click();
+    await expect(paymentDetails.getByText('GiroCode')).toBeVisible();
+    await expect(
+      paymentDetails.getByText(
+        'No QR code is available for the collection account. Please enter the IBAN and the remittance info manually.',
+      ),
+    ).not.toBeVisible();
+
+    // Back to Text, switch to the collection account, hard-assert the displayed IBAN.
+    await textTab.click();
+    await toggle.click();
+    await expect(paymentDetails.getByText('LI75 0881 1010 5923 K000 E')).toBeVisible();
+
+    // Fail-closed collection QR state — manual-entry hint, no GiroCode.
+    await qrTab.click();
+    await expect(
+      paymentDetails.getByText(
+        'No QR code is available for the collection account. Please enter the IBAN and the remittance info manually.',
+      ),
+    ).toBeVisible();
+    await expect(paymentDetails.getByText('GiroCode')).not.toBeVisible();
+    await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-qr-fail-closed.png');
+  });
 });
 
 test.describe('Buy Process - Wallet 2 (BIP-44 derived)', () => {
