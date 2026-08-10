@@ -35,7 +35,12 @@ export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCo
   // Stale-response guard (same pattern as the quote generation in buy.screen.tsx): a PDF must
   // never open for a mode the UI has left — including unmount via logout navigation. The layout
   // effect runs synchronously on commit, so a response arriving before the passive-effect flush
-  // cannot slip past the guard.
+  // cannot slip past the guard. Session identity is part of the mode — a deep-link param swap
+  // replaces the session without an unmount (wallet.context.tsx applies it in place), and a PDF
+  // from the previous session must not open after it. Signal is user?.accountId: useApiSession() does
+  // not expose the raw session token string, and the account id changes exactly when the signed-in
+  // identity changes — not on periodic context refreshes (which would discard legitimate in-flight
+  // downloads).
   useLayoutEffect(() => {
     invoiceGeneration.current += 1;
     setInvoiceError(undefined);
@@ -43,7 +48,7 @@ export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCo
     return () => {
       invoiceGeneration.current += 1;
     };
-  }, [txId, collectionAccount]);
+  }, [txId, collectionAccount, user?.accountId]);
 
   async function onInvoiceClick(): Promise<void> {
     if (!user?.kyc.dataComplete) {

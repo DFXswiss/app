@@ -1,7 +1,10 @@
 const mockInvoiceFor = jest.fn();
 const mockOpenPdf = jest.fn();
 const mockNavigate = jest.fn();
-let mockUser: { kyc: { dataComplete: boolean } } | undefined = { kyc: { dataComplete: true } };
+let mockUser: { accountId?: number; kyc: { dataComplete: boolean } } | undefined = {
+  accountId: 1,
+  kyc: { dataComplete: true },
+};
 
 jest.mock('@dfx.swiss/react', () => ({
   useBuy: () => ({ invoiceFor: mockInvoiceFor }),
@@ -43,7 +46,7 @@ import { PaymentQrCode } from '../components/payment/payment-qr-code';
 beforeEach(() => {
   jest.clearAllMocks();
   mockInvoiceFor.mockResolvedValue({ pdfData: 'JVBERi0x' });
-  mockUser = { kyc: { dataComplete: true } };
+  mockUser = { accountId: 1, kyc: { dataComplete: true } };
 });
 
 const NO_COLLECTION_QR_HINT =
@@ -198,6 +201,31 @@ describe('PaymentQrCode stale-response guard', () => {
     });
 
     rerender(<PaymentQrCode value="BCD\n001" txId={43} collectionAccount />);
+
+    await act(async () => {
+      resolveInvoice({ pdfData: 'JVBERi0x' });
+    });
+
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+    expect(screen.queryByText('Invoice service is unavailable')).not.toBeInTheDocument();
+    const button = screen.getByRole('button', { name: 'PDF Invoice' });
+    expect(button).toBeEnabled();
+  });
+
+  it('does not open the PDF when the session identity changes while the request is in flight', async () => {
+    const { rerender } = render(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    // Same txId and collectionAccount — only the signed-in identity changes (deep-link session swap).
+    mockUser = { accountId: 2, kyc: { dataComplete: true } };
+    rerender(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
 
     await act(async () => {
       resolveInvoice({ pdfData: 'JVBERi0x' });
