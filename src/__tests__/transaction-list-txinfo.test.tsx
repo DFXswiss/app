@@ -733,6 +733,19 @@ describe('TransactionList submitAssignment errors', () => {
 
 // Lines 672-687: scroll-into-view, logged-out skip, auto-assign path, date sort.
 describe('TransactionList load effects and sorting', () => {
+  const originalScrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(
+    Element.prototype,
+    'scrollIntoView',
+  );
+
+  afterEach(() => {
+    if (originalScrollIntoViewDescriptor) {
+      Object.defineProperty(Element.prototype, 'scrollIntoView', originalScrollIntoViewDescriptor);
+    } else {
+      delete (Element.prototype as any).scrollIntoView;
+    }
+  });
+
   it('scrolls the matching transaction into view when a route id is present', async () => {
     const scrollIntoView = jest.fn();
     Element.prototype.scrollIntoView = scrollIntoView;

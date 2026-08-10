@@ -799,10 +799,8 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                       <div
                         key={tx.uid}
                         ref={(el) => {
-                          if (txRefs.current) {
-                            tx.id && (txRefs.current[tx.id] = el);
-                            txRefs.current[tx.uid] = el;
-                          }
+                          tx.id && (txRefs.current[tx.id] = el);
+                          txRefs.current[tx.uid] = el;
                         }}
                       >
                         <StyledCollapsible
@@ -832,8 +830,10 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                           <StyledVerticalStack full gap={4}>
                             <TxInfo tx={tx} showUserDetails={true} />
 
+                            {/* The SDK types id as optional: without this guard, undefined === undefined
+                                would open the form on the first render. */}
                             {isUnassigned &&
-                              (editTransaction === tx.id ? (
+                              (tx.id != null && editTransaction === tx.id ? (
                                 <Form
                                   control={control}
                                   errors={errors}
