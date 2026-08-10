@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { TransactionError, useUser } from '@dfx.swiss/react';
 import type { Blockchain, Buy, Fiat, Sell, Swap } from '@dfx.swiss/react';
 import { formatAmount, formatFiat, shortAddress } from './amount';
-import { mapThrownError, mapTransactionError, fiatFormatter, assetFormatter } from './errors';
+import { isEmailGateError, mapThrownError, mapTransactionError, fiatFormatter, assetFormatter } from './errors';
 import { chainName } from './blockchain-meta';
 import { QrBill } from './QrBill';
 import type { Mode } from './types';
@@ -198,15 +198,24 @@ export function PaymentSheet({
   const isInvalidQuote = quote?.isValid === false;
   const isAmountGate =
     validityError === TransactionError.AMOUNT_TOO_LOW || validityError === TransactionError.AMOUNT_TOO_HIGH;
+  // Fail closed: a 200 that claims validity but carries no deposit/payment target must not
+  // render an empty DepositBox (address "—", QR over empty payload). Own gateKind — not
+  // account setup — and only after real validity/email/amount gates have had their say.
+  const missingDepositDetails =
+    !isInvalidQuote &&
+    ((mode === 'sell' && !!sell && !sell.depositAddress && !sell.paymentRequest) ||
+      (mode === 'swap' && !!swap && !swap.depositAddress && !swap.paymentRequest));
   const gateKind =
     thrownError?.kind ??
     (validityMessage || isInvalidQuote
-      ? validityError === TransactionError.EMAIL_REQUIRED
+      ? isEmailGateError(validityError)
         ? 'email'
         : isAmountGate
           ? 'amount'
           : 'setup'
-      : undefined);
+      : missingDepositDetails
+        ? 'missingDeposit'
+        : undefined);
 
   const sendMail = async () => {
     if (!mailInput.includes('@')) return;
@@ -222,7 +231,7 @@ export function PaymentSheet({
     }
   };
 
-  const showGate = !loading && (thrownError || validityMessage || isInvalidQuote);
+  const showGate = !loading && (thrownError || validityMessage || isInvalidQuote || missingDepositDetails);
 
   return (
     <Sheet open={open} onClose={onClose} titleId={titleId}>
@@ -272,7 +281,7 @@ export function PaymentSheet({
         {!loading && !showGate && mode === 'swap' && swap && (
           <DepositBox
             address={swap.depositAddress}
-            amount={`${formatAmount(amount, 8, language)} ${payAssetCode}`}
+            amount={`${formatAmount(swap.amount ?? amount, 8, language)} ${payAssetCode}`}
             network={chainName(swap.sourceAsset.blockchain)}
             qrPayload={swap.paymentRequest || swap.depositAddress}
           />
@@ -281,13 +290,21 @@ export function PaymentSheet({
         {showGate && (
           <div className="emailgate">
             <div className="paybox-title">
-              {gateKind === 'email' ? t('verifyEmailTitle') : gateKind === 'amount' ? t('amount') : t('setupTitle')}
+              {gateKind === 'email'
+                ? t('verifyEmailTitle')
+                : gateKind === 'amount'
+                  ? t('amount')
+                  : gateKind === 'missingDeposit'
+                    ? t('needPaymentDetails')
+                    : t('setupTitle')}
             </div>
-            <p className="paybox-note" style={{ margin: '6px 0 12px' }}>
-              {/* `needSetup` is the fallback for the fail-closed case above: an invalid quote
-                  with no mappable reason still gets a sentence, never an empty gate. */}
-              {thrownError?.message ?? validityMessage ?? t('needSetup')}
-            </p>
+            {/* Missing-deposit uses the title alone (one i18n key). Other gates keep a note. */}
+            {gateKind !== 'missingDeposit' && (
+              <p className="paybox-note" style={{ margin: '6px 0 12px' }}>
+                {/* `needSetup` is the fallback for an invalid quote with no mappable reason. */}
+                {thrownError?.message ?? validityMessage ?? t('needSetup')}
+              </p>
+            )}
             {gateKind === 'email' && !mailSent && (
               <div className="efield">
                 <input

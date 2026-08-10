@@ -30,7 +30,12 @@ import { Spinner, useToast } from '../components/ui';
 import { formatAmount, formatFiat, parseAmt, quickChipSymbol } from './trade/amount';
 import { assetFor, availableAssets, groupAssets, heldBalance, parseBalances, shownChainsFor } from './trade/asset-pool';
 import { chainName, isStableAsset } from './trade/blockchain-meta';
-import { currenciesForBuy, currenciesForSell, hasNoDisplayableEstimate } from './trade/capabilities';
+import {
+  currenciesForBuy,
+  currenciesForSell,
+  hasNoDisplayableEstimate,
+  isAmountValidityError,
+} from './trade/capabilities';
 import { assetFormatter, fiatFormatter, mapThrownError, mapTransactionError } from './trade/errors';
 import { AssetChainGlyph, FiatGlyph } from './trade/glyphs';
 import { FeesPanel } from './trade/FeesPanel';
@@ -340,7 +345,16 @@ export default function HomeScreen() {
               assetFormatter(swapFromAsset?.code ?? '', language),
             )
           : undefined;
-  const canOpenGate = Boolean(activeValidityMessage || activeThrownError);
+  // Amount min/max rejections are already shown in the receive panel (`receiveMeta`). Treating
+  // them like account-state gates would enable the CTA, fire authenticated `paymentInfos`, and
+  // create a server-side route/transaction-request for an amount that was never valid. Keep
+  // account gates (KYC/limit/email/…) openable — those need the sheet's gate UI.
+  const activeAmountGate =
+    !!activeQuote.data &&
+    activeQuote.isFresh &&
+    activeQuote.data.isValid === false &&
+    isAmountValidityError(activeQuote.data.error);
+  const canOpenGate = Boolean((activeValidityMessage && !activeAmountGate) || activeThrownError);
   /** A tap has been made and the sheet is waiting on the payment-details request it armed —
    * the CTA stays busy until that request settles. */
   const awaitingPaymentInfo = openAfterPaymentInfo;
@@ -582,16 +596,30 @@ export default function HomeScreen() {
     if (next !== 'buy') showToast(t(next));
   };
 
+  // After a swap flip the old target becomes the new source (needs sellable) and the old source
+  // becomes the new target (needs buyable). `assetFor` is the same doomed-quote guard the
+  // engines use; disable the control rather than land in an untradeable pairing.
+  const canFlipSwap =
+    !!swapFromAsset &&
+    !!swapFromChain &&
+    !!swapToAsset &&
+    !!swapToChain &&
+    !!assetFor(swapToAsset, swapToChain, 'sell') &&
+    !!assetFor(swapFromAsset, swapFromChain, 'buy');
+
   const flip = () => {
     if (mode === 'buy') changeMode('sell');
     else if (mode === 'sell') changeMode('buy');
     else {
+      if (!canFlipSwap || !swapFromAsset || !swapToAsset) return;
       const a = swapFromAsset;
       const ac = swapFromChain;
       setSwapFromAsset(swapToAsset);
       setSwapFromChain(swapToChain);
       setSwapToAsset(a);
       setSwapToChain(ac);
+      // Amount was typed in units of the previous source asset — drop it rather than reuse it.
+      setSwapRaw('');
     }
   };
 
@@ -703,7 +731,13 @@ export default function HomeScreen() {
           </div>
         </div>
 
-        <button className="fab" aria-label="Flip direction" onClick={flip}>
+        <button
+          className="fab"
+          aria-label="Flip direction"
+          onClick={flip}
+          disabled={mode === 'swap' && !canFlipSwap}
+          style={mode === 'swap' && !canFlipSwap ? { opacity: 0.38 } : undefined}
+        >
           <svg viewBox="0 0 24 24" fill="none">
             <path
               d="M7 4v13m0 0-3-3m3 3 3-3M17 20V7m0 0-3 3m3-3 3 3"
