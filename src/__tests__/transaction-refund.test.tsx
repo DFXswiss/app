@@ -214,7 +214,16 @@ jest.mock('@dfx.swiss/react-components', () => {
                         setOpen(false);
                       },
                     },
-                    labelFunc(item),
+                    [
+                      labelFunc(item),
+                      descriptionFunc
+                        ? React.createElement(
+                            'span',
+                            { key: 'desc', 'data-testid': `${name}-option-desc-${i}` },
+                            descriptionFunc(item),
+                          )
+                        : null,
+                    ],
                   ),
                 ),
               )
@@ -731,6 +740,7 @@ describe('TransactionRefund address filtering', () => {
     expect(options).toHaveLength(2);
     expect(options[0]).toHaveTextContent(/0xaaa/);
     expect(options[1]).toHaveTextContent(/0xbbb/);
+    expect(screen.getByTestId('address-option-desc-0')).toHaveTextContent(/Ethereum/);
   });
 
   it('auto-selects the only matching address via setValue when exactly one is allowed', async () => {
@@ -1184,6 +1194,26 @@ describe('TransactionRefund rendered view', () => {
     expect(screen.queryByTestId('address-dropdown')).not.toBeInTheDocument();
   });
 
+  // Earlier the dropdown was gated on inputBlockchain; without it the mocked Form never registered
+  // the required-address rule, so the refund form could become valid without choosing an address.
+  it('renders address dropdown and keeps submit disabled when inputBlockchain is undefined', async () => {
+    mockUserAddresses = [{ address: '0xwouldmatch', blockchains: ['Ethereum'] }];
+    mockGetTransactionByUid.mockResolvedValue(
+      makeTx({ type: 'Sell', inputPaymentMethod: 'Crypto', inputBlockchain: undefined }),
+    );
+    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+
+    renderRefund();
+    await waitForRefundFormLoaded();
+
+    // Dropdown still mounts so the required rule is wired; filter yields no options without a chain.
+    expect(screen.getByTestId('address-dropdown')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('address-trigger'));
+    expect(within(screen.getByTestId('address-options')).queryAllByRole('button')).toHaveLength(0);
+
+    expect(screen.getByRole('button', { name: 'Confirm refund' })).toBeDisabled();
+  });
+
   it('shows IBAN dropdown and name field for bank buy without fixed refundTarget', async () => {
     mockGetTransactionByUid.mockResolvedValue(
       makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }),
@@ -1285,8 +1315,9 @@ describe('TransactionRefund rendered view', () => {
 
     fireEvent.click(screen.getByTestId('iban-trigger'));
     const options = within(screen.getByTestId('iban-options')).getAllByRole('button');
-    // DE is first bank account; formatIban falls back to '' for that option only.
-    expect(options[0]).toHaveTextContent('');
+    // DE is first bank account; formatIban falls back to '' for that option only, so the option
+    // carries no IBAN text at all (an empty-string matcher would pass against anything).
+    expect(options[0]).not.toHaveTextContent(BANK_IBAN_DE);
     expect(options[1]).toHaveTextContent(BANK_IBAN_CH);
     expect(options[2]).toHaveTextContent('Add bank account');
   });
