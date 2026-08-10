@@ -48,10 +48,25 @@ jest.mock('@dfx.swiss/react', () => ({
   Utils: {
     formatIban: (v: any) => v,
     formatAmount: (n: any) => String(n),
-    createRules: () => ({}),
+    // Passthrough that drops undefined field rules and merges array-of-rule-objects into a single
+    // RHF rules object — matches the real Utils.createRules (see @dfx.swiss/core/dist/utils.js and
+    // the identical pattern already used in transaction-refund.test.tsx in this same directory).
+    createRules: (rules: Record<string, any>) => {
+      const out: Record<string, any> = {};
+      for (const key of Object.keys(rules)) {
+        const value = rules[key];
+        if (value === undefined) continue;
+        if (Array.isArray(value)) {
+          out[key] = value.reduce((prev: any, curr: any) => (curr ? { ...prev, ...curr } : prev), {});
+        } else {
+          out[key] = value;
+        }
+      }
+      return out;
+    },
   },
   Validations: {
-    Required: undefined,
+    Required: { required: { value: true, message: 'required' } },
   },
   useTransaction: () => ({
     getDetailTransactions: mockGetDetailTransactions,
@@ -66,42 +81,112 @@ jest.mock('@dfx.swiss/react', () => ({
   useBankAccountContext: () => ({ bankAccounts: [] }),
 }));
 
-jest.mock('@dfx.swiss/react-components', () => ({
-  StyledButton: ({ label, onClick, hidden, isLoading, type }: any) =>
-    hidden ? null : (
-      <button type={type ?? 'button'} onClick={onClick} disabled={isLoading}>
-        {label}
-      </button>
+jest.mock('@dfx.swiss/react-components', () => {
+  // babel-plugin-jest-hoist runs this factory before file imports — require React / RHF here.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const React = require('react');
+  const { Children, cloneElement, isValidElement, useState } = React;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Controller } = require('react-hook-form');
+
+  function enrichChildren(children: any, control: any, rules: any, errors: any, onSubmit: any): any {
+    return Children.map(children, (child: any) => {
+      if (!isValidElement(child)) return child;
+      const childProps: any = child.props ?? {};
+      const nextChildren = enrichChildren(childProps.children, control, rules, errors, onSubmit);
+      if (childProps.name) {
+        return cloneElement(child, {
+          control,
+          rules: rules?.[childProps.name],
+          error: errors?.[childProps.name],
+          onSubmit,
+          children: nextChildren,
+        });
+      }
+      return cloneElement(child, { children: nextChildren });
+    });
+  }
+
+  function Form({ children, control, rules, errors, onSubmit }: any) {
+    return (
+      <form className="w-full">
+        {enrichChildren(children, control, rules, errors, onSubmit)}
+      </form>
+    );
+  }
+
+  function StyledDropdown({ control, name, items, labelFunc, placeholder, rules }: any) {
+    const [open, setOpen] = useState(false);
+    return (
+      <Controller
+        control={control}
+        name={name}
+        rules={rules}
+        render={({ field: { onChange, value } }: any) => (
+          <div data-testid={`${name}-dropdown`}>
+            <button type="button" data-testid={`${name}-trigger`} onClick={() => setOpen((o) => !o)}>
+              {value != null ? labelFunc(value) : (placeholder ?? 'Select...')}
+            </button>
+            {open && (
+              <div data-testid={`${name}-options`}>
+                {(items ?? []).map((item: any, i: number) => (
+                  <button
+                    type="button"
+                    key={i}
+                    data-testid={`${name}-option-${i}`}
+                    onClick={() => {
+                      onChange(item);
+                      setOpen(false);
+                    }}
+                  >
+                    {labelFunc(item)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      />
+    );
+  }
+
+  return {
+    StyledButton: ({ label, onClick, hidden, isLoading, disabled, type }: any) =>
+      hidden ? null : (
+        <button type={type ?? 'button'} onClick={onClick} disabled={disabled || isLoading}>
+          {label}
+        </button>
+      ),
+    StyledCollapsible: ({ titleContent, children }: any) => (
+      <div>
+        {titleContent}
+        {children}
+      </div>
     ),
-  StyledCollapsible: ({ titleContent, children }: any) => (
-    <div>
-      {titleContent}
-      {children}
-    </div>
-  ),
-  StyledDataTable: ({ children }: any) => <div>{children}</div>,
-  StyledDataTableRow: ({ children }: any) => <div>{children}</div>,
-  StyledDataTableExpandableRow: ({ children }: any) => <div>{children}</div>,
-  StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
-  StyledHorizontalStack: ({ children }: any) => <div>{children}</div>,
-  StyledIconButton: () => null,
-  DfxAssetIcon: () => null,
-  DfxIcon: () => null,
-  CopyButton: () => null,
-  SpinnerSize: { SM: 'sm', LG: 'lg' },
-  StyledLoadingSpinner: () => null,
-  IconVariant: { RELOAD: 'reload', HELP: 'help' },
-  IconSize: { LG: 'lg' },
-  AlignContent: { RIGHT: 'right' },
-  AssetIconVariant: {},
-  StyledButtonColor: { STURDY_WHITE: 'sturdy-white', BLUE: 'blue' },
-  StyledButtonWidth: { FULL: 'full', MIN: 'min' },
-  Form: ({ children }: any) => <div>{children}</div>,
-  StyledDropdown: () => null,
-  StyledInput: () => null,
-  StyledLink: ({ label, children }: any) => <div>{label ?? children}</div>,
-  StyledSearchDropdown: () => null,
-}));
+    StyledDataTable: ({ children }: any) => <div>{children}</div>,
+    StyledDataTableRow: ({ children }: any) => <div>{children}</div>,
+    StyledDataTableExpandableRow: ({ children }: any) => <div>{children}</div>,
+    StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
+    StyledHorizontalStack: ({ children }: any) => <div>{children}</div>,
+    StyledIconButton: () => null,
+    DfxAssetIcon: () => null,
+    DfxIcon: () => null,
+    CopyButton: () => null,
+    SpinnerSize: { SM: 'sm', LG: 'lg' },
+    StyledLoadingSpinner: () => null,
+    IconVariant: { RELOAD: 'reload', HELP: 'help' },
+    IconSize: { LG: 'lg' },
+    AlignContent: { RIGHT: 'right' },
+    AssetIconVariant: {},
+    StyledButtonColor: { STURDY_WHITE: 'sturdy-white', BLUE: 'blue' },
+    StyledButtonWidth: { FULL: 'full', MIN: 'min' },
+    Form,
+    StyledDropdown,
+    StyledInput: () => null,
+    StyledLink: ({ label, children }: any) => <div>{label ?? children}</div>,
+    StyledSearchDropdown: () => null,
+  };
+});
 
 jest.mock('../components/error-hint', () => ({
   ErrorHint: ({ message }: any) => <div data-testid="error-hint">{message}</div>,
@@ -159,7 +244,7 @@ jest.mock('../util/validation-rules', () => ({
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, RouterProvider, createMemoryRouter } from 'react-router-dom';
 import { TransactionList } from '../screens/transaction.screen';
 
 const SINGLE_TARGET = {
@@ -238,6 +323,11 @@ describe('TransactionList assign-transaction preselect', () => {
 
     await screen.findByText('Remittance info');
     const buttonsAfterSecondOpen = screen.getAllByRole('button', { name: 'Assign transaction' });
+    // The single target must be preselected again on this second open, making the submit button
+    // actually clickable — not stuck disabled because the field was never registered/revalidated.
+    await waitFor(() => {
+      expect(buttonsAfterSecondOpen[1]).not.toBeDisabled();
+    });
     await userEvent.click(buttonsAfterSecondOpen[1]);
 
     await waitFor(() => {
@@ -264,7 +354,11 @@ describe('TransactionList assign-transaction preselect', () => {
     const openButtonsAgain = await screen.findAllByRole('button', { name: 'Assign transaction' });
     await userEvent.click(openButtonsAgain[1]);
     await screen.findByText('Remittance info');
-    await userEvent.click(screen.getAllByRole('button', { name: 'Assign transaction' })[1]);
+    const submitButtonSecondOpen = screen.getAllByRole('button', { name: 'Assign transaction' })[1];
+    await waitFor(() => {
+      expect(submitButtonSecondOpen).not.toBeDisabled();
+    });
+    await userEvent.click(submitButtonSecondOpen);
 
     await waitFor(() => {
       expect(mockSetTransactionTarget).toHaveBeenCalledWith(2, 99);
@@ -287,5 +381,52 @@ describe('TransactionList assign-transaction preselect', () => {
     // Form must not open: no remittance label and no submit control.
     expect(screen.queryByText('Remittance info')).not.toBeInTheDocument();
     expect(document.querySelector('button[type="submit"]')).toBeNull();
+  });
+
+  // Pins that the submit button stays disabled while no target is selected: preselection only fires
+  // for exactly one target, so with two targets the form opens without a chosen value.
+  it('keeps the submit button disabled when there is more than one target and none is selected', async () => {
+    mockGetTransactionTargets.mockResolvedValue([
+      SINGLE_TARGET,
+      { ...SINGLE_TARGET, id: 100, bankUsage: 'WXYZ-9876' },
+    ]);
+    renderList();
+
+    const openButtons = await screen.findAllByRole('button', { name: 'Assign transaction' });
+    await userEvent.click(openButtons[0]);
+
+    await screen.findByText('Remittance info');
+    const submitButton = screen.getAllByRole('button', { name: 'Assign transaction' })[0];
+    await waitFor(() => {
+      expect(submitButton).toBeDisabled();
+    });
+  });
+
+  // Pins that submitAssignment does not silently no-op for a transaction whose id is 0:
+  // `!editTransaction` is also true for 0, so the old guard would have aborted the submit here
+  // without ever calling setTransactionTarget. The form is opened via the /tx/:id/assign route
+  // (the same route the app uses), because the id-0 transaction's own "Assign transaction" open
+  // button is unrelated and out of scope for this fix.
+  it('submits the assignment for a transaction whose id is 0', async () => {
+    mockGetUnassignedTransactions.mockResolvedValue([
+      unassignedTx({ id: 0, uid: 'tx-uid-0', date: '2026-01-03T00:00:00.000Z' }),
+    ]);
+
+    const router = createMemoryRouter(
+      [{ path: '/tx/:id/assign', element: <TransactionList isSupport={false} setError={jest.fn()} /> }],
+      { initialEntries: ['/tx/0/assign'] },
+    );
+    render(<RouterProvider router={router} />);
+
+    await screen.findByText('Remittance info');
+    const submitButton = await screen.findByRole('button', { name: 'Assign transaction' });
+    await waitFor(() => {
+      expect(submitButton).not.toBeDisabled();
+    });
+    await userEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(mockSetTransactionTarget).toHaveBeenCalledWith(0, 99);
+    });
   });
 });

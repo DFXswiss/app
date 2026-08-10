@@ -237,7 +237,6 @@ jest.mock('@dfx.swiss/react-components', () => {
     items,
     labelFunc,
     filterFunc,
-    matchFunc,
     placeholder,
     rules,
     error,
@@ -272,13 +271,7 @@ jest.mock('@dfx.swiss/react-components', () => {
                   'data-testid': `${name}-search`,
                   value: search,
                   onChange: (e: any) => {
-                    const s = e.target.value;
-                    setSearch(s);
-                    // Exercise filterFunc / matchFunc for every item (coverage of creditorCountry helpers).
-                    (items ?? []).forEach((i: any) => {
-                      filterFunc?.(i, s);
-                      matchFunc?.(i, s);
-                    });
+                    setSearch(e.target.value);
                   },
                 }),
                 filtered.map((item: any, i: number) =>
@@ -636,9 +629,9 @@ describe('TransactionStatus Create support ticket', () => {
   });
 });
 
-// Lines 609-610: creditorCountry filterFunc / matchFunc on TransactionRefund bank form.
+// Lines 609-610: creditorCountry filterFunc narrows the visible options to matching countries.
 describe('TransactionRefund creditorCountry search helpers', () => {
-  it('invokes filterFunc and matchFunc when searching countries on a bank refund form', async () => {
+  it('shows only the matching country after searching by name', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
@@ -651,13 +644,11 @@ describe('TransactionRefund creditorCountry search helpers', () => {
 
     fireEvent.click(screen.getByTestId('creditorCountry-trigger'));
     const search = await screen.findByTestId('creditorCountry-search');
-
-    // Empty search hits the `!s` short-circuit of filterFunc; non-empty hits name/symbol match.
-    fireEvent.change(search, { target: { value: '' } });
-    fireEvent.change(search, { target: { value: 'switz' } });
     fireEvent.change(search, { target: { value: 'Switzerland' } });
 
-    expect(screen.getByTestId('creditorCountry-options')).toBeInTheDocument();
+    const options = within(screen.getByTestId('creditorCountry-options'));
+    expect(options.getByText('Switzerland')).toBeInTheDocument();
+    expect(options.queryByText('Germany')).not.toBeInTheDocument();
   });
 });
 
@@ -742,7 +733,7 @@ describe('TransactionList load effects and sorting', () => {
     if (originalScrollIntoViewDescriptor) {
       Object.defineProperty(Element.prototype, 'scrollIntoView', originalScrollIntoViewDescriptor);
     } else {
-      delete (Element.prototype as any).scrollIntoView;
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
     }
   });
 

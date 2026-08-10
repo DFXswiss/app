@@ -416,12 +416,8 @@ describe('TransactionScreen render branches', () => {
 
     expect(screen.getByRole('button', { name: 'Cointracking' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument();
-    // Named export mock is applied for external importers; default-view branch is the list path.
-    // Prefer mock test id when the partial mock applies to the tree.
-    const mockedList = screen.queryByTestId('transaction-list');
-    if (mockedList) {
-      expect(mockedList).toBeInTheDocument();
-    }
+    // TransactionList is module-internal, so the named-export mock is inert; assert real output.
+    expect(screen.getByRole('heading', { name: 'Your Transactions' })).toBeInTheDocument();
   });
 
   it('toggles the export CSV submenu open and closed', async () => {

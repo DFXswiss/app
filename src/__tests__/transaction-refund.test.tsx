@@ -230,11 +230,16 @@ jest.mock('@dfx.swiss/react-components', () => {
     label,
     items,
     labelFunc,
+    disabled,
+    forceEnable,
     placeholder,
     rules,
     error,
   }: any) {
     const [open, setOpen] = useState(false);
+    // Mirrors the real component: disabled with nothing meaningful to pick from, unless the
+    // caller opts in via forceEnable.
+    const isDisabled = disabled || ((items ?? []).length <= 1 && !forceEnable);
     return React.createElement(Controller, {
       control,
       name,
@@ -249,7 +254,8 @@ jest.mock('@dfx.swiss/react-components', () => {
             {
               type: 'button',
               'data-testid': `${name}-trigger`,
-              onClick: () => setOpen((o: boolean) => !o),
+              disabled: isDisabled,
+              onClick: () => !isDisabled && setOpen((o: boolean) => !o),
               onBlur,
             },
             value != null ? labelFunc(value) : (placeholder ?? 'Select...'),
@@ -1320,7 +1326,7 @@ describe('TransactionRefund rendered view', () => {
     expect(options[2]).toHaveTextContent('Add bank account');
   });
 
-  it('renders the country search dropdown with zero options when allowedCountries is undefined', async () => {
+  it('disables the country search dropdown for fewer than two countries', async () => {
     mockAllowedCountries = undefined as any;
     mockGetTransactionByUid.mockResolvedValue(
       makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }),
@@ -1332,8 +1338,11 @@ describe('TransactionRefund rendered view', () => {
     renderRefund();
     await waitForRefundFormLoaded();
 
-    fireEvent.click(screen.getByTestId('creditorCountry-trigger'));
-    expect(screen.getByTestId('creditorCountry-options')).toBeInTheDocument();
-    expect(screen.queryByTestId('creditorCountry-option-0')).not.toBeInTheDocument();
+    // The real StyledSearchDropdown disables itself for <= 1 item, so it never opens here.
+    const trigger = screen.getByTestId('creditorCountry-trigger');
+    expect(trigger).toBeDisabled();
+
+    fireEvent.click(trigger);
+    expect(screen.queryByTestId('creditorCountry-options')).not.toBeInTheDocument();
   });
 });

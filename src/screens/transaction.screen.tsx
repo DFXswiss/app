@@ -234,8 +234,6 @@ function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
   }, [id, transaction?.state]);
 
   function handleTransactionNavigation(path: string) {
-    if (!transaction) return;
-
     if (isLoggedIn) {
       navigate(path);
     } else {
@@ -734,11 +732,9 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
     setEditTransaction(txId);
   }
 
-  async function submitAssignment({ target }: { target: TransactionTarget }) {
-    if (!editTransaction) return;
-
+  async function submitAssignment({ target }: { target: TransactionTarget }, txId: number) {
     setIsTransactionLoading(true);
-    setTransactionTarget(editTransaction, target.id)
+    setTransactionTarget(txId, target.id)
       .then(() => {
         loadTransactions();
         setEditTransaction(undefined);
@@ -783,6 +779,7 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                 <StyledVerticalStack gap={2} full>
                   {list.map((tx) => {
                     const isUnassigned = tx.state === TransactionState.UNASSIGNED;
+                    const txId = tx.id;
 
                     const icon = isUnassigned
                       ? undefined
@@ -833,12 +830,12 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                             {/* The SDK types id as optional: without this guard, undefined === undefined
                                 would open the form on the first render. */}
                             {isUnassigned &&
-                              (tx.id != null && editTransaction === tx.id ? (
+                              (txId != null && editTransaction === txId ? (
                                 <Form
                                   control={control}
                                   errors={errors}
                                   rules={rules}
-                                  onSubmit={handleSubmit(submitAssignment)}
+                                  onSubmit={handleSubmit((data) => submitAssignment(data, txId))}
                                 >
                                   <StyledVerticalStack gap={3} full>
                                     <p className="text-dfxGray-700 mt-4">
@@ -863,7 +860,7 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                                       isLoading={isTransactionLoading}
                                       disabled={!isValid}
                                       label={translate('screens/payment', 'Assign transaction')}
-                                      onClick={handleSubmit(submitAssignment)}
+                                      onClick={handleSubmit((data) => submitAssignment(data, txId))}
                                     />
                                   </StyledVerticalStack>
                                 </Form>
