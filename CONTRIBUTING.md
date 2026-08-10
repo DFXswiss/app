@@ -36,6 +36,28 @@ reason to leave the bug unreported.
 
 ## Testing
 
+### Test architecture
+
+[docs/test-architecture.md](docs/test-architecture.md) describes the test layers
+this repository owns, with measured numbers for the current state, and links to
+the canonical cross-repository description in `DFXswiss/api`. Read it before
+adding a test layer, moving a test between layers, or extending the full-stack
+harness.
+
+Two obligations follow from it for every pull request:
+
+- **A failure mode is tested at the lowest layer that can express it.** A case
+  reachable against a real database does not belong in a browser test, and the
+  processing chain behind the API is not testable from this repository at all.
+- **Reality declaration.** Whenever a pull request introduces, removes or changes
+  a fake — a faked external provider, a disabled cron job, a schema built without
+  the migration chain, state written directly with SQL, a placeholder value that
+  looks real, a suppressed side effect, or a seed correction that bends reality —
+  the declaration changes in the same pull request, and each entry says in one
+  plain sentence what a green run does **not** prove. Write the entry before
+  building the fake. A pull request that adds a fake without its declaration is
+  incomplete regardless of whether CI is green.
+
 ### Unit tests
 
 ```
