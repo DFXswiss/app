@@ -24,7 +24,7 @@ jest.mock('src/components/error-hint', () => ({
 }));
 
 jest.mock('src/hooks/guard.hook', () => ({
-  useComplianceGuard: () => mockUseComplianceGuard(),
+  useComplianceGuard: (...args: unknown[]) => mockUseComplianceGuard(...args),
 }));
 
 jest.mock('src/hooks/layout-config.hook', () => ({
@@ -105,13 +105,16 @@ describe('ComplianceChargebackListScreen', () => {
     mockGetPendingChargebacks.mockResolvedValue(asTransport([]));
   });
 
-  // The role guard is all that stands between an unauthorised role and this screen; it is mocked out
-  // in every other test here. Without this assertion the screen could lose its guard call and the
-  // whole suite would stay green — see issue #1306, where exactly that was suspected.
-  it('calls the compliance guard on render', () => {
+  // The role guard is all that stands between an unauthorised role and this screen, and it is mocked
+  // out in every other test here — so without this assertion the screen could lose the call and the
+  // whole suite would stay green (issue #1306 suspected exactly that). Asserting the argument list is
+  // empty covers the quieter mutation too: the hook's signature is
+  // `useComplianceGuard(redirectPath = '/', isActive = true)`, so `useComplianceGuard(undefined, false)`
+  // would keep the call and still leave the guard inert.
+  it('calls the compliance guard on render, with the guard left active', () => {
     render(<ComplianceChargebackListScreen />);
 
-    expect(mockUseComplianceGuard).toHaveBeenCalled();
+    expect(mockUseComplianceGuard).toHaveBeenCalledWith();
   });
 
   it('does not fetch when not logged in', () => {
