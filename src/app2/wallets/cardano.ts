@@ -124,7 +124,7 @@ export function unwrapCip30AddressBytes(bytes: Uint8Array): Uint8Array {
   // Only unwrap when the length field accounts for the entire remainder of the buffer.
   // A looser `<=` would treat a raw Shelley pointer address (header nibble 4/5 → major type 2)
   // as a CBOR byte-string and return a 1-byte slice that still bech32-encodes to a plausible
-  // but wrong `addr1…` (F5).
+  // but wrong `addr1…`.
   if (offset + len !== bytes.length) return bytes;
   return bytes.subarray(offset, offset + len);
 }

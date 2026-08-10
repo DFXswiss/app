@@ -1,4 +1,4 @@
-// B2 / B3 / B4 — payment-sheet regressions for the trade path:
+// Payment-sheet regressions for the trade path:
 //  - swap deposit amount must prefer the settled API amount
 //  - PrimaryEmail* validity/thrown errors open the inline e-mail gate, not generic setup
 //  - a 200 without depositAddress/paymentRequest fails closed into the setup gate
@@ -119,7 +119,7 @@ function renderSellSheet(sell: Sell | null) {
   );
 }
 
-describe('App2 B2 swap deposit amount', () => {
+describe('swap deposit amount', () => {
   it('prefers the settled swap.amount over the panel input', () => {
     const swap = {
       isValid: true,
@@ -142,7 +142,7 @@ describe('App2 B2 swap deposit amount', () => {
   });
 });
 
-describe('App2 B3 email gate codes', () => {
+describe('email gate codes', () => {
   it('treats PrimaryEmail* as e-mail gate errors', () => {
     expect(isEmailGateError(TransactionError.EMAIL_REQUIRED)).toBe(true);
     expect(isEmailGateError('PrimaryEmailRequired')).toBe(true);
@@ -186,7 +186,7 @@ describe('App2 B3 email gate codes', () => {
   });
 });
 
-describe('App2 B4 / G7 missing deposit details', () => {
+describe('missing deposit details', () => {
   it('fails closed for a valid sell response without depositAddress or paymentRequest', () => {
     const sell = {
       isValid: true,

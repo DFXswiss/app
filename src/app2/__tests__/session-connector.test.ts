@@ -1,4 +1,4 @@
-// F2: sessionConnectorFor must map catalog connectors onto the three-way session monitor
+// sessionConnectorFor must map catalog connectors onto the three-way session monitor
 // binding — only real injected / wallet-connect sessions may use provider refs; hardware,
 // Cardano, Alby, CLI, Solana, Tron must resolve to `'other'` so they never borrow wcProviderRef.
 
@@ -96,7 +96,7 @@ jest.mock('../assets/wallets/wallet-connect.svg', () => 'wallet-connect.svg');
 import { sessionConnectorFor } from '../wallets/session';
 import type { WalletConnector } from '../wallets/catalog';
 
-describe('sessionConnectorFor (F2)', () => {
+describe('sessionConnectorFor', () => {
   it('maps injected and wallet-connect to themselves', () => {
     expect(sessionConnectorFor('injected')).toBe('injected');
     expect(sessionConnectorFor('wallet-connect')).toBe('wallet-connect');

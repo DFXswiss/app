@@ -1,4 +1,4 @@
-// Round-4 / G1: crypto refunds never fall back to the connected session wallet.
+// Crypto refunds never fall back to the connected session wallet.
 // Without a server-supplied refundTarget the panel offers userAddresses filtered
 // to the tx input blockchain (main-app behaviour); an empty filter stays fail-closed.
 
@@ -86,7 +86,7 @@ function renderPanel(tx: DetailTransaction = sellTx()) {
   );
 }
 
-describe('RefundPanel crypto target (G1 — no session-address fallback)', () => {
+describe('RefundPanel crypto target (no session-address fallback)', () => {
   beforeEach(() => {
     mockGetTransactionRefund.mockReset();
     mockSetTransactionRefundTarget.mockReset();

@@ -1,4 +1,4 @@
-// F3: after switching to a different linked address, provider bindings for the *previous*
+// After switching to a different linked address, provider bindings for the *previous*
 // wallet must be dropped so the monitor effect does not re-attach to the old EIP-1193 instance.
 // Full effect wiring needs a live provider; this pins the pure clear helper switchTo calls.
 
@@ -96,7 +96,7 @@ jest.mock('../assets/wallets/wallet-connect.svg', () => 'wallet-connect.svg');
 import { clearSessionProviderBindings } from '../wallets/session';
 import type { Eip1193Provider } from '../wallets/providers';
 
-describe('clearSessionProviderBindings (F3)', () => {
+describe('clearSessionProviderBindings', () => {
   it('clears activeConnector and both provider refs', () => {
     const setActiveConnector = jest.fn();
     const injectedRef = { current: { request: jest.fn() } as unknown as Eip1193Provider };

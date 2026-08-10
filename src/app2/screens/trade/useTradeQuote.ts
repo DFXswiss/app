@@ -61,7 +61,7 @@ export interface BuyQuoteParams {
   /** Fetch the real payment details (authenticated `PUT /buy/paymentInfos`) instead of the
    * public quote. Set only when the user moves to pay — see the file header. */
   withPaymentInfo?: boolean;
-  /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh (finding #2). */
+  /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh. */
   paused?: boolean;
 }
 
@@ -103,7 +103,7 @@ export interface SellQuoteParams {
   amount: number | null;
   iban?: string;
   externalTransactionId?: string;
-  /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh (finding #2). */
+  /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh. */
   paused?: boolean;
 }
 
@@ -148,7 +148,7 @@ export interface SwapQuoteParams {
   /** See BuyQuoteParams.withPaymentInfo — authenticated `PUT /swap/paymentInfos` (carries the
    * deposit address) instead of the public quote. */
   withPaymentInfo?: boolean;
-  /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh (finding #2). */
+  /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh. */
   paused?: boolean;
 }
 

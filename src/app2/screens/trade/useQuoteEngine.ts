@@ -46,7 +46,7 @@ export function useQuoteEngine<TResult>(
   enabled: boolean,
   key: string,
   fetcher: () => Promise<TResult>,
-  /** Suspends the "quote went stale, auto-refresh it" effect (finding #2: a payment sheet
+  /** Suspends the "quote went stale, auto-refresh it" effect (a payment sheet
    * showing this quote's numbers must not have them silently swap out from under the user while
    * it's open). Does not affect the input-driven debounced fetch or a manual `refresh()` call —
    * only the passive 30s-TTL timer. */
@@ -152,7 +152,7 @@ export function useQuoteEngine<TResult>(
       // A fetch already in flight for the key/enabled this effect is tearing down must not be
       // allowed to land after unmount (or after the next effect run swaps in a new key) — it
       // would otherwise pass the `seq === seqRef.current` check in execute()'s .then() and start
-      // a countdown `setInterval` that nothing is left to clear (finding #4).
+      // a countdown `setInterval` that nothing is left to clear.
       seqRef.current += 1;
     };
     // `execute`/`clearTimers` are intentionally excluded — this effect should only re-run when
@@ -160,7 +160,7 @@ export function useQuoteEngine<TResult>(
   }, [enabled, key]);
 
   // once the held quote goes stale (TTL elapsed) while still current, auto-refresh it — unless
-  // paused (finding #2: a payment sheet showing this quote must own when it refreshes)
+  // paused (a payment sheet showing this quote must own when it refreshes)
   useEffect(() => {
     if (dataKey !== key || !enabled || fetchingRef.current || pausedRef.current) return;
     const ageMs = Date.now() - quoteAtRef.current;

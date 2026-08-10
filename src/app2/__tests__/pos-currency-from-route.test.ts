@@ -1,4 +1,4 @@
-// Round-4 D2: OCP POS currency must come from the selected link's sell route
+// OCP POS currency must come from the selected link's sell route
 // (same source + fallback as invoice.tsx: route.currency?.name || 'CHF').
 // Also freezes that currency on the open charge so a mid-charge select switch
 // cannot rewrite the QR / paid caption (await-boundary state break).
@@ -28,7 +28,7 @@ import { LanguageProvider } from '../i18n';
 import PosView, { currencyForPosLink } from '../screens/ocp/pos';
 import type { OcpApi } from '../screens/ocp/useOcp';
 
-describe('currencyForPosLink (D2 POS currency from route)', () => {
+describe('currencyForPosLink (POS currency from route)', () => {
   const sellRoutes = [
     { id: 10, currency: { name: 'EUR' } },
     { id: 20, currency: { name: 'USD' } },

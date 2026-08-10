@@ -40,7 +40,7 @@ const router = createHashRouter([
       { path: '/account-merge', element: <ReturnRouteScreen /> },
       { path: '/buy/success', element: <ReturnRouteScreen /> },
       { path: '/buy/failure', element: <ReturnRouteScreen /> },
-      // Catch-all (finding #7): an unmatched hash path used to fall through to react-router's
+      // Catch-all: an unmatched hash path used to fall through to react-router's
       // own unbranded "Unexpected Application Error!" page instead of rendering inside the Shell.
       { path: '*', element: <NotFound /> },
     ],

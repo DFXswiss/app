@@ -33,7 +33,7 @@ export const en = {
   fDfx: 'DFX fee',
   fNet: 'Network fee',
   fNetVal: 'DFX covers it',
-  // Round-5 finding: the collapsed summary line showed a fee-inclusive rate while this expanded
+  // The collapsed summary line showed a fee-inclusive rate while this expanded
   // row showed the pre-fee market price, with neither labeled as such — two different numbers
   // for the same pair with no explanation. Both labels below now spell out the difference.
   fRateL: 'Market rate (excl. fees)',
@@ -106,7 +106,7 @@ export const en = {
   setupTitle: 'One more step',
   needApproval: 'Your DFX account needs a one-time approval before buying. Finish it on app.dfx.swiss, then come back.',
   inviteGateTitle: 'Invitation needed',
-  // Round-5 finding: this gate submits into the sign-up flow's `recommendationCode` field
+  // This gate submits into the sign-up flow's `recommendationCode` field
   // (createSessionNew -> OptionalSignUpDto), which only ever accepts the code shape — unlike the
   // KYC-step recommendation endpoint (handleRecommendationRequest, api's recommendation.service),
   // which does also accept a ref code or an existing customer's email. Promising "or email" here

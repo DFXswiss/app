@@ -1,10 +1,10 @@
-// Round-4 C1: classifyInviteCode must preserve usedRef case (API referral lookup is an exact
+// classifyInviteCode must preserve usedRef case (API referral lookup is an exact
 // match; live codes like `stb-tax` are lower-case) and only upper-case the recommendationCode
 // branch. Recommendation classification stays first so a full code never falls through as usedRef.
 
 import { classifyInviteCode } from '../wallets/invite';
 
-describe('classifyInviteCode (round-4 C1)', () => {
+describe('classifyInviteCode', () => {
   it('preserves the original case of a short usedRef', () => {
     expect(classifyInviteCode('stb-tax')).toEqual({ kind: 'usedRef', code: 'stb-tax' });
     expect(classifyInviteCode('  ab-c12  ')).toEqual({ kind: 'usedRef', code: 'ab-c12' });

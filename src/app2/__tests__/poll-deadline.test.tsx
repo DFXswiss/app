@@ -1,4 +1,4 @@
-// Round-4 / G4: CKO return-route poll must hard-stop at the deadline and surface
+// CKO return-route poll must hard-stop at the deadline and surface
 // waitTimedOut. Constants alone are not enough — the deadline branch in
 // scheduleNext has to run under fake timers.
 
@@ -69,7 +69,7 @@ import ReturnRouteScreen, { CKO_POLL, nextPollDelay } from '../screens/return-ro
 import { IDENT_POLL, nextIdentPollDelay } from '../screens/kyc-steps';
 import { LanguageProvider } from '../i18n';
 
-describe('poll deadline + backoff (D4 / G4, mirrors ocp/pos.tsx)', () => {
+describe('poll deadline + backoff (mirrors ocp/pos.tsx)', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     mockCall.mockReset();

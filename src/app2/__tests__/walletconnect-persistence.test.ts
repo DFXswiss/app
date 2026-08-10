@@ -4,25 +4,25 @@
 // Logout that only clears localStorage therefore leaves the next visitor's WalletConnect click
 // able to silently resume the previous owner's session.
 //
-// Round 2 finding: `idb-keyval`'s `createStore()` (what `@walletconnect/keyvaluestorage` uses)
-// opens the database once and never closes it or registers `onversionchange` — so
-// `provider.disconnect()` never releases that connection. A same-tab `deleteDatabase()` call
-// therefore sits on `onblocked` until our own timeout gives up, *without ever actually clearing
-// the data* — worse than just slow. The fix clears the object store's contents via a plain
-// (non-version-bumping) `open()` + `readwrite` transaction instead, which never needs exclusive
-// access and so isn't affected by another open connection in the same tab. The fake IndexedDB
-// below models that distinction faithfully (including `deleteDatabase()` genuinely blocking on
-// an open connection) so the same-tab scenario is proven, not just asserted.
+// `idb-keyval`'s `createStore()` (what `@walletconnect/keyvaluestorage` uses) opens the database
+// once and never closes it or registers `onversionchange` — so `provider.disconnect()` never
+// releases that connection. A same-tab `deleteDatabase()` call therefore sits on `onblocked`
+// until our own timeout gives up, *without ever actually clearing the data* — worse than just
+// slow. The fix clears the object store's contents via a plain (non-version-bumping) `open()` +
+// `readwrite` transaction instead, which never needs exclusive access and so isn't affected by
+// another open connection in the same tab. The fake IndexedDB below models that distinction
+// faithfully (including `deleteDatabase()` genuinely blocking on an open connection) so the
+// same-tab scenario is proven, not just asserted.
 //
-// Round 3 finding: on the fallback path (databases() unavailable/throws, database doesn't exist
-// yet), the versionless open() from the round-2 fix still creates the database implicitly and
-// fires onupgradeneeded — and `idb-keyval`'s own `createStore()` (see storage.ts) *also* only
-// ever opens without a version. Real IndexedDB never fires onupgradeneeded a second time for a
-// database once it exists at a given version, so leaving the database at version 1 without the
-// `keyvaluestorage` store — which the round-2 code did — permanently broke WalletConnect storage
-// in that browser profile: every future connect attempt's own createStore() would open at
-// version 1 with no upgrade needed, and its own onupgradeneeded (which is the only place it ever
-// creates the store) would simply never fire again.
+// On the fallback path (databases() unavailable/throws, database doesn't exist yet), a versionless
+// open() that only clears contents still creates the database implicitly and fires
+// onupgradeneeded — and `idb-keyval`'s own `createStore()` (see storage.ts) *also* only ever opens
+// without a version. Real IndexedDB never fires onupgradeneeded a second time for a database once
+// it exists at a given version, so leaving the database at version 1 without the `keyvaluestorage`
+// store permanently broke WalletConnect storage in that browser profile: every future connect
+// attempt's own createStore() would open at version 1 with no upgrade needed, and its own
+// onupgradeneeded (which is the only place it ever creates the store) would simply never fire
+// again.
 
 import { clearWalletConnectIndexedDb } from '../wallets/storage';
 
@@ -63,7 +63,7 @@ interface FakeDbHandle {
  * database is open, exactly like real IndexedDB, while a versionless `open()` + `readwrite`
  * transaction never does; and a versionless `open()` against a database that does not exist yet
  * creates it at version 1 and fires `onupgradeneeded` exactly once, never again for that
- * database — matching the real spec behavior the round-3 finding is about (see
+ * database — matching the real spec behavior this suite is about (see
  * `simulateIdbKeyvalConnectAndTransact` below). */
 function makeFakeIndexedDb(options: { withDatabasesApi?: boolean; databasesThrows?: boolean } = {}) {
   const dbs = new Map<string, { stores: Map<string, Map<string, unknown>> }>();
@@ -189,8 +189,8 @@ function readValue(db: FakeDbHandle, key: string): Promise<unknown> {
  * next WalletConnect connect attempt after our cleanup ran: a versionless `open()`, relying on
  * `onupgradeneeded` to create the store if the database is brand new. Real IndexedDB never fires
  * `onupgradeneeded` a second time for a database once it exists at a given version — so if our
- * cleanup had already claimed version 1 without creating the `keyvaluestorage` store (round-3
- * finding), this `db.transaction()` call throws `NotFoundError` here exactly as it would for the
+ * cleanup had already claimed version 1 without creating the `keyvaluestorage` store,
+ * this `db.transaction()` call throws `NotFoundError` here exactly as it would for the
  * real SDK, permanently breaking WalletConnect storage in that browser profile. */
 function simulateIdbKeyvalConnectAndTransact(idb: IDBFactory): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -353,8 +353,7 @@ describe('disconnectWalletConnect call site', () => {
     const { disconnectWalletConnect } = await import('../wallets/providers');
 
     // No provider has been created in this module instance — exactly the state after a page
-    // reload, which is the scenario the merge-gate finding describes (logout + reload, then the
-    // next visitor clicks WalletConnect).
+    // reload (logout + reload, then the next visitor clicks WalletConnect).
     await disconnectWalletConnect();
 
     expect(storage.clearWalletConnectIndexedDb).toHaveBeenCalledTimes(1);
