@@ -210,7 +210,7 @@ export default function ComplianceBankTxUnassignedScreen(): JSX.Element {
                             : 'px-4 py-3 text-left text-sm text-dfxBlue-800'
                         }
                       >
-                        {entry.creditDebitIndicator}
+                        {entry.creditDebitIndicator ?? '-'}
                       </td>
                       <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{entry.name ?? '-'}</td>
                       <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{entry.iban ?? '-'}</td>
