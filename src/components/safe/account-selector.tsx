@@ -1,8 +1,8 @@
+import { CustodyAccount } from '@dfx.swiss/react';
 import { Form, StyledDropdown } from '@dfx.swiss/react-components';
 import { useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { CustodyAccount } from 'src/dto/safe.dto';
 import { canActOn } from 'src/util/safe-account';
 
 interface AccountSelectorFormData {

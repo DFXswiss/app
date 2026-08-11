@@ -1,4 +1,4 @@
-import { Utils } from '@dfx.swiss/react';
+import { CustodyOrderHistory, CustodyOrderHistoryStatus, CustodyOrderType, Utils } from '@dfx.swiss/react';
 import {
   AlignContent,
   DfxAssetIcon,
@@ -9,7 +9,6 @@ import {
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { CustodyOrderHistory, CustodyOrderHistoryStatus, CustodyOrderType } from 'src/dto/order.dto';
 import { assetIconVariant } from 'src/util/asset-icon';
 import { formatSwissDateTime } from 'src/util/utils';
 

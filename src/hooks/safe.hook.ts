@@ -1,20 +1,5 @@
-import {
-  ApiError,
-  Asset,
-  Blockchain,
-  Fiat,
-  SignIn,
-  useApi,
-  useAssetContext,
-  useAuthContext,
-  useBuy,
-  useSessionContext,
-  useUser,
-  useUserContext,
-} from '@dfx.swiss/react';
+import { ApiError, Asset, Blockchain, CustodyAddressType, CustodyPdfQuery, CustodyValueCurrency, toCustodyAccountId, useCustody, CustodyAccount, CustodyAsset, CustodyBalance, CustodyHistory, CustodyHistoryEntry, CustodyOrder, CustodyOrderHistory, CustodyOrderType, Fiat, SignIn, useAssetContext, useAuthContext, useBuy, useSessionContext, useUser, useUserContext } from '@dfx.swiss/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CustodyOrderHistory, CustodyOrderType, OrderPaymentInfo } from 'src/dto/order.dto';
-import { CustodyAccount, CustodyAsset, CustodyBalance, CustodyHistory, CustodyHistoryEntry } from 'src/dto/safe.dto';
 import { canActOn, isOwnAccount } from 'src/util/safe-account';
 import { downloadPdfFromString } from 'src/util/utils';
 import { OrderFormData } from './order.hook';
@@ -46,7 +31,7 @@ export interface SendOrderFormData {
 
 export interface PdfDownloadParams {
   date: string;
-  currency: 'CHF' | 'EUR' | 'USD';
+  currency: CustodyValueCurrency;
 }
 
 export interface UseSafeResult {
@@ -74,11 +59,11 @@ export interface UseSafeResult {
   canTransact: boolean;
   selectAccount: (account: CustodyAccount) => void;
   setSelectedSourceAsset: (asset: string) => void;
-  fetchPaymentInfo: (data: OrderFormData) => Promise<OrderPaymentInfo>;
-  fetchReceiveInfo: (data: OrderFormData) => Promise<OrderPaymentInfo>;
-  fetchSwapInfo: (data: OrderFormData) => Promise<OrderPaymentInfo>;
-  fetchWithdrawInfo: (data: OrderFormData) => Promise<OrderPaymentInfo>;
-  fetchSendInfo: (data: SendOrderFormData) => Promise<OrderPaymentInfo>;
+  fetchPaymentInfo: (data: OrderFormData) => Promise<CustodyOrder>;
+  fetchReceiveInfo: (data: OrderFormData) => Promise<CustodyOrder>;
+  fetchSwapInfo: (data: OrderFormData) => Promise<CustodyOrder>;
+  fetchWithdrawInfo: (data: OrderFormData) => Promise<CustodyOrder>;
+  fetchSendInfo: (data: SendOrderFormData) => Promise<CustodyOrder>;
   confirmPayment: () => Promise<void>;
   confirmReceive: () => Promise<void>;
   confirmSwap: () => Promise<void>;
@@ -90,7 +75,7 @@ export interface UseSafeResult {
 }
 
 export function useSafe(): UseSafeResult {
-  const { call } = useApi();
+  const custody = useCustody();
   const { currencies } = useBuy();
   const { session } = useAuthContext();
   const { changeUserAddress } = useUser();
@@ -315,133 +300,117 @@ export function useSafe(): UseSafeResult {
 
   // ---- API Calls ----
 
+  /**
+   * Orders are placed against the custody address, not the address the caller signed in with.
+   * Without that token the request would go out as the session and be refused by the API, so
+   * fail here rather than there.
+   */
+  /**
+   * The API prices from one side or the other, never from both and never from neither. Deciding
+   * that here keeps a request that cannot be answered from going out at all.
+   */
+  function orderAmount(source?: string, target?: string): { sourceAmount: number } | { targetAmount: number } {
+    if (source) return { sourceAmount: Number(source) };
+    if (target) return { targetAmount: Number(target) };
+    throw new Error('Order needs an amount');
+  }
+
+  /** A withdrawal has to name the account it pays out to; the API rejects it otherwise. */
+  function withdrawalIban(iban?: string): string {
+    if (!iban) throw new Error('Withdrawal needs a bank account');
+    return iban;
+  }
+
+  function custodyToken(): string {
+    const token = tokenStore.get('custody');
+    if (!token) throw new Error('Custody session is not available');
+    return token;
+  }
+
   async function createCustodyUser(): Promise<SignIn> {
-    return call<SignIn>({
-      url: 'custody',
-      method: 'POST',
-      data: { addressType: 'EVM' },
-    });
+    return custody.signup({ addressType: CustodyAddressType.EVM });
   }
 
   async function getCustodyAccounts(): Promise<CustodyAccount[]> {
-    return call<CustodyAccount[]>({ url: 'custody/account', method: 'GET' });
+    return custody.getAccounts();
   }
 
   /**
-   * The legacy Safe appears in the account list flagged as such and without an id — it has no
-   * account row, so it is read through the plain endpoints. Treating it as an id would request
-   * `.../account/null/...` and break the screen for everyone still on legacy, which today is
-   * nearly everyone.
-   *
-   * No account at all means the list has not been resolved to one; the plain endpoints are the
+   * No account at all means the list has not been resolved to one; the plain endpoints read the
    * caller's own Safe, which is the closest thing to a correct answer and the pre-existing
    * behaviour. Acting is refused separately in that state (see canTransact).
    */
-  function accountPath(account: CustodyAccount | undefined, suffix: string, plain: string): string {
-    return account !== undefined && !account.isLegacy && account.id !== null
-      ? `custody/account/${account.id}/${suffix}`
-      : plain;
-  }
-
   async function getBalances(account?: CustodyAccount): Promise<CustodyBalance> {
-    return call<CustodyBalance>({ url: accountPath(account, 'balance', 'custody'), method: 'GET' });
+    return account ? custody.getAccountBalance(toCustodyAccountId(account)) : custody.getBalance();
   }
 
   async function getHistory(account?: CustodyAccount): Promise<CustodyHistory> {
-    return call<CustodyHistory>({ url: accountPath(account, 'history', 'custody/history'), method: 'GET' });
+    return account ? custody.getAccountHistory(toCustodyAccountId(account)) : custody.getHistory();
   }
 
   async function getOrderHistory(account?: CustodyAccount): Promise<CustodyOrderHistory[]> {
-    return call<CustodyOrderHistory[]>({ url: accountPath(account, 'order', 'custody/order'), method: 'GET' });
+    return account ? custody.getAccountOrders(toCustodyAccountId(account)) : custody.getOrders();
   }
 
-  async function fetchPaymentInfo(data: OrderFormData): Promise<OrderPaymentInfo> {
-    const order = await call<OrderPaymentInfo>({
-      url: 'custody/order',
-      method: 'POST',
-      data: {
+  async function fetchPaymentInfo(data: OrderFormData): Promise<CustodyOrder> {
+    const order = await custody.createOrder({
         type: CustodyOrderType.DEPOSIT,
         sourceAsset: data.sourceAsset.name,
         targetAsset: DEPOSIT_PAIRS[data.sourceAsset.name],
         sourceAmount: Number(data.sourceAmount),
         paymentMethod: data.paymentMethod,
-      },
-      token: tokenStore.get('custody'),
-    });
+      }, custodyToken());
 
     currentOrderId.current = order.orderId;
     return order;
   }
 
-  async function fetchReceiveInfo(data: OrderFormData): Promise<OrderPaymentInfo> {
-    const order = await call<OrderPaymentInfo>({
-      url: 'custody/order',
-      method: 'POST',
-      data: {
+  async function fetchReceiveInfo(data: OrderFormData): Promise<CustodyOrder> {
+    const order = await custody.createOrder({
         type: CustodyOrderType.RECEIVE,
         sourceAsset: data.sourceAsset.name,
         targetAsset: data.sourceAsset.name,
         sourceAmount: Number(data.sourceAmount),
-      },
-      token: tokenStore.get('custody'),
-    });
+      }, custodyToken());
 
     currentOrderId.current = order.orderId;
     return order;
   }
 
-  async function fetchSwapInfo(data: OrderFormData): Promise<OrderPaymentInfo> {
-    const order = await call<OrderPaymentInfo>({
-      url: 'custody/order',
-      method: 'POST',
-      data: {
+  async function fetchSwapInfo(data: OrderFormData): Promise<CustodyOrder> {
+    const order = await custody.createOrder({
         type: CustodyOrderType.SWAP,
         sourceAsset: data.sourceAsset.name,
         targetAsset: data.targetAsset.name,
-        sourceAmount: data.sourceAmount ? Number(data.sourceAmount) : undefined,
-        targetAmount: data.targetAmount ? Number(data.targetAmount) : undefined,
-      },
-      token: tokenStore.get('custody'),
-    });
+        ...orderAmount(data.sourceAmount, data.targetAmount),
+      }, custodyToken());
 
     currentOrderId.current = order.orderId;
     return order;
   }
 
-  async function fetchWithdrawInfo(data: OrderFormData): Promise<OrderPaymentInfo> {
-    const order = await call<OrderPaymentInfo>({
-      url: 'custody/order',
-      method: 'POST',
-      data: {
+  async function fetchWithdrawInfo(data: OrderFormData): Promise<CustodyOrder> {
+    const order = await custody.createOrder({
         type: CustodyOrderType.WITHDRAWAL,
         sourceAsset: data.sourceAsset.name,
         targetAsset: WITHDRAW_PAIRS[data.sourceAsset.name],
-        sourceAmount: data.sourceAmount ? Number(data.sourceAmount) : undefined,
-        targetAmount: data.targetAmount ? Number(data.targetAmount) : undefined,
-        targetIban: data.bankAccount?.iban,
-      },
-      token: tokenStore.get('custody'),
-    });
+        ...orderAmount(data.sourceAmount, data.targetAmount),
+        targetIban: withdrawalIban(data.bankAccount?.iban),
+      }, custodyToken());
 
     currentOrderId.current = order.orderId;
     return order;
   }
 
-  async function fetchSendInfo(data: SendOrderFormData): Promise<OrderPaymentInfo> {
-    const order = await call<OrderPaymentInfo>({
-      url: 'custody/order',
-      method: 'POST',
-      data: {
+  async function fetchSendInfo(data: SendOrderFormData): Promise<CustodyOrder> {
+    const order = await custody.createOrder({
         type: CustodyOrderType.SEND,
         sourceAsset: data.asset.name,
         targetAsset: data.asset.name,
-        sourceAmount: data.amount ? Number(data.amount) : undefined,
-        targetAmount: data.targetAmount ? Number(data.targetAmount) : undefined,
+        ...orderAmount(data.amount, data.targetAmount),
         targetAddress: data.address,
         targetBlockchain: data.asset.blockchain,
-      },
-      token: tokenStore.get('custody'),
-    });
+      }, custodyToken());
 
     currentOrderId.current = order.orderId;
     return order;
@@ -450,11 +419,8 @@ export function useSafe(): UseSafeResult {
   async function confirmPayment(): Promise<void> {
     if (!currentOrderId.current) return;
 
-    await call({
-      url: `custody/order/${currentOrderId.current}/confirm`,
-      method: 'POST',
-      token: tokenStore.get('custody'),
-    }).then(() => (currentOrderId.current = undefined));
+    await custody.confirmOrder(currentOrderId.current, custodyToken());
+    currentOrderId.current = undefined;
   }
 
   async function confirmReceive(): Promise<void> {
@@ -480,10 +446,10 @@ export function useSafe(): UseSafeResult {
       throw new Error('Accounts are still loading');
     }
 
-    const queryParams = new URLSearchParams({ currency: params.currency, date: params.date });
-    const pdfUrl = `${accountPath(selectedAccount, 'pdf', 'custody/pdf')}?${queryParams.toString()}`;
-
-    const response = await call<{ pdfData: string }>({ url: pdfUrl, method: 'GET' });
+    const query: CustodyPdfQuery = { currency: params.currency, date: new Date(params.date) };
+    const response = selectedAccount
+      ? await custody.getAccountPdf(toCustodyAccountId(selectedAccount), query)
+      : await custody.getPdf(query);
 
     const filename = `${params.date}_DFX_Safe_Balance_Report.pdf`;
     downloadPdfFromString(response.pdfData, filename);

@@ -1,4 +1,4 @@
-import { ApiError } from '@dfx.swiss/react';
+import { ApiError, CustodyValueCurrency } from '@dfx.swiss/react';
 import {
   DfxIcon,
   Form,
@@ -98,7 +98,7 @@ export default function SafeScreen(): JSX.Element {
     try {
       await downloadPdf({
         date: data.date,
-        currency: currency.toUpperCase() as 'CHF' | 'EUR' | 'USD',
+        currency: currency.toUpperCase() as CustodyValueCurrency,
       });
       closePdfModal();
     } catch (e) {

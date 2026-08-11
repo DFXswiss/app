@@ -1,9 +1,10 @@
+import { CustodyHistoryEntry } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
 import { ApexOptions } from 'apexcharts';
 import { useMemo, useState } from 'react';
 import Chart from 'react-apexcharts';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { CustodyHistoryEntry, FiatCurrency } from 'src/dto/safe.dto';
+import { FiatCurrency } from 'src/dto/safe.dto';
 import { getFromDateByTimeframe, Timeframe } from 'src/util/chart';
 import { ButtonGroup } from './button-group';
 

@@ -1,4 +1,4 @@
-import { ApiError, Asset, UserAddress, Utils, Validations, useUserContext } from '@dfx.swiss/react';
+import { ApiError, Asset, CustodyOrder, UserAddress, Utils, Validations, useUserContext } from '@dfx.swiss/react';
 import {
   AlignContent,
   Form,
@@ -16,7 +16,6 @@ import { useLayoutContext } from 'src/contexts/layout.context';
 import { useOrderUIContext } from 'src/contexts/order-ui.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useWindowContext } from 'src/contexts/window.context';
-import { OrderPaymentInfo } from 'src/dto/order.dto';
 import { SafeOperationType } from 'src/dto/safe.dto';
 import useDebounce from 'src/hooks/debounce.hook';
 import { useSafe } from 'src/hooks/safe.hook';
@@ -35,7 +34,7 @@ export const SendInterface = () => {
   const { sendableAssets, fetchSendInfo, confirmSend, portfolio, custodyBlockchains } = useSafe();
   const { setCompletionType } = useOrderUIContext();
 
-  const [quote, setQuote] = useState<OrderPaymentInfo>();
+  const [quote, setQuote] = useState<CustodyOrder>();
   const [isFetchingQuote, setIsFetchingQuote] = useState(false);
   const [error, setError] = useState<string>();
   const { user } = useUserContext();

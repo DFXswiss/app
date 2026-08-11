@@ -1,4 +1,4 @@
-import { Asset, Utils, Validations } from '@dfx.swiss/react';
+import { Asset, CustodyOrder, Utils, Validations } from '@dfx.swiss/react';
 import {
   AlignContent,
   CopyButton,
@@ -18,7 +18,6 @@ import { useForm } from 'react-hook-form';
 import { useOrderUIContext } from 'src/contexts/order-ui.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useWindowContext } from 'src/contexts/window.context';
-import { OrderPaymentInfo } from 'src/dto/order.dto';
 import { SafeOperationType } from 'src/dto/safe.dto';
 import { useBlockchain } from 'src/hooks/blockchain.hook';
 import useDebounce from 'src/hooks/debounce.hook';
@@ -75,7 +74,7 @@ export const ReceiveInterface = () => {
       bankAccount: undefined,
       address: undefined,
     })
-      .then((response: OrderPaymentInfo) => {
+      .then((response: CustodyOrder) => {
         if (!response.paymentInfo.paymentRequest) throw new Error('No payment request received');
         setReceiveAddress(Evm.decodeUri(response.paymentInfo.paymentRequest)?.address);
       })

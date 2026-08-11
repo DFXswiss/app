@@ -1,4 +1,8 @@
-import { CustodyAccount } from 'src/dto/safe.dto';
+jest.mock('@dfx.swiss/react', () => ({
+  CustodyAccessLevel: { READ: 'Read', WRITE: 'Write' },
+}));
+
+import { CustodyAccessLevel, CustodyAccount } from '@dfx.swiss/react';
 import { canActOn } from '../safe-account';
 
 /**
@@ -12,30 +16,31 @@ describe('canActOn', () => {
       id: 1,
       title: 'Safe',
       isLegacy: false,
-      accessLevel: 'Write',
+      accessLevel: CustodyAccessLevel.WRITE,
+      isOwner: true,
       ...overrides,
     };
   }
 
   it('allows acting on an own account with write access', () => {
-    expect(canActOn(account({ accessLevel: 'Write' }))).toBe(true);
+    expect(canActOn(account({ accessLevel: CustodyAccessLevel.WRITE }))).toBe(true);
   });
 
   it('refuses acting on an own account the owner narrowed to read', () => {
-    expect(canActOn(account({ accessLevel: 'Read' }))).toBe(false);
+    expect(canActOn(account({ accessLevel: CustodyAccessLevel.READ }))).toBe(false);
   });
 
   it('refuses acting on a foreign account held by inspection only', () => {
-    expect(canActOn(account({ accessLevel: 'Read', owner: { id: 42 } }))).toBe(false);
+    expect(canActOn(account({ accessLevel: CustodyAccessLevel.READ, isOwner: false, owner: { id: 42 } }))).toBe(false);
   });
 
   it('refuses acting on a foreign account even with a write mandate', () => {
     // The case this predicate exists for. Orders carry no account, so acting here would book
     // against the caller's own Safe while the screen names someone else's.
-    expect(canActOn(account({ accessLevel: 'Write', owner: { id: 42 } }))).toBe(false);
+    expect(canActOn(account({ accessLevel: CustodyAccessLevel.WRITE, isOwner: false, owner: { id: 42 } }))).toBe(false);
   });
 
   it("allows acting on the legacy Safe, which is the caller's own by definition", () => {
-    expect(canActOn(account({ id: null, isLegacy: true, accessLevel: 'Write', owner: { id: 7 } }))).toBe(true);
+    expect(canActOn(account({ id: null, isLegacy: true, accessLevel: CustodyAccessLevel.WRITE, owner: { id: 7 } }))).toBe(true);
   });
 });

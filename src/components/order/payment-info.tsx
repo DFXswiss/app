@@ -1,14 +1,4 @@
-import {
-  Asset,
-  AssetCategory,
-  Fiat,
-  FiatPaymentMethod,
-  Sell,
-  Swap,
-  TransactionError,
-  TransactionType,
-  useBankAccountContext,
-} from '@dfx.swiss/react';
+import { Asset, AssetCategory, CustodyOrderPaymentInfo, Fiat, FiatPaymentMethod, Sell, Swap, TransactionError, TransactionType, useBankAccountContext } from '@dfx.swiss/react';
 import {
   SpinnerSize,
   StyledButton,
@@ -24,7 +14,6 @@ import { CloseType, useAppHandlingContext } from 'src/contexts/app-handling.cont
 import { useOrderUIContext } from 'src/contexts/order-ui.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useWalletContext } from 'src/contexts/wallet.context';
-import { OrderPaymentData } from 'src/dto/order.dto';
 import { useAppParams } from 'src/hooks/app-params.hook';
 import { AmountError, OrderType } from 'src/hooks/order.hook';
 import { useTxHelper } from 'src/hooks/tx-helper.hook';
@@ -39,7 +28,7 @@ export interface PaymentInfoProps {
   className?: string;
   orderType: OrderType;
   isLoading: boolean;
-  paymentInfo?: OrderPaymentData;
+  paymentInfo?: CustodyOrderPaymentInfo;
   paymentMethod?: FiatPaymentMethod;
   sourceAsset: Asset | Fiat;
   targetAsset: Asset | Fiat;
@@ -91,7 +80,7 @@ export const PaymentInfo = React.memo(function PaymentInfoComponent({
     [sourceAsset, targetAsset],
   );
 
-  function onCardBuy(info: OrderPaymentData) {
+  function onCardBuy(info: CustodyOrderPaymentInfo) {
     if (info.error === TransactionError.NAME_REQUIRED) {
       setPaymentNameForm(true);
     } else if (info?.buyInfos?.paymentLink && info.isValid) {

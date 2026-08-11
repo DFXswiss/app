@@ -1,9 +1,8 @@
-import { useSessionContext } from '@dfx.swiss/react';
+import { CustodyOrderStatus, CustodyOrderType, useSessionContext } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { useCallback, useEffect, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { CustodyOrderListEntry } from 'src/dto/order.dto';
-import { CustodyOrderStatus, CustodyOrderType } from 'src/dto/order.dto';
 import { useCompliance } from 'src/hooks/compliance.hook';
 import { useAdminGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';

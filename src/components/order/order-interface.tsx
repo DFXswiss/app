@@ -1,13 +1,4 @@
-import {
-  Asset,
-  Blockchain,
-  Fiat,
-  FiatPaymentMethod,
-  useAuthContext,
-  useFiat,
-  Utils,
-  Validations,
-} from '@dfx.swiss/react';
+import { Asset, Blockchain, CustodyOrder, Fiat, FiatPaymentMethod, Utils, Validations, useAuthContext, useFiat } from '@dfx.swiss/react';
 import {
   Form,
   StyledButton,
@@ -23,7 +14,6 @@ import { useLayoutContext } from 'src/contexts/layout.context';
 import { useOrderUIContext } from 'src/contexts/order-ui.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useWindowContext } from 'src/contexts/window.context';
-import { OrderPaymentInfo } from 'src/dto/order.dto';
 import { useAppParams } from 'src/hooks/app-params.hook';
 import useDebounce from 'src/hooks/debounce.hook';
 import { OrderFormData, OrderType, Side, useOrder } from 'src/hooks/order.hook';
@@ -48,7 +38,7 @@ interface OrderInterfaceProps {
   defaultValues?: Partial<OrderFormData>;
   hideAddressSelection?: boolean;
   pairMap?: (asset: string) => Asset | Fiat | undefined;
-  onFetchPaymentInfo: (data: OrderFormData) => Promise<OrderPaymentInfo>;
+  onFetchPaymentInfo: (data: OrderFormData) => Promise<CustodyOrder>;
   confirmPayment: () => Promise<void>;
   confirmButtonLabel?: string;
   balanceFunc?: (asset: Asset) => string;

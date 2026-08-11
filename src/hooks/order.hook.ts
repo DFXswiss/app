@@ -1,23 +1,10 @@
-import {
-  ApiError,
-  Asset,
-  BankAccount,
-  Blockchain,
-  Fiat,
-  FiatPaymentMethod,
-  TransactionError,
-  useAuthContext,
-  useBuy,
-  useUserContext,
-  Utils,
-} from '@dfx.swiss/react';
+import { ApiError, Asset, BankAccount, Blockchain, CustodyOrder, CustodyOrderPaymentInfo, Fiat, FiatPaymentMethod, TransactionError, Utils, useAuthContext, useBuy, useUserContext } from '@dfx.swiss/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { UseFormSetValue } from 'react-hook-form';
 import { addressLabel } from 'src/config/labels';
 import { useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { AssetBalance } from 'src/contexts/balance.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { OrderPaymentData, OrderPaymentInfo } from 'src/dto/order.dto';
 import { deepEqual } from 'src/util/utils';
 import { useAppParams } from './app-params.hook';
 import { useBlockchain } from './blockchain.hook';
@@ -75,7 +62,7 @@ export interface UseOrderResult {
   targetAssets?: Asset[] | Fiat[];
   addressItems: Address[];
   cryptoBalances: AssetBalance[];
-  paymentInfo?: OrderPaymentInfo;
+  paymentInfo?: CustodyOrder;
   isFetchingPaymentInfo: boolean;
   lastEditedFieldRef: React.MutableRefObject<Side>;
   paymentInfoError?: string;
@@ -86,7 +73,7 @@ export interface UseOrderResult {
   getAvailablePaymentMethods: (targetAsset?: Asset) => FiatPaymentMethod[];
   handlePaymentInfoFetch: (
     debouncedData: OrderFormData,
-    onFetchPaymentInfo: (data: OrderFormData) => Promise<OrderPaymentInfo>,
+    onFetchPaymentInfo: (data: OrderFormData) => Promise<CustodyOrder>,
     setValue: UseFormSetValue<OrderFormData>,
   ) => void;
 }
@@ -104,7 +91,7 @@ export function useOrder({ orderType, sourceAssets, targetAssets }: UseOrderPara
 
   const [selectedAddress, setSelectedAddress] = useState<Address>();
   const [cryptoBalances, setCryptoBalances] = useState<AssetBalance[]>([]);
-  const [paymentInfo, setPaymentInfo] = useState<OrderPaymentInfo>();
+  const [paymentInfo, setPaymentInfo] = useState<CustodyOrder>();
   const [isFetchingPaymentInfo, setIsFetchingPaymentInfo] = useState(false);
   const [paymentInfoError, setPaymentInfoError] = useState<string>();
   const [amountError, setAmountError] = useState<AmountError>();
@@ -193,7 +180,7 @@ export function useOrder({ orderType, sourceAssets, targetAssets }: UseOrderPara
   const handlePaymentInfoFetch = useCallback(
     (
       debouncedData: OrderFormData,
-      onFetchPaymentInfo: (data: OrderFormData) => Promise<OrderPaymentInfo>,
+      onFetchPaymentInfo: (data: OrderFormData) => Promise<CustodyOrder>,
       setValue: UseFormSetValue<OrderFormData>,
     ) => {
       let isRunning = true;
@@ -261,7 +248,7 @@ export function useOrder({ orderType, sourceAssets, targetAssets }: UseOrderPara
 
   // ---- Validate fetched order ----
 
-  function validateOrder(order: OrderPaymentData): void {
+  function validateOrder(order: CustodyOrderPaymentInfo): void {
     setAmountError(undefined);
     setKycError(undefined);
 

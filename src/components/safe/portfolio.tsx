@@ -1,3 +1,4 @@
+import { CustodyAssetBalance } from '@dfx.swiss/react';
 import {
   AlignContent,
   AssetIconSize,
@@ -9,7 +10,7 @@ import {
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { CustodyAssetBalance, FiatCurrency } from 'src/dto/safe.dto';
+import { FiatCurrency } from 'src/dto/safe.dto';
 import { assetIconVariant } from 'src/util/asset-icon';
 import { formatCurrency } from 'src/util/utils';
 
