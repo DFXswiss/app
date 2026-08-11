@@ -1817,9 +1817,15 @@ async function deleteRowAndDescendants(
 
     const col = needsQuote(fk.column) ? `"${fk.column}"` : fk.column;
 
-    // (ii) Child has a PK that is not exactly `{ id }` — not a safe leaf and not addressable.
+    // (ii) Child has a PK that is not exactly `{ id }` AND is itself referenced by something else.
+    // Only that combination is unresolvable: the table has descendants, and they cannot be found
+    // without addressing its rows by id. A composite-key table nothing points at — a plain join
+    // table like mros_transactions_transaction — has no descendants to lose, so it is a leaf and
+    // falls through to (iii), which deletes its rows by the foreign key column. Keying this on the
+    // schema alone would report an error for every transaction ever cleaned up, while nothing was
+    // actually left behind.
     // Report once per distinct table (not per FK column) and skip all DELETE attempts for it.
-    if (tableKeyInfo.nonIdPrimaryKey.has(fk.table)) {
+    if (tableKeyInfo.nonIdPrimaryKey.has(fk.table) && childrenByReferencedTable.has(fk.table)) {
       if (!reportedNonIdPrimaryKeyTables.has(fk.table)) {
         reportedNonIdPrimaryKeyTables.add(fk.table);
         errors.push(
@@ -1832,8 +1838,9 @@ async function deleteRowAndDescendants(
       continue;
     }
 
-    // (iii) Child has no primary key at all: true leaf. Parent-side check above already passed
-    // (FK targets `id`). Delete by FK column and stop — nothing can reference these rows by id.
+    // (iii) Child cannot be addressed by id — no primary key, or a composite one nothing references
+    // (case (ii) already caught the referenced ones). Either way it is a leaf: parent-side check
+    // above passed, so delete its rows by the foreign key column and stop.
     if (!tableKeyInfo.idAddressable.has(fk.table)) {
       try {
         await withDb(async (client) => {

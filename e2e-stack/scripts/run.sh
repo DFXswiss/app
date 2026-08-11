@@ -24,10 +24,22 @@ log_info "Running e2e tests..."
 # (--reporter, --workers, …) do not filter which specs run and must not drop the full-run check.
 # A filtered run instead only gets the gate's ownership check (route-coverage.spec.ts, the
 # `E2E_FULL_RUN !== '1'` branch), which prints that loudly instead of claiming coverage.
+# Flags that take their value as the NEXT argument. Without skipping that value, `--workers 1`
+# would leave a bare `1` to be read as a positional spec pattern, and a genuinely complete run
+# would lose the full-run check - the opposite of the mistake this function exists to prevent.
 is_filtered_run() {
+  local skip_value=0
   for arg in "$@"; do
+    if [[ $skip_value -eq 1 ]]; then
+      skip_value=0
+      continue
+    fi
     case "$arg" in
-      --grep|--grep=*|--grep-invert|--grep-invert=*) return 0 ;;
+      --grep|--grep-invert) return 0 ;;
+      --grep=*|--grep-invert=*) return 0 ;;
+      --workers|--reporter|--project|--timeout|--repeat-each|--retries|--shard|--output|--max-failures|--config|-j|-c)
+        skip_value=1
+        ;;
       -*) ;;
       *) return 0 ;;
     esac
