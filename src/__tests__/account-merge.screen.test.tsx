@@ -95,10 +95,33 @@ describe('AccountMerge', () => {
     render(<AccountMerge />);
 
     expect(await screen.findByText('Account merged successfully!', {}, { timeout: POLL_TIMEOUT })).toBeInTheDocument();
-    expect(mockCall).toHaveBeenCalledWith({ url: 'job/job-uid', method: 'GET' });
+    expect(mockCall).toHaveBeenCalledWith({ url: 'job/job-uid', method: 'GET', token: false });
     // The access token is only issued in the HTTP context, so the result has to be fetched again.
     expect(mergeCalls()).toBe(2);
     expect(mockSetAuthToken).toHaveBeenCalledWith('token');
+  });
+
+  // The job belongs to the merge's master while the caller is still signed in as the slave, so
+  // sending the session token makes the API reject its own caller with a 404. The merge call itself
+  // must keep its token — that is what the fresh access token is issued from.
+  it('polls the job unauthenticated but keeps the session token on the merge call', async () => {
+    respondWith({
+      merge: [
+        { ...JOB, status: JobStatus.PENDING },
+        { kycHash: 'hash', accessToken: 'token' },
+      ],
+      jobs: [{ ...JOB, status: JobStatus.COMPLETE }],
+    });
+
+    render(<AccountMerge />);
+    await screen.findByText('Account merged successfully!', {}, { timeout: POLL_TIMEOUT });
+
+    const [jobCall] = mockCall.mock.calls.map(([c]) => c).filter((c) => c.url.startsWith('job/'));
+    const mergeCallConfigs = mockCall.mock.calls.map(([c]) => c).filter((c) => c.url.startsWith(MERGE_URL));
+
+    expect(jobCall.token).toBe(false);
+    expect(mergeCallConfigs).toHaveLength(2);
+    mergeCallConfigs.forEach((c) => expect(c.token).toBeUndefined());
   });
 
   it('skips polling when the 202 ticket is already complete', async () => {
@@ -118,7 +141,7 @@ describe('AccountMerge', () => {
 
     render(<AccountMerge />);
 
-    await waitFor(() => expect(mockCall).toHaveBeenCalledWith({ url: 'job/job-uid', method: 'GET' }), {
+    await waitFor(() => expect(mockCall).toHaveBeenCalledWith({ url: 'job/job-uid', method: 'GET', token: false }), {
       timeout: POLL_TIMEOUT,
     });
     expect(screen.getByText('Merging your accounts...')).toBeInTheDocument();

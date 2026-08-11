@@ -78,9 +78,16 @@ export default function AccountMerge() {
 
     // 202: the merge outran the endpoint's wait window and continues as a job. A ticket that already
     // carries a terminal status is returned unpolled, so this covers that case too.
-    const job = await pollJobUntilTerminal(response, (uid) => call<JobResponse>({ url: `job/${uid}`, method: 'GET' }), {
-      isCancelled: () => isCancelled.current,
-    });
+    //
+    // Polled with `token: false`, i.e. deliberately unauthenticated. The job belongs to the merge's
+    // master account, while whoever follows the confirmation link is still signed in as the slave —
+    // sending that session token makes the API's ownership check reject its own caller with a 404.
+    // The uid is the proof of ownership here, the same trust level as the link that created the job.
+    const job = await pollJobUntilTerminal(
+      response,
+      (uid) => call<JobResponse>({ url: `job/${uid}`, method: 'GET', token: false }),
+      { isCancelled: () => isCancelled.current },
+    );
 
     if (job.status !== JobStatus.COMPLETE) throw mergeJobError(job);
 
