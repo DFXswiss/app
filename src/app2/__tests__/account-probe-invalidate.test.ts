@@ -109,8 +109,8 @@ const cardano = 'addr1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlhxxxxxxxxxxxxxxxxxxx
 describe('shouldInvalidateOnAccountProbe', () => {
   it('forces logout when eth_accounts returns a different present account on an injected-EVM session', () => {
     expect(shouldInvalidateOnAccountProbe(jwt, [other], true)).toBe(true);
-    // Default keeps prior EVM-only callers working.
-    expect(shouldInvalidateOnAccountProbe(jwt, [other])).toBe(true);
+    // Same mismatch without an injected-EVM association must not invalidate (fail-closed).
+    expect(shouldInvalidateOnAccountProbe(jwt, [other], false)).toBe(false);
   });
 
   it('does not force logout on an empty account list (locked / permission revoked)', () => {
