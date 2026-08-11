@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 const mockCall = jest.fn();
@@ -126,6 +126,30 @@ describe('AccountMerge', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  // Budget spent while the job is still running: it may yet succeed, so the user is told to come
+  // back rather than that the merge failed. expectedSeconds 0 exhausts the budget immediately.
+  it('tells the user to come back later when the job outlasts its budget', async () => {
+    respondWith({ merge: [{ ...JOB, expectedSeconds: 0, status: JobStatus.PENDING }] });
+
+    render(<AccountMerge />);
+
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith({
+        pathname: '/error',
+        search: 'msg=Merging your accounts is taking longer than expected. Please try again later.',
+      }),
+    );
+  });
+
+  it('sends the user to their account with the kycHash', async () => {
+    respondWith({ merge: [{ kycHash: 'hash', accessToken: 'token' }] });
+
+    render(<AccountMerge />);
+    fireEvent.click(await screen.findByRole('button', { name: 'My account' }));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/account?code=hash');
+  });
+
   it('reports a failed job with the message the API supplied', async () => {
     respondWith({
       merge: [{ ...JOB, status: JobStatus.FAILED, error: 'Job job-uid failed, contact support if this persists.' }],
@@ -158,6 +182,59 @@ describe('AccountMerge', () => {
     render(<AccountMerge />);
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/error', search: 'msg=Invalid link' }));
+  });
+
+  it('maps a 409 to the already-completed message', async () => {
+    respondWith({ merge: [Object.assign(new Error('nope'), { statusCode: 409 })] });
+
+    render(<AccountMerge />);
+
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/error', search: 'msg=Merge is already completed' }),
+    );
+  });
+
+  it('passes through an error it has no mapping for', async () => {
+    respondWith({ merge: [Object.assign(new Error('Network error: down'), { statusCode: 500 })] });
+
+    render(<AccountMerge />);
+
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/error', search: 'msg=Network error: down' }),
+    );
+  });
+
+  // The result call answering with another ticket would mean the merge un-completed itself; report
+  // it rather than handing the render an object with no kycHash.
+  it('reports a failure when the result call returns another ticket', async () => {
+    respondWith({
+      merge: [
+        { ...JOB, status: JobStatus.PENDING },
+        { ...JOB, status: JobStatus.FAILED, error: 'Job job-uid failed' },
+      ],
+      jobs: [{ ...JOB, status: JobStatus.COMPLETE }],
+    });
+
+    render(<AccountMerge />);
+
+    await waitFor(
+      () => expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/error', search: 'msg=Job job-uid failed' }),
+      { timeout: POLL_TIMEOUT },
+    );
+  });
+
+  it('stays silent when the screen unmounts before the merge fails', async () => {
+    let rejectMerge!: (error: unknown) => void;
+    mockCall.mockImplementation(() => new Promise((_, reject) => (rejectMerge = reject)));
+
+    const { unmount } = render(<AccountMerge />);
+    unmount();
+
+    await act(async () => {
+      rejectMerge(Object.assign(new Error('nope'), { statusCode: 400 }));
+    });
+
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   // setAuthToken writes global auth context, not component state, so a merge that lands after the

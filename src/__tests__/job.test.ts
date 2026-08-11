@@ -136,4 +136,28 @@ describe('pollJobUntilTerminal', () => {
     expect(result.status).toBe(JobStatus.PENDING);
     expect(fetchJob).not.toHaveBeenCalled();
   });
+
+  // Cancellation that lands while the interval is being waited out must stop the next request,
+  // not just the next loop pass.
+  it('stops before fetching when cancellation lands during the wait', async () => {
+    const fetchJob = jest.fn();
+    let checks = 0;
+
+    const result = await pollJobUntilTerminal(job(JobStatus.PENDING), fetchJob, {
+      intervalSeconds: 0,
+      isCancelled: () => checks++ > 0,
+    });
+
+    expect(result.status).toBe(JobStatus.PENDING);
+    expect(fetchJob).not.toHaveBeenCalled();
+  });
+
+  it('falls back to its own interval and cancellation defaults when given no options', async () => {
+    const fetchJob = jest.fn().mockResolvedValue(job(JobStatus.COMPLETE));
+
+    const result = await pollJobUntilTerminal(job(JobStatus.PENDING), fetchJob);
+
+    expect(result.status).toBe(JobStatus.COMPLETE);
+    expect(fetchJob).toHaveBeenCalledTimes(1);
+  });
 });
