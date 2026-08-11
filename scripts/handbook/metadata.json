@@ -139,6 +139,10 @@
     "title": "Support-Dashboard Übersicht",
     "description": "Support-Dashboard-Übersicht und Statistiken."
   },
+  "partner-dashboard": {
+    "title": "Partner-Dashboard",
+    "description": "Non-Custodial Partner Program: geladenes Dashboard (Light/Dark), Fehlerzustand und leerer Datenzustand."
+  },
   "subpage": {
     "title": "Unterseiten",
     "description": "Buy-, Sell-, Swap- und Transaktions-Unterseiten."

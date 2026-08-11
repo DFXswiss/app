@@ -29,7 +29,43 @@ export function useSupportDashboardGuard(redirectPath = '/', isActive = true) {
   useUserRoleGuard(SUPPORT_DASHBOARD_ROLES, redirectPath, isActive);
 }
 
-function useUserRoleGuard(requiresUserRoles: UserRole[], redirectPath = '/', isActive = true) {
+/**
+ * API role name for the partner dashboard (`NonCustodialWalletPartner`).
+ *
+ * BEFUND: `@dfx.swiss/core` (re-exported by `@dfx.swiss/react`) has no
+ * `UserRole.NonCustodialWalletPartner` member — the enum ends at `MONITORING`.
+ * The product role on the API is `"NonCustodialWalletPartner"`. Until the package
+ * ships the enum member, this allow-list holds the runtime role string; access
+ * checks use `isPartnerDashboardRole` (string equality on `session.role`).
+ * No cast onto `UserRole`. The value must stay character-identical to the API enum.
+ */
+export const PARTNER_DASHBOARD_ROLES = ['NonCustodialWalletPartner'] as const;
+
+export function isPartnerDashboardRole(role: UserRole | string | undefined): boolean {
+  if (role == null) return false;
+  const value = String(role);
+  for (const allowed of PARTNER_DASHBOARD_ROLES) {
+    if (value === allowed) return true;
+  }
+  return false;
+}
+
+export function usePartnerDashboardGuard(redirectPath = '/', isActive = true) {
+  const { isLoggedIn } = useSessionContext();
+  const { isInitialized } = useWalletContext();
+  const { navigate } = useNavigation();
+  const { session } = useAuthContext();
+
+  useEffect(() => {
+    if (isActive && isInitialized && (!isLoggedIn || (session && !isPartnerDashboardRole(session.role)))) {
+      navigate(redirectPath, { setRedirect: true });
+    }
+  }, [session, isLoggedIn, isInitialized, navigate, isActive, redirectPath]);
+}
+
+// Defaults removed: every caller passes redirectPath and isActive explicitly.
+// Keeping defaults left two unreachable branches and blocked 100 % branch coverage.
+function useUserRoleGuard(requiresUserRoles: UserRole[], redirectPath: string, isActive: boolean) {
   const { isLoggedIn } = useSessionContext();
   const { isInitialized } = useWalletContext();
   const { navigate } = useNavigation();
@@ -39,7 +75,9 @@ function useUserRoleGuard(requiresUserRoles: UserRole[], redirectPath = '/', isA
     if (isActive && isInitialized && (!isLoggedIn || (session && !requiresUserRoles.includes(session.role)))) {
       navigate(redirectPath, { setRedirect: true });
     }
-  }, [session, isLoggedIn, isInitialized, navigate, isActive]);
+  // requiresUserRoles is a stable allow-list from the caller (module const or inline
+  // literal); listing it would re-fire every render for `[UserRole.ADMIN]` callers.
+  }, [session, isLoggedIn, isInitialized, navigate, isActive, redirectPath]);
 }
 
 function useSessionGuard(requireActiveAddress: boolean, redirectPath: string, isActive: boolean) {

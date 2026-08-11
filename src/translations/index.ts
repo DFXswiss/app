@@ -6,15 +6,21 @@ import fr from './languages/fr.json';
 import it from './languages/it.json';
 
 export function setupLanguages() {
+  if (i18n.isInitialized) return;
+
   i18n
     .use(initReactI18next)
     .use(LanguageDetector)
     .init({
       resources: {
+        // English UI strings are the keys themselves (defaultValue); empty
+        // bundle keeps fallbackLng / changeLanguage('en') valid for i18next.
+        en: { translation: {} },
         de: { translation: de },
         fr: { translation: fr },
         it: { translation: it },
       },
+      fallbackLng: 'en',
       interpolation: {
         escapeValue: false,
       },

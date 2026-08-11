@@ -193,7 +193,8 @@
       "node_modules/(?!(@dfx.swiss|@scure|@noble|@solana|bitcoinjs-lib|bitcoinjs-message|tronweb|tweetnacl)/)"
     ],
     "testPathIgnorePatterns": [
-      "/node_modules/"
+      "/node_modules/",
+      "<rootDir>/src/__tests__/helpers/"
     ],
     "setupFilesAfterEnv": [
       "<rootDir>/src/setupTests.ts"

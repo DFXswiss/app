@@ -4,6 +4,8 @@
 // learn more: https://github.com/testing-library/jest-dom
 import '@testing-library/jest-dom';
 import { configure } from '@testing-library/react';
+import i18n from 'i18next';
+import { setupLanguages } from './translations';
 
 // Jest defaults to maxWorkers = CPU cores - 1 (17 workers on 18 cores); under that load a
 // worker can go without CPU time for over a second at times.
@@ -19,3 +21,9 @@ configure({ asyncUtilTimeout: 5000 });
 // 5000 ms" and no diagnostic detail. react-scripts does not accept testTimeout in the jest
 // section of package.json (supportedKeys in createJestConfig.js omits it), so set it here.
 jest.setTimeout(15000);
+
+
+// Partner dashboard (and any useTranslation consumer) needs the same i18n init as the app.
+// Force English so tests assert on the English base keys/defaults, not the host browser language.
+setupLanguages();
+void i18n.changeLanguage('en');
