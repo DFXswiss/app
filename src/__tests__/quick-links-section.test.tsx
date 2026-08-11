@@ -3,7 +3,12 @@
 
 const mockNavigate = jest.fn();
 
-jest.mock('src/dto/safe.dto', () => ({}));
+// The component only needs `todayAsString` from the helpers. Loading the real module pulls in
+// src/util/utils.ts and from there `@dfx.swiss/react`, whose dist is ESM and is not transformed
+// for node_modules - the suite would fail on `Unexpected token 'export'` before any test runs.
+jest.mock('src/util/compliance-helpers', () => ({
+  todayAsString: () => '2026-08-11',
+}));
 
 jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_ns: string, key: string) => key }),
