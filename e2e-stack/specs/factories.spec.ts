@@ -9,7 +9,7 @@
 
 import { test, expect } from '@playwright/test';
 import { required } from './fixtures';
-import { queryOne } from './fixtures/db';
+import { queryOne, withDb } from './fixtures/db';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -26,6 +26,7 @@ import {
   createTransaction,
   createUser,
   TEST_IBAN,
+  trackRow,
 } from './fixtures/factories';
 
 test.describe.configure({ mode: 'serial' });
@@ -33,6 +34,21 @@ test.describe.configure({ mode: 'serial' });
 test.describe('e2e factories', () => {
   test.afterAll(async () => {
     await cleanupCreatedData();
+  });
+
+  test('trackRow rejects invalid ids before registering cleanup data', () => {
+    const invalidIds: Array<{ label: string; value: number }> = [
+      { label: 'zero', value: 0 },
+      { label: 'negative', value: -7 },
+      { label: 'string', value: 'not-an-id' as unknown as number },
+    ];
+
+    for (const { label, value } of invalidIds) {
+      expect(
+        () => trackRow('table_that_does_not_exist_for_require_id_test', value),
+        `${label} id must be rejected`,
+      ).toThrow(/expected a finite positive integer/);
+    }
   });
 
   test('createUser registers a wallet user and optional KYC level', async () => {
@@ -253,5 +269,74 @@ test.describe('e2e factories', () => {
       [entry.userDataId],
     );
     expect(row?.phoneCallStatus).toBe('Unavailable');
+  });
+
+  // The raw inserts below bypass createTransaction() on purpose, and that is the whole point of the
+  // test: every factory tracks each row it writes, so a chain built through them would be deleted
+  // by its own top-level registrations even if the recursion were broken. Writing the children
+  // directly reproduces what the application does in production — rows appear under a tracked row
+  // that no test registered — and only the descent into the foreign keys can remove them.
+  //
+  // Last test in the block by necessity: it calls cleanupCreatedData() itself, which empties the
+  // process-wide registry that the earlier tests share.
+  test('cleanup recursively deletes untracked database children of a tracked user', async () => {
+    const user = await createUser({ tag: 'spec-recursive-cleanup' });
+
+    const { transactionId, bankTxId } = await withDb(async (client) => {
+      const transactionInsert = await client.query<{ id: number }>(
+        `INSERT INTO transaction
+           ("sourceType", type, uid, "amountInChf", assets, "amlCheck", "userId", "userDataId", "eventDate", "outputDate")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id`,
+        [
+          'BankTx',
+          'BuyCrypto',
+          `T${String(user.userId).padStart(16, '0')}`,
+          100,
+          'CHF',
+          'Pass',
+          user.userId,
+          user.userDataId,
+          new Date(),
+          new Date(),
+        ],
+      );
+      const transactionId = required(
+        transactionInsert.rows[0],
+        'raw transaction insert must return an id',
+      ).id;
+
+      const bankTxInsert = await client.query<{ id: number }>(
+        `INSERT INTO bank_tx
+           ("accountServiceRef", amount, currency, "creditDebitIndicator", iban, type,
+            "bookingDate", "valueDate", "transactionId", name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id`,
+        [
+          `e2e-recursive-cleanup-${transactionId}`,
+          100,
+          'CHF',
+          'CRDT',
+          TEST_IBAN,
+          'BuyCrypto',
+          new Date(),
+          new Date(),
+          transactionId,
+          'E2E Recursive Cleanup',
+        ],
+      );
+      const bankTxId = required(bankTxInsert.rows[0], 'raw bank_tx insert must return an id').id;
+
+      return { transactionId, bankTxId };
+    });
+
+    await cleanupCreatedData();
+
+    const transaction = await queryOne<{ id: number }>(`SELECT id FROM transaction WHERE id = $1`, [
+      transactionId,
+    ]);
+    const bankTx = await queryOne<{ id: number }>(`SELECT id FROM bank_tx WHERE id = $1`, [bankTxId]);
+    expect(transaction).toBeUndefined();
+    expect(bankTx).toBeUndefined();
   });
 });

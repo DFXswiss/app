@@ -170,7 +170,7 @@ the "level 50 but no limit granted" case instead.
 |                   |                                                                                       |
 | ----------------- | ------------------------------------------------------------------------------------- |
 | **Path**          | API `POST /v1/support/issue`                                                          |
-| **Returns**       | `{ supportIssueId?, uid, messageId? }`                                                |
+| **Returns**       | `{ supportIssueId, uid, messageId? }`                                                 |
 | **Options**       | `type` (default `GenericIssue`), `reason` (default `Other`), `name`, `message`, `tag` |
 | **Preconditions** | User must have **mail** (factory sets it if missing)                                  |
 
@@ -220,6 +220,10 @@ Deletes every row tracked during this process (`{ table, id }`) in reverse creat
 
 ### Helpers
 
+- `requireId` validates every create-response id and every id passed to `track()` / `trackRow()`.
+  It throws unless the value is a positive integer, so a successful API response with a missing
+  or invalid id cannot register a nonexistent cleanup row or let a test assert against data that
+  was never written.
 - `requireUnusedDeposit(blockchain)` — throws if no free deposit.
 - `ensurePersonalDataComplete(userDataId)` — SQL fill for `isDataComplete`.
 - `e2eMail(tag?)`, `TEST_IBAN`, `resetFactoryCounter()`.

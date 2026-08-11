@@ -16,7 +16,12 @@ import * as path from 'path';
 import * as ts from 'typescript';
 import { expect, test } from '@playwright/test';
 import type { RouteClaim } from './registry/types';
-import { readVisitedRoutes, routeMatches, specClaimName, visitedRoutesPath } from './fixtures/routes';
+import {
+  evaluateClaimedRouteVisits,
+  readVisitedRoutes,
+  specClaimName,
+  visitedRoutesPath,
+} from './fixtures/routes';
 
 const APP_SOURCE_PATH = '/work/app-source/App.tsx';
 
@@ -252,6 +257,28 @@ async function loadRegistryClaims(registryDir: string): Promise<{ claims: RouteC
   return { claims, byPath };
 }
 
+test('a claimed route opened only by another suite is reported as wrong-suite coverage', () => {
+  const route = '/synthetic/:id';
+  const claim: RouteClaim = { path: route, spec: 'owner.spec.ts' };
+  const specsDir = path.join(__dirname, 'synthetic-specs');
+  const canonicalClaimSpec = specClaimName(path.join(specsDir, claim.spec));
+  const differentSpec = 'different.spec.ts';
+  expect(differentSpec).not.toBe(canonicalClaimSpec);
+
+  const result = evaluateClaimedRouteVisits(
+    [route],
+    new Map([[route, claim]]),
+    [{ path: '/synthetic/42', specFile: differentSpec }],
+    specsDir,
+  );
+
+  expect(result.wrongSuite).toEqual([
+    '/synthetic/:id (claimed by owner.spec.ts, opened by: different.spec.ts)',
+  ]);
+  expect(result.neverOpened).toEqual([]);
+  expect(result.correctlyOpened).toEqual([]);
+});
+
 test('every app route is claimed by exactly one registry entry @coverage-gate', async () => {
   const registryDir = path.join(__dirname, 'registry');
   expect(fs.existsSync(APP_SOURCE_PATH), `App.tsx missing at ${APP_SOURCE_PATH}`).toBe(true);
@@ -317,25 +344,12 @@ test('every app route is claimed by exactly one registry entry @coverage-gate', 
         claimByPath.set(claim.path, claim);
       }
 
-      const neverOpened: string[] = [];
-      const wrongSuite: string[] = [];
-      // Unclaimed routes are reported only via `unclaimed` above — do not double-count them here.
-      for (const route of [...real].sort()) {
-        const claim = claimByPath.get(route);
-        if (!claim) continue;
-
-        const matching = visited.filter((v) => routeMatches(route, v.path));
-        const canonicalClaimSpec = specClaimName(path.join(__dirname, claim.spec));
-        const byClaimer = matching.filter((v) => v.specFile === canonicalClaimSpec);
-        if (matching.length === 0) {
-          neverOpened.push(route);
-        } else if (byClaimer.length === 0) {
-          const openers = [...new Set(matching.map((v) => v.specFile))].sort();
-          wrongSuite.push(
-            `${route} (claimed by ${claim.spec}, opened by: ${openers.join(', ')})`,
-          );
-        }
-      }
+      const { neverOpened, wrongSuite } = evaluateClaimedRouteVisits(
+        real,
+        claimByPath,
+        visited,
+        __dirname,
+      );
 
       if (neverOpened.length > 0) {
         messages.push(
