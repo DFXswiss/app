@@ -1,3 +1,4 @@
+// Visual variants: admin list, expanded admin assign form, and non-admin read-only list.
 import { expect, Page, Route, test } from '@playwright/test';
 
 type UnassignedBankTxFixture = {
@@ -55,12 +56,12 @@ const UNASSIGNED_ROW_MISSING_OPTIONALS: UnassignedBankTxFixture = {
   type: 'Unknown',
 };
 
-function jwt(): string {
+function jwt(role: 'Admin' | 'Support' = 'Admin'): string {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
   return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
     account: 1,
     user: 1,
-    role: 'Admin',
+    role,
     exp: Math.floor(Date.now() / 1000) + 3600,
   })}.synthetic`;
 }
@@ -195,6 +196,29 @@ test.describe('Compliance: unassigned bank transactions', () => {
 
     await expect(page).toHaveScreenshot(
       'compliance-bank-tx-unassigned-02-assign-form.png',
+      {
+        fullPage: true,
+        maxDiffPixels: 5000,
+      },
+    );
+
+    expect(unexpectedRequests).toEqual([]);
+  });
+
+  test('renders the list read-only for a non-admin staff member', async ({ page }) => {
+    await page.setViewportSize({ width: 2000, height: 1000 });
+    const { unexpectedRequests } = await installSyntheticApi(page);
+
+    await page.goto(`/compliance/bank-tx/unassigned?session=${jwt('Support')}`);
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByText('Anna Gutschrift')).toBeVisible();
+    await expect(page.getByRole('table')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Assign' })).toHaveCount(0);
+    await resetHorizontalScroll(page);
+
+    await expect(page).toHaveScreenshot(
+      'compliance-bank-tx-unassigned-03-read-only.png',
       {
         fullPage: true,
         maxDiffPixels: 5000,

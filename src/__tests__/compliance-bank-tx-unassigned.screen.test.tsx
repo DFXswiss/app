@@ -516,12 +516,21 @@ describe('ComplianceBankTxUnassignedScreen', () => {
   });
 
   it('disables all row buttons while a save is in flight and re-enables them after success', async () => {
-    const deferred = createDeferred<void>();
-    mockAssignBankTx.mockReturnValue(deferred.promise);
-    await renderWithData([
+    const assignDeferred = createDeferred<void>();
+    const reloadDeferred = createDeferred<UnassignedBankTxFixture[]>();
+    const entries = [
       baseEntry({ id: 1, name: 'First', buyCandidateId: 1 }),
       baseEntry({ id: 2, name: 'Second', buyCandidateId: 2 }),
-    ]);
+    ];
+    mockAssignBankTx.mockReturnValue(assignDeferred.promise);
+    mockGetUnassignedBankTx
+      .mockResolvedValueOnce(entries)
+      .mockReturnValueOnce(reloadDeferred.promise);
+
+    render(<ComplianceBankTxUnassignedScreen />);
+    await waitFor(() => {
+      expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    });
     await openAssignForm(0);
     await selectType('BuyCrypto');
 
@@ -532,7 +541,15 @@ describe('ComplianceBankTxUnassignedScreen', () => {
       expect(screen.getByRole('button', { name: 'Assign' })).toBeDisabled();
     });
 
-    deferred.resolve(undefined);
+    assignDeferred.resolve(undefined);
+    await waitFor(() => {
+      expect(mockGetUnassignedBankTx).toHaveBeenCalledTimes(2);
+      const assignButtons = screen.getAllByRole('button', { name: 'Assign' });
+      expect(assignButtons).toHaveLength(2);
+      assignButtons.forEach((button) => expect(button).toBeDisabled());
+    });
+
+    reloadDeferred.resolve(entries);
     await waitFor(() => {
       expect(screen.queryByTestId('type-dropdown')).not.toBeInTheDocument();
       const assignButtons = screen.getAllByRole('button', { name: 'Assign' });
