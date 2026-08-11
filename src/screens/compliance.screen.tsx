@@ -41,7 +41,7 @@ export default function ComplianceScreen(): JSX.Element {
   useComplianceGuard();
 
   const { translate, translateError } = useSettingsContext();
-  const { search, downloadUserFiles, getPendingReviews, getPendingTransactions, getCallQueues } = useCompliance();
+  const { search, getPendingReviews, getPendingTransactions, getCallQueues } = useCompliance();
   const { navigate } = useNavigation();
   const { search: query } = useLocation();
 
@@ -50,7 +50,6 @@ export default function ComplianceScreen(): JSX.Element {
   const [dashboardError, setDashboardError] = useState<string>();
   const [searchResult, setSearchResult] = useState<ComplianceSearchResult>();
   const [showInfo, setShowInfo] = useState(false);
-  const [downloadingUserId, setDownloadingUserId] = useState<number>();
   const [pendingReviews, setPendingReviews] = useState<PendingReviewSummaryEntry[]>([]);
   const [pendingTransactions, setPendingTransactions] = useState<PendingTransactionInfo[]>([]);
   const [callQueues, setCallQueues] = useState<CallQueueSummaryEntry[]>([]);
@@ -93,15 +92,6 @@ export default function ComplianceScreen(): JSX.Element {
     if (paramSearch) onSubmit({ key: paramSearch });
   }, [paramSearch, onSubmit]);
 
-  function handleDownloadUserData(userId: number) {
-    setDownloadingUserId(userId);
-    setError(undefined);
-
-    downloadUserFiles([userId])
-      .catch((e) => setError(e.message))
-      .finally(() => setDownloadingUserId(undefined));
-  }
-
   const rules = Utils.createRules({ key: Validations.Required });
 
   const searchExamples = [
@@ -140,30 +130,22 @@ export default function ComplianceScreen(): JSX.Element {
       render: (u: UserSearchResult) => u.mail ?? '-',
     },
     {
+      key: 'kycLevel',
+      label: translate('screens/compliance', 'KYC Level'),
+      render: (u: UserSearchResult) => u.kycLevel ?? '-',
+    },
+    {
       key: 'actions',
       label: '',
       cellClassName: 'whitespace-nowrap',
       render: (u: UserSearchResult) => (
         <div className="flex gap-2 justify-end items-center">
           <StyledIconButton
-            icon={IconVariant.FILE}
+            icon={IconVariant.FORWARD}
             color={IconColor.BLUE}
             size={IconSize.SM}
-            onClick={() => handleDownloadUserData(u.id)}
-            isLoading={downloadingUserId === u.id}
-          />
-          <button
-            className="px-2 py-1 text-xs font-medium text-white rounded transition-colors bg-dfxBlue-800 hover:bg-dfxBlue-800/80"
-            onClick={() => navigate(`compliance/user/${u.id}/kyc`)}
-          >
-            KYC
-          </button>
-          <button
-            className="px-2 py-1 text-xs font-medium bg-dfxBlue-800 text-white rounded hover:bg-dfxBlue-800/80 transition-colors"
             onClick={() => navigate(`compliance/user/${u.id}`)}
-          >
-            Details
-          </button>
+          />
         </div>
       ),
     },
