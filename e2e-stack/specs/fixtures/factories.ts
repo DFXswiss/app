@@ -1626,7 +1626,7 @@ export async function createCallQueueEntry(
 // 12. cleanupCreatedData
 // ---------------------------------------------------------------------------
 
-interface ForeignKeyRef {
+export interface ForeignKeyRef {
   table: string; // child table containing the FK column
   column: string; // FK column on the child table
   referencedTable: string; // parent table the FK points at
@@ -1660,7 +1660,7 @@ type RowResult = { deletedSelf: boolean; failed: boolean };
  * the cross product of every column on both sides, so this query uses `pg_constraint`'s
  * `conkey`/`confkey` arrays and pairs their entries by ordinality instead.
  */
-async function getForeignKeys(): Promise<ForeignKeyRef[]> {
+export async function getForeignKeys(): Promise<ForeignKeyRef[]> {
   if (!foreignKeysPromise) {
     foreignKeysPromise = queryRows<{
       table_name: string;
@@ -1712,10 +1712,10 @@ async function getForeignKeys(): Promise<ForeignKeyRef[]> {
  * - PK is exactly `{ id }` → id-addressable (SELECT/recurse by id).
  * - Any other primary-key shape, or no primary key at all, is not id-addressable.
  *
- * Leaf-ness is NOT decided here. A table that is not id-addressable is a leaf only when neither
- * another table nor the table itself references it. With existing rows, either kind of reference
- * makes the table unresolvable because descendants cannot be reached by id; self-references are
- * reported separately rather than being described as references from other tables. See
+ * Leaf-ness is NOT decided here. A table that is not id-addressable cannot be bulk-deleted when
+ * another table references it, or when candidate rows are actually referenced through a self-FK,
+ * because descendants cannot be reached by id. Self-references are checked row-by-row and reported
+ * separately rather than being described as references from other tables. See
  * deleteRowAndDescendants for that decision.
  */
 async function getTableKeyInfo(): Promise<TableKeyInfo> {
@@ -1752,6 +1752,46 @@ async function getTableKeyInfo(): Promise<TableKeyInfo> {
 }
 
 /**
+ * Check whether any row in the candidate bulk-delete batch is actually referenced through one
+ * of the table's self-referencing foreign-key column pairs. Referencers inside the same batch
+ * count too: cleanup must not assume a safe execution order for a multi-row DELETE.
+ *
+ * Composite self-referencing constraints are intentionally checked one column pair at a time.
+ * ForeignKeyRef is a flat, ordinally paired representation without constraint identity, so a
+ * fully grouped composite check is outside this helper's scope and independent probes can be
+ * conservatively false-positive for such a constraint.
+ */
+async function hasSelfReferencedRows(
+  table: string,
+  candidateColumn: string,
+  candidateValue: number,
+  selfFks: ForeignKeyRef[],
+): Promise<boolean> {
+  const candidateColumnSql = needsQuote(candidateColumn)
+    ? `"${candidateColumn}"`
+    : candidateColumn;
+
+  for (const selfFk of selfFks) {
+    const selfColumnSql = needsQuote(selfFk.column) ? `"${selfFk.column}"` : selfFk.column;
+    const selfReferencedColumnSql = needsQuote(selfFk.referencedColumn)
+      ? `"${selfFk.referencedColumn}"`
+      : selfFk.referencedColumn;
+    const probe = await queryRows<{ one: number }>(
+      `SELECT 1 AS one
+       FROM ${tableSql(table)} referenced
+       JOIN ${tableSql(table)} referencer
+         ON referencer.${selfColumnSql} = referenced.${selfReferencedColumnSql}
+       WHERE referenced.${candidateColumnSql} = $1
+       LIMIT 1`,
+      [candidateValue],
+    );
+    if (probe.length > 0) return true;
+  }
+
+  return false;
+}
+
+/**
  * Recursively deletes a row and every row that transitively references it via a foreign key.
  *
  * For (table, id): find every FK pointing at this table; for each child row with that FK equal
@@ -1762,14 +1802,15 @@ async function getTableKeyInfo(): Promise<TableKeyInfo> {
  *
  * Three independent FK checks must stay separate (parent side vs child side):
  * - (i) Parent side: FK points at a non-`id` column → unresolvable from the id we hold → error.
- * - (ii) Child is not addressable by `id` AND another table or the table itself references it →
- *   its descendants exist and cannot be reached, which must not pass as a silent leaf → error
- *   once per such table, no DELETE attempt, and only when a row for this parent actually exists.
- * - (iii) Child is not addressable by `id` and neither another table nor the table itself
- *   references it → true leaf: DELETE matching rows by FK column and stop. Both (ii) and (iii)
- *   cover tables with no primary key as well as tables with a composite one; what separates them
- *   is whether anything points at the table, not the shape of its key. The first matching branch
- *   continues before later ones run.
+ * - (ii) Child is not addressable by `id` AND either another table references it or rows in the
+ *   candidate bulk-delete batch are actually referenced through a self-FK → its descendants
+ *   cannot be reached, which must not pass as a silent leaf → error once per such table and no
+ *   DELETE attempt. The other-table check is schema-based; the self-reference check is row-based.
+ * - (iii) Child is not addressable by `id`, is not referenced by another table, and has no actual
+ *   self-reference involving the candidate rows → leaf for this deletion: DELETE matching rows by
+ *   FK column and stop. Both (ii) and (iii) cover tables with no primary key as well as tables with
+ *   a composite one; what separates them is whether this bulk delete could strand descendants,
+ *   not the shape of the key. The first matching branch continues before later ones run.
  *
  * `visitedResults` is shared across the entire cleanupCreatedData() invocation. Values are either
  * `'in-progress'` (this row is still on an ancestor frame's stack — a genuine FK cycle) or a
@@ -1838,27 +1879,28 @@ async function deleteRowAndDescendants(
 
     const col = needsQuote(fk.column) ? `"${fk.column}"` : fk.column;
 
-    // (ii) Child cannot be addressed by id AND is itself referenced by another table or by itself.
-    // Only that combination is unresolvable: the table has descendants, and they cannot be found
-    // without addressing its rows by id. What decides leaf-ness is whether anything points at the
-    // table — not the shape of its key. A table with no primary key at all can still be referenced
-    // through a UNIQUE column, and a composite-key table nothing points at (a plain join table like
-    // mros_transactions_transaction) has no descendants to lose.
+    // (ii) Child cannot be addressed by id AND is referenced by another table, or candidate rows
+    // are actually referenced through one of the table's self-FKs. Only those combinations are
+    // unresolvable: the table has descendants, and they cannot be found without addressing its
+    // rows by id. A table with no primary key at all can still be referenced through a UNIQUE
+    // column, and a composite-key table with no relevant descendants (a plain join table like
+    // mros_transactions_transaction) can still be bulk-deleted safely.
     //
     // Reported only when a row actually exists for this parent. Keying it on the schema alone would
     // fail every cleanup of a parent whose child table happens to be empty for it — the same
     // mistake, one branch over, that made this whole case wrong before.
-    // Keep other-table and self-reference detection separate. Both prevent a safe bulk-leaf
-    // delete, but only the former can truthfully be reported as "referenced by other tables"; a
-    // self-only reference needs wording that explains the orphaned-descendant risk instead.
+    // Keep other-table and self-reference detection separate. The former remains schema-based;
+    // the latter must inspect candidate rows so a merely declared but unused self-FK does not
+    // block a safe bulk delete. When a self-reference is present, its error wording explains the
+    // orphaned-descendant risk rather than claiming another table is involved.
     const referencedByOthers = (childrenByReferencedTable.get(fk.table) ?? []).some(
       (child) => child.table !== fk.table,
     );
-    const referencedBySelf = (childrenByReferencedTable.get(fk.table) ?? []).some(
+    const selfFks = (childrenByReferencedTable.get(fk.table) ?? []).filter(
       (child) => child.table === fk.table,
     );
 
-    if (!tableKeyInfo.idAddressable.has(fk.table) && (referencedByOthers || referencedBySelf)) {
+    if (!tableKeyInfo.idAddressable.has(fk.table) && (referencedByOthers || selfFks.length > 0)) {
       let hasRows: boolean;
       try {
         const probe = await queryRows<{ one: number }>(
@@ -1872,32 +1914,48 @@ async function deleteRowAndDescendants(
         continue;
       }
 
-      if (hasRows) {
+      if (!hasRows) continue;
+
+      if (referencedByOthers) {
         if (!reportedNonIdPrimaryKeyTables.has(fk.table)) {
           reportedNonIdPrimaryKeyTables.add(fk.table);
-          if (referencedByOthers) {
-            errors.push(
-              `table "${fk.table}" is referenced by other tables but has no primary key of exactly ` +
-                `the single column "id": cleanup can only SELECT/recurse by id, so this table's own ` +
-                `descendants cannot be discovered and no rows were deleted for it`,
-            );
-          } else {
-            errors.push(
-              `table "${fk.table}" is referenced by itself via a self-referencing foreign key but ` +
-                `has no primary key of exactly the single column "id": cleanup cannot safely bulk ` +
-                `delete its rows because self-referencing descendants could be orphaned instead of removed`,
-            );
-          }
+          errors.push(
+            `table "${fk.table}" is referenced by other tables but has no primary key of exactly ` +
+              `the single column "id": cleanup can only SELECT/recurse by id, so this table's own ` +
+              `descendants cannot be discovered and no rows were deleted for it`,
+          );
         }
         failed = true;
+        continue;
       }
-      continue;
+
+      let selfReferenced: boolean;
+      try {
+        selfReferenced = await hasSelfReferencedRows(fk.table, fk.column, id, selfFks);
+      } catch (e) {
+        errors.push(`${fk.table}.${fk.column}=${id}: ${e instanceof Error ? e.message : String(e)}`);
+        failed = true;
+        continue;
+      }
+
+      if (selfReferenced) {
+        if (!reportedNonIdPrimaryKeyTables.has(fk.table)) {
+          reportedNonIdPrimaryKeyTables.add(fk.table);
+          errors.push(
+            `table "${fk.table}" is referenced by itself via a self-referencing foreign key but ` +
+              `has no primary key of exactly the single column "id": cleanup cannot safely bulk ` +
+              `delete its rows because self-referencing descendants could be orphaned instead of removed`,
+          );
+        }
+        failed = true;
+        continue;
+      }
     }
 
-    // (iii) Child cannot be addressed by id and neither another table nor the table itself
-    // references it: a true leaf. The parent-side check above passed, so delete its rows by the
-    // foreign key column and stop.
-    if (!tableKeyInfo.idAddressable.has(fk.table) && !referencedByOthers && !referencedBySelf) {
+    // (iii) Child cannot be addressed by id and is not referenced by another table. It is either a
+    // schema-level leaf or its declared self-FKs do not actually involve any candidate row. The
+    // parent-side check and, when needed, the row probe above passed, so bulk-delete by FK column.
+    if (!tableKeyInfo.idAddressable.has(fk.table) && !referencedByOthers) {
       try {
         await withDb(async (client) => {
           await client.query(
@@ -2068,4 +2126,13 @@ export function resetFactoryCounter(): void {
   factoryTagStartApplied = false;
   factoryWalletStartPromise = null;
   factoryTagStartPromise = null;
+}
+
+/**
+ * Clear the memoized public-schema foreign-key catalog for tests that create or drop tables at
+ * runtime. Production callers do not need this because their schema remains stable during a run;
+ * rejection still clears the cache automatically so a later catalog load can retry.
+ */
+export function resetForeignKeysCache(): void {
+  foreignKeysPromise = null;
 }

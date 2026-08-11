@@ -25,6 +25,8 @@ import {
   createSwap,
   createTransaction,
   createUser,
+  getForeignKeys,
+  resetForeignKeysCache,
   TEST_IBAN,
   trackRow,
 } from './fixtures/factories';
@@ -271,14 +273,59 @@ test.describe('e2e factories', () => {
     expect(row?.phoneCallStatus).toBe('Unavailable');
   });
 
+  // Without this regression test, joining key_column_usage to constraint_column_usage only by
+  // constraint name could reintroduce a four-entry cross product instead of preserving the two
+  // ordinal child-to-parent column pairs in a composite foreign key.
+  test('getForeignKeys preserves composite foreign-key column ordinality', async () => {
+    try {
+      await withDb(async (client) => {
+        await client.query(
+          `CREATE TABLE e2e_spec_fk_ordinal_parent (
+             x integer NOT NULL,
+             y integer NOT NULL,
+             PRIMARY KEY (x, y)
+           )`,
+        );
+        await client.query(
+          `CREATE TABLE e2e_spec_fk_ordinal_child (
+             a integer NOT NULL,
+             b integer NOT NULL,
+             FOREIGN KEY (a, b) REFERENCES e2e_spec_fk_ordinal_parent (x, y)
+           )`,
+        );
+      });
+
+      resetForeignKeysCache();
+      const foreignKeys = await getForeignKeys();
+      const childPairs = foreignKeys
+        .filter((foreignKey) => foreignKey.table === 'e2e_spec_fk_ordinal_child')
+        .map((foreignKey) => ({
+          column: foreignKey.column,
+          referencedColumn: foreignKey.referencedColumn,
+        }))
+        .sort((left, right) => left.column.localeCompare(right.column));
+
+      expect(childPairs).toEqual([
+        { column: 'a', referencedColumn: 'x' },
+        { column: 'b', referencedColumn: 'y' },
+      ]);
+    } finally {
+      await withDb(async (client) => {
+        await client.query(`DROP TABLE IF EXISTS e2e_spec_fk_ordinal_child`);
+        await client.query(`DROP TABLE IF EXISTS e2e_spec_fk_ordinal_parent`);
+      });
+      resetForeignKeysCache();
+    }
+  });
+
   // The raw inserts below bypass createTransaction() on purpose, and that is the whole point of the
   // test: every factory tracks each row it writes, so a chain built through them would be deleted
   // by its own top-level registrations even if the recursion were broken. Writing the children
   // directly reproduces what the application does in production — rows appear under a tracked row
   // that no test registered — and only the descent into the foreign keys can remove them.
   //
-  // Last test in the block by necessity: it calls cleanupCreatedData() itself, which empties the
-  // process-wide registry that the earlier tests share.
+  // The cleanup-focused tests must stay at the end of the block: they call cleanupCreatedData()
+  // themselves, which empties the process-wide registry that the earlier tests share.
   test('cleanup recursively deletes untracked database children of a tracked user', async () => {
     const user = await createUser({ tag: 'spec-recursive-cleanup' });
 
@@ -338,5 +385,190 @@ test.describe('e2e factories', () => {
     const bankTx = await queryOne<{ id: number }>(`SELECT id FROM bank_tx WHERE id = $1`, [bankTxId]);
     expect(transaction).toBeUndefined();
     expect(bankTx).toBeUndefined();
+  });
+
+  // Without this regression test, the mere schema presence of a self-referencing foreign key
+  // could block a safe bulk delete even though none of the candidate rows is actually referenced.
+  test('cleanup bulk-deletes a non-id-addressable child with an unused self foreign key', async () => {
+    let parentId: number | undefined;
+    let registryDrained = false;
+
+    try {
+      await withDb(async (client) => {
+        await client.query(
+          `CREATE TABLE e2e_spec_unused_self_parent (
+             id serial PRIMARY KEY
+           )`,
+        );
+        await client.query(
+          `CREATE TABLE e2e_spec_unused_self_child (
+             parent_id integer NOT NULL REFERENCES e2e_spec_unused_self_parent (id),
+             code text NOT NULL UNIQUE,
+             predecessor_code text REFERENCES e2e_spec_unused_self_child (code),
+             PRIMARY KEY (parent_id, code)
+           )`,
+        );
+      });
+      resetForeignKeysCache();
+
+      parentId = await withDb(async (client) => {
+        const parentInsert = await client.query<{ id: number }>(
+          `INSERT INTO e2e_spec_unused_self_parent DEFAULT VALUES RETURNING id`,
+        );
+        const insertedParentId = required(
+          parentInsert.rows[0],
+          'self-reference parent insert must return an id',
+        ).id;
+        await client.query(
+          `INSERT INTO e2e_spec_unused_self_child (parent_id, code, predecessor_code)
+           VALUES ($1, $2, $3)`,
+          [insertedParentId, 'A', null],
+        );
+        return insertedParentId;
+      });
+
+      trackRow('e2e_spec_unused_self_parent', parentId);
+      await cleanupCreatedData();
+      registryDrained = true;
+
+      const parent = await queryOne<{ id: number }>(
+        `SELECT id FROM e2e_spec_unused_self_parent WHERE id = $1`,
+        [parentId],
+      );
+      const child = await queryOne<{ code: string }>(
+        `SELECT code FROM e2e_spec_unused_self_child WHERE parent_id = $1`,
+        [parentId],
+      );
+      expect(parent).toBeUndefined();
+      expect(child).toBeUndefined();
+    } finally {
+      try {
+        if (!registryDrained && parentId !== undefined) {
+          await withDb(async (client) => {
+            await client.query(
+              `DELETE FROM e2e_spec_unused_self_child WHERE parent_id = $1`,
+              [parentId],
+            );
+            await client.query(
+              `DELETE FROM e2e_spec_unused_self_parent WHERE id = $1`,
+              [parentId],
+            );
+          });
+          await cleanupCreatedData();
+        }
+      } finally {
+        await withDb(async (client) => {
+          await client.query(`DROP TABLE IF EXISTS e2e_spec_unused_self_child`);
+          await client.query(`DROP TABLE IF EXISTS e2e_spec_unused_self_parent`);
+        });
+        resetForeignKeysCache();
+      }
+    }
+  });
+
+  // Without this regression test, an overly permissive row check could allow a bulk delete even
+  // though a candidate row is genuinely referenced through the table's self foreign key.
+  test('cleanup rejects a non-id-addressable child with an actual self reference', async () => {
+    let parentId: number | undefined;
+    let registryDrained = false;
+
+    try {
+      await withDb(async (client) => {
+        await client.query(
+          `CREATE TABLE e2e_spec_actual_self_parent (
+             id serial PRIMARY KEY
+           )`,
+        );
+        await client.query(
+          `CREATE TABLE e2e_spec_actual_self_child (
+             parent_id integer NOT NULL REFERENCES e2e_spec_actual_self_parent (id),
+             code text NOT NULL UNIQUE,
+             predecessor_code text REFERENCES e2e_spec_actual_self_child (code),
+             PRIMARY KEY (parent_id, code)
+           )`,
+        );
+      });
+      resetForeignKeysCache();
+
+      parentId = await withDb(async (client) => {
+        const parentInsert = await client.query<{ id: number }>(
+          `INSERT INTO e2e_spec_actual_self_parent DEFAULT VALUES RETURNING id`,
+        );
+        const insertedParentId = required(
+          parentInsert.rows[0],
+          'self-reference parent insert must return an id',
+        ).id;
+        await client.query(
+          `INSERT INTO e2e_spec_actual_self_child (parent_id, code, predecessor_code)
+           VALUES ($1, $2, $3), ($1, $4, $5)`,
+          [insertedParentId, 'A', null, 'B', 'A'],
+        );
+        return insertedParentId;
+      });
+
+      trackRow('e2e_spec_actual_self_parent', parentId);
+      let cleanupError: unknown;
+      try {
+        await cleanupCreatedData();
+      } catch (error) {
+        cleanupError = error;
+      }
+
+      expect(cleanupError).toBeInstanceOf(AggregateError);
+      if (!(cleanupError instanceof AggregateError)) {
+        throw new Error('cleanup must throw AggregateError for an actual self reference');
+      }
+      expect(cleanupError.message).toContain(
+        'referenced by itself via a self-referencing foreign key',
+      );
+
+      const parent = await queryOne<{ id: number }>(
+        `SELECT id FROM e2e_spec_actual_self_parent WHERE id = $1`,
+        [parentId],
+      );
+      const childCount = await queryOne<{ count: number }>(
+        `SELECT count(*)::integer AS count
+         FROM e2e_spec_actual_self_child
+         WHERE parent_id = $1`,
+        [parentId],
+      );
+      expect(parent?.id).toBe(parentId);
+      expect(childCount?.count).toBe(2);
+
+      await withDb(async (client) => {
+        await client.query(
+          `DELETE FROM e2e_spec_actual_self_child WHERE parent_id = $1`,
+          [parentId],
+        );
+        await client.query(
+          `DELETE FROM e2e_spec_actual_self_parent WHERE id = $1`,
+          [parentId],
+        );
+      });
+      await cleanupCreatedData();
+      registryDrained = true;
+    } finally {
+      try {
+        if (!registryDrained && parentId !== undefined) {
+          await withDb(async (client) => {
+            await client.query(
+              `DELETE FROM e2e_spec_actual_self_child WHERE parent_id = $1`,
+              [parentId],
+            );
+            await client.query(
+              `DELETE FROM e2e_spec_actual_self_parent WHERE id = $1`,
+              [parentId],
+            );
+          });
+          await cleanupCreatedData();
+        }
+      } finally {
+        await withDb(async (client) => {
+          await client.query(`DROP TABLE IF EXISTS e2e_spec_actual_self_child`);
+          await client.query(`DROP TABLE IF EXISTS e2e_spec_actual_self_parent`);
+        });
+        resetForeignKeysCache();
+      }
+    }
   });
 });
