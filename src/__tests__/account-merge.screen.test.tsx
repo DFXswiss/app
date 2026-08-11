@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 const mockCall = jest.fn();
@@ -158,6 +158,22 @@ describe('AccountMerge', () => {
     render(<AccountMerge />);
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/error', search: 'msg=Invalid link' }));
+  });
+
+  // setAuthToken writes global auth context, not component state, so a merge that lands after the
+  // user has navigated away has to be dropped rather than silently signing them in.
+  it('discards the result when the screen unmounts before the merge lands', async () => {
+    let resolveMerge!: (result: unknown) => void;
+    mockCall.mockImplementation(() => new Promise((resolve) => (resolveMerge = resolve)));
+
+    const { unmount } = render(<AccountMerge />);
+    unmount();
+
+    await act(async () => {
+      resolveMerge({ kycHash: 'hash', accessToken: 'token' });
+    });
+
+    expect(mockSetAuthToken).not.toHaveBeenCalled();
   });
 
   it('redirects to KYC without an otp', () => {
