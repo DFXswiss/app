@@ -85,6 +85,8 @@
     "widget:loc": "./scripts/build-widget.sh loc",
     "lint": "eslint \"{src,apps,libs,test}/**/*.{ts,tsx}\" \"functions/**/*.js\" --no-fix --max-warnings 0",
     "lint:fix": "eslint \"{src,apps,libs,test}/**/*.{ts,tsx}\" --fix",
+    "format:md": "prettier --write \"**/*.md\"",
+    "format:md:check": "prettier --check \"**/*.md\"",
     "test": "react-app-rewired test --watchAll=false --passWithNoTests",
     "test:e2e": "./scripts/e2e-test.sh",
     "test:e2e:local": "npx playwright test",
@@ -96,7 +98,10 @@
     "eject": "react-scripts eject",
     "serve": "serve build -l 4000",
     "analyze": "source-map-explorer 'build/static/js/*.js'",
-    "start-widget": "node start-widget.js"
+    "start-widget": "node start-widget.js",
+    "e2e:stack:up": "bash e2e-stack/scripts/up.sh",
+    "e2e:stack:down": "bash e2e-stack/scripts/down.sh",
+    "e2e:stack": "bash e2e-stack/scripts/run.sh"
   },
   "overrides": {
     "react-scripts": {
@@ -168,6 +173,7 @@
     "babel-plugin-named-exports-order": "^0.0.2",
     "dotenv": "^17.2.3",
     "postcss": "^8.4.19",
+    "prettier": "^3.9.6",
     "react-app-rewired": "^2.2.1",
     "serve": "^14.2.1",
     "source-map-explorer": "^2.5.3",

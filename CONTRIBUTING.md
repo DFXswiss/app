@@ -1,5 +1,15 @@
 # Contributing
 
+## Deviating from these guidelines
+
+These guidelines are binding. A pull request that knowingly does not meet one
+of them says so **explicitly in its description**, naming the guideline it
+departs from and the reason. An undeclared deviation is not a discussion point
+— the pull request is rejected.
+
+A declared deviation is the reviewer's call: they may accept it or refuse it at
+their own discretion. Declaring one is not the same as being granted one.
+
 ## Pull requests
 
 ### Every pull request is self-contained
@@ -25,6 +35,33 @@ reviewer grants the exception in writing on the pull request. It is never a
 reason to leave the bug unreported.
 
 ## Testing
+
+### Test architecture
+
+`docs/test-architecture.md` describes the test layers this repository owns, with
+measured numbers for the current state, and points at the canonical
+cross-repository description in `DFXswiss/api`. Read it before adding a test
+layer, moving a test between layers, or extending the full-stack harness. (Given
+as a path rather than a link on purpose: the handbook build renders every markdown
+file to HTML, and its integrity check then requires every relative reference
+beginning with `docs/`, `assets/` or `screenshots/` to exist in that output — which
+a reference to a `.md` file never does, since only the rendered `.html` is there.
+References outside those three prefixes are unaffected, which is why the link to
+`e2e-stack/README.md` further down is fine.)
+
+Two obligations follow from it for every pull request:
+
+- **A failure mode is tested at the lowest layer that can express it.** A case
+  reachable against a real database does not belong in a browser test, and the
+  processing chain behind the API is not testable from this repository at all.
+- **Reality declaration.** Whenever a pull request introduces, removes or changes
+  a fake — a faked external provider, a disabled cron job, a schema built without
+  the migration chain, state written directly with SQL, a placeholder value that
+  looks real, a suppressed side effect, or a seed correction that bends reality —
+  the declaration changes in the same pull request, and each entry says in one
+  plain sentence what a green run does **not** prove. Write the entry before
+  building the fake. A pull request that adds a fake without its declaration is
+  incomplete regardless of whether CI is green.
 
 ### Unit tests
 
@@ -146,3 +183,31 @@ it at the call site moves endpoint knowledge — verb, query shape, response typ
 into this repository, where it goes stale silently: the SDK gets updated, the call
 site does not, and `call<T>()` type-checks against the generic you asserted
 yourself, so nothing fails at build time.
+
+## Full-stack E2E tests
+
+The full-stack harness under `e2e-stack/` runs the real frontend, API, and
+Postgres together (external providers are mocked). Unlike the visual-regression
+suite under `e2e/` — see [Visual regression tests (Playwright)](#visual-regression-tests-playwright)
+above, which does not run in CI — this harness runs on every pull request in CI.
+
+A pull request that changes a screen or an API contract should bring or update
+the matching full-stack test.
+
+Coverage of the route tree is enforced, not tracked by hand. The suite reads the
+route definitions out of `src/App.tsx` and fails if a route is claimed by no test
+file or by more than one, and — on a full run, which is what CI does — if a route
+was never actually opened by any test. The browser records every navigation it
+makes, and the gate compares that recording against the route list, so a claim
+pointing at a file that never visits the route does not satisfy it. Adding a route
+therefore means adding a claim in `e2e-stack/specs/registry/` and a test that
+navigates there; otherwise CI goes red on the new route, not on some unrelated
+assertion.
+
+Run locally:
+
+```
+npm run e2e:stack
+```
+
+Details: [`e2e-stack/README.md`](e2e-stack/README.md).

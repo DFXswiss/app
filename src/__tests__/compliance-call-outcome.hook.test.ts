@@ -27,7 +27,8 @@ jest.mock('@dfx.swiss/react', () => ({
 }));
 
 import { renderHook } from '@testing-library/react';
-import { CallOutcome, useCompliance } from 'src/hooks/compliance.hook';
+import { CallQueue } from '@dfx.swiss/react';
+import { CallOutcome, needsExplicitAmlReset, useCompliance } from 'src/hooks/compliance.hook';
 
 const TX_CONTEXT = {
   queue: 'ManualCheckIpCountryPhone',
@@ -84,5 +85,23 @@ describe('saveCallOutcome write order', () => {
     expect(res.success).toBe(true);
     expect(mockCalls.map((c) => `${c.method} ${c.url}`)).toEqual(['PUT userData/7', 'POST kyc/admin/log']);
     expect(mockCalls[0].data.phoneCallIpCountryCheckDate).toBeUndefined();
+  });
+});
+
+// Which queues need the outcome form to clear the transaction itself: exactly those whose AML reason
+// sits in the API's BlockAmlReasons, because the recheck cron never picks them up again. Everything
+// else must stay untouched so the API keeps deciding.
+describe('needsExplicitAmlReset', () => {
+  it('is true only for the recheck-blocked queue', () => {
+    expect(needsExplicitAmlReset(CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE)).toBe(true);
+  });
+
+  it.each([
+    [CallQueue.MANUAL_CHECK_PHONE],
+    [CallQueue.MANUAL_CHECK_IP_PHONE],
+    [CallQueue.MANUAL_CHECK_EXTERNAL_ACCOUNT_PHONE],
+    [CallQueue.UNAVAILABLE_SUSPICIOUS],
+  ])('is false for %s', (queue) => {
+    expect(needsExplicitAmlReset(queue)).toBe(false);
   });
 });

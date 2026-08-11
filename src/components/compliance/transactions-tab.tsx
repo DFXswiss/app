@@ -455,6 +455,8 @@ export function TransactionsTable({
                                   amlCheck={tx.amlCheck}
                                   amlReason={tx.amlReason}
                                   comment={tx.comment}
+                                  chargebackAllowedDate={tx.chargebackAllowedDate}
+                                  chargebackAllowedDateUser={tx.chargebackAllowedDateUser}
                                   scorechainLink={{
                                     userDataId,
                                     buyCryptoId: tx.buyCryptoId,

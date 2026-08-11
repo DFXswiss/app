@@ -44,12 +44,16 @@ export function TransactionDetailRows({
   amlCheck,
   amlReason,
   comment,
+  chargebackAllowedDate,
+  chargebackAllowedDateUser,
   scorechainLink,
 }: {
   tx: Transaction;
   amlCheck?: string;
   amlReason?: string;
   comment?: string;
+  chargebackAllowedDate?: string;
+  chargebackAllowedDateUser?: string;
   // When set AND `comment` carries the ScorechainHighRisk token, the Comment value deep-links into the
   // customer's Scorechain screenings. Omit it and this component renders exactly as before.
   scorechainLink?: { userDataId: number; buyCryptoId?: number; buyFiatId?: number };
@@ -64,7 +68,10 @@ export function TransactionDetailRows({
       buyFiatId: scorechainLink.buyFiatId,
     });
     navigate(
-      { pathname: `/compliance/scorechain/user/${scorechainLink.userDataId}`, search: value ? `?highlight=${value}` : '' },
+      {
+        pathname: `/compliance/scorechain/user/${scorechainLink.userDataId}`,
+        search: value ? `?highlight=${value}` : '',
+      },
       { clearParams: ['status', 'search'] },
     );
   }
@@ -80,10 +87,7 @@ export function TransactionDetailRows({
           <tr>
             <td className="pr-3 py-0.5 font-medium whitespace-nowrap">Comment:</td>
             <td className="py-0.5">
-              <button
-                className="text-dfxBlue-300 underline hover:text-dfxBlue-800 text-left"
-                onClick={goToScorechain}
-              >
+              <button className="text-dfxBlue-300 underline hover:text-dfxBlue-800 text-left" onClick={goToScorechain}>
                 {comment}
               </button>
             </td>
@@ -130,12 +134,24 @@ export function TransactionDetailRows({
         )}
         {tx.chargebackAmount != null && (
           <>
-            <DetailRow label="Chargeback Amount" value={`${tx.chargebackAmount} ${tx.chargebackAsset ?? ''}`} />
-            <DetailRow label="Chargeback Target" value={tx.chargebackTarget} />
-            <DetailRow label="Chargeback TX" value={tx.chargeBackTxId} url={tx.chargeBackTxUrl} mono />
+            {tx.chargebackAmount != null && (
+              <>
+                <DetailRow label="Chargeback Amount" value={`${tx.chargebackAmount} ${tx.chargebackAsset ?? ''}`} />
+                <DetailRow label="Chargeback Target" value={tx.chargebackTarget} />
+                <DetailRow label="Chargeback TX" value={tx.chargeBackTxId} url={tx.chargeBackTxUrl} mono />
+                <DetailRow
+                  label="Chargeback Date"
+                  value={tx.chargebackDate ? formatSwissDateTimeWithSeconds(tx.chargebackDate) : undefined}
+                />
+              </>
+            )}
             <DetailRow
-              label="Chargeback Date"
-              value={tx.chargebackDate ? formatSwissDateTimeWithSeconds(tx.chargebackDate) : undefined}
+              label="Chargeback Allowed Date Compliance"
+              value={chargebackAllowedDate ? formatSwissDateTimeWithSeconds(chargebackAllowedDate) : undefined}
+            />
+            <DetailRow
+              label="Chargeback Allowed Date User"
+              value={chargebackAllowedDateUser ? formatSwissDateTimeWithSeconds(chargebackAllowedDateUser) : undefined}
             />
           </>
         )}

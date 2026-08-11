@@ -4,11 +4,6 @@ import { ApexOptions } from 'apexcharts';
 import { useEffect, useMemo, useState } from 'react';
 import Chart from 'react-apexcharts';
 import { FinancialChangesEntry, RefRewardRecipient } from 'src/dto/dashboard.dto';
-
-const KNOWN_USERS: Record<number, string> = {
-  8938: 'Fab',
-  187402: 'Cake Wallet',
-};
 import { useDashboard } from 'src/hooks/dashboard.hook';
 import { useAdminGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
@@ -153,7 +148,7 @@ export default function DashboardFinancialExpensesScreen(): JSX.Element {
             <tbody>
               {recipients.map((r) => (
                 <tr key={r.userDataId} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-1.5 px-3">{KNOWN_USERS[r.userDataId] ?? r.userDataId}</td>
+                  <td className="py-1.5 px-3">{r.userDataId}</td>
                   <td className="py-1.5 px-3 text-right">{r.count}</td>
                   <td className="py-1.5 px-3 text-right font-medium">
                     {Number(r.totalChf).toLocaleString('de-CH')} CHF

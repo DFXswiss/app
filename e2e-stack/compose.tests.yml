@@ -1,0 +1,78 @@
+# Override loaded together with compose.yml:
+#   docker compose -p dfx-e2e-stack -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml run --rm tests
+services:
+  tests:
+    build:
+      # Relative to this file's directory (e2e-stack/), so `..` is the repo root.
+      context: ..
+      dockerfile: e2e-stack/images/playwright/Dockerfile
+    networks:
+      - sandbox
+    depends_on:
+      api:
+        condition: service_healthy
+      # Wait until nginx is actually accepting requests (healthcheck on `frontend` in compose.yml).
+      # service_started alone can let tests hit the container before nginx is ready.
+      frontend:
+        condition: service_healthy
+      # Same for the widget host: wait for its healthcheck so widget tests do not race nginx.
+      # The condition is spelled out because the long-form depends_on requires every entry to
+      # be a mapping; a bare key fails schema validation and takes the entire stack with it.
+      frontend-widget:
+        condition: service_healthy
+    environment:
+      E2E_FRONTEND_URL: ${E2E_FRONTEND_URL:-http://frontend}
+      E2E_API_URL: ${E2E_API_URL:-http://api:3000}
+      # images/playwright/entrypoint.sh reads this to pick the socat listen port; without the
+      # passthrough the variable never reaches the container and an override is silently ignored.
+      # It must stay 3000 unless the frontend image is rebuilt with a matching
+      # REACT_APP_API_URL — the bundle's API base is baked in at build time (see README).
+      E2E_LOOPBACK_PORT: ${E2E_LOOPBACK_PORT:-3000}
+      E2E_PG_HOST: ${E2E_PG_HOST:-sql-dfx-api-loc}
+      E2E_PG_PORT: ${E2E_PG_PORT:-5432}
+      E2E_PG_USER: ${E2E_PG_USER:-sa}
+      E2E_PG_PASSWORD: ${E2E_PG_PASSWORD:-LocalDev2026}
+      E2E_PG_DATABASE: ${E2E_PG_DATABASE:-dfx}
+      CI: ${CI:-}
+      # Set by scripts/run.sh and by both CI workflows. Tells the coverage gate that every spec was
+      # in scope, so it can require each route to have been navigated to and not just claimed.
+      E2E_FULL_RUN: ${E2E_FULL_RUN:-}
+      # This default MUST stay in sync with EVM_DEPOSIT_SEED in env/api.env (owned by the stack
+      # lane) — deposit addresses are derived from this mnemonic here AND inside the API; a
+      # mismatch produces addresses/keys that silently disagree deep in a buy/forwarding path.
+      # It is a fixed, deterministic, throwaway test mnemonic, never used for real funds.
+      E2E_EVM_DEPOSIT_SEED: ${E2E_EVM_DEPOSIT_SEED:-away under gun lens ice mean sketch absent stand evoke cigar clever}
+      E2E_WIDGET_URL: ${E2E_WIDGET_URL:-http://frontend-widget}
+    volumes:
+      - e2e-test-results:/work/test-results
+      - e2e-playwright-report:/work/playwright-report
+
+  frontend-widget:
+    build:
+      # Relative to this file's directory (e2e-stack/), so `..` is the repo root — same
+      # convention as the `tests` service build above.
+      context: ..
+      dockerfile: e2e-stack/images/frontend-widget/Dockerfile
+    networks:
+      - sandbox
+    # No published ports: only reachable from other containers on the internal `sandbox`
+    # network, exactly like `frontend`.
+    healthcheck:
+      # nginx:alpine ships both wget and curl; wget --spider only checks the response status,
+      # it never writes a body anywhere. Target 127.0.0.1 explicitly, not "localhost": BusyBox
+      # wget resolves "localhost" to the IPv6 loopback first, and this nginx config (see
+      # nginx.conf) only listens on the IPv4 wildcard, so "localhost" gets connection refused
+      # even though the server is up and reachable on 127.0.0.1.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  e2e-test-results:
+  e2e-playwright-report:
+
+# Reference the network declared in compose.yml; do not redefine driver/internal settings.
+networks:
+  sandbox:

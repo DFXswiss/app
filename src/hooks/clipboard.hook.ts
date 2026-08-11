@@ -11,11 +11,23 @@ export function useClipboard(): ClipboardInterface {
   function copyHelper(text?: string): void {
     if (!text) return;
     setIsCopying(true);
-    copy(text);
 
-    setTimeout(() => {
-      setIsCopying(false);
-    }, 500);
+    const resetIsCopying = () => setTimeout(() => setIsCopying(false), 500);
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .catch(() => copy(text))
+        .finally(resetIsCopying)
+        // settle deliberately: a throwing fallback would otherwise escape as an unhandled rejection
+        .catch(() => undefined);
+    } else {
+      try {
+        copy(text);
+      } finally {
+        resetIsCopying();
+      }
+    }
   }
 
   return { copy: copyHelper, isCopying };

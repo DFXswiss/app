@@ -12,13 +12,13 @@
 
 ### 1.1 Kernanforderungen
 
-| # | Anforderung | Priorität |
-|---|-------------|-----------|
-| 1 | Token-Transfer **ohne ETH** im Wallet | MUSS |
-| 2 | Funktioniert mit **JEDEM ERC-20 Token** | MUSS |
-| 3 | **MetaMask Browser Extension** nativ unterstützt | MUSS |
-| 4 | **Keine Gas-Kosten** für den User (0 ETH) | MUSS |
-| 5 | dApp kann den Flow **programmatisch triggern** | SOLL |
+| #   | Anforderung                                      | Priorität |
+| --- | ------------------------------------------------ | --------- |
+| 1   | Token-Transfer **ohne ETH** im Wallet            | MUSS      |
+| 2   | Funktioniert mit **JEDEM ERC-20 Token**          | MUSS      |
+| 3   | **MetaMask Browser Extension** nativ unterstützt | MUSS      |
+| 4   | **Keine Gas-Kosten** für den User (0 ETH)        | MUSS      |
+| 5   | dApp kann den Flow **programmatisch triggern**   | SOLL      |
 
 ### 1.2 Ursprünglicher Ansatz
 
@@ -77,22 +77,22 @@ Error Code: 5700
 
 ### 2.3 Analyse des MetaMask Source Codes
 
-| Komponente | paymasterService Status |
-|------------|-------------------------|
-| `@metamask/eip-5792-middleware` | NICHT implementiert |
-| CHANGELOG.md | Keine Erwähnung von ERC-7677 |
-| `.metamaskrc.dist` Feature Flags | Keine Paymaster-Flags |
-| MetaMask Flask | NICHT implementiert |
-| Pull Requests | Keine offenen PRs |
-| Roadmap | Nicht erwähnt |
+| Komponente                       | paymasterService Status      |
+| -------------------------------- | ---------------------------- |
+| `@metamask/eip-5792-middleware`  | NICHT implementiert          |
+| CHANGELOG.md                     | Keine Erwähnung von ERC-7677 |
+| `.metamaskrc.dist` Feature Flags | Keine Paymaster-Flags        |
+| MetaMask Flask                   | NICHT implementiert          |
+| Pull Requests                    | Keine offenen PRs            |
+| Roadmap                          | Nicht erwähnt                |
 
 ### 2.4 Unterschied: SDK vs. Browser Extension
 
-| Produkt | paymasterService | Beschreibung |
-|---------|------------------|--------------|
-| **MetaMask Browser Extension** | ❌ NEIN | Was User installieren |
-| **MetaMask Smart Accounts Kit** | ✅ JA | Server-side SDK für Entwickler |
-| **MetaMask Delegation Toolkit** | ✅ JA | SDK mit Pimlico Integration |
+| Produkt                         | paymasterService | Beschreibung                   |
+| ------------------------------- | ---------------- | ------------------------------ |
+| **MetaMask Browser Extension**  | ❌ NEIN          | Was User installieren          |
+| **MetaMask Smart Accounts Kit** | ✅ JA            | Server-side SDK für Entwickler |
+| **MetaMask Delegation Toolkit** | ✅ JA            | SDK mit Pimlico Integration    |
 
 **Wichtig:** Die Dokumentation zu "gasless transactions" bezieht sich auf SDKs, NICHT auf die Browser Extension!
 
@@ -108,7 +108,7 @@ Error Code: 5700
 // User signiert Permit (kein Gas)
 const signature = await ethereum.request({
   method: 'eth_signTypedData_v4',
-  params: [account, permitTypedData]
+  params: [account, permitTypedData],
 });
 
 // Relayer führt transferFrom aus (Relayer zahlt Gas)
@@ -116,12 +116,12 @@ await contract.permit(owner, spender, value, deadline, v, r, s);
 await contract.transferFrom(owner, recipient, amount);
 ```
 
-| Aspekt | Bewertung |
-|--------|-----------|
-| MetaMask nativ | ✅ Signatur unterstützt |
-| Alle Tokens | ❌ Nur Tokens mit Permit-Support |
-| 0 ETH für User | ✅ Ja |
-| Tokens ohne Permit | ❌ USDT, viele andere |
+| Aspekt             | Bewertung                        |
+| ------------------ | -------------------------------- |
+| MetaMask nativ     | ✅ Signatur unterstützt          |
+| Alle Tokens        | ❌ Nur Tokens mit Permit-Support |
+| 0 ETH für User     | ✅ Ja                            |
+| Tokens ohne Permit | ❌ USDT, viele andere            |
 
 **Fazit:** Nicht universell, USDT nicht unterstützt.
 
@@ -133,19 +133,19 @@ await contract.transferFrom(owner, recipient, amount);
 // User signiert Transfer-Authorization
 const signature = await ethereum.request({
   method: 'eth_signTypedData_v4',
-  params: [account, transferAuthTypedData]
+  params: [account, transferAuthTypedData],
 });
 
 // Relayer führt Transfer aus
 await contract.transferWithAuthorization(from, to, value, validAfter, validBefore, nonce, signature);
 ```
 
-| Aspekt | Bewertung |
-|--------|-----------|
+| Aspekt         | Bewertung               |
+| -------------- | ----------------------- |
 | MetaMask nativ | ✅ Signatur unterstützt |
-| Alle Tokens | ❌ Nur USDC v2 |
-| 0 ETH für User | ✅ Ja |
-| USDT Support | ❌ Nein |
+| Alle Tokens    | ❌ Nur USDC v2          |
+| 0 ETH für User | ✅ Ja                   |
+| USDT Support   | ❌ Nein                 |
 
 **Fazit:** Nur für USDC, nicht universell.
 
@@ -162,10 +162,10 @@ const signature = await signPermit2Message(...);
 await permit2.permitTransferFrom(permit, transferDetails, owner, signature);
 ```
 
-| Aspekt | Bewertung |
-|--------|-----------|
-| MetaMask nativ | ✅ Signatur unterstützt |
-| Alle Tokens | ✅ Ja |
+| Aspekt         | Bewertung                         |
+| -------------- | --------------------------------- |
+| MetaMask nativ | ✅ Signatur unterstützt           |
+| Alle Tokens    | ✅ Ja                             |
 | 0 ETH für User | ❌ Einmalige Approval braucht Gas |
 
 **Fazit:** Nicht 100% gasless - erste Approval braucht ETH.
@@ -182,11 +182,11 @@ await permit2.permitTransferFrom(permit, transferDetails, owner, signature);
 → Alles in einem Block, atomar
 ```
 
-| Aspekt | Bewertung |
-|--------|-----------|
+| Aspekt         | Bewertung                      |
+| -------------- | ------------------------------ |
 | MetaMask nativ | ❌ `eth_signTransaction` fehlt |
-| Alle Tokens | ✅ Ja |
-| 0 ETH für User | ✅ Ja |
+| Alle Tokens    | ✅ Ja                          |
+| 0 ETH für User | ✅ Ja                          |
 
 **Problem:** MetaMask unterstützt `eth_signTransaction` nicht.
 
@@ -207,11 +207,11 @@ const signature = await signMetaTransaction(...);
 await trustedForwarder.execute(request, signature);
 ```
 
-| Aspekt | Bewertung |
-|--------|-----------|
-| MetaMask nativ | ✅ Mit GSN Provider Wrapper |
-| Alle Tokens | ❌ Contract muss ERC2771Recipient sein |
-| 0 ETH für User | ✅ Ja |
+| Aspekt         | Bewertung                              |
+| -------------- | -------------------------------------- |
+| MetaMask nativ | ✅ Mit GSN Provider Wrapper            |
+| Alle Tokens    | ❌ Contract muss ERC2771Recipient sein |
+| 0 ETH für User | ✅ Ja                                  |
 
 **Fazit:** Nicht universell - Token-Contract muss es unterstützen.
 
@@ -306,29 +306,29 @@ Ergebnis: User sendet effektiv 100 USDT, 3 USDT für Gas
 
 ### 4.4 Unterstützte Tokens für Gas-Zahlung
 
-| Token | Symbol | Unterstützt |
-|-------|--------|-------------|
-| Tether | USDT | ✅ |
-| USD Coin | USDC | ✅ |
-| Dai | DAI | ✅ |
-| Wrapped Ether | wETH | ✅ |
-| Wrapped Bitcoin | wBTC | ✅ |
-| Wrapped stETH | wstETH | ✅ |
-| Wrapped SOL | wSOL | ✅ |
+| Token           | Symbol | Unterstützt |
+| --------------- | ------ | ----------- |
+| Tether          | USDT   | ✅          |
+| USD Coin        | USDC   | ✅          |
+| Dai             | DAI    | ✅          |
+| Wrapped Ether   | wETH   | ✅          |
+| Wrapped Bitcoin | wBTC   | ✅          |
+| Wrapped stETH   | wstETH | ✅          |
+| Wrapped SOL     | wSOL   | ✅          |
 
 ### 4.5 Unterstützte Netzwerke
 
-| Netzwerk | Chain ID | Gas Station | Smart Account |
-|----------|----------|-------------|---------------|
-| Ethereum Mainnet | 1 | ✅ | ✅ |
-| Arbitrum One | 42161 | ✅ | ✅ |
-| Base | 8453 | ✅ | ✅ |
-| Polygon | 137 | ✅ | ✅ |
-| BNB Chain | 56 | ✅ | ✅ |
-| Linea | 59144 | ✅ | ✅ |
-| Optimism | 10 | ❌ | ✅ |
-| Gnosis Chain | 100 | ❌ | ✅ |
-| Sepolia Testnet | 11155111 | ❌ | ✅ |
+| Netzwerk         | Chain ID | Gas Station | Smart Account |
+| ---------------- | -------- | ----------- | ------------- |
+| Ethereum Mainnet | 1        | ✅          | ✅            |
+| Arbitrum One     | 42161    | ✅          | ✅            |
+| Base             | 8453     | ✅          | ✅            |
+| Polygon          | 137      | ✅          | ✅            |
+| BNB Chain        | 56       | ✅          | ✅            |
+| Linea            | 59144    | ✅          | ✅            |
+| Optimism         | 10       | ❌          | ✅            |
+| Gnosis Chain     | 100      | ❌          | ✅            |
+| Sepolia Testnet  | 11155111 | ❌          | ✅            |
 
 ---
 
@@ -340,19 +340,21 @@ Ergebnis: User sendet effektiv 100 USDT, 3 USDT für Gas
 // Zeile ~380 in src/hooks/wallets/metamask.hook.ts
 const result = await ethereum().request({
   method: 'wallet_sendCalls',
-  params: [{
-    version: '2.0.0',
-    chainId: chainHex,
-    from: account,
-    atomicRequired: true,  // Triggert Smart Account Upgrade
-    calls: calls.map((c) => ({
-      to: c.to,
-      data: c.data,
-      value: c.value?.startsWith('0x') ? c.value : `0x${BigInt(c.value || 0).toString(16)}`,
-    })),
-    // WICHTIG: paymasterService ENTFERNEN!
-    // MetaMask Gas Station handled das automatisch
-  }],
+  params: [
+    {
+      version: '2.0.0',
+      chainId: chainHex,
+      from: account,
+      atomicRequired: true, // Triggert Smart Account Upgrade
+      calls: calls.map((c) => ({
+        to: c.to,
+        data: c.data,
+        value: c.value?.startsWith('0x') ? c.value : `0x${BigInt(c.value || 0).toString(16)}`,
+      })),
+      // WICHTIG: paymasterService ENTFERNEN!
+      // MetaMask Gas Station handled das automatisch
+    },
+  ],
 });
 ```
 
@@ -376,12 +378,12 @@ capabilities: {
 
 ```typescript
 const GAS_STATION_SUPPORTED_CHAINS = [
-  1,      // Ethereum Mainnet
-  56,     // BNB Chain
-  137,    // Polygon
-  8453,   // Base
-  42161,  // Arbitrum
-  59144,  // Linea
+  1, // Ethereum Mainnet
+  56, // BNB Chain
+  137, // Polygon
+  8453, // Base
+  42161, // Arbitrum
+  59144, // Linea
 ];
 
 function isGasStationSupported(chainId: number): boolean {
@@ -404,6 +406,7 @@ if (!isGasStationSupported(chainId)) {
 **Problem:** Gas Station funktioniert NICHT auf Sepolia.
 
 **Konsequenz für Tests:**
+
 - E2E Tests auf Sepolia erfordern ETH im Test-Wallet
 - Oder: Tests auf unterstütztem Testnet (falls verfügbar)
 - Oder: Tests direkt auf Mainnet mit kleinen Beträgen
@@ -413,12 +416,14 @@ if (!isGasStationSupported(chainId)) {
 **Problem:** Die dApp kann Gas Station nicht programmatisch triggern.
 
 **Verhalten:**
+
 - MetaMask zeigt Gas Station automatisch wenn:
   - User hat nicht genug ETH für Gas
   - User hat eligible Tokens (USDT, USDC, etc.)
   - Netzwerk unterstützt Gas Station
 
 **Konsequenz:**
+
 - dApp kann nur `wallet_sendCalls` aufrufen
 - MetaMask entscheidet ob Gas Station angezeigt wird
 - User muss manuell Token für Gas auswählen
@@ -426,6 +431,7 @@ if (!isGasStationSupported(chainId)) {
 ### 6.3 Smart Account Upgrade
 
 **Einmalig pro Account:**
+
 - Erstes Mal: Upgrade wird in TX gerollt
 - Danach: Account bleibt Smart Account
 - Revertierbar: User kann zurück zu EOA wechseln
@@ -433,6 +439,7 @@ if (!isGasStationSupported(chainId)) {
 ### 6.4 Token-Unterstützung
 
 **Nicht ALLE Tokens können für Gas verwendet werden:**
+
 - Nur: USDT, USDC, DAI, wETH, wBTC, wstETH, wSOL
 - Andere Tokens: Können transferiert werden, aber nicht für Gas
 
@@ -440,16 +447,17 @@ if (!isGasStationSupported(chainId)) {
 
 ## 7. Vergleich mit Alternativen
 
-| Lösung | Alle Tokens | 0 ETH | MetaMask Nativ | dApp API | Testnets |
-|--------|-------------|-------|----------------|----------|----------|
-| **Smart Account + Gas Station** | ✅ | ✅ | ✅ | ⚠️ | ❌ |
-| EIP-2612 Permit | ❌ | ✅ | ✅ | ✅ | ✅ |
-| EIP-3009 | ❌ | ✅ | ✅ | ✅ | ✅ |
-| Permit2 | ✅ | ❌ | ✅ | ✅ | ✅ |
-| Flashbots Bundle | ✅ | ✅ | ❌ | ✅ | ✅ |
-| paymasterService | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Lösung                          | Alle Tokens | 0 ETH | MetaMask Nativ | dApp API | Testnets |
+| ------------------------------- | ----------- | ----- | -------------- | -------- | -------- |
+| **Smart Account + Gas Station** | ✅          | ✅    | ✅             | ⚠️       | ❌       |
+| EIP-2612 Permit                 | ❌          | ✅    | ✅             | ✅       | ✅       |
+| EIP-3009                        | ❌          | ✅    | ✅             | ✅       | ✅       |
+| Permit2                         | ✅          | ❌    | ✅             | ✅       | ✅       |
+| Flashbots Bundle                | ✅          | ✅    | ❌             | ✅       | ✅       |
+| paymasterService                | ✅          | ✅    | ❌             | ✅       | ✅       |
 
 **Legende:**
+
 - ✅ = Vollständig unterstützt
 - ⚠️ = Teilweise (User-Interaktion nötig)
 - ❌ = Nicht unterstützt
@@ -461,18 +469,19 @@ if (!isGasStationSupported(chainId)) {
 ### 8.1 Empfohlene Lösung
 
 **MetaMask Smart Account + Gas Station** ist die einzige Lösung die:
+
 - Mit JEDEM ERC-20 Token funktioniert
 - 0 ETH vom User erfordert
 - MetaMask Browser Extension nativ unterstützt
 
 ### 8.2 Trade-offs
 
-| Vorteil | Nachteil |
-|---------|----------|
-| Universell für alle Tokens | Keine Testnet-Unterstützung |
-| Keine ETH nötig | Nur bestimmte Tokens für Gas |
-| MetaMask nativ | Keine volle dApp-Kontrolle |
-| Einmaliges Upgrade | User muss Token manuell wählen |
+| Vorteil                    | Nachteil                       |
+| -------------------------- | ------------------------------ |
+| Universell für alle Tokens | Keine Testnet-Unterstützung    |
+| Keine ETH nötig            | Nur bestimmte Tokens für Gas   |
+| MetaMask nativ             | Keine volle dApp-Kontrolle     |
+| Einmaliges Upgrade         | User muss Token manuell wählen |
 
 ### 8.3 Nächste Schritte
 
@@ -545,11 +554,11 @@ if (!isGasStationSupported(chainId)) {
 
 ## Anhang B: Fehler-Codes
 
-| Code | Bedeutung | Lösung |
-|------|-----------|--------|
-| 5700 | Unsupported capability | paymasterService entfernen |
-| -32602 | Invalid params | Parameter-Format prüfen |
-| 4001 | User rejected | User hat abgelehnt |
+| Code   | Bedeutung              | Lösung                     |
+| ------ | ---------------------- | -------------------------- |
+| 5700   | Unsupported capability | paymasterService entfernen |
+| -32602 | Invalid params         | Parameter-Format prüfen    |
+| 4001   | User rejected          | User hat abgelehnt         |
 
 ---
 
@@ -559,20 +568,20 @@ if (!isGasStationSupported(chainId)) {
 
 ### 10.1 Verifizierte Annahmen
 
-| # | Annahme | Status | Quelle |
-|---|---------|--------|--------|
-| 1 | Gas Station funktioniert für Token Sends | ✅ BESTÄTIGT | "When sending transactions on Ethereum Mainnet and BNB Smart Chain, you can choose to pay the network fee with tokens" |
-| 2 | Gas Station funktioniert für dApp Transactions | ✅ BESTÄTIGT | "Gas Station is also available on dapp transactions" |
-| 3 | Automatische Token-Auswahl bei 0 ETH | ✅ BESTÄTIGT | "If you don't have enough of the network's native token, MetaMask will automatically select an eligible token" |
-| 4 | Smart Account Upgrade-Fee wird gerollt | ✅ BESTÄTIGT | "Switching to a smart account involves paying a small gas fee that is rolled into your next transaction" |
-| 5 | MetaMask deckt Gas-Fee ab | ✅ BESTÄTIGT | "With gas included transactions, MetaMask covers the network fee as part of your transaction" |
+| #   | Annahme                                        | Status       | Quelle                                                                                                                 |
+| --- | ---------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| 1   | Gas Station funktioniert für Token Sends       | ✅ BESTÄTIGT | "When sending transactions on Ethereum Mainnet and BNB Smart Chain, you can choose to pay the network fee with tokens" |
+| 2   | Gas Station funktioniert für dApp Transactions | ✅ BESTÄTIGT | "Gas Station is also available on dapp transactions"                                                                   |
+| 3   | Automatische Token-Auswahl bei 0 ETH           | ✅ BESTÄTIGT | "If you don't have enough of the network's native token, MetaMask will automatically select an eligible token"         |
+| 4   | Smart Account Upgrade-Fee wird gerollt         | ✅ BESTÄTIGT | "Switching to a smart account involves paying a small gas fee that is rolled into your next transaction"               |
+| 5   | MetaMask deckt Gas-Fee ab                      | ✅ BESTÄTIGT | "With gas included transactions, MetaMask covers the network fee as part of your transaction"                          |
 
 ### 10.2 Nicht vollständig verifizierte Punkte
 
-| # | Punkt | Status | Notiz |
-|---|-------|--------|-------|
-| 1 | Gas Station mit wallet_sendCalls | ⚠️ UNKLAR | Dokumentation erwähnt es nicht explizit, aber "dapp transactions" sollten wallet_sendCalls einschließen |
-| 2 | Upgrade-Fee in Token bezahlbar | ⚠️ WAHRSCHEINLICH | Da Fee "rolled into next transaction" wird und Gas Station für alle Transaktionen funktioniert |
+| #   | Punkt                            | Status            | Notiz                                                                                                   |
+| --- | -------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------- |
+| 1   | Gas Station mit wallet_sendCalls | ⚠️ UNKLAR         | Dokumentation erwähnt es nicht explizit, aber "dapp transactions" sollten wallet_sendCalls einschließen |
+| 2   | Upgrade-Fee in Token bezahlbar   | ⚠️ WAHRSCHEINLICH | Da Fee "rolled into next transaction" wird und Gas Station für alle Transaktionen funktioniert          |
 
 ### 10.3 Empfohlene praktische Tests
 
@@ -593,6 +602,7 @@ Vor Production-Einsatz sollten folgende Tests durchgeführt werden:
 ### 10.4 Quellen
 
 **Offizielle MetaMask Dokumentation:**
+
 - [Gas Station](https://support.metamask.io/manage-crypto/transactions/metamask-gas-station)
 - [Smart Account Switch](https://support.metamask.io/configure/accounts/switch-to-or-revert-from-a-smart-account)
 - [Send Tokens](https://support.metamask.io/manage-crypto/move-crypto/send/how-to-send-tokens-from-your-metamask-wallet/)
@@ -652,25 +662,25 @@ const result = await ethereum().request({
 
 ### 11.2 Geänderte Dateien
 
-| Datei | Änderung |
-|-------|----------|
-| `src/hooks/wallets/metamask.hook.ts` | `paymasterService` entfernt, `atomicRequired: true` |
-| `src/hooks/tx-helper.hook.ts` | Kommentare aktualisiert |
-| `src/__tests__/eip5792-real-hooks.test.ts` | Tests für Gas Station angepasst |
+| Datei                                      | Änderung                                            |
+| ------------------------------------------ | --------------------------------------------------- |
+| `src/hooks/wallets/metamask.hook.ts`       | `paymasterService` entfernt, `atomicRequired: true` |
+| `src/hooks/tx-helper.hook.ts`              | Kommentare aktualisiert                             |
+| `src/__tests__/eip5792-real-hooks.test.ts` | Tests für Gas Station angepasst                     |
 
 ### 11.3 Verhaltensänderung
 
-| Aspekt | Vorher | Nachher |
-|--------|--------|---------|
-| Gas-Zahlung | Externer Paymaster (Pimlico) | MetaMask Gas Station |
-| Unterstützte Netzwerke | Alle (theoretisch) | Mainnet, BNB, Arbitrum, Polygon, Linea, Base |
-| Testnet-Support | Ja (Sepolia) | ❌ Nein |
-| Smart Account | Optional | Erforderlich (automatisch) |
-| Token-Auswahl | N/A | Automatisch bei 0 ETH |
+| Aspekt                 | Vorher                       | Nachher                                      |
+| ---------------------- | ---------------------------- | -------------------------------------------- |
+| Gas-Zahlung            | Externer Paymaster (Pimlico) | MetaMask Gas Station                         |
+| Unterstützte Netzwerke | Alle (theoretisch)           | Mainnet, BNB, Arbitrum, Polygon, Linea, Base |
+| Testnet-Support        | Ja (Sepolia)                 | ❌ Nein                                      |
+| Smart Account          | Optional                     | Erforderlich (automatisch)                   |
+| Token-Auswahl          | N/A                          | Automatisch bei 0 ETH                        |
 
 ---
 
-*Dokument erstellt am 8. Januar 2026*
-*Letzte Aktualisierung: 8. Januar 2026*
-*Verifizierung hinzugefügt: 8. Januar 2026*
-*Implementierung dokumentiert: 8. Januar 2026*
+_Dokument erstellt am 8. Januar 2026_
+_Letzte Aktualisierung: 8. Januar 2026_
+_Verifizierung hinzugefügt: 8. Januar 2026_
+_Implementierung dokumentiert: 8. Januar 2026_

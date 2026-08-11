@@ -1,0 +1,197 @@
+# Full-stack E2E harness
+
+## What this is and what it's for
+
+This harness runs the full application in one pass: the frontend, a real API, and a real Postgres database. A pull request is checked against the real interplay of those parts before merge, not only against unit-test mocks. The goal is confidence that screens, API contracts, and persistence still work together after a change.
+
+## What is real and what is mocked
+
+**Real**
+
+- Postgres — freshly created, ephemeral, and schema-built via TypeORM's `synchronize` from
+  the entities (not via the real migration chain — see below)
+- The API
+- The frontend
+
+**Mocked**
+
+- All external providers: banks, KYC/AML, exchanges, blockchain nodes, pricing, storage, and similar outbound integrations
+
+Mocking happens on two levels at once:
+
+1. The API runs with `ENVIRONMENT=loc` and mocks outbound calls itself.
+2. The stack sits on a Docker network with `internal: true`, which has no route to the internet at all.
+
+A test therefore cannot structurally reach any real payment provider or other external service, even if application code tried to.
+
+### Schema: synchronize, not migrations
+
+Postgres schema is created via TypeORM's `synchronize: true` (`SQL_SYNCHRONIZE=true` in
+`env/api.env`), directly from the API's entity definitions. The real migration chain does
+**not** run here (`SQL_MIGRATE=false`) — a fresh database fails partway through it, because
+one migration (`1784807670011-AddRealUnitWalletApp.js`) requires a seed row that the loc
+seed step has not created yet at migration time. See `env/api.env` for the full account of
+why `SQL_MIGRATE=true` was tried and reverted.
+
+This means the harness does **not** exercise the migration chain and gives no assurance that
+migrations apply cleanly to an existing database. Migrations are verified by the API
+repository's own test suites, which run against a real Postgres instance there.
+
+## Quickstart
+
+One-shot run (bring the stack up, run the tests, tear everything down):
+
+```bash
+npm run e2e:stack
+```
+
+Manual exploration (leave the stack up, poke around, then tear down):
+
+```bash
+npm run e2e:stack:up
+# … use the app …
+npm run e2e:stack:down
+```
+
+After `e2e:stack:up`, the following host ports are available for debugging (override with env vars if needed):
+
+| Service  | Env var             | Default host URL      |
+| -------- | ------------------- | --------------------- |
+| API      | `E2E_PORT_API`      | http://localhost:3000 |
+| Frontend | `E2E_PORT_FRONTEND` | http://localhost:3001 |
+
+Open `http://localhost:3001` (default `E2E_PORT_FRONTEND`) in a host browser to load the
+frontend. The frontend's API base URL is baked into its JS bundle at build time
+(`REACT_APP_API_URL`, default `http://localhost:3000`) — the **same** address works for a
+host browser and for the browser running inside the `tests` container: on the host it hits
+the published proxy port that forwards to the API; inside `tests` it hits the `socat`
+loopback forwarder described below that relays to the same API. One address, two networks,
+no branching needed.
+
+That base URL is fixed at `http://localhost:3000` and cannot be changed from the outside:
+`compose.yml` passes no `args` to the frontend build, so the image always gets the Dockerfile
+default, and `up.sh` rebuilds the frontend image on every run, so an image you built by hand
+with a different `--build-arg` is overwritten before the stack starts.
+
+Overriding `E2E_PORT_API` therefore does not move the API for anyone but the host. The tests are
+unaffected — they run inside the container network and reach the API through the `socat`
+forwarder on `127.0.0.1:3000` described under "Writing tests", never through a published host
+port. A host browser is affected: the bundle it loads still calls `http://localhost:3000`, which
+no longer forwards to the API once you move the published port elsewhere. Leave `E2E_PORT_API`
+at its default when you want to explore the app from a host browser; override it only to dodge a
+port conflict when you are not doing so.
+
+## Prerequisites
+
+- Docker with Compose v2
+- Node 20
+- Either:
+  - the API repository checked out as a sibling directory (default `../api`, overridable via `E2E_API_REPO`), or
+  - `E2E_API_IMAGE` set to a pre-built API image (skips building from a local checkout)
+
+Relevant environment variables:
+
+| Variable            | Role                                                                                   |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| `E2E_API_IMAGE`     | If set, use this pre-built API image instead of building one                           |
+| `E2E_API_REPO`      | Path to a checked-out API repo; default `../api` (ignored when `E2E_API_IMAGE` is set) |
+| `E2E_PORT_API`      | Host port for the API (default `3000`) — debugging only                                |
+| `E2E_PORT_FRONTEND` | Host port for the frontend (default `3001`) — debugging only                           |
+| `E2E_WIDGET_URL`    | Internal URL of the widget host (default `http://frontend-widget`)                     |
+
+## Frontend widget service
+
+The harness also builds a separate `frontend-widget` image: an isolated build of the widget/web-component entry point (`src/index-widget.tsx`, custom element `<dfx-services>`), which the normal frontend image does not exercise. It is reachable only on the internal Docker `sandbox` network at `http://frontend-widget` (default; overridable via `E2E_WIDGET_URL`). Like `frontend`, it publishes no host port.
+
+`frontend-widget` is declared only in `compose.tests.yml`, as a dependency of the `tests` service — it is not part of `compose.yml`. That means `npm run e2e:stack:up` (which brings up only `compose.yml`) does **not** start it; only a full `npm run e2e:stack` / `docker compose ... run --rm tests` invocation does. If you are following "Manual exploration" above and expect to find `frontend-widget` running, you will not — bring up the `tests` service (or extend your manual `compose up` with `-f compose.tests.yml frontend-widget`) if you need it standalone.
+
+Because the widget uses a closed shadow root (`shadow: 'closed'`), inspection from tests is limited to the outside view — custom element registration, element presence/size, and absence of uncaught exceptions. Shadow DOM internals are not reachable from outside the component by design.
+
+## Writing tests
+
+Specs live under `e2e-stack/specs/`.
+
+Fixtures cover common setup needs such as signature login, email login, and database queries. For the authoritative, up-to-date list of fixtures (names, signatures, import paths), see `e2e-stack/specs/fixtures/` — that directory is the source of truth and may grow as the harness matures.
+
+The harness does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` otherwise requires for API access: the SDK is a React hooks package built around the component lifecycle and cannot run outside a mounted component tree, while this code runs as plain Node.js in the Playwright test process. It builds requests with raw `fetch` instead. That reasoning covers the whole harness, and the harness uses it accordingly: `fetch` is called from 13 places across 8 files — `fixtures/api-client.ts`, `fixtures/auth.ts`, `fixtures/mail.ts`, `global.setup.ts`, `cross-cutting.spec.ts`, `kyc.spec.ts`, `sell-swap.spec.ts` and `smoke.spec.ts`. `fixtures/api-client.ts` is the preferred entry point for authenticated calls, not the only permitted one; the exception to the SDK rule is scoped to `e2e-stack/` and does not extend to application code under `src/`.
+
+The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (override listen port with `E2E_LOOPBACK_PORT`, upstream with `E2E_API_URL`) that relays to the real API service. Under `Environment.LOC` the API builds some URLs (notably KYC-step endpoints) as `http://localhost:3000/...` because it assumes frontend and API share a host; without the forwarder, the browser inside the Playwright container would hit itself and fail with `net::ERR_CONNECTION_REFUSED`.
+
+## Relation to the existing suite under `e2e/`
+
+The suite under `e2e/` is visual-regression testing (screenshot baselines). It deliberately does not run in CI, because baselines are platform- and font-dependent.
+
+This harness checks function, not appearance, and therefore does run in CI on every pull request. Both suites exist side by side and serve different purposes.
+
+## Relationship with the API repository
+
+The API repository has its own workflow that checks out this repository (`DFXswiss/services`)
+to obtain `e2e-stack/`. Conversely, this harness builds the API image from a checked-out API
+repo (`E2E_API_REPO`, default `../api`) or uses a pre-built image (`E2E_API_IMAGE`). The two
+repos therefore depend on each other for full-stack CI: the harness lives here; the API image
+and the workflow that drives the stack against API changes live in the API repository.
+
+## Troubleshooting
+
+**Spec changes not picked up**
+
+If you edit a spec file and start the test run by hand via `docker compose ... run --rm tests` (bypassing `npm run e2e:stack`, which rebuilds the image automatically via `run.sh`), you **must** rebuild the tests image first:
+
+```bash
+docker compose -p <project> -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml build tests
+```
+
+Otherwise the **old** spec content runs silently: the image `COPY`s spec files in at build time, and there are no bind mounts in this environment. This exact mistake has already cost several people a full test run each.
+
+**frontend-widget image not rebuilt**
+
+`frontend-widget` is declared only in `compose.tests.yml`, as a dependency of `tests` — Compose
+builds a _missing_ image automatically but never rebuilds an _existing_ one on its own. `up.sh`
+therefore rebuilds it explicitly, right after the `frontend` image, once per stack lifetime. If
+you bring the stack up some other way and then change `src/index-widget.tsx` or any file it
+imports, the widget-affecting code changes but the image does not: `widget.spec.ts` keeps
+testing the old bundle and stays green for a reason that has nothing to do with the current
+code. Rebuild explicitly if you suspect this:
+
+```bash
+docker compose -p <project> -f e2e-stack/compose.yml -f e2e-stack/compose.tests.yml build frontend-widget
+```
+
+**Logs**
+
+```bash
+docker compose -p dfx-e2e-stack logs api
+docker compose -p dfx-e2e-stack logs frontend
+docker compose -p dfx-e2e-stack logs
+```
+
+**Traces, screenshots, videos, HTML report**
+
+Playwright writes artifacts inside the `tests` container to `/work/test-results` and `/work/playwright-report`. Those paths are backed by named Docker volumes (`e2e-test-results`, `e2e-playwright-report` in `compose.tests.yml`). Bind mounts are not used and are not supported in the environments this harness must run in.
+
+`scripts/run.sh` starts tests with `compose run --rm tests`, so the container is already gone when you want to copy artifacts. Read the named volumes instead (they outlive the `--rm` container). Do this **before** teardown: `down.sh` / the EXIT trap in `run.sh` run `docker compose down -v` and remove the volumes.
+
+Volume names include the Compose project prefix (`<project>_<name>`; default project `dfx-e2e-stack`). Confirm with `docker volume ls | grep e2e-` if unsure.
+
+```bash
+project=dfx-e2e-stack   # or $E2E_PROJECT, if overridden
+docker run --rm -v "${project}_e2e-test-results:/vol" -v "$(pwd)/test-results:/dest" alpine cp -a /vol/. /dest/
+docker run --rm -v "${project}_e2e-playwright-report:/vol" -v "$(pwd)/playwright-report:/dest" alpine cp -a /vol/. /dest/
+```
+
+In CI the workflow does this automatically and uploads an artifact named `e2e-stack-report`.
+
+**Stack does not become healthy**
+
+1. Confirm Docker is running and Compose v2 is available (`docker compose version`).
+2. Confirm the API source is reachable: either `E2E_API_REPO` points at a valid checkout, or `E2E_API_IMAGE` is set.
+3. Inspect service health and recent logs (commands above). Look for failed migrations, a port conflict on `E2E_PORT_API` / `E2E_PORT_FRONTEND`, or an image build error.
+4. Tear down and retry from a clean state: `npm run e2e:stack:down`, then `npm run e2e:stack:up` (or `npm run e2e:stack`).
+
+## Cleanup
+
+```bash
+npm run e2e:stack:down
+```
+
+This runs `docker compose down -v --remove-orphans` for the `dfx-e2e-stack` project and is safe to run even if nothing is up.
