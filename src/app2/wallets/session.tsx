@@ -70,14 +70,14 @@ import { shouldInvalidateSession } from './session-guards';
  * simply stays off. Only a *present* account that differs from the JWT address forces re-auth.
  * A `request` rejection is also a non-event (handled by the caller, not this helper).
  *
- * Callers must also gate with {@link isInjectedEvmSession} / `isInjectedEvm`: a non-EVM JWT
- * address (Bitcoin, Cardano, …) will never match an `eth_accounts` result, and the probe runs
- * against `window.ethereum` regardless of which extension owns it — so a mismatch alone must
- * not log those sessions out. */
+ * `isInjectedEvm` is required: pass the result of {@link isInjectedEvmSession} (or an equivalent
+ * association check). A non-EVM JWT address (Bitcoin, Cardano, …) will never match an
+ * `eth_accounts` result, and the probe runs against `window.ethereum` regardless of which
+ * extension owns it — so a mismatch alone must not log those sessions out. */
 export function shouldInvalidateOnAccountProbe(
   activeAddress: string | undefined,
   accounts: readonly string[],
-  isInjectedEvm = true,
+  isInjectedEvm: boolean,
 ): boolean {
   if (!isInjectedEvm) return false;
   if (!accounts[0]) return false;
