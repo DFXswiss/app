@@ -89,9 +89,9 @@ export default function ComplianceBankTxUnassignedScreen(): JSX.Element {
     return true;
   }
 
+  // Only reachable through the save button, which stays disabled until `canSubmitAssign` holds -
+  // so a type is always selected by the time this runs.
   async function handleAssign(id: number): Promise<void> {
-    if (!selectedType) return;
-
     const dto: AssignBankTxDto = { type: selectedType };
     const buyIdTrimmed = selectedBuyId.trim();
     if (buyIdTrimmed !== '') {
