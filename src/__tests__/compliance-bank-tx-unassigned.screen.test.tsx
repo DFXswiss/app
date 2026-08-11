@@ -25,11 +25,6 @@ jest.mock('@dfx.swiss/react-components', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { Controller } = require('react-hook-form');
 
-  type ChildProps = {
-    name?: string;
-    children?: React.ReactNode;
-  };
-
   function enrichChildren(
     children: React.ReactNode,
     control: unknown,
@@ -37,7 +32,7 @@ jest.mock('@dfx.swiss/react-components', () => {
   ): React.ReactNode {
     return Children.map(children, (child: React.ReactNode) => {
       if (!isValidElement(child)) return child;
-      const childProps = child.props as ChildProps;
+      const childProps = child.props as { name?: string; children?: React.ReactNode };
       const nextChildren = enrichChildren(childProps.children, control, errors);
       if (childProps.name) {
         return cloneElement(child, {

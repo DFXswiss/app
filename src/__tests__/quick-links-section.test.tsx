@@ -3,6 +3,8 @@
 
 const mockNavigate = jest.fn();
 
+jest.mock('src/dto/safe.dto', () => ({}));
+
 jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_ns: string, key: string) => key }),
 }));
