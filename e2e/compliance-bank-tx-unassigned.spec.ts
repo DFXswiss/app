@@ -179,7 +179,10 @@ test.describe('Compliance: unassigned bank transactions', () => {
 
     await page.getByRole('button', { name: 'Assign' }).first().click();
     await expect(page.getByText('Buy ID')).toBeVisible();
-    await expect(page.getByText('Select...')).toBeVisible();
+    // Wait on the save button rather than the dropdown placeholder: the placeholder is built from a
+    // translated string and therefore changes with the language, while the button only exists once
+    // the row's form is open.
+    await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
 
     await expect(page).toHaveScreenshot(
       'compliance-bank-tx-unassigned-02-assign-form.png',
