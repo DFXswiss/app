@@ -4,6 +4,24 @@ import { FiatPaymentMethod, PersonalIbanProvider, TransactionError } from '@dfx.
 export const FRICK_BANK_NAME = 'Bank Frick';
 export const FRICK_ACCOUNT_HOLDER_NAME = 'DFX AG';
 
+/**
+ * Electronic-format IBANs of DFX's shared collection accounts at Bank Frick, keyed by currency
+ * (the same values the public `GET /v1/bank` endpoint serves for the "Bank Frick" EUR/CHF rows).
+ * Display-only alternative next to a Frick personal IBAN; transfers to them are attributable
+ * only via the remittance reference, so one must never be shown without one. Single source of
+ * truth for which currencies Bank Frick serves - `FRICK_CURRENCIES` below is derived from its keys.
+ */
+export const FRICK_COLLECTION_IBANS: Readonly<Record<string, string>> = Object.freeze({
+  EUR: 'LI75088110105923K000E',
+  CHF: 'LI32088110105923K000C',
+});
+
+/**
+ * Currencies Bank Frick personal IBANs and the shared collection account are available for.
+ * Product decision; derived from `FRICK_COLLECTION_IBANS`'s keys so the two can never drift apart.
+ */
+export const FRICK_CURRENCIES: readonly string[] = Object.freeze(Object.keys(FRICK_COLLECTION_IBANS));
+
 export function normalizePersonalIban(value: string | undefined): string | undefined {
   return value?.toLowerCase() === PersonalIbanProvider.FRICK.toLowerCase()
     ? PersonalIbanProvider.FRICK
@@ -38,7 +56,9 @@ export function isPersonalIbanApplicable(
   currencyName: string | undefined,
   paymentMethod: FiatPaymentMethod | undefined,
 ): boolean {
-  return currencyName === 'EUR' && paymentMethod === FiatPaymentMethod.BANK;
+  return (
+    currencyName !== undefined && FRICK_CURRENCIES.includes(currencyName) && paymentMethod === FiatPaymentMethod.BANK
+  );
 }
 
 /**
@@ -60,40 +80,44 @@ export function isVerifiedFrickPersonalIbanResponse(info: {
 }
 
 /**
- * Electronic-format IBAN of DFX's shared EUR collection account at Bank Frick (the same value
- * the public `GET /v1/bank` endpoint serves for the "Bank Frick" EUR row). Offered as an
- * alternative next to a Frick personal IBAN — display, QR rewrite and PDF invoice all follow the
- * toggle; transfers to it are attributable only via the remittance reference, so it must never
- * be shown without one.
+ * Looks up the Bank Frick collection IBAN for a currency; undefined if none is configured.
+ * Uses an own-property check rather than a bare index access: `currencyName` is caller-controlled,
+ * and a value like `'constructor'` or `'toString'` must resolve to `undefined`, not to whatever
+ * that name happens to mean on the object prototype chain.
  */
-export const FRICK_EUR_COLLECTION_IBAN = 'LI75088110105923K000E';
+export function getFrickCollectionIban(currencyName: string | undefined): string | undefined {
+  return currencyName !== undefined && Object.hasOwn(FRICK_COLLECTION_IBANS, currencyName)
+    ? FRICK_COLLECTION_IBANS[currencyName]
+    : undefined;
+}
 
 /**
- * True when the customer holds a verified Bank Frick personal IBAN but their e-banking cannot
- * accept it (vBAN, contains letters), and it is safe to additionally offer the shared collection
- * account as an alternative (display, QR rewrite and PDF invoice follow the toggle).
- * `remittanceInfo` must be present: attribution on the shared collection account runs entirely
- * on the reference, and the backend enforces the same rule before it ever shows the collection
- * account itself as the primary IBAN. Whitespace-only `remittanceInfo` or `iban` is rejected
- * (same trim/normalize semantics as the rewrite). Customers already on the collection account
- * (`isPersonalIban` false) get no toggle - they already see it.
+ * The Bank Frick collection IBAN to offer as a display-only alternative to a verified Bank Frick
+ * personal IBAN, or undefined if none should be offered. Typical reason to offer it: the
+ * customer's e-banking cannot accept the personal IBAN (vBAN, contains letters). `remittanceInfo`
+ * must be present: attribution on the shared collection account runs entirely on the reference,
+ * and the backend enforces the same rule before it ever shows the collection account itself as
+ * the primary IBAN. Whitespace-only `remittanceInfo` or `iban` is rejected (same trim/normalize
+ * semantics as the rewrite). Customers already on the collection account (`isPersonalIban` false)
+ * get undefined here - they already see it.
  */
-export function canOfferCollectionIban(info: {
+export function getOfferableCollectionIban(info: {
   currency?: { name?: string };
   isPersonalIban?: boolean;
   bank?: string;
   name?: string;
   remittanceInfo?: string;
   iban?: string;
-}): boolean {
-  if (info.currency?.name !== 'EUR') return false;
-  if (!isVerifiedFrickPersonalIbanResponse(info)) return false;
-  if (!info.remittanceInfo || !info.remittanceInfo.trim()) return false;
-  if (!info.iban) return false;
+}): string | undefined {
+  const collectionIban = getFrickCollectionIban(info.currency?.name);
+  if (!collectionIban) return undefined;
+  if (!isVerifiedFrickPersonalIbanResponse(info)) return undefined;
+  if (!info.remittanceInfo || !info.remittanceInfo.trim()) return undefined;
+  if (!info.iban) return undefined;
 
   const normalized = info.iban.replace(/\s+/g, '').toUpperCase();
-  if (!normalized) return false;
-  return normalized !== FRICK_EUR_COLLECTION_IBAN;
+  if (!normalized) return undefined;
+  return normalized !== collectionIban ? collectionIban : undefined;
 }
 
 /**
@@ -114,8 +138,10 @@ export function canOfferCollectionIban(info: {
  * receives is a bankUsage string, not an ISO 11649 structured reference. A populated
  * structured-reference carrier (line 9) is therefore outside the shape this function validates
  * and is refused fail-closed — the worst case is no rewritten QR, while manual IBAN entry and
- * the original PDF invoice both remain available. Swiss QR-Bill SVG payloads are never
- * rewritten — callers must treat undefined as "no QR available".
+ * the original PDF invoice both remain available. The EPC069-12 GiroCode exists for EUR only —
+ * a CHF quote carries a Swiss QR-Bill SVG, which the first check refuses, so the hard `EUR`
+ * amount-prefix check is deliberate and the rewrite always targets the EUR collection row.
+ * Swiss QR-Bill SVG payloads are never rewritten — callers must treat undefined as "no QR available".
  */
 export function toCollectionIbanGiroCode(
   paymentRequest: string,
@@ -157,7 +183,7 @@ export function toCollectionIbanGiroCode(
   if (!normalizedPersonal) return undefined;
   if (normalizedLine !== normalizedPersonal) return undefined;
 
-  lines[6] = FRICK_EUR_COLLECTION_IBAN;
+  lines[6] = FRICK_COLLECTION_IBANS.EUR;
   return lines.join('\n');
 }
 
@@ -203,7 +229,7 @@ export function getPersonalIbanErrorMessage(message: string | undefined): string
     return 'The requested personal IBAN provider is not recognized.';
   }
   if (message.includes('PersonalIbanCurrencyNotSupported')) {
-    return 'Bank Frick personal IBANs are currently only available for EUR.';
+    return 'Bank Frick personal IBANs are currently only available for EUR and CHF.';
   }
   if (message.includes('CurrencyUnsupported')) {
     return 'The selected currency is not available. Please try a different currency or contact support.';

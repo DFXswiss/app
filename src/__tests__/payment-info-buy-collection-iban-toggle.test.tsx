@@ -1,8 +1,9 @@
-// Focused unit test for the EUR collection-IBAN toggle in PaymentInformationContent.
+// Focused unit test for the Bank Frick collection-IBAN toggle in PaymentInformationContent.
 // Mounts the REAL component (not mocked) so the toggle button and the displayed/copied IBAN
 // value are exercised. The toggle must only appear for a verified Bank Frick personal IBAN,
-// EUR currency, and a present remittanceInfo, and never for customers already shown the
-// collection account (isPersonalIban false) or whose displayed IBAN already is that account.
+// a currency with a configured collection account (EUR or CHF), and a present remittanceInfo,
+// and never for customers already shown the collection account (isPersonalIban false) or whose
+// displayed IBAN already is that account.
 
 const mockCopy = jest.fn();
 
@@ -91,7 +92,7 @@ jest.mock('../components/payment/payment-qr-code', () => ({
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PaymentInformationContent } from '../components/payment/payment-info-buy';
-import { canOfferCollectionIban, FRICK_EUR_COLLECTION_IBAN } from '../util/personal-iban';
+import { FRICK_COLLECTION_IBANS, getOfferableCollectionIban } from '../util/personal-iban';
 
 const PERSONAL_IBAN = 'LI21088110102979K002E';
 
@@ -153,12 +154,12 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     const showCollectionButton = within(ibanRow).getByRole('button', { name: 'Show collection IBAN' });
     fireEvent.click(showCollectionButton);
 
-    expect(ibanRow).toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
+    expect(ibanRow).toHaveTextContent(FRICK_COLLECTION_IBANS.EUR);
     const showPersonalButton = within(ibanRow).getByRole('button', { name: 'Show personal IBAN' });
     expect(showPersonalButton).toBeInTheDocument();
 
     fireEvent.click(within(ibanRow).getByTestId('copy'));
-    expect(mockCopy).toHaveBeenLastCalledWith(FRICK_EUR_COLLECTION_IBAN);
+    expect(mockCopy).toHaveBeenLastCalledWith(FRICK_COLLECTION_IBANS.EUR);
 
     fireEvent.click(showPersonalButton);
 
@@ -175,7 +176,22 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     expect(screen.queryByRole('button', { name: 'Show collection IBAN' })).not.toBeInTheDocument();
   });
 
-  it('does not show the toggle for a non-EUR currency', () => {
+  it('does not show the toggle for a currency without a configured Bank Frick collection account', () => {
+    render(
+      <PaymentInformationContent
+        info={baseInfo({
+          isPersonalIban: true,
+          bank: 'Bank Frick',
+          name: 'DFX AG',
+          currency: { name: 'USD' },
+        })}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Show collection IBAN' })).not.toBeInTheDocument();
+  });
+
+  it('toggles the displayed, copied and hinted IBAN between the personal and CHF collection account', () => {
     render(
       <PaymentInformationContent
         info={baseInfo({
@@ -187,7 +203,25 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
       />,
     );
 
-    expect(screen.queryByRole('button', { name: 'Show collection IBAN' })).not.toBeInTheDocument();
+    const ibanRow = screen.getByTestId('row-value-IBAN');
+    expect(ibanRow).toHaveTextContent(PERSONAL_IBAN);
+    expect(screen.getByTestId('row-info-IBAN')).toHaveTextContent(DISCOVERABILITY_HINT);
+
+    const showCollectionButton = within(ibanRow).getByRole('button', { name: 'Show collection IBAN' });
+    fireEvent.click(showCollectionButton);
+
+    expect(ibanRow).toHaveTextContent(FRICK_COLLECTION_IBANS.CHF);
+    expect(ibanRow).not.toHaveTextContent(FRICK_COLLECTION_IBANS.EUR);
+    expect(screen.getByTestId('row-info-IBAN')).toHaveTextContent(COLLECTION_HINT);
+    const showPersonalButton = within(ibanRow).getByRole('button', { name: 'Show personal IBAN' });
+    expect(showPersonalButton).toBeInTheDocument();
+
+    fireEvent.click(within(ibanRow).getByTestId('copy'));
+    expect(mockCopy).toHaveBeenLastCalledWith(FRICK_COLLECTION_IBANS.CHF);
+
+    fireEvent.click(showPersonalButton);
+
+    expect(ibanRow).toHaveTextContent(PERSONAL_IBAN);
   });
 
   it('does not show the toggle when remittanceInfo is absent', () => {
@@ -222,7 +256,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
           isPersonalIban: true,
           bank: 'Bank Frick',
           name: 'DFX AG',
-          iban: FRICK_EUR_COLLECTION_IBAN,
+          iban: FRICK_COLLECTION_IBANS.EUR,
         })}
       />,
     );
@@ -315,7 +349,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
     const qrValue = screen.getByTestId('qr-value');
     expect(qrValue).toHaveTextContent(PERSONAL_IBAN);
-    expect(qrValue).not.toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
+    expect(qrValue).not.toHaveTextContent(FRICK_COLLECTION_IBANS.EUR);
     expect(qrValue).toHaveAttribute('data-collection', 'false');
     expect(qrValue).toHaveAttribute('data-has-value', 'true');
   });
@@ -336,10 +370,31 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
     fireEvent.click(screen.getByTestId('tab-1'));
 
     const qrValue = screen.getByTestId('qr-value');
-    expect(qrValue).toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
+    expect(qrValue).toHaveTextContent(FRICK_COLLECTION_IBANS.EUR);
     expect(qrValue).not.toHaveTextContent(PERSONAL_IBAN);
     expect(qrValue).toHaveAttribute('data-collection', 'true');
     expect(qrValue).toHaveAttribute('data-has-value', 'true');
+  });
+
+  it('renders PaymentQrCode without a value for a selected CHF collection account and SVG QR-Bill', () => {
+    render(
+      <PaymentInformationContent
+        info={baseInfo({
+          isPersonalIban: true,
+          bank: 'Bank Frick',
+          name: 'DFX AG',
+          currency: { name: 'CHF' },
+          paymentRequest: '<svg xmlns="http://www.w3.org/2000/svg" data-unique="swiss-qr-bill"></svg>',
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
+    fireEvent.click(screen.getByTestId('tab-1'));
+
+    const qrValue = screen.getByTestId('qr-value');
+    expect(qrValue).toHaveAttribute('data-has-value', 'false');
+    expect(qrValue).toHaveAttribute('data-collection', 'true');
   });
 
   it.each([
@@ -407,9 +462,9 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
     fireEvent.click(screen.getByTestId('tab-1'));
-    expect(screen.getByTestId('qr-value')).toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
+    expect(screen.getByTestId('qr-value')).toHaveTextContent(FRICK_COLLECTION_IBANS.EUR);
 
-    // State stays toggled; props no longer pass canOfferCollectionIban → QR must not stay rewritten.
+    // State stays toggled; the updated props are no longer offerable → QR must not stay rewritten.
     rerender(
       <PaymentInformationContent
         info={baseInfo({
@@ -423,23 +478,31 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
     const qrValue = screen.getByTestId('qr-value');
     expect(qrValue).toHaveTextContent(PERSONAL_IBAN);
-    expect(qrValue).not.toHaveTextContent(FRICK_EUR_COLLECTION_IBAN);
+    expect(qrValue).not.toHaveTextContent(FRICK_COLLECTION_IBANS.EUR);
     expect(qrValue.textContent).toBe(paymentRequest);
     expect(qrValue).toHaveAttribute('data-collection', 'false');
     expect(qrValue).toHaveAttribute('data-has-value', 'true');
   });
 });
 
-describe('canOfferCollectionIban', () => {
-  it('is true for a verified Bank Frick personal IBAN with EUR currency and remittanceInfo', () => {
+describe('getOfferableCollectionIban', () => {
+  it('returns the EUR collection IBAN for a verified Bank Frick personal IBAN with remittanceInfo', () => {
     expect(
-      canOfferCollectionIban(baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })),
-    ).toBe(true);
+      getOfferableCollectionIban(baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })),
+    ).toBe(FRICK_COLLECTION_IBANS.EUR);
   });
 
-  it('is false when the given IBAN is the collection account, ignoring whitespace and case', () => {
+  it('returns the CHF collection IBAN for a verified Bank Frick personal IBAN with CHF currency', () => {
     expect(
-      canOfferCollectionIban(
+      getOfferableCollectionIban(
+        baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG', currency: { name: 'CHF' } }),
+      ),
+    ).toBe(FRICK_COLLECTION_IBANS.CHF);
+  });
+
+  it('returns undefined when the given IBAN is the collection account, ignoring whitespace and case', () => {
+    expect(
+      getOfferableCollectionIban(
         baseInfo({
           isPersonalIban: true,
           bank: 'Bank Frick',
@@ -447,6 +510,6 @@ describe('canOfferCollectionIban', () => {
           iban: 'li75 0881 1010 5923 k000 e',
         }),
       ),
-    ).toBe(false);
+    ).toBeUndefined();
   });
 });

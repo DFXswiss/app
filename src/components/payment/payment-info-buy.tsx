@@ -14,11 +14,7 @@ import {
 import { useState } from 'react';
 import { useSettingsContext } from '../../contexts/settings.context';
 import { useClipboard } from '../../hooks/clipboard.hook';
-import {
-  FRICK_EUR_COLLECTION_IBAN,
-  canOfferCollectionIban,
-  toCollectionIbanGiroCode,
-} from '../../util/personal-iban';
+import { getOfferableCollectionIban, toCollectionIbanGiroCode } from '../../util/personal-iban';
 import { PaymentQrCode } from './payment-qr-code';
 
 interface PaymentInformationContentProps {
@@ -34,13 +30,15 @@ interface PaymentInformationContentProps {
 interface PaymentInformationTextProps extends PaymentInformationContentProps {
   showCollectionIban: boolean;
   offerCollectionIban: boolean;
+  collectionIban: string | undefined;
   onToggleCollectionIban: () => void;
 }
 
 export function PaymentInformationContent({ info, showBank }: PaymentInformationContentProps): JSX.Element {
   const { translate } = useSettingsContext();
   const [showCollectionIban, setShowCollectionIban] = useState(false);
-  const offerCollectionIban = canOfferCollectionIban(info);
+  const collectionIban = getOfferableCollectionIban(info);
+  const offerCollectionIban = collectionIban !== undefined;
 
   const textContent = (
     <PaymentInformationText
@@ -48,12 +46,13 @@ export function PaymentInformationContent({ info, showBank }: PaymentInformation
       showBank={showBank}
       showCollectionIban={showCollectionIban}
       offerCollectionIban={offerCollectionIban}
+      collectionIban={collectionIban}
       onToggleCollectionIban={() => setShowCollectionIban((current) => !current)}
     />
   );
 
   // Same expression as the Text-branch display: QR image and invoice must not diverge.
-  const showCollectionAccount = offerCollectionIban && showCollectionIban;
+  const showCollectionAccount = collectionIban !== undefined && showCollectionIban;
 
   const qrTabContent = (() => {
     if (!info.paymentRequest) return null;
@@ -116,11 +115,12 @@ function PaymentInformationText({
   showBank,
   showCollectionIban,
   offerCollectionIban,
+  collectionIban,
   onToggleCollectionIban,
 }: PaymentInformationTextProps): JSX.Element {
   const { translate } = useSettingsContext();
   const { copy } = useClipboard();
-  const displayedIban = offerCollectionIban && showCollectionIban ? FRICK_EUR_COLLECTION_IBAN : info.iban;
+  const displayedIban = showCollectionIban && collectionIban !== undefined ? collectionIban : info.iban;
 
   return (
     <>

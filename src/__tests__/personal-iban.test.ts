@@ -20,10 +20,11 @@ import de from '../translations/languages/de.json';
 import fr from '../translations/languages/fr.json';
 import italian from '../translations/languages/it.json';
 import {
-  canOfferCollectionIban,
   FRICK_ACCOUNT_HOLDER_NAME,
   FRICK_BANK_NAME,
-  FRICK_EUR_COLLECTION_IBAN,
+  FRICK_COLLECTION_IBANS,
+  getFrickCollectionIban,
+  getOfferableCollectionIban,
   getPersonalIbanErrorMessage,
   getPersonalIbanKycMessage,
   getStoredPaymentDetailErrorMessage,
@@ -66,8 +67,16 @@ describe('isPersonalIbanApplicable', () => {
     expect(isPersonalIbanApplicable('EUR', FiatPaymentMethod.BANK)).toBe(true);
   });
 
-  it('returns false for non-EUR currency with bank payment', () => {
-    expect(isPersonalIbanApplicable('CHF', FiatPaymentMethod.BANK)).toBe(false);
+  it('returns true for CHF with bank payment', () => {
+    expect(isPersonalIbanApplicable('CHF', FiatPaymentMethod.BANK)).toBe(true);
+  });
+
+  it('returns false for CHF with a non-bank payment method', () => {
+    expect(isPersonalIbanApplicable('CHF', FiatPaymentMethod.CARD)).toBe(false);
+  });
+
+  it('returns false for a currency outside the Bank Frick currency set with bank payment', () => {
+    expect(isPersonalIbanApplicable('USD', FiatPaymentMethod.BANK)).toBe(false);
   });
 
   it('returns false for EUR with a non-bank payment method', () => {
@@ -80,6 +89,130 @@ describe('isPersonalIbanApplicable', () => {
 
   it('returns false for undefined payment method', () => {
     expect(isPersonalIbanApplicable('EUR', undefined)).toBe(false);
+  });
+});
+
+describe('getFrickCollectionIban', () => {
+  it('returns the EUR collection IBAN for EUR', () => {
+    expect(getFrickCollectionIban('EUR')).toBe('LI75088110105923K000E');
+  });
+
+  it('returns the CHF collection IBAN for CHF', () => {
+    expect(getFrickCollectionIban('CHF')).toBe('LI32088110105923K000C');
+  });
+
+  it('returns undefined for a currency without a configured collection IBAN', () => {
+    expect(getFrickCollectionIban('USD')).toBeUndefined();
+  });
+
+  it('returns undefined for undefined', () => {
+    expect(getFrickCollectionIban(undefined)).toBeUndefined();
+  });
+
+  it('returns undefined for an inherited Object property name instead of resolving through the prototype chain', () => {
+    expect(getFrickCollectionIban('constructor')).toBeUndefined();
+  });
+});
+
+describe('getOfferableCollectionIban', () => {
+  const verifiedFrickBase = {
+    isPersonalIban: true,
+    bank: FRICK_BANK_NAME,
+    name: FRICK_ACCOUNT_HOLDER_NAME,
+    remittanceInfo: 'DFX-BUY-1',
+  };
+
+  it('returns the EUR collection IBAN for a verified EUR Frick personal IBAN with remittanceInfo', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        currency: { name: 'EUR' },
+        iban: 'LI21088110102979K002E',
+      }),
+    ).toBe(FRICK_COLLECTION_IBANS.EUR);
+  });
+
+  it('returns the CHF collection IBAN for a verified CHF Frick personal IBAN with remittanceInfo', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        currency: { name: 'CHF' },
+        iban: 'LI35088110102979K002E',
+      }),
+    ).toBe('LI32088110105923K000C');
+  });
+
+  it('returns undefined when the CHF IBAN given is the CHF collection account itself', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        currency: { name: 'CHF' },
+        iban: 'LI32088110105923K000C',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined for a currency without a configured collection IBAN (USD)', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        currency: { name: 'USD' },
+        iban: 'LI35088110102979K002E',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when the response is not a verified Bank Frick personal IBAN', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        isPersonalIban: false,
+        currency: { name: 'CHF' },
+        iban: 'LI35088110102979K002E',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when remittanceInfo is missing', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        remittanceInfo: undefined,
+        currency: { name: 'CHF' },
+        iban: 'LI35088110102979K002E',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when iban is missing', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        currency: { name: 'CHF' },
+        iban: undefined,
+      }),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when remittanceInfo is whitespace-only', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        remittanceInfo: '   ',
+        currency: { name: 'EUR' },
+        iban: 'LI21088110102979K002E',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when iban is whitespace-only', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        currency: { name: 'EUR' },
+        iban: '  ',
+      }),
+    ).toBeUndefined();
   });
 });
 
@@ -141,9 +274,9 @@ describe('getPersonalIbanErrorMessage', () => {
     expect(getPersonalIbanKycMessage()).toBe('Personal IBANs require KYC level 50.');
   });
 
-  it('qualifies the EUR-only rejection as Bank Frick-specific', () => {
+  it('qualifies the currency rejection as Bank Frick-specific and names both supported currencies', () => {
     expect(getPersonalIbanErrorMessage('PersonalIbanCurrencyNotSupported')).toBe(
-      'Bank Frick personal IBANs are currently only available for EUR.',
+      'Bank Frick personal IBANs are currently only available for EUR and CHF.',
     );
   });
 
@@ -156,11 +289,12 @@ describe('getPersonalIbanErrorMessage', () => {
     (_locale, translations, bankFrick) => {
       const message =
         translations[
-          'Bank Frick personal IBANs are currently only available for EUR.'
+          'Bank Frick personal IBANs are currently only available for EUR and CHF.'
         ];
 
       expect(message).toMatch(bankFrick);
       expect(message).toMatch(/EUR/i);
+      expect(message).toMatch(/CHF/i);
     },
   );
 
@@ -239,46 +373,6 @@ describe('getStoredPaymentDetailErrorMessage', () => {
 
   it('returns undefined for undefined message', () => {
     expect(getStoredPaymentDetailErrorMessage(undefined)).toBeUndefined();
-  });
-});
-
-describe('canOfferCollectionIban', () => {
-  const verifiedFrickEur = {
-    currency: { name: 'EUR' },
-    isPersonalIban: true,
-    bank: FRICK_BANK_NAME,
-    name: FRICK_ACCOUNT_HOLDER_NAME,
-    remittanceInfo: 'DFX-BUY-1',
-  };
-
-  it('returns false when the personal IBAN is missing', () => {
-    // Attribution on the collection account needs a remittance reference *and* a personal IBAN
-    // to rewrite; without an IBAN the toggle must not appear even if every other guard passes.
-    expect(
-      canOfferCollectionIban({
-        ...verifiedFrickEur,
-        iban: undefined,
-      }),
-    ).toBe(false);
-  });
-
-  it('returns false when remittanceInfo is whitespace-only', () => {
-    expect(
-      canOfferCollectionIban({
-        ...verifiedFrickEur,
-        remittanceInfo: '   ',
-        iban: 'LI21088110102979K002E',
-      }),
-    ).toBe(false);
-  });
-
-  it('returns false when iban is whitespace-only', () => {
-    expect(
-      canOfferCollectionIban({
-        ...verifiedFrickEur,
-        iban: '  ',
-      }),
-    ).toBe(false);
   });
 });
 
@@ -459,7 +553,7 @@ describe('toCollectionIbanGiroCode', () => {
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
   });
 
   it('accepts EUR100.50 as numerically equal to amount 100.5', () => {
@@ -471,7 +565,7 @@ describe('toCollectionIbanGiroCode', () => {
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
   });
 
   it('returns undefined when line 7 carries leading zeros in the amount', () => {
@@ -505,7 +599,7 @@ describe('toCollectionIbanGiroCode', () => {
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
   });
 
   it('returns undefined when line 7 has a non-EUR currency prefix', () => {
@@ -531,7 +625,7 @@ describe('toCollectionIbanGiroCode', () => {
 
     for (let i = 0; i < originalLines.length; i++) {
       if (i === 6) {
-        expect(resultLines[i]).toBe(FRICK_EUR_COLLECTION_IBAN);
+        expect(resultLines[i]).toBe(FRICK_COLLECTION_IBANS.EUR);
       } else {
         expect(resultLines[i]).toBe(originalLines[i]);
       }
@@ -582,10 +676,10 @@ describe('toCollectionIbanGiroCode', () => {
     expect(result).not.toContain('\r');
     expect(result.includes('\n')).toBe(true);
     const resultLines = result.split('\n');
-    expect(resultLines[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+    expect(resultLines[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
     for (let i = 0; i < originalLines.length; i++) {
       if (i === 6) {
-        expect(resultLines[i]).toBe(FRICK_EUR_COLLECTION_IBAN);
+        expect(resultLines[i]).toBe(FRICK_COLLECTION_IBANS.EUR);
       } else {
         expect(resultLines[i]).toBe(originalLines[i]);
       }
@@ -623,7 +717,7 @@ describe('toCollectionIbanGiroCode', () => {
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
   });
 
   it('returns undefined when line 0 has leading whitespace before BCD (fail-closed, no silent trim)', () => {
@@ -768,7 +862,7 @@ describe('toCollectionIbanGiroCode', () => {
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
   });
 
   it('returns undefined when the personal IBAN is empty', () => {
@@ -782,7 +876,7 @@ describe('toCollectionIbanGiroCode', () => {
     const result = toCollectionIbanGiroCode(input, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT);
     expect(result).toBeDefined();
     if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
   });
 
   it('tolerates whitespace and lowercase in the given personal IBAN', () => {
@@ -794,6 +888,6 @@ describe('toCollectionIbanGiroCode', () => {
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
   });
 });
