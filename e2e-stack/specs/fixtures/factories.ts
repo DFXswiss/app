@@ -1704,8 +1704,8 @@ async function getForeignKeys(): Promise<ForeignKeyRef[]> {
  * - PK exists but is not exactly `{ id }` → nonIdPrimaryKey (diagnostics only).
  * - No primary key at all → in neither set.
  *
- * Leaf-ness is NOT decided here. A table that is not id-addressable is a leaf only when nothing
- * references it; if something does, its descendants exist and cannot be reached by id, which is an
+ * Leaf-ness is NOT decided here. A table that is not id-addressable is a leaf only when no OTHER
+ * table references it — a self-referencing foreign key does not count; if something does, its descendants exist and cannot be reached by id, which is an
  * error rather than a leaf. See deleteRowAndDescendants for that decision.
  */
 async function getTableKeyInfo(): Promise<TableKeyInfo> {
@@ -1755,10 +1755,10 @@ async function getTableKeyInfo(): Promise<TableKeyInfo> {
  *
  * Three independent FK checks must stay separate (parent side vs child side):
  * - (i) Parent side: FK points at a non-`id` column → unresolvable from the id we hold → error.
- * - (ii) Child is not addressable by `id` AND something references it → its descendants exist and
+ * - (ii) Child is not addressable by `id` AND another table references it → its descendants exist and
  *   cannot be reached, which must not pass as a silent leaf → error once per such table, no DELETE
  *   attempt, and only when a row for this parent actually exists.
- * - (iii) Child is not addressable by `id` and nothing references it → true leaf: DELETE matching
+ * - (iii) Child is not addressable by `id` and no other table references it → true leaf: DELETE matching
  *   rows by FK column and stop. Both (ii) and (iii) cover tables with no primary key as well as
  *   tables with a composite one; what separates them is whether anything points at the table, not
  *   the shape of its key. The first matching branch continues before later ones run.
@@ -1770,8 +1770,8 @@ async function getTableKeyInfo(): Promise<TableKeyInfo> {
  *   confirm the row is gone, so it must not report `deletedSelf: true` — but it must not report a
  *   failure either: the throw at the end is driven by `errors`, so a `failed` without a matching
  *   entry there would re-queue the reference while cleanupCreatedData stayed silent about why. The
- *   ancestor frame that owns this row runs its own real DELETE later and records its own outcome,
- *   with a message.
+ *   ancestor frame that owns this row runs its own real DELETE later: it either succeeds, or fails
+ *   against the constraint and records that failure in `errors` with a message.
  * - Diamond (two paths reach the same row): return the cached finished result as-is, not a
  *   fabricated success, so a failed first visit is not rewritten as success on the second path.
  *
@@ -1876,7 +1876,7 @@ async function deleteRowAndDescendants(
       continue;
     }
 
-    // (iii) Child cannot be addressed by id and nothing references it: a true leaf. The parent-side
+    // (iii) Child cannot be addressed by id and no other table references it: a true leaf. The parent-side
     // check above passed, so delete its rows by the foreign key column and stop.
     if (!tableKeyInfo.idAddressable.has(fk.table)) {
       try {

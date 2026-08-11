@@ -19,14 +19,15 @@ fi
 build_tests_image
 log_info "Running e2e tests..."
 # Declares that every spec is in scope, which is what lets the coverage gate check that each route
-# was actually opened rather than merely claimed. Only real filters flip this off: --grep /
-# --grep-invert (and their =value forms) or a positional spec-file path pattern. Other flags
-# (--reporter, --workers, …) do not filter which specs run and must not drop the full-run check.
-# A filtered run instead only gets the gate's ownership check (route-coverage.spec.ts, the
-# `E2E_FULL_RUN !== '1'` branch), which prints that loudly instead of claiming coverage.
-# Flags that take their value as the NEXT argument. Without skipping that value, `--workers 1`
-# would leave a bare `1` to be read as a positional spec pattern, and a genuinely complete run
-# would lose the full-run check - the opposite of the mistake this function exists to prevent.
+# was actually opened rather than merely claimed. A filtered run instead gets only the gate's
+# ownership check (route-coverage.spec.ts, the `E2E_FULL_RUN !== '1'` branch), which says so loudly
+# instead of claiming coverage.
+#
+# The check below is an allowlist on purpose. Listing filters and treating everything else as
+# complete was tried twice here and was wrong twice: --project, --shard, --last-failed and
+# --only-changed were all missed in turn, and each omission let a partial run declare itself
+# complete. An allowlist fails the other way - an unrecognised flag costs the strict navigation
+# check on a local run, which is the harmless direction.
 is_filtered_run() {
   local skip_value=0
   for arg in "$@"; do
@@ -35,23 +36,19 @@ is_filtered_run() {
       continue
     fi
     case "$arg" in
-      # Real filters: they decide which tests run at all. --project is the sharpest: the coverage
-      # gate lives in its own `coverage-gate` project (playwright.config.ts), so `--project chromium`
-      # runs the suite without ever running the gate. It is refused whatever value it carries -
-      # `--project coverage-gate` does pull the whole dependency chain and is effectively complete,
-      # but treating one project name as "complete" would be a rule nobody can see from the call
-      # site; the documented way to run only the gate is `--grep @coverage-gate`.
-      --grep|--grep-invert|--project|--shard) return 0 ;;
-      --grep=*|--grep-invert=*|--project=*|--shard=*) return 0 ;;
-      # --last-failed and --only-changed select a subset from run history or the working tree;
-      # --list executes nothing at all.
-      --list|--last-failed|--only-changed|--only-changed=*) return 0 ;;
-      # Value-taking flags that do not change which tests run. Their value must be skipped, or a bare
-      # `1` from `--workers 1` would be read below as a positional spec pattern.
-      --workers|--reporter|--timeout|--global-timeout|--repeat-each|--retries|--output|--max-failures|--config|-j|-c)
-        skip_value=1
-        ;;
-      -*) ;;
+      # The ONLY flags that leave the run complete. Everything else counts as a filter, including
+      # flags Playwright may add after this was written: guessing wrong in that direction merely
+      # drops the strict navigation check, while guessing wrong the other way lets a partial run
+      # claim full coverage - which is the whole failure this gate exists to prevent. --project is
+      # deliberately not on this list even for `--project coverage-gate`, which does pull the entire
+      # dependency chain: encoding one project name as "complete" would be a rule invisible from the
+      # call site, and the documented way to run only the gate is `--grep @coverage-gate`.
+      --workers=*|--reporter=*|--timeout=*|--global-timeout=*|--repeat-each=*|--retries=*) ;;
+      --output=*|--max-failures=*|--config=*|--trace=*|--tsconfig=*|--quiet|--pass-with-no-tests) ;;
+      # Same flags in their separate-value form: skip the value too, or a bare `1` from
+      # `--workers 1` would be read below as a positional spec pattern.
+      --workers|--reporter|--timeout|--global-timeout|--repeat-each|--retries) skip_value=1 ;;
+      --output|--max-failures|--config|--trace|--tsconfig|-j|-c) skip_value=1 ;;
       *) return 0 ;;
     esac
   done
