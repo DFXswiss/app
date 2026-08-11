@@ -476,16 +476,36 @@ function sampleGiroCode(
 
 describe('toCollectionIbanGiroCode', () => {
   it('returns undefined when personalIban is undefined', () => {
-    expect(toCollectionIbanGiroCode(sampleGiroCode(), undefined, SAMPLE_REMITTANCE, SAMPLE_AMOUNT)).toBeUndefined();
+    expect(
+      toCollectionIbanGiroCode(sampleGiroCode(), undefined, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'EUR'),
+    ).toBeUndefined();
   });
 
   it('returns undefined when remittanceInfo is undefined', () => {
-    expect(toCollectionIbanGiroCode(sampleGiroCode(), PERSONAL_GIRO_IBAN, undefined, SAMPLE_AMOUNT)).toBeUndefined();
+    expect(
+      toCollectionIbanGiroCode(sampleGiroCode(), PERSONAL_GIRO_IBAN, undefined, SAMPLE_AMOUNT, 'EUR'),
+    ).toBeUndefined();
   });
 
   it('returns undefined when amount is undefined', () => {
     expect(
-      toCollectionIbanGiroCode(sampleGiroCode(), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, undefined),
+      toCollectionIbanGiroCode(sampleGiroCode(), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, undefined, 'EUR'),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined unless the quote currency is exactly EUR', () => {
+    const paymentRequest = sampleGiroCode();
+    expect(
+      toCollectionIbanGiroCode(paymentRequest, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'CHF'),
+    ).toBeUndefined();
+    expect(
+      toCollectionIbanGiroCode(paymentRequest, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'EUR'),
+    ).toBeDefined();
+  });
+
+  it('returns undefined when currencyName is undefined', () => {
+    expect(
+      toCollectionIbanGiroCode(sampleGiroCode(), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, undefined),
     ).toBeUndefined();
   });
 
@@ -496,6 +516,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -507,6 +528,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -518,6 +540,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -529,6 +552,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -540,6 +564,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -550,6 +575,7 @@ describe('toCollectionIbanGiroCode', () => {
       PERSONAL_GIRO_IBAN,
       SAMPLE_REMITTANCE,
       SAMPLE_AMOUNT,
+      'EUR',
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
@@ -562,6 +588,7 @@ describe('toCollectionIbanGiroCode', () => {
       PERSONAL_GIRO_IBAN,
       SAMPLE_REMITTANCE,
       100.5,
+      'EUR',
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
@@ -575,6 +602,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -586,6 +614,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         1000000000,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -596,6 +625,7 @@ describe('toCollectionIbanGiroCode', () => {
       PERSONAL_GIRO_IBAN,
       SAMPLE_REMITTANCE,
       0.5,
+      'EUR',
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
@@ -609,6 +639,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -616,7 +647,7 @@ describe('toCollectionIbanGiroCode', () => {
   it('replaces only line 6 on an LF payload without a trailing blank line, leaving all other lines and the line count untouched', () => {
     const input = sampleGiroCode();
     const originalLines = input.split('\n');
-    const result = toCollectionIbanGiroCode(input, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT);
+    const result = toCollectionIbanGiroCode(input, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'EUR');
 
     expect(result).toBeDefined();
     if (result === undefined) return;
@@ -639,6 +670,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -650,6 +682,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -661,6 +694,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -669,7 +703,7 @@ describe('toCollectionIbanGiroCode', () => {
     const lfPayload = sampleGiroCode();
     const originalLines = lfPayload.split('\n');
     const input = originalLines.join('\r\n');
-    const result = toCollectionIbanGiroCode(input, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT);
+    const result = toCollectionIbanGiroCode(input, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'EUR');
 
     expect(result).toBeDefined();
     if (result === undefined) return;
@@ -689,8 +723,20 @@ describe('toCollectionIbanGiroCode', () => {
   it('silently drops a trailing blank line on rebuild', () => {
     const base = sampleGiroCode();
     const withTrailing = base + '\n';
-    const result = toCollectionIbanGiroCode(withTrailing, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT);
-    const expected = toCollectionIbanGiroCode(base, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT);
+    const result = toCollectionIbanGiroCode(
+      withTrailing,
+      PERSONAL_GIRO_IBAN,
+      SAMPLE_REMITTANCE,
+      SAMPLE_AMOUNT,
+      'EUR',
+    );
+    const expected = toCollectionIbanGiroCode(
+      base,
+      PERSONAL_GIRO_IBAN,
+      SAMPLE_REMITTANCE,
+      SAMPLE_AMOUNT,
+      'EUR',
+    );
 
     expect(result).toBeDefined();
     expect(result).toBe(expected);
@@ -698,13 +744,25 @@ describe('toCollectionIbanGiroCode', () => {
 
   it('returns undefined when the charset line is 9 (outside EPC069-12 1..8)', () => {
     expect(
-      toCollectionIbanGiroCode(sampleGiroCode({ line2: '9' }), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line2: '9' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
     ).toBeUndefined();
   });
 
   it('returns undefined when the charset line is empty', () => {
     expect(
-      toCollectionIbanGiroCode(sampleGiroCode({ line2: '' }), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line2: '' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
     ).toBeUndefined();
   });
 
@@ -714,6 +772,7 @@ describe('toCollectionIbanGiroCode', () => {
       PERSONAL_GIRO_IBAN,
       SAMPLE_REMITTANCE,
       SAMPLE_AMOUNT,
+      'EUR',
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
@@ -722,25 +781,43 @@ describe('toCollectionIbanGiroCode', () => {
 
   it('returns undefined when line 0 has leading whitespace before BCD (fail-closed, no silent trim)', () => {
     expect(
-      toCollectionIbanGiroCode(' ' + sampleGiroCode(), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(' ' + sampleGiroCode(), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'EUR'),
     ).toBeUndefined();
   });
 
   it('returns undefined when the payload starts with a leading blank line', () => {
     expect(
-      toCollectionIbanGiroCode('\n' + sampleGiroCode(), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(
+        '\n' + sampleGiroCode(),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
     ).toBeUndefined();
   });
 
   it('returns undefined when line 0 is not BCD', () => {
     expect(
-      toCollectionIbanGiroCode(sampleGiroCode({ line0: 'EPC' }), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line0: 'EPC' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
     ).toBeUndefined();
   });
 
   it('returns undefined when line 3 is not SCT', () => {
     expect(
-      toCollectionIbanGiroCode(sampleGiroCode({ line3: 'SDD' }), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line3: 'SDD' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
     ).toBeUndefined();
   });
 
@@ -751,6 +828,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -770,7 +848,9 @@ describe('toCollectionIbanGiroCode', () => {
       '',
       SAMPLE_REMITTANCE,
     ].join('\n');
-    expect(toCollectionIbanGiroCode(svgEmbedded, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT)).toBeUndefined();
+    expect(
+      toCollectionIbanGiroCode(svgEmbedded, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'EUR'),
+    ).toBeUndefined();
   });
 
   it('returns undefined when the payload has fewer than 10 lines', () => {
@@ -787,7 +867,7 @@ describe('toCollectionIbanGiroCode', () => {
     ].join('\n');
     expect(shortPayload.split('\n')).toHaveLength(9);
     expect(
-      toCollectionIbanGiroCode(shortPayload, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(shortPayload, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'EUR'),
     ).toBeUndefined();
   });
 
@@ -803,23 +883,57 @@ describe('toCollectionIbanGiroCode', () => {
     ].join('\n');
     expect(sevenLinePayload.split('\n')).toHaveLength(7);
     expect(
-      toCollectionIbanGiroCode(sevenLinePayload, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(sevenLinePayload, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'EUR'),
     ).toBeUndefined();
+  });
+
+  it('returns undefined when the payload has 13 lines', () => {
+    const thirteenLinePayload = [sampleGiroCode(), 'GDDS', 'EXTRA'].join('\n');
+    expect(thirteenLinePayload.split('\n')).toHaveLength(13);
+    expect(
+      toCollectionIbanGiroCode(
+        thirteenLinePayload,
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('rewrites a 12-line payload with a populated beneficiary-to-originator line', () => {
+    const twelveLinePayload = [sampleGiroCode(), 'GDDS'].join('\n');
+    expect(twelveLinePayload.split('\n')).toHaveLength(12);
+    expect(
+      toCollectionIbanGiroCode(
+        twelveLinePayload,
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
+    ).toBeDefined();
   });
 
   it('returns undefined when the remittance does not match the payload', () => {
     expect(
-      toCollectionIbanGiroCode(sampleGiroCode(), PERSONAL_GIRO_IBAN, 'OTHER-REF', SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(sampleGiroCode(), PERSONAL_GIRO_IBAN, 'OTHER-REF', SAMPLE_AMOUNT, 'EUR'),
     ).toBeUndefined();
   });
 
   it('returns undefined when the expected remittance is empty', () => {
-    expect(toCollectionIbanGiroCode(sampleGiroCode(), PERSONAL_GIRO_IBAN, '', SAMPLE_AMOUNT)).toBeUndefined();
+    expect(toCollectionIbanGiroCode(sampleGiroCode(), PERSONAL_GIRO_IBAN, '', SAMPLE_AMOUNT, 'EUR')).toBeUndefined();
   });
 
   it('returns undefined when the version line is not 001 or 002', () => {
     expect(
-      toCollectionIbanGiroCode(sampleGiroCode({ line1: '003' }), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line1: '003' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
     ).toBeUndefined();
   });
 
@@ -830,6 +944,7 @@ describe('toCollectionIbanGiroCode', () => {
         PERSONAL_GIRO_IBAN,
         SAMPLE_REMITTANCE,
         SAMPLE_AMOUNT,
+        'EUR',
       ),
     ).toBeUndefined();
   });
@@ -849,7 +964,7 @@ describe('toCollectionIbanGiroCode', () => {
     ].join('\n');
     expect(tenLinePayload.split('\n')).toHaveLength(10);
     expect(
-      toCollectionIbanGiroCode(tenLinePayload, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(tenLinePayload, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'EUR'),
     ).toBeUndefined();
   });
 
@@ -859,6 +974,7 @@ describe('toCollectionIbanGiroCode', () => {
       PERSONAL_GIRO_IBAN,
       SAMPLE_REMITTANCE,
       SAMPLE_AMOUNT,
+      'EUR',
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
@@ -867,13 +983,13 @@ describe('toCollectionIbanGiroCode', () => {
 
   it('returns undefined when the personal IBAN is empty', () => {
     expect(
-      toCollectionIbanGiroCode(sampleGiroCode({ iban: '' }), '', SAMPLE_REMITTANCE, SAMPLE_AMOUNT),
+      toCollectionIbanGiroCode(sampleGiroCode({ iban: '' }), '', SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'EUR'),
     ).toBeUndefined();
   });
 
   it('tolerates CRLF line endings from the payload', () => {
     const input = sampleGiroCode().replace(/\n/g, '\r\n');
-    const result = toCollectionIbanGiroCode(input, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT);
+    const result = toCollectionIbanGiroCode(input, PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, 'EUR');
     expect(result).toBeDefined();
     if (result === undefined) return;
     expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
@@ -885,6 +1001,7 @@ describe('toCollectionIbanGiroCode', () => {
       'li21 0881 1010 2979 k002 e',
       SAMPLE_REMITTANCE,
       SAMPLE_AMOUNT,
+      'EUR',
     );
     expect(result).toBeDefined();
     if (result === undefined) return;

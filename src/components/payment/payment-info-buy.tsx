@@ -62,7 +62,13 @@ export function PaymentInformationContent({ info, showBank }: PaymentInformation
 
     return (
       <PaymentQrCode
-        value={toCollectionIbanGiroCode(info.paymentRequest, info.iban, info.remittanceInfo, info.amount)}
+        value={toCollectionIbanGiroCode(
+          info.paymentRequest,
+          info.iban,
+          info.remittanceInfo,
+          info.amount,
+          info.currency?.name,
+        )}
         txId={info.id}
         collectionAccount
       />

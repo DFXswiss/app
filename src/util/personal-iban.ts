@@ -125,9 +125,10 @@ export function getOfferableCollectionIban(info: {
  * collection IBAN. The rebuild joins lines with `\n` (normalizing CRLF) and drops trailing blank
  * lines; leading whitespace is NOT tolerated (fail-closed — no silent repair). No other field
  * is altered. Fail-closed: returns undefined when personalIban, remittanceInfo or amount is
- * missing (callers pass quote fields through unchanged; this function is the single gate —
- * attribution and matching are impossible without them). Also returns undefined unless the
- * payload is a well-formed SCT GiroCode (full 11-plus-line shape, version 001/002, charset line
+ * missing, or when the quote currency is not exactly EUR (callers pass quote fields through
+ * unchanged; this function is the single gate — attribution and matching are impossible without
+ * them, and the EPC069-12 GiroCode exists only for EUR). Also returns undefined unless the
+ * payload is a well-formed SCT GiroCode (full 11-or-12-line shape, version 001/002, charset line
  * index 2 in '1'..'8') whose IBAN line matches the given personal IBAN (whitespace/case ignored),
  * whose amount line (line 7) matches the quote amount (canonical EPC069-12 grammar: no leading
  * zeros, at most nine integer digits — ceiling 999999999.99 — and at most two decimals, no
@@ -139,24 +140,33 @@ export function getOfferableCollectionIban(info: {
  * structured-reference carrier (line 9) is therefore outside the shape this function validates
  * and is refused fail-closed — the worst case is no rewritten QR, while manual IBAN entry and
  * the original PDF invoice both remain available. The EPC069-12 GiroCode exists for EUR only —
- * a CHF quote carries a Swiss QR-Bill SVG, which the first check refuses, so the hard `EUR`
- * amount-prefix check is deliberate and the rewrite always targets the EUR collection row.
- * Swiss QR-Bill SVG payloads are never rewritten — callers must treat undefined as "no QR available".
+ * the quote currency and amount prefix must both explicitly be `EUR`, independently of the
+ * backend payload contract, and the rewrite always targets the EUR collection row. Swiss QR-Bill
+ * SVG payloads are never rewritten — callers must treat undefined as "no QR available".
  */
 export function toCollectionIbanGiroCode(
   paymentRequest: string,
   personalIban: string | undefined,
   remittanceInfo: string | undefined,
   amount: number | undefined,
+  currencyName: string | undefined,
 ): string | undefined {
-  // Attribution/matching are impossible without them; callers narrow nothing.
-  if (personalIban === undefined || remittanceInfo === undefined || amount === undefined) return undefined;
+  // EPC069-12 exists only for EUR; the quote currency must say EUR regardless of the payload.
+  if (
+    personalIban === undefined ||
+    remittanceInfo === undefined ||
+    amount === undefined ||
+    currencyName !== 'EUR'
+  )
+    return undefined;
 
   if (paymentRequest.includes('<svg')) return undefined;
 
   const lines = paymentRequest.split(/\r?\n/);
   while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
   if (lines.length < 11) return undefined;
+  // EPC069-12 defines twelve fields at indexes 0–11; longer payloads are not GiroCodes and must not be rebuilt.
+  if (lines.length > 12) return undefined;
   if (lines[0] !== 'BCD') return undefined;
   if (lines[1] !== '001' && lines[1] !== '002') return undefined;
   // EPC069-12 character set: values '1'..'8' only.

@@ -296,8 +296,9 @@ test.describe('Buy Process - UI Flow', () => {
 
     // asset-out is pinned: without it the screen picks the first listed asset, which has
     // no price rule in the local seed and the quote never reaches the payment details.
+    // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     const paymentDetails = page
@@ -338,6 +339,87 @@ test.describe('Buy Process - UI Flow', () => {
       fullPage: true,
       maxDiffPixels: 10000,
     });
+  });
+
+  // CHF quotes carry Swiss QR-Bill SVG payloads, which must fail closed when the user switches
+  // to the collection account: no GiroCode is synthesized, while manual entry and PDF remain.
+  test('shows the fail-closed QR hint for a CHF quote', async ({ page, request }) => {
+    const token = await getToken(request);
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          id: 1,
+          isValid: true,
+          amount: 100,
+          estimatedAmount: 0.0251,
+          rate: 3862.5,
+          exchangeRate: 3984.06,
+          priceSteps: [],
+          minVolume: 10,
+          maxVolume: 990000,
+          minVolumeTarget: 0.0026,
+          maxVolumeTarget: 248.5,
+          fees: {
+            rate: 0.0099,
+            fixed: 0,
+            min: 0,
+            dfx: 0.99,
+            network: 0,
+            bank: 0,
+            bankFixed: 2,
+            bankVariable: 0,
+            platform: 0,
+            total: 2.99,
+          },
+          currency: { id: 1, name: 'CHF' },
+          asset: { id: 111, name: 'ETH', blockchain: 'Ethereum', category: 'Public' },
+          bank: 'Bank Frick',
+          bic: 'BFRILI22XXX',
+          iban: 'LI91088100002324013AB',
+          name: 'DFX AG',
+          street: 'Bahnhofstrasse',
+          number: '7',
+          zip: '6300',
+          city: 'Zug',
+          country: 'Schweiz',
+          remittanceInfo: 'A1B2-C3D4-E5F6',
+          paymentRequest: '<svg>QR bill</svg>',
+          sepaInstant: false,
+          isPersonalIban: true,
+        },
+      });
+    });
+
+    // asset-out is pinned: without it the screen picks the first listed asset, which has
+    // no price rule in the local seed and the quote never reaches the payment details.
+    // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
+    );
+
+    const paymentDetails = page
+      .getByRole('heading', { name: 'Payment Information' })
+      .locator('..');
+
+    const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
+    await expect(toggle).toBeVisible({ timeout: 15000 });
+    await toggle.click();
+
+    // StyledTab sets role="tablist" on each <a>; exact text excludes the parent <ul>.
+    const qrTab = paymentDetails.getByRole('tablist').filter({ hasText: /^QR Code$/ });
+    await qrTab.click();
+
+    await expect(
+      paymentDetails.getByText(
+        'No QR code is available for the collection account. Please enter the IBAN and the remittance info manually.',
+      ),
+    ).toBeVisible();
+    await expect(paymentDetails.getByText('GiroCode')).not.toBeVisible();
+    await expect(paymentDetails.getByRole('button', { name: 'PDF Invoice' })).toBeVisible();
+    await expect(paymentDetails).toHaveScreenshot('buy-chf-collection-iban-qr-fail-closed.png');
   });
 
   // USD is outside the Bank Frick currency set: a requested Frick selector cannot apply here, so
@@ -437,8 +519,9 @@ test.describe('Buy Process - UI Flow', () => {
       });
     });
 
+    // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     await expect(
@@ -547,8 +630,9 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     // No personal-iban param: no selector at all, the precondition the promo banner requires.
+    // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&lang=en`,
     );
 
     const promoBlock = page
