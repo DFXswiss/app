@@ -85,6 +85,20 @@ export interface SupportIssueInternalData {
   transactionMissing?: SupportIssueInternalTransactionMissingData;
 }
 
+/**
+ * A proposed answer offered to the clerk. Suggestions are submitted through the API only — this
+ * app reads them and records the decision, it never writes one.
+ */
+/** What the screen reads of the API's suggestion; `state` and `handled` are not offered here. */
+export interface SupportReplySuggestion {
+  /** the message the suggestion answers — and the id it is addressed by */
+  messageId: number;
+  text: string;
+  /** the answered message is no longer the newest one — the conversation has moved on */
+  isStale: boolean;
+  created: string;
+}
+
 export interface SupportMessageInfo {
   id: number;
   author: string;
@@ -251,6 +265,29 @@ export function useSupportDashboard() {
     return result.messages;
   }
 
+  // the newest suggestion still awaiting a decision (undefined when there is none)
+  async function getReplySuggestion(issueId: number): Promise<SupportReplySuggestion | undefined> {
+    const result = await guardedCall<{ suggestion: SupportReplySuggestion | null }>({
+      url: `support/issue/${issueId}/suggestion`,
+      method: 'GET',
+    });
+    return result.suggestion ?? undefined;
+  }
+
+  async function acceptReplySuggestion(issueId: number, messageId: number): Promise<SupportReplySuggestion> {
+    return guardedCall<SupportReplySuggestion>({
+      url: `support/issue/${issueId}/suggestion/${messageId}/accept`,
+      method: 'PUT',
+    });
+  }
+
+  async function rejectReplySuggestion(issueId: number, messageId: number): Promise<SupportReplySuggestion> {
+    return guardedCall<SupportReplySuggestion>({
+      url: `support/issue/${issueId}/suggestion/${messageId}/reject`,
+      method: 'PUT',
+    });
+  }
+
   async function getMessageFile(
     issueId: string,
     messageId: number,
@@ -276,6 +313,9 @@ export function useSupportDashboard() {
       getIssueMessages,
       getMessageFile,
       searchUsers,
+      getReplySuggestion,
+      acceptReplySuggestion,
+      rejectReplySuggestion,
     }),
     [guardedCall],
   );

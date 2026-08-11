@@ -72,12 +72,15 @@ export interface SupportMessageListItem {
 // Read-only message thread (bubbles), no composer. `onOpenFile` is optional: when omitted, file links are not
 // rendered (read-only dossier). Ordering mirrors the DFX support-issue screen (by message id) and falls back to the
 // created timestamp when ids are absent, so a DFX thread renders byte-for-byte identically to before extraction.
-export function SupportMessageList({
+//
+// The callback receives the message with its `fileName` narrowed to a string: the link exists only for a message
+// that carries a file, so the caller must not have to re-check what this component already decided.
+export function SupportMessageList<T extends SupportMessageListItem>({
   messages,
   onOpenFile,
 }: {
-  messages: SupportMessageListItem[];
-  onOpenFile?: (msg: SupportMessageListItem) => void;
+  messages: T[];
+  onOpenFile?: (msg: T & { fileName: string }) => void;
 }): JSX.Element {
   const sorted = [...messages].sort(
     (a, b) => (a.id ?? 0) - (b.id ?? 0) || new Date(a.created).getTime() - new Date(b.created).getTime(),
@@ -87,6 +90,7 @@ export function SupportMessageList({
     <>
       {sorted.map((msg, index) => {
         const isCustomer = msg.author === CustomerAuthor;
+        const fileName = msg.fileName;
         return (
           <div key={msg.id ?? index} className={`flex ${isCustomer ? 'justify-start' : 'justify-end'}`}>
             <div
@@ -103,15 +107,15 @@ export function SupportMessageList({
               <div className="text-sm whitespace-pre-wrap break-words">
                 {msg.message ? <LinkedText text={msg.message} /> : '-'}
               </div>
-              {msg.fileName && onOpenFile && (
+              {fileName && onOpenFile && (
                 <button
                   className="text-xs mt-1 text-dfxBlue-400 underline hover:text-dfxBlue-800"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onOpenFile(msg);
+                    onOpenFile({ ...msg, fileName });
                   }}
                 >
-                  {msg.fileName}
+                  {fileName}
                 </button>
               )}
             </div>

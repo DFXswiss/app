@@ -6,6 +6,7 @@ import { FilePreviewPanel } from 'src/components/compliance/file-preview-panel';
 import { LimitRequestDecisionForm } from 'src/components/compliance/limit-request-decision-form';
 import { ErrorHint } from 'src/components/error-hint';
 import { InfoPanel, InfoRow, SupportMessageList } from 'src/components/support/info-panel';
+import { ReplySuggestionPanel } from 'src/components/support/reply-suggestion-panel';
 import { TemplateArrayPickerModal } from 'src/components/support-templates/template-array-picker-modal';
 import { TemplatePickerModal } from 'src/components/support-templates/template-picker-modal';
 import { useSettingsContext } from 'src/contexts/settings.context';
@@ -18,6 +19,7 @@ import {
   ASSIGNABLE_DEPARTMENTS,
   SupportIssueInternalData,
   SupportMessageInfo,
+  SupportReplySuggestion,
   useSupportDashboard,
 } from 'src/hooks/support-dashboard.hook';
 import { formatDateTime, statusBadge } from 'src/util/compliance-helpers';
@@ -32,7 +34,17 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const { translate } = useSettingsContext();
   const { session } = useAuthContext();
   const canAccessCompliance = session?.role === UserRole.ADMIN || session?.role === UserRole.COMPLIANCE;
-  const { getIssueData, updateIssue, sendMessage, getIssueMessages, getMessageFile, getClerks } = useSupportDashboard();
+  const {
+    getIssueData,
+    updateIssue,
+    sendMessage,
+    getIssueMessages,
+    getMessageFile,
+    getClerks,
+    getReplySuggestion,
+    acceptReplySuggestion,
+    rejectReplySuggestion,
+  } = useSupportDashboard();
   const { getUserData } = useCompliance();
   const { navigate } = useNavigation();
 
@@ -51,13 +63,58 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const [updateClerk, setUpdateClerk] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Reply suggestion state: only the newest suggestion awaiting a decision is offered
+  const [suggestion, setSuggestion] = useState<SupportReplySuggestion>();
+  const [isSuggestionBusy, setIsSuggestionBusy] = useState(false);
+  // the same state twice, on purpose: the buttons render from the state, the poll reads the ref.
+  // As a dependency of the poll effect it would tear the interval down and set it up again on every
+  // decision, which delays the message poll the interval also carries.
+  const isSuggestionBusyRef = useRef(false);
+  // Answers to a request the screen has moved past must not be applied: a decision taken or another
+  // ticket opened while a fetch was in flight would otherwise put the suggestion back on screen. The
+  // counter is raised on both, and a response whose token no longer matches is dropped — a check of
+  // the busy flag alone cannot do this, because that flag is false again by the time such an answer
+  // arrives.
+  const suggestionEpochRef = useRef(0);
+  // Two fetches of the same ticket carry the same epoch, so the epoch cannot order them against each
+  // other: a poll that outlives the 15-second interval would let the next one start, and whichever
+  // answered last would win. Every fetch takes a number, and only the newest one may write.
+  const suggestionFetchRef = useRef(0);
+  // The ticket itself needs the same protection as its suggestion. The component stays mounted
+  // across a change of the route parameter, so two ticket loads can be in flight at once, and a
+  // slow answer for the ticket that was left would otherwise replace the one on screen — silently,
+  // because the spinner is long gone by then.
+  const ticketEpochRef = useRef(0);
+
+  /**
+   * Everything tied to the ticket is qualified the same way: take the token when the work starts,
+   * and let only work that still belongs to the ticket on screen write. A request cannot be recalled
+   * once it is out, so this is what keeps an answer for the ticket that was left from landing on the
+   * one the clerk moved to.
+   */
+  function ticketGuard(): () => boolean {
+    const epoch = ticketEpochRef.current;
+    return () => ticketEpochRef.current === epoch;
+  }
+
+  function setSuggestionBusy(value: boolean): void {
+    isSuggestionBusyRef.current = value;
+    setIsSuggestionBusy(value);
+  }
+
   // Message form state
   const [messageText, setMessageText] = useState('');
   const [messageAuthor, setMessageAuthor] = useState<string>('');
+  // a ref, not state: the effect below may already be scheduled when the clerk picks an author, and
+  // would then run with the state of the render it was scheduled in and overwrite the pick
+  const isAuthorPickedRef = useRef(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Clearing the selection remounts the input rather than writing to the DOM node: the ref is only
+  // ever null before the first render, so a guard around that write can never be false in practice.
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   // Template state
   const [userDataDetail, setUserDataDetail] = useState<UserDataDetail>();
@@ -81,47 +138,139 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   useEffect(() => {
     getClerks()
-      .then((list) => {
-        setClerks(list);
-        setMessageAuthor((prev) => prev || list[0] || '');
-      })
+      .then(setClerks)
       .catch(() => undefined);
   }, [getClerks]);
 
+  // Everything tied to one ticket is dropped when another one is opened: react-router keeps this
+  // component mounted across a change of the route parameter, so a suggestion of the previous
+  // ticket would stay on screen, and the author picked there would keep the default from ever
+  // applying again. Declared before every effect that reacts to it, so that
+  // raising the token happens ahead of the fetch it is meant to qualify rather than invalidating it,
+  // and so that the default author applies again before the effect that would re-apply it runs.
+  useEffect(() => {
+    suggestionEpochRef.current++;
+    ticketEpochRef.current++;
+    setSuggestion(undefined);
+    // the busy state belongs to the decision of the ticket that was left; carried over it would
+    // disable this ticket's buttons and pause its poll until that request finally settles
+    setSuggestionBusy(false);
+    isAuthorPickedRef.current = false;
+    // and the author itself: kept as the fallback the default falls back to, the clerk of the ticket
+    // that was left would stay selected on a ticket that has no clerk of its own
+    setMessageAuthor('');
+    // A draft is written for one customer, about one ticket — an accepted suggestion most of all.
+    // Carried into the next ticket it would be sent to someone it was never meant for, so it goes
+    // with the ticket it belongs to, attachment included.
+    setMessageText('');
+    setSelectedFiles([]);
+    setFileInputKey((key) => key + 1);
+    // an open document belongs to the customer whose ticket it was opened from, and the panel is
+    // sticky: left standing it would be read as this ticket's attachment. The effect that watches
+    // this state revokes the url it held.
+    setFilePreview(undefined);
+    // The thread belongs to the ticket that was left just as much. The new one takes a moment
+    // longer than the ticket itself — its fetch only starts once the ticket brings the uid — and
+    // for that moment the conversation of one customer would sit under the ticket of another.
+    setMessages([]);
+    setPendingCount(0);
+    // and what the ticket that was left had to report: a failure of its load blocks this screen
+    // entirely, and its action error would be read as this ticket's
+    setLoadError(undefined);
+    setActionError(undefined);
+    // the picker stands on the account of the ticket it was opened from, and reopens itself on the
+    // next one as long as nothing closes it
+    setTemplatePickerOpen(false);
+    setPendingTemplateContent(undefined);
+    setIsUserDataLoading(false);
+    // both belong to a request of the ticket that was left; carried over they would disable this
+    // ticket's controls until that request settles
+    setIsUpdating(false);
+    setIsSending(false);
+  }, [id]);
+
   const loadIssue = useCallback((): void => {
     if (!id) return;
+    const isCurrent = ticketGuard();
     setIsLoading(true);
     getIssueData(+id)
       .then((data) => {
+        if (!isCurrent()) return;
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
         setUpdateClerk(data.clerk ?? '');
-        setMessageAuthor((prev) => (data.clerk && clerks.includes(data.clerk) ? data.clerk : prev || clerks[0] || ''));
       })
-      .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
-  }, [id, getIssueData, clerks]);
+      .catch((e: Error) => {
+        if (isCurrent()) setLoadError(e.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (isCurrent()) setIsLoading(false);
+      });
+  }, [id, getIssueData]);
+
+  // The clerk who last answered is the default author, otherwise the first of the list. Resolved in
+  // its own effect rather than inside the load: as part of the load it made `loadIssue` depend on the
+  // clerk list, so the list arriving a moment later reloaded the whole ticket and put the screen back
+  // behind its loading spinner — a second request and a visible flash on every ticket that was opened.
+  // Once the clerk has picked an author themselves, the default stops applying: ticket and clerk list
+  // arrive independently, so a late arrival would otherwise overwrite a selection already made.
+  useEffect(() => {
+    if (isAuthorPickedRef.current) return;
+    // the ticket on screen is the previous one until its replacement arrives, and its clerk would
+    // otherwise become the default author of a ticket it has nothing to do with
+    if (String(issueData?.id) !== id) return;
+    setMessageAuthor((prev) =>
+      issueData?.clerk && clerks.includes(issueData.clerk) ? issueData.clerk : prev || clerks[0] || '',
+    );
+    // `id` belongs in here even though it is not read: the pick is reset when the ticket changes, and
+    // two tickets with the same clerk would otherwise leave this effect nothing to react to — the
+    // author picked on the previous ticket would stay selected.
+  }, [id, issueData, clerks]);
 
   const loadMessages = useCallback((): void => {
     if (!issueData?.uid) return;
+    const isCurrent = ticketGuard();
     getIssueMessages(issueData.uid)
       .then((fetched) => {
+        if (!isCurrent()) return;
         setMessages(fetched);
         setPendingCount(0);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
+      .catch((e: Error) => {
+        if (isCurrent()) setActionError(e.message ?? 'Failed to load messages');
+      });
   }, [issueData?.uid, getIssueMessages]);
 
   const pollForNewMessages = useCallback((): void => {
     if (!issueData?.uid) return;
+    const isCurrent = ticketGuard();
     getIssueMessages(issueData.uid)
       .then((fetched) => {
         const newCount = fetched.filter((m) => !visibleIdsRef.current.has(m.id)).length;
-        if (newCount > 0) setPendingCount(newCount);
+        if (isCurrent() && newCount > 0) setPendingCount(newCount);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
+      .catch((e: Error) => {
+        if (isCurrent()) setActionError(e.message ?? 'Failed to load messages');
+      });
   }, [issueData?.uid, getIssueMessages]);
+
+  /** Resolves to whether the server was read — a reconciliation needs to know that it worked. */
+  const loadSuggestion = useCallback(async (): Promise<boolean> => {
+    if (!id) return false;
+    const epoch = suggestionEpochRef.current;
+    const fetchNo = ++suggestionFetchRef.current;
+    const isCurrent = (): boolean => suggestionEpochRef.current === epoch && suggestionFetchRef.current === fetchNo;
+    return getReplySuggestion(+id)
+      .then((loaded) => {
+        if (isCurrent()) setSuggestion(loaded);
+        return true;
+      })
+      .catch((e: Error) => {
+        if (isCurrent()) setActionError(e.message ?? 'Failed to load reply suggestion');
+        return false;
+      });
+  }, [id, getReplySuggestion]);
 
   useEffect(() => {
     loadIssue();
@@ -131,29 +280,35 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     loadMessages();
   }, [loadMessages]);
 
+  useEffect(() => {
+    loadSuggestion();
+  }, [loadSuggestion]);
+
   // Reset cached UserData when the issue (and thus the account) changes
   useEffect(() => {
     setUserDataDetail(undefined);
     setUserTransactions([]);
   }, [issueData?.account.id]);
 
-  async function openTemplatePicker(): Promise<void> {
-    const accountId = issueData?.account.id;
-    if (accountId == null || isUserDataLoading) return;
+  async function openTemplatePicker(accountId: number): Promise<void> {
     if (userDataDetail) {
       setTemplatePickerOpen(true);
       return;
     }
+    const isCurrent = ticketGuard();
     setIsUserDataLoading(true);
     try {
       const data = await getUserData(accountId);
+      // the account these templates are filled from is the one of the ticket the picker was opened
+      // on: answering onto another ticket would put one customer's figures into another's reply
+      if (!isCurrent()) return;
       setUserDataDetail(data.userData);
       setUserTransactions(data.transactions ?? []);
       setTemplatePickerOpen(true);
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : 'Failed to load user data for templates');
+      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Failed to load user data for templates');
     } finally {
-      setIsUserDataLoading(false);
+      if (isCurrent()) setIsUserDataLoading(false);
     }
   }
 
@@ -162,11 +317,18 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     visibleIdsRef.current = new Set(messages.map((m) => m.id));
   }, [messages]);
 
-  // Polling for new messages (non-intrusive, sets pendingCount)
+  // Polling for new messages (non-intrusive, sets pendingCount) and for a suggestion that arrived
+  // while the ticket was open — a clerk sitting on the screen must not have to reload to see one.
+  // The suggestion is skipped while a decision is in flight: the answer would carry the state from
+  // before that decision, and putting it back on screen invites a second click, which the API then
+  // refuses as a conflict.
   useEffect(() => {
-    const interval = setInterval(() => pollForNewMessages(), 15000);
+    const interval = setInterval(() => {
+      pollForNewMessages();
+      if (!isSuggestionBusyRef.current) loadSuggestion();
+    }, 15000);
     return () => clearInterval(interval);
-  }, [pollForNewMessages]);
+  }, [pollForNewMessages, loadSuggestion]);
 
   // Scroll messages container to bottom when messages change (initial load, send, manual reload)
   useEffect(() => {
@@ -174,21 +336,28 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  async function handleUpdate(): Promise<void> {
-    if (!id) return;
+  /**
+   * `issueId` comes from the route rather than from the loaded ticket. The load is guarded against a
+   * late answer of the ticket that was left, but a write is the wrong place to depend on that being
+   * right: what the clerk is looking at is the ticket in the address bar.
+   */
+  async function handleUpdate(issueId: number): Promise<void> {
+    const isCurrent = ticketGuard();
     setIsUpdating(true);
     setActionError(undefined);
     try {
-      await updateIssue(+id, {
+      await updateIssue(issueId, {
         state: updateState || undefined,
         department: updateDepartment || undefined,
         clerk: updateClerk || undefined,
       });
-      loadIssue();
+      // the reload belongs to the ticket that was updated: run from a ticket the clerk has since
+      // left, it would fetch that one and put it back on screen in place of the one they opened
+      if (isCurrent()) loadIssue();
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : 'Update failed');
+      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Update failed');
     } finally {
-      setIsUpdating(false);
+      if (isCurrent()) setIsUpdating(false);
     }
   }
 
@@ -202,6 +371,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       );
       return;
     }
+    const isCurrent = ticketGuard();
     setIsSending(true);
     setActionError(undefined);
     try {
@@ -223,14 +393,60 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         await sendMessage(+id, { author, message: text });
       }
 
+      // what follows a send belongs to the ticket it was sent from — clearing the composer of the
+      // ticket the clerk moved to would take a draft they are in the middle of writing
+      if (!isCurrent()) return;
       setMessageText('');
       setSelectedFiles([]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setFileInputKey((key) => key + 1);
       loadMessages();
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : 'Send failed');
+      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Send failed');
     } finally {
-      setIsSending(false);
+      if (isCurrent()) setIsSending(false);
+    }
+  }
+
+  /**
+   * Accepting turns the suggestion into the clerk's own draft: the text lands in the composer,
+   * where it is edited and sent like any other message. Discarding only records the decision.
+   * Either way the suggestion stops being offered, and stays on record on the server. A refused
+   * decision is reconciled with the server rather than left standing.
+   */
+  async function decideSuggestion(issueId: number, item: SupportReplySuggestion, accept: boolean): Promise<void> {
+    // The decision qualifies itself the same way a fetch does. Opening another ticket while it is
+    // still running raises the token, and what comes back then belongs to a ticket that is no longer
+    // on screen: its text must not land in the composer of the new one, its clearing must not remove
+    // the new one's suggestion, and its error is not about the ticket the clerk is looking at.
+    const epoch = ++suggestionEpochRef.current;
+    const isCurrent = (): boolean => suggestionEpochRef.current === epoch;
+
+    setSuggestionBusy(true);
+    setActionError(undefined);
+    try {
+      if (accept) {
+        await acceptReplySuggestion(issueId, item.messageId);
+        if (isCurrent()) setMessageText((prev) => (prev ? `${prev}\n${item.text}` : item.text));
+      } else {
+        await rejectReplySuggestion(issueId, item.messageId);
+      }
+      if (isCurrent()) setSuggestion(undefined);
+    } catch (e: unknown) {
+      // The server refuses a decision it has already taken — by another clerk, or in another tab.
+      // Leaving the panel as it stands would offer that same decision again, and it would be refused
+      // again, so the buttons stay disabled until what the server actually holds is on screen. The
+      // error is set after that, because the reload reports its own failures the same way and the
+      // refusal is the one the clerk needs to read.
+      const reconciled = isCurrent() ? await loadSuggestion() : false;
+      // A reload that failed too leaves the screen with the suggestion the server has just refused a
+      // decision on. Offering it again would only earn the same refusal, so it goes; the next poll
+      // brings back whatever is really there.
+      if (isCurrent() && !reconciled) setSuggestion(undefined);
+      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Suggestion update failed');
+    } finally {
+      // only the decision the screen is still on may clear the flag: a late answer from the ticket
+      // that was left would otherwise unblock the buttons while this ticket's decision is running
+      if (isCurrent()) setSuggestionBusy(false);
     }
   }
 
@@ -250,10 +466,13 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setMessageText((prev) => (prev ? `${prev}\n${resolved}` : resolved));
   }
 
-  async function openFile(msg: SupportMessageInfo): Promise<void> {
-    if (!issueData?.uid || !msg.fileName) return;
+  async function openFile(uid: string, msg: SupportMessageInfo & { fileName: string }): Promise<void> {
+    const isCurrent = ticketGuard();
     try {
-      const { data, contentType } = await getMessageFile(issueData.uid, msg.id);
+      const { data, contentType } = await getMessageFile(uid, msg.id);
+      // the document belongs to the ticket it was opened from: shown on the next one it would be
+      // read as that customer's, and the ticket change has already cleared the panel once
+      if (!isCurrent()) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
@@ -263,7 +482,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       const url = URL.createObjectURL(blob);
       setFilePreview({ url, contentType, name: msg.fileName });
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : 'Error loading file');
+      if (isCurrent()) setActionError(e instanceof Error ? e.message : 'Error loading file');
     }
   }
 
@@ -487,7 +706,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             </div>
             <button
               className="px-4 py-1.5 bg-dfxBlue-400 text-white rounded text-xs hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
-              onClick={handleUpdate}
+              onClick={() => handleUpdate(Number(id))}
               disabled={isUpdating}
             >
               {isUpdating ? 'Updating...' : 'Update'}
@@ -512,8 +731,18 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             ref={messagesContainerRef}
             className="flex flex-col gap-2 max-h-[40vh] overflow-auto mb-4 p-2 scroll-shadow"
           >
-            <SupportMessageList messages={messages} onOpenFile={(msg) => openFile(msg as SupportMessageInfo)} />
+            <SupportMessageList messages={messages} onOpenFile={(msg) => openFile(issueData.uid, msg)} />
           </div>
+
+          {/* Reply suggestion — offered above the composer, decided before the reply is written */}
+          {suggestion && (
+            <ReplySuggestionPanel
+              suggestion={suggestion}
+              isBusy={isSuggestionBusy}
+              onAccept={() => decideSuggestion(Number(id), suggestion, true)}
+              onDiscard={() => decideSuggestion(Number(id), suggestion, false)}
+            />
+          )}
 
           {/* Message Input */}
           {selectedFiles.length > 0 && (
@@ -528,7 +757,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                     className="text-dfxGray-700 hover:text-dfxRed-100"
                     onClick={() => {
                       setSelectedFiles((prev) => prev.filter((_, idx) => idx !== i));
-                      if (fileInputRef.current) fileInputRef.current.value = '';
+                      setFileInputKey((key) => key + 1);
                     }}
                   >
                     &times;
@@ -539,6 +768,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
           )}
           <div className="flex gap-2 items-start">
             <input
+              key={fileInputKey}
               type="file"
               multiple
               ref={fileInputRef}
@@ -554,8 +784,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             </button>
             <button
               className="px-2 py-2 text-dfxGray-700 hover:text-dfxBlue-800 transition-colors disabled:opacity-30"
-              onClick={() => void openTemplatePicker()}
-              disabled={isUserDataLoading || issueData?.account.id == null}
+              onClick={() => void openTemplatePicker(issueData.account.id)}
+              disabled={isUserDataLoading}
               title={isUserDataLoading ? 'Lade Userdaten...' : 'Vorlage einfügen'}
             >
               <svg
@@ -590,7 +820,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             <select
               className="px-2 py-2 text-xs border border-dfxGray-400 rounded bg-white text-dfxBlue-800"
               value={messageAuthor}
-              onChange={(e) => setMessageAuthor(e.target.value)}
+              onChange={(e) => {
+                isAuthorPickedRef.current = true;
+                setMessageAuthor(e.target.value);
+              }}
               title="Author"
             >
               {clerks.map((c) => (

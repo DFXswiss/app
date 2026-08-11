@@ -342,15 +342,18 @@ function resolveGroupKeys(filenames) {
   return groupsByName;
 }
 
-/** Project / platform badges from Playwright naming conventions. */
+/**
+ * Project / platform badges from Playwright naming conventions.
+ *
+ * The platform is read from the name rather than matched against a fixed list: the snapshot path
+ * template is `{projectName}-{platform}`, so it is whatever the machine that took the baseline
+ * reported. Recognising only `darwin` silently dropped both badges for a baseline taken anywhere
+ * else — the very case where the badge carries information. The project half stays pinned to the
+ * two this repository configures.
+ */
 function parseBadges(filename) {
-  if (/-chromium-metamask-darwin\.png$/i.test(filename)) {
-    return { project: 'chromium-metamask', platform: 'darwin' };
-  }
-  if (/-chromium-darwin\.png$/i.test(filename)) {
-    return { project: 'chromium', platform: 'darwin' };
-  }
-  return { project: null, platform: null };
+  const match = filename.match(/-(chromium(?:-metamask)?)-([a-z0-9]+)\.png$/i);
+  return match ? { project: match[1], platform: match[2] } : { project: null, platform: null };
 }
 
 function titleFromFilename(filename) {
