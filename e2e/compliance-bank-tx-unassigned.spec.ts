@@ -106,11 +106,6 @@ async function installSyntheticApi(
       return;
     }
 
-    if (request.method() === 'PUT' && /^\/v1\/bankTx\/\d+$/.test(path)) {
-      await fulfillJson(route, null);
-      return;
-    }
-
     unexpectedRequests.push(`${request.method()} ${path}`);
     await route.fulfill({
       status: 501,

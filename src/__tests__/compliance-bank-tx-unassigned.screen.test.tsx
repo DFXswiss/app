@@ -515,6 +515,32 @@ describe('ComplianceBankTxUnassignedScreen', () => {
     expect(mockGetUnassignedBankTx).toHaveBeenCalledTimes(2);
   });
 
+  it('disables all row buttons while a save is in flight and re-enables them after success', async () => {
+    const deferred = createDeferred<void>();
+    mockAssignBankTx.mockReturnValue(deferred.promise);
+    await renderWithData([
+      baseEntry({ id: 1, name: 'First', buyCandidateId: 1 }),
+      baseEntry({ id: 2, name: 'Second', buyCandidateId: 2 }),
+    ]);
+    await openAssignForm(0);
+    await selectType('BuyCrypto');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Assign' })).toBeDisabled();
+    });
+
+    deferred.resolve(undefined);
+    await waitFor(() => {
+      expect(screen.queryByTestId('type-dropdown')).not.toBeInTheDocument();
+      const assignButtons = screen.getAllByRole('button', { name: 'Assign' });
+      expect(assignButtons).toHaveLength(2);
+      assignButtons.forEach((button) => expect(button).not.toBeDisabled());
+    });
+  });
+
   it('saves a non-BuyCrypto type without a buy id', async () => {
     await renderWithData([baseEntry({ id: 42, buyCandidateId: undefined })]);
     await openAssignForm();
@@ -562,6 +588,23 @@ describe('ComplianceBankTxUnassignedScreen', () => {
     await openAssignForm();
     await selectType('BuyCrypto');
     fireEvent.change(screen.getByTestId('buyId-input'), { target: { value: '12.5' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent(/whole number/i);
+    });
+    expect(mockAssignBankTx).not.toHaveBeenCalled();
+    expect(screen.getByTestId('type-dropdown')).toBeInTheDocument();
+  });
+
+  it('rejects a buy id above the safe integer range with a whole-number message', async () => {
+    await renderWithData([baseEntry({ buyCandidateId: undefined })]);
+    await openAssignForm();
+    await selectType('BuyCrypto');
+    fireEvent.change(screen.getByTestId('buyId-input'), {
+      target: { value: '9007199254740992' },
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
