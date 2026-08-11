@@ -220,6 +220,8 @@ Deletes every row tracked during this process (`{ table, id }`) in reverse creat
 
 A table that cannot be addressed by an exact single-column `id` primary key is not bulk-deleted when another table references it, or when the candidate rows are actually referenced through a self-referencing foreign key (declaring an unused self-FK in the schema is not enough). Cleanup leaves all matching rows in that table untouched and fails loudly with `table "<table>" is referenced by other tables but has no primary key of exactly the single column "id": cleanup can only SELECT/recurse by id, so this table's own descendants cannot be discovered and no rows were deleted for it` or `table "<table>" is referenced by itself via a self-referencing foreign key but has no primary key of exactly the single column "id": cleanup cannot safely bulk delete its rows because self-referencing descendants could be orphaned instead of removed`.
 
+The self-reference check is deliberately conservative for a key spanning several columns: the catalogue carries no constraint identity to group pairs by, so each column pair is probed on its own. That can refuse a delete which the full key would have allowed, never allow one it would have refused.
+
 ### Helpers
 
 - `requireId` validates every create-response id and every id passed to `track()` / `trackRow()`.

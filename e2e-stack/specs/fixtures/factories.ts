@@ -1626,6 +1626,12 @@ export async function createCallQueueEntry(
 // 12. cleanupCreatedData
 // ---------------------------------------------------------------------------
 
+/**
+ * One column pair of one foreign key. A key over several columns appears as several entries.
+ *
+ * Exported, like `getForeignKeys` below, only so `factories.spec.ts` can assert that a composite
+ * key keeps its column ordinality — nothing outside this module uses either at runtime.
+ */
 export interface ForeignKeyRef {
   table: string; // child table containing the FK column
   column: string; // FK column on the child table
