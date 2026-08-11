@@ -35,9 +35,15 @@ is_filtered_run() {
       continue
     fi
     case "$arg" in
-      --grep|--grep-invert) return 0 ;;
-      --grep=*|--grep-invert=*) return 0 ;;
-      --workers|--reporter|--project|--timeout|--repeat-each|--retries|--shard|--output|--max-failures|--config|-j|-c)
+      # Real filters: they decide which tests run at all. --project is one of them here, and it is
+      # the sharpest: the coverage gate lives in its own `coverage-gate` project (playwright.config.ts),
+      # so `--project chromium` runs the suite without ever running the gate. --list executes nothing.
+      --grep|--grep-invert|--project|--shard) return 0 ;;
+      --grep=*|--grep-invert=*|--project=*|--shard=*) return 0 ;;
+      --list) return 0 ;;
+      # Value-taking flags that do not change which tests run. Their value must be skipped, or a bare
+      # `1` from `--workers 1` would be read below as a positional spec pattern.
+      --workers|--reporter|--timeout|--repeat-each|--retries|--output|--max-failures|--config|-j|-c)
         skip_value=1
         ;;
       -*) ;;

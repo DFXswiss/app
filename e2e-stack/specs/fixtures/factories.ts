@@ -1292,7 +1292,9 @@ export async function createSupportIssue(
 
   const msgId = res.messages?.[0]?.id;
   // messages is optional on the API response type; no first message means nothing to register.
-  if (msgId) track('support_message', msgId);
+  // `!= null` and not truthiness: a 0 or an empty string is a broken id, and it belongs in
+  // requireId's hands rather than being read as absence. Same rule as createLimitRequest below.
+  if (msgId != null) track('support_message', msgId);
 
   return {
     supportIssueId: issueRow.id,
@@ -1699,7 +1701,8 @@ async function getForeignKeys(): Promise<ForeignKeyRef[]> {
  * not poison every later cleanup in the same process.
  *
  * - PK is exactly `{ id }` → id-addressable (SELECT/recurse by id).
- * - PK exists but is not exactly `{ id }` → nonIdPrimaryKey (unresolvable for this cleanup).
+ * - PK exists but is not exactly `{ id }` → nonIdPrimaryKey (kept for diagnostics; leaf-ness is
+ *   decided by whether anything references the table, not by the shape of its key).
  * - No primary key at all → true leaf (neither set; DELETE by FK and stop).
  */
 async function getTableKeyInfo(): Promise<TableKeyInfo> {
@@ -1784,9 +1787,13 @@ async function deleteRowAndDescendants(
   const visitKey = `${table}#${id}`;
   const cached = visitedResults.get(visitKey);
   if (cached === 'in-progress') {
-    // Genuine cycle: row is still on an ancestor frame. That ancestor still owns the real DELETE;
-    // this branch cannot claim the row is gone.
-    return { deletedSelf: false, failed: true };
+    // Genuine cycle: the row is still on an ancestor frame, which owns its real DELETE. This branch
+    // cannot claim the row is gone, but it must not claim a failure either — reporting `failed`
+    // without a matching entry in `errors` would re-queue the reference while cleanupCreatedData
+    // stays silent, because the throw is driven by `errors`. Whether the cycle really resolves is
+    // decided by the ancestor's own DELETE: it either succeeds (a cascade broke the cycle) or fails
+    // against the constraint and is recorded there, with a message.
+    return { deletedSelf: false, failed: false };
   }
   if (cached !== undefined) {
     // Diamond: return the real first-visit outcome, not an unconditional success.
@@ -1817,30 +1824,46 @@ async function deleteRowAndDescendants(
 
     const col = needsQuote(fk.column) ? `"${fk.column}"` : fk.column;
 
-    // (ii) Child has a PK that is not exactly `{ id }` AND is itself referenced by something else.
-    // Only that combination is unresolvable: the table has descendants, and they cannot be found
-    // without addressing its rows by id. A composite-key table nothing points at — a plain join
-    // table like mros_transactions_transaction — has no descendants to lose, so it is a leaf and
-    // falls through to (iii), which deletes its rows by the foreign key column. Keying this on the
-    // schema alone would report an error for every transaction ever cleaned up, while nothing was
-    // actually left behind.
-    // Report once per distinct table (not per FK column) and skip all DELETE attempts for it.
-    if (tableKeyInfo.nonIdPrimaryKey.has(fk.table) && childrenByReferencedTable.has(fk.table)) {
-      if (!reportedNonIdPrimaryKeyTables.has(fk.table)) {
-        reportedNonIdPrimaryKeyTables.add(fk.table);
-        errors.push(
-          `table "${fk.table}" has a primary key that is not exactly the single column "id": ` +
-            `cleanup can only SELECT/recurse by id, so this table's own descendants cannot be ` +
-            `discovered and no rows were deleted for it`,
+    // (ii) Child cannot be addressed by id AND is itself referenced by something else. Only that
+    // combination is unresolvable: the table has descendants, and they cannot be found without
+    // addressing its rows by id. What decides leaf-ness is whether anything points at the table —
+    // not the shape of its key. A table with no primary key at all can still be referenced through
+    // a UNIQUE column, and a composite-key table nothing points at (a plain join table like
+    // mros_transactions_transaction) has no descendants to lose.
+    //
+    // Reported only when a row actually exists for this parent. Keying it on the schema alone would
+    // fail every cleanup of a parent whose child table happens to be empty for it — the same
+    // mistake, one branch over, that made this whole case wrong before.
+    if (!tableKeyInfo.idAddressable.has(fk.table) && childrenByReferencedTable.has(fk.table)) {
+      let hasRows: boolean;
+      try {
+        const probe = await queryRows<{ one: number }>(
+          `SELECT 1 AS one FROM ${tableSql(fk.table)} WHERE ${col} = $1 LIMIT 1`,
+          [id],
         );
+        hasRows = probe.length > 0;
+      } catch (e) {
+        errors.push(`${fk.table}.${fk.column}=${id}: ${e instanceof Error ? e.message : String(e)}`);
+        failed = true;
+        continue;
       }
-      failed = true;
+
+      if (hasRows) {
+        if (!reportedNonIdPrimaryKeyTables.has(fk.table)) {
+          reportedNonIdPrimaryKeyTables.add(fk.table);
+          errors.push(
+            `table "${fk.table}" is referenced by other tables but has no primary key of exactly ` +
+              `the single column "id": cleanup can only SELECT/recurse by id, so this table's own ` +
+              `descendants cannot be discovered and no rows were deleted for it`,
+          );
+        }
+        failed = true;
+      }
       continue;
     }
 
-    // (iii) Child cannot be addressed by id — no primary key, or a composite one nothing references
-    // (case (ii) already caught the referenced ones). Either way it is a leaf: parent-side check
-    // above passed, so delete its rows by the foreign key column and stop.
+    // (iii) Child cannot be addressed by id and nothing references it: a true leaf. The parent-side
+    // check above passed, so delete its rows by the foreign key column and stop.
     if (!tableKeyInfo.idAddressable.has(fk.table)) {
       try {
         await withDb(async (client) => {
