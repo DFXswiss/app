@@ -910,7 +910,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       const key = e.address.toLowerCase();
       const existing = map.get(key);
       if (existing) {
-        if (!existing.icon) existing.icon = walletLogoByName(e.walletType) ?? walletIconFor(e.walletType);
+        if (!existing.icon) existing.icon = walletLogoByName(e.walletType) ?? walletIconFor(e.walletType, e.walletId);
         if (existing.name === 'Wallet' && e.walletType) existing.name = e.walletType;
         if (!existing.walletType) existing.walletType = e.walletType;
         if (!existing.walletId && e.walletId) existing.walletId = e.walletId;
@@ -926,7 +926,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           blockchains: mainnetOnly(e.chains ?? []),
           active: key === current,
           linked: false,
-          icon: walletLogoByName(e.walletType) ?? walletIconFor(e.walletType),
+          icon: walletLogoByName(e.walletType) ?? walletIconFor(e.walletType, e.walletId),
         });
       }
     });

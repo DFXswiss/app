@@ -78,3 +78,18 @@ describe('catalogEntryByWalletType', () => {
     expect(entry?.connector).toBe('injected');
   });
 });
+
+describe('walletIconFor walletId preference', () => {
+  it('prefers walletId Cardano over walletType CLI for the same remembered row', () => {
+    // Same shape as rememberWallet: walletType AuthWalletType.CLI + walletId catalog id.
+    // Switcher rows feed both into walletIconFor; without walletId, 'CLI' is the CLI glyph.
+    const cardanoIcon = walletIconFor('Cardano');
+    const cliIcon = walletIconFor('CLI');
+    expect(cardanoIcon).toBeDefined();
+    expect(cliIcon).toBeDefined();
+    expect(cardanoIcon).not.toBe(cliIcon);
+
+    expect(walletIconFor('CLI', 'Cardano')).toBe(cardanoIcon);
+    expect(walletIconFor('CLI')).toBe(cliIcon);
+  });
+});

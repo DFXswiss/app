@@ -279,17 +279,27 @@ function normalizeWalletKey(value: string): string {
  * switch-wallet rows. Returns undefined for wallets not in the catalog (e.g. partner wallets),
  * which then fall back to a generic wallet glyph.
  *
- * Matching runs in precedence order, because several entries share an AuthWalletType and a
- * loose prefix match hits the wrong brand otherwise: the Cardano entry authenticates via the
- * CLI contract (walletType CLI) and sits *before* the CLI entry, so a plain single-pass scan
- * answered every CLI wallet — including DFX Wallet — with the Cardano logo. Own identity
- * (id/name) beats a shared walletType, and only then do we fall back to the fuzzy prefix
- * match that keeps variants like "MetaMask Mobile" resolving. */
-export function walletIconFor(nameOrType?: string): string | undefined {
+ * Unlike `catalogEntryByWalletType` (re-auth, wired connectors only), this scan keeps `'soon'`
+ * entries: an icon for a not-yet-wired wallet is still the right glyph in the switcher/bar.
+ *
+ * Resolution order:
+ * 1. `walletId` — catalog entry `id` from `rememberWallet` (disambiguates Cardano vs CLI, both
+ *    `AuthWalletType.CLI`). Same first step as `catalogEntryByWalletType`.
+ * 2. identity (id/name) before shared `walletType` — a plain single-pass would answer every CLI
+ *    wallet with the Cardano logo (Cardano is listed first and also has walletType CLI).
+ * 3. fuzzy prefix match for variants like "MetaMask Mobile". */
+export function walletIconFor(nameOrType?: string, walletId?: string): string | undefined {
+  const entries = WALLET_CATALOG.flatMap((group) => group.items);
+  if (walletId) {
+    const idKey = normalizeWalletKey(walletId);
+    if (idKey) {
+      const byId = entries.find((entry) => normalizeWalletKey(entry.id) === idKey);
+      if (byId) return byId.icon;
+    }
+  }
   if (!nameOrType) return undefined;
   const key = normalizeWalletKey(nameOrType);
   if (!key) return undefined;
-  const entries = WALLET_CATALOG.flatMap((group) => group.items);
   const exactIdentity = entries.find((entry) =>
     [entry.id, entry.name].some((value) => normalizeWalletKey(value) === key),
   );
