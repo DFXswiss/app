@@ -6,8 +6,11 @@ import { createTestCredentials } from './test-wallet';
 /**
  * E2E Visual Regression Test: Support Dashboard (staff screen)
  *
- * Renders /support/dashboard, which lists support issues with role-scoped
- * department filter and column. Uses the ADMIN_SEED from the API .env file
+ * Renders /support/dashboard/all, which lists support issues with role-scoped
+ * department filter and column. That screen moved from /support/dashboard to
+ * /support/dashboard/all in #1130, where the bare path became the overview -
+ * this spec kept pointing at the old path and therefore stopped covering the
+ * screen it describes. Uses the ADMIN_SEED from the API .env file
  * (admin sees every department), mirroring compliance.spec.ts.
  * Run `npm run setup` in the API directory first to create the admin user.
  */
@@ -58,7 +61,7 @@ test.describe('Support Dashboard - Visual Regression Tests', () => {
   });
 
   test('renders the dashboard with department filter and column', async ({ page }) => {
-    await page.goto(`/support/dashboard?session=${token}`);
+    await page.goto(`/support/dashboard/all?session=${token}`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
