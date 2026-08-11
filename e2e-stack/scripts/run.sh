@@ -42,13 +42,16 @@ is_filtered_run() {
       # claim full coverage - which is the whole failure this gate exists to prevent. --project is
       # deliberately not on this list even for `--project coverage-gate`, which does pull the entire
       # dependency chain: encoding one project name as "complete" would be a rule invisible from the
-      # call site, and the documented way to run only the gate is `--grep @coverage-gate`.
+      # call site, and the documented way to run only the gate is `--grep @coverage-gate`. `--config`
+      # and `-c` are off the list for the same reason: another config can set its own testDir,
+      # testMatch or project list and drop the coverage-gate project entirely, so a flag that can
+      # replace the whole selection cannot be one that promises the selection is complete.
       --workers=*|--reporter=*|--timeout=*|--global-timeout=*|--repeat-each=*|--retries=*) ;;
-      --output=*|--max-failures=*|--config=*|--trace=*|--tsconfig=*|--quiet|--pass-with-no-tests) ;;
+      --output=*|--max-failures=*|--trace=*|--tsconfig=*|--quiet|--pass-with-no-tests|--headed) ;;
       # Same flags in their separate-value form: skip the value too, or a bare `1` from
       # `--workers 1` would be read below as a positional spec pattern.
       --workers|--reporter|--timeout|--global-timeout|--repeat-each|--retries) skip_value=1 ;;
-      --output|--max-failures|--config|--trace|--tsconfig|-j|-c) skip_value=1 ;;
+      --output|--max-failures|--trace|--tsconfig|-j) skip_value=1 ;;
       *) return 0 ;;
     esac
   done
