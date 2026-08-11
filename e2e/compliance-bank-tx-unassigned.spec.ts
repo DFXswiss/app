@@ -148,6 +148,18 @@ async function installSyntheticApi(
   return { unexpectedRequests };
 }
 
+/**
+ * The table lives in an `overflow-x-auto` container and is wider than the layout column, so the
+ * browser scrolls it sideways when a control on the right edge is clicked. Left unhandled, the
+ * assign form - which sits at the left of the expanded row - ends up cut off in the screenshot.
+ * Resetting the scroll before capturing keeps both shots deterministic and shows the form whole.
+ */
+async function resetHorizontalScroll(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.querySelectorAll('.overflow-x-auto').forEach((el) => (el.scrollLeft = 0));
+  });
+}
+
 test.describe('Compliance: unassigned bank transactions', () => {
   // formatSwissDate has no timeZone option; fixture dates are absolute UTC.
   test.use({ timezoneId: 'Europe/Zurich' });
@@ -161,6 +173,7 @@ test.describe('Compliance: unassigned bank transactions', () => {
 
     await expect(page.getByText('Anna Gutschrift')).toBeVisible();
     await expect(page.getByRole('table')).toBeVisible();
+    await resetHorizontalScroll(page);
 
     await expect(page).toHaveScreenshot('compliance-bank-tx-unassigned-01-list.png', {
       fullPage: true,
@@ -183,6 +196,7 @@ test.describe('Compliance: unassigned bank transactions', () => {
     // translated string and therefore changes with the language, while the button only exists once
     // the row's form is open.
     await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+    await resetHorizontalScroll(page);
 
     await expect(page).toHaveScreenshot(
       'compliance-bank-tx-unassigned-02-assign-form.png',
