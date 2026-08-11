@@ -5,7 +5,7 @@
   },
   "buy-info": {
     "title": "Kauf-Infoseite",
-    "description": "Buy-Info-Flow (/buy/info): Personal-IBAN-Mismatch-Hinweis für eine Nicht-Frick-Währung."
+    "description": "Buy-Info-Flow (/buy/info): Personal-IBAN-Mismatch-Hinweis für eine Nicht-Frick-Währung. Bestandskunden können zwischen Bank-Frick- und Yapeal-IBAN wechseln."
   },
   "buy-bitcoin": {
     "title": "Bitcoin kaufen",

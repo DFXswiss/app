@@ -11,6 +11,8 @@ export interface PersonalIbanSelection {
   requestedPersonalIban?: string;
   /** Selector that may be added to the next quote request. */
   personalIban?: string;
+  /** Numeric account identity of the current session, if available. */
+  customerIdentity?: number;
   /** True only when quote ownership can be tied to a currently authenticated (non-expired) account. */
   hasAuthenticatedCustomer: boolean;
 }
@@ -45,6 +47,7 @@ export function usePersonalIbanSelection(): PersonalIbanSelection {
   return {
     requestedPersonalIban,
     personalIban,
+    customerIdentity,
     hasAuthenticatedCustomer,
   };
 }

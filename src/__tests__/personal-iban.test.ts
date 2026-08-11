@@ -452,6 +452,12 @@ describe('getYapealAlternative', () => {
     expect(getYapealAlternative([activeChfYapealRow], 'EUR')).toBeUndefined();
   });
 
+  it('ignores a matching row from a bank other than Yapeal', () => {
+    expect(
+      getYapealAlternative([{ ...activeChfYapealRow, bank: FRICK_BANK_NAME }], 'CHF'),
+    ).toBeUndefined();
+  });
+
   it('ignores an inactive row', () => {
     expect(getYapealAlternative([{ ...activeChfYapealRow, active: false }], 'CHF')).toBeUndefined();
   });

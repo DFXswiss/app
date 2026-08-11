@@ -124,4 +124,133 @@ test.describe('Buy Info - UI Flow', () => {
       maxDiffPixels: 10000,
     });
   });
+
+  test('legacy Yapeal holder switches provider', async ({ page, request }) => {
+    const token = await getToken(request);
+    let receivedProvider: unknown;
+
+    await page.route(/\/v2\/user(?:\?|$)/, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const user = await response.json();
+      await route.fulfill({ response, json: { ...user, kyc: { ...user.kyc, level: 50 } } });
+    });
+
+    await page.route('**/v1/buy/personalIban', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 7,
+            iban: 'CH9300762011623852957',
+            currency: 'CHF',
+            bank: 'Yapeal',
+            active: true,
+            acceptsPayments: true,
+            status: 'Active',
+          },
+        ],
+      });
+    });
+
+    const frickResponse = {
+      id: 30,
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.0251,
+      rate: 3862.5,
+      exchangeRate: 3984.06,
+      priceSteps: [],
+      minVolume: 10,
+      maxVolume: 990000,
+      minVolumeTarget: 0.0026,
+      maxVolumeTarget: 248.5,
+      fees: {
+        rate: 0.0099,
+        fixed: 0,
+        min: 0,
+        dfx: 0.99,
+        network: 0,
+        bank: 0,
+        bankFixed: 2,
+        bankVariable: 0,
+        platform: 0,
+        total: 2.99,
+      },
+      currency: { id: 1, name: 'CHF' },
+      asset: { id: 111, name: 'ETH', blockchain: 'Ethereum', category: 'Public' },
+      bank: 'Bank Frick',
+      bic: 'BFRILI22XXX',
+      iban: 'LI91088100002324013AB',
+      name: 'DFX AG',
+      street: 'Bahnhofstrasse',
+      number: '7',
+      zip: '6300',
+      city: 'Zug',
+      country: 'Schweiz',
+      remittanceInfo: 'A1B2-C3D4-E5F6',
+      sepaInstant: false,
+      isPersonalIban: true,
+    };
+
+    const yapealResponse = {
+      ...frickResponse,
+      id: 31,
+      bank: 'Yapeal',
+      bic: 'YAPECHZ2',
+      iban: 'CH9300762011623852957',
+      name: 'Max Muster',
+      remittanceInfo: 'DFX-BUY-7',
+    };
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      const requestData = route.request().postDataJSON() as Record<string, unknown>;
+      receivedProvider = requestData.personalIbanProvider;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: requestData.personalIbanProvider === 'Frick' ? frickResponse : yapealResponse,
+      });
+    });
+
+    await page.goto(
+      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`,
+    );
+
+    const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
+    const toYapealToggle = paymentDetails.getByRole('button', { name: 'Show legacy Yapeal IBAN' });
+    await expect(toYapealToggle).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => receivedProvider).toBe('Frick');
+    await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible();
+    await expect(page).toHaveScreenshot('buy-info-provider-toggle-frick-page.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+
+    await toYapealToggle.click();
+
+    const toFrickToggle = paymentDetails.getByRole('button', { name: 'Show Bank Frick IBAN' });
+    await expect(toFrickToggle).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => receivedProvider).toBe('Yapeal');
+    await expect(paymentDetails.getByText('CH93 0076 2011 6238 5295 7')).toBeVisible();
+    await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).not.toBeVisible();
+    await expect(page).toHaveScreenshot('buy-info-provider-toggle-yapeal-page.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+
+    await toFrickToggle.click();
+
+    await expect(toYapealToggle).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => receivedProvider).toBe('Frick');
+    await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible({ timeout: 15000 });
+  });
 });
