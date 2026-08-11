@@ -16,7 +16,7 @@ import * as path from 'path';
 import * as ts from 'typescript';
 import { expect, test } from '@playwright/test';
 import type { RouteClaim } from './registry/types';
-import { readVisitedRoutes, routeMatches, visitedRoutesPath } from './fixtures/routes';
+import { readVisitedRoutes, routeMatches, specClaimName, visitedRoutesPath } from './fixtures/routes';
 
 const APP_SOURCE_PATH = '/work/app-source/App.tsx';
 
@@ -325,7 +325,8 @@ test('every app route is claimed by exactly one registry entry @coverage-gate', 
         if (!claim) continue;
 
         const matching = visited.filter((v) => routeMatches(route, v.path));
-        const byClaimer = matching.filter((v) => v.specFile === claim.spec);
+        const canonicalClaimSpec = specClaimName(path.join(__dirname, claim.spec));
+        const byClaimer = matching.filter((v) => v.specFile === canonicalClaimSpec);
         if (matching.length === 0) {
           neverOpened.push(route);
         } else if (byClaimer.length === 0) {

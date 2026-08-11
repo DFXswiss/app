@@ -198,19 +198,19 @@ interface CreatedRef {
 const created: CreatedRef[] = [];
 
 /**
- * Require a finite positive numeric id. A 2xx response without a usable id is a broken API
+ * Require a genuine positive integer id. A 2xx response without a usable id is a broken API
  * contract, not a missing caller precondition — fail loud so the test cannot assert on a ghost row
  * or leave an untracked DB row behind cleanup.
  */
 function requireId(value: unknown, factory: string, field: string): number {
-  const n = Number(value);
-  if (value == null || !Number.isFinite(n) || n <= 0) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
     throw new Error(
-      `${factory}: expected a finite positive ${field}, got ${JSON.stringify(value)} — ` +
-        `a 2xx without a usable id is a broken API contract, not a missing caller precondition`,
+      `${factory}: expected a finite positive integer ${field}, got ${JSON.stringify(value)} ` +
+        `(typeof ${typeof value}) — a 2xx without a usable id is a broken API contract, not a ` +
+        `missing caller precondition`,
     );
   }
-  return n;
+  return value;
 }
 
 function track(table: string, id: number | undefined | null): void {
@@ -391,7 +391,7 @@ export interface CreateSupportIssueOptions {
 }
 
 export interface CreateSupportIssueResult {
-  supportIssueId?: number;
+  supportIssueId: number;
   uid: string;
   messageId?: number;
 }
@@ -1279,18 +1279,23 @@ export async function createSupportIssue(
     { jwt },
   );
 
+  // A 2xx from POST /support/issue must produce a findable support_issue row; missing it is a
+  // broken API contract, not a shape this factory can tolerate.
   const issueRow = await queryOne<{ id: number }>(`SELECT id FROM support_issue WHERE uid = $1 LIMIT 1`, [res.uid]);
-  // CreateSupportIssueResult declares supportIssueId as optional, and this lookup is by uid rather
-  // than by a returned id — so "no row" is a shape this factory is written to tolerate, not a
-  // contract breach like a missing id in a 2xx body. Register only what is there.
-  if (issueRow) track('support_issue', issueRow.id);
+  if (!issueRow) {
+    throw new Error(
+      `createSupportIssue: POST /support/issue answered 2xx (uid ${res.uid}) but produced no ` +
+        `findable support_issue row`,
+    );
+  }
+  track('support_issue', issueRow.id);
 
   const msgId = res.messages?.[0]?.id;
   // messages is optional on the API response type; no first message means nothing to register.
   if (msgId) track('support_message', msgId);
 
   return {
-    supportIssueId: issueRow?.id,
+    supportIssueId: issueRow.id,
     uid: res.uid,
     messageId: msgId,
   };
@@ -1627,13 +1632,31 @@ interface ForeignKeyRef {
 }
 
 let foreignKeysPromise: Promise<ForeignKeyRef[]> | null = null;
-let tablesWithIdPromise: Promise<Set<string>> | null = null;
+let tableKeyInfoPromise: Promise<TableKeyInfo> | null = null;
+
+interface TableKeyInfo {
+  /** Tables whose primary key is exactly the single column `id` — SELECT/recurse by id is safe. */
+  idAddressable: Set<string>;
+  /**
+   * Tables that have a primary key, but not exactly `{ id }` (composite or differently named).
+   * Cleanup cannot SELECT/recurse them by id and must not treat them as silent leaves either.
+   */
+  nonIdPrimaryKey: Set<string>;
+}
+
+type RowResult = { deletedSelf: boolean; failed: boolean };
 
 /**
  * Discovers every foreign key in the public schema from Postgres's catalog, once per process.
  * Memoized: the schema does not change mid-run, and re-querying on every cleanup would add
  * pointless round trips. Grouping by referencedTable is done cheaply inside cleanupCreatedData
  * from this flat list — it does not need its own cache.
+ *
+ * On rejection the memoized promise is cleared so a later call re-queries instead of replaying
+ * the same failure forever. That pairs with cleanupCreatedData loading catalogs *before*
+ * snapshotting `created`: reordering alone would still lose a second-run snapshot once retries
+ * are possible; resetting the promise alone would still lose the first snapshot if created was
+ * already cleared. Both are required.
  */
 async function getForeignKeys(): Promise<ForeignKeyRef[]> {
   if (!foreignKeysPromise) {
@@ -1653,31 +1676,66 @@ async function getForeignKeys(): Promise<ForeignKeyRef[]> {
          ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
        WHERE tc.constraint_type = 'FOREIGN KEY'
          AND tc.table_schema = 'public'`,
-    ).then((rows) =>
-      rows.map((r) => ({
-        table: r.table_name,
-        column: r.column_name,
-        referencedTable: r.referenced_table,
-        referencedColumn: r.referenced_column,
-      })),
-    );
+    )
+      .then((rows) =>
+        rows.map((r) => ({
+          table: r.table_name,
+          column: r.column_name,
+          referencedTable: r.referenced_table,
+          referencedColumn: r.referenced_column,
+        })),
+      )
+      .catch((e) => {
+        foreignKeysPromise = null;
+        throw e;
+      });
   }
   return foreignKeysPromise;
 }
 
 /**
- * Public-schema tables that have a column literally named `id`. Memoized once per process —
- * used to treat pure join tables (no own id) as leaves in the delete graph.
+ * Classify every public-schema table by its actual primary key (not by column name heuristics).
+ * Memoized once per process; reject-then-reset like getForeignKeys so a failed catalog load does
+ * not poison every later cleanup in the same process.
+ *
+ * - PK is exactly `{ id }` → id-addressable (SELECT/recurse by id).
+ * - PK exists but is not exactly `{ id }` → nonIdPrimaryKey (unresolvable for this cleanup).
+ * - No primary key at all → true leaf (neither set; DELETE by FK and stop).
  */
-async function getTablesWithId(): Promise<Set<string>> {
-  if (!tablesWithIdPromise) {
-    tablesWithIdPromise = queryRows<{ table_name: string }>(
-      `SELECT table_name
-       FROM information_schema.columns
-       WHERE table_schema = 'public' AND column_name = 'id'`,
-    ).then((rows) => new Set(rows.map((r) => r.table_name)));
+async function getTableKeyInfo(): Promise<TableKeyInfo> {
+  if (!tableKeyInfoPromise) {
+    tableKeyInfoPromise = queryRows<{ table_name: string; column_name: string }>(
+      `SELECT tc.table_name, kcu.column_name
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+       WHERE tc.constraint_type = 'PRIMARY KEY'
+         AND tc.table_schema = 'public'`,
+    )
+      .then((rows) => {
+        const columnsByTable = new Map<string, string[]>();
+        for (const row of rows) {
+          const cols = columnsByTable.get(row.table_name);
+          if (cols) cols.push(row.column_name);
+          else columnsByTable.set(row.table_name, [row.column_name]);
+        }
+        const idAddressable = new Set<string>();
+        const nonIdPrimaryKey = new Set<string>();
+        for (const [tableName, columns] of columnsByTable) {
+          if (columns.length === 1 && columns[0] === 'id') {
+            idAddressable.add(tableName);
+          } else {
+            nonIdPrimaryKey.add(tableName);
+          }
+        }
+        return { idAddressable, nonIdPrimaryKey };
+      })
+      .catch((e) => {
+        tableKeyInfoPromise = null;
+        throw e;
+      });
   }
-  return tablesWithIdPromise;
+  return tableKeyInfoPromise;
 }
 
 /**
@@ -1689,49 +1747,59 @@ async function getTablesWithId(): Promise<Set<string>> {
  * known to belong to a row this cleanup is responsible for — so the walk can never reach another
  * account's rows or seed/master data, no matter how deep it goes.
  *
- * Two independent FK checks must stay separate (parent side vs child side):
- * - Parent side: FK points at a non-`id` column → unresolvable from the id we hold → error.
- * - Child side: child table has no `id` of its own → cannot SELECT/recurse by id → delete
- *   matching rows by FK column and treat the table as a leaf (nothing further can reference
- *   it by id). A table can fail either check, both, or neither; the first branch continues
- *   before the second is evaluated.
+ * Three independent FK checks must stay separate (parent side vs child-side key shape):
+ * - (i) Parent side: FK points at a non-`id` column → unresolvable from the id we hold → error.
+ * - (ii) Child has a primary key but not exactly `{ id }` → cannot SELECT/recurse by id and must
+ *   not be treated as a silent leaf either → error once per such table, no DELETE attempt.
+ * - (iii) Child has no primary key at all → true leaf: DELETE matching rows by FK column and stop
+ *   (nothing can reference those rows by id). A table can hit any combination of (i)/(ii); (iii)
+ *   is the remaining no-PK case. The first matching branch continues before later ones run.
  *
- * `visited` is shared across the entire cleanupCreatedData() invocation. (a) Recursion is finite
- * because the set only grows, is bounded by the number of distinct (table, id) pairs that exist,
- * and a pair already in it is never re-entered. (b) Skipping an already-visited pair cannot
- * silently lose a delete: either that pair was already fully processed on an earlier branch
- * (nothing left to do), or it is still an ancestor on the current recursion stack — a genuine,
- * structurally unresolvable FK cycle (some column would need to be nulled first, which is out of
- * scope). In that case the pair's own DELETE is still attempted where it is owned in the
- * recursion and fails with a normal Postgres FK-violation error, reported like any other failed
- * delete.
+ * `visitedResults` is shared across the entire cleanupCreatedData() invocation. Values are either
+ * `'in-progress'` (this row is still on an ancestor frame's stack — a genuine FK cycle) or a
+ * finished `RowResult` (the real first-visit outcome). That distinguishes:
+ * - Cycle: return `{ deletedSelf: false, failed: true }` without recursing. The ancestor frame
+ *   that owns this row still runs its own real DELETE later in its own turn and pushes any real
+ *   failure into `errors` independently of what this branch returns — nothing is silently lost —
+ *   but THIS branch genuinely cannot confirm the row is gone, so it must not report
+ *   `deletedSelf: true`.
+ * - Diamond (two paths reach the same row): return the cached finished result as-is, not a
+ *   fabricated success, so a failed first visit is not rewritten as success on the second path.
  *
  * Returns whether this row's own DELETE succeeded, and whether anything in its subtree failed
- * (including unhandled non-id foreign keys). A deeper failure does not skip the attempt to
- * delete this row or its independent siblings — maximize what gets cleaned up, collect every
- * error.
+ * (including unhandled foreign keys / non-id primary keys). A deeper failure does not skip the
+ * attempt to delete this row or its independent siblings — maximize what gets cleaned up, collect
+ * every error.
  */
 async function deleteRowAndDescendants(
   table: string,
   id: number,
   childrenByReferencedTable: Map<string, ForeignKeyRef[]>,
-  visited: Set<string>,
+  visitedResults: Map<string, 'in-progress' | RowResult>,
   errors: string[],
   unhandledForeignKeys: Set<string>,
-  tablesWithId: Set<string>,
-): Promise<{ deletedSelf: boolean; failed: boolean }> {
+  reportedNonIdPrimaryKeyTables: Set<string>,
+  tableKeyInfo: TableKeyInfo,
+): Promise<RowResult> {
   const visitKey = `${table}#${id}`;
-  if (visited.has(visitKey)) {
-    return { deletedSelf: true, failed: false };
+  const cached = visitedResults.get(visitKey);
+  if (cached === 'in-progress') {
+    // Genuine cycle: row is still on an ancestor frame. That ancestor still owns the real DELETE;
+    // this branch cannot claim the row is gone.
+    return { deletedSelf: false, failed: true };
   }
-  visited.add(visitKey);
+  if (cached !== undefined) {
+    // Diamond: return the real first-visit outcome, not an unconditional success.
+    return cached;
+  }
+  visitedResults.set(visitKey, 'in-progress');
 
   let failed = false;
   const fks = childrenByReferencedTable.get(table) ?? [];
 
   for (const fk of fks) {
     if (fk.referencedColumn !== 'id') {
-      // Cleanup addresses every row by id only; a FK to a non-id parent column cannot be
+      // (i) Cleanup addresses every row by id only; a FK to a non-id parent column cannot be
       // resolved from the id we hold. Surface once per distinct child-table.column so a human
       // reading AggregateError knows which constraint needs an explicit fix.
       const unhandledKey = `${fk.table}.${fk.column}`;
@@ -1749,10 +1817,24 @@ async function deleteRowAndDescendants(
 
     const col = needsQuote(fk.column) ? `"${fk.column}"` : fk.column;
 
-    // Child has no own `id`: pure join / composite-key table. Parent-side check above already
-    // passed (FK targets `id`); this is only about whether child rows are addressable for
-    // recursion. Delete by FK column and stop — nothing can reference these rows by id.
-    if (!tablesWithId.has(fk.table)) {
+    // (ii) Child has a PK that is not exactly `{ id }` — not a safe leaf and not addressable.
+    // Report once per distinct table (not per FK column) and skip all DELETE attempts for it.
+    if (tableKeyInfo.nonIdPrimaryKey.has(fk.table)) {
+      if (!reportedNonIdPrimaryKeyTables.has(fk.table)) {
+        reportedNonIdPrimaryKeyTables.add(fk.table);
+        errors.push(
+          `table "${fk.table}" has a primary key that is not exactly the single column "id": ` +
+            `cleanup can only SELECT/recurse by id, so this table's own descendants cannot be ` +
+            `discovered and no rows were deleted for it`,
+        );
+      }
+      failed = true;
+      continue;
+    }
+
+    // (iii) Child has no primary key at all: true leaf. Parent-side check above already passed
+    // (FK targets `id`). Delete by FK column and stop — nothing can reference these rows by id.
+    if (!tableKeyInfo.idAddressable.has(fk.table)) {
       try {
         await withDb(async (client) => {
           await client.query(
@@ -1797,10 +1879,11 @@ async function deleteRowAndDescendants(
         fk.table,
         childId,
         childrenByReferencedTable,
-        visited,
+        visitedResults,
         errors,
         unhandledForeignKeys,
-        tablesWithId,
+        reportedNonIdPrimaryKeyTables,
+        tableKeyInfo,
       );
       if (childResult.failed) failed = true;
     }
@@ -1817,7 +1900,9 @@ async function deleteRowAndDescendants(
     failed = true;
   }
 
-  return { deletedSelf, failed };
+  const result: RowResult = { deletedSelf, failed };
+  visitedResults.set(visitKey, result);
+  return result;
 }
 
 /**
@@ -1848,13 +1933,20 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
   const errors: string[] = [];
   const failed: CreatedRef[] = [];
   let deleted = 0;
+
+  // Load catalogs BEFORE snapshotting/clearing `created`. If either await throws, the refs stay
+  // in `created` for a later retry. Combined with the reject-then-reset memoization in
+  // getForeignKeys/getTableKeyInfo: (a) alone still loses a second-run snapshot once (b) allows
+  // retries after a process-lifetime failure; (b) alone still loses the first snapshot if
+  // `created` was already cleared. Both are required.
+  // No catch: failing to load the FK/key catalog would leave dependents behind for the next spec
+  // on a shared database — silently, since callers of cleanupCreatedData do not read the return.
+  const foreignKeys = await getForeignKeys();
+  const tableKeyInfo = await getTableKeyInfo();
+
   const snapshot = [...created].reverse();
   created.length = 0;
 
-  // No catch: failing to load the FK graph would leave dependents behind for the next spec on a
-  // shared database — silently, since callers of cleanupCreatedData do not read the return value.
-  const foreignKeys = await getForeignKeys();
-  const tablesWithId = await getTablesWithId();
   const childrenByReferencedTable = new Map<string, ForeignKeyRef[]>();
   for (const fk of foreignKeys) {
     const list = childrenByReferencedTable.get(fk.referencedTable);
@@ -1863,18 +1955,20 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
   }
 
   // Shared across every top-level ref in this invocation — not reset per ref or per recurse.
-  const visited = new Set<string>();
+  const visitedResults = new Map<string, 'in-progress' | RowResult>();
   const unhandledForeignKeys = new Set<string>();
+  const reportedNonIdPrimaryKeyTables = new Set<string>();
 
   for (const ref of snapshot) {
     const result = await deleteRowAndDescendants(
       ref.table,
       ref.id,
       childrenByReferencedTable,
-      visited,
+      visitedResults,
       errors,
       unhandledForeignKeys,
-      tablesWithId,
+      reportedNonIdPrimaryKeyTables,
+      tableKeyInfo,
     );
     if (result.deletedSelf) deleted += 1;
     if (result.failed) failed.push(ref);

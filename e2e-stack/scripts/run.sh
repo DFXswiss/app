@@ -19,13 +19,30 @@ fi
 build_tests_image
 log_info "Running e2e tests..."
 # Declares that every spec is in scope, which is what lets the coverage gate check that each route
-# was actually opened rather than merely claimed. A filtered run must not set this — "$@" is
-# exactly how a --grep/--grep-invert reaches Playwright, and claiming full coverage on a run that
-# skipped most specs would compare claims against a navigation record that was never complete. A
-# filtered run instead only gets the gate's ownership check (route-coverage.spec.ts, the
+# was actually opened rather than merely claimed. Only real filters flip this off: --grep /
+# --grep-invert (and their =value forms) or a positional spec-file path pattern. Other flags
+# (--reporter, --workers, …) do not filter which specs run and must not drop the full-run check.
+# A filtered run instead only gets the gate's ownership check (route-coverage.spec.ts, the
 # `E2E_FULL_RUN !== '1'` branch), which prints that loudly instead of claiming coverage.
-if [[ $# -eq 0 ]]; then
-  E2E_FULL_RUN=1 compose run --rm tests
+is_filtered_run() {
+  for arg in "$@"; do
+    case "$arg" in
+      --grep|--grep=*|--grep-invert|--grep-invert=*) return 0 ;;
+      -*) ;;
+      *) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+if [[ $# -eq 0 ]] || ! is_filtered_run "$@"; then
+  E2E_FULL_RUN=1 compose run --rm tests "$@"
 else
+  # A real filter is present (--grep/--grep-invert or a spec-file pattern) — this run legitimately
+  # covers only part of the suite. Explicitly clear any E2E_FULL_RUN inherited from the calling
+  # shell so a filtered local run cannot accidentally claim full coverage. CI does not go through
+  # run.sh at all — the workflow sets E2E_FULL_RUN itself (see .github/workflows/e2e-stack.yml) —
+  # so this heuristic is a local/dev safety net only, not part of the merge gate.
+  unset E2E_FULL_RUN
   compose run --rm tests "$@"
 fi

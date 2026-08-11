@@ -232,12 +232,17 @@ export interface VisitedRoute {
 }
 
 /**
- * Reduce Playwright's absolute testInfo.file to the form registry claims use (claim.spec, e.g.
- * "buy.spec.ts"). route-coverage.spec.ts resolves a claim as path.join(<specs dir>, claim.spec), so
- * the inverse is the path relative to that same directory — not the bare basename, which would
- * stop matching the moment a suite moves into a subdirectory and would silently make its claims
- * look unvisited. Recording and evaluation must derive this form identically, which is why both
- * sides call this one function.
+ * Reduce an absolute spec-file path to the form registry claims use (claim.spec, e.g.
+ * "buy.spec.ts" or "subdir/buy.spec.ts"). The result is the path relative to the specs/
+ * directory — not the bare basename, which would stop matching the moment a suite moves into a
+ * subdirectory and would silently make its claims look unvisited.
+ *
+ * Both sides of the coverage gate go through this one function rather than comparing raw strings:
+ * - Recording (`recordVisitedRoute`) calls it directly with Playwright's absolute `testInfo.file`.
+ * - Evaluation (route-coverage.spec.ts) first resolves `claim.spec` to an absolute path via
+ *   `path.join(<specs dir>, claim.spec)` — the same resolution the existence check already uses —
+ *   then passes that absolute path here, so a claim written as `./buy.spec.ts` canonicalizes to
+ *   the same relative form the recording side stored.
  */
 export function specClaimName(specFilePath: string): string {
   return path.relative(path.join(__dirname, '..'), specFilePath);
