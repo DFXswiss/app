@@ -576,7 +576,8 @@ describe('ComplianceBankTxUnassignedScreen', () => {
     await renderWithData([baseEntry()]);
     await openAssignForm();
 
-    // fireEvent bypasses the disabled check so the defensive early-return is exercised
+    // The button being disabled is what prevents the call - the handler has no guard of its own,
+    // so this asserts the disabled state and that a click on it stays without effect.
     const saveButton = screen.getByRole('button', { name: 'Save' });
     expect(saveButton).toBeDisabled();
     fireEvent.click(saveButton);

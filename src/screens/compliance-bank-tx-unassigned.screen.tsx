@@ -95,10 +95,11 @@ export default function ComplianceBankTxUnassignedScreen(): JSX.Element {
     const dto: AssignBankTxDto = { type: selectedType };
     const buyIdTrimmed = selectedBuyId.trim();
     if (buyIdTrimmed !== '') {
-      const parsedBuyId = Number(buyIdTrimmed);
-      // Reject non-integer input here rather than sending NaN and letting the API answer 400 -
-      // the caller would get a validation error without knowing which field caused it.
-      if (!Number.isInteger(parsedBuyId)) {
+      // Validate the text before converting: Number() is lossy, so '1.0000000000000001' would
+      // silently become 1 and an oversized value would land on a different id than typed. Rejecting
+      // here also tells the user which field is wrong, instead of surfacing a bare API 400.
+      const parsedBuyId = /^\d+$/.test(buyIdTrimmed) ? Number(buyIdTrimmed) : Number.NaN;
+      if (!Number.isSafeInteger(parsedBuyId)) {
         setAssignError(translate('screens/compliance', 'Buy ID must be a whole number'));
         return;
       }
@@ -221,7 +222,11 @@ export default function ComplianceBankTxUnassignedScreen(): JSX.Element {
                       {canAssign && (
                         <td className="px-4 py-3 text-left text-sm">
                           <button
-                            className="px-3 py-1.5 bg-white border border-dfxGray-400 text-dfxBlue-800 rounded-lg text-sm hover:bg-dfxGray-300 transition-colors"
+                            className="px-3 py-1.5 bg-white border border-dfxGray-400 text-dfxBlue-800 rounded-lg text-sm hover:bg-dfxGray-300 transition-colors disabled:opacity-50"
+                            // Locked while a save is in flight: all rows share one form instance and
+                            // one expandedId, so switching rows mid-save would apply that save's
+                            // outcome - closing the form, or showing its error - to the wrong row.
+                            disabled={isSaving}
                             onClick={() => {
                               if (isExpanded) {
                                 setExpandedId(undefined);
