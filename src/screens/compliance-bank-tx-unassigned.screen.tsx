@@ -60,18 +60,21 @@ export default function ComplianceBankTxUnassignedScreen(): JSX.Element {
     backButton: true,
   });
 
-  const loadData = useCallback((): void => {
+  // Returns a promise so the save path can await the refresh before releasing the row lock -
+  // otherwise the just-assigned row stays clickable while the reload is still in flight and could
+  // be assigned a second time.
+  const loadData = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     setError(undefined);
 
-    getUnassignedBankTx()
+    return getUnassignedBankTx()
       .then(setData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setIsLoading(false));
   }, [getUnassignedBankTx]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   function openAssignForm(entry: UnassignedBankTx): void {
@@ -113,7 +116,7 @@ export default function ComplianceBankTxUnassignedScreen(): JSX.Element {
     try {
       await assignBankTx(id, dto);
       setExpandedId(undefined);
-      loadData();
+      await loadData();
     } catch (e: unknown) {
       setAssignError(e instanceof Error ? e.message : String(e));
     } finally {
