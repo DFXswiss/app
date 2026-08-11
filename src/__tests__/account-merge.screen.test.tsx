@@ -168,4 +168,19 @@ describe('AccountMerge', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/kyc');
     expect(mockCall).not.toHaveBeenCalled();
   });
+
+  // StrictMode runs the effect, its cleanup, then the effect again on the same instance — so the
+  // cancellation flag has to be re-armed, or the second run would discard its own result and strand
+  // the user on the spinner, which is the very failure this screen is meant to stop doing.
+  it('still completes when the effect is invoked twice on the same instance', async () => {
+    respondWith({ merge: [{ kycHash: 'hash', accessToken: 'token' }, { kycHash: 'hash', accessToken: 'token' }] });
+
+    render(
+      <React.StrictMode>
+        <AccountMerge />
+      </React.StrictMode>,
+    );
+
+    expect(await screen.findByText('Account merged successfully!')).toBeInTheDocument();
+  });
 });

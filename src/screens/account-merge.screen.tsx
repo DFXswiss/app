@@ -29,6 +29,10 @@ export default function AccountMerge() {
   const otp = urlParams.get('otp');
 
   useEffect(() => {
+    // The cleanup below cancels the run; re-arm here so a second invocation on the same instance
+    // (StrictMode double-invokes effects) starts a live run instead of one that discards its result.
+    isCancelled.current = false;
+
     if (!otp) {
       navigate('/kyc');
       return;
