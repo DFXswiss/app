@@ -26,7 +26,7 @@ log_info "Running e2e tests..."
 # The filtered branch clears the variable rather than just not setting it: compose.tests.yml forwards
 # ${E2E_FULL_RUN:-}, so a value inherited from the caller's environment would otherwise survive and
 # make a filtered run declare itself complete.
-if [ "$#" -eq 0 ]; then
+if [[ "$#" -eq 0 ]]; then
   E2E_FULL_RUN=1 compose run --rm tests
 else
   log_info "Arguments given: running a filtered subset, so the route gate checks ownership only."
