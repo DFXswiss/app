@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
+import type { RouteClaim } from '../registry/types';
 
 /** Compare-ready pathname: one trailing slash removed, except on the root path. */
 export function normPath(p: string): string {
@@ -308,4 +309,44 @@ export function routeMatches(route: string, visited: string): boolean {
     })
     .join('/');
   return new RegExp(`^${pattern}$`).test(normPath(visited));
+}
+
+export interface RouteVisitEvaluation {
+  neverOpened: string[];
+  wrongSuite: string[];
+  correctlyOpened: string[];
+}
+
+/** Classify claimed routes by whether, and by which spec file, each route was visited. */
+export function evaluateClaimedRouteVisits(
+  realRoutes: Iterable<string>,
+  claimByPath: Map<string, RouteClaim>,
+  visited: VisitedRoute[],
+  specsDir: string,
+): RouteVisitEvaluation {
+  const neverOpened: string[] = [];
+  const wrongSuite: string[] = [];
+  const correctlyOpened: string[] = [];
+
+  // Unclaimed routes are reported by the ownership check, so do not double-count them here.
+  for (const route of [...realRoutes].sort()) {
+    const claim = claimByPath.get(route);
+    if (!claim) continue;
+
+    const matching = visited.filter((entry) => routeMatches(route, entry.path));
+    const canonicalClaimSpec = specClaimName(path.join(specsDir, claim.spec));
+    const byClaimer = matching.filter((entry) => entry.specFile === canonicalClaimSpec);
+    if (matching.length === 0) {
+      neverOpened.push(route);
+    } else if (byClaimer.length === 0) {
+      const openers = [...new Set(matching.map((entry) => entry.specFile))].sort();
+      wrongSuite.push(
+        `${route} (claimed by ${claim.spec}, opened by: ${openers.join(', ')})`,
+      );
+    } else {
+      correctlyOpened.push(route);
+    }
+  }
+
+  return { neverOpened, wrongSuite, correctlyOpened };
 }

@@ -699,8 +699,8 @@ export async function createUser(options: CreateUserOptions = {}): Promise<Creat
   }
   // Registration order is the deletion order, reversed: cleanupCreatedData() below deletes in
   // reverse registration order. user.userDataId -> user_data.id is NOT NULL with
-  // ON DELETE NO ACTION, so the dependent row (user_data) must be registered LAST here to be
-  // deleted FIRST during cleanup — before the "user" row that references it.
+  // ON DELETE NO ACTION, so user_data is registered first and its dependent user row last. The
+  // reverse cleanup order then deletes user before the user_data row it depends on.
   // Only register when this call created the account (preExisting was empty).
   if (!preExisting) {
     track('user_data', userRow.userDataId);
@@ -1639,11 +1639,6 @@ let tableKeyInfoPromise: Promise<TableKeyInfo> | null = null;
 interface TableKeyInfo {
   /** Tables whose primary key is exactly the single column `id` — SELECT/recurse by id is safe. */
   idAddressable: Set<string>;
-  /**
-   * Tables that have a primary key, but not exactly `{ id }` (composite or differently named).
-   * Cleanup cannot SELECT/recurse them by id and must not treat them as silent leaves either.
-   */
-  nonIdPrimaryKey: Set<string>;
 }
 
 type RowResult = { deletedSelf: boolean; failed: boolean };
@@ -1659,6 +1654,11 @@ type RowResult = { deletedSelf: boolean; failed: boolean };
  * snapshotting `created`: reordering alone would still lose a second-run snapshot once retries
  * are possible; resetting the promise alone would still lose the first snapshot if created was
  * already cleared. Both are required.
+ *
+ * `constraint_column_usage` does not preserve per-column ordinal correspondence with
+ * `key_column_usage` for multi-column constraints. Joining them only by constraint name produces
+ * the cross product of every column on both sides, so this query uses `pg_constraint`'s
+ * `conkey`/`confkey` arrays and pairs their entries by ordinality instead.
  */
 async function getForeignKeys(): Promise<ForeignKeyRef[]> {
   if (!foreignKeysPromise) {
@@ -1668,16 +1668,25 @@ async function getForeignKeys(): Promise<ForeignKeyRef[]> {
       referenced_table: string;
       referenced_column: string;
     }>(
-      `SELECT tc.table_name, kcu.column_name,
-              ccu.table_name AS referenced_table,
-              ccu.column_name AS referenced_column
-       FROM information_schema.table_constraints tc
-       JOIN information_schema.key_column_usage kcu
-         ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-       JOIN information_schema.constraint_column_usage ccu
-         ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
-       WHERE tc.constraint_type = 'FOREIGN KEY'
-         AND tc.table_schema = 'public'`,
+      `SELECT child_table.relname AS table_name,
+              child_attribute.attname AS column_name,
+              parent_table.relname AS referenced_table,
+              parent_attribute.attname AS referenced_column
+       FROM pg_constraint con
+       JOIN pg_class child_table ON child_table.oid = con.conrelid
+       JOIN pg_namespace child_schema
+         ON child_schema.oid = child_table.relnamespace AND child_schema.nspname = 'public'
+       JOIN pg_class parent_table ON parent_table.oid = con.confrelid
+       JOIN pg_namespace parent_schema
+         ON parent_schema.oid = parent_table.relnamespace AND parent_schema.nspname = 'public'
+       JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS child_key(attnum, position) ON true
+       JOIN LATERAL unnest(con.confkey) WITH ORDINALITY AS parent_key(attnum, position)
+         ON parent_key.position = child_key.position
+       JOIN pg_attribute child_attribute
+         ON child_attribute.attrelid = con.conrelid AND child_attribute.attnum = child_key.attnum
+       JOIN pg_attribute parent_attribute
+         ON parent_attribute.attrelid = con.confrelid AND parent_attribute.attnum = parent_key.attnum
+       WHERE con.contype = 'f'`,
     )
       .then((rows) =>
         rows.map((r) => ({
@@ -1701,12 +1710,13 @@ async function getForeignKeys(): Promise<ForeignKeyRef[]> {
  * not poison every later cleanup in the same process.
  *
  * - PK is exactly `{ id }` → id-addressable (SELECT/recurse by id).
- * - PK exists but is not exactly `{ id }` → nonIdPrimaryKey (diagnostics only).
- * - No primary key at all → in neither set.
+ * - Any other primary-key shape, or no primary key at all, is not id-addressable.
  *
- * Leaf-ness is NOT decided here. A table that is not id-addressable is a leaf only when no OTHER
- * table references it — a self-referencing foreign key does not count; if something does, its descendants exist and cannot be reached by id, which is an
- * error rather than a leaf. See deleteRowAndDescendants for that decision.
+ * Leaf-ness is NOT decided here. A table that is not id-addressable is a leaf only when neither
+ * another table nor the table itself references it. With existing rows, either kind of reference
+ * makes the table unresolvable because descendants cannot be reached by id; self-references are
+ * reported separately rather than being described as references from other tables. See
+ * deleteRowAndDescendants for that decision.
  */
 async function getTableKeyInfo(): Promise<TableKeyInfo> {
   if (!tableKeyInfoPromise) {
@@ -1726,15 +1736,12 @@ async function getTableKeyInfo(): Promise<TableKeyInfo> {
           else columnsByTable.set(row.table_name, [row.column_name]);
         }
         const idAddressable = new Set<string>();
-        const nonIdPrimaryKey = new Set<string>();
         for (const [tableName, columns] of columnsByTable) {
           if (columns.length === 1 && columns[0] === 'id') {
             idAddressable.add(tableName);
-          } else {
-            nonIdPrimaryKey.add(tableName);
           }
         }
-        return { idAddressable, nonIdPrimaryKey };
+        return { idAddressable };
       })
       .catch((e) => {
         tableKeyInfoPromise = null;
@@ -1755,13 +1762,14 @@ async function getTableKeyInfo(): Promise<TableKeyInfo> {
  *
  * Three independent FK checks must stay separate (parent side vs child side):
  * - (i) Parent side: FK points at a non-`id` column → unresolvable from the id we hold → error.
- * - (ii) Child is not addressable by `id` AND another table references it → its descendants exist and
- *   cannot be reached, which must not pass as a silent leaf → error once per such table, no DELETE
- *   attempt, and only when a row for this parent actually exists.
- * - (iii) Child is not addressable by `id` and no other table references it → true leaf: DELETE matching
- *   rows by FK column and stop. Both (ii) and (iii) cover tables with no primary key as well as
- *   tables with a composite one; what separates them is whether anything points at the table, not
- *   the shape of its key. The first matching branch continues before later ones run.
+ * - (ii) Child is not addressable by `id` AND another table or the table itself references it →
+ *   its descendants exist and cannot be reached, which must not pass as a silent leaf → error
+ *   once per such table, no DELETE attempt, and only when a row for this parent actually exists.
+ * - (iii) Child is not addressable by `id` and neither another table nor the table itself
+ *   references it → true leaf: DELETE matching rows by FK column and stop. Both (ii) and (iii)
+ *   cover tables with no primary key as well as tables with a composite one; what separates them
+ *   is whether anything points at the table, not the shape of its key. The first matching branch
+ *   continues before later ones run.
  *
  * `visitedResults` is shared across the entire cleanupCreatedData() invocation. Values are either
  * `'in-progress'` (this row is still on an ancestor frame's stack — a genuine FK cycle) or a
@@ -1830,25 +1838,27 @@ async function deleteRowAndDescendants(
 
     const col = needsQuote(fk.column) ? `"${fk.column}"` : fk.column;
 
-    // (ii) Child cannot be addressed by id AND is itself referenced by something else. Only that
-    // combination is unresolvable: the table has descendants, and they cannot be found without
-    // addressing its rows by id. What decides leaf-ness is whether anything points at the table —
-    // not the shape of its key. A table with no primary key at all can still be referenced through
-    // a UNIQUE column, and a composite-key table nothing points at (a plain join table like
+    // (ii) Child cannot be addressed by id AND is itself referenced by another table or by itself.
+    // Only that combination is unresolvable: the table has descendants, and they cannot be found
+    // without addressing its rows by id. What decides leaf-ness is whether anything points at the
+    // table — not the shape of its key. A table with no primary key at all can still be referenced
+    // through a UNIQUE column, and a composite-key table nothing points at (a plain join table like
     // mros_transactions_transaction) has no descendants to lose.
     //
     // Reported only when a row actually exists for this parent. Keying it on the schema alone would
     // fail every cleanup of a parent whose child table happens to be empty for it — the same
     // mistake, one branch over, that made this whole case wrong before.
-    // Referenced by something OTHER than itself. A self-referencing foreign key puts a table into
-    // this map on its own, which would make every such table look unresolvable even when nothing
-    // else points at it — and the error would claim it is "referenced by other tables", which would
-    // not be true.
+    // Keep other-table and self-reference detection separate. Both prevent a safe bulk-leaf
+    // delete, but only the former can truthfully be reported as "referenced by other tables"; a
+    // self-only reference needs wording that explains the orphaned-descendant risk instead.
     const referencedByOthers = (childrenByReferencedTable.get(fk.table) ?? []).some(
       (child) => child.table !== fk.table,
     );
+    const referencedBySelf = (childrenByReferencedTable.get(fk.table) ?? []).some(
+      (child) => child.table === fk.table,
+    );
 
-    if (!tableKeyInfo.idAddressable.has(fk.table) && referencedByOthers) {
+    if (!tableKeyInfo.idAddressable.has(fk.table) && (referencedByOthers || referencedBySelf)) {
       let hasRows: boolean;
       try {
         const probe = await queryRows<{ one: number }>(
@@ -1865,20 +1875,29 @@ async function deleteRowAndDescendants(
       if (hasRows) {
         if (!reportedNonIdPrimaryKeyTables.has(fk.table)) {
           reportedNonIdPrimaryKeyTables.add(fk.table);
-          errors.push(
-            `table "${fk.table}" is referenced by other tables but has no primary key of exactly ` +
-              `the single column "id": cleanup can only SELECT/recurse by id, so this table's own ` +
-              `descendants cannot be discovered and no rows were deleted for it`,
-          );
+          if (referencedByOthers) {
+            errors.push(
+              `table "${fk.table}" is referenced by other tables but has no primary key of exactly ` +
+                `the single column "id": cleanup can only SELECT/recurse by id, so this table's own ` +
+                `descendants cannot be discovered and no rows were deleted for it`,
+            );
+          } else {
+            errors.push(
+              `table "${fk.table}" is referenced by itself via a self-referencing foreign key but ` +
+                `has no primary key of exactly the single column "id": cleanup cannot safely bulk ` +
+                `delete its rows because self-referencing descendants could be orphaned instead of removed`,
+            );
+          }
         }
         failed = true;
       }
       continue;
     }
 
-    // (iii) Child cannot be addressed by id and no other table references it: a true leaf. The parent-side
-    // check above passed, so delete its rows by the foreign key column and stop.
-    if (!tableKeyInfo.idAddressable.has(fk.table)) {
+    // (iii) Child cannot be addressed by id and neither another table nor the table itself
+    // references it: a true leaf. The parent-side check above passed, so delete its rows by the
+    // foreign key column and stop.
+    if (!tableKeyInfo.idAddressable.has(fk.table) && !referencedByOthers && !referencedBySelf) {
       try {
         await withDb(async (client) => {
           await client.query(
@@ -2019,11 +2038,10 @@ export async function cleanupCreatedData(): Promise<{ deleted: number; errors: s
   }
 
   if (failed.length > 0) {
-    // `failed` was accumulated while iterating `snapshot`, which is already the reverse of the
-    // original registration order — so `failed` itself is in reverse-of-reverse, i.e. it needs
-    // one more reverse() to land back in original registration order before re-entering
-    // `created`. The next cleanupCreatedData() call reverses `created` again, so this is what
-    // makes that second reversal produce a correct, FK-respecting retry order.
+    // `failed` was accumulated in `snapshot` order, which is the reverse of the original
+    // registration order. Reverse it once before restoring it to `created`; the next
+    // cleanupCreatedData() call reverses `created` into the same FK-respecting retry order in
+    // which these references failed during this attempt.
     created.push(...failed.reverse());
   }
 
