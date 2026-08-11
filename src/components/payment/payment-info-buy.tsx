@@ -14,7 +14,7 @@ import {
 import { useState } from 'react';
 import { useSettingsContext } from '../../contexts/settings.context';
 import { useClipboard } from '../../hooks/clipboard.hook';
-import { FRICK_EUR_COLLECTION_IBAN, canOfferCollectionIban } from '../../util/personal-iban';
+import { getOfferableCollectionIban } from '../../util/personal-iban';
 import { PaymentQrCode } from './payment-qr-code';
 
 interface PaymentInformationContentProps {
@@ -75,8 +75,8 @@ function PaymentInformationText({ info, showBank }: PaymentInformationContentPro
   const { translate } = useSettingsContext();
   const { copy } = useClipboard();
   const [showCollectionIban, setShowCollectionIban] = useState(false);
-  const offerCollectionIban = canOfferCollectionIban(info);
-  const displayedIban = offerCollectionIban && showCollectionIban ? FRICK_EUR_COLLECTION_IBAN : info.iban;
+  const collectionIban = getOfferableCollectionIban(info);
+  const displayedIban = showCollectionIban && collectionIban !== undefined ? collectionIban : info.iban;
 
   return (
     <>
@@ -96,7 +96,7 @@ function PaymentInformationText({ info, showBank }: PaymentInformationContentPro
               </div>
             )}
           </div>
-          {offerCollectionIban && (
+          {collectionIban !== undefined && (
             <button
               type="button"
               className="ml-1"

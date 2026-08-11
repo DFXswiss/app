@@ -387,7 +387,7 @@ export default function BuyInfoScreen(): JSX.Element {
                 )
               : translate(
                   'screens/payment',
-                  'Your requested personal IBAN is only available for EUR bank transfers, so it was not used for this offer.',
+                  'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.',
                 )}
           </StyledInfoText>
           <StyledButton
@@ -412,7 +412,7 @@ export default function BuyInfoScreen(): JSX.Element {
                 <StyledInfoText invertedIcon>
                   {translate(
                     'screens/payment',
-                    'Your requested personal IBAN is only available for EUR bank transfers, so it was not used for this offer.',
+                    'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.',
                   )}
                 </StyledInfoText>
               )}

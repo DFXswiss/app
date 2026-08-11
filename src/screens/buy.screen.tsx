@@ -64,6 +64,7 @@ import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import { usePersonalIbanSelection } from '../hooks/personal-iban.hook';
 import {
+  FRICK_CURRENCIES,
   getPersonalIbanErrorMessage,
   getPersonalIbanKycMessage,
   isExplicitFrickPersonalIbanRequest,
@@ -897,7 +898,7 @@ export default function BuyScreen(): JSX.Element {
                                 )
                               : translate(
                                   'screens/payment',
-                                  'Your requested personal IBAN is only available for EUR bank transfers, so it was not used for this offer.',
+                                  'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.',
                                 )}
                           </StyledInfoText>
                           <StyledButton
@@ -937,12 +938,13 @@ export default function BuyScreen(): JSX.Element {
                                   <StyledInfoText iconColor={IconColor.BLUE}>
                                     {translate(
                                       'screens/payment',
-                                      'Your requested personal IBAN is only available for EUR bank transfers, so it was not used for this offer.',
+                                      'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.',
                                     )}
                                   </StyledInfoText>
                                 )}
                               {!paymentInfo.isPersonalIban &&
-                                selectedCurrency?.name !== 'EUR' &&
+                                (selectedCurrency?.name === undefined ||
+                                  !FRICK_CURRENCIES.includes(selectedCurrency.name)) &&
                                 effectivePersonalIban === undefined && (
                                   <StyledVerticalStack gap={4}>
                                     <h2 className="text-dfxBlue-800 text-center">

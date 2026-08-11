@@ -1,0 +1,6 @@
+test-results/
+playwright-report/
+*.log
+.env
+.env.generated
+node_modules/

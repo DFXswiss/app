@@ -3,6 +3,10 @@
     "title": "Kaufprozess",
     "description": "Buy-Flow: Seitenladezustand, Betragseingabe, Zahlungsdetails und Collection-/Personal-IBAN-Umschaltung."
   },
+  "buy-info": {
+    "title": "Kauf-Infoseite",
+    "description": "Buy-Info-Flow (/buy/info): Personal-IBAN-Mismatch-Hinweis für eine Nicht-Frick-Währung."
+  },
   "buy-bitcoin": {
     "title": "Bitcoin kaufen",
     "description": "Buy-Flow für Bitcoin: geladene Seite, Betrag und Wechselkurs."
@@ -22,6 +26,10 @@
   "buy-crypto-fail-refund": {
     "title": "Fehlgeschlagener Kauf & Refund",
     "description": "Transaktionsliste, Details und Refund-Formular nach fehlgeschlagenem Crypto-Kauf."
+  },
+  "assign-transaction": {
+    "title": "Transaktion zuordnen",
+    "description": "Zuweisungs-Formular für nicht zugeordnete Banküberweisungen: Liste, Vorauswahl bei genau einem Ziel und deaktivierter Button bei mehreren Zielen."
   },
   "sell-process": {
     "title": "Verkaufsprozess",

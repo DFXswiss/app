@@ -22,6 +22,8 @@ import italian from '../translations/languages/it.json';
 import {
   FRICK_ACCOUNT_HOLDER_NAME,
   FRICK_BANK_NAME,
+  getFrickCollectionIban,
+  getOfferableCollectionIban,
   getPersonalIbanErrorMessage,
   getPersonalIbanKycMessage,
   getStoredPaymentDetailErrorMessage,
@@ -63,8 +65,16 @@ describe('isPersonalIbanApplicable', () => {
     expect(isPersonalIbanApplicable('EUR', FiatPaymentMethod.BANK)).toBe(true);
   });
 
-  it('returns false for non-EUR currency with bank payment', () => {
-    expect(isPersonalIbanApplicable('CHF', FiatPaymentMethod.BANK)).toBe(false);
+  it('returns true for CHF with bank payment', () => {
+    expect(isPersonalIbanApplicable('CHF', FiatPaymentMethod.BANK)).toBe(true);
+  });
+
+  it('returns false for CHF with a non-bank payment method', () => {
+    expect(isPersonalIbanApplicable('CHF', FiatPaymentMethod.CARD)).toBe(false);
+  });
+
+  it('returns false for a currency outside the Bank Frick currency set with bank payment', () => {
+    expect(isPersonalIbanApplicable('USD', FiatPaymentMethod.BANK)).toBe(false);
   });
 
   it('returns false for EUR with a non-bank payment method', () => {
@@ -77,6 +87,99 @@ describe('isPersonalIbanApplicable', () => {
 
   it('returns false for undefined payment method', () => {
     expect(isPersonalIbanApplicable('EUR', undefined)).toBe(false);
+  });
+});
+
+describe('getFrickCollectionIban', () => {
+  it('returns the EUR collection IBAN for EUR', () => {
+    expect(getFrickCollectionIban('EUR')).toBe('LI75088110105923K000E');
+  });
+
+  it('returns the CHF collection IBAN for CHF', () => {
+    expect(getFrickCollectionIban('CHF')).toBe('LI32088110105923K000C');
+  });
+
+  it('returns undefined for a currency without a configured collection IBAN', () => {
+    expect(getFrickCollectionIban('USD')).toBeUndefined();
+  });
+
+  it('returns undefined for undefined', () => {
+    expect(getFrickCollectionIban(undefined)).toBeUndefined();
+  });
+
+  it('returns undefined for an inherited Object property name instead of resolving through the prototype chain', () => {
+    expect(getFrickCollectionIban('constructor')).toBeUndefined();
+  });
+});
+
+describe('getOfferableCollectionIban', () => {
+  const verifiedFrickBase = {
+    isPersonalIban: true,
+    bank: FRICK_BANK_NAME,
+    name: FRICK_ACCOUNT_HOLDER_NAME,
+    remittanceInfo: 'DFX-BUY-1',
+  };
+
+  it('returns the CHF collection IBAN for a verified CHF Frick personal IBAN with remittanceInfo', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        currency: { name: 'CHF' },
+        iban: 'LI35088110102979K002E',
+      }),
+    ).toBe('LI32088110105923K000C');
+  });
+
+  it('returns undefined when the CHF IBAN given is the CHF collection account itself', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        currency: { name: 'CHF' },
+        iban: 'LI32088110105923K000C',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined for a currency without a configured collection IBAN (USD)', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        currency: { name: 'USD' },
+        iban: 'LI35088110102979K002E',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when the response is not a verified Bank Frick personal IBAN', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        isPersonalIban: false,
+        currency: { name: 'CHF' },
+        iban: 'LI35088110102979K002E',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when remittanceInfo is missing', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        remittanceInfo: undefined,
+        currency: { name: 'CHF' },
+        iban: 'LI35088110102979K002E',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when iban is missing', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        currency: { name: 'CHF' },
+        iban: undefined,
+      }),
+    ).toBeUndefined();
   });
 });
 
@@ -138,9 +241,9 @@ describe('getPersonalIbanErrorMessage', () => {
     expect(getPersonalIbanKycMessage()).toBe('Personal IBANs require KYC level 50.');
   });
 
-  it('qualifies the EUR-only rejection as Bank Frick-specific', () => {
+  it('qualifies the currency rejection as Bank Frick-specific and names both supported currencies', () => {
     expect(getPersonalIbanErrorMessage('PersonalIbanCurrencyNotSupported')).toBe(
-      'Bank Frick personal IBANs are currently only available for EUR.',
+      'Bank Frick personal IBANs are currently only available for EUR and CHF.',
     );
   });
 
@@ -153,11 +256,12 @@ describe('getPersonalIbanErrorMessage', () => {
     (_locale, translations, bankFrick) => {
       const message =
         translations[
-          'Bank Frick personal IBANs are currently only available for EUR.'
+          'Bank Frick personal IBANs are currently only available for EUR and CHF.'
         ];
 
       expect(message).toMatch(bankFrick);
       expect(message).toMatch(/EUR/i);
+      expect(message).toMatch(/CHF/i);
     },
   );
 

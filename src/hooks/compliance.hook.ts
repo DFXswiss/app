@@ -735,6 +735,17 @@ function checkDateFieldForQueue(queue: CallQueue): string {
   return checkDateFieldByQueue[queue];
 }
 
+// Queues whose AML reason the API keeps out of the recheck cron (`BlockAmlReasons`, which of the
+// call queues covers only ManualCheckIpCountryPhone): a pending transaction there is never
+// re-evaluated on its own, so a saved call outcome has to clear it explicitly. Every other queue is
+// re-run by the cron, which then passes the transaction on a written check date and fails it on a
+// failed call (`UserDataFailedCall`) — in both cases without the tool touching it.
+const cronBlockedQueues: CallQueue[] = [CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE];
+
+export function needsExplicitAmlReset(queue: CallQueue): boolean {
+  return cronBlockedQueues.includes(queue);
+}
+
 export type AmlAction = 'Pass' | 'Fail' | 'Reset';
 
 export function useCompliance() {

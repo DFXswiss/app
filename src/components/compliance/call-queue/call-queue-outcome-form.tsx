@@ -7,8 +7,14 @@ import {
   CallOutcome,
   CallOutcomeContext,
   CallOutcomeResult,
+  needsExplicitAmlReset,
   useCompliance,
 } from 'src/hooks/compliance.hook';
+
+// Completed and Failed leave nothing to decide: the phone-call status written in the same save
+// already determines the transaction — the API passes it on the check date a completed call writes,
+// and fails it on a failed one (`UserDataFailedCall`).
+const OutcomesImplyingAmlAction: (CallOutcome | '')[] = [CallOutcome.COMPLETED, CallOutcome.FAILED];
 
 interface Props {
   context: CallOutcomeContext;
@@ -34,17 +40,31 @@ export function CallQueueOutcomeForm({ context, availableOutcomes, clerks, onSav
   }, [clerks]);
 
   const hasTx = context.txId != null && context.sourceType != null;
-  const showAmlCheck = hasTx;
   const buyCryptoResetUnavailable = context.sourceType === 'BuyCrypto' && !context.buyCryptoResetEligible;
-  const canSubmit = !!signature && !!outcome && !!comment.trim() && !isSaving;
+  // The clerk is not asked for an AML action on those outcomes; every other one is open-ended and
+  // keeps the selector.
+  const outcomeImpliesAmlAction = OutcomesImplyingAmlAction.includes(outcome);
+  const showAmlCheck = hasTx && !outcomeImpliesAmlAction;
+  // Blocks the save: without the reset the transaction stays Pending forever on a recheck-blocked
+  // queue, while the form would still report success and navigate away.
+  const impliedResetUnavailable =
+    hasTx && outcomeImpliesAmlAction && needsExplicitAmlReset(context.queue) && buyCryptoResetUnavailable;
+  const canSubmit = !!signature && !!outcome && !!comment.trim() && !isSaving && !impliedResetUnavailable;
 
-  // Some queue reasons (e.g. ManualCheckIpCountryPhone) are excluded from the AML recheck cron, so a
-  // completed call must act on the transaction explicitly. Default to Reset (not Pass): it clears
-  // amlCheck + amlReason so the cron re-runs the FULL AML check, which only passes the tx if no
-  // other errors remain. Overridable.
+  // What the save sends for a Completed/Failed outcome. Only the queues whose AML reason the API
+  // excludes from the recheck cron need an explicit action: their transaction would otherwise stay
+  // Pending forever. Reset (never Pass/Fail) clears amlCheck + amlReason so the cron re-runs the FULL
+  // AML check on the state the call just produced — the API decides the outcome, not the tool.
+  function impliedAmlAction(): AmlAction | undefined {
+    if (!needsExplicitAmlReset(context.queue) || buyCryptoResetUnavailable) return undefined;
+    return 'Reset';
+  }
+
   function handleOutcomeChange(value: CallOutcome | '') {
     setOutcome(value);
-    if (hasTx) setAmlAction(value === CallOutcome.COMPLETED && !buyCryptoResetUnavailable ? 'Reset' : '');
+    // Drop a selection made before the outcome was known; it is not submitted for Completed/Failed
+    // and must not reappear when the clerk switches back to another outcome.
+    setAmlAction('');
   }
 
   async function handleSubmit() {
@@ -54,7 +74,7 @@ export function CallQueueOutcomeForm({ context, availableOutcomes, clerks, onSav
     const res = await saveCallOutcome(context, outcome, {
       signature,
       comment,
-      amlAction: showAmlCheck && amlAction ? amlAction : undefined,
+      amlAction: hasTx ? (outcomeImpliesAmlAction ? impliedAmlAction() : amlAction || undefined) : undefined,
     });
     setIsSaving(false);
     setResult(res);
@@ -118,6 +138,13 @@ export function CallQueueOutcomeForm({ context, availableOutcomes, clerks, onSav
             </p>
           )}
         </div>
+      )}
+      {impliedResetUnavailable && (
+        <p className="mt-4 text-xs text-primary-red">
+          Saving is disabled: this queue is excluded from the AML recheck and the automatic reset is unavailable for
+          this BuyCrypto, so the transaction would stay pending. Set KYC to Check and reload Compliance review, then
+          save the outcome.
+        </p>
       )}
       <div className="mt-4">
         <label className="block text-sm font-medium text-dfxBlue-800 mb-1">

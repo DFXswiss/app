@@ -1,0 +1,137 @@
+# Test architecture
+
+This document describes the test layers **this repository** owns, with measured numbers for the
+current state. The canonical, cross-repository description of all layers — what each one proves, what
+it deliberately does not prove, and the reality-declaration requirement — lives in
+`DFXswiss/api` under `docs/test-architecture.md`. Read that one first if you need the whole picture.
+
+Current state and target are kept apart on purpose. Sections marked _target_ describe what is not
+built yet; nothing here may describe a capability as existing when it does not.
+
+## The layers this repository owns
+
+| Layer             | Location     | What it proves                                                               | What it cannot prove                                               | Runs in CI |
+| ----------------- | ------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------- |
+| Unit              | `src/`       | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | yes        |
+| Full-stack E2E    | `e2e-stack/` | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | yes        |
+| Visual regression | `e2e/`       | appearance against committed screenshot baselines                            | function                                                           | no         |
+
+The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
+payout, ledger booking — is **not** testable from this repository. It belongs to the integration
+layer in `DFXswiss/api`, which runs against a real database. Do not try to cover it from here.
+
+## Current state — measured
+
+### Unit suite — `npm run test`
+
+Measured on `develop` at `4e9544a9`, 2026-08-10, Node 20, with
+`npm test -- --coverage`:
+
+| Metric     | Coverage | Absolute     |
+| ---------- | -------- | ------------ |
+| Statements | 18.15 %  | 2 578/14 198 |
+| Branches   | 17.31 %  | 2 054/11 861 |
+| Functions  | 14.44 %  | 668/4 626    |
+| Lines      | 18.63 %  | 2 375/12 742 |
+
+950 tests passing across 81 suites, 353 files instrumented.
+
+Read that number together with the coverage rule in `CONTRIBUTING.md`, section
+"Coverage": every file a pull request touches must reach 100 % on
+all four metrics, and CI does not enforce it — it is a review gate. With the repository at 18 %, that
+means touching a long-neglected file makes its whole coverage your obligation. Plan for it rather
+than discovering it in review.
+
+### Full-stack E2E — `npm run e2e:stack`
+
+This layer arrived with #1288 and lives in `e2e-stack/`.
+
+Measured on the head of that pull request, `acb6814a`, in CI: 223 tests, of which 219 passed, 3 were
+skipped and 1 failed, in 9.6 minutes on a single worker. The failure was the route gate doing its job —
+the merge target had gained a route the registry did not claim yet. Re-measure after any change to the
+suite; the number of tests is not pinned anywhere.
+
+The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every
+external provider through two independent mechanisms: the API mocks its own outbound calls, and the
+Docker network it sits on has no route to the internet at all. The second is what carries the guarantee,
+and `e2e-stack/env/api.env` says so itself: the `loc` mock "only covers calls made through the API's
+central HTTP wrapper", while "[w]hat guarantees no external system is ever contacted is the network the
+API sits on". Any call that reaches out without going through that wrapper is therefore outside the
+mock's scope. Which calls those are, and how many, is a property of the API and not verifiable from this
+repository.
+
+The details — the factories and the states that are deliberately not achievable — are in
+`e2e-stack/README.md` and `e2e-stack/docs/test-data.md`.
+
+### Route coverage is enforced, not tracked by hand
+
+The gate reads the route definitions out of `src/App.tsx`, resolves nested paths, and fails when a route
+has no registry claim or more than one — including two claims inside the same registry file — or when
+the spec file a claim names does not exist. When `E2E_FULL_RUN=1` is set, it additionally fails for a
+claimed route the browser never opened. That flag is declared by the run, not measured from it, so it may
+only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
+no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
+whatever the caller's environment holds — and the CI workflow sets it for its own unfiltered invocation.
+Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
+there.
+
+That gate is the pattern the reality declaration follows: **measure the run, do not trust the
+declaration.** Anything its parser cannot resolve is a hard failure rather than a silent omission.
+
+## Reality declaration — hard requirement
+
+Full definition, including the categories that count as a fake and the mandatory fields per entry, is in
+`DFXswiss/api` under `docs/test-architecture.md` — that document owns the taxonomy, and its exact extent
+is not verifiable from this repository. The short form that binds every pull request here:
+
+Whenever you introduce, remove or change a fake — a faked external provider, a disabled cron job, a
+schema built without the migration chain, state written directly with SQL, a placeholder value that
+looks real, a suppressed side effect, or a seed correction that bends reality — the declaration
+changes in the same pull request, and each entry says in one plain sentence what a green run does
+**not** prove. A pull request that adds a fake without its declaration is incomplete regardless of
+whether CI is green.
+
+Write the declaration entry **before** building the fake. Reversed, it becomes documentation written
+from memory, with omissions.
+
+## Known gaps
+
+All four points below concern the full-stack harness.
+
+- **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*`
+  (`e2e-stack/env/api.env`); what that switches off in the API is described in the companion document
+  there — every process-gated cron job — so the processing chain never executes;
+  transaction states are inserted with SQL instead. What is verified is the synchronous path:
+  interaction, HTTP, validation, authorisation, persistence, display. (A cron without a `process` field
+  is not covered by that switch and keeps running — see the companion document in `DFXswiss/api`.)
+- **The harness does not exercise the migration chain.** It builds the schema from the entities,
+  because one migration requires a seed row that does not exist at migration time on a fresh
+  database. Migrations are covered in `DFXswiss/api` instead.
+- **The harness lives in the wrong repository.** It tests the API as much as this frontend, and
+  `DFXswiss/api` has to check this repository out to obtain it. See the target below.
+- **The suite is serialised.** All specs share one database and one API instance — `e2e-stack/compose.yml`
+  declares a single `db` and a single `api` service — with no per-test isolation, so it runs on a single
+  worker with retries disabled (`workers: 1` and `retries: 0` in `e2e-stack/playwright.config.ts`, whose
+  comment states the reason): a retry would mask exactly the order-dependent failure this arrangement
+  produces. It bounds how far the suite can grow.
+
+## Target architecture
+
+_Target — not built yet._ In the order the work should happen:
+
+1. **Per-worker isolation** (a schema or database per worker), so the suite can be parallelised. Cheap
+   while it is small.
+2. **Move the harness out of this repository** — into `DFXswiss/api` or a repository of its own,
+   consuming published frontend and API images by tag instead of sibling checkouts. The stage depends
+   on the applications, never the reverse.
+3. **Adopt a coverage ratchet for the unit layer**, replacing a rule that CI cannot enforce with one
+   that can only move upward.
+
+Each step is additive; none requires discarding what exists.
+
+## Keeping this document honest
+
+Every **measured** number carries the commit it was measured on and the command that produces it; that
+is what keeps the figures maintainable. Counts that a reader can verify by looking — how many entries an
+adjacent list has, for instance — need no stamp. When a layer changes what it proves, or a fake is added,
+removed or altered, this document changes in the same pull request.

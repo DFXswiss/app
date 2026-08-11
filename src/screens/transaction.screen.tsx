@@ -234,8 +234,6 @@ function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
   }, [id, transaction?.state]);
 
   function handleTransactionNavigation(path: string) {
-    if (!transaction) return;
-
     if (isLoggedIn) {
       navigate(path);
     } else {
@@ -382,19 +380,39 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
     }
   }, [transaction, user]);
 
-  async function onSubmit(data: FormData) {
-    if (!transaction?.id) return;
+  // Bank refund = BUY transaction with non-card payment method
+  const isBankRefund = isBuy && transaction?.inputPaymentMethod !== FiatPaymentMethod.CARD;
+
+  // Validation rules based on refund type:
+  // - address: only required for crypto refunds (not isBuy)
+  // - iban/creditorName: only required for bank refunds if not already fixed from bankTx
+  // - creditorStreet/zip/city/country: only required for bank refunds
+  const rules = Utils.createRules({
+    address: !isBuy ? Validations.Required : undefined,
+    iban: !isBankRefund || refundDetails?.refundTarget ? undefined : Validations.Required,
+    creditorName:
+      !isBankRefund || (refundDetails?.bankDetails?.name?.trim() && refundDetails?.refundTarget)
+        ? undefined
+        : Validations.Required,
+    creditorStreet: isBankRefund ? Validations.Required : undefined,
+    creditorZip: isBankRefund ? ZipValidation : undefined,
+    creditorCity: isBankRefund ? Validations.Required : undefined,
+    creditorCountry: isBankRefund ? Validations.Required : undefined,
+  });
+
+  const inputBlockchain = transaction?.inputBlockchain;
+  const transactionId = transaction?.id;
+
+  async function onSubmit(data: FormData, transactionId: number) {
     setIsLoading(true);
     setLocalError(undefined);
 
     try {
-      const isBankRefund = isBuy && transaction.inputPaymentMethod !== FiatPaymentMethod.CARD;
-
       const formTarget = isBuy ? (data.iban ?? '') : data.address?.address;
 
       const refundName = !refundDetails?.refundTarget ? data.creditorName : (refundDetails?.bankDetails?.name ?? data.creditorName);
 
-      await setTransactionRefundTarget(transaction.id, {
+      await setTransactionRefundTarget(transactionId, {
         refundTarget: !isBuy || (isBankRefund && !refundDetails?.refundTarget) ? formTarget : undefined,
         creditorData: isBankRefund
           ? {
@@ -427,26 +445,6 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
     }
   }
 
-  // Bank refund = BUY transaction with non-card payment method
-  const isBankRefund = isBuy && transaction?.inputPaymentMethod !== FiatPaymentMethod.CARD;
-
-  // Validation rules based on refund type:
-  // - address: only required for crypto refunds (not isBuy)
-  // - iban/creditorName: only required for bank refunds if not already fixed from bankTx
-  // - creditorStreet/zip/city/country: only required for bank refunds
-  const rules = Utils.createRules({
-    address: !isBuy ? Validations.Required : undefined,
-    iban: !isBankRefund || refundDetails?.refundTarget ? undefined : Validations.Required,
-    creditorName:
-      !isBankRefund || (refundDetails?.bankDetails?.name?.trim() && refundDetails?.refundTarget)
-        ? undefined
-        : Validations.Required,
-    creditorStreet: isBankRefund ? Validations.Required : undefined,
-    creditorZip: isBankRefund ? ZipValidation : undefined,
-    creditorCity: isBankRefund ? Validations.Required : undefined,
-    creditorCountry: isBankRefund ? Validations.Required : undefined,
-  });
-
   return selectedIban === AddAccount ? (
     <AddBankAccount
       onSubmit={(account) => setValue('iban', account.iban)}
@@ -455,7 +453,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         'The bank account has been added, all transactions from this IBAN will now be associated with your account.',
       )}
     />
-  ) : refundDetails && transaction ? (
+  ) : refundDetails && transaction && transactionId != null ? (
     <StyledVerticalStack gap={6} full>
       <StyledDataTable alignContent={AlignContent.RIGHT} showBorder minWidth={false}>
         <StyledDataTableRow label={translate('screens/payment', 'Transaction amount')}>
@@ -519,7 +517,11 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
           </StyledDataTableRow>
         )}
       </StyledDataTable>
-      <Form control={control} rules={rules} errors={errors} onSubmit={handleSubmit(onSubmit)}>
+      <Form
+        control={control}
+        rules={rules}
+        errors={errors}
+      >
         <StyledVerticalStack gap={6} full>
           {!refundDetails.refundTarget && addresses && !isBuy && (
             <StyledDropdown<UserAddress>
@@ -528,7 +530,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
               label={translate('screens/payment', 'Chargeback address')}
               items={addresses}
               labelFunc={(item) => blankedAddress(item.address, { width })}
-              descriptionFunc={(_item) => transaction.inputBlockchain?.toString() ?? ''}
+              descriptionFunc={inputBlockchain ? () => inputBlockchain.toString() : undefined}
               full
             />
           )}
@@ -619,7 +621,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
               'general/actions',
               transaction.state === TransactionState.FAILED ? 'Confirm refund' : 'Request refund',
             )}
-            onClick={handleSubmit(onSubmit)}
+            onClick={handleSubmit((data) => onSubmit(data, transactionId))}
             width={StyledButtonWidth.FULL}
             disabled={!isValid}
             isLoading={isLoading}
@@ -712,25 +714,31 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
   });
 
   async function assignTransaction(txId: number) {
-    if (!transactionTargets) {
+    let targets = transactionTargets;
+
+    if (!targets) {
       setIsTargetsLoading(true);
-      await getTransactionTargets()
-        .then((targets) => {
-          setTransactionTargets(targets);
-          if (targets.length === 1) setValue('target', targets[0]);
-        })
-        .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
-        .finally(() => setIsTargetsLoading(false));
+      try {
+        targets = await getTransactionTargets();
+        setTransactionTargets(targets);
+      } catch (error) {
+        setError((error as ApiError).message ?? 'Unknown error');
+        return;
+      } finally {
+        setIsTargetsLoading(false);
+      }
     }
+
+    // the cached list outlives the reset() of a previous assignment, so the single-target
+    // preselection has to run on every open, not only on the fetch
+    if (targets.length === 1) setValue('target', targets[0]);
 
     setEditTransaction(txId);
   }
 
-  async function submitAssignment({ target }: { target: TransactionTarget }) {
-    if (!editTransaction) return;
-
+  async function submitAssignment({ target }: { target: TransactionTarget }, txId: number) {
     setIsTransactionLoading(true);
-    setTransactionTarget(editTransaction, target.id)
+    setTransactionTarget(txId, target.id)
       .then(() => {
         loadTransactions();
         setEditTransaction(undefined);
@@ -775,6 +783,7 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                 <StyledVerticalStack gap={2} full>
                   {list.map((tx) => {
                     const isUnassigned = tx.state === TransactionState.UNASSIGNED;
+                    const txId = tx.id;
 
                     const icon = isUnassigned
                       ? undefined
@@ -791,10 +800,8 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                       <div
                         key={tx.uid}
                         ref={(el) => {
-                          if (txRefs.current) {
-                            tx.id && (txRefs.current[tx.id] = el);
-                            txRefs.current[tx.uid] = el;
-                          }
+                          tx.id && (txRefs.current[tx.id] = el);
+                          txRefs.current[tx.uid] = el;
                         }}
                       >
                         <StyledCollapsible
@@ -824,21 +831,18 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                           <StyledVerticalStack full gap={4}>
                             <TxInfo tx={tx} showUserDetails={true} />
 
+                            {/* The SDK types id as optional: without this guard, undefined === undefined
+                                would open the form on the first render. */}
                             {isUnassigned &&
-                              (editTransaction === tx.id ? (
-                                <Form
-                                  control={control}
-                                  errors={errors}
-                                  rules={rules}
-                                  onSubmit={handleSubmit(submitAssignment)}
-                                >
+                              (txId != null && editTransaction === txId && transactionTargets ? (
+                                <Form control={control} errors={errors} rules={rules}>
                                   <StyledVerticalStack gap={3} full>
                                     <p className="text-dfxGray-700 mt-4">
                                       {translate('screens/payment', 'Remittance info')}
                                     </p>
                                     <StyledDropdown<TransactionTarget>
                                       rootRef={rootRef}
-                                      items={transactionTargets ?? []}
+                                      items={transactionTargets}
                                       labelFunc={(item) => `${item.bankUsage}`}
                                       placeholder={translate('general/actions', 'Select') + '...'}
                                       descriptionFunc={(item) =>
@@ -855,7 +859,7 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                                       isLoading={isTransactionLoading}
                                       disabled={!isValid}
                                       label={translate('screens/payment', 'Assign transaction')}
-                                      onClick={handleSubmit(submitAssignment)}
+                                      onClick={handleSubmit((data) => submitAssignment(data, txId))}
                                     />
                                   </StyledVerticalStack>
                                 </Form>

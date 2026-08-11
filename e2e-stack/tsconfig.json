@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    // ES2021 for AggregateError, which cleanupCreatedData throws when a delete fails. Every runtime
+    // this harness runs on (the Playwright image, and the Node used by the workflow's type-check)
+    // has had it natively since Node 15 — only the type was missing. Raising the lib is the honest
+    // fix; declaring the constructor ambiently in the one file that needs it would shadow the real
+    // global the moment anyone raises the lib properly.
+    "lib": ["ES2021", "DOM"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": ["specs/**/*.ts", "playwright.config.ts"]
+}
