@@ -61,11 +61,12 @@ is_filtered_run() {
 if [[ $# -eq 0 ]] || ! is_filtered_run "$@"; then
   E2E_FULL_RUN=1 compose run --rm tests "$@"
 else
-  # A real filter is present (--grep/--grep-invert or a spec-file pattern) — this run legitimately
-  # covers only part of the suite. Explicitly clear any E2E_FULL_RUN inherited from the calling
-  # shell so a filtered local run cannot accidentally claim full coverage. CI does not go through
-  # run.sh at all — the workflow sets E2E_FULL_RUN itself (see .github/workflows/e2e-stack.yml) —
-  # so this heuristic is a local/dev safety net only, not part of the merge gate.
-  unset E2E_FULL_RUN
-  compose run --rm tests "$@"
+  # A real filter is present — this run legitimately covers only part of the suite. The variable is
+  # passed empty rather than merely left unset: compose.tests.yml forwards ${E2E_FULL_RUN:-}, so a
+  # value exported by the calling shell would otherwise survive into the container and let a
+  # filtered run declare itself complete. CI does not go through run.sh at all — the workflow sets
+  # E2E_FULL_RUN itself (see .github/workflows/e2e-stack.yml) — so this is a local/dev safety net,
+  # not part of the merge gate.
+  log_info "Filter argument given: running a subset, so the route gate checks ownership only."
+  E2E_FULL_RUN= compose run --rm tests "$@"
 fi
