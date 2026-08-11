@@ -474,6 +474,40 @@ describe('toCollectionIbanGiroCode', () => {
     expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
   });
 
+  it('returns undefined when line 7 carries leading zeros in the amount', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line7: 'EUR000000000100' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when line 7 exceeds the EPC amount ceiling', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line7: 'EUR1000000000' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        1000000000,
+      ),
+    ).toBeUndefined();
+  });
+
+  it('accepts EUR0.50 as numerically equal to amount 0.5', () => {
+    const result = toCollectionIbanGiroCode(
+      sampleGiroCode({ line7: 'EUR0.50' }),
+      PERSONAL_GIRO_IBAN,
+      SAMPLE_REMITTANCE,
+      0.5,
+    );
+    expect(result).toBeDefined();
+    if (result === undefined) return;
+    expect(result.split('\n')[6]).toBe(FRICK_EUR_COLLECTION_IBAN);
+  });
+
   it('returns undefined when line 7 has a non-EUR currency prefix', () => {
     expect(
       toCollectionIbanGiroCode(

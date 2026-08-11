@@ -105,10 +105,10 @@ export function canOfferCollectionIban(info: {
  * attribution and matching are impossible without them). Also returns undefined unless the
  * payload is a well-formed SCT GiroCode (full 11-plus-line shape, version 001/002, charset line
  * index 2 in '1'..'8') whose IBAN line matches the given personal IBAN (whitespace/case ignored),
- * whose amount line (line 7) matches the quote amount (currency prefix `EUR`, strict EPC069-12
- * amount grammar of plain digits with at most two decimal places — no exponents, no hex, no
- * sign — then cent-equality comparison; `EUR100` and `EUR100.00` both still match `100`, but
- * exponent or hex spellings are refused), and whose remittance is carried on the
+ * whose amount line (line 7) matches the quote amount (canonical EPC069-12 grammar: no leading
+ * zeros, at most nine integer digits — ceiling 999999999.99 — and at most two decimals, no
+ * exponents, hex or signs; then cent-equality comparison, so `EUR100` and `EUR100.00` both
+ * still match `100`), and whose remittance is carried on the
  * unstructured line 10 only and equals the quote's remittance info. This function does not
  * implement ISO 11649 structured-reference validation; the quote reference this frontend
  * receives is a bankUsage string, not an ISO 11649 structured reference. A populated
@@ -139,8 +139,9 @@ export function toCollectionIbanGiroCode(
 
   if (!lines[7].startsWith('EUR')) return undefined;
   const amountText = lines[7].slice(3);
-  // EPC069-12 amount grammar: plain digits, at most two decimals — no exponents, hex or signs.
-  if (!/^\d{1,12}(\.\d{1,2})?$/.test(amountText)) return undefined;
+  // Canonical EPC069-12 amount: no leading zeros, at most nine integer digits (ceiling
+  // 999999999.99) and at most two decimals — no exponents, hex or signs.
+  if (!/^(0|[1-9]\d{0,8})(\.\d{1,2})?$/.test(amountText)) return undefined;
   if (Math.round(Number(amountText) * 100) !== Math.round(amount * 100)) return undefined;
 
   const trimmedRemittance = remittanceInfo.trim();
