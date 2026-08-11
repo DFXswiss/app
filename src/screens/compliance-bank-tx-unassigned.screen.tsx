@@ -50,7 +50,7 @@ export default function ComplianceBankTxUnassignedScreen(): JSX.Element {
     formState: { errors: assignErrors },
     watch: watchAssign,
     reset: resetAssignForm,
-  } = useForm<AssignFormData>();
+  } = useForm<AssignFormData>({ defaultValues: { type: '', buyId: '' } });
 
   const selectedType = watchAssign('type');
   const selectedBuyId = watchAssign('buyId');
@@ -85,10 +85,7 @@ export default function ComplianceBankTxUnassignedScreen(): JSX.Element {
 
   function canSubmitAssign(): boolean {
     if (!selectedType) return false;
-    if (selectedType === 'BuyCrypto') {
-      const buyIdTrimmed = selectedBuyId != null ? selectedBuyId.trim() : '';
-      return buyIdTrimmed !== '';
-    }
+    if (selectedType === 'BuyCrypto') return selectedBuyId.trim() !== '';
     return true;
   }
 
@@ -96,7 +93,7 @@ export default function ComplianceBankTxUnassignedScreen(): JSX.Element {
     if (!selectedType) return;
 
     const dto: AssignBankTxDto = { type: selectedType };
-    const buyIdTrimmed = selectedBuyId != null ? selectedBuyId.trim() : '';
+    const buyIdTrimmed = selectedBuyId.trim();
     if (buyIdTrimmed !== '') {
       const parsedBuyId = Number(buyIdTrimmed);
       // Reject non-integer input here rather than sending NaN and letting the API answer 400 -

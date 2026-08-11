@@ -35,7 +35,9 @@ export function useSupportStaffGuard(redirectPath = '/', isActive = true) {
   useUserRoleGuard(SUPPORT_STAFF_ROLES, redirectPath, isActive);
 }
 
-function useUserRoleGuard(requiresUserRoles: UserRole[], redirectPath = '/', isActive = true) {
+// No default arguments here: every caller above is a public guard that already applies its own
+// defaults and passes both values on, so defaults on this one would be unreachable branches.
+function useUserRoleGuard(requiresUserRoles: UserRole[], redirectPath: string, isActive: boolean) {
   const { isLoggedIn } = useSessionContext();
   const { isInitialized } = useWalletContext();
   const { navigate } = useNavigation();
