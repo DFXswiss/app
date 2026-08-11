@@ -485,6 +485,8 @@
 
     "Invalid link": "Link non valido",
     "Merge is already completed": "La fusione è già completata",
+    "Merging your accounts is taking longer than expected. Please try again later.": "La fusione dei tuoi account sta richiedendo più tempo del previsto. Riprova più tardi.",
+    "Account merge failed": "Fusione degli account non riuscita",
     "Please return to the previous page. If this problem persists, please contact our support.": "Tornare alla pagina precedente. Se il problema persiste, contattare l'assistenza.",
     "Please reload this page. If this problem persists, please contact our support.": "Ricaricare questa pagina. Se il problema persiste, contattare l'assistenza."
   },

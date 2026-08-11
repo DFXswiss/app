@@ -485,6 +485,8 @@
 
     "Invalid link": "Ungültiger Link",
     "Merge is already completed": "Zusammenführung ist bereits abgeschlossen",
+    "Merging your accounts is taking longer than expected. Please try again later.": "Die Zusammenführung Deiner Konten dauert länger als erwartet. Bitte versuche es später erneut.",
+    "Account merge failed": "Zusammenführung der Konten fehlgeschlagen",
     "Please return to the previous page. If this problem persists, please contact our support.": "Bitte kehre zur vorherigen Seite zurück. Wenn dieses Problem weiterhin besteht, wende Dich bitte an unseren Support.",
     "Please reload this page. If this problem persists, please contact our support.": "Bitte lade diese Seite neu. Wenn dieses Problem weiterhin besteht, wende Dich bitte an unseren Support."
   },
