@@ -30,7 +30,7 @@ const mockPrefCurrency = { name: 'CHF' };
 jest.mock('@dfx.swiss/react', () => ({
   AssetCategory: { PUBLIC: 'Public', PRIVATE: 'Private' },
   FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
-  PersonalIbanProvider: { FRICK: 'Frick' },
+  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
   TransactionError: {
     AMOUNT_TOO_LOW: 'AmountTooLow',
     AMOUNT_TOO_HIGH: 'AmountTooHigh',
@@ -74,6 +74,18 @@ jest.mock('@dfx.swiss/react', () => ({
   useSessionContext: () => ({ logout: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
 }));
+
+jest.mock('../hooks/virtual-iban.hook', () => {
+  const virtualIbanInterface = {
+    createPersonalIban: () =>
+      Promise.reject(new Error('createPersonalIban must not be called in this suite')),
+    getPersonalIbans: () => Promise.resolve([]),
+  };
+  return {
+    __esModule: true,
+    default: () => virtualIbanInterface,
+  };
+});
 
 jest.mock('@dfx.swiss/react-components', () => {
   // babel-plugin-jest-hoist moves this factory above the module's imports, so React and

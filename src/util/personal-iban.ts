@@ -1,8 +1,15 @@
 import { FiatPaymentMethod, PersonalIbanProvider, TransactionError } from '@dfx.swiss/react';
+import { VirtualIban, VirtualIbanStatus } from 'src/dto/virtual-iban.dto';
 
 /** Bank Frick personal-IBAN accounts are held by DFX AG (routing sub-account), never the customer. */
 export const FRICK_BANK_NAME = 'Bank Frick';
 export const FRICK_ACCOUNT_HOLDER_NAME = 'DFX AG';
+
+/**
+ * Legacy personal-IBAN provider that predates Bank Frick. Yapeal accounts are held directly by
+ * the customer (no fixed DFX-side holder name to pin, unlike Bank Frick).
+ */
+export const YAPEAL_BANK_NAME = 'Yapeal';
 
 /**
  * Electronic-format IBANs of DFX's shared collection accounts at Bank Frick, keyed by currency
@@ -22,17 +29,34 @@ export const FRICK_COLLECTION_IBANS: Readonly<Record<string, string>> = Object.f
  */
 export const FRICK_CURRENCIES: readonly string[] = Object.freeze(Object.keys(FRICK_COLLECTION_IBANS));
 
+/**
+ * Case-insensitive match against every recognized PersonalIbanProvider member (Frick, Yapeal,
+ * and any future member added to the SDK enum) - looked up via Object.values, not two hardcoded
+ * ifs, so a newly added provider is picked up automatically. Returns the canonical enum value on
+ * a match, the original value otherwise (so an unrecognized selector is never silently dropped
+ * before the fail-closed check below runs).
+ */
 export function normalizePersonalIban(value: string | undefined): string | undefined {
-  return value?.toLowerCase() === PersonalIbanProvider.FRICK.toLowerCase()
-    ? PersonalIbanProvider.FRICK
-    : value;
+  if (value === undefined) return undefined;
+  const match = Object.values(PersonalIbanProvider).find(
+    (provider) => provider.toLowerCase() === value.toLowerCase(),
+  );
+  return match ?? value;
 }
 
+/** True when normalizing the selector yields a recognized PersonalIbanProvider member. */
+export function isExplicitPersonalIbanRequest(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const normalized = normalizePersonalIban(value);
+  return (Object.values(PersonalIbanProvider) as string[]).includes(normalized as string);
+}
+
+/** Builds the personalIbanProvider request fragment for any recognized provider, empty otherwise. */
 export function toPersonalIbanProviderRequest(
   value: string | undefined,
 ): { personalIbanProvider?: PersonalIbanProvider } {
-  const normalized = value === undefined ? undefined : normalizePersonalIban(value);
-  return normalized === PersonalIbanProvider.FRICK ? { personalIbanProvider: PersonalIbanProvider.FRICK } : {};
+  if (!isExplicitPersonalIbanRequest(value)) return {};
+  return { personalIbanProvider: normalizePersonalIban(value) as PersonalIbanProvider };
 }
 
 /**
@@ -44,7 +68,7 @@ export function toPersonalIbanProviderRequest(
  * a request that omits the selector and falls back to an ordinary bank-transfer quote.
  */
 export function isUnrecognizedPersonalIbanSelector(value: string | undefined): boolean {
-  return value !== undefined && normalizePersonalIban(value) !== PersonalIbanProvider.FRICK;
+  return value !== undefined && !isExplicitPersonalIbanRequest(value);
 }
 
 /** True when the customer explicitly requested the Bank Frick personal-IBAN provider. */
@@ -80,6 +104,15 @@ export function isVerifiedFrickPersonalIbanResponse(info: {
 }
 
 /**
+ * Compatibility check for an explicit Yapeal personal-IBAN quote response. Yapeal accounts are
+ * customer-held, so unlike the Frick check above there is no fixed holder name to pin - only the
+ * bank label and the isPersonalIban flag identify a genuine Yapeal response.
+ */
+export function isVerifiedYapealPersonalIbanResponse(info: { isPersonalIban?: boolean; bank?: string }): boolean {
+  return info.isPersonalIban === true && info.bank === YAPEAL_BANK_NAME;
+}
+
+/**
  * Looks up the Bank Frick collection IBAN for a currency; undefined if none is configured.
  * Uses an own-property check rather than a bare index access: `currencyName` is caller-controlled,
  * and a value like `'constructor'` or `'toString'` must resolve to `undefined`, not to whatever
@@ -89,6 +122,27 @@ export function getFrickCollectionIban(currencyName: string | undefined): string
   return currencyName !== undefined && Object.hasOwn(FRICK_COLLECTION_IBANS, currencyName)
     ? FRICK_COLLECTION_IBANS[currencyName]
     : undefined;
+}
+
+/**
+ * The customer's existing, still-payable Yapeal personal IBAN for a given currency, or undefined
+ * if none qualifies. Used to decide whether the Bank Frick default can safely be offered as a
+ * switch-back target, and whether the automatic Frick default may apply at all (it must never
+ * apply to a customer who has no Yapeal row to fall back to on a KYC rejection).
+ */
+export function getYapealAlternative(
+  personalIbans: VirtualIban[] | undefined,
+  currencyName: string | undefined,
+): VirtualIban | undefined {
+  if (personalIbans === undefined || currencyName === undefined) return undefined;
+  return personalIbans.find(
+    (iban) =>
+      iban.bank === YAPEAL_BANK_NAME &&
+      iban.currency === currencyName &&
+      iban.active === true &&
+      iban.acceptsPayments === true &&
+      (iban.status === undefined || iban.status === VirtualIbanStatus.ACTIVE),
+  );
 }
 
 /**
@@ -141,8 +195,11 @@ export function personalIbanOnlyParams(search: string): URLSearchParams {
  *
  * Maps QuoteError tokens thrown on the purchase/selection path (resolveBankInfo /
  * getOrCreateFrickForUser / DTO validation): PaymentMethodNotAllowed,
- * PersonalIbanIssuanceFailed, PersonalIbanProviderUnsupported,
+ * PersonalIbanIssuanceFailed, PersonalIbanProviderNotAvailable, PersonalIbanProviderUnsupported,
  * PersonalIbanCurrencyNotSupported, CurrencyUnsupported, NoBankAvailableForThisCurrency.
+ * PersonalIbanProviderNotAvailable is the fail-closed response to an explicit selector for a
+ * provider the customer does not actually hold (e.g. requesting Yapeal without an active Yapeal
+ * row) - it is distinct from PersonalIbanProviderUnsupported (selector not a recognized member).
  * KycRequired is intentionally NOT mapped here — callers route it through QuoteErrorHint
  * with a feature-specific message override so the Complete KYC action stays available.
  * Raw backend BadRequestException texts (e.g. 'Asset not found') are intentionally not matched.
@@ -155,6 +212,9 @@ export function getPersonalIbanErrorMessage(message: string | undefined): string
   }
   if (message.includes('PersonalIbanIssuanceFailed')) {
     return 'We could not issue your personal IBAN. Please try again later or contact support if the problem persists.';
+  }
+  if (message.includes('PersonalIbanProviderNotAvailable')) {
+    return 'The requested personal IBAN is not available for your account. Please switch back or contact support.';
   }
   if (message.includes('PersonalIbanProviderUnsupported')) {
     return 'The requested personal IBAN provider is not recognized.';

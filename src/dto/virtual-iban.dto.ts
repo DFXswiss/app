@@ -10,7 +10,9 @@ export interface VirtualIban {
   iban: string;
   bban?: string;
   currency: string;
+  bank: string;
   active: boolean;
+  acceptsPayments: boolean;
   status?: VirtualIbanStatus;
   label?: string;
   activatedAt?: Date;

@@ -1,7 +1,7 @@
 {
   "buy-process": {
     "title": "Kaufprozess",
-    "description": "Buy-Flow: Seitenladezustand, Betragseingabe, Zahlungsdetails und Collection-/Personal-IBAN-Umschaltung."
+    "description": "Buy-Flow: Seitenladezustand, Betragseingabe, Zahlungsdetails, Collection-/Personal-IBAN-Umschaltung und Bank-Frick-/Yapeal-Provider-Umschaltung für Bestandskunden."
   },
   "buy-info": {
     "title": "Kauf-Infoseite",

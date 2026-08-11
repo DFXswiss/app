@@ -563,6 +563,156 @@ test.describe('Buy Process - UI Flow', () => {
 
     await expect(promoBlock).toHaveScreenshot('buy-usd-promo-block.png');
   });
+
+  // Existing Yapeal holder gets the new Bank Frick IBAN by default (KYC pinned to 50 via the
+  // /v2/user rewrite below) and can switch back and forth with the new provider-toggle button.
+  // Both endpoints hit by this flow are statically mocked: GET personalIban (the row list this
+  // feature reads to decide whether a switch-back target exists) and POST paymentInfos (the
+  // quote itself, branched purely on the personalIbanProvider field of the request body) - same
+  // reasoning as the other fully-static tests above: independent of local KYC state, price rules
+  // and Bank Frick issuance, deterministic screenshots.
+  test('legacy Yapeal holder switches provider', async ({ page, request }) => {
+    const token = await getToken(request);
+    let receivedProvider: unknown;
+
+    // Pin kyc.level to 50 on the real account's /v2/user response, same pattern as
+    // e2e/support-issue-receiver-iban.spec.ts (installReceiveIbanRoutes / USER_V2_RE): no
+    // server-side account mutation, only the HTTP response this page sees is rewritten.
+    await page.route(/\/v2\/user(?:\?|$)/, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const user = await response.json();
+      await route.fulfill({ response, json: { ...user, kyc: { ...user.kyc, level: 50 } } });
+    });
+
+    await page.route('**/v1/buy/personalIban', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 7,
+            iban: 'CH9300762011623852957',
+            currency: 'CHF',
+            bank: 'Yapeal',
+            active: true,
+            acceptsPayments: true,
+            status: 'Active',
+          },
+        ],
+      });
+    });
+
+    const frickResponse = {
+      id: 20,
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.0251,
+      rate: 3862.5,
+      exchangeRate: 3984.06,
+      priceSteps: [],
+      minVolume: 10,
+      maxVolume: 990000,
+      minVolumeTarget: 0.0026,
+      maxVolumeTarget: 248.5,
+      fees: {
+        rate: 0.0099,
+        fixed: 0,
+        min: 0,
+        dfx: 0.99,
+        network: 0,
+        bank: 0,
+        bankFixed: 2,
+        bankVariable: 0,
+        platform: 0,
+        total: 2.99,
+      },
+      currency: { id: 1, name: 'CHF' },
+      asset: { id: 111, name: 'ETH', blockchain: 'Ethereum', category: 'Public' },
+      bank: 'Bank Frick',
+      bic: 'BFRILI22XXX',
+      iban: 'LI91088100002324013AB',
+      name: 'DFX AG',
+      street: 'Bahnhofstrasse',
+      number: '7',
+      zip: '6300',
+      city: 'Zug',
+      country: 'Schweiz',
+      remittanceInfo: 'A1B2-C3D4-E5F6',
+      sepaInstant: false,
+      isPersonalIban: true,
+    };
+
+    const yapealResponse = {
+      ...frickResponse,
+      id: 21,
+      bank: 'Yapeal',
+      bic: 'YAPECHZ2',
+      iban: 'CH9300762011623852957',
+      name: 'Max Muster',
+      remittanceInfo: 'DFX-BUY-7',
+    };
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      const requestData = route.request().postDataJSON() as Record<string, unknown>;
+      receivedProvider = requestData.personalIbanProvider;
+
+      // No explicit selector at all defaults to the Yapeal response, mirroring the real server's
+      // fail-closed default for an existing Yapeal holder (see also the Frick-default rationale
+      // in buy.screen.tsx: the frontend upgrades this to an explicit Frick request itself once
+      // personalIban/user have loaded, so this branch is only hit for the very first,
+      // not-yet-upgraded render).
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: requestData.personalIbanProvider === 'Frick' ? frickResponse : yapealResponse,
+      });
+    });
+
+    // lang=en pins text selectors regardless of the test account's language preference, same as
+    // neighboring tests in this file.
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`,
+    );
+
+    const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
+
+    // Wait for the toggle to settle on the auto-Frick-default state before asserting/screenshotting -
+    // the very first render can transiently show a selector-less quote before personalIban/user
+    // have loaded (see comment on the route handler above).
+    const toYapealToggle = paymentDetails.getByRole('button', { name: 'Show legacy Yapeal IBAN' });
+    await expect(toYapealToggle).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => receivedProvider).toBe('Frick');
+
+    await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible();
+    await expect(page).toHaveScreenshot('buy-chf-provider-toggle-frick-page.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+
+    await toYapealToggle.click();
+
+    const toFrickToggle = paymentDetails.getByRole('button', { name: 'Show Bank Frick IBAN' });
+    await expect(toFrickToggle).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => receivedProvider).toBe('Yapeal');
+    await expect(paymentDetails.getByText('CH93 0076 2011 6238 5295 7')).toBeVisible();
+    await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).not.toBeVisible();
+    await expect(page).toHaveScreenshot('buy-chf-provider-toggle-yapeal-page.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+
+    await toFrickToggle.click();
+
+    await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible({ timeout: 15000 });
+  });
 });
 
 test.describe('Buy Process - Wallet 2 (BIP-44 derived)', () => {

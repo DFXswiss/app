@@ -4,6 +4,7 @@ import { CreateVirtualIban, VirtualIban } from 'src/dto/virtual-iban.dto';
 
 interface VirtualIbanInterface {
   createPersonalIban: (data: CreateVirtualIban) => Promise<VirtualIban>;
+  getPersonalIbans: () => Promise<VirtualIban[]>;
 }
 
 export default function useVirtualIban(): VirtualIbanInterface {
@@ -17,5 +18,12 @@ export default function useVirtualIban(): VirtualIbanInterface {
     });
   }
 
-  return useMemo(() => ({ createPersonalIban }), [call]);
+  async function getPersonalIbans(): Promise<VirtualIban[]> {
+    return call<VirtualIban[]>({
+      url: 'buy/personalIban',
+      method: 'GET',
+    });
+  }
+
+  return useMemo(() => ({ createPersonalIban, getPersonalIbans }), [call]);
 }

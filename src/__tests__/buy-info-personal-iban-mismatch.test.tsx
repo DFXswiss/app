@@ -12,7 +12,7 @@ const mockCloseServices = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
   FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
-  PersonalIbanProvider: { FRICK: 'Frick' },
+  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
   TransactionError: {
     AMOUNT_TOO_LOW: 'AmountTooLow',
     AMOUNT_TOO_HIGH: 'AmountTooHigh',
@@ -49,6 +49,18 @@ jest.mock('@dfx.swiss/react', () => ({
   }),
   useUserContext: () => ({ user: undefined }),
 }));
+
+jest.mock('../hooks/virtual-iban.hook', () => {
+  const virtualIbanInterface = {
+    createPersonalIban: () =>
+      Promise.reject(new Error('createPersonalIban must not be called in this suite')),
+    getPersonalIbans: () => Promise.resolve([]),
+  };
+  return {
+    __esModule: true,
+    default: () => virtualIbanInterface,
+  };
+});
 
 jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', LG: 'lg' },

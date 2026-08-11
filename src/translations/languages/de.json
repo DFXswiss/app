@@ -953,7 +953,11 @@
     "You will be redirected to the site shortly": "Du wirst in Kürze zur Seite weitergeleitet",
     "Go back to the payment page": "Zurück zur Zahlungsseite",
     "Show collection IBAN": "Sammel-IBAN anzeigen",
-    "Show personal IBAN": "Persönliche IBAN anzeigen"
+    "Show personal IBAN": "Persönliche IBAN anzeigen",
+    "Show legacy Yapeal IBAN": "Alte Yapeal-IBAN anzeigen",
+    "Show Bank Frick IBAN": "Bank Frick-IBAN anzeigen",
+    "The requested personal IBAN is not available for your account. Please switch back or contact support.": "Die angeforderte persönliche IBAN ist für Dein Konto nicht verfügbar. Bitte wechsle zurück oder kontaktiere den Support.",
+    "Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.": "Deine neue Bank Frick-IBAN erfordert KYC-Stufe 50 - wir zeigen Dir stattdessen Deine bestehende IBAN."
   },
   "screens/iban": {
     "Your Bank Accounts": "Deine Bankkonten",
