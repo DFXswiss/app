@@ -29,6 +29,12 @@ export function useSupportDashboardGuard(redirectPath = '/', isActive = true) {
   useUserRoleGuard(SUPPORT_DASHBOARD_ROLES, redirectPath, isActive);
 }
 
+export const SUPPORT_STAFF_ROLES = [UserRole.ADMIN, UserRole.COMPLIANCE, UserRole.SUPPORT];
+
+export function useSupportStaffGuard(redirectPath = '/', isActive = true) {
+  useUserRoleGuard(SUPPORT_STAFF_ROLES, redirectPath, isActive);
+}
+
 function useUserRoleGuard(requiresUserRoles: UserRole[], redirectPath = '/', isActive = true) {
   const { isLoggedIn } = useSessionContext();
   const { isInitialized } = useWalletContext();

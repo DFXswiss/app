@@ -269,6 +269,12 @@ export default function SupportDashboardScreen(): JSX.Element {
           </button>
           <button
             className="px-3 py-2 bg-white border border-dfxGray-400 text-dfxBlue-800 rounded-lg text-sm hover:bg-dfxGray-300 transition-colors"
+            onClick={() => navigate('/compliance/bank-tx/unassigned')}
+          >
+            {translate('screens/compliance', 'Unassigned Bank Transactions')}
+          </button>
+          <button
+            className="px-3 py-2 bg-white border border-dfxGray-400 text-dfxBlue-800 rounded-lg text-sm hover:bg-dfxGray-300 transition-colors"
             onClick={() => navigate('/templates')}
           >
             {translate('screens/templates', 'Templates')}

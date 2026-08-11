@@ -11,7 +11,10 @@ export function QuickLinksSection(): JSX.Element {
   const { translate } = useSettingsContext();
   const { navigate } = useNavigation();
 
-  const links: QuickLink[] = [{ label: 'Aktennotiz erstellen', path: `kyc/log?eventDate=${todayAsString()}` }];
+  const links: QuickLink[] = [
+    { label: 'Aktennotiz erstellen', path: `kyc/log?eventDate=${todayAsString()}` },
+    { label: 'Unzugeordnete Bankeingänge', path: 'compliance/bank-tx/unassigned' },
+  ];
 
   return (
     <div className="w-full">
