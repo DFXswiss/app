@@ -69,9 +69,11 @@ The gate reads the route definitions out of `src/App.tsx`, resolves nested paths
 has no registry claim or more than one — including two claims inside the same registry file — or when
 the spec file a claim names does not exist. When `E2E_FULL_RUN=1` is set, it additionally fails for a
 claimed route the browser never opened. That flag is declared by the run, not measured from it, so it may
-only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it exactly when it was
-given no arguments, and the CI workflow sets it for its own unfiltered invocation. Adding a route
-therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates there.
+only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
+no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
+whatever the caller's environment holds — and the CI workflow sets it for its own unfiltered invocation.
+Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
+there.
 
 That gate is the pattern the reality declaration follows: **measure the run, do not trust the
 declaration.** Anything its parser cannot resolve is a hard failure rather than a silent omission.
