@@ -1701,9 +1701,12 @@ async function getForeignKeys(): Promise<ForeignKeyRef[]> {
  * not poison every later cleanup in the same process.
  *
  * - PK is exactly `{ id }` → id-addressable (SELECT/recurse by id).
- * - PK exists but is not exactly `{ id }` → nonIdPrimaryKey (kept for diagnostics; leaf-ness is
- *   decided by whether anything references the table, not by the shape of its key).
- * - No primary key at all → true leaf (neither set; DELETE by FK and stop).
+ * - PK exists but is not exactly `{ id }` → nonIdPrimaryKey (diagnostics only).
+ * - No primary key at all → in neither set.
+ *
+ * Leaf-ness is NOT decided here. A table that is not id-addressable is a leaf only when nothing
+ * references it; if something does, its descendants exist and cannot be reached by id, which is an
+ * error rather than a leaf. See deleteRowAndDescendants for that decision.
  */
 async function getTableKeyInfo(): Promise<TableKeyInfo> {
   if (!tableKeyInfoPromise) {
@@ -1750,22 +1753,25 @@ async function getTableKeyInfo(): Promise<TableKeyInfo> {
  * known to belong to a row this cleanup is responsible for — so the walk can never reach another
  * account's rows or seed/master data, no matter how deep it goes.
  *
- * Three independent FK checks must stay separate (parent side vs child-side key shape):
+ * Three independent FK checks must stay separate (parent side vs child side):
  * - (i) Parent side: FK points at a non-`id` column → unresolvable from the id we hold → error.
- * - (ii) Child has a primary key but not exactly `{ id }` → cannot SELECT/recurse by id and must
- *   not be treated as a silent leaf either → error once per such table, no DELETE attempt.
- * - (iii) Child has no primary key at all → true leaf: DELETE matching rows by FK column and stop
- *   (nothing can reference those rows by id). A table can hit any combination of (i)/(ii); (iii)
- *   is the remaining no-PK case. The first matching branch continues before later ones run.
+ * - (ii) Child is not addressable by `id` AND something references it → its descendants exist and
+ *   cannot be reached, which must not pass as a silent leaf → error once per such table, no DELETE
+ *   attempt, and only when a row for this parent actually exists.
+ * - (iii) Child is not addressable by `id` and nothing references it → true leaf: DELETE matching
+ *   rows by FK column and stop. Both (ii) and (iii) cover tables with no primary key as well as
+ *   tables with a composite one; what separates them is whether anything points at the table, not
+ *   the shape of its key. The first matching branch continues before later ones run.
  *
  * `visitedResults` is shared across the entire cleanupCreatedData() invocation. Values are either
  * `'in-progress'` (this row is still on an ancestor frame's stack — a genuine FK cycle) or a
  * finished `RowResult` (the real first-visit outcome). That distinguishes:
- * - Cycle: return `{ deletedSelf: false, failed: true }` without recursing. The ancestor frame
- *   that owns this row still runs its own real DELETE later in its own turn and pushes any real
- *   failure into `errors` independently of what this branch returns — nothing is silently lost —
- *   but THIS branch genuinely cannot confirm the row is gone, so it must not report
- *   `deletedSelf: true`.
+ * - Cycle: return `{ deletedSelf: false, failed: false }` without recursing. This branch cannot
+ *   confirm the row is gone, so it must not report `deletedSelf: true` — but it must not report a
+ *   failure either: the throw at the end is driven by `errors`, so a `failed` without a matching
+ *   entry there would re-queue the reference while cleanupCreatedData stayed silent about why. The
+ *   ancestor frame that owns this row runs its own real DELETE later and records its own outcome,
+ *   with a message.
  * - Diamond (two paths reach the same row): return the cached finished result as-is, not a
  *   fabricated success, so a failed first visit is not rewritten as success on the second path.
  *
@@ -1834,7 +1840,15 @@ async function deleteRowAndDescendants(
     // Reported only when a row actually exists for this parent. Keying it on the schema alone would
     // fail every cleanup of a parent whose child table happens to be empty for it — the same
     // mistake, one branch over, that made this whole case wrong before.
-    if (!tableKeyInfo.idAddressable.has(fk.table) && childrenByReferencedTable.has(fk.table)) {
+    // Referenced by something OTHER than itself. A self-referencing foreign key puts a table into
+    // this map on its own, which would make every such table look unresolvable even when nothing
+    // else points at it — and the error would claim it is "referenced by other tables", which would
+    // not be true.
+    const referencedByOthers = (childrenByReferencedTable.get(fk.table) ?? []).some(
+      (child) => child.table !== fk.table,
+    );
+
+    if (!tableKeyInfo.idAddressable.has(fk.table) && referencedByOthers) {
       let hasRows: boolean;
       try {
         const probe = await queryRows<{ one: number }>(

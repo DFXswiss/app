@@ -35,15 +35,20 @@ is_filtered_run() {
       continue
     fi
     case "$arg" in
-      # Real filters: they decide which tests run at all. --project is one of them here, and it is
-      # the sharpest: the coverage gate lives in its own `coverage-gate` project (playwright.config.ts),
-      # so `--project chromium` runs the suite without ever running the gate. --list executes nothing.
+      # Real filters: they decide which tests run at all. --project is the sharpest: the coverage
+      # gate lives in its own `coverage-gate` project (playwright.config.ts), so `--project chromium`
+      # runs the suite without ever running the gate. It is refused whatever value it carries -
+      # `--project coverage-gate` does pull the whole dependency chain and is effectively complete,
+      # but treating one project name as "complete" would be a rule nobody can see from the call
+      # site; the documented way to run only the gate is `--grep @coverage-gate`.
       --grep|--grep-invert|--project|--shard) return 0 ;;
       --grep=*|--grep-invert=*|--project=*|--shard=*) return 0 ;;
-      --list) return 0 ;;
+      # --last-failed and --only-changed select a subset from run history or the working tree;
+      # --list executes nothing at all.
+      --list|--last-failed|--only-changed|--only-changed=*) return 0 ;;
       # Value-taking flags that do not change which tests run. Their value must be skipped, or a bare
       # `1` from `--workers 1` would be read below as a positional spec pattern.
-      --workers|--reporter|--timeout|--repeat-each|--retries|--output|--max-failures|--config|-j|-c)
+      --workers|--reporter|--timeout|--global-timeout|--repeat-each|--retries|--output|--max-failures|--config|-j|-c)
         skip_value=1
         ;;
       -*) ;;
