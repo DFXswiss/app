@@ -22,9 +22,11 @@
 # Function would 404 the App2 shell itself if they were listed.
 /app2    /app2/    308
 # App 2.0 is hash-routed. Checkout.com and e-mail callbacks hit real paths under
-# /app2/...; rewrite them to the App2 shell so App.tsx can fold path+query into
-# the hash (see foldApp2PathIntoHash). Must sit above the catch-all SPA rule.
-/app2/buy/success    /app2/index.html   200
-/app2/buy/failure    /app2/index.html   200
-/app2/account-merge  /app2/index.html   200
+# /app2/.... A 200 rewrite to index.html would keep the nested document URL, so
+# relative ./static/js bundles would 404 under /app2/buy/... — redirect into the
+# hash under /app2/ instead (query is preserved). foldApp2PathIntoHash remains as
+# a client-side belt for any host that does not apply these rules.
+/app2/buy/success    /app2/#/buy/success    302
+/app2/buy/failure    /app2/#/buy/failure    302
+/app2/account-merge  /app2/#/account-merge  302
 /*    /index.html    200

@@ -2,6 +2,8 @@ import { firstQueryParam, foldApp2PathIntoHash } from '../utils/url';
 
 describe('foldApp2PathIntoHash', () => {
   it('folds real-path Checkout/email returns into hash routes and keeps the query', () => {
+    // Edge should 302 to the same shape; this is the client-side belt when a host serves
+    // the nested path without a redirect (relative assets would still break without absolute base).
     expect(
       foldApp2PathIntoHash({
         pathname: '/app2/buy/success',
