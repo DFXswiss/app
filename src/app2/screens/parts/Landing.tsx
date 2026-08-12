@@ -7,6 +7,7 @@ import { useAuth } from '@dfx.swiss/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../../components/ui';
 import { useT } from '../../i18n';
+import { firstQueryParam } from '../../utils/url';
 import { useWalletSession } from '../../wallets/session';
 import { classifyInviteCode, normalizeInviteCode, RECOMMENDATION_CODE_LENGTH } from '../../wallets/invite';
 import { WALLET_CATALOG } from '../../wallets/catalog';
@@ -94,12 +95,12 @@ export function Landing() {
   const [emailInvalid, setEmailInvalid] = useState(false);
 
   // Match the static preview's INVITE parse (orig 1636-1638): a real DFX referral link is
-  // ?code=DFX-XXXX (REF_BASE 'login?code='); ?ref=/?usedRef= are accepted aliases, and ?refcode=
-  // is kept as our own alias. First hit wins.
-  const initialInvite = useMemo(() => {
-    const qp = new URLSearchParams(window.location.search);
-    return (qp.get('code') || qp.get('ref') || qp.get('usedRef') || qp.get('refcode') || '').trim();
-  }, []);
+  // ?code=DFX-XXXX (REF_BASE 'login?code='); ?ref=/?usedRef= are accepted aliases, ?refcode= is
+  // kept as our own alias, and ?recommendation-code= matches the main-app partner param. First hit wins.
+  const initialInvite = useMemo(
+    () => firstQueryParam('refcode', 'recommendation-code', 'code', 'ref', 'usedRef') ?? '',
+    [],
+  );
   const [inviteOpen, setInviteOpen] = useState(() => Boolean(initialInvite));
   const [invite, setInvite] = useState(initialInvite);
   const classifiedInvite = classifyInviteCode(invite);
@@ -115,7 +116,7 @@ export function Landing() {
   const inviteNeedsWalletLogin = classifiedInvite?.kind === 'usedRef';
   // ?wallet= (partner wallet id) — same param WalletSessionProvider reads for the wallet-connect
   // sign-in path (session.tsx), so the mail path stays consistent with it.
-  const walletParam = useMemo(() => new URLSearchParams(window.location.search).get('wallet')?.trim() || undefined, []);
+  const walletParam = useMemo(() => firstQueryParam('wallet'), []);
   const normalizedInvite = normalizeInviteCode(invite) ?? '';
 
   // Auto-focus the revealed field ~250ms after the wrap opens (matches the static

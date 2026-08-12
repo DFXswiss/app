@@ -106,6 +106,15 @@ export default function OcpScreen() {
     body = <ApplyView />;
   } else if (sub === 'home') {
     body = <HomeView ocp={ocp} go={go} />;
+  } else if (ocp.probeError && ocp.active !== true) {
+    body = (
+      <div className="ocp-empty" style={{ flexDirection: 'column', gap: 12 }}>
+        <div>{t('loadFail')}</div>
+        <button type="button" className="btn-mini" style={{ width: 'auto' }} onClick={() => void ocp.probe()}>
+          {t('retry')}
+        </button>
+      </div>
+    );
   } else if (ocp.active === null) {
     body = SPINNER_ROW(t('loading'));
   } else if (!ocp.active) {

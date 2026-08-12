@@ -473,6 +473,7 @@ export default function KycScreen() {
             <h2>{t('mKyc')}</h2>
           </div>
           <KycStepForm
+            key={`${step.name}:${step.type ?? ''}:${step.sequenceNumber}`}
             code={code}
             step={step}
             onAdvance={applySession}
