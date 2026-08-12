@@ -1,4 +1,4 @@
-import { Buy, Utils } from '@dfx.swiss/react';
+import { Buy, PersonalIbanProvider, Utils } from '@dfx.swiss/react';
 import {
   AlignContent,
   CopyButton,
@@ -25,6 +25,11 @@ interface PaymentInformationContentProps {
    * that flag, and selector-free customers must keep the pre-change presentation.
    */
   showBank?: boolean;
+  /** Renders a provider toggle and requests a fresh quote pinned to its target. */
+  personalIbanProviderSwitch?: {
+    target: PersonalIbanProvider;
+    onSwitch: (provider: PersonalIbanProvider) => void;
+  };
 }
 
 interface PaymentInformationTextProps extends PaymentInformationContentProps {
@@ -34,7 +39,11 @@ interface PaymentInformationTextProps extends PaymentInformationContentProps {
   onToggleCollectionIban: () => void;
 }
 
-export function PaymentInformationContent({ info, showBank }: PaymentInformationContentProps): JSX.Element {
+export function PaymentInformationContent({
+  info,
+  showBank,
+  personalIbanProviderSwitch,
+}: PaymentInformationContentProps): JSX.Element {
   const { translate } = useSettingsContext();
   const [showCollectionIban, setShowCollectionIban] = useState(false);
   const collectionIban = getOfferableCollectionIban(info);
@@ -44,6 +53,7 @@ export function PaymentInformationContent({ info, showBank }: PaymentInformation
     <PaymentInformationText
       info={info}
       showBank={showBank}
+      personalIbanProviderSwitch={personalIbanProviderSwitch}
       showCollectionIban={showCollectionIban}
       offerCollectionIban={offerCollectionIban}
       collectionIban={collectionIban}
@@ -119,6 +129,7 @@ export function PaymentInformationContent({ info, showBank }: PaymentInformation
 function PaymentInformationText({
   info,
   showBank,
+  personalIbanProviderSwitch,
   showCollectionIban,
   offerCollectionIban,
   collectionIban,
@@ -173,6 +184,33 @@ function PaymentInformationText({
               title={translate('screens/payment', showCollectionIban ? 'Show personal IBAN' : 'Show collection IBAN')}
             >
               <DfxIcon icon={IconVariant.SWAP} />
+            </button>
+          )}
+          {personalIbanProviderSwitch !== undefined && (
+            <button
+              type="button"
+              className="ml-1"
+              onClick={() =>
+                personalIbanProviderSwitch.onSwitch(personalIbanProviderSwitch.target)
+              }
+              aria-label={translate(
+                'screens/payment',
+                personalIbanProviderSwitch.target === PersonalIbanProvider.YAPEAL
+                  ? 'Show legacy Yapeal IBAN'
+                  : 'Show Bank Frick IBAN',
+              )}
+              title={translate(
+                'screens/payment',
+                personalIbanProviderSwitch.target === PersonalIbanProvider.YAPEAL
+                  ? 'Show legacy Yapeal IBAN'
+                  : 'Show Bank Frick IBAN',
+              )}
+            >
+              {/* Two adjacent switches (the collection-IBAN toggle above and this provider
+                  switch) need visually distinct affordances, so this cannot reuse the collection
+                  toggle's 🔄 glyph. IconVariant.BANK exists in the icon catalog - use it instead
+                  of a second emoji. */}
+              <DfxIcon icon={IconVariant.BANK} color={IconColor.BLUE} />
             </button>
           )}
           <CopyButton onCopy={() => copy(displayedIban)} />

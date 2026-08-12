@@ -7,14 +7,25 @@ jest.mock('@dfx.swiss/react', () => ({
     INSTANT: 'Instant',
     CARD: 'Card',
   },
-  PersonalIbanProvider: { FRICK: 'Frick' },
+  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
+  VirtualIbanStatus: {
+    RESERVED: 'Reserved',
+    ACTIVE: 'Active',
+    EXPIRED: 'Expired',
+    DEACTIVATED: 'Deactivated',
+  },
   TransactionError: {
     PAYMENT_METHOD_NOT_ALLOWED: 'PaymentMethodNotAllowed',
     KYC_REQUIRED: 'KycRequired',
   },
 }));
 
-import { FiatPaymentMethod, PersonalIbanProvider, TransactionError } from '@dfx.swiss/react';
+import {
+  FiatPaymentMethod,
+  PersonalIbanProvider,
+  TransactionError,
+  VirtualIbanStatus,
+} from '@dfx.swiss/react';
 import { readFileSync } from 'fs';
 import de from '../translations/languages/de.json';
 import fr from '../translations/languages/fr.json';
@@ -23,17 +34,22 @@ import {
   FRICK_ACCOUNT_HOLDER_NAME,
   FRICK_BANK_NAME,
   FRICK_COLLECTION_IBANS,
+  YAPEAL_BANK_NAME,
+  deriveEffectivePersonalIbanProvider,
   getFrickCollectionIban,
   getOfferableCollectionIban,
   getPersonalIbanErrorMessage,
   getPersonalIbanKycMessage,
   getStoredPaymentDetailErrorMessage,
-  isExplicitFrickPersonalIbanRequest,
+  getYapealAlternative,
+  isExplicitPersonalIbanRequest,
   isKycRequiredMessage,
   isPersonalIbanApplicable,
   isUnrecognizedPersonalIbanSelector,
   isVerifiedFrickPersonalIbanResponse,
+  isVerifiedYapealPersonalIbanResponse,
   normalizePersonalIban,
+  parsePersonalIbanProvider,
   personalIbanOnlyParams,
   toCollectionIbanGiroCode,
   toPersonalIbanProviderRequest,
@@ -41,14 +57,23 @@ import {
 
 describe('personal IBAN selector mapping', () => {
   it.each(['frick', 'FRICK', 'Frick'])('maps the public %s value to the API enum', (value) => {
+    expect(parsePersonalIbanProvider(value)).toBe(PersonalIbanProvider.FRICK);
     expect(normalizePersonalIban(value)).toBe(PersonalIbanProvider.FRICK);
     expect(toPersonalIbanProviderRequest(value)).toEqual({ personalIbanProvider: PersonalIbanProvider.FRICK });
     expect(isUnrecognizedPersonalIbanSelector(value)).toBe(false);
   });
 
+  it.each(['yapeal', 'YAPEAL', 'Yapeal'])('maps the public %s value to the API enum', (value) => {
+    expect(normalizePersonalIban(value)).toBe(PersonalIbanProvider.YAPEAL);
+    expect(toPersonalIbanProviderRequest(value)).toEqual({ personalIbanProvider: PersonalIbanProvider.YAPEAL });
+    expect(isUnrecognizedPersonalIbanSelector(value)).toBe(false);
+    expect(isExplicitPersonalIbanRequest(value)).toBe(true);
+  });
+
   it.each(['', 'unknown'])(
     'omits an unrecognized value from the request (fail-closed now happens locally, not via the API round trip)',
     (value) => {
+      expect(parsePersonalIbanProvider(value)).toBeUndefined();
       expect(normalizePersonalIban(value)).toBe(value);
       expect(toPersonalIbanProviderRequest(value)).toEqual({});
       expect(isUnrecognizedPersonalIbanSelector(value)).toBe(true);
@@ -59,6 +84,65 @@ describe('personal IBAN selector mapping', () => {
     expect(normalizePersonalIban(undefined)).toBeUndefined();
     expect(toPersonalIbanProviderRequest(undefined)).toEqual({});
     expect(isUnrecognizedPersonalIbanSelector(undefined)).toBe(false);
+  });
+});
+
+describe('deriveEffectivePersonalIbanProvider', () => {
+  const autoFrickParams = {
+    providerOverride: undefined,
+    hasRequestedPersonalIbanSelector: false,
+    personalIban: undefined,
+    hasYapealAlternative: true,
+    isUserLoading: false,
+    kycAllowsFrick: true,
+    automaticFrickSuppressed: false,
+  };
+
+  it('prefers an explicit provider override', () => {
+    expect(
+      deriveEffectivePersonalIbanProvider({
+        ...autoFrickParams,
+        providerOverride: PersonalIbanProvider.YAPEAL,
+        hasRequestedPersonalIbanSelector: true,
+        personalIban: 'Frick',
+      }),
+    ).toBe(PersonalIbanProvider.YAPEAL);
+  });
+
+  it('uses a recognized explicit selector before the automatic default', () => {
+    expect(
+      deriveEffectivePersonalIbanProvider({
+        ...autoFrickParams,
+        hasRequestedPersonalIbanSelector: true,
+        personalIban: 'yapeal',
+      }),
+    ).toBe(PersonalIbanProvider.YAPEAL);
+  });
+
+  it('does not fall through when an explicit selector has no active provider', () => {
+    expect(
+      deriveEffectivePersonalIbanProvider({
+        ...autoFrickParams,
+        hasRequestedPersonalIbanSelector: true,
+      }),
+    ).toBeUndefined();
+  });
+
+  it('selects Frick for an eligible loaded Yapeal holder', () => {
+    expect(deriveEffectivePersonalIbanProvider(autoFrickParams)).toBe(
+      PersonalIbanProvider.FRICK,
+    );
+  });
+
+  it.each([
+    ['no Yapeal alternative', { hasYapealAlternative: false }],
+    ['user still loading', { isUserLoading: true }],
+    ['KYC below threshold', { kycAllowsFrick: false }],
+    ['automatic Frick default suppressed', { automaticFrickSuppressed: true }],
+  ])('omits the automatic provider when %s', (_case, override) => {
+    expect(
+      deriveEffectivePersonalIbanProvider({ ...autoFrickParams, ...override }),
+    ).toBeUndefined();
   });
 });
 
@@ -129,7 +213,7 @@ describe('getOfferableCollectionIban', () => {
         currency: { name: 'EUR' },
         iban: 'LI21088110102979K002E',
       }),
-    ).toBe(FRICK_COLLECTION_IBANS.EUR);
+    ).toBe('LI75088110105923K000E');
   });
 
   it('returns the CHF collection IBAN for a verified CHF Frick personal IBAN with remittanceInfo', () => {
@@ -265,6 +349,12 @@ describe('getPersonalIbanErrorMessage', () => {
   it('maps the PersonalIbanProviderUnsupported token to the unrecognized-provider message', () => {
     expect(getPersonalIbanErrorMessage('PersonalIbanProviderUnsupported')).toBe(
       'The requested personal IBAN provider is not recognized.',
+    );
+  });
+
+  it('maps the PersonalIbanProviderNotAvailable token to the switch-back-or-support message', () => {
+    expect(getPersonalIbanErrorMessage('PersonalIbanProviderNotAvailable')).toBe(
+      'The requested personal IBAN is not available for your account. Please switch back or contact support.',
     );
   });
 
@@ -418,12 +508,86 @@ describe('isVerifiedFrickPersonalIbanResponse', () => {
   });
 });
 
-describe('isExplicitFrickPersonalIbanRequest', () => {
-  it('is true only for a recognized Frick selector', () => {
-    expect(isExplicitFrickPersonalIbanRequest('Frick')).toBe(true);
-    expect(isExplicitFrickPersonalIbanRequest('frick')).toBe(true);
-    expect(isExplicitFrickPersonalIbanRequest('unknown')).toBe(false);
-    expect(isExplicitFrickPersonalIbanRequest(undefined)).toBe(false);
+describe('isExplicitPersonalIbanRequest', () => {
+  it('is true for any recognized provider selector', () => {
+    expect(isExplicitPersonalIbanRequest('Frick')).toBe(true);
+    expect(isExplicitPersonalIbanRequest('frick')).toBe(true);
+    expect(isExplicitPersonalIbanRequest('Yapeal')).toBe(true);
+    expect(isExplicitPersonalIbanRequest('yapeal')).toBe(true);
+  });
+
+  it('is false for an unrecognized selector or an absent one', () => {
+    expect(isExplicitPersonalIbanRequest('unknown')).toBe(false);
+    expect(isExplicitPersonalIbanRequest(undefined)).toBe(false);
+  });
+});
+
+describe('isVerifiedYapealPersonalIbanResponse', () => {
+  it('accepts a Yapeal response with isPersonalIban true', () => {
+    expect(isVerifiedYapealPersonalIbanResponse({ isPersonalIban: true, bank: YAPEAL_BANK_NAME })).toBe(true);
+  });
+
+  it('rejects a response with the wrong bank', () => {
+    expect(isVerifiedYapealPersonalIbanResponse({ isPersonalIban: true, bank: FRICK_BANK_NAME })).toBe(false);
+  });
+
+  it('rejects a response with isPersonalIban false', () => {
+    expect(isVerifiedYapealPersonalIbanResponse({ isPersonalIban: false, bank: YAPEAL_BANK_NAME })).toBe(false);
+  });
+});
+
+describe('getYapealAlternative', () => {
+  const activeChfYapealRow = {
+    id: 7,
+    iban: 'CH9300762011623852957',
+    currency: 'CHF',
+    bank: YAPEAL_BANK_NAME,
+    active: true,
+    acceptsPayments: true,
+    status: VirtualIbanStatus.ACTIVE,
+  };
+
+  it('finds the matching active, payable Yapeal row for the given currency', () => {
+    expect(getYapealAlternative([activeChfYapealRow], 'CHF')).toEqual(activeChfYapealRow);
+  });
+
+  it('ignores a row with a different currency', () => {
+    expect(getYapealAlternative([activeChfYapealRow], 'EUR')).toBeUndefined();
+  });
+
+  it('ignores a matching row from a bank other than Yapeal', () => {
+    expect(
+      getYapealAlternative([{ ...activeChfYapealRow, bank: FRICK_BANK_NAME }], 'CHF'),
+    ).toBeUndefined();
+  });
+
+  it('ignores an inactive row', () => {
+    expect(getYapealAlternative([{ ...activeChfYapealRow, active: false }], 'CHF')).toBeUndefined();
+  });
+
+  it('ignores a row that no longer accepts payments', () => {
+    expect(getYapealAlternative([{ ...activeChfYapealRow, acceptsPayments: false }], 'CHF')).toBeUndefined();
+  });
+
+  it('ignores an expired row', () => {
+    expect(
+      getYapealAlternative([{ ...activeChfYapealRow, status: VirtualIbanStatus.EXPIRED }], 'CHF'),
+    ).toBeUndefined();
+  });
+
+  it('accepts a row with no status set', () => {
+    const { status: _status, ...rowWithoutStatus } = activeChfYapealRow;
+    expect(getYapealAlternative([rowWithoutStatus as typeof activeChfYapealRow], 'CHF')).toEqual(
+      expect.objectContaining({ iban: activeChfYapealRow.iban }),
+    );
+  });
+
+  it('returns undefined for an undefined list', () => {
+    expect(getYapealAlternative(undefined, 'CHF')).toBeUndefined();
+  });
+
+  it('returns undefined for an undefined currency', () => {
+    expect(getYapealAlternative([activeChfYapealRow], undefined)).toBeUndefined();
   });
 });
 
