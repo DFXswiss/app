@@ -2,8 +2,10 @@
 // their own, so the AmlCheck selector disappears and the save sends an automatic Reset — but only
 // for the queues the API excludes from its AML recheck. Every other outcome keeps the selector.
 
+const mockAuth = { session: { role: 'Compliance' as string } };
+
 jest.mock('@dfx.swiss/react', () => ({
-  useAuthContext: () => ({ session: { role: 'Compliance' } }),
+  useAuthContext: () => mockAuth,
   UserRole: { ADMIN: 'Admin', COMPLIANCE: 'Compliance' },
 }));
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -88,6 +90,7 @@ function submittedAmlAction(): string | undefined {
 
 describe('CallQueueOutcomeForm AmlCheck action', () => {
   beforeEach(() => {
+    mockAuth.session = { role: 'Compliance' };
     jest.clearAllMocks();
     mockSaveCallOutcome.mockResolvedValue({ success: true, completedSteps: ['transaction', 'userData', 'log'] });
   });
@@ -142,6 +145,16 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
     expect(screen.queryByRole('option', { name: 'Pass' })).not.toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Fail' })).toBeInTheDocument();
     expect(screen.getByText(/Pass is Admin-only/)).toBeInTheDocument();
+  });
+
+  it('offers Pass for Admin on open-ended outcomes', () => {
+    mockAuth.session = { role: 'Admin' };
+    renderForm(TX_CONTEXT);
+
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: CallOutcome.UNAVAILABLE } });
+
+    expect(screen.getByRole('option', { name: 'Pass' })).toBeInTheDocument();
+    expect(screen.queryByText(/Pass is Admin-only/)).not.toBeInTheDocument();
   });
 
   it('defaults an open-ended outcome to no change', async () => {
