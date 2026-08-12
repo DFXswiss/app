@@ -687,18 +687,16 @@ describe('toCollectionIbanGiroCode', () => {
     expect(result.split('\n')[7]).toBe('');
   });
 
-  it('rewrites the IBAN and preserves a whitespace-only amount line', () => {
-    const result = toCollectionIbanGiroCode(
-      sampleGiroCode({ line7: '   ' }),
-      PERSONAL_GIRO_IBAN,
-      SAMPLE_REMITTANCE,
-      SAMPLE_AMOUNT,
-      'EUR',
-    );
-    expect(result).toBeDefined();
-    if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
-    expect(result.split('\n')[7]).toBe('   ');
+  it('returns undefined because a whitespace-only amount line is malformed, not absent', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line7: '   ' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
+    ).toBeUndefined();
   });
 
   it('returns undefined when line 7 amount does not match the quote amount', () => {
@@ -772,6 +770,18 @@ describe('toCollectionIbanGiroCode', () => {
     expect(result).toBeDefined();
     if (result === undefined) return;
     expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
+  });
+
+  it('returns undefined when the quote amount diverges below cent precision', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line7: 'EUR100.00' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        100.004,
+        'EUR',
+      ),
+    ).toBeUndefined();
   });
 
   it('accepts EUR100.50 as numerically equal to amount 100.5', () => {
