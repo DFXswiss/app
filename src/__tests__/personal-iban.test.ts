@@ -678,13 +678,64 @@ describe('toCollectionIbanGiroCode', () => {
       sampleGiroCode({ line7: '' }),
       PERSONAL_GIRO_IBAN,
       SAMPLE_REMITTANCE,
-      SAMPLE_AMOUNT,
+      123.456,
       'EUR',
     );
     expect(result).toBeDefined();
     if (result === undefined) return;
     expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
     expect(result.split('\n')[7]).toBe('');
+  });
+
+  it('rewrites a matching integer quote amount', () => {
+    const result = toCollectionIbanGiroCode(
+      sampleGiroCode({ line7: 'EUR100' }),
+      PERSONAL_GIRO_IBAN,
+      SAMPLE_REMITTANCE,
+      100,
+      'EUR',
+    );
+    expect(result).toBeDefined();
+    if (result === undefined) return;
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
+  });
+
+  it('rewrites a matching one-decimal quote amount', () => {
+    const result = toCollectionIbanGiroCode(
+      sampleGiroCode({ line7: 'EUR100.5' }),
+      PERSONAL_GIRO_IBAN,
+      SAMPLE_REMITTANCE,
+      100.5,
+      'EUR',
+    );
+    expect(result).toBeDefined();
+    if (result === undefined) return;
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
+  });
+
+  it('rewrites a matching three-decimal quote amount', () => {
+    const result = toCollectionIbanGiroCode(
+      sampleGiroCode({ line7: 'EUR100.004' }),
+      PERSONAL_GIRO_IBAN,
+      SAMPLE_REMITTANCE,
+      100.004,
+      'EUR',
+    );
+    expect(result).toBeDefined();
+    if (result === undefined) return;
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
+  });
+
+  it('returns undefined when line 7 is a formatting variant the api does not produce', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line7: 'EUR100.00' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        100,
+        'EUR',
+      ),
+    ).toBeUndefined();
   });
 
   it('returns undefined because a whitespace-only amount line is malformed, not absent', () => {
@@ -759,57 +810,6 @@ describe('toCollectionIbanGiroCode', () => {
     ).toBeUndefined();
   });
 
-  it('accepts EUR100.00 as numerically equal to amount 100', () => {
-    const result = toCollectionIbanGiroCode(
-      sampleGiroCode({ line7: 'EUR100.00' }),
-      PERSONAL_GIRO_IBAN,
-      SAMPLE_REMITTANCE,
-      SAMPLE_AMOUNT,
-      'EUR',
-    );
-    expect(result).toBeDefined();
-    if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
-  });
-
-  it('rewrites a matching three-decimal quote without formatting the amount', () => {
-    const result = toCollectionIbanGiroCode(
-      sampleGiroCode({ line7: 'EUR100.004' }),
-      PERSONAL_GIRO_IBAN,
-      SAMPLE_REMITTANCE,
-      100.004,
-      'EUR',
-    );
-    expect(result).toBeDefined();
-    if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
-  });
-
-  it('returns undefined when the quote amount diverges below cent precision', () => {
-    expect(
-      toCollectionIbanGiroCode(
-        sampleGiroCode({ line7: 'EUR100.00' }),
-        PERSONAL_GIRO_IBAN,
-        SAMPLE_REMITTANCE,
-        100.004,
-        'EUR',
-      ),
-    ).toBeUndefined();
-  });
-
-  it('accepts EUR100.50 as numerically equal to amount 100.5', () => {
-    const result = toCollectionIbanGiroCode(
-      sampleGiroCode({ line7: 'EUR100.50' }),
-      PERSONAL_GIRO_IBAN,
-      SAMPLE_REMITTANCE,
-      100.5,
-      'EUR',
-    );
-    expect(result).toBeDefined();
-    if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
-  });
-
   it('returns undefined when line 7 carries leading zeros in the amount', () => {
     expect(
       toCollectionIbanGiroCode(
@@ -820,31 +820,6 @@ describe('toCollectionIbanGiroCode', () => {
         'EUR',
       ),
     ).toBeUndefined();
-  });
-
-  it('returns undefined when line 7 exceeds the EPC amount ceiling', () => {
-    expect(
-      toCollectionIbanGiroCode(
-        sampleGiroCode({ line7: 'EUR1000000000' }),
-        PERSONAL_GIRO_IBAN,
-        SAMPLE_REMITTANCE,
-        1000000000,
-        'EUR',
-      ),
-    ).toBeUndefined();
-  });
-
-  it('accepts EUR0.50 as numerically equal to amount 0.5', () => {
-    const result = toCollectionIbanGiroCode(
-      sampleGiroCode({ line7: 'EUR0.50' }),
-      PERSONAL_GIRO_IBAN,
-      SAMPLE_REMITTANCE,
-      0.5,
-      'EUR',
-    );
-    expect(result).toBeDefined();
-    if (result === undefined) return;
-    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
   });
 
   it('returns undefined when line 7 has a non-EUR currency prefix', () => {
