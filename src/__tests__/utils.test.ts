@@ -1,12 +1,13 @@
-// Mock @dfx.swiss/react to avoid ES module issues
+// Mock @dfx.swiss/react to avoid ES module issues.
+// Plain functions (not jest.fn) so implementations cannot be wiped by mockReset elsewhere.
 jest.mock('@dfx.swiss/react', () => ({
   Asset: {},
   Fiat: {},
   KycFile: {},
   UserAddress: {},
   Utils: {
-    formatAmount: jest.fn((amount: number) => amount.toFixed(2)),
-    formatAmountCrypto: jest.fn((amount: number) => amount.toString()),
+    formatAmount: (amount: number) => Number(amount).toFixed(2),
+    formatAmountCrypto: (amount: number) => String(amount),
   },
 }));
 
@@ -22,26 +23,42 @@ import {
   isEmpty,
   removeNullFields,
   delay,
+  timeout,
+  url,
   isAbsoluteUrl,
   isSafeRedirectUri,
+  isNode,
   blankedAddress,
+  toBase64,
+  readFileAsText,
+  openPdfFromString,
+  downloadPdfFromString,
+  openImageFromString,
+  handleOpenFile,
+  sortAddressesByBlockchain,
   formatBytes,
+  fetchJson,
   formatUnits,
   filenameDateFormat,
   extractFilename,
+  downloadFile,
   formatChf,
   formatChfOrDash,
   formatCurrency,
+  formatAmountForDisplay,
   formatSwissDate,
   formatSwissDateTime,
   formatSwissDateTimeWithSeconds,
   formatSwissTime,
   FormatType,
   deepEqual,
+  isAsset,
   equalsIgnoreCase,
+  findCustodyBalanceString,
   formatLocationAddress,
   apiUrl,
   relativeUrl,
+  redirectAllowedParams,
 } from '../util/utils';
 
 describe('utils', () => {
@@ -123,6 +140,54 @@ describe('utils', () => {
     });
   });
 
+  describe('timeout', () => {
+    it('resolves when the promise wins the race', async () => {
+      await expect(timeout(Promise.resolve('ok'), 500)).resolves.toBe('ok');
+    });
+
+    it('rejects with Error("Timeout") when the timer wins', async () => {
+      jest.useFakeTimers();
+      try {
+        const never = new Promise<string>(() => undefined);
+        const resultPromise = timeout(never, 50);
+        const expectation = expect(resultPromise).rejects.toThrow('Timeout');
+        jest.advanceTimersByTime(50);
+        await expectation;
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
+  describe('url', () => {
+    const originalPublicUrl = process.env.REACT_APP_PUBLIC_URL;
+
+    afterEach(() => {
+      process.env.REACT_APP_PUBLIC_URL = originalPublicUrl;
+    });
+
+    it('builds from REACT_APP_PUBLIC_URL when base is omitted', () => {
+      process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com/';
+      expect(url({ path: 'settings' })).toBe('https://app.example.com/settings');
+    });
+
+    it('uses an explicit base and appends params', () => {
+      const result = url({
+        base: 'https://app.example.com',
+        path: 'login',
+        params: new URLSearchParams({ a: 'call' }),
+      });
+      expect(result).toBe('https://app.example.com/login?a=call');
+    });
+
+    it('treats an absolute path as the base', () => {
+      // url() normalizes base with a trailing slash before applying params
+      expect(url({ path: 'https://other.example.com/x', params: new URLSearchParams({ q: '1' }) })).toBe(
+        'https://other.example.com/x/?q=1',
+      );
+    });
+  });
+
   describe('isAbsoluteUrl', () => {
     it('should return true for absolute URLs', () => {
       expect(isAbsoluteUrl('http://example.com')).toBe(true);
@@ -196,18 +261,251 @@ describe('utils', () => {
     });
   });
 
+  describe('isNode', () => {
+    it('returns true for a DOM Node', () => {
+      expect(isNode(document.createElement('div'))).toBe(true);
+      expect(isNode(document.createTextNode('x'))).toBe(true);
+    });
+
+    it('returns false for null and non-nodes', () => {
+      expect(isNode(null)).toBe(false);
+      expect(isNode({} as EventTarget)).toBe(false);
+    });
+  });
+
   describe('blankedAddress', () => {
     it('should truncate long addresses', () => {
       const address = '0x1234567890abcdef1234567890abcdef12345678';
       const result = blankedAddress(address, { displayLength: 16 });
-      expect(result).toContain('...');
-      expect(result.length).toBeLessThan(address.length);
+      // displayLength 16 minus 0x offset 2 → 14 visible chars split half/half around '...'
+      expect(result).toBe('0x1234567...2345678');
     });
 
     it('should not truncate short addresses', () => {
       const address = '0x1234';
       const result = blankedAddress(address, { displayLength: 20 });
       expect(result).toBe(address);
+    });
+
+    it('uses default options when called with only the address', () => {
+      const address = '0x1234567890abcdef1234567890abcdef12345678';
+      const result = blankedAddress(address);
+      expect(result).toContain('...');
+      expect(result.startsWith('0x')).toBe(true);
+    });
+
+    it('derives displayLength from width and accounts for 0x prefix', () => {
+      const address = '0x1234567890abcdef1234567890abcdef12345678';
+      const result = blankedAddress(address, { width: 200, scale: 1 });
+      expect(result).toContain('...');
+      expect(result.startsWith('0x')).toBe(true);
+    });
+
+    it('truncates non-0x addresses without the prefix offset', () => {
+      const address = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
+      const result = blankedAddress(address, { displayLength: 12 });
+      expect(result).toBe('bc1qxy...hx0wlh');
+    });
+  });
+
+  describe('toBase64 and readFileAsText', () => {
+    it('toBase64 resolves a data URL for a file', async () => {
+      const file = new File(['hello'], 'hello.txt', { type: 'text/plain' });
+      const result = await toBase64(file);
+      expect(result).toMatch(/^data:text\/plain;base64,/);
+    });
+
+    it('toBase64 rejects when FileReader errors', async () => {
+      const OriginalFileReader = global.FileReader;
+      const readerError = new ProgressEvent('error') as ProgressEvent<FileReader>;
+      class FailingReader {
+        result: string | null = null;
+        onload: ((ev: ProgressEvent<FileReader>) => void) | null = null;
+        onerror: ((ev: ProgressEvent<FileReader>) => void) | null = null;
+        readAsDataURL() {
+          queueMicrotask(() => {
+            this.onerror?.(readerError);
+          });
+        }
+      }
+      // @ts-expect-error partial FileReader mock
+      global.FileReader = FailingReader;
+      try {
+        await expect(toBase64(new File(['x'], 'x.txt'))).rejects.toBe(readerError);
+      } finally {
+        global.FileReader = OriginalFileReader;
+      }
+    });
+
+    it('toBase64 resolves undefined when result is empty', async () => {
+      const OriginalFileReader = global.FileReader;
+      class EmptyResultReader {
+        result: string | null = null;
+        onload: ((ev: ProgressEvent<FileReader>) => void) | null = null;
+        onerror: ((ev: ProgressEvent<FileReader>) => void) | null = null;
+        readAsDataURL() {
+          queueMicrotask(() => {
+            this.result = null;
+            this.onload?.(new ProgressEvent('load') as ProgressEvent<FileReader>);
+          });
+        }
+      }
+      // @ts-expect-error partial FileReader mock
+      global.FileReader = EmptyResultReader;
+      try {
+        await expect(toBase64(new File(['x'], 'x.txt'))).resolves.toBeUndefined();
+      } finally {
+        global.FileReader = OriginalFileReader;
+      }
+    });
+
+    it('readFileAsText resolves file content', async () => {
+      const file = new File(['plain text'], 'note.txt', { type: 'text/plain' });
+      await expect(readFileAsText(file)).resolves.toBe('plain text');
+    });
+
+    it('readFileAsText rejects when FileReader errors', async () => {
+      const OriginalFileReader = global.FileReader;
+      const readerError = new ProgressEvent('error') as ProgressEvent<FileReader>;
+      class FailingReader {
+        result: string | null = null;
+        onload: ((ev: ProgressEvent<FileReader>) => void) | null = null;
+        onerror: ((ev: ProgressEvent<FileReader>) => void) | null = null;
+        readAsText() {
+          queueMicrotask(() => {
+            this.onerror?.(readerError);
+          });
+        }
+      }
+      // @ts-expect-error partial FileReader mock
+      global.FileReader = FailingReader;
+      try {
+        await expect(readFileAsText(new File(['x'], 'x.txt'))).rejects.toBe(readerError);
+      } finally {
+        global.FileReader = OriginalFileReader;
+      }
+    });
+  });
+
+  describe('PDF / image open helpers and handleOpenFile', () => {
+    const sampleBase64 = Buffer.from('%PDF-1.4 sample').toString('base64');
+    const imageBase64 = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64');
+    // jsdom does not implement these; assign mocks (spyOn requires an existing function).
+    let createObjectURL: jest.Mock;
+    let revokeObjectURL: jest.Mock;
+    let openSpy: jest.SpyInstance;
+    let clickSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      createObjectURL = jest.fn(() => 'blob:mock-url');
+      revokeObjectURL = jest.fn();
+      (URL as any).createObjectURL = createObjectURL;
+      (URL as any).revokeObjectURL = revokeObjectURL;
+      openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+      clickSpy = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      delete (URL as any).createObjectURL;
+      delete (URL as any).revokeObjectURL;
+      openSpy.mockRestore();
+      clickSpy.mockRestore();
+      document.body.innerHTML = '';
+    });
+
+    it('openPdfFromString opens a new tab by default', () => {
+      openPdfFromString(sampleBase64);
+      expect(createObjectURL).toHaveBeenCalled();
+      expect(openSpy).toHaveBeenCalledWith('blob:mock-url');
+    });
+
+    it('openPdfFromString embeds inline when newTab is false', () => {
+      openPdfFromString(sampleBase64, false);
+      expect(openSpy).not.toHaveBeenCalled();
+      const embed = document.body.querySelector('embed');
+      expect(embed).not.toBeNull();
+      expect(embed?.type).toBe('application/pdf');
+      expect(embed?.src).toContain('blob:mock-url');
+    });
+
+    it('downloadPdfFromString downloads via downloadFile', () => {
+      downloadPdfFromString(sampleBase64, 'doc.pdf');
+      expect(createObjectURL).toHaveBeenCalled();
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+      expect(document.body.querySelector('a')).toBeNull();
+    });
+
+    it('openImageFromString opens a new tab by default', () => {
+      openImageFromString(imageBase64, 'image/png');
+      expect(openSpy).toHaveBeenCalledWith('blob:mock-url');
+    });
+
+    it('openImageFromString embeds inline when newTab is false', () => {
+      openImageFromString(imageBase64, 'image/png', false);
+      expect(openSpy).not.toHaveBeenCalled();
+      const img = document.body.querySelector('img');
+      expect(img).not.toBeNull();
+      expect(img?.src).toContain('blob:mock-url');
+    });
+
+    it('handleOpenFile sets an error for invalid content', () => {
+      const setError = jest.fn();
+      handleOpenFile({ content: null, contentType: 'application/pdf' } as any, setError);
+      expect(setError).toHaveBeenCalledWith('Invalid file type');
+      expect(openSpy).not.toHaveBeenCalled();
+    });
+
+    it('handleOpenFile opens a PDF for application/* content', () => {
+      const setError = jest.fn();
+      handleOpenFile(
+        {
+          content: { type: 'Buffer', data: [1, 2, 3] },
+          contentType: 'application/pdf',
+        } as any,
+        setError,
+        true,
+      );
+      expect(setError).not.toHaveBeenCalled();
+      expect(openSpy).toHaveBeenCalledWith('blob:mock-url');
+    });
+
+    it('handleOpenFile opens an image for image/* content', () => {
+      const setError = jest.fn();
+      handleOpenFile(
+        {
+          content: { type: 'Buffer', data: [9, 8, 7] },
+          contentType: 'image/png',
+        } as any,
+        setError,
+        false,
+      );
+      expect(setError).not.toHaveBeenCalled();
+      expect(document.body.querySelector('img')).not.toBeNull();
+    });
+
+    it('handleOpenFile does nothing for unsupported file types', () => {
+      const setError = jest.fn();
+      handleOpenFile(
+        {
+          content: { type: 'Buffer', data: [1] },
+          contentType: 'text/plain',
+        } as any,
+        setError,
+      );
+      expect(setError).not.toHaveBeenCalled();
+      expect(openSpy).not.toHaveBeenCalled();
+      expect(document.body.querySelector('embed')).toBeNull();
+      expect(document.body.querySelector('img')).toBeNull();
+    });
+  });
+
+  describe('sortAddressesByBlockchain', () => {
+    it('sorts by the first blockchain name', () => {
+      const a = { blockchains: ['Ethereum'] } as any;
+      const b = { blockchains: ['Bitcoin'] } as any;
+      expect(sortAddressesByBlockchain(a, b)).toBeGreaterThan(0);
+      expect(sortAddressesByBlockchain(b, a)).toBeLessThan(0);
+      expect(sortAddressesByBlockchain(a, a)).toBe(0);
     });
   });
 
@@ -217,12 +515,36 @@ describe('utils', () => {
       expect(formatBytes(1024)).toBe('1 KB');
       expect(formatBytes(1024 * 1024)).toBe('1 MB');
     });
+
+    it('clamps negative decimals to zero', () => {
+      expect(formatBytes(2048, -1)).toBe('2 KB');
+    });
+  });
+
+  describe('fetchJson', () => {
+    it('fetches and parses JSON', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ ok: true }),
+      });
+      const originalFetch = global.fetch;
+      global.fetch = fetchMock as any;
+      try {
+        await expect(fetchJson('https://example.com/data')).resolves.toEqual({ ok: true });
+        expect(fetchMock).toHaveBeenCalledWith('https://example.com/data');
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
   });
 
   describe('formatUnits', () => {
     it('should format units with decimals', () => {
       expect(formatUnits('1000000000000000000', 18)).toBe('1');
       expect(formatUnits('1500000000000000000', 18)).toBe('1.5');
+    });
+
+    it('defaults decimals to 18 when omitted', () => {
+      expect(formatUnits('1000000000000000000')).toBe('1');
     });
 
     it('should handle zero', () => {
@@ -245,6 +567,55 @@ describe('utils', () => {
     it('should return undefined for missing header', () => {
       expect(extractFilename(undefined)).toBeUndefined();
     });
+
+    it('should return undefined when the header has no filename match', () => {
+      expect(extractFilename('inline')).toBeUndefined();
+      expect(extractFilename('attachment; size=12')).toBeUndefined();
+    });
+  });
+
+  describe('downloadFile', () => {
+    let createObjectURL: jest.Mock;
+    let revokeObjectURL: jest.Mock;
+    let clickSpy: jest.SpyInstance;
+    let clickedDownload: string | undefined;
+
+    beforeEach(() => {
+      createObjectURL = jest.fn(() => 'blob:download');
+      revokeObjectURL = jest.fn();
+      (URL as any).createObjectURL = createObjectURL;
+      (URL as any).revokeObjectURL = revokeObjectURL;
+      clickedDownload = undefined;
+      // Capture download on the anchor while click runs — the element is removed right after.
+      clickSpy = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+        this: HTMLAnchorElement,
+      ) {
+        clickedDownload = this.download;
+      });
+    });
+
+    afterEach(() => {
+      delete (URL as any).createObjectURL;
+      delete (URL as any).revokeObjectURL;
+      clickSpy.mockRestore();
+      document.body.innerHTML = '';
+    });
+
+    it('uses content-disposition filename when present', () => {
+      downloadFile(new Blob(['x']), { 'content-disposition': 'attachment; filename="report.pdf"' }, 'fallback.bin');
+      expect(clickSpy).toHaveBeenCalled();
+      expect(clickedDownload).toBe('report.pdf');
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:download');
+      expect(document.body.querySelector('a')).toBeNull();
+    });
+
+    it('falls back to the provided filename without content-disposition', () => {
+      downloadFile(new Blob(['x']), {}, 'fallback.bin');
+      expect(createObjectURL).toHaveBeenCalled();
+      expect(clickedDownload).toBe('fallback.bin');
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:download');
+      expect(document.body.querySelector('a')).toBeNull();
+    });
   });
 
   describe('formatCurrency', () => {
@@ -259,8 +630,52 @@ describe('utils', () => {
       expect(formatCurrency(1234.56, 2, 2, FormatType.US)).toBe('1,234.56');
     });
 
+    it('parses string amounts and defaults to Swiss format', () => {
+      const result = formatCurrency('12.5', 2, 2);
+      expect(result).toContain('12');
+    });
+
     it('should return null for invalid values', () => {
       expect(formatCurrency(NaN)).toBeNull();
+      expect(formatCurrency(null as unknown as number)).toBeNull();
+    });
+
+    it('returns "< 0.01" for tiny positive amounts when fraction digits are allowed', () => {
+      expect(formatCurrency(0.005, 0, 2)).toBe('< 0.01');
+    });
+
+    it('formats tiny positives normally when maximumFractionDigits is 0', () => {
+      // maximumFractionDigits falsy → skip the "< 0.01" shortcut
+      const result = formatCurrency(0.005, 0, 0, FormatType.US);
+      expect(result).not.toBe('< 0.01');
+    });
+
+    it('formats TINY amounts under 1000 with two decimals and thin-space thousands separator above', () => {
+      const under = formatCurrency(12.5, 0, 2, FormatType.TINY);
+      expect(under).toBe('12.50');
+      // en-US groups thousands with ",", then TINY replaces "," with thin space
+      const over = formatCurrency(1500, 0, 2, FormatType.TINY);
+      expect(over).toBe('1 500');
+      const negativeOver = formatCurrency(-1500, 0, 2, FormatType.TINY);
+      expect(negativeOver).toBe('-1 500');
+      const withSep = formatCurrency(12345, 0, 2, FormatType.TINY);
+      expect(withSep).toContain(' ');
+      expect(withSep?.replace(/\u2009/g, '')).toBe('12345');
+    });
+
+    it('returns undefined for an unknown format enum value', () => {
+      // Covers the false branch of the final format === TINY check (fall-through).
+      expect(formatCurrency(1, 0, 2, 99 as FormatType)).toBeUndefined();
+    });
+  });
+
+  describe('formatAmountForDisplay', () => {
+    it('returns empty string without a value', () => {
+      expect(formatAmountForDisplay(undefined)).toBe('');
+    });
+
+    it('formats via Utils.formatAmount and rewrites trailing .00', () => {
+      expect(formatAmountForDisplay(12)).toBe('12.-');
     });
   });
 
@@ -356,6 +771,22 @@ describe('utils', () => {
     it('should handle null and undefined', () => {
       expect(deepEqual(null, null)).toBe(true);
       expect(deepEqual(null, undefined)).toBe(false);
+      expect(deepEqual(undefined, undefined)).toBe(true);
+      expect(deepEqual({ a: 1 }, null)).toBe(false);
+    });
+
+    it('returns false for differing types, key sets, or missing keys', () => {
+      expect(deepEqual(1, '1')).toBe(false);
+      expect(deepEqual({ a: 1 }, { a: 1, b: 2 })).toBe(false);
+      expect(deepEqual({ a: 1 }, { b: 1 })).toBe(false);
+      expect(deepEqual({ a: { b: 1 } }, { a: { b: 2 } })).toBe(false);
+    });
+  });
+
+  describe('isAsset', () => {
+    it('detects assets by chainId', () => {
+      expect(isAsset({ chainId: 1 } as any)).toBe(true);
+      expect(isAsset({ name: 'EUR' } as any)).toBe(false);
     });
   });
 
@@ -367,6 +798,26 @@ describe('utils', () => {
 
     it('should return false for different strings', () => {
       expect(equalsIgnoreCase('abc', 'def')).toBe(false);
+    });
+
+    it('handles undefined sides', () => {
+      expect(equalsIgnoreCase(undefined, undefined)).toBe(true);
+      expect(equalsIgnoreCase('a', undefined)).toBe(false);
+      expect(equalsIgnoreCase(undefined, 'a')).toBe(false);
+    });
+  });
+
+  describe('findCustodyBalanceString', () => {
+    it('returns the formatted balance when the asset is found', () => {
+      const asset = { name: 'BTC' } as any;
+      const balances = [{ asset: { name: 'BTC' }, balance: 1.5 }] as any;
+      expect(findCustodyBalanceString(asset, balances)).toBe('1.5');
+    });
+
+    it('returns empty string when the asset is missing', () => {
+      const asset = { name: 'ETH' } as any;
+      const balances = [{ asset: { name: 'BTC' }, balance: 1 }] as any;
+      expect(findCustodyBalanceString(asset, balances)).toBe('');
     });
   });
 
@@ -434,6 +885,30 @@ describe('utils', () => {
       });
       const query = new URLSearchParams(result.slice(result.indexOf('?') + 1));
       expect(query.get('issue-type')).toBe('LimitRequest');
+    });
+
+    it('delegates absolute paths to url()', () => {
+      const result = relativeUrl({
+        path: 'https://example.com/callback',
+        params: new URLSearchParams({ a: '1' }),
+      });
+      // url() normalizes base with a trailing slash
+      expect(result).toBe('https://example.com/callback/?a=1');
+    });
+  });
+
+  describe('redirectAllowedParams', () => {
+    it('copies only a when present', () => {
+      const params = redirectAllowedParams('?a=call&code=secret&user=alice@example.com');
+      expect(params.get('a')).toBe('call');
+      expect(params.get('code')).toBeNull();
+      expect(params.get('user')).toBeNull();
+      expect([...params.keys()]).toEqual(['a']);
+    });
+
+    it('returns an empty set when a is absent', () => {
+      const params = redirectAllowedParams('?code=secret&user=alice@example.com');
+      expect([...params.keys()]).toEqual([]);
     });
   });
 });

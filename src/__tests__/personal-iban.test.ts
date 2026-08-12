@@ -20,8 +20,10 @@ import de from '../translations/languages/de.json';
 import fr from '../translations/languages/fr.json';
 import italian from '../translations/languages/it.json';
 import {
+  canOfferCollectionIban,
   FRICK_ACCOUNT_HOLDER_NAME,
   FRICK_BANK_NAME,
+  FRICK_EUR_COLLECTION_IBAN,
   getFrickCollectionIban,
   getOfferableCollectionIban,
   getPersonalIbanErrorMessage,
@@ -397,5 +399,46 @@ describe('personalIbanOnlyParams', () => {
   it('returns an empty set when personal-iban is absent', () => {
     const params = personalIbanOnlyParams('?user=alice@example.com&arbitrary=value');
     expect([...params.keys()]).toEqual([]);
+  });
+});
+
+describe('canOfferCollectionIban', () => {
+  const verifiedPersonal = {
+    currency: { name: 'EUR' },
+    isPersonalIban: true,
+    bank: FRICK_BANK_NAME,
+    name: FRICK_ACCOUNT_HOLDER_NAME,
+    remittanceInfo: 'RF18 5390 0754 7034',
+    iban: 'LI21088110105923K000F',
+  };
+
+  it('returns true for a verified Frick personal IBAN that is not the collection account', () => {
+    expect(canOfferCollectionIban(verifiedPersonal)).toBe(true);
+  });
+
+  it('returns false when iban is missing', () => {
+    const { iban: _iban, ...withoutIban } = verifiedPersonal;
+    expect(canOfferCollectionIban(withoutIban)).toBe(false);
+  });
+
+  it('returns false for the shared collection IBAN itself', () => {
+    expect(canOfferCollectionIban({ ...verifiedPersonal, iban: FRICK_EUR_COLLECTION_IBAN })).toBe(false);
+  });
+
+  it('returns false without remittance info', () => {
+    expect(canOfferCollectionIban({ ...verifiedPersonal, remittanceInfo: undefined })).toBe(false);
+  });
+
+  it('returns false for non-EUR', () => {
+    expect(canOfferCollectionIban({ ...verifiedPersonal, currency: { name: 'CHF' } })).toBe(false);
+  });
+
+  it('returns false when the response is not a verified Frick personal IBAN', () => {
+    expect(
+      canOfferCollectionIban({
+        ...verifiedPersonal,
+        isPersonalIban: false,
+      }),
+    ).toBe(false);
   });
 });
