@@ -1,11 +1,11 @@
 {
   "buy-process": {
     "title": "Kaufprozess",
-    "description": "Buy-Flow: Seitenladezustand, Betragseingabe, Zahlungsdetails, Collection-/Personal-IBAN-Umschaltung und Bank-Frick-/Yapeal-Provider-Umschaltung für Bestandskunden."
+    "description": "Buy-Flow: Seitenladezustand, Betragseingabe, Zahlungsdetails, Collection-/Personal-IBAN-Umschaltung und Bank-Frick-/Yapeal-Provider-Umschaltung für Bestandskunden. Zusätzlich werden der KYC-Fallback auf die bestehende Yapeal-IBAN und der Fehlerfall eines nicht verfügbaren Personal-IBAN-Providers gezeigt."
   },
   "buy-info": {
     "title": "Kauf-Infoseite",
-    "description": "Buy-Info-Flow (/buy/info): Personal-IBAN-Mismatch-Hinweis für eine Nicht-Frick-Währung. Bestandskunden können zwischen Bank-Frick- und Yapeal-IBAN wechseln."
+    "description": "Buy-Info-Flow (/buy/info): Personal-IBAN-Mismatch-Hinweis für eine Nicht-Frick-Währung. Bestandskunden können zwischen Bank-Frick- und Yapeal-IBAN wechseln. Zusätzlich werden der KYC-Fallback auf die bestehende Yapeal-IBAN und der Fehlerfall eines nicht verfügbaren Personal-IBAN-Providers gezeigt."
   },
   "buy-bitcoin": {
     "title": "Bitcoin kaufen",

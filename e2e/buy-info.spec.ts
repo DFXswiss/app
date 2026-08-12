@@ -254,6 +254,127 @@ test.describe('Buy Info - UI Flow', () => {
     await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible({ timeout: 15000 });
   });
 
+  test('shows an error when the legacy Yapeal provider is unavailable', async ({
+    page,
+    request,
+  }) => {
+    const token = await getToken(request);
+
+    await page.route(/\/v2\/user(?:\?|$)/, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const user = await response.json();
+      await route.fulfill({ response, json: { ...user, kyc: { ...user.kyc, level: 50 } } });
+    });
+
+    await page.route('**/v1/buy/personalIban', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 7,
+            iban: 'CH9300762011623852957',
+            currency: 'CHF',
+            bank: 'Yapeal',
+            active: true,
+            acceptsPayments: true,
+            status: 'Active',
+          },
+        ],
+      });
+    });
+
+    const frickResponse = {
+      id: 33,
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.0251,
+      rate: 3862.5,
+      exchangeRate: 3984.06,
+      priceSteps: [],
+      minVolume: 10,
+      maxVolume: 990000,
+      minVolumeTarget: 0.0026,
+      maxVolumeTarget: 248.5,
+      fees: {
+        rate: 0.0099,
+        fixed: 0,
+        min: 0,
+        dfx: 0.99,
+        network: 0,
+        bank: 0,
+        bankFixed: 2,
+        bankVariable: 0,
+        platform: 0,
+        total: 2.99,
+      },
+      currency: { id: 1, name: 'CHF' },
+      asset: { id: 111, name: 'ETH', blockchain: 'Ethereum', category: 'Public' },
+      bank: 'Bank Frick',
+      bic: 'BFRILI22XXX',
+      iban: 'LI91088100002324013AB',
+      name: 'DFX AG',
+      street: 'Bahnhofstrasse',
+      number: '7',
+      zip: '6300',
+      city: 'Zug',
+      country: 'Schweiz',
+      remittanceInfo: 'A1B2-C3D4-E5F6',
+      sepaInstant: false,
+      isPersonalIban: true,
+    };
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      const requestData = route.request().postDataJSON() as Record<string, unknown>;
+      if (requestData.personalIbanProvider === 'Yapeal') {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          json: {
+            statusCode: 400,
+            message: 'PersonalIbanProviderNotAvailable',
+          },
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: frickResponse,
+      });
+    });
+
+    await page.goto(
+      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`,
+    );
+
+    const toYapealToggle = page.getByRole('button', { name: 'Show legacy Yapeal IBAN' });
+    await expect(toYapealToggle).toBeVisible({ timeout: 15000 });
+    await toYapealToggle.click();
+
+    await expect(
+      page.getByText(
+        'The requested personal IBAN is not available for your account. Please switch back or contact support.',
+      ),
+    ).toBeVisible({ timeout: 15000 });
+    await expect(page).toHaveURL(/\/buy\/info(?:\?|$)/);
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Close' })).toBeVisible();
+    await expect(page.getByText('LI91 0881 0000 2324 013A B')).not.toBeVisible();
+    await expect(page).toHaveScreenshot('buy-info-provider-unavailable-page.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+  });
+
   test('falls back to the legacy Yapeal IBAN when the automatic Frick request requires KYC', async ({
     page,
     request,

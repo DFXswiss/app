@@ -11,6 +11,7 @@ const mockRequestedPersonalIban = jest.fn();
 const mockHasAuthenticatedCustomer = jest.fn();
 const mockCustomerIdentity = jest.fn();
 const mockUser = jest.fn();
+const mockIsUserLoading = jest.fn();
 const mockGetPersonalIbans = jest.fn();
 const mockConfirmFor = jest.fn();
 const mockWalletInitialized = jest.fn();
@@ -90,7 +91,7 @@ jest.mock('@dfx.swiss/react', () => {
       getDefaultCurrency: mockGetDefaultCurrency,
     }),
     useSessionContext: () => ({ logout: jest.fn() }),
-    useUserContext: () => ({ user: mockUser() }),
+    useUserContext: () => ({ user: mockUser(), isUserLoading: mockIsUserLoading() }),
   };
 });
 
@@ -297,6 +298,26 @@ import { FiatPaymentMethod } from '@dfx.swiss/react';
 import BuyScreen from 'src/screens/buy.screen';
 import { isPersonalIbanApplicable } from '../util/personal-iban';
 
+function createDeferred<T>() {
+  let resolvePromise: ((value: T) => void) | undefined;
+  let rejectPromise: ((reason?: unknown) => void) | undefined;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return {
+    promise,
+    resolve: (value: T) => {
+      if (resolvePromise === undefined) throw new Error('Deferred resolve was not registered');
+      resolvePromise(value);
+    },
+    reject: (reason?: unknown) => {
+      if (rejectPromise === undefined) throw new Error('Deferred reject was not registered');
+      rejectPromise(reason);
+    },
+  };
+}
+
 function baseAppParams(overrides: Record<string, unknown> = {}) {
   return {
     assets: undefined,
@@ -433,6 +454,7 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     mockHasAuthenticatedCustomer.mockReturnValue(true);
     mockCustomerIdentity.mockReset().mockReturnValue(1);
     mockUser.mockReset().mockReturnValue(undefined);
+    mockIsUserLoading.mockReset().mockReturnValue(false);
     mockGetPersonalIbans.mockReset().mockResolvedValue([]);
     mockWalletInitialized.mockReturnValue(true);
     // A6: fail on unexpected act() / React warnings so terminal state is awaited properly.
@@ -450,6 +472,9 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
   });
 
   async function settle() {
+    // The quote effect's promise.then(commit)/finally(setIsLoading) chain needs three
+    // microtask ticks after the underlying promise resolves (resolve, then .then(), then
+    // .finally()); this loop provides ten to comfortably cover deeper chains too.
     await act(async () => {
       for (let i = 0; i < 10; i += 1) {
         await Promise.resolve();
@@ -497,6 +522,7 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     render(<BuyScreen />);
 
     await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
+    await settle();
     expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
     await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
     await settle();
@@ -728,6 +754,7 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     });
 
     await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(3));
+    await settle();
     expect(mockReceiveFor.mock.calls[1][0].personalIbanProvider).toBe('Frick');
     await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
     expect(screen.getByText(TRANSFER_BUTTON)).toBeInTheDocument();
@@ -861,6 +888,7 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     ).not.toBeInTheDocument();
 
     await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
+    await settle();
     expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
     await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
     await settle();
@@ -902,6 +930,7 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     rendered.rerender(<BuyScreen />);
 
     await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
+    await settle();
     expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
     await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
     await settle();
@@ -989,6 +1018,7 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     render(<BuyScreen />);
 
     await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
+    await settle();
     expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
   });
 
@@ -1017,23 +1047,24 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     await waitFor(() =>
       expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(requestCountBeforeCurrencyChange),
     );
+    await settle();
     const requestsAfterCurrencyChange = mockReceiveFor.mock.calls
       .slice(requestCountBeforeCurrencyChange)
       .map(([request]) => request);
-    expect(
-      requestsAfterCurrencyChange.some(
-        (request) =>
-          request.currency.name === 'EUR' &&
-          request.personalIbanProvider === undefined,
-      ),
-    ).toBe(true);
-    expect(
-      requestsAfterCurrencyChange.some(
-        (request) =>
-          request.currency.name === 'EUR' &&
-          request.personalIbanProvider === 'Frick',
-      ),
-    ).toBe(false);
+    const actualPairings = requestsAfterCurrencyChange.map((request) => ({
+      currency: request.currency.name,
+      personalIbanProvider: request.personalIbanProvider,
+    }));
+    const expectedPairings = requestsAfterCurrencyChange.map((request) => {
+      if (request.currency.name === 'CHF') {
+        return { currency: 'CHF', personalIbanProvider: 'Frick' };
+      }
+      if (request.currency.name === 'EUR') {
+        return { currency: 'EUR', personalIbanProvider: undefined };
+      }
+      throw new Error(`Unexpected request currency: ${request.currency.name}`);
+    });
+    expect(actualPairings).toEqual(expectedPairings);
   });
 
   it('continues with a normal quote when loading personal IBAN rows fails', async () => {
@@ -1081,6 +1112,7 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     rendered.rerender(<BuyScreen />);
 
     await waitFor(() => expect(mockGetPersonalIbans).toHaveBeenCalledTimes(2));
+    await settle();
     await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
     expect(mockReceiveFor.mock.calls.every(([request]) => request.personalIbanProvider === undefined)).toBe(
       true,
@@ -1130,6 +1162,7 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     await waitFor(() =>
       expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(requestCountBeforeToggle),
     );
+    await settle();
     expect(mockReceiveFor.mock.calls[requestCountBeforeToggle][0].personalIbanProvider).toBe(
       'Yapeal',
     );
@@ -1236,9 +1269,11 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     rendered.rerender(<BuyScreen />);
 
     await waitFor(() => expect(mockGetPersonalIbans).toHaveBeenCalledTimes(2));
+    await settle();
     await waitFor(() =>
       expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(requestCountBeforeSwap),
     );
+    await settle();
     expect(mockReceiveFor.mock.calls[requestCountBeforeSwap][0]).not.toHaveProperty(
       'personalIbanProvider',
     );
@@ -1247,5 +1282,250 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
         screen.queryByRole('button', { name: 'Show Bank Frick IBAN' }),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it('fails open after the personal IBAN row timeout and discards a late row response', async () => {
+    jest.useFakeTimers();
+    const rowsDeferred = createDeferred<(typeof activeChfYapealRow)[]>();
+    try {
+      mockPersonalIban.mockReturnValue(undefined);
+      mockRequestedPersonalIban.mockReturnValue(undefined);
+      mockUser.mockReturnValue({ kyc: { level: 50 } });
+      mockGetPersonalIbans.mockReturnValue(rowsDeferred.promise);
+      mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+      mockReceiveFor.mockResolvedValue(chfOffer());
+
+      render(<BuyScreen />);
+      await settle();
+      expect(mockReceiveFor).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(10000);
+        await Promise.resolve();
+      });
+      await settle();
+      expect(mockReceiveFor).toHaveBeenCalled();
+      expect(
+        mockReceiveFor.mock.calls.every(
+          ([request]) => request.personalIbanProvider === undefined,
+        ),
+      ).toBe(true);
+
+      await act(async () => {
+        rowsDeferred.resolve([activeChfYapealRow]);
+        await Promise.resolve();
+      });
+      await settle();
+      expect(
+        mockReceiveFor.mock.calls.every(
+          ([request]) => request.personalIbanProvider === undefined,
+        ),
+      ).toBe(true);
+      expect(
+        screen.queryByRole('button', { name: 'Show legacy Yapeal IBAN' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Show Bank Frick IBAN' }),
+      ).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('starts the automatic Frick quote when user loading changes from true to false', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUser.mockReturnValue({ kyc: { level: 50 } });
+    mockIsUserLoading.mockReturnValue(true);
+    mockGetPersonalIbans.mockResolvedValue([activeChfYapealRow]);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+
+    const quoteDeferred = createDeferred<ReturnType<typeof frickChfOffer>>();
+    mockReceiveFor.mockReturnValue(quoteDeferred.promise);
+
+    const rendered = render(<BuyScreen />);
+    await settle();
+    expect(mockReceiveFor).not.toHaveBeenCalled();
+
+    mockIsUserLoading.mockReturnValue(false);
+    rendered.rerender(<BuyScreen />);
+
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
+    expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
+
+    await act(async () => {
+      quoteDeferred.resolve(frickChfOffer());
+    });
+    await settle();
+
+    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
+  });
+
+  it('does not delay the first quote when the user context is already loaded', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUser.mockReturnValue({ kyc: { level: 50 } });
+    mockIsUserLoading.mockReturnValue(false);
+    mockGetPersonalIbans.mockResolvedValue([activeChfYapealRow]);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+
+    const quoteDeferred = createDeferred<ReturnType<typeof frickChfOffer>>();
+    mockReceiveFor.mockReturnValue(quoteDeferred.promise);
+
+    render(<BuyScreen />);
+
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
+    expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
+
+    await act(async () => {
+      quoteDeferred.resolve(frickChfOffer());
+    });
+    await settle();
+
+    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
+  });
+
+  it('fails open selector-less after the user-loading timeout', async () => {
+    jest.useFakeTimers();
+    try {
+      mockPersonalIban.mockReturnValue(undefined);
+      mockRequestedPersonalIban.mockReturnValue(undefined);
+      mockUser.mockReturnValue({ kyc: { level: 50 } });
+      mockIsUserLoading.mockReturnValue(true);
+      mockGetPersonalIbans.mockResolvedValue([activeChfYapealRow]);
+      mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+      mockReceiveFor.mockResolvedValue(chfOffer());
+
+      render(<BuyScreen />);
+      await settle();
+      expect(mockReceiveFor).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(10000);
+        await Promise.resolve();
+      });
+      await settle();
+
+      expect(mockReceiveFor).toHaveBeenCalled();
+      expect(mockReceiveFor.mock.calls[0][0]).not.toHaveProperty(
+        'personalIbanProvider',
+      );
+      await settle();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('discards a quote rejection from the previous customer identity', async () => {
+    let customerIdentity = 1;
+    const staleQuote = createDeferred<ReturnType<typeof frickChfOffer>>();
+    mockCustomerIdentity.mockImplementation(() => customerIdentity);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor
+      .mockReturnValueOnce(staleQuote.promise)
+      .mockResolvedValue(frickChfOffer());
+
+    const rendered = render(<BuyScreen />);
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+
+    customerIdentity = 2;
+    rendered.rerender(<BuyScreen />);
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+
+    await act(async () => {
+      staleQuote.reject({ message: 'PersonalIbanProviderNotAvailable' });
+      await Promise.resolve();
+    });
+    await settle();
+
+    expect(screen.getByTestId('payment-info')).toHaveAttribute('data-show-bank', 'true');
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('quote-error-hint')).not.toBeInTheDocument();
+  });
+
+  it('does not let a stale successful quote overwrite the new customer offer', async () => {
+    let customerIdentity = 1;
+    const staleQuote = createDeferred<ReturnType<typeof frickChfOffer>>();
+    const currentOffer = frickChfOffer();
+    mockCustomerIdentity.mockImplementation(() => customerIdentity);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor.mockReturnValueOnce(staleQuote.promise).mockResolvedValue(currentOffer);
+
+    const rendered = render(<BuyScreen />);
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+
+    customerIdentity = 2;
+    rendered.rerender(<BuyScreen />);
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+
+    await act(async () => {
+      staleQuote.resolve(
+        frickOffer({
+          currency: { name: 'CHF' },
+          name: 'Stale customer',
+          iban: 'LI-ST-ALE',
+        }),
+      );
+      await Promise.resolve();
+    });
+    await settle();
+
+    expect(screen.getByTestId('payment-info')).not.toHaveTextContent('Stale customer');
+    expect(screen.getByTestId('payment-info')).not.toHaveTextContent('LI-ST-ALE');
+    expect(screen.getByTestId('payment-info')).toHaveAttribute('data-show-bank', 'true');
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('quote-error-hint')).not.toBeInTheDocument();
+  });
+
+  it('does not carry selector suppression across customer identities', async () => {
+    let customerIdentity = 1;
+    mockCustomerIdentity.mockImplementation(() => customerIdentity);
+    mockPersonalIban.mockReturnValue('unknown-provider');
+    mockRequestedPersonalIban.mockReturnValue('unknown-provider');
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor.mockResolvedValue(chfOffer());
+
+    const rendered = render(<BuyScreen />);
+    await waitFor(() =>
+      expect(
+        screen.getByText('The requested personal IBAN provider is not recognized.'),
+      ).toBeInTheDocument(),
+    );
+    await act(async () => {
+      screen.getByRole('button', { name: CONTINUE_WITHOUT }).click();
+    });
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+    const requestCountBeforeSwap = mockReceiveFor.mock.calls.length;
+
+    customerIdentity = 2;
+    rendered.rerender(<BuyScreen />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('The requested personal IBAN provider is not recognized.'),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: CONTINUE_WITHOUT })).toBeInTheDocument();
+    expect(mockReceiveFor).toHaveBeenCalledTimes(requestCountBeforeSwap);
+  });
+
+  it('requires a fresh mismatch acknowledgement after the customer identity changes', async () => {
+    let customerIdentity = 1;
+    mockCustomerIdentity.mockImplementation(() => customerIdentity);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'USD' }));
+    mockReceiveFor.mockResolvedValue(usdOffer());
+
+    const rendered = render(<BuyScreen />);
+    await waitFor(() => expect(screen.getByText(MISMATCH_HINT)).toBeInTheDocument());
+    await act(async () => {
+      screen.getByRole('button', { name: CONTINUE_WITHOUT }).click();
+    });
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+
+    customerIdentity = 2;
+    rendered.rerender(<BuyScreen />);
+
+    await waitFor(() => expect(screen.getByText(MISMATCH_HINT)).toBeInTheDocument());
+    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
   });
 });

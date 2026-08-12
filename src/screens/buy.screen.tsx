@@ -195,9 +195,27 @@ export default function BuyScreen(): JSX.Element {
   const [retryToken, setRetryToken] = useState(0);
   // Explicit acknowledgement before showing ordinary details when the selector is set but
   // inapplicable or the Frick response failed compatibility checks (A2 / B1 / C1).
-  const [continueWithoutPersonalIban, setContinueWithoutPersonalIban] = useState(false);
+  const [continueWithoutPersonalIban, setContinueWithoutPersonalIban] = useState<{
+    value: boolean;
+    identity: number | undefined;
+  }>();
   // Suppress an unrecognized selector so the customer can continue with an ordinary quote (A3).
-  const [suppressPersonalIban, setSuppressPersonalIban] = useState(false);
+  const [suppressPersonalIban, setSuppressPersonalIban] = useState<{
+    value: boolean;
+    identity: number | undefined;
+  }>();
+  // Selector acknowledgement and suppression only apply to the account that chose them. The
+  // identity check closes the same-commit race in which the quote effect can run before the
+  // selector-scoped reset has committed after an in-place account switch.
+  const activeContinueWithoutPersonalIban =
+    continueWithoutPersonalIban !== undefined &&
+    continueWithoutPersonalIban.identity === customerIdentity
+      ? continueWithoutPersonalIban.value
+      : false;
+  const activeSuppressPersonalIban =
+    suppressPersonalIban !== undefined && suppressPersonalIban.identity === customerIdentity
+      ? suppressPersonalIban.value
+      : false;
   // The customer's personal-IBAN provider rows (currency-independent), loaded once per session.
   // A failed load only suppresses the switch-provider offer - it is deliberately NOT a silent
   // fallback to a substitute value, the ordinary quote flow itself is completely untouched by it.
@@ -232,6 +250,14 @@ export default function BuyScreen(): JSX.Element {
   // True once the automatic Frick default has been tried and rejected for KycRequired; prevents
   // the effective-provider derivation below from retrying the same automatic default forever.
   const [frickDefaultKycFallback, setFrickDefaultKycFallback] = useState(false);
+  const [userLoadTimeout, setUserLoadTimeout] = useState<{
+    identity: number | undefined;
+    timedOut: true;
+  }>();
+  const userLoadTimedOut =
+    userLoadTimeout !== undefined &&
+    userLoadTimeout.identity === customerIdentity &&
+    userLoadTimeout.timedOut;
 
   // Live-input generation: bumps immediately when form inputs or selector change so stale
   // debounced responses and confirm actions never commit against a newer form state (B4).
@@ -242,8 +268,8 @@ export default function BuyScreen(): JSX.Element {
   const customerIdentityRef = useRef(customerIdentity);
   customerIdentityRef.current = customerIdentity;
 
-  const effectivePersonalIban = suppressPersonalIban ? undefined : personalIban;
-  const personalIbanSelector = suppressPersonalIban
+  const effectivePersonalIban = activeSuppressPersonalIban ? undefined : personalIban;
+  const personalIbanSelector = activeSuppressPersonalIban
     ? undefined
     : requestedPersonalIban;
 
@@ -382,6 +408,25 @@ export default function BuyScreen(): JSX.Element {
       window.clearTimeout(timeoutId);
     };
   }, [hasAuthenticatedCustomer, customerIdentity, getPersonalIbans]);
+
+  useEffect(() => {
+    setUserLoadTimeout(undefined);
+    if (!isUserLoading) return;
+    let isRunning = true;
+    const loadingCustomerIdentity = customerIdentity;
+    const timeoutId = window.setTimeout(() => {
+      if (isRunning && customerIdentityRef.current === loadingCustomerIdentity) {
+        // Deliberate fail-open: after the cap, quote selector-less instead of blocking the core
+        // buy flow. A late user-context load re-evaluates KYC and triggers the ordinary
+        // corrective quote/provider-switch machinery when needed.
+        setUserLoadTimeout({ identity: loadingCustomerIdentity, timedOut: true });
+      }
+    }, 10000);
+    return () => {
+      isRunning = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [isUserLoading, customerIdentity]);
 
   useEffect(() => setAddress(), [session?.address, translate, addressItems.length]);
 
@@ -530,7 +575,7 @@ export default function BuyScreen(): JSX.Element {
     setPaymentInfo(undefined);
     setPaymentInfoPaymentMethod(undefined);
     setSentPersonalIbanProvider(undefined);
-    setContinueWithoutPersonalIban(false);
+    setContinueWithoutPersonalIban(undefined);
     if (!hasCompleteSpendSide && !hasCompleteGetSide) {
       setValidatedData(undefined);
       setIsLoading(undefined);
@@ -539,11 +584,12 @@ export default function BuyScreen(): JSX.Element {
     }
   }, [currentQuoteRequestSignature]);
 
-  // Selector-scoped UI state changes with the live intent even when the request cannot carry it.
+  // Selector/account-scoped UI state changes with the live intent even when the request cannot
+  // carry it.
   useEffect(() => {
-    setContinueWithoutPersonalIban(false);
-    setSuppressPersonalIban(false);
-  }, [requestedPersonalIban]);
+    setContinueWithoutPersonalIban(undefined);
+    setSuppressPersonalIban(undefined);
+  }, [requestedPersonalIban, customerIdentity]);
 
   // The provider-switch override and the KYC fallback flag must not survive a selector or
   // currency change - otherwise a stale override could silently apply to an unrelated quote.
@@ -565,7 +611,10 @@ export default function BuyScreen(): JSX.Element {
       ? activeProviderOverride
       : hasRequestedPersonalIbanSelector
       ? toPersonalIbanProviderRequest(effectivePersonalIban).personalIbanProvider
-      : requestYapealAlternative !== undefined && kycAllowsFrick && !frickDefaultKycFallback
+      : requestYapealAlternative !== undefined &&
+        !isUserLoading &&
+        kycAllowsFrick &&
+        !frickDefaultKycFallback
       ? PersonalIbanProvider.FRICK
       : undefined;
   const isPersonalIbanEligible =
@@ -596,7 +645,8 @@ export default function BuyScreen(): JSX.Element {
     activeProviderOverride === undefined &&
     !hasRequestedPersonalIbanSelector &&
     !frickDefaultKycFallback &&
-    (isUserLoading || (kycAllowsFrick && activePersonalIbans === undefined));
+    ((isUserLoading && !userLoadTimedOut) ||
+      (!isUserLoading && kycAllowsFrick && activePersonalIbans === undefined));
   const personalIbanErrorApplies =
     (isPersonalIbanEligible && requestPersonalIbanProvider !== undefined) ||
     hasUnsupportedPersonalIbanRequest;
@@ -832,13 +882,13 @@ export default function BuyScreen(): JSX.Element {
       setPaymentInfo(undefined);
       setPaymentInfoPaymentMethod(undefined);
       setSentPersonalIbanProvider(undefined);
-      setContinueWithoutPersonalIban(false);
-      setSuppressPersonalIban(true);
+      setContinueWithoutPersonalIban(undefined);
+      setSuppressPersonalIban({ value: true, identity: customerIdentity });
       setProviderOverride(undefined);
       setFrickDefaultKycFallback(true);
     } else {
       // The offer was already selector-free (for example CHF), so acknowledgement is sufficient.
-      setContinueWithoutPersonalIban(true);
+      setContinueWithoutPersonalIban({ value: true, identity: customerIdentity });
     }
   }
 
@@ -970,7 +1020,7 @@ export default function BuyScreen(): JSX.Element {
   // compatibility verification, requires explicit acknowledgement before payment details.
   const needsPersonalIbanAcknowledgement =
     paymentInfo != null &&
-    !continueWithoutPersonalIban &&
+    !activeContinueWithoutPersonalIban &&
     ((personalIbanSelector !== undefined &&
       paymentInfoPaymentMethod !== undefined &&
       !isPersonalIbanApplicable(paymentInfo.currency.name, paymentInfoPaymentMethod)) ||
@@ -1084,7 +1134,9 @@ export default function BuyScreen(): JSX.Element {
                         <StyledButton
                           width={StyledButtonWidth.FULL}
                           label={translate('screens/payment', 'Continue without personal IBAN')}
-                          onClick={() => setSuppressPersonalIban(true)}
+                          onClick={() =>
+                            setSuppressPersonalIban({ value: true, identity: customerIdentity })
+                          }
                           color={StyledButtonColor.STURDY_WHITE}
                         />
                       </StyledVerticalStack>

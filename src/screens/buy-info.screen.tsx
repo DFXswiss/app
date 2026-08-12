@@ -97,9 +97,27 @@ export default function BuyInfoScreen(): JSX.Element {
   const [retryToken, setRetryToken] = useState(0);
   // Explicit acknowledgement before showing ordinary details when the selector is set but
   // inapplicable or the Frick response failed compatibility checks (A2 / B1 / C1).
-  const [continueWithoutPersonalIban, setContinueWithoutPersonalIban] = useState(false);
+  const [continueWithoutPersonalIban, setContinueWithoutPersonalIban] = useState<{
+    value: boolean;
+    identity: number | undefined;
+  }>();
   // Suppress an unrecognized selector so the customer can continue with an ordinary quote (A3).
-  const [suppressPersonalIban, setSuppressPersonalIban] = useState(false);
+  const [suppressPersonalIban, setSuppressPersonalIban] = useState<{
+    value: boolean;
+    identity: number | undefined;
+  }>();
+  // Selector acknowledgement and suppression only apply to the account that chose them. The
+  // identity check closes the same-commit race in which the quote effect can run before the
+  // selector-scoped reset has committed after an in-place account switch.
+  const activeContinueWithoutPersonalIban =
+    continueWithoutPersonalIban !== undefined &&
+    continueWithoutPersonalIban.identity === customerIdentity
+      ? continueWithoutPersonalIban.value
+      : false;
+  const activeSuppressPersonalIban =
+    suppressPersonalIban !== undefined && suppressPersonalIban.identity === customerIdentity
+      ? suppressPersonalIban.value
+      : false;
   // Same mechanism as buy.screen.tsx - see the detailed comments there.
   const [personalIbans, setPersonalIbans] = useState<{
     identity: number | undefined;
@@ -127,13 +145,21 @@ export default function BuyInfoScreen(): JSX.Element {
       ? providerOverride.provider
       : undefined;
   const [frickDefaultKycFallback, setFrickDefaultKycFallback] = useState(false);
+  const [userLoadTimeout, setUserLoadTimeout] = useState<{
+    identity: number | undefined;
+    timedOut: true;
+  }>();
+  const userLoadTimedOut =
+    userLoadTimeout !== undefined &&
+    userLoadTimeout.identity === customerIdentity &&
+    userLoadTimeout.timedOut;
 
   const quoteGeneration = useRef(0);
   const customerIdentityRef = useRef(customerIdentity);
   customerIdentityRef.current = customerIdentity;
 
-  const effectivePersonalIban = suppressPersonalIban ? undefined : personalIban;
-  const personalIbanSelector = suppressPersonalIban
+  const effectivePersonalIban = activeSuppressPersonalIban ? undefined : personalIban;
+  const personalIbanSelector = activeSuppressPersonalIban
     ? undefined
     : requestedPersonalIban;
   const isPersonalIbanEligible = isPersonalIbanApplicable(
@@ -162,7 +188,8 @@ export default function BuyInfoScreen(): JSX.Element {
     activeProviderOverride === undefined &&
     !hasRequestedPersonalIbanSelector &&
     !frickDefaultKycFallback &&
-    (isUserLoading || (kycAllowsFrick && activePersonalIbans === undefined));
+    ((isUserLoading && !userLoadTimedOut) ||
+      (!isUserLoading && kycAllowsFrick && activePersonalIbans === undefined));
 
   // The customer's existing, still-payable Yapeal row for the selected currency, if any.
   const yapealAlternative = getYapealAlternative(activePersonalIbans, currency?.name);
@@ -173,7 +200,10 @@ export default function BuyInfoScreen(): JSX.Element {
       ? activeProviderOverride
       : hasRequestedPersonalIbanSelector
       ? toPersonalIbanProviderRequest(effectivePersonalIban).personalIbanProvider
-      : yapealAlternative !== undefined && kycAllowsFrick && !frickDefaultKycFallback
+      : yapealAlternative !== undefined &&
+        !isUserLoading &&
+        kycAllowsFrick &&
+        !frickDefaultKycFallback
       ? PersonalIbanProvider.FRICK
       : undefined;
 
@@ -227,14 +257,33 @@ export default function BuyInfoScreen(): JSX.Element {
   }, [hasAuthenticatedCustomer, customerIdentity, getPersonalIbans]);
 
   useEffect(() => {
+    setUserLoadTimeout(undefined);
+    if (!isUserLoading) return;
+    let isRunning = true;
+    const loadingCustomerIdentity = customerIdentity;
+    const timeoutId = window.setTimeout(() => {
+      if (isRunning && customerIdentityRef.current === loadingCustomerIdentity) {
+        // Deliberate fail-open: after the cap, quote selector-less instead of blocking the core
+        // buy flow. A late user-context load re-evaluates KYC and triggers the ordinary
+        // corrective quote/provider-switch machinery when needed.
+        setUserLoadTimeout({ identity: loadingCustomerIdentity, timedOut: true });
+      }
+    }, 10000);
+    return () => {
+      isRunning = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [isUserLoading, customerIdentity]);
+
+  useEffect(() => {
     if (!currency) setCurrency(getCurrency(currencies, assetIn));
   }, [assetIn, getCurrency, currencies]);
 
-  // Reset acknowledgement / suppression when the live selector or quote inputs change.
+  // Reset acknowledgement / suppression when the account, live selector or quote inputs change.
   useEffect(() => {
-    setContinueWithoutPersonalIban(false);
-    setSuppressPersonalIban(false);
-  }, [requestedPersonalIban, asset, currency, amountIn, amountOut]);
+    setContinueWithoutPersonalIban(undefined);
+    setSuppressPersonalIban(undefined);
+  }, [requestedPersonalIban, asset, currency, amountIn, amountOut, customerIdentity]);
 
   // The provider-switch override and the KYC fallback flag must not survive a selector or
   // currency change - otherwise a stale override could silently apply to an unrelated quote.
@@ -453,13 +502,13 @@ export default function BuyInfoScreen(): JSX.Element {
       // Together these state changes suppress URL, toggle and automatic-default provider paths.
       setPaymentInfo(undefined);
       setSentPersonalIbanProvider(undefined);
-      setContinueWithoutPersonalIban(false);
-      setSuppressPersonalIban(true);
+      setContinueWithoutPersonalIban(undefined);
+      setSuppressPersonalIban({ value: true, identity: customerIdentity });
       setProviderOverride(undefined);
       setFrickDefaultKycFallback(true);
     } else {
       // Inapplicable offers were already requested without a selector.
-      setContinueWithoutPersonalIban(true);
+      setContinueWithoutPersonalIban({ value: true, identity: customerIdentity });
     }
   }
 
@@ -497,7 +546,7 @@ export default function BuyInfoScreen(): JSX.Element {
   // response that failed compatibility verification, requires explicit acknowledgement.
   const needsPersonalIbanAcknowledgement =
     paymentInfo != null &&
-    !continueWithoutPersonalIban &&
+    !activeContinueWithoutPersonalIban &&
     ((personalIbanSelector !== undefined &&
       !isPersonalIbanApplicable(paymentInfo.currency.name, FiatPaymentMethod.BANK) &&
       !isPersonalIbanApplicable(currency?.name, FiatPaymentMethod.BANK)) ||
@@ -519,7 +568,9 @@ export default function BuyInfoScreen(): JSX.Element {
           <StyledButton
             width={StyledButtonWidth.FULL}
             label={translate('screens/payment', 'Continue without personal IBAN')}
-            onClick={() => setSuppressPersonalIban(true)}
+            onClick={() =>
+              setSuppressPersonalIban({ value: true, identity: customerIdentity })
+            }
             color={StyledButtonColor.STURDY_WHITE}
           />
           <StyledButton
