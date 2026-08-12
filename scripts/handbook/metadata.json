@@ -67,6 +67,10 @@
     "title": "Compliance: Offene Chargebacks",
     "description": "Liste offener Chargebacks mit Blockgründen, Namensvergleich und Leerzustand."
   },
+  "compliance-bank-tx-return": {
+    "title": "Compliance: Bank-Tx-Rückzahlung freigeben",
+    "description": "Rückzahlungsformular mit Banner für manuelle Freigabe und klarer Meldung wenn die Rückzahlung bereits freigegeben/ausgezahlt ist."
+  },
   "compliance-review-kyc-status": {
     "title": "Compliance KYC-Status",
     "description": "KYC-Status und AML-Reset in der Compliance-Review."
