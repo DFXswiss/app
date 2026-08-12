@@ -555,8 +555,16 @@ export function useOcp(): OcpApi {
         const lnurl = link?.lnurl || demoLnurl(`pos_${linkId}_${Math.round(amount * 100)}`);
         return { lnurl };
       }
-      // SDK body type requires mode/currency/etc. for the full form; POS only posts amount.
-      const data = await createPaymentLinkPayment({ amount } as CreatePaymentLinkPayment, String(linkId));
+      // Production POS posts amount + externalId; SDK type also lists mode/currency/expiry for
+      // the full merchant form — cast keeps the wire body the API accepts for a POS charge.
+      const externalId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `pos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      const data = await createPaymentLinkPayment(
+        { amount, externalId } as CreatePaymentLinkPayment,
+        String(linkId),
+      );
       const lnurl = extractChargeLnurl(data);
       if (!lnurl) throw new ApiException(0, t('genErr'));
       return { lnurl };
