@@ -119,7 +119,11 @@ jest.mock('src/components/payment/payment-info-buy', () => ({
                 ? 'Show legacy Yapeal IBAN'
                 : 'Show Bank Frick IBAN'
             }
-            onClick={personalIbanProviderSwitch.onSwitch}
+            onClick={() =>
+              personalIbanProviderSwitch.onSwitch(
+                personalIbanProviderSwitch.target,
+              )
+            }
           >
             switch provider
           </button>
@@ -798,6 +802,87 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
     });
   });
 
+  it('recovers from an unavailable toggled Yapeal provider without showing the Frick KYC hint', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUser.mockReturnValue({ kyc: { level: 50 } });
+    mockGetPersonalIbans.mockResolvedValue([activeChfYapealRow]);
+    mockReceiveFor.mockImplementation((request: { personalIbanProvider?: string }) => {
+      if (request.personalIbanProvider === 'Yapeal') {
+        return Promise.reject({ message: 'PersonalIbanProviderNotAvailable' });
+      }
+      return Promise.resolve(
+        request.personalIbanProvider === 'Frick'
+          ? frickChfOffer()
+          : chfOffer(),
+      );
+    });
+
+    render(<BuyInfoScreen />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Show legacy Yapeal IBAN' }),
+      ).toBeInTheDocument(),
+    );
+    await act(async () => {
+      screen.getByRole('button', { name: 'Show legacy Yapeal IBAN' }).click();
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Show available IBAN' }),
+      ).toBeInTheDocument(),
+    );
+    const requestCountBeforeRecovery = mockReceiveFor.mock.calls.length;
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Show available IBAN' }).click();
+    });
+
+    await waitFor(() =>
+      expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(
+        requestCountBeforeRecovery,
+      ),
+    );
+    expect(mockReceiveFor.mock.calls[requestCountBeforeRecovery][0]).not.toHaveProperty(
+      'personalIbanProvider',
+    );
+    expect(screen.queryByText(FRICK_FALLBACK_HINT)).not.toBeInTheDocument();
+  });
+
+  it('recovers from an unavailable URL-selected provider without showing the Frick KYC hint', async () => {
+    mockPersonalIban.mockReturnValue('Frick');
+    mockRequestedPersonalIban.mockReturnValue('Frick');
+    mockReceiveFor.mockImplementation((request: { personalIbanProvider?: string }) =>
+      request.personalIbanProvider === 'Frick'
+        ? Promise.reject({ message: 'PersonalIbanProviderNotAvailable' })
+        : Promise.resolve(chfOffer()),
+    );
+
+    render(<BuyInfoScreen />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Show available IBAN' }),
+      ).toBeInTheDocument(),
+    );
+    const requestCountBeforeRecovery = mockReceiveFor.mock.calls.length;
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Show available IBAN' }).click();
+    });
+
+    await waitFor(() =>
+      expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(
+        requestCountBeforeRecovery,
+      ),
+    );
+    expect(mockReceiveFor.mock.calls[requestCountBeforeRecovery][0]).not.toHaveProperty(
+      'personalIbanProvider',
+    );
+    expect(screen.queryByText(FRICK_FALLBACK_HINT)).not.toBeInTheDocument();
+  });
+
   it('falls back from an automatic Frick KycRequired response without showing the blocking KYC screen', async () => {
     mockPersonalIban.mockReturnValue(undefined);
     mockRequestedPersonalIban.mockReturnValue(undefined);
@@ -965,7 +1050,7 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
     const rowsDeferred = createDeferred<(typeof activeChfYapealRow)[]>();
     mockGetPersonalIbans.mockReturnValue(rowsDeferred.promise);
 
-    const quoteDeferred = createDeferred<any>();
+    const quoteDeferred = createDeferred<ReturnType<typeof chfOffer>>();
     mockReceiveFor.mockReturnValue(quoteDeferred.promise);
 
     render(<BuyInfoScreen />);

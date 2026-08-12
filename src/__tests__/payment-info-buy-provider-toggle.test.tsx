@@ -93,7 +93,9 @@ describe('PaymentInformationContent personal-IBAN provider toggle', () => {
 
     fireEvent.click(button);
 
-    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith();
+    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith(
+      PersonalIbanProvider.YAPEAL,
+    );
   });
 
   it('offers the Bank Frick direction and forwards the Frick provider', () => {
@@ -113,7 +115,9 @@ describe('PaymentInformationContent personal-IBAN provider toggle', () => {
 
     fireEvent.click(button);
 
-    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith();
+    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith(
+      PersonalIbanProvider.FRICK,
+    );
   });
 
   it('does not show a provider toggle when the bundled switch prop is absent', () => {

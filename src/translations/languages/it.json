@@ -956,6 +956,7 @@
     "Show personal IBAN": "Mostra l'IBAN personale",
     "Show legacy Yapeal IBAN": "Mostra il vecchio IBAN Yapeal",
     "Show Bank Frick IBAN": "Mostra l'IBAN Bank Frick",
+    "Show available IBAN": "Mostra l'IBAN disponibile",
     "The requested personal IBAN is not available for your account. Please switch back or contact support.": "L'IBAN personale richiesto non è disponibile per il tuo account. Torna indietro oppure contatta l'assistenza.",
     "Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.": "Il tuo nuovo IBAN Bank Frick richiede il livello KYC 50: ti mostriamo invece il tuo IBAN esistente."
   },

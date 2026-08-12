@@ -28,7 +28,7 @@ interface PaymentInformationContentProps {
   /** Renders a provider toggle and requests a fresh quote pinned to its target. */
   personalIbanProviderSwitch?: {
     target: PersonalIbanProvider;
-    onSwitch: () => void;
+    onSwitch: (provider: PersonalIbanProvider) => void;
   };
 }
 
@@ -137,7 +137,9 @@ function PaymentInformationText({
             <button
               type="button"
               className="ml-1"
-              onClick={() => personalIbanProviderSwitch.onSwitch()}
+              onClick={() =>
+                personalIbanProviderSwitch.onSwitch(personalIbanProviderSwitch.target)
+              }
               aria-label={translate(
                 'screens/payment',
                 personalIbanProviderSwitch.target === PersonalIbanProvider.YAPEAL

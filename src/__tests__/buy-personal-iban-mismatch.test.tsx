@@ -201,7 +201,11 @@ jest.mock('src/components/payment/payment-info-buy', () => ({
                 ? 'Show legacy Yapeal IBAN'
                 : 'Show Bank Frick IBAN'
             }
-            onClick={personalIbanProviderSwitch.onSwitch}
+            onClick={() =>
+              personalIbanProviderSwitch.onSwitch(
+                personalIbanProviderSwitch.target,
+              )
+            }
           >
             switch provider
           </button>
@@ -1288,6 +1292,89 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     );
   });
 
+  it('recovers from an unavailable toggled Yapeal provider without showing the Frick KYC hint', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUser.mockReturnValue({ kyc: { level: 50 } });
+    mockGetPersonalIbans.mockResolvedValue([activeChfYapealRow]);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor.mockImplementation((request: { personalIbanProvider?: string }) => {
+      if (request.personalIbanProvider === 'Yapeal') {
+        return Promise.reject({ message: 'PersonalIbanProviderNotAvailable' });
+      }
+      return Promise.resolve(
+        request.personalIbanProvider === 'Frick'
+          ? frickChfOffer()
+          : chfOffer(),
+      );
+    });
+
+    render(<BuyScreen />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Show legacy Yapeal IBAN' }),
+      ).toBeInTheDocument(),
+    );
+    await act(async () => {
+      screen.getByRole('button', { name: 'Show legacy Yapeal IBAN' }).click();
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Show available IBAN' }),
+      ).toBeInTheDocument(),
+    );
+    const requestCountBeforeRecovery = mockReceiveFor.mock.calls.length;
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Show available IBAN' }).click();
+    });
+
+    await waitFor(() =>
+      expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(
+        requestCountBeforeRecovery,
+      ),
+    );
+    expect(mockReceiveFor.mock.calls[requestCountBeforeRecovery][0]).not.toHaveProperty(
+      'personalIbanProvider',
+    );
+    expect(screen.queryByText(FRICK_FALLBACK_HINT)).not.toBeInTheDocument();
+  });
+
+  it('recovers from an unavailable URL-selected provider without showing the Frick KYC hint', async () => {
+    mockPersonalIban.mockReturnValue('Frick');
+    mockRequestedPersonalIban.mockReturnValue('Frick');
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor.mockImplementation((request: { personalIbanProvider?: string }) =>
+      request.personalIbanProvider === 'Frick'
+        ? Promise.reject({ message: 'PersonalIbanProviderNotAvailable' })
+        : Promise.resolve(chfOffer()),
+    );
+
+    render(<BuyScreen />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Show available IBAN' }),
+      ).toBeInTheDocument(),
+    );
+    const requestCountBeforeRecovery = mockReceiveFor.mock.calls.length;
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Show available IBAN' }).click();
+    });
+
+    await waitFor(() =>
+      expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(
+        requestCountBeforeRecovery,
+      ),
+    );
+    expect(mockReceiveFor.mock.calls[requestCountBeforeRecovery][0]).not.toHaveProperty(
+      'personalIbanProvider',
+    );
+    expect(screen.queryByText(FRICK_FALLBACK_HINT)).not.toBeInTheDocument();
+  });
+
   it('falls back from an automatic Frick KycRequired response without showing the blocking KYC screen', async () => {
     mockPersonalIban.mockReturnValue(undefined);
     mockRequestedPersonalIban.mockReturnValue(undefined);
@@ -1841,6 +1928,53 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
       'data-is-loading',
       'false',
     );
+  });
+
+  it('ignores a successful confirmation from a stale quote generation after a live form edit', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor.mockResolvedValue(chfOffer());
+
+    render(<BuyScreen />);
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: TRANSFER_BUTTON })).toBeInTheDocument();
+
+    const confirmationDeferred = createDeferred<void>();
+    mockConfirmFor.mockReturnValue(confirmationDeferred.promise);
+
+    await act(async () => {
+      screen.getByRole('button', { name: TRANSFER_BUTTON }).click();
+    });
+    expect(screen.getByRole('button', { name: TRANSFER_BUTTON })).toHaveAttribute(
+      'data-is-loading',
+      'true',
+    );
+
+    const receiveForCallsBeforeEdit = mockReceiveFor.mock.calls.length;
+    mockReceiveFor.mockResolvedValue({ ...chfOffer(), id: 9, iban: 'CH00-QUOTE-TWO' });
+
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '350' } });
+    });
+    await waitFor(() =>
+      expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(receiveForCallsBeforeEdit),
+    );
+    await settle();
+    expect(screen.getByTestId('payment-info')).toHaveTextContent('CH00-QUOTE-TWO');
+    expect(screen.getByRole('button', { name: TRANSFER_BUTTON })).toHaveAttribute(
+      'data-is-loading',
+      'false',
+    );
+
+    await act(async () => {
+      confirmationDeferred.resolve(undefined);
+    });
+    await settle();
+
+    expect(screen.queryByTestId('buy-completion')).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toHaveTextContent('CH00-QUOTE-TWO');
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   it('ignores a successful confirmation after unmount', async () => {

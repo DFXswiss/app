@@ -93,7 +93,7 @@ describe('deriveEffectivePersonalIbanProvider', () => {
     hasYapealAlternative: true,
     isUserLoading: false,
     kycAllowsFrick: true,
-    frickDefaultKycFallback: false,
+    automaticFrickSuppressed: false,
   };
 
   it('prefers an explicit provider override', () => {
@@ -136,7 +136,7 @@ describe('deriveEffectivePersonalIbanProvider', () => {
     ['no Yapeal alternative', { hasYapealAlternative: false }],
     ['user still loading', { isUserLoading: true }],
     ['KYC below threshold', { kycAllowsFrick: false }],
-    ['KYC fallback active', { frickDefaultKycFallback: true }],
+    ['automatic Frick default suppressed', { automaticFrickSuppressed: true }],
   ])('omits the automatic provider when %s', (_case, override) => {
     expect(
       deriveEffectivePersonalIbanProvider({ ...autoFrickParams, ...override }),

@@ -800,6 +800,44 @@ test.describe('Buy Process - UI Flow', () => {
       sepaInstant: false,
       isPersonalIban: true,
     };
+    const availableResponse = {
+      id: 24,
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.0251,
+      rate: 3862.5,
+      exchangeRate: 3984.06,
+      priceSteps: [],
+      minVolume: 10,
+      maxVolume: 990000,
+      minVolumeTarget: 0.0026,
+      maxVolumeTarget: 248.5,
+      fees: {
+        rate: 0.0099,
+        fixed: 0,
+        min: 0,
+        dfx: 0.99,
+        network: 0,
+        bank: 0,
+        bankFixed: 2,
+        bankVariable: 0,
+        platform: 0,
+        total: 2.99,
+      },
+      currency: { id: 1, name: 'CHF' },
+      asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
+      bic: 'POFICHBEXXX',
+      iban: 'CH9300762011623852957',
+      name: 'DFX AG',
+      street: 'Bahnhofstrasse',
+      number: '7',
+      zip: '6300',
+      city: 'Zug',
+      country: 'Schweiz',
+      remittanceInfo: 'A1B2-C3D4-E5F6',
+      sepaInstant: false,
+    };
+    let recoveryRequestData: Record<string, unknown> | undefined;
 
     await page.route('**/v1/buy/paymentInfos', async (route) => {
       const requestData = route.request().postDataJSON() as Record<string, unknown>;
@@ -812,6 +850,15 @@ test.describe('Buy Process - UI Flow', () => {
             message: 'PersonalIbanProviderNotAvailable',
             error: 'Bad Request',
           },
+        });
+        return;
+      }
+      if (requestData.personalIbanProvider === undefined) {
+        recoveryRequestData = requestData;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          json: availableResponse,
         });
         return;
       }
@@ -847,6 +894,17 @@ test.describe('Buy Process - UI Flow', () => {
       fullPage: true,
       maxDiffPixels: 10000,
     });
+
+    await page.getByRole('button', { name: 'Show available IBAN' }).click();
+
+    await expect.poll(() => recoveryRequestData !== undefined).toBe(true);
+    expect(recoveryRequestData).not.toHaveProperty('personalIbanProvider');
+    await expect(
+      page.getByText(
+        'The requested personal IBAN is not available for your account. Please switch back or contact support.',
+      ),
+    ).not.toBeVisible();
+    await expect(page.getByText('CH93 0076 2011 6238 5295 7')).toBeVisible();
   });
 
   test('falls back to the legacy Yapeal IBAN when the automatic Frick request requires KYC', async ({

@@ -96,7 +96,7 @@ interface EffectivePersonalIbanProviderParams {
   hasYapealAlternative: boolean;
   isUserLoading: boolean;
   kycAllowsFrick: boolean;
-  frickDefaultKycFallback: boolean;
+  automaticFrickSuppressed: boolean;
 }
 
 /** Applies the shared provider precedence used by both buy quote screens. */
@@ -107,7 +107,7 @@ export function deriveEffectivePersonalIbanProvider({
   hasYapealAlternative,
   isUserLoading,
   kycAllowsFrick,
-  frickDefaultKycFallback,
+  automaticFrickSuppressed,
 }: EffectivePersonalIbanProviderParams): PersonalIbanProvider | undefined {
   if (providerOverride !== undefined) return providerOverride;
   if (hasRequestedPersonalIbanSelector) {
@@ -117,7 +117,7 @@ export function deriveEffectivePersonalIbanProvider({
     hasYapealAlternative &&
     !isUserLoading &&
     kycAllowsFrick &&
-    !frickDefaultKycFallback
+    !automaticFrickSuppressed
   ) {
     return PersonalIbanProvider.FRICK;
   }
