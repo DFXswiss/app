@@ -22,11 +22,21 @@ interface Props {
   context: CallOutcomeContext;
   availableOutcomes: CallOutcome[];
   clerks: string[];
+  clerksError?: string;
+  clerksLoading?: boolean;
   onSaved: () => void;
   title: string;
 }
 
-export function CallQueueOutcomeForm({ context, availableOutcomes, clerks, onSaved, title }: Props): JSX.Element {
+export function CallQueueOutcomeForm({
+  context,
+  availableOutcomes,
+  clerks,
+  clerksError,
+  clerksLoading,
+  onSaved,
+  title,
+}: Props): JSX.Element {
   const { translate } = useSettingsContext();
   const { saveCallOutcome } = useCompliance();
   const { session } = useAuthContext();
@@ -88,6 +98,17 @@ export function CallQueueOutcomeForm({ context, availableOutcomes, clerks, onSav
   return (
     <div className="w-full bg-white rounded-lg shadow-sm p-4">
       <h3 className="text-base font-semibold text-dfxBlue-800 mb-3">{title}</h3>
+      {!clerks.length && !clerksLoading && (
+        <div className="mb-4">
+          <ErrorHint
+            message={
+              clerksError
+                ? `Could not load the clerk list: ${clerksError}. Saving is disabled until it loads.`
+                : 'No clerks are configured, so no signature can be selected and saving stays disabled. An admin has to fill the "complianceClerks" setting.'
+            }
+          />
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-dfxBlue-800 mb-1">Signature</label>
