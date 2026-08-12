@@ -45,6 +45,13 @@ export interface HardwareCallbacks {
 export interface HardwareSession {
   address: string;
   sign: (message: string) => Promise<string>;
+  /**
+   * Close an open device transport without signing. Ledger holds a WebHID transport open
+   * between connect and `sign`; call this when the user aborts in that window so a later
+   * connect does not hit "device already claimed". BitBox/Trezor omit this (no comparable
+   * handle). Idempotent with `sign`'s own finally-close when both run.
+   */
+  dispose?: () => Promise<void>;
 }
 
 const ETH_CHAIN_ID = 1n; // Ethereum mainnet — personal-message signing recovers to the address regardless.
@@ -185,10 +192,9 @@ async function connectLedger(chain: HardwareChain, cb: HardwareCallbacks): Promi
 
   // The transport stays open for the returned `sign` callback (the Ledger client reuses it).
   // Closing it immediately after a successful derive would break the subsequent personal-message
-  // / BTC sign. Close it (a) on derive failure, and (b) after `sign` settles — success or throw —
-  // so a second connect in the same tab does not hit "device already claimed". If the user
-  // abandons after connect and never calls `sign`, the transport still leaks until reload; there
-  // is no dispose hook on HardwareSession to close it earlier.
+  // / BTC sign. Close it (a) on derive failure, (b) after `sign` settles — success or throw —
+  // and (c) via `dispose` when the user aborts after connect and never calls `sign`, so a second
+  // connect in the same tab does not hit "device already claimed".
   const closeTransport = () => transport.close().catch(() => undefined);
 
   try {
@@ -202,6 +208,7 @@ async function connectLedger(chain: HardwareChain, cb: HardwareCallbacks): Promi
       const { address } = await client.getAddress(path, false, false);
       return {
         address,
+        dispose: closeTransport,
         sign: async (message: string) => {
           try {
             const sig = await client.signPersonalMessage(path, Buffer.from(message).toString('hex'));
@@ -225,6 +232,7 @@ async function connectLedger(chain: HardwareChain, cb: HardwareCallbacks): Promi
     const address = await client.getWalletAddress(policy, null, 0, 0, false);
     return {
       address,
+      dispose: closeTransport,
       sign: async (message: string) => {
         try {
           return await client.signMessage(Buffer.from(message), path.address(0));
