@@ -212,6 +212,7 @@ const INVALID_QUEUES: Array<[string | undefined, string]> = [
 describe('ComplianceCallQueueDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    capturedLayoutOptions = undefined;
     mockIsLoggedIn = true;
     mockParams = { queue: 'ManualCheckPhone', userDataId: '2001' };
     mockSearch = '';
