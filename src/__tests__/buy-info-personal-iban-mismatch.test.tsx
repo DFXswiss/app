@@ -74,7 +74,16 @@ jest.mock('@dfx.swiss/react', () => {
       getCurrency: (list: any[], name: string) =>
         (list ?? []).find((c: any) => c.name === name),
     }),
-    useUserContext: () => ({ user: mockUser(), isUserLoading: mockIsUserLoading() }),
+    useUserContext: () => {
+      const user = mockUser();
+      return {
+        user:
+          user === undefined || user.accountId !== undefined
+            ? user
+            : { ...user, accountId: mockCustomerIdentity() },
+        isUserLoading: mockIsUserLoading(),
+      };
+    },
   };
 });
 
@@ -97,28 +106,24 @@ jest.mock('src/components/payment/payment-info-buy', () => ({
   PaymentInformationContent: ({
     info,
     showBank,
-    switchablePersonalIbanProvider,
-    onSwitchPersonalIbanProvider,
+    personalIbanProviderSwitch,
   }: any) => (
     <div data-testid="payment-info" data-show-bank={showBank ? 'true' : 'false'}>
       <span>{info.iban}</span>
       <span>{info.name}</span>
-      {switchablePersonalIbanProvider !== undefined &&
-        onSwitchPersonalIbanProvider !== undefined && (
+      {personalIbanProviderSwitch !== undefined && (
           <button
             type="button"
             aria-label={
-              switchablePersonalIbanProvider === 'Yapeal'
+              personalIbanProviderSwitch.target === 'Yapeal'
                 ? 'Show legacy Yapeal IBAN'
                 : 'Show Bank Frick IBAN'
             }
-            onClick={() =>
-              onSwitchPersonalIbanProvider(switchablePersonalIbanProvider)
-            }
+            onClick={personalIbanProviderSwitch.onSwitch}
           >
             switch provider
           </button>
-        )}
+      )}
     </div>
   ),
 }));
@@ -265,6 +270,11 @@ function yapealChfOffer() {
   };
 }
 
+type BuyInfoOffer =
+  | ReturnType<typeof chfOffer>
+  | ReturnType<typeof frickChfOffer>
+  | ReturnType<typeof yapealChfOffer>;
+
 describe('BuyInfoScreen personal IBAN mismatch hint', () => {
   let consoleErrorSpy: jest.SpyInstance;
 
@@ -274,7 +284,7 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
     mockRequestedPersonalIban.mockReturnValue('Frick');
     mockHasAuthenticatedCustomer.mockReturnValue(true);
     mockCustomerIdentity.mockReset().mockReturnValue(1);
-    mockUser.mockReset().mockReturnValue(undefined);
+    mockUser.mockReset().mockReturnValue({ kyc: { level: 0 } });
     mockIsUserLoading.mockReset().mockReturnValue(false);
     mockGetPersonalIbans.mockReset().mockResolvedValue([]);
     mockWalletInitialized.mockReturnValue(true);
@@ -609,6 +619,129 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
     await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
   });
 
+  it('does not reuse a loaded user from the previous customer for the automatic Frick default', async () => {
+    jest.useFakeTimers();
+    try {
+      let customerIdentity = 1;
+      mockPersonalIban.mockReturnValue(undefined);
+      mockRequestedPersonalIban.mockReturnValue(undefined);
+      mockCustomerIdentity.mockImplementation(() => customerIdentity);
+      mockUser.mockReturnValue({ kyc: { level: 50 }, accountId: 1 });
+      mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+
+      const rowsDeferreds: ReturnType<
+        typeof createDeferred<(typeof activeChfYapealRow)[]>
+      >[] = [];
+      mockGetPersonalIbans.mockImplementation(() => {
+        const deferred = createDeferred<(typeof activeChfYapealRow)[]>();
+        rowsDeferreds.push(deferred);
+        return deferred.promise;
+      });
+      mockReceiveFor.mockImplementation((request: { personalIbanProvider?: string }) =>
+        Promise.resolve(
+          request.personalIbanProvider === 'Frick'
+            ? frickChfOffer()
+            : chfOffer(),
+        ),
+      );
+
+      const rendered = render(<BuyInfoScreen />);
+      await settle();
+      expect(mockGetPersonalIbans).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        rowsDeferreds[0].resolve([activeChfYapealRow]);
+      });
+      await settle();
+      expect(mockReceiveFor).toHaveBeenCalledTimes(1);
+      expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
+      const requestCountBeforeSwap = mockReceiveFor.mock.calls.length;
+
+      customerIdentity = 2;
+      rendered.rerender(<BuyInfoScreen />);
+      await settle();
+      expect(mockGetPersonalIbans).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        rowsDeferreds[1].resolve([activeChfYapealRow]);
+      });
+      await settle();
+      expect(mockReceiveFor).toHaveBeenCalledTimes(requestCountBeforeSwap);
+
+      await act(async () => {
+        jest.advanceTimersByTime(10000);
+        await Promise.resolve();
+      });
+      await settle();
+
+      expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(requestCountBeforeSwap);
+      expect(mockReceiveFor.mock.calls[requestCountBeforeSwap][0]).not.toHaveProperty(
+        'personalIbanProvider',
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('waits for the new customer rows when the previous customer used the Frick KYC fallback', async () => {
+    let customerIdentity = 1;
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockCustomerIdentity.mockImplementation(() => customerIdentity);
+    mockUser.mockReturnValue({ kyc: { level: 50 } });
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+
+    const rowsDeferreds: ReturnType<
+      typeof createDeferred<(typeof activeChfYapealRow)[]>
+    >[] = [];
+    mockGetPersonalIbans.mockImplementation(() => {
+      const deferred = createDeferred<(typeof activeChfYapealRow)[]>();
+      rowsDeferreds.push(deferred);
+      return deferred.promise;
+    });
+
+    const receiveForDeferreds: ReturnType<typeof createDeferred<BuyInfoOffer>>[] = [];
+    mockReceiveFor.mockImplementation(() => {
+      const deferred = createDeferred<BuyInfoOffer>();
+      receiveForDeferreds.push(deferred);
+      return deferred.promise;
+    });
+
+    const rendered = render(<BuyInfoScreen />);
+    await settle();
+    expect(mockGetPersonalIbans).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rowsDeferreds[0].resolve([activeChfYapealRow]);
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+    expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
+
+    await act(async () => {
+      receiveForDeferreds[0].reject({ message: 'KycRequired' });
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(2));
+    expect(mockReceiveFor.mock.calls[1][0]).not.toHaveProperty('personalIbanProvider');
+    const requestCountBeforeSwap = mockReceiveFor.mock.calls.length;
+
+    customerIdentity = 2;
+    rendered.rerender(<BuyInfoScreen />);
+    await settle();
+
+    expect(mockGetPersonalIbans).toHaveBeenCalledTimes(2);
+    expect(mockReceiveFor).toHaveBeenCalledTimes(requestCountBeforeSwap);
+
+    await act(async () => {
+      rowsDeferreds[1].resolve([activeChfYapealRow]);
+    });
+    await waitFor(() =>
+      expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(requestCountBeforeSwap),
+    );
+    expect(mockReceiveFor.mock.calls[requestCountBeforeSwap][0].personalIbanProvider).toBe(
+      'Frick',
+    );
+  });
+
   it('requests Yapeal on the next quote after the legacy-provider toggle is clicked', async () => {
     mockPersonalIban.mockReturnValue(undefined);
     mockRequestedPersonalIban.mockReturnValue(undefined);
@@ -618,9 +751,9 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
     const rowsDeferred = createDeferred<(typeof activeChfYapealRow)[]>();
     mockGetPersonalIbans.mockReturnValue(rowsDeferred.promise);
 
-    const receiveForDeferreds: ReturnType<typeof createDeferred<any>>[] = [];
+    const receiveForDeferreds: ReturnType<typeof createDeferred<BuyInfoOffer>>[] = [];
     mockReceiveFor.mockImplementation(() => {
-      const deferred = createDeferred<any>();
+      const deferred = createDeferred<BuyInfoOffer>();
       receiveForDeferreds.push(deferred);
       return deferred.promise;
     });
@@ -699,9 +832,9 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
     const rowsDeferred = createDeferred<(typeof activeChfYapealRow)[]>();
     mockGetPersonalIbans.mockReturnValue(rowsDeferred.promise);
 
-    const receiveForDeferreds: ReturnType<typeof createDeferred<any>>[] = [];
+    const receiveForDeferreds: ReturnType<typeof createDeferred<BuyInfoOffer>>[] = [];
     mockReceiveFor.mockImplementation(() => {
-      const deferred = createDeferred<any>();
+      const deferred = createDeferred<BuyInfoOffer>();
       receiveForDeferreds.push(deferred);
       return deferred.promise;
     });
@@ -762,9 +895,9 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
       return deferred.promise;
     });
 
-    const receiveForDeferreds: ReturnType<typeof createDeferred<any>>[] = [];
+    const receiveForDeferreds: ReturnType<typeof createDeferred<BuyInfoOffer>>[] = [];
     mockReceiveFor.mockImplementation(() => {
-      const deferred = createDeferred<any>();
+      const deferred = createDeferred<BuyInfoOffer>();
       receiveForDeferreds.push(deferred);
       return deferred.promise;
     });

@@ -43,25 +43,29 @@ export const FRICK_CURRENCIES: readonly string[] = Object.freeze(Object.keys(FRI
  */
 export function normalizePersonalIban(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
-  const match = Object.values(PersonalIbanProvider).find(
+  const match = parsePersonalIbanProvider(value);
+  return match ?? value;
+}
+
+/** Parses a personal-IBAN provider selector case-insensitively. */
+export function parsePersonalIbanProvider(value: string): PersonalIbanProvider | undefined {
+  return Object.values(PersonalIbanProvider).find(
     (provider) => provider.toLowerCase() === value.toLowerCase(),
   );
-  return match ?? value;
 }
 
 /** True when normalizing the selector yields a recognized PersonalIbanProvider member. */
 export function isExplicitPersonalIbanRequest(value: string | undefined): boolean {
-  if (value === undefined) return false;
-  const normalized = normalizePersonalIban(value);
-  return (Object.values(PersonalIbanProvider) as string[]).includes(normalized as string);
+  return value !== undefined && parsePersonalIbanProvider(value) !== undefined;
 }
 
 /** Builds the personalIbanProvider request fragment for any recognized provider, empty otherwise. */
 export function toPersonalIbanProviderRequest(
   value: string | undefined,
 ): { personalIbanProvider?: PersonalIbanProvider } {
-  if (!isExplicitPersonalIbanRequest(value)) return {};
-  return { personalIbanProvider: normalizePersonalIban(value) as PersonalIbanProvider };
+  if (value === undefined) return {};
+  const provider = parsePersonalIbanProvider(value);
+  return provider === undefined ? {} : { personalIbanProvider: provider };
 }
 
 /**
@@ -76,11 +80,6 @@ export function isUnrecognizedPersonalIbanSelector(value: string | undefined): b
   return value !== undefined && !isExplicitPersonalIbanRequest(value);
 }
 
-/** True when the customer explicitly requested the Bank Frick personal-IBAN provider. */
-export function isExplicitFrickPersonalIbanRequest(value: string | undefined): boolean {
-  return value !== undefined && normalizePersonalIban(value) === PersonalIbanProvider.FRICK;
-}
-
 export function isPersonalIbanApplicable(
   currencyName: string | undefined,
   paymentMethod: FiatPaymentMethod | undefined,
@@ -88,6 +87,41 @@ export function isPersonalIbanApplicable(
   return (
     currencyName !== undefined && FRICK_CURRENCIES.includes(currencyName) && paymentMethod === FiatPaymentMethod.BANK
   );
+}
+
+interface EffectivePersonalIbanProviderParams {
+  providerOverride?: PersonalIbanProvider;
+  hasRequestedPersonalIbanSelector: boolean;
+  personalIban?: string;
+  hasYapealAlternative: boolean;
+  isUserLoading: boolean;
+  kycAllowsFrick: boolean;
+  frickDefaultKycFallback: boolean;
+}
+
+/** Applies the shared provider precedence used by both buy quote screens. */
+export function deriveEffectivePersonalIbanProvider({
+  providerOverride,
+  hasRequestedPersonalIbanSelector,
+  personalIban,
+  hasYapealAlternative,
+  isUserLoading,
+  kycAllowsFrick,
+  frickDefaultKycFallback,
+}: EffectivePersonalIbanProviderParams): PersonalIbanProvider | undefined {
+  if (providerOverride !== undefined) return providerOverride;
+  if (hasRequestedPersonalIbanSelector) {
+    return toPersonalIbanProviderRequest(personalIban).personalIbanProvider;
+  }
+  if (
+    hasYapealAlternative &&
+    !isUserLoading &&
+    kycAllowsFrick &&
+    !frickDefaultKycFallback
+  ) {
+    return PersonalIbanProvider.FRICK;
+  }
+  return undefined;
 }
 
 /**

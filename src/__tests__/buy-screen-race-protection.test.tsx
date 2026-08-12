@@ -79,7 +79,7 @@ jest.mock('@dfx.swiss/react', () => {
       getDefaultCurrency: mockGetDefaultCurrency,
     }),
     useSessionContext: () => ({ logout: jest.fn() }),
-    useUserContext: () => ({ user: undefined }),
+    useUserContext: () => ({ user: { kyc: { level: 0 }, accountId: 1 }, isUserLoading: false }),
   };
 });
 
@@ -212,6 +212,7 @@ jest.mock('../hooks/personal-iban.hook', () => ({
   usePersonalIbanSelection: () => ({
     requestedPersonalIban: mockPersonalIban(),
     personalIban: mockPersonalIban(),
+    customerIdentity: 1,
     hasAuthenticatedCustomer: true,
   }),
 }));

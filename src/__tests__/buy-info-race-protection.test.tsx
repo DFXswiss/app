@@ -50,7 +50,7 @@ jest.mock('@dfx.swiss/react', () => {
       getCurrency: (list: any[], name: string) =>
         (list ?? []).find((c: any) => c.name === name),
     }),
-    useUserContext: () => ({ user: undefined }),
+    useUserContext: () => ({ user: { kyc: { level: 0 }, accountId: 1 }, isUserLoading: false }),
   };
 });
 
@@ -89,6 +89,7 @@ jest.mock('src/hooks/personal-iban.hook', () => ({
   usePersonalIbanSelection: () => ({
     requestedPersonalIban: mockPersonalIban(),
     personalIban: mockPersonalIban(),
+    customerIdentity: 1,
     hasAuthenticatedCustomer: true,
   }),
 }));

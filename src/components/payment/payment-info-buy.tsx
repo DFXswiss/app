@@ -25,22 +25,17 @@ interface PaymentInformationContentProps {
    * that flag, and selector-free customers must keep the pre-change presentation.
    */
   showBank?: boolean;
-  /**
-   * When set together with onSwitchPersonalIbanProvider, renders a second toggle button next to
-   * the collection-IBAN toggle that requests a fresh quote pinned to this explicit
-   * personalIbanProvider (e.g. switch a legacy Yapeal holder to their new Bank Frick IBAN, or
-   * back). Undefined when no switch should be offered for the currently displayed offer.
-   */
-  switchablePersonalIbanProvider?: PersonalIbanProvider;
-  /** Requests a new payment-info quote pinned to the given provider. */
-  onSwitchPersonalIbanProvider?: (provider: PersonalIbanProvider) => void;
+  /** Renders a provider toggle and requests a fresh quote pinned to its target. */
+  personalIbanProviderSwitch?: {
+    target: PersonalIbanProvider;
+    onSwitch: () => void;
+  };
 }
 
 export function PaymentInformationContent({
   info,
   showBank,
-  switchablePersonalIbanProvider,
-  onSwitchPersonalIbanProvider,
+  personalIbanProviderSwitch,
 }: PaymentInformationContentProps): JSX.Element {
   const { translate } = useSettingsContext();
 
@@ -70,8 +65,7 @@ export function PaymentInformationContent({
                   <PaymentInformationText
                     info={info}
                     showBank={showBank}
-                    switchablePersonalIbanProvider={switchablePersonalIbanProvider}
-                    onSwitchPersonalIbanProvider={onSwitchPersonalIbanProvider}
+                    personalIbanProviderSwitch={personalIbanProviderSwitch}
                   />
                 ),
               },
@@ -88,8 +82,7 @@ export function PaymentInformationContent({
           <PaymentInformationText
             info={info}
             showBank={showBank}
-            switchablePersonalIbanProvider={switchablePersonalIbanProvider}
-            onSwitchPersonalIbanProvider={onSwitchPersonalIbanProvider}
+            personalIbanProviderSwitch={personalIbanProviderSwitch}
           />
         )}
       </StyledVerticalStack>
@@ -100,8 +93,7 @@ export function PaymentInformationContent({
 function PaymentInformationText({
   info,
   showBank,
-  switchablePersonalIbanProvider,
-  onSwitchPersonalIbanProvider,
+  personalIbanProviderSwitch,
 }: PaymentInformationContentProps): JSX.Element {
   const { translate } = useSettingsContext();
   const { copy } = useClipboard();
@@ -141,20 +133,20 @@ function PaymentInformationText({
               🔄
             </button>
           )}
-          {switchablePersonalIbanProvider !== undefined && onSwitchPersonalIbanProvider !== undefined && (
+          {personalIbanProviderSwitch !== undefined && (
             <button
               type="button"
               className="ml-1"
-              onClick={() => onSwitchPersonalIbanProvider(switchablePersonalIbanProvider)}
+              onClick={() => personalIbanProviderSwitch.onSwitch()}
               aria-label={translate(
                 'screens/payment',
-                switchablePersonalIbanProvider === PersonalIbanProvider.YAPEAL
+                personalIbanProviderSwitch.target === PersonalIbanProvider.YAPEAL
                   ? 'Show legacy Yapeal IBAN'
                   : 'Show Bank Frick IBAN',
               )}
               title={translate(
                 'screens/payment',
-                switchablePersonalIbanProvider === PersonalIbanProvider.YAPEAL
+                personalIbanProviderSwitch.target === PersonalIbanProvider.YAPEAL
                   ? 'Show legacy Yapeal IBAN'
                   : 'Show Bank Frick IBAN',
               )}

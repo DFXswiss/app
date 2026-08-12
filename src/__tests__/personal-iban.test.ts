@@ -34,13 +34,13 @@ import {
   FRICK_ACCOUNT_HOLDER_NAME,
   FRICK_BANK_NAME,
   YAPEAL_BANK_NAME,
+  deriveEffectivePersonalIbanProvider,
   getFrickCollectionIban,
   getOfferableCollectionIban,
   getPersonalIbanErrorMessage,
   getPersonalIbanKycMessage,
   getStoredPaymentDetailErrorMessage,
   getYapealAlternative,
-  isExplicitFrickPersonalIbanRequest,
   isExplicitPersonalIbanRequest,
   isKycRequiredMessage,
   isPersonalIbanApplicable,
@@ -48,12 +48,14 @@ import {
   isVerifiedFrickPersonalIbanResponse,
   isVerifiedYapealPersonalIbanResponse,
   normalizePersonalIban,
+  parsePersonalIbanProvider,
   personalIbanOnlyParams,
   toPersonalIbanProviderRequest,
 } from '../util/personal-iban';
 
 describe('personal IBAN selector mapping', () => {
   it.each(['frick', 'FRICK', 'Frick'])('maps the public %s value to the API enum', (value) => {
+    expect(parsePersonalIbanProvider(value)).toBe(PersonalIbanProvider.FRICK);
     expect(normalizePersonalIban(value)).toBe(PersonalIbanProvider.FRICK);
     expect(toPersonalIbanProviderRequest(value)).toEqual({ personalIbanProvider: PersonalIbanProvider.FRICK });
     expect(isUnrecognizedPersonalIbanSelector(value)).toBe(false);
@@ -69,6 +71,7 @@ describe('personal IBAN selector mapping', () => {
   it.each(['', 'unknown'])(
     'omits an unrecognized value from the request (fail-closed now happens locally, not via the API round trip)',
     (value) => {
+      expect(parsePersonalIbanProvider(value)).toBeUndefined();
       expect(normalizePersonalIban(value)).toBe(value);
       expect(toPersonalIbanProviderRequest(value)).toEqual({});
       expect(isUnrecognizedPersonalIbanSelector(value)).toBe(true);
@@ -79,6 +82,65 @@ describe('personal IBAN selector mapping', () => {
     expect(normalizePersonalIban(undefined)).toBeUndefined();
     expect(toPersonalIbanProviderRequest(undefined)).toEqual({});
     expect(isUnrecognizedPersonalIbanSelector(undefined)).toBe(false);
+  });
+});
+
+describe('deriveEffectivePersonalIbanProvider', () => {
+  const autoFrickParams = {
+    providerOverride: undefined,
+    hasRequestedPersonalIbanSelector: false,
+    personalIban: undefined,
+    hasYapealAlternative: true,
+    isUserLoading: false,
+    kycAllowsFrick: true,
+    frickDefaultKycFallback: false,
+  };
+
+  it('prefers an explicit provider override', () => {
+    expect(
+      deriveEffectivePersonalIbanProvider({
+        ...autoFrickParams,
+        providerOverride: PersonalIbanProvider.YAPEAL,
+        hasRequestedPersonalIbanSelector: true,
+        personalIban: 'Frick',
+      }),
+    ).toBe(PersonalIbanProvider.YAPEAL);
+  });
+
+  it('uses a recognized explicit selector before the automatic default', () => {
+    expect(
+      deriveEffectivePersonalIbanProvider({
+        ...autoFrickParams,
+        hasRequestedPersonalIbanSelector: true,
+        personalIban: 'yapeal',
+      }),
+    ).toBe(PersonalIbanProvider.YAPEAL);
+  });
+
+  it('does not fall through when an explicit selector has no active provider', () => {
+    expect(
+      deriveEffectivePersonalIbanProvider({
+        ...autoFrickParams,
+        hasRequestedPersonalIbanSelector: true,
+      }),
+    ).toBeUndefined();
+  });
+
+  it('selects Frick for an eligible loaded Yapeal holder', () => {
+    expect(deriveEffectivePersonalIbanProvider(autoFrickParams)).toBe(
+      PersonalIbanProvider.FRICK,
+    );
+  });
+
+  it.each([
+    ['no Yapeal alternative', { hasYapealAlternative: false }],
+    ['user still loading', { isUserLoading: true }],
+    ['KYC below threshold', { kycAllowsFrick: false }],
+    ['KYC fallback active', { frickDefaultKycFallback: true }],
+  ])('omits the automatic provider when %s', (_case, override) => {
+    expect(
+      deriveEffectivePersonalIbanProvider({ ...autoFrickParams, ...override }),
+    ).toBeUndefined();
   });
 });
 
@@ -401,17 +463,6 @@ describe('isVerifiedFrickPersonalIbanResponse', () => {
         name: 'Alice Example',
       }),
     ).toBe(false);
-  });
-});
-
-describe('isExplicitFrickPersonalIbanRequest', () => {
-  it('is true only for a recognized Frick selector', () => {
-    expect(isExplicitFrickPersonalIbanRequest('Frick')).toBe(true);
-    expect(isExplicitFrickPersonalIbanRequest('frick')).toBe(true);
-    expect(isExplicitFrickPersonalIbanRequest('unknown')).toBe(false);
-    expect(isExplicitFrickPersonalIbanRequest(undefined)).toBe(false);
-    // Frick-only: a Yapeal selector must not count as an explicit Frick request.
-    expect(isExplicitFrickPersonalIbanRequest('Yapeal')).toBe(false);
   });
 });
 

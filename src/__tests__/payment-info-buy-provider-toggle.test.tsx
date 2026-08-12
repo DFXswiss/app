@@ -81,8 +81,10 @@ describe('PaymentInformationContent personal-IBAN provider toggle', () => {
     render(
       <PaymentInformationContent
         info={baseInfo()}
-        switchablePersonalIbanProvider={PersonalIbanProvider.YAPEAL}
-        onSwitchPersonalIbanProvider={onSwitchPersonalIbanProvider}
+        personalIbanProviderSwitch={{
+          target: PersonalIbanProvider.YAPEAL,
+          onSwitch: onSwitchPersonalIbanProvider,
+        }}
       />,
     );
 
@@ -91,7 +93,7 @@ describe('PaymentInformationContent personal-IBAN provider toggle', () => {
 
     fireEvent.click(button);
 
-    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith(PersonalIbanProvider.YAPEAL);
+    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith();
   });
 
   it('offers the Bank Frick direction and forwards the Frick provider', () => {
@@ -99,8 +101,10 @@ describe('PaymentInformationContent personal-IBAN provider toggle', () => {
     render(
       <PaymentInformationContent
         info={baseInfo()}
-        switchablePersonalIbanProvider={PersonalIbanProvider.FRICK}
-        onSwitchPersonalIbanProvider={onSwitchPersonalIbanProvider}
+        personalIbanProviderSwitch={{
+          target: PersonalIbanProvider.FRICK,
+          onSwitch: onSwitchPersonalIbanProvider,
+        }}
       />,
     );
 
@@ -109,21 +113,11 @@ describe('PaymentInformationContent personal-IBAN provider toggle', () => {
 
     fireEvent.click(button);
 
-    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith(PersonalIbanProvider.FRICK);
+    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith();
   });
 
-  it.each([
-    ['both props are absent', {}],
-    [
-      'the callback is absent',
-      { switchablePersonalIbanProvider: PersonalIbanProvider.YAPEAL },
-    ],
-    [
-      'the target provider is absent',
-      { onSwitchPersonalIbanProvider: jest.fn() },
-    ],
-  ])('does not show a provider toggle when %s', (_case, props) => {
-    render(<PaymentInformationContent info={baseInfo()} {...props} />);
+  it('does not show a provider toggle when the bundled switch prop is absent', () => {
+    render(<PaymentInformationContent info={baseInfo()} />);
 
     expect(screen.queryByRole('button', { name: 'Show legacy Yapeal IBAN' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show Bank Frick IBAN' })).not.toBeInTheDocument();

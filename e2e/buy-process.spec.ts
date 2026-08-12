@@ -715,6 +715,9 @@ test.describe('Buy Process - UI Flow', () => {
     request,
   }) => {
     const token = await getToken(request);
+    const sessionAccount = (
+      JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as { account: number }
+    ).account;
 
     await page.route(/\/v2\/user(?:\?|$)/, async (route) => {
       if (route.request().method() !== 'GET') {
@@ -726,6 +729,7 @@ test.describe('Buy Process - UI Flow', () => {
         contentType: 'application/json',
         json: {
           id: 1,
+          accountId: sessionAccount,
           activeAddress: { address: '0x0000000000000000000000000000000000000001' },
           addresses: [],
           kyc: { level: 50, status: 'Completed' },
@@ -835,6 +839,7 @@ test.describe('Buy Process - UI Flow', () => {
     const currencyControl = page.getByRole('button', { name: 'CHF Swiss Franc' });
     await expect(currencyControl).toBeVisible();
     await expect(currencyControl).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Show available IBAN' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Close' })).not.toBeVisible();
     await expect(page.getByText('LI91 0881 0000 2324 013A B')).not.toBeVisible();
