@@ -1873,6 +1873,91 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     expect(screen.getByTestId('buy-completion')).toHaveTextContent('CH-EXACT-QUOTE');
   });
 
+  it('keeps the confirmed payment information after a user-context re-quote completes', async () => {
+    let currentUser = { kyc: { level: 50 } };
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUser.mockImplementation(() => currentUser);
+    mockIsUserLoading.mockReturnValue(false);
+    mockGetPersonalIbans.mockResolvedValue([activeChfYapealRow]);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+
+    const approximateQuoteA = {
+      ...frickChfOffer(),
+      id: 40,
+      iban: 'LI-QUOTE-A-APPROXIMATE',
+    };
+    const exactQuoteA = {
+      ...frickChfOffer(),
+      id: 41,
+      iban: 'LI-QUOTE-A-FINAL',
+    };
+    const approximateQuoteB = {
+      ...yapealChfOffer(),
+      id: 50,
+    };
+    const exactQuoteB = {
+      ...yapealChfOffer(),
+      id: 51,
+    };
+    const approximateQuoteADeferred = createDeferred<typeof approximateQuoteA>();
+    const exactQuoteADeferred = createDeferred<typeof exactQuoteA>();
+    const approximateQuoteBDeferred = createDeferred<typeof approximateQuoteB>();
+    const exactQuoteBDeferred = createDeferred<typeof exactQuoteB>();
+    mockReceiveFor
+      .mockReturnValueOnce(approximateQuoteADeferred.promise)
+      .mockReturnValueOnce(exactQuoteADeferred.promise)
+      .mockReturnValueOnce(approximateQuoteBDeferred.promise)
+      .mockReturnValueOnce(exactQuoteBDeferred.promise);
+    const confirmationDeferred = createDeferred<void>();
+    mockConfirmFor.mockReturnValue(confirmationDeferred.promise);
+
+    const rendered = render(<BuyScreen />);
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      approximateQuoteADeferred.resolve(approximateQuoteA);
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      exactQuoteADeferred.resolve(exactQuoteA);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('payment-info')).toHaveTextContent('LI-QUOTE-A-FINAL'),
+    );
+
+    await act(async () => {
+      screen.getByRole('button', { name: TRANSFER_BUTTON }).click();
+    });
+    expect(mockConfirmFor).toHaveBeenCalledWith(41);
+
+    await act(async () => {
+      confirmationDeferred.resolve(undefined);
+    });
+    await settle();
+    expect(screen.getByTestId('buy-completion')).toHaveTextContent('LI-QUOTE-A-FINAL');
+
+    currentUser = { kyc: { level: 0 } };
+    rendered.rerender(<BuyScreen />);
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      approximateQuoteBDeferred.resolve(approximateQuoteB);
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(4));
+
+    expect(screen.getByTestId('buy-completion')).toHaveTextContent('LI-QUOTE-A-FINAL');
+
+    await act(async () => {
+      exactQuoteBDeferred.resolve(exactQuoteB);
+    });
+    await settle();
+
+    expect(screen.getByTestId('buy-completion')).toHaveTextContent('LI-QUOTE-A-FINAL');
+    expect(screen.getByTestId('buy-completion')).not.toHaveTextContent(activeChfYapealRow.iban);
+  });
+
   it('ignores a stale confirm resolution after a same-generation quote replacement', async () => {
     mockPersonalIban.mockReturnValue(undefined);
     mockRequestedPersonalIban.mockReturnValue(undefined);

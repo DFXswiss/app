@@ -204,6 +204,10 @@ export default function BuyScreen(): JSX.Element {
   const [kycError, setKycError] = useState<TransactionError>();
   const [kycMessageOverride, setKycMessageOverride] = useState<string>();
   const [showsCompletion, setShowsCompletion] = useState(false);
+  const [completedPaymentInfo, setCompletedPaymentInfo] = useState<{
+    info: Buy;
+    identity: number | undefined;
+  }>();
   const [showsSwitchScreen, setShowsSwitchScreen] = useState(false);
   const [showsNameForm, setShowsNameForm] = useState(false);
   const [isLoading, setIsLoading] = useState<Side>();
@@ -270,6 +274,10 @@ export default function BuyScreen(): JSX.Element {
     frickKycFallbackHint.identity === customerIdentity
       ? frickKycFallbackHint.value
       : false;
+  const activeCompletedPaymentInfo =
+    completedPaymentInfo !== undefined && completedPaymentInfo.identity === customerIdentity
+      ? completedPaymentInfo.info
+      : undefined;
   const activePersonalIbanProviderUnavailable =
     personalIbanProviderUnavailable !== undefined &&
     personalIbanProviderUnavailable.identity === customerIdentity &&
@@ -399,6 +407,7 @@ export default function BuyScreen(): JSX.Element {
     setAutomaticFrickSuppressed(undefined);
     setFrickKycFallbackHint(undefined);
     setShowsCompletion(false);
+    setCompletedPaymentInfo(undefined);
     setIsConfirming(false);
   }, [customerIdentity]);
 
@@ -931,6 +940,7 @@ export default function BuyScreen(): JSX.Element {
       return;
 
     const confirmingRequestId = id;
+    const confirmingPaymentInfo = activePaymentInfoState.info;
     const confirmingCustomerIdentity = customerIdentity;
     setIsConfirming(true);
 
@@ -944,6 +954,10 @@ export default function BuyScreen(): JSX.Element {
         ) {
           return;
         }
+        setCompletedPaymentInfo({
+          info: confirmingPaymentInfo,
+          identity: confirmingCustomerIdentity,
+        });
         setShowsCompletion(true);
         scrollToTop();
       })
@@ -1016,7 +1030,7 @@ export default function BuyScreen(): JSX.Element {
     currency: Validations.Required,
   });
 
-  const showsActiveCompletion = showsCompletion && paymentInfo !== undefined;
+  const showsActiveCompletion = showsCompletion && activeCompletedPaymentInfo !== undefined;
   const title = showsActiveCompletion
     ? translate('screens/buy', 'Done!')
     : showsSwitchScreen
@@ -1075,8 +1089,14 @@ export default function BuyScreen(): JSX.Element {
     <>
       {showsSwitchScreen ? (
         <AddressSwitch onClose={(r) => (r ? onAddressSwitch() : setShowsSwitchScreen(false))} />
-      ) : showsActiveCompletion && paymentInfo ? (
-        <BuyCompletion user={user} paymentInfo={paymentInfo} navigateOnClose />
+      ) : showsActiveCompletion && activeCompletedPaymentInfo ? (
+        // BuyCompletion treats a missing user as a spinner with no back button. Pass the raw context
+        // value because an identity-filtered undefined would strand the customer here.
+        <BuyCompletion
+          user={user}
+          paymentInfo={activeCompletedPaymentInfo}
+          navigateOnClose
+        />
       ) : showsNameForm ? (
         <NameEdit onSuccess={() => updateData(Side.GET)} />
       ) : (

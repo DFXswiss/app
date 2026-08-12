@@ -1477,6 +1477,60 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
     expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
   });
 
+  it('keeps the completed payment information after a user-context re-quote completes', async () => {
+    let currentUser = { kyc: { level: 50 } };
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUser.mockImplementation(() => currentUser);
+    mockIsUserLoading.mockReturnValue(false);
+    mockGetPersonalIbans.mockResolvedValue([activeChfYapealRow]);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+
+    const quoteA = {
+      ...frickChfOffer(),
+      id: 10,
+      iban: 'LI-COMPLETED-QUOTE-A',
+    };
+    const quoteB = {
+      ...yapealChfOffer(),
+      id: 11,
+    };
+    const quoteADeferred = createDeferred<typeof quoteA>();
+    const quoteBDeferred = createDeferred<typeof quoteB>();
+    mockReceiveFor
+      .mockReturnValueOnce(quoteADeferred.promise)
+      .mockReturnValueOnce(quoteBDeferred.promise);
+
+    const rendered = render(<BuyInfoScreen />);
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      quoteADeferred.resolve(quoteA);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('payment-info')).toHaveTextContent('LI-COMPLETED-QUOTE-A'),
+    );
+
+    await act(async () => {
+      screen.getByRole('button', { name: TRANSFER_BUTTON }).click();
+    });
+    expect(screen.getByTestId('buy-completion')).toHaveTextContent('LI-COMPLETED-QUOTE-A');
+
+    currentUser = { kyc: { level: 0 } };
+    rendered.rerender(<BuyInfoScreen />);
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByTestId('buy-completion')).toHaveTextContent('LI-COMPLETED-QUOTE-A');
+
+    await act(async () => {
+      quoteBDeferred.resolve(quoteB);
+    });
+    await settle();
+
+    expect(screen.getByTestId('buy-completion')).toHaveTextContent('LI-COMPLETED-QUOTE-A');
+    expect(screen.getByTestId('buy-completion')).not.toHaveTextContent(activeChfYapealRow.iban);
+  });
+
   it('does not carry completion state into a quote for another customer identity', async () => {
     let customerIdentity = 1;
     mockCustomerIdentity.mockImplementation(() => customerIdentity);

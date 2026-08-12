@@ -103,6 +103,10 @@ export default function BuyInfoScreen(): JSX.Element {
     identity: number | undefined;
   }>();
   const [showsCompletion, setShowsCompletion] = useState(false);
+  const [completedPaymentInfo, setCompletedPaymentInfo] = useState<{
+    info: Buy;
+    identity: number | undefined;
+  }>();
   const [asset, setAsset] = useState<Asset>();
   const [currency, setCurrency] = useState<Fiat>();
   const [customAmountError, setCustomAmountError] = useState<string>();
@@ -168,6 +172,10 @@ export default function BuyInfoScreen(): JSX.Element {
     frickKycFallbackHint.identity === customerIdentity
       ? frickKycFallbackHint.value
       : false;
+  const activeCompletedPaymentInfo =
+    completedPaymentInfo !== undefined && completedPaymentInfo.identity === customerIdentity
+      ? completedPaymentInfo.info
+      : undefined;
   const activePersonalIbanProviderUnavailable =
     personalIbanProviderUnavailable !== undefined &&
     personalIbanProviderUnavailable.identity === customerIdentity &&
@@ -243,6 +251,7 @@ export default function BuyInfoScreen(): JSX.Element {
     setAutomaticFrickSuppressed(undefined);
     setFrickKycFallbackHint(undefined);
     setShowsCompletion(false);
+    setCompletedPaymentInfo(undefined);
   }, [customerIdentity]);
 
   useEffect(() => {
@@ -551,14 +560,20 @@ export default function BuyInfoScreen(): JSX.Element {
   const isUnrecognizedBlocked =
     isUnrecognizedPersonalIbanSelector(personalIbanSelector) &&
     errorMessage != null;
-  const showsActiveCompletion = showsCompletion && paymentInfo !== undefined;
+  const showsActiveCompletion = showsCompletion && activeCompletedPaymentInfo !== undefined;
 
   useLayoutOptions({ textStart: true, backButton: false });
 
   return (
     <>
-      {showsActiveCompletion && paymentInfo ? (
-        <BuyCompletion user={user} paymentInfo={paymentInfo} navigateOnClose={false} />
+      {showsActiveCompletion && activeCompletedPaymentInfo ? (
+        // BuyCompletion treats a missing user as a spinner with no back button. Pass the raw context
+        // value because an identity-filtered undefined would strand the customer here.
+        <BuyCompletion
+          user={user}
+          paymentInfo={activeCompletedPaymentInfo}
+          navigateOnClose={false}
+        />
       ) : isUnrecognizedBlocked ? (
         <StyledVerticalStack center className="text-center" gap={4}>
           <ErrorHint message={errorMessage} />
@@ -693,6 +708,7 @@ export default function BuyInfoScreen(): JSX.Element {
               width={StyledButtonWidth.FULL}
               label={translate('screens/buy', 'Click here once you have issued the transfer')}
               onClick={() => {
+                setCompletedPaymentInfo({ info: paymentInfo, identity: customerIdentity });
                 setShowsCompletion(true);
                 scrollToTop();
               }}
