@@ -9,16 +9,16 @@
 // single global `OCP` object.
 //
 // Endpoints reuse the @dfx.swiss/react SDK (`usePaymentRoutes`) wherever a
-// method matches the static app 1:1; the two cases the SDK has no method for
-// (the GET /paymentLink/payment invoice lookup and GET /paymentLink/history)
-// and the two cases where the SDK's typed body diverges from the static app's
-// wire shape (route toggle PUT /<type>/<id>, create-link POST /paymentLink with
-// only `routeId`, POS poll GET /paymentLink?id=) go through the raw `useApi`
-// call to preserve functional truth.
+// method matches the static app 1:1; the cases the SDK has no method for
+// (GET /paymentLink/payment invoice lookup, GET /paymentLink/history, route
+// toggle PUT /<type>/<id>, POS poll GET /paymentLink?id=, POST /sell create)
+// go through the raw `useApi` call to preserve functional truth.
 
 import {
   ApiException,
   Blockchain,
+  type CreatePaymentLink,
+  type CreatePaymentLinkPayment,
   type PaymentLink,
   PaymentLinkPaymentStatus,
   PaymentLinkStatus,
@@ -35,7 +35,13 @@ import { useToast } from '../../components/ui';
 import { useT } from '../../i18n';
 import { useWalletSession } from '../../wallets/session';
 import { formatDateTime } from '../parts/format';
+import { extractChargeLnurl } from './charge-lnurl';
+import { selectLightningSellRoutes } from './ln-sell-routes';
 import { lnurlEncode } from './lnurl';
+import { probeFailureKind } from './probe-status';
+
+export { extractChargeLnurl } from './charge-lnurl';
+export { probeFailureKind } from './probe-status';
 
 // The sub-views OcpScreen routes between. `home` and `apply` live in OcpScreen;
 // the other six are the stub files filled in by the sub-view agents.
@@ -87,6 +93,8 @@ export interface OcpApi {
   // --- state ---------------------------------------------------------------
   /** Activation gate: `true` active, `false` not applied, `null` unknown (probe first). */
   active: boolean | null;
+  /** Non-403 probe failure (network/5xx) — keep previous config; show retry. */
+  probeError: boolean;
   config: OcpConfig | null;
   routes: PaymentRoutes | null;
   routesError: boolean;
@@ -94,7 +102,7 @@ export interface OcpApi {
   history: OcpHistory | null;
 
   // --- loaders (fetch + set state) ----------------------------------------
-  /** GET /paymentLink/config → activation + config (403 ⇒ not active). */
+  /** GET /paymentLink/config → activation + config (403 ⇒ not active; other errors ⇒ probeError). */
   probe: () => Promise<void>;
   /** GET /route. */
   loadRoutes: () => Promise<void>;
@@ -106,7 +114,7 @@ export interface OcpApi {
   // --- derived -------------------------------------------------------------
   lightningReady: boolean;
   sellRoutes: SellRoute[];
-  /** Sell routes usable for OCP (Lightning deposit or active) — gates invoice/link create. */
+  /** Active sell routes with a Lightning deposit — gates invoice/link create. */
   lnSellRoutes: SellRoute[];
 
   // --- route actions -------------------------------------------------------
@@ -180,13 +188,23 @@ interface HistoryLink {
 
 export function useOcp(): OcpApi {
   const { call, defaultUrl: apiBaseUrl } = useApi();
-  const { getPaymentLinks, updatePaymentLink, updateUserPaymentLinksConfig, createPosLink } = usePaymentRoutes();
+  const {
+    getPaymentLinks,
+    getPaymentRoutes,
+    getUserPaymentLinksConfig,
+    createPaymentLink,
+    createPaymentLinkPayment,
+    updatePaymentLink,
+    updateUserPaymentLinksConfig,
+    createPosLink,
+  } = usePaymentRoutes();
   const { blockchains } = useWalletSession();
   const { showToast } = useToast();
   const { t, language } = useT();
 
   const [demo, setDemo] = useState(false);
   const [active, setActive] = useState<boolean | null>(null);
+  const [probeError, setProbeError] = useState(false);
   const [config, setConfig] = useState<OcpConfig | null>(null);
   const [routes, setRoutes] = useState<PaymentRoutes | null>(null);
   const [routesError, setRoutesError] = useState(false);
@@ -291,6 +309,7 @@ export function useOcp(): OcpApi {
   const enableDemo = useCallback(() => {
     setDemo(true);
     setActive(true);
+    setProbeError(false);
     setConfig(buildDemoConfig());
     setRoutes(buildDemoRoutes());
     setLinks(buildDemoLinks());
@@ -301,6 +320,7 @@ export function useOcp(): OcpApi {
   const disableDemo = useCallback(() => {
     setDemo(false);
     setActive(null);
+    setProbeError(false);
     setConfig(null);
     setRoutes(null);
     setLinks(null);
@@ -312,20 +332,28 @@ export function useOcp(): OcpApi {
   const probe = useCallback(async () => {
     if (demo) {
       setActive(true);
+      setProbeError(false);
       setConfig((prev) => prev ?? buildDemoConfig());
       return;
     }
     try {
-      const cfg = await call<OcpConfig>({ url: '/paymentLink/config', method: 'GET' });
+      const cfg = (await getUserPaymentLinksConfig()) as OcpConfig;
       setActive(true);
+      setProbeError(false);
       setConfig(cfg);
     } catch (error) {
-      // 403 ⇒ not applied/activated; anything else ⇒ surface honestly as "not active".
       const status = error instanceof ApiException ? error.statusCode : undefined;
-      setActive(false);
-      if (status === 403) setConfig(null);
+      // Only 403 means "not activated". Network/5xx/401 must not drop an active
+      // merchant into the apply/demo view or discard a previously good config.
+      if (probeFailureKind(status) === 'not-activated') {
+        setActive(false);
+        setConfig(null);
+        setProbeError(false);
+      } else {
+        setProbeError(true);
+      }
     }
-  }, [demo, call, buildDemoConfig]);
+  }, [demo, getUserPaymentLinksConfig, buildDemoConfig]);
 
   const loadRoutes = useCallback(async () => {
     if (demo) {
@@ -334,14 +362,14 @@ export function useOcp(): OcpApi {
       return;
     }
     try {
-      const data = await call<PaymentRoutes>({ url: '/route', method: 'GET' });
+      const data = await getPaymentRoutes();
       setRoutes(data ?? { buy: [], sell: [], swap: [] });
       setRoutesError(false);
     } catch {
       setRoutes({ buy: [], sell: [], swap: [] });
       setRoutesError(true);
     }
-  }, [demo, call, buildDemoRoutes]);
+  }, [demo, getPaymentRoutes, buildDemoRoutes]);
 
   const loadLinks = useCallback(async () => {
     if (demo) {
@@ -391,10 +419,7 @@ export function useOcp(): OcpApi {
   // ---- derived --------------------------------------------------------------
   const lightningReady = (blockchains ?? []).includes(Blockchain.LIGHTNING);
   const sellRoutes = useMemo(() => routes?.sell ?? [], [routes]);
-  const lnSellRoutes = useMemo(
-    () => sellRoutes.filter((r) => (r.deposit?.blockchains ?? []).includes(Blockchain.LIGHTNING) || r.active),
-    [sellRoutes],
-  );
+  const lnSellRoutes = useMemo(() => selectLightningSellRoutes(sellRoutes), [sellRoutes]);
 
   // ---- route actions --------------------------------------------------------
   const createRoute = useCallback(
@@ -465,11 +490,13 @@ export function useOcp(): OcpApi {
         });
         return;
       }
-      await call({ url: '/paymentLink', method: 'POST', data: { routeId: +routeId } });
+      // Wire body is routeId-only (merchant create-link); SDK types also require
+      // recipient for full forms — cast keeps the same payload the API accepts.
+      await createPaymentLink({ routeId: +routeId } as CreatePaymentLink);
       setLinks(null);
       await loadLinks();
     },
-    [demo, links, t, demoLnurl, call, loadLinks],
+    [demo, links, t, demoLnurl, createPaymentLink, loadLinks],
   );
 
   const toggleLink = useCallback(
@@ -528,16 +555,13 @@ export function useOcp(): OcpApi {
         const lnurl = link?.lnurl || demoLnurl(`pos_${linkId}_${Math.round(amount * 100)}`);
         return { lnurl };
       }
-      const data = await call<{ payment?: { lnurl?: string }; lnurl?: string }>({
-        url: `/paymentLink/payment?linkId=${encodeURIComponent(String(linkId))}`,
-        method: 'POST',
-        data: { amount },
-      });
-      const lnurl =
-        data?.payment?.lnurl || data?.lnurl || link?.lnurl || demoLnurl(`pos_${linkId}_${Math.round(amount * 100)}`);
+      // SDK body type requires mode/currency/etc. for the full form; POS only posts amount.
+      const data = await createPaymentLinkPayment({ amount } as CreatePaymentLinkPayment, String(linkId));
+      const lnurl = extractChargeLnurl(data);
+      if (!lnurl) throw new ApiException(0, t('genErr'));
       return { lnurl };
     },
-    [demo, links, call, demoLnurl],
+    [demo, links, createPaymentLinkPayment, demoLnurl, t],
   );
 
   const pollPayment = useCallback(
@@ -590,6 +614,7 @@ export function useOcp(): OcpApi {
       enableDemo,
       disableDemo,
       active,
+      probeError,
       config,
       routes,
       routesError,
@@ -619,6 +644,7 @@ export function useOcp(): OcpApi {
       enableDemo,
       disableDemo,
       active,
+      probeError,
       config,
       routes,
       routesError,

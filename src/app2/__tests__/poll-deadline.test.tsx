@@ -33,6 +33,7 @@ jest.mock('@dfx.swiss/react', () => ({
   },
   TransactionUrl: { single: 'transaction/single' },
   useApi: () => ({ call: mockCall }),
+  useTransaction: () => ({ getTransactionByCkoId: mockCall }),
   useApiSession: () => ({ updateSession: jest.fn() }),
   useKyc: () => ({ continueKyc: jest.fn() }),
   useUserContext: () => ({ user: undefined }),

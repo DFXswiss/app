@@ -180,6 +180,9 @@ export function KycStepForm({ code, step, onAdvance, onFailed, onTfaRequired, on
       })
       .catch((err: unknown) => {
         handleError(err);
+      })
+      .finally(() => {
+        // Clear on success too: parent may reuse this instance when only the step prop changes.
         setBusy(false);
       });
   };

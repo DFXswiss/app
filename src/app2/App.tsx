@@ -19,7 +19,15 @@ import { NotFound } from './screens/parts/NotFound';
 import ReturnRouteScreen from './screens/return-route';
 import SupportScreen from './screens/support';
 import TransactionsScreen from './screens/transactions';
+import { foldApp2PathIntoHash } from './utils/url';
 import { WalletSessionProvider } from './wallets/session';
+
+// Checkout.com / e-mail returns hit real paths (/app2/buy/success?…). Fold into
+// the hash before the router mounts so ReturnRouteScreen sees the query.
+const foldedReturn = foldApp2PathIntoHash();
+if (foldedReturn && typeof window !== 'undefined') {
+  window.location.replace(foldedReturn);
+}
 
 const router = createHashRouter([
   {
