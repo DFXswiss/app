@@ -12,7 +12,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@dfx.swiss/react": "^1.7.0",
+    "@dfx.swiss/react": "^1.8.0-beta.2",
     "@dfx.swiss/react-components": "^1.3.2",
     "@ledgerhq/hw-app-btc": "^6.24.1",
     "@ledgerhq/hw-app-eth": "^6.33.7",
