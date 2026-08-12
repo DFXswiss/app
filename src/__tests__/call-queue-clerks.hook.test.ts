@@ -48,6 +48,19 @@ describe('useCallQueueClerks', () => {
     expect(result.current.error).toBe('Unknown error');
   });
 
+  it('uses the fallback message when the Error carries an empty message', async () => {
+    mockGetCallQueueClerks.mockRejectedValue(new Error(''));
+
+    const { result } = renderHook(() => useCallQueueClerks());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // an empty message would be falsy in the form and mislabel the failure as "not configured"
+    expect(result.current.error).toBe('Unknown error');
+  });
+
+  // Coverage of the cancelled path: React 18 gives no observable signal for a skipped
+  // post-unmount state update, so this documents the guard rather than proving it.
   it('ignores a resolved request after unmounting', async () => {
     let resolveRequest!: (clerks: string[]) => void;
     const request = new Promise<string[]>((resolve) => {
@@ -66,6 +79,7 @@ describe('useCallQueueClerks', () => {
     });
   });
 
+  // Same coverage-only caveat as above.
   it('ignores a rejected request after unmounting', async () => {
     let rejectRequest!: (reason: unknown) => void;
     const request = new Promise<string[]>((_, reject) => {

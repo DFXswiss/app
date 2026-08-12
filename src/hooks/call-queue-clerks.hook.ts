@@ -19,7 +19,7 @@ export function useCallQueueClerks(): { clerks: string[]; isLoading: boolean; er
       .catch((e: unknown) => {
         if (!cancelled) {
           setClerks([]);
-          setError(e instanceof Error ? e.message : 'Unknown error');
+          setError(e instanceof Error && e.message ? e.message : 'Unknown error');
         }
       })
       .finally(() => {
