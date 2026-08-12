@@ -193,9 +193,6 @@ export function useWeb3(): Web3Interface {
           rpcUrls: ['https://rpc.testnet.citreascan.com'],
           blockExplorerUrls: ['https://testnet.citreascan.com/'],
         };
-
-      default:
-        return undefined;
     }
   }
 
