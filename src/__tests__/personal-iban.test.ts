@@ -617,6 +617,7 @@ function sampleGiroCode(
     line1?: string;
     line2?: string;
     line3?: string;
+    line5?: string;
     iban?: string;
     line7?: string;
     line9?: string;
@@ -629,7 +630,7 @@ function sampleGiroCode(
     overrides.line2 ?? '2',
     overrides.line3 ?? 'SCT',
     'BFRILI22',
-    'DFX AG, Bahnhofstrasse 7, 6300 Zug, Schweiz',
+    overrides.line5 ?? 'DFX AG, Bahnhofstrasse 7, 6300 Zug, Schweiz',
     overrides.iban ?? PERSONAL_GIRO_IBAN,
     overrides.line7 ?? 'EUR100',
     '',
@@ -671,6 +672,32 @@ describe('toCollectionIbanGiroCode', () => {
     expect(
       toCollectionIbanGiroCode(sampleGiroCode(), PERSONAL_GIRO_IBAN, SAMPLE_REMITTANCE, SAMPLE_AMOUNT, undefined),
     ).toBeUndefined();
+  });
+
+  it('returns undefined when the creditor line names another holder', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line5: 'Jane Doe, Musterweg 1, 8000 Zürich, Schweiz' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('rewrites a creditor line that carries the holder without an address', () => {
+    const result = toCollectionIbanGiroCode(
+      sampleGiroCode({ line5: 'DFX AG' }),
+      PERSONAL_GIRO_IBAN,
+      SAMPLE_REMITTANCE,
+      SAMPLE_AMOUNT,
+      'EUR',
+    );
+    expect(result).toBeDefined();
+    if (result === undefined) return;
+    expect(result.split('\n')[5]).toBe('DFX AG');
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
   });
 
   it('rewrites the IBAN and preserves an empty amount line', () => {

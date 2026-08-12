@@ -278,6 +278,12 @@ export function toCollectionIbanGiroCode(
   if (structuredReference) return undefined;
   if (unstructuredRemittance !== trimmedRemittance) return undefined;
 
+  // Both accounts are held by DFX AG, which is why only the IBAN may change: retargeting a payload
+  // that names anyone else would leave the wrong creditor on a DFX account, and the payer's bank
+  // checks that name against the IBAN. The offer gate already requires the quote to name this
+  // holder; checking the payload itself keeps the two from being trusted on the api's word alone.
+  if (!lines[5].startsWith(FRICK_ACCOUNT_HOLDER_NAME)) return undefined;
+
   const normalizedLine = lines[6].replace(/\s+/g, '').toUpperCase();
   const normalizedPersonal = personalIban.replace(/\s+/g, '').toUpperCase();
   if (!normalizedPersonal) return undefined;
