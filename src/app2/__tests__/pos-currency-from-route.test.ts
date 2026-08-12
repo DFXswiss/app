@@ -63,6 +63,7 @@ describe('POS charge freezes currency at charge time', () => {
       enableDemo: jest.fn(),
       disableDemo: jest.fn(),
       active: true,
+      probeError: false,
       config: null,
       routes: { buy: [], sell: [] } as OcpApi['routes'],
       routesError: false,

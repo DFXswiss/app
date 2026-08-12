@@ -93,7 +93,12 @@ jest.mock('../assets/wallets/tron.svg', () => 'tron.svg');
 jest.mock('../assets/wallets/trust.svg', () => 'trust.svg');
 jest.mock('../assets/wallets/wallet-connect.svg', () => 'wallet-connect.svg');
 
-import { clearSessionProviderBindings } from '../wallets/session';
+import {
+  clearSessionProviderBindings,
+  restoreSessionProviderBindings,
+  snapshotSessionProviderBindings,
+  teardownWalletSession,
+} from '../wallets/session';
 import type { Eip1193Provider } from '../wallets/providers';
 
 describe('clearSessionProviderBindings', () => {
@@ -109,5 +114,49 @@ describe('clearSessionProviderBindings', () => {
     expect(wcRef.current).toBeUndefined();
     expect(pendingWcRef.current).toBeUndefined();
     expect(setActiveConnector).toHaveBeenCalledWith(undefined);
+  });
+});
+
+describe('snapshot/restore session provider bindings', () => {
+  it('restores connector and provider refs after a failed switch clear', () => {
+    const setActiveConnector = jest.fn();
+    const injected = { request: jest.fn() } as unknown as Eip1193Provider;
+    const wc = { request: jest.fn() } as unknown as Eip1193Provider;
+    const pending = { request: jest.fn() } as unknown as Eip1193Provider;
+    const injectedRef = { current: injected };
+    const wcRef = { current: wc };
+    const pendingWcRef = { current: pending };
+
+    const snapshot = snapshotSessionProviderBindings('injected', injectedRef, wcRef, pendingWcRef);
+    clearSessionProviderBindings(setActiveConnector, injectedRef, wcRef, pendingWcRef);
+    expect(injectedRef.current).toBeUndefined();
+
+    restoreSessionProviderBindings(snapshot, setActiveConnector, injectedRef, wcRef, pendingWcRef);
+    expect(injectedRef.current).toBe(injected);
+    expect(wcRef.current).toBe(wc);
+    expect(pendingWcRef.current).toBe(pending);
+    expect(setActiveConnector).toHaveBeenLastCalledWith('injected');
+  });
+});
+
+describe('teardownWalletSession', () => {
+  it('disconnects WalletConnect before JWT logout', async () => {
+    const order: string[] = [];
+    const disconnectWc = jest.fn(async () => {
+      order.push('wc');
+    });
+    const logout = jest.fn(async () => {
+      order.push('logout');
+    });
+    await teardownWalletSession(disconnectWc, logout);
+    expect(order).toEqual(['wc', 'logout']);
+  });
+
+  it('still logs out when WalletConnect disconnect throws', async () => {
+    const logout = jest.fn(async () => undefined);
+    await teardownWalletSession(async () => {
+      throw new Error('wc fail');
+    }, logout);
+    expect(logout).toHaveBeenCalledTimes(1);
   });
 });

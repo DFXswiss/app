@@ -9,7 +9,7 @@
 // (ports qrToPng ~2165 / qrPrint ~2171 / qrSticker ~2176, rendering from the
 // React-rendered QR <svg> through a ref + canvas — CSP-safe, no qrcode.js).
 
-import { ApiException, ResponseType, useApi } from '@dfx.swiss/react';
+import { ApiException, usePaymentRoutes } from '@dfx.swiss/react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import QRCode from 'react-qr-code';
 import { useToast } from '../../components/ui';
@@ -76,7 +76,7 @@ interface NoteState {
 export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
   const { t, language } = useT();
   const { showToast } = useToast();
-  const { call } = useApi();
+  const { getPaymentStickers } = usePaymentRoutes();
 
   const [routeId, setRouteId] = useState('');
   const [invId, setInvId] = useState('');
@@ -227,13 +227,16 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
       return;
     }
     showToast(`${t('downloadSticker')}…`);
-    const query =
-      `/paymentLink/stickers?route=${encodeURIComponent(out.routeId)}` +
-      (out.invId ? `&externalIds=${encodeURIComponent(out.invId)}` : '') +
-      `&type=BitcoinFocus&mode=Customer&lang=${encodeURIComponent(language.toUpperCase())}`;
     try {
-      const blob = await call<Blob>({ url: query, method: 'GET', responseType: ResponseType.BLOB });
-      const href = URL.createObjectURL(blob);
+      const { data } = await getPaymentStickers(
+        out.routeId,
+        out.invId || undefined,
+        undefined,
+        'BitcoinFocus',
+        'Customer',
+        language.toUpperCase(),
+      );
+      const href = URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = href;
       a.download = 'DFX_OCP_stickers.pdf';
