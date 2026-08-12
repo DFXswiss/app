@@ -6,59 +6,74 @@
 const mockReceiveFor = jest.fn();
 const mockUseAppParams = jest.fn();
 const mockPersonalIban = jest.fn();
+const mockRequestedPersonalIban = jest.fn();
 const mockHasAuthenticatedCustomer = jest.fn();
+const mockCustomerIdentity = jest.fn();
+const mockUser = jest.fn();
+const mockGetPersonalIbans = jest.fn();
 const mockWalletInitialized = jest.fn();
 const mockCloseServices = jest.fn();
+const mockCurrencies = [{ name: 'CHF' }, { name: 'EUR' }, { name: 'USD' }];
 
-jest.mock('@dfx.swiss/react', () => ({
-  FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
-  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
-  TransactionError: {
-    AMOUNT_TOO_LOW: 'AmountTooLow',
-    AMOUNT_TOO_HIGH: 'AmountTooHigh',
-    BANK_TRANSACTION_MISSING: 'BankTransactionMissing',
-    BANK_TRANSACTION_OR_VIDEO_MISSING: 'BankTransactionOrVideoMissing',
-    KYC_REQUIRED: 'KycRequired',
-    KYC_DATA_REQUIRED: 'KycDataRequired',
-    KYC_REQUIRED_INSTANT: 'KycRequiredInstant',
-    LIMIT_EXCEEDED: 'LimitExceeded',
-    NATIONALITY_NOT_ALLOWED: 'NationalityNotAllowed',
-    PAYMENT_METHOD_NOT_ALLOWED: 'PaymentMethodNotAllowed',
-    VIDEO_IDENT_REQUIRED: 'VideoIdentRequired',
-    IBAN_CURRENCY_MISMATCH: 'IbanCurrencyMismatch',
-    TRADING_NOT_ALLOWED: 'TradingNotAllowed',
-    RECOMMENDATION_REQUIRED: 'RecommendationRequired',
-    EMAIL_REQUIRED: 'EmailRequired',
-  },
-  TransactionType: { BUY: 'Buy' },
-  Utils: { formatAmount: (n: number) => String(n) },
-  useAsset: () => ({
-    getAsset: (list: any[], name: string) =>
-      (list ?? []).find((a: any) => a.name === name) ?? list?.[0],
-  }),
-  useAssetContext: () => ({
-    getAssets: () => [{ name: 'BTC', uniqueName: 'Bitcoin' }],
-  }),
-  useBuy: () => ({
-    currencies: [{ name: 'CHF' }, { name: 'EUR' }, { name: 'USD' }],
-    receiveFor: mockReceiveFor,
-  }),
-  useFiat: () => ({
-    getCurrency: (list: any[], name: string) =>
-      (list ?? []).find((c: any) => c.name === name),
-  }),
-  useUserContext: () => ({ user: undefined }),
-}));
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
-jest.mock('../hooks/virtual-iban.hook', () => {
-  const virtualIbanInterface = {
-    createPersonalIban: () =>
-      Promise.reject(new Error('createPersonalIban must not be called in this suite')),
-    getPersonalIbans: () => Promise.resolve([]),
+jest.mock('@dfx.swiss/react', () => {
+  const buyInterface = {
+    get currencies() {
+      return mockCurrencies;
+    },
+    receiveFor: (...args: unknown[]) => mockReceiveFor(...args),
+    getPersonalIbans: (...args: unknown[]) => mockGetPersonalIbans(...args),
   };
   return {
-    __esModule: true,
-    default: () => virtualIbanInterface,
+    FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
+    PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
+    VirtualIbanStatus: {
+      RESERVED: 'Reserved',
+      ACTIVE: 'Active',
+      EXPIRED: 'Expired',
+      DEACTIVATED: 'Deactivated',
+    },
+    TransactionError: {
+      AMOUNT_TOO_LOW: 'AmountTooLow',
+      AMOUNT_TOO_HIGH: 'AmountTooHigh',
+      BANK_TRANSACTION_MISSING: 'BankTransactionMissing',
+      BANK_TRANSACTION_OR_VIDEO_MISSING: 'BankTransactionOrVideoMissing',
+      KYC_REQUIRED: 'KycRequired',
+      KYC_DATA_REQUIRED: 'KycDataRequired',
+      KYC_REQUIRED_INSTANT: 'KycRequiredInstant',
+      LIMIT_EXCEEDED: 'LimitExceeded',
+      NATIONALITY_NOT_ALLOWED: 'NationalityNotAllowed',
+      PAYMENT_METHOD_NOT_ALLOWED: 'PaymentMethodNotAllowed',
+      VIDEO_IDENT_REQUIRED: 'VideoIdentRequired',
+      IBAN_CURRENCY_MISMATCH: 'IbanCurrencyMismatch',
+      TRADING_NOT_ALLOWED: 'TradingNotAllowed',
+      RECOMMENDATION_REQUIRED: 'RecommendationRequired',
+      EMAIL_REQUIRED: 'EmailRequired',
+    },
+    TransactionType: { BUY: 'Buy' },
+    Utils: { formatAmount: (n: number) => String(n) },
+    useAsset: () => ({
+      getAsset: (list: any[], name: string) =>
+        (list ?? []).find((a: any) => a.name === name) ?? list?.[0],
+    }),
+    useAssetContext: () => ({
+      getAssets: () => [{ name: 'BTC', uniqueName: 'Bitcoin' }],
+    }),
+    useBuy: () => buyInterface,
+    useFiat: () => ({
+      getCurrency: (list: any[], name: string) =>
+        (list ?? []).find((c: any) => c.name === name),
+    }),
+    useUserContext: () => ({ user: mockUser() }),
   };
 });
 
@@ -78,10 +93,31 @@ jest.mock('@dfx.swiss/react-components', () => ({
 }));
 
 jest.mock('src/components/payment/payment-info-buy', () => ({
-  PaymentInformationContent: ({ info, showBank }: any) => (
+  PaymentInformationContent: ({
+    info,
+    showBank,
+    switchablePersonalIbanProvider,
+    onSwitchPersonalIbanProvider,
+  }: any) => (
     <div data-testid="payment-info" data-show-bank={showBank ? 'true' : 'false'}>
       <span>{info.iban}</span>
       <span>{info.name}</span>
+      {switchablePersonalIbanProvider !== undefined &&
+        onSwitchPersonalIbanProvider !== undefined && (
+          <button
+            type="button"
+            aria-label={
+              switchablePersonalIbanProvider === 'Yapeal'
+                ? 'Show legacy Yapeal IBAN'
+                : 'Show Bank Frick IBAN'
+            }
+            onClick={() =>
+              onSwitchPersonalIbanProvider(switchablePersonalIbanProvider)
+            }
+          >
+            switch provider
+          </button>
+        )}
     </div>
   ),
 }));
@@ -113,8 +149,9 @@ jest.mock('src/hooks/app-params.hook', () => ({
 }));
 jest.mock('src/hooks/personal-iban.hook', () => ({
   usePersonalIbanSelection: () => ({
-    requestedPersonalIban: mockPersonalIban(),
+    requestedPersonalIban: mockRequestedPersonalIban(),
     personalIban: mockPersonalIban(),
+    customerIdentity: mockCustomerIdentity(),
     hasAuthenticatedCustomer: mockHasAuthenticatedCustomer(),
   }),
 }));
@@ -128,6 +165,7 @@ jest.mock('src/hooks/layout-config.hook', () => ({
   useLayoutOptions: () => undefined,
 }));
 
+import { format } from 'util';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import BuyInfoScreen from 'src/screens/buy-info.screen';
 
@@ -137,6 +175,18 @@ const CONTINUE_WITHOUT = 'Continue without personal IBAN';
 const VERIFY_HINT =
   'The personal IBAN response could not be verified for this offer. You can continue with the standard payment details, or cancel.';
 const TRANSFER_BUTTON = 'Click here once you have issued the transfer';
+const FRICK_FALLBACK_HINT =
+  'Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.';
+
+const activeChfYapealRow = {
+  id: 7,
+  iban: 'CH9300762011623852957',
+  currency: 'CHF',
+  bank: 'Yapeal',
+  active: true,
+  acceptsPayments: true,
+  status: 'Active',
+};
 
 function baseAppParams(overrides: Record<string, unknown> = {}) {
   return {
@@ -190,7 +240,23 @@ function frickOffer(overrides: Record<string, unknown> = {}) {
     isPersonalIban: true,
     bank: 'Bank Frick',
     name: 'DFX AG',
+    iban: 'LI35088110102979K002E',
     ...overrides,
+  };
+}
+
+function frickChfOffer() {
+  return frickOffer({ currency: { name: 'CHF' } });
+}
+
+function yapealChfOffer() {
+  return {
+    ...chfOffer(),
+    id: 4,
+    isPersonalIban: true,
+    bank: 'Yapeal',
+    iban: activeChfYapealRow.iban,
+    name: 'Max Muster',
   };
 }
 
@@ -200,13 +266,18 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPersonalIban.mockReturnValue('Frick');
+    mockRequestedPersonalIban.mockReturnValue('Frick');
     mockHasAuthenticatedCustomer.mockReturnValue(true);
+    mockCustomerIdentity.mockReset().mockReturnValue(1);
+    mockUser.mockReset().mockReturnValue(undefined);
+    mockGetPersonalIbans.mockReset().mockResolvedValue([]);
     mockWalletInitialized.mockReturnValue(true);
     mockUseAppParams.mockReturnValue(baseAppParams());
     mockReceiveFor.mockResolvedValue(chfOffer());
     // A6: fail on unexpected act() / React warnings so terminal state is awaited properly.
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
-      const msg = String(args[0] ?? '');
+      const [message = '', ...parameters] = args;
+      const msg = format(message, ...parameters);
       if (msg.includes('not wrapped in act') || msg.includes('Warning: An update to')) {
         throw new Error(`Unexpected console.error in test: ${msg}`);
       }
@@ -303,6 +374,7 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
 
   it('does not show the mismatch hint for customers without personal-iban', async () => {
     mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
 
     render(<BuyInfoScreen />);
 
@@ -316,6 +388,7 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
 
   it('does not delay a selector-free quote while authentication is unsettled', async () => {
     mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
     mockHasAuthenticatedCustomer.mockReturnValue(false);
     mockWalletInitialized.mockReturnValue(false);
 
@@ -347,6 +420,7 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
 
   it('uses generic KYC path for EUR bank transfer without personal-iban selector (KycRequired)', async () => {
     mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
     mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'EUR' }));
     mockReceiveFor.mockRejectedValue({ message: 'KycRequired' });
 
@@ -362,6 +436,7 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
 
   it('uses generic path for EUR bank transfer without personal-iban selector (PaymentMethodNotAllowed)', async () => {
     mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
     mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'EUR' }));
     mockReceiveFor.mockRejectedValue({ message: 'PaymentMethodNotAllowed' });
 
@@ -484,8 +559,289 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
     ).not.toBeInTheDocument();
   });
 
+it('defaults an eligible legacy Yapeal holder to Frick on the first quote request', async () => {
+  mockPersonalIban.mockReturnValue(undefined);
+  mockRequestedPersonalIban.mockReturnValue(undefined);
+  mockUser.mockReturnValue({ kyc: { level: 50 } });
+  mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+
+  const rowsDeferred = createDeferred<(typeof activeChfYapealRow)[]>();
+  mockGetPersonalIbans.mockReturnValue(rowsDeferred.promise);
+
+  const quoteDeferred = createDeferred<any>();
+  mockReceiveFor.mockReturnValue(quoteDeferred.promise);
+
+  render(<BuyInfoScreen />);
+
+  await act(async () => {
+    rowsDeferred.resolve([activeChfYapealRow]);
+  });
+  await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+  expect(mockReceiveFor).toHaveBeenNthCalledWith(1, {
+    asset: { name: 'BTC', uniqueName: 'Bitcoin' },
+    currency: { name: 'CHF' },
+      externalTransactionId: undefined,
+    amount: 100,
+    personalIbanProvider: 'Frick',
+  });
+
+  await act(async () => {
+    quoteDeferred.resolve(frickChfOffer());
+  });
+
+  await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+});
+
+  it('requests Yapeal on the next quote after the legacy-provider toggle is clicked', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUser.mockReturnValue({ kyc: { level: 50 } });
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+
+    const rowsDeferred = createDeferred<(typeof activeChfYapealRow)[]>();
+    mockGetPersonalIbans.mockReturnValue(rowsDeferred.promise);
+
+    const receiveForDeferreds: ReturnType<typeof createDeferred<any>>[] = [];
+    mockReceiveFor.mockImplementation(() => {
+      const deferred = createDeferred<any>();
+      receiveForDeferreds.push(deferred);
+      return deferred.promise;
+    });
+
+    render(<BuyInfoScreen />);
+
+    await act(async () => {
+      rowsDeferred.resolve([activeChfYapealRow]);
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      receiveForDeferreds[0].resolve(frickChfOffer());
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Show legacy Yapeal IBAN' }),
+      ).toBeInTheDocument(),
+    );
+    const requestCountBeforeToggle = mockReceiveFor.mock.calls.length;
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Show legacy Yapeal IBAN' }).click();
+    });
+
+    await waitFor(() =>
+      expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(requestCountBeforeToggle),
+    );
+    expect(mockReceiveFor.mock.calls[requestCountBeforeToggle][0].personalIbanProvider).toBe(
+      'Yapeal',
+    );
+    await act(async () => {
+      receiveForDeferreds[requestCountBeforeToggle].resolve(yapealChfOffer());
+    });
+
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+    expect(mockReceiveFor).toHaveBeenNthCalledWith(requestCountBeforeToggle + 1, {
+      asset: { name: 'BTC', uniqueName: 'Bitcoin' },
+      currency: { name: 'CHF' },
+      externalTransactionId: undefined,
+      amount: 100,
+      personalIbanProvider: 'Yapeal',
+    });
+  });
+
+  it('falls back from an automatic Frick KycRequired response without showing the blocking KYC screen', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUser.mockReturnValue({ kyc: { level: 50 } });
+    mockGetPersonalIbans.mockResolvedValue([activeChfYapealRow]);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor.mockImplementation((request: { personalIbanProvider?: string }) =>
+      request.personalIbanProvider === 'Frick'
+        ? Promise.reject({ message: 'KycRequired' })
+        : Promise.resolve(yapealChfOffer()),
+    );
+
+    render(<BuyInfoScreen />);
+
+    await waitFor(() => expect(screen.getByText(FRICK_FALLBACK_HINT)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+    expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
+    expect(
+      mockReceiveFor.mock.calls.some(
+        ([request]) => request.personalIbanProvider === undefined,
+      ),
+    ).toBe(true);
+    expect(screen.queryByTestId('quote-error-hint')).not.toBeInTheDocument();
+  });
+
+  it('clears the automatic Frick fallback hint when the customer explicitly toggles back to Frick', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUser.mockReturnValue({ kyc: { level: 50 } });
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+
+    const rowsDeferred = createDeferred<(typeof activeChfYapealRow)[]>();
+    mockGetPersonalIbans.mockReturnValue(rowsDeferred.promise);
+
+    const receiveForDeferreds: ReturnType<typeof createDeferred<any>>[] = [];
+    mockReceiveFor.mockImplementation(() => {
+      const deferred = createDeferred<any>();
+      receiveForDeferreds.push(deferred);
+      return deferred.promise;
+    });
+
+    render(<BuyInfoScreen />);
+
+    await act(async () => {
+      rowsDeferred.resolve([activeChfYapealRow]);
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      receiveForDeferreds[0].reject({ message: 'KycRequired' });
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      receiveForDeferreds[1].resolve(yapealChfOffer());
+    });
+
+    await waitFor(() => expect(screen.getByText(FRICK_FALLBACK_HINT)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Show Bank Frick IBAN' }),
+      ).toBeInTheDocument(),
+    );
+    const requestCountBeforeToggle = mockReceiveFor.mock.calls.length;
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Show Bank Frick IBAN' }).click();
+    });
+
+    expect(screen.queryByText(FRICK_FALLBACK_HINT)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockReceiveFor.mock.calls.length).toBeGreaterThan(requestCountBeforeToggle),
+    );
+    await act(async () => {
+      receiveForDeferreds[requestCountBeforeToggle].resolve(frickChfOffer());
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Show legacy Yapeal IBAN' }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it('reloads rows and clears the provider override when the customer identity changes', async () => {
+    let customerIdentity = 1;
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockCustomerIdentity.mockImplementation(() => customerIdentity);
+    mockUser.mockReturnValue({ kyc: { level: 50 } });
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+
+    const rowsDeferreds: ReturnType<typeof createDeferred<(typeof activeChfYapealRow)[]>>[] = [];
+    mockGetPersonalIbans.mockImplementation(() => {
+      const deferred = createDeferred<(typeof activeChfYapealRow)[]>();
+      rowsDeferreds.push(deferred);
+      return deferred.promise;
+    });
+
+    const receiveForDeferreds: ReturnType<typeof createDeferred<any>>[] = [];
+    mockReceiveFor.mockImplementation(() => {
+      const deferred = createDeferred<any>();
+      receiveForDeferreds.push(deferred);
+      return deferred.promise;
+    });
+
+    const rendered = render(<BuyInfoScreen />);
+
+    await waitFor(() => expect(mockGetPersonalIbans).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      rowsDeferreds[0].resolve([activeChfYapealRow]);
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      receiveForDeferreds[0].resolve(frickChfOffer());
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Show legacy Yapeal IBAN' }),
+      ).toBeInTheDocument(),
+    );
+    await act(async () => {
+      screen.getByRole('button', { name: 'Show legacy Yapeal IBAN' }).click();
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      receiveForDeferreds[1].resolve(yapealChfOffer());
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Show Bank Frick IBAN' }),
+      ).toBeInTheDocument(),
+    );
+    const requestCountBeforeSwap = mockReceiveFor.mock.calls.length;
+
+    customerIdentity = 2;
+    rendered.rerender(<BuyInfoScreen />);
+
+    await waitFor(() => expect(mockGetPersonalIbans).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      rowsDeferreds[1].resolve([]);
+    });
+    await waitFor(() =>
+      expect(
+        mockReceiveFor.mock.calls
+          .slice(requestCountBeforeSwap)
+          .some(([request]) => request.personalIbanProvider === undefined),
+      ).toBe(true),
+    );
+    await act(async () => {
+      receiveForDeferreds[requestCountBeforeSwap].resolve(chfOffer());
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Show Bank Frick IBAN' }),
+      ).not.toBeInTheDocument(),
+    );
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+  });
+
+  it('continues with a normal quote when loading personal IBAN rows fails', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUser.mockReturnValue({ kyc: { level: 50 } });
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+
+    const rowsDeferred = createDeferred<(typeof activeChfYapealRow)[]>();
+    mockGetPersonalIbans.mockReturnValue(rowsDeferred.promise);
+
+    const quoteDeferred = createDeferred<any>();
+    mockReceiveFor.mockReturnValue(quoteDeferred.promise);
+
+    render(<BuyInfoScreen />);
+
+    await act(async () => {
+      rowsDeferred.reject(new Error('row load failed'));
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+    expect(mockReceiveFor.mock.calls[0][0]).not.toHaveProperty('personalIbanProvider');
+
+    await act(async () => {
+      quoteDeferred.resolve(chfOffer());
+    });
+
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+    expect(
+      screen.queryByRole('button', { name: 'Show legacy Yapeal IBAN' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Show Bank Frick IBAN' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('offers continue-without and Close for an unrecognized selector (A3)', async () => {
     mockPersonalIban.mockReturnValue('unknown-provider');
+    mockRequestedPersonalIban.mockReturnValue('unknown-provider');
     mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
     mockReceiveFor.mockResolvedValue(chfOffer());
 

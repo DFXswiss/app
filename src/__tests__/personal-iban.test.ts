@@ -8,13 +8,24 @@ jest.mock('@dfx.swiss/react', () => ({
     CARD: 'Card',
   },
   PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
+  VirtualIbanStatus: {
+    RESERVED: 'Reserved',
+    ACTIVE: 'Active',
+    EXPIRED: 'Expired',
+    DEACTIVATED: 'Deactivated',
+  },
   TransactionError: {
     PAYMENT_METHOD_NOT_ALLOWED: 'PaymentMethodNotAllowed',
     KYC_REQUIRED: 'KycRequired',
   },
 }));
 
-import { FiatPaymentMethod, PersonalIbanProvider, TransactionError } from '@dfx.swiss/react';
+import {
+  FiatPaymentMethod,
+  PersonalIbanProvider,
+  TransactionError,
+  VirtualIbanStatus,
+} from '@dfx.swiss/react';
 import { readFileSync } from 'fs';
 import de from '../translations/languages/de.json';
 import fr from '../translations/languages/fr.json';
@@ -40,7 +51,6 @@ import {
   personalIbanOnlyParams,
   toPersonalIbanProviderRequest,
 } from '../util/personal-iban';
-import { VirtualIbanStatus } from '../dto/virtual-iban.dto';
 
 describe('personal IBAN selector mapping', () => {
   it.each(['frick', 'FRICK', 'Frick'])('maps the public %s value to the API enum', (value) => {

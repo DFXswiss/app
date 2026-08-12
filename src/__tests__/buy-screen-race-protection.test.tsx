@@ -5,9 +5,11 @@
 // personalIban comes from usePersonalIbanSelection() (not useAppParams).
 
 const mockReceiveFor = jest.fn();
+const mockConfirmFor = jest.fn();
 const mockUseAppParams = jest.fn();
 const mockPersonalIban = jest.fn();
 const mockSetParams = jest.fn();
+const mockEmptyPersonalIbans: never[] = [];
 
 const mockAssets = [
   { name: 'BTC', uniqueName: 'Bitcoin', category: 'Public', blockchain: 'Ethereum', description: 'Bitcoin' },
@@ -27,63 +29,57 @@ const mockCurrencies = [
 // Stable reference: buy.screen currency-selection effect depends on prefCurrency by identity.
 const mockPrefCurrency = { name: 'CHF' };
 
-jest.mock('@dfx.swiss/react', () => ({
-  AssetCategory: { PUBLIC: 'Public', PRIVATE: 'Private' },
-  FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
-  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
-  TransactionError: {
-    AMOUNT_TOO_LOW: 'AmountTooLow',
-    AMOUNT_TOO_HIGH: 'AmountTooHigh',
-    BANK_TRANSACTION_MISSING: 'BankTransactionMissing',
-    BANK_TRANSACTION_OR_VIDEO_MISSING: 'BankTransactionOrVideoMissing',
-    KYC_REQUIRED: 'KycRequired',
-    KYC_DATA_REQUIRED: 'KycDataRequired',
-    KYC_REQUIRED_INSTANT: 'KycRequiredInstant',
-    LIMIT_EXCEEDED: 'LimitExceeded',
-    NATIONALITY_NOT_ALLOWED: 'NationalityNotAllowed',
-    PAYMENT_METHOD_NOT_ALLOWED: 'PaymentMethodNotAllowed',
-    VIDEO_IDENT_REQUIRED: 'VideoIdentRequired',
-    IBAN_CURRENCY_MISMATCH: 'IbanCurrencyMismatch',
-    TRADING_NOT_ALLOWED: 'TradingNotAllowed',
-    RECOMMENDATION_REQUIRED: 'RecommendationRequired',
-    EMAIL_REQUIRED: 'EmailRequired',
-  },
-  TransactionType: { BUY: 'Buy' },
-  Utils: { formatAmount: (n: number) => String(n), createRules: () => ({}) },
-  Validations: { Required: undefined },
-  useAsset: () => ({
-    getAsset: mockGetAsset,
-    isSameAsset: mockIsSameAsset,
-  }),
-  useAssetContext: () => ({
-    assets: mockAssetsMap,
-    getAssets: mockGetAssets,
-  }),
-  useAuthContext: () => ({ session: undefined }),
-  useBuy: () => ({
-    currencies: mockCurrencies,
-    receiveFor: mockReceiveFor,
-    confirmFor: jest.fn(),
-  }),
-  useFiat: () => ({
-    toSymbol: () => '',
-    toDescription: () => '',
-    getCurrency: mockGetCurrency,
-    getDefaultCurrency: mockGetDefaultCurrency,
-  }),
-  useSessionContext: () => ({ logout: jest.fn() }),
-  useUserContext: () => ({ user: undefined }),
-}));
-
-jest.mock('../hooks/virtual-iban.hook', () => {
-  const virtualIbanInterface = {
-    createPersonalIban: () =>
-      Promise.reject(new Error('createPersonalIban must not be called in this suite')),
-    getPersonalIbans: () => Promise.resolve([]),
+jest.mock('@dfx.swiss/react', () => {
+  const buyInterface = {
+    get currencies() {
+      return mockCurrencies;
+    },
+    receiveFor: (...args: unknown[]) => mockReceiveFor(...args),
+    confirmFor: (...args: unknown[]) => mockConfirmFor(...args),
+    getPersonalIbans: () => Promise.resolve(mockEmptyPersonalIbans),
   };
   return {
-    __esModule: true,
-    default: () => virtualIbanInterface,
+    AssetCategory: { PUBLIC: 'Public', PRIVATE: 'Private' },
+    FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
+    PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
+    TransactionError: {
+      AMOUNT_TOO_LOW: 'AmountTooLow',
+      AMOUNT_TOO_HIGH: 'AmountTooHigh',
+      BANK_TRANSACTION_MISSING: 'BankTransactionMissing',
+      BANK_TRANSACTION_OR_VIDEO_MISSING: 'BankTransactionOrVideoMissing',
+      KYC_REQUIRED: 'KycRequired',
+      KYC_DATA_REQUIRED: 'KycDataRequired',
+      KYC_REQUIRED_INSTANT: 'KycRequiredInstant',
+      LIMIT_EXCEEDED: 'LimitExceeded',
+      NATIONALITY_NOT_ALLOWED: 'NationalityNotAllowed',
+      PAYMENT_METHOD_NOT_ALLOWED: 'PaymentMethodNotAllowed',
+      VIDEO_IDENT_REQUIRED: 'VideoIdentRequired',
+      IBAN_CURRENCY_MISMATCH: 'IbanCurrencyMismatch',
+      TRADING_NOT_ALLOWED: 'TradingNotAllowed',
+      RECOMMENDATION_REQUIRED: 'RecommendationRequired',
+      EMAIL_REQUIRED: 'EmailRequired',
+    },
+    TransactionType: { BUY: 'Buy' },
+    Utils: { formatAmount: (n: number) => String(n), createRules: () => ({}) },
+    Validations: { Required: undefined },
+    useAsset: () => ({
+      getAsset: mockGetAsset,
+      isSameAsset: mockIsSameAsset,
+    }),
+    useAssetContext: () => ({
+      assets: mockAssetsMap,
+      getAssets: mockGetAssets,
+    }),
+    useAuthContext: () => ({ session: undefined }),
+    useBuy: () => buyInterface,
+    useFiat: () => ({
+      toSymbol: () => '',
+      toDescription: () => '',
+      getCurrency: mockGetCurrency,
+      getDefaultCurrency: mockGetDefaultCurrency,
+    }),
+    useSessionContext: () => ({ logout: jest.fn() }),
+    useUserContext: () => ({ user: undefined }),
   };
 });
 

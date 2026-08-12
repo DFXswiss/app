@@ -8,31 +8,30 @@ jest.mock('@dfx.swiss/react', () => ({
 
 import useVirtualIban from '../hooks/virtual-iban.hook';
 
-describe('useVirtualIban().getPersonalIbans', () => {
+describe('useVirtualIban().createPersonalIban', () => {
   beforeEach(() => {
     mockCall.mockReset();
   });
 
-  it('requests the personal-IBAN rows and returns the API response', async () => {
-    const apiResponse = [
-      {
-        id: 7,
-        iban: 'CH9300762011623852957',
-        currency: 'CHF',
-        bank: 'Yapeal',
-        active: true,
-        acceptsPayments: true,
-      },
-    ];
+  it('creates a personal IBAN and returns the API response', async () => {
+    const apiResponse = {
+      id: 7,
+      iban: 'CH9300762011623852957',
+      currency: 'CHF',
+      bank: 'Yapeal',
+      active: true,
+      acceptsPayments: true,
+    };
     mockCall.mockResolvedValue(apiResponse);
     const { result } = renderHook(() => useVirtualIban());
 
-    const personalIbans = await result.current.getPersonalIbans();
+    const personalIban = await result.current.createPersonalIban({ currency: 'CHF' });
 
     expect(mockCall).toHaveBeenCalledWith({
       url: 'buy/personalIban',
-      method: 'GET',
+      method: 'POST',
+      data: { currency: 'CHF' },
     });
-    expect(personalIbans).toBe(apiResponse);
+    expect(personalIban).toBe(apiResponse);
   });
 });

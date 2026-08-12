@@ -1,5 +1,10 @@
-import { FiatPaymentMethod, PersonalIbanProvider, TransactionError } from '@dfx.swiss/react';
-import { VirtualIban, VirtualIbanStatus } from 'src/dto/virtual-iban.dto';
+import {
+  FiatPaymentMethod,
+  PersonalIbanProvider,
+  TransactionError,
+  VirtualIban,
+  VirtualIbanStatus,
+} from '@dfx.swiss/react';
 
 /** Bank Frick personal-IBAN accounts are held by DFX AG (routing sub-account), never the customer. */
 export const FRICK_BANK_NAME = 'Bank Frick';

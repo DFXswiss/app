@@ -664,11 +664,9 @@ test.describe('Buy Process - UI Flow', () => {
       const requestData = route.request().postDataJSON() as Record<string, unknown>;
       receivedProvider = requestData.personalIbanProvider;
 
-      // No explicit selector at all defaults to the Yapeal response, mirroring the real server's
-      // fail-closed default for an existing Yapeal holder (see also the Frick-default rationale
-      // in buy.screen.tsx: the frontend upgrades this to an explicit Frick request itself once
-      // personalIban/user have loaded, so this branch is only hit for the very first,
-      // not-yet-upgraded render).
+      // No explicit selector defaults to Yapeal, mirroring the server behavior used by the KYC
+      // fallback. The first quote is gated until the user and personal-IBAN rows are available,
+      // so the initial request for this eligible customer is the explicit Frick branch.
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -684,9 +682,7 @@ test.describe('Buy Process - UI Flow', () => {
 
     const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
 
-    // Wait for the toggle to settle on the auto-Frick-default state before asserting/screenshotting -
-    // the very first render can transiently show a selector-less quote before personalIban/user
-    // have loaded (see comment on the route handler above).
+    // Wait for the gated auto-Frick-default state before asserting and screenshotting.
     const toYapealToggle = paymentDetails.getByRole('button', { name: 'Show legacy Yapeal IBAN' });
     await expect(toYapealToggle).toBeVisible({ timeout: 15000 });
     await expect.poll(() => receivedProvider).toBe('Frick');
@@ -712,6 +708,119 @@ test.describe('Buy Process - UI Flow', () => {
     await toFrickToggle.click();
 
     await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible({ timeout: 15000 });
+  });
+
+  test('falls back to the legacy Yapeal IBAN when the automatic Frick request requires KYC', async ({
+    page,
+    request,
+  }) => {
+    const token = await getToken(request);
+
+    await page.route(/\/v2\/user(?:\?|$)/, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const user = await response.json();
+      await route.fulfill({ response, json: { ...user, kyc: { ...user.kyc, level: 50 } } });
+    });
+
+    await page.route('**/v1/buy/personalIban', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 7,
+            iban: 'CH9300762011623852957',
+            currency: 'CHF',
+            bank: 'Yapeal',
+            active: true,
+            acceptsPayments: true,
+            status: 'Active',
+          },
+        ],
+      });
+    });
+
+    const yapealResponse = {
+      id: 22,
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.0251,
+      rate: 3862.5,
+      exchangeRate: 3984.06,
+      priceSteps: [],
+      minVolume: 10,
+      maxVolume: 990000,
+      minVolumeTarget: 0.0026,
+      maxVolumeTarget: 248.5,
+      fees: {
+        rate: 0.0099,
+        fixed: 0,
+        min: 0,
+        dfx: 0.99,
+        network: 0,
+        bank: 0,
+        bankFixed: 2,
+        bankVariable: 0,
+        platform: 0,
+        total: 2.99,
+      },
+      currency: { id: 1, name: 'CHF' },
+      asset: { id: 111, name: 'ETH', blockchain: 'Ethereum', category: 'Public' },
+      bank: 'Yapeal',
+      bic: 'YAPECHZ2',
+      iban: 'CH9300762011623852957',
+      name: 'Max Muster',
+      street: 'Bahnhofstrasse',
+      number: '7',
+      zip: '6300',
+      city: 'Zug',
+      country: 'Schweiz',
+      remittanceInfo: 'DFX-BUY-7',
+      sepaInstant: false,
+      isPersonalIban: true,
+    };
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      const requestData = route.request().postDataJSON() as Record<string, unknown>;
+      if (requestData.personalIbanProvider === 'Frick') {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          json: { statusCode: 400, message: 'KycRequired' },
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: yapealResponse,
+      });
+    });
+
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`,
+    );
+
+    await expect(
+      page.getByText(
+        'Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.',
+      ),
+    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('CH93 0076 2011 6238 5295 7')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Complete KYC' })).not.toBeVisible();
+    await expect(page).toHaveURL(/\/buy(?:\?|$)/);
+    await expect(page).toHaveScreenshot('buy-chf-kyc-fallback-page.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
   });
 });
 
