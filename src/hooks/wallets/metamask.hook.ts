@@ -270,6 +270,26 @@ export function useMetaMask(): MetaMaskInterface {
   // gives up after 180s, turning a slow-to-mine transaction into a false failure.
   const RECEIPT_TIMEOUT = 750_000;
 
+  // web3 rejected when the mined receipt had status false, and kept polling the original
+  // hash when the wallet replaced or cancelled the transaction; viem resolves with the
+  // replacement receipt instead, so only a repriced (fee-bumped) replacement is still the
+  // same payment — and the receipt's hash, not the submitted one, is the one that mined.
+  async function waitForTransaction(hash: `0x${string}`): Promise<string> {
+    let replaced: 'repriced' | 'cancelled' | 'replaced' | undefined;
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: RECEIPT_TIMEOUT,
+      onReplaced: (replacement) => (replaced = replacement.reason),
+    });
+
+    if (replaced === 'cancelled') throw new Error('Transaction was cancelled in the wallet');
+    if (replaced === 'replaced') throw new Error('Transaction was replaced in the wallet');
+    if (receipt.status === 'reverted')
+      throw new Error(`Transaction has been reverted by the EVM: ${receipt.transactionHash}`);
+
+    return receipt.transactionHash;
+  }
+
   async function createTransaction(
     amount: BigNumber,
     asset: Asset,
@@ -283,21 +303,22 @@ export function useMetaMask(): MetaMaskInterface {
     // did its own estimation. Keep that exact wire shape: no fee fields unless overridden.
     const gasPrice = config?.gasPrice != null ? BigInt(config.gasPrice) : undefined;
 
+    // toFixed() throughout: BigNumber emits exponential notation from 1e21 (a thousand units
+    // of an 18-decimals token), which BigInt and parseEther reject.
     if (asset.type === AssetType.COIN) {
       const hash = await walletClient
         .sendTransaction({
           account: from as Address,
           chain: null,
           to: to as Address,
-          value: config?.isWeiAmount ? BigInt(amount.toString()) : parseEther(amount.toString()),
+          value: config?.isWeiAmount ? BigInt(amount.toFixed()) : parseEther(amount.toFixed()),
           gasPrice,
         })
         .catch(toProviderError);
 
-      await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT });
-      return hash;
+      return waitForTransaction(hash);
     } else {
-      let adjustedAmount = amount.toString();
+      let adjustedAmount = amount.toFixed();
       if (!config?.isWeiAmount) {
         const decimals = await readErc20(asset.chainId, 'decimals');
         adjustedAmount = amount.multipliedBy(Math.pow(10, decimals)).toFixed();
@@ -315,8 +336,7 @@ export function useMetaMask(): MetaMaskInterface {
         })
         .catch(toProviderError);
 
-      await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT });
-      return hash;
+      return waitForTransaction(hash);
     }
   }
 

@@ -595,7 +595,7 @@ describe('useMetaMask', () => {
   describe('createTransaction', () => {
     beforeEach(() => {
       (window as any).ethereum = { isMetaMask: true, request: jest.fn(), on: jest.fn() };
-      mockPublicClient.waitForTransactionReceipt.mockResolvedValue({});
+      mockPublicClient.waitForTransactionReceipt.mockResolvedValue({ status: 'success', transactionHash: '0xhash' });
     });
 
     it('sends no fee fields when no override is given, leaving estimation to the wallet', async () => {
@@ -631,8 +631,70 @@ describe('useMetaMask', () => {
       const { result } = renderHook(() => useMetaMask());
       const hash = await result.current.createTransaction(new BigNumber(1), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS);
 
-      expect(mockPublicClient.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: '0xhash', timeout: 750_000 });
+      expect(mockPublicClient.waitForTransactionReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({ hash: '0xhash', timeout: 750_000 }),
+      );
       expect(hash).toBe('0xhash');
+    });
+
+    it('rejects when the mined transaction was reverted', async () => {
+      mockWalletClient.sendTransaction.mockResolvedValue('0xhash');
+      mockPublicClient.waitForTransactionReceipt.mockResolvedValue({ status: 'reverted', transactionHash: '0xhash' });
+
+      const { result } = renderHook(() => useMetaMask());
+      await expect(
+        result.current.createTransaction(new BigNumber(1), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS),
+      ).rejects.toThrow('Transaction has been reverted by the EVM: 0xhash');
+    });
+
+    it('returns the hash that actually mined when the wallet repriced the transaction', async () => {
+      mockWalletClient.sendTransaction.mockResolvedValue('0xhash');
+      mockPublicClient.waitForTransactionReceipt.mockImplementation(({ onReplaced }: { onReplaced: any }) => {
+        onReplaced({ reason: 'repriced' });
+        return Promise.resolve({ status: 'success', transactionHash: '0xspedup' });
+      });
+
+      const { result } = renderHook(() => useMetaMask());
+      await expect(
+        result.current.createTransaction(new BigNumber(1), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS),
+      ).resolves.toBe('0xspedup');
+    });
+
+    it('rejects when the wallet cancelled the transaction', async () => {
+      mockWalletClient.sendTransaction.mockResolvedValue('0xhash');
+      mockPublicClient.waitForTransactionReceipt.mockImplementation(({ onReplaced }: { onReplaced: any }) => {
+        onReplaced({ reason: 'cancelled' });
+        return Promise.resolve({ status: 'success', transactionHash: '0xcancel' });
+      });
+
+      const { result } = renderHook(() => useMetaMask());
+      await expect(
+        result.current.createTransaction(new BigNumber(1), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS),
+      ).rejects.toThrow('Transaction was cancelled in the wallet');
+    });
+
+    it('rejects when the wallet replaced the transaction with a different one', async () => {
+      mockWalletClient.sendTransaction.mockResolvedValue('0xhash');
+      mockPublicClient.waitForTransactionReceipt.mockImplementation(({ onReplaced }: { onReplaced: any }) => {
+        onReplaced({ reason: 'replaced' });
+        return Promise.resolve({ status: 'success', transactionHash: '0xother' });
+      });
+
+      const { result } = renderHook(() => useMetaMask());
+      await expect(
+        result.current.createTransaction(new BigNumber(1), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS),
+      ).rejects.toThrow('Transaction was replaced in the wallet');
+    });
+
+    it('serializes amounts from 1e21 without exponential notation', async () => {
+      mockWalletClient.sendTransaction.mockResolvedValue('0xhash');
+
+      const { result } = renderHook(() => useMetaMask());
+      await result.current.createTransaction(new BigNumber('1.5e21'), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS, {
+        isWeiAmount: true,
+      });
+
+      expect(mockWalletClient.sendTransaction.mock.calls[0][0].value).toBe(1_500000000000000000000n);
     });
 
     it('sends an ERC20 transfer with the amount adjusted for the token decimals', async () => {
@@ -664,15 +726,21 @@ describe('useMetaMask', () => {
       mockWalletClient.writeContract.mockResolvedValue('0xhash');
 
       const { result } = renderHook(() => useMetaMask());
-      const hash = await result.current.createTransaction(new BigNumber(2_500000), TOKEN_ASSET, TEST_ADDRESS, TEST_ADDRESS, {
-        isWeiAmount: true,
-      });
+      const hash = await result.current.createTransaction(
+        new BigNumber('2.5e21'),
+        TOKEN_ASSET,
+        TEST_ADDRESS,
+        TEST_ADDRESS,
+        { isWeiAmount: true },
+      );
 
       expect(hash).toBe('0xhash');
       expect(mockPublicClient.readContract).not.toHaveBeenCalled();
       const call = mockWalletClient.writeContract.mock.calls[0][0];
-      expect(call.args).toEqual([TEST_ADDRESS, 2_500000n]);
-      expect(mockPublicClient.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: '0xhash', timeout: 750_000 });
+      expect(call.args).toEqual([TEST_ADDRESS, 2_500000000000000000000n]);
+      expect(mockPublicClient.waitForTransactionReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({ hash: '0xhash', timeout: 750_000 }),
+      );
     });
 
     it('unwraps a viem-wrapped user rejection so callers still see the EIP-1193 code', async () => {
