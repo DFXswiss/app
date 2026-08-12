@@ -19,6 +19,7 @@ import { RefundDataTable } from 'src/components/refund/refund-data-table';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { TransactionRefundData, useCompliance } from 'src/hooks/compliance.hook';
+import { mapRefundApiError } from 'src/util/refund-error';
 import { ZipValidation } from 'src/util/validation-rules';
 
 interface ChargebackModalProps {
@@ -114,7 +115,9 @@ export function ChargebackModal({
         if (data.refundTarget) setValue('refundAddress', data.refundTarget);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load refund data');
+      const raw = e instanceof Error ? e.message : 'Failed to load refund data';
+      const mapped = mapRefundApiError(raw);
+      setError(mapped !== raw.trim() ? translate('screens/compliance', mapped) : raw);
     } finally {
       setIsLoading(false);
     }
@@ -147,7 +150,9 @@ export function ChargebackModal({
       });
       onSuccess();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Chargeback failed');
+      const raw = e instanceof Error ? e.message : 'Chargeback failed';
+      const mapped = mapRefundApiError(raw);
+      setError(mapped !== raw.trim() ? translate('screens/compliance', mapped) : raw);
     } finally {
       setIsSubmitting(false);
     }
