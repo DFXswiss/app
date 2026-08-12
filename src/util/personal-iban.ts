@@ -130,9 +130,9 @@ export function getOfferableCollectionIban(info: {
  * them, and the EPC069-12 GiroCode exists only for EUR). Also returns undefined unless the
  * payload is a well-formed SCT GiroCode (full 11-or-12-line shape, version 001/002, charset line
  * index 2 in '1'..'8') whose IBAN line matches the given personal IBAN (whitespace/case ignored),
- * whose amount line (line 7) matches the quote amount (canonical EPC069-12 grammar: no leading
- * zeros, at most nine integer digits — ceiling 999999999.99 — and at most two decimals, no
- * exponents, hex or signs; then cent-equality comparison, so `EUR100` and `EUR100.00` both
+ * whose amount line (line 7) is empty or matches the quote amount (canonical EPC069-12 grammar:
+ * no leading zeros, at most nine integer digits — ceiling 999999999.99 — and at most two decimals,
+ * no exponents, hex or signs; then cent-equality comparison, so `EUR100` and `EUR100.00` both
  * still match `100`), and whose remittance is carried on the
  * unstructured line 10 only and equals the quote's remittance info. This function does not
  * implement ISO 11649 structured-reference validation; the quote reference this frontend
@@ -140,9 +140,9 @@ export function getOfferableCollectionIban(info: {
  * structured-reference carrier (line 9) is therefore outside the shape this function validates
  * and is refused fail-closed — the worst case is no rewritten QR, while manual IBAN entry and
  * the original PDF invoice both remain available. The EPC069-12 GiroCode exists for EUR only —
- * the quote currency and amount prefix must both explicitly be `EUR`, independently of the
- * backend payload contract, and the rewrite always targets the EUR collection row. Swiss QR-Bill
- * SVG payloads are never rewritten — callers must treat undefined as "no QR available".
+ * the quote currency and any populated amount prefix must both explicitly be `EUR`, independently
+ * of the backend payload contract, and the rewrite always targets the EUR collection row. Swiss
+ * QR-Bill SVG payloads are never rewritten — callers must treat undefined as "no QR available".
  */
 export function toCollectionIbanGiroCode(
   paymentRequest: string,
@@ -173,12 +173,16 @@ export function toCollectionIbanGiroCode(
   if (!/^[1-8]$/.test(lines[2])) return undefined;
   if (lines[3] !== 'SCT') return undefined;
 
-  if (!lines[7].startsWith('EUR')) return undefined;
-  const amountText = lines[7].slice(3);
-  // Canonical EPC069-12 amount: no leading zeros, at most nine integer digits (ceiling
-  // 999999999.99) and at most two decimals — no exponents, hex or signs.
-  if (!/^(0|[1-9]\d{0,8})(\.\d{1,2})?$/.test(amountText)) return undefined;
-  if (Math.round(Number(amountText) * 100) !== Math.round(amount * 100)) return undefined;
+  if (lines[7].trim()) {
+    if (!lines[7].startsWith('EUR')) return undefined;
+    const amountText = lines[7].slice(3);
+    // Canonical EPC069-12 amount: no leading zeros, at most nine integer digits (ceiling
+    // 999999999.99) and at most two decimals — no exponents, hex or signs.
+    if (!/^(0|[1-9]\d{0,8})(\.\d{1,2})?$/.test(amountText)) return undefined;
+    if (Math.round(Number(amountText) * 100) !== Math.round(amount * 100)) return undefined;
+  }
+  // The api leaves this line empty for target-amount quotes (`amount` XOR `targetAmount`), and the
+  // personal QR carries the same absence. We only replace the IBAN; inventing an amount must not happen.
 
   const trimmedRemittance = remittanceInfo.trim();
   if (!trimmedRemittance) return undefined;

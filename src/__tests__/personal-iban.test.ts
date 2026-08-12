@@ -509,6 +509,34 @@ describe('toCollectionIbanGiroCode', () => {
     ).toBeUndefined();
   });
 
+  it('rewrites the IBAN and preserves an empty amount line', () => {
+    const result = toCollectionIbanGiroCode(
+      sampleGiroCode({ line7: '' }),
+      PERSONAL_GIRO_IBAN,
+      SAMPLE_REMITTANCE,
+      SAMPLE_AMOUNT,
+      'EUR',
+    );
+    expect(result).toBeDefined();
+    if (result === undefined) return;
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
+    expect(result.split('\n')[7]).toBe('');
+  });
+
+  it('rewrites the IBAN and preserves a whitespace-only amount line', () => {
+    const result = toCollectionIbanGiroCode(
+      sampleGiroCode({ line7: '   ' }),
+      PERSONAL_GIRO_IBAN,
+      SAMPLE_REMITTANCE,
+      SAMPLE_AMOUNT,
+      'EUR',
+    );
+    expect(result).toBeDefined();
+    if (result === undefined) return;
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
+    expect(result.split('\n')[7]).toBe('   ');
+  });
+
   it('returns undefined when line 7 amount does not match the quote amount', () => {
     expect(
       toCollectionIbanGiroCode(

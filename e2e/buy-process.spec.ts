@@ -729,6 +729,57 @@ test.describe('Buy Process - UI Flow', () => {
     await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-qr-collection.png');
   });
 
+  test('renders the collection QR for a quote without a source amount', async ({ page, request }) => {
+    const token = await getToken(request);
+
+    // Production-shaped GiroCode (api config: version 001, encoding 2).
+    const paymentRequest = [
+      'BCD',
+      '001',
+      '2',
+      'SCT',
+      'BFRILI22XXX',
+      'DFX AG, Bahnhofstrasse 7, 6300 Zug, Schweiz',
+      'LI21088100002324013AA',
+      '',
+      '',
+      '',
+      'A1B2-C3D4-E5F6',
+    ].join('\n');
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          ...COLLECTION_IBAN_TOGGLE_PAYMENT_INFOS,
+          paymentRequest,
+        },
+      });
+    });
+
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
+    );
+
+    const paymentDetails = page
+      .getByRole('heading', { name: 'Payment Information' })
+      .locator('..');
+
+    const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
+    await expect(toggle).toBeVisible({ timeout: 15000 });
+    await toggle.click();
+
+    const qrTab = paymentDetails.getByRole('tablist').filter({ hasText: /^QR Code$/ });
+    await qrTab.click();
+    await expect(paymentDetails.getByText('GiroCode')).toBeVisible();
+    await expect(
+      paymentDetails.getByText(
+        'No QR code is available for the collection account. Please enter the IBAN and the remittance info manually.',
+      ),
+    ).not.toBeVisible();
+  });
+
   // Fail-closed state the collection-IBAN rewrite produces when the payload's remittance line
   // does not match the quote's reference — no QR is rendered, the manual-entry hint shows, and
   // the baseline documents it, together with the combined state where the invoice call also
