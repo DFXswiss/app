@@ -143,6 +143,10 @@
     "title": "Support-Dashboard Übersicht",
     "description": "Support-Dashboard-Übersicht und Statistiken."
   },
+  "support-chat": {
+    "title": "Kunden-Support-Chat",
+    "description": "Kundenchat unter /support/chat: Verlauf mit Datumstrenner, Anhang mit Absendername, Zustände „wird gesendet“ und fehlgeschlagen."
+  },
   "subpage": {
     "title": "Unterseiten",
     "description": "Buy-, Sell-, Swap- und Transaktions-Unterseiten."
