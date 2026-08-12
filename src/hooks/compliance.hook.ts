@@ -1070,6 +1070,7 @@ export function useCompliance() {
         const signature = options.signature.trim();
         const txTable = tx.sourceType === 'BuyCrypto' ? 'buyCrypto' : 'buyFiat';
         if (options.amlAction === 'Pass') {
+          // Admin-only; API rejects Pass for Compliance. Prefer Reset so automatic AML decides.
           const passData = { amlCheck: CheckStatus.PASS, responsible: signature };
           if (tx.sourceType === 'BuyCrypto') await updateBuyCryptoAmlCheck(tx.id, passData);
           else await updateBuyFiatAmlCheck(tx.id, passData);

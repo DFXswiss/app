@@ -1,7 +1,8 @@
-import { AmlReason, CallQueue, CheckStatus } from '@dfx.swiss/react';
+import { AmlReason, CallQueue, CheckStatus, useAuthContext } from '@dfx.swiss/react';
 import { useState } from 'react';
 import type { ComplianceUserData, TransactionInfo } from 'src/hooks/compliance.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { canManuallySetAmlPass } from 'src/util/aml-pass.util';
 import { canResetBuyCryptoAmlForReview, hasBuyCryptoReviewResetEligibleState } from 'src/util/buy-crypto-reset.util';
 import { statusBadge } from 'src/util/compliance-helpers';
 import { hasScorechainHighRisk, scorechainHighlightValue } from 'src/util/scorechain.util';
@@ -52,6 +53,9 @@ function TransactionEntry({
   canResetBuyCrypto: boolean;
 }): JSX.Element {
   const { navigate } = useNavigation();
+  const { session } = useAuthContext();
+  const allowPass = canManuallySetAmlPass(session?.role);
+  const amlCheckOptions = AML_CHECK_OPTIONS.filter((opt) => opt !== CheckStatus.PASS || allowPass);
   const [amlCheck, setAmlCheck] = useState(tx.amlCheck ?? '');
   const [amlReason, setAmlReason] = useState<AmlReason>((tx.amlReason as AmlReason) ?? AmlReason.NA);
   const [setPriceDate, setSetPriceDate] = useState(false);
@@ -60,6 +64,8 @@ function TransactionEntry({
 
   async function handleSave(): Promise<void> {
     if (!amlCheck || !clerk) return;
+    // Fail-closed client guard; API rejects Pass for non-Admin regardless.
+    if (amlCheck === CheckStatus.PASS && !allowPass) return;
     setIsProcessing(true);
     try {
       if (amlCheck === 'Reset') {
@@ -167,15 +173,20 @@ function TransactionEntry({
               onChange={(e) => setAmlCheck(e.target.value)}
             >
               <option value="">—</option>
-              {AML_CHECK_OPTIONS.filter((opt) => opt !== 'Reset' || tx.buyCryptoId == null || canResetBuyCrypto).map(
-                (opt) => (
+              {amlCheckOptions
+                .filter((opt) => opt !== 'Reset' || tx.buyCryptoId == null || canResetBuyCrypto)
+                .map((opt) => (
                   <option key={opt} value={opt}>
                     {opt}
                   </option>
-                ),
-              )}
+                ))}
             </select>
           </div>
+          {!allowPass && (
+            <p className="px-3 py-2 text-xs text-dfxGray-700 border-b border-dfxGray-300">
+              Pass setzt nur die automatische AML-Prüfung (oder Admin). Bei Unsicherheit Reset wählen.
+            </p>
+          )}
           {tx.buyCryptoId != null && !canResetBuyCrypto && (
             <p className="px-3 py-2 text-xs text-dfxGray-700 border-b border-dfxGray-300">
               Reset ist erst verfügbar, wenn der BuyCrypto noch unvollständig ist und kein Payout/Refund/Batch läuft.

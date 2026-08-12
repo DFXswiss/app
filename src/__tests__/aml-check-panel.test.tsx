@@ -12,6 +12,8 @@ jest.mock('@dfx.swiss/react', () => ({
   KycStatus: {
     CHECK: 'Check',
   },
+  UserRole: { ADMIN: 'Admin', COMPLIANCE: 'Compliance' },
+  useAuthContext: () => ({ session: { role: 'Compliance' } }),
 }));
 
 jest.mock('src/hooks/navigation.hook', () => ({
@@ -219,5 +221,25 @@ describe('AmlCheckPendingPanel AML reset', () => {
     );
 
     expect(screen.getByRole('option', { name: 'Reset' })).toBeInTheDocument();
+  });
+
+  it('hides Pass for Compliance on the pending AML decision form', () => {
+    render(
+      <AmlCheckPendingPanel
+        data={{
+          ...data,
+          transactions: [{ ...buyCrypto, amlCheck: 'Pending', amlReason: 'ManualCheck' }],
+        }}
+        clerks={['Alice']}
+        isSaving={false}
+        onUpdate={jest.fn()}
+        onReset={jest.fn()}
+        onReviewReset={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('option', { name: 'Pass' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Fail' })).toBeInTheDocument();
+    expect(screen.getByText(/Pass setzt nur die automatische AML-Prüfung/)).toBeInTheDocument();
   });
 });

@@ -34,6 +34,12 @@ decision, and it follows the same route as any other deferral above: the
 reviewer grants the exception in writing on the pull request. It is never a
 reason to leave the bug unreported.
 
+## Compliance AML UI
+
+Manual `amlCheck = Pass` is **Admin-only**. The Compliance UI hides Pass for non-Admin roles
+(`canManuallySetAmlPass`); the API is the source of truth and rejects Pass fail-closed for
+Compliance and lower. Prefer Fail or Reset so the automatic AML pipeline can re-decide.
+
 ## Testing
 
 ### Test architecture
