@@ -16,7 +16,9 @@ jest.mock('@dfx.swiss/react-components', () => ({
   ),
   StyledButtonWidth: { FULL: 'full' },
 }));
-jest.mock('src/components/error-hint', () => ({ ErrorHint: () => null }));
+jest.mock('src/components/error-hint', () => ({
+  ErrorHint: ({ message }: { message: string }) => <div data-testid="error-hint">{message}</div>,
+}));
 jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_ns: string, key: string) => key }),
 }));
@@ -64,12 +66,18 @@ const PLAIN_PHONE_TX_CONTEXT = { ...TX_CONTEXT, queue: 'ManualCheckPhone' };
 const INELIGIBLE_TX_CONTEXT = { ...TX_CONTEXT, buyCryptoResetEligible: false };
 const USER_CONTEXT = { queue: 'UnavailableSuspicious', userDataId: 1 } as any;
 
-function renderForm(context: any) {
+let testClerks = ['JR'];
+let testClerksError: string | undefined;
+let testClerksLoading: boolean | undefined;
+
+function renderForm(context: any = TX_CONTEXT) {
   return render(
     <CallQueueOutcomeForm
       context={context}
       availableOutcomes={OUTCOMES}
-      clerks={['JR']}
+      clerks={testClerks}
+      clerksError={testClerksError}
+      clerksLoading={testClerksLoading}
       onSaved={jest.fn()}
       title="Save Outcome"
     />,
@@ -89,6 +97,104 @@ function submittedAmlAction(): string | undefined {
 }
 
 describe('CallQueueOutcomeForm AmlCheck action', () => {
+  beforeEach(() => {
+    testClerks = ['JR'];
+    testClerksError = undefined;
+    testClerksLoading = undefined;
+  });
+
+  it('shows a configuration hint when no clerks are configured', () => {
+    testClerks = [];
+
+    renderForm();
+
+    expect(screen.getByTestId('error-hint')).toHaveTextContent(
+      'No clerks are configured, so no signature can be selected and saving stays disabled. An admin has to fill the "complianceClerks" setting.',
+    );
+  });
+
+  it('shows the loading error when the clerk list could not be loaded', () => {
+    testClerks = [];
+    testClerksError = 'Network down';
+
+    renderForm();
+
+    expect(screen.getByTestId('error-hint')).toHaveTextContent(
+      'Could not load the clerk list: Network down. Saving is disabled until it loads.',
+    );
+  });
+
+  it('does not show a clerk hint while the clerk list is loading', () => {
+    testClerks = [];
+    testClerksError = 'Network down';
+    testClerksLoading = true;
+
+    renderForm();
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+  });
+
+  it('saves the explicitly selected signature', async () => {
+    testClerks = ['JR', 'AB'];
+    renderForm();
+    const selects = screen.getAllByRole('combobox');
+    const outcomeSelect = selects[1] as HTMLSelectElement;
+    const outcome = Array.from(outcomeSelect.options).find((option) => option.value)?.value;
+
+    expect(outcome).toBeDefined();
+    fireEvent.change(selects[0], { target: { value: 'AB' } });
+    fireEvent.change(outcomeSelect, { target: { value: outcome } });
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Completed call' } });
+    fireEvent.click(screen.getByRole('button'));
+
+    await waitFor(() =>
+      expect(mockSaveCallOutcome).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ signature: 'AB' }),
+      ),
+    );
+  });
+
+  it('renders fallback details for a failed save without completed steps', async () => {
+    mockSaveCallOutcome.mockResolvedValue({ success: false, completedSteps: [] });
+    renderForm();
+    const outcomeSelect = screen.getAllByRole('combobox')[1] as HTMLSelectElement;
+    const outcome = Array.from(outcomeSelect.options).find((option) => option.value)?.value;
+
+    expect(outcome).toBeDefined();
+    fireEvent.change(outcomeSelect, { target: { value: outcome } });
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Completed call' } });
+    fireEvent.click(screen.getByRole('button'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error-hint').textContent).toBe("Failed at step 'unknown': Unknown error"),
+    );
+  });
+
+  it('renders completed steps and explicit details for a failed save', async () => {
+    mockSaveCallOutcome.mockResolvedValue({
+      success: false,
+      failedStep: 'transaction',
+      message: 'DB write failed',
+      completedSteps: ['userData'],
+    });
+    renderForm();
+    const outcomeSelect = screen.getAllByRole('combobox')[1] as HTMLSelectElement;
+    const outcome = Array.from(outcomeSelect.options).find((option) => option.value)?.value;
+
+    expect(outcome).toBeDefined();
+    fireEvent.change(outcomeSelect, { target: { value: outcome } });
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Completed call' } });
+    fireEvent.click(screen.getByRole('button'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error-hint').textContent).toBe(
+        "Failed at step 'transaction': DB write failed. Previously completed: userData. Please verify state manually before retry.",
+      ),
+    );
+  });
+
   beforeEach(() => {
     mockAuth.session = { role: 'Compliance' };
     jest.clearAllMocks();

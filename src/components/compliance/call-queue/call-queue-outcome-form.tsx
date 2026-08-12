@@ -82,10 +82,10 @@ export function CallQueueOutcomeForm({
   }
 
   async function handleSubmit() {
-    if (!outcome || !signature || !comment.trim()) return;
     setIsSaving(true);
     setResult(undefined);
-    const res = await saveCallOutcome(context, outcome, {
+    // the cast is carried by the disabled-button gate: canSubmit requires a non-empty outcome
+    const res = await saveCallOutcome(context, outcome as CallOutcome, {
       signature,
       comment,
       amlAction: hasTx ? (outcomeImpliesAmlAction ? impliedAmlAction() : amlAction || undefined) : undefined,
