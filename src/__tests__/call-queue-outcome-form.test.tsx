@@ -177,12 +177,12 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
     renderForm(INELIGIBLE_TX_CONTEXT);
 
     expect(screen.queryByRole('option', { name: 'Reset' })).not.toBeInTheDocument();
-    expect(screen.getByText(/Reset is available only after KYC is set to Check/)).toBeInTheDocument();
+    expect(screen.getByText(/Reset is unavailable for this BuyCrypto/)).toBeInTheDocument();
   });
 
   // Fail-closed: an ineligible BuyCrypto must not silently swallow the automatic reset. Saving a
   // no-op would report success and navigate away while the transaction stays pending, so the form
-  // blocks the save until KYC is set to Check.
+  // blocks the save until the BuyCrypto is eligible for reset.
   it('disables the save and explains why when the automatic reset is unavailable', async () => {
     renderForm(INELIGIBLE_TX_CONTEXT);
 

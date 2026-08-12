@@ -116,7 +116,7 @@ describe('AmlCheckPendingPanel AML reset', () => {
     expect(onReviewReset).not.toHaveBeenCalled();
   });
 
-  it('keeps review reset disabled until KYC is Check', () => {
+  it('allows review reset when KYC is not Check', () => {
     render(
       <AmlCheckPendingPanel
         data={{ ...data, userData: { ...data.userData, kycStatus: 'Completed' } } as ComplianceUserData}
@@ -128,8 +128,8 @@ describe('AmlCheckPendingPanel AML reset', () => {
       />,
     );
 
-    expect(screen.getByText('Zuerst KYC-Status auf Check setzen und den Reload abwarten.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'AML-Check zurücksetzen' })).toBeDisabled();
+    expect(screen.queryByText(/KYC-Status auf Check/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AML-Check zurücksetzen' })).toBeEnabled();
   });
 
   it.each([
@@ -153,20 +153,44 @@ describe('AmlCheckPendingPanel AML reset', () => {
     expect(screen.queryByRole('button', { name: 'AML-Check zurücksetzen' })).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['KYC is not Check', { userData: { ...data.userData, kycStatus: 'Completed' } }, {}],
-    ['BuyCrypto is stopped', data.userData, { buyCryptoStatus: 'Stopped' }],
-  ])('hides the legacy Reset decision when %s', (_case, userData, txOverride) => {
+  it('keeps the legacy Reset decision when KYC is not Check', () => {
     const pendingManualTx = {
       ...buyCrypto,
-      ...txOverride,
       amlCheck: 'Pending',
       amlReason: 'ManualCheck',
     };
 
     render(
       <AmlCheckPendingPanel
-        data={{ ...data, userData, transactions: [pendingManualTx] } as ComplianceUserData}
+        data={
+          {
+            ...data,
+            userData: { ...data.userData, kycStatus: 'Completed' },
+            transactions: [pendingManualTx],
+          } as ComplianceUserData
+        }
+        clerks={['Alice']}
+        isSaving={false}
+        onUpdate={jest.fn()}
+        onReset={jest.fn()}
+        onReviewReset={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('option', { name: 'Reset' })).toBeInTheDocument();
+  });
+
+  it('hides the legacy Reset decision when BuyCrypto is stopped', () => {
+    const pendingManualTx = {
+      ...buyCrypto,
+      buyCryptoStatus: 'Stopped',
+      amlCheck: 'Pending',
+      amlReason: 'ManualCheck',
+    };
+
+    render(
+      <AmlCheckPendingPanel
+        data={{ ...data, transactions: [pendingManualTx] } as ComplianceUserData}
         clerks={['Alice']}
         isSaving={false}
         onUpdate={jest.fn()}

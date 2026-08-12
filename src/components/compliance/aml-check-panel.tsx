@@ -178,7 +178,7 @@ function TransactionEntry({
           </div>
           {tx.buyCryptoId != null && !canResetBuyCrypto && (
             <p className="px-3 py-2 text-xs text-dfxGray-700 border-b border-dfxGray-300">
-              Reset ist erst verfügbar, wenn KYC auf Check steht und BuyCrypto weiterhin zurückgesetzt werden darf.
+              Reset ist erst verfügbar, wenn der BuyCrypto noch unvollständig ist und kein Payout/Refund/Batch läuft.
             </p>
           )}
           <div className="flex items-center justify-between px-3 py-2 border-b border-dfxGray-300">
@@ -293,7 +293,9 @@ function ResettableTransactionEntry({
         </div>
       </div>
       {!canReset && (
-        <p className="text-sm text-dfxRed-100">Zuerst KYC-Status auf Check setzen und den Reload abwarten.</p>
+        <p className="text-sm text-dfxRed-100">
+          Reset nicht möglich: BuyCrypto ist abgeschlossen, gestoppt, in Batch/Chargeback oder Refund/Payout läuft.
+        </p>
       )}
     </div>
   );
@@ -453,7 +455,7 @@ export function AmlCheckPendingPanel({
               key={tx.id}
               tx={tx}
               isSaving={isSaving}
-              canReset={canResetBuyCryptoAmlForReview(tx, ud.kycStatus)}
+              canReset={canResetBuyCryptoAmlForReview(tx)}
               onReset={() => onReviewReset(tx)}
             />
           ))}
@@ -468,7 +470,7 @@ export function AmlCheckPendingPanel({
             onReset={(clerk) => onReset(tx, clerk)}
             isSaving={isSaving}
             userDataId={ud.id}
-            canResetBuyCrypto={canResetBuyCryptoAmlForReview(tx, ud.kycStatus)}
+            canResetBuyCrypto={canResetBuyCryptoAmlForReview(tx)}
           />
         </div>
       ))}

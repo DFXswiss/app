@@ -1,4 +1,3 @@
-import { KycStatus } from '@dfx.swiss/react';
 import type { TransactionInfo } from 'src/hooks/compliance.hook';
 
 export function hasBuyCryptoReviewResetEligibleState(tx: TransactionInfo): boolean {
@@ -14,6 +13,7 @@ export function hasBuyCryptoReviewResetEligibleState(tx: TransactionInfo): boole
   );
 }
 
-export function canResetBuyCryptoAmlForReview(tx: TransactionInfo, kycStatus: string | undefined): boolean {
-  return kycStatus === KycStatus.CHECK && hasBuyCryptoReviewResetEligibleState(tx);
+/** Eligibility is BuyCrypto state only — KYC status must not gate the review reset. */
+export function canResetBuyCryptoAmlForReview(tx: TransactionInfo): boolean {
+  return hasBuyCryptoReviewResetEligibleState(tx);
 }

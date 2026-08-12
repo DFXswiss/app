@@ -133,16 +133,16 @@ export function CallQueueOutcomeForm({ context, availableOutcomes, clerks, onSav
           </select>
           {buyCryptoResetUnavailable && (
             <p className="mt-1 text-xs text-dfxGray-700">
-              Reset is available only after KYC is set to Check and the BuyCrypto remains eligible; reload Compliance
-              review first.
+              Reset is unavailable for this BuyCrypto (completed, stopped, batch, chargeback, or payout/refund in
+              progress). Reload Compliance review if the transaction state has changed.
             </p>
           )}
         </div>
       )}
       {impliedResetUnavailable && (
         <p className="mt-4 text-xs text-primary-red">
-          Saving is disabled: this queue is excluded from the AML recheck and the automatic reset is unavailable for
-          this BuyCrypto, so the transaction would stay pending. Set KYC to Check and reload Compliance review, then
+          Saving is disabled: this queue is excluded from the AML recheck and automatic reset is unavailable for this
+          BuyCrypto, so the transaction would stay pending. Reload after the BuyCrypto is eligible for reset, then
           save the outcome.
         </p>
       )}

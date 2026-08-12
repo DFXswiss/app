@@ -1088,7 +1088,7 @@ export function useCompliance() {
           if (tx.sourceType === 'BuyCrypto') {
             if (!context.buyCryptoResetEligible)
               throw new Error(
-                'BuyCrypto AML reset is unavailable; set KYC to Check and reload an eligible transaction',
+                'BuyCrypto AML reset is unavailable; reload an eligible incomplete transaction (no batch/payout/refund)',
               );
             if (!context.amlCheck) throw new Error('Current BuyCrypto AML status is missing; reload the transaction');
             await resetBuyCryptoReviewAml(tx.id, {
