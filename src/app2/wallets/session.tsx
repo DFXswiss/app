@@ -111,6 +111,40 @@ export function clearSessionProviderBindings(
   setActiveConnector(undefined);
 }
 
+/**
+ * WC teardown side-effects for an abandoned connect attempt.
+ *
+ * Only disconnects WalletConnect / clears `wcProviderRef` when the cancelled attempt itself
+ * was a WC pairing (`pendingWcRef` set after QR, or a live cancel token during pairing).
+ * Cancelling an unrelated injected/hardware/CLI attempt must not tear down an already-
+ * authenticated WC session that still owns the monitor's provider ref.
+ */
+export function applyConnectAttemptCancel(
+  pendingWcRef: { current: Eip1193Provider | undefined },
+  wcProviderRef: { current: Eip1193Provider | undefined },
+  hadWcToken: boolean,
+  disconnectWc: () => void,
+): void {
+  const hadOwnWcAttempt = pendingWcRef.current !== undefined || hadWcToken;
+  pendingWcRef.current = undefined;
+  if (hadOwnWcAttempt) {
+    wcProviderRef.current = undefined;
+    disconnectWc();
+  }
+}
+
+/**
+ * Release a hardware device transport that never reached `sign`. Used when the user aborts
+ * between connect and sign (sheet close / superseded attempt / auth-message failure).
+ * Ledger exposes `dispose`; BitBox/Trezor have no open handle to close.
+ */
+export async function releaseUnusedHardwareSession(
+  hw: { dispose?: () => Promise<void> } | undefined,
+  didSign: boolean,
+): Promise<void> {
+  if (hw && !didSign) await hw.dispose?.();
+}
+
 /** Whether the active JWT address belongs to an injected EVM browser wallet.
  *
  * Used to gate the reload-time `eth_accounts` probe: without a positive association we keep the
@@ -458,16 +492,18 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
    * handleSelectWallet's own post-await checks discard a late resolution), cancels the
    * WalletConnect pairing's CancelToken if there is one, frees `busyRef` immediately (not in
    * handleSelectWallet's `finally`, which may not run for a long time — or ever, if the remote
-   * wallet never responds), and tears down the WC provider as best the API allows. */
+   * wallet never responds), and tears down a half-open WC pairing as best the API allows —
+   * without disconnecting an already-authenticated WC session when the cancelled attempt was
+   * a different connector (injected/hardware/CLI). */
   const cancelConnectAttempt = useCallback(() => {
     attemptIdRef.current += 1;
+    const hadWcToken = wcTokenRef.current !== null;
     wcTokenRef.current?.cancel(new WalletConnectorError('Connection cancelled', 'rejected'));
     wcTokenRef.current = null;
     busyRef.current = false;
-    // Drop any half-open WC provider so a later non-WC session is never watched by it.
-    pendingWcProviderRef.current = undefined;
-    wcProviderRef.current = undefined;
-    void disconnectWalletConnect();
+    applyConnectAttemptCancel(pendingWcProviderRef, wcProviderRef, hadWcToken, () => {
+      void disconnectWalletConnect();
+    });
   }, []);
 
   const closeConnect = useCallback(() => {
@@ -766,8 +802,12 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       const myAttempt = ++attemptIdRef.current;
       const isCurrent = () => myAttempt === attemptIdRef.current;
       setView({ kind: 'connecting', walletId: entry.id, label: t('hwConnecting') });
+      // Tracks whether sign() ran so a mid-flow abort (sheet close / superseded attempt /
+      // bad auth message) can dispose an open Ledger WebHID transport that never reached sign.
+      let hw: Awaited<ReturnType<typeof connectHardware>> | undefined;
+      let didSign = false;
       try {
-        const hw = await connectHardware(entry.connector as HardwareId, chain, {
+        hw = await connectHardware(entry.connector as HardwareId, chain, {
           onPairingCode: (code) => {
             if (isCurrent()) setView({ kind: 'hw-pairing', code, label: entry.name });
           },
@@ -790,6 +830,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           return;
         }
         const signature = await hw.sign(message);
+        didSign = true;
         if (!isCurrent()) return;
         await signInWith(
           {
@@ -813,6 +854,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         }
         setView({ kind: 'list' });
       } finally {
+        await releaseUnusedHardwareSession(hw, didSign);
         if (isCurrent()) busyRef.current = false;
       }
     },
