@@ -17,7 +17,7 @@
 // hash) OUTSIDE this component. To stay robust either way, params are read from
 // the router (hash) search first, then fall back to window.location.search.
 
-import { ApiException, TransactionUrl, useApi, useApiSession } from '@dfx.swiss/react';
+import { ApiException, useApi, useApiSession, useTransaction } from '@dfx.swiss/react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useT, type TranslationKey } from '../i18n';
@@ -115,7 +115,8 @@ export default function ReturnRouteScreen() {
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const { isLoggedIn, openConnect } = useWalletSession();
-  const { call } = useApi();
+  const { call } = useApi(); // account-merge OTP confirm has no SDK method
+  const { getTransactionByCkoId } = useTransaction();
   const { updateSession } = useApiSession();
 
   const [panel, setPanel] = useState<Panel>({ kind: 'spinner', msgKey: 'mergeVerifying' });
@@ -176,10 +177,7 @@ export default function ReturnRouteScreen() {
 
       const tick = async () => {
         try {
-          const tx = await call<{ uid?: string; id?: number }>({
-            url: `${TransactionUrl.single}?cko-id=${encodeURIComponent(ckoId)}`,
-            method: 'GET',
-          });
+          const tx = await getTransactionByCkoId(ckoId);
           if (cancelledRef.current) return;
           if (tx && (tx.uid || tx.id != null)) {
             const uid = tx.uid ?? (tx.id != null ? String(tx.id) : undefined);
@@ -219,7 +217,7 @@ export default function ReturnRouteScreen() {
       };
       void tick();
     },
-    [call, goContinue, navigate, stopPoll, t],
+    [getTransactionByCkoId, goContinue, navigate, stopPoll, t],
   );
 
   // Cancel any in-flight poll on unmount (no leaks).

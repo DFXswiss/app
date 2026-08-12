@@ -43,6 +43,7 @@ import {
 import { connectChainWallet } from './chain-providers';
 import { isPlausibleCliAddress } from './cli';
 import { connectHardware, isWebHidAvailable, type HardwareChain, type HardwareId } from './hardware-providers';
+import { firstQueryParam } from '../utils/url';
 import { classifyInviteCode, normalizeInviteCode } from './invite';
 import { rememberWallet, seenWallets, type SeenWallet } from './seen';
 import { mainnetOnly } from '../screens/trade/blockchain-meta';
@@ -109,6 +110,54 @@ export function clearSessionProviderBindings(
   wcRef.current = undefined;
   if (pendingWcRef) pendingWcRef.current = undefined;
   setActiveConnector(undefined);
+}
+
+/** Snapshot of live provider bindings — restore after a failed wallet switch. */
+export interface SessionProviderSnapshot {
+  connector: SessionConnector | undefined;
+  injected: Eip1193Provider | undefined;
+  wc: Eip1193Provider | undefined;
+  pendingWc: Eip1193Provider | undefined;
+}
+
+export function snapshotSessionProviderBindings(
+  connector: SessionConnector | undefined,
+  injectedRef: { current: Eip1193Provider | undefined },
+  wcRef: { current: Eip1193Provider | undefined },
+  pendingWcRef: { current: Eip1193Provider | undefined },
+): SessionProviderSnapshot {
+  return {
+    connector,
+    injected: injectedRef.current,
+    wc: wcRef.current,
+    pendingWc: pendingWcRef.current,
+  };
+}
+
+export function restoreSessionProviderBindings(
+  snapshot: SessionProviderSnapshot,
+  setActiveConnector: (connector: SessionConnector | undefined) => void,
+  injectedRef: { current: Eip1193Provider | undefined },
+  wcRef: { current: Eip1193Provider | undefined },
+  pendingWcRef: { current: Eip1193Provider | undefined },
+): void {
+  injectedRef.current = snapshot.injected;
+  wcRef.current = snapshot.wc;
+  pendingWcRef.current = snapshot.pendingWc;
+  setActiveConnector(snapshot.connector);
+}
+
+/** WC disconnect then JWT logout — shared by explicit logout and accountsChanged invalidate. */
+export async function teardownWalletSession(
+  disconnectWc: () => Promise<unknown>,
+  logout: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await disconnectWc();
+  } catch {
+    /* still clear the JWT */
+  }
+  await logout();
 }
 
 /**
@@ -463,20 +512,10 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
 
   // Invite/referral code and ?wallet= (partner wallet id) — read once; both map straight onto the
   // /auth body (usedRef, wallet) per auth.d.ts. A real DFX referral link is ?code= (REF_BASE
-  // 'https://app.dfx.swiss/login?code='), with ?ref=/?usedRef= as legacy aliases and ?refcode= the
-  // embed-contract param that overrides them — mirrors the original INVITE resolution
-  // (public/app2/index.html:1638 code||ref||usedRef, then APPP.refcode override at :1656).
-  const inviteCode = useMemo(() => {
-    const qp = new URLSearchParams(window.location.search);
-    return (
-      qp.get('refcode')?.trim() ||
-      qp.get('code')?.trim() ||
-      qp.get('ref')?.trim() ||
-      qp.get('usedRef')?.trim() ||
-      undefined
-    );
-  }, []);
-  const walletParam = useMemo(() => new URLSearchParams(window.location.search).get('wallet')?.trim() || undefined, []);
+  // 'https://app.dfx.swiss/login?code='), with ?ref=/?usedRef= as legacy aliases, ?refcode= the
+  // embed-contract param, and ?recommendation-code= the main-app partner param (app-handling.context).
+  const inviteCode = useMemo(() => firstQueryParam('refcode', 'recommendation-code', 'code', 'ref', 'usedRef'), []);
+  const walletParam = useMemo(() => firstQueryParam('wallet'), []);
   const activeInviteRef = useRef(normalizeInviteCode(inviteCode));
 
   const openConnect = useCallback(
@@ -1003,10 +1042,15 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     async (entry: WalletSwitchEntry) => {
       setSwitcherOpen(false);
       if (entry.active) return;
-      // Drop provider bindings for the *previous* address before the JWT address changes.
-      // Leaving them in place would re-register accountsChanged on the old wallet after the
-      // effect re-runs. Resetting `activeConnector` to undefined sends the monitor into the
-      // reload probe path, which is safe (only injected-EVM sessions invalidate).
+      // Snapshot then drop provider bindings for the previous address before the JWT address
+      // changes. On failure, restore so the old JWT does not stay active without its EIP-1193
+      // bindings (accountsChanged monitor + sign path).
+      const previous = snapshotSessionProviderBindings(
+        activeConnector,
+        injectedProviderRef,
+        wcProviderRef,
+        pendingWcProviderRef,
+      );
       clearSessionProviderBindings(setActiveConnector, injectedProviderRef, wcProviderRef, pendingWcProviderRef);
       showToast(`${t('switching')} · ${shortAddress(entry.address)}`);
       try {
@@ -1014,7 +1058,14 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         await changeAddress(entry.address);
         void reloadUser();
         showToast(`${t('connected')} · ${shortAddress(entry.address)}`);
-      } catch (error) {
+      } catch {
+        restoreSessionProviderBindings(
+          previous,
+          setActiveConnector,
+          injectedProviderRef,
+          wcProviderRef,
+          pendingWcProviderRef,
+        );
         // A linked address should have switched seamlessly — surface one clean error rather than
         // opening a wallet prompt for a flow that was supposed to be instant.
         if (entry.linked) {
@@ -1028,7 +1079,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         if (catalogEntry) void handleSelectWallet(catalogEntry);
       }
     },
-    [changeAddress, reloadUser, showToast, t, openConnect, handleSelectWallet],
+    [activeConnector, changeAddress, reloadUser, showToast, t, openConnect, handleSelectWallet],
   );
 
   // URL-param session bootstrap: ?session=/?token=/?accessToken= logs in
@@ -1100,7 +1151,8 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       injectedProviderRef.current = undefined;
       wcProviderRef.current = undefined;
       pendingWcProviderRef.current = undefined;
-      void libLogout()
+      // Same teardown as explicit logout: drop WC persistence/provider before JWT clear.
+      void teardownWalletSession(disconnectWalletConnect, libLogout)
         .then(() => showToast(t('sessionExpired'), { assertive: true }))
         .finally(() => {
           providerChangeRef.current = false;
@@ -1160,8 +1212,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         injectedProviderRef.current = undefined;
         wcProviderRef.current = undefined;
         pendingWcProviderRef.current = undefined;
-        await disconnectWalletConnect();
-        await libLogout();
+        await teardownWalletSession(disconnectWalletConnect, libLogout);
         showToast(t('signOut'));
       },
       connectSheet: {

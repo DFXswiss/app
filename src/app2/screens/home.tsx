@@ -44,6 +44,7 @@ import { Landing } from './parts/Landing';
 import type { Capability, Mode, TradeAsset } from './trade/types';
 import { useBuyQuote, useSellQuote, useSwapQuote } from './trade/useTradeQuote';
 import { useT, type TranslationKey } from '../i18n';
+import { firstQueryParam } from '../utils/url';
 import { useWalletSession } from '../wallets/session';
 
 const MODES: Mode[] = ['buy', 'sell', 'swap'];
@@ -136,6 +137,15 @@ export default function HomeScreen() {
       new URLSearchParams(location.search).get('mode') ?? new URLSearchParams(window.location.search).get('mode');
     if (requestedMode === 'buy' || requestedMode === 'sell' || requestedMode === 'swap') setMode(requestedMode);
   }, [location.search]);
+
+  // Partner embed contract (main-app app-handling.context): external-transaction-id tags the
+  // payment attempt. Read from hash and real query so both deep-link styles work.
+  const externalTransactionId = useMemo(
+    () =>
+      new URLSearchParams(location.search).get('external-transaction-id')?.trim() ||
+      firstQueryParam('external-transaction-id'),
+    [location.search],
+  );
 
   // ---- asset pool (real data — useAssetContext(), grouped per ticker; see asset-pool.ts) ---
   const allAssets = useMemo<Asset[]>(() => getAssets(Object.values(Blockchain)), [getAssets]);
@@ -263,6 +273,7 @@ export default function HomeScreen() {
     currency: buyFiat,
     amount: buyAmount,
     paymentMethod: buyMethod,
+    externalTransactionId,
     // Also paused between CTA tap and sheet opening, so the panel number behind the spinner
     // can't flip to a new 30s quote in that window.
     paused: paymentSheetOpen || openAfterPaymentInfo,
@@ -273,6 +284,7 @@ export default function HomeScreen() {
     currency: buyFiat,
     amount: buyAmount,
     paymentMethod: buyMethod,
+    externalTransactionId,
     withPaymentInfo: true,
     paused: paymentSheetOpen,
   });
@@ -284,6 +296,7 @@ export default function HomeScreen() {
     asset: sellApiAsset,
     currency: sellFiat,
     amount: sellAmount,
+    externalTransactionId,
     paused: paymentSheetOpen || openAfterPaymentInfo,
   });
   const sellPayment = useSellQuote({
@@ -292,6 +305,7 @@ export default function HomeScreen() {
     currency: sellFiat,
     amount: sellAmount,
     iban: sellBankAccount?.iban,
+    externalTransactionId,
     paused: paymentSheetOpen,
   });
   const swapQuote = useSwapQuote({
@@ -299,6 +313,7 @@ export default function HomeScreen() {
     sourceAsset: swapFromApiAsset,
     targetAsset: swapToApiAsset,
     amount: swapAmount,
+    externalTransactionId,
     paused: paymentSheetOpen || openAfterPaymentInfo,
   });
   const swapPayment = useSwapQuote({
@@ -306,6 +321,7 @@ export default function HomeScreen() {
     sourceAsset: swapFromApiAsset,
     targetAsset: swapToApiAsset,
     amount: swapAmount,
+    externalTransactionId,
     withPaymentInfo: true,
     paused: paymentSheetOpen,
   });
