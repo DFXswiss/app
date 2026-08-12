@@ -282,7 +282,11 @@ export function toCollectionIbanGiroCode(
   // that names anyone else would leave the wrong creditor on a DFX account, and the payer's bank
   // checks that name against the IBAN. The offer gate already requires the quote to name this
   // holder; checking the payload itself keeps the two from being trusted on the api's word alone.
-  if (!lines[5].startsWith(FRICK_ACCOUNT_HOLDER_NAME)) return undefined;
+  // The api joins the holder and its address with ', ', so the name ends either at that separator or
+  // at the end of the line - a bare prefix test would also accept a different company whose name
+  // happens to begin with this one.
+  if (lines[5] !== FRICK_ACCOUNT_HOLDER_NAME && !lines[5].startsWith(`${FRICK_ACCOUNT_HOLDER_NAME}, `))
+    return undefined;
 
   const normalizedLine = lines[6].replace(/\s+/g, '').toUpperCase();
   const normalizedPersonal = personalIban.replace(/\s+/g, '').toUpperCase();

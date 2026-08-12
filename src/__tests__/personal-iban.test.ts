@@ -686,6 +686,18 @@ describe('toCollectionIbanGiroCode', () => {
     ).toBeUndefined();
   });
 
+  it('returns undefined when the creditor name only begins with the holder', () => {
+    expect(
+      toCollectionIbanGiroCode(
+        sampleGiroCode({ line5: 'DFX AGENT GmbH, Musterweg 1, 8000 Zürich, Schweiz' }),
+        PERSONAL_GIRO_IBAN,
+        SAMPLE_REMITTANCE,
+        SAMPLE_AMOUNT,
+        'EUR',
+      ),
+    ).toBeUndefined();
+  });
+
   it('rewrites a creditor line that carries the holder without an address', () => {
     const result = toCollectionIbanGiroCode(
       sampleGiroCode({ line5: 'DFX AG' }),
