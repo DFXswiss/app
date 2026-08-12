@@ -686,6 +686,26 @@ describe('useMetaMask', () => {
       ).rejects.toThrow('Transaction was replaced in the wallet');
     });
 
+    it('converts a native coin amount to wei without losing precision', async () => {
+      mockWalletClient.sendTransaction.mockResolvedValue('0xhash');
+
+      const { result } = renderHook(() => useMetaMask());
+      await result.current.createTransaction(new BigNumber('1.000000000000000001'), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS);
+
+      expect(mockWalletClient.sendTransaction.mock.calls[0][0].value).toBe(1_000000000000000001n);
+    });
+
+    it('rejects a native coin amount with sub-wei precision', async () => {
+      mockWalletClient.sendTransaction.mockResolvedValue('0xhash');
+
+      const { result } = renderHook(() => useMetaMask());
+      await expect(
+        result.current.createTransaction(new BigNumber('1.0000000000000000005'), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS),
+      ).rejects.toThrow('Cannot convert 1000000000000000000.5 to a BigInt');
+
+      expect(mockWalletClient.sendTransaction).not.toHaveBeenCalled();
+    });
+
     it('serializes amounts from 1e21 without exponential notation', async () => {
       mockWalletClient.sendTransaction.mockResolvedValue('0xhash');
 

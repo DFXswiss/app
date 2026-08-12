@@ -3,7 +3,7 @@ import BigNumber from 'bignumber.js';
 import { Buffer } from 'buffer';
 import { useMemo } from 'react';
 import { isMobile } from 'react-device-detect';
-import { Address, BaseError, createPublicClient, createWalletClient, custom, getAddress, isHex, parseEther } from 'viem';
+import { Address, BaseError, createPublicClient, createWalletClient, custom, getAddress, isHex } from 'viem';
 import { AssetBalance } from '../../contexts/balance.context';
 import ERC20_ABI from '../../static/erc20.abi.json';
 import { AbortError } from '../../util/abort-error';
@@ -304,14 +304,17 @@ export function useMetaMask(): MetaMaskInterface {
     const gasPrice = config?.gasPrice != null ? BigInt(config.gasPrice) : undefined;
 
     // toFixed() throughout: BigNumber emits exponential notation from 1e21 (a thousand units
-    // of an 18-decimals token), which BigInt and parseEther reject.
+    // of an 18-decimals token), which BigInt rejects. Wei conversion is explicit instead of
+    // parseEther: web3's toWei threw on more than 18 decimals, parseEther silently rounds.
     if (asset.type === AssetType.COIN) {
       const hash = await walletClient
         .sendTransaction({
           account: from as Address,
           chain: null,
           to: to as Address,
-          value: config?.isWeiAmount ? BigInt(amount.toFixed()) : parseEther(amount.toFixed()),
+          value: config?.isWeiAmount
+            ? BigInt(amount.toFixed())
+            : BigInt(amount.multipliedBy(Math.pow(10, 18)).toFixed()),
           gasPrice,
         })
         .catch(toProviderError);
