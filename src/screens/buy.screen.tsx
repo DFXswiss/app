@@ -193,6 +193,7 @@ export default function BuyScreen(): JSX.Element {
     paymentMethod: FiatPaymentMethod | undefined;
     sentProvider: PersonalIbanProvider | undefined;
     identity: number | undefined;
+    isFinalQuote: boolean;
   }>();
   const [customAmountError, setCustomAmountError] = useState<string>();
   const [errorMessage, setErrorMessage] = useState<string>();
@@ -280,6 +281,7 @@ export default function BuyScreen(): JSX.Element {
   const paymentInfo = activePaymentInfoState?.info;
   const paymentInfoPaymentMethod = activePaymentInfoState?.paymentMethod;
   const sentPersonalIbanProvider = activePaymentInfoState?.sentProvider;
+  const isQuoteFinal = activePaymentInfoState?.isFinalQuote === true;
 
   // Live-input generation: bumps immediately when form inputs or selector change so stale
   // debounced responses and confirm actions never commit against a newer form state (B4).
@@ -289,6 +291,8 @@ export default function BuyScreen(): JSX.Element {
   const pendingFormSynchronization = useRef<string>();
   const customerIdentityRef = useRef(customerIdentity);
   customerIdentityRef.current = customerIdentity;
+  const activePaymentInfoIdRef = useRef<number>();
+  activePaymentInfoIdRef.current = paymentInfo?.id;
   const isMountedRef = useRef(true);
 
   const effectivePersonalIban = activeSuppressPersonalIban ? undefined : personalIban;
@@ -697,6 +701,7 @@ export default function BuyScreen(): JSX.Element {
           paymentMethod: data.paymentMethod,
           sentProvider: data.personalIbanProvider,
           identity: loadingCustomerIdentity,
+          isFinalQuote: false,
         });
         committedQuoteGeneration.current = generation;
 
@@ -738,6 +743,7 @@ export default function BuyScreen(): JSX.Element {
           paymentMethod: data.paymentMethod,
           sentProvider: data.personalIbanProvider,
           identity: loadingCustomerIdentity,
+          isFinalQuote: true,
         });
         committedQuoteGeneration.current = generation;
       })
@@ -921,16 +927,20 @@ export default function BuyScreen(): JSX.Element {
     const confirmingGeneration = quoteGeneration.current;
     // Refuse confirmation against a quote that no longer matches the live form generation (B4).
     if (committedQuoteGeneration.current !== quoteGeneration.current) return;
+    if (activePaymentInfoState?.isFinalQuote !== true || activePaymentInfoState.info.id !== id)
+      return;
 
+    const confirmingRequestId = id;
     const confirmingCustomerIdentity = customerIdentity;
     setIsConfirming(true);
 
-    confirmFor(id)
+    confirmFor(confirmingRequestId)
       .then(() => {
         if (
           !isMountedRef.current ||
           customerIdentityRef.current !== confirmingCustomerIdentity ||
-          quoteGeneration.current !== confirmingGeneration
+          quoteGeneration.current !== confirmingGeneration ||
+          activePaymentInfoIdRef.current !== confirmingRequestId
         ) {
           return;
         }
@@ -941,7 +951,8 @@ export default function BuyScreen(): JSX.Element {
         if (
           !isMountedRef.current ||
           customerIdentityRef.current !== confirmingCustomerIdentity ||
-          quoteGeneration.current !== confirmingGeneration
+          quoteGeneration.current !== confirmingGeneration ||
+          activePaymentInfoIdRef.current !== confirmingRequestId
         ) {
           return;
         }
@@ -1309,6 +1320,7 @@ export default function BuyScreen(): JSX.Element {
                                   width={StyledButtonWidth.FULL}
                                   label={translate('screens/buy', 'Click here once you have issued the transfer')}
                                   onClick={() => confirm(paymentInfo.id)}
+                                  disabled={!isQuoteFinal}
                                   isLoading={isConfirming}
                                   caps={false}
                                   className="mt-4"

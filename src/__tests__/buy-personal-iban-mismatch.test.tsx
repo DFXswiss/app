@@ -194,21 +194,21 @@ jest.mock('src/components/payment/payment-info-buy', () => ({
       <span>{info.iban}</span>
       <span>{info.name}</span>
       {personalIbanProviderSwitch !== undefined && (
-          <button
-            type="button"
-            aria-label={
-              personalIbanProviderSwitch.target === 'Yapeal'
-                ? 'Show legacy Yapeal IBAN'
-                : 'Show Bank Frick IBAN'
-            }
-            onClick={() =>
-              personalIbanProviderSwitch.onSwitch(
-                personalIbanProviderSwitch.target,
-              )
-            }
-          >
-            switch provider
-          </button>
+        <button
+          type="button"
+          aria-label={
+            personalIbanProviderSwitch.target === 'Yapeal'
+              ? 'Show legacy Yapeal IBAN'
+              : 'Show Bank Frick IBAN'
+          }
+          onClick={() =>
+            personalIbanProviderSwitch.onSwitch(
+              personalIbanProviderSwitch.target,
+            )
+          }
+        >
+          switch provider
+        </button>
       )}
     </div>
   ),
@@ -1819,6 +1819,125 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
 
     await waitFor(() => expect(screen.getByText(MISMATCH_HINT)).toBeInTheDocument());
     expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+  });
+
+  it('does not confirm a deferred exact-price quote until the final quote commits', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    const approximateQuote = {
+      ...chfOffer(),
+      id: 10,
+      iban: 'CH-APPROXIMATE-QUOTE',
+    };
+    const exactQuote = {
+      ...chfOffer(),
+      id: 11,
+      iban: 'CH-EXACT-QUOTE',
+    };
+    const approximateDeferred = createDeferred<typeof approximateQuote>();
+    const exactDeferred = createDeferred<typeof exactQuote>();
+    mockReceiveFor
+      .mockReturnValueOnce(approximateDeferred.promise)
+      .mockReturnValueOnce(exactDeferred.promise);
+    mockConfirmFor.mockResolvedValue(undefined);
+
+    render(<BuyScreen />);
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      approximateDeferred.resolve(approximateQuote);
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('payment-info')).toHaveTextContent('CH-APPROXIMATE-QUOTE');
+
+    await act(async () => {
+      screen.getByRole('button', { name: TRANSFER_BUTTON }).click();
+    });
+    expect(mockConfirmFor).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('buy-completion')).not.toBeInTheDocument();
+
+    await act(async () => {
+      exactDeferred.resolve(exactQuote);
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('payment-info')).toHaveTextContent('CH-EXACT-QUOTE'),
+    );
+
+    await act(async () => {
+      screen.getByRole('button', { name: TRANSFER_BUTTON }).click();
+    });
+    await settle();
+
+    expect(mockConfirmFor).toHaveBeenCalledWith(11);
+    expect(screen.getByTestId('buy-completion')).toHaveTextContent('CH-EXACT-QUOTE');
+  });
+
+  it('ignores a stale confirm resolution after a same-generation quote replacement', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockRequestedPersonalIban.mockReturnValue(undefined);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    const approximateQuoteA = {
+      ...chfOffer(),
+      id: 20,
+      iban: 'CH-QUOTE-A-APPROXIMATE',
+    };
+    const exactQuoteA = {
+      ...chfOffer(),
+      id: 21,
+      iban: 'CH-QUOTE-A-EXACT',
+    };
+    const approximateQuoteB = {
+      ...chfOffer(),
+      id: 30,
+      iban: 'CH-QUOTE-B-APPROXIMATE',
+    };
+    const exactQuoteB = {
+      ...chfOffer(),
+      id: 31,
+      iban: 'CH-QUOTE-B-EXACT',
+    };
+    mockReceiveFor
+      .mockResolvedValueOnce(approximateQuoteA)
+      .mockResolvedValueOnce(exactQuoteA)
+      .mockResolvedValueOnce(approximateQuoteB)
+      .mockResolvedValueOnce(exactQuoteB);
+    const confirmationDeferred = createDeferred<void>();
+    mockConfirmFor.mockReturnValue(confirmationDeferred.promise);
+
+    render(<BuyScreen />);
+    await waitFor(() =>
+      expect(screen.getByTestId('payment-info')).toHaveTextContent('CH-QUOTE-A-EXACT'),
+    );
+    expect(mockReceiveFor).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      screen.getByRole('button', { name: TRANSFER_BUTTON }).click();
+    });
+    expect(mockConfirmFor).toHaveBeenCalledWith(21);
+
+    // Numeric normalization keeps the canonical request signature, and therefore the quote
+    // generation, unchanged while the side-to-update change reloads the two-phase quote.
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('0.01');
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-targetAmount'), {
+        target: { value: '0.010' },
+      });
+    });
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(4));
+    expect(screen.getByTestId('payment-info')).toHaveTextContent('CH-QUOTE-B-EXACT');
+
+    await act(async () => {
+      confirmationDeferred.resolve(undefined);
+    });
+    await settle();
+
+    expect(screen.queryByTestId('buy-completion')).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toHaveTextContent('CH-QUOTE-B-EXACT');
+    expect(screen.getByRole('button', { name: TRANSFER_BUTTON })).toHaveAttribute(
+      'data-is-loading',
+      'false',
+    );
   });
 
   it('does not carry completion state into a quote for another customer identity', async () => {

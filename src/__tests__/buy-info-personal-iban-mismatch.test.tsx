@@ -112,21 +112,21 @@ jest.mock('src/components/payment/payment-info-buy', () => ({
       <span>{info.iban}</span>
       <span>{info.name}</span>
       {personalIbanProviderSwitch !== undefined && (
-          <button
-            type="button"
-            aria-label={
-              personalIbanProviderSwitch.target === 'Yapeal'
-                ? 'Show legacy Yapeal IBAN'
-                : 'Show Bank Frick IBAN'
-            }
-            onClick={() =>
-              personalIbanProviderSwitch.onSwitch(
-                personalIbanProviderSwitch.target,
-              )
-            }
-          >
-            switch provider
-          </button>
+        <button
+          type="button"
+          aria-label={
+            personalIbanProviderSwitch.target === 'Yapeal'
+              ? 'Show legacy Yapeal IBAN'
+              : 'Show Bank Frick IBAN'
+          }
+          onClick={() =>
+            personalIbanProviderSwitch.onSwitch(
+              personalIbanProviderSwitch.target,
+            )
+          }
+        >
+          switch provider
+        </button>
       )}
     </div>
   ),
