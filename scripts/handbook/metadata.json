@@ -131,10 +131,6 @@
     "title": "Login-Prozess",
     "description": "Login und Home-Seite nach Authentifizierung."
   },
-  "app2-preview": {
-    "title": "DFX App 2.0 Preview",
-    "description": "App-2.0-Preview unter /app2/: Landing/Home, Account und Support (ausgeloggt) sowie Checkout-Return-Pfad /buy/success."
-  },
   "signature-login": {
     "title": "Signatur-Login",
     "description": "Wallet-Signatur-Login: Home, Buy, Sell, Settings, Transaktionen und Fehlerfall."

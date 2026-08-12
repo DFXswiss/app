@@ -1056,6 +1056,18 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       try {
         // Seamless re-issue for any address linked to the active account (no re-signing).
         await changeAddress(entry.address);
+        // Keep the live EIP-1193 binding after a linked switch. Leaving activeConnector
+        // undefined arms the eth_accounts reload probe; if the extension still sits on the
+        // previous address, that probe would log the new JWT session out immediately.
+        if (entry.linked) {
+          restoreSessionProviderBindings(
+            previous,
+            setActiveConnector,
+            injectedProviderRef,
+            wcProviderRef,
+            pendingWcProviderRef,
+          );
+        }
         void reloadUser();
         showToast(`${t('connected')} · ${shortAddress(entry.address)}`);
       } catch {
