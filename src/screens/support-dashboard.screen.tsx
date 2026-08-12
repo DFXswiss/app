@@ -7,7 +7,7 @@ import { FilterSelect, GroupedIssueTable, IssueTable, TabButton } from 'src/comp
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useClipboard } from 'src/hooks/clipboard.hook';
 import { TransactionInfo, UserDataDetail, UserSearchResult, useCompliance } from 'src/hooks/compliance.hook';
-import { useSupportDashboardGuard } from 'src/hooks/guard.hook';
+import { SUPPORT_STAFF_ROLES, useSupportDashboardGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { CustomerAuthor, SupportIssueListItem, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
@@ -267,6 +267,16 @@ export default function SupportDashboardScreen(): JSX.Element {
           >
             {translate('screens/compliance', 'Notes')}
           </button>
+          {/* This dashboard admits Marketing, the target route does not - showing the link to a role
+              that gets redirected straight back would be a dead end. */}
+          {session && SUPPORT_STAFF_ROLES.includes(session.role) && (
+            <button
+              className="px-3 py-2 bg-white border border-dfxGray-400 text-dfxBlue-800 rounded-lg text-sm hover:bg-dfxGray-300 transition-colors"
+              onClick={() => navigate('/compliance/bank-tx/unassigned')}
+            >
+              {translate('screens/compliance', 'Unassigned Bank Transactions')}
+            </button>
+          )}
           <button
             className="px-3 py-2 bg-white border border-dfxGray-400 text-dfxBlue-800 rounded-lg text-sm hover:bg-dfxGray-300 transition-colors"
             onClick={() => navigate('/templates')}

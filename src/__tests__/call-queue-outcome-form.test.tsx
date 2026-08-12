@@ -2,6 +2,12 @@
 // their own, so the AmlCheck selector disappears and the save sends an automatic Reset — but only
 // for the queues the API excludes from its AML recheck. Every other outcome keeps the selector.
 
+const mockAuth = { session: { role: 'Compliance' as string } };
+
+jest.mock('@dfx.swiss/react', () => ({
+  useAuthContext: () => mockAuth,
+  UserRole: { ADMIN: 'Admin', COMPLIANCE: 'Compliance' },
+}));
 jest.mock('@dfx.swiss/react-components', () => ({
   StyledButton: ({ label, onClick, disabled }: any) => (
     <button disabled={disabled} onClick={onClick}>
@@ -84,6 +90,7 @@ function submittedAmlAction(): string | undefined {
 
 describe('CallQueueOutcomeForm AmlCheck action', () => {
   beforeEach(() => {
+    mockAuth.session = { role: 'Compliance' };
     jest.clearAllMocks();
     mockSaveCallOutcome.mockResolvedValue({ success: true, completedSteps: ['transaction', 'userData', 'log'] });
   });
@@ -124,12 +131,30 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
   it('keeps the selector for open-ended outcomes and submits the choice', async () => {
     renderForm(TX_CONTEXT);
 
-    fillAndSubmit(CallOutcome.UNAVAILABLE, 'Pass');
+    fillAndSubmit(CallOutcome.UNAVAILABLE, 'Fail');
 
     expect(screen.getAllByRole('combobox')).toHaveLength(3);
     await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
     expect(mockSaveCallOutcome.mock.calls[0][1]).toBe(CallOutcome.UNAVAILABLE);
-    expect(submittedAmlAction()).toBe('Pass');
+    expect(submittedAmlAction()).toBe('Fail');
+  });
+
+  it('hides Pass for Compliance (Admin-only; API enforces)', () => {
+    renderForm(TX_CONTEXT);
+
+    expect(screen.queryByRole('option', { name: 'Pass' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Fail' })).toBeInTheDocument();
+    expect(screen.getByText(/Pass is Admin-only/)).toBeInTheDocument();
+  });
+
+  it('offers Pass for Admin on open-ended outcomes', () => {
+    mockAuth.session = { role: 'Admin' };
+    renderForm(TX_CONTEXT);
+
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: CallOutcome.UNAVAILABLE } });
+
+    expect(screen.getByRole('option', { name: 'Pass' })).toBeInTheDocument();
+    expect(screen.queryByText(/Pass is Admin-only/)).not.toBeInTheDocument();
   });
 
   it('defaults an open-ended outcome to no change', async () => {
@@ -177,12 +202,12 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
     renderForm(INELIGIBLE_TX_CONTEXT);
 
     expect(screen.queryByRole('option', { name: 'Reset' })).not.toBeInTheDocument();
-    expect(screen.getByText(/Reset is available only after KYC is set to Check/)).toBeInTheDocument();
+    expect(screen.getByText(/Reset is unavailable for this BuyCrypto/)).toBeInTheDocument();
   });
 
   // Fail-closed: an ineligible BuyCrypto must not silently swallow the automatic reset. Saving a
   // no-op would report success and navigate away while the transaction stays pending, so the form
-  // blocks the save until KYC is set to Check.
+  // blocks the save until the BuyCrypto is eligible for reset.
   it('disables the save and explains why when the automatic reset is unavailable', async () => {
     renderForm(INELIGIBLE_TX_CONTEXT);
 

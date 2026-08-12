@@ -71,6 +71,10 @@
     "title": "Compliance KYC-Status",
     "description": "KYC-Status und AML-Reset in der Compliance-Review."
   },
+  "compliance-bank-tx-unassigned": {
+    "title": "Compliance: Unzugeordnete Bankeingänge",
+    "description": "Liste unzugeordneter Bankeingänge mit hervorgehobener Lastschrift-Zeile und das aufgeklappte Zuordnungsformular für die Admin-Rolle."
+  },
   "realunit-compliance": {
     "title": "RealUnit Compliance",
     "description": "RealUnit-spezifische Compliance-Suche und Dossier."

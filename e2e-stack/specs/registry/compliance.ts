@@ -2,7 +2,7 @@ import type { RouteClaim } from './types';
 
 /**
  * Compliance-area routes claimed by this lane.
- * Paths must match App.tsx React-Router paths exactly (25 total).
+ * Paths must match App.tsx React-Router paths exactly (26 total).
  */
 const claims: RouteClaim[] = [
   // Display / overview routes → compliance.spec.ts
@@ -27,6 +27,7 @@ const claims: RouteClaim[] = [
 
   // Write / decision routes → compliance-cases.spec.ts
   { path: '/compliance/user/:id/kyc', spec: 'compliance-cases.spec.ts' },
+  { path: '/compliance/bank-tx/unassigned', spec: 'compliance-cases.spec.ts' },
   { path: '/compliance/bank-tx/:id', spec: 'compliance-cases.spec.ts' },
   { path: '/compliance/bank-tx/:id/recall', spec: 'compliance-cases.spec.ts' },
   { path: '/compliance/bank-tx/:id/return', spec: 'compliance-cases.spec.ts' },

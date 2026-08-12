@@ -1070,6 +1070,7 @@ export function useCompliance() {
         const signature = options.signature.trim();
         const txTable = tx.sourceType === 'BuyCrypto' ? 'buyCrypto' : 'buyFiat';
         if (options.amlAction === 'Pass') {
+          // Admin-only; API rejects Pass for Compliance. Prefer Reset so automatic AML decides.
           const passData = { amlCheck: CheckStatus.PASS, responsible: signature };
           if (tx.sourceType === 'BuyCrypto') await updateBuyCryptoAmlCheck(tx.id, passData);
           else await updateBuyFiatAmlCheck(tx.id, passData);
@@ -1088,7 +1089,7 @@ export function useCompliance() {
           if (tx.sourceType === 'BuyCrypto') {
             if (!context.buyCryptoResetEligible)
               throw new Error(
-                'BuyCrypto AML reset is unavailable; set KYC to Check and reload an eligible transaction',
+                'BuyCrypto AML reset is unavailable; reload an eligible incomplete transaction (no batch/payout/refund)',
               );
             if (!context.amlCheck) throw new Error('Current BuyCrypto AML status is missing; reload the transaction');
             await resetBuyCryptoReviewAml(tx.id, {

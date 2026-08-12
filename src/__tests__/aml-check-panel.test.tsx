@@ -1,3 +1,5 @@
+const mockAuth = { session: { role: 'Compliance' as string } };
+
 jest.mock('@dfx.swiss/react', () => ({
   AmlReason: {
     NA: 'NA',
@@ -12,6 +14,8 @@ jest.mock('@dfx.swiss/react', () => ({
   KycStatus: {
     CHECK: 'Check',
   },
+  UserRole: { ADMIN: 'Admin', COMPLIANCE: 'Compliance' },
+  useAuthContext: () => mockAuth,
 }));
 
 jest.mock('src/hooks/navigation.hook', () => ({
@@ -68,6 +72,10 @@ const data = {
 } as ComplianceUserData;
 
 describe('AmlCheckPendingPanel AML reset', () => {
+  beforeEach(() => {
+    mockAuth.session = { role: 'Compliance' };
+  });
+
   afterEach(() => jest.restoreAllMocks());
 
   it('resets a non-completed BuyCrypto with an existing AML result after confirmation', async () => {
@@ -116,7 +124,7 @@ describe('AmlCheckPendingPanel AML reset', () => {
     expect(onReviewReset).not.toHaveBeenCalled();
   });
 
-  it('keeps review reset disabled until KYC is Check', () => {
+  it('allows review reset when KYC is not Check', () => {
     render(
       <AmlCheckPendingPanel
         data={{ ...data, userData: { ...data.userData, kycStatus: 'Completed' } } as ComplianceUserData}
@@ -128,8 +136,8 @@ describe('AmlCheckPendingPanel AML reset', () => {
       />,
     );
 
-    expect(screen.getByText('Zuerst KYC-Status auf Check setzen und den Reload abwarten.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'AML-Check zurücksetzen' })).toBeDisabled();
+    expect(screen.queryByText(/KYC-Status auf Check/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AML-Check zurücksetzen' })).toBeEnabled();
   });
 
   it.each([
@@ -153,20 +161,44 @@ describe('AmlCheckPendingPanel AML reset', () => {
     expect(screen.queryByRole('button', { name: 'AML-Check zurücksetzen' })).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['KYC is not Check', { userData: { ...data.userData, kycStatus: 'Completed' } }, {}],
-    ['BuyCrypto is stopped', data.userData, { buyCryptoStatus: 'Stopped' }],
-  ])('hides the legacy Reset decision when %s', (_case, userData, txOverride) => {
+  it('keeps the legacy Reset decision when KYC is not Check', () => {
     const pendingManualTx = {
       ...buyCrypto,
-      ...txOverride,
       amlCheck: 'Pending',
       amlReason: 'ManualCheck',
     };
 
     render(
       <AmlCheckPendingPanel
-        data={{ ...data, userData, transactions: [pendingManualTx] } as ComplianceUserData}
+        data={
+          {
+            ...data,
+            userData: { ...data.userData, kycStatus: 'Completed' },
+            transactions: [pendingManualTx],
+          } as ComplianceUserData
+        }
+        clerks={['Alice']}
+        isSaving={false}
+        onUpdate={jest.fn()}
+        onReset={jest.fn()}
+        onReviewReset={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('option', { name: 'Reset' })).toBeInTheDocument();
+  });
+
+  it('hides the legacy Reset decision when BuyCrypto is stopped', () => {
+    const pendingManualTx = {
+      ...buyCrypto,
+      buyCryptoStatus: 'Stopped',
+      amlCheck: 'Pending',
+      amlReason: 'ManualCheck',
+    };
+
+    render(
+      <AmlCheckPendingPanel
+        data={{ ...data, transactions: [pendingManualTx] } as ComplianceUserData}
         clerks={['Alice']}
         isSaving={false}
         onUpdate={jest.fn()}
@@ -195,5 +227,46 @@ describe('AmlCheckPendingPanel AML reset', () => {
     );
 
     expect(screen.getByRole('option', { name: 'Reset' })).toBeInTheDocument();
+  });
+
+  it('hides Pass for Compliance on the pending AML decision form', () => {
+    render(
+      <AmlCheckPendingPanel
+        data={{
+          ...data,
+          transactions: [{ ...buyCrypto, amlCheck: 'Pending', amlReason: 'ManualCheck' }],
+        }}
+        clerks={['Alice']}
+        isSaving={false}
+        onUpdate={jest.fn()}
+        onReset={jest.fn()}
+        onReviewReset={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('option', { name: 'Pass' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Fail' })).toBeInTheDocument();
+    expect(screen.getByText(/Pass setzt nur die automatische AML-Prüfung/)).toBeInTheDocument();
+  });
+
+  it('offers Pass for Admin on the pending AML decision form', () => {
+    mockAuth.session = { role: 'Admin' };
+
+    render(
+      <AmlCheckPendingPanel
+        data={{
+          ...data,
+          transactions: [{ ...buyCrypto, amlCheck: 'Pending', amlReason: 'ManualCheck' }],
+        }}
+        clerks={['Alice']}
+        isSaving={false}
+        onUpdate={jest.fn()}
+        onReset={jest.fn()}
+        onReviewReset={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('option', { name: 'Pass' })).toBeInTheDocument();
+    expect(screen.queryByText(/Pass setzt nur die automatische AML-Prüfung/)).not.toBeInTheDocument();
   });
 });

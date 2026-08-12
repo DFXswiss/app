@@ -145,7 +145,7 @@ export default function ComplianceCallQueueDetailScreen(): JSX.Element {
     sourceType,
     amlCheck: transaction?.amlCheck,
     amlReason: transaction?.amlReason,
-    buyCryptoResetEligible: transaction != null && canResetBuyCryptoAmlForReview(transaction, data.userData.kycStatus),
+    buyCryptoResetEligible: transaction != null && canResetBuyCryptoAmlForReview(transaction),
   });
 
   return (

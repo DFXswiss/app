@@ -56,6 +56,7 @@ const EditMailScreen = lazy(() => import('./screens/edit-mail.screen'));
 const SafeScreen = lazy(() => import('./screens/safe.screen'));
 const ComplianceScreen = lazy(() => import('./screens/compliance.screen'));
 const ComplianceBankTxScreen = lazy(() => import('./screens/compliance-bank-tx.screen'));
+const ComplianceBankTxUnassignedScreen = lazy(() => import('./screens/compliance-bank-tx-unassigned.screen'));
 const ComplianceBankTxRecallScreen = lazy(() => import('./screens/compliance-bank-tx-recall.screen'));
 const ComplianceBankTxReturnScreen = lazy(() => import('./screens/compliance-bank-tx-return.screen'));
 const ComplianceKycFilesScreen = lazy(() => import('./screens/compliance-kyc-files.screen'));
@@ -394,6 +395,10 @@ export const Routes = [
       {
         path: 'compliance/scorechain/user/:id',
         element: withSuspense(<ComplianceScorechainScreen />),
+      },
+      {
+        path: 'compliance/bank-tx/unassigned',
+        element: withSuspense(<ComplianceBankTxUnassignedScreen />),
       },
       {
         path: 'compliance/bank-tx/:id',

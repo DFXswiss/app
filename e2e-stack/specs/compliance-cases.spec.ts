@@ -3,6 +3,7 @@
  *
  * Routes claimed (registry/compliance.ts → this file):
  *   /compliance/user/:id/kyc
+ *   /compliance/bank-tx/unassigned
  *   /compliance/bank-tx/:id
  *   /compliance/bank-tx/:id/recall
  *   /compliance/bank-tx/:id/return
@@ -219,6 +220,38 @@ test.describe('Compliance area (cases)', () => {
     );
     expect(after.status).toBe('Completed');
     expect(after.approved).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // /compliance/bank-tx/unassigned — pending credit visible with role-based assignment action
+  // -------------------------------------------------------------------------
+
+  test('/compliance/bank-tx/unassigned lists pending credits and gates assignment to admins', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Admin');
+    await ensureStaffReady(userId);
+
+    const btx = await createBankTx({
+      tag: 'cmp-btx-unassigned',
+      amount: 432.1,
+      type: 'Pending',
+      withTransaction: false,
+    });
+    trackRow('bank_tx', btx.bankTxId);
+
+    await openScreen(page, '/compliance/bank-tx/unassigned', jwt);
+
+    const bankTxRow = page.getByRole('cell', { name: String(btx.bankTxId), exact: true }).locator('..');
+    await expect(bankTxRow).toBeVisible({ timeout: 15000 });
+    await expect(bankTxRow.getByText('E2E Bank Sender', { exact: true })).toBeVisible();
+    await expect(bankTxRow.getByRole('button', { name: 'Assign', exact: true })).toBeVisible();
+
+    const { jwt: complianceJwt, userId: complianceUserId } = await loginAs('Compliance');
+    await ensureStaffReady(complianceUserId);
+    await openScreen(page, '/compliance/bank-tx/unassigned', complianceJwt);
+
+    const complianceBankTxRow = page.getByRole('cell', { name: String(btx.bankTxId), exact: true }).locator('..');
+    await expect(complianceBankTxRow).toBeVisible({ timeout: 15000 });
+    await expect(complianceBankTxRow.getByRole('button', { name: 'Assign', exact: true })).toHaveCount(0);
   });
 
   // -------------------------------------------------------------------------

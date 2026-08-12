@@ -1,3 +1,4 @@
+import { useAuthContext } from '@dfx.swiss/react';
 import { StyledButton, StyledButtonWidth } from '@dfx.swiss/react-components';
 import { useEffect, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
@@ -10,6 +11,7 @@ import {
   needsExplicitAmlReset,
   useCompliance,
 } from 'src/hooks/compliance.hook';
+import { canManuallySetAmlPass } from 'src/util/aml-pass.util';
 
 // Completed and Failed leave nothing to decide: the phone-call status written in the same save
 // already determines the transaction — the API passes it on the check date a completed call writes,
@@ -27,6 +29,8 @@ interface Props {
 export function CallQueueOutcomeForm({ context, availableOutcomes, clerks, onSaved, title }: Props): JSX.Element {
   const { translate } = useSettingsContext();
   const { saveCallOutcome } = useCompliance();
+  const { session } = useAuthContext();
+  const allowPass = canManuallySetAmlPass(session?.role);
 
   const [signature, setSignature] = useState<string>('');
   const [comment, setComment] = useState<string>('');
@@ -127,22 +131,27 @@ export function CallQueueOutcomeForm({ context, availableOutcomes, clerks, onSav
             onChange={(e) => setAmlAction(e.target.value as AmlAction | '')}
           >
             <option value="">— {translate('screens/compliance', 'No change')}</option>
-            <option value="Pass">Pass</option>
+            {allowPass && <option value="Pass">Pass</option>}
             <option value="Fail">Fail</option>
             {!buyCryptoResetUnavailable && <option value="Reset">Reset</option>}
           </select>
+          {!allowPass && (
+            <p className="mt-1 text-xs text-dfxGray-700">
+              Pass is Admin-only; use Fail or Reset so the automatic AML check can decide.
+            </p>
+          )}
           {buyCryptoResetUnavailable && (
             <p className="mt-1 text-xs text-dfxGray-700">
-              Reset is available only after KYC is set to Check and the BuyCrypto remains eligible; reload Compliance
-              review first.
+              Reset is unavailable for this BuyCrypto (completed, stopped, batch, chargeback, or payout/refund in
+              progress). Reload Compliance review if the transaction state has changed.
             </p>
           )}
         </div>
       )}
       {impliedResetUnavailable && (
         <p className="mt-4 text-xs text-primary-red">
-          Saving is disabled: this queue is excluded from the AML recheck and the automatic reset is unavailable for
-          this BuyCrypto, so the transaction would stay pending. Set KYC to Check and reload Compliance review, then
+          Saving is disabled: this queue is excluded from the AML recheck and automatic reset is unavailable for this
+          BuyCrypto, so the transaction would stay pending. Reload after the BuyCrypto is eligible for reset, then
           save the outcome.
         </p>
       )}

@@ -182,19 +182,12 @@ test.describe('Compliance review KYC and AML actions', () => {
     await page.goto(`/compliance/user/${USER_DATA_ID}/kyc?session=${jwt()}&tab=amlPending`);
 
     await expect(page.getByText('KYC Management')).toBeVisible();
+    // KYC Check remains an independent staff action; it must not gate the BuyCrypto reset.
     await expect(page.getByRole('button', { name: 'Auf Check setzen' })).toBeVisible();
     await expect(page.getByText('BuyCrypto 130504')).toBeVisible();
     await expect(page.getByText('Transaction 326324 · AML Pass · NA · Status MissingLiquidity')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'AML-Check zurücksetzen' })).toBeDisabled();
-    await expect(page.getByText('Zuerst KYC-Status auf Check setzen und den Reload abwarten.')).toBeVisible();
-
-    page.once('dialog', async (dialog) => {
-      expect(dialog.message()).toContain('von Completed auf Check');
-      await dialog.accept();
-    });
-    await page.getByRole('button', { name: 'Auf Check setzen' }).click();
-    await expect(page.getByRole('button', { name: 'Auf Check setzen' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'AML-Check zurücksetzen' })).toBeEnabled();
+    await expect(page.getByText(/KYC-Status auf Check/)).toHaveCount(0);
 
     await expect(page).toHaveScreenshot('compliance-review-kyc-status-and-aml-reset.png', {
       fullPage: true,
@@ -210,11 +203,6 @@ test.describe('Compliance review KYC and AML actions', () => {
     await expect(page.getByText('Keine pendenten AML-Prüfungen vorhanden.')).toBeVisible();
 
     expect(mutations).toEqual([
-      {
-        method: 'PUT',
-        path: `/v1/userData/${USER_DATA_ID}/kycStatus/check`,
-        body: { expectedKycStatus: 'Completed' },
-      },
       {
         method: 'PUT',
         path: '/v1/buyCrypto/130504/amlCheck/reviewReset',
