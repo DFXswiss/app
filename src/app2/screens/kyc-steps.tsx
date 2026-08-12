@@ -1038,11 +1038,15 @@ function FinancialFields({ ctx, setBusy }: { ctx: StepContext; setBusy: (busy: b
     if (loading || current || questions.length === 0 || advancingRef.current) return;
     advancingRef.current = true;
     setBusy(true);
-    ctx.advance().catch((err: unknown) => {
-      advancingRef.current = false;
-      setBusy(false);
-      ctx.handleError(err);
-    });
+    ctx
+      .advance()
+      .catch((err: unknown) => {
+        advancingRef.current = false;
+        ctx.handleError(err);
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   }, [loading, current, questions.length]);
 
   if (loading) {
