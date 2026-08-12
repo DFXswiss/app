@@ -94,6 +94,26 @@ whether CI is green.
 Write the declaration entry **before** building the fake. Reversed, it becomes documentation written
 from memory, with omissions.
 
+## Reality declaration — entries
+
+This section lists the fakes introduced by this repository's own suites and states what a green
+run does not prove for each one; the taxonomy and cross-repository entries live in
+`DFXswiss/api` under `docs/test-architecture.md`.
+
+- **The buy-process specs answer the quote endpoint themselves.** `e2e/buy-process.spec.ts` fulfils
+  `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
+  payloads, not that the API produces them. Unit tests against the utility pin the payload shapes
+  instead.
+- **One spec forces KYC completeness.** The collection-invoice case overrides `**/v2/user` so that
+  `kyc.dataComplete` is read as `true`, because the invoice button is gated on that value. A green
+  run therefore proves nothing about the gate for a customer who has not completed KYC; a unit
+  test covers that path.
+- **One spec fabricates the invoice rejection.** The same case answers
+  `**/v1/buy/paymentInfos/*/invoice*` with a `400` and the fixed
+  `CollectionAccountInvoicePersonalIbanMissing` error token, so a green run proves that the screen
+  displays that token, not that the API emits it for this request. A unit test against the message
+  mapping pins the token contract instead.
+
 ## Known gaps
 
 All four points below concern the full-stack harness.

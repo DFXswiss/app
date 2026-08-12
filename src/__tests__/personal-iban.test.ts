@@ -772,6 +772,19 @@ describe('toCollectionIbanGiroCode', () => {
     expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
   });
 
+  it('rewrites a matching three-decimal quote without formatting the amount', () => {
+    const result = toCollectionIbanGiroCode(
+      sampleGiroCode({ line7: 'EUR100.004' }),
+      PERSONAL_GIRO_IBAN,
+      SAMPLE_REMITTANCE,
+      100.004,
+      'EUR',
+    );
+    expect(result).toBeDefined();
+    if (result === undefined) return;
+    expect(result.split('\n')[6]).toBe(FRICK_COLLECTION_IBANS.EUR);
+  });
+
   it('returns undefined when the quote amount diverges below cent precision', () => {
     expect(
       toCollectionIbanGiroCode(
