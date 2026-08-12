@@ -12,6 +12,7 @@ let mockClerksResult: { clerks: string[]; isLoading: boolean; error?: string } =
 
 const mockGetUserData = jest.fn();
 const mockNavigate = jest.fn();
+let capturedLayoutOptions: { onBack?: () => void } | undefined;
 const mockUseComplianceGuard = jest.fn();
 const mockCanReset = jest.fn((..._args: unknown[]) => true);
 
@@ -65,7 +66,9 @@ jest.mock('src/hooks/guard.hook', () => ({
 }));
 
 jest.mock('src/hooks/layout-config.hook', () => ({
-  useLayoutOptions: () => undefined,
+  useLayoutOptions: (options: { onBack?: () => void }) => {
+    capturedLayoutOptions = options;
+  },
 }));
 
 jest.mock('src/hooks/navigation.hook', () => ({
@@ -315,6 +318,15 @@ describe('ComplianceCallQueueDetailScreen', () => {
       { pathname: '/compliance/call-queues/ManualCheckPhone' },
       { replace: true, clearParams: ['txId'] },
     );
+  });
+
+  it('navigates back through the layout onBack callback', async () => {
+    await renderLoaded();
+
+    expect(capturedLayoutOptions?.onBack).toBeDefined();
+    capturedLayoutOptions?.onBack?.();
+
+    expect(mockNavigate).toHaveBeenCalledWith(-1);
   });
 
   it('renders address information for the IP-country queue', async () => {
