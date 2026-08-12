@@ -72,7 +72,7 @@ jest.mock('viem', () => ({
 }));
 
 import BigNumber from 'bignumber.js';
-import { getAddress } from 'viem';
+import { BaseError, getAddress, UserRejectedRequestError } from 'viem';
 import { AbortError } from '../../../util/abort-error';
 import { TranslatedError } from '../../../util/translated-error';
 import { useMetaMask } from '../metamask.hook';
@@ -124,7 +124,7 @@ describe('useMetaMask', () => {
     it('defers a missing provider to an error on first use instead of throwing at setup', async () => {
       renderHook(() => useMetaMask());
 
-      const transport = mockCapturedPublicClientOpts.transport({ retryCount: 0 });
+      const transport = mockCapturedPublicClientOpts.transport({});
       await expect(transport.request({ method: 'eth_chainId' })).rejects.toThrow(/No wallet provider available/);
     });
   });
@@ -471,6 +471,19 @@ describe('useMetaMask', () => {
       expect(signature).toBe('0xsignature');
     });
 
+    it('signs a hex-shaped message as the bytes it encodes', async () => {
+      (window as any).ethereum = { isMetaMask: true, request: jest.fn(), on: jest.fn() };
+      mockWalletClient.signMessage.mockResolvedValue('0xsignature');
+
+      const { result } = renderHook(() => useMetaMask());
+      await result.current.sign(TEST_ADDRESS, '0xdeadbeef');
+
+      expect(mockWalletClient.signMessage).toHaveBeenCalledWith({
+        account: TEST_ADDRESS,
+        message: { raw: '0xdeadbeef' },
+      });
+    });
+
     it('maps a user rejection to an AbortError', async () => {
       (window as any).ethereum = { isMetaMask: true, request: jest.fn(), on: jest.fn() };
       mockWalletClient.signMessage.mockRejectedValue({ code: 4001, message: 'User rejected' });
@@ -585,16 +598,15 @@ describe('useMetaMask', () => {
       mockPublicClient.waitForTransactionReceipt.mockResolvedValue({});
     });
 
-    it('resolves the current network gas price and forces legacy pricing when no override is given', async () => {
-      mockPublicClient.getGasPrice.mockResolvedValue(42n);
+    it('sends no fee fields when no override is given, leaving estimation to the wallet', async () => {
       mockWalletClient.sendTransaction.mockResolvedValue('0xhash');
 
       const { result } = renderHook(() => useMetaMask());
       await result.current.createTransaction(new BigNumber(1), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS);
 
-      expect(mockPublicClient.getGasPrice).toHaveBeenCalled();
+      expect(mockPublicClient.getGasPrice).not.toHaveBeenCalled();
       const call = mockWalletClient.sendTransaction.mock.calls[0][0];
-      expect(call.gasPrice).toBe(42n);
+      expect(call.gasPrice).toBeUndefined();
       expect(call.maxFeePerGas).toBeUndefined();
       expect(call.maxPriorityFeePerGas).toBeUndefined();
     });
@@ -614,18 +626,16 @@ describe('useMetaMask', () => {
     });
 
     it('waits for the transaction to be mined before returning the hash', async () => {
-      mockPublicClient.getGasPrice.mockResolvedValue(1n);
       mockWalletClient.sendTransaction.mockResolvedValue('0xhash');
 
       const { result } = renderHook(() => useMetaMask());
       const hash = await result.current.createTransaction(new BigNumber(1), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS);
 
-      expect(mockPublicClient.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: '0xhash' });
+      expect(mockPublicClient.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: '0xhash', timeout: 750_000 });
       expect(hash).toBe('0xhash');
     });
 
     it('sends an ERC20 transfer with the amount adjusted for the token decimals', async () => {
-      mockPublicClient.getGasPrice.mockResolvedValue(1n);
       mockPublicClient.readContract.mockResolvedValue(6); // decimals
       mockWalletClient.writeContract.mockResolvedValue('0xhash');
 
@@ -635,11 +645,22 @@ describe('useMetaMask', () => {
       const call = mockWalletClient.writeContract.mock.calls[0][0];
       expect(call.functionName).toBe('transfer');
       expect(call.args).toEqual([TEST_ADDRESS, 2_500000n]);
+      expect(call.gasPrice).toBeUndefined();
     });
 
-    it('sends an ERC20 transfer without adjustment when the amount is already in wei', async () => {
-      mockPublicClient.getGasPrice.mockResolvedValue(1n);
+    it('rejects an ERC20 amount with more precision than the token supports', async () => {
       mockPublicClient.readContract.mockResolvedValue(6); // decimals
+      mockWalletClient.writeContract.mockResolvedValue('0xhash');
+
+      const { result } = renderHook(() => useMetaMask());
+      await expect(
+        result.current.createTransaction(new BigNumber('0.0000005'), TOKEN_ASSET, TEST_ADDRESS, TEST_ADDRESS),
+      ).rejects.toThrow('Cannot convert 0.5 to a BigInt');
+
+      expect(mockWalletClient.writeContract).not.toHaveBeenCalled();
+    });
+
+    it('sends an ERC20 transfer without a decimals read when the amount is already in wei', async () => {
       mockWalletClient.writeContract.mockResolvedValue('0xhash');
 
       const { result } = renderHook(() => useMetaMask());
@@ -648,9 +669,43 @@ describe('useMetaMask', () => {
       });
 
       expect(hash).toBe('0xhash');
+      expect(mockPublicClient.readContract).not.toHaveBeenCalled();
       const call = mockWalletClient.writeContract.mock.calls[0][0];
       expect(call.args).toEqual([TEST_ADDRESS, 2_500000n]);
-      expect(mockPublicClient.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: '0xhash' });
+      expect(mockPublicClient.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: '0xhash', timeout: 750_000 });
+    });
+
+    it('unwraps a viem-wrapped user rejection so callers still see the EIP-1193 code', async () => {
+      const rejection = new UserRejectedRequestError(new Error('User denied transaction signature'));
+      mockWalletClient.sendTransaction.mockRejectedValue(new BaseError('tx failed', { cause: rejection }));
+
+      const { result } = renderHook(() => useMetaMask());
+      const promise = result.current.createTransaction(new BigNumber(1), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS);
+
+      await expect(promise).rejects.toBe(rejection);
+      await expect(promise).rejects.toMatchObject({ code: 4001 });
+      expect(mockPublicClient.waitForTransactionReceipt).not.toHaveBeenCalled();
+    });
+
+    it('rethrows a viem error without a coded cause unchanged', async () => {
+      const error = new BaseError('nonce too low');
+      mockPublicClient.readContract.mockResolvedValue(6); // decimals
+      mockWalletClient.writeContract.mockRejectedValue(error);
+
+      const { result } = renderHook(() => useMetaMask());
+      await expect(
+        result.current.createTransaction(new BigNumber(1), TOKEN_ASSET, TEST_ADDRESS, TEST_ADDRESS),
+      ).rejects.toBe(error);
+    });
+
+    it('rethrows a non-viem error unchanged', async () => {
+      const error = new Error('connection lost');
+      mockWalletClient.sendTransaction.mockRejectedValue(error);
+
+      const { result } = renderHook(() => useMetaMask());
+      await expect(
+        result.current.createTransaction(new BigNumber(1), COIN_ASSET, TEST_ADDRESS, TEST_ADDRESS),
+      ).rejects.toBe(error);
     });
   });
 

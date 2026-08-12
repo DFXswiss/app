@@ -3,7 +3,7 @@ import BigNumber from 'bignumber.js';
 import { Buffer } from 'buffer';
 import { useMemo } from 'react';
 import { isMobile } from 'react-device-detect';
-import { Address, createPublicClient, createWalletClient, custom, getAddress, parseEther } from 'viem';
+import { Address, BaseError, createPublicClient, createWalletClient, custom, getAddress, isHex, parseEther } from 'viem';
 import { AssetBalance } from '../../contexts/balance.context';
 import ERC20_ABI from '../../static/erc20.abi.json';
 import { AbortError } from '../../util/abort-error';
@@ -85,8 +85,11 @@ export function useMetaMask(): MetaMaskInterface {
     return typeof eth?.request === 'function' ? eth : noProvider;
   }
 
-  const publicClient = useMemo(() => createPublicClient({ transport: custom(provider()) }), []);
-  const walletClient = useMemo(() => createWalletClient({ transport: custom(provider()) }), []);
+  // retryCount 0: the previous web3 implementation never retried, and viem's default
+  // (3 retries with backoff) makes a fast-failing provider exceed checkConnection's
+  // 1s timeout, which reloads the page.
+  const publicClient = useMemo(() => createPublicClient({ transport: custom(provider(), { retryCount: 0 }) }), []);
+  const walletClient = useMemo(() => createWalletClient({ transport: custom(provider(), { retryCount: 0 }) }), []);
 
   function isInstalled(): boolean {
     const eth = ethereum();
@@ -181,7 +184,11 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function sign(address: string, message: string): Promise<string> {
-    return walletClient.signMessage({ account: address as Address, message }).catch(handleError);
+    // Hex-shaped messages are signed as the bytes they encode (web3's inputSignFormatter
+    // passed hex through unchanged); viem would otherwise sign the UTF-8 of the literal text.
+    return walletClient
+      .signMessage({ account: address as Address, message: isHex(message) ? { raw: message } : message })
+      .catch(handleError);
   }
 
   async function addContract(asset: Asset, svgData: string, currentBlockchain?: Blockchain): Promise<boolean> {
@@ -250,6 +257,19 @@ export function useMetaMask(): MetaMaskInterface {
     }
   }
 
+  // viem wraps provider errors in TransactionExecutionError/ContractFunctionExecutionError,
+  // which carry no top-level `code`; callers rely on the raw EIP-1193 shape (e.g. the sell
+  // screen checks `error.code === 4001` to swallow a deliberate cancel), so rethrow the
+  // first cause that still has one.
+  function toProviderError(e: unknown): never {
+    const cause = e instanceof BaseError ? e.walk((c) => typeof (c as any)?.code === 'number') : undefined;
+    throw cause ?? e;
+  }
+
+  // web3 polled for the receipt for up to 750s (transactionPollingTimeout); viem's default
+  // gives up after 180s, turning a slow-to-mine transaction into a false failure.
+  const RECEIPT_TIMEOUT = 750_000;
+
   async function createTransaction(
     amount: BigNumber,
     asset: Asset,
@@ -257,43 +277,45 @@ export function useMetaMask(): MetaMaskInterface {
     to: string,
     config?: { isWeiAmount?: boolean; gasPrice?: number },
   ): Promise<string> {
-    // Always resolve an explicit gasPrice and never set maxFeePerGas/maxPriorityFeePerGas,
-    // mirroring the previous web3-based implementation's approach to the same problem
-    // (which explicitly nulled out both EIP-1559 fields): some MetaMask/chain combinations
-    // misbehaved with EIP-1559 fee fields, see #163 (DEV-2129). Not independently verified
-    // against a live wallet in this port — see PR test plan.
-    const gasPrice = config?.gasPrice != null ? BigInt(config.gasPrice) : await publicClient.getGasPrice();
+    // The previous web3-based implementation nulled maxFeePerGas/maxPriorityFeePerGas (see
+    // #163/DEV-2129) purely to suppress web3's own fee filling and passed gasPrice only when
+    // an override was given — the request reached MetaMask without fee fields and the wallet
+    // did its own estimation. Keep that exact wire shape: no fee fields unless overridden.
+    const gasPrice = config?.gasPrice != null ? BigInt(config.gasPrice) : undefined;
 
     if (asset.type === AssetType.COIN) {
-      const hash = await walletClient.sendTransaction({
-        account: from as Address,
-        chain: null,
-        to: to as Address,
-        value: config?.isWeiAmount ? BigInt(amount.toString()) : parseEther(amount.toString()),
-        gasPrice,
-      });
+      const hash = await walletClient
+        .sendTransaction({
+          account: from as Address,
+          chain: null,
+          to: to as Address,
+          value: config?.isWeiAmount ? BigInt(amount.toString()) : parseEther(amount.toString()),
+          gasPrice,
+        })
+        .catch(toProviderError);
 
-      await publicClient.waitForTransactionReceipt({ hash });
+      await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT });
       return hash;
     } else {
-      const decimals = await readErc20(asset.chainId, 'decimals');
-
       let adjustedAmount = amount.toString();
       if (!config?.isWeiAmount) {
-        adjustedAmount = amount.multipliedBy(Math.pow(10, decimals)).toFixed(0);
+        const decimals = await readErc20(asset.chainId, 'decimals');
+        adjustedAmount = amount.multipliedBy(Math.pow(10, decimals)).toFixed();
       }
 
-      const hash = await walletClient.writeContract({
-        account: from as Address,
-        chain: null,
-        address: asset.chainId as Address,
-        abi: ERC20_ABI,
-        functionName: 'transfer',
-        args: [to as Address, BigInt(adjustedAmount)],
-        gasPrice,
-      });
+      const hash = await walletClient
+        .writeContract({
+          account: from as Address,
+          chain: null,
+          address: asset.chainId as Address,
+          abi: ERC20_ABI,
+          functionName: 'transfer',
+          args: [to as Address, BigInt(adjustedAmount)],
+          gasPrice,
+        })
+        .catch(toProviderError);
 
-      await publicClient.waitForTransactionReceipt({ hash });
+      await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT });
       return hash;
     }
   }
