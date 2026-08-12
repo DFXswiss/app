@@ -70,7 +70,7 @@ import {
   getPersonalIbanErrorMessage,
   getPersonalIbanKycMessage,
   getYapealAlternative,
-  isExplicitFrickPersonalIbanRequest,
+  isExplicitPersonalIbanRequest,
   isKycRequiredMessage,
   isPersonalIbanApplicable,
   isUnrecognizedPersonalIbanSelector,
@@ -172,14 +172,15 @@ export default function BuyScreen(): JSX.Element {
   const { isInitialized } = useAppHandlingContext();
 
   const [availableAssets, setAvailableAssets] = useState<Asset[]>();
-  const [paymentInfo, setPaymentInfo] = useState<Buy>();
-  // Payment method of the currently displayed offer (Buy has no paymentMethod field).
-  // Kept in lockstep with paymentInfo so the mismatch hint never reads live form state.
-  const [paymentInfoPaymentMethod, setPaymentInfoPaymentMethod] = useState<FiatPaymentMethod>();
-  // Provider carried by the request that produced paymentInfo. It must never be inferred from
-  // the live selector because the selector can change while a quote is in flight.
-  const [sentPersonalIbanProvider, setSentPersonalIbanProvider] =
-    useState<PersonalIbanProvider>();
+  // Quote metadata is committed atomically and only remains active for the customer it belongs to.
+  // The payment method is included because Buy has no paymentMethod field, while the sent provider
+  // must never be inferred from live selector state after a request has started.
+  const [paymentInfoState, setPaymentInfoState] = useState<{
+    info: Buy;
+    paymentMethod: FiatPaymentMethod | undefined;
+    sentProvider: PersonalIbanProvider | undefined;
+    identity: number | undefined;
+  }>();
   const [customAmountError, setCustomAmountError] = useState<string>();
   const [errorMessage, setErrorMessage] = useState<string>();
   const [kycError, setKycError] = useState<TransactionError>();
@@ -258,6 +259,13 @@ export default function BuyScreen(): JSX.Element {
     userLoadTimeout !== undefined &&
     userLoadTimeout.identity === customerIdentity &&
     userLoadTimeout.timedOut;
+  const activePaymentInfoState =
+    paymentInfoState !== undefined && paymentInfoState.identity === customerIdentity
+      ? paymentInfoState
+      : undefined;
+  const paymentInfo = activePaymentInfoState?.info;
+  const paymentInfoPaymentMethod = activePaymentInfoState?.paymentMethod;
+  const sentPersonalIbanProvider = activePaymentInfoState?.sentProvider;
 
   // Live-input generation: bumps immediately when form inputs or selector change so stale
   // debounced responses and confirm actions never commit against a newer form state (B4).
@@ -376,6 +384,8 @@ export default function BuyScreen(): JSX.Element {
     setPersonalIbans(undefined);
     setProviderOverride(undefined);
     setFrickDefaultKycFallback(false);
+    setShowsCompletion(false);
+    setIsConfirming(false);
     if (!hasAuthenticatedCustomer || customerIdentity === undefined) return;
     let isRunning = true;
     let settled = false;
@@ -531,7 +541,10 @@ export default function BuyScreen(): JSX.Element {
       ? activeProviderOverride
       : hasRequestedPersonalIbanSelector
       ? toPersonalIbanProviderRequest(effectivePersonalIban).personalIbanProvider
-      : yapealAlternative !== undefined && kycAllowsFrick && !frickDefaultKycFallback
+      : yapealAlternative !== undefined &&
+        !isUserLoading &&
+        kycAllowsFrick &&
+        !frickDefaultKycFallback
       ? PersonalIbanProvider.FRICK
       : undefined;
 
@@ -572,9 +585,7 @@ export default function BuyScreen(): JSX.Element {
     setErrorMessage(undefined);
     setKycError(undefined);
     setKycMessageOverride(undefined);
-    setPaymentInfo(undefined);
-    setPaymentInfoPaymentMethod(undefined);
-    setSentPersonalIbanProvider(undefined);
+    setPaymentInfoState(undefined);
     setContinueWithoutPersonalIban(undefined);
     if (!hasCompleteSpendSide && !hasCompleteGetSide) {
       setValidatedData(undefined);
@@ -628,11 +639,11 @@ export default function BuyScreen(): JSX.Element {
     : undefined;
   const hasUnsupportedPersonalIbanRequest =
     isUnrecognizedPersonalIbanSelector(personalIbanSelector);
-  const hasApplicableFrickRequest =
+  const hasApplicableExplicitPersonalIbanRequest =
     isPersonalIbanEligible &&
-    isExplicitFrickPersonalIbanRequest(personalIbanSelector);
-  const shouldWaitForApplicableFrickCustomer =
-    hasApplicableFrickRequest &&
+    isExplicitPersonalIbanRequest(personalIbanSelector);
+  const shouldWaitForApplicableExplicitCustomer =
+    hasApplicableExplicitPersonalIbanRequest &&
     (!isWalletInitialized || !hasAuthenticatedCustomer);
   // The row list only matters for the automatic Frick-default branch (no explicit override or
   // URL/widget selector, eligible currency, KYC permits Frick or is still loading, not already
@@ -664,10 +675,8 @@ export default function BuyScreen(): JSX.Element {
       };
     }
 
-    if (shouldWaitForApplicableFrickCustomer || shouldWaitForPersonalIbanRows) {
-      setPaymentInfo(undefined);
-      setPaymentInfoPaymentMethod(undefined);
-      setSentPersonalIbanProvider(undefined);
+    if (shouldWaitForApplicableExplicitCustomer || shouldWaitForPersonalIbanRows) {
+      setPaymentInfoState(undefined);
       setErrorMessage(undefined);
       setKycError(undefined);
       setKycMessageOverride(undefined);
@@ -680,9 +689,7 @@ export default function BuyScreen(): JSX.Element {
     if (hasUnsupportedPersonalIbanRequest) {
       const personalIbanErrorText = getPersonalIbanErrorMessage('PersonalIbanProviderUnsupported');
       if (generation === quoteGeneration.current) {
-        setPaymentInfo(undefined);
-        setPaymentInfoPaymentMethod(undefined);
-        setSentPersonalIbanProvider(undefined);
+        setPaymentInfoState(undefined);
         setErrorMessage(
           personalIbanErrorText
             ? translate('screens/payment', personalIbanErrorText)
@@ -707,6 +714,7 @@ export default function BuyScreen(): JSX.Element {
       setErrorMessage(undefined);
       setKycError(undefined);
       setKycMessageOverride(undefined);
+      setPaymentInfoState(undefined);
       setIsLoading(debouncedValidatedData.sideToUpdate);
     }
     receiveFor(data)
@@ -718,9 +726,12 @@ export default function BuyScreen(): JSX.Element {
         )
           return;
         validateBuy(buy);
-        setPaymentInfo(buy);
-        setPaymentInfoPaymentMethod(data.paymentMethod);
-        setSentPersonalIbanProvider(data.personalIbanProvider);
+        setPaymentInfoState({
+          info: buy,
+          paymentMethod: data.paymentMethod,
+          sentProvider: data.personalIbanProvider,
+          identity: loadingCustomerIdentity,
+        });
         committedQuoteGeneration.current = generation;
 
         // load exact price
@@ -756,9 +767,12 @@ export default function BuyScreen(): JSX.Element {
         debouncedValidatedData.sideToUpdate === Side.SPEND
           ? setVal('amount', info.amount.toString())
           : setVal('targetAmount', info.estimatedAmount.toString());
-        setPaymentInfo(info);
-        setPaymentInfoPaymentMethod(data.paymentMethod);
-        setSentPersonalIbanProvider(data.personalIbanProvider);
+        setPaymentInfoState({
+          info,
+          paymentMethod: data.paymentMethod,
+          sentProvider: data.personalIbanProvider,
+          identity: loadingCustomerIdentity,
+        });
         committedQuoteGeneration.current = generation;
       })
       .catch((error: ApiError) => {
@@ -768,9 +782,7 @@ export default function BuyScreen(): JSX.Element {
           customerIdentityRef.current !== loadingCustomerIdentity
         )
           return;
-        setPaymentInfo(undefined);
-        setPaymentInfoPaymentMethod(undefined);
-        setSentPersonalIbanProvider(undefined);
+        setPaymentInfoState(undefined);
 
         // The client snapshot allowed the automatic Frick default (KYC >= 50), but the
         // authoritative server-side check rejected it with KycRequired. Do not show the blocking
@@ -823,7 +835,7 @@ export default function BuyScreen(): JSX.Element {
     requestPersonalIbanProvider,
     hasUnsupportedPersonalIbanRequest,
     personalIbanErrorApplies,
-    shouldWaitForApplicableFrickCustomer,
+    shouldWaitForApplicableExplicitCustomer,
     shouldWaitForPersonalIbanRows,
     retryToken,
     activeProviderOverride,
@@ -879,9 +891,7 @@ export default function BuyScreen(): JSX.Element {
       // Reject an unverifiable provider-backed response completely. Suppression handles an URL
       // selector, clearing the override handles a toggle, and the fallback flag prevents the
       // automatic Frick default from immediately rebuilding the same request.
-      setPaymentInfo(undefined);
-      setPaymentInfoPaymentMethod(undefined);
-      setSentPersonalIbanProvider(undefined);
+      setPaymentInfoState(undefined);
       setContinueWithoutPersonalIban(undefined);
       setSuppressPersonalIban({ value: true, identity: customerIdentity });
       setProviderOverride(undefined);
@@ -938,9 +948,11 @@ export default function BuyScreen(): JSX.Element {
     // Refuse confirmation against a quote that no longer matches the live form generation (B4).
     if (committedQuoteGeneration.current !== quoteGeneration.current) return;
 
+    const confirmingCustomerIdentity = customerIdentity;
     setIsConfirming(true);
 
     confirmFor(id).finally(() => {
+      if (customerIdentityRef.current !== confirmingCustomerIdentity) return;
       setShowsCompletion(true);
       setIsConfirming(false);
       scrollToTop();
@@ -977,7 +989,8 @@ export default function BuyScreen(): JSX.Element {
     currency: Validations.Required,
   });
 
-  const title = showsCompletion
+  const showsActiveCompletion = showsCompletion && paymentInfo !== undefined;
+  const title = showsActiveCompletion
     ? translate('screens/buy', 'Done!')
     : showsSwitchScreen
     ? translate('screens/buy', 'Switch address')
@@ -985,7 +998,7 @@ export default function BuyScreen(): JSX.Element {
 
   useLayoutOptions({
     title,
-    backButton: !showsCompletion,
+    backButton: !showsActiveCompletion,
     onBack: showsNameForm ? () => setShowsNameForm(false) : undefined,
     textStart: true,
   });
@@ -1035,7 +1048,7 @@ export default function BuyScreen(): JSX.Element {
     <>
       {showsSwitchScreen ? (
         <AddressSwitch onClose={(r) => (r ? onAddressSwitch() : setShowsSwitchScreen(false))} />
-      ) : showsCompletion && paymentInfo ? (
+      ) : showsActiveCompletion && paymentInfo ? (
         <BuyCompletion user={user} paymentInfo={paymentInfo} navigateOnClose />
       ) : showsNameForm ? (
         <NameEdit onSuccess={() => updateData(Side.GET)} />

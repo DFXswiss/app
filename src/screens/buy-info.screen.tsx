@@ -45,7 +45,7 @@ import {
   getPersonalIbanErrorMessage,
   getPersonalIbanKycMessage,
   getYapealAlternative,
-  isExplicitFrickPersonalIbanRequest,
+  isExplicitPersonalIbanRequest,
   isKycRequiredMessage,
   isPersonalIbanApplicable,
   isUnrecognizedPersonalIbanSelector,
@@ -82,10 +82,13 @@ export default function BuyInfoScreen(): JSX.Element {
   const { scrollToTop } = useLayoutContext();
 
   const [isLoading, setIsLoading] = useState(true);
-  const [paymentInfo, setPaymentInfo] = useState<Buy>();
-  // Provider carried by the request that produced paymentInfo, committed under the same guards.
-  const [sentPersonalIbanProvider, setSentPersonalIbanProvider] =
-    useState<PersonalIbanProvider>();
+  // Quote data and its sent provider are committed atomically and only remain active for the
+  // customer identity that loaded them.
+  const [paymentInfoState, setPaymentInfoState] = useState<{
+    info: Buy;
+    sentProvider: PersonalIbanProvider | undefined;
+    identity: number | undefined;
+  }>();
   const [showsCompletion, setShowsCompletion] = useState(false);
   const [asset, setAsset] = useState<Asset>();
   const [currency, setCurrency] = useState<Fiat>();
@@ -153,6 +156,12 @@ export default function BuyInfoScreen(): JSX.Element {
     userLoadTimeout !== undefined &&
     userLoadTimeout.identity === customerIdentity &&
     userLoadTimeout.timedOut;
+  const activePaymentInfoState =
+    paymentInfoState !== undefined && paymentInfoState.identity === customerIdentity
+      ? paymentInfoState
+      : undefined;
+  const paymentInfo = activePaymentInfoState?.info;
+  const sentPersonalIbanProvider = activePaymentInfoState?.sentProvider;
 
   const quoteGeneration = useRef(0);
   const customerIdentityRef = useRef(customerIdentity);
@@ -171,11 +180,11 @@ export default function BuyInfoScreen(): JSX.Element {
   const kycAllowsFrick = user !== undefined && user.kyc.level >= 50;
   // Raw hook value (ignores local suppression state) - see buy.screen.tsx for why.
   const hasRequestedPersonalIbanSelector = requestedPersonalIban !== undefined;
-  const hasApplicableFrickRequest =
+  const hasApplicableExplicitPersonalIbanRequest =
     isPersonalIbanEligible &&
-    isExplicitFrickPersonalIbanRequest(personalIbanSelector);
-  const shouldWaitForApplicableFrickCustomer =
-    hasApplicableFrickRequest &&
+    isExplicitPersonalIbanRequest(personalIbanSelector);
+  const shouldWaitForApplicableExplicitCustomer =
+    hasApplicableExplicitPersonalIbanRequest &&
     (!isWalletInitialized || !hasAuthenticatedCustomer);
   // The row list only matters for the automatic Frick-default branch (no explicit override or
   // URL/widget selector, eligible currency, KYC permits Frick or is still loading, not already
@@ -223,6 +232,7 @@ export default function BuyInfoScreen(): JSX.Element {
     setPersonalIbans(undefined);
     setProviderOverride(undefined);
     setFrickDefaultKycFallback(false);
+    setShowsCompletion(false);
     if (!hasAuthenticatedCustomer || customerIdentity === undefined) return;
     let isRunning = true;
     let settled = false;
@@ -299,9 +309,8 @@ export default function BuyInfoScreen(): JSX.Element {
     const generation = ++quoteGeneration.current;
     const loadingCustomerIdentity = customerIdentity;
 
-    if (shouldWaitForApplicableFrickCustomer || shouldWaitForPersonalIbanRows) {
-      setPaymentInfo(undefined);
-      setSentPersonalIbanProvider(undefined);
+    if (shouldWaitForApplicableExplicitCustomer || shouldWaitForPersonalIbanRows) {
+      setPaymentInfoState(undefined);
       setErrorMessage(undefined);
       setKycError(undefined);
       setKycMessageOverride(undefined);
@@ -322,8 +331,7 @@ export default function BuyInfoScreen(): JSX.Element {
     setErrorMessage(undefined);
     setKycError(undefined);
     setKycMessageOverride(undefined);
-    setPaymentInfo(undefined);
-    setSentPersonalIbanProvider(undefined);
+    setPaymentInfoState(undefined);
 
     const requestPersonalIbanProvider = isPersonalIbanEligible ? effectiveProvider : undefined;
     // Feature-specific errors apply only to a request that actually carried the provider.
@@ -336,8 +344,7 @@ export default function BuyInfoScreen(): JSX.Element {
     if (isUnrecognizedPersonalIbanSelector(personalIbanSelector)) {
       const personalIbanErrorText = getPersonalIbanErrorMessage('PersonalIbanProviderUnsupported');
       if (generation === quoteGeneration.current) {
-        setPaymentInfo(undefined);
-        setSentPersonalIbanProvider(undefined);
+        setPaymentInfoState(undefined);
         setErrorMessage(
           personalIbanErrorText
             ? translate('screens/payment', personalIbanErrorText)
@@ -374,9 +381,14 @@ export default function BuyInfoScreen(): JSX.Element {
         )
           return;
         const validatedBuy = validateBuy(buy);
-        setPaymentInfo(validatedBuy);
-        setSentPersonalIbanProvider(
-          validatedBuy === undefined ? undefined : request.personalIbanProvider,
+        setPaymentInfoState(
+          validatedBuy === undefined
+            ? undefined
+            : {
+                info: validatedBuy,
+                sentProvider: request.personalIbanProvider,
+                identity: loadingCustomerIdentity,
+              },
         );
       })
       .catch((error: ApiError) => {
@@ -386,8 +398,7 @@ export default function BuyInfoScreen(): JSX.Element {
           customerIdentityRef.current !== loadingCustomerIdentity
         )
           return;
-        setPaymentInfo(undefined);
-        setSentPersonalIbanProvider(undefined);
+        setPaymentInfoState(undefined);
 
         // The client snapshot allowed the automatic Frick default, but the authoritative server
         // rejected it with KycRequired. Retry without a selector and keep a visible hint instead
@@ -442,7 +453,7 @@ export default function BuyInfoScreen(): JSX.Element {
     effectivePersonalIban,
     effectiveProvider,
     personalIbanSelector,
-    shouldWaitForApplicableFrickCustomer,
+    shouldWaitForApplicableExplicitCustomer,
     shouldWaitForPersonalIbanRows,
     retryToken,
     activeProviderOverride,
@@ -500,8 +511,7 @@ export default function BuyInfoScreen(): JSX.Element {
     if (personalIbanProviderVerificationFailed) {
       // Discard an unverifiable provider-backed response before fetching standard details.
       // Together these state changes suppress URL, toggle and automatic-default provider paths.
-      setPaymentInfo(undefined);
-      setSentPersonalIbanProvider(undefined);
+      setPaymentInfoState(undefined);
       setContinueWithoutPersonalIban(undefined);
       setSuppressPersonalIban({ value: true, identity: customerIdentity });
       setProviderOverride(undefined);
@@ -555,12 +565,13 @@ export default function BuyInfoScreen(): JSX.Element {
   const isUnrecognizedBlocked =
     isUnrecognizedPersonalIbanSelector(personalIbanSelector) &&
     errorMessage != null;
+  const showsActiveCompletion = showsCompletion && paymentInfo !== undefined;
 
   useLayoutOptions({ textStart: true, backButton: false });
 
   return (
     <>
-      {showsCompletion && paymentInfo ? (
+      {showsActiveCompletion && paymentInfo ? (
         <BuyCompletion user={user} paymentInfo={paymentInfo} navigateOnClose={false} />
       ) : isUnrecognizedBlocked ? (
         <StyledVerticalStack center className="text-center" gap={4}>

@@ -206,7 +206,11 @@ jest.mock('../components/error-hint', () => ({
 }));
 jest.mock('../components/exchange-rate', () => ({ ExchangeRate: () => <div data-testid="exchange-rate" /> }));
 jest.mock('../components/payment/address-switch', () => ({ AddressSwitch: () => null }));
-jest.mock('../components/payment/buy-completion', () => ({ BuyCompletion: () => null }));
+jest.mock('../components/payment/buy-completion', () => ({
+  BuyCompletion: ({ paymentInfo }: { paymentInfo: { iban?: string } }) => (
+    <div data-testid="buy-completion">{paymentInfo.iban}</div>
+  ),
+}));
 jest.mock('../components/private-asset-hint', () => ({ PrivateAssetHint: () => null }));
 jest.mock('../components/quote-error-hint', () => ({
   QuoteErrorHint: ({ error, message }: any) => (
@@ -945,9 +949,9 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('does not request Frick when wallet is initialized but customer is not authenticated', async () => {
-    mockPersonalIban.mockReturnValue('Frick');
-    mockRequestedPersonalIban.mockReturnValue('Frick');
+  it('does not request Yapeal when wallet is initialized but customer is not authenticated', async () => {
+    mockPersonalIban.mockReturnValue('Yapeal');
+    mockRequestedPersonalIban.mockReturnValue('Yapeal');
     mockWalletInitialized.mockReturnValue(true);
     mockHasAuthenticatedCustomer.mockReturnValue(false);
     mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'EUR' }));
@@ -1416,6 +1420,91 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     }
   });
 
+  it('invalidates a fail-open quote before requesting the corrective Frick quote', async () => {
+    jest.useFakeTimers();
+    const userLoadDeferred = createDeferred<{ kyc: { level: number } }>();
+    const quoteDeferreds: ReturnType<typeof createDeferred<ReturnType<typeof chfOffer>>>[] = [];
+    try {
+      let currentUser = { kyc: { level: 50 } };
+      let isUserLoading = true;
+      mockPersonalIban.mockReturnValue(undefined);
+      mockRequestedPersonalIban.mockReturnValue(undefined);
+      mockUser.mockImplementation(() => currentUser);
+      mockIsUserLoading.mockImplementation(() => isUserLoading);
+      mockGetPersonalIbans.mockResolvedValue([activeChfYapealRow]);
+      mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+      mockReceiveFor.mockImplementation(() => {
+        const deferred = createDeferred<ReturnType<typeof chfOffer>>();
+        quoteDeferreds.push(deferred);
+        return deferred.promise;
+      });
+
+      const rendered = render(<BuyScreen />);
+      await settle();
+      expect(mockReceiveFor).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(10000);
+        await Promise.resolve();
+      });
+      await settle();
+      expect(mockReceiveFor).toHaveBeenCalledTimes(1);
+      expect(mockReceiveFor.mock.calls[0][0]).not.toHaveProperty('personalIbanProvider');
+
+      await act(async () => {
+        quoteDeferreds[0].resolve({
+          ...chfOffer(),
+          name: 'Old selector-less quote',
+          iban: 'OLD-SELECTORLESS-IBAN',
+        });
+      });
+      await settle();
+      expect(mockReceiveFor).toHaveBeenCalledTimes(2);
+      expect(mockReceiveFor.mock.calls[1][0]).toMatchObject({ exactPrice: true });
+      const oldConfirmButton = screen.getByRole('button', { name: TRANSFER_BUTTON });
+      expect(screen.getByText('Old selector-less quote')).toBeInTheDocument();
+
+      await act(async () => {
+        userLoadDeferred.resolve({ kyc: { level: 50 } });
+        currentUser = await userLoadDeferred.promise;
+        isUserLoading = false;
+        rendered.rerender(<BuyScreen />);
+      });
+      await settle();
+
+      expect(mockReceiveFor).toHaveBeenCalledTimes(3);
+      expect(mockReceiveFor.mock.calls[2][0].personalIbanProvider).toBe('Frick');
+      expect(screen.queryByText('Old selector-less quote')).not.toBeInTheDocument();
+      expect(oldConfirmButton).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: TRANSFER_BUTTON })).not.toBeInTheDocument();
+
+      fireEvent.click(oldConfirmButton);
+      expect(mockConfirmFor).not.toHaveBeenCalled();
+
+      await act(async () => {
+        quoteDeferreds[2].resolve(frickChfOffer());
+      });
+      await settle();
+      expect(mockReceiveFor).toHaveBeenCalledTimes(4);
+      expect(mockReceiveFor.mock.calls[3][0]).toMatchObject({
+        exactPrice: true,
+        personalIbanProvider: 'Frick',
+      });
+
+      await act(async () => {
+        quoteDeferreds[3].resolve(frickChfOffer());
+      });
+      await settle();
+
+      expect(screen.getByTestId('payment-info')).toHaveTextContent('LI35088110102979K002E');
+      expect(screen.queryByText('Old selector-less quote')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: TRANSFER_BUTTON })).toBeInTheDocument();
+      expect(mockConfirmFor).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('discards a quote rejection from the previous customer identity', async () => {
     let customerIdentity = 1;
     const staleQuote = createDeferred<ReturnType<typeof frickChfOffer>>();
@@ -1527,5 +1616,37 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
 
     await waitFor(() => expect(screen.getByText(MISMATCH_HINT)).toBeInTheDocument());
     expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+  });
+
+  it('does not carry completion state into a quote for another customer identity', async () => {
+    let customerIdentity = 1;
+    mockCustomerIdentity.mockImplementation(() => customerIdentity);
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'EUR' }));
+    mockReceiveFor.mockImplementation(() =>
+      Promise.resolve(
+        frickOffer({
+          iban: customerIdentity === 1 ? 'LI-FIRST-CUSTOMER' : 'LI-SECOND-CUSTOMER',
+        }),
+      ),
+    );
+    mockConfirmFor.mockResolvedValue(undefined);
+
+    const rendered = render(<BuyScreen />);
+    await waitFor(() => expect(screen.getByText('LI-FIRST-CUSTOMER')).toBeInTheDocument());
+
+    await act(async () => {
+      screen.getByRole('button', { name: TRANSFER_BUTTON }).click();
+      await Promise.resolve();
+    });
+    await settle();
+    expect(screen.getByTestId('buy-completion')).toHaveTextContent('LI-FIRST-CUSTOMER');
+
+    customerIdentity = 2;
+    rendered.rerender(<BuyScreen />);
+    await settle();
+
+    expect(screen.queryByTestId('buy-completion')).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toHaveTextContent('LI-SECOND-CUSTOMER');
+    expect(screen.getByRole('button', { name: TRANSFER_BUTTON })).toBeInTheDocument();
   });
 });

@@ -721,9 +721,18 @@ test.describe('Buy Process - UI Flow', () => {
         await route.continue();
         return;
       }
-      const response = await route.fetch();
-      const user = await response.json();
-      await route.fulfill({ response, json: { ...user, kyc: { ...user.kyc, level: 50 } } });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          id: 1,
+          activeAddress: { address: '0x0000000000000000000000000000000000000001' },
+          addresses: [],
+          kyc: { level: 50, status: 'Completed' },
+          currency: { id: 1, name: 'CHF' },
+          language: { id: 1, name: 'English', symbol: 'EN' },
+        },
+      });
     });
 
     await page.route('**/v1/buy/personalIban', async (route) => {
@@ -797,6 +806,7 @@ test.describe('Buy Process - UI Flow', () => {
           json: {
             statusCode: 400,
             message: 'PersonalIbanProviderNotAvailable',
+            error: 'Bad Request',
           },
         });
         return;
