@@ -23,7 +23,9 @@ ENV CI=false
 # Do not use `npm run build` — scripts/build.sh patches .env with a public API URL.
 RUN node scripts/generate-version.js && npx react-app-rewired build
 # Alpine has no bash; the App 2.0 script is bash and calls react-app-rewired from PATH.
+# .dockerignore excludes .env* (including .env.sample), so seed the two keys the script rewrites.
 RUN apk add --no-cache bash \
+  && printf 'REACT_APP_API_URL=http://localhost:3000\nREACT_APP_PUBLIC_URL=http://frontend\n' > .env \
   && PATH="/app/node_modules/.bin:$PATH" bash ./scripts/build-app2.sh loc
 
 FROM nginx:alpine
