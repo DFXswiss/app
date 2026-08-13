@@ -1,4 +1,4 @@
-import { firstQueryParam, foldApp2PathIntoHash } from '../utils/url';
+import { appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl } from '../utils/url';
 
 describe('foldApp2PathIntoHash', () => {
   it('folds real-path Checkout/email returns into hash routes and keeps the query', () => {
@@ -101,5 +101,25 @@ describe('firstQueryParam', () => {
   it('prefers earlier keys in the key list', () => {
     mockLocation('?code=FALLBACK&recommendation-code=AB-CDEF-GHIJ-KL', '');
     expect(firstQueryParam('refcode', 'recommendation-code', 'code')).toBe('AB-CDEF-GHIJ-KL');
+  });
+});
+
+describe('appUrl', () => {
+  const originalEnv = process.env.REACT_APP_PUBLIC_URL;
+
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.REACT_APP_PUBLIC_URL;
+    else process.env.REACT_APP_PUBLIC_URL = originalEnv;
+  });
+
+  it('builds a same-origin path on a trusted public URL', () => {
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.dfx.swiss';
+    expect(appUrl('/account')).toBe('https://app.dfx.swiss/account');
+    expect(isSafeAppUrl('https://app.dfx.swiss')).toBe(true);
+  });
+
+  it('rejects an unsafe origin', () => {
+    process.env.REACT_APP_PUBLIC_URL = 'javascript:alert(1)';
+    expect(appUrl('/account')).toBeUndefined();
   });
 });
