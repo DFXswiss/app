@@ -1,0 +1,1705 @@
+const mockGetKycInfo = jest.fn();
+const mockContinueKyc = jest.fn();
+const mockStartStep = jest.fn();
+const mockAddTransferClient = jest.fn();
+const mockCancelStep = jest.fn();
+const mockSetContactData = jest.fn();
+const mockSetPersonalData = jest.fn();
+const mockSetLegalEntityData = jest.fn();
+const mockSetNationalityData = jest.fn();
+const mockSetRecommendationData = jest.fn();
+const mockSetFileData = jest.fn();
+const mockSetSignatoryPowerData = jest.fn();
+const mockSetBeneficialData = jest.fn();
+const mockSetOperationalData = jest.fn();
+const mockGetFinancialData = jest.fn();
+const mockSetFinancialData = jest.fn();
+const mockSetManualIdentData = jest.fn();
+const mockSetPhoneChangeData = jest.fn();
+const mockSetAddressChangeData = jest.fn();
+const mockSetNameChangeData = jest.fn();
+const mockSetPaymentData = jest.fn();
+const mockSetRecallData = jest.fn();
+const mockLogout = jest.fn();
+const mockReloadUser = jest.fn();
+const mockNavigate = jest.fn();
+const mockGoBack = jest.fn();
+const mockClearParams = jest.fn();
+const mockChangeLanguage = jest.fn();
+const mockSetParams = jest.fn();
+const mockUseLayoutOptions = jest.fn();
+const mockToBase64 = jest.fn();
+const mockWindowOpen = jest.fn();
+
+const mockDevice = { isMobile: false };
+const mockApp = {
+  isInitialized: true,
+  params: {} as { autoStart?: string },
+  processingKycData: false,
+  lang: undefined as string | undefined,
+};
+const mockUser: { kyc?: { hash?: string } } | undefined = { kyc: { hash: 'user-hash' } };
+
+const CH = { name: 'Switzerland', symbol: 'CH' };
+const DE = { name: 'Germany', symbol: 'DE' };
+const LANG = { symbol: 'EN', name: 'English' };
+
+jest.mock('@dfx.swiss/react', () => ({
+  AccountType: {
+    PERSONAL: 'Personal',
+    ORGANIZATION: 'Organization',
+    SOLE_PROPRIETORSHIP: 'SoleProprietorship',
+  },
+  DocumentType: {
+    IDCARD: 'IDCARD',
+    PASSPORT: 'PASSPORT',
+    DRIVERS_LICENSE: 'DRIVERS_LICENSE',
+    RESIDENCE_PERMIT: 'RESIDENCE_PERMIT',
+  },
+  GenderType: { MALE: 'Male', FEMALE: 'Female' },
+  GoodsType: { TANGIBLE: 'Tangible', VIRTUAL: 'Virtual' },
+  GoodsCategory: { JEWELRY: 'Jewelry', OTHERS: 'Others' },
+  StoreType: { ONLINE: 'Online', PHYSICAL: 'Physical', ONLINE_AND_PHYSICAL: 'OnlineAndPhysical' },
+  MerchantCategory: { BANK: 'Bank', OTHER: 'Other' },
+  KycLevel: { Link: 10, Sell: 20, Completed: 50 },
+  KycStepName: {
+    CONTACT_DATA: 'ContactData',
+    PERSONAL_DATA: 'PersonalData',
+    LEGAL_ENTITY: 'LegalEntity',
+    OWNER_DIRECTORY: 'OwnerDirectory',
+    NATIONALITY_DATA: 'NationalityData',
+    RECOMMENDATION: 'Recommendation',
+    COMMERCIAL_REGISTER: 'CommercialRegister',
+    SOLE_PROPRIETORSHIP_CONFIRMATION: 'SoleProprietorshipConfirmation',
+    SIGNATORY_POWER: 'SignatoryPower',
+    AUTHORITY: 'Authority',
+    BENEFICIAL_OWNER: 'BeneficialOwner',
+    OPERATIONAL_ACTIVITY: 'OperationalActivity',
+    IDENT: 'Ident',
+    FINANCIAL_DATA: 'FinancialData',
+    ADDITIONAL_DOCUMENTS: 'AdditionalDocuments',
+    RESIDENCE_PERMIT: 'ResidencePermit',
+    STATUTES: 'Statutes',
+    DFX_APPROVAL: 'DfxApproval',
+    PAYMENT_AGREEMENT: 'PaymentAgreement',
+    RECALL_AGREEMENT: 'RecallAgreement',
+    PHONE_CHANGE: 'PhoneChange',
+    ADDRESS_CHANGE: 'AddressChange',
+    NAME_CHANGE: 'NameChange',
+  },
+  KycStepCancelable: ['AddressChange', 'PhoneChange', 'NameChange'],
+  KycStepType: {
+    AUTO: 'Auto',
+    VIDEO: 'Video',
+    MANUAL: 'Manual',
+    SUMSUB_AUTO: 'SumsubAuto',
+    SUMSUB_VIDEO: 'SumsubVideo',
+  },
+  KycStepStatus: {
+    NOT_STARTED: 'NotStarted',
+    IN_PROGRESS: 'InProgress',
+    IN_REVIEW: 'InReview',
+    FAILED: 'Failed',
+    COMPLETED: 'Completed',
+    OUTDATED: 'Outdated',
+    DATA_REQUESTED: 'DataRequested',
+    ON_HOLD: 'OnHold',
+  },
+  UrlType: { BROWSER: 'Browser', API: 'API', TOKEN: 'Token', NONE: 'None' },
+  KycStepReason: { ACCOUNT_EXISTS: 'AccountExists', ACCOUNT_MERGE_REQUESTED: 'AccountMergeRequested' },
+  LegalEntity: { AG: 'AG', GMBH: 'GmbH', OTHER: 'Other' },
+  SignatoryPower: { SINGLE: 'Single', DOUBLE: 'Double', NONE: 'None' },
+  QuestionType: {
+    CONFIRMATION: 'Confirmation',
+    SINGLE_CHOICE: 'SingleChoice',
+    MULTIPLE_CHOICE: 'MultipleChoice',
+    TEXT: 'Text',
+  },
+  SupportIssueType: { NOTIFICATION_OF_CHANGES: 'NotificationOfChanges', LIMIT_REQUEST: 'LimitRequest' },
+  Utils: { createRules: (rules: unknown) => rules },
+  Validations: {
+    Required: {},
+    Mail: {},
+    Phone: {},
+    Custom: (fn: (v: unknown) => unknown) => ({ validate: fn }),
+  },
+  isStepDone: (result: { status: string }) => ['InReview', 'OnHold', 'Completed'].includes(result.status),
+  useKyc: () => ({
+    getKycInfo: mockGetKycInfo,
+    continueKyc: mockContinueKyc,
+    startStep: mockStartStep,
+    addTransferClient: mockAddTransferClient,
+    cancelStep: mockCancelStep,
+    setContactData: mockSetContactData,
+    setPersonalData: mockSetPersonalData,
+    setLegalEntityData: mockSetLegalEntityData,
+    setNationalityData: mockSetNationalityData,
+    setRecommendationData: mockSetRecommendationData,
+    setFileData: mockSetFileData,
+    setSignatoryPowerData: mockSetSignatoryPowerData,
+    setBeneficialData: mockSetBeneficialData,
+    setOperationalData: mockSetOperationalData,
+    getFinancialData: mockGetFinancialData,
+    setFinancialData: mockSetFinancialData,
+    setManualIdentData: mockSetManualIdentData,
+    setPhoneChangeData: mockSetPhoneChangeData,
+    setAddressChangeData: mockSetAddressChangeData,
+    setNameChangeData: mockSetNameChangeData,
+    setPaymentData: mockSetPaymentData,
+    setRecallData: mockSetRecallData,
+  }),
+  useSessionContext: () => ({ logout: mockLogout }),
+  useUserContext: () => ({ user: mockUser, reloadUser: mockReloadUser }),
+}));
+
+jest.mock('@dfx.swiss/react-components', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Controller } = require('react-hook-form');
+
+  function enrich(elements: unknown, control: unknown, rules?: Record<string, unknown>): unknown {
+    if (!elements) return elements;
+    return React.Children.map(elements, (element: unknown) => {
+      if (!React.isValidElement(element)) return element;
+      const props = element.props as { name?: string; children?: unknown };
+      const children = enrich(props.children, control, rules);
+      if (props.name) {
+        return React.cloneElement(element, { control, rules: rules ? rules[props.name] : undefined, children });
+      }
+      return React.cloneElement(element, { children });
+    });
+  }
+
+  return {
+    DfxIcon: () => null,
+    Form: ({
+      children,
+      control,
+      rules,
+      onSubmit,
+    }: {
+      children: React.ReactNode;
+      control: unknown;
+      rules?: Record<string, unknown>;
+      onSubmit?: React.FormEventHandler;
+    }) => <form onSubmit={onSubmit}>{enrich(children, control, rules)}</form>,
+    IconColor: { BLUE: 'blue' },
+    IconSize: { MD: 'md', XL: 'xl', XS: 'xs' },
+    IconVariant: { USER_DATA: 'user', CHEV_LEFT: 'left' },
+    SpinnerSize: { LG: 'lg' },
+    StyledLoadingSpinner: () => <span role="status">loading</span>,
+    StyledButton: ({
+      label,
+      onClick,
+      disabled,
+      type,
+    }: {
+      label: string;
+      onClick?: () => void;
+      disabled?: boolean;
+      type?: string;
+    }) => (
+      <button type={(type as 'button' | 'submit') ?? 'button'} onClick={onClick} disabled={disabled}>
+        {label}
+      </button>
+    ),
+    StyledButtonColor: { STURDY_WHITE: 'sturdy-white', GRAY_OUTLINE: 'gray' },
+    StyledButtonWidth: { MIN: 'min', FULL: 'full' },
+    StyledInput: ({
+      control,
+      name,
+      label,
+      rules,
+      placeholder,
+    }: {
+      control?: unknown;
+      name: string;
+      label?: string;
+      rules?: unknown;
+      placeholder?: string;
+    }) => (
+      <Controller
+        control={control}
+        name={name}
+        rules={rules}
+        render={({ field }: { field: { value?: string; onChange: (v: string) => void } }) => (
+          <label>
+            {label}
+            <input
+              data-testid={name}
+              placeholder={placeholder}
+              value={field.value ?? ''}
+              onChange={(e) => field.onChange(e.target.value)}
+            />
+          </label>
+        )}
+      />
+    ),
+    StyledDropdown: ({
+      control,
+      name,
+      items,
+      labelFunc,
+      descriptionFunc,
+      label,
+      rules,
+    }: {
+      control?: unknown;
+      name: string;
+      items: unknown[];
+      labelFunc?: (item: unknown) => string;
+      descriptionFunc?: (item: unknown) => string;
+      label?: string;
+      rules?: unknown;
+    }) => (
+      <Controller
+        control={control}
+        name={name}
+        rules={rules}
+        render={({ field }: { field: { value?: unknown; onChange: (v: unknown) => void } }) => (
+          <label>
+            {label}
+            <select
+              data-testid={name}
+              value={field.value === undefined || field.value === null ? '' : JSON.stringify(field.value)}
+              onChange={(e) => {
+                const item = items.find((i) => JSON.stringify(i) === e.target.value);
+                field.onChange(item);
+              }}
+            >
+              <option value="">Select...</option>
+              {(items ?? []).map((item, i) => (
+                <option key={i} value={JSON.stringify(item)}>
+                  {labelFunc ? labelFunc(item) : String(item)}
+                  {descriptionFunc ? ` ${descriptionFunc(item)}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      />
+    ),
+    StyledDropdownMultiChoice: ({
+      control,
+      name,
+      items,
+      labelFunc,
+      rules,
+    }: {
+      control?: unknown;
+      name: string;
+      items: { key: string; text: string }[];
+      labelFunc?: (item: { key: string; text: string }) => string;
+      rules?: unknown;
+    }) => (
+      <Controller
+        control={control}
+        name={name}
+        rules={rules}
+        render={({ field }: { field: { value?: { key: string }[]; onChange: (v: unknown) => void } }) => (
+          <select
+            multiple
+            data-testid={name}
+            value={(field.value ?? []).map((v) => v.key)}
+            onChange={(e) => {
+              const keys = Array.from(e.target.selectedOptions).map((o) => o.value);
+              field.onChange(items.filter((i) => keys.includes(i.key)));
+            }}
+          >
+            {(items ?? []).map((item) => (
+              <option key={item.key} value={item.key}>
+                {labelFunc ? labelFunc(item) : item.text}
+              </option>
+            ))}
+          </select>
+        )}
+      />
+    ),
+    StyledSearchDropdown: ({
+      control,
+      name,
+      items,
+      labelFunc,
+      matchFunc,
+      label,
+      rules,
+    }: {
+      control?: unknown;
+      name: string;
+      items?: { name: string }[];
+      labelFunc?: (item: { name: string }) => string;
+      matchFunc?: (item: { name: string }, s?: string) => boolean;
+      label?: string;
+      rules?: unknown;
+    }) => (
+      <Controller
+        control={control}
+        name={name}
+        rules={rules}
+        render={({ field }: { field: { value?: { name: string }; onChange: (v: unknown) => void } }) => (
+          <label>
+            {label}
+            <input
+              data-testid={`${name}-search`}
+              onChange={(e) => {
+                const matches = (items ?? []).filter((i) => (matchFunc ? matchFunc(i, e.target.value) : false));
+                if (matches.length === 1) field.onChange(matches[0]);
+              }}
+            />
+            <select
+              data-testid={name}
+              value={field.value ? JSON.stringify(field.value) : ''}
+              onChange={(e) => field.onChange(JSON.parse(e.target.value))}
+            >
+              <option value="">Select...</option>
+              {(items ?? []).map((item, i) => (
+                <option key={i} value={JSON.stringify(item)}>
+                  {labelFunc ? labelFunc(item) : item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      />
+    ),
+    StyledFileUpload: ({
+      control,
+      name,
+      rules,
+    }: {
+      control?: unknown;
+      name: string;
+      rules?: unknown;
+    }) => (
+      <Controller
+        control={control}
+        name={name}
+        rules={rules}
+        render={({ field }: { field: { onChange: (v: unknown) => void } }) => (
+          <input
+            type="file"
+            data-testid={name}
+            onChange={(e) => field.onChange(e.target.files?.[0])}
+          />
+        )}
+      />
+    ),
+    StyledCheckboxRow: ({
+      isChecked,
+      onChange,
+      children,
+    }: {
+      isChecked?: boolean;
+      onChange?: (checked: boolean) => void;
+      children?: React.ReactNode;
+    }) => (
+      <label>
+        <input
+          type="checkbox"
+          data-testid="checkbox"
+          checked={!!isChecked}
+          onChange={(e) => onChange?.(e.target.checked)}
+        />
+        {children}
+      </label>
+    ),
+    StyledCollapsible: ({ titleContent, children }: { titleContent?: React.ReactNode; children?: React.ReactNode }) => (
+      <div>
+        {titleContent}
+        {children}
+      </div>
+    ),
+    StyledHorizontalStack: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    StyledVerticalStack: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    StyledLink: ({ label, onClick, url }: { label: string; onClick?: () => void; url?: string }) => (
+      <button type="button" onClick={onClick || (() => mockWindowOpen(url))}>
+        {label}
+      </button>
+    ),
+    StyledIconButton: ({ onClick }: { onClick?: () => void }) => (
+      <button type="button" data-testid="icon-back" onClick={onClick}>
+        back
+      </button>
+    ),
+  };
+});
+
+jest.mock('@sumsub/websdk-react', () => ({
+  __esModule: true,
+  default: ({
+    onMessage,
+    onError,
+    expirationHandler,
+  }: {
+    onMessage: (type: string, payload: unknown) => void;
+    onError: (err: { error: string }) => void;
+    expirationHandler: () => Promise<string>;
+  }) => {
+    (window as unknown as { __sumsub: unknown }).__sumsub = { onMessage, onError, expirationHandler };
+    return <div data-testid="sumsub" />;
+  },
+}));
+
+jest.mock('react-device-detect', () => ({
+  get isMobile() {
+    return mockDevice.isMobile;
+  },
+}));
+
+jest.mock('react-i18next', () => ({
+  Trans: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
+}));
+
+jest.mock('../contexts/settings.context', () => ({
+  useSettingsContext: () => ({
+    translate: (_ns: string, key: string, params?: Record<string, string>) => {
+      if (!params) return key;
+      return Object.entries(params).reduce((acc, [k, v]) => acc.split(`{{${k}}}`).join(String(v)), key);
+    },
+    translateError: (key: string) => key,
+    changeLanguage: mockChangeLanguage,
+    processingKycData: mockApp.processingKycData,
+    allowedCountries: [CH, DE],
+    allowedOrganizationCountries: [CH],
+    nationalityCountries: [CH, DE],
+    language: LANG,
+  }),
+}));
+
+jest.mock('../contexts/app-handling.context', () => ({
+  useAppHandlingContext: () => ({
+    isInitialized: mockApp.isInitialized,
+    params: mockApp.params,
+    setParams: mockSetParams,
+  }),
+}));
+
+jest.mock('../contexts/layout.context', () => ({
+  useLayoutContext: () => ({ rootRef: { current: document.createElement('div') } }),
+}));
+
+jest.mock('../hooks/app-params.hook', () => ({
+  useAppParams: () => ({ lang: mockApp.lang }),
+}));
+
+jest.mock('../hooks/geo-location.hook', () => ({
+  useGeoLocation: () => ({ countryCode: 'CH' }),
+}));
+
+jest.mock('../hooks/guard.hook', () => ({
+  useUserGuard: () => undefined,
+}));
+
+jest.mock('../hooks/kyc-helper.hook', () => ({
+  useKycHelper: () => ({
+    nameToString: (name: string) => name,
+    accountTypeToString: (t: string) => t,
+    legalEntityToString: (e: string) => e,
+    legalEntityToDescription: (e: string) => `desc-${e}`,
+    signatoryPowerToString: (p: string) => p,
+    genderTypeToString: (g: string) => g,
+    documentTypeToString: (d: string) => d,
+    goodsCategoryToString: (g: string) => g,
+    storeTypeToString: (s: string) => s,
+    merchantCategoryToString: (m: string) => m,
+  }),
+}));
+
+jest.mock('../hooks/layout-config.hook', () => ({
+  useLayoutOptions: (options: unknown) => mockUseLayoutOptions(options),
+}));
+
+jest.mock('../hooks/navigation.hook', () => ({
+  useNavigation: () => ({
+    navigate: mockNavigate,
+    goBack: mockGoBack,
+    clearParams: mockClearParams,
+  }),
+}));
+
+jest.mock('../components/error-hint', () => ({
+  ErrorHint: ({ message, onBack }: { message: string; onBack?: () => void }) => (
+    <div data-testid="error-hint">
+      {message}
+      {onBack ? (
+        <button type="button" onClick={onBack}>
+          error-back
+        </button>
+      ) : null}
+    </div>
+  ),
+}));
+
+jest.mock('../components/kyc-step-result-hint', () => ({
+  KycStepResultHint: ({ step }: { step: { name: string; status: string } }) => (
+    <div data-testid="result-hint">{`${step.name}:${step.status}`}</div>
+  ),
+}));
+
+jest.mock('../components/kyc-status', () => ({
+  KycStatusTable: ({ onLimitIncrease }: { onLimitIncrease?: () => void }) => (
+    <div data-testid="kyc-table">
+      {onLimitIncrease ? (
+        <button type="button" onClick={onLimitIncrease}>
+          raise-limit
+        </button>
+      ) : null}
+    </div>
+  ),
+}));
+
+jest.mock('../util/utils', () => {
+  const actual = jest.requireActual('../util/utils');
+  return {
+    ...actual,
+    toBase64: (...args: unknown[]) => mockToBase64(...args),
+    delay: () => Promise.resolve(),
+  };
+});
+
+process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
+
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
+import KycScreen from '../screens/kyc.screen';
+
+function info(overrides: Record<string, unknown> = {}) {
+  return {
+    kycLevel: 0,
+    tradingLimit: { limit: 1000, period: 'Day' },
+    language: LANG,
+    kycClients: [] as string[],
+    kycSteps: [{ name: 'ContactData', status: 'NotStarted', sequenceNumber: 0, isCurrent: false }],
+    ...overrides,
+  };
+}
+
+function session(step: Record<string, unknown> | undefined, overrides: Record<string, unknown> = {}) {
+  return { ...info(overrides), currentStep: step };
+}
+
+function step(name: string, status = 'InProgress', extra: Record<string, unknown> = {}) {
+  return {
+    name,
+    status,
+    sequenceNumber: 0,
+    session: { url: 'https://api.example.com/step', type: 'API' },
+    ...extra,
+  };
+}
+
+function renderAt(path: string) {
+  const router = createMemoryRouter([{ path: '/kyc', element: <KycScreen /> }, { path: '/profile', element: <KycScreen /> }, { path: '/contact', element: <KycScreen /> }], {
+    initialEntries: [path],
+  });
+  return render(<RouterProvider router={router} />);
+}
+
+function select(testId: string, value: unknown) {
+  fireEvent.change(screen.getByTestId(testId), { target: { value: JSON.stringify(value) } });
+}
+
+function typeField(testId: string, value: string) {
+  fireEvent.change(screen.getByTestId(testId), { target: { value } });
+}
+
+const png = new File(['x'], 'doc.png', { type: 'image/png' });
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockDevice.isMobile = false;
+  mockApp.isInitialized = true;
+  mockApp.params = {};
+  mockApp.processingKycData = false;
+  mockApp.lang = undefined;
+  mockUser.kyc = { hash: 'user-hash' };
+  mockToBase64.mockResolvedValue('data:image/png;base64,xx');
+  mockGetKycInfo.mockResolvedValue(info());
+  mockContinueKyc.mockResolvedValue(info());
+  mockStartStep.mockResolvedValue(info());
+  mockReloadUser.mockResolvedValue(undefined);
+  mockAddTransferClient.mockResolvedValue(undefined);
+  mockCancelStep.mockResolvedValue(undefined);
+  mockWindowOpen.mockReset();
+  window.open = mockWindowOpen as unknown as typeof window.open;
+});
+
+describe('KycScreen shell', () => {
+  it('shows the overview and Start when no step is running', async () => {
+    renderAt('/kyc?code=abc');
+    await screen.findByTestId('kyc-table');
+    expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
+    expect(mockGetKycInfo).toHaveBeenCalledWith('abc');
+    expect(mockChangeLanguage).toHaveBeenCalledWith(LANG);
+  });
+
+  it('labels the button Continue once a step has started', async () => {
+    mockGetKycInfo.mockResolvedValue(
+      info({ kycSteps: [{ name: 'ContactData', status: 'InProgress', sequenceNumber: 0 }] }),
+    );
+    renderAt('/kyc?code=abc');
+    await screen.findByRole('button', { name: 'Continue' });
+  });
+
+  it('loads the next step when Continue is pressed', async () => {
+    mockContinueKyc.mockResolvedValue(session(step('ContactData')));
+    renderAt('/kyc?code=abc');
+    await screen.findByRole('button', { name: 'Start' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    });
+    expect(await screen.findByText('Email address')).toBeInTheDocument();
+  });
+
+  it('shows the pending-result panel for a Recommendation in review', async () => {
+    mockStartStep.mockResolvedValue(session(step('Recommendation', 'InReview')));
+    renderAt('/kyc?code=abc&step=Recommendation');
+    expect(await screen.findByTestId('result-hint')).toHaveTextContent('Recommendation:InReview');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    });
+    expect(mockGetKycInfo).toHaveBeenCalled();
+  });
+
+  it('shows the finished copy for other in-review steps', async () => {
+    mockStartStep.mockResolvedValue(session(step('Ident', 'InReview')));
+    renderAt('/kyc?code=abc&step=Ident');
+    expect(await screen.findByTestId('result-hint')).toHaveTextContent('Ident:InReview');
+  });
+
+  it('shows a failed-result panel', async () => {
+    mockStartStep.mockResolvedValue(session(step('Recommendation', 'Failed', { reason: 'AccountExists' })));
+    renderAt('/kyc?code=abc&step=Recommendation');
+    expect(await screen.findByTestId('result-hint')).toHaveTextContent('Recommendation:Failed');
+  });
+
+  it('maps ?step=Ident/video:3 onto Sumsub video with a sequence', async () => {
+    mockStartStep.mockResolvedValue(session(step('Ident', 'InProgress', { type: 'SumsubVideo' })));
+    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    renderAt('/kyc?code=abc&step=Ident/video:3');
+    await waitFor(() =>
+      expect(mockStartStep).toHaveBeenCalledWith('abc', 'Ident', 'SumsubVideo', 3),
+    );
+  });
+
+  it('maps ?step=Ident/auto onto Sumsub auto', async () => {
+    mockStartStep.mockResolvedValue(session(step('Ident')));
+    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    renderAt('/kyc?code=abc&step=Ident/auto');
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('abc', 'Ident', 'SumsubAuto', undefined));
+  });
+
+  it('passes an unknown step type through', async () => {
+    mockStartStep.mockResolvedValue(session(step('Ident', 'InProgress', { type: 'Manual' })));
+    renderAt('/kyc?code=abc&step=Ident/Manual');
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('abc', 'Ident', 'Manual', undefined));
+  });
+
+  it('surfaces a load error', async () => {
+    mockGetKycInfo.mockRejectedValue({ message: 'boom' });
+    renderAt('/kyc?code=abc');
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('boom');
+  });
+
+  it('falls back to Unknown error when the rejection has no message', async () => {
+    mockGetKycInfo.mockRejectedValue({});
+    renderAt('/kyc?code=abc');
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('switches account on 401 switchToCode', async () => {
+    mockGetKycInfo.mockRejectedValue({ statusCode: 401, switchToCode: 'other' });
+    renderAt('/kyc?code=abc');
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ search: '?code=other' }));
+    expect(mockLogout).toHaveBeenCalled();
+  });
+
+  it('sends the user to 2FA when required', async () => {
+    mockGetKycInfo.mockRejectedValue({ code: 'TFA_REQUIRED' });
+    renderAt('/kyc?code=abc');
+    await waitFor(() => expect(mockSetParams).toHaveBeenCalledWith({ autoStart: 'true' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/2fa', { setRedirect: true });
+  });
+
+  it('opens the existing-account hint on a 409 merge', async () => {
+    mockGetKycInfo.mockRejectedValue({ statusCode: 409, message: 'account exists merge' });
+    renderAt('/kyc?code=abc');
+    expect(await screen.findByText(/already have an account/)).toBeInTheDocument();
+  });
+
+  it('shows a 409 exists error that is not a merge', async () => {
+    mockGetKycInfo.mockRejectedValue({ statusCode: 409, message: 'account exists' });
+    renderAt('/kyc?code=abc');
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('account exists');
+  });
+
+  it('retries the link hint', async () => {
+    mockGetKycInfo.mockRejectedValueOnce({ statusCode: 409, message: 'account exists merge' });
+    mockGetKycInfo.mockResolvedValueOnce(info());
+    renderAt('/kyc?code=abc');
+    await screen.findByText(/already have an account/);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+    });
+    await screen.findByTestId('kyc-table');
+  });
+
+  it('asks for client consent when the client is missing and steps are done', async () => {
+    mockGetKycInfo.mockResolvedValue(
+      info({
+        kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }],
+        kycClients: [],
+      }),
+    );
+    renderAt('/kyc?code=abc&client=Acme');
+    expect(await screen.findByText(/transfer my KYC data to Acme/)).toBeInTheDocument();
+    mockAddTransferClient.mockResolvedValue(undefined);
+    mockContinueKyc.mockResolvedValue(info({ kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }] }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockAddTransferClient).toHaveBeenCalledWith('abc', 'Acme');
+  });
+
+  it('asks for consent when the session already has a current step', async () => {
+    mockGetKycInfo.mockResolvedValue(
+      session(step('ContactData'), {
+        kycSteps: [{ name: 'ContactData', status: 'InProgress', sequenceNumber: 0 }],
+        kycClients: [],
+      }),
+    );
+    renderAt('/kyc?code=abc&client=Acme');
+    expect(await screen.findByText(/transfer my KYC data to Acme/)).toBeInTheDocument();
+  });
+
+  it('shows a consent error', async () => {
+    mockGetKycInfo.mockResolvedValue(
+      info({ kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }] }),
+    );
+    mockAddTransferClient.mockRejectedValue({ message: 'nope' });
+    renderAt('/kyc?code=abc&client=Acme');
+    await screen.findByText(/transfer my KYC data to Acme/);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('nope');
+  });
+
+  it('falls back when consent fails without a message', async () => {
+    mockGetKycInfo.mockResolvedValue(
+      info({ kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }] }),
+    );
+    mockAddTransferClient.mockRejectedValue({});
+    renderAt('/kyc?code=abc&client=Acme');
+    await screen.findByText(/transfer my KYC data/);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('opens an https kyc-redirect when every step is done', async () => {
+    mockGetKycInfo.mockResolvedValue(
+      info({ kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }] }),
+    );
+    renderAt('/kyc?code=abc&kyc-redirect=https://partner.example/done');
+    await waitFor(() => expect(mockWindowOpen).toHaveBeenCalledWith('https://partner.example/done', '_self'));
+  });
+
+  it('ignores a non-https redirect and an invalid URL', async () => {
+    mockGetKycInfo.mockResolvedValue(
+      info({ kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }] }),
+    );
+    renderAt('/kyc?code=abc&kyc-redirect=http://insecure.example');
+    await screen.findByTestId('kyc-table');
+    expect(mockWindowOpen).not.toHaveBeenCalled();
+
+    const { unmount } = renderAt('/kyc?code=abc&kyc-redirect=not a url');
+    await screen.findAllByTestId('kyc-table');
+    unmount();
+  });
+
+  it('sends a completed user to the limit-request form', async () => {
+    mockGetKycInfo.mockResolvedValue(
+      info({
+        kycLevel: 50,
+        kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }],
+      }),
+    );
+    renderAt('/kyc?code=abc');
+    await screen.findByTestId('kyc-table');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'raise-limit' }));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith({
+      pathname: '/support/issue',
+      search: '?issue-type=LimitRequest',
+    });
+  });
+
+  it('continues KYC from the limit-increase control when steps remain', async () => {
+    mockContinueKyc.mockResolvedValue(session(step('ContactData')));
+    renderAt('/kyc?code=abc');
+    await screen.findByTestId('kyc-table');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'raise-limit' }));
+    });
+    expect(mockContinueKyc).toHaveBeenCalled();
+  });
+
+  it('auto-starts once the app is ready', async () => {
+    mockApp.params = { autoStart: 'true' };
+    mockContinueKyc.mockResolvedValue(info());
+    renderAt('/kyc?code=abc');
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalled());
+    expect(mockSetParams).toHaveBeenCalledWith({ autoStart: undefined });
+  });
+
+  it('waits for processing KYC data before auto-start', async () => {
+    mockApp.params = { autoStart: 'true' };
+    mockApp.processingKycData = true;
+    renderAt('/kyc?code=abc');
+    await screen.findByRole('status');
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+  });
+
+  it('does not load until the app is initialized', async () => {
+    mockApp.isInitialized = false;
+    renderAt('/kyc?code=abc');
+    await screen.findByRole('status');
+  });
+
+  it('goes back from /contact when the Link level is already met', async () => {
+    mockGetKycInfo.mockResolvedValue(info({ kycLevel: 10 }));
+    renderAt('/contact?code=abc');
+    await waitFor(() => expect(mockGoBack).toHaveBeenCalled());
+  });
+
+  it('continues KYC from /profile when below Sell', async () => {
+    mockGetKycInfo.mockResolvedValue(info({ kycLevel: 10 }));
+    mockContinueKyc.mockResolvedValue(session(step('PersonalData'), { kycLevel: 10 }));
+    renderAt('/profile?code=abc');
+    expect(await screen.findByText('Account Type')).toBeInTheDocument();
+  });
+
+  it('returns from /contact after continue raises the level', async () => {
+    mockGetKycInfo.mockResolvedValue(info({ kycLevel: 0 }));
+    mockContinueKyc.mockResolvedValue(session(undefined, { kycLevel: 10 }));
+    renderAt('/contact?code=abc');
+    await waitFor(() => expect(mockReloadUser).toHaveBeenCalled());
+    expect(mockGoBack).toHaveBeenCalled();
+  });
+
+  it('opens the merge hint when ContactData fails with a merge request', async () => {
+    mockContinueKyc.mockResolvedValue(
+      session(step('ContactData', 'Failed', { reason: 'AccountMergeRequested' })),
+    );
+    renderAt('/kyc?code=abc');
+    await screen.findByRole('button', { name: 'Start' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    });
+    expect(await screen.findByText(/already have an account/)).toBeInTheDocument();
+  });
+
+  it('shows the ContactData failure reason otherwise', async () => {
+    mockContinueKyc.mockResolvedValue(session(step('ContactData', 'Failed', { reason: 'AccountExists' })));
+    renderAt('/kyc?code=abc');
+    await screen.findByRole('button', { name: 'Start' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('AccountExists');
+  });
+
+  it('clears an in-progress step on back', async () => {
+    mockStartStep.mockResolvedValue(session(step('ContactData')));
+    renderAt('/kyc?code=abc&step=ContactData');
+    await screen.findByText('Email address');
+    const opts = mockUseLayoutOptions.mock.calls.at(-1)?.[0] as { onBack: () => void };
+    await act(async () => {
+      opts.onBack();
+    });
+    await screen.findByTestId('kyc-table');
+  });
+
+  it('reloads from the link hint on back', async () => {
+    mockGetKycInfo.mockRejectedValueOnce({ statusCode: 409, message: 'account exists merge' });
+    mockGetKycInfo.mockResolvedValue(info());
+    renderAt('/kyc?code=abc');
+    await screen.findByText(/already have an account/);
+    const opts = mockUseLayoutOptions.mock.calls.at(-1)?.[0] as { onBack: () => void };
+    await act(async () => {
+      opts.onBack();
+    });
+    await screen.findByTestId('kyc-table');
+  });
+
+  it('cancels a cancelable step', async () => {
+    mockStartStep.mockResolvedValue(session(step('PhoneChange')));
+    mockCancelStep.mockResolvedValue(undefined);
+    mockGetKycInfo.mockResolvedValue(info());
+    renderAt('/kyc?code=abc&step=PhoneChange');
+    await screen.findByText('Phone number');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    });
+    expect(mockCancelStep).toHaveBeenCalled();
+  });
+
+  it('surfaces a cancel error', async () => {
+    mockStartStep.mockResolvedValue(session(step('PhoneChange')));
+    mockCancelStep.mockRejectedValue({ message: 'busy' });
+    renderAt('/kyc?code=abc&step=PhoneChange');
+    await screen.findByText('Phone number');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('busy');
+  });
+
+  it('sets noPadding on mobile browser sessions', async () => {
+    mockDevice.isMobile = true;
+    mockStartStep.mockResolvedValue(
+      session(step('Ident', 'InProgress', { session: { url: 'https://id.example', type: 'Browser' } })),
+    );
+    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    renderAt('/kyc?code=abc&step=Ident');
+    await waitFor(() =>
+      expect(mockUseLayoutOptions).toHaveBeenCalledWith(expect.objectContaining({ noPadding: true })),
+    );
+  });
+
+  it('skips loading when no kyc code is available', async () => {
+    mockUser.kyc = undefined;
+    renderAt('/kyc');
+    await screen.findByRole('status');
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+});
+
+describe('KycEdit routing', () => {
+  it.each([
+    ['CommercialRegister'],
+    ['DfxApproval'],
+    ['UnknownStep'],
+  ])('renders nothing for %s', async (name) => {
+    mockStartStep.mockResolvedValue(session(step(name)));
+    renderAt(`/kyc?code=abc&step=${name}`);
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+  });
+
+  it('opens FileUpload with a hint for sole-proprietorship confirmation', async () => {
+    mockStartStep.mockResolvedValue(session(step('SoleProprietorshipConfirmation')));
+    renderAt('/kyc?code=abc&step=SoleProprietorshipConfirmation');
+    expect(await screen.findByText(/Commercial register extract/)).toBeInTheDocument();
+  });
+
+  it('opens OwnerDirectory with a template', async () => {
+    mockStartStep.mockResolvedValue(session(step('OwnerDirectory')));
+    renderAt('/kyc?code=abc&step=OwnerDirectory');
+    expect(await screen.findByRole('button', { name: 'Document template' })).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Document template' }));
+    });
+    expect(mockWindowOpen).toHaveBeenCalled();
+  });
+
+  it('opens Authority with a template', async () => {
+    mockStartStep.mockResolvedValue(session(step('Authority')));
+    renderAt('/kyc?code=abc&step=Authority');
+    expect(await screen.findByRole('button', { name: 'Document template' })).toBeInTheDocument();
+  });
+
+  it('opens AdditionalDocuments, ResidencePermit and Statutes as file uploads', async () => {
+    mockStartStep.mockResolvedValue(session(step('AdditionalDocuments')));
+    renderAt('/kyc?code=abc&step=AdditionalDocuments');
+    expect(await screen.findByTestId('file')).toBeInTheDocument();
+  });
+});
+
+describe('ContactData', () => {
+  it('confirms the mail and completes the step', async () => {
+    mockStartStep.mockResolvedValue(session(step('ContactData')));
+    mockSetContactData.mockResolvedValue({ status: 'InReview' });
+    mockContinueKyc.mockResolvedValue(info());
+    renderAt('/kyc?code=abc&step=ContactData');
+    await screen.findByTestId('mail');
+    typeField('mail', 'a@b.ch');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByText('Is this email address correct?')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Change' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+    });
+    expect(mockSetContactData).toHaveBeenCalled();
+  });
+
+  it('shows extra copy outside KYC mode and handles a merge fail', async () => {
+    mockStartStep.mockResolvedValue(session(step('ContactData'), { kycLevel: 0 }));
+    mockSetContactData.mockResolvedValue({ status: 'Failed', reason: 'AccountMergeRequested' });
+    renderAt('/contact?code=abc&step=ContactData');
+    expect(await screen.findByText('Please fill in personal information to continue')).toBeInTheDocument();
+    typeField('mail', 'a@b.ch');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+    });
+    expect(await screen.findByText(/already have an account/)).toBeInTheDocument();
+  });
+
+  it('shows a non-merge fail reason and skips submit without a session', async () => {
+    mockStartStep.mockResolvedValue(
+      session({ name: 'ContactData', status: 'InProgress', sequenceNumber: 0 }),
+    );
+    renderAt('/kyc?code=abc&step=ContactData');
+    await screen.findByTestId('mail');
+    typeField('mail', 'a@b.ch');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+    });
+    expect(mockSetContactData).not.toHaveBeenCalled();
+
+    mockStartStep.mockResolvedValue(session(step('ContactData')));
+    mockSetContactData.mockResolvedValue({ status: 'Failed', reason: 'AccountExists' });
+    renderAt('/kyc?code=def&step=ContactData');
+    await screen.findAllByTestId('mail');
+    typeField('mail', 'a@b.ch');
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: 'Next' }).at(-1) as HTMLElement);
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('AccountExists');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'error-back' }));
+    });
+  });
+});
+
+describe('PersonalData', () => {
+  it('submits a personal account in KYC mode', async () => {
+    mockStartStep.mockResolvedValue(session(step('PersonalData')));
+    mockSetPersonalData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    renderAt('/kyc?code=abc&step=PersonalData');
+    await screen.findByTestId('accountType');
+    select('accountType', 'Personal');
+    await screen.findByTestId('firstName');
+    typeField('firstName', 'Ada');
+    typeField('lastName', 'Lovelace');
+    typeField('address.street', 'Bahnhof');
+    typeField('address.city', 'Zurich');
+    typeField('address.zip', '8001');
+    typeField('phone', '+41791234567');
+    fireEvent.change(screen.getByTestId('address.country-search'), { target: { value: 'Switzerland' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetPersonalData).toHaveBeenCalled();
+  });
+
+  it('shows organization fields and goes back in profile mode', async () => {
+    mockStartStep.mockResolvedValue(session(step('PersonalData'), { kycLevel: 10 }));
+    mockSetPersonalData.mockResolvedValue({});
+    renderAt('/profile?code=abc&step=PersonalData');
+    await screen.findByTestId('accountType');
+    select('accountType', 'Organization');
+    await screen.findByTestId('organizationName');
+    typeField('organizationName', 'ACME');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetPersonalData).toHaveBeenCalled();
+  });
+
+  it('shows an API error and skips submit without a session', async () => {
+    mockStartStep.mockResolvedValue(
+      session({ name: 'PersonalData', status: 'InProgress', sequenceNumber: 0 }),
+    );
+    renderAt('/kyc?code=abc&step=PersonalData');
+    await screen.findByTestId('accountType');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetPersonalData).not.toHaveBeenCalled();
+
+    mockStartStep.mockResolvedValue(session(step('PersonalData')));
+    mockSetPersonalData.mockRejectedValue({ message: 'bad' });
+    renderAt('/kyc?code=ghi&step=PersonalData');
+    await screen.findAllByTestId('accountType');
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: 'Next' }).at(-1) as HTMLElement);
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('bad');
+  });
+});
+
+describe('form steps', () => {
+  async function land(name: string, extra: Record<string, unknown> = {}) {
+    mockStartStep.mockResolvedValue(session(step(name, 'InProgress', extra)));
+    renderAt(`/kyc?code=abc&step=${name}`);
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalled());
+  }
+
+  it('LegalEntity requires a file then submits', async () => {
+    await land('LegalEntity');
+    await screen.findByTestId('legalEntity');
+    select('legalEntity', 'AG');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('No file selected');
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
+    mockSetLegalEntityData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetLegalEntityData).toHaveBeenCalled();
+  });
+
+  it('LegalEntity surfaces an API error', async () => {
+    await land('LegalEntity');
+    fireEvent.change(await screen.findByTestId('file'), { target: { files: [png] } });
+    mockSetLegalEntityData.mockRejectedValue({});
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('Nationality submits and reports errors', async () => {
+    await land('NationalityData');
+    fireEvent.change(await screen.findByTestId('nationality-search'), { target: { value: 'Switzerland' } });
+    mockSetNationalityData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetNationalityData).toHaveBeenCalled();
+  });
+
+  it('Recommendation maps 404, 400 code, 400 key and other errors', async () => {
+    await land('Recommendation');
+    await screen.findByTestId('key');
+    typeField('key', 'ref');
+    mockSetRecommendationData.mockRejectedValueOnce({ statusCode: 404 });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByText('No matching user found')).toBeInTheDocument();
+
+    mockSetRecommendationData.mockRejectedValueOnce({
+      statusCode: 400,
+      message: 'Invalid recommendation code',
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByText('Invalid invitation code')).toBeInTheDocument();
+
+    mockSetRecommendationData.mockRejectedValueOnce({ statusCode: 400, message: 'nope' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByText('Invalid key')).toBeInTheDocument();
+
+    mockSetRecommendationData.mockRejectedValueOnce({ message: 'down' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('down');
+
+    mockSetRecommendationData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetRecommendationData).toHaveBeenCalled();
+  });
+
+  it('FileUpload reports a missing file, API error and no-session', async () => {
+    mockStartStep.mockResolvedValue(
+      session({ name: 'AdditionalDocuments', status: 'InProgress', sequenceNumber: 0 }),
+    );
+    renderAt('/kyc?code=abc&step=AdditionalDocuments');
+    await screen.findByTestId('file');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetFileData).not.toHaveBeenCalled();
+
+    mockStartStep.mockResolvedValue(session(step('AdditionalDocuments')));
+    mockSetFileData.mockRejectedValue({ message: 'too big' });
+    renderAt('/kyc?code=xyz&step=AdditionalDocuments');
+    const fileInputs = await screen.findAllByTestId('file');
+    fireEvent.change(fileInputs.at(-1) as HTMLElement, { target: { files: [png] } });
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: 'Next' }).at(-1) as HTMLElement);
+    });
+    expect(await screen.findByText('too big')).toBeInTheDocument();
+  });
+
+  it('SignatoryPower submits', async () => {
+    await land('SignatoryPower');
+    select('signatoryPower', 'Single');
+    mockSetSignatoryPowerData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetSignatoryPowerData).toHaveBeenCalled();
+  });
+
+  it('OperationalActivity shows the website when operational', async () => {
+    await land('OperationalActivity');
+    select('isOperational', true);
+    expect(await screen.findByTestId('website')).toBeInTheDocument();
+    typeField('website', 'https://org.example');
+    mockSetOperationalData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetOperationalData).toHaveBeenCalled();
+  });
+});
+
+describe('BeneficialOwner', () => {
+  it('walks owner-count, involvement and contact data, including back', async () => {
+    mockStartStep.mockResolvedValue(
+      session(
+        step('BeneficialOwner', 'InProgress', {
+          session: { url: 'https://api.example.com/step', type: 'API', additionalInfo: { accountHolder: 'Ada' } },
+        }),
+      ),
+    );
+    mockSetBeneficialData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    renderAt('/kyc?code=abc&step=BeneficialOwner');
+    await screen.findByTestId('ownerCount');
+    select('ownerCount', 2);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByTestId('isAccountHolderInvolved')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    });
+    await screen.findByTestId('ownerCount');
+    select('ownerCount', 2);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    select('isAccountHolderInvolved', false);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByText(/Beneficial owner/)).toBeInTheDocument();
+    typeField('owners.0.firstName', 'Ann');
+    typeField('owners.0.lastName', 'Owner');
+    typeField('owners.0.street', 'A');
+    typeField('owners.0.zip', '8001');
+    typeField('owners.0.city', 'Z');
+    fireEvent.change(screen.getByTestId('owners.0.country-search'), { target: { value: 'Switzerland' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    await screen.findByText(/2\/2/);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    typeField('owners.1.firstName', 'Bob');
+    typeField('owners.1.lastName', 'Owner');
+    typeField('owners.1.street', 'B');
+    typeField('owners.1.zip', '8001');
+    typeField('owners.1.city', 'Z');
+    fireEvent.change(screen.getByTestId('owners.1.country-search'), { target: { value: 'Switzerland' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetBeneficialData).toHaveBeenCalled();
+  });
+
+  it('submits immediately when the account holder is the only owner', async () => {
+    mockStartStep.mockResolvedValue(session(step('BeneficialOwner')));
+    mockSetBeneficialData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    renderAt('/kyc?code=abc&step=BeneficialOwner');
+    await screen.findByTestId('ownerCount');
+    select('ownerCount', 1);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    select('isAccountHolderInvolved', true);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetBeneficialData).toHaveBeenCalled();
+  });
+
+  it('collects a managing director when there are no owners', async () => {
+    mockStartStep.mockResolvedValue(session(step('BeneficialOwner')));
+    mockSetBeneficialData.mockRejectedValue({ message: 'nope' });
+    renderAt('/kyc?code=abc&step=BeneficialOwner');
+    await screen.findByTestId('ownerCount');
+    select('ownerCount', 0);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    select('isAccountHolderInvolved', false);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByText('Managing director')).toBeInTheDocument();
+    typeField('director.firstName', 'Dir');
+    typeField('director.lastName', 'Ector');
+    typeField('director.street', 'S');
+    typeField('director.zip', '1');
+    typeField('director.city', 'C');
+    fireEvent.change(screen.getByTestId('director.country-search'), { target: { value: 'Switzerland' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('nope');
+  });
+});
+
+describe('Ident', () => {
+  function sumsub() {
+    return (window as unknown as { __sumsub: { onMessage: Function; onError: Function; expirationHandler: Function } })
+      .__sumsub;
+  }
+
+  it('drives the Sumsub token session', async () => {
+    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    mockStartStep.mockResolvedValue(
+      session(step('Ident', 'InProgress', { type: 'SumsubAuto', session: { url: 'tok', type: 'Token' } })),
+    );
+    renderAt('/kyc?code=abc&step=Ident');
+    await screen.findByTestId('sumsub');
+    await act(async () => {
+      await sumsub().expirationHandler();
+      sumsub().onMessage('idCheck.onApplicantStatusChanged', {
+        reviewResult: { reviewAnswer: 'RED', reviewRejectType: 'FINAL', moderationComment: 'blurry' },
+      });
+    });
+    expect(await screen.findByText('The identification has failed.')).toBeInTheDocument();
+    expect(screen.getByText('blurry')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Ok' }));
+    });
+  });
+
+  it('marks video done and greens auto', async () => {
+    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    mockStartStep.mockResolvedValue(
+      session(step('Ident', 'InProgress', { type: 'SumsubVideo', session: { url: 'tok', type: 'Token' } })),
+    );
+    renderAt('/kyc?code=abc&step=Ident');
+    await screen.findByTestId('sumsub');
+    await act(async () => {
+      sumsub().onMessage('idCheck.onStepCompleted', {});
+    });
+    expect(await screen.findByRole('status')).toBeInTheDocument();
+  });
+
+  it('accepts a green review and an SDK error', async () => {
+    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    mockStartStep.mockResolvedValue(
+      session(step('Ident', 'InProgress', { type: 'SumsubAuto', session: { url: 'tok', type: 'Token' } })),
+    );
+    renderAt('/kyc?code=abc&step=Ident');
+    await screen.findByTestId('sumsub');
+    await act(async () => {
+      sumsub().onMessage('idCheck.onApplicantStatusChanged', { reviewResult: { reviewAnswer: 'GREEN' } });
+    });
+    expect(await screen.findByRole('status')).toBeInTheDocument();
+  });
+
+  it('renders an iframe session and handles iframe messages', async () => {
+    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    mockStartStep.mockResolvedValue(
+      session(step('Ident', 'InProgress', { session: { url: 'https://id.example', type: 'Browser' } })),
+    );
+    renderAt('/kyc?code=abc&step=Ident');
+    expect(await screen.findByTitle('', { exact: false }).catch(() => document.querySelector('iframe'))).toBeTruthy();
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', { data: { type: 'dfx-iframe-message', status: 'Completed', name: 'Ident' } }),
+      );
+    });
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', { data: { type: 'dfx-iframe-message', status: 'NotStarted', name: 'Ident' } }),
+      );
+    });
+  });
+
+  it('shows No session URL without a session', async () => {
+    mockStartStep.mockResolvedValue(
+      session({ name: 'Ident', status: 'InProgress', sequenceNumber: 0 }),
+    );
+    renderAt('/kyc?code=abc&step=Ident');
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('No session URL');
+  });
+
+  it('uses Unknown error when a red review has no comment', async () => {
+    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    mockStartStep.mockResolvedValue(
+      session(step('Ident', 'InProgress', { type: 'SumsubAuto', session: { url: 'tok', type: 'Token' } })),
+    );
+    renderAt('/kyc?code=abc&step=Ident');
+    await screen.findByTestId('sumsub');
+    await act(async () => {
+      sumsub().onError({ error: 'sdk-fail' });
+    });
+    expect(await screen.findByText('sdk-fail')).toBeInTheDocument();
+  });
+});
+
+describe('FinancialData', () => {
+  const questions = [
+    {
+      key: 'tnc',
+      type: 'Confirmation',
+      title: 'T&C',
+      description: 'Accept terms',
+      options: [{ key: 'yes', text: 'Yes' }],
+    },
+    {
+      key: 'notification_of_changes',
+      type: 'Confirmation',
+      title: 'NOC',
+      description: 'See app.dfx.swiss/support/issue for details',
+      options: [{ key: 'yes', text: 'Yes' }],
+      conditions: [{ question: 'tnc', response: 'yes' }],
+    },
+    {
+      key: 'own_funds',
+      type: 'Confirmation',
+      title: 'Funds',
+      description: 'Own funds',
+      options: [{ key: 'yes', text: 'Yes' }],
+      conditions: [{ question: 'notification_of_changes', response: 'yes' }],
+    },
+    {
+      key: 'source',
+      type: 'SingleChoice',
+      title: 'Source',
+      description: 'Where from',
+      options: [
+        { key: 'job', text: 'Job' },
+        { key: 'gift', text: 'Gift' },
+      ],
+      conditions: [{ question: 'own_funds', response: 'yes' }],
+    },
+    {
+      key: 'coins',
+      type: 'MultipleChoice',
+      title: 'Coins',
+      description: 'Which',
+      options: [
+        { key: 'btc', text: 'BTC' },
+        { key: 'eth', text: 'ETH' },
+      ],
+      conditions: [{ question: 'source', response: 'job' }],
+    },
+    {
+      key: 'note',
+      type: 'Text',
+      title: 'Note',
+      description: 'Anything else',
+      conditions: [{ question: 'coins', response: 'btc' }],
+    },
+    {
+      key: 'plain',
+      type: 'Confirmation',
+      title: 'Plain',
+      description: 'Just confirm',
+      options: [{ key: 'yes', text: 'Yes' }],
+      conditions: [{ question: 'note', response: 'hi' }],
+    },
+  ];
+
+  it('walks every question type, back, and completion', async () => {
+    mockGetFinancialData.mockResolvedValue({ questions, responses: [] });
+    mockSetFinancialData.mockResolvedValue({ status: 'InProgress' });
+    mockStartStep.mockResolvedValue(session(step('FinancialData')));
+    renderAt('/kyc?code=abc&step=FinancialData');
+    expect(await screen.findByText('T&C')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('checkbox'));
+    mockSetFinancialData.mockResolvedValueOnce({ status: 'InProgress' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByText('NOC')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('app.dfx.swiss/support/issue'));
+    expect(mockWindowOpen).toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('checkbox'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByText(/deliberate/)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('checkbox'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    select('selection', { key: 'job', text: 'Job' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    fireEvent.change(screen.getByTestId('selectionMC'), {
+      target: { selectedOptions: [{ value: 'btc' }] },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    typeField('text', 'hi');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByText('Just confirm')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('icon-back'));
+    typeField('text', 'ho');
+    mockSetFinancialData.mockResolvedValue({ status: 'Completed' });
+    mockContinueKyc.mockResolvedValue(info());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+  });
+
+  it('shows a load error', async () => {
+    mockGetFinancialData.mockRejectedValue({ message: 'offline' });
+    mockStartStep.mockResolvedValue(session(step('FinancialData')));
+    renderAt('/kyc?code=abc&step=FinancialData');
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('offline');
+  });
+});
+
+describe('ManualIdent and change steps', () => {
+  it('submits manual ident', async () => {
+    mockStartStep.mockResolvedValue(session(step('Ident', 'InProgress', { type: 'Manual' })));
+    mockSetManualIdentData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    renderAt('/kyc?code=abc&step=Ident/Manual');
+    await screen.findByTestId('firstName');
+    typeField('firstName', 'Ada');
+    typeField('lastName', 'L');
+    typeField('birthday', '1990-01-01');
+    typeField('documentNumber', '1');
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetManualIdentData).toHaveBeenCalled();
+  });
+
+  it('PhoneChange submits', async () => {
+    mockStartStep.mockResolvedValue(session(step('PhoneChange')));
+    mockSetPhoneChangeData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    renderAt('/kyc?code=abc&step=PhoneChange');
+    typeField('phone', '+41791234567');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetPhoneChangeData).toHaveBeenCalled();
+  });
+
+  it('AddressChange requires a file then submits', async () => {
+    mockStartStep.mockResolvedValue(session(step('AddressChange')));
+    renderAt('/kyc?code=abc&step=AddressChange');
+    await screen.findByTestId('address.street');
+    typeField('address.street', 'A');
+    typeField('address.city', 'B');
+    typeField('address.zip', '8001');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('No file selected');
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
+    mockSetAddressChangeData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetAddressChangeData).toHaveBeenCalled();
+  });
+
+  it('NameChange requires a file then submits', async () => {
+    mockStartStep.mockResolvedValue(session(step('NameChange')));
+    renderAt('/kyc?code=abc&step=NameChange');
+    typeField('firstName', 'New');
+    typeField('lastName', 'Name');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('No file selected');
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
+    mockSetNameChangeData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetNameChangeData).toHaveBeenCalled();
+  });
+});
+
+describe('PaymentAgreement and RecallAgreement', () => {
+  it('submits a payment agreement once accepted', async () => {
+    mockStartStep.mockResolvedValue(session(step('PaymentAgreement')));
+    mockSetPaymentData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    renderAt('/kyc?code=abc&step=PaymentAgreement');
+    typeField('name', 'Shop');
+    typeField('registrationNumber', 'CHE');
+    typeField('purpose', 'sales');
+    select('storeType', 'Online');
+    select('merchantCategory', 'Bank');
+    select('goodsType', 'Tangible');
+    select('goodsCategory', 'Jewelry');
+    fireEvent.click(screen.getByTestId('checkbox'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetPaymentData).toHaveBeenCalled();
+  });
+
+  it('submits a recall agreement', async () => {
+    mockStartStep.mockResolvedValue(session(step('RecallAgreement')));
+    mockSetRecallData.mockRejectedValueOnce({ message: 'later' });
+    renderAt('/kyc?code=abc&step=RecallAgreement');
+    expect(await screen.findByText(/TODO: recall agreement text/)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('checkbox'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('later');
+    mockSetRecallData.mockResolvedValue({});
+    mockContinueKyc.mockResolvedValue(info());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockSetRecallData).toHaveBeenCalled();
+  });
+});
