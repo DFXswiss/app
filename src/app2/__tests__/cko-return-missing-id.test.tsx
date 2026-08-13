@@ -17,8 +17,10 @@ jest.mock('@dfx.swiss/react', () => ({
   useApiSession: () => ({ updateSession: jest.fn() }),
 }));
 
+const mockSessionState = { isLoggedIn: true };
+
 jest.mock('../wallets/session', () => ({
-  useWalletSession: () => ({ isLoggedIn: true, openConnect: mockOpenConnect }),
+  useWalletSession: () => ({ isLoggedIn: mockSessionState.isLoggedIn, openConnect: mockOpenConnect }),
 }));
 
 const mockSearchState = { value: '' };
@@ -29,7 +31,7 @@ jest.mock('react-router-dom', () => ({
   useSearchParams: () => [new URLSearchParams(mockSearchState.value), jest.fn()],
 }));
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import ReturnRouteScreen from '../screens/return-route';
 import { LanguageProvider } from '../i18n';
 
@@ -38,6 +40,7 @@ describe('/buy/success without a Checkout id', () => {
 
   beforeEach(() => {
     mockSearchState.value = '';
+    mockSessionState.isLoggedIn = true;
     mockGetTransactionByCkoId.mockReset();
     mockOpenConnect.mockReset();
     Object.defineProperty(window, 'location', {
@@ -81,6 +84,7 @@ describe('/buy/success encodes the Checkout id before the SDK call', () => {
 
   beforeEach(() => {
     mockSearchState.value = 'cko-payment-id=pay%2Fabc';
+    mockSessionState.isLoggedIn = true;
     mockGetTransactionByCkoId.mockReset();
     mockGetTransactionByCkoId.mockResolvedValue(undefined);
     Object.defineProperty(window, 'location', {
@@ -104,5 +108,28 @@ describe('/buy/success encodes the Checkout id before the SDK call', () => {
     );
     expect(mockGetTransactionByCkoId).toHaveBeenCalledWith(encodeURIComponent('pay/abc'));
     expect(mockGetTransactionByCkoId.mock.calls[0][0]).not.toBe('pay/abc');
+  });
+});
+
+describe('/buy/success without a session', () => {
+  beforeEach(() => {
+    mockSearchState.value = 'cko-payment-id=pay_abc';
+    mockSessionState.isLoggedIn = false;
+    mockGetTransactionByCkoId.mockReset();
+    mockOpenConnect.mockReset();
+  });
+
+  it('shows a connect action instead of auto-opening the sheet or claiming success', () => {
+    render(
+      <LanguageProvider>
+        <ReturnRouteScreen />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText(/sign in to confirm|melde dich an/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Payment confirmed|Zahlung bestätigt/i)).not.toBeInTheDocument();
+    expect(mockOpenConnect).not.toHaveBeenCalled();
+    expect(mockGetTransactionByCkoId).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /connect wallet|wallet verbinden/i }));
+    expect(mockOpenConnect).toHaveBeenCalledTimes(1);
   });
 });

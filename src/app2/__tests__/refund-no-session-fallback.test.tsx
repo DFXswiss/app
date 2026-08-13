@@ -56,7 +56,7 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => jest.fn(),
 }));
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { DetailTransaction } from '@dfx.swiss/react';
 import { RefundPanel } from '../screens/transactions';
 import { LanguageProvider } from '../i18n';
@@ -160,6 +160,34 @@ describe('RefundPanel crypto target (no session-address fallback)', () => {
     await waitFor(() => expect(mockSetTransactionRefundTarget).toHaveBeenCalledTimes(1));
     expect(mockSetTransactionRefundTarget).toHaveBeenCalledWith(42, { refundTarget: 'bc1qonly-match' });
     expect(mockSetTransactionRefundTarget.mock.calls[0][1].refundTarget).not.toBe(SESSION);
+  });
+
+  it('ignores a second confirm click while the refund request is in flight', async () => {
+    let resolveRefund!: () => void;
+    mockGetTransactionRefund.mockResolvedValue({
+      refundTarget: 'bc1qserver-supplied',
+      refundAmount: 0.0009,
+      refundAsset: { name: 'BTC' },
+    });
+    mockSetTransactionRefundTarget.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRefund = resolve;
+        }),
+    );
+
+    renderPanel();
+    const confirm = await screen.findByRole('button', { name: /confirm refund|rückerstattung bestätigen/i });
+    // Two native clicks in one act — `fireEvent` would flush `submitting` and
+    // disable the button before the second tap, which hides the race.
+    act(() => {
+      confirm.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      confirm.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await waitFor(() => expect(mockSetTransactionRefundTarget).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      resolveRefund();
+    });
   });
 
   it('does not lock the bank IBAN field on a whitespace-only refundTarget', async () => {
