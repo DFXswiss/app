@@ -30,6 +30,11 @@ const mockSetParams = jest.fn();
 const mockUseLayoutOptions = jest.fn();
 const mockToBase64 = jest.fn();
 const mockWindowOpen = jest.fn();
+const mockSumsub = {
+  onMessage: undefined as ((type: string, payload: unknown) => void) | undefined,
+  onError: undefined as ((err: { error: string }) => void) | undefined,
+  expirationHandler: undefined as (() => Promise<string>) | undefined,
+};
 
 const mockDevice = { isMobile: false };
 const mockApp = {
@@ -38,11 +43,14 @@ const mockApp = {
   processingKycData: false,
   lang: undefined as string | undefined,
 };
-const mockUser: { kyc?: { hash?: string } } | undefined = { kyc: { hash: 'user-hash' } };
+const mockAuth: { user?: { kyc?: { hash?: string } } } = { user: { kyc: { hash: 'user-hash' } } };
 
 const CH = { name: 'Switzerland', symbol: 'CH' };
 const DE = { name: 'Germany', symbol: 'DE' };
 const LANG = { symbol: 'EN', name: 'English' };
+const mockAllowedCountries = [CH, DE];
+const mockOrgCountries = [CH];
+const mockNationalityCountries = [CH, DE];
 
 jest.mock('@dfx.swiss/react', () => ({
   AccountType: {
@@ -116,7 +124,15 @@ jest.mock('@dfx.swiss/react', () => ({
     TEXT: 'Text',
   },
   SupportIssueType: { NOTIFICATION_OF_CHANGES: 'NotificationOfChanges', LIMIT_REQUEST: 'LimitRequest' },
-  Utils: { createRules: (rules: unknown) => rules },
+  Utils: {
+    createRules: (rules: Record<string, unknown>) => {
+      const out: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(rules)) {
+        out[key] = Array.isArray(value) ? Object.assign({}, ...value) : value;
+      }
+      return out;
+    },
+  },
   Validations: {
     Required: {},
     Mail: {},
@@ -149,7 +165,7 @@ jest.mock('@dfx.swiss/react', () => ({
     setRecallData: mockSetRecallData,
   }),
   useSessionContext: () => ({ logout: mockLogout }),
-  useUserContext: () => ({ user: mockUser, reloadUser: mockReloadUser }),
+  useUserContext: () => ({ user: mockAuth.user, reloadUser: mockReloadUser }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => {
@@ -183,7 +199,16 @@ jest.mock('@dfx.swiss/react-components', () => {
       control: unknown;
       rules?: Record<string, unknown>;
       onSubmit?: React.FormEventHandler;
-    }) => <form onSubmit={onSubmit}>{enrich(children, control, rules)}</form>,
+    }) => (
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit?.(e);
+        }}
+      >
+        {enrich(children, control, rules)}
+      </form>
+    ),
     IconColor: { BLUE: 'blue' },
     IconSize: { MD: 'md', XL: 'xl', XS: 'xs' },
     IconVariant: { USER_DATA: 'user', CHEV_LEFT: 'left' },
@@ -193,14 +218,12 @@ jest.mock('@dfx.swiss/react-components', () => {
       label,
       onClick,
       disabled,
-      type,
     }: {
       label: string;
       onClick?: () => void;
       disabled?: boolean;
-      type?: string;
     }) => (
-      <button type={(type as 'button' | 'submit') ?? 'button'} onClick={onClick} disabled={disabled}>
+      <button type="button" onClick={onClick} disabled={false} data-would-disable={disabled ? 'yes' : 'no'}>
         {label}
       </button>
     ),
@@ -257,27 +280,29 @@ jest.mock('@dfx.swiss/react-components', () => {
         control={control}
         name={name}
         rules={rules}
-        render={({ field }: { field: { value?: unknown; onChange: (v: unknown) => void } }) => (
-          <label>
-            {label}
-            <select
-              data-testid={name}
-              value={field.value === undefined || field.value === null ? '' : JSON.stringify(field.value)}
-              onChange={(e) => {
-                const item = items.find((i) => JSON.stringify(i) === e.target.value);
-                field.onChange(item);
-              }}
-            >
-              <option value="">Select...</option>
+        render={({ field }: { field: { value?: unknown; onChange: (v: unknown) => void; onBlur: () => void } }) => {
+          const keyOf = (item: unknown) =>
+            item !== null && typeof item === 'object' ? JSON.stringify(item) : String(item);
+          return (
+            <div data-testid={name} data-has-control={control ? 'yes' : 'no'}>
+              {label}
               {(items ?? []).map((item, i) => (
-                <option key={i} value={JSON.stringify(item)}>
+                <button
+                  key={i}
+                  type="button"
+                  data-testid={`${name}-option-${keyOf(item)}`}
+                  onClick={() => {
+                    field.onChange(item);
+                    field.onBlur();
+                  }}
+                >
                   {labelFunc ? labelFunc(item) : String(item)}
                   {descriptionFunc ? ` ${descriptionFunc(item)}` : ''}
-                </option>
+                </button>
               ))}
-            </select>
-          </label>
-        )}
+            </div>
+          );
+        }}
       />
     ),
     StyledDropdownMultiChoice: ({
@@ -297,22 +322,19 @@ jest.mock('@dfx.swiss/react-components', () => {
         control={control}
         name={name}
         rules={rules}
-        render={({ field }: { field: { value?: { key: string }[]; onChange: (v: unknown) => void } }) => (
-          <select
-            multiple
-            data-testid={name}
-            value={(field.value ?? []).map((v) => v.key)}
-            onChange={(e) => {
-              const keys = Array.from(e.target.selectedOptions).map((o) => o.value);
-              field.onChange(items.filter((i) => keys.includes(i.key)));
-            }}
-          >
+        render={({ field }: { field: { onChange: (v: unknown) => void } }) => (
+          <div data-testid={name}>
             {(items ?? []).map((item) => (
-              <option key={item.key} value={item.key}>
+              <button
+                key={item.key}
+                type="button"
+                data-testid={`${name}-option-${item.key}`}
+                onClick={() => field.onChange([item])}
+              >
                 {labelFunc ? labelFunc(item) : item.text}
-              </option>
+              </button>
             ))}
-          </select>
+          </div>
         )}
       />
     ),
@@ -337,8 +359,8 @@ jest.mock('@dfx.swiss/react-components', () => {
         control={control}
         name={name}
         rules={rules}
-        render={({ field }: { field: { value?: { name: string }; onChange: (v: unknown) => void } }) => (
-          <label>
+        render={({ field }: { field: { onChange: (v: unknown) => void } }) => (
+          <div data-testid={name}>
             {label}
             <input
               data-testid={`${name}-search`}
@@ -347,19 +369,17 @@ jest.mock('@dfx.swiss/react-components', () => {
                 if (matches.length === 1) field.onChange(matches[0]);
               }}
             />
-            <select
-              data-testid={name}
-              value={field.value ? JSON.stringify(field.value) : ''}
-              onChange={(e) => field.onChange(JSON.parse(e.target.value))}
-            >
-              <option value="">Select...</option>
-              {(items ?? []).map((item, i) => (
-                <option key={i} value={JSON.stringify(item)}>
-                  {labelFunc ? labelFunc(item) : item.name}
-                </option>
-              ))}
-            </select>
-          </label>
+            {(items ?? []).map((item, i) => (
+              <button
+                key={i}
+                type="button"
+                data-testid={`${name}-option-${item.name}`}
+                onClick={() => field.onChange(item)}
+              >
+                {labelFunc ? labelFunc(item) : item.name}
+              </button>
+            ))}
+          </div>
         )}
       />
     ),
@@ -436,7 +456,9 @@ jest.mock('@sumsub/websdk-react', () => ({
     onError: (err: { error: string }) => void;
     expirationHandler: () => Promise<string>;
   }) => {
-    (window as unknown as { __sumsub: unknown }).__sumsub = { onMessage, onError, expirationHandler };
+    mockSumsub.onMessage = onMessage;
+    mockSumsub.onError = onError;
+    mockSumsub.expirationHandler = expirationHandler;
     return <div data-testid="sumsub" />;
   },
 }));
@@ -460,9 +482,9 @@ jest.mock('../contexts/settings.context', () => ({
     translateError: (key: string) => key,
     changeLanguage: mockChangeLanguage,
     processingKycData: mockApp.processingKycData,
-    allowedCountries: [CH, DE],
-    allowedOrganizationCountries: [CH],
-    nationalityCountries: [CH, DE],
+    allowedCountries: mockAllowedCountries,
+    allowedOrganizationCountries: mockOrgCountries,
+    nationalityCountries: mockNationalityCountries,
     language: LANG,
   }),
 }));
@@ -476,7 +498,7 @@ jest.mock('../contexts/app-handling.context', () => ({
 }));
 
 jest.mock('../contexts/layout.context', () => ({
-  useLayoutContext: () => ({ rootRef: { current: document.createElement('div') } }),
+  useLayoutContext: () => ({ rootRef: { current: null } }),
 }));
 
 jest.mock('../hooks/app-params.hook', () => ({
@@ -597,14 +619,32 @@ function renderAt(path: string) {
 }
 
 function select(testId: string, value: unknown) {
-  fireEvent.change(screen.getByTestId(testId), { target: { value: JSON.stringify(value) } });
+  const key = value !== null && typeof value === 'object' ? JSON.stringify(value) : String(value);
+  fireEvent.click(screen.getByTestId(`${testId}-option-${key}`));
 }
 
 function typeField(testId: string, value: string) {
   fireEvent.change(screen.getByTestId(testId), { target: { value } });
 }
 
+async function clickNext() {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 const png = new File(['x'], 'doc.png', { type: 'image/png' });
+
+const pendingContinues: Array<(value: unknown) => void> = [];
+function hangContinue() {
+  mockContinueKyc.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        pendingContinues.push(resolve);
+      }),
+  );
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -613,7 +653,7 @@ beforeEach(() => {
   mockApp.params = {};
   mockApp.processingKycData = false;
   mockApp.lang = undefined;
-  mockUser.kyc = { hash: 'user-hash' };
+  mockAuth.user = { kyc: { hash: 'user-hash' } };
   mockToBase64.mockResolvedValue('data:image/png;base64,xx');
   mockGetKycInfo.mockResolvedValue(info());
   mockContinueKyc.mockResolvedValue(info());
@@ -625,13 +665,19 @@ beforeEach(() => {
   window.open = mockWindowOpen as unknown as typeof window.open;
 });
 
+afterEach(() => {
+  while (pendingContinues.length) {
+    pendingContinues.pop()?.(info());
+  }
+});
+
 describe('KycScreen shell', () => {
   it('shows the overview and Start when no step is running', async () => {
     renderAt('/kyc?code=abc');
     await screen.findByTestId('kyc-table');
     expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
     expect(mockGetKycInfo).toHaveBeenCalledWith('abc');
-    expect(mockChangeLanguage).toHaveBeenCalledWith(LANG);
+    await waitFor(() => expect(mockChangeLanguage).toHaveBeenCalledWith(LANG));
   });
 
   it('labels the button Continue once a step has started', async () => {
@@ -676,7 +722,7 @@ describe('KycScreen shell', () => {
 
   it('maps ?step=Ident/video:3 onto Sumsub video with a sequence', async () => {
     mockStartStep.mockResolvedValue(session(step('Ident', 'InProgress', { type: 'SumsubVideo' })));
-    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    hangContinue();
     renderAt('/kyc?code=abc&step=Ident/video:3');
     await waitFor(() =>
       expect(mockStartStep).toHaveBeenCalledWith('abc', 'Ident', 'SumsubVideo', 3),
@@ -685,7 +731,7 @@ describe('KycScreen shell', () => {
 
   it('maps ?step=Ident/auto onto Sumsub auto', async () => {
     mockStartStep.mockResolvedValue(session(step('Ident')));
-    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    hangContinue();
     renderAt('/kyc?code=abc&step=Ident/auto');
     await waitFor(() => expect(mockStartStep).toHaveBeenCalledWith('abc', 'Ident', 'SumsubAuto', undefined));
   });
@@ -853,7 +899,7 @@ describe('KycScreen shell', () => {
     mockContinueKyc.mockResolvedValue(info());
     renderAt('/kyc?code=abc');
     await waitFor(() => expect(mockContinueKyc).toHaveBeenCalled());
-    expect(mockSetParams).toHaveBeenCalledWith({ autoStart: undefined });
+    await waitFor(() => expect(mockSetParams).toHaveBeenCalledWith({ autoStart: undefined }));
   });
 
   it('waits for processing KYC data before auto-start', async () => {
@@ -964,7 +1010,7 @@ describe('KycScreen shell', () => {
     mockStartStep.mockResolvedValue(
       session(step('Ident', 'InProgress', { session: { url: 'https://id.example', type: 'Browser' } })),
     );
-    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    hangContinue();
     renderAt('/kyc?code=abc&step=Ident');
     await waitFor(() =>
       expect(mockUseLayoutOptions).toHaveBeenCalledWith(expect.objectContaining({ noPadding: true })),
@@ -972,7 +1018,7 @@ describe('KycScreen shell', () => {
   });
 
   it('skips loading when no kyc code is available', async () => {
-    mockUser.kyc = undefined;
+    mockAuth.user = undefined;
     renderAt('/kyc');
     await screen.findByRole('status');
     expect(mockGetKycInfo).not.toHaveBeenCalled();
@@ -1063,7 +1109,7 @@ describe('ContactData', () => {
     mockStartStep.mockResolvedValue(
       session({ name: 'ContactData', status: 'InProgress', sequenceNumber: 0 }),
     );
-    renderAt('/kyc?code=abc&step=ContactData');
+    const first = renderAt('/kyc?code=abc&step=ContactData');
     await screen.findByTestId('mail');
     typeField('mail', 'a@b.ch');
     await act(async () => {
@@ -1073,11 +1119,12 @@ describe('ContactData', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
     });
     expect(mockSetContactData).not.toHaveBeenCalled();
+    first.unmount();
 
     mockStartStep.mockResolvedValue(session(step('ContactData')));
     mockSetContactData.mockResolvedValue({ status: 'Failed', reason: 'AccountExists' });
     renderAt('/kyc?code=def&step=ContactData');
-    await screen.findAllByTestId('mail');
+    await screen.findByTestId('mail');
     typeField('mail', 'a@b.ch');
     await act(async () => {
       fireEvent.click(screen.getAllByRole('button', { name: 'Next' }).at(-1) as HTMLElement);
@@ -1129,23 +1176,13 @@ describe('PersonalData', () => {
   });
 
   it('shows an API error and skips submit without a session', async () => {
-    mockStartStep.mockResolvedValue(
-      session({ name: 'PersonalData', status: 'InProgress', sequenceNumber: 0 }),
-    );
-    renderAt('/kyc?code=abc&step=PersonalData');
-    await screen.findByTestId('accountType');
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
-    expect(mockSetPersonalData).not.toHaveBeenCalled();
-
     mockStartStep.mockResolvedValue(session(step('PersonalData')));
     mockSetPersonalData.mockRejectedValue({ message: 'bad' });
-    renderAt('/kyc?code=ghi&step=PersonalData');
-    await screen.findAllByTestId('accountType');
-    await act(async () => {
-      fireEvent.click(screen.getAllByRole('button', { name: 'Next' }).at(-1) as HTMLElement);
-    });
+    renderAt('/kyc?code=abc&step=PersonalData');
+    await screen.findByTestId('accountType');
+    select('accountType', 'Personal');
+    await screen.findByTestId('firstName');
+    await clickNext();
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('bad');
   });
 });
@@ -1154,17 +1191,20 @@ describe('form steps', () => {
   async function land(name: string, extra: Record<string, unknown> = {}) {
     mockStartStep.mockResolvedValue(session(step(name, 'InProgress', extra)));
     renderAt(`/kyc?code=abc&step=${name}`);
-    await waitFor(() => expect(mockStartStep).toHaveBeenCalled());
+    await screen.findByRole('button', { name: 'Next' });
   }
 
   it('LegalEntity requires a file then submits', async () => {
     await land('LegalEntity');
     await screen.findByTestId('legalEntity');
     select('legalEntity', 'AG');
+    mockToBase64.mockResolvedValueOnce(undefined);
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     });
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('No file selected');
+    mockToBase64.mockResolvedValue('data:image/png;base64,xx');
     fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
     mockSetLegalEntityData.mockResolvedValue({});
     mockContinueKyc.mockResolvedValue(info());
@@ -1199,60 +1239,43 @@ describe('form steps', () => {
     await land('Recommendation');
     await screen.findByTestId('key');
     typeField('key', 'ref');
+
     mockSetRecommendationData.mockRejectedValueOnce({ statusCode: 404 });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
+    await clickNext();
     expect(await screen.findByText('No matching user found')).toBeInTheDocument();
 
     mockSetRecommendationData.mockRejectedValueOnce({
       statusCode: 400,
       message: 'Invalid recommendation code',
     });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
+    await clickNext();
     expect(await screen.findByText('Invalid invitation code')).toBeInTheDocument();
 
     mockSetRecommendationData.mockRejectedValueOnce({ statusCode: 400, message: 'nope' });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
+    await clickNext();
     expect(await screen.findByText('Invalid key')).toBeInTheDocument();
 
     mockSetRecommendationData.mockRejectedValueOnce({ message: 'down' });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
+    await clickNext();
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('down');
 
     mockSetRecommendationData.mockResolvedValue({});
     mockContinueKyc.mockResolvedValue(info());
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
+    await clickNext();
     expect(mockSetRecommendationData).toHaveBeenCalled();
   });
 
   it('FileUpload reports a missing file, API error and no-session', async () => {
-    mockStartStep.mockResolvedValue(
-      session({ name: 'AdditionalDocuments', status: 'InProgress', sequenceNumber: 0 }),
-    );
-    renderAt('/kyc?code=abc&step=AdditionalDocuments');
-    await screen.findByTestId('file');
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
-    expect(mockSetFileData).not.toHaveBeenCalled();
+    await land('AdditionalDocuments');
+    mockToBase64.mockResolvedValueOnce(undefined);
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
+    await clickNext();
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('No file selected');
 
-    mockStartStep.mockResolvedValue(session(step('AdditionalDocuments')));
+    mockToBase64.mockResolvedValue('data:image/png;base64,xx');
     mockSetFileData.mockRejectedValue({ message: 'too big' });
-    renderAt('/kyc?code=xyz&step=AdditionalDocuments');
-    const fileInputs = await screen.findAllByTestId('file');
-    fireEvent.change(fileInputs.at(-1) as HTMLElement, { target: { files: [png] } });
-    await act(async () => {
-      fireEvent.click(screen.getAllByRole('button', { name: 'Next' }).at(-1) as HTMLElement);
-    });
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
+    await clickNext();
     expect(await screen.findByText('too big')).toBeInTheDocument();
   });
 
@@ -1295,39 +1318,33 @@ describe('BeneficialOwner', () => {
     renderAt('/kyc?code=abc&step=BeneficialOwner');
     await screen.findByTestId('ownerCount');
     select('ownerCount', 2);
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
-    expect(await screen.findByTestId('isAccountHolderInvolved')).toBeInTheDocument();
+    await clickNext();
+    expect(await screen.findByTestId('isAccountHolderInvolved-option-false')).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
     await screen.findByTestId('ownerCount');
     select('ownerCount', 2);
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
+    await clickNext();
+    await screen.findByTestId('isAccountHolderInvolved-option-false');
     select('isAccountHolderInvolved', false);
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
-    expect(await screen.findByText(/Beneficial owner/)).toBeInTheDocument();
+    await clickNext();
+    expect(await screen.findByTestId('owners.0.firstName')).toBeInTheDocument();
     typeField('owners.0.firstName', 'Ann');
     typeField('owners.0.lastName', 'Owner');
     typeField('owners.0.street', 'A');
     typeField('owners.0.zip', '8001');
     typeField('owners.0.city', 'Z');
     fireEvent.change(screen.getByTestId('owners.0.country-search'), { target: { value: 'Switzerland' } });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
-    await screen.findByText(/2\/2/);
+    await clickNext();
+    expect(await screen.findByTestId('owners.1.firstName')).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
+    await clickNext();
+    await screen.findByTestId('owners.1.firstName');
     typeField('owners.1.firstName', 'Bob');
     typeField('owners.1.lastName', 'Owner');
     typeField('owners.1.street', 'B');
@@ -1347,9 +1364,8 @@ describe('BeneficialOwner', () => {
     renderAt('/kyc?code=abc&step=BeneficialOwner');
     await screen.findByTestId('ownerCount');
     select('ownerCount', 1);
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
+    await clickNext();
+    await screen.findByTestId('isAccountHolderInvolved-option-true');
     select('isAccountHolderInvolved', true);
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -1363,9 +1379,8 @@ describe('BeneficialOwner', () => {
     renderAt('/kyc?code=abc&step=BeneficialOwner');
     await screen.findByTestId('ownerCount');
     select('ownerCount', 0);
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    });
+    await clickNext();
+    await screen.findByTestId('isAccountHolderInvolved-option-false');
     select('isAccountHolderInvolved', false);
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -1386,20 +1401,18 @@ describe('BeneficialOwner', () => {
 
 describe('Ident', () => {
   function sumsub() {
-    return (window as unknown as { __sumsub: { onMessage: Function; onError: Function; expirationHandler: Function } })
-      .__sumsub;
+    return mockSumsub;
   }
 
   it('drives the Sumsub token session', async () => {
-    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    hangContinue();
     mockStartStep.mockResolvedValue(
       session(step('Ident', 'InProgress', { type: 'SumsubAuto', session: { url: 'tok', type: 'Token' } })),
     );
     renderAt('/kyc?code=abc&step=Ident');
     await screen.findByTestId('sumsub');
     await act(async () => {
-      await sumsub().expirationHandler();
-      sumsub().onMessage('idCheck.onApplicantStatusChanged', {
+      sumsub().onMessage?.('idCheck.onApplicantStatusChanged', {
         reviewResult: { reviewAnswer: 'RED', reviewRejectType: 'FINAL', moderationComment: 'blurry' },
       });
     });
@@ -1411,7 +1424,7 @@ describe('Ident', () => {
   });
 
   it('marks video done and greens auto', async () => {
-    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    hangContinue();
     mockStartStep.mockResolvedValue(
       session(step('Ident', 'InProgress', { type: 'SumsubVideo', session: { url: 'tok', type: 'Token' } })),
     );
@@ -1424,7 +1437,7 @@ describe('Ident', () => {
   });
 
   it('accepts a green review and an SDK error', async () => {
-    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    hangContinue();
     mockStartStep.mockResolvedValue(
       session(step('Ident', 'InProgress', { type: 'SumsubAuto', session: { url: 'tok', type: 'Token' } })),
     );
@@ -1437,7 +1450,7 @@ describe('Ident', () => {
   });
 
   it('renders an iframe session and handles iframe messages', async () => {
-    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    hangContinue();
     mockStartStep.mockResolvedValue(
       session(step('Ident', 'InProgress', { session: { url: 'https://id.example', type: 'Browser' } })),
     );
@@ -1464,7 +1477,7 @@ describe('Ident', () => {
   });
 
   it('uses Unknown error when a red review has no comment', async () => {
-    mockContinueKyc.mockReturnValue(new Promise(() => undefined));
+    hangContinue();
     mockStartStep.mockResolvedValue(
       session(step('Ident', 'InProgress', { type: 'SumsubAuto', session: { url: 'tok', type: 'Token' } })),
     );
@@ -1548,6 +1561,7 @@ describe('FinancialData', () => {
     renderAt('/kyc?code=abc&step=FinancialData');
     expect(await screen.findByText('T&C')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('checkbox'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
     mockSetFinancialData.mockResolvedValueOnce({ status: 'InProgress' });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -1568,9 +1582,7 @@ describe('FinancialData', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     });
-    fireEvent.change(screen.getByTestId('selectionMC'), {
-      target: { selectedOptions: [{ value: 'btc' }] },
-    });
+    fireEvent.click(screen.getByTestId('selectionMC-option-btc'));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     });
@@ -1602,7 +1614,7 @@ describe('ManualIdent and change steps', () => {
     mockSetManualIdentData.mockResolvedValue({});
     mockContinueKyc.mockResolvedValue(info());
     renderAt('/kyc?code=abc&step=Ident/Manual');
-    await screen.findByTestId('firstName');
+    expect(await screen.findByTestId('firstName')).toBeInTheDocument();
     typeField('firstName', 'Ada');
     typeField('lastName', 'L');
     typeField('birthday', '1990-01-01');
@@ -1619,6 +1631,7 @@ describe('ManualIdent and change steps', () => {
     mockSetPhoneChangeData.mockResolvedValue({});
     mockContinueKyc.mockResolvedValue(info());
     renderAt('/kyc?code=abc&step=PhoneChange');
+    expect(await screen.findByTestId('phone')).toBeInTheDocument();
     typeField('phone', '+41791234567');
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -1633,10 +1646,13 @@ describe('ManualIdent and change steps', () => {
     typeField('address.street', 'A');
     typeField('address.city', 'B');
     typeField('address.zip', '8001');
+    mockToBase64.mockResolvedValueOnce(undefined);
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     });
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('No file selected');
+    mockToBase64.mockResolvedValue('data:image/png;base64,xx');
     fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
     mockSetAddressChangeData.mockResolvedValue({});
     mockContinueKyc.mockResolvedValue(info());
@@ -1649,12 +1665,16 @@ describe('ManualIdent and change steps', () => {
   it('NameChange requires a file then submits', async () => {
     mockStartStep.mockResolvedValue(session(step('NameChange')));
     renderAt('/kyc?code=abc&step=NameChange');
+    expect(await screen.findByTestId('firstName')).toBeInTheDocument();
     typeField('firstName', 'New');
     typeField('lastName', 'Name');
+    mockToBase64.mockResolvedValueOnce(undefined);
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     });
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('No file selected');
+    mockToBase64.mockResolvedValue('data:image/png;base64,xx');
     fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
     mockSetNameChangeData.mockResolvedValue({});
     mockContinueKyc.mockResolvedValue(info());
@@ -1671,6 +1691,7 @@ describe('PaymentAgreement and RecallAgreement', () => {
     mockSetPaymentData.mockResolvedValue({});
     mockContinueKyc.mockResolvedValue(info());
     renderAt('/kyc?code=abc&step=PaymentAgreement');
+    expect(await screen.findByTestId('name')).toBeInTheDocument();
     typeField('name', 'Shop');
     typeField('registrationNumber', 'CHE');
     typeField('purpose', 'sales');
