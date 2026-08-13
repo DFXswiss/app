@@ -147,6 +147,10 @@
     "title": "Support-Dashboard Übersicht",
     "description": "Support-Dashboard-Übersicht und Statistiken."
   },
+  "support-issue-receiver-iban": {
+    "title": "Support: Empfänger-IBAN prüfen",
+    "description": "Support-Issue-Formular: Empfänger-IBAN-Prüfung in den Zuständen leer, laufend, erkannt, nicht zugeordnet, ungültig, nicht verfügbar und Login erforderlich."
+  },
   "subpage": {
     "title": "Unterseiten",
     "description": "Buy-, Sell-, Swap- und Transaktions-Unterseiten."
