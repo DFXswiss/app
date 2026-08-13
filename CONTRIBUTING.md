@@ -203,7 +203,8 @@ suite under `e2e/` — see [Visual regression tests (Playwright)](#visual-regres
 above, which does not run in CI — this harness's job runs on every pull request.
 The stack comes up only for runtime-relevant changes. Documentation-only PRs with
 safe path characters record `mode=none` and skip the stack. Apply `ci:full` (or
-target `main`, or touch `e2e-stack/` / the e2e workflow) to force a full run.
+target `main`, run `workflow_dispatch`, use unsafe path characters, or touch
+`e2e-stack/` / the e2e workflow) to force a full run.
 
 A pull request that changes a screen or an API contract should bring or update
 the matching full-stack test.
