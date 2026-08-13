@@ -20,10 +20,8 @@ jest.mock('@dfx.swiss/react-components', () => ({
   ),
   DfxIcon: () => null,
   IconColor: { BLUE: 'blue', RED: 'red' },
-  IconVariant: { BANK: 'bank', SEPA_INSTANT: 'sepa' },
-  StyledDataTable: ({ children, label }: any) => (
-    <div data-testid={label ? `table-${label}` : 'table'}>{children}</div>
-  ),
+  IconVariant: { BANK: 'bank', SEPA_INSTANT: 'sepa', SWAP: 'SWAP' },
+  StyledDataTable: ({ children, label }: any) => <div data-testid={label ? `table-${label}` : 'table'}>{children}</div>,
   StyledDataTableRow: ({ label, children }: any) => (
     <div data-testid={`row-${label}`}>
       <span data-testid={`row-label-${label}`}>{label}</span>
@@ -51,7 +49,8 @@ jest.mock('../components/payment/payment-qr-code', () => ({
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { PersonalIbanProvider } from '@dfx.swiss/react';
-import { PaymentInformationContent } from '../components/payment/payment-info-buy';
+import { applyIbanSwitchTarget, PaymentInformationContent } from '../components/payment/payment-info-buy';
+import { FRICK_COLLECTION_IBANS } from '../util/personal-iban';
 
 function baseInfo() {
   return {
@@ -70,6 +69,29 @@ function baseInfo() {
     remittanceInfo: 'DFX-BUY-1',
   } as any;
 }
+
+/** Verified Bank Frick personal IBAN so the collection account is also offered. */
+function frickPersonalInfo() {
+  return {
+    id: 1,
+    amount: 100,
+    currency: { name: 'EUR' },
+    iban: 'LI21088110102979K002E',
+    bic: 'BFRILI22',
+    name: 'DFX AG',
+    bank: 'Bank Frick',
+    street: 'Main',
+    number: '1',
+    zip: '9490',
+    city: 'Vaduz',
+    country: 'LI',
+    sepaInstant: false,
+    remittanceInfo: 'DFX-BUY-1',
+    isPersonalIban: true,
+  } as any;
+}
+
+const SWITCH_BUTTON_NAME = /Show (collection|personal|legacy Yapeal|Bank Frick) IBAN/;
 
 describe('PaymentInformationContent personal-IBAN provider toggle', () => {
   beforeEach(() => {
@@ -93,9 +115,7 @@ describe('PaymentInformationContent personal-IBAN provider toggle', () => {
 
     fireEvent.click(button);
 
-    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith(
-      PersonalIbanProvider.YAPEAL,
-    );
+    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith(PersonalIbanProvider.YAPEAL);
   });
 
   it('offers the Bank Frick direction and forwards the Frick provider', () => {
@@ -115,9 +135,7 @@ describe('PaymentInformationContent personal-IBAN provider toggle', () => {
 
     fireEvent.click(button);
 
-    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith(
-      PersonalIbanProvider.FRICK,
-    );
+    expect(onSwitchPersonalIbanProvider).toHaveBeenCalledWith(PersonalIbanProvider.FRICK);
   });
 
   it('does not show a provider toggle when the bundled switch prop is absent', () => {
@@ -125,5 +143,71 @@ describe('PaymentInformationContent personal-IBAN provider toggle', () => {
 
     expect(screen.queryByRole('button', { name: 'Show legacy Yapeal IBAN' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show Bank Frick IBAN' })).not.toBeInTheDocument();
+  });
+
+  it('cycles personal → collection → provider when both alternatives are offered', () => {
+    const onSwitch = jest.fn();
+    render(
+      <PaymentInformationContent
+        info={frickPersonalInfo()}
+        personalIbanProviderSwitch={{
+          target: PersonalIbanProvider.YAPEAL,
+          onSwitch,
+        }}
+      />,
+    );
+
+    expect(screen.getAllByRole('button', { name: SWITCH_BUTTON_NAME })).toHaveLength(1);
+    const showCollection = screen.getByRole('button', { name: 'Show collection IBAN' });
+
+    fireEvent.click(showCollection);
+
+    expect(screen.getByTestId('row-value-IBAN')).toHaveTextContent(FRICK_COLLECTION_IBANS.EUR);
+    expect(onSwitch).not.toHaveBeenCalled();
+
+    expect(screen.getAllByRole('button', { name: SWITCH_BUTTON_NAME })).toHaveLength(1);
+    const showYapeal = screen.getByRole('button', { name: 'Show legacy Yapeal IBAN' });
+
+    fireEvent.click(showYapeal);
+
+    expect(onSwitch).toHaveBeenCalledTimes(1);
+    expect(onSwitch).toHaveBeenCalledWith(PersonalIbanProvider.YAPEAL);
+  });
+});
+
+describe('applyIbanSwitchTarget', () => {
+  it('sets the collection flag to false for a personal target', () => {
+    const setShowCollectionIban = jest.fn();
+    applyIbanSwitchTarget({ kind: 'personal' }, setShowCollectionIban, undefined);
+    expect(setShowCollectionIban).toHaveBeenCalledWith(false);
+  });
+
+  it('sets the collection flag to true for a collection target', () => {
+    const setShowCollectionIban = jest.fn();
+    applyIbanSwitchTarget({ kind: 'collection' }, setShowCollectionIban, undefined);
+    expect(setShowCollectionIban).toHaveBeenCalledWith(true);
+  });
+
+  it('forwards the provider when the switch prop is defined', () => {
+    const setShowCollectionIban = jest.fn();
+    const onSwitch = jest.fn();
+    applyIbanSwitchTarget({ kind: 'provider', provider: PersonalIbanProvider.YAPEAL }, setShowCollectionIban, {
+      target: PersonalIbanProvider.YAPEAL,
+      onSwitch,
+    });
+    expect(onSwitch).toHaveBeenCalledWith(PersonalIbanProvider.YAPEAL);
+    expect(setShowCollectionIban).not.toHaveBeenCalled();
+  });
+
+  it('throws when a provider target is applied without a switch prop', () => {
+    const setShowCollectionIban = jest.fn();
+    expect(() =>
+      applyIbanSwitchTarget(
+        { kind: 'provider', provider: PersonalIbanProvider.FRICK },
+        setShowCollectionIban,
+        undefined,
+      ),
+    ).toThrow('Provider IBAN switch target without personalIbanProviderSwitch prop');
+    expect(setShowCollectionIban).not.toHaveBeenCalled();
   });
 });
