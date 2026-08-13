@@ -32,7 +32,7 @@ const WALLET_COPY = 'Choose your wallet to open the payment.';
 
 /**
  * The loc API cannot build a Lightning/BTC transfer amount, so a quoted pay-request
- * never reaches the browser (see docs/test-reality.md). These two device-split tests
+ * never reaches the browser (see docs/test-architecture.md). These two device-split tests
  * replace only that response; everything else hits the real stack.
  */
 async function installQuotedPayRequest(
