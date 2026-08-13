@@ -12,8 +12,8 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 | Layer             | Location     | What it proves                                                               | What it cannot prove                                               | Runs in CI |
 | ----------------- | ------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------- |
-| Unit              | `src/`       | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | yes        |
-| Full-stack E2E    | `e2e-stack/` | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | job always; stack not on docs-only |
+| Unit              | `src/`       | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | job always; suite full / related / none |
+| Full-stack E2E    | `e2e-stack/` | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | job always; stack not on safe-path docs-only |
 | Visual regression | `e2e/`       | appearance against committed screenshot baselines                            | function                                                           | no         |
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
@@ -71,8 +71,9 @@ the spec file a claim names does not exist. When `E2E_FULL_RUN=1` is set, it add
 claimed route the browser never opened. That flag is declared by the run, not measured from it, so it may
 only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
 no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
-whatever the caller's environment holds — and the CI workflow sets it when it brings the stack up (full run). Documentation-only
-PRs never set it; `ci:full` forces that full invocation.
+whatever the caller's environment holds — and the CI workflow sets it when it brings the stack up (full run). Safe-path
+documentation-only PRs never set it; `ci:full`, a retarget onto `main`, unsafe
+paths and `e2e-stack/` changes force that full invocation.
 Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
 there.
 

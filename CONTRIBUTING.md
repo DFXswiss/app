@@ -80,8 +80,9 @@ The PR CI job always runs. Develop PRs without `ci:full` run Jest
 no such files and no full-run trigger records `mode=none` and skips the suite
 without failing. Apply `ci:full` to force the full suite, as do PRs into `main`,
 `workflow_dispatch`, unsafe path characters, test/build infrastructure, and
-deleting or renaming files under `src/` or `functions/`. Lint, `build:dev` and
-`widget:dev` always run in full. The job is never skipped.
+deleting or renaming files under `src/` or `functions/`. Lint, Markdown
+formatting (`format:md:check`), `build:dev` and `widget:dev` always run in full.
+The job is never skipped.
 
 #### Coverage
 
