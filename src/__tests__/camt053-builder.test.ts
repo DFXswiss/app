@@ -242,6 +242,12 @@ describe('buildCamt053Xml', () => {
     const xml = buildCamt053Xml(baseData({ amount: '12.5' }));
 
     expect((xml.match(/<Amt Ccy="CHF">12.50<\/Amt>/g) || []).length).toBe(3);
+    expect(xml).toContain(
+      `<TxAmt>
+                        <Amt Ccy="CHF">12.50</Amt>
+                    </TxAmt>`,
+    );
+    expect((xml.match(/<Amt Ccy="CHF">0<\/Amt>/g) || []).length).toBe(2);
     expect(xml).not.toContain('>12.5<');
   });
 
@@ -249,6 +255,12 @@ describe('buildCamt053Xml', () => {
     const xml = buildCamt053Xml(baseData({ amount: 'not-a-number' }));
 
     expect((xml.match(/<Amt Ccy="CHF">0.00<\/Amt>/g) || []).length).toBe(3);
+    expect(xml).toContain(
+      `<TxAmt>
+                        <Amt Ccy="CHF">0.00</Amt>
+                    </TxAmt>`,
+    );
+    expect((xml.match(/<Amt Ccy="CHF">0<\/Amt>/g) || []).length).toBe(2);
   });
 
   it('handles empty remittance and empty optional address strings without throwing', () => {
