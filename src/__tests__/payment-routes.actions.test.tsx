@@ -1111,4 +1111,68 @@ describe('PaymentRoutesScreen actions', () => {
     renderScreen();
     expect(screen.getByText(/Payment Link pl-bare/)).toBeInTheDocument();
   });
+
+  it('names the downloaded QR after the link id when externalId is missing', async () => {
+    const clickSpy = jest.fn();
+    const originalCreate = document.createElement.bind(document);
+    let downloadName = '';
+    jest.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = originalCreate(tag);
+      if (tag === 'a') {
+        Object.defineProperty(el, 'click', {
+          value: () => {
+            downloadName = (el as HTMLAnchorElement).download;
+            clickSpy();
+          },
+        });
+      }
+      return el;
+    });
+    mockRoutesState.overrides = {
+      paymentLinks: [
+        {
+          id: 'pl-no-ext',
+          routeId: 2,
+          status: 'Active',
+          mode: 'Multiple',
+          label: 'No Ext',
+          externalId: undefined,
+          url: 'https://pay.example/noext',
+          lnurl: 'lnurl1noext',
+          config: {},
+          recipient: undefined,
+          payment: undefined,
+        },
+      ],
+    };
+    renderScreen();
+    fireEvent.click(screen.getByText('Download QR code'));
+    await waitFor(() => {
+      expect(clickSpy).toHaveBeenCalled();
+    });
+    expect(downloadName).toContain('pl-no-ext');
+    (document.createElement as jest.Mock).mockRestore();
+  });
+
+  it('renders a dash when a pending payment has no external id', () => {
+    mockRoutesState.overrides = {
+      paymentLinks: [
+        {
+          id: 'pl-pay',
+          routeId: 2,
+          status: 'Active',
+          mode: 'Multiple',
+          label: 'Pay Link',
+          externalId: 'ext-pay',
+          url: 'https://pay.example/pay',
+          lnurl: 'lnurl1pay',
+          config: {},
+          recipient: undefined,
+          payment: { id: 9, status: 'Pending', amount: 3, mode: 'Single', externalId: undefined },
+        },
+      ],
+    };
+    renderScreen();
+    expect(screen.getByTestId('item-Payment-External ID')).toHaveTextContent('-');
+  });
 });

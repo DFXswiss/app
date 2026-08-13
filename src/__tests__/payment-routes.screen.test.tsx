@@ -231,4 +231,20 @@ describe('PaymentRoutesScreen Always show QR code label', () => {
     renderScreen();
     expect(screen.getByTestId('error-hint')).toHaveTextContent('routes-failed');
   });
+
+  it('shows Yes when displayQr is forced and No when cancellable is off', () => {
+    mockRoutesState.overrides = {
+      userPaymentLinksConfig: {
+        standards: ['OpenCryptoPay'],
+        minCompletionStatus: 'Pending',
+        displayQr: true,
+        fee: 0,
+        paymentTimeout: 60,
+        cancellable: false,
+      },
+    };
+    renderScreen();
+    expect(screen.getAllByTestId('item-Always show QR code')[0]).toHaveTextContent('Always show QR code: Yes');
+    expect(screen.getAllByTestId('item-Payment cancellable')[0]).toHaveTextContent('Payment cancellable: No');
+  });
 });

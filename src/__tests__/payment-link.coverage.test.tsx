@@ -1010,6 +1010,119 @@ describe('PaymentLinkScreen coverage gaps', () => {
       screen.getByText('Tell the cashier that you want to pay with crypto to start the payment.'),
     ).toBeInTheDocument();
   });
+
+  it('falls back to merchant name when displayName is missing', () => {
+    mockUsePaymentLinkContext.mockReturnValue(
+      baseContext({
+        merchant: 'Fallback Merchant',
+        payRequest: buildPayRequest({ displayName: undefined }),
+      }),
+    );
+    mockWallets();
+    renderAt();
+    expect(screen.getByText('Fallback Merchant')).toBeInTheDocument();
+  });
+
+  it('skips the identifier spinner when status is neither pending nor no-payment', () => {
+    mockUsePaymentLinkContext.mockReturnValue(
+      baseContext({
+        payRequest: buildPayRequest({ quote: undefined, mode: 'Multiple' }),
+        paymentHasQuote: () => false,
+        paymentStatus: 'Completed',
+      }),
+    );
+    mockWallets();
+    renderAt();
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+  });
+
+  it('shows payment methods in merchant mode when transferAmounts is absent', () => {
+    const terminal = buildPayRequest();
+    delete (terminal as { transferAmounts?: unknown }).transferAmounts;
+    delete (terminal as { quote?: unknown }).quote;
+    mockUsePaymentLinkContext.mockReturnValue(
+      baseContext({
+        payRequest: terminal,
+        paymentHasQuote: () => false,
+        isMerchantMode: true,
+        paymentStatus: 'NoPayment',
+      }),
+    );
+    mockWallets();
+    renderAt();
+    expect(screen.getByTestId('expandable-Payment Methods')).toBeInTheDocument();
+  });
+
+  it('treats a quote timer with only seconds as still running', async () => {
+    mockUsePaymentLinkContext.mockReturnValue(
+      baseContext({
+        timer: { minutes: 0, seconds: 12 },
+        paymentStandards: [
+          {
+            id: 'PayToAddress',
+            label: 'Pay to {{blockchain}} address',
+            description: 'On {{blockchain}}',
+            blockchain: 'Ethereum',
+          },
+        ],
+        payRequest: buildPayRequest({ standard: 'PayToAddress', possibleStandards: ['PayToAddress'] }),
+      }),
+    );
+    mockWallets();
+    renderAt();
+    await waitFor(() => {
+      expect(screen.getByText(/is fixed for 0m 12s/)).toBeInTheDocument();
+    });
+  });
+
+  it('edits a public quoted payment and surfaces Unknown error when delete has no message', async () => {
+    mockUseApiCall.mockRejectedValue({});
+    mockUsePaymentLinkContext.mockReturnValue(
+      baseContext({
+        payRequest: buildPayRequest({ mode: 'Public' }),
+        paymentStatus: 'Pending',
+      }),
+    );
+    mockWallets();
+    renderAt();
+    fireEvent.click(screen.getByText('Edit'));
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
+    });
+  });
+
+  it('lists a transfer asset that has no amount', () => {
+    mockUsePaymentLinkContext.mockReturnValue(
+      baseContext({
+        payRequest: buildPayRequest({
+          transferAmounts: [
+            {
+              method: 'Lightning',
+              minFee: 0,
+              available: true,
+              assets: [{ asset: 'BTC' }],
+            },
+          ],
+        }),
+      }),
+    );
+    mockWallets();
+    renderAt();
+    expect(screen.getByText('BTC')).toBeInTheDocument();
+  });
+
+  it('hides store badges when the wallet has no store URLs', async () => {
+    mockUsePaymentLinkContext.mockReturnValue(baseContext());
+    mockWallets({
+      recommendedWallets: [{ ...SAMPLE_WALLET, playStoreUrl: undefined, appStoreUrl: undefined }],
+      getDeeplinkByWalletId: jest.fn().mockResolvedValue('sample://x'),
+    });
+    renderAt('/?wallet-id=42');
+    await waitFor(() => {
+      expect(screen.getByText('Open website')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Play Store|App Store/i)).not.toBeInTheDocument();
+  });
 });
 
 async function actResolve(resolve: (v: string) => void, value: string) {

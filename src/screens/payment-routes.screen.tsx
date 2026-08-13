@@ -275,7 +275,7 @@ export default function PaymentRoutesScreen(): JSX.Element {
   return (
     <>
       {(apiError && apiError !== 'permission denied') || error ? (
-        <ErrorHint message={apiError ?? error ?? ''} />
+        <ErrorHint message={(apiError && apiError !== 'permission denied' ? apiError : error) ?? ''} />
       ) : userPaymentLinksConfigLoading || isUserLoading || !isInitialized ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : updateGlobalConfig ? (
