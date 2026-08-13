@@ -20,6 +20,7 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+      - edited
       - labeled
       - unlabeled
   workflow_dispatch:
