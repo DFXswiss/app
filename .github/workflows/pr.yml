@@ -122,10 +122,10 @@ jobs:
           fi
 
           # Any hit on test/build infrastructure forces the full run. Root-level / these
-          # paths only: package manifests, craco configs, CRA overrides, this workflow, and
-          # the build scripts.
+          # paths only: package manifests, craco configs, CRA overrides, this workflow, the
+          # build scripts, and the Jest test helper src/setupTests.ts.
           rc=0
-          infra=$(grep -E '^(package\.json|package-lock\.json|craco[^/]*|config-overrides\.js|\.github/workflows/pr\.yml|scripts/build\.sh|scripts/build-widget\.sh)$' <<< "$diff_all") || rc=$?
+          infra=$(grep -E '^(package\.json|package-lock\.json|craco[^/]*|config-overrides\.js|\.github/workflows/pr\.yml|scripts/build\.sh|scripts/build-widget\.sh|src/setupTests\.ts)$' <<< "$diff_all") || rc=$?
           if (( rc >= 2 )); then
             echo "::error::grep failed while matching test infrastructure paths (exit $rc)."
             exit 1

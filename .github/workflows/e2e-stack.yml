@@ -12,6 +12,7 @@
 #
 # Documentation-only PRs (docs/ and *.md) with safe path characters bring up no stack
 # (mode=none); the job still runs and the Playwright step succeeds with a message.
+# API checkout, bootstrap resolution, and harness tsc run only when mode != none.
 # PRs into main, workflow_dispatch, and PRs with the `ci:full` label always run the full
 # suite. A change under e2e-stack/ or to .github/workflows/e2e-stack.yml always forces
 # full (the workflow must not classify itself as none). Every other remaining change
@@ -166,6 +167,7 @@ jobs:
           echo "mode=full" >> "$GITHUB_OUTPUT"
 
       - name: Checkout API
+        if: steps.scope.outputs.mode != 'none'
         uses: actions/checkout@v4
         with:
           repository: DFXswiss/api
@@ -180,6 +182,7 @@ jobs:
       # this step is skipped. It also refuses to bootstrap from a pull request that is no longer
       # open, so it cannot quietly re-arm later and build a years-old revision.
       - name: Resolve the API revision to build
+        if: steps.scope.outputs.mode != 'none'
         id: api_source
         env:
           API_REF: ${{ inputs.api_ref }}
@@ -215,7 +218,7 @@ jobs:
           fi
 
       - name: Check out the API revision that carries the guard
-        if: steps.api_source.outputs.bootstrap == 'true'
+        if: steps.scope.outputs.mode != 'none' && steps.api_source.outputs.bootstrap == 'true'
         uses: actions/checkout@v4
         with:
           repository: DFXswiss/api
@@ -223,6 +226,7 @@ jobs:
           path: api-repo
 
       - name: Setup Node.js
+        if: steps.scope.outputs.mode != 'none'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -236,6 +240,7 @@ jobs:
       # so nothing else in CI type-checks it. Doing it here costs under a minute and fails on a
       # type error before the run spends eight on Docker.
       - name: Type-check the harness
+        if: steps.scope.outputs.mode != 'none'
         working-directory: e2e-stack
         run: |
           npm ci
