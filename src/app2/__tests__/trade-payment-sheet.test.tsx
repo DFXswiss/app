@@ -252,6 +252,22 @@ describe('missing deposit details', () => {
     expect(document.querySelector('.paybox')).toBeNull();
   });
 
+  it('still shows buy details when only the IBAN is present', () => {
+    const buy = {
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.002,
+      fees: { total: 1 },
+      currency: { name: 'EUR' },
+      iban: 'DE89370400440532013000',
+    } as unknown as Buy;
+
+    renderBuySheet(buy);
+    expect(document.querySelector('.emailgate')).toBeNull();
+    expect(document.querySelector('.paybox')).toBeTruthy();
+    expect(document.body.textContent).toMatch(/DE89370400440532013000/);
+  });
+
   it('fails closed for a valid swap response without deposit details', () => {
     const swap = {
       isValid: true,
