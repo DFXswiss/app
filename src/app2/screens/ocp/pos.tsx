@@ -71,6 +71,15 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
   const [status, setStatus] = useState<'waiting' | 'paid' | 'failed'>('waiting');
   const [failKey, setFailKey] = useState<FailKey>('posFailed');
   const amountRef = useRef<HTMLInputElement>(null);
+  // Synchronous lock: `charging` cannot stop a second Enter/click in the same
+  // tick, before React commits. Stays true for the whole open payment so a
+  // later tap cannot replace the QR and drop the poll on a still-payable LNURL.
+  const chargingRef = useRef(false);
+
+  const unlockTill = useCallback(() => {
+    chargingRef.current = false;
+    setCharging(false);
+  }, []);
 
   // Load links + routes on entry — routes supply the currency for the selected link.
   useEffect(() => {
@@ -100,6 +109,7 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
   const currency = currencyForPosLink(selectedLink, ocp.sellRoutes);
 
   const doCharge = useCallback(async () => {
+    if (chargingRef.current) return;
     const amt = parseAmt(amount, language);
     if (amt === null) {
       setCharge(null);
@@ -110,6 +120,7 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
     if (!selectedId) return;
     // Freeze before the await boundary: after ocp.charge resolves the select may
     // already point at another link/currency (services#1270 class of bug).
+    chargingRef.current = true;
     const chargeCurrency = currency;
     setNote(null);
     setCharging(true);
@@ -123,16 +134,16 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
         currency: chargeCurrency,
       });
       setStatus('waiting');
-      // Live: re-enable immediately so the till can re-charge; demo keeps the
-      // button disabled until the fake resolution (mirrors the static app).
-      if (!ocp.demo) setCharging(false);
+      // Stay locked until paid / failed / expired. Re-enabling here used to let
+      // a second charge replace the QR and cancel the poll for the previous
+      // LNURL, which the customer could still pay.
     } catch (err) {
       const msg = err instanceof ApiException ? err.message : '';
       setCharge(null);
       setNote(`${t('genErr')}${msg ? `: ${msg}` : ''}`);
-      setCharging(false);
+      unlockTill();
     }
-  }, [amount, language, selectedId, currency, ocp, t]);
+  }, [amount, language, selectedId, currency, ocp, t, unlockTill]);
 
   // Payment polling — runs only while a charge is awaiting payment. The cleanup
   // clears the pending timer on unmount, on leaving the view, and before the
@@ -146,7 +157,7 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
       timer = setTimeout(() => {
         if (cancelled) return;
         setStatus('paid');
-        setCharging(false);
+        unlockTill();
       }, 2600);
       return () => {
         cancelled = true;
@@ -161,19 +172,19 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
       if (cancelled) return;
       if (st === PaymentLinkPaymentStatus.COMPLETED) {
         setStatus('paid');
-        setCharging(false);
+        unlockTill();
         return;
       }
       if (st === PaymentLinkPaymentStatus.CANCELLED || st === PaymentLinkPaymentStatus.EXPIRED) {
         setFailKey('posFailed');
         setStatus('failed');
-        setCharging(false);
+        unlockTill();
         return;
       }
       if (Date.now() >= deadline) {
         setFailKey('posExpired');
         setStatus('failed');
-        setCharging(false);
+        unlockTill();
         return;
       }
       timer = setTimeout(tick, delay);
@@ -184,7 +195,7 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [charge, status, ocp]);
+  }, [charge, status, ocp, unlockTill]);
 
   if (ocp.links === null) {
     return (
@@ -230,7 +241,10 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') void doCharge();
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void doCharge();
+            }
           }}
         />
         <button className="btn-primary" onClick={() => void doCharge()} disabled={charging} style={{ marginTop: 6 }}>
@@ -255,7 +269,12 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
             ) : status === 'failed' ? (
               <div className="posstat fail">
                 {t(failKey)}{' '}
-                <button className="btn-mini" onClick={() => void doCharge()} style={{ marginLeft: 10, width: 'auto' }}>
+                <button
+                  className="btn-mini"
+                  onClick={() => void doCharge()}
+                  disabled={charging}
+                  style={{ marginLeft: 10, width: 'auto' }}
+                >
                   {t('retry')}
                 </button>
               </div>
