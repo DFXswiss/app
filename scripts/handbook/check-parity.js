@@ -2,11 +2,16 @@
 /**
  * Handbook coverage: every screenshot spec under e2e/*.spec.ts must have a
  * metadata.json key equal to its file name without .spec.ts, and every
- * metadata key must name an existing top-level spec file.
+ * spec-metadata key must name an existing spec file.
  *
  * Screenshot spec = top-level e2e/*.spec.ts whose contents call
  * toHaveScreenshot(. Nested trees (helpers/, synpress/, wallet-setup/)
- * and non-.spec.ts files are ignored.
+ * and non-.spec.ts files are ignored, except the one confirmed extra
+ * path in EXTRA_SPEC_REL_PATHS.
+ *
+ * metadata.json has two kinds of top-level keys (same split as build.js):
+ *   - spec/screenshot-group metadata (title + description)
+ *   - "docs": markdown title overrides, not a spec name
  *
  * Usage:
  *   node scripts/handbook/check-parity.js
@@ -20,6 +25,43 @@ const path = require('path');
 
 const SCREENSHOT_CALL = 'toHaveScreenshot(';
 const SPEC_SUFFIX = '.spec.ts';
+
+// Same reserved key as scripts/handbook/build.js (orphan loop ~667):
+//   if (key === 'docs') continue;
+// build.js reads metadata.docs as path → { title } overrides for markdown
+// ("Optional title overrides via metadata.json → docs[relSrc].title").
+// That is documentation metadata, not a screenshot-group / spec-metadata
+// entry, so it must not be required to name an e2e/*.spec.ts file.
+const DOCS_METADATA_KEY = 'docs';
+
+// Historical screenshot-group keys whose names are not the spec file.
+// Each mapping was confirmed against spec contents and the metadata
+// description — not inferred from the key string alone.
+const ALIAS_MAP = {
+  // debug-session-switch.spec.ts writes
+  // e2e/screenshots/bug-session-1-account1.png and
+  // bug-session-2-account2.png; metadata describes the session/account
+  // switch. Key is the screenshot prefix, not the spec file name.
+  'bug-session': 'debug-session-switch',
+  // subpages-test.spec.ts writes e2e/screenshots/subpage-{name}.png for
+  // Buy/Sell/Swap/Transactions (and Account/Settings); metadata describes
+  // those subpages. Key is the screenshot prefix.
+  'subpage': 'subpages-test',
+  // swap-bitcoin-to-lightning.spec.ts writes
+  // baseline/swap-btc-to-ln-01-loaded.png and -02-complete.png;
+  // metadata: "Swap von Bitcoin zu Lightning (geladen und abgeschlossen)."
+  'swap-btc-to-ln': 'swap-bitcoin-to-lightning',
+  // swap-lightning-to-bitcoin.spec.ts writes
+  // baseline/swap-ln-to-btc-01-loaded.png and -02-complete.png;
+  // metadata: "Swap von Lightning zu Bitcoin."
+  'swap-ln-to-btc': 'swap-lightning-to-bitcoin',
+};
+
+// Confirmed non-top-level screenshot spec. metadata "sell-complete"
+// describes the MetaMask end-to-end sell in this file (toHaveScreenshot of
+// sell page, amount, tx, etherscan for two wallets). Only this file — not
+// a recursive scan of e2e/synpress/.
+const EXTRA_SPEC_REL_PATHS = ['synpress/sell-complete.spec.ts'];
 
 function fail(message) {
   console.error(message);
@@ -51,7 +93,7 @@ function parseArgs(argv) {
 }
 
 function specKey(fileName) {
-  return fileName.slice(0, -SPEC_SUFFIX.length);
+  return path.basename(fileName).slice(0, -SPEC_SUFFIX.length);
 }
 
 function listTopLevelSpecs(e2eDir) {
@@ -63,6 +105,13 @@ function listTopLevelSpecs(e2eDir) {
     .filter((name) => name.endsWith(SPEC_SUFFIX))
     .filter((name) => fs.statSync(path.join(e2eDir, name)).isFile())
     .sort();
+}
+
+function listKnownExtraSpecs(e2eDir) {
+  return EXTRA_SPEC_REL_PATHS.filter((rel) => {
+    const full = path.join(e2eDir, rel);
+    return fs.existsSync(full) && fs.statSync(full).isFile();
+  });
 }
 
 function loadMetadata(metadataPath) {
@@ -87,14 +136,18 @@ function loadMetadata(metadataPath) {
 }
 
 function keysMatch(specName, metadataKey) {
-  return specName === metadataKey;
+  if (specName === metadataKey) {
+    return true;
+  }
+  return ALIAS_MAP[metadataKey] === specName;
 }
 
 function formatReport(result) {
   const lines = [
     'Handbook spec ↔ metadata parity',
     '',
-    'Top-level specs: ' + result.specFiles.length,
+    'Top-level specs: ' + result.topLevelSpecs.length,
+    'Extra specs: ' + result.extraSpecs.length,
     'Screenshot specs that call toHaveScreenshot(: ' + result.screenshotSpecs.length,
     'Metadata keys: ' + result.metadataKeys.length,
   ];
@@ -134,12 +187,14 @@ function checkParity({ e2eDir, metadataPath }) {
     throw new Error('metadataPath is required');
   }
 
-  const specFiles = listTopLevelSpecs(e2eDir);
-  if (specFiles.length === 0) {
+  const topLevelSpecs = listTopLevelSpecs(e2eDir);
+  if (topLevelSpecs.length === 0) {
     const result = {
       ok: false,
       vacuous: true,
-      specFiles,
+      topLevelSpecs,
+      extraSpecs: [],
+      specFiles: [],
       screenshotSpecs: [],
       metadataKeys: [],
       missing: [],
@@ -151,6 +206,8 @@ function checkParity({ e2eDir, metadataPath }) {
     return result;
   }
 
+  const extraSpecs = listKnownExtraSpecs(e2eDir);
+  const specFiles = topLevelSpecs.concat(extraSpecs);
   const metadata = loadMetadata(metadataPath);
   const metadataKeys = Object.keys(metadata).sort();
   const specNameByFile = new Map(specFiles.map((fileName) => [fileName, specKey(fileName)]));
@@ -166,13 +223,18 @@ function checkParity({ e2eDir, metadataPath }) {
     return !metadataKeys.some((key) => keysMatch(name, key));
   });
 
-  const orphans = metadataKeys.filter(
-    (key) => !Array.from(specNames).some((name) => keysMatch(name, key)),
-  );
+  const orphans = metadataKeys.filter((key) => {
+    if (key === DOCS_METADATA_KEY) {
+      return false;
+    }
+    return !Array.from(specNames).some((name) => keysMatch(name, key));
+  });
 
   const result = {
     ok: missing.length === 0 && orphans.length === 0,
     vacuous: false,
+    topLevelSpecs,
+    extraSpecs,
     specFiles,
     screenshotSpecs,
     metadataKeys,
@@ -223,6 +285,9 @@ module.exports = {
   formatReport,
   keysMatch,
   specKey,
+  ALIAS_MAP,
+  DOCS_METADATA_KEY,
+  EXTRA_SPEC_REL_PATHS,
   main,
 };
 

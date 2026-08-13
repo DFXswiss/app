@@ -121,3 +121,63 @@ test('(e) empty e2e directory fails instead of passing vacuously', () => {
   assert.notEqual(cli.status, 0);
   assert.match(cli.stderr, /empty input set/);
 });
+
+test('(f) reserved docs key is documentation metadata, not an orphan spec key', () => {
+  const fixture = writeFixture('f-docs', {
+    'e2e/buy-process.spec.ts': SCREENSHOT_SPEC,
+    'metadata.json': JSON.stringify({
+      'buy-process': { title: 'Buy' },
+      docs: { 'README.md': { title: 'Readme' } },
+    }),
+  });
+  const result = checkParity(fixture);
+  assert.equal(result.ok, true);
+  assert.ok(result.metadataKeys.includes('docs'));
+  assert.ok(!result.orphans.includes('docs'));
+  assert.equal(runCli(fixture).status, 0);
+});
+
+test('(f2) reserved docs key does not satisfy a screenshot spec that has no key', () => {
+  const fixture = writeFixture('f-docs-not-a-cover', {
+    'e2e/new-screen.spec.ts': SCREENSHOT_SPEC,
+    'metadata.json': JSON.stringify({
+      docs: { 'README.md': { title: 'Readme' } },
+    }),
+  });
+  const result = checkParity(fixture);
+  assert.equal(result.ok, false);
+  assert.ok(result.missing.includes('new-screen.spec.ts'));
+  assert.ok(!result.orphans.includes('docs'));
+});
+
+test('(g) historical alias maps a metadata key onto a differently named spec', () => {
+  const fixture = writeFixture('g-alias', {
+    'e2e/swap-bitcoin-to-lightning.spec.ts': SCREENSHOT_SPEC,
+    'metadata.json': JSON.stringify({
+      'swap-btc-to-ln': { title: 'Swap BTC to LN' },
+    }),
+  });
+  const result = checkParity(fixture);
+  assert.equal(result.ok, true, result.report);
+  assert.deepEqual(result.missing, []);
+  assert.deepEqual(result.orphans, []);
+  assert.ok(result.screenshotSpecs.includes('swap-bitcoin-to-lightning.spec.ts'));
+  assert.equal(runCli(fixture).status, 0);
+});
+
+test('(h) sell-complete is the one confirmed extra spec path, not a synpress glob', () => {
+  const fixture = writeFixture('h-extra', {
+    'e2e/buy-process.spec.ts': PLAIN_SPEC,
+    'e2e/synpress/sell-complete.spec.ts': SCREENSHOT_SPEC,
+    'e2e/synpress/other.spec.ts': SCREENSHOT_SPEC,
+    'metadata.json': JSON.stringify({
+      'sell-complete': { title: 'Sell complete' },
+    }),
+  });
+  const result = checkParity(fixture);
+  assert.equal(result.ok, true, result.report);
+  assert.ok(result.extraSpecs.includes('synpress/sell-complete.spec.ts'));
+  assert.ok(!result.extraSpecs.includes('synpress/other.spec.ts'));
+  assert.ok(!result.screenshotSpecs.includes('synpress/other.spec.ts'));
+  assert.equal(runCli(fixture).status, 0);
+});
