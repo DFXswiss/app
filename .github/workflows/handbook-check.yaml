@@ -7,7 +7,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - 'e2e/screenshots/**'
+      - 'e2e/**'
       - 'scripts/handbook/**'
       - 'tailwind.config.js'
       - 'src/static/assets/**'
