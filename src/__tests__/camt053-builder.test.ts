@@ -61,9 +61,22 @@ describe('buildCamt053Xml', () => {
     expect(xml).toContain(
       '<Ntry>\n                <Amt Ccy="CHF">100.00</Amt>\n                <CdtDbtInd>CRDT</CdtDbtInd>',
     );
+    expect(xml).toContain('<Amt Ccy="CHF">100.00</Amt>\n                        <CdtDbtInd>CRDT</CdtDbtInd>');
+    expect((xml.match(/<CdtDbtInd>CRDT<\/CdtDbtInd>/g) || []).length).toBe(4);
+    expect((xml.match(/<CdtDbtInd>DBIT<\/CdtDbtInd>/g) || []).length).toBe(0);
     expect(xml).not.toContain('<CdtDbtInd>DBIT</CdtDbtInd>');
     expect(xml).toContain('<Cd>RCDT</Cd><SubFmlyCd>XBCT</SubFmlyCd>');
+    expect((xml.match(/<Cd>RCDT<\/Cd><SubFmlyCd>XBCT<\/SubFmlyCd>/g) || []).length).toBe(2);
     expect(xml).toContain('<AddtlNtryInf>Gutschrift Debtor Corp</AddtlNtryInf>');
+    expect(xml).toContain(
+      `<Acct>
+                <Id>
+                    <IBAN>CH9300762011623852957</IBAN>`,
+    );
+    expect(xml).toContain('<BookgDt>\n                    <Dt>2026-03-10</Dt>\n                </BookgDt>');
+    expect(xml).toContain('<ValDt>\n                    <Dt>2026-03-11</Dt>\n                </ValDt>');
+    expect(xml).toContain('<FrDtTm>2026-03-10T00:00:00.000+00:00</FrDtTm>');
+    expect(xml).toContain('<ToDtTm>2026-03-10T23:59:59.999+00:00</ToDtTm>');
 
     expect(xml).toContain(
       '<Dbtr><Nm>Debtor Corp</Nm><PstlAdr><StrtNm>Bahnhofstrasse</StrtNm><BldgNb>1</BldgNb><PstCd>8001</PstCd><TwnNm>Zurich</TwnNm><Ctry>CH</Ctry></PstlAdr></Dbtr>',
@@ -86,8 +99,17 @@ describe('buildCamt053Xml', () => {
     expect(xml).toContain(
       '<Ntry>\n                <Amt Ccy="CHF">100.00</Amt>\n                <CdtDbtInd>DBIT</CdtDbtInd>',
     );
+    expect(xml).toContain('<Amt Ccy="CHF">100.00</Amt>\n                        <CdtDbtInd>DBIT</CdtDbtInd>');
+    expect((xml.match(/<CdtDbtInd>CRDT<\/CdtDbtInd>/g) || []).length).toBe(2);
+    expect((xml.match(/<CdtDbtInd>DBIT<\/CdtDbtInd>/g) || []).length).toBe(2);
     expect(xml).toContain('<Cd>ICDT</Cd><SubFmlyCd>DMCT</SubFmlyCd>');
+    expect((xml.match(/<Cd>ICDT<\/Cd><SubFmlyCd>DMCT<\/SubFmlyCd>/g) || []).length).toBe(2);
     expect(xml).toContain('<AddtlNtryInf>Zahlung Creditor Corp</AddtlNtryInf>');
+    expect(xml).toContain(
+      `<Acct>
+                <Id>
+                    <IBAN>CH9300762011623852957</IBAN>`,
+    );
     expect(xml).not.toContain('<PstlAdr>');
     expect(xml).toContain('<Dbtr><Nm>Debtor Owner</Nm></Dbtr>');
     expect(xml).toContain('<Cdtr><Nm>Creditor Corp</Nm></Cdtr>');
@@ -181,6 +203,7 @@ describe('buildCamt053Xml', () => {
     );
 
     expect(xml).toContain(`<Nm>${escaped}</Nm>`);
+    expect(xml).toContain(`<Dbtr><Nm>${escaped}</Nm>`);
     expect(xml).toContain(`<Ustrd>${escaped}</Ustrd>`);
     expect(xml).toContain(`Ccy="${escaped}"`);
     expect(xml).toContain(`<StrtNm>${escaped}</StrtNm>`);
@@ -218,14 +241,14 @@ describe('buildCamt053Xml', () => {
   it('formats a partial amount to two decimal places', () => {
     const xml = buildCamt053Xml(baseData({ amount: '12.5' }));
 
-    expect(xml).toContain('<Amt Ccy="CHF">12.50</Amt>');
+    expect((xml.match(/<Amt Ccy="CHF">12.50<\/Amt>/g) || []).length).toBe(3);
     expect(xml).not.toContain('>12.5<');
   });
 
   it('falls back to 0.00 for a non-numeric amount', () => {
     const xml = buildCamt053Xml(baseData({ amount: 'not-a-number' }));
 
-    expect(xml).toContain('<Amt Ccy="CHF">0.00</Amt>');
+    expect((xml.match(/<Amt Ccy="CHF">0.00<\/Amt>/g) || []).length).toBe(3);
   });
 
   it('handles empty remittance and empty optional address strings without throwing', () => {
