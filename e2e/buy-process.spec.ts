@@ -209,8 +209,11 @@ test.describe('Buy Process - UI Flow', () => {
 
     // asset-out is pinned: without it the screen picks the first listed asset, which has
     // no price rule in the local seed and the quote never reaches the payment details.
+    // lang=en pins the UI locale: the selectors and the baselines below are English, and without
+    // the parameter the language comes from the test account's stored user.language, which anyone
+    // can change on the server and which makes this test fail with "element(s) not found".
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     const paymentDetails = page
