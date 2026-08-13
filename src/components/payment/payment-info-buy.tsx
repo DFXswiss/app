@@ -33,17 +33,16 @@ interface PaymentInformationContentProps {
 }
 
 type IbanSwitchTarget =
-  { kind: 'personal' } | { kind: 'collection' } | { kind: 'provider'; provider: PersonalIbanProvider };
+  | { kind: 'personal' }
+  | { kind: 'collection' }
+  | {
+      kind: 'provider';
+      provider: PersonalIbanProvider;
+      onSwitch: (provider: PersonalIbanProvider) => void;
+    };
 
-/**
- * Applies the next IBAN-switch target. Provider clicks require the switch prop; missing it is a
- * programming error and must fail closed rather than no-op.
- */
-export function applyIbanSwitchTarget(
-  next: IbanSwitchTarget,
-  setShowCollectionIban: (value: boolean) => void,
-  personalIbanProviderSwitch: PaymentInformationContentProps['personalIbanProviderSwitch'],
-): void {
+/** Applies the next IBAN-switch target; provider targets carry their own callback. */
+function applyIbanSwitchTarget(next: IbanSwitchTarget, setShowCollectionIban: (value: boolean) => void): void {
   if (next.kind === 'personal') {
     setShowCollectionIban(false);
     return;
@@ -53,11 +52,7 @@ export function applyIbanSwitchTarget(
     return;
   }
 
-  if (personalIbanProviderSwitch === undefined) {
-    throw new Error('Provider IBAN switch target without personalIbanProviderSwitch prop');
-  }
-  const providerSwitch = personalIbanProviderSwitch;
-  providerSwitch.onSwitch(next.provider);
+  next.onSwitch(next.provider);
 }
 
 function ibanSwitchLabelKey(target: IbanSwitchTarget): string {
@@ -98,7 +93,11 @@ export function PaymentInformationContent({
     switchTargets.push({ kind: 'collection' });
   }
   if (personalIbanProviderSwitch !== undefined) {
-    switchTargets.push({ kind: 'provider', provider: personalIbanProviderSwitch.target });
+    switchTargets.push({
+      kind: 'provider',
+      provider: personalIbanProviderSwitch.target,
+      onSwitch: personalIbanProviderSwitch.onSwitch,
+    });
   }
 
   let ibanSwitch: PaymentInformationTextProps['ibanSwitch'];
@@ -108,7 +107,7 @@ export function PaymentInformationContent({
     const nextTarget = switchTargets[(currentIndex + 1) % switchTargets.length];
     ibanSwitch = {
       label: translate('screens/payment', ibanSwitchLabelKey(nextTarget)),
-      onClick: () => applyIbanSwitchTarget(nextTarget, setShowCollectionIban, personalIbanProviderSwitch),
+      onClick: () => applyIbanSwitchTarget(nextTarget, setShowCollectionIban),
     };
   }
 

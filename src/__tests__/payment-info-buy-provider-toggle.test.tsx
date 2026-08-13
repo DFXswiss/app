@@ -49,7 +49,7 @@ jest.mock('../components/payment/payment-qr-code', () => ({
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { PersonalIbanProvider } from '@dfx.swiss/react';
-import { applyIbanSwitchTarget, PaymentInformationContent } from '../components/payment/payment-info-buy';
+import { PaymentInformationContent } from '../components/payment/payment-info-buy';
 import { FRICK_COLLECTION_IBANS } from '../util/personal-iban';
 
 function baseInfo() {
@@ -172,42 +172,5 @@ describe('PaymentInformationContent personal-IBAN provider toggle', () => {
 
     expect(onSwitch).toHaveBeenCalledTimes(1);
     expect(onSwitch).toHaveBeenCalledWith(PersonalIbanProvider.YAPEAL);
-  });
-});
-
-describe('applyIbanSwitchTarget', () => {
-  it('sets the collection flag to false for a personal target', () => {
-    const setShowCollectionIban = jest.fn();
-    applyIbanSwitchTarget({ kind: 'personal' }, setShowCollectionIban, undefined);
-    expect(setShowCollectionIban).toHaveBeenCalledWith(false);
-  });
-
-  it('sets the collection flag to true for a collection target', () => {
-    const setShowCollectionIban = jest.fn();
-    applyIbanSwitchTarget({ kind: 'collection' }, setShowCollectionIban, undefined);
-    expect(setShowCollectionIban).toHaveBeenCalledWith(true);
-  });
-
-  it('forwards the provider when the switch prop is defined', () => {
-    const setShowCollectionIban = jest.fn();
-    const onSwitch = jest.fn();
-    applyIbanSwitchTarget({ kind: 'provider', provider: PersonalIbanProvider.YAPEAL }, setShowCollectionIban, {
-      target: PersonalIbanProvider.YAPEAL,
-      onSwitch,
-    });
-    expect(onSwitch).toHaveBeenCalledWith(PersonalIbanProvider.YAPEAL);
-    expect(setShowCollectionIban).not.toHaveBeenCalled();
-  });
-
-  it('throws when a provider target is applied without a switch prop', () => {
-    const setShowCollectionIban = jest.fn();
-    expect(() =>
-      applyIbanSwitchTarget(
-        { kind: 'provider', provider: PersonalIbanProvider.FRICK },
-        setShowCollectionIban,
-        undefined,
-      ),
-    ).toThrow('Provider IBAN switch target without personalIbanProviderSwitch prop');
-    expect(setShowCollectionIban).not.toHaveBeenCalled();
   });
 });
