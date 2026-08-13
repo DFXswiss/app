@@ -7,12 +7,11 @@ import { useNavigate } from 'react-router-dom';
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { OcpMark } from './brand';
-import { useModalDialog, useToast } from './ui';
+import { useModalDialog } from './ui';
 
 type MenuAction =
   | { kind: 'route'; path: string; mode?: 'buy' | 'sell' | 'swap'; sub?: string }
   | { kind: 'external'; url: string }
-  | { kind: 'todo' } // not wired yet in this milestone — shows a "coming soon" toast
   | { kind: 'logout' };
 
 /** Mirrors the static app's short() helper (public/app2/index.html). */
@@ -258,12 +257,11 @@ interface DrawerProps {
 export function Drawer({ open, onClose, activePath }: DrawerProps) {
   const { t } = useT();
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const { address, blockchain, logout } = useWalletSession();
   const scrimRef = useRef<HTMLDivElement>(null);
   const ref = useModalDialog<HTMLElement>(open, onClose, scrimRef);
 
-  const runAction = (action: MenuAction, label: string) => {
+  const runAction = (action: MenuAction) => {
     onClose();
     if (action.kind === 'route') {
       const search = action.mode ? `?mode=${action.mode}` : action.sub ? `?sub=${action.sub}` : '';
@@ -276,10 +274,7 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
     }
     if (action.kind === 'logout') {
       void logout(); // clears session state + shows its own toast (WalletSessionProvider.logout)
-      return;
     }
-    // TODO(wire): route to the real screen once it exists (limit, OpenCryptoPay, payment routes, ...).
-    showToast(t('comingSoon') || label);
   };
 
   return (
@@ -338,11 +333,11 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
                   }`}
                   role="button"
                   tabIndex={0}
-                  onClick={() => runAction(item.action, t(item.key))}
+                  onClick={() => runAction(item.action)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      runAction(item.action, t(item.key));
+                      runAction(item.action);
                     }
                   }}
                 >
@@ -361,11 +356,11 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
               className="mitem"
               role="button"
               tabIndex={0}
-              onClick={() => runAction({ kind: 'logout' }, t('mLogout'))}
+              onClick={() => runAction({ kind: 'logout' })}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  runAction({ kind: 'logout' }, t('mLogout'));
+                  runAction({ kind: 'logout' });
                 }
               }}
             >

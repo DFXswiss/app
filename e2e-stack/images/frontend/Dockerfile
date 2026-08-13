@@ -22,8 +22,10 @@ ENV CI=false
 
 # Do not use `npm run build` — scripts/build.sh patches .env with a public API URL.
 RUN node scripts/generate-version.js && npx react-app-rewired build
+RUN ./scripts/build-app2.sh loc
 
 FROM nginx:alpine
 COPY --from=builder /app/build /usr/share/nginx/html
+COPY --from=builder /app/app2-dist /usr/share/nginx/html/app2
 COPY e2e-stack/images/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
