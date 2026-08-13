@@ -51,7 +51,7 @@ jest.mock('@dfx.swiss/react', () => ({
 }));
 
 import { render, screen } from '@testing-library/react';
-import { ApiException, TransactionError, type Sell, type Swap } from '@dfx.swiss/react';
+import { ApiException, TransactionError, type Buy, type Sell, type Swap } from '@dfx.swiss/react';
 import { PaymentSheet } from '../screens/trade/PaymentSheet';
 import { isEmailGateError, mapThrownError } from '../screens/trade/errors';
 import { ToastProvider } from '../components/ui';
@@ -86,6 +86,31 @@ function renderSwapSheet(swap: Swap | null, amount = 100, rawError: unknown = nu
           payAssetCode="USDT"
           receiveAssetCode="USDC"
           amount={amount}
+          onRetry={() => undefined}
+          onReconnect={() => undefined}
+        />
+      </ToastProvider>
+    </LanguageProvider>,
+  );
+}
+
+function renderBuySheet(buy: Buy | null) {
+  return render(
+    <LanguageProvider>
+      <ToastProvider>
+        <PaymentSheet
+          open
+          onClose={() => undefined}
+          onDone={() => undefined}
+          mode="buy"
+          loading={false}
+          rawError={null}
+          buy={buy}
+          sell={null}
+          swap={null}
+          payAssetCode=""
+          receiveAssetCode="BTC"
+          amount={100}
           onRetry={() => undefined}
           onReconnect={() => undefined}
         />
@@ -206,6 +231,24 @@ describe('missing deposit details', () => {
     expect(getByText(/Payment details are missing/i)).toBeInTheDocument();
     expect(queryByText(/Finish setup on app\.dfx\.swiss/i)).not.toBeInTheDocument();
     expect(document.querySelector('a[href]')).toBeNull();
+    expect(document.querySelector('.paybox')).toBeNull();
+  });
+
+  it('fails closed for a valid buy response without iban or paymentRequest', () => {
+    const buy = {
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.002,
+      fees: { total: 1 },
+      currency: { name: 'EUR' },
+      // deliberately no iban / paymentRequest
+    } as unknown as Buy;
+
+    const { queryByText, getByText } = renderBuySheet(buy);
+    expect(queryByText('—')).not.toBeInTheDocument();
+    expect(document.querySelector('.emailgate')).toBeTruthy();
+    expect(queryByText('One more step')).not.toBeInTheDocument();
+    expect(getByText(/Payment details are missing/i)).toBeInTheDocument();
     expect(document.querySelector('.paybox')).toBeNull();
   });
 
