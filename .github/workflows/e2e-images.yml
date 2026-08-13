@@ -48,19 +48,20 @@ jobs:
         run: |
           docker build \
             -t ghcr.io/dfxswiss/services-e2e-frontend:${{ github.sha }} \
-            -t ghcr.io/dfxswiss/services-e2e-frontend:develop \
             -f e2e-stack/images/frontend/Dockerfile .
 
       - name: Build widget image
         run: |
           docker build \
             -t ghcr.io/dfxswiss/services-e2e-widget:${{ github.sha }} \
-            -t ghcr.io/dfxswiss/services-e2e-widget:develop \
             -f e2e-stack/images/frontend-widget/Dockerfile .
 
-      # The SHA tag is what the companion workflow looks up; the develop tag is a moving
-      # convenience pointer for manual pulls and debugging.
+      # SHA tags only, on purpose. The companion workflow looks up the exact commit it checked
+      # out, so an immutable tag per commit is all that is needed - and a moving tag (such as
+      # a floating `develop` pointer) could go stale or end up pointing at different revisions
+      # for the two images when runs overlap, since this workflow is deliberately not
+      # serialised (parallel runs push disjoint SHA tags and cannot interfere).
       - name: Push images
         run: |
-          docker push --all-tags ghcr.io/dfxswiss/services-e2e-frontend
-          docker push --all-tags ghcr.io/dfxswiss/services-e2e-widget
+          docker push ghcr.io/dfxswiss/services-e2e-frontend:${{ github.sha }}
+          docker push ghcr.io/dfxswiss/services-e2e-widget:${{ github.sha }}
