@@ -204,7 +204,8 @@ export function PaymentSheet({
   const missingDepositDetails =
     !isInvalidQuote &&
     ((mode === 'sell' && !!sell && !sell.depositAddress && !sell.paymentRequest) ||
-      (mode === 'swap' && !!swap && !swap.depositAddress && !swap.paymentRequest));
+      (mode === 'swap' && !!swap && !swap.depositAddress && !swap.paymentRequest) ||
+      (mode === 'buy' && !!buy && !buy.iban?.trim() && !buy.paymentRequest));
   const gateKind =
     thrownError?.kind ??
     (validityMessage || isInvalidQuote

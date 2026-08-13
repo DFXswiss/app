@@ -177,7 +177,7 @@ export default function ReturnRouteScreen() {
 
       const tick = async () => {
         try {
-          const tx = await getTransactionByCkoId(ckoId);
+          const tx = await getTransactionByCkoId(encodeURIComponent(ckoId));
           if (cancelledRef.current) return;
           if (tx && (tx.uid || tx.id != null)) {
             const uid = tx.uid ?? (tx.id != null ? String(tx.id) : undefined);
@@ -287,12 +287,12 @@ export default function ReturnRouteScreen() {
   // is logged in (mirrors routeBuySuccess()'s CKO_PENDING → login → resume).
   useEffect(() => {
     if (pathname !== '/buy/success') return;
-    const ckoId = getParam('cko-payment-id');
+    const ckoId = getParam('cko-payment-id')?.trim();
     if (!ckoId) {
       setPanel({
         kind: 'result',
-        variant: 'ok',
-        title: t('ckoDone'),
+        variant: 'warn',
+        title: t('ckoMissing'),
         buttons: [{ label: t('done'), onClick: goContinue, primary: true }],
       });
       return;
