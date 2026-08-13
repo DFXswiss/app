@@ -1,3 +1,13 @@
+# PR CI: lint, format, tests, and builds.
+#
+# The job has no `if:` because a skipped required check counts as passing.
+# Develop PRs without the `ci:full` label run only Jest `--findRelatedTests` on
+# changed files under `src/**` and `functions/**`. The full suite runs for PRs
+# into main, workflow_dispatch, the `ci:full` label, test/build infrastructure
+# changes, unsafe path characters, and any deleted (or renamed-as-deleted)
+# source file under `src/` or `functions/`. Lint, Markdown format check,
+# `build:dev`, and `widget:dev` always run in full.
+
 name: PR CI
 
 on:
@@ -5,6 +15,13 @@ on:
     branches:
       - main
       - develop
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
+      - unlabeled
   workflow_dispatch:
 
 permissions:
@@ -16,11 +33,140 @@ env:
 jobs:
   build:
     name: Build and test
-    if: github.head_ref != 'develop'
     runs-on: ubuntu-latest
     steps:
+      # Full history (fetch-depth: 0): the scope step below diffs against the merge base
+      # with the PR's base branch (`origin/BASE...HEAD`), which a shallow single-commit
+      # checkout cannot resolve.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Decides, inside the job, whether this run needs the full suite or only the tests
+      # related to the PR's changed files. Never a job `if:` or a `paths:` filter: a
+      # skipped required check counts as passing.
+      - name: Determine test scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          # Writes both outputs and ends the step - keeps every terminal case below a
+          # one-liner guard clause. Omitting the second argument keeps `files` empty,
+          # which matters for full/none: a leftover file list must not switch Jest into
+          # changed-files mode.
+          finish_scope() {
+            local mode=$1 files=${2-}
+            { echo "mode=$mode"; echo "files=$files"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          if [[ "$EVENT_NAME" != 'pull_request' ]]; then
+            echo "Full run: event is '$EVENT_NAME', not a pull request."
+            finish_scope full
+          fi
+
+          if [[ "$BASE" == 'main' ]]; then
+            echo 'Full run: pull request targets main (release PR - the backstop for indirect regressions).'
+            finish_scope full
+          fi
+
+          # Exact `.name == "ci:full"` via jq: GitHub's `contains()` on label arrays is
+          # not case-sensitive. grep/jq exit 1 (no match) must not be conflated with
+          # >=2 (failure) - a failed jq must fail the step, not silently shrink the gate.
+          rc=0
+          jq -e 'any(.pull_request.labels[]?; .name == "ci:full")' "$GITHUB_EVENT_PATH" >/dev/null || rc=$?
+          if (( rc >= 2 )); then
+            echo "::error::jq failed while checking for the ci:full label (exit $rc)."
+            exit 1
+          fi
+          if (( rc == 0 )); then
+            echo 'Full run: the PR has the ci:full label.'
+            finish_scope full
+          fi
+
+          # Safety net: guarantee the base ref exists locally even if the checkout behavior changes.
+          git fetch --quiet origin "$BASE"
+
+          # Two diffs on purpose. The infra and deleted-source checks must also see
+          # DELETED files; filtering deletions out first would let such a PR dodge the
+          # full run.
+          #
+          # --no-renames on both: git's rename detection reports only the NEW path of a
+          # renamed file, so infrastructure or source renamed away would dodge the checks.
+          # With --no-renames the old path shows up as a deletion in diff_all.
+          diff_all=$(git diff --no-renames --name-only "origin/$BASE...HEAD")
+
+          # The files list keeps --diff-filter=d: it feeds --findRelatedTests, and deleted
+          # files no longer exist, so handing them to Jest would only error.
+          diff=$(git diff --no-renames --name-only --diff-filter=d "origin/$BASE...HEAD")
+
+          # This guard must run on the RAW diff, before any filtering: git quotes exotic
+          # path names (core.quotePath), which would distort classification below. Herestring
+          # instead of a pipe: with pipefail, grep -q quitting early could turn a hit into a
+          # SIGPIPE failure and silently defuse the guard. grep exit codes 1 (no match) and
+          # >=2 (failure) must not be conflated.
+          rc=0
+          grep -qv '^[A-Za-z0-9._/-]*$' <<< "$diff_all" || rc=$?
+          if (( rc >= 2 )); then
+            echo "::error::grep failed while validating changed paths (exit $rc)."
+            exit 1
+          fi
+          if (( rc == 0 )); then
+            echo 'Full run: a changed path contains characters outside the safe set A-Za-z0-9._/-.'
+            finish_scope full
+          fi
+
+          # Any hit on test/build infrastructure forces the full run. Root-level / these
+          # paths only: package manifests, craco configs, CRA overrides, this workflow, and
+          # the build scripts.
+          rc=0
+          infra=$(grep -E '^(package\.json|package-lock\.json|craco[^/]*|config-overrides\.js|\.github/workflows/pr\.yml|scripts/build\.sh|scripts/build-widget\.sh)$' <<< "$diff_all") || rc=$?
+          if (( rc >= 2 )); then
+            echo "::error::grep failed while matching test infrastructure paths (exit $rc)."
+            exit 1
+          fi
+          if (( rc == 0 )); then
+            echo 'Full run: the PR touches test infrastructure:'
+            echo "$infra"
+            finish_scope full
+          fi
+
+          # The files list below drops deletions so they cannot be handed to Jest. A PR
+          # that only deletes under src/ or functions/ would then become mode=none and skip
+          # tests. Renames are delete+add under --no-renames, so they hit this too.
+          rc=0
+          deleted_src=$(git diff --no-renames --name-only --diff-filter=D "origin/$BASE...HEAD")
+          deleted_source=$(grep -E '^(src/|functions/)' <<< "$deleted_src") || rc=$?
+          if (( rc >= 2 )); then
+            echo "::error::grep failed while matching deleted source files (exit $rc)."
+            exit 1
+          fi
+          if (( rc == 0 )); then
+            echo 'Full run: the PR deletes source files under src/ or functions/ (renames included):'
+            echo "$deleted_source"
+            finish_scope full
+          fi
+
+          rc=0
+          files_lines=$(grep -E '^(src/|functions/)' <<< "$diff") || rc=$?
+          if (( rc >= 2 )); then
+            echo "::error::grep failed while extracting changed source files (exit $rc)."
+            exit 1
+          fi
+          files=$(tr '\n' ' ' <<< "$files_lines" | sed 's/ *$//')
+
+          if [[ -z "$files" ]]; then
+            echo 'No run: the PR has no non-deleted files under src/ or functions/ to test.'
+            finish_scope none
+          fi
+
+          echo 'Reduced run: tests related to the changed files:'
+          echo "$files" | tr ' ' '\n'
+          finish_scope changed "$files"
 
       - name: Use Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -37,8 +183,32 @@ jobs:
       - name: Check Markdown formatting
         run: npm run format:md:check
 
+      # One step for all three scope modes: the step always runs so the check cannot be
+      # defeated by a skip. Full suite for main/dispatch/ci:full/infra/unsafe/deleted;
+      # related tests for develop PRs with changed src/ or functions/ files; none when
+      # there is nothing under those trees to hand to Jest.
       - name: Run tests
-        run: npm run test
+        env:
+          MODE: ${{ steps.scope.outputs.mode }}
+          FILES: ${{ steps.scope.outputs.files }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            full)
+              CI=true npm test
+              ;;
+            changed)
+              # Word-splitting of $FILES is intentional — one path per Jest argument.
+              CI=true npm test -- --findRelatedTests $FILES --passWithNoTests
+              ;;
+            none)
+              echo 'Nothing to test: the PR has no non-deleted files under src/ or functions/.'
+              ;;
+            *)
+              echo "::error::Unknown scope mode: '$MODE'."
+              exit 1
+              ;;
+          esac
 
       - name: Build code
         env:

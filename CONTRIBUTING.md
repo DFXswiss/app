@@ -76,8 +76,10 @@ npm run test
 ```
 
 Unit tests run in CI on every pull request against `develop` or `main` and must
-pass. The one exception is the release pull request, whose head branch is
-`develop` — there the build job is skipped by design.
+pass. Develop PRs without the `ci:full` label run Jest `--findRelatedTests` on
+the changed files under `src/` and `functions/`. Apply `ci:full` (or target
+`main`, or touch test/build infrastructure) to force the full suite. Lint,
+`build:dev` and `widget:dev` always run in full. The job is never skipped.
 
 #### Coverage
 
