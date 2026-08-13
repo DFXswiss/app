@@ -24,6 +24,8 @@ function baseData(overrides: Partial<Camt053Data> = {}): Camt053Data {
 }
 
 describe('buildCamt053Xml', () => {
+  const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+
   beforeEach(() => {
     Object.defineProperty(globalThis, 'crypto', { value: nodeCrypto, configurable: true });
     jest.useFakeTimers({ now: FROZEN_NOW });
@@ -35,6 +37,11 @@ describe('buildCamt053Xml', () => {
   afterEach(() => {
     jest.useRealTimers();
     jest.restoreAllMocks();
+    if (originalCrypto) {
+      Object.defineProperty(globalThis, 'crypto', originalCrypto);
+    } else {
+      delete (globalThis as { crypto?: Crypto }).crypto;
+    }
   });
 
   it('builds a CRDT entry with full address, Gutschrift and RCDT/XBCT', () => {
@@ -51,7 +58,10 @@ describe('buildCamt053Xml', () => {
       }),
     );
 
-    expect(xml).toContain('<CdtDbtInd>CRDT</CdtDbtInd>');
+    expect(xml).toContain(
+      '<Ntry>\n                <Amt Ccy="CHF">100.00</Amt>\n                <CdtDbtInd>CRDT</CdtDbtInd>',
+    );
+    expect(xml).not.toContain('<CdtDbtInd>DBIT</CdtDbtInd>');
     expect(xml).toContain('<Cd>RCDT</Cd><SubFmlyCd>XBCT</SubFmlyCd>');
     expect(xml).toContain('<AddtlNtryInf>Gutschrift Debtor Corp</AddtlNtryInf>');
 
@@ -59,6 +69,8 @@ describe('buildCamt053Xml', () => {
       '<Dbtr><Nm>Debtor Corp</Nm><PstlAdr><StrtNm>Bahnhofstrasse</StrtNm><BldgNb>1</BldgNb><PstCd>8001</PstCd><TwnNm>Zurich</TwnNm><Ctry>CH</Ctry></PstlAdr></Dbtr>',
     );
     expect(xml).toContain('<Cdtr><Nm>Creditor Owner</Nm></Cdtr>');
+    expect(xml).toContain('<DbtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></DbtrAcct>');
+    expect(xml).toContain('<CdtrAcct><Id><IBAN>CH9300762011623852957</IBAN></Id></CdtrAcct>');
     expect(xml).toContain(`<AcctSvcrRef>${FROZEN_UUID}</AcctSvcrRef>`);
   });
 
@@ -71,12 +83,31 @@ describe('buildCamt053Xml', () => {
       }),
     );
 
-    expect(xml).toContain('<CdtDbtInd>DBIT</CdtDbtInd>');
+    expect(xml).toContain(
+      '<Ntry>\n                <Amt Ccy="CHF">100.00</Amt>\n                <CdtDbtInd>DBIT</CdtDbtInd>',
+    );
     expect(xml).toContain('<Cd>ICDT</Cd><SubFmlyCd>DMCT</SubFmlyCd>');
     expect(xml).toContain('<AddtlNtryInf>Zahlung Creditor Corp</AddtlNtryInf>');
     expect(xml).not.toContain('<PstlAdr>');
     expect(xml).toContain('<Dbtr><Nm>Debtor Owner</Nm></Dbtr>');
     expect(xml).toContain('<Cdtr><Nm>Creditor Corp</Nm></Cdtr>');
+    expect(xml).toContain('<DbtrAcct><Id><IBAN>CH9300762011623852957</IBAN></Id></DbtrAcct>');
+    expect(xml).toContain('<CdtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></CdtrAcct>');
+  });
+
+  it('builds a DBIT entry with address on Cdtr and not on Dbtr', () => {
+    const xml = buildCamt053Xml(
+      baseData({
+        direction: 'DBIT',
+        street: 'Hauptstrasse',
+        name: 'Creditor Corp',
+        accountOwner: 'Debtor Owner',
+      }),
+    );
+
+    expect(xml).toContain('<Cdtr><Nm>Creditor Corp</Nm><PstlAdr><StrtNm>Hauptstrasse</StrtNm></PstlAdr></Cdtr>');
+    expect(xml).toContain('<Dbtr><Nm>Debtor Owner</Nm></Dbtr>');
+    expect(xml).not.toContain('<Dbtr><Nm>Debtor Owner</Nm><PstlAdr>');
   });
 
   it('emits only StrtNm when street is the sole address field', () => {
