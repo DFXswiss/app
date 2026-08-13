@@ -22,6 +22,12 @@ granted in writing on the pull request.
 A follow-up that exists only as an intention is a follow-up nobody opens. The
 next reviewer then finds the same points again and the work is done twice.
 
+### Releases into main
+
+Open feature pull requests against `develop`. CI rejects a pull request into
+`main` unless its head is this repository's `develop` (check name `Main only
+from develop`).
+
 ### Report every bug you find, including pre-existing ones
 
 A defect in code a pull request touches is reported as a bug — with the same
