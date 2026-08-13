@@ -1804,7 +1804,7 @@ function Ident({ step, lang, onDone, onBack, onError }: EditProps): JSX.Element 
   // listen to close events
   useEffect(() => {
     window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('keydown', onMessage);
+    return () => window.removeEventListener('message', onMessage);
   }, []);
 
   function onMessage(e: Event) {

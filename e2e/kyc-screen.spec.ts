@@ -39,11 +39,11 @@ function session(currentStep: {
   };
 }
 
-async function mockStartStep(
+async function mockKyc(
   page: Page,
   body: ReturnType<typeof session>,
 ): Promise<void> {
-  await page.route(/\/v2\/kyc\/[^/?]+(?:\?|$)/, async (route: Route) => {
+  await page.route(/\/v2\/kyc(?:\/[^?]*)?(?:\?|$)/, async (route: Route) => {
     if (route.request().method() !== 'GET') {
       await route.continue();
       return;
@@ -58,7 +58,7 @@ async function mockStartStep(
 
 test.describe('KYC step result', () => {
   test('recommendation InReview: pending confirmation hint', async ({ page }) => {
-    await mockStartStep(page, session({ name: 'Recommendation', status: 'InReview' }));
+    await mockKyc(page, session({ name: 'Recommendation', status: 'InReview' }));
 
     await page.goto('/kyc?code=e2e-rec&step=Recommendation');
     await page.waitForLoadState('networkidle');
@@ -73,7 +73,7 @@ test.describe('KYC step result', () => {
   });
 
   test('ident InReview: finished copy', async ({ page }) => {
-    await mockStartStep(page, session({ name: 'Ident', status: 'InReview' }));
+    await mockKyc(page, session({ name: 'Ident', status: 'InReview' }));
 
     await page.goto('/kyc?code=e2e-ident&step=Ident');
     await page.waitForLoadState('networkidle');
@@ -87,7 +87,7 @@ test.describe('KYC step result', () => {
   });
 
   test('recommendation Failed: failed copy and reason', async ({ page }) => {
-    await mockStartStep(
+    await mockKyc(
       page,
       session({ name: 'Recommendation', status: 'Failed', reason: 'AccountExists' }),
     );

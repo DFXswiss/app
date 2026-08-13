@@ -1429,6 +1429,23 @@ describe('Ident', () => {
     expect(await screen.findByRole('status')).toBeInTheDocument();
   });
 
+  it('stops listening for iframe messages after unmount', async () => {
+    hangContinue();
+    mockStartStep.mockResolvedValue(
+      session(step('Ident', 'InProgress', { session: { url: 'https://id.example', type: 'Browser' } })),
+    );
+    const view = renderAt('/kyc?code=abc&step=Ident');
+    await screen.findByTitle('', { exact: false }).catch(() => document.querySelector('iframe'));
+    view.unmount();
+    mockContinueKyc.mockClear();
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', { data: { type: 'dfx-iframe-message', status: 'Completed', name: 'Ident' } }),
+      );
+    });
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+  });
+
   it('renders an iframe session and handles iframe messages', async () => {
     hangContinue();
     mockStartStep.mockResolvedValue(
