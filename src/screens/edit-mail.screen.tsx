@@ -142,13 +142,13 @@ export default function EditMailScreen(): JSX.Element {
             }}
           />
         </StyledVerticalStack>
-      ) : checking2fa ? (
+      ) : checking2fa || user == null ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : !mailVerificationStep ? (
         <EditOverlay
           label={translate('screens/kyc', 'Email address')}
           autocomplete="email"
-          prefill={user?.mail}
+          prefill={user.mail}
           placeholder={translate('screens/kyc', 'Email address')}
           validation={Validations.Mail}
           onCancel={() => {
