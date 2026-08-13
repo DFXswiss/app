@@ -1964,12 +1964,11 @@ function FinancialData({ rootRef, code, step, onDone, onBack }: EditProps): JSX.
   }, [code, language]);
 
   useEffect(() => {
-    if (!step.session) return;
+    if (!responses.length) return;
 
-    responses.length &&
-      setFinancialData(code, step.session.url, { responses })
-        .then((r) => isStepDone(r) && onDone())
-        .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
+    setFinancialData(code, step.session.url, { responses })
+      .then((r) => isStepDone(r) && onDone())
+      .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
   }, [responses]);
 
   useEffect(() => {
@@ -1989,9 +1988,11 @@ function FinancialData({ rootRef, code, step, onDone, onBack }: EditProps): JSX.
 
     if (!currentResponse) {
       setResponses((r) => [...r, { key: currentQuestion.key, value }]);
-    } else if (currentResponse.value !== value) {
-      currentResponse.value = value;
-      setResponses((r) => [...r]);
+    } else {
+      if (currentResponse.value !== value) {
+        currentResponse.value = value;
+        setResponses((r) => [...r]);
+      }
     }
 
     setIndex((i) => i && i + 1);

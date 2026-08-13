@@ -39,13 +39,6 @@ function session(currentStep: {
   };
 }
 
-async function hideDevOverlay(page: Page): Promise<void> {
-  await page.addStyleTag({
-    content:
-      'iframe#webpack-dev-server-client-overlay,#webpack-dev-server-client-overlay{display:none!important}',
-  });
-}
-
 async function mockKyc(
   page: Page,
   body: ReturnType<typeof session>,
@@ -72,7 +65,6 @@ test.describe('KYC step result', () => {
     await expect(page.getByText(PENDING)).toBeVisible({ timeout: 20000 });
     await expect(page.getByText(FINISHED)).toHaveCount(0);
     await expect(page.getByText(FAILED)).toHaveCount(0);
-    await hideDevOverlay(page);
 
     await expect(page).toHaveScreenshot('kyc-recommendation-pending.png', {
       maxDiffPixels: 10000,
@@ -86,7 +78,6 @@ test.describe('KYC step result', () => {
 
     await expect(page.getByText(FINISHED)).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(PENDING)).toHaveCount(0);
-    await hideDevOverlay(page);
 
     await expect(page).toHaveScreenshot('kyc-step-finished.png', {
       maxDiffPixels: 10000,
@@ -104,7 +95,6 @@ test.describe('KYC step result', () => {
     await expect(page.getByText(FAILED)).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('AccountExists')).toBeVisible();
     await expect(page.getByText(PENDING)).toHaveCount(0);
-    await hideDevOverlay(page);
 
     await expect(page).toHaveScreenshot('kyc-step-failed.png', {
       maxDiffPixels: 10000,
