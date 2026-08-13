@@ -132,7 +132,6 @@ export default function ReturnRouteScreen() {
   const cancelledRef = useRef(false);
   const mergeStartedRef = useRef(false);
   const ckoStartedRef = useRef(false);
-  const ckoPromptedRef = useRef(false);
 
   const goContinue = useCallback(() => navigate('/'), [navigate]);
 
@@ -298,11 +297,15 @@ export default function ReturnRouteScreen() {
       return;
     }
     if (!isLoggedIn) {
-      if (!ckoPromptedRef.current) {
-        ckoPromptedRef.current = true;
-        openConnect();
-      }
-      setPanel({ kind: 'spinner', msgKey: 'ckoWait' });
+      setPanel({
+        kind: 'result',
+        variant: 'warn',
+        title: t('ckoNeedLogin'),
+        buttons: [
+          { label: t('connect'), onClick: openConnect, primary: true },
+          { label: t('done'), onClick: goContinue },
+        ],
+      });
       return;
     }
     if (ckoStartedRef.current) return;

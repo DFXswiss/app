@@ -233,6 +233,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
   // User-chosen crypto refund address (only used when the API omitted refundTarget).
   const [selectedCryptoAddress, setSelectedCryptoAddress] = useState('');
   const ibanRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false);
 
   // A server-supplied IBAN is locked (the refund must go back to the account that
   // paid); a missing one is editable so the user can enter the payout account.
@@ -324,7 +325,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
   }, [kind]);
 
   const submit = () => {
-    if (submitting || tx.id == null) return;
+    if (submittingRef.current || tx.id == null) return;
     let body: TransactionRefundTarget;
     if (kind === 'crypto') {
       // Server-supplied target is authoritative. Otherwise only an address from
@@ -367,6 +368,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
     } else {
       body = {}; // card → refund goes back to the card automatically (empty body)
     }
+    submittingRef.current = true;
     setSubmitting(true);
     setWarn('');
     setTransactionRefundTarget(tx.id, body)
@@ -386,6 +388,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
               ? `${t('genErr')}: ${message}`
               : t('genErr'),
         );
+        submittingRef.current = false;
         setSubmitting(false);
       });
   };
