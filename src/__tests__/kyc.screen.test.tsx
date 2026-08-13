@@ -50,7 +50,8 @@ const DE = { name: 'Germany', symbol: 'DE' };
 const LANG = { symbol: 'EN', name: 'English' };
 const mockAllowedCountries = [CH, DE];
 const mockOrgCountries = [CH];
-const mockNationalityCountries = [CH, DE];
+let mockNationalityCountries: { name: string; symbol: string }[] | undefined = [CH, DE];
+let mockLanguage: { symbol: string; name: string } | undefined = LANG;
 
 jest.mock('@dfx.swiss/react', () => ({
   AccountType: {
@@ -501,8 +502,12 @@ jest.mock('../contexts/settings.context', () => ({
     processingKycData: mockApp.processingKycData,
     allowedCountries: mockAllowedCountries,
     allowedOrganizationCountries: mockOrgCountries,
-    nationalityCountries: mockNationalityCountries,
-    language: LANG,
+    get nationalityCountries() {
+      return mockNationalityCountries;
+    },
+    get language() {
+      return mockLanguage;
+    },
   }),
 }));
 
@@ -570,12 +575,6 @@ jest.mock('../components/error-hint', () => ({
   ),
 }));
 
-jest.mock('../components/kyc-step-result-hint', () => ({
-  KycStepResultHint: ({ step }: { step: { name: string; status: string } }) => (
-    <div data-testid="result-hint">{`${step.name}:${step.status}`}</div>
-  ),
-}));
-
 jest.mock('../components/kyc-status', () => ({
   KycStatusTable: ({ onLimitIncrease }: { onLimitIncrease?: () => void }) => (
     <div data-testid="kyc-table">
@@ -632,7 +631,7 @@ function renderAt(path: string) {
   const router = createMemoryRouter([{ path: '/kyc', element: <KycScreen /> }, { path: '/profile', element: <KycScreen /> }, { path: '/contact', element: <KycScreen /> }], {
     initialEntries: [path],
   });
-  return render(<RouterProvider router={router} />);
+  return Object.assign(render(<RouterProvider router={router} />), { router });
 }
 
 function select(testId: string, value: unknown) {
@@ -672,7 +671,11 @@ beforeEach(() => {
   mockApp.processingKycData = false;
   mockApp.lang = undefined;
   mockAuth.user = { kyc: { hash: 'user-hash' } };
+  mockNationalityCountries = [CH, DE];
+  mockLanguage = LANG;
   mockToBase64.mockResolvedValue('data:image/png;base64,xx');
+  mockGetFinancialData.mockResolvedValue({ questions: [], responses: [] });
+  mockSetFinancialData.mockResolvedValue({ status: 'InProgress' });
   mockGetKycInfo.mockResolvedValue(info());
   mockContinueKyc.mockResolvedValue(info());
   mockStartStep.mockResolvedValue(info());
@@ -695,6 +698,10 @@ describe('KycScreen shell', () => {
     await screen.findByTestId('kyc-table');
     expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
     expect(mockGetKycInfo).toHaveBeenCalledWith('abc');
+    const idleBack = mockUseLayoutOptions.mock.calls.at(-1)?.[0] as { onBack: () => void };
+    await act(async () => {
+      idleBack.onBack();
+    });
     await waitFor(() => expect(mockChangeLanguage).toHaveBeenCalledWith(LANG));
   });
 
@@ -729,7 +736,12 @@ describe('KycScreen shell', () => {
   it('shows the pending-result panel for a Recommendation in review', async () => {
     mockStartStep.mockResolvedValue(session(step('Recommendation', 'InReview')));
     renderAt('/kyc?code=abc&step=Recommendation');
-    expect(await screen.findByTestId('result-hint')).toHaveTextContent('Recommendation:InReview');
+    expect(
+      await screen.findByText(
+        'Your recommendation request has been sent. Your contact person has to confirm it before you can continue.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('This step has already been finished.')).toBeNull();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     });
@@ -739,13 +751,19 @@ describe('KycScreen shell', () => {
   it('shows the finished copy for other in-review steps', async () => {
     mockStartStep.mockResolvedValue(session(step('Ident', 'InReview')));
     renderAt('/kyc?code=abc&step=Ident');
-    expect(await screen.findByTestId('result-hint')).toHaveTextContent('Ident:InReview');
+    expect(await screen.findByText('This step has already been finished.')).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'Your recommendation request has been sent. Your contact person has to confirm it before you can continue.',
+      ),
+    ).toBeNull();
   });
 
   it('shows a failed-result panel', async () => {
     mockStartStep.mockResolvedValue(session(step('Recommendation', 'Failed', { reason: 'AccountExists' })));
     renderAt('/kyc?code=abc&step=Recommendation');
-    expect(await screen.findByTestId('result-hint')).toHaveTextContent('Recommendation:Failed');
+    expect(await screen.findByText('This step has failed.')).toBeInTheDocument();
+    expect(screen.getByText('AccountExists')).toBeInTheDocument();
   });
 
   it('maps ?step=Ident/video:3 onto Sumsub video with a sequence', async () => {
@@ -828,6 +846,16 @@ describe('KycScreen shell', () => {
     );
     renderAt('/kyc?code=abc&client=Acme');
     expect(await screen.findByText(/transfer my KYC data to Acme/)).toBeInTheDocument();
+    const consentBack = mockUseLayoutOptions.mock.calls.at(-1)?.[0] as { onBack: () => void };
+    mockGetKycInfo.mockResolvedValue(
+      info({
+        kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }],
+        kycClients: [],
+      }),
+    );
+    await act(async () => {
+      consentBack.onBack();
+    });
     mockAddTransferClient.mockResolvedValue(undefined);
     mockContinueKyc.mockResolvedValue(info({ kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }] }));
     await act(async () => {
@@ -1027,8 +1055,10 @@ describe('KycScreen shell', () => {
       session({ name: 'PhoneChange', status: 'InProgress', sequenceNumber: 0 }),
     );
     renderAt('/kyc?code=abc&step=PhoneChange');
-    await waitFor(() => expect(mockStartStep).toHaveBeenCalled());
-    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+    await screen.findByRole('button', { name: 'Cancel' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    });
     expect(mockCancelStep).not.toHaveBeenCalled();
   });
 
@@ -1061,6 +1091,42 @@ describe('KycScreen shell', () => {
     await screen.findByRole('status');
     expect(mockGetKycInfo).not.toHaveBeenCalled();
   });
+
+  it('does not reload from the link hint once the code is gone', async () => {
+    mockGetKycInfo.mockRejectedValueOnce({ statusCode: 409, message: 'account exists merge' });
+    const { router } = renderAt('/kyc?code=abc');
+    await screen.findByText(/already have an account/);
+    mockAuth.user = undefined;
+    mockGetKycInfo.mockClear();
+    await act(async () => {
+      await router.navigate('/kyc');
+    });
+    const opts = mockUseLayoutOptions.mock.calls.at(-1)?.[0] as { onBack: () => void };
+    await act(async () => {
+      opts.onBack();
+    });
+    expect(mockGetKycInfo).not.toHaveBeenCalled();
+  });
+
+  it('does not send consent once the code is gone', async () => {
+    mockGetKycInfo.mockResolvedValue(
+      info({
+        kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }],
+        kycClients: [],
+      }),
+    );
+    const { router } = renderAt('/kyc?code=abc&client=Acme');
+    await screen.findByText(/transfer my KYC data to Acme/);
+    mockAuth.user = undefined;
+    mockAddTransferClient.mockClear();
+    await act(async () => {
+      await router.navigate('/kyc?client=Acme');
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    });
+    expect(mockAddTransferClient).not.toHaveBeenCalled();
+  });
 });
 
 describe('KycEdit routing', () => {
@@ -1085,6 +1151,18 @@ describe('KycEdit routing', () => {
   });
 
   it('opens OwnerDirectory with a template', async () => {
+    mockLanguage = { symbol: 'FR', name: 'Français' };
+    mockStartStep.mockResolvedValue(session(step('OwnerDirectory')));
+    renderAt('/kyc?code=abc&step=OwnerDirectory');
+    expect(await screen.findByRole('button', { name: 'Document template' })).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Document template' }));
+    });
+    expect(mockWindowOpen).toHaveBeenCalled();
+  });
+
+  it('falls back to the English template when the language has no URL', async () => {
+    mockLanguage = { symbol: 'IT', name: 'Italiano' };
     mockStartStep.mockResolvedValue(session(step('OwnerDirectory')));
     renderAt('/kyc?code=abc&step=OwnerDirectory');
     expect(await screen.findByRole('button', { name: 'Document template' })).toBeInTheDocument();
@@ -1113,6 +1191,7 @@ describe('KycEdit routing', () => {
 describe('ContactData', () => {
   it('confirms the mail and completes the step', async () => {
     mockStartStep.mockResolvedValue(session(step('ContactData')));
+    mockSetContactData.mockResolvedValueOnce({ status: 'InProgress' });
     mockSetContactData.mockResolvedValue({ status: 'InReview' });
     mockContinueKyc.mockResolvedValue(info());
     renderAt('/kyc?code=abc&step=ContactData');
@@ -1132,6 +1211,10 @@ describe('ContactData', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
     });
     expect(mockSetContactData).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+    });
+    expect(mockContinueKyc).toHaveBeenCalled();
   });
 
   it('shows extra copy outside KYC mode and handles a merge fail', async () => {
@@ -1227,12 +1310,38 @@ describe('PersonalData', () => {
   });
 
   it('shows an API error and skips submit without a session', async () => {
+    mockStartStep.mockResolvedValue(
+      session({ name: 'PersonalData', status: 'InProgress', sequenceNumber: 0 }),
+    );
+    renderAt('/kyc?code=abc&step=PersonalData');
+    await screen.findByTestId('accountType');
+    select('accountType', 'Personal');
+    await screen.findByTestId('firstName');
+    typeField('firstName', 'Ada');
+    typeField('lastName', 'Lovelace');
+    typeField('address.street', 'Bahnhof');
+    typeField('address.city', 'Zurich');
+    typeField('address.zip', '8001');
+    typeField('phone', '+41791234567');
+    fireEvent.change(screen.getByTestId('address.country-search'), { target: { value: 'Switzerland' } });
+    await clickNext();
+    expect(mockSetPersonalData).not.toHaveBeenCalled();
+  });
+
+  it('reports a PersonalData API error', async () => {
     mockStartStep.mockResolvedValue(session(step('PersonalData')));
     mockSetPersonalData.mockRejectedValue({});
     renderAt('/kyc?code=abc&step=PersonalData');
     await screen.findByTestId('accountType');
     select('accountType', 'Personal');
     await screen.findByTestId('firstName');
+    typeField('firstName', 'Ada');
+    typeField('lastName', 'Lovelace');
+    typeField('address.street', 'Bahnhof');
+    typeField('address.city', 'Zurich');
+    typeField('address.zip', '8001');
+    typeField('phone', '+41791234567');
+    fireEvent.change(screen.getByTestId('address.country-search'), { target: { value: 'Switzerland' } });
     await clickNext();
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
   });
@@ -1277,6 +1386,7 @@ describe('form steps', () => {
   });
 
   it('Nationality submits and reports errors', async () => {
+    mockNationalityCountries = undefined;
     await land('NationalityData');
     fireEvent.change(await screen.findByTestId('nationality-search'), { target: { value: '' } });
     fireEvent.change(screen.getByTestId('nationality-search'), { target: { value: 'zz' } });
@@ -1364,23 +1474,75 @@ describe('form steps', () => {
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
   });
 
-  it.each([
-    ['NationalityData'],
-    ['Recommendation'],
-    ['SignatoryPower'],
-    ['OperationalActivity'],
-    ['PaymentAgreement'],
-    ['RecallAgreement'],
-  ])('skips %s submit without a session', async (name) => {
+  async function landWithoutSession(name: string) {
     mockStartStep.mockResolvedValue(session({ name, status: 'InProgress', sequenceNumber: 0 }));
     renderAt(`/kyc?code=abc&step=${name}`);
-    await waitFor(() => expect(mockStartStep).toHaveBeenCalled());
-    const next = await screen.findByRole('button', { name: 'Next' }).catch(() => null);
-    if (next) {
-      await act(async () => {
-        fireEvent.click(next);
-      });
-    }
+    await screen.findByRole('button', { name: 'Next' });
+  }
+
+  it('skips Nationality submit without a session', async () => {
+    await landWithoutSession('NationalityData');
+    fireEvent.change(screen.getByTestId('nationality-search'), { target: { value: 'Switzerland' } });
+    await clickNext();
+    expect(mockSetNationalityData).not.toHaveBeenCalled();
+  });
+
+  it('skips Recommendation submit without a session', async () => {
+    await landWithoutSession('Recommendation');
+    typeField('key', 'ref');
+    await clickNext();
+    expect(mockSetRecommendationData).not.toHaveBeenCalled();
+  });
+
+  it('skips SignatoryPower submit without a session', async () => {
+    await landWithoutSession('SignatoryPower');
+    select('signatoryPower', 'Single');
+    await clickNext();
+    expect(mockSetSignatoryPowerData).not.toHaveBeenCalled();
+  });
+
+  it('skips OperationalActivity submit without a session', async () => {
+    await landWithoutSession('OperationalActivity');
+    select('isOperational', false);
+    await clickNext();
+    expect(mockSetOperationalData).not.toHaveBeenCalled();
+  });
+
+  it('skips FileUpload submit without a session', async () => {
+    mockLanguage = undefined;
+    await landWithoutSession('AdditionalDocuments');
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
+    await clickNext();
+    expect(mockSetFileData).not.toHaveBeenCalled();
+  });
+
+  it('skips LegalEntity submit without a session', async () => {
+    await landWithoutSession('LegalEntity');
+    select('legalEntity', 'AG');
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
+    await clickNext();
+    expect(mockSetLegalEntityData).not.toHaveBeenCalled();
+  });
+
+  it('skips PaymentAgreement submit without a session', async () => {
+    await landWithoutSession('PaymentAgreement');
+    typeField('name', 'Shop');
+    typeField('registrationNumber', 'CHE');
+    typeField('purpose', 'sales');
+    select('storeType', 'Online');
+    select('merchantCategory', 'Bank');
+    select('goodsType', 'Tangible');
+    select('goodsCategory', 'Jewelry');
+    fireEvent.click(screen.getByTestId('checkbox'));
+    await clickNext();
+    expect(mockSetPaymentData).not.toHaveBeenCalled();
+  });
+
+  it('skips RecallAgreement submit without a session', async () => {
+    await landWithoutSession('RecallAgreement');
+    fireEvent.click(screen.getByTestId('checkbox'));
+    await clickNext();
+    expect(mockSetRecallData).not.toHaveBeenCalled();
   });
 
   it('OperationalActivity shows the website when operational', async () => {
@@ -1461,6 +1623,18 @@ describe('BeneficialOwner', () => {
     expect(mockSetBeneficialData).toHaveBeenCalled();
   });
 
+  it('skips BeneficialOwner submit without a session', async () => {
+    mockStartStep.mockResolvedValue(
+      session({ name: 'BeneficialOwner', status: 'InProgress', sequenceNumber: 0 }),
+    );
+    renderAt('/kyc?code=abc&step=BeneficialOwner');
+    await screen.findByTestId('ownerCount');
+    select('ownerCount', 1);
+    await clickNext();
+    expect(mockSetBeneficialData).not.toHaveBeenCalled();
+    expect(screen.getByTestId('ownerCount')).toBeInTheDocument();
+  });
+
   it('submits immediately when the account holder is the only owner', async () => {
     mockStartStep.mockResolvedValue(session(step('BeneficialOwner')));
     mockSetBeneficialData.mockResolvedValue({});
@@ -1479,7 +1653,7 @@ describe('BeneficialOwner', () => {
 
   it('collects a managing director when there are no owners', async () => {
     mockStartStep.mockResolvedValue(session(step('BeneficialOwner')));
-    mockSetBeneficialData.mockRejectedValue({ message: 'nope' });
+    mockSetBeneficialData.mockRejectedValue({});
     renderAt('/kyc?code=abc&step=BeneficialOwner');
     await screen.findByTestId('ownerCount');
     select('ownerCount', 0);
@@ -1499,7 +1673,7 @@ describe('BeneficialOwner', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     });
-    expect(await screen.findByTestId('error-hint')).toHaveTextContent('nope');
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
   });
 });
 
@@ -1577,6 +1751,9 @@ describe('Ident', () => {
     );
     renderAt('/kyc?code=abc&step=Ident');
     expect(await screen.findByTitle('', { exact: false }).catch(() => document.querySelector('iframe'))).toBeTruthy();
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'other', status: 'Completed' } }));
+    });
     await act(async () => {
       window.dispatchEvent(
         new MessageEvent('message', { data: { type: 'dfx-iframe-message', status: 'Completed', name: 'Ident' } }),
@@ -1722,12 +1899,58 @@ describe('FinancialData', () => {
     },
   ];
 
+  it('updates an existing financial answer', async () => {
+    mockGetFinancialData.mockResolvedValue({
+      questions: [
+        { key: 'note', type: 'Text', title: 'Note', description: 'Anything else' },
+        { key: 'more', type: 'Text', title: 'More', description: 'And more' },
+      ],
+      responses: [{ key: 'note', value: 'old' }],
+    });
+    mockSetFinancialData.mockResolvedValue({ status: 'InProgress' });
+    mockStartStep.mockResolvedValue(session(step('FinancialData')));
+    renderAt('/kyc?code=abc&step=FinancialData');
+    expect(await screen.findByText('More')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('icon-back'));
+    expect(await screen.findByText('Note')).toBeInTheDocument();
+    expect(screen.getByTestId('text')).toHaveValue('old');
+    await clickNext();
+    expect(await screen.findByText('More')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('icon-back'));
+    expect(await screen.findByText('Note')).toBeInTheDocument();
+    typeField('text', 'new');
+    expect(screen.getByTestId('text')).toHaveValue('new');
+    await clickNext();
+    await waitFor(() =>
+      expect(mockSetFinancialData).toHaveBeenCalledWith(
+        'abc',
+        'https://api.dfx.swiss/step',
+        { responses: [expect.objectContaining({ key: 'note', value: 'new' })] },
+      ),
+    );
+  });
+
+  it('does not load questions without a session', async () => {
+    mockStartStep.mockResolvedValue(
+      session({ name: 'FinancialData', status: 'InProgress', sequenceNumber: 0 }),
+    );
+    renderAt('/kyc?code=abc&step=FinancialData');
+    await waitFor(() => expect(mockStartStep).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(mockGetFinancialData).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
   it('walks every question type, back, and completion', async () => {
     mockGetFinancialData.mockResolvedValue({ questions, responses: [] });
     mockSetFinancialData.mockResolvedValue({ status: 'InProgress' });
     mockStartStep.mockResolvedValue(session(step('FinancialData')));
     renderAt('/kyc?code=abc&step=FinancialData');
     expect(await screen.findByText('T&C')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('checkbox'));
+    fireEvent.click(screen.getByTestId('checkbox'));
     fireEvent.click(screen.getByTestId('checkbox'));
     mockSetFinancialData.mockResolvedValueOnce({ status: 'InProgress' });
     await clickNext();
@@ -1747,6 +1970,7 @@ describe('FinancialData', () => {
     await clickNext();
     expect(await screen.findByText('Just confirm')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('icon-back'));
+    typeField('text', 'hi');
     typeField('text', 'ho');
     mockSetFinancialData.mockResolvedValue({ status: 'Completed' });
     mockContinueKyc.mockResolvedValue(info());
@@ -1832,25 +2056,60 @@ describe('FinancialData', () => {
 });
 
 describe('ManualIdent and change steps', () => {
+  it('skips manual ident submit without a session', async () => {
+    mockNationalityCountries = undefined;
+    mockStartStep.mockResolvedValue(
+      session({ name: 'Ident', status: 'InProgress', sequenceNumber: 0, type: 'Manual' }),
+    );
+    renderAt('/kyc?code=abc&step=Ident/Manual');
+    await screen.findByTestId('firstName');
+    mockNationalityCountries = [CH, DE];
+    typeField('firstName', 'Ada');
+    typeField('lastName', 'L');
+    typeField('birthday', '1990-01-01');
+    typeField('documentNumber', '1');
+    fireEvent.change(screen.getByTestId('nationality-search'), { target: { value: 'Switzerland' } });
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
+    await clickNext();
+    expect(mockSetManualIdentData).not.toHaveBeenCalled();
+  });
+
   it('submits manual ident', async () => {
     mockStartStep.mockResolvedValue(session(step('Ident', 'InProgress', { type: 'Manual' })));
     mockSetManualIdentData.mockRejectedValue({});
     renderAt('/kyc?code=abc&step=Ident/Manual');
     expect(await screen.findByTestId('firstName')).toBeInTheDocument();
+    mockToBase64.mockResolvedValueOnce(undefined);
     typeField('firstName', 'Ada');
     typeField('lastName', 'L');
+    typeField('birthName', 'Ada');
     typeField('birthday', 'not-a-date');
     typeField('birthday', '1990-01-01');
+    typeField('birthplace', 'Bern');
+    select('gender', 'Male');
+    select('documentType', 'PASSPORT');
     typeField('documentNumber', '1');
     fireEvent.change(screen.getByTestId('nationality-search'), { target: { value: '' } });
     fireEvent.change(screen.getByTestId('nationality-search'), { target: { value: 'zz' } });
     fireEvent.change(screen.getByTestId('nationality-search'), { target: { value: 'ch' } });
     fireEvent.change(screen.getByTestId('nationality-search'), { target: { value: 'Switzerland' } });
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [txt] } });
     fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     });
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('skips PhoneChange submit without a session', async () => {
+    mockStartStep.mockResolvedValue(
+      session({ name: 'PhoneChange', status: 'InProgress', sequenceNumber: 0 }),
+    );
+    renderAt('/kyc?code=abc&step=PhoneChange');
+    await screen.findByTestId('phone');
+    typeField('phone', '+41791234567');
+    await clickNext();
+    expect(mockSetPhoneChangeData).not.toHaveBeenCalled();
   });
 
   it('PhoneChange submits', async () => {
@@ -1863,6 +2122,22 @@ describe('ManualIdent and change steps', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     });
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('skips AddressChange submit without a session', async () => {
+    mockStartStep.mockResolvedValue(
+      session({ name: 'AddressChange', status: 'InProgress', sequenceNumber: 0 }),
+    );
+    renderAt('/kyc?code=abc&step=AddressChange');
+    await screen.findByTestId('address.street');
+    typeField('address.street', 'A');
+    typeField('address.city', 'B');
+    typeField('address.zip', '8001');
+    fireEvent.change(screen.getByTestId('address.country-search'), { target: { value: 'Switzerland' } });
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [txt] } });
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
+    await clickNext();
+    expect(mockSetAddressChangeData).not.toHaveBeenCalled();
   });
 
   it('AddressChange requires a file then submits', async () => {
@@ -1889,6 +2164,20 @@ describe('ManualIdent and change steps', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     });
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('skips NameChange submit without a session', async () => {
+    mockStartStep.mockResolvedValue(
+      session({ name: 'NameChange', status: 'InProgress', sequenceNumber: 0 }),
+    );
+    renderAt('/kyc?code=abc&step=NameChange');
+    await screen.findByTestId('firstName');
+    typeField('firstName', 'New');
+    typeField('lastName', 'Name');
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [txt] } });
+    fireEvent.change(screen.getByTestId('file'), { target: { files: [png] } });
+    await clickNext();
+    expect(mockSetNameChangeData).not.toHaveBeenCalled();
   });
 
   it('NameChange requires a file then submits', async () => {
