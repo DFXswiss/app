@@ -22,7 +22,9 @@ ENV CI=false
 
 # Do not use `npm run build` — scripts/build.sh patches .env with a public API URL.
 RUN node scripts/generate-version.js && npx react-app-rewired build
-RUN ./scripts/build-app2.sh loc
+# Alpine has no bash; the App 2.0 script is bash and calls react-app-rewired from PATH.
+RUN apk add --no-cache bash \
+  && PATH="/app/node_modules/.bin:$PATH" bash ./scripts/build-app2.sh loc
 
 FROM nginx:alpine
 COPY --from=builder /app/build /usr/share/nginx/html
