@@ -1,5 +1,6 @@
 # PR check: build handbook image (no push) and run container smoke tests.
-# Draft PRs are skipped; ready_for_review re-triggers the check.
+# A second, Node-only job checks e2e/*.spec.ts ↔ metadata.json parity.
+# Draft PRs skip the image job; ready_for_review re-triggers the check.
 
 name: Handbook Build Check
 
@@ -142,3 +143,22 @@ jobs:
 
           docker stop handbook-smoke
           docker rm handbook-smoke
+
+  spec-metadata-parity:
+    name: "Handbook coverage: spec ↔ metadata parity"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Test the parity checker
+        run: node --test scripts/handbook/check-parity.test.js
+
+      - name: Check spec ↔ metadata parity
+        run: node scripts/handbook/check-parity.js
