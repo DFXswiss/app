@@ -125,8 +125,8 @@ This harness checks function, not appearance. The CI job always runs; the stack
 comes up only for runtime-relevant changes. Documentation-only PRs with safe path
 characters skip the stack (`mode=none`). There is no selected/partial mode:
 every leftover runtime path, the `ci:full` label, PRs into `main`,
-`workflow_dispatch`, and changes under `e2e-stack/` or the e2e workflow force a
-full run. Both suites exist side by side and serve different purposes.
+`workflow_dispatch`, unsafe path characters, and changes under `e2e-stack/` or
+`.github/workflows/e2e-stack.yml` force a full run. Both suites exist side by side and serve different purposes.
 
 ## Relationship with the API repository
 

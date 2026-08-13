@@ -204,7 +204,7 @@ above, which does not run in CI — this harness's job runs on every pull reques
 The stack comes up only for runtime-relevant changes. Documentation-only PRs with
 safe path characters record `mode=none` and skip the stack. Apply `ci:full` (or
 target `main`, run `workflow_dispatch`, use unsafe path characters, or touch
-`e2e-stack/` / the e2e workflow) to force a full run.
+`e2e-stack/` / `.github/workflows/e2e-stack.yml`) to force a full run.
 
 A pull request that changes a screen or an API contract should bring or update
 the matching full-stack test.
