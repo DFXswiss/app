@@ -92,13 +92,6 @@ const HW_CH: readonly Blockchain[] = [
  * actual reachable-chain list. */
 export const EVM_NETWORK_COUNT = EVM_CH.length;
 
-// Real WalletConnect v2 (Reown) is only offered when a Cloud project id is configured — mirrors the
-// original's `if(WC_PROJECT_ID)…` gate (public/app2/index.html:1599, "leave empty to hide the
-// WalletConnect option"). The id itself lives in providers.ts (WALLET_CONNECT_PROJECT_ID);
-// duplicated here as the gate source, matching that module's own "duplicated as a literal rather
-// than imported" note. Set to '' to hide the WalletConnect row.
-const WC_PROJECT_ID = '8c8a3a14d25438a1e1b8f4d91d8d2674';
-
 const EVM_WALLETS: WalletCatalogEntry[] = [
   {
     id: 'MetaMask',
@@ -131,10 +124,7 @@ const EVM_WALLETS: WalletCatalogEntry[] = [
     walletType: AuthWalletType.RABBY,
     injected: { rdns: 'io.rabby', flavor: 'isRabby' },
   },
-];
-
-if (WC_PROJECT_ID) {
-  EVM_WALLETS.push({
+  {
     id: 'WalletConnect',
     name: 'WalletConnect',
     icon: iconWalletConnect,
@@ -142,8 +132,8 @@ if (WC_PROJECT_ID) {
     chains: EVM_CH,
     connector: 'wallet-connect',
     walletType: AuthWalletType.WALLET_CONNECT,
-  });
-}
+  },
+];
 
 export const WALLET_CATALOG: WalletCatalogGroup[] = [
   {
