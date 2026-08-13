@@ -801,10 +801,11 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(payeeGroup).toContainText(unknown);
     await expect(page.getByRole('img', { name: 'Recipient verified', exact: true })).toHaveCount(0);
 
-    await expect(page.getByText(/DFX does not recognize a recipient with the name/i)).toBeVisible({
-      timeout: 15000,
+    const notRecognized = page.locator('p').filter({
+      hasText: /DFX does not recognize a recipient with the name/i,
     });
-    await expect(page.getByText(unknown, { exact: false })).toBeVisible();
+    await expect(notRecognized).toBeVisible({ timeout: 15000 });
+    await expect(notRecognized).toContainText(unknown);
     await expect(page.getByPlaceholder('Invoice number')).toBeDisabled({ timeout: 10000 });
 
     const opened = new URL(page.url());
