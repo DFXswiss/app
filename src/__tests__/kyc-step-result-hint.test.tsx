@@ -61,6 +61,13 @@ describe('KycStepResultHint', () => {
     expect(screen.queryByText(FAILED)).toBeNull();
   });
 
+  it('shows the failed text without a reason when none is set', () => {
+    render(<KycStepResultHint step={step({ name: KycStepName.RECOMMENDATION, status: KycStepStatus.FAILED })} />);
+
+    expect(screen.getByText(FAILED)).toBeInTheDocument();
+    expect(screen.queryByText(KycStepReason.ACCOUNT_EXISTS)).toBeNull();
+  });
+
   it('shows the failed text and reason when Recommendation is Failed', () => {
     render(
       <KycStepResultHint
