@@ -44,13 +44,19 @@ test.describe('App2 preview screens', () => {
 
   test('buy success return path lands on hash with cko query', async ({ page }) => {
     test.skip(!(await app2Available(page)), 'App2 artifact not served on this stack');
-    // Local static hosts may not apply public/_redirects; exercise the client fold.
-    await page.goto('/app2/');
-    await page.evaluate(() => {
-      window.history.replaceState({}, '', '/app2/buy/success?cko-payment-id=test-cko');
-      window.location.replace('/app2/#/buy/success?cko-payment-id=test-cko');
+    const response = await page.goto('/app2/buy/success?cko-payment-id=test-cko', {
+      waitUntil: 'domcontentloaded',
     });
-    await page.waitForLoadState('networkidle');
+    test.skip(!response || response.status() >= 400, 'return path not served on this stack');
+    await expect(page).toHaveURL(/#\/buy\/success\?cko-payment-id=test-cko/);
+  });
+
+  test('buy success trailing-slash return path folds into the same hash', async ({ page }) => {
+    test.skip(!(await app2Available(page)), 'App2 artifact not served on this stack');
+    const response = await page.goto('/app2/buy/success/?cko-payment-id=test-cko', {
+      waitUntil: 'domcontentloaded',
+    });
+    test.skip(!response || response.status() >= 400, 'return path not served on this stack');
     await expect(page).toHaveURL(/#\/buy\/success\?cko-payment-id=test-cko/);
   });
 });

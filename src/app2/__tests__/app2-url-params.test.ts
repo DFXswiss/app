@@ -27,6 +27,30 @@ describe('foldApp2PathIntoHash', () => {
         hash: '',
       }),
     ).toBe('/app2/#/account-merge?otp=xyz');
+
+    expect(
+      foldApp2PathIntoHash({
+        pathname: '/app2/buy/success/',
+        search: '?cko-payment-id=abc',
+        hash: '',
+      }),
+    ).toBe('/app2/#/buy/success?cko-payment-id=abc');
+
+    expect(
+      foldApp2PathIntoHash({
+        pathname: '/app2/buy/failure/',
+        search: '',
+        hash: '',
+      }),
+    ).toBe('/app2/#/buy/failure');
+
+    expect(
+      foldApp2PathIntoHash({
+        pathname: '/app2/account-merge/',
+        search: '?otp=xyz',
+        hash: '',
+      }),
+    ).toBe('/app2/#/account-merge?otp=xyz');
   });
 
   it('is a no-op when already on the matching hash route or an unrelated path', () => {
