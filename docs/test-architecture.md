@@ -543,6 +543,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   enums, the order hook, the debounce hook and the payment-info component. A green run proves the
   form follows that stub, including which address label it shows. It does not prove a live quote,
   a live balance lookup, or a real payment-info request.
+- **The payment-link device-split tests answer the pay-request endpoint themselves.** The loc API
+  cannot build a Lightning/BTC transfer amount (`404 No BTC transfer amount found`), so
+  `e2e-stack/specs/payment-links.spec.ts` fulfils `paymentLink/payment` with a quoted OpenCryptoPay
+  payload (`displayQr: false`) and holds `lnurlp/wait` / `paymentLink/payment/wait` open. A green
+  run proves the desktop QR / handheld wallet-copy split for that payload, not that the loc API can
+  produce a quote or that a real quote's transfer amounts, expiry or callback match what the screen
+  then renders.
 
 ## Known gaps
 
