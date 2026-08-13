@@ -33,6 +33,10 @@ jobs:
           THIS_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          if [ -z "$HEAD_REF" ] || [ -z "$HEAD_REPO" ] || [ -z "$THIS_REPO" ]; then
+            echo "::error::Missing pull_request head metadata; refusing to pass."
+            exit 1
+          fi
           if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
             echo "::error::PRs into main must come from ${THIS_REPO}@develop, not a fork (${HEAD_REPO})."
             exit 1
