@@ -2,9 +2,7 @@ import { extractChargeLnurl } from '../screens/ocp/charge-lnurl';
 
 describe('extractChargeLnurl', () => {
   it('uses only payment.lnurl and never the reusable link lnurl', () => {
-    expect(extractChargeLnurl({ payment: { lnurl: 'LNURL1CHARGE' }, lnurl: 'LNURL1LINK' })).toBe(
-      'LNURL1CHARGE',
-    );
+    expect(extractChargeLnurl({ payment: { lnurl: 'LNURL1CHARGE' }, lnurl: 'LNURL1LINK' })).toBe('LNURL1CHARGE');
     expect(extractChargeLnurl({ lnurl: 'LNURL1LINK' })).toBeUndefined();
     expect(extractChargeLnurl({ payment: { lnurl: '  ' }, lnurl: 'LNURL1LINK' })).toBeUndefined();
   });

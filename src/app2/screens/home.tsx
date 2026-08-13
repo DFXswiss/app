@@ -489,10 +489,6 @@ export default function HomeScreen() {
   }, [paymentSheetOpen]);
 
   const handleCta = () => {
-    if (!session.isLoggedIn) {
-      session.openConnect();
-      return;
-    }
     if (mode === 'sell' && !sellBankAccount) {
       setBankAccountOpen(true);
       return;
@@ -668,40 +664,38 @@ export default function HomeScreen() {
         ))}
       </div>
 
-      {session.isLoggedIn && (
-        <button className="walletbar" type="button" onClick={() => session.openSwitcher()}>
-          <span className="wbLogo">
-            {/* Sizing/fit belongs to `.walletbar .wbLogo img` (23px, object-fit: contain) — an
-                inline 100%/cover here used to crop brand marks to the edges of the white tile. */}
-            {session.activeWallet?.icon ? <img src={session.activeWallet.icon} alt="" /> : WALLET_ICON}
-          </span>
-          <span className="wbtx">
-            {(() => {
-              const short = session.address ? `${session.address.slice(0, 6)}…${session.address.slice(-4)}` : '';
-              const name = session.activeWallet?.name;
-              const showName = Boolean(name && name !== 'Wallet');
-              return (
-                <>
-                  <b>{showName ? name : short}</b>
-                  <small>{showName ? short : (session.blockchain ?? '')}</small>
-                </>
-              );
-            })()}
-          </span>
-          <span className="wbchg">
-            <svg viewBox="0 0 24 24" fill="none">
-              <path
-                d="M7 10h10l-3-3M17 14H7l3 3"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span>{t('change')}</span>
-          </span>
-        </button>
-      )}
+      <button className="walletbar" type="button" onClick={() => session.openSwitcher()}>
+        <span className="wbLogo">
+          {/* Sizing/fit belongs to `.walletbar .wbLogo img` (23px, object-fit: contain) — an
+              inline 100%/cover here used to crop brand marks to the edges of the white tile. */}
+          {session.activeWallet?.icon ? <img src={session.activeWallet.icon} alt="" /> : WALLET_ICON}
+        </span>
+        <span className="wbtx">
+          {(() => {
+            const short = session.address ? `${session.address.slice(0, 6)}…${session.address.slice(-4)}` : '';
+            const name = session.activeWallet?.name;
+            const showName = Boolean(name && name !== 'Wallet');
+            return (
+              <>
+                <b>{showName ? name : short}</b>
+                <small>{showName ? short : (session.blockchain ?? '')}</small>
+              </>
+            );
+          })()}
+        </span>
+        <span className="wbchg">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path
+              d="M7 10h10l-3-3M17 14H7l3 3"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span>{t('change')}</span>
+        </span>
+      </button>
 
       <div className="panels">
         <div className="panel">
@@ -864,24 +858,18 @@ export default function HomeScreen() {
         style={mode === 'buy' ? undefined : { marginTop: 'auto' }}
         // The payment-details request between tap and sheet is short but not instant — without
         // this the CTA looked dead for a moment and invited a second tap.
-        disabled={session.isLoggedIn && (!ctaEnabled || awaitingPaymentInfo)}
+        disabled={!ctaEnabled || awaitingPaymentInfo}
         aria-busy={awaitingPaymentInfo || undefined}
         onClick={handleCta}
       >
-        {session.isLoggedIn ? (
-          <>
-            <span>{t(mode)}</span>{' '}
-            <span>
-              {mode === 'swap'
-                ? `${swapFromAsset?.code ?? ''} → ${swapToAsset?.code ?? ''}`
-                : mode === 'sell'
-                  ? (sellAsset?.code ?? '')
-                  : (buyAsset?.code ?? '')}
-            </span>
-          </>
-        ) : (
-          <span>{t('connect')}</span>
-        )}
+        <span>{t(mode)}</span>{' '}
+        <span>
+          {mode === 'swap'
+            ? `${swapFromAsset?.code ?? ''} → ${swapToAsset?.code ?? ''}`
+            : mode === 'sell'
+              ? (sellAsset?.code ?? '')
+              : (buyAsset?.code ?? '')}
+        </span>
         {awaitingPaymentInfo ? (
           <Spinner />
         ) : (
