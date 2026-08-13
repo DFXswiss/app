@@ -43,6 +43,7 @@ export default defineConfig({
     env: {
       ...process.env,
       REACT_APP_API_URL: process.env.E2E_API_URL ?? 'https://dev.api.dfx.swiss',
+      REACT_APP_PUBLIC_URL: process.env.E2E_PUBLIC_URL ?? 'http://localhost:3001',
     },
   },
 });

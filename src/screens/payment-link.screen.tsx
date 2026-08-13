@@ -265,7 +265,7 @@ export default function PaymentLinkScreen(): JSX.Element {
       ) : (
         <StyledVerticalStack full gap={4} center className="pt-8">
           <div className="flex flex-col w-full gap-6 justify-center">
-            <p className="text-dfxBlue-800 font-bold text-xl">{payRequest?.displayName ?? merchant}</p>
+            <p className="text-dfxBlue-800 font-bold text-xl">{payRequest.displayName ?? merchant}</p>
             <div className="w-full h-[1px] bg-gradient-to-r bg-dfxGray-500 from-white via-dfxGray-500 to-white" />
             {!merchant && (
               <>
@@ -352,7 +352,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                               <StyledDropdown<string>
                                 rootRef={rootRef}
                                 name="asset"
-                                items={assetsList?.map((item) => item.asset) ?? []}
+                                items={assetsList.map((item) => item.asset)}
                                 labelFunc={(item) => item}
                                 descriptionFunc={() => selectedPaymentStandard?.blockchain ?? ''}
                                 full
@@ -393,7 +393,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                             ].filter((item) => item.text) as any
                           }
                         >
-                          <p>{blankedAddress(payRequest.externalId ?? payRequest.id, { width, scale: 0.9 })}</p>
+                          <p>{blankedAddress(payRequest.externalId, { width, scale: 0.9 })}</p>
                         </StyledDataTableExpandableRow>
                       )}
                       {paymentHasQuote(payRequest) && (
@@ -406,7 +406,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                                   isLoading={isLoadingPaymentIdentifier || !paymentIdentifier}
                                 >
                                   <p>{formatUnits(parsedEvmUri.amount, assetObject?.decimals)}</p>
-                                  <CopyButton onCopy={() => copy(parsedEvmUri.amount ?? '')} />
+                                  <CopyButton onCopy={() => copy(parsedEvmUri.amount as string)} />
                                 </StyledDataTableRow>
                               )}
 
@@ -414,10 +414,10 @@ export default function PaymentLinkScreen(): JSX.Element {
                                 <StyledDataTableRow label={translate('screens/sell', 'Asset')}>
                                   {showContract && assetObject.chainId ? (
                                     <StyledHorizontalStack gap={2}>
-                                      <span>{blankedAddress(assetObject.chainId ?? '', { width, scale: 0.75 })}</span>
+                                      <span>{blankedAddress(assetObject.chainId, { width, scale: 0.75 })}</span>
                                       <StyledIconButton
                                         icon={IconVariant.COPY}
-                                        onClick={() => copy(assetObject.chainId ?? '')}
+                                        onClick={() => copy(assetObject.chainId as string)}
                                         size={IconSize.SM}
                                       />
                                       {assetObject.explorerUrl && (
@@ -446,20 +446,25 @@ export default function PaymentLinkScreen(): JSX.Element {
                                   label={translate('screens/home', 'Address')}
                                   isLoading={isLoadingPaymentIdentifier || !paymentIdentifier}
                                 >
-                                  <p>{blankedAddress(parsedEvmUri.address ?? '', { width, scale: 0.8 })}</p>
-                                  <CopyButton onCopy={() => copy(parsedEvmUri.address ?? '')} />
+                                  <p>{blankedAddress(parsedEvmUri.address, { width, scale: 0.8 })}</p>
+                                  <CopyButton onCopy={() => copy(parsedEvmUri.address as string)} />
                                 </StyledDataTableRow>
                               )}
 
-                              {toBlockchain(parsedEvmUri.chainId ?? '') && (
-                                <StyledDataTableRow
-                                  label={translate('screens/home', 'Blockchain')}
-                                  isLoading={isLoadingPaymentIdentifier || !paymentIdentifier}
-                                >
-                                  <p>{toBlockchain(parsedEvmUri.chainId ?? '')}</p>
-                                  <CopyButton onCopy={() => copy(toBlockchain(parsedEvmUri.chainId ?? '') ?? '')} />
-                                </StyledDataTableRow>
-                              )}
+                              {(() => {
+                                const chain = toBlockchain(parsedEvmUri.chainId ?? '');
+                                return (
+                                  chain && (
+                                    <StyledDataTableRow
+                                      label={translate('screens/home', 'Blockchain')}
+                                      isLoading={isLoadingPaymentIdentifier || !paymentIdentifier}
+                                    >
+                                      <p>{chain}</p>
+                                      <CopyButton onCopy={() => copy(chain)} />
+                                    </StyledDataTableRow>
+                                  )
+                                );
+                              })()}
                             </>
                           )}
                         </>
@@ -787,8 +792,8 @@ function TransferMethodsContent({ payRequest, walletData }: TransferMethodsConte
   const { isMerchantMode } = usePaymentLinkContext();
 
   const filteredTransferAmounts = walletData
-    ? Wallet.filterTransferInfoByWallet(walletData, payRequest.transferAmounts)
-    : payRequest.transferAmounts;
+    ? Wallet.filterTransferInfoByWallet(walletData, payRequest.transferAmounts ?? [])
+    : (payRequest.transferAmounts ?? []);
   const supportedMethods = filteredTransferAmounts.filter((ta) => ta.available !== false);
 
   const assetMap = new Map<string, { amount?: string; methods: string[] }>();
@@ -865,11 +870,9 @@ function WalletGrid({ wallets, header }: WalletGridProps): JSX.Element {
   );
 }
 
-function DividerWithHeader({ header, py }: { header: string; py?: number }): JSX.Element {
-  const pyClass = py === 4 ? 'py-4' : py === 2 ? 'py-2' : py === 1 ? 'py-1' : '';
-
+function DividerWithHeader({ header }: { header: string }): JSX.Element {
   return (
-    <div className={`flex flex-row items-center gap-2 ${pyClass} w-full`}>
+    <div className="flex flex-row items-center gap-2 w-full">
       <div className="flex-grow bg-gradient-to-r from-white to-dfxGray-600 h-[1px]" />
       <p className="text-xs font-medium text-dfxGray-600 whitespace-nowrap">{header}</p>
       <div className="flex-grow bg-gradient-to-r from-dfxGray-600 to-white h-[1px]" />

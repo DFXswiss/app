@@ -810,4 +810,14 @@ describe('PaymentLinkForm labels and steps', () => {
     fireEvent.click(screen.getByText('Next'));
     await waitFor(() => expect(screen.getByText('Skip')).toBeInTheDocument());
   });
+
+  it('surfaces Unknown error when a global config save fails without a message', async () => {
+    mockUpdateUserPaymentLinksConfig.mockRejectedValueOnce({});
+    renderScreen();
+    fireEvent.click(screen.getAllByText('Edit configuration')[0]);
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
+    });
+  });
 });
