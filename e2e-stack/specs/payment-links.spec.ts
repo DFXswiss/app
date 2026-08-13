@@ -320,8 +320,7 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByText('e2e-routes-pl-label', { exact: true })).toBeVisible();
 
     // `displayQr` is a force switch; the merchant-facing label has to say so.
-    const configRow = page.locator('div', { has: page.getByText('Default configuration', { exact: true }) }).first();
-    await configRow.locator('.cursor-pointer').click();
+    await page.getByText('Default configuration', { exact: true }).locator('xpath=following-sibling::div').click();
     await expect(page.getByText('Always show QR code', { exact: true })).toBeVisible();
     await expect(page.getByText('Display QR code', { exact: true })).toHaveCount(0);
     if (pl.routeId) {
@@ -465,7 +464,7 @@ test.describe('Payment links / routes / invoice', () => {
         await expect(page.getByText(merchant, { exact: true })).toBeVisible({ timeout: 20000 });
         await expect(page.getByText(SCAN_COPY, { exact: true })).toBeVisible();
         await expect(page.getByText(WALLET_COPY, { exact: true })).toHaveCount(0);
-        await expect(page.getByText('QR Code', { exact: true })).toHaveCount(0);
+        await expect(page.locator('.w-48.my-3 svg')).toBeVisible();
       });
     });
 
@@ -513,7 +512,7 @@ test.describe('Payment links / routes / invoice', () => {
         await expect(page.getByText(merchant, { exact: true })).toBeVisible({ timeout: 20000 });
         await expect(page.getByText(WALLET_COPY, { exact: true })).toBeVisible();
         await expect(page.getByText(SCAN_COPY, { exact: true })).toHaveCount(0);
-        await expect(page.getByText('QR Code', { exact: true })).toBeVisible();
+        await expect(page.locator('.w-48.my-3 svg')).toHaveCount(0);
       });
     });
   });
