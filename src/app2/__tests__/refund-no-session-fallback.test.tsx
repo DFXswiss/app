@@ -162,6 +162,27 @@ describe('RefundPanel crypto target (no session-address fallback)', () => {
     expect(mockSetTransactionRefundTarget.mock.calls[0][1].refundTarget).not.toBe(SESSION);
   });
 
+  it('does not lock the bank IBAN field on a whitespace-only refundTarget', async () => {
+    mockGetTransactionRefund.mockResolvedValue({
+      refundTarget: '   ',
+      bankDetails: { iban: '' },
+      refundAmount: 100,
+      refundAsset: { name: 'EUR' },
+    });
+
+    renderPanel({
+      ...sellTx(),
+      type: 'Buy',
+      inputPaymentMethod: 'Bank',
+      inputBlockchain: undefined,
+    } as DetailTransaction);
+
+    const input = await screen.findByPlaceholderText('DE..');
+    expect(input).not.toHaveAttribute('readonly');
+    fireEvent.change(input, { target: { value: 'DE89370400440532013000' } });
+    expect((input as HTMLInputElement).value).toBe('DE89370400440532013000');
+  });
+
   it('fail-closes only when no account address matches the input blockchain', async () => {
     mockGetTransactionRefund.mockResolvedValue({
       refundTarget: undefined,

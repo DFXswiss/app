@@ -236,7 +236,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
 
   // A server-supplied IBAN is locked (the refund must go back to the account that
   // paid); a missing one is editable so the user can enter the payout account.
-  const ibanFixed = (data?.refundTarget ?? '') !== '';
+  const ibanFixed = (data?.refundTarget ?? '').trim() !== '';
   // Crypto: server target wins; else pick from account addresses on the input chain.
   const cryptoTarget = resolveCryptoRefundTarget(data?.refundTarget);
   const allowedCryptoAddresses = useMemo(() => {
@@ -276,7 +276,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
       .then((refund) => {
         const bank = refund.bankDetails ?? {};
         setData(refund);
-        setIban(refund.refundTarget ?? bank.iban ?? '');
+        setIban((refund.refundTarget ?? '').trim() || bank.iban || '');
         setHolderName(bank.name ?? '');
         setStreet(bank.address ?? '');
         setHouseNumber(bank.houseNumber ?? '');
