@@ -32,6 +32,18 @@ if [[ -z "${E2E_API_IMAGE:-}" ]]; then
   export E2E_API_IMAGE=dfx-api:e2e
 fi
 
+# Same pattern for the two images built from this repository: remember whether the caller
+# provided a prebuilt image BEFORE defaulting — after the exports below the variables are
+# always set and that distinction is gone. CI sets them to tags it already pulled (see
+# .github/workflows/e2e-images.yml); locally they stay unset and the harness builds as usual.
+frontend_prebuilt=${E2E_FRONTEND_IMAGE:+1}
+widget_prebuilt=${E2E_WIDGET_IMAGE:+1}
+# Export concrete defaults so the ${E2E_FRONTEND_IMAGE}/${E2E_WIDGET_IMAGE} references in
+# compose.yml / compose.tests.yml resolve to the same tag in every compose invocation:
+# `compose build` tags the local build with exactly this name, and `compose up` runs it.
+export E2E_FRONTEND_IMAGE="${E2E_FRONTEND_IMAGE:-dfx-services-frontend:e2e}"
+export E2E_WIDGET_IMAGE="${E2E_WIDGET_IMAGE:-dfx-services-widget:e2e}"
+
 # The API has to be able to survive an unreachable third party on its own. It could not always:
 # a Spark SDK failure reached the process error handler, whose own logging call threw on the value
 # it was handed, and the process exited. An image without that fix cannot come up in this network,
@@ -75,17 +87,30 @@ if [[ -f "$STACK_DIR/.env" ]]; then
   printf '\n' >> "$generated_env"
 fi
 printf 'E2E_API_IMAGE=%s\n' "$E2E_API_IMAGE" >> "$generated_env"
+# Same reasoning for the frontend and widget images: every later compose call must resolve
+# them to the tags decided here, prebuilt or locally built.
+printf 'E2E_FRONTEND_IMAGE=%s\n' "$E2E_FRONTEND_IMAGE" >> "$generated_env"
+printf 'E2E_WIDGET_IMAGE=%s\n' "$E2E_WIDGET_IMAGE" >> "$generated_env"
 
-log_info "Building frontend image..."
-compose build frontend
+if [[ -z "$frontend_prebuilt" ]]; then
+  log_info "Building frontend image..."
+  compose build frontend
+else
+  log_info "Using prebuilt frontend image ${E2E_FRONTEND_IMAGE} - skipping the local build."
+fi
 
 # Rebuild frontend-widget too: Compose auto-builds a *missing* image, but never rebuilds an
 # *existing* one on its own. Without this, a source change that affects the widget bundle
 # (src/index-widget.tsx or anything it imports) would leave the previous widget image running,
 # and widget.spec.ts would keep testing stale code while staying green — the exact failure mode
-# this harness exists to catch.
-log_info "Building frontend-widget image..."
-compose build frontend-widget
+# this harness exists to catch. A prebuilt image passed in via E2E_WIDGET_IMAGE does not have
+# that problem: CI pulls it SHA-tagged for exactly the revision it checked out.
+if [[ -z "$widget_prebuilt" ]]; then
+  log_info "Building frontend-widget image..."
+  compose build frontend-widget
+else
+  log_info "Using prebuilt frontend-widget image ${E2E_WIDGET_IMAGE} - skipping the local build."
+fi
 
 log_info "Starting stack (db, api, frontend, proxy)..."
 compose up -d db api frontend proxy

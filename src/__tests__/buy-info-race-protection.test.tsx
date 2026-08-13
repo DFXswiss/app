@@ -5,46 +5,54 @@
 const mockReceiveFor = jest.fn();
 const mockUseAppParams = jest.fn();
 const mockPersonalIban = jest.fn();
+const mockCurrencies = [{ name: 'EUR' }];
+const mockEmptyPersonalIbans: never[] = [];
 
-jest.mock('@dfx.swiss/react', () => ({
-  FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
-  PersonalIbanProvider: { FRICK: 'Frick' },
-  TransactionError: {
-    AMOUNT_TOO_LOW: 'AmountTooLow',
-    AMOUNT_TOO_HIGH: 'AmountTooHigh',
-    BANK_TRANSACTION_MISSING: 'BankTransactionMissing',
-    BANK_TRANSACTION_OR_VIDEO_MISSING: 'BankTransactionOrVideoMissing',
-    KYC_REQUIRED: 'KycRequired',
-    KYC_DATA_REQUIRED: 'KycDataRequired',
-    KYC_REQUIRED_INSTANT: 'KycRequiredInstant',
-    LIMIT_EXCEEDED: 'LimitExceeded',
-    NATIONALITY_NOT_ALLOWED: 'NationalityNotAllowed',
-    PAYMENT_METHOD_NOT_ALLOWED: 'PaymentMethodNotAllowed',
-    VIDEO_IDENT_REQUIRED: 'VideoIdentRequired',
-    IBAN_CURRENCY_MISMATCH: 'IbanCurrencyMismatch',
-    TRADING_NOT_ALLOWED: 'TradingNotAllowed',
-    RECOMMENDATION_REQUIRED: 'RecommendationRequired',
-    EMAIL_REQUIRED: 'EmailRequired',
-  },
-  TransactionType: { BUY: 'Buy' },
-  Utils: { formatAmount: (n: number) => String(n) },
-  useAsset: () => ({
-    getAsset: (list: any[], name: string) =>
-      (list ?? []).find((a: any) => a.name === name) ?? list?.[0],
-  }),
-  useAssetContext: () => ({
-    getAssets: () => [{ name: 'BTC', uniqueName: 'Bitcoin' }],
-  }),
-  useBuy: () => ({
-    currencies: [{ name: 'EUR' }],
-    receiveFor: mockReceiveFor,
-  }),
-  useFiat: () => ({
-    getCurrency: (list: any[], name: string) =>
-      (list ?? []).find((c: any) => c.name === name),
-  }),
-  useUserContext: () => ({ user: undefined }),
-}));
+jest.mock('@dfx.swiss/react', () => {
+  const buyInterface = {
+    get currencies() {
+      return mockCurrencies;
+    },
+    receiveFor: (...args: unknown[]) => mockReceiveFor(...args),
+    getPersonalIbans: () => Promise.resolve(mockEmptyPersonalIbans),
+  };
+  return {
+    FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
+    PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
+    TransactionError: {
+      AMOUNT_TOO_LOW: 'AmountTooLow',
+      AMOUNT_TOO_HIGH: 'AmountTooHigh',
+      BANK_TRANSACTION_MISSING: 'BankTransactionMissing',
+      BANK_TRANSACTION_OR_VIDEO_MISSING: 'BankTransactionOrVideoMissing',
+      KYC_REQUIRED: 'KycRequired',
+      KYC_DATA_REQUIRED: 'KycDataRequired',
+      KYC_REQUIRED_INSTANT: 'KycRequiredInstant',
+      LIMIT_EXCEEDED: 'LimitExceeded',
+      NATIONALITY_NOT_ALLOWED: 'NationalityNotAllowed',
+      PAYMENT_METHOD_NOT_ALLOWED: 'PaymentMethodNotAllowed',
+      VIDEO_IDENT_REQUIRED: 'VideoIdentRequired',
+      IBAN_CURRENCY_MISMATCH: 'IbanCurrencyMismatch',
+      TRADING_NOT_ALLOWED: 'TradingNotAllowed',
+      RECOMMENDATION_REQUIRED: 'RecommendationRequired',
+      EMAIL_REQUIRED: 'EmailRequired',
+    },
+    TransactionType: { BUY: 'Buy' },
+    Utils: { formatAmount: (n: number) => String(n) },
+    useAsset: () => ({
+      getAsset: (list: any[], name: string) =>
+        (list ?? []).find((a: any) => a.name === name) ?? list?.[0],
+    }),
+    useAssetContext: () => ({
+      getAssets: () => [{ name: 'BTC', uniqueName: 'Bitcoin' }],
+    }),
+    useBuy: () => buyInterface,
+    useFiat: () => ({
+      getCurrency: (list: any[], name: string) =>
+        (list ?? []).find((c: any) => c.name === name),
+    }),
+    useUserContext: () => ({ user: { kyc: { level: 0 }, accountId: 1 }, isUserLoading: false }),
+  };
+});
 
 jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', LG: 'lg' },
@@ -81,6 +89,7 @@ jest.mock('src/hooks/personal-iban.hook', () => ({
   usePersonalIbanSelection: () => ({
     requestedPersonalIban: mockPersonalIban(),
     personalIban: mockPersonalIban(),
+    customerIdentity: 1,
     hasAuthenticatedCustomer: true,
   }),
 }));

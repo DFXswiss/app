@@ -1,6 +1,12 @@
-import { ApiError, useBuy, useUserContext } from '@dfx.swiss/react';
-import { SpinnerSize, SpinnerVariant, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { useState } from 'react';
+import { ApiError, useApiSession, useBuy, useUserContext } from '@dfx.swiss/react';
+import {
+  IconColor,
+  SpinnerSize,
+  SpinnerVariant,
+  StyledInfoText,
+  StyledLoadingSpinner,
+} from '@dfx.swiss/react-components';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { RiExternalLinkFill } from 'react-icons/ri';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useNavigation } from 'src/hooks/navigation.hook';
@@ -10,32 +16,59 @@ import { ErrorHint } from '../error-hint';
 import { QrBasic } from './qr-code';
 
 interface GiroCodeProps {
-  value: string;
+  /** When absent, the QR image is unavailable (fail-closed rewrite) but the PDF invoice stays available. */
+  value?: string;
   txId: number;
+  /** When true, request the PDF against the DFX collection account (API query flag). Omit otherwise. */
+  collectionAccount?: boolean;
 }
 
-export function PaymentQrCode({ value, txId }: GiroCodeProps): JSX.Element {
+export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCodeProps): JSX.Element {
   const { invoiceFor } = useBuy();
   const { user } = useUserContext();
+  const { session } = useApiSession();
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [invoiceError, setInvoiceError] = useState<ApiError>();
+  const invoiceGeneration = useRef(0);
+
+  // Stale-response guard (same pattern as the quote generation in buy.screen.tsx): a PDF must
+  // never open for a mode the UI has left — including unmount via logout navigation. The layout
+  // effect runs synchronously on commit, so a response arriving before the passive-effect flush
+  // cannot slip past the guard. Session identity is part of the mode — a deep-link param swap
+  // replaces the session without an unmount (wallet.context.tsx applies it in place), and a PDF
+  // from the previous session must not open after it. The signal is the session, not the user:
+  // the session changes synchronously with an in-place token swap (deep-link param push or
+  // connect flow), while the user context can lag behind and keep serving the previous account.
+  // Both session identity fields (`account` and `user`) are tracked so a token swap that keeps
+  // one but changes the other still re-arms the guard.
+  useLayoutEffect(() => {
+    invoiceGeneration.current += 1;
+    setInvoiceError(undefined);
+    setIsLoading(false);
+    return () => {
+      invoiceGeneration.current += 1;
+    };
+  }, [txId, collectionAccount, session?.account, session?.user]);
 
   async function onInvoiceClick(): Promise<void> {
     if (!user?.kyc.dataComplete) {
       navigate('/profile', { setRedirect: true });
       return;
     }
+    const generation = invoiceGeneration.current;
     try {
       setIsLoading(true);
       setInvoiceError(undefined);
-      const response = await invoiceFor(txId);
+      const response = await invoiceFor(txId, collectionAccount);
+      if (generation !== invoiceGeneration.current) return;
       openPdfFromString(response.pdfData);
     } catch (err) {
+      if (generation !== invoiceGeneration.current) return;
       setInvoiceError(err as ApiError);
     } finally {
-      setIsLoading(false);
+      if (generation === invoiceGeneration.current) setIsLoading(false);
     }
   }
 
@@ -43,12 +76,21 @@ export function PaymentQrCode({ value, txId }: GiroCodeProps): JSX.Element {
 
   return (
     <>
-      <div className="flex flex-col items-center py-4 gap-1.5">
-        <QrBasic data={value} />
-        <p className="text-dfxBlue-800 font-semibold text-base">
-          {value.includes('<svg') ? translate('screens/buy', 'QR-bill') : 'GiroCode'}
-        </p>
-      </div>
+      {value !== undefined ? (
+        <div className="flex flex-col items-center py-4 gap-1.5">
+          <QrBasic data={value} />
+          <p className="text-dfxBlue-800 font-semibold text-base">
+            {value.includes('<svg') ? translate('screens/buy', 'QR-bill') : 'GiroCode'}
+          </p>
+        </div>
+      ) : (
+        <StyledInfoText iconColor={IconColor.BLUE}>
+          {translate(
+            'screens/payment',
+            'No QR code is available for the collection account. Please enter the IBAN and the remittance info manually.',
+          )}
+        </StyledInfoText>
+      )}
       <div className="flex flex-col items-center gap-1.5">
         <button
           type="button"

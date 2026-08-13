@@ -13,9 +13,7 @@ jest.mock('@dfx.swiss/react', () => ({
 
 jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', LG: 'lg' },
-  StyledLoadingSpinner: ({ size }: { size?: string }) => (
-    <div data-testid="loading-spinner" data-size={size} />
-  ),
+  StyledLoadingSpinner: ({ size }: { size?: string }) => <div data-testid="loading-spinner" data-size={size} />,
   StyledVerticalStack: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
@@ -426,6 +424,17 @@ describe('ComplianceChargebackListScreen', () => {
       fireEvent.click(row);
     }
 
-    expect(mockNavigate).toHaveBeenCalledWith('compliance/bank-tx/9301/return');
+    expect(mockNavigate).toHaveBeenCalledWith('compliance/bank-tx/9301/return', {
+      state: {
+        pendingChargeback: {
+          blockReasons: entry.blockReasons,
+          verifiedName: entry.verifiedName,
+          completeName: entry.completeName,
+          creditorName: entry.creditorName,
+          chargebackAmount: entry.chargebackAmount,
+          chargebackAsset: entry.chargebackAsset,
+        },
+      },
+    });
   });
 });

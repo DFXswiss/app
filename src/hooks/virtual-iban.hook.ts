@@ -1,6 +1,6 @@
-import { useApi } from '@dfx.swiss/react';
+import { useApi, VirtualIban } from '@dfx.swiss/react';
 import { useMemo } from 'react';
-import { CreateVirtualIban, VirtualIban } from 'src/dto/virtual-iban.dto';
+import { CreateVirtualIban } from 'src/dto/virtual-iban.dto';
 
 interface VirtualIbanInterface {
   createPersonalIban: (data: CreateVirtualIban) => Promise<VirtualIban>;

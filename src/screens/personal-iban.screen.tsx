@@ -1,4 +1,4 @@
-import { ApiError } from '@dfx.swiss/react';
+import { ApiError, VirtualIban } from '@dfx.swiss/react';
 import {
   IconColor,
   SpinnerSize,
@@ -17,7 +17,6 @@ import { useAddressGuard } from '../hooks/guard.hook';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import useVirtualIban from '../hooks/virtual-iban.hook';
-import { VirtualIban } from 'src/dto/virtual-iban.dto';
 
 enum Status {
   INITIAL = 'INITIAL',

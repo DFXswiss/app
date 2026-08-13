@@ -2,7 +2,7 @@ import { useAuthContext } from '@dfx.swiss/react';
 import { useLocation } from 'react-router-dom';
 import { useAppHandlingContext } from '../contexts/app-handling.context';
 import {
-  isExplicitFrickPersonalIbanRequest,
+  isExplicitPersonalIbanRequest,
   normalizePersonalIban,
 } from '../util/personal-iban';
 
@@ -11,13 +11,16 @@ export interface PersonalIbanSelection {
   requestedPersonalIban?: string;
   /** Selector that may be added to the next quote request. */
   personalIban?: string;
+  /** Numeric account identity of the current session, if available. */
+  customerIdentity?: number;
   /** True only when quote ownership can be tied to a currently authenticated (non-expired) account. */
   hasAuthenticatedCustomer: boolean;
 }
 
 /**
  * Derives the personal-IBAN selector from the URL (standalone) or live widget property.
- * A recognized Frick request is applied directly; no intermediate confirmation step.
+ * A recognized provider request - Frick or Yapeal - is applied directly; no intermediate
+ * confirmation step.
  */
 export function usePersonalIbanSelection(): PersonalIbanSelection {
   const { isWidget, widgetPersonalIban } = useAppHandlingContext();
@@ -37,13 +40,14 @@ export function usePersonalIbanSelection(): PersonalIbanSelection {
   // expiry window (session.account still populated from the old jwt state, isLoggedIn already false).
   // Consulting isLoggedIn closes that gap and cannot spuriously block a legitimate non-expired session.
   const hasAuthenticatedCustomer = customerIdentity !== undefined && isLoggedIn;
-  const personalIban = isExplicitFrickPersonalIbanRequest(requestedPersonalIban)
+  const personalIban = isExplicitPersonalIbanRequest(requestedPersonalIban)
     ? requestedPersonalIban
     : undefined;
 
   return {
     requestedPersonalIban,
     personalIban,
+    customerIdentity,
     hasAuthenticatedCustomer,
   };
 }

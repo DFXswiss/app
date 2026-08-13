@@ -48,6 +48,9 @@ services:
       - e2e-playwright-report:/work/playwright-report
 
   frontend-widget:
+    # Prebuilt-image escape hatch — same pattern and reasoning as E2E_FRONTEND_IMAGE on the
+    # `frontend` service; see the comment there in compose.yml.
+    image: ${E2E_WIDGET_IMAGE:-dfx-services-widget:e2e}
     build:
       # Relative to this file's directory (e2e-stack/), so `..` is the repo root — same
       # convention as the `tests` service build above.

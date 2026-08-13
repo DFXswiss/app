@@ -46,11 +46,26 @@ describe('BuyCompletion close handling', () => {
     jest.clearAllMocks();
   });
 
-  function renderCompletion() {
+  it('passes the same payment information to the successful close channel', () => {
+    const paymentInfo = { id: 42 } as any;
+    mockCloseServices.mockReturnValue(true);
+    mockUseAppHandlingContext.mockReturnValue({ closeServices: mockCloseServices });
+
+    renderCompletion(paymentInfo);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(mockCloseServices).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'buy', isComplete: true, buy: paymentInfo }),
+      expect.anything(),
+    );
+    expect(mockCloseServices.mock.calls[0][0].buy).toBe(paymentInfo);
+  });
+
+  function renderCompletion(paymentInfo = { id: 1 } as any) {
     return render(
       <BuyCompletion
         user={{ mail: 'user@example.com' } as any}
-        paymentInfo={{ id: 1 } as any}
+        paymentInfo={paymentInfo}
         navigateOnClose={false}
       />,
     );

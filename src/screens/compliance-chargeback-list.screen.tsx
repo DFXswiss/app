@@ -66,9 +66,7 @@ export default function ComplianceChargebackListScreen(): JSX.Element {
 
   function blockReasonBadge(reason: ChargebackBlockReason): JSX.Element {
     const isUserNotReleased = reason === ChargebackBlockReason.USER_NOT_RELEASED;
-    const classes = isUserNotReleased
-      ? 'bg-dfxGray-300 text-primary-red'
-      : 'bg-dfxGray-300 text-dfxBlue-800';
+    const classes = isUserNotReleased ? 'bg-dfxGray-300 text-primary-red' : 'bg-dfxGray-300 text-dfxBlue-800';
     return (
       <span key={reason} className={`px-2 py-1 rounded text-xs font-semibold ${classes}`}>
         {reason}
@@ -104,7 +102,20 @@ export default function ComplianceChargebackListScreen(): JSX.Element {
                     <tr
                       key={`${entry.sourceType}-${entry.entityId}-${entry.txId}`}
                       className={rowClassName(entry)}
-                      onClick={() => navigate(`compliance/bank-tx/${entry.txId}/return`)}
+                      onClick={() =>
+                        navigate(`compliance/bank-tx/${entry.txId}/return`, {
+                          state: {
+                            pendingChargeback: {
+                              blockReasons: entry.blockReasons,
+                              verifiedName: entry.verifiedName,
+                              completeName: entry.completeName,
+                              creditorName: entry.creditorName,
+                              chargebackAmount: entry.chargebackAmount,
+                              chargebackAsset: entry.chargebackAsset,
+                            },
+                          },
+                        })
+                      }
                     >
                       <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
                         {formatDate(entry.requestedDate)}

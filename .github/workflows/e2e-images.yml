@@ -1,0 +1,67 @@
+# Publishes the prebuilt frontend and widget images the E2E workflows use as an accelerator.
+#
+# The companion workflow in the API repository pulls these images SHA-tagged for exactly the
+# services revision it checks out, exports E2E_FRONTEND_IMAGE / E2E_WIDGET_IMAGE, and the
+# harness (e2e-stack/scripts/up.sh) then skips the ~8-minute local builds. If the tag for a
+# revision does not exist, that workflow falls back — loudly — to building locally, so this
+# workflow is deliberately NOT a merge gate and must never become one.
+#
+# No `paths:` filter on purpose: the SHA lookup on the consumer side only hits if an image
+# exists for *every* develop commit, including commits that touch nothing the images contain.
+# Filtering would leave holes in the tag history and silently push consumers onto the slow
+# build fallback.
+#
+# One-time setup after the first publish: the two GHCR packages
+# (services-e2e-frontend, services-e2e-widget) must be switched to public visibility so the
+# companion repository can pull them without extra credentials. Until that is done, its pulls
+# fail and the build fallback covers the gap — slower, but correct.
+
+name: E2E images
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build and push E2E images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # Build with exactly the context and arguments the harness uses (compose.yml /
+      # compose.tests.yml): context is the repo root, and no --build-arg overrides — the
+      # Dockerfile defaults ARE the e2e values. Any divergence here would make CI test a
+      # different image than a local run builds, which defeats the accelerator's whole point.
+      - name: Build frontend image
+        run: |
+          docker build \
+            -t ghcr.io/dfxswiss/services-e2e-frontend:${{ github.sha }} \
+            -f e2e-stack/images/frontend/Dockerfile .
+
+      - name: Build widget image
+        run: |
+          docker build \
+            -t ghcr.io/dfxswiss/services-e2e-widget:${{ github.sha }} \
+            -f e2e-stack/images/frontend-widget/Dockerfile .
+
+      # SHA tags only, on purpose. The companion workflow looks up the exact commit it checked
+      # out, so an immutable tag per commit is all that is needed - and a moving tag (such as
+      # a floating `develop` pointer) could go stale or end up pointing at different revisions
+      # for the two images when runs overlap, since this workflow is deliberately not
+      # serialised (parallel runs push disjoint SHA tags and cannot interfere).
+      - name: Push images
+        run: |
+          docker push ghcr.io/dfxswiss/services-e2e-frontend:${{ github.sha }}
+          docker push ghcr.io/dfxswiss/services-e2e-widget:${{ github.sha }}

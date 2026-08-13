@@ -53,6 +53,16 @@ services:
     restart: "no"
 
   frontend:
+    # Mirrors the E2E_API_IMAGE pattern on the api service above. Unset, `compose build` tags
+    # the local build with the default name below, so `compose up` runs exactly what was just
+    # built. Set (by CI that already pulled a prebuilt image, see
+    # .github/workflows/e2e-images.yml), scripts/up.sh skips the local build and compose runs
+    # the prebuilt image instead. Either way the variable must resolve identically in every
+    # compose invocation — a service whose resolved configuration differs from the running
+    # container gets recreated mid-run — which is why up.sh records it in .env.generated.
+    # The frontend-widget service (declared in compose.tests.yml) follows the same pattern
+    # via E2E_WIDGET_IMAGE.
+    image: ${E2E_FRONTEND_IMAGE:-dfx-services-frontend:e2e}
     build:
       # Repo root: Dockerfile needs package.json, lockfile, and full app source.
       context: ..

@@ -89,7 +89,7 @@ export default function ComplianceCallQueueDetailScreen(): JSX.Element {
   const { isLoggedIn } = useSessionContext();
   const { queue: queueParam, userDataId } = useParams<{ queue: string; userDataId: string }>();
   const { search } = useLocation();
-  const { clerks } = useCallQueueClerks();
+  const { clerks, error: clerksError, isLoading: clerksLoading } = useCallQueueClerks();
 
   const query = new URLSearchParams(search);
   const txIdParam = query.get('txId');
@@ -189,6 +189,8 @@ export default function ComplianceCallQueueDetailScreen(): JSX.Element {
         context={context}
         availableOutcomes={config.outcomes}
         clerks={clerks}
+        clerksError={clerksError}
+        clerksLoading={clerksLoading}
         onSaved={() =>
           navigate({ pathname: `/compliance/call-queues/${queue}` }, { replace: true, clearParams: ['txId'] })
         }

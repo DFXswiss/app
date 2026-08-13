@@ -1,11 +1,11 @@
 {
   "buy-process": {
     "title": "Kaufprozess",
-    "description": "Buy-Flow: Seitenladezustand, Betragseingabe, Zahlungsdetails und Collection-/Personal-IBAN-Umschaltung."
+    "description": "Buy-Flow: Seitenladezustand, Betragseingabe, Zahlungsdetails, Collection-/Personal-IBAN-Umschaltung und Bank-Frick-/Yapeal-Provider-Umschaltung für Bestandskunden. Zusätzlich werden der KYC-Fallback auf die bestehende Yapeal-IBAN und der Fehlerfall eines nicht verfügbaren Personal-IBAN-Providers gezeigt."
   },
   "buy-info": {
     "title": "Kauf-Infoseite",
-    "description": "Buy-Info-Flow (/buy/info): Personal-IBAN-Mismatch-Hinweis für eine Nicht-Frick-Währung."
+    "description": "Buy-Info-Flow (/buy/info): Personal-IBAN-Mismatch-Hinweis für eine Nicht-Frick-Währung. Bestandskunden können zwischen Bank-Frick- und Yapeal-IBAN wechseln. Zusätzlich werden der KYC-Fallback auf die bestehende Yapeal-IBAN und der Fehlerfall eines nicht verfügbaren Personal-IBAN-Providers gezeigt."
   },
   "buy-bitcoin": {
     "title": "Bitcoin kaufen",
@@ -66,6 +66,10 @@
   "compliance-chargeback-list": {
     "title": "Compliance: Offene Chargebacks",
     "description": "Liste offener Chargebacks mit Blockgründen, Namensvergleich und Leerzustand."
+  },
+  "compliance-bank-tx-return": {
+    "title": "Compliance: Bank-Tx-Rückzahlung freigeben",
+    "description": "Rückzahlungsformular mit Banner für manuelle Freigabe und klarer Meldung wenn die Rückzahlung bereits freigegeben/ausgezahlt ist."
   },
   "compliance-review-kyc-status": {
     "title": "Compliance KYC-Status",
