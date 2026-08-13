@@ -580,7 +580,7 @@ jest.mock('../util/utils', () => {
   };
 });
 
-process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
+process.env.REACT_APP_PUBLIC_URL = 'https://app.dfx.swiss';
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
@@ -606,7 +606,7 @@ function step(name: string, status = 'InProgress', extra: Record<string, unknown
     name,
     status,
     sequenceNumber: 0,
-    session: { url: 'https://api.example.com/step', type: 'API' },
+    session: { url: 'https://api.dfx.swiss/step', type: 'API' },
     ...extra,
   };
 }
@@ -849,15 +849,15 @@ describe('KycScreen shell', () => {
     mockGetKycInfo.mockResolvedValue(
       info({ kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }] }),
     );
-    renderAt('/kyc?code=abc&kyc-redirect=https://partner.example/done');
-    await waitFor(() => expect(mockWindowOpen).toHaveBeenCalledWith('https://partner.example/done', '_self'));
+    renderAt('/kyc?code=abc&kyc-redirect=https://app.dfx.swiss/done');
+    await waitFor(() => expect(mockWindowOpen).toHaveBeenCalledWith('https://app.dfx.swiss/done', '_self'));
   });
 
   it('ignores a non-https redirect and an invalid URL', async () => {
     mockGetKycInfo.mockResolvedValue(
       info({ kycSteps: [{ name: 'ContactData', status: 'Completed', sequenceNumber: 0 }] }),
     );
-    renderAt('/kyc?code=abc&kyc-redirect=http://insecure.example');
+    renderAt('/kyc?code=abc&kyc-redirect=http://localhost/done');
     await screen.findByTestId('kyc-table');
     expect(mockWindowOpen).not.toHaveBeenCalled();
 
@@ -1008,7 +1008,7 @@ describe('KycScreen shell', () => {
   it('sets noPadding on mobile browser sessions', async () => {
     mockDevice.isMobile = true;
     mockStartStep.mockResolvedValue(
-      session(step('Ident', 'InProgress', { session: { url: 'https://id.example', type: 'Browser' } })),
+      session(step('Ident', 'InProgress', { session: { url: 'https://app.dfx.swiss/ident', type: 'Browser' } })),
     );
     hangContinue();
     renderAt('/kyc?code=abc&step=Ident');
@@ -1274,7 +1274,7 @@ describe('form steps', () => {
     await land('OperationalActivity');
     select('isOperational', true);
     expect(await screen.findByTestId('website')).toBeInTheDocument();
-    typeField('website', 'https://org.example');
+    typeField('website', 'https://app.dfx.swiss');
     mockSetOperationalData.mockResolvedValue({});
     mockContinueKyc.mockResolvedValue(info());
     await act(async () => {
@@ -1289,7 +1289,7 @@ describe('BeneficialOwner', () => {
     mockStartStep.mockResolvedValue(
       session(
         step('BeneficialOwner', 'InProgress', {
-          session: { url: 'https://api.example.com/step', type: 'API', additionalInfo: { accountHolder: 'Ada' } },
+          session: { url: 'https://api.dfx.swiss/step', type: 'API', additionalInfo: { accountHolder: 'Ada' } },
         }),
       ),
     );
@@ -1432,7 +1432,7 @@ describe('Ident', () => {
   it('stops listening for iframe messages after unmount', async () => {
     hangContinue();
     mockStartStep.mockResolvedValue(
-      session(step('Ident', 'InProgress', { session: { url: 'https://id.example', type: 'Browser' } })),
+      session(step('Ident', 'InProgress', { session: { url: 'https://app.dfx.swiss/ident', type: 'Browser' } })),
     );
     const view = renderAt('/kyc?code=abc&step=Ident');
     await screen.findByTitle('', { exact: false }).catch(() => document.querySelector('iframe'));
@@ -1449,7 +1449,7 @@ describe('Ident', () => {
   it('renders an iframe session and handles iframe messages', async () => {
     hangContinue();
     mockStartStep.mockResolvedValue(
-      session(step('Ident', 'InProgress', { session: { url: 'https://id.example', type: 'Browser' } })),
+      session(step('Ident', 'InProgress', { session: { url: 'https://app.dfx.swiss/ident', type: 'Browser' } })),
     );
     renderAt('/kyc?code=abc&step=Ident');
     expect(await screen.findByTitle('', { exact: false }).catch(() => document.querySelector('iframe'))).toBeTruthy();
