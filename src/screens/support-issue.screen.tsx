@@ -577,6 +577,7 @@ export default function SupportIssueScreen(): JSX.Element {
             {!user?.mail && (
               <StyledInput
                 name="mail"
+                type="email"
                 autocomplete="email"
                 label={translate('screens/kyc', 'Email address')}
                 placeholder={translate('screens/kyc', 'Email address')}

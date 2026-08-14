@@ -143,7 +143,7 @@
     "title": "Trading-Flows",
     "description": "Trading-bezogene End-to-End-Flows."
   },
-  "support-issue": {
+  "support-issue-receiver-iban": {
     "title": "Support-Ticket Formular",
     "description": "Kunden-Supportformular: Ticket anlegen, inkl. Kontakt-Mail wenn das Konto keine hat."
   },
