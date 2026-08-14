@@ -272,18 +272,22 @@ test.describe('RealUnit area', () => {
     await expect(page.getByText('Are you sure you want to deactivate this quote?')).toBeVisible();
     await page.getByRole('button', { name: 'Confirm', exact: true }).click();
 
-    // Success: navigate back to the list, or detail no longer offers Deactivate.
     await expect
       .poll(
         async () => {
-          const path = normPath(new URL(page.url()).pathname);
-          if (path === '/realunit/quotes') return 'list';
-          if ((await page.getByRole('button', { name: 'Deactivate Quote' }).count()) === 0) return 'deactivated';
-          return 'pending';
+          const row = await queryOne<{ deactivatedAt: string | Date | null }>(
+            `SELECT "deactivatedAt" FROM transaction_request WHERE id = $1`,
+            [quoteId],
+          );
+          return row?.deactivatedAt ?? null;
         },
         { timeout: 15000 },
       )
-      .not.toBe('pending');
+      .not.toBeNull();
+
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
+      .toBe('/realunit/quotes');
 
     assertNoErrors(pageErrors, consoleErrors);
   });
@@ -309,18 +313,22 @@ test.describe('RealUnit area', () => {
     await expect(page.getByText('Are you sure you want to deactivate this quote?')).toBeVisible();
     await page.getByRole('button', { name: 'Confirm', exact: true }).click();
 
-    // Success: navigate back to the list, or detail no longer offers Deactivate.
     await expect
       .poll(
         async () => {
-          const path = normPath(new URL(page.url()).pathname);
-          if (path === '/realunit/quotes') return 'list';
-          if ((await page.getByRole('button', { name: 'Deactivate Quote' }).count()) === 0) return 'deactivated';
-          return 'pending';
+          const row = await queryOne<{ deactivatedAt: string | Date | null }>(
+            `SELECT "deactivatedAt" FROM transaction_request WHERE id = $1`,
+            [quoteId],
+          );
+          return row?.deactivatedAt ?? null;
         },
         { timeout: 15000 },
       )
-      .not.toBe('pending');
+      .not.toBeNull();
+
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
+      .toBe('/realunit/quotes');
 
     assertNoErrors(pageErrors, consoleErrors);
   });

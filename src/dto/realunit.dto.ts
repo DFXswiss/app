@@ -106,6 +106,10 @@ export interface RealUnitQuote {
   deactivatedAt?: string;
 }
 
+export function quoteIsDeactivated(quote: Pick<RealUnitQuote, 'deactivatedAt'>): boolean {
+  return quote.deactivatedAt != null && quote.deactivatedAt !== '';
+}
+
 export interface RealUnitTransaction {
   id: number;
   uid: string;

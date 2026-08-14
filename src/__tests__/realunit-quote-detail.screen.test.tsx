@@ -258,6 +258,24 @@ describe('RealunitQuoteDetailScreen', () => {
     });
   });
 
+  it('keeps the overlay open if Cancel is pressed while the action is in flight', async () => {
+    let resolveConfirm: () => void = () => undefined;
+    mockConfirmPayment.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveConfirm = resolve;
+      }),
+    );
+    render(<RealunitQuoteDetailScreen />);
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Payment Received' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByTestId('confirmation-overlay')).toBeInTheDocument();
+    resolveConfirm();
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith(-1);
+    });
+  });
+
   it('shows Deactivate when Buy, not completed, and not deactivated', () => {
     render(<RealunitQuoteDetailScreen />);
     expect(screen.getByRole('button', { name: 'Deactivate Quote' })).toBeInTheDocument();
@@ -307,6 +325,26 @@ describe('RealunitQuoteDetailScreen', () => {
       expect(mockResetQuotes).toHaveBeenCalled();
       expect(mockNavigate).toHaveBeenCalledWith(-1);
     });
+  });
+
+  it('does not open a Deactivate overlay while Confirm is already pending', () => {
+    render(<RealunitQuoteDetailScreen />);
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Payment Received' }));
+    expect(screen.getByText('Are you sure you want to confirm the payment receipt?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Deactivate Quote' }));
+    expect(screen.getAllByTestId('confirmation-overlay')).toHaveLength(1);
+    expect(screen.getByText('Are you sure you want to confirm the payment receipt?')).toBeInTheDocument();
+    expect(screen.queryByText('Are you sure you want to deactivate this quote?')).not.toBeInTheDocument();
+  });
+
+  it('does not open a Confirm overlay while Deactivate is already pending', () => {
+    render(<RealunitQuoteDetailScreen />);
+    fireEvent.click(screen.getByRole('button', { name: 'Deactivate Quote' }));
+    expect(screen.getByText('Are you sure you want to deactivate this quote?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Payment Received' }));
+    expect(screen.getAllByTestId('confirmation-overlay')).toHaveLength(1);
+    expect(screen.getByText('Are you sure you want to deactivate this quote?')).toBeInTheDocument();
+    expect(screen.queryByText('Are you sure you want to confirm the payment receipt?')).not.toBeInTheDocument();
   });
 
   it('fetches quotes on mount when the list is empty', () => {

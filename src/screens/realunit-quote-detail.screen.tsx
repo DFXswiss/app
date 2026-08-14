@@ -9,9 +9,12 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { useRealunitQuotesGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { quoteIsDeactivated } from 'src/dto/realunit.dto';
 import { blankedAddress, formatSwissDateTimeWithSeconds } from 'src/util/utils';
 
 const CONFIRM_PAYMENT_ROLES = [UserRole.ADMIN, UserRole.REALUNIT, UserRole.COMPLIANCE];
+
+type QuoteAction = 'confirmPayment' | 'deactivate';
 
 export default function RealunitQuoteDetailScreen(): JSX.Element {
   useRealunitQuotesGuard();
@@ -22,8 +25,8 @@ export default function RealunitQuoteDetailScreen(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const { quotes, quotesLoading, quotesError, fetchQuotes, resetQuotes, confirmPayment, deactivateQuote } =
     useRealunitContext();
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const [showDeactivateConfirmation, setShowDeactivateConfirmation] = useState(false);
+  const [pendingAction, setPendingAction] = useState<QuoteAction | undefined>();
+  const [actionInFlight, setActionInFlight] = useState(false);
 
   useLayoutOptions({ title: translate('screens/realunit', 'Quote Detail'), backButton: true });
 
@@ -61,11 +64,11 @@ export default function RealunitQuoteDetailScreen(): JSX.Element {
 
   const canConfirmPayment =
     quote.status === 'WaitingForPayment' &&
-    !quote.deactivatedAt &&
+    !quoteIsDeactivated(quote) &&
     !!session?.role &&
     CONFIRM_PAYMENT_ROLES.includes(session.role);
 
-  const canDeactivate = !quote.deactivatedAt && quote.status !== 'Completed' && quote.type === 'Buy';
+  const canDeactivate = !quoteIsDeactivated(quote) && quote.status !== 'Completed' && quote.type === 'Buy';
 
   return (
     <div className="w-full">
@@ -145,7 +148,8 @@ export default function RealunitQuoteDetailScreen(): JSX.Element {
         <div className="mt-6">
           <StyledButton
             label={translate('screens/realunit', 'Confirm Payment Received')}
-            onClick={() => setShowConfirmation(true)}
+            onClick={() => setPendingAction('confirmPayment')}
+            disabled={!!pendingAction || actionInFlight}
             width={StyledButtonWidth.FULL}
           />
         </div>
@@ -155,38 +159,39 @@ export default function RealunitQuoteDetailScreen(): JSX.Element {
         <div className="mt-6">
           <StyledButton
             label={translate('screens/realunit', 'Deactivate Quote')}
-            onClick={() => setShowDeactivateConfirmation(true)}
+            onClick={() => setPendingAction('deactivate')}
+            disabled={!!pendingAction || actionInFlight}
             width={StyledButtonWidth.FULL}
           />
         </div>
       )}
 
-      {showConfirmation && (
+      {pendingAction && (
         <ConfirmationOverlay
-          message={translate('screens/realunit', 'Are you sure you want to confirm the payment receipt?')}
+          message={
+            pendingAction === 'confirmPayment'
+              ? translate('screens/realunit', 'Are you sure you want to confirm the payment receipt?')
+              : translate('screens/realunit', 'Are you sure you want to deactivate this quote?')
+          }
           cancelLabel={translate('general/actions', 'Cancel')}
           confirmLabel={translate('general/actions', 'Confirm')}
-          onCancel={() => setShowConfirmation(false)}
-          onConfirm={async () => {
-            await confirmPayment(quote.id);
-            resetQuotes();
-            setShowConfirmation(false);
-            navigate(-1);
+          onCancel={() => {
+            if (!actionInFlight) setPendingAction(undefined);
           }}
-        />
-      )}
-
-      {showDeactivateConfirmation && (
-        <ConfirmationOverlay
-          message={translate('screens/realunit', 'Are you sure you want to deactivate this quote?')}
-          cancelLabel={translate('general/actions', 'Cancel')}
-          confirmLabel={translate('general/actions', 'Confirm')}
-          onCancel={() => setShowDeactivateConfirmation(false)}
           onConfirm={async () => {
-            await deactivateQuote(quote.id);
-            resetQuotes();
-            setShowDeactivateConfirmation(false);
-            navigate(-1);
+            setActionInFlight(true);
+            try {
+              if (pendingAction === 'confirmPayment') {
+                await confirmPayment(quote.id);
+              } else {
+                await deactivateQuote(quote.id);
+              }
+              resetQuotes();
+              setPendingAction(undefined);
+              navigate(-1);
+            } finally {
+              setActionInFlight(false);
+            }
           }}
         />
       )}
