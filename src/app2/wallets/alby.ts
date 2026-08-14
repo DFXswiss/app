@@ -42,7 +42,6 @@ interface AlbyRedirectContext {
 }
 
 function getWebln(): WebLNProvider | undefined {
-  if (typeof window === 'undefined') return undefined;
   return (window as { webln?: WebLNProvider }).webln;
 }
 

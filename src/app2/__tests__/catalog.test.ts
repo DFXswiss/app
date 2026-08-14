@@ -74,6 +74,11 @@ describe('walletIconFor', () => {
   it('fuzzy-matches a prefix variant such as MetaMask Mobile', () => {
     expect(walletIconFor('MetaMask Mobile')).toBe(entryById('MetaMask')?.icon);
   });
+
+  it('resolves a shared walletType that is not itself an id or name', () => {
+    expect(walletIconFor('WalletBrowser')).toBe(entryById('Coinbase Wallet')?.icon);
+    expect(walletIconFor(undefined, 'NoSuchWallet')).toBeUndefined();
+  });
 });
 
 describe('catalogEntryByWalletType', () => {
@@ -86,6 +91,8 @@ describe('catalogEntryByWalletType', () => {
 
   it('ignores a punctuation-only walletId and falls through to walletType', () => {
     expect(catalogEntryByWalletType('CLI', '---')?.id).toBe('CLI');
+    expect(catalogEntryByWalletType('CLI', 'NoSuchWallet')?.id).toBe('CLI');
+    expect(catalogEntryByWalletType('WalletBrowser')?.id).toBe('Coinbase Wallet');
   });
 
   it('resolves Coinbase Wallet by identity before the shared WalletBrowser type', () => {

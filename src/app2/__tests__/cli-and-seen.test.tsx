@@ -20,6 +20,21 @@ describe('cli and seen wallets', () => {
     expect(seenWallets()).toEqual([]);
   });
 
+  it('treats a broken or non-array store as empty and swallows a write failure', () => {
+    window.localStorage.setItem('dfx_app2_wallets', '{');
+    expect(seenWallets()).toEqual([]);
+    window.localStorage.setItem('dfx_app2_wallets', '{"address":"0x1"}');
+    expect(seenWallets()).toEqual([]);
+    window.localStorage.setItem('dfx_app2_wallets', '[{"walletId":"x"}]');
+    expect(seenWallets()).toEqual([]);
+
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota');
+    });
+    expect(() => rememberWallet({ address: '0xBBB' })).not.toThrow();
+    setItem.mockRestore();
+  });
+
   it('renders the OpenCryptoPay mark', () => {
     const { container } = render(<OcpMark className="mark" />);
     expect(container.querySelector('svg')).toHaveAttribute('class', 'mark');

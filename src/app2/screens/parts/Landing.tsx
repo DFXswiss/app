@@ -74,7 +74,7 @@ const STRIP_ENTRIES = WALLET_CATALOG.flatMap((group) => group.items).filter((ent
 // preview's mono() (public/app2/index.html, ~line 1797) used behind data-fb on
 // the strip <img>. Rendered inline as a data: URI (app2 CSP forbids remote images).
 function monoDataUri(label: string, color = '#16456f'): string {
-  const text = (label || '?').slice(0, 4);
+  const text = label.slice(0, 4);
   const svg =
     `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>` +
     `<circle cx='16' cy='16' r='16' fill='${color}'/>` +

@@ -66,7 +66,7 @@ import type { TranslationKey } from '../i18n';
 import { paymentMethodsFor } from '../components/pickers/PaymentMethodPicker';
 import { currenciesForBuy, currenciesForSell } from '../screens/trade/capabilities';
 import { shownChainsFor } from '../screens/trade/asset-pool';
-import { mapThrownError, mapTransactionError } from '../screens/trade/errors';
+import { assetFormatter, fiatFormatter, mapThrownError, mapTransactionError } from '../screens/trade/errors';
 import { parseAmt } from '../screens/trade/amount';
 import type { TradeAsset } from '../screens/trade/types';
 import {
@@ -198,6 +198,7 @@ describe('App2 review regressions', () => {
     expect(shouldInvalidateSession(active, [active.toLowerCase()])).toBe(false);
     expect(shouldInvalidateSession(active, [active.toUpperCase().replace('0X', '0x')])).toBe(false);
     expect(shouldInvalidateSession(undefined, ['0x00000000000000000000000000000000000001'])).toBe(false);
+    expect(shouldInvalidateSession('', ['0x1'])).toBe(false);
   });
 
   it('uses every authenticated wallet chain when filtering token routes', () => {
@@ -270,6 +271,35 @@ describe('App2 review regressions', () => {
     expect(result.message).not.toContain(secret);
   });
 
+  it('maps remaining thrown and quote-error codes including message fallbacks', () => {
+    expect(mapThrownError(t, new ApiException(401, 'gone')).kind).toBe('session');
+    expect(mapThrownError(t, new ApiException(400, 'x', 'RECOMMENDATION_REQUIRED')).kind).toBe('setup');
+    expect(mapThrownError(t, new ApiException(400, 'x', 'KYC_REQUIRED')).kind).toBe('setup');
+    expect(mapThrownError(t, new ApiException(400, 'x', 'LIMIT_EXCEEDED')).kind).toBe('setup');
+    expect(mapThrownError(t, new ApiException(400, 'x', 'IBAN_CURRENCY_MISMATCH')).kind).toBe('setup');
+    expect(mapThrownError(t, new ApiException(400, 'email required')).kind).toBe('email');
+    expect(mapThrownError(t, new ApiException(400, 'recommendation required')).kind).toBe('setup');
+    expect(mapThrownError(t, new ApiException(400, 'identity verification')).kind).toBe('setup');
+    expect(mapThrownError(t, new ApiException(400, 'limit exceeded')).kind).toBe('setup');
+    expect(mapThrownError(t, new ApiException(400, 'iban mismatch')).kind).toBe('setup');
+    expect(mapThrownError(t, new Error('nope')).kind).toBe('generic');
+    expect(mapThrownError(t, new ApiException(400, '')).kind).toBe('generic');
+    expect(assetFormatter('BTC', 'en')(1.5)).toContain('BTC');
+    expect(fiatFormatter('CHF', 'en')(12)).toBeTruthy();
+
+    const format = (n: number) => String(n);
+    expect(mapTransactionError(t, undefined, 0, 0, format)).toBeUndefined();
+    expect(mapTransactionError(t, 'AmountTooLow' as never, undefined, undefined, format)).toContain('minAmount');
+    expect(mapTransactionError(t, 'AmountTooHigh' as never, undefined, undefined, format)).toContain('maxAmount');
+    expect(mapTransactionError(t, 'KycRequired' as never, 0, 0, format)).toBe('needKyc');
+    expect(mapTransactionError(t, 'LimitExceeded' as never, 0, 0, format)).toBe('needLimit');
+    expect(mapTransactionError(t, 'EmailRequired' as never, 0, 0, format)).toBe('verifyEmailNote');
+    expect(mapTransactionError(t, 'RecommendationRequired' as never, 0, 0, format)).toBe('inviteGateNote');
+    expect(mapTransactionError(t, 'IbanCurrencyMismatch' as never, 0, 0, format)).toBe('ibanInvalid');
+    expect(mapTransactionError(t, 'PaymentMethodNotAllowed' as never, 0, 0, format)).toBe('comboUnavailable');
+    expect(mapTransactionError(t, 'SomethingElse' as never, 0, 0, format)).toBe('needSetup');
+  });
+
   it('does not interpret an English thousands-formatted amount as a decimal', () => {
     expect(parseAmt('1,000', 'en')).toBeNull();
     expect(parseAmt('1000.50', 'en')).toBe(1000.5);
@@ -337,6 +367,12 @@ describe('App2 review regressions', () => {
       code: 'next-code',
     });
     expect(kycHandoffFromError({ statusCode: 409 })).toEqual({ kind: 'conflict' });
+    expect(kycHandoffFromError({ code: 'ACCOUNT_MERGE_REQUESTED' })).toEqual({ kind: 'merge' });
+    expect(kycHandoffFromError({ code: 'ACCOUNT_EXISTS' })).toEqual({ kind: 'account-exists' });
+    expect(kycHandoffFromError({ code: 'AccountMergeRequested' })).toEqual({ kind: 'merge' });
+    expect(kycHandoffFromError({ code: 'AccountExists' })).toEqual({ kind: 'account-exists' });
+    expect(kycHandoffFromError({ statusCode: 400 })).toBeUndefined();
+    expect(kycHandoffFromError('plain')).toBeUndefined();
   });
 
   it('does not enable support polling for an empty thread', () => {
@@ -381,5 +417,37 @@ describe('App2 review regressions', () => {
         replacesMessageId: 1,
       }),
     ).toBe(optimisticMessage);
+
+    const tooOld = { id: 3, created: new Date(0), message: 'retry me' } as SupportMessage;
+    expect(
+      findSendCandidate([tooOld], {
+        issueUid: 'issue-1',
+        beforeIds: [],
+        text: 'retry me',
+        clearComposer: false,
+        startedAt: 5_000,
+      }),
+    ).toBeUndefined();
+
+    const noText = { id: 5, created: new Date(6_000), message: undefined } as SupportMessage;
+    expect(
+      findSendCandidate([noText], {
+        issueUid: 'issue-1',
+        beforeIds: [],
+        clearComposer: false,
+        startedAt: 6_000,
+      }),
+    ).toBe(noText);
+
+    const undated = { id: 4, created: 'not-a-date', message: 'hello' } as SupportMessage;
+    expect(
+      findSendCandidate([undated], {
+        issueUid: 'issue-1',
+        beforeIds: [],
+        text: 'hello',
+        clearComposer: false,
+        startedAt: 5_000,
+      }),
+    ).toBe(undated);
   });
 });

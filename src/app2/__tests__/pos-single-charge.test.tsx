@@ -25,7 +25,7 @@ import { createElement } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ApiException } from '@dfx.swiss/react';
 import { LanguageProvider } from '../i18n';
-import PosView from '../screens/ocp/pos';
+import PosView, { currencyForPosLink } from '../screens/ocp/pos';
 import type { OcpApi } from '../screens/ocp/useOcp';
 
 function buildOcp(overrides: Partial<OcpApi> = {}): OcpApi {
@@ -83,6 +83,7 @@ describe('POS charges exactly once until the payment is terminal', () => {
     const view = renderPos(ocp);
 
     fireEvent.change(amountField(), { target: { value: '12' } });
+    fireEvent.keyDown(amountField(), { key: 'Tab' });
     fireEvent.keyDown(amountField(), { key: 'Enter' });
     fireEvent.keyDown(amountField(), { key: 'Enter' });
     fireEvent.click(chargeButton());
@@ -161,5 +162,187 @@ describe('POS charges exactly once until the payment is terminal', () => {
     expect(ocp.charge).toHaveBeenNthCalledWith(2, '1', 7);
 
     view.unmount();
+  });
+});
+
+describe('POS extra paths', () => {
+  it('resolves display currency from the sell route and falls back to CHF', () => {
+    expect(currencyForPosLink(null, [])).toBe('CHF');
+    expect(currencyForPosLink({ routeId: 99 }, [{ id: 10, currency: { name: 'EUR' } }])).toBe('CHF');
+    expect(currencyForPosLink({ routeId: 10 }, [{ id: 10, currency: { name: 'USD' } }])).toBe('USD');
+    expect(currencyForPosLink({ routeId: '10' }, [{ id: 10 }])).toBe('CHF');
+  });
+
+  it('shows loading, an empty till and an invalid amount', () => {
+    const loading = renderPos(buildOcp({ links: null }));
+    expect(screen.getByText(/loading|laden|caricamento|chargement/i)).toBeInTheDocument();
+    loading.unmount();
+
+    const go = jest.fn();
+    const empty = render(
+      createElement(LanguageProvider, null, createElement(PosView, { ocp: buildOcp({ links: [] }), go })),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /create|erstellen|crea|créer/i }));
+    expect(go).toHaveBeenCalledWith('links');
+    empty.unmount();
+
+    renderPos(buildOcp());
+    fireEvent.change(amountField(), { target: { value: 'nope' } });
+    fireEvent.click(chargeButton());
+    expect(screen.getByText(/valid amount|gültigen betrag|importo valido|montant valide/i)).toBeInTheDocument();
+  });
+
+  it('marks a cancelled poll as failed', async () => {
+    renderPos(buildOcp({ pollPayment: jest.fn().mockResolvedValue('Cancelled') }));
+    fireEvent.change(amountField(), { target: { value: '3' } });
+    fireEvent.click(chargeButton());
+    expect(
+      await screen.findByText(/not completed|nicht abgeschlossen|non completato|non abouti/i, { timeout: 4000 }),
+    ).toBeInTheDocument();
+  });
+
+  it('resolves a demo charge as paid', async () => {
+    jest.useFakeTimers();
+    renderPos(buildOcp({ demo: true }));
+    fireEvent.change(amountField(), { target: { value: '4' } });
+    fireEvent.click(chargeButton());
+    await waitFor(() => expect(document.querySelector('.qcap')).toBeTruthy());
+    await act(async () => {
+      jest.advanceTimersByTime(2700);
+    });
+    expect(screen.getByText(/paid|bezahlt|pagato|payé/i)).toBeInTheDocument();
+    jest.useRealTimers();
+  });
+
+  it('loads links and routes on entry and keeps the selected till', () => {
+    const ocp = buildOcp({
+      links: null,
+      routes: null,
+      loadLinks: jest.fn(),
+      loadRoutes: jest.fn(),
+    });
+    const loading = renderPos(ocp);
+    expect(ocp.loadLinks).toHaveBeenCalled();
+    expect(ocp.loadRoutes).toHaveBeenCalled();
+    loading.unmount();
+
+    renderPos(
+      buildOcp({
+        links: [
+          { id: 1, label: 'EUR Till', status: 'Active', routeId: 10 },
+          { id: 2, label: 'USD Till', status: 'Active', routeId: 11 },
+        ] as never,
+        sellRoutes: [
+          { id: 10, currency: { name: 'EUR' } },
+          { id: 11, currency: { name: 'USD' } },
+        ] as never,
+      }),
+    );
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '2' } });
+    expect(screen.getByRole('combobox')).toHaveValue('2');
+    expect(screen.getAllByText(/USD/).length).toBeGreaterThan(0);
+  });
+
+  it('surfaces a generic charge error and labels a till without a name', async () => {
+    renderPos(
+      buildOcp({
+        links: [{ id: 1, status: 'Active', routeId: 10 }] as never,
+        charge: jest.fn().mockRejectedValue(new Error('x')),
+      }),
+    );
+    expect(screen.getByRole('combobox').textContent).toMatch(/#1/);
+    fireEvent.change(amountField(), { target: { value: '2' } });
+    fireEvent.click(chargeButton());
+    expect(await screen.findByText(/something went wrong|schiefgelaufen|storto|produite/i)).toBeInTheDocument();
+  });
+
+  it('marks an expired poll and retries from the fail state', async () => {
+    const ocp = buildOcp({
+      pollPayment: jest.fn().mockResolvedValueOnce('Expired').mockResolvedValue('Pending'),
+    });
+    renderPos(ocp);
+    fireEvent.change(amountField(), { target: { value: '3' } });
+    fireEvent.click(chargeButton());
+    expect(
+      await screen.findByText(/not completed|nicht abgeschlossen|non completato|non abouti/i, { timeout: 4000 }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
+    await waitFor(() => expect(ocp.charge).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps polling while the payment is still pending', async () => {
+    jest.useFakeTimers();
+    const pollPayment = jest.fn().mockResolvedValue('Pending');
+    renderPos(buildOcp({ pollPayment }));
+    fireEvent.change(amountField(), { target: { value: '6' } });
+    fireEvent.click(chargeButton());
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(10000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment.mock.calls.length).toBeGreaterThanOrEqual(1);
+    jest.useRealTimers();
+  });
+
+  it('expires a poll that never settles', async () => {
+    jest.useFakeTimers();
+    let now = 1_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    renderPos(buildOcp({ pollPayment: jest.fn().mockResolvedValue('Pending') }));
+    fireEvent.change(amountField(), { target: { value: '6' } });
+    fireEvent.click(chargeButton());
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+    });
+    now = 1_000_000 + 300_000 + 1;
+    await act(async () => {
+      jest.advanceTimersByTime(2700);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/expired|abgelaufen|scaduto|expiré/i)).toBeInTheDocument();
+    jest.spyOn(Date, 'now').mockRestore();
+    jest.useRealTimers();
+  });
+
+  it('drops a demo timeout and a live poll after unmount', async () => {
+    jest.useFakeTimers();
+    const demo = renderPos(buildOcp({ demo: true }));
+    fireEvent.change(amountField(), { target: { value: '4' } });
+    fireEvent.click(chargeButton());
+    await waitFor(() => expect(document.querySelector('.qcap')).toBeTruthy());
+    demo.unmount();
+    await act(async () => {
+      jest.advanceTimersByTime(2700);
+    });
+    jest.useRealTimers();
+
+    let resolvePoll!: (value: string) => void;
+    const pollPayment = jest.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          resolvePoll = resolve;
+        }),
+    );
+    jest.useFakeTimers();
+    const live = renderPos(buildOcp({ pollPayment }));
+    fireEvent.change(amountField(), { target: { value: '5' } });
+    fireEvent.click(chargeButton());
+    await waitFor(() => expect(document.querySelector('.qcap')).toBeTruthy());
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+    });
+    live.unmount();
+    await act(async () => {
+      resolvePoll?.('Completed');
+    });
   });
 });

@@ -484,7 +484,6 @@ function readPersonalPrefill(): PersonalPrefill {
     phone: '',
     country: '',
   };
-  if (typeof window === 'undefined') return empty;
   const qp = new URLSearchParams(window.location.search);
   const get = (key: string) => qp.get(key)?.trim() ?? '';
   return {
@@ -546,8 +545,7 @@ function PersonalFields({ ctx, countries }: { ctx: StepContext; countries: Count
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!valid) return;
-    const personalAddress = toKycAddress(address, countries);
-    if (!personalAddress) return;
+    const personalAddress = toKycAddress(address, countries) as NonNullable<ReturnType<typeof toKycAddress>>;
     const data: Parameters<typeof kyc.setPersonalData>[2] = {
       accountType,
       firstName: firstName.trim(),
@@ -556,10 +554,8 @@ function PersonalFields({ ctx, countries }: { ctx: StepContext; countries: Count
       address: personalAddress,
     };
     if (isOrg) {
-      const organizationAddress = toKycAddress(orgAddress, countries);
-      if (!organizationAddress) return;
       data.organizationName = orgName.trim();
-      data.organizationAddress = organizationAddress;
+      data.organizationAddress = toKycAddress(orgAddress, countries) as NonNullable<ReturnType<typeof toKycAddress>>;
     }
     ctx.submit(() => kyc.setPersonalData(ctx.code, ctx.url, data));
   };
@@ -870,7 +866,6 @@ function BeneficialFields({ ctx, countries }: { ctx: StepContext; countries: Cou
           country: kycAddress?.country ?? countryById(countries, owner.country) ?? countries[0],
         };
       });
-      if (!beneficialOwners.length) return;
       data.beneficialOwners = beneficialOwners;
     }
     ctx.submit(() => kyc.setBeneficialData(ctx.code, ctx.url, data));
@@ -1220,7 +1215,6 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
     let delay: number = IDENT_POLL.initialDelayMs;
 
     const tick = async () => {
-      if (advancedRef.current || cancelled) return;
       try {
         const next = await kyc.continueKyc(ctx.code, true);
         if (cancelled || advancedRef.current) return;

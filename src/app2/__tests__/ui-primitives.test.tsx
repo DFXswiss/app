@@ -220,6 +220,14 @@ describe('ui primitives', () => {
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
     expect(getByTestId('last')).toHaveFocus();
 
+    const outside = document.createElement('button');
+    outside.textContent = 'outside';
+    document.body.appendChild(outside);
+    outside.focus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(getByTestId('last')).toHaveFocus();
+    outside.remove();
+
     fireEvent.keyDown(document, { key: 'Escape' });
     await waitFor(() => expect(getByRole('dialog', { hidden: true })).toHaveAttribute('aria-hidden', 'true'));
     expect(opener).toHaveFocus();
@@ -257,5 +265,18 @@ describe('ui primitives', () => {
   it('no-ops the modal hook when the dialog ref is never attached', () => {
     const { rerender } = render(<DetachedModal open={false} />);
     rerender(<DetachedModal open />);
+  });
+
+  it('wraps Tab from the last control and Shift+Tab from outside the dialog', async () => {
+    const { getByTestId } = render(<ModalHarness startOpen />);
+    await waitFor(() => expect(getByTestId('first')).toHaveFocus());
+
+    getByTestId('last').focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(getByTestId('first')).toHaveFocus();
+
+    document.body.focus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(getByTestId('last')).toHaveFocus();
   });
 });

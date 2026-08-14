@@ -104,6 +104,14 @@ describe('mapThrownError', () => {
       kind: 'setup',
       message: 'needKyc',
     });
+    expect(mapThrownError(t, new ApiException(400, 'Trading not allowed'))).toEqual({
+      kind: 'setup',
+      message: 'needSetup',
+    });
+    expect(mapThrownError(t, new ApiException(400, 'NationalityNotAllowed'))).toEqual({
+      kind: 'setup',
+      message: 'accountRestricted',
+    });
   });
 
   it('falls back to spaced English phrases when the token is absent', () => {

@@ -1,3 +1,14 @@
+jest.mock('../utils/url', () => {
+  const actual = jest.requireActual('../utils/url') as typeof import('../utils/url');
+  return {
+    ...actual,
+    isSafeHttpsUrl: (value: string | undefined | null) => {
+      if (typeof value === 'string' && value.includes('mempool.space')) return false;
+      return actual.isSafeHttpsUrl(value);
+    },
+  };
+});
+
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: {
     BITCOIN: 'Bitcoin',
@@ -49,6 +60,19 @@ describe('format helpers', () => {
     expect(formatChf(12500.4, 'en')).toContain('CHF');
     expect(formatDate(new Date('2026-01-15T12:00:00Z'), 'en')).not.toBe('');
     expect(formatDateTime(new Date('2026-01-15T12:00:00Z'), 'en')).not.toBe('');
+
+    const dateTimeFormat = jest.spyOn(Intl, 'DateTimeFormat').mockImplementation(() => {
+      throw new Error('bad locale');
+    });
+    expect(formatDate(new Date('2026-01-15T12:00:00Z'), 'en')).toBe('2026-01-15');
+    expect(formatDateTime(new Date('2026-01-15T12:00:00Z'), 'en')).toBeTruthy();
+    dateTimeFormat.mockRestore();
+
+    const toLocaleString = jest.spyOn(Number.prototype, 'toLocaleString').mockImplementation(() => {
+      throw new Error('bad number');
+    });
+    expect(formatNumber(12.5, 'en')).toBe('12.5');
+    toLocaleString.mockRestore();
   });
 
   it('falls back when Intl refuses the locale', () => {
@@ -77,9 +101,10 @@ describe('format helpers', () => {
   it('builds explorer URLs only for known chains and prefers a safe API URL', () => {
     expect(explorerTxUrl(undefined, 'abc')).toBeUndefined();
     expect(explorerTxUrl(Blockchain.BITCOIN, undefined)).toBeUndefined();
-    expect(explorerTxUrl(Blockchain.BITCOIN, 'abc')).toBe('https://mempool.space/tx/abc');
+    expect(explorerTxUrl(Blockchain.BITCOIN, 'abc')).toBeUndefined();
+    expect(explorerTxUrl(Blockchain.ETHEREUM, '0xabc')).toMatch(/^https:\/\//);
     expect(explorerTxUrl(Blockchain.LIGHTNING, 'abc')).toBeUndefined();
     expect(resolveTxUrl('https://ok.example/tx/1', Blockchain.BITCOIN, 'abc')).toBe('https://ok.example/tx/1');
-    expect(resolveTxUrl('javascript:alert(1)', Blockchain.BITCOIN, 'abc')).toBe('https://mempool.space/tx/abc');
+    expect(resolveTxUrl('javascript:alert(1)', Blockchain.BITCOIN, 'abc')).toBeUndefined();
   });
 });

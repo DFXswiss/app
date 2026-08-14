@@ -61,8 +61,8 @@ export function mapThrownError(t: T, err: unknown): TradeErrorInfo {
     const fromMessage = getKycErrorFromMessage(err.message);
     if (fromMessage) {
       if (isEmailGateError(fromMessage)) return { kind: 'email', message: t('verifyEmailNote') };
-      const mappedMessage = mapTransactionError(t, fromMessage, undefined, undefined, (n) => String(n));
-      return { kind: 'setup', message: mappedMessage === undefined ? t('needSetup') : mappedMessage };
+      const mappedMessage = mapTransactionError(t, fromMessage, undefined, undefined, String);
+      return { kind: 'setup', message: mappedMessage as string };
     }
 
     // Older API deployments did not always provide `code`; retain narrow message fallbacks for

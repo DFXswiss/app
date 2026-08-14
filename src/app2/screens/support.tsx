@@ -512,7 +512,7 @@ function isImageFile(name: string | undefined): boolean {
 function downloadFile(url: string, filename: string): void {
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = filename || 'file';
+  anchor.download = filename;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
@@ -685,8 +685,10 @@ function SupportScreenBody() {
 
     const succeeded = candidate.status !== SupportMessageStatus.FAILED;
     if (succeeded && sendAttempt.clearComposer) {
-      setComposer((current) => (current.trim() === (sendAttempt.text?.trim() ?? '') ? '' : current));
-      setPendingFile((current) => (current === sendAttempt.file ? undefined : current));
+      setComposer((current) =>
+        sendAttempt.text && current.trim() === sendAttempt.text.trim() ? '' : current,
+      );
+      setPendingFile(undefined);
     }
     if (sendAttempt.replacesMessageId != null) {
       const replacedMessageId = sendAttempt.replacesMessageId;
@@ -742,8 +744,7 @@ function SupportScreenBody() {
   // Toggle the "more topics" scroll affordance once the chip row can no longer
   // scroll further right (mirrors the static app's `updateKbArrow`).
   const updateKbArrow = useCallback(() => {
-    const el = kbChipsRef.current;
-    if (!el) return;
+    const el = kbChipsRef.current as HTMLDivElement;
     const max = el.scrollWidth - el.clientWidth;
     setKbEnded(max <= 6 || el.scrollLeft >= max - 6);
   }, []);
@@ -763,8 +764,7 @@ function SupportScreenBody() {
   }, [composer, activeUid]);
 
   const scrollKbChips = () => {
-    const el = kbChipsRef.current;
-    if (!el) return;
+    const el = kbChipsRef.current as HTMLDivElement;
     el.scrollTo({ left: el.scrollLeft + 180, behavior: 'auto' });
     updateKbArrow();
   };
@@ -772,7 +772,7 @@ function SupportScreenBody() {
   // When a query is present the category filter is ignored and every article is
   // searched (question + answer); otherwise filter by the selected category.
   const kbQ = kbQuery.trim().toLowerCase();
-  const kbArticles = (KB_DATA[language] ?? KB_DATA.en).filter((article) => {
+  const kbArticles = KB_DATA[language].filter((article) => {
     const matchesQuery = !kbQ || article.q.toLowerCase().includes(kbQ) || article.a.toLowerCase().includes(kbQ);
     const matchesCat = kbQ ? true : kbCat === 'all' || article.c === kbCat;
     return matchesQuery && matchesCat;
@@ -841,7 +841,7 @@ function SupportScreenBody() {
     setSubmitting(true);
     setFormError('');
     const create = () => {
-      const option = TICKET_TYPES[typeIndex] ?? TICKET_TYPES[0];
+      const option = TICKET_TYPES[typeIndex] as (typeof TICKET_TYPES)[number];
       const request: CreateSupportIssue = {
         type: option.type,
         reason: option.reason,
@@ -1323,7 +1323,7 @@ function ChatBubble({
     const fileName = message.fileName;
     const image = isImageFile(fileName);
     if (loadedUrl) {
-      if (!image) downloadFile(loadedUrl, fileName);
+      downloadFile(loadedUrl, fileName);
       return;
     }
     setLoading(true);

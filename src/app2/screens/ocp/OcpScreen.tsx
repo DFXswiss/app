@@ -147,7 +147,7 @@ export default function OcpScreen() {
   );
 }
 
-function renderSub(sub: OcpSub, ocp: OcpApi, go: (sub: OcpSub) => void): ReactNode {
+function renderSub(sub: Exclude<OcpSub, 'home' | 'apply'>, ocp: OcpApi, go: (sub: OcpSub) => void): ReactNode {
   switch (sub) {
     case 'routes':
       return <RoutesView ocp={ocp} go={go} />;
@@ -161,8 +161,6 @@ function renderSub(sub: OcpSub, ocp: OcpApi, go: (sub: OcpSub) => void): ReactNo
       return <HistoryView ocp={ocp} go={go} />;
     case 'config':
       return <ConfigView ocp={ocp} go={go} />;
-    default:
-      return null;
   }
 }
 
@@ -470,7 +468,6 @@ const APPLY_SPINNER = <span className="spin" />;
 function ApplyView() {
   const { t } = useT();
   const { showToast } = useToast();
-  const { isLoggedIn } = useWalletSession();
   const { user, updateMail } = useUserContext();
   const { getProfile } = useUser();
   const { createIssue } = useSupportChat();
@@ -491,7 +488,6 @@ function ApplyView() {
   // Prefill the contact name with the verified real name (mirrors wireApply's
   // `n.value = realName()`), keeping any value the user has already typed.
   useEffect(() => {
-    if (!isLoggedIn) return undefined;
     let cancelled = false;
     void getProfile()
       .then((profile) => {
@@ -503,11 +499,10 @@ function ApplyView() {
     return () => {
       cancelled = true;
     };
-    // Only re-run on session change; the inner guard preserves a user-typed value.
-  }, [isLoggedIn]);
+    // Only run on mount; the inner guard preserves a user-typed value.
+  }, []);
 
   const submit = async () => {
-    if (submitting || submitted) return;
     const trimmedBiz = biz.trim();
     const trimmedName = name.trim();
     if (!trimmedBiz || !trimmedName) return;

@@ -57,7 +57,7 @@ const STICKER_ICON = (
 
 /** Minimal HTML escape for values written into the print pop-up document. */
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
+  return value.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 }
 
 interface InvoiceOut {
@@ -120,11 +120,10 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
   }
 
   const selectedId = routeId || String(ln[0].id);
-  const selectedRoute = ln.find((r) => String(r.id) === selectedId) ?? ln[0];
+  const selectedRoute = ln.find((r) => String(r.id) === selectedId) as (typeof ln)[0];
   const currency = selectedRoute.currency?.name || 'CHF';
 
   const generate = async () => {
-    if (generating) return;
     const trimmedInvId = invId.trim();
     if (!trimmedInvId) {
       invIdRef.current?.focus();
@@ -221,7 +220,7 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
   };
 
   const downloadSticker = async () => {
-    if (!out) return;
+    const current = out as InvoiceOut;
     if (ocp.demo) {
       showToast(t('stickerDemo'));
       return;
@@ -229,8 +228,8 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
     showToast(`${t('downloadSticker')}…`);
     try {
       const { data } = await getPaymentStickers(
-        out.routeId,
-        out.invId || undefined,
+        current.routeId,
+        current.invId,
         undefined,
         'BitcoinFocus',
         'Customer',

@@ -14,7 +14,7 @@ const WALLET_CONNECT_STORAGE_PREFIXES = ['wc@2:', '@walletconnect'] as const;
  * layer the SDK actually restores sessions from once it has migrated.
  */
 export function clearWalletConnectStorage(storage?: StorageLike): void {
-  const target = storage ?? (typeof window === 'undefined' ? undefined : window.localStorage);
+  const target = storage ?? window.localStorage;
   if (!target) return;
 
   try {

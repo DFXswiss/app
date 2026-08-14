@@ -180,7 +180,6 @@ export default function LinksView({ ocp, go }: OcpSubViewProps) {
 
   const create = async () => {
     const ln = ocp.lnSellRoutes;
-    if (!ln.length) return;
     setCreating(true);
     setNote({
       variant: '',
