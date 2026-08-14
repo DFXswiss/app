@@ -10,6 +10,7 @@
 //     real enum, which is strictly more reliable.
 
 import { ApiException, TransactionError } from '@dfx.swiss/react';
+import { getKycErrorFromMessage } from '../../../util/api-error';
 import type { Language, TranslationKey } from '../../i18n';
 import { formatAmount, formatFiat } from './amount';
 
@@ -53,6 +54,16 @@ export function mapThrownError(t: T, err: unknown): TradeErrorInfo {
     }
     if (code.includes('limit')) return { kind: 'setup', message: t('needLimit') };
     if (code.includes('iban')) return { kind: 'setup', message: t('ibanInvalid') };
+
+    // Nest 400s put the QuoteError token in `message` and leave `code` unset
+    // (`{ statusCode: 400, message: "KycRequired" }`). The phrase fallbacks below
+    // require word boundaries / spaces and miss those tokens.
+    const fromMessage = getKycErrorFromMessage(err.message);
+    if (fromMessage) {
+      if (isEmailGateError(fromMessage)) return { kind: 'email', message: t('verifyEmailNote') };
+      const mappedMessage = mapTransactionError(t, fromMessage, undefined, undefined, (n) => String(n));
+      return { kind: 'setup', message: mappedMessage === undefined ? t('needSetup') : mappedMessage };
+    }
 
     // Older API deployments did not always provide `code`; retain narrow message fallbacks for
     // compatibility, but never surface the raw server string in the localized UI.
