@@ -1,15 +1,20 @@
 /**
- * RealUnit area screens (useRealunitGuard: Admin | RealUnit | Compliance).
+ * RealUnit area screens.
  *
- * Subgraph / RealUnit external API are unreachable in this stack; Aktionariat price is mocked.
- * Admin quotes / transactions / holders / tokenInfo / account data may be empty or error.
- * Writable quote payment (WaitingForPayment + Confirm Payment) cannot be produced here —
- * quotes come from getAdminQuotes backed by the unreachable subgraph; no factory seeds them.
+ * Quotes screens use useRealunitQuotesGuard (Admin | RealUnit | Compliance | Support).
+ * All other RealUnit routes use useRealunitGuard (Admin | RealUnit | Compliance only).
+ *
+ * getAdminQuotes is a DB query against transaction_request (not the subgraph). A SQL-inserted
+ * WaitingForPayment Buy row can exercise list/detail/deactivate against the real API; that does
+ * not prove a customer created the quote through /buy.
+ *
+ * Subgraph-backed surfaces (holders / tokenInfo / account history) remain unreachable here;
+ * Aktionariat price is mocked. Admin transactions may be empty or error without a seed.
  */
 
 import type { Locator, Page } from '@playwright/test';
-import { apiGet, expect, gotoWithSession, loginAs, normPath, openScreen, queryOne, test } from './fixtures';
-import { cleanupCreatedData, createSupportIssue, createUser } from './fixtures/factories';
+import { apiGet, expect, gotoWithSession, loginAs, normPath, openScreen, queryOne, required, test } from './fixtures';
+import { cleanupCreatedData, createSupportIssue, createUser, trackRow } from './fixtures/factories';
 
 /** Routes owned by this lane's RealUnit half (11 paths). */
 const REALUNIT_ROUTES = [
@@ -200,10 +205,12 @@ test.describe('RealUnit area', () => {
     await expect(tableHeader(page, 'Created')).toBeVisible();
 
     // Empty success → "No pending transactions found"; fetch failure → ErrorHint with quotesError copy.
-    const emptyOrError = page
+    // A prior test may have left a seeded quote in the same worker DB — either outcome is fine.
+    const settled = page
       .getByText('No pending transactions found')
-      .or(page.getByText('Failed to load pending transactions.'));
-    await expect(emptyOrError).toBeVisible();
+      .or(page.getByText('Failed to load pending transactions.'))
+      .or(page.locator('tbody tr').first());
+    await expect(settled.first()).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);
   });
@@ -218,11 +225,119 @@ test.describe('RealUnit area', () => {
     // Source branches (realunit-quote-detail.screen.tsx):
     // - quotesError && !quote → ErrorHint "Failed to load quote details."
     // - !quote after successful fetch → "Quote not found"
-    // Writable confirm-payment is not exercised: no WaitingForPayment quote is seedable in this stack.
     const notFoundOrError = page.getByText('Quote not found').or(page.getByText('Failed to load quote details.'));
     await expect(notFoundOrError).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);
+  });
+
+  /**
+   * SQL seed of transaction_request: proves admin quotes list/detail/deactivate UI against the
+   * real API. Not a customer-created quote through /buy (see e2e-stack/docs/test-data.md).
+   */
+  async function seedWaitingForPaymentBuyQuote(): Promise<number> {
+    const customer = await createUser({ tag: 'ru-quote' });
+    const realu = await queryOne<{ id: number }>(`SELECT id FROM asset WHERE name = 'REALU' ORDER BY id ASC LIMIT 1`);
+    if (realu?.id == null) {
+      throw new Error("seedWaitingForPaymentBuyQuote: no asset named 'REALU' in seed data");
+    }
+
+    const uid = `RQ${Date.now().toString(36)}${customer.userId}`.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
+    const row = await queryOne<{ id: number }>(
+      `INSERT INTO transaction_request
+         (type, "isComplete", "targetId", status, amount, "estimatedAmount", uid, "userId")
+       VALUES ('Buy', false, $1, 'WaitingForPayment', 100, 10, $2, $3)
+       RETURNING id`,
+      [realu.id, uid, customer.userId],
+    );
+    const id = required(row?.id, 'seeded transaction_request must return an id');
+    trackRow('transaction_request', id);
+    return id;
+  }
+
+  test('RealUnit can deactivate a seeded WaitingForPayment Buy quote', async ({ page }) => {
+    const quoteId = await seedWaitingForPaymentBuyQuote();
+    const { jwt } = await loginAs('RealUnit');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+
+    await openScreen(page, `/realunit/quotes/${quoteId}`, jwt);
+
+    await expect(page.getByRole('button', { name: 'Deactivate Quote' })).toBeVisible();
+    await page.getByRole('button', { name: 'Deactivate Quote' }).click();
+    await expect(page.getByText('Are you sure you want to deactivate this quote?')).toBeVisible();
+    await page.getByRole('button', { name: 'Confirm' }).click();
+
+    // Success: navigate back to the list, or detail no longer offers Deactivate.
+    await expect
+      .poll(
+        async () => {
+          const path = normPath(new URL(page.url()).pathname);
+          if (path === '/realunit/quotes') return 'list';
+          if ((await page.getByRole('button', { name: 'Deactivate Quote' }).count()) === 0) return 'deactivated';
+          return 'pending';
+        },
+        { timeout: 15000 },
+      )
+      .not.toBe('pending');
+
+    assertNoErrors(pageErrors, consoleErrors);
+  });
+
+  test('Support can open quotes detail and see Deactivate (not Confirm Payment)', async ({ page }) => {
+    const quoteId = await seedWaitingForPaymentBuyQuote();
+    const { jwt, wallet } = await loginAs('Support');
+    const userRow = await queryOne<{ userDataId: number }>('SELECT "userDataId" FROM "user" WHERE address = $1', [
+      wallet.address,
+    ]);
+    if (userRow?.userDataId == null) {
+      throw new Error(`Support quotes: no userDataId for Support wallet ${wallet.address}`);
+    }
+    await ensureStaffKycClearance(userRow.userDataId, 'Support');
+
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    await openScreen(page, `/realunit/quotes/${quoteId}`, jwt);
+
+    await expect(page.getByRole('button', { name: 'Deactivate Quote' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Confirm Payment Received' })).toHaveCount(0);
+
+    assertNoErrors(pageErrors, consoleErrors);
+  });
+
+  test('Support is denied non-quotes RealUnit routes that use useRealunitGuard', async ({ page }) => {
+    const { jwt, wallet } = await loginAs('Support');
+    const userRow = await queryOne<{ userDataId: number }>('SELECT "userDataId" FROM "user" WHERE address = $1', [
+      wallet.address,
+    ]);
+    if (userRow?.userDataId == null) {
+      throw new Error(`Support deny: no userDataId for Support wallet ${wallet.address}`);
+    }
+    await ensureStaffKycClearance(userRow.userDataId, 'Support');
+
+    for (const target of ['/realunit', '/realunit/holders']) {
+      await gotoWithSession(page, target, jwt);
+      await page.waitForLoadState('networkidle');
+      await expect
+        .poll(() => normPath(new URL(page.url()).pathname), {
+          message: `Support must be redirected away from ${target}`,
+          timeout: 15000,
+        })
+        .not.toBe(normPath(target));
+    }
+  });
+
+  test('Marketing is denied quotes routes', async ({ page }) => {
+    const { jwt } = await loginAs('Marketing');
+
+    for (const target of ['/realunit/quotes', `/realunit/quotes/${IMPLAUSIBLE_ID}`]) {
+      await gotoWithSession(page, target, jwt);
+      await page.waitForLoadState('networkidle');
+      await expect
+        .poll(() => normPath(new URL(page.url()).pathname), {
+          message: `Marketing must be redirected away from ${target}`,
+          timeout: 15000,
+        })
+        .not.toBe(normPath(target));
+    }
   });
 
   test('/realunit/transactions list renders empty or ErrorHint without crash', async ({ page }) => {

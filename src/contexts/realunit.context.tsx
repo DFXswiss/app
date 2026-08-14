@@ -55,6 +55,7 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
     getAdminQuotes,
     getAdminTransactions,
     confirmPayment,
+    deactivateQuote,
   } = useRealunitApi();
 
   const fetchAccountSummary = useCallback(
@@ -177,6 +178,7 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
       resetQuotes,
       fetchTransactions,
       confirmPayment,
+      deactivateQuote,
     }),
     [
       accountSummary,
@@ -206,6 +208,7 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
       resetQuotes,
       fetchTransactions,
       confirmPayment,
+      deactivateQuote,
     ],
   );
 

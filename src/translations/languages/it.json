@@ -1106,7 +1106,10 @@
     "Date": "Data",
     "Confirm Payment Received": "Conferma ricezione pagamento",
     "Are you sure you want to confirm the payment receipt?": "Sei sicuro di voler confermare la ricezione del pagamento?",
-    "Payment confirmed successfully": "Ricezione del pagamento confermata con successo"
+    "Payment confirmed successfully": "Ricezione del pagamento confermata con successo",
+    "Deactivate Quote": "Disattiva offerta",
+    "Are you sure you want to deactivate this quote?": "Sei sicuro di voler disattivare questa offerta?",
+    "Deactivated At": "Disattivato il"
   },
   "screens/blockchain": {
     "Transaction signing": "Firma della transazione",

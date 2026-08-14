@@ -103,6 +103,7 @@ export interface RealUnitQuote {
   estimatedAmount: number;
   created: string;
   userAddress?: string;
+  deactivatedAt?: string;
 }
 
 export interface RealUnitTransaction {
@@ -144,4 +145,5 @@ export interface RealunitContextInterface {
   resetQuotes: () => void;
   fetchTransactions: () => void;
   confirmPayment: (id: number) => Promise<void>;
+  deactivateQuote: (id: number) => Promise<void>;
 }

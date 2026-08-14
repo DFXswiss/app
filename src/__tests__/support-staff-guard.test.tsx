@@ -40,6 +40,7 @@ import {
   useComplianceGuard,
   useKycLevelGuard,
   useRealunitGuard,
+  useRealunitQuotesGuard,
   useSupportDashboardGuard,
   useSupportStaffGuard,
   useUserGuard,
@@ -126,6 +127,35 @@ describe('guard.hook', () => {
     });
   });
 
+  describe('useRealunitQuotesGuard', () => {
+    it.each([[UserRole.ADMIN], [UserRole.REALUNIT], [UserRole.COMPLIANCE], [UserRole.SUPPORT]])(
+      'does not navigate for %s',
+      (role) => {
+        mockSession = { role, address: '0x1' };
+        renderHook(() => useRealunitQuotesGuard());
+        expect(mockNavigate).not.toHaveBeenCalled();
+      },
+    );
+
+    it('navigates for MARKETING', () => {
+      mockSession = { role: UserRole.MARKETING, address: '0x1' };
+      renderHook(() => useRealunitQuotesGuard('/denied'));
+      expect(mockNavigate).toHaveBeenCalledWith('/denied', { setRedirect: true });
+    });
+
+    it('navigates for USER', () => {
+      mockSession = { role: UserRole.USER, address: '0x1' };
+      renderHook(() => useRealunitQuotesGuard());
+      expect(mockNavigate).toHaveBeenCalledWith('/', { setRedirect: true });
+    });
+
+    it('navigates when not logged in', () => {
+      mockIsLoggedIn = false;
+      renderHook(() => useRealunitQuotesGuard());
+      expect(mockNavigate).toHaveBeenCalledWith('/', { setRedirect: true });
+    });
+  });
+
   describe('useComplianceGuard', () => {
     it('does not navigate for COMPLIANCE', () => {
       mockSession = { role: UserRole.COMPLIANCE, address: '0x1' };
@@ -155,11 +185,7 @@ describe('guard.hook', () => {
   });
 
   describe('useSupportStaffGuard', () => {
-    it.each([
-      [UserRole.ADMIN],
-      [UserRole.COMPLIANCE],
-      [UserRole.SUPPORT],
-    ])('does not navigate for %s', (role) => {
+    it.each([[UserRole.ADMIN], [UserRole.COMPLIANCE], [UserRole.SUPPORT]])('does not navigate for %s', (role) => {
       mockSession = { role, address: '0x1' };
       renderHook(() => useSupportStaffGuard());
       expect(mockNavigate).not.toHaveBeenCalled();
