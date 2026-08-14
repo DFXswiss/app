@@ -143,6 +143,10 @@
     "title": "Trading-Flows",
     "description": "Trading-bezogene End-to-End-Flows."
   },
+  "support-issue": {
+    "title": "Support-Ticket Formular",
+    "description": "Kunden-Supportformular: Ticket anlegen, inkl. Kontakt-Mail wenn das Konto keine hat."
+  },
   "support-dashboard": {
     "title": "Support-Dashboard",
     "description": "Support-Dashboard: Übersicht und Detailansichten."
