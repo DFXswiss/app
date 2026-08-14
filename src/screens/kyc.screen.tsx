@@ -1919,9 +1919,10 @@ function FinancialData({ rootRef, code, step, onDone, onBack }: EditProps): JSX.
   }, [code, language]);
 
   useEffect(() => {
-    if (!responses.length) return;
+    const sessionUrl = step.session?.url;
+    if (!sessionUrl || !responses.length) return;
 
-    setFinancialData(code, step.session.url, { responses })
+    setFinancialData(code, sessionUrl, { responses })
       .then((r) => isStepDone(r) && onDone())
       .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
   }, [responses]);
