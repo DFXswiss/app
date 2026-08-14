@@ -58,6 +58,13 @@ test.describe('App2 preview screens', () => {
     await expect(page).toHaveScreenshot('app2-404.png', { maxDiffPixels: 2000, fullPage: true });
   });
 
+  test('connect sheet', async ({ page }) => {
+    await openApp2(page, '#/');
+    await page.getByRole('button', { name: /connect wallet|wallet verbinden/i }).first().click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-connect-sheet.png', { maxDiffPixels: 2000, fullPage: true });
+  });
+
   test('buy success return path lands on hash with cko query', async ({ page }) => {
     const response = await page.goto('/app2/buy/success?cko-payment-id=test-cko', {
       waitUntil: 'domcontentloaded',
