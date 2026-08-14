@@ -171,7 +171,6 @@ interface CgLogoEntry {
 }
 
 function readCgLogoCache(): Record<string, CgLogoEntry> {
-  if (typeof window === 'undefined') return {};
   try {
     const parsed: unknown = JSON.parse(window.localStorage.getItem(CG_LOGO_CACHE_KEY) ?? 'null');
     return parsed && typeof parsed === 'object' ? (parsed as Record<string, CgLogoEntry>) : {};
@@ -186,7 +185,6 @@ function cachedCgLogo(code: string): string | undefined {
 }
 
 function storeCgLogo(code: string, url: string): void {
-  if (typeof window === 'undefined') return;
   const cache = readCgLogoCache();
   cache[code] = { url, ts: Date.now() };
   try {
@@ -352,10 +350,10 @@ export function FiatGlyph({ code, size = 38 }: { code: string; size?: number }) 
       <circle cx={15} cy={15} r={15} fill={color} />
       <text
         x={15}
-        y={symbol.length > 1 ? 19.6 : 21}
+        y={21}
         textAnchor="middle"
         fontFamily="Inter, -apple-system, Arial, sans-serif"
-        fontSize={symbol.length > 1 ? 13 : 18}
+        fontSize={18}
         fontWeight={700}
         fill="#fff"
       >

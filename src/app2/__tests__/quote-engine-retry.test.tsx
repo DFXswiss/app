@@ -121,4 +121,132 @@ describe('useQuoteEngine error-path timers', () => {
     expect(fetcher).toHaveBeenCalledTimes(5); // 1 success + 1 TTL-triggered failure + 3 backoff retries
     expect(jest.getTimerCount()).toBe(0);
   });
+
+  it('discards a superseded success and a superseded failure when the key changes mid-flight', async () => {
+    let resolveFirst: (value: { n: number }) => void = () => undefined;
+    let rejectSecond: (error: Error) => void = () => undefined;
+    const fetcher = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ n: number }>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ n: number }>((_resolve, reject) => {
+            rejectSecond = reject;
+          }),
+      )
+      .mockResolvedValue({ n: 3 });
+
+    const { result, rerender } = renderHook(({ key }: { key: string }) => useQuoteEngine(true, key, fetcher), {
+      initialProps: { key: 'a' },
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    rerender({ key: 'b' });
+    await act(async () => {
+      resolveFirst({ n: 1 });
+      await Promise.resolve();
+    });
+    expect(result.current.data).toBeNull();
+
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    rerender({ key: 'c' });
+    await act(async () => {
+      rejectSecond(new Error('stale'));
+      await Promise.resolve();
+    });
+    expect(result.current.error).toBeNull();
+  });
+
+  it('does not auto-refresh while paused', async () => {
+    const fetcher = jest.fn().mockResolvedValue({ ok: true });
+    renderHook(({ paused }: { paused: boolean }) => useQuoteEngine(true, 'k', fetcher, paused), {
+      initialProps: { paused: true },
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(31_000);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not auto-refresh a still-fresh quote and ignores refresh without a key', async () => {
+    const fetcher = jest.fn().mockResolvedValue({ ok: true });
+    const { result, rerender } = renderHook(
+      ({ enabled, key }: { enabled: boolean; key: string }) => useQuoteEngine(enabled, key, fetcher),
+      { initialProps: { enabled: true, key: 'k' } },
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(1_000);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    rerender({ enabled: false, key: '' });
+    await act(async () => {
+      result.current.refresh();
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    rerender({ enabled: true, key: 'k2' });
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      result.current.refresh();
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it('drops a backoff retry whose sequence has already been superseded', async () => {
+    const fetcher = jest.fn().mockRejectedValue(new Error('down'));
+    const { rerender } = renderHook(({ key }: { key: string }) => useQuoteEngine(true, key, fetcher), {
+      initialProps: { key: 'a' },
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    rerender({ key: 'b' });
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 });

@@ -113,5 +113,39 @@ describe('connectAlby WebLN', () => {
       reason: 'failed',
       message: 'No Alby login method found',
     });
+
+    setWebln({
+      enable: jest.fn().mockResolvedValue(undefined),
+      getInfo: jest.fn().mockResolvedValue({}),
+    });
+    await expect(connectAlby({ apiBaseUrl: 'https://api.dfx.swiss/v1' })).rejects.toMatchObject({
+      reason: 'failed',
+    });
+  });
+
+  it('maps a rejection that is not an Error instance', async () => {
+    setWebln({
+      enable: jest.fn().mockRejectedValue('denied'),
+      getInfo: jest.fn(),
+    });
+    await expect(connectAlby({ apiBaseUrl: 'https://api.dfx.swiss/v1' })).rejects.toMatchObject({
+      reason: 'rejected',
+    });
+
+    setWebln({
+      enable: jest.fn().mockRejectedValue({}),
+      getInfo: jest.fn(),
+    });
+    await expect(connectAlby({ apiBaseUrl: 'https://api.dfx.swiss/v1' })).rejects.toMatchObject({
+      reason: 'failed',
+    });
+
+    setWebln({
+      enable: jest.fn().mockRejectedValue(undefined),
+      getInfo: jest.fn(),
+    });
+    await expect(connectAlby({ apiBaseUrl: 'https://api.dfx.swiss/v1' })).rejects.toMatchObject({
+      reason: 'failed',
+    });
   });
 });

@@ -103,7 +103,6 @@ export default function LimitScreen() {
   const needMail = !user?.mail;
 
   const submit = async () => {
-    if (submitting || submitted) return;
     const trimmedName = name.trim();
     if (!trimmedName) return;
     const trimmedMail = email.trim();

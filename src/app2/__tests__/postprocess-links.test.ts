@@ -4,6 +4,7 @@ import {
   hasGoogleFontsLink,
   hasManifestJsonLink,
   hasMainAppIdentity,
+  hasSharedIdentityMeta,
   removeSharedIdentityLinks,
   removeSharedIdentityMeta,
   replaceDescriptionMeta,
@@ -55,10 +56,17 @@ describe('App2 postprocess link handling', () => {
   it('detects only the stale manifest and absolute apple-touch identity links', () => {
     expect(hasManifestJsonLink('<link href="/manifest.json?rev=1" rel="manifest">')).toBe(true);
     expect(hasManifestJsonLink('<link rel="manifest" href="./manifest.webmanifest">')).toBe(false);
+    expect(hasManifestJsonLink('<link rel="manifest">')).toBe(false);
+    expect(hasManifestJsonLink('<link rel="manifest" href="http://[">')).toBe(false);
+    expect(hasManifestJsonLink('<div>no links</div>')).toBe(false);
     expect(hasAbsoluteAppleTouchIcon('<link href="https://app.dfx.swiss/apple.png" rel="apple-touch-icon">')).toBe(
       true,
     );
     expect(hasAbsoluteAppleTouchIcon('<link rel="apple-touch-icon" href="./apple.png">')).toBe(false);
+    expect(hasAbsoluteAppleTouchIcon('<link rel="apple-touch-icon">')).toBe(false);
+    expect(hasAbsoluteAppleTouchIcon('<link rel="apple-touch-icon" href="ftp://files.example/apple.png">')).toBe(
+      false,
+    );
   });
 });
 
@@ -82,6 +90,9 @@ describe('App2 postprocess social-identity handling', () => {
     expect(result).toContain('name="viewport"');
     expect(result).toContain('name="description"');
     expect(result).not.toMatch(/twitter:|og:title|alby:name/);
+    expect(hasSharedIdentityMeta(html)).toBe(true);
+    expect(hasSharedIdentityMeta('<meta content="x">')).toBe(false);
+    expect(hasSharedIdentityMeta('<div>no meta</div>')).toBe(false);
   });
 
   it('replaces the description meta tag regardless of attribute order/quoting, and throws if none is found', () => {

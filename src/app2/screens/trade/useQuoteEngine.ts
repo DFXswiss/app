@@ -121,7 +121,7 @@ export function useQuoteEngine<TResult>(
           retryAttemptRef.current = attempt + 1;
           clearTimeout(retryRef.current);
           retryRef.current = setTimeout(() => {
-            if (seq === seqRef.current) execute(forKey);
+            execute(forKey);
           }, RETRY_BACKOFF_MS[attempt]);
         }
       });

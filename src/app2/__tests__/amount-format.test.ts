@@ -31,5 +31,17 @@ describe('trade amount helpers', () => {
     expect(shortAddress(undefined)).toBe('');
     expect(shortAddress('abcd')).toBe('abcd');
     expect(shortAddress('0x1234567890abcdef')).toBe('0x1234…cdef');
+
+    const toLocaleString = jest.spyOn(Number.prototype, 'toLocaleString').mockImplementation(() => {
+      throw new Error('bad number');
+    });
+    expect(formatAmount(1.23456789, 6, 'en')).toBe('1.234568');
+    toLocaleString.mockRestore();
+
+    const formatToParts = jest
+      .spyOn(Intl.NumberFormat.prototype, 'formatToParts')
+      .mockReturnValue([{ type: 'integer', value: '0' } as Intl.NumberFormatPart]);
+    expect(fiatSymbol('EUR', 'en')).toBe('EUR');
+    formatToParts.mockRestore();
   });
 });

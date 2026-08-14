@@ -272,9 +272,7 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
       window.open(action.url, '_blank', 'noopener');
       return;
     }
-    if (action.kind === 'logout') {
-      void logout(); // clears session state + shows its own toast (WalletSessionProvider.logout)
-    }
+    void logout();
   };
 
   return (

@@ -122,15 +122,13 @@ export function LanguageMenu({ open, onClose, anchorRef }: LanguageMenuProps) {
   useEffect(() => {
     if (!open) return;
     const node = menuRef.current;
-    const id = requestAnimationFrame(() =>
-      (node?.querySelector<HTMLElement>('.lopt.sel') ?? node?.querySelector<HTMLElement>('.lopt'))?.focus(),
-    );
+    const id = requestAnimationFrame(() => node?.querySelector<HTMLElement>('.lopt.sel')?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
 
   // Arrow-key roving focus within the menu, matching the static langMenu keydown.
   const onMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('.lopt') ?? []);
+    const items = Array.from((menuRef.current as HTMLDivElement).querySelectorAll<HTMLElement>('.lopt'));
     if (!items.length) return;
     const i = items.indexOf(document.activeElement as HTMLElement);
     if (e.key === 'ArrowDown') {

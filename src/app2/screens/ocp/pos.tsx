@@ -117,7 +117,6 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
       amountRef.current?.focus();
       return;
     }
-    if (!selectedId) return;
     // Freeze before the await boundary: after ocp.charge resolves the select may
     // already point at another link/currency (services#1270 class of bug).
     chargingRef.current = true;
@@ -155,7 +154,6 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
 
     if (ocp.demo) {
       timer = setTimeout(() => {
-        if (cancelled) return;
         setStatus('paid');
         unlockTill();
       }, 2600);

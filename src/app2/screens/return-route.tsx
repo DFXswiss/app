@@ -164,7 +164,6 @@ export default function ReturnRouteScreen() {
       };
 
       const scheduleNext = () => {
-        if (cancelledRef.current) return;
         if (Date.now() >= deadline) {
           // Visible stop + retry — never silent, never indefinite.
           failWithRetry('waitTimedOut');
@@ -179,7 +178,7 @@ export default function ReturnRouteScreen() {
           const tx = await getTransactionByCkoId(encodeURIComponent(ckoId));
           if (cancelledRef.current) return;
           if (tx && (tx.uid || tx.id != null)) {
-            const uid = tx.uid ?? (tx.id != null ? String(tx.id) : undefined);
+            const uid = tx.uid ?? String(tx.id);
             setPanel({
               kind: 'result',
               variant: 'ok',

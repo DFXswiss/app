@@ -118,4 +118,18 @@ describe('FeesPanel empty and breakdown branches', () => {
     expect(getByText(`${formatAmount(0, 6, 'en')} BTC / ETH`)).toBeInTheDocument();
     expect(getByText(`−${formatAmount(0.01, 6, 'en')} ETH`)).toBeInTheDocument();
   });
+
+  it('treats a missing total as zero on the summary chip and total row', () => {
+    const buy = {
+      amount: 100,
+      estimatedAmount: 0.002,
+      exchangeRate: 50000,
+      rate: 51000,
+      isValid: true,
+      fees: { rate: 0.01, dfx: 1, bank: 0.1, network: 0.1 },
+    } as unknown as Buy;
+
+    renderPanel('buy', buy);
+    expect(screen.getByText(`−${formatFiat(0, 'EUR', 'en')}`)).toBeInTheDocument();
+  });
 });

@@ -342,7 +342,7 @@ export default function HomeScreen() {
           buyQuote.data.error,
           buyQuote.data.minVolume,
           buyQuote.data.maxVolume,
-          fiatFormatter(buyFiat?.name ?? '', language),
+          fiatFormatter(buyFiat?.name as string, language),
         )
       : mode === 'sell' && sellQuote.data?.isValid === false && sellQuote.isFresh
         ? mapTransactionError(
@@ -350,7 +350,7 @@ export default function HomeScreen() {
             sellQuote.data.error,
             sellQuote.data.minVolume,
             sellQuote.data.maxVolume,
-            assetFormatter(sellAsset?.code ?? '', language),
+            assetFormatter(sellAsset?.code as string, language),
           )
         : mode === 'swap' && swapQuote.data?.isValid === false && swapQuote.isFresh
           ? mapTransactionError(
@@ -358,7 +358,7 @@ export default function HomeScreen() {
               swapQuote.data.error,
               swapQuote.data.minVolume,
               swapQuote.data.maxVolume,
-              assetFormatter(swapFromAsset?.code ?? '', language),
+              assetFormatter(swapFromAsset?.code as string, language),
             )
           : undefined;
   // Amount min/max rejections are already shown in the receive panel (`receiveMeta`). Treating
@@ -493,7 +493,6 @@ export default function HomeScreen() {
       setBankAccountOpen(true);
       return;
     }
-    if (!ctaEnabled) return;
     // The panel runs on the public quote, so no payment details exist yet. Start the
     // payment-details request; the effect above opens the sheet on that exact response, which
     // is also what guards against showing numbers that have gone stale in the meantime.
@@ -531,7 +530,7 @@ export default function HomeScreen() {
         // A real conversion for an order that still can't be placed — say why, never dress it
         // up with a refresh countdown.
         if (activeValidityMessage) receiveMeta = activeValidityMessage;
-      } else if (buyQuote.secondsLeft > 0) {
+      } else {
         receiveMeta = t('quoteRefresh', { n: buyQuote.secondsLeft });
         receiveMetaCountdown = true;
       }
@@ -547,12 +546,12 @@ export default function HomeScreen() {
       receiveValue = '—';
       if (activeValidityMessage) receiveMeta = activeValidityMessage;
     } else if (sellQuote.data && sellQuote.isFresh) {
-      receiveValue = formatFiat(sellQuote.data.estimatedAmount, sellFiat?.name ?? '', language);
+      receiveValue = formatFiat(sellQuote.data.estimatedAmount, sellFiat?.name as string, language);
       if (sellQuote.data.isValid === false) {
         // A real conversion for an order that still can't be placed — say why, never dress it
         // up with a refresh countdown.
         if (activeValidityMessage) receiveMeta = activeValidityMessage;
-      } else if (sellQuote.secondsLeft > 0) {
+      } else {
         receiveMeta = t('quoteRefresh', { n: sellQuote.secondsLeft });
         receiveMetaCountdown = true;
       }
@@ -573,7 +572,7 @@ export default function HomeScreen() {
         // A real conversion for an order that still can't be placed — say why, never dress it
         // up with a refresh countdown.
         if (activeValidityMessage) receiveMeta = activeValidityMessage;
-      } else if (swapQuote.secondsLeft > 0) {
+      } else {
         receiveMeta = t('quoteRefresh', { n: swapQuote.secondsLeft });
         receiveMetaCountdown = true;
       }
@@ -623,7 +622,6 @@ export default function HomeScreen() {
     if (mode === 'buy') changeMode('sell');
     else if (mode === 'sell') changeMode('buy');
     else {
-      if (!canFlipSwap || !swapFromAsset || !swapToAsset) return;
       const a = swapFromAsset;
       const ac = swapFromChain;
       setSwapFromAsset(swapToAsset);
@@ -994,7 +992,7 @@ export default function HomeScreen() {
         amount={sheetSnapshot?.amount ?? sheetAmount}
         sessionAddress={session.address}
         onRetry={() => {
-          setSheetSnapshot((snapshot) => (snapshot ? { ...snapshot, loading: true } : snapshot));
+          setSheetSnapshot((snapshot) => ({ ...(snapshot as PaymentSnapshot), loading: true }));
           setSheetRetrying(true);
           // Must be the engine the sheet renders from: refreshing the panel's public quote would
           // never re-run paymentInfos, so a gate the user just cleared (e-mail confirmed, KYC
@@ -1023,7 +1021,7 @@ function PillAsset({ asset, chain }: { asset: TradeAsset | undefined; chain: Blo
       <AssetChainGlyph code={asset.code} blockchain={chain} />
       <span className="meta">
         <b>{asset.code}</b>
-        <s>{chain ? chainName(chain) : asset.description}</s>
+        <s>{chainName(chain as Blockchain)}</s>
       </span>
     </>
   );

@@ -116,20 +116,18 @@ export default function KycScreen() {
 
   const code = user?.kyc.hash;
 
-  const loadOverview = () => {
-    if (!code) return;
+  const loadOverview = (hash: string) => {
     setPhase({ kind: 'loading' });
     kyc
-      .getKycInfo(code)
+      .getKycInfo(hash)
       .then((info) => setPhase({ kind: 'overview', info }))
       .catch((err: unknown) => setPhase({ kind: 'error', message: apiErrorMessage(t, err) }));
   };
 
-  const beginTfaSetup = (info: KycInfo) => {
-    if (!code) return;
+  const beginTfaSetup = (info: KycInfo, hash: string) => {
     setPhase({ kind: 'tfa', info, alreadyEnrolled: false });
     kyc
-      .setup2fa(code)
+      .setup2fa(hash)
       .then((setup) => setPhase({ kind: 'tfa', info, setup, alreadyEnrolled: false }))
       .catch((error: unknown) => {
         if (isTfaAlreadyEnrolledError(error)) {
@@ -142,7 +140,7 @@ export default function KycScreen() {
 
   useEffect(() => {
     if (!isLoggedIn || !code) return;
-    loadOverview();
+    loadOverview(code);
     // `loadOverview` intentionally omitted — re-created every render; this
     // effect should only re-run when the session or KYC code changes.
   }, [isLoggedIn, code]);
@@ -179,7 +177,6 @@ export default function KycScreen() {
   }
 
   const runContinue = (info: KycInfo) => {
-    if (busy) return;
     setBusy(true);
     setTfaError('');
     kyc
@@ -193,7 +190,7 @@ export default function KycScreen() {
         // fields; never parse a localized human-readable message.
         if (isTfaRequiredError(err)) {
           setBusy(false);
-          beginTfaSetup(info);
+          beginTfaSetup(info, code);
           return;
         }
         const handoff = kycHandoffFromError(err);
@@ -243,7 +240,7 @@ export default function KycScreen() {
         <div className="paybox-note warn" style={{ margin: '10px 0' }}>
           {phase.message}
         </div>
-        <button className="btn-mini" onClick={loadOverview}>
+        <button className="btn-mini" onClick={() => loadOverview(code)}>
           {t('retry')}
         </button>
       </div>
@@ -299,7 +296,7 @@ export default function KycScreen() {
             <div className="paybox-note warn" style={{ margin: '10px 0' }}>
               {t('kycTfaSetupFail')}
             </div>
-            <button className="btn-primary" type="button" onClick={() => beginTfaSetup(info)}>
+            <button className="btn-primary" type="button" onClick={() => beginTfaSetup(info, code)}>
               {t('retry')}
             </button>
             <button
@@ -478,7 +475,7 @@ export default function KycScreen() {
             step={step}
             onAdvance={applySession}
             onFailed={(result: KycStepBase) => setPhase({ kind: 'step', info, step: { ...step, ...result } })}
-            onTfaRequired={() => beginTfaSetup(info)}
+            onTfaRequired={() => beginTfaSetup(info, code)}
             onHandoff={(handoff) => setPhase({ kind: 'handoff', info, handoff })}
             onBack={backToOverview}
           />
