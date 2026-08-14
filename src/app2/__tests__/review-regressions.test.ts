@@ -118,6 +118,8 @@ describe('App2 review regressions', () => {
   it('uses DFX sellable fiat for user buys and DFX buyable fiat for user sells', () => {
     expect(currenciesForBuy([eur, chf])).toEqual([chf]);
     expect(currenciesForSell([eur, chf])).toEqual([eur]);
+    expect(currenciesForBuy(undefined)).toEqual([]);
+    expect(currenciesForSell(undefined)).toEqual([]);
   });
 
   it('offers Instant only when both the currency and the selected asset allow it (never Card)', () => {
@@ -195,6 +197,7 @@ describe('App2 review regressions', () => {
     // identity, so this must never force a re-authentication.
     expect(shouldInvalidateSession(active, [active.toLowerCase()])).toBe(false);
     expect(shouldInvalidateSession(active, [active.toUpperCase().replace('0X', '0x')])).toBe(false);
+    expect(shouldInvalidateSession(undefined, ['0x00000000000000000000000000000000000001'])).toBe(false);
   });
 
   it('uses every authenticated wallet chain when filtering token routes', () => {
@@ -229,6 +232,14 @@ describe('App2 review regressions', () => {
     const result = mapThrownError(t, new ApiException(400, 'unrelated text', 'EMAIL_REQUIRED'));
 
     expect(result).toEqual({ kind: 'email', message: 'verifyEmailNote' });
+  });
+
+  it('maps a 400 whose message is the API token KycRequired to the KYC setup gate', () => {
+    // Live Nest body is `{ statusCode: 400, message: "KycRequired" }` with no `code`.
+    // A word-boundary /kyc/ regex does not match the PascalCase token.
+    const result = mapThrownError(t, new ApiException(400, 'KycRequired'));
+
+    expect(result).toEqual({ kind: 'setup', message: 'needKyc' });
   });
 
   it('separates a combination problem from an account restriction (no asset swap fixes the latter)', () => {
