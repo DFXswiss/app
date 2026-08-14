@@ -237,9 +237,12 @@ test.describe('RealUnit area', () => {
    */
   async function seedWaitingForPaymentBuyQuote(): Promise<number> {
     const customer = await createUser({ tag: 'ru-quote' });
-    const realu = await queryOne<{ id: number }>(`SELECT id FROM asset WHERE name = 'REALU' ORDER BY id ASC LIMIT 1`);
+    // Must match RealUnitService.getRealuAsset() in loc (Sepolia + Token), not an arbitrary REALU row.
+    const realu = await queryOne<{ id: number }>(
+      `SELECT id FROM asset WHERE name = 'REALU' AND blockchain = 'Sepolia' AND type = 'Token' ORDER BY id ASC LIMIT 1`,
+    );
     if (realu?.id == null) {
-      throw new Error("seedWaitingForPaymentBuyQuote: no asset named 'REALU' in seed data");
+      throw new Error("seedWaitingForPaymentBuyQuote: no loc REALU token on Sepolia in seed data");
     }
 
     const uid = `RQ${Date.now().toString(36)}${customer.userId}`.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
@@ -267,7 +270,7 @@ test.describe('RealUnit area', () => {
     await expect(page.getByRole('button', { name: 'Deactivate Quote' })).toBeVisible();
     await page.getByRole('button', { name: 'Deactivate Quote' }).click();
     await expect(page.getByText('Are you sure you want to deactivate this quote?')).toBeVisible();
-    await page.getByRole('button', { name: 'Confirm' }).click();
+    await page.getByRole('button', { name: 'Confirm', exact: true }).click();
 
     // Success: navigate back to the list, or detail no longer offers Deactivate.
     await expect
@@ -304,7 +307,7 @@ test.describe('RealUnit area', () => {
 
     await page.getByRole('button', { name: 'Deactivate Quote' }).click();
     await expect(page.getByText('Are you sure you want to deactivate this quote?')).toBeVisible();
-    await page.getByRole('button', { name: 'Confirm' }).click();
+    await page.getByRole('button', { name: 'Confirm', exact: true }).click();
 
     // Success: navigate back to the list, or detail no longer offers Deactivate.
     await expect
