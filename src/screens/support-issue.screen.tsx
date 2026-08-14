@@ -72,6 +72,7 @@ interface FormData {
   receiverIban: string;
   date: string;
   name: string;
+  mail?: string;
   transaction?: SelectTransactionFormData;
   reason: SupportIssueReason;
   message: string;
@@ -118,6 +119,7 @@ const formDefaultValues = {
   receiverIban: undefined,
   date: undefined,
   name: undefined,
+  mail: undefined,
   transaction: undefined,
   reason: undefined,
   message: undefined,
@@ -302,7 +304,7 @@ export default function SupportIssueScreen(): JSX.Element {
     setIsLoading(true);
 
     try {
-      const request: CreateSupportIssue = {
+      const request: CreateSupportIssue & { mail?: string } = {
         type: data.type,
         name: data.name,
         reason: data.reason ?? SupportIssueReason.OTHER,
@@ -310,6 +312,8 @@ export default function SupportIssueScreen(): JSX.Element {
         file: data.file && (await toBase64(data.file)),
         fileName: data.file?.name,
       };
+
+      if (!user?.mail && data.mail) request.mail = data.mail;
 
       if (data.type === SupportIssueType.TRANSACTION_ISSUE) {
         if (data.reason === SupportIssueReason.TRANSACTION_MISSING) {
@@ -395,6 +399,7 @@ export default function SupportIssueScreen(): JSX.Element {
       Validations.Custom((date) => (!date || /\d{4}-\d{2}-\d{2}/g.test(date) ? true : 'pattern')),
     ],
     name: Validations.Required,
+    mail: !user?.mail ? [Validations.Required, Validations.Mail] : undefined,
     transaction: Validations.Required,
     reason: Validations.Required,
     message: [Validations.Required, Validations.Custom((message) => message.length <= 4000 || 'message_length')],
@@ -567,6 +572,16 @@ export default function SupportIssueScreen(): JSX.Element {
                   </>
                 )}
               </>
+            )}
+
+            {!user?.mail && (
+              <StyledInput
+                name="mail"
+                autocomplete="email"
+                label={translate('screens/kyc', 'Email address')}
+                placeholder={translate('screens/kyc', 'Email address')}
+                full
+              />
             )}
 
             {selectedType === SupportIssueType.LIMIT_REQUEST ? (

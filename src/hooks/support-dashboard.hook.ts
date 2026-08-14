@@ -78,6 +78,7 @@ export interface SupportIssueInternalData {
   reason: string;
   state: string;
   name: string;
+  contactMail?: string;
   clerk?: string;
   account: SupportIssueInternalAccountData;
   transaction?: SupportIssueInternalTransactionData;

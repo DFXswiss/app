@@ -13,6 +13,9 @@ const mockCreateSupportIssue = jest.fn();
 const mockNavigate = jest.fn();
 const mockClearParams = jest.fn();
 const mockTranslate = jest.fn((_ns: string, key: string) => key);
+const mockUseUserContext = jest.fn(() => ({
+  user: undefined as { mail?: string; kyc?: { level: number } } | undefined,
+}));
 
 jest.mock('@dfx.swiss/react', () => {
   const SupportIssueType = {
@@ -70,14 +73,17 @@ jest.mock('@dfx.swiss/react', () => {
     formatIban: (iban: string) => iban,
   };
 
-  // Mirrors the screen's only three calls into the real Validations: Required returns a react-hook-form
+  // Mirrors the screen's calls into the real Validations: Required returns a react-hook-form
   // "required" rule with message 'required'; Custom wraps an arbitrary validator function as a
   // react-hook-form "validate" rule (the validator itself decides pass/fail per field); Iban fails
   // with a sentinel so that if the receiver field ever gained Validations.Iban, submission tests
-  // with non-IBAN free text would fail instead of staying green.
+  // with non-IBAN free text would fail instead of staying green; Mail is a simple pattern check.
   const Validations = {
     get Required() {
       return { required: { value: true, message: 'required' } };
+    },
+    get Mail() {
+      return { pattern: { value: /^\S+@\S+\.\S+$/, message: 'pattern' } };
     },
     Custom: (validator: (value: any) => true | string) => ({ validate: validator }),
     Iban: (_countries: unknown[]) => ({ validate: () => 'iban' }),
@@ -109,7 +115,7 @@ jest.mock('@dfx.swiss/react', () => {
       isLoading: false,
       supportIssue: undefined,
     }),
-    useUserContext: () => ({ user: undefined }),
+    useUserContext: () => mockUseUserContext(),
   };
 });
 
@@ -418,7 +424,7 @@ async function typeReceiverIban(value: string) {
   return input;
 }
 
-function fillTransactionMissingForm(receiverIban: string) {
+function fillTransactionMissingForm(receiverIban: string, mail?: string) {
   const ibanInputs = screen.getAllByPlaceholderText('XX XXXX XXXX XXXX XXXX X');
   fireEvent.change(ibanInputs[0], { target: { value: 'DE89370400440532013000' } });
   fireEvent.change(ibanInputs[1], { target: { value: receiverIban } });
@@ -426,6 +432,14 @@ function fillTransactionMissingForm(receiverIban: string) {
   const today = new Date().toISOString().split('T')[0];
   fireEvent.change(screen.getByPlaceholderText(today), { target: { value: '2024-06-15' } });
   fireEvent.change(screen.getByPlaceholderText('John Doe'), { target: { value: 'Test User' } });
+
+  // When the user has no mail, the contact email field is required for submit.
+  const mailLabel = screen.queryByText('Email address', { selector: 'label' });
+  if (mailLabel) {
+    const mailInput = mailLabel.parentElement?.querySelector('input');
+    if (!mailInput) throw new Error('Email address input not found');
+    fireEvent.change(mailInput, { target: { value: mail ?? 'test@example.com' } });
+  }
 
   const descriptionLabel = screen.getByText('Description', { selector: 'label' });
   const textarea = descriptionLabel.parentElement?.querySelector('textarea');
@@ -438,6 +452,7 @@ describe('SupportIssueScreen receiver IBAN check', () => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockTranslate.mockImplementation((_ns: string, key: string) => key);
+    mockUseUserContext.mockReturnValue({ user: undefined });
     mockCheckReceiveIban.mockReset();
     mockCreateSupportIssue.mockReset();
     mockCreateSupportIssue.mockResolvedValue('issue-uid-1');
@@ -1011,5 +1026,85 @@ describe('SupportIssueScreen receiver IBAN check', () => {
     expect(screen.queryByText(HINTS[ReceiveIbanStatus.DFX_IBAN])).not.toBeInTheDocument();
     // Reason change only clears state; it must not start another check.
     expect(mockCheckReceiveIban).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SupportIssueScreen contact mail field', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    mockTranslate.mockImplementation((_ns: string, key: string) => key);
+    mockUseUserContext.mockReturnValue({ user: undefined });
+    mockCheckReceiveIban.mockReset();
+    mockCreateSupportIssue.mockReset();
+    mockCreateSupportIssue.mockResolvedValue('issue-uid-1');
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    jest.useRealTimers();
+  });
+
+  it('shows the email field when the user has no mail', () => {
+    mockUseUserContext.mockReturnValue({ user: undefined });
+    renderScreen('');
+    expect(screen.getByText('Email address', { selector: 'label' })).toBeInTheDocument();
+  });
+
+  it('does not show the email field when the user already has mail', () => {
+    mockUseUserContext.mockReturnValue({ user: { mail: 'a@b.c', kyc: { level: 50 } } });
+    renderScreen('');
+    expect(screen.queryByText('Email address', { selector: 'label' })).not.toBeInTheDocument();
+  });
+
+  it('includes mail on createSupportIssue when the user has no mail', async () => {
+    mockUseUserContext.mockReturnValue({ user: undefined });
+    mockCheckReceiveIban.mockResolvedValue({ status: ReceiveIbanStatus.DFX_IBAN });
+    renderScreen('');
+    selectTransactionMissingViaUi();
+    fillTransactionMissingForm(VALID_FORMATTED, 'contact@example.com');
+    await advanceDebounce();
+    fireEvent.blur(getReceiverIbanInput());
+
+    expect(getNextButton()).not.toBeDisabled();
+    await act(async () => {
+      fireEvent.click(getNextButton());
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockCreateSupportIssue).toHaveBeenCalled();
+    const request = mockCreateSupportIssue.mock.calls[0][0];
+    expect(request.mail).toBe('contact@example.com');
+  });
+
+  it('does not include mail on createSupportIssue when the user already has mail', async () => {
+    mockUseUserContext.mockReturnValue({ user: { mail: 'a@b.c', kyc: { level: 50 } } });
+    mockCheckReceiveIban.mockResolvedValue({ status: ReceiveIbanStatus.DFX_IBAN });
+    renderScreen('');
+    selectTransactionMissingViaUi();
+    fillTransactionMissingForm(VALID_FORMATTED);
+    await advanceDebounce();
+    fireEvent.blur(getReceiverIbanInput());
+
+    expect(getNextButton()).not.toBeDisabled();
+    await act(async () => {
+      fireEvent.click(getNextButton());
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockCreateSupportIssue).toHaveBeenCalled();
+    const request = mockCreateSupportIssue.mock.calls[0][0];
+    expect(request.mail).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(request, 'mail')).toBe(false);
   });
 });
