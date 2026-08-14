@@ -119,6 +119,16 @@ async function json(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
+function jwt(role: 'Admin' | 'Support'): string {
+  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+    account: 1,
+    user: 1,
+    role,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })}.synthetic`;
+}
+
 async function installQuotesRoutes(page: Page): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const url = route.request().url();
@@ -128,6 +138,52 @@ async function installQuotesRoutes(page: Page): Promise<void> {
     if (LIST_RE.test(url)) return json(route, QUOTES);
 
     // everything else (auth, role, user, settings) hits the real api
+    await route.continue();
+  });
+}
+
+/** Quotes mocks plus staff GETs so a synthetic Support JWT does not 401-clear the session. */
+async function installQuotesRoutesWithStaffMocks(page: Page): Promise<void> {
+  await page.route('**/v1/**', async (route: Route) => {
+    const request = route.request();
+    const url = request.url();
+    const path = new URL(url).pathname;
+
+    if (DEACTIVATE_RE.test(url)) return json(route, {});
+    if (CONFIRM_PAYMENT_RE.test(url)) return json(route, {});
+    if (LIST_RE.test(url)) return json(route, QUOTES);
+
+    if (
+      request.method() === 'GET' &&
+      ['/v1/language', '/v1/fiat', '/v1/asset', '/v1/bankAccount', '/v1/country'].includes(path)
+    ) {
+      return json(route, []);
+    }
+
+    if (request.method() === 'GET' && path === '/v1/setting/infoBanner') {
+      return json(route, null);
+    }
+
+    await route.continue();
+  });
+
+  await page.route('**/v2/**', async (route: Route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+
+    if (request.method() === 'GET' && path === '/v2/user') {
+      return json(route, {
+        id: 1,
+        activeAddress: {
+          address: '0x0000000000000000000000000000000000000001',
+          wallet: 'DFX',
+        },
+        addresses: [],
+        kyc: { level: 50, status: 'Completed' },
+        language: { id: 1, name: 'English', symbol: 'EN' },
+      });
+    }
+
     await route.continue();
   });
 }
@@ -204,6 +260,19 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
     await expect(page.getByRole('button', { name: 'Confirm Payment Received' })).toHaveCount(0);
 
     await expect(page).toHaveScreenshot('realunit-quotes-04-detail-deactivated.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('active WaitingForPayment Buy as Support shows Deactivate and not Confirm Payment', async ({ page }) => {
+    await installQuotesRoutesWithStaffMocks(page);
+    await page.goto(`/realunit/quotes/${ACTIVE_BUY.id}?session=${encodeURIComponent(jwt('Support'))}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000);
+    await expect(page.getByRole('button', { name: 'Deactivate Quote' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Confirm Payment Received' })).toHaveCount(0);
+    await expect(page).toHaveScreenshot('realunit-quotes-05-detail-support-active-buy.png', {
       fullPage: true,
       maxDiffPixels: 5000,
     });

@@ -218,6 +218,13 @@ describe('RealunitQuoteDetailScreen', () => {
     expect(screen.getByRole('button', { name: 'Deactivate Quote' })).toBeInTheDocument();
   });
 
+  it('hides Confirm Payment when session is missing, and still shows Deactivate for an active Buy', () => {
+    mockRole = undefined;
+    render(<RealunitQuoteDetailScreen />);
+    expect(screen.queryByRole('button', { name: 'Confirm Payment Received' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Deactivate Quote' })).toBeInTheDocument();
+  });
+
   it('hides Confirm Payment when deactivatedAt is set', () => {
     setContext({
       quotes: [{ ...BASE_QUOTE, deactivatedAt: '2026-02-01T12:00:00.000Z' }],
