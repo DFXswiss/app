@@ -87,6 +87,10 @@
     "title": "RealUnit Support",
     "description": "RealUnit-Support: Fallliste und Issue-Detail."
   },
+  "realunit-quotes": {
+    "title": "RealUnit Quotes",
+    "description": "RealUnit quote list and detail: active WaitingForPayment Buy with Confirm Payment and Deactivate actions, deactivate confirmation overlay, and deactivated quote with Deactivated At and no action buttons."
+  },
   "responsive": {
     "title": "Responsive Layout",
     "description": "Homepage, Buy und Login auf Mobile, Tablet und Desktop."

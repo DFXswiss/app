@@ -283,7 +283,7 @@ test.describe('RealUnit area', () => {
     assertNoErrors(pageErrors, consoleErrors);
   });
 
-  test('Support can open quotes detail and see Deactivate (not Confirm Payment)', async ({ page }) => {
+  test('Support can open quotes detail, see Deactivate (not Confirm Payment), and deactivate', async ({ page }) => {
     const quoteId = await seedWaitingForPaymentBuyQuote();
     const { jwt, wallet } = await loginAs('Support');
     const userRow = await queryOne<{ userDataId: number }>('SELECT "userDataId" FROM "user" WHERE address = $1', [
@@ -299,6 +299,23 @@ test.describe('RealUnit area', () => {
 
     await expect(page.getByRole('button', { name: 'Deactivate Quote' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Confirm Payment Received' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Deactivate Quote' }).click();
+    await expect(page.getByText('Are you sure you want to deactivate this quote?')).toBeVisible();
+    await page.getByRole('button', { name: 'Confirm' }).click();
+
+    // Success: navigate back to the list, or detail no longer offers Deactivate.
+    await expect
+      .poll(
+        async () => {
+          const path = normPath(new URL(page.url()).pathname);
+          if (path === '/realunit/quotes') return 'list';
+          if ((await page.getByRole('button', { name: 'Deactivate Quote' }).count()) === 0) return 'deactivated';
+          return 'pending';
+        },
+        { timeout: 15000 },
+      )
+      .not.toBe('pending');
 
     assertNoErrors(pageErrors, consoleErrors);
   });
