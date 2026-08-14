@@ -245,8 +245,10 @@ test.describe('RealUnit area', () => {
     const uid = `RQ${Date.now().toString(36)}${customer.userId}`.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
     const row = await queryOne<{ id: number }>(
       `INSERT INTO transaction_request
-         (type, "isComplete", "targetId", status, amount, "estimatedAmount", uid, "userId")
-       VALUES ('Buy', false, $1, 'WaitingForPayment', 100, 10, $2, $3)
+         (type, "isComplete", "targetId", status, amount, "estimatedAmount", uid, "userId",
+          "routeId", "sourceId", "sourcePaymentMethod", "targetPaymentMethod", "exchangeRate", rate, "isValid")
+       VALUES ('Buy', false, $1, 'WaitingForPayment', 100, 10, $2, $3,
+               0, 0, 'Bank', 'Crypto', 1, 1, true)
        RETURNING id`,
       [realu.id, uid, customer.userId],
     );
