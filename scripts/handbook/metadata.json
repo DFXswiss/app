@@ -1,7 +1,7 @@
 {
   "app2-preview": {
     "title": "DFX App 2.0",
-    "description": "App 2.0 preview at /app2/: landing, logged-out account/KYC/limit/transactions/support, OpenCryptoPay hub, connect sheet and 404."
+    "description": "App 2.0 preview at /app2/: landing, logged-out account/KYC/limit/transactions/support, OpenCryptoPay hub, connect sheet, 404 and Checkout return paths."
   },
   "buy-process": {
     "title": "Kaufprozess",

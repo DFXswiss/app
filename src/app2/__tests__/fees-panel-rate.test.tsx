@@ -140,3 +140,71 @@ describe('FeesPanel summary vs. detail rate — fee-inclusive vs. market rate', 
     expect(getByText(`${formatAmount(1 / 20, 6, 'en')} BTC / ETH`)).toBeInTheDocument();
   });
 });
+
+describe('FeesPanel empty quote', () => {
+  it('renders the placeholder summary when the quote is missing or stale', () => {
+    const { container } = render(
+      <LanguageProvider>
+        <FeesPanel
+          mode="buy"
+          quote={undefined}
+          isFresh={false}
+          payAssetCode=""
+          receiveAssetCode="BTC"
+          currencyCode="EUR"
+          language="en"
+        />
+      </LanguageProvider>,
+    );
+    expect(container.querySelector('.fees')).toBeTruthy();
+    expect(container.textContent).toContain('—');
+  });
+});
+
+describe('FeesPanel bank and missing-total rows', () => {
+  it('prints a sell bank fee when the bank amount is positive', () => {
+    const sell = {
+      amount: 1,
+      estimatedAmount: 4,
+      exchangeRate: 0.25,
+      isValid: true,
+      fees: { rate: 0, dfx: 0, bank: 1.5, network: 0, total: 1.5 },
+      feesTarget: { rate: 0, dfx: 0, bank: 1.5, network: 0, total: 1.5 },
+    } as unknown as Sell;
+
+    const { getByText, getAllByText, container } = renderPanel('sell', sell);
+    container.querySelector('summary')?.click();
+    expect(getByText('Bank fee')).toBeInTheDocument();
+    expect(getAllByText(`−${formatFiat(1.5, 'EUR', 'en')}`).length).toBeGreaterThan(0);
+  });
+
+  it('prints sell bank fee as free when the bank amount is zero', () => {
+    const sell = {
+      amount: 1,
+      estimatedAmount: 4,
+      exchangeRate: 0.25,
+      isValid: true,
+      fees: zeroFees,
+      feesTarget: zeroFees,
+    } as unknown as Sell;
+
+    const { getByText, container } = renderPanel('sell', sell);
+    container.querySelector('summary')?.click();
+    expect(getByText('Free')).toBeInTheDocument();
+  });
+
+  it('treats a missing fees.total as zero on the summary chip', () => {
+    const buy = {
+      amount: 100,
+      estimatedAmount: 50,
+      exchangeRate: 2,
+      isValid: true,
+      fees: { rate: 0, dfx: 0, bank: 0, network: 0 },
+    } as unknown as Buy;
+
+    const { getByText, getAllByText, container } = renderPanel('buy', buy);
+    expect(getByText(formatFiat(0, 'EUR', 'en'))).toBeInTheDocument();
+    container.querySelector('summary')?.click();
+    expect(getAllByText(`−${formatFiat(0, 'EUR', 'en')}`).length).toBeGreaterThan(0);
+  });
+});
