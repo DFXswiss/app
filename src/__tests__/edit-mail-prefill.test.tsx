@@ -135,6 +135,8 @@ describe('EditMailScreen waits for the user before prefilling', () => {
     const input = await screen.findByRole('textbox', { name: 'Email address' });
     expect((input as HTMLInputElement).value).toBe('e2e+acct-mail-chg@dfx.swiss');
     expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/account');
   });
 
   it('does not mount an empty field when the user arrives after check2fa', async () => {
@@ -252,5 +254,27 @@ describe('EditMailScreen waits for the user before prefilling', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Save email' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('verify failed');
+  });
+
+  it('does not show an error when the merge handler consumes a verification failure', async () => {
+    mockUserState.user = { mail: 'old@example.com' };
+    mockUpdateMail.mockResolvedValue(undefined);
+    mockHandleMergedError.mockReturnValue(true);
+    mockVerifyMail.mockRejectedValue(new MockApiError(409, 'exists merge'));
+    render(<EditMailScreen />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save email' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(mockHandleMergedError).toHaveBeenCalled());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('falls back to Unknown error when a verification failure has no message', async () => {
+    mockUserState.user = { mail: 'old@example.com' };
+    mockUpdateMail.mockResolvedValue(undefined);
+    mockVerifyMail.mockRejectedValue({ statusCode: 500 });
+    render(<EditMailScreen />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save email' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unknown error');
   });
 });

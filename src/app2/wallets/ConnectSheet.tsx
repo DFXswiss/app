@@ -34,7 +34,7 @@ interface ConnectSheetProps {
 // preview's mono() (public/app2/index.html, ~line 1797). Rendered inline as a
 // data: URI so no external host is contacted (app2 CSP forbids remote images).
 function monoDataUri(label: string, color = '#16456f'): string {
-  const text = (label || '?').slice(0, 4);
+  const text = label.slice(0, 4);
   const svg =
     `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>` +
     `<circle cx='16' cy='16' r='16' fill='${color}'/>` +
@@ -226,7 +226,7 @@ function WalletRow({ entry, onSelect }: { entry: WalletCatalogEntry; onSelect: (
   const soon = entry.connector === 'soon';
   // EVM browser wallets carry no static hint — localize "EVM · N networks" at render time so the
   // word "networks" follows the language (orig: "EVM · "+EVM_CH.length+" "+t("networks")).
-  const hint = entry.hint ?? (entry.evm ? `EVM · ${EVM_NETWORK_COUNT} ${t('networks')}` : '');
+  const hint = entry.hint ?? `EVM · ${EVM_NETWORK_COUNT} ${t('networks')}`;
   return (
     <div
       className={`crow${soon ? ' soon' : ''}`}
@@ -282,7 +282,6 @@ function WalletConnectQr({
   const { t } = useT();
 
   const copyUri = async () => {
-    if (!uri) return;
     try {
       await navigator.clipboard.writeText(uri);
       showToast(t('copied'));
@@ -356,9 +355,8 @@ function CliConnectForm({
   };
 
   const copyMessage = async () => {
-    if (!signMessage) return;
     try {
-      await navigator.clipboard.writeText(signMessage);
+      await navigator.clipboard.writeText(signMessage as string);
       showToast(t('copied'));
     } catch {
       showToast(t('copyFail'), { assertive: true });
@@ -366,7 +364,6 @@ function CliConnectForm({
   };
 
   const submit = async () => {
-    if (loading || !signature.trim()) return;
     setLoading(true);
     try {
       await onConnect(entry, trimmedAddr, signature, pubKey);

@@ -27,7 +27,6 @@ const KEY = 'dfx_app2_wallets';
 const MAX = 8;
 
 function read(): SeenWallet[] {
-  if (typeof window === 'undefined') return [];
   try {
     const parsed: unknown = JSON.parse(window.localStorage.getItem(KEY) ?? '[]');
     return Array.isArray(parsed) ? (parsed as SeenWallet[]).filter((e) => e && typeof e.address === 'string') : [];
@@ -37,7 +36,6 @@ function read(): SeenWallet[] {
 }
 
 function write(list: SeenWallet[]): void {
-  if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(KEY, JSON.stringify(list.slice(0, MAX)));
   } catch {

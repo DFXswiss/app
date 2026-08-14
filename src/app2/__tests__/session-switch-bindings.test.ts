@@ -115,6 +115,18 @@ describe('clearSessionProviderBindings', () => {
     expect(pendingWcRef.current).toBeUndefined();
     expect(setActiveConnector).toHaveBeenCalledWith(undefined);
   });
+
+  it('leaves a missing pending-WC ref untouched', () => {
+    const setActiveConnector = jest.fn();
+    const injectedRef = { current: { request: jest.fn() } as unknown as Eip1193Provider };
+    const wcRef = { current: { request: jest.fn() } as unknown as Eip1193Provider };
+
+    clearSessionProviderBindings(setActiveConnector, injectedRef, wcRef);
+
+    expect(injectedRef.current).toBeUndefined();
+    expect(wcRef.current).toBeUndefined();
+    expect(setActiveConnector).toHaveBeenCalledWith(undefined);
+  });
 });
 
 describe('snapshot/restore session provider bindings', () => {

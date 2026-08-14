@@ -168,7 +168,7 @@ export function resolveCryptoRefundTarget(refundTarget: string | null | undefine
 }
 
 function copyToClipboard(value: string, showToast: (m: string) => void, t: (k: 'copied' | 'copyFail') => string) {
-  if (!value || !navigator.clipboard) {
+  if (!navigator.clipboard) {
     showToast(t('copyFail'));
     return;
   }
@@ -178,20 +178,12 @@ function copyToClipboard(value: string, showToast: (m: string) => void, t: (k: '
     .catch(() => showToast(t('copyFail')));
 }
 
-function KvRow({ label, value, href, onCopy }: { label: string; value: string; href?: string; onCopy?: () => void }) {
+function KvRow({ label, value, onCopy }: { label: string; value: string; onCopy?: () => void }) {
   if (!value) return null;
   return (
     <div className="kv">
       <span className="kk">{label}</span>
-      {href ? (
-        <span className="vv">
-          <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>
-            {value}
-          </a>
-        </span>
-      ) : (
-        <span className="vv">{value}</span>
-      )}
+      <span className="vv">{value}</span>
       {onCopy && (
         <button type="button" className="cpy" aria-label={label} onClick={onCopy}>
           {COPY_ICON}
@@ -334,12 +326,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
       if (cryptoTarget) {
         body = { refundTarget: cryptoTarget };
       } else {
-        const chosen = allowedCryptoAddresses.find((a) => a.address === selectedCryptoAddress);
-        if (!chosen) {
-          setWarn(t('refundNoTarget'));
-          return;
-        }
-        body = { refundTarget: chosen.address };
+        body = { refundTarget: selectedCryptoAddress };
       }
     } else if (kind === 'bank') {
       const cleanIban = iban.replace(/\s+/g, '').trim();
@@ -426,7 +413,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
     );
   }
 
-  const amountLabel = data ? formatAmount(data.refundAmount, data.refundAsset?.name, language, 8) || '—' : '—';
+  const amountLabel = formatAmount(data?.refundAmount, data?.refundAsset?.name, language, 8) || '—';
   const sortedCountries = [...countries].sort((a, b) => a.name.localeCompare(b.name));
 
   return (

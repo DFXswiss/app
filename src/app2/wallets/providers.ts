@@ -101,7 +101,6 @@ function isEip1193Provider(value: unknown): value is Eip1193Provider {
 }
 
 export function getInjectedProvider(): Eip1193Provider | undefined {
-  if (typeof window === 'undefined') return undefined;
   const injected: unknown = (window as { ethereum?: unknown }).ethereum;
   return isEip1193Provider(injected) ? injected : undefined;
 }
@@ -116,29 +115,22 @@ interface Eip6963AnnounceDetail {
 }
 
 const eip6963Providers = new Map<string, Eip1193Provider>();
-let eip6963DiscoveryStarted = false;
 
-function startEip6963Discovery(): void {
-  if (eip6963DiscoveryStarted || typeof window === 'undefined') return;
-  eip6963DiscoveryStarted = true;
+(function startEip6963Discovery() {
   window.addEventListener('eip6963:announceProvider', (event: Event) => {
     const detail = (event as CustomEvent<Eip6963AnnounceDetail>).detail;
     const rdns = detail?.info?.rdns;
     if (rdns && isEip1193Provider(detail?.provider)) eip6963Providers.set(rdns, detail.provider);
   });
   window.dispatchEvent(new Event('eip6963:requestProvider'));
-}
-
-// Begin discovery as soon as this module loads so announcements are collected
-// well before the user opens the connect sheet.
-startEip6963Discovery();
+})();
 
 /** Resolves the EIP-1193 provider for a specific injected wallet. Returns
  * `undefined` when that wallet is not present — the caller surfaces a
  * "not detected" prompt rather than silently connecting a different wallet. */
 export function resolveInjectedProvider(target: InjectedTarget): Eip1193Provider | undefined {
   // Re-request in case the wallet extension loaded after the initial dispatch.
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('eip6963:requestProvider'));
+  window.dispatchEvent(new Event('eip6963:requestProvider'));
 
   if (target.rdns) {
     const announced = eip6963Providers.get(target.rdns);
@@ -259,7 +251,6 @@ export async function connectWalletConnect(
     if (token.cancelled) throw error;
     throw new WalletConnectorError('Could not start WalletConnect', 'failed');
   });
-  if (token.cancelled) throw new WalletConnectorError('Connection cancelled', 'rejected');
 
   const handleUri = (uri: string) => onUri(uri);
   provider.on('display_uri', handleUri);
@@ -321,7 +312,6 @@ export async function disconnectWalletConnect(): Promise<void> {
   // wrote state while completing its own teardown.
   clearWalletConnectStorage();
   if (!wcProviderPromise) {
-    if (gen !== teardownGeneration || wcProviderPromise) return;
     await clearWalletConnectIndexedDb();
     return;
   }
