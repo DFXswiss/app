@@ -89,7 +89,7 @@
   },
   "realunit-quotes": {
     "title": "RealUnit Quotes",
-    "description": "RealUnit quote list and detail: active WaitingForPayment Buy with Confirm Payment and Deactivate actions, deactivate confirmation overlay, and deactivated quote with Deactivated At and no action buttons."
+    "description": "RealUnit-Quote-Liste und -Detail: aktives WaitingForPayment-Buy mit Confirm Payment und Deactivate, Bestätigungs-Overlay und deaktiviertes Quote mit Deactivated At ohne Aktions-Buttons."
   },
   "responsive": {
     "title": "Responsive Layout",
