@@ -1333,8 +1333,10 @@ describe('PersonalData', () => {
     mockSetPersonalData.mockRejectedValue({});
     renderAt('/kyc?code=abc&step=PersonalData');
     await screen.findByTestId('accountType');
-    select('accountType', 'Personal');
-    await screen.findByTestId('firstName');
+    await act(async () => {
+      select('accountType', 'Personal');
+    });
+    expect(await screen.findByTestId('firstName')).toBeInTheDocument();
     typeField('firstName', 'Ada');
     typeField('lastName', 'Lovelace');
     typeField('address.street', 'Bahnhof');
