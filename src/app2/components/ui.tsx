@@ -54,7 +54,7 @@ export function useModalDialog<T extends HTMLElement>(
       const parent = current.parentElement;
       Array.from(parent.children).forEach((sibling) => {
         if (!(sibling instanceof HTMLElement) || sibling === current || sibling === scrimRef.current) return;
-        if (!previousInert.has(sibling)) previousInert.set(sibling, sibling.inert);
+        previousInert.set(sibling, sibling.inert);
         sibling.inert = true;
       });
       if (parent.classList.contains('app')) break;

@@ -29,7 +29,6 @@ export function isSafeAppUrl(value: string | undefined | null): value is string 
  * links often put them on the real query — both must work.
  */
 export function firstQueryParam(...keys: string[]): string | undefined {
-  if (typeof window === 'undefined') return undefined;
   const sources: URLSearchParams[] = [new URLSearchParams(window.location.search)];
   const hash = window.location.hash;
   const q = hash.indexOf('?');
@@ -50,9 +49,7 @@ export function firstQueryParam(...keys: string[]): string | undefined {
  * or the path is not a known return path.
  */
 export function foldApp2PathIntoHash(
-  location: Pick<Location, 'pathname' | 'search' | 'hash'> = typeof window !== 'undefined'
-    ? window.location
-    : { pathname: '', search: '', hash: '' },
+  location: Pick<Location, 'pathname' | 'search' | 'hash'> = window.location,
 ): string | null {
   const match = location.pathname.match(/^\/app2\/(buy\/success|buy\/failure|account-merge)\/?$/i);
   if (!match) return null;
@@ -64,7 +61,7 @@ export function foldApp2PathIntoHash(
 /** Builds a trusted URL on the environment-specific DFX app origin. */
 export function appUrl(path = '/'): string | undefined {
   const configuredOrigin = process.env.REACT_APP_PUBLIC_URL;
-  const runtimeOrigin = typeof window === 'undefined' ? undefined : window.location.origin;
+  const runtimeOrigin = window.location.origin;
   const origin = configuredOrigin ?? runtimeOrigin;
   if (!isSafeAppUrl(origin)) return undefined;
 

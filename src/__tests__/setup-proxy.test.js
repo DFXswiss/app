@@ -33,6 +33,8 @@ describe('setupProxy', () => {
     const redirect = jest.fn();
     redirector({ path: '/buy/success', url: '/buy/success?cko-payment-id=x' }, { redirect }, jest.fn());
     expect(redirect).toHaveBeenCalledWith(302, '/app2/#/buy/success?cko-payment-id=x');
+    redirector({ path: '/buy/failure/', url: '/buy/failure/' }, { redirect }, jest.fn());
+    expect(redirect).toHaveBeenCalledWith(302, '/app2/#/buy/failure');
     redirector({ path: '/account', url: '/account' }, { redirect }, jest.fn());
 
     const fallback = app.use.mock.calls[2][1];

@@ -86,6 +86,9 @@ describe('AssetGlyph', () => {
 
     const empty = render(<AssetGlyph code="" />);
     expect(empty.container.querySelector('text')?.textContent).toBe('?');
+
+    const one = render(<AssetGlyph code="A" />);
+    expect(one.container.querySelector('text')?.textContent).toBe('A');
   });
 
   it('uses a cached CoinGecko logo without fetching', () => {
@@ -205,6 +208,7 @@ describe('AssetGlyph', () => {
     const { container } = render(<AssetGlyph code="ZZ" />);
     expect(container.querySelector('text')?.textContent).toBe('ZZ');
   });
+
 });
 
 describe('NetworkCardGlyph / ChainGlyphBadge / FiatGlyph / AssetChainGlyph', () => {

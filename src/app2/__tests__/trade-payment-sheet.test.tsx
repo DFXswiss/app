@@ -47,10 +47,12 @@ jest.mock('@dfx.swiss/react', () => ({
       this.code = errorCode;
     }
   },
-  useUser: () => ({ updateMail: jest.fn() }),
+  useUser: () => ({ updateMail: mockUpdateMail }),
 }));
 
-import { render, screen } from '@testing-library/react';
+const mockUpdateMail = jest.fn();
+
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ApiException, TransactionError, type Buy, type Sell, type Swap } from '@dfx.swiss/react';
 import { PaymentSheet } from '../screens/trade/PaymentSheet';
 import { isEmailGateError, mapThrownError } from '../screens/trade/errors';
@@ -298,5 +300,456 @@ describe('missing deposit details', () => {
 
     renderSellSheet(sell);
     expect(screen.getByText('0xreal-deposit')).toBeInTheDocument();
+  });
+});
+
+describe('payment sheet actions', () => {
+  beforeEach(() => {
+    mockUpdateMail.mockReset();
+    mockUpdateMail.mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: jest.fn().mockResolvedValue(undefined) } });
+  });
+
+  it('copies a row, switches to the QR tab and sends an e-mail link', async () => {
+    const buy = {
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.002,
+      fees: { total: 1 },
+      currency: { name: 'EUR' },
+      iban: 'DE89370400440532013000',
+      name: 'DFX',
+      street: 'Street',
+      number: '1',
+      zip: '8000',
+      city: 'Zurich',
+      country: 'CH',
+      paymentRequest: 'payload',
+    } as unknown as Buy;
+    renderBuySheet(buy);
+    fireEvent.click(screen.getByRole('button', { name: /beneficiary|begünstigter|beneficiario|bénéficiaire/i }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('tab', { name: /qr/i }));
+    expect(screen.getByRole('tab', { name: /qr/i })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: /details|details|dettagli|détails/i }));
+
+    const gated = {
+      isValid: false,
+      error: TransactionError.EMAIL_REQUIRED,
+      amount: 100,
+      sourceAsset,
+      estimatedAmount: 0,
+      minVolume: 0,
+      maxVolume: 0,
+      fees: { total: 0 },
+    } as unknown as Swap;
+    renderSwapSheet(gated);
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'bad' } });
+    fireEvent.click(screen.getByRole('button', { name: /send link/i }));
+    expect(mockUpdateMail).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'a@b.c' } });
+    fireEvent.keyDown(screen.getByLabelText(/email address/i), { key: 'Enter' });
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledWith('a@b.c'));
+  });
+
+  it('toasts when the e-mail link cannot be sent', async () => {
+    mockUpdateMail.mockRejectedValueOnce(new Error('down'));
+    renderSwapSheet({
+      isValid: false,
+      error: TransactionError.EMAIL_REQUIRED,
+      amount: 100,
+      sourceAsset,
+      estimatedAmount: 0,
+      minVolume: 0,
+      maxVolume: 0,
+      fees: { total: 0 },
+    } as unknown as Swap);
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'c@d.e' } });
+    fireEvent.click(screen.getByRole('button', { name: /send link/i }));
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledWith('c@d.e'));
+  });
+
+  it('renders sell and swap boxes, amount/session/setup gates and a confirmed mail retry', async () => {
+    const sell = renderSellSheet({
+      isValid: true,
+      amount: 10,
+      estimatedAmount: 9,
+      feesTarget: { total: 1 },
+      blockchain: 'Ethereum',
+      depositAddress: '0xsell',
+      paymentRequest: 'payreq',
+      beneficiary: { iban: 'CH93' },
+    } as unknown as Sell);
+    expect(screen.getByText('0xsell')).toBeInTheDocument();
+    expect(screen.getByText('CH93')).toBeInTheDocument();
+    sell.unmount();
+
+    const swap = renderSwapSheet({
+      isValid: true,
+      amount: 5,
+      estimatedAmount: 4,
+      fees: { total: 1 },
+      sourceAsset,
+      depositAddress: '0xswap',
+      paymentRequest: 'swapreq',
+    } as unknown as Swap);
+    expect(screen.getByText('0xswap')).toBeInTheDocument();
+    swap.unmount();
+
+    const loading = render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={jest.fn()}
+            mode="buy"
+            loading
+            rawError={null}
+            buy={null}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            receiveBlockchain={'Bitcoin' as never}
+            amount={1}
+            sessionAddress="0xabc"
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(screen.getByText(/loading|laden|caricamento|chargement/i)).toBeInTheDocument();
+    loading.unmount();
+
+    const onRetry = jest.fn();
+    const onReconnect = jest.fn();
+    const onClose = jest.fn();
+    const session = render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={onClose}
+            onDone={jest.fn()}
+            mode="buy"
+            loading={false}
+            rawError={new ApiException(401, 'gone')}
+            buy={null}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={1}
+            onRetry={onRetry}
+            onReconnect={onReconnect}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /connect|verbinden|connetti|connecter/i }));
+    expect(onReconnect).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+    session.unmount();
+
+    const generic = render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={jest.fn()}
+            mode="sell"
+            loading={false}
+            rawError={new ApiException(500, 'down')}
+            buy={null}
+            sell={null}
+            swap={null}
+            payAssetCode="USDT"
+            receiveAssetCode=""
+            amount={1}
+            onRetry={onRetry}
+            onReconnect={jest.fn()}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
+    expect(onRetry).toHaveBeenCalled();
+    generic.unmount();
+
+    const amount = renderBuySheet({
+      isValid: false,
+      error: TransactionError.AMOUNT_TOO_LOW,
+      minVolume: 10,
+      maxVolume: 100,
+      amount: 1,
+      estimatedAmount: 0,
+      fees: { total: 0 },
+      currency: { name: 'EUR' },
+    } as unknown as Buy);
+    expect(screen.getByText('Amount')).toBeInTheDocument();
+    amount.unmount();
+
+    const setup = renderBuySheet({
+      isValid: false,
+      amount: 1,
+      estimatedAmount: 0,
+      minVolume: 0,
+      maxVolume: 0,
+      fees: { total: 0 },
+    } as unknown as Buy);
+    expect(screen.getByText(/one more step|noch ein schritt|un altro passo|une étape/i)).toBeInTheDocument();
+    setup.unmount();
+
+    mockUpdateMail.mockResolvedValueOnce(undefined);
+    renderSwapSheet({
+      isValid: false,
+      error: TransactionError.EMAIL_REQUIRED,
+      amount: 100,
+      sourceAsset,
+      estimatedAmount: 0,
+      minVolume: 0,
+      maxVolume: 0,
+      fees: { total: 0 },
+    } as unknown as Swap);
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'ok@x.y' } });
+    fireEvent.click(screen.getByRole('button', { name: /send link/i }));
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledWith('ok@x.y'));
+    fireEvent.click(await screen.findByRole('button', { name: /confirmed|bestätigt|confermato|confirmé/i }));
+  });
+
+  it('shows buy/sell/swap rows with a session address and resets when reopened', () => {
+    const buy = render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={jest.fn()}
+            mode="buy"
+            loading={false}
+            rawError={null}
+            buy={
+              {
+                isValid: true,
+                amount: 10,
+                estimatedAmount: 0.001,
+                fees: { total: 1 },
+                currency: { name: 'EUR' },
+                iban: 'DE89',
+              } as unknown as Buy
+            }
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            receiveBlockchain={'Bitcoin' as never}
+            amount={10}
+            sessionAddress="0xabc"
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(screen.getByText('0xabc')).toBeInTheDocument();
+    expect(screen.getByText('Bitcoin')).toBeInTheDocument();
+    buy.unmount();
+
+    const closed = render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open={false}
+            onClose={jest.fn()}
+            onDone={jest.fn()}
+            mode="sell"
+            loading={false}
+            rawError={null}
+            buy={null}
+            sell={
+              {
+                isValid: true,
+                amount: 8,
+                estimatedAmount: 7,
+                feesTarget: { total: 1 },
+                blockchain: 'Ethereum',
+                depositAddress: '0xclosed',
+              } as unknown as Sell
+            }
+            swap={null}
+            payAssetCode="USDT"
+            receiveAssetCode=""
+            amount={8}
+            sessionAddress="0xfrom"
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    closed.unmount();
+
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={jest.fn()}
+            mode="swap"
+            loading={false}
+            rawError={null}
+            buy={null}
+            sell={null}
+            swap={
+              {
+                isValid: true,
+                amount: 5,
+                estimatedAmount: 4,
+                fees: { total: 1 },
+                sourceAsset,
+                depositAddress: '0xswap2',
+                paymentRequest: 'swap2',
+              } as unknown as Swap
+            }
+            payAssetCode="USDT"
+            receiveAssetCode="USDC"
+            receiveBlockchain={'Arbitrum' as never}
+            amount={5}
+            sessionAddress="0xto"
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+  });
+
+  it('copies a buy reference and toasts a clipboard failure', async () => {
+    Object.assign(navigator, { clipboard: { writeText: jest.fn().mockRejectedValue(new Error('x')) } });
+    renderBuySheet({
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.002,
+      fees: { total: 1 },
+      currency: { name: 'EUR' },
+      iban: 'DE89',
+      remittanceInfo: 'REF-1',
+      paymentRequest: 'payload',
+    } as unknown as Buy);
+    fireEvent.click(screen.getByRole('button', { name: /reference|verwendungszweck|causale|référence/i }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('REF-1'));
+  });
+
+  it('falls back to the panel amount, a dash IBAN and an empty deposit address', async () => {
+    renderBuySheet({
+      isValid: true,
+      estimatedAmount: 0.002,
+      fees: { total: 1 },
+      currency: { name: 'EUR' },
+      paymentRequest: 'payload',
+    } as unknown as Buy);
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+
+    const sell = renderSellSheet({
+      isValid: true,
+      estimatedAmount: 9,
+      feesTarget: { total: 1 },
+      blockchain: 'Ethereum',
+      depositAddress: '',
+      paymentRequest: 'payreq',
+    } as unknown as Sell);
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    sell.unmount();
+
+    renderSwapSheet({
+      isValid: true,
+      estimatedAmount: 4,
+      fees: { total: 1 },
+      sourceAsset,
+      depositAddress: '0xswap',
+    } as unknown as Swap);
+
+    mockUpdateMail.mockResolvedValue(undefined);
+    const email = render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={jest.fn()}
+            mode="buy"
+            loading={false}
+            rawError={new ApiException(400, 'mail', 'PrimaryEmailRequired')}
+            buy={null}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={10}
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'a@b.c' } });
+    fireEvent.keyDown(screen.getByLabelText(/email address/i), { key: 'Enter' });
+    fireEvent.keyDown(screen.getByLabelText(/email address/i), { key: 'Tab' });
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledWith('a@b.c'));
+    email.unmount();
+  });
+
+  it('omits the network row when no receive chain is set', () => {
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={jest.fn()}
+            mode="buy"
+            loading={false}
+            rawError={null}
+            buy={{ estimatedAmount: 1 } as never}
+            sell={null}
+            swap={null}
+            payAssetCode="EUR"
+            receiveAssetCode="BTC"
+            receiveBlockchain={undefined}
+            amount={100}
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(screen.queryByText(/network|netzwerk|rete|réseau/i)).not.toBeInTheDocument();
+
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={jest.fn()}
+            mode="swap"
+            loading={false}
+            rawError={null}
+            buy={null}
+            sell={null}
+            swap={{ estimatedAmount: 1 } as never}
+            payAssetCode="BTC"
+            receiveAssetCode="ETH"
+            amount={1}
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
   });
 });

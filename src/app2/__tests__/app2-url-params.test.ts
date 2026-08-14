@@ -1,4 +1,4 @@
-import { appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl } from '../utils/url';
+import { appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl, isSafeHttpsUrl } from '../utils/url';
 
 describe('foldApp2PathIntoHash', () => {
   it('folds real-path Checkout/email returns into hash routes and keeps the query', () => {
@@ -53,6 +53,10 @@ describe('foldApp2PathIntoHash', () => {
     ).toBe('/app2/#/account-merge?otp=xyz');
   });
 
+  it('reads window.location when called without an argument', () => {
+    expect(foldApp2PathIntoHash()).toBeNull();
+  });
+
   it('is a no-op when already on the matching hash route or an unrelated path', () => {
     expect(
       foldApp2PathIntoHash({
@@ -102,6 +106,15 @@ describe('firstQueryParam', () => {
     mockLocation('?code=FALLBACK&recommendation-code=AB-CDEF-GHIJ-KL', '');
     expect(firstQueryParam('refcode', 'recommendation-code', 'code')).toBe('AB-CDEF-GHIJ-KL');
   });
+
+  it('returns undefined when no matching key is present', () => {
+    mockLocation('', '#/account');
+    expect(firstQueryParam('missing')).toBeUndefined();
+    expect(isSafeHttpsUrl(undefined)).toBe(false);
+    expect(isSafeHttpsUrl('https://app.dfx.swiss')).toBe(true);
+    expect(isSafeHttpsUrl('http://app.dfx.swiss')).toBe(false);
+    expect(isSafeHttpsUrl(':::')).toBe(false);
+  });
 });
 
 describe('appUrl', () => {
@@ -118,8 +131,29 @@ describe('appUrl', () => {
     expect(isSafeAppUrl('https://app.dfx.swiss')).toBe(true);
   });
 
+  it('falls back to window.location.origin when no public URL is configured', () => {
+    delete process.env.REACT_APP_PUBLIC_URL;
+    const href = appUrl('/account');
+    expect(href).toBe(`${window.location.origin}/account`);
+  });
+
   it('rejects an unsafe origin', () => {
     process.env.REACT_APP_PUBLIC_URL = 'javascript:alert(1)';
     expect(appUrl('/account')).toBeUndefined();
+  });
+
+  it('accepts a local http origin and rejects empty or malformed values', () => {
+    expect(isSafeAppUrl(undefined)).toBe(false);
+    expect(isSafeAppUrl('')).toBe(false);
+    expect(isSafeAppUrl('http://127.0.0.1:3001/')).toBe(true);
+    expect(isSafeAppUrl('http://[::1]/')).toBe(true);
+    expect(isSafeAppUrl('not a url')).toBe(false);
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.dfx.swiss';
+    expect(appUrl('https://evil.example/steal')).toBeUndefined();
+    process.env.REACT_APP_PUBLIC_URL = 'https://[';
+    expect(appUrl('/account')).toBeUndefined();
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.dfx.swiss';
+    expect(appUrl()).toBe('https://app.dfx.swiss/');
+    expect(appUrl('http://[')).toBeUndefined();
   });
 });

@@ -309,13 +309,11 @@ export default function AccountScreen() {
   };
 
   const handleLogout = () => {
-    if (isLoggingOut) return;
     setIsLoggingOut(true);
     logout().finally(() => setIsLoggingOut(false));
   };
 
   const handleDeleteAccount = () => {
-    if (isDeleting) return;
     setIsDeleting(true);
     deleteAccount()
       .then(() => {
@@ -359,7 +357,7 @@ export default function AccountScreen() {
   // buy/sell-is-DFX's-side convention as trade/capabilities.ts and PaymentMethodPicker.tsx).
   // Card is never listed: the API hard-disables it (fiat-dto.mapper.ts, payment-info.service.ts).
   const payRoutes = [t('payBankN'), ...(user?.currency?.instantSellable ? [t('payInstN')] : [])].join(' · ');
-  const languageLabel = LANGUAGES.find((l) => l.code === language)?.label ?? language;
+  const languageLabel = LANGUAGES.find((l) => l.code === language)!.label;
   const currencyLabel = user?.currency?.name ?? '—';
 
   return (
