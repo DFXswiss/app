@@ -142,7 +142,8 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
   test('list shows active and deactivated WaitingForPayment Buy rows', async ({ page }) => {
     await installQuotesRoutes(page);
 
-    await page.goto(`/realunit/quotes?session=${token}`);
+    // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
+    await page.goto(`/realunit/quotes?session=${token}&lang=en`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
@@ -160,7 +161,7 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
   test('active WaitingForPayment Buy detail shows Confirm Payment and Deactivate', async ({ page }) => {
     await installQuotesRoutes(page);
 
-    await page.goto(`/realunit/quotes/${ACTIVE_BUY.id}?session=${token}`);
+    await page.goto(`/realunit/quotes/${ACTIVE_BUY.id}?session=${token}&lang=en`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
@@ -176,7 +177,7 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
   test('Deactivate Quote opens the confirmation overlay', async ({ page }) => {
     await installQuotesRoutes(page);
 
-    await page.goto(`/realunit/quotes/${ACTIVE_BUY.id}?session=${token}`);
+    await page.goto(`/realunit/quotes/${ACTIVE_BUY.id}?session=${token}&lang=en`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
@@ -194,7 +195,7 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
   test('deactivated quote detail shows Deactivated At and no action buttons', async ({ page }) => {
     await installQuotesRoutes(page);
 
-    await page.goto(`/realunit/quotes/${DEACTIVATED_BUY.id}?session=${token}`);
+    await page.goto(`/realunit/quotes/${DEACTIVATED_BUY.id}?session=${token}&lang=en`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
