@@ -51,6 +51,29 @@ describe('format helpers', () => {
     expect(formatDateTime(new Date('2026-01-15T12:00:00Z'), 'en')).not.toBe('');
   });
 
+  it('falls back when Intl refuses the locale', () => {
+    const original = Intl.DateTimeFormat;
+    const numberOriginal = Number.prototype.toLocaleString;
+    try {
+      Object.defineProperty(Intl, 'DateTimeFormat', {
+        configurable: true,
+        writable: true,
+        value: function DateTimeFormat() {
+          throw new RangeError('invalid locale');
+        },
+      });
+      expect(formatDate(new Date('2026-01-15T12:00:00Z'), 'en')).toBe('2026-01-15');
+      expect(formatDateTime(new Date('2026-01-15T12:00:00Z'), 'en')).not.toBe('');
+      Number.prototype.toLocaleString = () => {
+        throw new RangeError('invalid locale');
+      };
+      expect(formatNumber(12.5, 'en')).toBe('12.5');
+    } finally {
+      Intl.DateTimeFormat = original;
+      Number.prototype.toLocaleString = numberOriginal;
+    }
+  });
+
   it('builds explorer URLs only for known chains and prefers a safe API URL', () => {
     expect(explorerTxUrl(undefined, 'abc')).toBeUndefined();
     expect(explorerTxUrl(Blockchain.BITCOIN, undefined)).toBeUndefined();
