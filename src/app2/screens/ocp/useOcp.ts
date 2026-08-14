@@ -333,7 +333,6 @@ export function useOcp(): OcpApi {
     if (demo) {
       setActive(true);
       setProbeError(false);
-      setConfig((prev) => prev ?? buildDemoConfig());
       return;
     }
     try {
@@ -353,11 +352,10 @@ export function useOcp(): OcpApi {
         setProbeError(true);
       }
     }
-  }, [demo, getUserPaymentLinksConfig, buildDemoConfig]);
+  }, [demo, getUserPaymentLinksConfig]);
 
   const loadRoutes = useCallback(async () => {
     if (demo) {
-      setRoutes((prev) => prev ?? buildDemoRoutes());
       setRoutesError(false);
       return;
     }
@@ -369,11 +367,10 @@ export function useOcp(): OcpApi {
       setRoutes({ buy: [], sell: [], swap: [] });
       setRoutesError(true);
     }
-  }, [demo, getPaymentRoutes, buildDemoRoutes]);
+  }, [demo, getPaymentRoutes]);
 
   const loadLinks = useCallback(async () => {
     if (demo) {
-      setLinks((prev) => prev ?? buildDemoLinks());
       return;
     }
     try {
@@ -383,7 +380,7 @@ export function useOcp(): OcpApi {
     } catch {
       setLinks([]);
     }
-  }, [demo, getPaymentLinks, buildDemoLinks]);
+  }, [demo, getPaymentLinks]);
 
   const loadHistory = useCallback(async () => {
     if (demo) {
@@ -425,9 +422,9 @@ export function useOcp(): OcpApi {
   const createRoute = useCallback(
     async ({ iban, currencyId, blockchain }: CreateRouteInput) => {
       if (demo) {
-        const nid = 200 + (routes?.sell?.length ?? 0) + Math.floor(Math.random() * 40) + 1;
+        const nid = 200 + (routes as NonNullable<typeof routes>).sell.length + Math.floor(Math.random() * 40) + 1;
         setRoutes((prev) => {
-          const base = prev ?? buildDemoRoutes();
+          const base = prev as NonNullable<typeof prev>;
           const demoRoute = {
             id: nid,
             active: true,
@@ -451,17 +448,16 @@ export function useOcp(): OcpApi {
       setRoutes(null);
       await loadRoutes();
     },
-    [demo, routes, buildDemoRoutes, call, loadRoutes],
+    [demo, routes, call, loadRoutes],
   );
 
   const toggleRoute = useCallback(
     async (type: PaymentRouteType, id: string | number, activeTo: boolean) => {
       if (demo) {
         setRoutes((prev) => {
-          if (!prev) return prev;
-          const arr = prev[type];
-          const next = arr.map((r) => (String(r.id) === String(id) ? { ...r, active: activeTo } : r));
-          return { ...prev, [type]: next };
+          const current = prev as NonNullable<typeof prev>;
+          const next = current[type].map((r) => (String(r.id) === String(id) ? { ...r, active: activeTo } : r));
+          return { ...current, [type]: next };
         });
         return;
       }
@@ -476,7 +472,7 @@ export function useOcp(): OcpApi {
   const createLink = useCallback(
     async (routeId: string | number) => {
       if (demo) {
-        const nid = 300 + (links?.length ?? 0) + Math.floor(Math.random() * 60) + 1;
+        const nid = 300 + (links as NonNullable<typeof links>).length + Math.floor(Math.random() * 60) + 1;
         setLinks((prev) => {
           const demoLink = {
             id: nid,
@@ -486,7 +482,7 @@ export function useOcp(): OcpApi {
             mode: 'Multiple',
             lnurl: demoLnurl(`pl_demo_${nid}`),
           } as unknown as PaymentLink;
-          return [demoLink, ...(prev ?? [])];
+          return [demoLink, ...(prev as NonNullable<typeof prev>)];
         });
         return;
       }
@@ -503,7 +499,7 @@ export function useOcp(): OcpApi {
     async (id: string | number, activeTo: boolean) => {
       if (demo) {
         setLinks((prev) =>
-          (prev ?? []).map((l) =>
+          (prev as NonNullable<typeof prev>).map((l) =>
             String(l.id) === String(id) ? { ...l, status: (activeTo ? 'Active' : 'Inactive') as PaymentLinkStatus } : l,
           ),
         );
@@ -591,13 +587,13 @@ export function useOcp(): OcpApi {
   const saveConfig = useCallback(
     async (body: UpdatePaymentLinkConfig) => {
       if (demo) {
-        setConfig((prev) => ({ ...(prev ?? buildDemoConfig()), ...body }));
+        setConfig((prev) => ({ ...(prev as NonNullable<typeof prev>), ...body }));
         return;
       }
       await updateUserPaymentLinksConfig(body);
       setConfig((prev) => (prev ? { ...prev, ...body } : prev));
     },
-    [demo, buildDemoConfig, updateUserPaymentLinksConfig],
+    [demo, updateUserPaymentLinksConfig],
   );
 
   // ---- helpers --------------------------------------------------------------

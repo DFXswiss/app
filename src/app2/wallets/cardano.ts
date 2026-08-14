@@ -146,7 +146,7 @@ export function cip30HexToBech32(hexAddr: string): string {
 /** Connects a CIP-30 Cardano wallet and returns its bech32 address plus a signer
  * bound to the same enabled API. Throws WalletConnectorError on failure. */
 export async function connectCardano(): Promise<CardanoWalletSession> {
-  const root = (typeof window !== 'undefined' ? (window as { cardano?: Cip30Root }).cardano : undefined) ?? undefined;
+  const root = (window as { cardano?: Cip30Root }).cardano;
   const key = root && (root.nami ? 'nami' : root.eternl ? 'eternl' : root.lace ? 'lace' : Object.keys(root)[0]);
   const wallet = key ? root?.[key] : undefined;
   if (!wallet) throw new WalletConnectorError('Cardano wallet not detected', 'not-installed');

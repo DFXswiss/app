@@ -318,7 +318,6 @@ function hasCredentialParams(params: URLSearchParams): boolean {
 }
 
 (function clearStaleSessionOnCredentialedLoad() {
-  if (typeof window === 'undefined') return;
   if (!hasCredentialParams(new URLSearchParams(window.location.search))) return;
   try {
     // 'dfx.authenticationToken' is @dfx.swiss/react's StoreKey.AUTH_TOKEN
@@ -548,7 +547,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const closeConnect = useCallback(() => {
     // Closing during any connector phase is a real cancellation, including injected-wallet
     // prompts and the post-pairing WalletConnect signature phase (`view.kind === connecting`).
-    if (busyRef.current || wcTokenRef.current) cancelConnectAttempt();
+    if (busyRef.current) cancelConnectAttempt();
     setSheetOpen(false);
     setView({ kind: 'list' });
   }, [cancelConnectAttempt]);
@@ -556,7 +555,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   /** Backs out of a sub-view (WalletConnect QR / recommendation form) to the
    * wallet list without closing the sheet — drops any half-open WC pairing. */
   const cancelSubView = useCallback(() => {
-    if (busyRef.current || wcTokenRef.current) cancelConnectAttempt();
+    if (busyRef.current) cancelConnectAttempt();
     setView({ kind: 'list' });
   }, [cancelConnectAttempt]);
 
@@ -992,9 +991,6 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       const existing = map.get(key);
       if (existing) {
         if (!existing.icon) existing.icon = walletLogoByName(e.walletType) ?? walletIconFor(e.walletType, e.walletId);
-        if (existing.name === 'Wallet' && e.walletType) existing.name = e.walletType;
-        if (!existing.walletType) existing.walletType = e.walletType;
-        if (!existing.walletId && e.walletId) existing.walletId = e.walletId;
       } else {
         map.set(key, {
           address: e.address,
@@ -1017,7 +1013,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       map.set(current, {
         address: address as string,
         name: 'Wallet',
-        blockchains: blockchains ?? [],
+        blockchains,
         active: true,
         linked: false,
       });
@@ -1116,9 +1112,10 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       return;
     }
 
-    if (addressParam && signatureParam) {
-      signInWith({ address: addressParam, signature: signatureParam }).finally(scrubCredentialParams);
-    }
+    signInWith({
+      address: addressParam as string,
+      signature: signatureParam as string,
+    }).finally(scrubCredentialParams);
     // Intentionally run once on mount (empty deps): bootstrappedRef makes
     // re-runs a no-op, and re-reading `signInWith`/`updateSession` identities
     // here would only ever re-guard against the same already-consumed URL
@@ -1143,11 +1140,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     // `'other'` has no EVM provider binding — skip monitoring entirely.
     if (activeConnector === 'other') return undefined;
     const provider: Eip1193Provider | undefined =
-      activeConnector === 'injected'
-        ? injectedProviderRef.current
-        : activeConnector === 'wallet-connect'
-          ? wcProviderRef.current
-          : getInjectedProvider();
+      injectedProviderRef.current ?? wcProviderRef.current ?? getInjectedProvider();
     if (!provider?.on || !provider.removeListener) return undefined;
 
     let mounted = true;

@@ -121,7 +121,6 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
   }
 
   async function submit() {
-    if (submitting) return;
     const clean = iban.trim().replace(/\s+/g, '');
     const check = ibanCheck(clean);
     if (!check.ok) {

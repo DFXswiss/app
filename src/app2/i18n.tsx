@@ -2946,8 +2946,6 @@ function isLanguage(value: string): value is Language {
 }
 
 function detectLanguage(): Language {
-  if (typeof window === 'undefined') return 'en';
-
   try {
     const fromQuery = new URLSearchParams(window.location.search).get('lang');
     if (fromQuery && isLanguage(fromQuery)) return fromQuery;

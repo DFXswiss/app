@@ -152,8 +152,7 @@ export function AssetPicker({
   const pick = (token: TradeAsset) => {
     const chains = shownChainsFor(token, cap, sessionBlockchains);
     if (chains.length <= 1) {
-      const chain = chains[0];
-      if (chain) onSelect(token, chain.blockchain);
+      onSelect(token, chains[0].blockchain);
       close();
       return;
     }
@@ -227,14 +226,14 @@ export function AssetPicker({
                 active={filter === 'btc'}
                 onClick={() => setFilter('btc')}
                 label={t('bitcoin')}
-                icon={chipImg(chainIcon(Blockchain.BITCOIN))}
+                icon={chipImg(chainIcon(Blockchain.BITCOIN) as string)}
               />
               <FilterChip active={filter === 'stable'} onClick={() => setFilter('stable')} label={t('stable')} />
               <FilterChip
                 active={filter === 'monero'}
                 onClick={() => setFilter('monero')}
                 label={t('monero')}
-                icon={chipImg(chainIcon(Blockchain.MONERO))}
+                icon={chipImg(chainIcon(Blockchain.MONERO) as string)}
               />
               <FilterChip
                 active={filter === 'swiss'}
@@ -248,7 +247,7 @@ export function AssetPicker({
                   active={filter === `chain:${bc}`}
                   onClick={() => setFilter(`chain:${bc}`)}
                   label={chainName(bc)}
-                  icon={chipImg(chainIcon(bc))}
+                  icon={chipImg(chainIcon(bc) as string)}
                 />
               ))}
             </div>
@@ -372,8 +371,8 @@ const STAR_ICON = (
 
 // A brand-logo chip icon (network/token SVG) via the shared `.fchip img` rule; omitted when the
 // chain has no bundled icon.
-function chipImg(src: string | undefined): ReactNode {
-  return src ? <img src={src} alt="" /> : undefined;
+function chipImg(src: string): ReactNode {
+  return <img src={src} alt="" />;
 }
 
 function FilterChip({
