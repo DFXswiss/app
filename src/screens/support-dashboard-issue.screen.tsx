@@ -288,7 +288,6 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             <InfoRow label="ID" value={String(issueData.id)} mono />
             <InfoRow label="UID" value={issueData.uid} mono />
             <InfoRow label="Name" value={issueData.name} />
-            {issueData.contactMail && <InfoRow label="Contact email" value={issueData.contactMail} />}
             <InfoRow label="Type" value={translate('screens/support', typeLabel(issueData.type))} />
             <InfoRow label="Reason" value={translate('screens/support', reasonLabel(issueData.reason))} />
             <InfoRow label="State" value={statusBadge(issueData.state)} />
