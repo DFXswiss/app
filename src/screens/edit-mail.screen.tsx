@@ -43,7 +43,7 @@ export default function EditMailScreen(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (redirectPath && redirectPath !== '/account/mail' && !editMailReturn.get()) {
+    if (redirectPath && redirectPath !== '/account/mail') {
       editMailReturn.set(redirectPath);
     }
   }, [redirectPath]);
