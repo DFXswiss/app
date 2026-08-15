@@ -145,7 +145,7 @@
   },
   "support-issue-receiver-iban": {
     "title": "Support-Ticket Formular",
-    "description": "Kunden-Supportformular: Ticket anlegen, nachdem die Konto-Mail gesetzt ist."
+    "description": "Kunden-Supportformular: Empfänger-IBAN-Check; Ticket erst nach gesetzter Konto-Mail."
   },
   "support-dashboard": {
     "title": "Support-Dashboard",

@@ -175,6 +175,9 @@ export default function SupportIssueScreen(): JSX.Element {
   const isRequestOnly = selectedTxState === TransactionState.WAITING_FOR_PAYMENT;
 
   const orderParam = urlParams.get('quote') ?? urlParams.get('order');
+  // Latch the guest/quote path on first render. clearParams drops quote/order from the URL
+  // before logout finishes, which would otherwise trip the mail gate mid-transition.
+  const isQuotePath = useRef(Boolean(orderParam)).current;
   const issueTypeParam = urlParams.get('issue-type');
   const reasonParam = urlParams.get('reason');
 
@@ -219,10 +222,10 @@ export default function SupportIssueScreen(): JSX.Element {
   }, [user, selectedType]);
 
   useEffect(() => {
-    if (!orderParam && isLoggedIn && !isUserLoading && user && !user.mail) {
+    if (!isQuotePath && isLoggedIn && !isUserLoading && user && !user.mail) {
       navigate('/account/mail', { setRedirect: true });
     }
-  }, [isLoggedIn, isUserLoading, user, navigate, orderParam]);
+  }, [isLoggedIn, isUserLoading, user, navigate, isQuotePath]);
 
   useEffect(() => {
     if (orderParam) {
@@ -427,7 +430,7 @@ export default function SupportIssueScreen(): JSX.Element {
     <>
       {(selectedType === SupportIssueType.LIMIT_REQUEST && isKycComplete === undefined) ||
       isIssueLoading ||
-      (!orderParam && isLoggedIn && (isUserLoading || !user || !user.mail)) ? (
+      (!isQuotePath && isLoggedIn && (isUserLoading || !user || !user.mail)) ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : selectTransaction ? (
         <>
