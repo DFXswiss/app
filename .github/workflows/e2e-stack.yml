@@ -178,6 +178,7 @@ jobs:
           ref: ${{ inputs.api_ref || 'develop' }}
           path: api-repo
           ssh-key: ${{ secrets.E2E_API_CHECKOUT_KEY }}
+          persist-credentials: false
 
       # The harness refuses an API image whose process error handling can throw while logging,
       # because such an image cannot stay up in a network with no route out. That guard lives in
@@ -230,6 +231,7 @@ jobs:
           ref: refs/pull/4753/head
           path: api-repo
           ssh-key: ${{ secrets.E2E_API_CHECKOUT_KEY }}
+          persist-credentials: false
 
       - name: Setup Node.js
         if: steps.scope.outputs.mode != 'none'
