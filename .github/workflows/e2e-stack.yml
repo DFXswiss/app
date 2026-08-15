@@ -166,6 +166,10 @@ jobs:
           echo "$remaining"
           echo "mode=full" >> "$GITHUB_OUTPUT"
 
+      # GITHUB_TOKEN of this public repository cannot read the private API
+      # repository. A read-only deploy key (secret E2E_API_CHECKOUT_KEY) is
+      # the checkout credential. Without it the step fails as "repository
+      # not found" and the rest of the job is skipped.
       - name: Checkout API
         if: steps.scope.outputs.mode != 'none'
         uses: actions/checkout@v4
@@ -173,6 +177,7 @@ jobs:
           repository: DFXswiss/api
           ref: ${{ inputs.api_ref || 'develop' }}
           path: api-repo
+          ssh-key: ${{ secrets.E2E_API_CHECKOUT_KEY }}
 
       # The harness refuses an API image whose process error handling can throw while logging,
       # because such an image cannot stay up in a network with no route out. That guard lives in
@@ -224,6 +229,7 @@ jobs:
           repository: DFXswiss/api
           ref: refs/pull/4753/head
           path: api-repo
+          ssh-key: ${{ secrets.E2E_API_CHECKOUT_KEY }}
 
       - name: Setup Node.js
         if: steps.scope.outputs.mode != 'none'
