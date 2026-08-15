@@ -427,7 +427,7 @@ export default function SupportIssueScreen(): JSX.Element {
     <>
       {(selectedType === SupportIssueType.LIMIT_REQUEST && isKycComplete === undefined) ||
       isIssueLoading ||
-      (isLoggedIn && (isUserLoading || Boolean(user && !user.mail))) ? (
+      (isLoggedIn && (isUserLoading || !user || !user.mail)) ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : selectTransaction ? (
         <>

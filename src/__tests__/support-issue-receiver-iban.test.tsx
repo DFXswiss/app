@@ -82,13 +82,10 @@ jest.mock('@dfx.swiss/react', () => {
   // "required" rule with message 'required'; Custom wraps an arbitrary validator function as a
   // react-hook-form "validate" rule (the validator itself decides pass/fail per field); Iban fails
   // with a sentinel so that if the receiver field ever gained Validations.Iban, submission tests
-  // with non-IBAN free text would fail instead of staying green; Mail is a simple pattern check.
+  // with non-IBAN free text would fail instead of staying green.
   const Validations = {
     get Required() {
       return { required: { value: true, message: 'required' } };
-    },
-    get Mail() {
-      return { pattern: { value: /^\S+@\S+\.\S+$/, message: 'pattern' } };
     },
     Custom: (validator: (value: any) => true | string) => ({ validate: validator }),
     Iban: (_countries: unknown[]) => ({ validate: () => 'iban' }),
@@ -1058,6 +1055,16 @@ describe('SupportIssueScreen mail gate', () => {
     expect(screen.queryByRole('button', { name: /^Next$/i })).not.toBeInTheDocument();
     expect(screen.queryByText('Issue type', { selector: 'label' })).not.toBeInTheDocument();
     expect(mockCreateSupportIssue).not.toHaveBeenCalled();
+  });
+
+  it('keeps the form hidden and does not redirect while a logged-in user is still loading', () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: undefined, isUserLoading: true });
+    renderScreen('');
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.queryByText('Issue type', { selector: 'label' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Next$/i })).not.toBeInTheDocument();
   });
 
   it('shows the form for logged-in users with mail and does not send mail on create', async () => {

@@ -12,10 +12,12 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { ErrorHint } from 'src/components/error-hint';
 import { EditOverlay } from 'src/components/overlay/edit-overlay';
+import { useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useMergedAccount } from 'src/hooks/merged-account.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { useSessionStore } from 'src/hooks/session-store.hook';
 
 export default function EditMailScreen(): JSX.Element {
   const { translate, translateError } = useSettingsContext();
@@ -24,6 +26,8 @@ export default function EditMailScreen(): JSX.Element {
   const { handleMergedError } = useMergedAccount();
   const { user } = useUserContext();
   const { check2fa } = useKyc();
+  const { redirectPath } = useAppHandlingContext();
+  const { editMailReturn } = useSessionStore();
 
   const [checking2fa, setChecking2fa] = useState(true);
   const [mailVerificationStep, setMailVerificationStep] = useState(false);
@@ -37,6 +41,12 @@ export default function EditMailScreen(): JSX.Element {
       .catch(() => navigate('/2fa', { state: { level: TfaLevel.BASIC }, setRedirect: true }))
       .finally(() => setChecking2fa(false));
   }, []);
+
+  useEffect(() => {
+    if (redirectPath && redirectPath !== '/account/mail' && !editMailReturn.get()) {
+      editMailReturn.set(redirectPath);
+    }
+  }, [redirectPath]);
 
   const {
     control,
@@ -71,7 +81,15 @@ export default function EditMailScreen(): JSX.Element {
     setIsSubmitting(true);
 
     verifyMail(data.token)
-      .then(() => goBack())
+      .then(() => {
+        const stored = editMailReturn.get();
+        editMailReturn.remove();
+        if (stored) {
+          navigate(stored);
+        } else {
+          goBack();
+        }
+      })
       .catch((e: ApiError) =>
         handleMergedError(e)
           ? undefined
@@ -106,7 +124,10 @@ export default function EditMailScreen(): JSX.Element {
           <StyledButton
             width={StyledButtonWidth.MIN}
             label={translate('general/actions', 'OK')}
-            onClick={() => navigate('/account')}
+            onClick={() => {
+              editMailReturn.remove();
+              navigate('/account');
+            }}
           />
         </StyledVerticalStack>
       ) : checking2fa ? (
@@ -118,7 +139,10 @@ export default function EditMailScreen(): JSX.Element {
           prefill={user?.mail}
           placeholder={translate('screens/kyc', 'Email address')}
           validation={Validations.Mail}
-          onCancel={() => navigate('/account')}
+          onCancel={() => {
+            editMailReturn.remove();
+            navigate('/account');
+          }}
           onEdit={onSubmit}
         />
       ) : (
