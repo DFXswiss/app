@@ -20,7 +20,7 @@ import { useNavigation } from 'src/hooks/navigation.hook';
 export default function EditMailScreen(): JSX.Element {
   const { translate, translateError } = useSettingsContext();
   const { updateMail, verifyMail } = useUserContext();
-  const { navigate } = useNavigation();
+  const { navigate, goBack } = useNavigation();
   const { handleMergedError } = useMergedAccount();
   const { user } = useUserContext();
   const { check2fa } = useKyc();
@@ -71,7 +71,7 @@ export default function EditMailScreen(): JSX.Element {
     setIsSubmitting(true);
 
     verifyMail(data.token)
-      .then(() => navigate('/account'))
+      .then(() => goBack())
       .catch((e: ApiError) =>
         handleMergedError(e)
           ? undefined

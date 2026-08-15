@@ -15,6 +15,11 @@ const mockClearParams = jest.fn();
 const mockTranslate = jest.fn((_ns: string, key: string) => key);
 const mockUseUserContext = jest.fn(() => ({
   user: undefined as { mail?: string; kyc?: { level: number } } | undefined,
+  isUserLoading: false,
+}));
+const mockUseSessionContext = jest.fn(() => ({
+  isLoggedIn: false,
+  logout: jest.fn(),
 }));
 
 jest.mock('@dfx.swiss/react', () => {
@@ -108,7 +113,7 @@ jest.mock('@dfx.swiss/react', () => {
     Validations,
     useBank: () => ({ checkReceiveIban: mockCheckReceiveIban }),
     useBankAccountContext: () => ({ bankAccounts: undefined }),
-    useSessionContext: () => ({ isLoggedIn: false, logout: jest.fn() }),
+    useSessionContext: () => mockUseSessionContext(),
     useSupportChatContext: () => ({
       createSupportIssue: mockCreateSupportIssue,
       loadSupportIssue: jest.fn(),
@@ -424,7 +429,7 @@ async function typeReceiverIban(value: string) {
   return input;
 }
 
-function fillTransactionMissingForm(receiverIban: string, mail?: string) {
+function fillTransactionMissingForm(receiverIban: string) {
   const ibanInputs = screen.getAllByPlaceholderText('XX XXXX XXXX XXXX XXXX X');
   fireEvent.change(ibanInputs[0], { target: { value: 'DE89370400440532013000' } });
   fireEvent.change(ibanInputs[1], { target: { value: receiverIban } });
@@ -432,14 +437,6 @@ function fillTransactionMissingForm(receiverIban: string, mail?: string) {
   const today = new Date().toISOString().split('T')[0];
   fireEvent.change(screen.getByPlaceholderText(today), { target: { value: '2024-06-15' } });
   fireEvent.change(screen.getByPlaceholderText('John Doe'), { target: { value: 'Test User' } });
-
-  // When the user has no mail, the contact email field is required for submit.
-  const mailLabel = screen.queryByText('Email address', { selector: 'label' });
-  if (mailLabel) {
-    const mailInput = mailLabel.parentElement?.querySelector('input');
-    if (!mailInput) throw new Error('Email address input not found');
-    fireEvent.change(mailInput, { target: { value: mail ?? 'test@example.com' } });
-  }
 
   const descriptionLabel = screen.getByText('Description', { selector: 'label' });
   const textarea = descriptionLabel.parentElement?.querySelector('textarea');
@@ -452,6 +449,7 @@ describe('SupportIssueScreen receiver IBAN check', () => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockTranslate.mockImplementation((_ns: string, key: string) => key);
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: false, logout: jest.fn() });
     mockUseUserContext.mockReturnValue({ user: undefined });
     mockCheckReceiveIban.mockReset();
     mockCreateSupportIssue.mockReset();
@@ -1029,11 +1027,12 @@ describe('SupportIssueScreen receiver IBAN check', () => {
   });
 });
 
-describe('SupportIssueScreen contact mail field', () => {
+describe('SupportIssueScreen mail gate', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockTranslate.mockImplementation((_ns: string, key: string) => key);
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: false, logout: jest.fn() });
     mockUseUserContext.mockReturnValue({ user: undefined });
     mockCheckReceiveIban.mockReset();
     mockCreateSupportIssue.mockReset();
@@ -1049,45 +1048,27 @@ describe('SupportIssueScreen contact mail field', () => {
     jest.useRealTimers();
   });
 
-  it('shows the email field when the user has no mail', () => {
-    mockUseUserContext.mockReturnValue({ user: undefined });
+  it('redirects logged-in users without mail to /account/mail and hides the form', () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: { mail: undefined, kyc: { level: 50 } }, isUserLoading: false });
     renderScreen('');
-    expect(screen.getByText('Email address', { selector: 'label' })).toBeInTheDocument();
-  });
 
-  it('does not show the email field when the user already has mail', () => {
-    mockUseUserContext.mockReturnValue({ user: { mail: 'a@b.c', kyc: { level: 50 } } });
-    renderScreen('');
+    expect(mockNavigate).toHaveBeenCalledWith('/account/mail', { setRedirect: true });
     expect(screen.queryByText('Email address', { selector: 'label' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Next$/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Issue type', { selector: 'label' })).not.toBeInTheDocument();
+    expect(mockCreateSupportIssue).not.toHaveBeenCalled();
   });
 
-  it('includes mail on createSupportIssue when the user has no mail', async () => {
-    mockUseUserContext.mockReturnValue({ user: undefined });
+  it('shows the form for logged-in users with mail and does not send mail on create', async () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: { mail: 'a@b.c', kyc: { level: 50 } }, isUserLoading: false });
     mockCheckReceiveIban.mockResolvedValue({ status: ReceiveIbanStatus.DFX_IBAN });
     renderScreen('');
-    selectTransactionMissingViaUi();
-    fillTransactionMissingForm(VALID_FORMATTED, 'contact@example.com');
-    await advanceDebounce();
-    fireEvent.blur(getReceiverIbanInput());
 
-    expect(getNextButton()).not.toBeDisabled();
-    await act(async () => {
-      fireEvent.click(getNextButton());
-    });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.queryByText('Email address', { selector: 'label' })).not.toBeInTheDocument();
 
-    expect(mockCreateSupportIssue).toHaveBeenCalled();
-    const request = mockCreateSupportIssue.mock.calls[0][0];
-    expect(request.mail).toBe('contact@example.com');
-  });
-
-  it('does not include mail on createSupportIssue when the user already has mail', async () => {
-    mockUseUserContext.mockReturnValue({ user: { mail: 'a@b.c', kyc: { level: 50 } } });
-    mockCheckReceiveIban.mockResolvedValue({ status: ReceiveIbanStatus.DFX_IBAN });
-    renderScreen('');
     selectTransactionMissingViaUi();
     fillTransactionMissingForm(VALID_FORMATTED);
     await advanceDebounce();
@@ -1106,5 +1087,15 @@ describe('SupportIssueScreen contact mail field', () => {
     const request = mockCreateSupportIssue.mock.calls[0][0];
     expect(request.mail).toBeUndefined();
     expect(Object.prototype.hasOwnProperty.call(request, 'mail')).toBe(false);
+  });
+
+  it('shows the form for logged-out users without redirect or email field', () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: false, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: undefined });
+    renderScreen('');
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.queryByText('Email address', { selector: 'label' })).not.toBeInTheDocument();
+    expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
   });
 });

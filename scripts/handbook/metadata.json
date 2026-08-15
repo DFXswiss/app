@@ -145,7 +145,7 @@
   },
   "support-issue-receiver-iban": {
     "title": "Support-Ticket Formular",
-    "description": "Kunden-Supportformular: Ticket anlegen, inkl. Kontakt-Mail wenn das Konto keine hat."
+    "description": "Kunden-Supportformular: Ticket anlegen, nachdem die Konto-Mail gesetzt ist."
   },
   "support-dashboard": {
     "title": "Support-Dashboard",
