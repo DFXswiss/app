@@ -188,7 +188,7 @@ export default function RealunitQuoteDetailScreen(): JSX.Element {
               }
               resetQuotes();
               setPendingAction(undefined);
-              navigate(-1);
+              navigate('/realunit/quotes');
             } finally {
               setActionInFlight(false);
             }

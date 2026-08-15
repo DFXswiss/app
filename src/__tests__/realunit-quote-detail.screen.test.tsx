@@ -240,7 +240,7 @@ describe('RealunitQuoteDetailScreen', () => {
     expect(screen.queryByRole('button', { name: 'Confirm Payment Received' })).not.toBeInTheDocument();
   });
 
-  it('Confirm Payment confirm calls confirmPayment, resetQuotes, and navigate(-1); cancel closes without API', async () => {
+  it('Confirm Payment confirm calls confirmPayment, resetQuotes, and navigate to quotes; cancel closes without API', async () => {
     render(<RealunitQuoteDetailScreen />);
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Payment Received' }));
     expect(screen.getByText('Are you sure you want to confirm the payment receipt?')).toBeInTheDocument();
@@ -254,7 +254,7 @@ describe('RealunitQuoteDetailScreen', () => {
     await waitFor(() => {
       expect(mockConfirmPayment).toHaveBeenCalledWith(1);
       expect(mockResetQuotes).toHaveBeenCalled();
-      expect(mockNavigate).toHaveBeenCalledWith(-1);
+      expect(mockNavigate).toHaveBeenCalledWith('/realunit/quotes');
     });
   });
 
@@ -272,7 +272,7 @@ describe('RealunitQuoteDetailScreen', () => {
     expect(screen.getByTestId('confirmation-overlay')).toBeInTheDocument();
     resolveConfirm();
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith(-1);
+      expect(mockNavigate).toHaveBeenCalledWith('/realunit/quotes');
     });
   });
 
@@ -309,7 +309,7 @@ describe('RealunitQuoteDetailScreen', () => {
     expect(screen.queryByRole('button', { name: 'Deactivate Quote' })).not.toBeInTheDocument();
   });
 
-  it('Deactivate confirm calls deactivateQuote, resetQuotes, and navigate(-1); cancel closes without API', async () => {
+  it('Deactivate confirm calls deactivateQuote, resetQuotes, and navigate to quotes; cancel closes without API', async () => {
     render(<RealunitQuoteDetailScreen />);
     fireEvent.click(screen.getByRole('button', { name: 'Deactivate Quote' }));
     expect(screen.getByText('Are you sure you want to deactivate this quote?')).toBeInTheDocument();
@@ -323,7 +323,7 @@ describe('RealunitQuoteDetailScreen', () => {
     await waitFor(() => {
       expect(mockDeactivateQuote).toHaveBeenCalledWith(1);
       expect(mockResetQuotes).toHaveBeenCalled();
-      expect(mockNavigate).toHaveBeenCalledWith(-1);
+      expect(mockNavigate).toHaveBeenCalledWith('/realunit/quotes');
     });
   });
 
