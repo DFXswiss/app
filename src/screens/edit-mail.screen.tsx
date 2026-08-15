@@ -22,7 +22,7 @@ import { useSessionStore } from 'src/hooks/session-store.hook';
 export default function EditMailScreen(): JSX.Element {
   const { translate, translateError } = useSettingsContext();
   const { updateMail, verifyMail } = useUserContext();
-  const { navigate, goBack } = useNavigation();
+  const { navigate } = useNavigation();
   const { handleMergedError } = useMergedAccount();
   const { user } = useUserContext();
   const { check2fa } = useKyc();
@@ -84,11 +84,7 @@ export default function EditMailScreen(): JSX.Element {
       .then(() => {
         const stored = editMailReturn.get();
         editMailReturn.remove();
-        if (stored) {
-          navigate(stored);
-        } else {
-          goBack();
-        }
+        navigate(stored ?? '/account');
       })
       .catch((e: ApiError) =>
         handleMergedError(e)

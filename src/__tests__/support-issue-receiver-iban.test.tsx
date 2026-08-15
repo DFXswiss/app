@@ -113,7 +113,7 @@ jest.mock('@dfx.swiss/react', () => {
     useSessionContext: () => mockUseSessionContext(),
     useSupportChatContext: () => ({
       createSupportIssue: mockCreateSupportIssue,
-      loadSupportIssue: jest.fn(),
+      loadSupportIssue: jest.fn().mockResolvedValue(undefined),
       isLoading: false,
       supportIssue: undefined,
     }),
@@ -1103,6 +1103,15 @@ describe('SupportIssueScreen mail gate', () => {
 
     expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
     expect(screen.queryByText('Email address', { selector: 'label' })).not.toBeInTheDocument();
+    expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
+  });
+
+  it('does not redirect logged-in users without mail to /account/mail on the guest/quote path', () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: { mail: undefined, kyc: { level: 50 } }, isUserLoading: false });
+    renderScreen('?quote=Qtest');
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
     expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
   });
 });

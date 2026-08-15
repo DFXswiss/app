@@ -219,10 +219,10 @@ export default function SupportIssueScreen(): JSX.Element {
   }, [user, selectedType]);
 
   useEffect(() => {
-    if (isLoggedIn && !isUserLoading && user && !user.mail) {
+    if (!orderParam && isLoggedIn && !isUserLoading && user && !user.mail) {
       navigate('/account/mail', { setRedirect: true });
     }
-  }, [isLoggedIn, isUserLoading, user, navigate]);
+  }, [isLoggedIn, isUserLoading, user, navigate, orderParam]);
 
   useEffect(() => {
     if (orderParam) {
@@ -427,7 +427,7 @@ export default function SupportIssueScreen(): JSX.Element {
     <>
       {(selectedType === SupportIssueType.LIMIT_REQUEST && isKycComplete === undefined) ||
       isIssueLoading ||
-      (isLoggedIn && (isUserLoading || !user || !user.mail)) ? (
+      (!orderParam && isLoggedIn && (isUserLoading || !user || !user.mail)) ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : selectTransaction ? (
         <>
