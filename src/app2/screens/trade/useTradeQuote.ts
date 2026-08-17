@@ -46,10 +46,30 @@
 // public: logged-out home renders the landing hero, not the trade form, so a quote fetched
 // there would have nothing to render into.
 
-import { BuyUrl, FiatPaymentMethod, SellUrl, SwapUrl, useApi, useBuy, useSell, useSwap } from '@dfx.swiss/react';
+import {
+  ApiException,
+  BuyUrl,
+  FiatPaymentMethod,
+  SellUrl,
+  SwapUrl,
+  useApi,
+  useBuy,
+  useSell,
+  useSwap,
+} from '@dfx.swiss/react';
 import type { Asset, Buy, BuyPaymentInfo, Fiat, Sell, SellPaymentInfo, Swap, SwapPaymentInfo } from '@dfx.swiss/react';
 import { useCallback } from 'react';
 import { QuoteEngineState, useQuoteEngine } from './useQuoteEngine';
+
+/** 4xx account/validation errors will not become 200 on retry; 429 is the exception. */
+export function isTransientQuoteError(error: unknown): boolean {
+  return !(
+    error instanceof ApiException &&
+    error.statusCode >= 400 &&
+    error.statusCode < 500 &&
+    error.statusCode !== 429
+  );
+}
 
 export interface BuyQuoteParams {
   enabled: boolean;
@@ -93,7 +113,7 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
     return call<Buy>({ url: BuyUrl.quote, method: 'PUT', data: info, token: false });
   }, [receiveFor, call, asset, currency, amount, paymentMethod, externalTransactionId, withPaymentInfo]);
 
-  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused);
+  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError);
 }
 
 export interface SellQuoteParams {
@@ -136,7 +156,7 @@ export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
     return call<Sell>({ url: SellUrl.quote, method: 'PUT', data: info, token: false });
   }, [receiveFor, call, asset, currency, amount, iban, externalTransactionId]);
 
-  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused);
+  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError);
 }
 
 export interface SwapQuoteParams {
@@ -173,5 +193,5 @@ export function useSwapQuote(params: SwapQuoteParams): QuoteEngineState<Swap> {
     return call<Swap>({ url: SwapUrl.quote, method: 'PUT', data: info, token: false });
   }, [receiveFor, call, sourceAsset, targetAsset, amount, externalTransactionId, withPaymentInfo]);
 
-  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused);
+  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError);
 }
