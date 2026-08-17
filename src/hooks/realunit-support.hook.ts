@@ -53,6 +53,15 @@ export function useRealunitSupport() {
     });
   }
 
+  // the clerk name mapped to the logged-in RealUnit support account (null if unmapped)
+  async function getMyClerk(): Promise<string | undefined> {
+    const result = await call<{ clerk: string | null }>({
+      url: 'realunit/support/clerk',
+      method: 'GET',
+    });
+    return result.clerk?.trim() || undefined;
+  }
+
   async function getIssueData(issueId: number): Promise<SupportIssueInternalData> {
     return call<SupportIssueInternalData>({
       url: `realunit/support/${issueId}/data`,
@@ -107,6 +116,7 @@ export function useRealunitSupport() {
       getIssueCounts,
       getIssueActivity,
       getClerks,
+      getMyClerk,
       getIssueData,
       updateIssue,
       createMessage,

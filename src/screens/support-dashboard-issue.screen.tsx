@@ -480,6 +480,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                 onChange={(e) => setUpdateClerk(e.target.value)}
               >
                 {!issueData?.clerk && <option value="">-</option>}
+                {updateClerk && !clerks.includes(updateClerk) && (
+                  <option key={updateClerk} value={updateClerk}>
+                    {updateClerk}
+                  </option>
+                )}
                 {clerks.map((c) => (
                   <option key={c} value={c}>
                     {c}

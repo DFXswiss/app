@@ -87,6 +87,26 @@ describe('useRealunitSupport', () => {
     expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/7001/messages', method: 'GET' });
     expect(messages).toEqual([{ id: 1, author: 'Alice', created: 'now' }]);
   });
+
+  it('getMyClerk GETs realunit/support/clerk and trims the clerk name', async () => {
+    mockCall.mockResolvedValue({ clerk: '  Ada  ' });
+    const { result } = renderHook(() => useRealunitSupport());
+
+    const clerk = await result.current.getMyClerk();
+
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/clerk', method: 'GET' });
+    expect(clerk).toBe('Ada');
+  });
+
+  it('getMyClerk returns undefined when clerk is null or blank', async () => {
+    mockCall.mockResolvedValue({ clerk: null });
+    const { result } = renderHook(() => useRealunitSupport());
+
+    await expect(result.current.getMyClerk()).resolves.toBeUndefined();
+
+    mockCall.mockResolvedValue({ clerk: '   ' });
+    await expect(result.current.getMyClerk()).resolves.toBeUndefined();
+  });
 });
 
 describe('useRealunitCompliance', () => {

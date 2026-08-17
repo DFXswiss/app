@@ -1,6 +1,8 @@
-import { useAuthContext } from '@dfx.swiss/react';
+import { useAuthContext, UserRole } from '@dfx.swiss/react';
 import { useEffect, useState } from 'react';
 import { useCompliance } from './compliance.hook';
+import { useRealunitSupport } from './realunit-support.hook';
+import { useSupportDashboard } from './support-dashboard.hook';
 
 const cache = new Map<number, Promise<string | undefined>>();
 
@@ -16,7 +18,10 @@ export function clearStaffVerifiedNameCache(): void {
 export function useStaffVerifiedName(): { name?: string; isLoading: boolean; error?: string } {
   const { session } = useAuthContext();
   const { getUserData } = useCompliance();
+  const { getMyClerk: getSupportClerk } = useSupportDashboard();
+  const { getMyClerk: getRealunitClerk } = useRealunitSupport();
   const account = session?.account;
+  const role = session?.role;
   const [resolved, setResolved] = useState<{ account: number; name?: string; error?: string }>();
 
   useEffect(() => {
@@ -29,8 +34,14 @@ export function useStaffVerifiedName(): { name?: string; isLoading: boolean; err
 
     let pending = cache.get(account);
     if (!pending) {
-      pending = getUserData(account)
-        .then((data) => readVerifiedName(data.userData.verifiedName))
+      const loadClerk = role === UserRole.REALUNIT ? getRealunitClerk : getSupportClerk;
+      pending = loadClerk()
+        .then((clerk) => readVerifiedName(clerk))
+        .catch(() => undefined)
+        .then((fromClerk) => {
+          if (fromClerk) return fromClerk;
+          return getUserData(account).then((data) => readVerifiedName(data.userData.verifiedName));
+        })
         .catch((e: unknown) => {
           cache.delete(account);
           throw e;
@@ -55,7 +66,7 @@ export function useStaffVerifiedName(): { name?: string; isLoading: boolean; err
     return () => {
       cancelled = true;
     };
-  }, [account]);
+  }, [account, role]);
 
   if (account == null) return { name: undefined, isLoading: false, error: undefined };
   if (!resolved || resolved.account !== account) return { name: undefined, isLoading: true, error: undefined };

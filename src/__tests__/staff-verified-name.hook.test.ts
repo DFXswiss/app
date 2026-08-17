@@ -2,25 +2,45 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { clearStaffVerifiedNameCache, useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 
 const mockGetUserData = jest.fn();
-const mockAuth: { session?: { account?: number } } = { session: { account: 42 } };
+const mockGetSupportClerk = jest.fn();
+const mockGetRealunitClerk = jest.fn();
+const mockAuth: { session?: { account?: number; role?: string } } = {
+  session: { account: 42, role: 'Support' },
+};
 
 jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => mockAuth,
+  UserRole: {
+    ADMIN: 'Admin',
+    SUPPORT: 'Support',
+    COMPLIANCE: 'Compliance',
+    REALUNIT: 'RealUnit',
+  },
 }));
 
 jest.mock('src/hooks/compliance.hook', () => ({
   useCompliance: () => ({ getUserData: mockGetUserData }),
 }));
 
+jest.mock('src/hooks/support-dashboard.hook', () => ({
+  useSupportDashboard: () => ({ getMyClerk: mockGetSupportClerk }),
+}));
+
+jest.mock('src/hooks/realunit-support.hook', () => ({
+  useRealunitSupport: () => ({ getMyClerk: mockGetRealunitClerk }),
+}));
+
 describe('useStaffVerifiedName', () => {
   beforeEach(() => {
     mockGetUserData.mockReset();
-    mockAuth.session = { account: 42 };
+    mockGetSupportClerk.mockReset();
+    mockGetRealunitClerk.mockReset();
+    mockAuth.session = { account: 42, role: 'Support' };
     clearStaffVerifiedNameCache();
   });
 
-  it('loads the trimmed verified name for the logged-in account', async () => {
-    mockGetUserData.mockResolvedValue({ userData: { verifiedName: '  Ada Lovelace  ' } });
+  it('loads the trimmed clerk name from the support endpoint', async () => {
+    mockGetSupportClerk.mockResolvedValue('  Ada Lovelace  ');
 
     const { result } = renderHook(() => useStaffVerifiedName());
 
@@ -29,12 +49,55 @@ describe('useStaffVerifiedName', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(mockGetUserData).toHaveBeenCalledWith(42);
+    expect(mockGetSupportClerk).toHaveBeenCalledTimes(1);
+    expect(mockGetUserData).not.toHaveBeenCalled();
+    expect(mockGetRealunitClerk).not.toHaveBeenCalled();
     expect(result.current.name).toBe('Ada Lovelace');
     expect(result.current.error).toBeUndefined();
   });
 
-  it('treats a blank verified name as missing', async () => {
+  it('uses the RealUnit clerk endpoint and does not call getUserData when clerk is present', async () => {
+    mockAuth.session = { account: 42, role: 'RealUnit' };
+    mockGetRealunitClerk.mockResolvedValue('Real Unit Clerk');
+
+    const { result } = renderHook(() => useStaffVerifiedName());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(mockGetRealunitClerk).toHaveBeenCalledTimes(1);
+    expect(mockGetSupportClerk).not.toHaveBeenCalled();
+    expect(mockGetUserData).not.toHaveBeenCalled();
+    expect(result.current.name).toBe('Real Unit Clerk');
+  });
+
+  it('falls back to getUserData when clerk is null', async () => {
+    mockGetSupportClerk.mockResolvedValue(undefined);
+    mockGetUserData.mockResolvedValue({ userData: { verifiedName: '  Grace Hopper  ' } });
+
+    const { result } = renderHook(() => useStaffVerifiedName());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(mockGetSupportClerk).toHaveBeenCalledTimes(1);
+    expect(mockGetUserData).toHaveBeenCalledWith(42);
+    expect(result.current.name).toBe('Grace Hopper');
+    expect(result.current.error).toBeUndefined();
+  });
+
+  it('falls back to getUserData when clerk is blank', async () => {
+    mockGetSupportClerk.mockResolvedValue('   ');
+    mockGetUserData.mockResolvedValue({ userData: { verifiedName: 'Ada Lovelace' } });
+
+    const { result } = renderHook(() => useStaffVerifiedName());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(mockGetUserData).toHaveBeenCalledWith(42);
+    expect(result.current.name).toBe('Ada Lovelace');
+  });
+
+  it('treats blank clerk plus blank verifiedName as missing', async () => {
+    mockGetSupportClerk.mockResolvedValue(undefined);
     mockGetUserData.mockResolvedValue({ userData: { verifiedName: '   ' } });
 
     const { result } = renderHook(() => useStaffVerifiedName());
@@ -45,17 +108,34 @@ describe('useStaffVerifiedName', () => {
     expect(result.current.error).toBeUndefined();
   });
 
-  it('does not fetch when the session has no account', async () => {
-    mockAuth.session = {};
+  it('falls back to getUserData when the clerk endpoint fails', async () => {
+    mockGetSupportClerk.mockRejectedValue(new Error('Not Found'));
+    mockGetUserData.mockResolvedValue({ userData: { verifiedName: 'Ada Lovelace' } });
 
     const { result } = renderHook(() => useStaffVerifiedName());
 
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.name).toBeUndefined();
-    expect(mockGetUserData).not.toHaveBeenCalled();
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(mockGetUserData).toHaveBeenCalledWith(42);
+    expect(result.current.name).toBe('Ada Lovelace');
+    expect(result.current.error).toBeUndefined();
   });
 
-  it('exposes the message when loading fails with an Error', async () => {
+  it('surfaces an error when the clerk endpoint fails and getUserData also fails', async () => {
+    mockGetSupportClerk.mockRejectedValue(new Error('Not Found'));
+    mockGetUserData.mockRejectedValue(new Error('Forbidden'));
+
+    const { result } = renderHook(() => useStaffVerifiedName());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(mockGetUserData).toHaveBeenCalledWith(42);
+    expect(result.current.name).toBeUndefined();
+    expect(result.current.error).toBe('Forbidden');
+  });
+
+  it('surfaces a fallback error when clerk is empty and getUserData fails', async () => {
+    mockGetSupportClerk.mockResolvedValue(undefined);
     mockGetUserData.mockRejectedValue(new Error('Network down'));
 
     const { result } = renderHook(() => useStaffVerifiedName());
@@ -66,7 +146,8 @@ describe('useStaffVerifiedName', () => {
     expect(result.current.error).toBe('Network down');
   });
 
-  it('uses a fallback message when loading fails with a non-Error value', async () => {
+  it('uses a fallback message when getUserData fails with a non-Error value', async () => {
+    mockGetSupportClerk.mockResolvedValue(undefined);
     mockGetUserData.mockRejectedValue('boom');
 
     const { result } = renderHook(() => useStaffVerifiedName());
@@ -76,7 +157,8 @@ describe('useStaffVerifiedName', () => {
     expect(result.current.error).toBe('Unknown error');
   });
 
-  it('uses the fallback message when the Error carries an empty message', async () => {
+  it('uses the fallback message when getUserData fails with an empty Error message', async () => {
+    mockGetSupportClerk.mockResolvedValue(undefined);
     mockGetUserData.mockRejectedValue(new Error(''));
 
     const { result } = renderHook(() => useStaffVerifiedName());
@@ -86,20 +168,32 @@ describe('useStaffVerifiedName', () => {
     expect(result.current.error).toBe('Unknown error');
   });
 
+  it('does not fetch when the session has no account', async () => {
+    mockAuth.session = {};
+
+    const { result } = renderHook(() => useStaffVerifiedName());
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.name).toBeUndefined();
+    expect(mockGetSupportClerk).not.toHaveBeenCalled();
+    expect(mockGetRealunitClerk).not.toHaveBeenCalled();
+    expect(mockGetUserData).not.toHaveBeenCalled();
+  });
+
   it('reuses the in-flight request for the same account', async () => {
-    let resolveRequest!: (value: { userData: { verifiedName: string } }) => void;
-    const request = new Promise<{ userData: { verifiedName: string } }>((resolve) => {
+    let resolveRequest!: (value: string | undefined) => void;
+    const request = new Promise<string | undefined>((resolve) => {
       resolveRequest = resolve;
     });
-    mockGetUserData.mockReturnValue(request);
+    mockGetSupportClerk.mockReturnValue(request);
 
     const first = renderHook(() => useStaffVerifiedName());
     const second = renderHook(() => useStaffVerifiedName());
 
-    expect(mockGetUserData).toHaveBeenCalledTimes(1);
+    expect(mockGetSupportClerk).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveRequest({ userData: { verifiedName: 'Ada Lovelace' } });
+      resolveRequest('Ada Lovelace');
       await request;
     });
 
@@ -108,14 +202,15 @@ describe('useStaffVerifiedName', () => {
   });
 
   it('does not keep the previous name while another account is loading', async () => {
-    mockGetUserData.mockImplementation((id: number) =>
-      Promise.resolve({ userData: { verifiedName: id === 42 ? 'Ada Lovelace' : 'Grace Hopper' } }),
-    );
+    mockGetSupportClerk.mockImplementation(() => {
+      const account = mockAuth.session?.account;
+      return Promise.resolve(account === 42 ? 'Ada Lovelace' : 'Grace Hopper');
+    });
 
     const { result, rerender } = renderHook(() => useStaffVerifiedName());
     await waitFor(() => expect(result.current.name).toBe('Ada Lovelace'));
 
-    mockAuth.session = { account: 7 };
+    mockAuth.session = { account: 7, role: 'Support' };
     rerender();
 
     expect(result.current.isLoading).toBe(true);
@@ -126,27 +221,27 @@ describe('useStaffVerifiedName', () => {
   });
 
   it('ignores a resolved request after unmounting', async () => {
-    let resolveRequest!: (value: { userData: { verifiedName: string } }) => void;
-    const request = new Promise<{ userData: { verifiedName: string } }>((resolve) => {
+    let resolveRequest!: (value: string | undefined) => void;
+    const request = new Promise<string | undefined>((resolve) => {
       resolveRequest = resolve;
     });
-    mockGetUserData.mockReturnValue(request);
+    mockGetSupportClerk.mockReturnValue(request);
     const { unmount } = renderHook(() => useStaffVerifiedName());
 
     unmount();
 
     await act(async () => {
-      resolveRequest({ userData: { verifiedName: 'Ada Lovelace' } });
+      resolveRequest('Ada Lovelace');
       await Promise.resolve();
     });
   });
 
   it('ignores a rejected request after unmounting', async () => {
     let rejectRequest!: (reason: unknown) => void;
-    const request = new Promise((_, reject) => {
+    const request = new Promise<string | undefined>((_, reject) => {
       rejectRequest = reject;
     });
-    mockGetUserData.mockReturnValue(request);
+    mockGetSupportClerk.mockReturnValue(request);
     const { unmount } = renderHook(() => useStaffVerifiedName());
 
     unmount();

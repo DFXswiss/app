@@ -1,4 +1,4 @@
-import { SupportIssueInternalState, SupportIssueType, useAuthContext } from '@dfx.swiss/react';
+import { SupportIssueInternalState, SupportIssueType } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
@@ -44,35 +44,12 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
   useSupportDashboardGuard();
 
   const { translate, locale } = useSettingsContext();
-  const { getIssueList, getIssueStatistics, getMyClerk } = useSupportDashboard();
-  const { session } = useAuthContext();
+  const { getIssueList, getIssueStatistics } = useSupportDashboard();
   const { name: verifiedName, isLoading: isLoadingName, error: nameError } = useStaffVerifiedName();
   const { navigate } = useNavigation();
-  const [mappedClerk, setMappedClerk] = useState<string>();
-  const [mappedLoading, setMappedLoading] = useState(true);
-  const account = session?.account;
 
-  useEffect(() => {
-    let cancelled = false;
-    setMappedClerk(undefined);
-    setMappedLoading(true);
-    getMyClerk()
-      .then((clerk) => {
-        if (!cancelled) setMappedClerk(clerk);
-      })
-      .catch(() => {
-        if (!cancelled) setMappedClerk(undefined);
-      })
-      .finally(() => {
-        if (!cancelled) setMappedLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [getMyClerk, account]);
-
-  const mineKeys = [verifiedName, mappedClerk].filter((value): value is string => !!value);
-  const mineLoading = isLoadingName || mappedLoading;
+  const mineKeys = verifiedName ? [verifiedName] : [];
+  const mineLoading = isLoadingName;
 
   const [issues, setIssues] = useState<SupportIssueListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -180,9 +157,9 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
   }, [tab, statsPeriod, loadStats]);
 
   const stats = useMemo(() => {
-    const mine = mineKeys.length
+    const mine = verifiedName
       ? issues
-          .filter((i) => !!i.clerk && mineKeys.includes(i.clerk))
+          .filter((i) => !!i.clerk && i.clerk === verifiedName)
           .sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime())
       : [];
 
@@ -201,7 +178,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
       .sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime());
 
     return { mine, waitingSorted, waitingLongerThan, limitRequests };
-  }, [issues, verifiedName, mappedClerk, now]);
+  }, [issues, verifiedName, now]);
 
   const waitingList = useMemo(
     () => stats.waitingSorted.filter((x) => x.hours >= waitFilter).map((x) => x.issue),
