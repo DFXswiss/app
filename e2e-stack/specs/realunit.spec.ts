@@ -174,24 +174,21 @@ test.describe('RealUnit area', () => {
   // Empty holders list must render the table chrome (heading, columns, pager)
   // without an uncaught page error. CI recorded this former test.fail as
   // "Expected to fail, but passed" on the full-stack run.
-  test(
-    '/realunit/holders empty state — table chrome without uncaught error',
-    async ({ page }) => {
-      const { jwt } = await loginAs('RealUnit');
-      const { pageErrors, consoleErrors } = attachErrorListeners(page);
+  test('/realunit/holders empty state — table chrome without uncaught error', async ({ page }) => {
+    const { jwt } = await loginAs('RealUnit');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
 
-      await openScreen(page, '/realunit/holders', jwt);
+    await openScreen(page, '/realunit/holders', jwt);
 
-      await expect(page.getByRole('heading', { name: /All Holders/ })).toBeVisible();
-      await expect(tableHeader(page, 'Address')).toBeVisible();
-      await expect(tableHeader(page, 'Balance')).toBeVisible();
-      await expect(tableHeader(page, 'Percentage')).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Previous' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Next' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /All Holders/ })).toBeVisible();
+    await expect(tableHeader(page, 'Address')).toBeVisible();
+    await expect(tableHeader(page, 'Balance')).toBeVisible();
+    await expect(tableHeader(page, 'Percentage')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Previous' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Next' })).toBeVisible();
 
-      assertNoErrors(pageErrors, consoleErrors);
-    },
-  );
+    assertNoErrors(pageErrors, consoleErrors);
+  });
 
   test('/realunit/quotes list renders empty or ErrorHint without crash', async ({ page }) => {
     const { jwt } = await loginAs('RealUnit');
