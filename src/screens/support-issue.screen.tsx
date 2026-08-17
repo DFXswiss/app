@@ -243,8 +243,8 @@ export default function SupportIssueScreen(): JSX.Element {
   }, [orderParam]);
 
   useEffect(() => {
-    if (orderParam && isLoggedIn) logout();
-  }, [orderParam, isLoggedIn]);
+    if ((orderParam || txParam) && isLoggedIn) logout();
+  }, [orderParam, txParam, isLoggedIn]);
 
   useEffect(() => {
     if (orderParam && !isLoading && existingIssue) {

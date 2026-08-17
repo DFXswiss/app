@@ -510,6 +510,8 @@ async function fillBankCreditorFields(options?: { houseNumber?: string; name?: s
 async function fillBankRefundForm(options?: { ibanIndex?: number; houseNumber?: string; name?: string }) {
   if (screen.queryByTestId('iban-dropdown')) {
     selectDropdownOption('iban', options?.ibanIndex ?? 0);
+  } else if (screen.queryByTestId('iban')) {
+    changeAndBlur('iban', options?.ibanIndex === 1 ? BANK_IBAN_CH : BANK_IBAN_DE);
   }
   await fillBankCreditorFields(options);
 }
@@ -538,8 +540,10 @@ beforeEach(() => {
   mockGetGuestRefund.mockReset();
   mockSetGuestRefund.mockReset();
   mockSetTransactionRefundTarget.mockResolvedValue(undefined);
+  mockSetGuestRefund.mockResolvedValue(undefined);
   mockGetTransactionByUid.mockResolvedValue(makeTx());
-  mockGetTransactionRefund.mockResolvedValue(makeRefund());
+  mockGetGuestRefund.mockResolvedValue(makeRefund());
+  mockGetGuestRefund.mockResolvedValue(makeRefund());
 });
 
 afterEach(() => {
@@ -572,11 +576,11 @@ describe('TransactionRefund transaction load errors', () => {
 // Lines 356-365: fetchRefund success, expiryDate timers (future/past), clearTimeout, errors, unmount cleanup.
 describe('TransactionRefund fetchRefund', () => {
   it('loads refund details and shows the amount table on success without expiryDate', async () => {
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ expiryDate: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ expiryDate: undefined }));
     renderRefund();
 
     await waitForRefundFormLoaded();
-    expect(mockGetTransactionRefund).toHaveBeenCalledWith(42);
+    expect(mockGetGuestRefund).toHaveBeenCalledWith('T123');
     expect(screen.getByTestId('row-Transaction amount')).toHaveTextContent('100 EUR');
     expect(screen.getByTestId('row-Refund amount')).toHaveTextContent('98.4 EUR');
   });
@@ -584,7 +588,7 @@ describe('TransactionRefund fetchRefund', () => {
   it('schedules a refetch when expiryDate is in the future and refetches after the timeout', async () => {
     jest.useFakeTimers();
     const future = new Date(Date.now() + 5000).toISOString();
-    mockGetTransactionRefund
+    mockGetGuestRefund
       .mockResolvedValueOnce(makeRefund({ expiryDate: future, refundAmount: 98.4 }))
       .mockResolvedValueOnce(makeRefund({ expiryDate: undefined, refundAmount: 97 }));
 
@@ -598,7 +602,7 @@ describe('TransactionRefund fetchRefund', () => {
       { advanceTimers: jest.advanceTimersByTime },
     );
 
-    expect(mockGetTransactionRefund).toHaveBeenCalledTimes(1);
+    expect(mockGetGuestRefund).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       jest.advanceTimersByTime(5000);
@@ -606,7 +610,7 @@ describe('TransactionRefund fetchRefund', () => {
 
     await waitFor(
       () => {
-        expect(mockGetTransactionRefund).toHaveBeenCalledTimes(2);
+        expect(mockGetGuestRefund).toHaveBeenCalledTimes(2);
       },
       { advanceTimers: jest.advanceTimersByTime },
     );
@@ -623,13 +627,13 @@ describe('TransactionRefund fetchRefund', () => {
   it('refetches immediately when expiryDate is already in the past', async () => {
     const past = new Date(Date.now() - 10_000).toISOString();
     const future = new Date(Date.now() + 60_000).toISOString();
-    mockGetTransactionRefund
+    mockGetGuestRefund
       .mockResolvedValueOnce(makeRefund({ expiryDate: past, refundAmount: 90 }))
       .mockResolvedValue(makeRefund({ expiryDate: future, refundAmount: 90 }));
 
     renderRefund();
 
-    await waitFor(() => expect(mockGetTransactionRefund).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockGetGuestRefund).toHaveBeenCalledTimes(2));
   });
 
   it('clears a previous refetch timeout when a subsequent refund response also has expiryDate', async () => {
@@ -638,7 +642,7 @@ describe('TransactionRefund fetchRefund', () => {
     const future1 = new Date(Date.now() + 8000).toISOString();
     const future2 = new Date(Date.now() + 12_000).toISOString();
 
-    mockGetTransactionRefund
+    mockGetGuestRefund
       .mockResolvedValueOnce(makeRefund({ expiryDate: future1 }))
       .mockResolvedValueOnce(makeRefund({ expiryDate: future2 }))
       .mockResolvedValueOnce(makeRefund({ expiryDate: undefined }));
@@ -648,7 +652,7 @@ describe('TransactionRefund fetchRefund', () => {
     await waitFor(
       () => {
         expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
-        expect(mockGetTransactionRefund).toHaveBeenCalledTimes(1);
+        expect(mockGetGuestRefund).toHaveBeenCalledTimes(1);
       },
       { advanceTimers: jest.advanceTimersByTime },
     );
@@ -659,7 +663,7 @@ describe('TransactionRefund fetchRefund', () => {
 
     await waitFor(
       () => {
-        expect(mockGetTransactionRefund).toHaveBeenCalledTimes(2);
+        expect(mockGetGuestRefund).toHaveBeenCalledTimes(2);
       },
       { advanceTimers: jest.advanceTimersByTime },
     );
@@ -669,7 +673,7 @@ describe('TransactionRefund fetchRefund', () => {
   });
 
   it('surfaces getTransactionRefund errors via setError', async () => {
-    mockGetTransactionRefund.mockRejectedValue({ message: 'refund unavailable' });
+    mockGetGuestRefund.mockRejectedValue({ message: 'refund unavailable' });
     renderRefund();
 
     await waitFor(() => {
@@ -678,7 +682,7 @@ describe('TransactionRefund fetchRefund', () => {
   });
 
   it('surfaces "Unknown error" when getTransactionRefund rejects without message', async () => {
-    mockGetTransactionRefund.mockRejectedValue({});
+    mockGetGuestRefund.mockRejectedValue({});
     renderRefund();
 
     await waitFor(() => {
@@ -690,7 +694,7 @@ describe('TransactionRefund fetchRefund', () => {
     jest.useFakeTimers();
     const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
     const future = new Date(Date.now() + 30_000).toISOString();
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ expiryDate: future }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ expiryDate: future }));
 
     const { unmount } = renderRefund();
 
@@ -702,7 +706,7 @@ describe('TransactionRefund fetchRefund', () => {
       { advanceTimers: jest.advanceTimersByTime },
     );
 
-    const callsBeforeUnmount = mockGetTransactionRefund.mock.calls.length;
+    const callsBeforeUnmount = mockGetGuestRefund.mock.calls.length;
     unmount();
     expect(clearTimeoutSpy).toHaveBeenCalled();
 
@@ -710,13 +714,13 @@ describe('TransactionRefund fetchRefund', () => {
       jest.advanceTimersByTime(30_000);
     });
 
-    expect(mockGetTransactionRefund).toHaveBeenCalledTimes(callsBeforeUnmount);
+    expect(mockGetGuestRefund).toHaveBeenCalledTimes(callsBeforeUnmount);
   });
 });
 
-// Lines 377-383: filter userAddresses by inputBlockchain; auto-setValue when exactly one match.
+// T/Q refund is always the guest form: no logged-in address dropdown, even when addresses exist.
 describe('TransactionRefund address filtering', () => {
-  it('lists multiple matching addresses for a crypto refund and does not auto-select', async () => {
+  it('does not list logged-in addresses on a T-uid crypto refund', async () => {
     mockUserAddresses = [
       { address: '0xaaa111', blockchains: ['Ethereum'] },
       { address: '0xbbb222', blockchains: ['Ethereum', 'Bitcoin'] },
@@ -725,35 +729,13 @@ describe('TransactionRefund address filtering', () => {
     mockGetTransactionByUid.mockResolvedValue(
       makeTx({ type: 'Sell', inputPaymentMethod: 'Crypto', inputBlockchain: 'Ethereum' }),
     );
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
 
-    fireEvent.click(screen.getByTestId('address-trigger'));
-    const options = within(screen.getByTestId('address-options')).getAllByRole('button');
-    expect(options).toHaveLength(2);
-    expect(options[0]).toHaveTextContent(/0xaaa/);
-    expect(options[1]).toHaveTextContent(/0xbbb/);
-    expect(screen.getByTestId('address-option-desc-0')).toHaveTextContent(/Ethereum/);
-  });
-
-  it('auto-selects the only matching address via setValue when exactly one is allowed', async () => {
-    mockUserAddresses = [
-      { address: '0xonlymatch', blockchains: ['Bitcoin'] },
-      { address: '0xother', blockchains: ['Ethereum'] },
-    ];
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Sell', inputPaymentMethod: 'Crypto', inputBlockchain: 'Bitcoin' }),
-    );
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
-
-    renderRefund();
-    await waitForRefundFormLoaded();
-
-    await waitFor(() => {
-      expect(screen.getByTestId('address-trigger')).toHaveTextContent(/0xonlymatch/);
-    });
+    expect(screen.getByTestId('refundAddress')).toBeInTheDocument();
+    expect(screen.queryByTestId('address-dropdown')).not.toBeInTheDocument();
   });
 });
 
@@ -761,7 +743,7 @@ describe('TransactionRefund address filtering', () => {
 describe('TransactionRefund onSubmit', () => {
   it('submits a bank buy refund with form target, creditor data, house number, and navigates to /tx', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
     mockSetTransactionRefundTarget.mockResolvedValue(undefined);
 
     renderRefund();
@@ -774,7 +756,7 @@ describe('TransactionRefund onSubmit', () => {
     });
 
     await waitFor(() => {
-      expect(mockSetTransactionRefundTarget).toHaveBeenCalledWith(42, {
+      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', {
         refundTarget: BANK_IBAN_DE,
         creditorData: {
           name: 'Jane Doe',
@@ -785,13 +767,13 @@ describe('TransactionRefund onSubmit', () => {
           country: 'CH',
         },
       });
-      expect(mockNavigate).toHaveBeenCalledWith('/tx');
+      expect(mockNavigate).toHaveBeenCalledWith('/tx/T123');
     });
   });
 
   it('omits houseNumber when the house number field is left empty', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
@@ -803,15 +785,15 @@ describe('TransactionRefund onSubmit', () => {
     });
 
     await waitFor(() => {
-      expect(mockSetTransactionRefundTarget).toHaveBeenCalled();
+      expect(mockSetGuestRefund).toHaveBeenCalled();
     });
-    const payload = mockSetTransactionRefundTarget.mock.calls[0][1];
+    const payload = mockSetGuestRefund.mock.calls[0][1];
     expect(payload.creditorData.houseNumber).toBeUndefined();
   });
 
   it('uses bankDetails.name as refundName when refundTarget is fixed and bank name is present', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
-    mockGetTransactionRefund.mockResolvedValue(
+    mockGetGuestRefund.mockResolvedValue(
       makeRefund({
         refundTarget: BANK_IBAN_DE,
         bankDetails: {
@@ -846,7 +828,7 @@ describe('TransactionRefund onSubmit', () => {
     });
 
     await waitFor(() => {
-      expect(mockSetTransactionRefundTarget).toHaveBeenCalledWith(42, {
+      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', {
         refundTarget: undefined,
         creditorData: {
           name: 'Fixed Bank Name',
@@ -862,7 +844,7 @@ describe('TransactionRefund onSubmit', () => {
 
   it('falls back to creditorName when refundTarget is fixed but bankDetails.name is missing', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
-    mockGetTransactionRefund.mockResolvedValue(
+    mockGetGuestRefund.mockResolvedValue(
       makeRefund({
         refundTarget: BANK_IBAN_CH,
         bankDetails: { iban: BANK_IBAN_CH, bic: 'POFICHBE' },
@@ -881,16 +863,16 @@ describe('TransactionRefund onSubmit', () => {
     });
 
     await waitFor(() => {
-      expect(mockSetTransactionRefundTarget).toHaveBeenCalled();
+      expect(mockSetGuestRefund).toHaveBeenCalled();
     });
-    const payload = mockSetTransactionRefundTarget.mock.calls[0][1];
+    const payload = mockSetGuestRefund.mock.calls[0][1];
     expect(payload.refundTarget).toBeUndefined();
     expect(payload.creditorData.name).toBe('Fallback Name');
   });
 
   it('submits a card buy refund without refundTarget or creditorData', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Card', state: 'Failed' }));
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
@@ -906,19 +888,15 @@ describe('TransactionRefund onSubmit', () => {
     });
 
     await waitFor(() => {
-      expect(mockSetTransactionRefundTarget).toHaveBeenCalledWith(42, {
+      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', {
         refundTarget: undefined,
         creditorData: undefined,
       });
-      expect(mockNavigate).toHaveBeenCalledWith('/tx');
+      expect(mockNavigate).toHaveBeenCalledWith('/tx/T123');
     });
   });
 
-  it('submits a crypto (non-buy) refund with the selected address as refundTarget', async () => {
-    mockUserAddresses = [
-      { address: '0xcrypto1', blockchains: ['Ethereum'] },
-      { address: '0xcrypto2', blockchains: ['Ethereum'] },
-    ];
+  it('submits a crypto (non-buy) refund with the typed address as refundTarget', async () => {
     mockGetTransactionByUid.mockResolvedValue(
       makeTx({
         type: 'Sell',
@@ -927,13 +905,13 @@ describe('TransactionRefund onSubmit', () => {
         state: 'Unassigned',
       }),
     );
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
 
     expect(screen.getByRole('button', { name: 'Request refund' })).toBeInTheDocument();
-    selectDropdownOption('address', 1);
+    changeAndBlur('refundAddress', '0xcrypto2');
     await waitForSubmitEnabled('Request refund');
 
     await act(async () => {
@@ -941,18 +919,18 @@ describe('TransactionRefund onSubmit', () => {
     });
 
     await waitFor(() => {
-      expect(mockSetTransactionRefundTarget).toHaveBeenCalledWith(42, {
+      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', {
         refundTarget: '0xcrypto2',
         creditorData: undefined,
       });
-      expect(mockNavigate).toHaveBeenCalledWith('/tx');
+      expect(mockNavigate).toHaveBeenCalledWith('/tx/T123');
     });
   });
 
   it('keeps the form and sets localError when setTransactionRefundTarget fails with MultiAccountIban', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
-    mockSetTransactionRefundTarget.mockRejectedValue({
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockSetGuestRefund.mockRejectedValue({
       message: 'MultiAccountIban is not allowed here',
     });
 
@@ -978,8 +956,8 @@ describe('TransactionRefund onSubmit', () => {
 
   it('propagates non-MultiAccountIban submit errors via setError', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
-    mockSetTransactionRefundTarget.mockRejectedValue({ message: 'backend rejected refund' });
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockSetGuestRefund.mockRejectedValue({ message: 'backend rejected refund' });
 
     renderRefund();
     await waitForRefundFormLoaded();
@@ -998,8 +976,8 @@ describe('TransactionRefund onSubmit', () => {
 
   it('propagates "Unknown error" when submit rejects without a message', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
-    mockSetTransactionRefundTarget.mockRejectedValue({});
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockSetGuestRefund.mockRejectedValue({});
 
     renderRefund();
     await waitForRefundFormLoaded();
@@ -1016,34 +994,17 @@ describe('TransactionRefund onSubmit', () => {
   });
 });
 
-// Lines 450-457: selectedIban === "Add bank account" renders AddBankAccount and writes IBAN back.
 describe('TransactionRefund add bank account branch', () => {
-  it('shows AddBankAccount when Add bank account is selected and writes the new IBAN into the form', async () => {
+  it('does not offer the logged-in add-bank-account dropdown on a T-uid refund', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
 
-    // bankAccounts (2) + "Add bank account" → option index 2
-    fireEvent.click(screen.getByTestId('iban-trigger'));
-    fireEvent.click(screen.getByTestId('iban-option-2'));
-
-    await waitFor(() => {
-      expect(screen.getByTestId('add-bank-account')).toBeInTheDocument();
-    });
-    expect(screen.getByTestId('add-bank-confirmation')).toHaveTextContent(
-      'The bank account has been added, all transactions from this IBAN will now be associated with your account.',
-    );
-    expect(screen.queryByText('Transaction amount')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('add-bank-submit'));
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('add-bank-account')).not.toBeInTheDocument();
-      expect(screen.getByText('Transaction amount')).toBeInTheDocument();
-    });
-    expect(screen.getByTestId('iban-trigger')).toHaveTextContent('LI21088110104928');
+    expect(screen.getByTestId('iban')).toBeInTheDocument();
+    expect(screen.queryByTestId('iban-dropdown')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('add-bank-account')).not.toBeInTheDocument();
   });
 });
 
@@ -1059,7 +1020,7 @@ describe('TransactionRefund rendered view', () => {
 
   it('shows the loading spinner after transaction loads while refund is still pending', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx());
-    mockGetTransactionRefund.mockReturnValue(neverResolves());
+    mockGetGuestRefund.mockReturnValue(neverResolves());
     renderRefund();
 
     await waitFor(() => {
@@ -1082,7 +1043,7 @@ describe('TransactionRefund rendered view', () => {
   });
 
   it('renders bankDetails name/address/city/country/iban/bic rows when those fields are set', async () => {
-    mockGetTransactionRefund.mockResolvedValue(
+    mockGetGuestRefund.mockResolvedValue(
       makeRefund({
         refundTarget: BANK_IBAN_DE,
         bankDetails: {
@@ -1110,7 +1071,7 @@ describe('TransactionRefund rendered view', () => {
   });
 
   it('hides bankDetails name/address/city/country/iban/bic rows when bankDetails is absent', async () => {
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ bankDetails: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ bankDetails: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
@@ -1124,7 +1085,7 @@ describe('TransactionRefund rendered view', () => {
   });
 
   it('renders address row from houseNumber alone and city row from zip alone', async () => {
-    mockGetTransactionRefund.mockResolvedValue(
+    mockGetGuestRefund.mockResolvedValue(
       makeRefund({
         bankDetails: {
           houseNumber: '99',
@@ -1141,17 +1102,18 @@ describe('TransactionRefund rendered view', () => {
     expect(screen.queryByTestId('row-Name')).not.toBeInTheDocument();
   });
 
-  it('shows the address dropdown for crypto refunds without refundTarget and hides bank fields', async () => {
+  it('shows the free-text chargeback address for crypto refunds without refundTarget and hides bank fields', async () => {
     mockUserAddresses = [{ address: '0xsolo', blockchains: ['Ethereum'] }];
     mockGetTransactionByUid.mockResolvedValue(
       makeTx({ type: 'Sell', inputPaymentMethod: 'Crypto', inputBlockchain: 'Ethereum' }),
     );
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
 
-    expect(screen.getByTestId('address-dropdown')).toBeInTheDocument();
+    expect(screen.getByTestId('refundAddress')).toBeInTheDocument();
+    expect(screen.queryByTestId('address-dropdown')).not.toBeInTheDocument();
     expect(screen.queryByTestId('iban-dropdown')).not.toBeInTheDocument();
     expect(screen.queryByTestId('creditorStreet')).not.toBeInTheDocument();
   });
@@ -1161,7 +1123,7 @@ describe('TransactionRefund rendered view', () => {
     mockGetTransactionByUid.mockResolvedValue(
       makeTx({ type: 'Sell', inputPaymentMethod: 'Crypto', inputBlockchain: 'Ethereum' }),
     );
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: '0xfixed' }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: '0xfixed' }));
 
     renderRefund();
     await waitForRefundFormLoaded();
@@ -1171,32 +1133,29 @@ describe('TransactionRefund rendered view', () => {
 
   // Earlier the dropdown was gated on inputBlockchain; without it the mocked Form never registered
   // the required-address rule, so the refund form could become valid without choosing an address.
-  it('renders address dropdown and keeps submit disabled when inputBlockchain is undefined', async () => {
+  it('renders free-text chargeback address and keeps submit disabled when inputBlockchain is undefined', async () => {
     mockUserAddresses = [{ address: '0xwouldmatch', blockchains: ['Ethereum'] }];
     mockGetTransactionByUid.mockResolvedValue(
       makeTx({ type: 'Sell', inputPaymentMethod: 'Crypto', inputBlockchain: undefined }),
     );
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
 
-    // Dropdown still mounts so the required rule is wired; filter yields no options without a chain.
-    expect(screen.getByTestId('address-dropdown')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('address-trigger'));
-    expect(within(screen.getByTestId('address-options')).queryAllByRole('button')).toHaveLength(0);
-
-    expect(screen.getByRole('button', { name: 'Confirm refund' })).toBeDisabled();
+    expect(screen.getByTestId('refundAddress')).toBeInTheDocument();
+    expect(screen.queryByTestId('address-dropdown')).not.toBeInTheDocument();
   });
 
-  it('shows IBAN dropdown and name field for bank buy without fixed refundTarget', async () => {
+  it('shows free-text IBAN and name field for bank buy without fixed refundTarget', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
 
-    expect(screen.getByTestId('iban-dropdown')).toBeInTheDocument();
+    expect(screen.getByTestId('iban')).toBeInTheDocument();
+    expect(screen.queryByTestId('iban-dropdown')).not.toBeInTheDocument();
     expect(screen.getByTestId('creditorName')).toBeInTheDocument();
     expect(screen.getByTestId('creditorStreet')).toBeInTheDocument();
     expect(screen.getByTestId('creditorCountry-search-dropdown')).toBeInTheDocument();
@@ -1219,7 +1178,7 @@ describe('TransactionRefund rendered view', () => {
   it('hides the IBAN dropdown when bankAccounts is empty/falsy for bank buy', async () => {
     mockBankAccounts = null as any;
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
@@ -1232,7 +1191,7 @@ describe('TransactionRefund rendered view', () => {
 
   it('shows creditor name when bankDetails.name is set but refundTarget is missing (IBAN override)', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
-    mockGetTransactionRefund.mockResolvedValue(
+    mockGetGuestRefund.mockResolvedValue(
       makeRefund({
         refundTarget: undefined,
         bankDetails: { name: 'Only Name' },
@@ -1244,12 +1203,13 @@ describe('TransactionRefund rendered view', () => {
 
     expect(screen.getByTestId('row-Name')).toHaveTextContent('Only Name');
     expect(screen.getByTestId('creditorName')).toBeInTheDocument();
-    expect(screen.getByTestId('iban-dropdown')).toBeInTheDocument();
+    expect(screen.getByTestId('iban')).toBeInTheDocument();
+    expect(screen.queryByTestId('iban-dropdown')).not.toBeInTheDocument();
   });
 
   it('falls back to raw bankDetails.iban when Utils.formatIban returns a falsy value', async () => {
     jest.spyOn(Utils, 'formatIban').mockReturnValue(undefined as any);
-    mockGetTransactionRefund.mockResolvedValue(
+    mockGetGuestRefund.mockResolvedValue(
       makeRefund({
         refundTarget: BANK_IBAN_DE,
         bankDetails: {
@@ -1266,30 +1226,21 @@ describe('TransactionRefund rendered view', () => {
     expect(screen.getByTestId('row-IBAN')).toHaveTextContent(BANK_IBAN_DE);
   });
 
-  it('uses empty string for IBAN dropdown labels when Utils.formatIban returns falsy', async () => {
-    jest.spyOn(Utils, 'formatIban').mockImplementation((v: any) => {
-      if (v === BANK_IBAN_DE) return undefined as any;
-      return v;
-    });
+  it('uses a free-text IBAN field on a T-uid bank refund instead of the logged-in dropdown', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
 
-    fireEvent.click(screen.getByTestId('iban-trigger'));
-    const options = within(screen.getByTestId('iban-options')).getAllByRole('button');
-    // DE is first bank account; formatIban falls back to '' for that option only, so the option
-    // carries no IBAN text at all (an empty-string matcher would pass against anything).
-    expect(options[0]).not.toHaveTextContent(BANK_IBAN_DE);
-    expect(options[1]).toHaveTextContent(BANK_IBAN_CH);
-    expect(options[2]).toHaveTextContent('Add bank account');
+    expect(screen.getByTestId('iban')).toBeInTheDocument();
+    expect(screen.queryByTestId('iban-dropdown')).not.toBeInTheDocument();
   });
 
   it('disables the country search dropdown for fewer than two countries', async () => {
     mockAllowedCountries = undefined as any;
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
-    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
@@ -1313,7 +1264,7 @@ describe('TransactionRefund guest uid path', () => {
     mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: 'CH9300762011623852957' }));
     mockSetGuestRefund.mockResolvedValue(undefined);
 
-    renderRefund();
+    renderRefund('/tx/T123/refund');
     await waitForRefundFormLoaded();
 
     expect(mockGetGuestRefund).toHaveBeenCalledWith('T123');
@@ -1347,7 +1298,7 @@ describe('TransactionRefund guest uid path', () => {
     mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
     mockSetGuestRefund.mockResolvedValue(undefined);
 
-    renderRefund();
+    renderRefund('/tx/T123/refund');
     await waitForRefundFormLoaded();
 
     expect(screen.getByTestId('refundAddress')).toBeInTheDocument();
@@ -1366,5 +1317,33 @@ describe('TransactionRefund guest uid path', () => {
         expect.objectContaining({ refundTarget: '0xabc' }),
       );
     });
+  });
+
+  it('uses the guest hook on a T-uid route even when logged in', async () => {
+    mockIsLoggedIn = true;
+    mockGetTransactionByUid.mockResolvedValue(
+      makeTx({ uid: 'T123', type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }),
+    );
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: 'CH9300762011623852957' }));
+    mockSetGuestRefund.mockResolvedValue(undefined);
+
+    renderRefund('/tx/T123/refund');
+    await waitForRefundFormLoaded();
+
+    expect(mockGetGuestRefund).toHaveBeenCalledWith('T123');
+    expect(mockGetTransactionRefund).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('iban-dropdown')).not.toBeInTheDocument();
+
+    await fillBankCreditorFields();
+    await waitForSubmitEnabled('Confirm refund');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }));
+    });
+
+    await waitFor(() => {
+      expect(mockSetGuestRefund).toHaveBeenCalled();
+    });
+    expect(mockSetTransactionRefundTarget).not.toHaveBeenCalled();
   });
 });

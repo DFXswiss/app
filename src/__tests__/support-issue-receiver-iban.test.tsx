@@ -1160,4 +1160,11 @@ describe('SupportIssueScreen tx query param', () => {
 
     expect(mockUseUserGuard).toHaveBeenCalledWith('/login', true);
   });
+
+  it('logs out a logged-in session when tx is present', () => {
+    const logout = jest.fn();
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout });
+    renderScreen(`?issue-type=${SupportIssueType.TRANSACTION_ISSUE}&tx=T1E448FF200A877DC`);
+    expect(logout).toHaveBeenCalled();
+  });
 });
