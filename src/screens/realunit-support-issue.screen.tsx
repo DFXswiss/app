@@ -397,7 +397,12 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
             <button
               className="px-4 py-2 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
               onClick={() => handleSendMessage()}
-              disabled={isSending || isLoadingAuthor || !messageAuthor || (!messageText.trim() && selectedFiles.length === 0)}
+              disabled={
+                isSending ||
+                isLoadingAuthor ||
+                !messageAuthor ||
+                (!messageText.trim() && selectedFiles.length === 0)
+              }
             >
               {isSending ? '...' : 'Send'}
             </button>

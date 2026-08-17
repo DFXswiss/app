@@ -106,6 +106,11 @@ async function installSyntheticApi(
       return;
     }
 
+    if (request.method() === 'GET' && path === '/v1/support/issue/clerk') {
+      await fulfillJson(route, { clerk: 'Test Operator' });
+      return;
+    }
+
     if (request.method() === 'GET' && /^\/v1\/support\/\d+$/.test(path)) {
       await fulfillJson(route, { userData: { verifiedName: 'Test Operator' } });
       return;
