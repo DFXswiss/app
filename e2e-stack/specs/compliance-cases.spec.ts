@@ -22,7 +22,6 @@ import {
   openScreen,
   queryOne,
   queryRows,
-  required,
   test,
   waitForRow,
   withDb,
@@ -56,8 +55,8 @@ async function ensureStaffReady(userId: number, surname = 'Compliance'): Promise
 }
 
 /**
- * GET support/call-queues/clerks reads setting key `complianceClerks` (no default).
- * Seed at least one clerk so Editor/Signature selects are usable.
+ * GET support/call-queues/clerks still reads setting key `complianceClerks` (no default).
+ * Self-identification no longer uses that list; keep a value so later suites see a stable setting.
  */
 /**
  * The previous value, so afterAll can put it back. This is a shared setting: leaving this suite's
@@ -188,26 +187,13 @@ test.describe('Compliance area (cases)', () => {
     await expect(page.getByText('Checks', { exact: true })).toBeVisible();
     await expect(page.getByText(/CH93\s*0076\s*2011\s*6238\s*5295\s*7|CH9300762011623852957/).first()).toBeVisible();
 
-    // Decision + Editor selects (siblings of the labels inside flex rows)
     await page
       .getByText('Die Bank-Daten werden:', { exact: true })
       .locator('xpath=following-sibling::select')
       .selectOption('Akzeptiert');
 
-    const editorSelect = page.getByText('Editor:', { exact: true }).locator('xpath=following-sibling::select');
-    await expect(editorSelect).toBeVisible();
-    const editorOptions = editorSelect.locator('option');
-    await expect
-      .poll(async () => editorOptions.count(), {
-        message: 'Editor select must list at least one clerk from complianceClerks',
-        timeout: 15000,
-      })
-      .toBeGreaterThan(1);
-
-    // Pick first non-empty option
-    const clerkValue = await editorOptions.nth(1).getAttribute('value');
-    expect(clerkValue, 'first clerk option must have a value').toBeTruthy();
-    await editorSelect.selectOption(required(clerkValue, 'first clerk option must have a value'));
+    await expect(page.getByText('Editor:', { exact: true })).toBeVisible();
+    await expect(page.getByText('Editor:', { exact: true }).locator('xpath=following-sibling::select')).toHaveCount(0);
 
     const saveBtn = page.getByRole('button', { name: 'Speichern', exact: true });
     await expect(saveBtn).toBeEnabled({ timeout: 5000 });
@@ -590,22 +576,9 @@ test.describe('Compliance area (cases)', () => {
     await expect(page.getByText('Signature', { exact: true })).toBeVisible();
     await expect(page.getByText('Outcome', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save Outcome', exact: true })).toBeVisible();
+    await expect(page.getByText('Signature', { exact: true }).locator('xpath=following-sibling::select')).toHaveCount(0);
 
-    // Fill outcome form
-    const signatureSelect = page.getByText('Signature', { exact: true }).locator('xpath=following-sibling::select');
     const outcomeSelect = page.getByText('Outcome', { exact: true }).locator('xpath=following-sibling::select');
-
-    const sigOptions = signatureSelect.locator('option');
-    await expect
-      .poll(async () => sigOptions.count(), {
-        message: 'Signature select must list at least one clerk from complianceClerks',
-        timeout: 15000,
-      })
-      .toBeGreaterThan(1);
-
-    const sigValue = await sigOptions.nth(1).getAttribute('value');
-    expect(sigValue, 'first signature/clerk option must have a value').toBeTruthy();
-    await signatureSelect.selectOption(required(sigValue, 'first signature/clerk option must have a value'));
     await outcomeSelect.selectOption('Completed');
     await page.locator('textarea').fill('E2E call outcome: user reached, identity confirmed');
 

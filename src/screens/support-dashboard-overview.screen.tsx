@@ -6,6 +6,7 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { useSupportDashboardGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { SupportIssueListItem, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 import { formatDateTimeShort } from 'src/util/compliance-helpers';
 import {
@@ -42,16 +43,14 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
   useSupportDashboardGuard();
 
   const { translate, locale } = useSettingsContext();
-  const { getIssueList, getMyClerk, getIssueStatistics } = useSupportDashboard();
+  const { getIssueList, getIssueStatistics } = useSupportDashboard();
+  const { name: clerk } = useStaffVerifiedName();
   const { navigate } = useNavigation();
 
   const [issues, setIssues] = useState<SupportIssueListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [now, setNow] = useState(() => new Date());
-
-  // the clerk identity is resolved from the logged-in account (backend mapping)
-  const [clerk, setClerk] = useState<string>();
 
   const [tab, setTab] = useState<DashboardTab>('overview');
   const [waitFilter, setWaitFilter] = useState<number>(ESCALATION_HOURS);
@@ -90,11 +89,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
     return () => clearInterval(id);
   }, [loadIssues]);
 
-  useEffect(() => {
-    getMyClerk()
-      .then(setClerk)
-      .catch(() => undefined);
-  }, [getMyClerk]);
+
 
   const scrollToSection = useCallback((id: string): void => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -318,7 +313,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
               accent="neutral"
             >
               {!clerk ? (
-                <EmptyState text={translate('screens/support', 'Your account is not linked to a support clerk')} />
+                <EmptyState text={translate('screens/support', 'Staff identification requires a verified name on this account.')} />
               ) : stats.mine.length === 0 ? (
                 <EmptyState text={translate('screens/support', 'No tickets assigned to you')} />
               ) : (

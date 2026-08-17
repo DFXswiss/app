@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { ComplianceUserData, IpLogInfo, KycFile, KycStepInfo } from 'src/hooks/compliance.hook';
+import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { display, formatBirthday, refName, statusBadge, todayAsString } from 'src/util/compliance-helpers';
 import { formatSwissDate } from 'src/util/utils';
 import { renderResultTable } from './compliance-review-panel';
+import { StaffIdentityBlock } from './staff-identity';
 
 interface IdentPanelProps {
   data: ComplianceUserData;
-  clerks: string[];
   onOpenFile: (file: KycFile) => void;
   onSave: (
     stepId: number,
@@ -79,7 +80,8 @@ function InfoLine({ label, value }: { label: string; value: string }): JSX.Eleme
   );
 }
 
-export function IdentPanel({ data, clerks, onOpenFile, onSave, isSaving }: IdentPanelProps): JSX.Element {
+export function IdentPanel({ data, onOpenFile, onSave, isSaving }: IdentPanelProps): JSX.Element {
+  const { name: clerk, isLoading: isLoadingClerk } = useStaffVerifiedName();
   const step = findLatestStep(data.kycSteps, 'Ident');
   const nationalityStep = findLatestStep(data.kycSteps, 'NationalityData');
 
@@ -87,7 +89,6 @@ export function IdentPanel({ data, clerks, onOpenFile, onSave, isSaving }: Ident
     step?.status === 'Completed' ? 'Akzeptiert' : step?.status === 'Failed' ? 'Abgelehnt' : '',
   );
   const [rejectionComment, setRejectionComment] = useState(step?.comment ?? '');
-  const [clerk, setClerk] = useState('');
 
   if (!step) {
     return (
@@ -294,23 +295,8 @@ export function IdentPanel({ data, clerks, onOpenFile, onSave, isSaving }: Ident
             </div>
           )}
 
-          {/* Clerk */}
           <div className="bg-white rounded-lg shadow-sm px-3 py-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-dfxBlue-800 font-medium">Editor:</span>
-              <select
-                className="ml-4 shrink-0 px-2 py-1 text-sm border border-dfxGray-400 rounded bg-white text-dfxBlue-800"
-                value={clerk}
-                onChange={(e) => setClerk(e.target.value)}
-              >
-                <option value="">—</option>
-                {clerks.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <StaffIdentityBlock label="Editor:" />
           </div>
 
           {/* Save */}
@@ -318,7 +304,7 @@ export function IdentPanel({ data, clerks, onOpenFile, onSave, isSaving }: Ident
             <button
               className="px-4 py-2 text-sm text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded-lg transition-colors disabled:opacity-50"
               onClick={handleSave}
-              disabled={isSaving || !decision || !clerk}
+              disabled={isSaving || isLoadingClerk || !decision || !clerk}
             >
               {isSaving ? 'Speichern...' : 'Speichern'}
             </button>

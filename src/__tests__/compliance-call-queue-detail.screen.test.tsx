@@ -4,11 +4,6 @@ let mockParams: { queue?: string; userDataId?: string } = {
   userDataId: '2001',
 };
 let mockSearch = '';
-let mockClerksResult: { clerks: string[]; isLoading: boolean; error?: string } = {
-  clerks: ['JR'],
-  isLoading: false,
-  error: undefined,
-};
 
 const mockGetUserData = jest.fn();
 const mockNavigate = jest.fn();
@@ -46,9 +41,7 @@ jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_ns: string, key: string) => key }),
 }));
 
-jest.mock('src/hooks/call-queue-clerks.hook', () => ({
-  useCallQueueClerks: () => mockClerksResult,
-}));
+
 
 jest.mock('src/hooks/compliance.hook', () => ({
   useCompliance: () => ({ getUserData: mockGetUserData }),
@@ -117,9 +110,6 @@ jest.mock('src/components/compliance/call-queue/call-queue-outcome-form', () => 
       data-testid="outcome-form"
       data-context={JSON.stringify(props.context)}
       data-outcomes={JSON.stringify(props.availableOutcomes)}
-      data-clerks={JSON.stringify(props.clerks)}
-      data-clerks-error={props.clerksError ?? ''}
-      data-clerks-loading={String(!!props.clerksLoading)}
     >
       <button onClick={props.onSaved}>save</button>
     </div>
@@ -216,7 +206,6 @@ describe('ComplianceCallQueueDetailScreen', () => {
     mockIsLoggedIn = true;
     mockParams = { queue: 'ManualCheckPhone', userDataId: '2001' };
     mockSearch = '';
-    mockClerksResult = { clerks: ['JR'], isLoading: false, error: undefined };
     mockGetUserData.mockResolvedValue(baseData());
     mockCanReset.mockReturnValue(true);
   });
@@ -294,9 +283,7 @@ describe('ComplianceCallQueueDetailScreen', () => {
     expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
   });
 
-  it('renders the base queue, forwards a clerk error, and navigates after save', async () => {
-    mockClerksResult = { clerks: [], isLoading: false, error: 'Network down' };
-
+  it('renders the base queue and navigates after save', async () => {
     const form = await renderLoaded();
 
     expect(mockGetUserData).toHaveBeenCalledWith(2001);
@@ -305,9 +292,7 @@ describe('ComplianceCallQueueDetailScreen', () => {
     expect(screen.getByTestId('ip-countries')).toBeInTheDocument();
     expect(screen.getByTestId('kyc-comments')).toBeInTheDocument();
     expect(screen.getByTestId('questions')).toBeInTheDocument();
-    expect(form).toHaveAttribute('data-clerks', '[]');
-    expect(form).toHaveAttribute('data-clerks-error', 'Network down');
-    expect(form).toHaveAttribute('data-clerks-loading', 'false');
+    expect(form).toBeInTheDocument();
     expect(screen.queryByTestId('tx-info')).not.toBeInTheDocument();
     expect(screen.queryByTestId('address-info')).not.toBeInTheDocument();
     expect(screen.queryByTestId('bank-tx-info')).not.toBeInTheDocument();
@@ -348,16 +333,12 @@ describe('ComplianceCallQueueDetailScreen', () => {
     expect(screen.queryByTestId('address-info')).not.toBeInTheDocument();
   });
 
-  it('uses the user outcomes and forwards the clerk loading state', async () => {
+  it('uses the user outcomes for the unavailable-suspicious queue', async () => {
     mockParams.queue = 'UnavailableSuspicious';
-    mockClerksResult = { clerks: [], isLoading: true, error: undefined };
 
     const form = await renderLoaded();
 
     expect(JSON.parse(form.getAttribute('data-outcomes') ?? '[]')).toEqual(OUTCOMES);
-    expect(form).toHaveAttribute('data-clerks', '[]');
-    expect(form).toHaveAttribute('data-clerks-error', '');
-    expect(form).toHaveAttribute('data-clerks-loading', 'true');
   });
 
   it('builds a BuyCrypto context with reset eligibility and no bank data', async () => {

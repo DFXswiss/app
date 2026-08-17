@@ -6,7 +6,9 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { useSupportDashboardGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { ASSIGNABLE_DEPARTMENTS, UserSearchResult, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
+import { STAFF_NAME_MISSING, staffNameLoadError } from 'src/components/compliance/staff-identity';
 import { reasonLabel, typeLabel } from 'src/util/support-helpers';
 import { toBase64 } from 'src/util/utils';
 
@@ -17,10 +19,9 @@ export default function SupportDashboardCreateScreen(): JSX.Element {
   useSupportDashboardGuard();
 
   const { translate } = useSettingsContext();
-  const { createIssue, searchUsers, getClerks } = useSupportDashboard();
+  const { createIssue, searchUsers } = useSupportDashboard();
   const { navigate } = useNavigation();
-
-  const [clerks, setClerks] = useState<string[]>([]);
+  const { name: clerk, isLoading: isLoadingClerk, error: clerkError } = useStaffVerifiedName();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>();
@@ -39,16 +40,6 @@ export default function SupportDashboardCreateScreen(): JSX.Element {
   const [reason, setReason] = useState<string>(ISSUE_REASONS[0]);
   const [name, setName] = useState('');
   const [department, setDepartment] = useState<string>(ASSIGNABLE_DEPARTMENTS[0]);
-  const [clerk, setClerk] = useState<string>('');
-
-  useEffect(() => {
-    getClerks()
-      .then((list) => {
-        setClerks(list);
-        setClerk((prev) => prev || list[0] || '');
-      })
-      .catch(() => undefined);
-  }, [getClerks]);
   const [message, setMessage] = useState('');
   const [selectedFile, setSelectedFile] = useState<File>();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -110,6 +101,10 @@ export default function SupportDashboardCreateScreen(): JSX.Element {
     }
     if (!name.trim() || !message.trim()) {
       setError('Please fill all required fields');
+      return;
+    }
+    if (!clerk) {
+      setError(clerkError ? staffNameLoadError(clerkError) : STAFF_NAME_MISSING);
       return;
     }
 
@@ -265,17 +260,12 @@ export default function SupportDashboardCreateScreen(): JSX.Element {
         </FormField>
 
         <FormField label="Clerk">
-          <select
-            className="w-full px-3 py-2 text-sm border border-dfxGray-400 rounded bg-white text-dfxBlue-800"
-            value={clerk}
-            onChange={(e) => setClerk(e.target.value)}
-          >
-            {clerks.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+          <p className="w-full px-3 py-2 text-sm text-dfxBlue-800">
+            {isLoadingClerk ? '…' : (clerk ?? '—')}
+          </p>
+          {!isLoadingClerk && !clerk && (
+            <ErrorHint message={clerkError ? staffNameLoadError(clerkError) : STAFF_NAME_MISSING} />
+          )}
         </FormField>
 
         <FormField label="Message *">
@@ -335,7 +325,7 @@ export default function SupportDashboardCreateScreen(): JSX.Element {
           <button
             type="submit"
             className="px-6 py-2 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
-            disabled={isSubmitting || !selectedUser}
+            disabled={isSubmitting || !selectedUser || !clerk || isLoadingClerk}
           >
             {isSubmitting ? <StyledLoadingSpinner size={SpinnerSize.SM} /> : translate('general/actions', 'Create')}
           </button>
