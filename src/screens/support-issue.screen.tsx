@@ -177,10 +177,11 @@ export default function SupportIssueScreen(): JSX.Element {
   const orderParam = urlParams.get('quote') ?? urlParams.get('order');
   const issueTypeParam = urlParams.get('issue-type');
   const reasonParam = urlParams.get('reason');
+  const txParam = urlParams.get('tx');
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      if (orderParam || issueTypeParam || reasonParam) {
+      if (orderParam || issueTypeParam || reasonParam || txParam) {
         clearParams([...Array.from(urlParams.keys())]);
       }
     }, 0);
@@ -198,9 +199,14 @@ export default function SupportIssueScreen(): JSX.Element {
     if (reasonEnum) {
       setValue('reason', reasonEnum);
     }
-  }, [issueTypeParam, reasonParam]);
 
-  useUserGuard('/login', !orderParam);
+    if (txParam) {
+      setValue('type', SupportIssueType.TRANSACTION_ISSUE);
+      setValue('transaction', { uid: txParam, description: 'Transaction ID' });
+    }
+  }, [issueTypeParam, reasonParam, txParam]);
+
+  useUserGuard('/login', !orderParam && !txParam);
   useKycLevelGuard(KycLevel.Link, '/contact');
 
   function startChat(issueUid: string) {
@@ -250,9 +256,10 @@ export default function SupportIssueScreen(): JSX.Element {
   }, [selectedReason, selectTransaction]);
 
   useEffect(() => {
+    if (txParam) return;
     setSelectedTxState(undefined);
     setValue('transaction', undefined);
-  }, [selectedReason]);
+  }, [selectedReason, txParam]);
 
   // Invalidate in-flight checks and stop the spinner when the normalized value changes. Hint staleness is
   // handled by binding the stored result to the IBAN it was computed for (see getReceiverIbanHint).
@@ -454,7 +461,7 @@ export default function SupportIssueScreen(): JSX.Element {
               labelFunc={(item) => item && translate('screens/support', IssueTypeLabels[item])}
               name="type"
               placeholder={translate('general/actions', 'Select') + '...'}
-              disabled={!!orderParam}
+              disabled={!!orderParam || !!txParam}
               full
             />
 
@@ -482,7 +489,7 @@ export default function SupportIssueScreen(): JSX.Element {
 
             {selectedType === SupportIssueType.TRANSACTION_ISSUE && selectedReason && (
               <>
-                {selectedReason !== SupportIssueReason.TRANSACTION_MISSING && !orderParam && (
+                {selectedReason !== SupportIssueReason.TRANSACTION_MISSING && !orderParam && !txParam && (
                   <StyledVerticalStack gap={3.5} full center>
                     <p className="w-full text-left text-dfxBlue-800 text-base font-semibold pl-3.5 -mb-1">
                       {translate('screens/payment', 'Transaction')}

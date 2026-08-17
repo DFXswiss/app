@@ -173,6 +173,20 @@ jest.mock('../hooks/navigation.hook', () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
 }));
 
+const mockGetTargets = jest.fn();
+const mockSetTarget = jest.fn();
+const mockGetGuestRefund = jest.fn();
+const mockSetGuestRefund = jest.fn();
+
+jest.mock('../hooks/transaction-guest.hook', () => ({
+  useTransactionGuest: () => ({
+    getTargets: mockGetTargets,
+    setTarget: mockSetTarget,
+    getRefund: mockGetGuestRefund,
+    setRefund: mockSetGuestRefund,
+  }),
+}));
+
 jest.mock('src/components/cointracking', () => () => <div data-testid="cointracking" />);
 jest.mock('src/components/payment/add-bank-account', () => ({
   AddBankAccount: () => null,
@@ -219,6 +233,7 @@ function renderScreen(path: string) {
       { path: '/tx', element: <TransactionScreen /> },
       { path: '/tx/:id', element: <TransactionScreen /> },
       { path: '/tx/:id/refund', element: <TransactionScreen /> },
+      { path: '/tx/:id/assign', element: <TransactionScreen /> },
     ],
     { initialEntries: [path] },
   );
@@ -249,6 +264,10 @@ beforeEach(() => {
   mockGetTransactionByUid.mockReset();
   mockGetTransactionRefund.mockReturnValue(neverResolves());
   mockSetTransactionRefundTarget.mockReset();
+  mockGetTargets.mockReset();
+  mockSetTarget.mockReset();
+  mockGetGuestRefund.mockReset();
+  mockSetGuestRefund.mockReset();
   (global.URL as any).createObjectURL = jest.fn(() => 'blob:mock-url');
   jest.spyOn(window, 'open').mockImplementation(() => null);
 });
@@ -265,7 +284,7 @@ afterEach(() => {
 
 // Layout title/onBack variants from TransactionScreen (isRefund / isTransaction / cointracking / error / default).
 describe('TransactionScreen layout title and onBack', () => {
-  it('sets title "Transaction refund" and onBack navigates to /tx when path is refund', async () => {
+  it('sets title "Transaction refund" and onBack navigates to the uid status page', async () => {
     mockGetTransactionByUid.mockReturnValue(neverResolves());
     renderScreen('/tx/T123/refund');
 
@@ -275,7 +294,19 @@ describe('TransactionScreen layout title and onBack', () => {
     expect(lastLayoutOptions().onBack).toEqual(expect.any(Function));
 
     lastLayoutOptions().onBack?.();
-    expect(mockNavigate).toHaveBeenCalledWith('/tx');
+    expect(mockNavigate).toHaveBeenCalledWith('/tx/T123');
+  });
+
+  it('sets title "Assign transaction" and onBack navigates to the uid status page', async () => {
+    mockGetTargets.mockReturnValue(neverResolves());
+    renderScreen('/tx/T123/assign');
+
+    await waitFor(() => {
+      expect(lastLayoutOptions().title).toBe('Assign transaction');
+    });
+
+    lastLayoutOptions().onBack?.();
+    expect(mockNavigate).toHaveBeenCalledWith('/tx/T123');
   });
 
   it('sets title "Transaction status" and onBack navigates to /tx for T/Q ids without refund', async () => {
@@ -667,37 +698,37 @@ describe('TransactionStatus via TransactionScreen', () => {
 
   it('navigates directly when logged in on Assign transaction', async () => {
     mockIsLoggedIn = true;
-    mockGetTransactionByUid.mockResolvedValue(makeTx({ id: 42, state: 'Unassigned' }));
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ id: 42, uid: 'T123', state: 'Unassigned' }));
     renderScreen('/tx/T123');
 
     const assign = await screen.findByRole('button', { name: 'Assign transaction' });
     await userEvent.click(assign);
 
-    expect(mockNavigate).toHaveBeenCalledWith('/tx/42/assign');
+    expect(mockNavigate).toHaveBeenCalledWith('/tx/T123/assign');
     expect(mockSetRedirectPath).not.toHaveBeenCalled();
   });
 
-  it('stores redirect path and navigates to login when not logged in', async () => {
+  it('navigates to the uid assign path without login when not logged in', async () => {
     mockIsLoggedIn = false;
-    mockGetTransactionByUid.mockResolvedValue(makeTx({ id: 42, state: 'Unassigned' }));
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ id: 42, uid: 'T123', state: 'Unassigned' }));
     renderScreen('/tx/T123');
 
     const assign = await screen.findByRole('button', { name: 'Assign transaction' });
     await userEvent.click(assign);
 
-    expect(mockSetRedirectPath).toHaveBeenCalledWith('/tx/42/assign');
-    expect(mockNavigate).toHaveBeenCalledWith('/login');
-    expect(mockNavigate).not.toHaveBeenCalledWith('/tx/42/assign');
+    expect(mockSetRedirectPath).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith('/tx/T123/assign');
+    expect(mockNavigate).not.toHaveBeenCalledWith('/login');
   });
 
-  it('shows Assign transaction for Unassigned and navigates to /tx/{id}/assign', async () => {
-    mockGetTransactionByUid.mockResolvedValue(makeTx({ id: 7, state: 'Unassigned' }));
+  it('shows Assign transaction for Unassigned and navigates to /tx/{uid}/assign', async () => {
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ id: 7, uid: 'T123', state: 'Unassigned' }));
     renderScreen('/tx/T123');
 
     const assign = await screen.findByRole('button', { name: 'Assign transaction' });
     await userEvent.click(assign);
 
-    expect(mockNavigate).toHaveBeenCalledWith('/tx/7/assign');
+    expect(mockNavigate).toHaveBeenCalledWith('/tx/T123/assign');
   });
 
   it('shows Confirm refund and Create support ticket for Failed when refund is allowed', async () => {
@@ -739,9 +770,7 @@ describe('TransactionStatus via TransactionScreen', () => {
   });
 
   it('hides refund/support when chargebackAmount is set', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ state: 'Failed', reason: undefined, chargebackAmount: 10 }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ state: 'Failed', reason: undefined, chargebackAmount: 10 }));
     renderScreen('/tx/T123');
 
     await waitFor(() => {
@@ -780,5 +809,53 @@ describe('TransactionStatus via TransactionScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'Confirm refund' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create support ticket' })).toBeInTheDocument();
+  });
+
+  it('navigates to the support issue path with the transaction uid', async () => {
+    mockGetTransactionByUid.mockResolvedValue(
+      makeTx({ uid: 'T123', state: 'Failed', reason: undefined, chargebackAmount: undefined }),
+    );
+    renderScreen('/tx/T123');
+
+    const support = await screen.findByRole('button', { name: 'Create support ticket' });
+    await userEvent.click(support);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/support/issue?issue-type=TransactionIssue&tx=T123');
+  });
+});
+
+describe('TransactionAssign via TransactionScreen', () => {
+  beforeEach(() => {
+    mockGetTargets.mockResolvedValue([
+      {
+        id: 7,
+        bankUsage: 'ABCD-EFGH',
+        address: '0xabc',
+        asset: { name: 'BTC', blockchain: 'Bitcoin' },
+      },
+    ]);
+    mockSetTarget.mockResolvedValue(undefined);
+  });
+
+  it('preselects the only target and submits the assignment', async () => {
+    mockIsLoggedIn = false;
+    renderScreen('/tx/T123/assign');
+
+    const assign = await screen.findByRole('button', { name: 'Assign transaction' });
+    await userEvent.click(assign);
+
+    await waitFor(() => {
+      expect(mockSetTarget).toHaveBeenCalledWith('T123', 7);
+      expect(mockNavigate).toHaveBeenCalledWith('/tx/T123');
+    });
+  });
+
+  it('surfaces getTargets errors via ErrorHint', async () => {
+    mockGetTargets.mockRejectedValue({ message: 'targets failed' });
+    renderScreen('/tx/T123/assign');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('targets failed');
+    });
   });
 });

@@ -161,17 +161,7 @@ jest.mock('@dfx.swiss/react-components', () => {
     });
   });
 
-  function StyledDropdown({
-    control,
-    name,
-    label,
-    items,
-    labelFunc,
-    descriptionFunc,
-    placeholder,
-    rules,
-    error,
-  }: any) {
+  function StyledDropdown({ control, name, label, items, labelFunc, descriptionFunc, placeholder, rules, error }: any) {
     const [open, setOpen] = useState(false);
     return React.createElement(Controller, {
       control,
@@ -308,11 +298,7 @@ jest.mock('@dfx.swiss/react-components', () => {
 
   function StyledButton({ label, onClick, disabled, isLoading, type, hidden }: any) {
     if (hidden) return null;
-    return React.createElement(
-      'button',
-      { type: type ?? 'button', onClick, disabled: disabled || isLoading },
-      label,
-    );
+    return React.createElement('button', { type: type ?? 'button', onClick, disabled: disabled || isLoading }, label);
   }
 
   return {
@@ -362,16 +348,11 @@ jest.mock('@dfx.swiss/react-components', () => {
       ),
     StyledIconButton: ({ onClick }: any) =>
       React.createElement('button', { type: 'button', 'data-testid': 'reload-button', onClick }, 'Reload'),
-    DfxAssetIcon: ({ asset }: any) =>
-      React.createElement('div', { 'data-testid': 'dfx-asset-icon' }, asset),
+    DfxAssetIcon: ({ asset }: any) => React.createElement('div', { 'data-testid': 'dfx-asset-icon' }, asset),
     DfxIcon: () => React.createElement('div', { 'data-testid': 'dfx-help-icon' }),
     // Must be clickable so TxInfo chargeback CopyButton onCopy (line 1216) is reachable.
     CopyButton: ({ onCopy }: any) =>
-      React.createElement(
-        'button',
-        { type: 'button', 'data-testid': 'copy-button', onClick: onCopy },
-        'Copy',
-      ),
+      React.createElement('button', { type: 'button', 'data-testid': 'copy-button', onClick: onCopy }, 'Copy'),
     StyledLink: ({ label, children, url }: any) =>
       React.createElement('a', { 'data-testid': 'styled-link', href: url }, label ?? children),
     StyledLoadingSpinner: () => React.createElement('div', { 'data-testid': 'loading-spinner' }),
@@ -441,6 +422,15 @@ jest.mock('../hooks/layout-config.hook', () => ({
   },
 }));
 
+jest.mock('../hooks/transaction-guest.hook', () => ({
+  useTransactionGuest: () => ({
+    getTargets: jest.fn(),
+    setTarget: jest.fn(),
+    getRefund: jest.fn(),
+    setRefund: jest.fn(),
+  }),
+}));
+
 jest.mock('../hooks/navigation.hook', () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
 }));
@@ -460,7 +450,12 @@ jest.mock('../util/validation-rules', () => ({
   ZipValidation: undefined,
 }));
 
-jest.mock('copy-to-clipboard', () => (...args: any[]) => mockCopy(...args));
+jest.mock(
+  'copy-to-clipboard',
+  () =>
+    (...args: any[]) =>
+      mockCopy(...args),
+);
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -634,7 +629,7 @@ describe('TransactionStatus Create support ticket', () => {
     const support = await screen.findByRole('button', { name: 'Create support ticket' });
     await userEvent.click(support);
 
-    expect(mockNavigate).toHaveBeenCalledWith('/support/issue?issue-type=TransactionIssue');
+    expect(mockNavigate).toHaveBeenCalledWith('/support/issue?issue-type=TransactionIssue&tx=T123');
   });
 });
 
@@ -709,9 +704,7 @@ describe('TransactionList loadTransactions errors', () => {
 describe('TransactionList submitAssignment errors', () => {
   it('calls setError when setTransactionTarget rejects', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockResolvedValue([TARGET_A]);
     mockSetTransactionTarget.mockRejectedValue({ message: 'assign failed' });
 
@@ -731,9 +724,7 @@ describe('TransactionList submitAssignment errors', () => {
 
   it('calls setError with "Unknown error" when setTransactionTarget rejects without message', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockResolvedValue([TARGET_A]);
     mockSetTransactionTarget.mockRejectedValue({});
 
@@ -754,10 +745,7 @@ describe('TransactionList submitAssignment errors', () => {
 
 // Lines 672-687: scroll-into-view, logged-out skip, auto-assign path, date sort.
 describe('TransactionList load effects and sorting', () => {
-  const originalScrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(
-    Element.prototype,
-    'scrollIntoView',
-  );
+  const originalScrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
 
   afterEach(() => {
     if (originalScrollIntoViewDescriptor) {
@@ -771,9 +759,7 @@ describe('TransactionList load effects and sorting', () => {
     const scrollIntoView = jest.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
 
-    mockGetDetailTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Completed' }),
-    ]);
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
 
     renderListAt('/tx/1');
@@ -801,9 +787,7 @@ describe('TransactionList load effects and sorting', () => {
 
   it('auto-opens the assignment form when the path is /tx/:id/assign', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockResolvedValue([TARGET_A, TARGET_B]);
 
     // Numeric id → TransactionScreen list branch (not T/Q status); assign path auto-opens form.
@@ -855,9 +839,7 @@ describe('TransactionList load effects and sorting', () => {
 describe('TransactionList assignTransaction errors', () => {
   it('calls setError with the API message when getTransactionTargets rejects', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockRejectedValue({ message: 'targets failed' });
 
     const { setError } = renderList();
@@ -872,9 +854,7 @@ describe('TransactionList assignTransaction errors', () => {
 
   it('calls setError with "Unknown error" when getTransactionTargets rejects without message', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockRejectedValue({});
 
     const { setError } = renderList();
@@ -942,9 +922,7 @@ describe('TransactionList row presentation', () => {
   });
 
   it('renders a row when tx.id is missing (ref callback skips numeric id key)', async () => {
-    mockGetDetailTransactions.mockResolvedValue([
-      makeListTx({ id: undefined, uid: 'uid-only', state: 'Completed' }),
-    ]);
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: undefined, uid: 'uid-only', state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
 
     renderList();
@@ -957,9 +935,7 @@ describe('TransactionList row presentation', () => {
   });
 
   it('sets isExpanded when route id matches a transaction uid and leaves it undefined without id', async () => {
-    mockGetDetailTransactions.mockResolvedValue([
-      makeListTx({ id: 5, uid: 'match-uid', state: 'Completed' }),
-    ]);
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 5, uid: 'match-uid', state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
 
     renderListAt('/tx/match-uid');
@@ -970,9 +946,7 @@ describe('TransactionList row presentation', () => {
   });
 
   it('leaves collapsible isExpanded undefined when no route id is present', async () => {
-    mockGetDetailTransactions.mockResolvedValue([
-      makeListTx({ id: 5, uid: 'match-uid', state: 'Completed' }),
-    ]);
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 5, uid: 'match-uid', state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
 
     renderList();
@@ -1083,9 +1057,7 @@ describe('TransactionList missing-transaction navigation', () => {
     const missing = await screen.findByRole('button', { name: 'My transaction is missing' });
     await userEvent.click(missing);
 
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/support/issue?issue-type=TransactionIssue&reason=TransactionMissing',
-    );
+    expect(mockNavigate).toHaveBeenCalledWith('/support/issue?issue-type=TransactionIssue&reason=TransactionMissing');
   });
 });
 
@@ -1093,9 +1065,7 @@ describe('TransactionList missing-transaction navigation', () => {
 describe('TransactionList target dropdown descriptionFunc', () => {
   it('renders descriptionFunc text when a target option is selected', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockResolvedValue([TARGET_A, TARGET_B]);
 
     renderList();
@@ -1225,9 +1195,7 @@ describe('TransactionList action buttons by state and support mode', () => {
 
   it('shows Select in support mode and calls onSelectTransaction with uid and state', async () => {
     const onSelectTransaction = jest.fn();
-    mockGetDetailTransactions.mockResolvedValue([
-      makeListTx({ uid: 'sup-1', state: 'Completed' }),
-    ]);
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ uid: 'sup-1', state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
 
     renderList({ isSupport: true, onSelectTransaction });
@@ -1265,9 +1233,7 @@ describe('TxInfo priceSteps base rate info', () => {
     );
 
     // baseRateInfo is infoText on the Base rate expansion item (built by the priceSteps map).
-    expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent(
-      /EUR to BTC at 50000 EUR\/BTC \(Kraken,/,
-    );
+    expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent(/EUR to BTC at 50000 EUR\/BTC \(Kraken,/);
   });
 });
 
@@ -1415,9 +1381,7 @@ describe('TxInfo phone verification hint', () => {
       />,
     );
 
-    expect(screen.getByTestId('row-Failure reason')).toHaveTextContent(
-      'we will call you at +41123456789',
-    );
+    expect(screen.getByTestId('row-Failure reason')).toHaveTextContent('we will call you at +41123456789');
   });
 
   it('hides the call-you text when showUserDetails is false', () => {

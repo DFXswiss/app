@@ -273,8 +273,10 @@ jest.mock('src/contexts/settings.context', () => ({
   }),
 }));
 
+const mockUseUserGuard = jest.fn();
+
 jest.mock('src/hooks/guard.hook', () => ({
-  useUserGuard: () => undefined,
+  useUserGuard: (...args: unknown[]) => mockUseUserGuard(...args),
   useKycLevelGuard: () => undefined,
 }));
 
@@ -1011,5 +1013,24 @@ describe('SupportIssueScreen receiver IBAN check', () => {
     expect(screen.queryByText(HINTS[ReceiveIbanStatus.DFX_IBAN])).not.toBeInTheDocument();
     // Reason change only clears state; it must not start another check.
     expect(mockCheckReceiveIban).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SupportIssueScreen tx query param', () => {
+  beforeEach(() => {
+    mockUseUserGuard.mockReset();
+    mockClearParams.mockReset();
+  });
+
+  it('skips the login guard when tx is present', () => {
+    renderScreen(`?issue-type=${SupportIssueType.TRANSACTION_ISSUE}&tx=T1E448FF200A877DC`);
+
+    expect(mockUseUserGuard).toHaveBeenCalledWith('/login', false);
+  });
+
+  it('keeps the login guard active without a tx or order param', () => {
+    renderScreen(`?issue-type=${SupportIssueType.TRANSACTION_ISSUE}`);
+
+    expect(mockUseUserGuard).toHaveBeenCalledWith('/login', true);
   });
 });

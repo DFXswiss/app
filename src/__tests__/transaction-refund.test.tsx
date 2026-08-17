@@ -164,17 +164,7 @@ jest.mock('@dfx.swiss/react-components', () => {
     });
   });
 
-  function StyledDropdown({
-    control,
-    name,
-    label,
-    items,
-    labelFunc,
-    descriptionFunc,
-    placeholder,
-    rules,
-    error,
-  }: any) {
+  function StyledDropdown({ control, name, label, items, labelFunc, descriptionFunc, placeholder, rules, error }: any) {
     const [open, setOpen] = useState(false);
     return React.createElement(Controller, {
       control,
@@ -297,11 +287,7 @@ jest.mock('@dfx.swiss/react-components', () => {
 
   function StyledButton({ label, onClick, disabled, isLoading, type, hidden }: any) {
     if (hidden) return null;
-    return React.createElement(
-      'button',
-      { type: type ?? 'button', onClick, disabled: disabled || isLoading },
-      label,
-    );
+    return React.createElement('button', { type: type ?? 'button', onClick, disabled: disabled || isLoading }, label);
   }
 
   return {
@@ -322,8 +308,7 @@ jest.mock('@dfx.swiss/react-components', () => {
         infoText ? React.createElement('span', { 'data-testid': `info-${label}` }, infoText) : null,
       ),
     StyledDataTableExpandableRow: ({ children }: any) => React.createElement('div', null, children),
-    StyledCollapsible: ({ titleContent, children }: any) =>
-      React.createElement('div', null, titleContent, children),
+    StyledCollapsible: ({ titleContent, children }: any) => React.createElement('div', null, titleContent, children),
     StyledIconButton: () => null,
     DfxAssetIcon: () => null,
     DfxIcon: () => null,
@@ -389,6 +374,18 @@ jest.mock('../hooks/layout-config.hook', () => ({
   },
 }));
 
+const mockGetGuestRefund = jest.fn();
+const mockSetGuestRefund = jest.fn();
+
+jest.mock('../hooks/transaction-guest.hook', () => ({
+  useTransactionGuest: () => ({
+    getTargets: jest.fn(),
+    setTarget: jest.fn(),
+    getRefund: mockGetGuestRefund,
+    setRefund: mockSetGuestRefund,
+  }),
+}));
+
 jest.mock('../hooks/navigation.hook', () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
 }));
@@ -399,11 +396,7 @@ jest.mock('src/components/payment/add-bank-account', () => ({
   AddBankAccount: ({ onSubmit, confirmationText }: any) => (
     <div data-testid="add-bank-account">
       <p data-testid="add-bank-confirmation">{confirmationText}</p>
-      <button
-        type="button"
-        data-testid="add-bank-submit"
-        onClick={() => onSubmit({ iban: 'LI21088110104928' })}
-      >
+      <button type="button" data-testid="add-bank-submit" onClick={() => onSubmit({ iban: 'LI21088110104928' })}>
         Confirm new bank account
       </button>
     </div>
@@ -542,6 +535,8 @@ beforeEach(() => {
   mockGetTransactionByUid.mockReset();
   mockGetTransactionRefund.mockReset();
   mockSetTransactionRefundTarget.mockReset();
+  mockGetGuestRefund.mockReset();
+  mockSetGuestRefund.mockReset();
   mockSetTransactionRefundTarget.mockResolvedValue(undefined);
   mockGetTransactionByUid.mockResolvedValue(makeTx());
   mockGetTransactionRefund.mockResolvedValue(makeRefund());
@@ -765,9 +760,7 @@ describe('TransactionRefund address filtering', () => {
 // Lines 385-428: onSubmit combinations (bank buy, card buy, crypto, refundName, houseNumber, errors).
 describe('TransactionRefund onSubmit', () => {
   it('submits a bank buy refund with form target, creditor data, house number, and navigates to /tx', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
     mockSetTransactionRefundTarget.mockResolvedValue(undefined);
 
@@ -797,9 +790,7 @@ describe('TransactionRefund onSubmit', () => {
   });
 
   it('omits houseNumber when the house number field is left empty', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
@@ -819,9 +810,7 @@ describe('TransactionRefund onSubmit', () => {
   });
 
   it('uses bankDetails.name as refundName when refundTarget is fixed and bank name is present', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
     mockGetTransactionRefund.mockResolvedValue(
       makeRefund({
         refundTarget: BANK_IBAN_DE,
@@ -872,9 +861,7 @@ describe('TransactionRefund onSubmit', () => {
   });
 
   it('falls back to creditorName when refundTarget is fixed but bankDetails.name is missing', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
     mockGetTransactionRefund.mockResolvedValue(
       makeRefund({
         refundTarget: BANK_IBAN_CH,
@@ -902,9 +889,7 @@ describe('TransactionRefund onSubmit', () => {
   });
 
   it('submits a card buy refund without refundTarget or creditorData', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Card', state: 'Failed' }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Card', state: 'Failed' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
@@ -965,9 +950,7 @@ describe('TransactionRefund onSubmit', () => {
   });
 
   it('keeps the form and sets localError when setTransactionRefundTarget fails with MultiAccountIban', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
     mockSetTransactionRefundTarget.mockRejectedValue({
       message: 'MultiAccountIban is not allowed here',
@@ -984,9 +967,7 @@ describe('TransactionRefund onSubmit', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(
-          'This IBAN cannot be used for refunds. Please select a personal bank account.',
-        ),
+        screen.getByText('This IBAN cannot be used for refunds. Please select a personal bank account.'),
       ).toBeInTheDocument();
     });
     // Form remains (not replaced by ErrorHint).
@@ -996,9 +977,7 @@ describe('TransactionRefund onSubmit', () => {
   });
 
   it('propagates non-MultiAccountIban submit errors via setError', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
     mockSetTransactionRefundTarget.mockRejectedValue({ message: 'backend rejected refund' });
 
@@ -1018,9 +997,7 @@ describe('TransactionRefund onSubmit', () => {
   });
 
   it('propagates "Unknown error" when submit rejects without a message', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
     mockSetTransactionRefundTarget.mockRejectedValue({});
 
@@ -1042,9 +1019,7 @@ describe('TransactionRefund onSubmit', () => {
 // Lines 450-457: selectedIban === "Add bank account" renders AddBankAccount and writes IBAN back.
 describe('TransactionRefund add bank account branch', () => {
   it('shows AddBankAccount when Add bank account is selected and writes the new IBAN into the form', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
@@ -1215,12 +1190,8 @@ describe('TransactionRefund rendered view', () => {
   });
 
   it('shows IBAN dropdown and name field for bank buy without fixed refundTarget', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }),
-    );
-    mockGetTransactionRefund.mockResolvedValue(
-      makeRefund({ refundTarget: undefined, bankDetails: undefined }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
+    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
@@ -1247,23 +1218,20 @@ describe('TransactionRefund rendered view', () => {
 
   it('hides the IBAN dropdown when bankAccounts is empty/falsy for bank buy', async () => {
     mockBankAccounts = null as any;
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
 
     expect(screen.queryByTestId('iban-dropdown')).not.toBeInTheDocument();
+    expect(screen.getByTestId('iban')).toBeInTheDocument();
     // Address fields still render for bank refunds.
     expect(screen.getByTestId('creditorStreet')).toBeInTheDocument();
   });
 
   it('shows creditor name when bankDetails.name is set but refundTarget is missing (IBAN override)', async () => {
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
     mockGetTransactionRefund.mockResolvedValue(
       makeRefund({
         refundTarget: undefined,
@@ -1303,12 +1271,8 @@ describe('TransactionRefund rendered view', () => {
       if (v === BANK_IBAN_DE) return undefined as any;
       return v;
     });
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }),
-    );
-    mockGetTransactionRefund.mockResolvedValue(
-      makeRefund({ refundTarget: undefined, bankDetails: undefined }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
+    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
@@ -1324,12 +1288,8 @@ describe('TransactionRefund rendered view', () => {
 
   it('disables the country search dropdown for fewer than two countries', async () => {
     mockAllowedCountries = undefined as any;
-    mockGetTransactionByUid.mockResolvedValue(
-      makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }),
-    );
-    mockGetTransactionRefund.mockResolvedValue(
-      makeRefund({ refundTarget: undefined, bankDetails: undefined }),
-    );
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
+    mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined, bankDetails: undefined }));
 
     renderRefund();
     await waitForRefundFormLoaded();
@@ -1340,5 +1300,36 @@ describe('TransactionRefund rendered view', () => {
 
     fireEvent.click(trigger);
     expect(screen.queryByTestId('creditorCountry-options')).not.toBeInTheDocument();
+  });
+});
+
+describe('TransactionRefund guest uid path', () => {
+  it('loads and submits refund data via the guest hook when not logged in', async () => {
+    mockIsLoggedIn = false;
+    mockBankAccounts = null as any;
+    mockGetTransactionByUid.mockResolvedValue(
+      makeTx({ uid: 'T123', type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }),
+    );
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: 'CH9300762011623852957' }));
+    mockSetGuestRefund.mockResolvedValue(undefined);
+
+    renderRefund();
+    await waitForRefundFormLoaded();
+
+    expect(mockGetGuestRefund).toHaveBeenCalledWith('T123');
+    expect(mockGetTransactionRefund).not.toHaveBeenCalled();
+
+    await fillBankCreditorFields();
+    await waitForSubmitEnabled('Confirm refund');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }));
+    });
+
+    await waitFor(() => {
+      expect(mockSetGuestRefund).toHaveBeenCalled();
+    });
+    expect(mockSetTransactionRefundTarget).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith('/tx/T123');
   });
 });
