@@ -67,7 +67,9 @@ The details — the factories and the states that are deliberately not achievabl
 
 The gate reads the route definitions out of `src/App.tsx`, resolves nested paths, and fails when a route
 has no registry claim or more than one — including two claims inside the same registry file — or when
-the spec file a claim names does not exist. When `E2E_FULL_RUN=1` is set, it additionally fails for a
+the spec file a claim names does not exist. App 2.0 is claimed separately as hosted `/app2/` paths
+(`e2e-stack/specs/registry/app2.ts`); those are not in `src/App.tsx`. A green unit run does not prove
+the full-stack harness cloned `DFXswiss/api` or opened those hashes. When `E2E_FULL_RUN=1` is set, it additionally fails for a
 claimed route the browser never opened. That flag is declared by the run, not measured from it, so it may
 only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
 no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards

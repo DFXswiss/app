@@ -125,7 +125,7 @@ describe('ReturnRouteScreen extra paths', () => {
     renderRoute();
     expect(await screen.findByText(/sign in|anmelden|accedi|connecte/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /connect|verbinden|connetti|connecter/i }));
-    expect(mockOpenConnect).toHaveBeenCalled();
+    expect(mockOpenConnect).toHaveBeenCalledWith();
   });
 
   it('polls CKO until a transaction id arrives', async () => {
