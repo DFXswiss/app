@@ -14,10 +14,8 @@ import {
   TransactionState,
   TransactionTarget,
   TransactionType,
-  UserAddress,
   Utils,
   Validations,
-  useBankAccountContext,
   useSessionContext,
   useTransaction,
   useUserContext,
@@ -50,10 +48,9 @@ import {
 } from '@dfx.swiss/react-components';
 import copy from 'copy-to-clipboard';
 import { useEffect, useRef, useState } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { useLocation, useParams } from 'react-router-dom';
 import CoinTracking from 'src/components/cointracking';
-import { AddBankAccount } from 'src/components/payment/add-bank-account';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import { ErrorHint } from '../components/error-hint';
@@ -299,7 +296,6 @@ interface RefundDetails extends TransactionRefundData {
 }
 
 interface FormData {
-  address: UserAddress;
   refundAddress: string;
   iban: string;
   creditorName: string;
@@ -314,61 +310,45 @@ interface TransactionRefundProps {
   setError: (error: string) => void;
 }
 
-const AddAccount = 'Add bank account';
-
 function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   const { id } = useParams();
   const isUid = !!(id && (id.startsWith('T') || id.startsWith('Q')));
   useUserGuard('/login', !isUid);
 
   const { state } = useLocation();
-  const { width } = useWindowContext();
   const { navigate } = useNavigation();
   const { translate, allowedCountries } = useSettingsContext();
-  const { user, userAddresses } = useUserContext();
   const { rootRef } = useLayoutContext();
-  const { bankAccounts } = useBankAccountContext();
-  const { isLoggedIn } = useSessionContext();
-  const { getTransactionByUid, getTransactionRefund, setTransactionRefundTarget } = useTransaction();
+  const { getTransactionByUid } = useTransaction();
   const { getRefund, setRefund } = useTransactionGuest();
   const refetchTimeout = useRef<ReturnType<typeof setTimeout> | undefined>();
 
   const [isLoading, setIsLoading] = useState(false);
   const [refundDetails, setRefundDetails] = useState<RefundDetails>();
   const [transaction, setTransaction] = useState<Transaction>();
-  const [addresses, setAddresses] = useState<UserAddress[]>();
   const [localError, setLocalError] = useState<string>();
 
   const isBuy = transaction?.type === TransactionType.BUY;
-  const useGuestRefund = isUid || !isLoggedIn;
 
   const {
     control,
     handleSubmit,
-    setValue,
     formState: { errors, isValid },
   } = useForm<FormData>({ mode: 'onTouched', defaultValues: { iban: state?.newIban } });
 
-  const selectedIban = useWatch({ control, name: 'iban' });
-
   useEffect(() => {
-    if (id && !transaction && (isLoggedIn || isUid)) {
+    if (id && !transaction && isUid) {
       getTransactionByUid(id)
         .then(setTransaction)
         .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
     }
-  }, [id, transaction, isLoggedIn, isUid]);
+  }, [id, transaction, isUid]);
 
   useEffect(() => {
     async function fetchRefund() {
-      const request = useGuestRefund && id
-        ? getRefund(id)
-        : transaction?.id
-          ? getTransactionRefund(transaction.id)
-          : undefined;
-      if (!request) return;
+      if (!id) return;
 
-      request
+      getRefund(id)
         .then((response) => {
           setRefundDetails(response);
           if (response.expiryDate) {
@@ -380,33 +360,22 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
     }
 
-    if (transaction && (useGuestRefund ? isUid : transaction.id != null)) fetchRefund();
+    if (transaction && isUid) fetchRefund();
 
     return () => {
       if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
     };
-  }, [transaction, isLoggedIn, isUid, id]);
-
-  useEffect(() => {
-    if (transaction && user) {
-      const allowedAddresses = userAddresses.filter(
-        (a) => transaction?.inputBlockchain && a.blockchains.includes(transaction?.inputBlockchain),
-      );
-      setAddresses(allowedAddresses);
-      if (allowedAddresses?.length === 1) setValue('address', allowedAddresses[0]);
-    }
-  }, [transaction, user]);
+  }, [transaction, isUid, id]);
 
   // Bank refund = BUY transaction with non-card payment method
   const isBankRefund = isBuy && transaction?.inputPaymentMethod !== FiatPaymentMethod.CARD;
 
   // Validation rules based on refund type:
-  // - address: only required for crypto refunds (not isBuy)
+  // - refundAddress: only required for crypto refunds (not isBuy)
   // - iban/creditorName: only required for bank refunds if not already fixed from bankTx
   // - creditorStreet/zip/city/country: only required for bank refunds
   const rules = Utils.createRules({
-    address: !isBuy && !useGuestRefund ? Validations.Required : undefined,
-    refundAddress: !isBuy && useGuestRefund && !refundDetails?.refundTarget ? Validations.Required : undefined,
+    refundAddress: !isBuy && !refundDetails?.refundTarget ? Validations.Required : undefined,
     iban: !isBankRefund || refundDetails?.refundTarget ? undefined : Validations.Required,
     creditorName:
       !isBankRefund || (refundDetails?.bankDetails?.name?.trim() && refundDetails?.refundTarget)
@@ -418,15 +387,12 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
     creditorCountry: isBankRefund ? Validations.Required : undefined,
   });
 
-  const inputBlockchain = transaction?.inputBlockchain;
-  const transactionId = transaction?.id;
-
-  async function onSubmit(data: FormData, submittedId?: number) {
+  async function onSubmit(data: FormData) {
     setIsLoading(true);
     setLocalError(undefined);
 
     try {
-      const formTarget = isBuy ? (data.iban ?? '') : useGuestRefund ? data.refundAddress : data.address?.address;
+      const formTarget = isBuy ? (data.iban ?? '') : data.refundAddress;
 
       const refundName = !refundDetails?.refundTarget
         ? data.creditorName
@@ -446,13 +412,9 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
           : undefined,
       };
 
-      if (useGuestRefund && id) {
-        await setRefund(id, payload);
-        navigate(`/tx/${id}`);
-      } else if (submittedId != null) {
-        await setTransactionRefundTarget(submittedId, payload);
-        navigate('/tx');
-      }
+      if (!id) return;
+      await setRefund(id, payload);
+      navigate(`/tx/${id}`);
     } catch (e) {
       const error = e as ApiError;
       if (error.message?.includes('MultiAccountIban')) {
@@ -468,15 +430,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
     }
   }
 
-  return selectedIban === AddAccount ? (
-    <AddBankAccount
-      onSubmit={(account) => setValue('iban', account.iban)}
-      confirmationText={translate(
-        'screens/iban',
-        'The bank account has been added, all transactions from this IBAN will now be associated with your account.',
-      )}
-    />
-  ) : refundDetails && transaction && (useGuestRefund ? isUid : transactionId != null) ? (
+  return refundDetails && transaction && isUid ? (
     <StyledVerticalStack gap={6} full>
       <StyledDataTable alignContent={AlignContent.RIGHT} showBorder minWidth={false}>
         <StyledDataTableRow label={translate('screens/payment', 'Transaction amount')}>
@@ -542,18 +496,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
       </StyledDataTable>
       <Form control={control} rules={rules} errors={errors}>
         <StyledVerticalStack gap={6} full>
-          {!refundDetails.refundTarget && !useGuestRefund && addresses && !isBuy && (
-            <StyledDropdown<UserAddress>
-              name="address"
-              rootRef={rootRef}
-              label={translate('screens/payment', 'Chargeback address')}
-              items={addresses}
-              labelFunc={(item) => blankedAddress(item.address, { width })}
-              descriptionFunc={inputBlockchain ? () => inputBlockchain.toString() : undefined}
-              full
-            />
-          )}
-          {!refundDetails.refundTarget && !isBuy && useGuestRefund && (
+          {!refundDetails.refundTarget && !isBuy && (
             <StyledInput
               name="refundAddress"
               label={translate('screens/payment', 'Chargeback address')}
@@ -563,23 +506,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
           )}
           {transaction.inputPaymentMethod !== FiatPaymentMethod.CARD && isBuy && (
             <>
-              {/* IBAN selection only when no fixed refundTarget */}
-              {!refundDetails.refundTarget && !useGuestRefund && bankAccounts && (
-                <StyledDropdown<string>
-                  rootRef={rootRef}
-                  name="iban"
-                  label={translate('screens/payment', 'Chargeback IBAN')}
-                  items={[...bankAccounts.map((b) => b.iban), AddAccount]}
-                  labelFunc={(item) =>
-                    item === AddAccount ? translate('general/actions', item) : (Utils.formatIban(item) ?? '')
-                  }
-                  descriptionFunc={(item) => bankAccounts.find((b) => b.iban === item)?.label ?? ''}
-                  placeholder={translate('general/actions', 'Select') + '...'}
-                  forceEnable
-                  full
-                />
-              )}
-              {!refundDetails.refundTarget && (useGuestRefund || !bankAccounts) && (
+              {!refundDetails.refundTarget && (
                 <StyledInput
                   name="iban"
                   autocomplete="iban"
@@ -657,7 +584,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
               'general/actions',
               transaction.state === TransactionState.FAILED ? 'Confirm refund' : 'Request refund',
             )}
-            onClick={handleSubmit((data) => onSubmit(data, transactionId))}
+            onClick={handleSubmit((data) => onSubmit(data))}
             width={StyledButtonWidth.FULL}
             disabled={!isValid}
             isLoading={isLoading}

@@ -850,6 +850,30 @@ describe('TransactionAssign via TransactionScreen', () => {
     });
   });
 
+  it('does not preselect a target when more than one exists', async () => {
+    mockGetTargets.mockResolvedValue([
+      {
+        id: 7,
+        bankUsage: 'AAAA-BBBB',
+        address: '0xabc',
+        asset: { name: 'BTC', blockchain: 'Bitcoin' },
+      },
+      {
+        id: 8,
+        bankUsage: 'CCCC-DDDD',
+        address: '0xdef',
+        asset: { name: 'ETH', blockchain: 'Ethereum' },
+      },
+    ]);
+    mockIsLoggedIn = false;
+    renderScreen('/tx/T123/assign');
+
+    await waitFor(() => {
+      expect(mockGetTargets).toHaveBeenCalledWith('T123');
+    });
+    expect(mockSetTarget).not.toHaveBeenCalled();
+  });
+
   it('surfaces getTargets errors via ErrorHint', async () => {
     mockGetTargets.mockRejectedValue({ message: 'targets failed' });
     renderScreen('/tx/T123/assign');

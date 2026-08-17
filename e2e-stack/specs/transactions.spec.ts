@@ -647,8 +647,8 @@ test('pending buy refund form submits and writes chargeback columns', async ({ p
   await expect(submit).toBeEnabled();
   await submit.click();
 
-  await expect(page).toHaveURL(/\/tx$/);
-  expect(new URL(page.url()).pathname).toBe('/tx');
+  await expect(page).toHaveURL(new RegExp(`/tx/${tx.uid}$`));
+  expect(new URL(page.url()).pathname).toBe(`/tx/${tx.uid}`);
 
   await expect
     .poll(async () => {
