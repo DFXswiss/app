@@ -537,7 +537,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
       </StyledDataTable>
       <Form control={control} rules={rules} errors={errors}>
         <StyledVerticalStack gap={6} full>
-          {!refundDetails.refundTarget && addresses && !isBuy && (
+          {!refundDetails.refundTarget && isLoggedIn && addresses && !isBuy && (
             <StyledDropdown<UserAddress>
               name="address"
               rootRef={rootRef}
@@ -559,7 +559,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
           {transaction.inputPaymentMethod !== FiatPaymentMethod.CARD && isBuy && (
             <>
               {/* IBAN selection only when no fixed refundTarget */}
-              {!refundDetails.refundTarget && bankAccounts && (
+              {!refundDetails.refundTarget && isLoggedIn && bankAccounts && (
                 <StyledDropdown<string>
                   rootRef={rootRef}
                   name="iban"
@@ -574,7 +574,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
                   full
                 />
               )}
-              {!refundDetails.refundTarget && !bankAccounts && (
+              {!refundDetails.refundTarget && !(isLoggedIn && bankAccounts) && (
                 <StyledInput
                   name="iban"
                   autocomplete="iban"

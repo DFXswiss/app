@@ -858,4 +858,16 @@ describe('TransactionAssign via TransactionScreen', () => {
       expect(screen.getByTestId('error-hint')).toHaveTextContent('targets failed');
     });
   });
+
+  it('surfaces setTarget errors via ErrorHint', async () => {
+    mockSetTarget.mockRejectedValue({ message: 'assign failed' });
+    renderScreen('/tx/T123/assign');
+
+    const assign = await screen.findByRole('button', { name: 'Assign transaction' });
+    await userEvent.click(assign);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('assign failed');
+    });
+  });
 });
