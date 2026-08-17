@@ -249,4 +249,23 @@ describe('useQuoteEngine error-path timers', () => {
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+
+  it('does not retry when the caller marks the error as permanent', async () => {
+    const fetcher = jest.fn().mockRejectedValue(new Error('EmailRequired'));
+
+    renderHook(() => useQuoteEngine(true, 'k', fetcher, false, () => false));
+
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(5_000 + 15_000 + 30_000);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
 });
