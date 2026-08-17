@@ -1136,9 +1136,9 @@ describe('TransactionList block explorer button', () => {
   });
 });
 
-// Line 889: Open invoice success path calls openPdfFromString.
+// Open invoice: reserved about:blank window + embed fallback when window.open is blocked.
 describe('TransactionList open invoice success', () => {
-  it('opens the invoice PDF via openPdfFromString on success', async () => {
+  it('opens about:blank then falls back to openPdfFromString(pdf, false) when window.open returns null', async () => {
     mockGetDetailTransactions.mockResolvedValue([makeListTx({ state: 'Completed', uid: 'inv-1' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
     mockGetTransactionInvoice.mockResolvedValue({ pdfData: 'invoice-pdf-bytes' });
@@ -1150,8 +1150,105 @@ describe('TransactionList open invoice success', () => {
 
     await waitFor(() => {
       expect(mockGetTransactionInvoice).toHaveBeenCalledWith('inv-1');
-      expect(mockOpenPdfFromString).toHaveBeenCalledWith('invoice-pdf-bytes');
+      expect(window.open).toHaveBeenCalledWith('about:blank');
+      expect(mockOpenPdfFromString).toHaveBeenCalledWith('invoice-pdf-bytes', false);
     });
+  });
+
+  it('assigns the PDF via the reserved window when window.open returns a live preview', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+    jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:invoice');
+
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ state: 'Completed', uid: 'inv-live' })]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+    mockGetTransactionInvoice.mockResolvedValue({ pdfData: btoa('pdf') });
+
+    renderList();
+
+    const openInvoice = await screen.findByRole('button', { name: 'Open invoice' });
+    await userEvent.click(openInvoice);
+
+    await waitFor(() => {
+      expect(window.open).toHaveBeenCalledWith('about:blank');
+      expect(preview.location.href).toBe('blob:invoice');
+    });
+    expect(mockOpenPdfFromString).not.toHaveBeenCalled();
+  });
+
+  it('closes the reserved window and shows ErrorHint when getTransactionInvoice rejects', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ state: 'Completed', uid: 'inv-err' })]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+    mockGetTransactionInvoice.mockRejectedValue({ message: 'Network failure detail' });
+
+    renderList();
+
+    const openInvoice = await screen.findByRole('button', { name: 'Open invoice' });
+    await userEvent.click(openInvoice);
+
+    await waitFor(() => {
+      expect(preview.close).toHaveBeenCalled();
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Network failure detail');
+    });
+  });
+});
+
+describe('TransactionList open invoice visibility', () => {
+  it('hides Open invoice for Completed SELL EUR', async () => {
+    mockGetDetailTransactions.mockResolvedValue([
+      makeListTx({ type: 'Sell', state: 'Completed', inputAsset: 'EUR', uid: 'sell-1' }),
+    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+
+    renderList();
+
+    await screen.findByRole('button', { name: 'Open receipt' });
+    expect(screen.queryByRole('button', { name: 'Open invoice' })).not.toBeInTheDocument();
+  });
+
+  it('hides Open invoice for Failed Buy EUR', async () => {
+    mockGetDetailTransactions.mockResolvedValue([
+      makeListTx({
+        type: 'Buy',
+        state: 'Failed',
+        inputAsset: 'EUR',
+        uid: 'fail-buy',
+        reason: undefined,
+        chargebackAmount: undefined,
+      }),
+    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+
+    renderList();
+
+    await screen.findByRole('button', { name: 'Confirm refund' });
+    expect(screen.queryByRole('button', { name: 'Open invoice' })).not.toBeInTheDocument();
+  });
+
+  it('hides Open invoice for Completed Buy BTC', async () => {
+    mockGetDetailTransactions.mockResolvedValue([
+      makeListTx({ type: 'Buy', state: 'Completed', inputAsset: 'BTC', uid: 'buy-btc' }),
+    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+
+    renderList();
+
+    await screen.findByRole('button', { name: 'Open receipt' });
+    expect(screen.queryByRole('button', { name: 'Open invoice' })).not.toBeInTheDocument();
+  });
+
+  it('shows Open invoice for Completed Buy CHF', async () => {
+    mockGetDetailTransactions.mockResolvedValue([
+      makeListTx({ type: 'Buy', state: 'Completed', inputAsset: 'CHF', uid: 'buy-chf' }),
+    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+
+    renderList();
+
+    expect(await screen.findByRole('button', { name: 'Open invoice' })).toBeInTheDocument();
   });
 });
 
