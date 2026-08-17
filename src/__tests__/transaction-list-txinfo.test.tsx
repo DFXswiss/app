@@ -619,8 +619,15 @@ beforeEach(() => {
   jest.spyOn(window, 'open').mockImplementation(() => null);
 });
 
+const originalCreateObjectURL = (global.URL as any).createObjectURL;
+
 afterEach(() => {
   jest.restoreAllMocks();
+  if (originalCreateObjectURL) {
+    (global.URL as any).createObjectURL = originalCreateObjectURL;
+  } else {
+    delete (global.URL as any).createObjectURL;
+  }
 });
 
 // Line 281: Create support ticket onClick in TransactionStatus (via TransactionScreen).
@@ -1158,7 +1165,7 @@ describe('TransactionList open invoice success', () => {
   it('assigns the PDF via the reserved window when window.open returns a live preview', async () => {
     const preview = { closed: false, close: jest.fn(), location: { href: '' } };
     jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
-    jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:invoice');
+    (global.URL as any).createObjectURL = jest.fn(() => 'blob:invoice');
 
     mockGetDetailTransactions.mockResolvedValue([makeListTx({ state: 'Completed', uid: 'inv-live' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
@@ -1172,6 +1179,7 @@ describe('TransactionList open invoice success', () => {
     await waitFor(() => {
       expect(window.open).toHaveBeenCalledWith('about:blank');
       expect(preview.location.href).toBe('blob:invoice');
+      expect((global.URL as any).createObjectURL).toHaveBeenCalled();
     });
     expect(mockOpenPdfFromString).not.toHaveBeenCalled();
   });

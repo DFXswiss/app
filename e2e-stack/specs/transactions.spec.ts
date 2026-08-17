@@ -173,6 +173,170 @@ test("transaction list does not show another user's transactions", async ({ page
   await expect(page.getByText('No transactions found', { exact: true })).toBeVisible();
 });
 
+// Minimal valid-looking PDF bytes as base64 for the fulfilled invoice PUT body.
+// The suite only needs the frontend to accept { pdfData }; it does not render the PDF.
+const MINIMAL_PDF_B64 = Buffer.from('%PDF-1.1\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF').toString('base64');
+
+test('Open invoice is shown on a completed CHF buy and hidden on pending buy and sell', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-list-invoice-vis',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+
+  await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-inv-vis-done',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 701,
+    inputAsset: 'CHF',
+  });
+  await createTransaction({
+    state: 'pending_buy',
+    tag: 'tx-inv-vis-pend',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 702,
+    inputAsset: 'CHF',
+  });
+  await createTransaction({
+    state: 'pending_sell',
+    tag: 'tx-inv-vis-sell',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 703,
+  });
+
+  await openScreen(page, '/tx', user.jwt);
+
+  const completedRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '701' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  const pendingBuyRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '702' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  const sellRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '703' })
+    .filter({ hasText: 'ETH' })
+    .first();
+
+  // Expand completed buy → Open invoice must be available.
+  await completedRow.click();
+  await expect(page.getByRole('button', { name: 'Open invoice' })).toBeVisible();
+  // Collapse so pending/sell expanded content is the only place a button could appear.
+  await completedRow.click();
+
+  // Pending buy: no Open invoice.
+  await pendingBuyRow.click();
+  await expect(page.getByRole('button', { name: 'Open invoice' })).toHaveCount(0);
+  await pendingBuyRow.click();
+
+  // Sell: no Open invoice.
+  await sellRow.click();
+  await expect(page.getByRole('button', { name: 'Open invoice' })).toHaveCount(0);
+});
+
+test('Open invoice click opens a tab before the invoice PUT returns', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-list-invoice-tab',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-inv-tab',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 711,
+    inputAsset: 'CHF',
+  });
+
+  await openScreen(page, '/tx', user.jwt);
+
+  // Delay the invoice PUT so a post-await window.open would miss the user gesture window.
+  // Old code (open after await) fails this 800ms popup wait against a 2000ms delayed response.
+  await page.route('**/v1/transaction/*/invoice', async (route) => {
+    await new Promise((r) => setTimeout(r, 2000));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ pdfData: MINIMAL_PDF_B64 }),
+    });
+  });
+
+  const buyRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '711' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  await buyRow.click();
+
+  const openInvoice = page.getByRole('button', { name: 'Open invoice' });
+  await expect(openInvoice).toBeVisible();
+
+  const popupPromise = page.waitForEvent('popup', { timeout: 800 });
+  await openInvoice.click();
+  const popup = await popupPromise;
+
+  expect(popup.url()).toMatch(/about:blank|blob:/);
+});
+
+test('Open invoice error closes the reserved tab and shows the API message', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-list-invoice-err',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-inv-err',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 721,
+    inputAsset: 'CHF',
+  });
+
+  await openScreen(page, '/tx', user.jwt);
+
+  await page.route('**/v1/transaction/*/invoice', async (route) => {
+    await route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: 'Missing invoice information' }),
+    });
+  });
+
+  const buyRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '721' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  await buyRow.click();
+
+  const openInvoice = page.getByRole('button', { name: 'Open invoice' });
+  await expect(openInvoice).toBeVisible();
+
+  const popupPromise = page.waitForEvent('popup');
+  await openInvoice.click();
+  const popup = await popupPromise;
+
+  // ErrorHint surfaces the API message (no data-testid on the real component).
+  await expect(page.getByText('Missing invoice information', { exact: true })).toBeVisible();
+  // Reserved tab is closed in the catch path (preview?.close()).
+  await expect.poll(() => popup.isClosed()).toBe(true);
+});
+
 // ---------------------------------------------------------------------------
 // /tx/:id — detail / status view (uid)
 // ---------------------------------------------------------------------------

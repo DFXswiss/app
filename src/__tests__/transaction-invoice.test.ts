@@ -98,14 +98,20 @@ describe('canOpenInvoice', () => {
 
 describe('revealInvoicePdf', () => {
   const pdf = btoa('pdf');
+  const originalCreateObjectURL = (global.URL as any).createObjectURL;
 
   beforeEach(() => {
     mockOpenPdfFromString.mockClear();
-    jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:invoice');
+    (global.URL as any).createObjectURL = jest.fn(() => 'blob:invoice');
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
+    if (originalCreateObjectURL) {
+      (global.URL as any).createObjectURL = originalCreateObjectURL;
+    } else {
+      delete (global.URL as any).createObjectURL;
+    }
   });
 
   it('sets location.href to a blob URL for a live preview window and does not call openPdfFromString', () => {
@@ -118,7 +124,7 @@ describe('revealInvoicePdf', () => {
     revealInvoicePdf(pdf, preview as unknown as Window);
 
     expect(preview.location.href).toBe('blob:invoice');
-    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect((global.URL as any).createObjectURL).toHaveBeenCalled();
     expect(mockOpenPdfFromString).not.toHaveBeenCalled();
   });
 
