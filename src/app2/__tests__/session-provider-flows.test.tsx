@@ -475,7 +475,7 @@ describe('WalletSessionProvider flows', () => {
   });
 
   it('cancels an in-flight WalletConnect pairing when the sheet closes', async () => {
-    let release: () => void = () => undefined;
+    const release: () => void = () => undefined;
     mockConnectWc.mockImplementation(
       () =>
         new Promise(() => {

@@ -620,12 +620,6 @@ describe('SupportScreen', () => {
     jest.useFakeTimers();
     mockSession.isLoggedIn = true;
     mockSession.address = '0x1';
-    const issue = {
-      uid: 't1',
-      type: 'GenericIssue',
-      state: 'Pending',
-      messages: [{ id: 1, message: 'hello', status: 'Sent', author: 'Customer', created: '2026-01-02T10:00:00Z' }],
-    };
     mockSupport.tickets = [
       {
         uid: 't1',
