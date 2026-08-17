@@ -131,5 +131,6 @@ describe('/buy/success without a session', () => {
     expect(mockGetTransactionByCkoId).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /connect wallet|wallet verbinden/i }));
     expect(mockOpenConnect).toHaveBeenCalledTimes(1);
+    expect(mockOpenConnect).toHaveBeenCalledWith();
   });
 });
