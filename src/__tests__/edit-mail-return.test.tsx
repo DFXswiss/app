@@ -158,6 +158,69 @@ describe('EditMailScreen return path', () => {
     expect(sessionStorage.getItem(STORE_KEY)).toBeNull();
   });
 
+  it('clears store and redirectPath when updateMail is a handled merge-401', async () => {
+    sessionStorage.setItem(STORE_KEY, '/support/issue');
+    mockHandleMergedError.mockReturnValue(true);
+    mockUpdateMail.mockRejectedValue({ statusCode: 401, message: 'unauthorized' });
+
+    render(<EditMailScreen />);
+    const save = await screen.findByRole('button', { name: 'Save' });
+
+    await act(async () => {
+      save.click();
+    });
+
+    await waitFor(() => {
+      expect(sessionStorage.getItem(STORE_KEY)).toBeNull();
+    });
+    expect(mockSetRedirectPath).toHaveBeenCalledWith(undefined);
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account');
+  });
+
+  it('clears store and redirectPath when verifyMail is a handled merge-401', async () => {
+    sessionStorage.setItem(STORE_KEY, '/support/issue');
+    mockVerifyMail.mockRejectedValue({ statusCode: 401, message: 'unauthorized' });
+
+    render(<EditMailScreen />);
+    const save = await screen.findByRole('button', { name: 'Save' });
+
+    await act(async () => {
+      save.click();
+    });
+
+    mockHandleMergedError.mockReturnValue(true);
+
+    await act(async () => {
+      (await screen.findByRole('button', { name: 'Next' })).click();
+    });
+
+    await waitFor(() => {
+      expect(sessionStorage.getItem(STORE_KEY)).toBeNull();
+    });
+    expect(mockSetRedirectPath).toHaveBeenCalledWith(undefined);
+  });
+
+  it('navigates to /account after verify when no return path is stored', async () => {
+    mockUpdateMail.mockResolvedValue(undefined);
+    mockVerifyMail.mockResolvedValue(undefined);
+
+    render(<EditMailScreen />);
+    const save = await screen.findByRole('button', { name: 'Save' });
+
+    await act(async () => {
+      save.click();
+    });
+
+    await act(async () => {
+      (await screen.findByRole('button', { name: 'Next' })).click();
+    });
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/account');
+    });
+    expect(sessionStorage.getItem(STORE_KEY)).toBeNull();
+  });
+
   it('clears store and redirectPath on Merge-OK and navigates to /account', async () => {
     sessionStorage.setItem(STORE_KEY, '/support/issue');
     mockUpdateMail.mockRejectedValue({ statusCode: 409, message: 'exists merge' });
