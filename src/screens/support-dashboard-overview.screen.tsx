@@ -6,6 +6,7 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { useSupportDashboardGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { STAFF_NAME_MISSING, staffNameLoadError } from 'src/components/compliance/staff-identity';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { SupportIssueListItem, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 import { formatDateTimeShort } from 'src/util/compliance-helpers';
@@ -43,9 +44,21 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
   useSupportDashboardGuard();
 
   const { translate, locale } = useSettingsContext();
-  const { getIssueList, getIssueStatistics } = useSupportDashboard();
-  const { name: clerk } = useStaffVerifiedName();
+  const { getIssueList, getIssueStatistics, getMyClerk } = useSupportDashboard();
+  const { name: verifiedName, isLoading: isLoadingName, error: nameError } = useStaffVerifiedName();
   const { navigate } = useNavigation();
+  const [mappedClerk, setMappedClerk] = useState<string>();
+  const [mappedLoading, setMappedLoading] = useState(true);
+
+  useEffect(() => {
+    getMyClerk()
+      .then(setMappedClerk)
+      .catch(() => undefined)
+      .finally(() => setMappedLoading(false));
+  }, [getMyClerk]);
+
+  const mineKeys = [verifiedName, mappedClerk].filter((value): value is string => !!value);
+  const mineLoading = isLoadingName || mappedLoading;
 
   const [issues, setIssues] = useState<SupportIssueListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -153,9 +166,9 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
   }, [tab, statsPeriod, loadStats]);
 
   const stats = useMemo(() => {
-    const mine = clerk
+    const mine = mineKeys.length
       ? issues
-          .filter((i) => i.clerk === clerk)
+          .filter((i) => !!i.clerk && mineKeys.includes(i.clerk))
           .sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime())
       : [];
 
@@ -174,7 +187,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
       .sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime());
 
     return { mine, waitingSorted, waitingLongerThan, limitRequests };
-  }, [issues, clerk, now]);
+  }, [issues, verifiedName, mappedClerk, now]);
 
   const waitingList = useMemo(
     () => stats.waitingSorted.filter((x) => x.hours >= waitFilter).map((x) => x.issue),
@@ -238,7 +251,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
                 label={translate('screens/support', 'My tickets')}
                 value={
                   <span title={translate('screens/support', '{{count}} open tickets total', { count: issues.length })}>
-                    {clerk ? stats.mine.length : '–'}
+                    {mineKeys.length ? stats.mine.length : '–'}
                     <span className="text-lg font-semibold text-dfxGray-700 ml-2">/ {issues.length}</span>
                   </span>
                 }
@@ -309,11 +322,17 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
               anchorId="my-tickets"
               title={translate('screens/support', 'My tickets')}
               subtitle={translate('screens/support', 'Tickets assigned to me')}
-              count={clerk ? stats.mine.length : undefined}
+              count={mineKeys.length ? stats.mine.length : undefined}
               accent="neutral"
             >
-              {!clerk ? (
-                <EmptyState text={translate('screens/support', 'Staff identification requires a verified name on this account.')} />
+              {mineLoading ? (
+                <div className="flex justify-center py-6">
+                  <StyledLoadingSpinner size={SpinnerSize.LG} />
+                </div>
+              ) : nameError && !mineKeys.length ? (
+                <EmptyState text={staffNameLoadError(nameError)} />
+              ) : !mineKeys.length ? (
+                <EmptyState text={translate('screens/support', STAFF_NAME_MISSING)} />
               ) : stats.mine.length === 0 ? (
                 <EmptyState text={translate('screens/support', 'No tickets assigned to you')} />
               ) : (
