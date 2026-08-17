@@ -598,7 +598,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         // late response sign in behind the user's back.
         if (!stillCurrent()) {
           await libLogout();
-          return;
+          return false;
         }
         setActiveConnector(creds.connector);
         // Promote a pending WC provider only after a successful session — never while the
@@ -622,8 +622,9 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         });
         setSeenVersion((v) => v + 1);
         showToast(`${t('connected')} · ${shortAddress(creds.address)}`);
+        return true;
       } catch (error) {
-        if (!stillCurrent()) return;
+        if (!stillCurrent()) return false;
         if (needsRecommendation(error)) {
           // Prefill with whatever the user already typed (Landing's invite field, or an earlier
           // attempt on this form) instead of making them retype a code they already entered — but
@@ -639,7 +640,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
             initialCode: priorCodeIsRecommendation ? priorCode : undefined,
           });
           setSheetOpen(true);
-          return;
+          return false;
         }
         if (wasLoggedIn && isUnauthorized(error)) {
           await libLogout();
@@ -648,6 +649,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           showToast(t('signFail'), { assertive: true });
         }
         setView(fallbackView);
+        return false;
       }
     },
     [createSessionNew, language, libLogout, showToast, t, walletParam],
@@ -793,7 +795,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         }
 
         if (!isCurrent()) return;
-        await signInWith(
+        const signedIn = await signInWith(
           {
             address,
             signature,
@@ -805,7 +807,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           undefined,
           isCurrent,
         );
-        if (injectedProvider) injectedProviderRef.current = injectedProvider;
+        if (signedIn && injectedProvider && isCurrent()) injectedProviderRef.current = injectedProvider;
       } catch (error) {
         // The attempt was cancelled — cancelConnectAttempt() already freed busyRef and reset the
         // view; an abandoned attempt's own error handling must not fire a toast for a flow the

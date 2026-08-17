@@ -23,6 +23,7 @@ const mockAuth: { session?: { address?: string; blockchains?: string[] } } = {};
 const mockSessionCtx = { isLoggedIn: false, logout: mockLogout };
 const mockUserAddresses: Array<Record<string, unknown>> = [];
 const mockUserAddr: { list: Array<Record<string, unknown>> | undefined } = { list: mockUserAddresses };
+const mockUserState: { user?: { id: number } } = { user: { id: 1 } };
 const mockCancel = { cancel: jest.fn(), promise: new Promise(() => undefined) };
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -49,6 +50,7 @@ jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => ({ session: mockAuth.session }),
   useSessionContext: () => mockSessionCtx,
   useUserContext: () => ({
+    user: mockUserState.user,
     userAddresses: mockUserAddr.list,
     changeAddress: mockChangeAddress,
     reloadUser: mockReloadUser,
@@ -343,6 +345,7 @@ describe('WalletSessionProvider flows', () => {
     mockAuth.session = undefined;
     mockUserAddresses.length = 0;
     mockUserAddr.list = mockUserAddresses;
+    mockUserState.user = { id: 1 };
     mockLogout.mockResolvedValue(undefined);
     mockCreateSession.mockResolvedValue(jwt());
     mockGetSignMessage.mockResolvedValue(`by_signing_this_message ${address} dfx.swiss`);
@@ -450,6 +453,20 @@ describe('WalletSessionProvider flows', () => {
     mockChangeAddress.mockRejectedValueOnce(new Error('nope'));
     fireEvent.click(screen.getByText('switch'));
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+  });
+
+  it('does not call changeAddress when the user object is missing', async () => {
+    mockUserState.user = undefined;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockSessionCtx.isLoggedIn = true;
+    mockUserAddresses.push(
+      { address, label: 'Here', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: other, label: 'There', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+    );
+    renderSession();
+    fireEvent.click(screen.getByText('switch'));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(mockChangeAddress).not.toHaveBeenCalled();
   });
 
   it('re-authenticates an unlinked remembered wallet', async () => {
