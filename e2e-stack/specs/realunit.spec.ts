@@ -171,10 +171,11 @@ test.describe('RealUnit area', () => {
     },
   );
 
-  // CONFIRMED product bug (live uncaught pageerror): fetchHolders() has no .catch() in
-  // realunit.context.tsx. Observed: ApiException: Cannot read properties of undefined (reading 'document').
-  test.fail(
-    '/realunit/holders empty state — uncaught ApiException from fetchHolders() (no .catch; reading document)',
+  // Empty holders list must render the table chrome (heading, columns, pager)
+  // without an uncaught page error. CI recorded this former test.fail as
+  // "Expected to fail, but passed" on the full-stack run.
+  test(
+    '/realunit/holders empty state — table chrome without uncaught error',
     async ({ page }) => {
       const { jwt } = await loginAs('RealUnit');
       const { pageErrors, consoleErrors } = attachErrorListeners(page);
