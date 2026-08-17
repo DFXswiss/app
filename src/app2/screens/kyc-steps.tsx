@@ -473,17 +473,6 @@ interface PersonalPrefill {
 }
 
 function readPersonalPrefill(): PersonalPrefill {
-  const empty: PersonalPrefill = {
-    accountType: '',
-    firstName: '',
-    lastName: '',
-    street: '',
-    houseNumber: '',
-    zip: '',
-    city: '',
-    phone: '',
-    country: '',
-  };
   const qp = new URLSearchParams(window.location.search);
   const get = (key: string) => qp.get(key)?.trim() ?? '';
   return {
