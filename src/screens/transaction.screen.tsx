@@ -58,12 +58,12 @@ import { useLayoutContext } from 'src/contexts/layout.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import { ErrorHint } from '../components/error-hint';
 import { PaymentFailureReasons, PaymentMethodLabels, toPaymentStateLabel } from '../config/labels';
-import { useAppHandlingContext } from '../contexts/app-handling.context';
 import { useSettingsContext } from '../contexts/settings.context';
 import { useBlockchain } from '../hooks/blockchain.hook';
 import { useUserGuard } from '../hooks/guard.hook';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useNavigation } from '../hooks/navigation.hook';
+import { useTransactionGuest } from '../hooks/transaction-guest.hook';
 import { getStoredPaymentDetailErrorMessage } from '../util/personal-iban';
 import { canOpenInvoice, revealInvoicePdf } from '../util/transaction-invoice';
 import { blankedAddress, formatSwissDateTimeWithSeconds } from '../util/utils';
@@ -91,6 +91,7 @@ export default function TransactionScreen(): JSX.Element {
 
   const isTransaction = id && (id.startsWith('T') || id.startsWith('Q'));
   const isRefund = isTransaction && pathname.includes('/refund');
+  const isAssign = isTransaction && pathname.includes('/assign');
 
   async function exportCsv(type: ExportType) {
     if (!user) return;
@@ -123,21 +124,28 @@ export default function TransactionScreen(): JSX.Element {
 
   const title = isRefund
     ? translate('screens/payment', 'Transaction refund')
-    : isTransaction
-      ? translate('screens/payment', 'Transaction status')
-      : showCoinTracking
-        ? translate('screens/payment', 'Cointracking Link (read rights)')
-        : translate('screens/payment', 'Transactions');
+    : isAssign
+      ? translate('screens/payment', 'Assign transaction')
+      : isTransaction
+        ? translate('screens/payment', 'Transaction status')
+        : showCoinTracking
+          ? translate('screens/payment', 'Cointracking Link (read rights)')
+          : translate('screens/payment', 'Transactions');
 
   const onBack =
-    isTransaction || isRefund || error
+    isAssign || isRefund
       ? () => {
           setError(undefined);
-          navigate('/tx');
+          navigate(`/tx/${id}`);
         }
-      : showCoinTracking
-        ? () => setShowCoinTracking(false)
-        : undefined;
+      : isTransaction || error
+        ? () => {
+            setError(undefined);
+            navigate('/tx');
+          }
+        : showCoinTracking
+          ? () => setShowCoinTracking(false)
+          : undefined;
 
   useLayoutOptions({ title, onBack });
 
@@ -147,6 +155,8 @@ export default function TransactionScreen(): JSX.Element {
         <ErrorHint message={error} />
       ) : isRefund ? (
         <TransactionRefund setError={setError} />
+      ) : isAssign ? (
+        <TransactionAssign setError={setError} />
       ) : isTransaction ? (
         <TransactionStatus setError={setError} />
       ) : showCoinTracking ? (
@@ -211,8 +221,6 @@ function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
   const { translate } = useSettingsContext();
   const { id } = useParams();
   const { getTransactionByUid } = useTransaction();
-  const { isLoggedIn } = useSessionContext();
-  const { setRedirectPath } = useAppHandlingContext();
   const { user } = useUserContext();
 
   const isRealUnit = user?.activeAddress?.wallet?.startsWith('RealUnit') ?? false;
@@ -235,12 +243,7 @@ function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
   }, [id, transaction?.state]);
 
   function handleTransactionNavigation(path: string) {
-    if (isLoggedIn) {
-      navigate(path);
-    } else {
-      setRedirectPath(path);
-      navigate('/login');
-    }
+    navigate(path);
   }
 
   return transaction ? (
@@ -251,7 +254,7 @@ function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
         {transaction.state === TransactionState.UNASSIGNED && (
           <StyledButton
             label={translate('screens/payment', 'Assign transaction')}
-            onClick={() => handleTransactionNavigation(`/tx/${transaction.id}/assign`)}
+            onClick={() => handleTransactionNavigation(`/tx/${transaction.uid}/assign`)}
             width={StyledButtonWidth.FULL}
           />
         )}
@@ -277,7 +280,9 @@ function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
               />
               <StyledButton
                 label={translate('general/actions', 'Create support ticket')}
-                onClick={() => handleTransactionNavigation('/support/issue?issue-type=TransactionIssue')}
+                onClick={() =>
+                  handleTransactionNavigation(`/support/issue?issue-type=TransactionIssue&tx=${transaction.uid}`)
+                }
                 color={StyledButtonColor.STURDY_WHITE}
               />
             </>
@@ -295,6 +300,7 @@ interface RefundDetails extends TransactionRefundData {
 
 interface FormData {
   address: UserAddress;
+  refundAddress: string;
   iban: string;
   creditorName: string;
   creditorStreet: string;
@@ -311,9 +317,10 @@ interface TransactionRefundProps {
 const AddAccount = 'Add bank account';
 
 function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
-  useUserGuard('/login');
-
   const { id } = useParams();
+  const isUid = !!(id && (id.startsWith('T') || id.startsWith('Q')));
+  useUserGuard('/login', !isUid);
+
   const { state } = useLocation();
   const { width } = useWindowContext();
   const { navigate } = useNavigation();
@@ -323,6 +330,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   const { bankAccounts } = useBankAccountContext();
   const { isLoggedIn } = useSessionContext();
   const { getTransactionByUid, getTransactionRefund, setTransactionRefundTarget } = useTransaction();
+  const { getRefund, setRefund } = useTransactionGuest();
   const refetchTimeout = useRef<ReturnType<typeof setTimeout> | undefined>();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -343,33 +351,37 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   const selectedIban = useWatch({ control, name: 'iban' });
 
   useEffect(() => {
-    if (id && !transaction && isLoggedIn) {
+    if (id && !transaction && (isLoggedIn || isUid)) {
       getTransactionByUid(id)
         .then(setTransaction)
         .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
     }
-  }, [id, transaction, isLoggedIn]);
+  }, [id, transaction, isLoggedIn, isUid]);
 
   useEffect(() => {
-    async function fetchRefund(txId: number) {
-      getTransactionRefund(txId)
+    async function fetchRefund() {
+      const request =
+        isLoggedIn && transaction?.id ? getTransactionRefund(transaction.id) : id ? getRefund(id) : undefined;
+      if (!request) return;
+
+      request
         .then((response) => {
           setRefundDetails(response);
-          if (transaction?.id && response.expiryDate) {
+          if (response.expiryDate) {
             const timeout = new Date(response.expiryDate).getTime() - Date.now();
             if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
-            refetchTimeout.current = setTimeout(() => fetchRefund(txId), timeout > 0 ? timeout : 0);
+            refetchTimeout.current = setTimeout(() => fetchRefund(), timeout > 0 ? timeout : 0);
           }
         })
         .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
     }
 
-    if (transaction?.id) fetchRefund(transaction.id);
+    if (transaction && (isLoggedIn ? transaction.id != null : isUid)) fetchRefund();
 
     return () => {
       if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
     };
-  }, [transaction]);
+  }, [transaction, isLoggedIn, isUid, id]);
 
   useEffect(() => {
     if (transaction && user) {
@@ -389,7 +401,8 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   // - iban/creditorName: only required for bank refunds if not already fixed from bankTx
   // - creditorStreet/zip/city/country: only required for bank refunds
   const rules = Utils.createRules({
-    address: !isBuy ? Validations.Required : undefined,
+    address: !isBuy && isLoggedIn ? Validations.Required : undefined,
+    refundAddress: !isBuy && !isLoggedIn && !refundDetails?.refundTarget ? Validations.Required : undefined,
     iban: !isBankRefund || refundDetails?.refundTarget ? undefined : Validations.Required,
     creditorName:
       !isBankRefund || (refundDetails?.bankDetails?.name?.trim() && refundDetails?.refundTarget)
@@ -409,11 +422,13 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
     setLocalError(undefined);
 
     try {
-      const formTarget = isBuy ? (data.iban ?? '') : data.address?.address;
+      const formTarget = isBuy ? (data.iban ?? '') : isLoggedIn ? data.address?.address : data.refundAddress;
 
-      const refundName = !refundDetails?.refundTarget ? data.creditorName : (refundDetails?.bankDetails?.name ?? data.creditorName);
+      const refundName = !refundDetails?.refundTarget
+        ? data.creditorName
+        : (refundDetails?.bankDetails?.name ?? data.creditorName);
 
-      await setTransactionRefundTarget(transactionId, {
+      const payload = {
         refundTarget: !isBuy || (isBankRefund && !refundDetails?.refundTarget) ? formTarget : undefined,
         creditorData: isBankRefund
           ? {
@@ -425,18 +440,21 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
               country: data.creditorCountry?.symbol,
             }
           : undefined,
-      });
-      // Navigate only on success
-      navigate('/tx');
+      };
+
+      if (isLoggedIn) {
+        await setTransactionRefundTarget(transactionId, payload);
+        navigate('/tx');
+      } else if (id) {
+        await setRefund(id, payload);
+        navigate(`/tx/${id}`);
+      }
     } catch (e) {
       const error = e as ApiError;
       if (error.message?.includes('MultiAccountIban')) {
         // Use local error to keep the form visible (setError would replace the entire form)
         setLocalError(
-          translate(
-            'screens/payment',
-            'This IBAN cannot be used for refunds. Please select a personal bank account.',
-          ),
+          translate('screens/payment', 'This IBAN cannot be used for refunds. Please select a personal bank account.'),
         );
       } else {
         setError(error.message ?? 'Unknown error');
@@ -518,11 +536,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
           </StyledDataTableRow>
         )}
       </StyledDataTable>
-      <Form
-        control={control}
-        rules={rules}
-        errors={errors}
-      >
+      <Form control={control} rules={rules} errors={errors}>
         <StyledVerticalStack gap={6} full>
           {!refundDetails.refundTarget && addresses && !isBuy && (
             <StyledDropdown<UserAddress>
@@ -532,6 +546,14 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
               items={addresses}
               labelFunc={(item) => blankedAddress(item.address, { width })}
               descriptionFunc={inputBlockchain ? () => inputBlockchain.toString() : undefined}
+              full
+            />
+          )}
+          {!refundDetails.refundTarget && !isBuy && !isLoggedIn && (
+            <StyledInput
+              name="refundAddress"
+              label={translate('screens/payment', 'Chargeback address')}
+              placeholder={translate('screens/payment', 'Chargeback address')}
               full
             />
           )}
@@ -550,6 +572,15 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
                   descriptionFunc={(item) => bankAccounts.find((b) => b.iban === item)?.label ?? ''}
                   placeholder={translate('general/actions', 'Select') + '...'}
                   forceEnable
+                  full
+                />
+              )}
+              {!refundDetails.refundTarget && !bankAccounts && (
+                <StyledInput
+                  name="iban"
+                  autocomplete="iban"
+                  label={translate('screens/payment', 'Chargeback IBAN')}
+                  placeholder="XX XXXX XXXX XXXX XXXX X"
                   full
                 />
               )}
@@ -630,6 +661,83 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         </StyledVerticalStack>
       </Form>
     </StyledVerticalStack>
+  ) : (
+    <StyledLoadingSpinner size={SpinnerSize.LG} />
+  );
+}
+
+function TransactionAssign({ setError }: TransactionStatusProps): JSX.Element {
+  const { id } = useParams();
+  const { navigate } = useNavigation();
+  const { translate } = useSettingsContext();
+  const { rootRef } = useLayoutContext();
+  const { toString } = useBlockchain();
+  const { width } = useWindowContext();
+  const { getTargets, setTarget } = useTransactionGuest();
+
+  const [targets, setTargets] = useState<TransactionTarget[]>();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    formState: { isValid, errors },
+  } = useForm<{ target: TransactionTarget }>();
+
+  const rules = Utils.createRules({
+    target: Validations.Required,
+  });
+
+  useEffect(() => {
+    if (!id) return;
+
+    getTargets(id)
+      .then((list) => {
+        setTargets(list);
+        if (list.length === 1) setValue('target', list[0]);
+      })
+      .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
+  }, [id]);
+
+  async function onSubmit({ target }: { target: TransactionTarget }) {
+    if (!id) return;
+
+    setIsSubmitting(true);
+    try {
+      await setTarget(id, target.id);
+      navigate(`/tx/${id}`);
+    } catch (error) {
+      setError((error as ApiError).message ?? 'Unknown error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return targets ? (
+    <Form control={control} errors={errors} rules={rules}>
+      <StyledVerticalStack gap={3} full>
+        <p className="text-dfxGray-700">{translate('screens/payment', 'Remittance info')}</p>
+        <StyledDropdown<TransactionTarget>
+          rootRef={rootRef}
+          items={targets}
+          labelFunc={(item) => `${item.bankUsage}`}
+          placeholder={translate('general/actions', 'Select') + '...'}
+          descriptionFunc={(item) =>
+            `${toString(item.asset.blockchain)}/${item.asset.name} ${blankedAddress(item.address, { width })}`
+          }
+          full
+          name="target"
+        />
+        <StyledButton
+          type="submit"
+          isLoading={isSubmitting}
+          disabled={!isValid}
+          label={translate('screens/payment', 'Assign transaction')}
+          onClick={handleSubmit(onSubmit)}
+        />
+      </StyledVerticalStack>
+    </Form>
   ) : (
     <StyledLoadingSpinner size={SpinnerSize.LG} />
   );
@@ -929,10 +1037,9 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                               isLoading={isReceiptLoading === tx.id}
                               color={StyledButtonColor.STURDY_WHITE}
                             />
-                            {documentError &&
-                              (documentError.key === tx.uid || documentError.key === String(tx.id)) && (
-                                <ErrorHint message={documentError.message} />
-                              )}
+                            {documentError && (documentError.key === tx.uid || documentError.key === String(tx.id)) && (
+                              <ErrorHint message={documentError.message} />
+                            )}
                             <StyledButton
                               label={translate(
                                 'general/actions',

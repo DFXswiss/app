@@ -281,8 +281,10 @@ jest.mock('src/contexts/settings.context', () => ({
   }),
 }));
 
+const mockUseUserGuard = jest.fn();
+
 jest.mock('src/hooks/guard.hook', () => ({
-  useUserGuard: () => undefined,
+  useUserGuard: (...args: unknown[]) => mockUseUserGuard(...args),
   useKycLevelGuard: () => undefined,
 }));
 
@@ -1129,5 +1131,33 @@ describe('SupportIssueScreen mail gate', () => {
 
     expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
     expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
+  });
+
+  it('does not redirect logged-in users without mail to /account/mail on the guest/tx path', () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: { mail: undefined, kyc: { level: 50 } }, isUserLoading: false });
+    renderScreen('?tx=T1E448FF200A877DC');
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
+  });
+});
+
+describe('SupportIssueScreen tx query param', () => {
+  beforeEach(() => {
+    mockUseUserGuard.mockReset();
+    mockClearParams.mockReset();
+  });
+
+  it('skips the login guard when tx is present', () => {
+    renderScreen(`?issue-type=${SupportIssueType.TRANSACTION_ISSUE}&tx=T1E448FF200A877DC`);
+
+    expect(mockUseUserGuard).toHaveBeenCalledWith('/login', false);
+  });
+
+  it('keeps the login guard active without a tx or order param', () => {
+    renderScreen(`?issue-type=${SupportIssueType.TRANSACTION_ISSUE}`);
+
+    expect(mockUseUserGuard).toHaveBeenCalledWith('/login', true);
   });
 });
