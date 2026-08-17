@@ -3,6 +3,10 @@
     "title": "DFX App 2.0",
     "description": "App 2.0 preview at /app2/. Visual baselines cover the logged-out home, account, transactions, KYC, limit, support, OpenCryptoPay hub and 404 screens, plus the connect sheet."
   },
+  "app2-session": {
+    "title": "DFX App 2.0 (angemeldet)",
+    "description": "App 2.0 hinter einer Wallet: Kauf, Verkauf, Tausch, angemeldetes Konto, Transaktionen, KYC-Schritte, Limit-Antrag, OpenCryptoPay-Hub und der Apply-Bogen. Aufgenommen gegen eine echte Session des öffentlichen TEST_SEED-Wallets, nicht gegen eine nachgeahmte Schale. Die Händler-Unterseiten (Rechnung, POS, Links, Verlauf, Config) fehlen: dieses Wallet hat kein aktives Merchant-Konto, und ein Load-Fehler ist kein Bild der Seite."
+  },
   "buy-process": {
     "title": "Kaufprozess",
     "description": "Buy-Flow: Seitenladezustand, Betragseingabe, Zahlungsdetails, Collection-/Personal-IBAN-Umschaltung und Bank-Frick-/Yapeal-Provider-Umschaltung für Bestandskunden. Zusätzlich werden der KYC-Fallback auf die bestehende Yapeal-IBAN und der Fehlerfall eines nicht verfügbaren Personal-IBAN-Providers gezeigt."
