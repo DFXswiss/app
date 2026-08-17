@@ -343,7 +343,7 @@ test.describe('Auth area e2e', () => {
     await expect(page.getByText(/Account merge information not found|Invalid link/i)).toBeVisible();
   });
 
-  test('/account-merge?otp=… merges accounts (UI + Postgres)', async ({ page }) => {
+  test('/account-merge?otp=… adds wallet address (UI + Postgres)', async ({ page }) => {
     test.setTimeout(120000);
 
     const mailA = e2eMail('merge-master');
@@ -380,7 +380,7 @@ test.describe('Auth area e2e', () => {
 
     // Confirm merge unauthenticated (OptionalJwtAuthGuard).
     await page.goto(`/account-merge?otp=${encodeURIComponent(mergeRow.code)}`);
-    await expect(page.getByText('Account merged successfully!', { exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText('Wallet address added', { exact: true })).toBeVisible({ timeout: 30000 });
     await expect(page.getByText('You can now access your account.', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'My account' })).toBeVisible();
 
