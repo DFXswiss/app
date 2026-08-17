@@ -21,6 +21,7 @@ const mockSession: {
   activeWallet: { walletId: 'MetaMask' },
 };
 const mockUserState: { user?: Record<string, unknown>; isUserLoading: boolean } = { isUserLoading: false };
+const i18nOverride: { language?: string } = {};
 
 jest.mock('@dfx.swiss/react', () => ({
   KycLevel: { Completed: 50, Sell: 30 },
@@ -40,6 +41,17 @@ jest.mock('react-router-dom', () => ({
 jest.mock('../wallets/session', () => ({
   useWalletSession: () => mockSession,
 }));
+
+jest.mock('../i18n', () => {
+  const actual = jest.requireActual('../i18n') as typeof import('../i18n');
+  return {
+    ...actual,
+    useT: () => {
+      const real = actual.useT();
+      return i18nOverride.language === undefined ? real : { ...real, language: i18nOverride.language };
+    },
+  };
+});
 
 jest.mock('../components/AccountSheets', () => ({
   AccountSheets: ({ open, onClose }: { open: string | null; onClose: () => void }) =>
@@ -77,6 +89,7 @@ describe('AccountScreen', () => {
     mockSession.activeWallet = { walletId: 'MetaMask' };
     mockUserState.user = undefined;
     mockUserState.isUserLoading = false;
+    delete i18nOverride.language;
     mockGetRef.mockResolvedValue({ code: 'AB-CD12-EF34-GH', refCount: 2 });
     mockGetProfile.mockResolvedValue({ firstName: 'Ada', lastName: 'Lovelace' });
     mockLogout.mockResolvedValue(undefined);
@@ -322,5 +335,14 @@ describe('AccountScreen', () => {
       rejectProfile(new Error('late-profile'));
     });
 
+  });
+
+  it('falls back to the raw language code when it is missing from LANGUAGES', async () => {
+    mockSession.isLoggedIn = true;
+    mockUserState.user = { mail: 'ada@example.com', kyc: { level: 50 } };
+    i18nOverride.language = 'xx';
+    renderAccount();
+    await screen.findByText(/ada@example.com/i);
+    expect(screen.getByText('xx')).toBeInTheDocument();
   });
 });

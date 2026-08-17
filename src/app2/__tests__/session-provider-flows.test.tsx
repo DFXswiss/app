@@ -491,6 +491,38 @@ describe('WalletSessionProvider flows', () => {
     await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
   });
 
+  it('monitors accountsChanged and chainChanged on a live WalletConnect session', async () => {
+    const listeners: Record<string, (value?: unknown) => void> = {};
+    const wcProvider = {
+      request: jest.fn().mockResolvedValue([address]),
+      on: jest.fn((event: string, handler: (value?: unknown) => void) => {
+        listeners[event] = handler;
+      }),
+      removeListener: jest.fn(),
+    };
+    const injectedProvider = {
+      request: jest.fn().mockResolvedValue([address]),
+      on: jest.fn(),
+      removeListener: jest.fn(),
+    };
+    mockGetInjected.mockReturnValue(injectedProvider);
+    mockConnectWc.mockImplementation(async (onUri: (uri: string) => void) => {
+      onUri('wc:pair');
+      return { provider: wcProvider, address };
+    });
+    mockSignWc.mockResolvedValue('0xsig');
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    renderSession();
+    fireEvent.click(screen.getByText('pick-wc'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    await waitFor(() => expect(wcProvider.on).toHaveBeenCalled());
+    act(() => {
+      listeners.chainChanged?.();
+    });
+    await waitFor(() => expect(mockLogout).toHaveBeenCalled());
+  });
+
   it('cancels an in-flight WalletConnect pairing when the sheet closes', async () => {
     const release: () => void = () => undefined;
     mockConnectWc.mockImplementation(
