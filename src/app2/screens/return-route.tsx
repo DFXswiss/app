@@ -301,7 +301,7 @@ export default function ReturnRouteScreen() {
         variant: 'warn',
         title: t('ckoNeedLogin'),
         buttons: [
-          { label: t('connect'), onClick: openConnect, primary: true },
+          { label: t('connect'), onClick: () => openConnect(), primary: true },
           { label: t('done'), onClick: goContinue },
         ],
       });

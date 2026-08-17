@@ -466,7 +466,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const { defaultUrl: apiBaseUrl } = useApi();
   // Linked addresses on the active DFX account + seamless address switch (no re-signing). This is
   // the authoritative source of the user's own wallets for the switch-wallet sheet.
-  const { userAddresses, changeAddress, reloadUser } = useUserContext();
+  const { user, userAddresses, changeAddress, reloadUser } = useUserContext();
   const { t, language } = useT();
   const { showToast } = useToast();
 
@@ -677,6 +677,9 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         let signature: string;
         // Cardano's CIP-30 signData yields a COSE key alongside the signature; the API needs both.
         let key: string | undefined;
+        // Bind only after sign-in succeeds. Assigning here leaked the instance onto
+        // cancel / rejected-signature paths, and the monitor then preferred it over WC.
+        let injectedProvider: Eip1193Provider | undefined;
 
         if (entry.connector === 'injected') {
           const provider = resolveInjectedProvider(entry.injected ?? {});
@@ -691,10 +694,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
             return;
           }
           address = await connectInjected(provider);
-          // Remember the exact instance this session authenticates with — the
-          // accountsChanged/chainChanged monitor below must watch this object, not re-resolve
-          // window.ethereum, which can be a different wallet than the one just connected.
-          injectedProviderRef.current = provider;
+          injectedProvider = provider;
           const message = await getSignMessage(address);
           if (!isCurrent()) return;
           if (!authMsgOk(address, message)) {
@@ -805,6 +805,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           undefined,
           isCurrent,
         );
+        if (injectedProvider) injectedProviderRef.current = injectedProvider;
       } catch (error) {
         // The attempt was cancelled — cancelConnectAttempt() already freed busyRef and reset the
         // view; an abandoned attempt's own error handling must not fire a toast for a flow the
@@ -1050,6 +1051,8 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       clearSessionProviderBindings(setActiveConnector, injectedProviderRef, wcProviderRef, pendingWcProviderRef);
       showToast(`${t('switching')} · ${shortAddress(entry.address)}`);
       try {
+        // SDK changeAddress is a silent no-op when user has not loaded (resolves, no token).
+        if (!user) throw new Error('user not loaded');
         // Seamless re-issue for any address linked to the active account (no re-signing).
         await changeAddress(entry.address);
         // Keep the live EIP-1193 binding after a linked switch. Leaving activeConnector
@@ -1087,7 +1090,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         if (catalogEntry) void handleSelectWallet(catalogEntry);
       }
     },
-    [activeConnector, changeAddress, reloadUser, showToast, t, openConnect, handleSelectWallet],
+    [activeConnector, changeAddress, reloadUser, showToast, t, openConnect, handleSelectWallet, user],
   );
 
   // URL-param session bootstrap: ?session=/?token=/?accessToken= logs in
@@ -1140,7 +1143,11 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     // `'other'` has no EVM provider binding — skip monitoring entirely.
     if (activeConnector === 'other') return undefined;
     const provider: Eip1193Provider | undefined =
-      injectedProviderRef.current ?? wcProviderRef.current ?? getInjectedProvider();
+      activeConnector === 'injected'
+        ? injectedProviderRef.current
+        : activeConnector === 'wallet-connect'
+          ? wcProviderRef.current
+          : getInjectedProvider();
     if (!provider?.on || !provider.removeListener) return undefined;
 
     let mounted = true;
