@@ -177,7 +177,7 @@ export default function SupportIssueScreen(): JSX.Element {
   const orderParam = urlParams.get('quote') ?? urlParams.get('order');
   const issueTypeParam = urlParams.get('issue-type');
   const reasonParam = urlParams.get('reason');
-  const txParam = urlParams.get('tx');
+  const [txParam] = useState(() => urlParams.get('tx'));
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
