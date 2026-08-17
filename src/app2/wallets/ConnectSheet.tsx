@@ -283,7 +283,7 @@ function WalletConnectQr({
 
   const copyUri = async () => {
     try {
-      await navigator.clipboard.writeText(uri);
+      await navigator.clipboard.writeText(uri as string);
       showToast(t('copied'));
     } catch {
       showToast(t('copyFail'), { assertive: true });
