@@ -12,7 +12,10 @@
 #
 # Documentation-only PRs (docs/ and *.md) with safe path characters bring up no stack
 # (mode=none); the job still runs and the Playwright step succeeds with a message.
-# API checkout, bootstrap resolution, and harness tsc run only when mode != none.
+# Fork pull requests also take mode=none: they do not receive repository secrets, so
+# E2E_API_CHECKOUT_KEY is empty and Checkout API would fail as "repository not found".
+# The job still runs (no job-level `if:`). API checkout, bootstrap resolution, and
+# harness tsc run only when mode != none.
 # PRs into main, workflow_dispatch, and PRs with the `ci:full` label always run the full
 # suite. A change under e2e-stack/ or to .github/workflows/e2e-stack.yml always forces
 # full (the workflow must not classify itself as none). Every other remaining change
@@ -71,8 +74,21 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE: ${{ github.base_ref }}
+          HAS_API_KEY: ${{ secrets.E2E_API_CHECKOUT_KEY != '' }}
         run: |
           set -euo pipefail
+
+          # Fork PRs never receive repository secrets. Without E2E_API_CHECKOUT_KEY the
+          # next step cannot read the companion API and fails as "repository not found".
+          # Same shape as documentation-only: mode=none, job still runs, check stays
+          # present. Must be first — a change to this file would otherwise force full
+          # and then die on checkout. The probe is the secret, not github.head_ref
+          # (that name is fork-spoofable). workflow_dispatch keeps the secret.
+          if [ "$HAS_API_KEY" != 'true' ]; then
+            echo 'No run: E2E_API_CHECKOUT_KEY is not available (typical of a fork pull request).'
+            echo "mode=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           # Release PRs into main (and any non-develop base) and manual dispatches always
           # run everything: they are the last gate before a release, so no selection there.
