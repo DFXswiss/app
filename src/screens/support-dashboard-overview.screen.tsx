@@ -1,4 +1,4 @@
-import { SupportIssueInternalState, SupportIssueType } from '@dfx.swiss/react';
+import { SupportIssueInternalState, SupportIssueType, useAuthContext } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
@@ -45,17 +45,31 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
 
   const { translate, locale } = useSettingsContext();
   const { getIssueList, getIssueStatistics, getMyClerk } = useSupportDashboard();
+  const { session } = useAuthContext();
   const { name: verifiedName, isLoading: isLoadingName, error: nameError } = useStaffVerifiedName();
   const { navigate } = useNavigation();
   const [mappedClerk, setMappedClerk] = useState<string>();
   const [mappedLoading, setMappedLoading] = useState(true);
+  const account = session?.account;
 
   useEffect(() => {
+    let cancelled = false;
+    setMappedClerk(undefined);
+    setMappedLoading(true);
     getMyClerk()
-      .then(setMappedClerk)
-      .catch(() => undefined)
-      .finally(() => setMappedLoading(false));
-  }, [getMyClerk]);
+      .then((clerk) => {
+        if (!cancelled) setMappedClerk(clerk);
+      })
+      .catch(() => {
+        if (!cancelled) setMappedClerk(undefined);
+      })
+      .finally(() => {
+        if (!cancelled) setMappedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getMyClerk, account]);
 
   const mineKeys = [verifiedName, mappedClerk].filter((value): value is string => !!value);
   const mineLoading = isLoadingName || mappedLoading;
