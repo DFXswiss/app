@@ -312,8 +312,6 @@ interface TransactionRefundProps {
 
 function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   const { id } = useParams();
-  const isUid = !!(id && (id.startsWith('T') || id.startsWith('Q')));
-  useUserGuard('/login', !isUid);
 
   const { state } = useLocation();
   const { navigate } = useNavigation();
@@ -337,12 +335,12 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   } = useForm<FormData>({ mode: 'onTouched', defaultValues: { iban: state?.newIban } });
 
   useEffect(() => {
-    if (id && !transaction && isUid) {
+    if (id && !transaction) {
       getTransactionByUid(id)
         .then(setTransaction)
         .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
     }
-  }, [id, transaction, isUid]);
+  }, [id, transaction]);
 
   useEffect(() => {
     async function fetchRefund() {
@@ -360,12 +358,12 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
     }
 
-    if (transaction && isUid) fetchRefund();
+    if (transaction && id) fetchRefund();
 
     return () => {
       if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
     };
-  }, [transaction, isUid, id]);
+  }, [transaction, id]);
 
   // Bank refund = BUY transaction with non-card payment method
   const isBankRefund = isBuy && transaction?.inputPaymentMethod !== FiatPaymentMethod.CARD;
@@ -430,7 +428,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
     }
   }
 
-  return refundDetails && transaction && isUid ? (
+  return refundDetails && transaction ? (
     <StyledVerticalStack gap={6} full>
       <StyledDataTable alignContent={AlignContent.RIGHT} showBorder minWidth={false}>
         <StyledDataTableRow label={translate('screens/payment', 'Transaction amount')}>

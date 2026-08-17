@@ -559,6 +559,55 @@ test('assign route opens list with unassigned row and assigns to single buy targ
     .toEqual({ bankTxType: 'BuyCrypto', buyCryptoBuyId: buy.buyId });
 });
 
+test('public uid assign route opens the guest assign form and assigns to the single buy target', async ({
+  page,
+}) => {
+  const user = await createUser({
+    tag: 'tx-assign-uid',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  const ba = await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Assign UID IBAN' });
+  const baRow = await queryOne<{ iban: string }>('SELECT iban FROM bank_data WHERE id = $1', [ba.bankAccountId]);
+  const buy = await createBuy(user.jwt);
+  const unassigned = await createTransaction({
+    state: 'bank_tx_only',
+    tag: 'tx-assign-uid',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    amount: 445,
+  });
+  await queryRows(
+    `UPDATE bank_tx SET "senderAccount" = $1, "txAmount" = $2, "txCurrency" = 'CHF', type = 'Unknown'
+     WHERE id = $3`,
+    [required(baRow, 'created bank_data row must exist').iban, 445, unassigned.bankTxId],
+  );
+
+  await openScreen(page, `/tx/${unassigned.uid}/assign`, user.jwt);
+
+  await expect(page.getByRole('heading', { name: 'Assign transaction', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your Transactions', exact: true })).not.toBeVisible();
+
+  const assignBtn = page.getByRole('button', { name: 'Assign transaction' });
+  await expect(assignBtn).toBeVisible();
+  await assignBtn.click();
+
+  await expect(page).toHaveURL(new RegExp(`/tx/${unassigned.uid}$`));
+
+  await expect
+    .poll(async () => {
+      const bankTxRow = await queryOne<{ type: string }>(`SELECT type FROM bank_tx WHERE id = $1`, [
+        unassigned.bankTxId,
+      ]);
+      const buyCryptoRow = await queryOne<{ id: number; buyId: number | null }>(
+        `SELECT id, "buyId" FROM buy_crypto WHERE "bankTxId" = $1`,
+        [unassigned.bankTxId],
+      );
+      return { bankTxType: bankTxRow?.type ?? null, buyCryptoBuyId: buyCryptoRow?.buyId ?? null };
+    })
+    .toEqual({ bankTxType: 'BuyCrypto', buyCryptoBuyId: buy.buyId });
+});
+
 test("assign route for another user's unassigned tx leaves list empty of that row and DB unchanged", async ({
   page,
 }) => {
