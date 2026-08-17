@@ -8,41 +8,63 @@ async function openApp2(page: import('@playwright/test').Page, hash: string): Pr
   const response = await page.goto(`/app2/${hash}`, { waitUntil: 'domcontentloaded' });
   expect(response, `/app2/${hash} must be served`).toBeTruthy();
   expect(response?.ok(), `/app2/${hash} status ${response?.status()}`).toBe(true);
-  expect(await page.title()).toBe('DFX — Buy crypto directly into your wallet');
   await page.waitForLoadState('networkidle');
+  // Artifact-only marker from scripts/postprocess-app2.js — the main app's public/index.html
+  // has no robots meta. Title + #root content prove the React shell mounted (Shell sets 'DFX').
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow');
+  await expect(page).toHaveTitle('DFX');
+  await expect(page.locator('#root')).not.toBeEmpty();
 }
 
 test.describe('App2 preview screens', () => {
   test('home / landing', async ({ page }) => {
     await openApp2(page, '#/');
+    await expect(page.getByRole('heading', { name: /buy crypto/i })).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-home.png', { maxDiffPixels: 2000, fullPage: true });
   });
 
   test('account (logged out)', async ({ page }) => {
     await openApp2(page, '#/account');
+    await expect(page.getByRole('heading', { name: /my account|mein konto|il mio conto|mon compte/i })).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-account.png', { maxDiffPixels: 2000, fullPage: true });
   });
 
   test('transactions (logged out)', async ({ page }) => {
     await openApp2(page, '#/tx');
+    await expect(page.getByRole('heading', { name: /transactions|transaktionen|transazioni/i })).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-transactions.png', { maxDiffPixels: 2000, fullPage: true });
   });
 
   test('kyc (logged out)', async ({ page }) => {
     await openApp2(page, '#/kyc');
+    await expect(page.getByRole('heading', { name: /verification|verifizierung|verifica/i })).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-kyc.png', { maxDiffPixels: 2000, fullPage: true });
   });
 
   test('limit (logged out)', async ({ page }) => {
     await openApp2(page, '#/limit');
+    await expect(page.getByRole('heading', { name: /limit/i })).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-limit.png', { maxDiffPixels: 2000, fullPage: true });
   });
 
   test('support (logged out)', async ({ page }) => {
     await openApp2(page, '#/support');
+    await expect(page.getByRole('heading', { name: /support|supporto/i })).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-support.png', { maxDiffPixels: 2000, fullPage: true });
   });
 
   test('OpenCryptoPay hub (logged out)', async ({ page }) => {
     await openApp2(page, '#/ocp');
+    await expect(page.getByRole('heading', { name: /opencryptopay/i })).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-ocp.png', { maxDiffPixels: 2000, fullPage: true });
   });
 
   test('404', async ({ page }) => {
     await openApp2(page, '#/missing-route');
+    await expect(
+      page.getByRole('heading', { name: /page not found|seite nicht gefunden|pagina non trovata|page introuvable/i }),
+    ).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-404.png', { maxDiffPixels: 2000, fullPage: true });
   });
 
   test('connect sheet', async ({ page }) => {
