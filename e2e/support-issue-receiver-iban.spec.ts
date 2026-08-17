@@ -111,7 +111,7 @@ async function installReceiveIbanRoutes(
 
     await route.fulfill({
       response,
-      json: { ...user, kyc: { ...user.kyc, level: GUARD_KYC_LEVEL } },
+      json: { ...user, kyc: { ...user.kyc, level: GUARD_KYC_LEVEL }, mail: user.mail || 'visual-e2e@example.com' },
     });
   });
 }

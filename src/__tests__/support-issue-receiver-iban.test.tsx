@@ -361,7 +361,7 @@ function renderScreen(search = MISSING_PATH) {
   const router = createMemoryRouter([{ path: '/support/issue', element: <SupportIssueScreen /> }], {
     initialEntries: [`/support/issue${search}`],
   });
-  return render(<RouterProvider router={router} />);
+  return { ...render(<RouterProvider router={router} />), router };
 }
 
 /**
@@ -1110,6 +1110,22 @@ describe('SupportIssueScreen mail gate', () => {
     mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
     mockUseUserContext.mockReturnValue({ user: { mail: undefined, kyc: { level: 50 } }, isUserLoading: false });
     renderScreen('?quote=Qtest');
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
+  });
+
+  it('keeps the quote-path latch after the URL quote param is cleared on the same instance', async () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: { mail: undefined, kyc: { level: 50 } }, isUserLoading: false });
+    const { router } = renderScreen('?quote=Qtest');
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
+
+    await act(async () => {
+      await router.navigate('/support/issue');
+    });
 
     expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
     expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
