@@ -22,7 +22,7 @@ describe('readFileAsBase64', () => {
     const Original = FileReader;
     class MockReader {
       result: string | null = null;
-      error: null = null;
+      error = null;
       onload: (() => void) | null = null;
       onerror: (() => void) | null = null;
       readAsDataURL() {
