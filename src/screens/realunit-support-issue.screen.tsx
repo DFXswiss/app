@@ -360,6 +360,9 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
               ))}
             </div>
           )}
+          {!isLoadingAuthor && !messageAuthor && (
+            <ErrorHint message={authorError ? staffNameLoadError(authorError) : STAFF_NAME_MISSING} />
+          )}
           <div className="flex gap-2 items-start">
             <input
               type="file"
@@ -391,9 +394,6 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
             <span className="px-2 py-2 text-xs text-dfxBlue-800 whitespace-nowrap" title="Author">
               {isLoadingAuthor ? '…' : (messageAuthor ?? '—')}
             </span>
-            {!isLoadingAuthor && !messageAuthor && (
-              <ErrorHint message={authorError ? staffNameLoadError(authorError) : STAFF_NAME_MISSING} />
-            )}
             <button
               className="px-4 py-2 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
               onClick={() => handleSendMessage()}
