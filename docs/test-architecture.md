@@ -116,6 +116,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `CollectionAccountInvoicePersonalIbanMissing` error token, so a green run proves that the screen
   displays that token, not that the API emits it for this request. A unit test against the message
   mapping pins the token contract instead.
+- **The compliance-review KYC-status spec answers staff identity itself.**
+  `e2e/compliance-review-kyc-status.spec.ts` fulfils `GET /v1/support/{id}` for any account other
+  than the customer fixture with `{ userData: { verifiedName } }`. A green run proves that the
+  review screen consumes that name, not that the API returns the logged-in staff member's
+  `verifiedName`.
 
 ## Known gaps
 

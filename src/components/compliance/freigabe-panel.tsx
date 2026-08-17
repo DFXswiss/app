@@ -303,12 +303,7 @@ export function ComplianceReviewFreigabePanel({
   const [reasonSeatingCompany, setReasonSeatingCompany] = useState('');
   const [businessActivities, setBusinessActivities] = useState('');
   const [finalDecision, setFinalDecision] = useState<DecisionValue>('');
-  const { name: processedByName, isLoading: isLoadingClerk } = useStaffVerifiedName();
-  const [processedBy, setProcessedBy] = useState('');
-
-  useEffect(() => {
-    if (processedByName) setProcessedBy(processedByName);
-  }, [processedByName]);
+  const { name: processedBy, isLoading: isLoadingClerk } = useStaffVerifiedName();
 
   // Load saved state from result.complianceReview and result text fields
   useEffect(() => {
@@ -360,7 +355,7 @@ export function ComplianceReviewFreigabePanel({
   const operationalActivityResult = parseResult(operationalActivityStep);
 
   async function handleSave(): Promise<void> {
-    if (!step || !finalDecision) return;
+    if (!step || !finalDecision || !processedBy) return;
 
     const status = finalDecision === 'Akzeptiert' ? 'Completed' : 'Failed';
 
