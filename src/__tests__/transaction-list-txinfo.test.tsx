@@ -426,7 +426,7 @@ jest.mock('../hooks/transaction-guest.hook', () => ({
   useTransactionGuest: () => ({
     getTargets: jest.fn(),
     setTarget: jest.fn(),
-    getRefund: jest.fn(),
+    getRefund: mockGetTransactionRefund,
     setRefund: jest.fn(),
   }),
 }));
