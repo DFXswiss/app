@@ -930,6 +930,7 @@
     "No tickets waiting this long": "Keine Tickets in diesem Wartebereich",
     "Your account is not linked to a support clerk": "Dein Account ist keinem Bearbeiter zugeordnet",
     "Staff identification requires a verified name on this account.": "Für die Mitarbeiteridentifikation braucht dieses Konto einen Verified Name.",
+    "Could not load your verified name: {{error}}": "Verified Name konnte nicht geladen werden: {{error}}",
     "No tickets assigned to you": "Keine dir zugeordneten Tickets",
     "Support": "Support",
     "Support tickets": "Support-Tickets",

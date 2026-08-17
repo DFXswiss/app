@@ -6,7 +6,7 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { useSupportDashboardGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
-import { STAFF_NAME_MISSING, staffNameLoadError } from 'src/components/compliance/staff-identity';
+import { STAFF_NAME_MISSING } from 'src/components/compliance/staff-identity';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { SupportIssueListItem, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 import { formatDateTimeShort } from 'src/util/compliance-helpers';
@@ -344,7 +344,11 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
                   <StyledLoadingSpinner size={SpinnerSize.LG} />
                 </div>
               ) : nameError && !mineKeys.length ? (
-                <EmptyState text={staffNameLoadError(nameError)} />
+                <EmptyState
+                  text={translate('screens/support', 'Could not load your verified name: {{error}}', {
+                    error: nameError,
+                  })}
+                />
               ) : !mineKeys.length ? (
                 <EmptyState text={translate('screens/support', STAFF_NAME_MISSING)} />
               ) : stats.mine.length === 0 ? (
