@@ -413,7 +413,7 @@ jest.mock('../util/utils', () => ({
 jest.mock('copy-to-clipboard', () => jest.fn());
 
 import { Utils } from '@dfx.swiss/react';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import TransactionScreen from '../screens/transaction.screen';
 
