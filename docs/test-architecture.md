@@ -126,6 +126,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `/v1/transaction/:id/receipt` with a static PDF body or a `400` with a fixed message, so a green
   run proves that the click reserves a tab and surfaces the error, not that the API can build an
   invoice or receipt from SQL-seeded `buy_crypto`.
+- **The compliance-review KYC-status spec answers staff identity itself.**
+  `e2e/compliance-review-kyc-status.spec.ts` fulfils `GET /v1/support/issue/clerk` with
+  `{ clerk }` and, as fallback, `GET /v1/support/{id}` for any account other than the customer
+  fixture with `{ userData: { verifiedName } }`. A green run proves that the review screen
+  accepts that name, not that the API returns the logged-in staff member's `verifiedName`.
+  The spec stays on the AML reset path and does not assert the Editor label.
 
 ## Known gaps
 

@@ -1,4 +1,9 @@
 // jest.mock factories may only reference variables whose name starts with `mock`.
+const mockStaffName: { name?: string; isLoading: boolean; error?: string } = {
+  name: 'JR',
+  isLoading: false,
+};
+
 const mockDecideLimitRequest = jest.fn();
 const mockFileLimitRequestNote = jest.fn();
 const mockToBase64 = jest.fn();
@@ -29,7 +34,7 @@ jest.mock('src/contexts/settings.context', () => ({
 }));
 
 jest.mock('src/hooks/staff-verified-name.hook', () => ({
-  useStaffVerifiedName: () => ({ name: 'JR', isLoading: false }),
+  useStaffVerifiedName: () => mockStaffName,
 }));
 
 jest.mock('src/components/error-hint', () => {
@@ -84,6 +89,9 @@ async function clickSave() {
 
 describe('LimitRequestDecisionForm', () => {
   beforeEach(() => {
+    mockStaffName.name = 'JR';
+    mockStaffName.isLoading = false;
+    mockStaffName.error = undefined;
     jest.clearAllMocks();
     mockDecideLimitRequest.mockResolvedValue({ success: true, completedSteps: [] });
     mockFileLimitRequestNote.mockResolvedValue({ success: true, completedSteps: ['log'] });
@@ -466,6 +474,13 @@ describe('LimitRequestDecisionForm', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save file note' }));
     });
     expect(mockDecideLimitRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables save while the verified name is missing', () => {
+    mockStaffName.name = undefined;
+    renderForm();
+    selectDecision('Rejected');
+    expect(saveButton()).toBeDisabled();
   });
 
   it('signs the decision with the loaded verified name and has no clerk select', async () => {

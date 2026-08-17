@@ -133,6 +133,15 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
     renderForm();
 
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Outcome' })).toBeDisabled();
+  });
+
+  it('disables save when the verified name is missing', () => {
+    mockStaffName.name = undefined;
+
+    renderForm();
+
+    expect(screen.getByRole('button', { name: 'Save Outcome' })).toBeDisabled();
   });
 
   it('saves the loaded verified name as the signature', async () => {

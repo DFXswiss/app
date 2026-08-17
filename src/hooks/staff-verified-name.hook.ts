@@ -17,20 +17,15 @@ export function useStaffVerifiedName(): { name?: string; isLoading: boolean; err
   const { session } = useAuthContext();
   const { getUserData } = useCompliance();
   const account = session?.account;
-  const [name, setName] = useState<string>();
-  const [isLoading, setIsLoading] = useState(account != null);
-  const [error, setError] = useState<string>();
+  const [resolved, setResolved] = useState<{ account: number; name?: string; error?: string }>();
 
   useEffect(() => {
     if (account == null) {
-      setName(undefined);
-      setIsLoading(false);
-      setError(undefined);
+      setResolved(undefined);
       return;
     }
 
     let cancelled = false;
-    setIsLoading(true);
 
     let pending = cache.get(account);
     if (!pending) {
@@ -44,20 +39,17 @@ export function useStaffVerifiedName(): { name?: string; isLoading: boolean; err
     }
 
     pending
-      .then((resolved) => {
-        if (!cancelled) {
-          setName(resolved);
-          setError(undefined);
-        }
+      .then((name) => {
+        if (!cancelled) setResolved({ account, name });
       })
       .catch((e: unknown) => {
         if (!cancelled) {
-          setName(undefined);
-          setError(e instanceof Error && e.message ? e.message : 'Unknown error');
+          setResolved({
+            account,
+            name: undefined,
+            error: e instanceof Error && e.message ? e.message : 'Unknown error',
+          });
         }
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
       });
 
     return () => {
@@ -65,5 +57,7 @@ export function useStaffVerifiedName(): { name?: string; isLoading: boolean; err
     };
   }, [account]);
 
-  return { name, isLoading, error };
+  if (account == null) return { name: undefined, isLoading: false, error: undefined };
+  if (!resolved || resolved.account !== account) return { name: undefined, isLoading: true, error: undefined };
+  return { name: resolved.name, isLoading: false, error: resolved.error };
 }

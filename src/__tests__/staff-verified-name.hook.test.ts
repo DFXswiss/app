@@ -107,6 +107,24 @@ describe('useStaffVerifiedName', () => {
     expect(second.result.current.name).toBe('Ada Lovelace');
   });
 
+  it('does not keep the previous name while another account is loading', async () => {
+    mockGetUserData.mockImplementation((id: number) =>
+      Promise.resolve({ userData: { verifiedName: id === 42 ? 'Ada Lovelace' : 'Grace Hopper' } }),
+    );
+
+    const { result, rerender } = renderHook(() => useStaffVerifiedName());
+    await waitFor(() => expect(result.current.name).toBe('Ada Lovelace'));
+
+    mockAuth.session = { account: 7 };
+    rerender();
+
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.name).toBeUndefined();
+
+    await waitFor(() => expect(result.current.name).toBe('Grace Hopper'));
+    expect(result.current.isLoading).toBe(false);
+  });
+
   it('ignores a resolved request after unmounting', async () => {
     let resolveRequest!: (value: { userData: { verifiedName: string } }) => void;
     const request = new Promise<{ userData: { verifiedName: string } }>((resolve) => {
