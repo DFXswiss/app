@@ -145,7 +145,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   async function handleSendMessage(): Promise<void> {
     if (!id || (!messageText.trim() && selectedFiles.length === 0)) return;
     if (!messageAuthor) {
-      setActionError('Staff identification requires a verified name on this account.');
+      setActionError(authorError ? staffNameLoadError(authorError) : STAFF_NAME_MISSING);
       return;
     }
     setIsSending(true);

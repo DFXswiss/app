@@ -203,7 +203,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       return;
     }
     if (!messageAuthor) {
-      setActionError('Staff identification requires a verified name on this account.');
+      setActionError(authorError ? staffNameLoadError(authorError) : STAFF_NAME_MISSING);
       return;
     }
     setIsSending(true);
