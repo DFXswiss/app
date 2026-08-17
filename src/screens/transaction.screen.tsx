@@ -339,6 +339,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   const [localError, setLocalError] = useState<string>();
 
   const isBuy = transaction?.type === TransactionType.BUY;
+  const useGuestRefund = isUid || !isLoggedIn;
 
   const {
     control,
@@ -359,8 +360,11 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
 
   useEffect(() => {
     async function fetchRefund() {
-      const request =
-        isLoggedIn && transaction?.id ? getTransactionRefund(transaction.id) : id ? getRefund(id) : undefined;
+      const request = useGuestRefund && id
+        ? getRefund(id)
+        : transaction?.id
+          ? getTransactionRefund(transaction.id)
+          : undefined;
       if (!request) return;
 
       request
@@ -375,7 +379,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
     }
 
-    if (transaction && (isLoggedIn ? transaction.id != null : isUid)) fetchRefund();
+    if (transaction && (useGuestRefund ? isUid : transaction.id != null)) fetchRefund();
 
     return () => {
       if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
@@ -400,8 +404,8 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   // - iban/creditorName: only required for bank refunds if not already fixed from bankTx
   // - creditorStreet/zip/city/country: only required for bank refunds
   const rules = Utils.createRules({
-    address: !isBuy && isLoggedIn ? Validations.Required : undefined,
-    refundAddress: !isBuy && !isLoggedIn && !refundDetails?.refundTarget ? Validations.Required : undefined,
+    address: !isBuy && !useGuestRefund ? Validations.Required : undefined,
+    refundAddress: !isBuy && useGuestRefund && !refundDetails?.refundTarget ? Validations.Required : undefined,
     iban: !isBankRefund || refundDetails?.refundTarget ? undefined : Validations.Required,
     creditorName:
       !isBankRefund || (refundDetails?.bankDetails?.name?.trim() && refundDetails?.refundTarget)
@@ -421,7 +425,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
     setLocalError(undefined);
 
     try {
-      const formTarget = isBuy ? (data.iban ?? '') : isLoggedIn ? data.address?.address : data.refundAddress;
+      const formTarget = isBuy ? (data.iban ?? '') : useGuestRefund ? data.refundAddress : data.address?.address;
 
       const refundName = !refundDetails?.refundTarget
         ? data.creditorName
@@ -441,12 +445,12 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
           : undefined,
       };
 
-      if (isLoggedIn && submittedId != null) {
-        await setTransactionRefundTarget(submittedId, payload);
-        navigate('/tx');
-      } else if (id) {
+      if (useGuestRefund && id) {
         await setRefund(id, payload);
         navigate(`/tx/${id}`);
+      } else if (submittedId != null) {
+        await setTransactionRefundTarget(submittedId, payload);
+        navigate('/tx');
       }
     } catch (e) {
       const error = e as ApiError;
@@ -471,7 +475,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         'The bank account has been added, all transactions from this IBAN will now be associated with your account.',
       )}
     />
-  ) : refundDetails && transaction && (isLoggedIn ? transactionId != null : isUid) ? (
+  ) : refundDetails && transaction && (useGuestRefund ? isUid : transactionId != null) ? (
     <StyledVerticalStack gap={6} full>
       <StyledDataTable alignContent={AlignContent.RIGHT} showBorder minWidth={false}>
         <StyledDataTableRow label={translate('screens/payment', 'Transaction amount')}>
@@ -537,7 +541,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
       </StyledDataTable>
       <Form control={control} rules={rules} errors={errors}>
         <StyledVerticalStack gap={6} full>
-          {!refundDetails.refundTarget && isLoggedIn && addresses && !isBuy && (
+          {!refundDetails.refundTarget && !useGuestRefund && addresses && !isBuy && (
             <StyledDropdown<UserAddress>
               name="address"
               rootRef={rootRef}
@@ -548,7 +552,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
               full
             />
           )}
-          {!refundDetails.refundTarget && !isBuy && !isLoggedIn && (
+          {!refundDetails.refundTarget && !isBuy && useGuestRefund && (
             <StyledInput
               name="refundAddress"
               label={translate('screens/payment', 'Chargeback address')}
@@ -559,7 +563,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
           {transaction.inputPaymentMethod !== FiatPaymentMethod.CARD && isBuy && (
             <>
               {/* IBAN selection only when no fixed refundTarget */}
-              {!refundDetails.refundTarget && isLoggedIn && bankAccounts && (
+              {!refundDetails.refundTarget && !useGuestRefund && bankAccounts && (
                 <StyledDropdown<string>
                   rootRef={rootRef}
                   name="iban"
@@ -574,7 +578,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
                   full
                 />
               )}
-              {!refundDetails.refundTarget && !(isLoggedIn && bankAccounts) && (
+              {!refundDetails.refundTarget && (useGuestRefund || !bankAccounts) && (
                 <StyledInput
                   name="iban"
                   autocomplete="iban"

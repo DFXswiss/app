@@ -13,6 +13,8 @@ const mockCreateSupportIssue = jest.fn();
 const mockNavigate = jest.fn();
 const mockClearParams = jest.fn();
 const mockTranslate = jest.fn((_ns: string, key: string) => key);
+const mockLogout = jest.fn();
+let mockSupportIsLoggedIn = false;
 
 jest.mock('@dfx.swiss/react', () => {
   const SupportIssueType = {
@@ -102,7 +104,7 @@ jest.mock('@dfx.swiss/react', () => {
     Validations,
     useBank: () => ({ checkReceiveIban: mockCheckReceiveIban }),
     useBankAccountContext: () => ({ bankAccounts: undefined }),
-    useSessionContext: () => ({ isLoggedIn: false, logout: jest.fn() }),
+    useSessionContext: () => ({ isLoggedIn: mockSupportIsLoggedIn, logout: mockLogout }),
     useSupportChatContext: () => ({
       createSupportIssue: mockCreateSupportIssue,
       loadSupportIssue: jest.fn(),
@@ -443,6 +445,7 @@ describe('SupportIssueScreen receiver IBAN check', () => {
     mockCheckReceiveIban.mockReset();
     mockCreateSupportIssue.mockReset();
     mockCreateSupportIssue.mockResolvedValue('issue-uid-1');
+    mockSupportIsLoggedIn = false;
   });
 
   afterEach(async () => {
@@ -1032,5 +1035,12 @@ describe('SupportIssueScreen tx query param', () => {
     renderScreen(`?issue-type=${SupportIssueType.TRANSACTION_ISSUE}`);
 
     expect(mockUseUserGuard).toHaveBeenCalledWith('/login', true);
+  });
+
+  it('logs out a logged-in session when tx is present', () => {
+    mockSupportIsLoggedIn = true;
+    renderScreen(`?issue-type=${SupportIssueType.TRANSACTION_ISSUE}&tx=T1E448FF200A877DC`);
+
+    expect(mockLogout).toHaveBeenCalled();
   });
 });
