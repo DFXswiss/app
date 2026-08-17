@@ -15,7 +15,6 @@ import { BankDataReviewPanel } from 'src/components/compliance/bank-data-panel';
 import { AmlCheckPendingPanel, AmlCheckUpdate } from 'src/components/compliance/aml-check-panel';
 import { IdentPanel } from 'src/components/compliance/ident-panel';
 import { ErrorHint } from 'src/components/error-hint';
-import { useCallQueueClerks } from 'src/hooks/call-queue-clerks.hook';
 import { ComplianceUserData, KycFile, KycStepInfo, TransactionInfo, useCompliance } from 'src/hooks/compliance.hook';
 import { useComplianceGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
@@ -54,7 +53,6 @@ export default function ComplianceReviewScreen(): JSX.Element {
     createKycLog,
   } = useCompliance();
   const { getFile } = useKyc();
-  const { clerks } = useCallQueueClerks();
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -560,18 +558,16 @@ export default function ComplianceReviewScreen(): JSX.Element {
           ) : effectiveTab === 'stammdaten' ? (
             <StammdatenPanel
               data={data}
-              clerks={clerks}
               onOpenFile={openFile}
               onSave={handleSave}
               isSaving={isSaving}
             />
           ) : effectiveTab === 'ident' ? (
-            <IdentPanel data={data} clerks={clerks} onOpenFile={openFile} onSave={handleSave} isSaving={isSaving} />
+            <IdentPanel data={data} onOpenFile={openFile} onSave={handleSave} isSaving={isSaving} />
           ) : effectiveTab === 'bankDataReview' ? (
             <BankDataReviewPanel
               bankDatas={data.bankDatas}
               userData={data.userData}
-              clerks={clerks}
               onApprove={handleBankDataApprove}
               onReject={handleBankDataReject}
               isSaving={isSaving}
@@ -579,7 +575,6 @@ export default function ComplianceReviewScreen(): JSX.Element {
           ) : effectiveTab === 'amlPending' ? (
             <AmlCheckPendingPanel
               data={data}
-              clerks={clerks}
               isSaving={isSaving}
               onUpdate={handleAmlUpdate}
               onReset={handleAmlReset}
@@ -596,7 +591,6 @@ export default function ComplianceReviewScreen(): JSX.Element {
               rejectionReasons={activeConfig.rejectionReasons}
               userData={data.userData}
               kycSteps={data.kycSteps}
-              clerks={clerks}
               onOpenFile={openFile}
               onSave={handleSave}
               isSaving={isSaving}

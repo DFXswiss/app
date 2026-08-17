@@ -22,6 +22,19 @@ jest.mock('src/hooks/navigation.hook', () => ({
   useNavigation: () => ({ navigate: jest.fn() }),
 }));
 
+jest.mock('src/hooks/staff-verified-name.hook', () => ({
+  useStaffVerifiedName: () => ({ name: 'Alice', isLoading: false }),
+}));
+
+jest.mock('src/components/error-hint', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const React = require('react');
+  return {
+    ErrorHint: ({ message }: { message: string }) =>
+      React.createElement('div', { 'data-testid': 'error-hint' }, message),
+  };
+});
+
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AmlCheckPendingPanel } from 'src/components/compliance/aml-check-panel';
 import { ComplianceUserData, TransactionInfo } from 'src/hooks/compliance.hook';
@@ -85,7 +98,6 @@ describe('AmlCheckPendingPanel AML reset', () => {
     render(
       <AmlCheckPendingPanel
         data={data}
-        clerks={['Alice']}
         isSaving={false}
         onUpdate={jest.fn()}
         onReset={jest.fn()}
@@ -111,7 +123,6 @@ describe('AmlCheckPendingPanel AML reset', () => {
     render(
       <AmlCheckPendingPanel
         data={data}
-        clerks={['Alice']}
         isSaving={false}
         onUpdate={jest.fn()}
         onReset={jest.fn()}
@@ -128,7 +139,6 @@ describe('AmlCheckPendingPanel AML reset', () => {
     render(
       <AmlCheckPendingPanel
         data={{ ...data, userData: { ...data.userData, kycStatus: 'Completed' } } as ComplianceUserData}
-        clerks={['Alice']}
         isSaving={false}
         onUpdate={jest.fn()}
         onReset={jest.fn()}
@@ -150,7 +160,6 @@ describe('AmlCheckPendingPanel AML reset', () => {
     render(
       <AmlCheckPendingPanel
         data={{ ...data, transactions: [{ ...buyCrypto, ...txOverride }] } as ComplianceUserData}
-        clerks={['Alice']}
         isSaving={false}
         onUpdate={jest.fn()}
         onReset={jest.fn()}
@@ -177,7 +186,6 @@ describe('AmlCheckPendingPanel AML reset', () => {
             transactions: [pendingManualTx],
           } as ComplianceUserData
         }
-        clerks={['Alice']}
         isSaving={false}
         onUpdate={jest.fn()}
         onReset={jest.fn()}
@@ -199,7 +207,6 @@ describe('AmlCheckPendingPanel AML reset', () => {
     render(
       <AmlCheckPendingPanel
         data={{ ...data, transactions: [pendingManualTx] } as ComplianceUserData}
-        clerks={['Alice']}
         isSaving={false}
         onUpdate={jest.fn()}
         onReset={jest.fn()}
@@ -218,7 +225,6 @@ describe('AmlCheckPendingPanel AML reset', () => {
           ...data,
           transactions: [{ ...buyCrypto, amlCheck: 'Pending', amlReason: 'ManualCheck' }],
         }}
-        clerks={['Alice']}
         isSaving={false}
         onUpdate={jest.fn()}
         onReset={jest.fn()}
@@ -236,7 +242,6 @@ describe('AmlCheckPendingPanel AML reset', () => {
           ...data,
           transactions: [{ ...buyCrypto, amlCheck: 'Pending', amlReason: 'ManualCheck' }],
         }}
-        clerks={['Alice']}
         isSaving={false}
         onUpdate={jest.fn()}
         onReset={jest.fn()}
@@ -258,7 +263,6 @@ describe('AmlCheckPendingPanel AML reset', () => {
           ...data,
           transactions: [{ ...buyCrypto, amlCheck: 'Pending', amlReason: 'ManualCheck' }],
         }}
-        clerks={['Alice']}
         isSaving={false}
         onUpdate={jest.fn()}
         onReset={jest.fn()}

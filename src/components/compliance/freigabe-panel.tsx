@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useCallQueueClerks } from 'src/hooks/call-queue-clerks.hook';
 import { KycFile, KycStepInfo, UserDataDetail } from 'src/hooks/compliance.hook';
+import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
+import { StaffIdentityBlock } from './staff-identity';
 import {
   buildAddress,
   display,
@@ -302,8 +303,12 @@ export function ComplianceReviewFreigabePanel({
   const [reasonSeatingCompany, setReasonSeatingCompany] = useState('');
   const [businessActivities, setBusinessActivities] = useState('');
   const [finalDecision, setFinalDecision] = useState<DecisionValue>('');
+  const { name: processedByName, isLoading: isLoadingClerk } = useStaffVerifiedName();
   const [processedBy, setProcessedBy] = useState('');
-  const { clerks, isLoading: isLoadingClerks } = useCallQueueClerks();
+
+  useEffect(() => {
+    if (processedByName) setProcessedBy(processedByName);
+  }, [processedByName]);
 
   // Load saved state from result.complianceReview and result text fields
   useEffect(() => {
@@ -324,7 +329,6 @@ export function ComplianceReviewFreigabePanel({
           if (saved.complexOrgStructure) setComplexOrgStructure(saved.complexOrgStructure);
           if (saved.highRisk) setHighRisk(saved.highRisk);
           if (saved.amlAccountType) setAmlAccountType(saved.amlAccountType);
-          if (saved.processedBy) setProcessedBy(saved.processedBy);
           if (saved.finalDecision) setFinalDecision(saved.finalDecision as DecisionValue);
         }
       } catch {
@@ -682,13 +686,11 @@ Beschreibung der Geschäftlichen Aktivitäten"
                 {formatDateTime(new Date().toISOString())}
               </td>
             </tr>
-            <DropdownField
-              label="Bearbeitet von:"
-              value={processedBy}
-              options={clerks.map((c) => ({ value: c, label: c }))}
-              onChange={setProcessedBy}
-              disabled={isLoadingClerks}
-            />
+            <tr>
+              <td className="py-1 pr-4 align-top" colSpan={3}>
+                <StaffIdentityBlock label="Bearbeitet von:" />
+              </td>
+            </tr>
           </tbody>
         </table>
 
@@ -697,7 +699,7 @@ Beschreibung der Geschäftlichen Aktivitäten"
           <button
             className="px-4 py-2 text-sm text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded-lg transition-colors disabled:opacity-50"
             onClick={handleSave}
-            disabled={isSaving || !finalDecision || !processedBy}
+            disabled={isSaving || isLoadingClerk || !finalDecision || !processedBy}
           >
             {isSaving ? 'Speichern...' : 'Speichern'}
           </button>

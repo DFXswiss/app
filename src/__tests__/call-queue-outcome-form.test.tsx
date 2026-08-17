@@ -27,6 +27,16 @@ const mockSaveCallOutcome = jest.fn();
 // The hook module is mocked wholesale (importing it for real pulls @dfx.swiss/react into the test
 // runtime). The queue mapping itself is pinned against the real implementation in
 // compliance-call-outcome.hook.test.ts.
+const mockStaffName: { name?: string; isLoading: boolean; error?: string } = {
+  name: 'JR',
+  isLoading: false,
+  error: undefined,
+};
+
+jest.mock('src/hooks/staff-verified-name.hook', () => ({
+  useStaffVerifiedName: () => mockStaffName,
+}));
+
 jest.mock('src/hooks/compliance.hook', () => ({
   CallOutcome: {
     COMPLETED: 'Completed',
@@ -66,18 +76,11 @@ const PLAIN_PHONE_TX_CONTEXT = { ...TX_CONTEXT, queue: 'ManualCheckPhone' };
 const INELIGIBLE_TX_CONTEXT = { ...TX_CONTEXT, buyCryptoResetEligible: false };
 const USER_CONTEXT = { queue: 'UnavailableSuspicious', userDataId: 1 } as any;
 
-let testClerks = ['JR'];
-let testClerksError: string | undefined;
-let testClerksLoading: boolean | undefined;
-
 function renderForm(context: any = TX_CONTEXT) {
   return render(
     <CallQueueOutcomeForm
       context={context}
       availableOutcomes={OUTCOMES}
-      clerks={testClerks}
-      clerksError={testClerksError}
-      clerksLoading={testClerksLoading}
       onSaved={jest.fn()}
       title="Save Outcome"
     />,
@@ -86,8 +89,8 @@ function renderForm(context: any = TX_CONTEXT) {
 
 function fillAndSubmit(outcome: CallOutcome, amlAction?: string) {
   const selects = screen.getAllByRole('combobox');
-  fireEvent.change(selects[1], { target: { value: outcome } });
-  if (amlAction !== undefined) fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: amlAction } });
+  fireEvent.change(selects[0], { target: { value: outcome } });
+  if (amlAction !== undefined) fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: amlAction } });
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'called' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save Outcome' }));
 }
@@ -98,51 +101,47 @@ function submittedAmlAction(): string | undefined {
 
 describe('CallQueueOutcomeForm AmlCheck action', () => {
   beforeEach(() => {
-    testClerks = ['JR'];
-    testClerksError = undefined;
-    testClerksLoading = undefined;
+    mockStaffName.name = 'JR';
+    mockStaffName.isLoading = false;
+    mockStaffName.error = undefined;
   });
 
-  it('shows a configuration hint when no clerks are configured', () => {
-    testClerks = [];
+  it('shows a hint when the verified name is missing', () => {
+    mockStaffName.name = undefined;
 
     renderForm();
 
     expect(screen.getByTestId('error-hint')).toHaveTextContent(
-      'No clerks are configured, so no signature can be selected and saving stays disabled. An admin has to fill the "complianceClerks" setting.',
+      'Staff identification requires a verified name on this account.',
     );
   });
 
-  it('shows the loading error when the clerk list could not be loaded', () => {
-    testClerks = [];
-    testClerksError = 'Network down';
+  it('shows the loading error when the verified name could not be loaded', () => {
+    mockStaffName.name = undefined;
+    mockStaffName.error = 'Network down';
 
     renderForm();
 
-    expect(screen.getByTestId('error-hint')).toHaveTextContent(
-      'Could not load the clerk list: Network down. Saving is disabled until it loads.',
-    );
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('Could not load your verified name: Network down');
   });
 
-  it('does not show a clerk hint while the clerk list is loading', () => {
-    testClerks = [];
-    testClerksError = 'Network down';
-    testClerksLoading = true;
+  it('does not show a name hint while the verified name is loading', () => {
+    mockStaffName.name = undefined;
+    mockStaffName.error = 'Network down';
+    mockStaffName.isLoading = true;
 
     renderForm();
 
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 
-  it('saves the explicitly selected signature', async () => {
-    testClerks = ['JR', 'AB'];
+  it('saves the loaded verified name as the signature', async () => {
+    mockStaffName.name = 'Ada Lovelace';
     renderForm();
-    const selects = screen.getAllByRole('combobox');
-    const outcomeSelect = selects[1] as HTMLSelectElement;
+    const outcomeSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
     const outcome = Array.from(outcomeSelect.options).find((option) => option.value)?.value;
 
     expect(outcome).toBeDefined();
-    fireEvent.change(selects[0], { target: { value: 'AB' } });
     fireEvent.change(outcomeSelect, { target: { value: outcome } });
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Completed call' } });
     fireEvent.click(screen.getByRole('button'));
@@ -151,7 +150,7 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
       expect(mockSaveCallOutcome).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
-        expect.objectContaining({ signature: 'AB' }),
+        expect.objectContaining({ signature: 'Ada Lovelace' }),
       ),
     );
   });
@@ -159,7 +158,7 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
   it('renders fallback details for a failed save without completed steps', async () => {
     mockSaveCallOutcome.mockResolvedValue({ success: false, completedSteps: [] });
     renderForm();
-    const outcomeSelect = screen.getAllByRole('combobox')[1] as HTMLSelectElement;
+    const outcomeSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
     const outcome = Array.from(outcomeSelect.options).find((option) => option.value)?.value;
 
     expect(outcome).toBeDefined();
@@ -180,7 +179,7 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
       completedSteps: ['userData'],
     });
     renderForm();
-    const outcomeSelect = screen.getAllByRole('combobox')[1] as HTMLSelectElement;
+    const outcomeSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
     const outcome = Array.from(outcomeSelect.options).find((option) => option.value)?.value;
 
     expect(outcome).toBeDefined();
@@ -205,11 +204,11 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
     'hides the AmlCheck action on %s and resets the transaction on a recheck-blocked queue',
     async (outcome) => {
       renderForm(TX_CONTEXT);
-      expect(screen.getAllByRole('combobox')).toHaveLength(3);
+      expect(screen.getAllByRole('combobox')).toHaveLength(2);
 
       fillAndSubmit(outcome);
 
-      expect(screen.getAllByRole('combobox')).toHaveLength(2);
+      expect(screen.getAllByRole('combobox')).toHaveLength(1);
       await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
       expect(mockSaveCallOutcome).toHaveBeenCalledWith(TX_CONTEXT, outcome, {
         signature: 'JR',
@@ -228,7 +227,7 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
 
       fillAndSubmit(outcome);
 
-      expect(screen.getAllByRole('combobox')).toHaveLength(2);
+      expect(screen.getAllByRole('combobox')).toHaveLength(1);
       await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
       expect(submittedAmlAction()).toBeUndefined();
     },
@@ -239,7 +238,7 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
 
     fillAndSubmit(CallOutcome.UNAVAILABLE, 'Fail');
 
-    expect(screen.getAllByRole('combobox')).toHaveLength(3);
+    expect(screen.getAllByRole('combobox')).toHaveLength(2);
     await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
     expect(mockSaveCallOutcome.mock.calls[0][1]).toBe(CallOutcome.UNAVAILABLE);
     expect(submittedAmlAction()).toBe('Fail');
@@ -257,7 +256,7 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
     mockAuth.session = { role: 'Admin' };
     renderForm(TX_CONTEXT);
 
-    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: CallOutcome.UNAVAILABLE } });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: CallOutcome.UNAVAILABLE } });
 
     expect(screen.getByRole('option', { name: 'Pass' })).toBeInTheDocument();
     expect(screen.queryByText(/Pass is Admin-only/)).not.toBeInTheDocument();
@@ -277,12 +276,12 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
   it('drops a previous selection when the outcome changes', async () => {
     renderForm(TX_CONTEXT);
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: CallOutcome.UNAVAILABLE } });
-    fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: 'Fail' } });
+    fireEvent.change(selects[0], { target: { value: CallOutcome.UNAVAILABLE } });
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'Fail' } });
 
-    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: CallOutcome.COMPLETED } });
-    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: CallOutcome.UNAVAILABLE } });
-    expect((screen.getAllByRole('combobox')[2] as HTMLSelectElement).value).toBe('');
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: CallOutcome.COMPLETED } });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: CallOutcome.UNAVAILABLE } });
+    expect((screen.getAllByRole('combobox')[1] as HTMLSelectElement).value).toBe('');
 
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'called' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Outcome' }));
@@ -293,10 +292,10 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
 
   it('does not offer an AmlCheck action for user-based queue items', async () => {
     renderForm(USER_CONTEXT);
-    expect(screen.getAllByRole('combobox')).toHaveLength(2);
+    expect(screen.getAllByRole('combobox')).toHaveLength(1);
 
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[1], { target: { value: CallOutcome.COMPLETED } });
+    fireEvent.change(selects[0], { target: { value: CallOutcome.COMPLETED } });
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'called' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Outcome' }));
 

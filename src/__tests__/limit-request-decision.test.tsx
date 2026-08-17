@@ -28,6 +28,10 @@ jest.mock('src/contexts/settings.context', () => ({
   }),
 }));
 
+jest.mock('src/hooks/staff-verified-name.hook', () => ({
+  useStaffVerifiedName: () => ({ name: 'JR', isLoading: false }),
+}));
+
 jest.mock('src/components/error-hint', () => {
   // The factory runs before this file's imports, so React has to be required here.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -57,8 +61,6 @@ function renderForm(overrides: Partial<Parameters<typeof LimitRequestDecisionFor
       fundOrigin="Savings"
       investmentDate="Now"
       currentDepositLimit={CURRENT_LIMIT}
-      clerks={['JR', 'VR']}
-      defaultClerk="JR"
       onDecided={onDecided}
       {...overrides}
     />,
@@ -466,49 +468,14 @@ describe('LimitRequestDecisionForm', () => {
     expect(mockDecideLimitRequest).toHaveBeenCalledTimes(1);
   });
 
-  // The clerk list arrives after the first render; a name typed before that must not stay in state
-  // behind a select that shows something else.
-  it('adopts a clerk from the list once it arrives', async () => {
-    const { rerender } = render(
-      <LimitRequestDecisionForm
-        limitRequestId={LIMIT_REQUEST_ID}
-        userDataId={USER_DATA_ID}
-        requestedLimit={REQUESTED}
-        currentDepositLimit={CURRENT_LIMIT}
-        clerks={[]}
-        onDecided={jest.fn()}
-      />,
-    );
-    fireEvent.change(screen.getByPlaceholderText('Sign'), { target: { value: 'typed-before-load' } });
+  it('signs the decision with the loaded verified name and has no clerk select', async () => {
+    renderForm();
 
-    rerender(
-      <LimitRequestDecisionForm
-        limitRequestId={LIMIT_REQUEST_ID}
-        userDataId={USER_DATA_ID}
-        requestedLimit={REQUESTED}
-        currentDepositLimit={CURRENT_LIMIT}
-        clerks={['JR', 'VR']}
-        defaultClerk="VR"
-        onDecided={jest.fn()}
-      />,
-    );
-
-    const select = screen.getByLabelText('Clerk', { selector: 'select' }) as HTMLSelectElement;
-    expect(select.value).toBe('VR');
+    expect(screen.queryByRole('combobox', { name: 'Clerk' })).not.toBeInTheDocument();
+    expect(screen.getByText('JR')).toBeInTheDocument();
 
     selectDecision('Rejected');
     await clickSave();
-    expect(mockDecideLimitRequest).toHaveBeenCalledWith(CONTEXT, 'Rejected', expect.objectContaining({ clerk: 'VR' }));
-  });
-
-  it('falls back to a free-text clerk field when no clerk list is available', async () => {
-    renderForm({ clerks: [], defaultClerk: undefined });
-
-    expect(saveButton()).toBeDisabled();
-    fireEvent.change(screen.getByPlaceholderText('Sign'), { target: { value: 'JR' } });
-    selectDecision('Rejected');
-    await clickSave();
-
     expect(mockDecideLimitRequest).toHaveBeenCalledWith(CONTEXT, 'Rejected', expect.objectContaining({ clerk: 'JR' }));
   });
 });

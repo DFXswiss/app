@@ -1,6 +1,6 @@
 import { useAuthContext } from '@dfx.swiss/react';
 import { StyledButton, StyledButtonWidth } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import {
@@ -11,7 +11,9 @@ import {
   needsExplicitAmlReset,
   useCompliance,
 } from 'src/hooks/compliance.hook';
+import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { canManuallySetAmlPass } from 'src/util/aml-pass.util';
+import { STAFF_NAME_MISSING, staffNameLoadError } from '../staff-identity';
 
 // Completed and Failed leave nothing to decide: the phone-call status written in the same save
 // already determines the transaction — the API passes it on the check date a completed call writes,
@@ -21,9 +23,6 @@ const OutcomesImplyingAmlAction: (CallOutcome | '')[] = [CallOutcome.COMPLETED, 
 interface Props {
   context: CallOutcomeContext;
   availableOutcomes: CallOutcome[];
-  clerks: string[];
-  clerksError?: string;
-  clerksLoading?: boolean;
   onSaved: () => void;
   title: string;
 }
@@ -31,27 +30,20 @@ interface Props {
 export function CallQueueOutcomeForm({
   context,
   availableOutcomes,
-  clerks,
-  clerksError,
-  clerksLoading,
   onSaved,
   title,
 }: Props): JSX.Element {
   const { translate } = useSettingsContext();
   const { saveCallOutcome } = useCompliance();
   const { session } = useAuthContext();
+  const { name: signature, isLoading: isLoadingSignature, error: signatureError } = useStaffVerifiedName();
   const allowPass = canManuallySetAmlPass(session?.role);
 
-  const [signature, setSignature] = useState<string>('');
   const [comment, setComment] = useState<string>('');
   const [outcome, setOutcome] = useState<CallOutcome | ''>('');
   const [amlAction, setAmlAction] = useState<AmlAction | ''>('');
   const [isSaving, setIsSaving] = useState(false);
   const [result, setResult] = useState<CallOutcomeResult>();
-
-  useEffect(() => {
-    setSignature((prev) => prev || clerks[0] || '');
-  }, [clerks]);
 
   const hasTx = context.txId != null && context.sourceType != null;
   const buyCryptoResetUnavailable = context.sourceType === 'BuyCrypto' && !context.buyCryptoResetEligible;
@@ -63,7 +55,8 @@ export function CallQueueOutcomeForm({
   // queue, while the form would still report success and navigate away.
   const impliedResetUnavailable =
     hasTx && outcomeImpliesAmlAction && needsExplicitAmlReset(context.queue) && buyCryptoResetUnavailable;
-  const canSubmit = !!signature && !!outcome && !!comment.trim() && !isSaving && !impliedResetUnavailable;
+  const canSubmit =
+    !!signature && !!outcome && !!comment.trim() && !isSaving && !isLoadingSignature && !impliedResetUnavailable;
 
   // What the save sends for a Completed/Failed outcome. Only the queues whose AML reason the API
   // excludes from the recheck cron need an explicit action: their transaction would otherwise stay
@@ -82,10 +75,10 @@ export function CallQueueOutcomeForm({
   }
 
   async function handleSubmit() {
+    if (!signature || !outcome) return;
     setIsSaving(true);
     setResult(undefined);
-    // the cast is carried by the disabled-button gate: canSubmit requires a non-empty outcome
-    const res = await saveCallOutcome(context, outcome as CallOutcome, {
+    const res = await saveCallOutcome(context, outcome, {
       signature,
       comment,
       amlAction: hasTx ? (outcomeImpliesAmlAction ? impliedAmlAction() : amlAction || undefined) : undefined,
@@ -98,32 +91,17 @@ export function CallQueueOutcomeForm({
   return (
     <div className="w-full bg-white rounded-lg shadow-sm p-4">
       <h3 className="text-base font-semibold text-dfxBlue-800 mb-3">{title}</h3>
-      {!clerks.length && !clerksLoading && (
+      {!isLoadingSignature && !signature && (
         <div className="mb-4">
-          <ErrorHint
-            message={
-              clerksError
-                ? `Could not load the clerk list: ${clerksError}. Saving is disabled until it loads.`
-                : 'No clerks are configured, so no signature can be selected and saving stays disabled. An admin has to fill the "complianceClerks" setting.'
-            }
-          />
+          <ErrorHint message={signatureError ? staffNameLoadError(signatureError) : STAFF_NAME_MISSING} />
         </div>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-dfxBlue-800 mb-1">Signature</label>
-          <select
-            className="w-full px-3 py-2 text-sm bg-white border border-dfxGray-300 rounded text-dfxBlue-800"
-            value={signature}
-            onChange={(e) => setSignature(e.target.value)}
-          >
-            <option value="">—</option>
-            {clerks.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <p className="w-full px-3 py-2 text-sm text-dfxBlue-800">
+            {isLoadingSignature ? '…' : (signature ?? '—')}
+          </p>
         </div>
         <div>
           <label className="block text-sm font-medium text-dfxBlue-800 mb-1">Outcome</label>

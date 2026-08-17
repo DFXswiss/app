@@ -15,7 +15,6 @@ import { CallQueueTxInfo } from 'src/components/compliance/call-queue/call-queue
 import { CallQueueUserInfo } from 'src/components/compliance/call-queue/call-queue-user-info';
 import { ErrorHint } from 'src/components/error-hint';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { useCallQueueClerks } from 'src/hooks/call-queue-clerks.hook';
 import { CallOutcome, ComplianceUserData, useCompliance } from 'src/hooks/compliance.hook';
 import { useComplianceGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
@@ -89,8 +88,6 @@ export default function ComplianceCallQueueDetailScreen(): JSX.Element {
   const { isLoggedIn } = useSessionContext();
   const { queue: queueParam, userDataId } = useParams<{ queue: string; userDataId: string }>();
   const { search } = useLocation();
-  const { clerks, error: clerksError, isLoading: clerksLoading } = useCallQueueClerks();
-
   const query = new URLSearchParams(search);
   const txIdParam = query.get('txId');
   const txId = txIdParam ? Number(txIdParam) : undefined;
@@ -188,9 +185,6 @@ export default function ComplianceCallQueueDetailScreen(): JSX.Element {
       <CallQueueOutcomeForm
         context={context}
         availableOutcomes={config.outcomes}
-        clerks={clerks}
-        clerksError={clerksError}
-        clerksLoading={clerksLoading}
         onSaved={() =>
           navigate({ pathname: `/compliance/call-queues/${queue}` }, { replace: true, clearParams: ['txId'] })
         }

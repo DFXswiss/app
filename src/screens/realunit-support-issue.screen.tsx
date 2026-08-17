@@ -10,6 +10,8 @@ import { useRealunitGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { useRealunitSupport } from 'src/hooks/realunit-support.hook';
+import { STAFF_NAME_MISSING, staffNameLoadError } from 'src/components/compliance/staff-identity';
+import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { useSplitPane } from 'src/hooks/split-pane.hook';
 import { ASSIGNABLE_DEPARTMENTS, SupportIssueInternalData, SupportMessageInfo } from 'src/hooks/support-dashboard.hook';
 import { formatDateTime, statusBadge } from 'src/util/compliance-helpers';
@@ -41,7 +43,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
 
   // Message form state
   const [messageText, setMessageText] = useState('');
-  const [messageAuthor, setMessageAuthor] = useState<string>('');
+  const { name: messageAuthor, isLoading: isLoadingAuthor, error: authorError } = useStaffVerifiedName();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -62,7 +64,6 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
     getClerks()
       .then((list) => {
         setClerks(list);
-        setMessageAuthor((prev) => prev || list[0] || '');
       })
       .catch(() => undefined);
   }, [getClerks]);
@@ -76,7 +77,6 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
         setUpdateClerk(data.clerk ?? '');
-        setMessageAuthor((prev) => (data.clerk && clerks.includes(data.clerk) ? data.clerk : prev || clerks[0] || ''));
       })
       .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
       .finally(() => setIsLoading(false));
@@ -144,6 +144,10 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
 
   async function handleSendMessage(): Promise<void> {
     if (!id || (!messageText.trim() && selectedFiles.length === 0)) return;
+    if (!messageAuthor) {
+      setActionError('Staff identification requires a verified name on this account.');
+      return;
+    }
     setIsSending(true);
     setActionError(undefined);
     try {
@@ -379,22 +383,16 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
                 }
               }}
             />
-            <select
-              className="px-2 py-2 text-xs border border-dfxGray-400 rounded bg-white text-dfxBlue-800"
-              value={messageAuthor}
-              onChange={(e) => setMessageAuthor(e.target.value)}
-              title="Author"
-            >
-              {clerks.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+            <span className="px-2 py-2 text-xs text-dfxBlue-800 whitespace-nowrap" title="Author">
+              {isLoadingAuthor ? '…' : (messageAuthor ?? '—')}
+            </span>
+            {!isLoadingAuthor && !messageAuthor && (
+              <ErrorHint message={authorError ? staffNameLoadError(authorError) : STAFF_NAME_MISSING} />
+            )}
             <button
               className="px-4 py-2 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
               onClick={() => handleSendMessage()}
-              disabled={isSending || (!messageText.trim() && selectedFiles.length === 0)}
+              disabled={isSending || isLoadingAuthor || !messageAuthor || (!messageText.trim() && selectedFiles.length === 0)}
             >
               {isSending ? '...' : 'Send'}
             </button>

@@ -6,7 +6,7 @@ import {
   StyledButtonWidth,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { ErrorHint } from 'src/components/error-hint';
 import { Modal } from 'src/components/modal';
@@ -14,9 +14,10 @@ import { LimitRequestFields } from 'src/components/support-issue/limit-request-f
 import { DefaultFileTypes } from 'src/config/file-types';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { useCallQueueClerks } from 'src/hooks/call-queue-clerks.hook';
 import { useCompliance } from 'src/hooks/compliance.hook';
+import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { toBase64 } from 'src/util/utils';
+import { STAFF_NAME_MISSING, staffNameLoadError } from './staff-identity';
 
 interface LimitRequestModalProps {
   isOpen: boolean;
@@ -45,15 +46,10 @@ export function LimitRequestModal({
   const { translate, translateError } = useSettingsContext();
   const { rootRef } = useLayoutContext();
   const { createLimitRequest } = useCompliance();
-  const { clerks } = useCallQueueClerks();
+  const { name: author, isLoading: isLoadingAuthor, error: authorError } = useStaffVerifiedName();
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
-  const [author, setAuthor] = useState<string>('');
-
-  useEffect(() => {
-    setAuthor((prev) => prev || clerks[0] || '');
-  }, [clerks]);
 
   const {
     control,
@@ -142,18 +138,12 @@ export function LimitRequestModal({
 
             <div className="w-full text-left">
               <label className="block text-sm font-medium text-dfxBlue-800 mb-1">Signature</label>
-              <select
-                className="w-full px-3 py-2 text-sm bg-white border border-dfxGray-300 rounded text-dfxBlue-800"
-                value={author}
-                onChange={(e) => setAuthor(e.target.value)}
-              >
-                <option value="">—</option>
-                {clerks.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+              <p className="w-full px-3 py-2 text-sm text-dfxBlue-800">
+                {isLoadingAuthor ? '…' : (author ?? '—')}
+              </p>
+              {!isLoadingAuthor && !author && (
+                <ErrorHint message={authorError ? staffNameLoadError(authorError) : STAFF_NAME_MISSING} />
+              )}
             </div>
 
             <div className="flex gap-2 w-full">
@@ -169,7 +159,7 @@ export function LimitRequestModal({
                 label={translate('general/actions', 'Save')}
                 onClick={handleSubmit(onSubmit)}
                 width={StyledButtonWidth.FULL}
-                disabled={!isValid || !author}
+                disabled={!isValid || !author || isLoadingAuthor}
                 isLoading={isLoading}
               />
             </div>
