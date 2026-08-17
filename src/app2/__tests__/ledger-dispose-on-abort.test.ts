@@ -139,17 +139,27 @@ describe('connectLedger attaches dispose that closes the WebHID transport', () =
         }
       },
     }));
-    jest.doMock('@ledgerhq/hw-transport-webhid', () => ({
-      __esModule: true,
-      default: { create: jest.fn().mockResolvedValue(transport) },
-    }));
-    jest.doMock('@ledgerhq/hw-app-eth', () => ({
-      __esModule: true,
-      default: class {
-        getAddress = jest.fn().mockResolvedValue({ address: '0xLedgerEthAddress' });
-        signPersonalMessage = jest.fn();
-      },
-    }));
+    jest.doMock(
+      '@ledgerhq/hw-transport-webhid',
+      () => ({
+        __esModule: true,
+        default: { create: jest.fn().mockResolvedValue(transport) },
+      }),
+      { virtual: true },
+    );
+    jest.doMock(
+      '@ledgerhq/hw-app-eth',
+      () => ({
+        __esModule: true,
+        default: function Eth() {
+          return {
+            getAddress: jest.fn().mockResolvedValue({ address: '0xLedgerEthAddress' }),
+            signPersonalMessage: jest.fn(),
+          };
+        },
+      }),
+      { virtual: true },
+    );
 
     const { connectHardware } = await import('../wallets/hardware-providers');
     const session = await connectHardware('ledger', 'eth');
