@@ -180,7 +180,7 @@ export default function SupportIssueScreen(): JSX.Element {
   const isQuotePath = useRef(Boolean(orderParam || urlParams.get('tx'))).current;
   const issueTypeParam = urlParams.get('issue-type');
   const reasonParam = urlParams.get('reason');
-  const txParam = urlParams.get('tx');
+  const [txParam] = useState(() => urlParams.get('tx'));
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {

@@ -417,7 +417,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   const inputBlockchain = transaction?.inputBlockchain;
   const transactionId = transaction?.id;
 
-  async function onSubmit(data: FormData, transactionId: number) {
+  async function onSubmit(data: FormData, submittedId?: number) {
     setIsLoading(true);
     setLocalError(undefined);
 
@@ -442,8 +442,8 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
           : undefined,
       };
 
-      if (isLoggedIn) {
-        await setTransactionRefundTarget(transactionId, payload);
+      if (isLoggedIn && submittedId != null) {
+        await setTransactionRefundTarget(submittedId, payload);
         navigate('/tx');
       } else if (id) {
         await setRefund(id, payload);
@@ -472,7 +472,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         'The bank account has been added, all transactions from this IBAN will now be associated with your account.',
       )}
     />
-  ) : refundDetails && transaction && transactionId != null ? (
+  ) : refundDetails && transaction && (isLoggedIn ? transactionId != null : isUid) ? (
     <StyledVerticalStack gap={6} full>
       <StyledDataTable alignContent={AlignContent.RIGHT} showBorder minWidth={false}>
         <StyledDataTableRow label={translate('screens/payment', 'Transaction amount')}>
