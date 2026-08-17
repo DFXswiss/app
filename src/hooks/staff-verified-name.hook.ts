@@ -37,6 +37,7 @@ export function useStaffVerifiedName(): { name?: string; isLoading: boolean; err
       const loadClerk = role === UserRole.REALUNIT ? getRealunitClerk : getSupportClerk;
       pending = loadClerk()
         .then((clerk) => readVerifiedName(clerk))
+        // 404/403 while the companion API clerk route is not deployed yet: fall through to userData.
         .catch(() => undefined)
         .then((fromClerk) => {
           if (fromClerk) return fromClerk;
