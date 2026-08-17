@@ -168,10 +168,25 @@ jobs:
 
       # GITHUB_TOKEN of this public repository cannot read the private API
       # repository. A read-only deploy key (secret E2E_API_CHECKOUT_KEY) is
-      # the checkout credential. Without it the step fails as "repository
-      # not found" and the rest of the job is skipped.
+      # the checkout credential. Fork PRs do not receive that secret; detect
+      # the empty value here (never print it) so the job still runs and the
+      # Playwright step can take the documented no-stack path instead of
+      # failing at checkout with "repository not found".
+      - name: Detect API checkout credential
+        id: api_cred
+        env:
+          KEY: ${{ secrets.E2E_API_CHECKOUT_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEY}" ]; then
+            echo "available=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=no" >> "$GITHUB_OUTPUT"
+            echo "E2E_API_CHECKOUT_KEY is not available to this run (typical for a fork pull request)."
+          fi
+
       - name: Checkout API
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
         uses: actions/checkout@v4
         with:
           repository: DFXswiss/api
@@ -188,7 +203,7 @@ jobs:
       # this step is skipped. It also refuses to bootstrap from a pull request that is no longer
       # open, so it cannot quietly re-arm later and build a years-old revision.
       - name: Resolve the API revision to build
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
         id: api_source
         env:
           API_REF: ${{ inputs.api_ref }}
@@ -224,7 +239,7 @@ jobs:
           fi
 
       - name: Check out the API revision that carries the guard
-        if: steps.scope.outputs.mode != 'none' && steps.api_source.outputs.bootstrap == 'true'
+        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes' && steps.api_source.outputs.bootstrap == 'true'
         uses: actions/checkout@v4
         with:
           repository: DFXswiss/api
@@ -234,7 +249,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -248,7 +263,7 @@ jobs:
       # so nothing else in CI type-checks it. Doing it here costs under a minute and fails on a
       # type error before the run spends eight on Docker.
       - name: Type-check the harness
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
         working-directory: e2e-stack
         run: |
           npm ci
@@ -261,7 +276,7 @@ jobs:
       # artifacts from the still-present named volumes / tests container, and
       # only then tear down in a final always() step.
       - name: Bring stack up
-        if: steps.scope.outputs.mode != 'none'
+        if: steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
         run: E2E_API_REPO=$GITHUB_WORKSPACE/api-repo bash e2e-stack/scripts/up.sh
 
       - name: Run Playwright tests
@@ -273,8 +288,13 @@ jobs:
         # cannot be defeated by a skipped check (see header comment).
         env:
           MODE: ${{ steps.scope.outputs.mode }}
+          API_CRED: ${{ steps.api_cred.outputs.available }}
         run: |
           set -euo pipefail
+          if [ "${API_CRED}" != 'yes' ]; then
+            echo 'No API checkout credential — not starting the e2e stack. The job ran.'
+            exit 0
+          fi
           case "$MODE" in
             none)
               echo 'No runtime-relevant changes in this PR (documentation-only or empty diff) — not running the e2e stack.'
@@ -299,7 +319,7 @@ jobs:
           esac
 
       - name: Collect test artifacts
-        if: always() && steps.scope.outputs.mode != 'none'
+        if: always() && steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
         run: |
           mkdir -p e2e-stack-artifacts
           # Named volumes back these paths inside the tests container. Bind mounts
@@ -312,7 +332,7 @@ jobs:
             || true
 
       - name: Upload test artifacts
-        if: always() && steps.scope.outputs.mode != 'none'
+        if: always() && steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
         uses: actions/upload-artifact@v4
         with:
           name: e2e-stack-report
@@ -321,5 +341,5 @@ jobs:
           if-no-files-found: warn
 
       - name: Tear down stack
-        if: always() && steps.scope.outputs.mode != 'none'
+        if: always() && steps.scope.outputs.mode != 'none' && steps.api_cred.outputs.available == 'yes'
         run: bash e2e-stack/scripts/down.sh
