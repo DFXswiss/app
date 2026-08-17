@@ -1,8 +1,7 @@
 import { TextEncoder } from 'util';
+import { b32Enc, b32Hrp, b32Polymod, b32Sum, convBits, lnurlEncode, qrData, OCP_PL } from '../screens/ocp/lnurl';
 
 (global as { TextEncoder: typeof TextEncoder }).TextEncoder = TextEncoder;
-
-const { b32Enc, b32Hrp, b32Polymod, b32Sum, convBits, lnurlEncode, qrData, OCP_PL } = require('../screens/ocp/lnurl') as typeof import('../screens/ocp/lnurl');
 
 describe('LNURL bech32 helpers', () => {
   it('encodes a payment-link URL as an uppercase LNURL and builds the QR payload', () => {

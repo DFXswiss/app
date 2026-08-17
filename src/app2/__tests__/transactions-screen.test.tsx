@@ -72,7 +72,6 @@ jest.mock('../wallets/session', () => ({
 }));
 
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { ApiException } from '@dfx.swiss/react';
 import TransactionsScreen, { RefundPanel, resolveCryptoRefundTarget } from '../screens/transactions';
 import { LanguageProvider } from '../i18n';
 import { ToastProvider } from '../components/ui';

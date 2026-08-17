@@ -76,7 +76,7 @@ jest.mock('../wallets/session', () => ({
   useWalletSession: () => ({ isLoggedIn: true, address: '0xabc', userAddresses: [] }),
 }));
 
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ApiException } from '@dfx.swiss/react';
 import { AccountSheets, inviteReferralView } from '../components/AccountSheets';
 import { LanguageProvider } from '../i18n';
