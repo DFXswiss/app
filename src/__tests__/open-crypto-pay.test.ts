@@ -15,7 +15,7 @@ jest.mock('../util/utils', () => {
   const originalModule = jest.requireActual('../util/utils');
   return {
     ...originalModule,
-    url: ({ base = 'https://services.dfx.swiss', path = '', params }: { base?: string; path?: string; params?: URLSearchParams }) => {
+    url: ({ base = 'https://app.dfx.swiss', path = '', params }: { base?: string; path?: string; params?: URLSearchParams }) => {
       const normalizedBase = base?.replace(/\/+$/, '') + '/';
       const normalizedPath = path.replace(/^\/+/, '');
       const absoluteUrl = new URL(normalizedPath, normalizedBase);
