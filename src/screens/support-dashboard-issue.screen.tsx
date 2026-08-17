@@ -101,7 +101,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       })
       .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
       .finally(() => setIsLoading(false));
-  }, [id, getIssueData, clerks]);
+  }, [id, getIssueData]);
 
   const loadMessages = useCallback((): void => {
     if (!issueData?.uid) return;
