@@ -1332,4 +1332,39 @@ describe('TransactionRefund guest uid path', () => {
     expect(mockSetTransactionRefundTarget).not.toHaveBeenCalled();
     expect(mockNavigate).toHaveBeenCalledWith('/tx/T123');
   });
+
+  it('submits a guest crypto refund via refundAddress', async () => {
+    mockIsLoggedIn = false;
+    mockGetTransactionByUid.mockResolvedValue(
+      makeTx({
+        uid: 'T123',
+        type: 'Sell',
+        inputPaymentMethod: 'Crypto',
+        inputBlockchain: 'Ethereum',
+        state: 'Failed',
+      }),
+    );
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockSetGuestRefund.mockResolvedValue(undefined);
+
+    renderRefund();
+    await waitForRefundFormLoaded();
+
+    expect(screen.getByTestId('refundAddress')).toBeInTheDocument();
+    expect(screen.queryByTestId('address-dropdown')).not.toBeInTheDocument();
+
+    changeAndBlur('refundAddress', '0xabc');
+    await waitForSubmitEnabled('Confirm refund');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }));
+    });
+
+    await waitFor(() => {
+      expect(mockSetGuestRefund).toHaveBeenCalledWith(
+        'T123',
+        expect.objectContaining({ refundTarget: '0xabc' }),
+      );
+    });
+  });
 });
