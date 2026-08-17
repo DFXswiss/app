@@ -51,6 +51,9 @@ export function useQuoteEngine<TResult>(
    * it's open). Does not affect the input-driven debounced fetch or a manual `refresh()` call —
    * only the passive 30s-TTL timer. */
   paused = false,
+  /** Persistent 4xx account/validation errors must not climb the backoff ladder — each
+   * authenticated paymentInfos retry can create another route + transaction request. */
+  isRetryable: (error: unknown) => boolean = () => true,
 ): QuoteEngineState<TResult> {
   const [data, setData] = useState<TResult | null>(null);
   const [dataKey, setDataKey] = useState<string | null>(null);
@@ -70,6 +73,8 @@ export function useQuoteEngine<TResult>(
   fetcherRef.current = fetcher;
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  const isRetryableRef = useRef(isRetryable);
+  isRetryableRef.current = isRetryable;
 
   const clearTimers = useCallback(() => {
     clearTimeout(debounceRef.current);
@@ -117,7 +122,7 @@ export function useQuoteEngine<TResult>(
         // retrying rather than hammering the endpoint or leaving a timer running indefinitely.
         clearInterval(countdownRef.current);
         const attempt = retryAttemptRef.current;
-        if (attempt < RETRY_BACKOFF_MS.length) {
+        if (isRetryableRef.current(err) && attempt < RETRY_BACKOFF_MS.length) {
           retryAttemptRef.current = attempt + 1;
           clearTimeout(retryRef.current);
           retryRef.current = setTimeout(() => {
