@@ -143,6 +143,10 @@
     "title": "Trading-Flows",
     "description": "Trading-bezogene End-to-End-Flows."
   },
+  "support-issue-receiver-iban": {
+    "title": "Support-Ticket Formular",
+    "description": "Kunden-Supportformular: Empfänger-IBAN-Check; Ticket erst nach gesetzter Konto-Mail."
+  },
   "support-dashboard": {
     "title": "Support-Dashboard",
     "description": "Support-Dashboard: Übersicht und Detailansichten."

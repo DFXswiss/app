@@ -116,6 +116,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `CollectionAccountInvoicePersonalIbanMissing` error token, so a green run proves that the screen
   displays that token, not that the API emits it for this request. A unit test against the message
   mapping pins the token contract instead.
+- **The support-issue receiver-IBAN spec pins KYC level and account mail on GET /v2/user.**
+  `e2e/support-issue-receiver-iban.spec.ts` rewrites that response so `kyc.level` is high enough for
+  the screen guard and `mail` is present if the cached wallet session has none. A green visual run
+  therefore does not prove the mail-first redirect, nor that the account actually has mail or a
+  completed KYC level.
 
 ## Known gaps
 

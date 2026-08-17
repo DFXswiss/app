@@ -13,6 +13,14 @@ const mockCreateSupportIssue = jest.fn();
 const mockNavigate = jest.fn();
 const mockClearParams = jest.fn();
 const mockTranslate = jest.fn((_ns: string, key: string) => key);
+const mockUseUserContext = jest.fn(() => ({
+  user: undefined as { mail?: string; kyc?: { level: number } } | undefined,
+  isUserLoading: false,
+}));
+const mockUseSessionContext = jest.fn(() => ({
+  isLoggedIn: false,
+  logout: jest.fn(),
+}));
 
 jest.mock('@dfx.swiss/react', () => {
   const SupportIssueType = {
@@ -70,7 +78,7 @@ jest.mock('@dfx.swiss/react', () => {
     formatIban: (iban: string) => iban,
   };
 
-  // Mirrors the screen's only three calls into the real Validations: Required returns a react-hook-form
+  // Mirrors the screen's calls into the real Validations: Required returns a react-hook-form
   // "required" rule with message 'required'; Custom wraps an arbitrary validator function as a
   // react-hook-form "validate" rule (the validator itself decides pass/fail per field); Iban fails
   // with a sentinel so that if the receiver field ever gained Validations.Iban, submission tests
@@ -102,14 +110,14 @@ jest.mock('@dfx.swiss/react', () => {
     Validations,
     useBank: () => ({ checkReceiveIban: mockCheckReceiveIban }),
     useBankAccountContext: () => ({ bankAccounts: undefined }),
-    useSessionContext: () => ({ isLoggedIn: false, logout: jest.fn() }),
+    useSessionContext: () => mockUseSessionContext(),
     useSupportChatContext: () => ({
       createSupportIssue: mockCreateSupportIssue,
-      loadSupportIssue: jest.fn(),
+      loadSupportIssue: jest.fn().mockResolvedValue(undefined),
       isLoading: false,
       supportIssue: undefined,
     }),
-    useUserContext: () => ({ user: undefined }),
+    useUserContext: () => mockUseUserContext(),
   };
 });
 
@@ -353,7 +361,7 @@ function renderScreen(search = MISSING_PATH) {
   const router = createMemoryRouter([{ path: '/support/issue', element: <SupportIssueScreen /> }], {
     initialEntries: [`/support/issue${search}`],
   });
-  return render(<RouterProvider router={router} />);
+  return { ...render(<RouterProvider router={router} />), router };
 }
 
 /**
@@ -438,6 +446,8 @@ describe('SupportIssueScreen receiver IBAN check', () => {
     jest.useFakeTimers();
     jest.clearAllMocks();
     mockTranslate.mockImplementation((_ns: string, key: string) => key);
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: false, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: undefined });
     mockCheckReceiveIban.mockReset();
     mockCreateSupportIssue.mockReset();
     mockCreateSupportIssue.mockResolvedValue('issue-uid-1');
@@ -1011,5 +1021,113 @@ describe('SupportIssueScreen receiver IBAN check', () => {
     expect(screen.queryByText(HINTS[ReceiveIbanStatus.DFX_IBAN])).not.toBeInTheDocument();
     // Reason change only clears state; it must not start another check.
     expect(mockCheckReceiveIban).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SupportIssueScreen mail gate', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    mockTranslate.mockImplementation((_ns: string, key: string) => key);
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: false, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: undefined });
+    mockCheckReceiveIban.mockReset();
+    mockCreateSupportIssue.mockReset();
+    mockCreateSupportIssue.mockResolvedValue('issue-uid-1');
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    jest.useRealTimers();
+  });
+
+  it('redirects logged-in users without mail to /account/mail and hides the form', () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: { mail: undefined, kyc: { level: 50 } }, isUserLoading: false });
+    renderScreen('');
+
+    expect(mockNavigate).toHaveBeenCalledWith('/account/mail', { setRedirect: true });
+    expect(screen.queryByText('Email address', { selector: 'label' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Next$/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Issue type', { selector: 'label' })).not.toBeInTheDocument();
+    expect(mockCreateSupportIssue).not.toHaveBeenCalled();
+  });
+
+  it('keeps the form hidden and does not redirect while a logged-in user is still loading', () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: undefined, isUserLoading: true });
+    renderScreen('');
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.queryByText('Issue type', { selector: 'label' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Next$/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the form for logged-in users with mail and does not send mail on create', async () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: { mail: 'a@b.c', kyc: { level: 50 } }, isUserLoading: false });
+    mockCheckReceiveIban.mockResolvedValue({ status: ReceiveIbanStatus.DFX_IBAN });
+    renderScreen('');
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.queryByText('Email address', { selector: 'label' })).not.toBeInTheDocument();
+
+    selectTransactionMissingViaUi();
+    fillTransactionMissingForm(VALID_FORMATTED);
+    await advanceDebounce();
+    fireEvent.blur(getReceiverIbanInput());
+
+    expect(getNextButton()).not.toBeDisabled();
+    await act(async () => {
+      fireEvent.click(getNextButton());
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockCreateSupportIssue).toHaveBeenCalled();
+    const request = mockCreateSupportIssue.mock.calls[0][0];
+    expect(request.mail).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(request, 'mail')).toBe(false);
+  });
+
+  it('shows the form for logged-out users without redirect or email field', () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: false, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: undefined });
+    renderScreen('');
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.queryByText('Email address', { selector: 'label' })).not.toBeInTheDocument();
+    expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
+  });
+
+  it('does not redirect logged-in users without mail to /account/mail on the guest/quote path', () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: { mail: undefined, kyc: { level: 50 } }, isUserLoading: false });
+    renderScreen('?quote=Qtest');
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
+  });
+
+  it('keeps the quote-path latch after the URL quote param is cleared on the same instance', async () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: { mail: undefined, kyc: { level: 50 } }, isUserLoading: false });
+    const { router } = renderScreen('?quote=Qtest');
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
+
+    await act(async () => {
+      await router.navigate('/support/issue');
+    });
+
+    expect(mockNavigate).not.toHaveBeenCalledWith('/account/mail', expect.anything());
+    expect(screen.getByText('Issue type', { selector: 'label' })).toBeInTheDocument();
   });
 });
