@@ -70,6 +70,8 @@ export const en = {
   accNo: 'Account',
   kycLevel: 'Verification',
   kycNote: 'Identity confirmed',
+  kycNotePartial: 'Details confirmed',
+  kycNoteOpen: 'Verification open',
   limit: 'Trading limit',
   connWallet: 'Connected wallet',
   payRoutes: 'Payment routes',
@@ -736,6 +738,11 @@ export const en = {
   notFoundBody: "This link doesn't exist — it may be out of date, or mistyped.",
   backHome: 'Back to home',
   emailInvalid: 'Enter a valid email address.',
+  posNoUpdate: 'No confirmation yet. The payment may still go through.',
+  posKeepWaiting: 'Keep waiting',
+  posEndCharge: 'End this payment',
+  mergeJobSlow: 'Merging your accounts is taking longer than expected. Please try again later.',
+  mergeJobFailed: 'The account merge failed.',
 } as const satisfies Dict;
 export const de = {
   h1a: 'Krypto kaufen,',
@@ -799,6 +806,8 @@ export const de = {
   accNo: 'Konto',
   kycLevel: 'Verifizierung',
   kycNote: 'Identität bestätigt',
+  kycNotePartial: 'Angaben bestätigt',
+  kycNoteOpen: 'Verifizierung offen',
   limit: 'Handelslimit',
   connWallet: 'Verbundene Wallet',
   payRoutes: 'Zahlungswege',
@@ -1466,6 +1475,11 @@ export const de = {
   notFoundBody: 'Diesen Link gibt es nicht — er ist vielleicht veraltet oder falsch eingegeben.',
   backHome: 'Zurück zur Startseite',
   emailInvalid: 'Gib eine gültige E-Mail-Adresse ein.',
+  posNoUpdate: 'Keine Rückmeldung. Die Zahlung kann noch eingehen.',
+  posKeepWaiting: 'Weiter warten',
+  posEndCharge: 'Vorgang beenden',
+  mergeJobSlow: 'Die Kontozusammenführung dauert länger als erwartet. Bitte versuche es später erneut.',
+  mergeJobFailed: 'Die Kontozusammenführung ist fehlgeschlagen.',
 } satisfies Record<TranslationKey, string>;
 export const it = {
   h1a: 'Compra crypto,',
@@ -1527,6 +1541,8 @@ export const it = {
   accNo: 'Conto',
   kycLevel: 'Verifica',
   kycNote: 'Identità confermata',
+  kycNotePartial: 'Dati confermati',
+  kycNoteOpen: 'Verifica aperta',
   limit: 'Limite di trading',
   connWallet: 'Wallet connesso',
   payRoutes: 'Metodi di pagamento',
@@ -2192,6 +2208,11 @@ export const it = {
   notFoundBody: 'Questo link non esiste — potrebbe essere obsoleto o digitato male.',
   backHome: 'Torna alla home',
   emailInvalid: 'Inserisci un indirizzo email valido.',
+  posNoUpdate: 'Nessuna conferma. Il pagamento può ancora arrivare.',
+  posKeepWaiting: 'Continua ad aspettare',
+  posEndCharge: 'Termina questo pagamento',
+  mergeJobSlow: "L'unione degli account sta richiedendo più tempo del previsto. Riprova più tardi.",
+  mergeJobFailed: "L'unione degli account non è riuscita.",
 } satisfies Record<TranslationKey, string>;
 export const fr = {
   h1a: 'Achète des cryptos,',
@@ -2253,6 +2274,8 @@ export const fr = {
   accNo: 'Compte',
   kycLevel: 'Vérification',
   kycNote: 'Identité confirmée',
+  kycNotePartial: 'Données confirmées',
+  kycNoteOpen: 'Vérification ouverte',
   limit: 'Limite de trading',
   connWallet: 'Wallet connecté',
   payRoutes: 'Moyens de paiement',
@@ -2918,6 +2941,11 @@ export const fr = {
   notFoundBody: "Ce lien n'existe pas — il est peut-être périmé ou mal saisi.",
   backHome: "Retour à l'accueil",
   emailInvalid: 'Saisis une adresse e-mail valide.',
+  posNoUpdate: 'Pas encore de confirmation. Le paiement peut encore aboutir.',
+  posKeepWaiting: "Continuer d'attendre",
+  posEndCharge: 'Terminer ce paiement',
+  mergeJobSlow: 'La fusion des comptes prend plus de temps que prévu. Réessaie plus tard.',
+  mergeJobFailed: 'La fusion des comptes a échoué.',
 } satisfies Record<TranslationKey, string>;
 
 export type Language = 'en' | 'de' | 'it' | 'fr';
