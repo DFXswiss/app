@@ -202,6 +202,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       );
       return;
     }
+    if (isLoadingAuthor) return;
     if (!messageAuthor) {
       setActionError(authorError ? staffNameLoadError(authorError) : STAFF_NAME_MISSING);
       return;
