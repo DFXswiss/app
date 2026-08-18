@@ -107,7 +107,7 @@ export default function EditMailScreen(): JSX.Element {
           if (e.message.includes('merge')) {
             setShowLinkHint(true);
           } else {
-            setError(e.message ?? 'Unknown error');
+            setError(e.message);
           }
         } else {
           setError(e.message ?? 'Unknown error');
