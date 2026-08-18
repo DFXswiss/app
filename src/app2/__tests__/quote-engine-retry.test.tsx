@@ -250,6 +250,27 @@ describe('useQuoteEngine error-path timers', () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it('does not retry a network error when retry would duplicate server work', async () => {
+    const fetcher = jest.fn().mockRejectedValue(new Error('network'));
+
+    renderHook(() =>
+      useQuoteEngine(true, 'k', fetcher, false, () => true, { retryWouldDuplicateServerWork: true }),
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(5_000 + 15_000 + 30_000);
+      await Promise.resolve();
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   it('does not retry when the caller marks the error as permanent', async () => {
     const fetcher = jest.fn().mockRejectedValue(new Error('EmailRequired'));
 

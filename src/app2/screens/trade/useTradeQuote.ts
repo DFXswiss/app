@@ -113,7 +113,9 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
     return call<Buy>({ url: BuyUrl.quote, method: 'PUT', data: info, token: false });
   }, [receiveFor, call, asset, currency, amount, paymentMethod, externalTransactionId, withPaymentInfo]);
 
-  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError);
+  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError, {
+    retryWouldDuplicateServerWork: Boolean(withPaymentInfo),
+  });
 }
 
 export interface SellQuoteParams {
@@ -156,7 +158,9 @@ export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
     return call<Sell>({ url: SellUrl.quote, method: 'PUT', data: info, token: false });
   }, [receiveFor, call, asset, currency, amount, iban, externalTransactionId]);
 
-  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError);
+  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError, {
+    retryWouldDuplicateServerWork: Boolean(iban),
+  });
 }
 
 export interface SwapQuoteParams {
@@ -193,5 +197,7 @@ export function useSwapQuote(params: SwapQuoteParams): QuoteEngineState<Swap> {
     return call<Swap>({ url: SwapUrl.quote, method: 'PUT', data: info, token: false });
   }, [receiveFor, call, sourceAsset, targetAsset, amount, externalTransactionId, withPaymentInfo]);
 
-  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError);
+  return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError, {
+    retryWouldDuplicateServerWork: Boolean(withPaymentInfo),
+  });
 }
