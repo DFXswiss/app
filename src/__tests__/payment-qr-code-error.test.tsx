@@ -297,6 +297,33 @@ describe('PaymentQrCode stale-response guard', () => {
     expect(button).toBeEnabled();
   });
 
+  it('closes the reserved preview and does not assign a PDF when the request goes stale', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+    (global.URL as any).createObjectURL = jest.fn(() => 'blob:invoice');
+
+    const { rerender } = render(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(<PaymentQrCode value="BCD\n001" txId={42} />);
+
+    await act(async () => {
+      resolveInvoice({ pdfData: 'JVBERi0x' });
+    });
+
+    expect(preview.close).toHaveBeenCalled();
+    expect(preview.location.href).toBe('');
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+    expect((global.URL as any).createObjectURL).not.toHaveBeenCalled();
+  });
+
   it('does not show an error when the collection mode changes while a failing request is in flight', async () => {
     let rejectInvoice: (reason: unknown) => void;
     mockInvoiceFor.mockImplementation(
