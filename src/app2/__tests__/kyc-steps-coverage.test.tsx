@@ -715,7 +715,9 @@ describe('KycStepForm ident', () => {
 
 describe('KycStepForm remaining forms', () => {
   beforeEach(() => {
+    jest.useRealTimers();
     jest.clearAllMocks();
+    mockGetFinancial.mockReset();
     mockGetCountries.mockResolvedValue(COUNTRIES);
     mockSetFile.mockResolvedValue(done('Statutes'));
     mockSetRecommendation.mockResolvedValue(done('Recommendation'));
@@ -724,6 +726,17 @@ describe('KycStepForm remaining forms', () => {
     mockContinueKyc.mockResolvedValue({ currentStep: undefined });
     mockSetFinancial.mockResolvedValue(done('FinancialData'));
   });
+
+  function hangFinancialLoad() {
+    let resolve!: (value: { questions: unknown[]; responses: unknown[] }) => void;
+    let reject!: (err: unknown) => void;
+    const promise = new Promise<{ questions: unknown[]; responses: unknown[] }>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    mockGetFinancial.mockImplementation(() => promise);
+    return { resolve, reject };
+  }
 
   it('uploads a file-only statutes step', async () => {
     const view = renderStep(KycStepName.STATUTES);
@@ -882,46 +895,47 @@ describe('KycStepForm remaining forms', () => {
     beneficial.unmount();
   });
 
-  it('drops a financial load after unmount and ignores a busy or empty answer', async () => {
-    let rejectLoad!: (err: unknown) => void;
-    mockGetFinancial.mockImplementationOnce(
-      () =>
-        new Promise((_, reject) => {
-          rejectLoad = reject;
-        }),
-    );
+  it('drops a rejected financial load after unmount', async () => {
+    const load = hangFinancialLoad();
     const pending = renderStep(KycStepName.FINANCIAL_DATA);
+    await waitFor(() => expect(mockGetFinancial).toHaveBeenCalled());
     pending.unmount();
     await act(async () => {
-      rejectLoad({ statusCode: 500 });
+      load.reject({ statusCode: 500 });
     });
+  });
 
-    let resolveLoad!: (value: { questions: unknown[]; responses: unknown[] }) => void;
-    mockGetFinancial.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveLoad = resolve;
-        }),
-    );
+  it('drops a resolved financial load after unmount', async () => {
+    const load = hangFinancialLoad();
     const late = renderStep(KycStepName.FINANCIAL_DATA);
+    await waitFor(() => expect(mockGetFinancial).toHaveBeenCalled());
     late.unmount();
     await act(async () => {
-      resolveLoad({ questions: [], responses: [] });
+      load.resolve({ questions: [], responses: [] });
     });
+  });
 
+  it('ignores a busy or empty financial answer', async () => {
     mockGetFinancial.mockResolvedValue({
       questions: [{ key: 'c1', type: 'Confirmation', title: 'Confirm this' }],
       responses: [],
     });
     mockSetFinancial.mockImplementation(() => new Promise(() => undefined));
     const view = renderStep(KycStepName.FINANCIAL_DATA);
-    expect((await screen.findAllByText('Confirm this')).length).toBeGreaterThan(0);
-    fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+    expect(await screen.findByRole('checkbox')).toBeInTheDocument();
+    const form = await waitFor(() => {
+      const node = document.querySelector('form');
+      expect(node).toBeTruthy();
+      return node as HTMLFormElement;
+    });
+    fireEvent.submit(form);
     expect(mockSetFinancial).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    fireEvent.click(await screen.findByRole('checkbox'));
+    const continueBtn = await screen.findByRole('button', { name: /continue/i });
+    await waitFor(() => expect(continueBtn).not.toBeDisabled());
+    fireEvent.click(continueBtn);
     await waitFor(() => expect(mockSetFinancial).toHaveBeenCalledTimes(1));
-    fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+    fireEvent.submit(form);
     expect(mockSetFinancial).toHaveBeenCalledTimes(1);
     view.unmount();
   });
