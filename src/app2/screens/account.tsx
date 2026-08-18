@@ -326,14 +326,14 @@ export default function AccountScreen() {
   };
 
   const level = user?.kyc.level;
-  const verifiedLabel =
+  const verified: { label: TranslationKey; note: TranslationKey; tone: 'ok' | 'warn' | 'neutral' } =
     level == null
-      ? t('connected')
+      ? { label: 'connected', note: 'kycNoteOpen', tone: 'neutral' }
       : level >= KycLevel.Completed
-        ? t('verified')
+        ? { label: 'verified', note: 'kycNote', tone: 'ok' }
         : level >= KycLevel.Sell
-          ? t('verifiedPartial')
-          : t('notVerified');
+          ? { label: 'verifiedPartial', note: 'kycNotePartial', tone: 'warn' }
+          : { label: 'notVerified', note: 'kycNoteOpen', tone: 'neutral' };
 
   const limit = user?.tradingLimit;
   const limitLabel = limit ? `${formatChf(limit.limit, language)} ${t(PERIOD_KEY[limit.period] ?? 'perMonth')}` : '—';
@@ -366,9 +366,9 @@ export default function AccountScreen() {
         <div className="avatar">{AVATAR_ICON}</div>
         <h2>{displayName}</h2>
         <div className="mail">{secondaryLine}</div>
-        <div className="verified">
-          {VERIFIED_ICON}
-          <span>{verifiedLabel}</span>
+        <div className={verified.tone === 'ok' ? 'verified' : `verified ${verified.tone}`}>
+          {verified.tone === 'neutral' ? KYC_ICON : VERIFIED_ICON}
+          <span>{t(verified.label)}</span>
         </div>
         <div className="acct-num">
           <span>{t('walletAddr')}</span> <span>{shortAddress(address)}</span>
@@ -392,7 +392,7 @@ export default function AccountScreen() {
             <span>{t('kycLevel')}</span>
           </div>
           <div className="v">{level != null ? t('levelN', { n: level }) : '—'}</div>
-          <div className="note">{t('kycNote')}</div>
+          <div className="note">{t(verified.note)}</div>
         </div>
         <div
           className="statcard glass"

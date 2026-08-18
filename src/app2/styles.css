@@ -1135,6 +1135,14 @@ body::after {
   padding: 5px 11px;
   border-radius: 99px;
 }
+.verified.warn {
+  background: rgba(251, 191, 36, 0.14);
+  color: var(--warning);
+}
+.verified.neutral {
+  background: rgba(168, 181, 200, 0.14);
+  color: var(--t-muted);
+}
 .verified svg {
   width: 14px;
   height: 14px;

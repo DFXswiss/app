@@ -345,4 +345,55 @@ describe('AccountScreen', () => {
     await screen.findByText(/ada@example.com/i);
     expect(screen.getByText('xx')).toBeInTheDocument();
   });
+
+  it('shows a success badge and identity-confirmed note at full KYC', async () => {
+    mockSession.isLoggedIn = true;
+    mockUserState.user = { mail: 'ada@example.com', kyc: { level: 50 } };
+    const { container } = renderAccount();
+    await screen.findByText(/ada@example.com/i);
+    const badge = container.querySelector('.verified') as HTMLElement;
+    expect(badge.className).toBe('verified');
+    expect(badge).toHaveTextContent('Verified · Full access');
+    expect(badge.querySelector('path[d="M9 12l2 2 4-4"]')).not.toBeNull();
+    expect(container.querySelector('.statcard .note')).toHaveTextContent('Identity confirmed');
+  });
+
+  it('shows a warning badge and details-confirmed note at sell KYC', async () => {
+    mockSession.isLoggedIn = true;
+    mockUserState.user = { mail: 'ada@example.com', kyc: { level: 30 } };
+    const { container } = renderAccount();
+    await screen.findByText(/ada@example.com/i);
+    const badge = container.querySelector('.verified') as HTMLElement;
+    expect(badge).toHaveClass('warn');
+    expect(badge).not.toHaveClass('neutral');
+    expect(badge).toHaveTextContent(/^Verified$/);
+    expect(badge.querySelector('path[d="M9 12l2 2 4-4"]')).not.toBeNull();
+    expect(container.querySelector('.statcard .note')).toHaveTextContent('Details confirmed');
+  });
+
+  it('shows a neutral badge and open note below sell KYC', async () => {
+    mockSession.isLoggedIn = true;
+    mockUserState.user = { mail: 'ada@example.com', kyc: { level: 10 } };
+    const { container } = renderAccount();
+    await screen.findByText(/ada@example.com/i);
+    const badge = container.querySelector('.verified') as HTMLElement;
+    expect(badge).toHaveClass('neutral');
+    expect(badge).not.toHaveClass('warn');
+    expect(badge).toHaveTextContent('Not verified');
+    expect(badge.querySelector('path[d="M9 12l2 2 4-4"]')).toBeNull();
+    expect(container.querySelector('.statcard .note')).toHaveTextContent('Verification open');
+  });
+
+  it('shows a neutral connected badge and open note when KYC level is missing', async () => {
+    mockSession.isLoggedIn = true;
+    mockUserState.user = { mail: 'ada@example.com', kyc: {} };
+    const { container } = renderAccount();
+    await screen.findByText(/ada@example.com/i);
+    const badge = container.querySelector('.verified') as HTMLElement;
+    expect(badge).toHaveClass('neutral');
+    expect(badge).not.toHaveClass('warn');
+    expect(badge).toHaveTextContent('Connected');
+    expect(badge.querySelector('path[d="M9 12l2 2 4-4"]')).toBeNull();
+    expect(container.querySelector('.statcard .note')).toHaveTextContent('Verification open');
+  });
 });
