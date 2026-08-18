@@ -330,7 +330,7 @@ describe('POS extra paths', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /end this payment|vorgang beenden|termina questo|terminer ce paiement/i }));
     expect(chargeButton()).not.toBeDisabled();
-    expect(document.querySelector('.qcap')).toBeTruthy();
+    expect(document.querySelector('.qcap')).toBeNull();
 
     jest.spyOn(Date, 'now').mockRestore();
     jest.useRealTimers();

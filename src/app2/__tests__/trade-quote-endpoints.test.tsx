@@ -190,6 +190,25 @@ describe('App2 trade quote endpoints', () => {
     jest.useRealTimers();
   });
 
+  it('retries a lost public quote', async () => {
+    jest.useFakeTimers();
+    mockCall.mockRejectedValue(new Error('network'));
+    render(<BuyHarness />);
+
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(mockCall).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+      await Promise.resolve();
+    });
+    expect(mockCall).toHaveBeenCalledTimes(2);
+    jest.useRealTimers();
+  });
+
   it('switches endpoints when the caller moves to pay, without losing the input identity', async () => {
     const { rerender } = render(<BuyHarness />);
     await waitFor(() => expect(mockCall).toHaveBeenCalledTimes(1));

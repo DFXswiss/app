@@ -10,7 +10,7 @@ export interface SessionStoreInterface {
   editMailReturn: SessionStoreItem<string>;
 }
 
-enum SessionStoreKey {
+export enum SessionStoreKey {
   SUPPORT_ISSUE_UID = 'dfx.supportIssueUid',
   PAYMENT_LINK_API_URL = 'dfx.paymentLinkApiUrl',
   EDIT_MAIL_RETURN = 'dfx.editMailReturn',

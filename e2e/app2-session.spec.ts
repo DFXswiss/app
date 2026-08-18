@@ -4,7 +4,7 @@ import { getCachedAuth } from './helpers/auth-cache';
 /**
  * App 2.0 handbook baselines for every screen that needs a wallet.
  *
- * Intended path: start the local stack with `bash e2e-stack/scripts/up.sh`,
+ * Intended path: start the local stack with `npm run e2e:stack:up`,
  * set `REACT_APP_API_URL=http://localhost:3000` in `.env`, then run this spec
  * against `http://localhost:3001`.
  *
