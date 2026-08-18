@@ -32,8 +32,11 @@ jest.mock('react-router-dom', () => ({
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ApiException } from '@dfx.swiss/react';
+import { JobStatus } from 'src/util/job';
 import ReturnRouteScreen, { nextPollDelay, CKO_POLL } from '../screens/return-route';
 import { LanguageProvider } from '../i18n';
+
+const MERGE_JOB = { uid: 'job-uid', expectedSeconds: 65 };
 
 function jwt(expSecondsFromNow = 3600): string {
   const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + expSecondsFromNow }))
@@ -97,6 +100,93 @@ describe('ReturnRouteScreen extra paths', () => {
     mockCall.mockResolvedValue({});
     renderRoute();
     expect(await screen.findByText(/merged|zusammengeführt|unito|fusionné|merge/i)).toBeInTheDocument();
+  });
+
+  it('does not report success when a 202 job ends without Complete', async () => {
+    mockSearch.value = 'otp=abc123';
+    mockCall.mockResolvedValue({
+      ...MERGE_JOB,
+      status: JobStatus.FAILED,
+      error: 'Job job-uid failed, contact support if this persists.',
+    });
+    renderRoute();
+    expect(await screen.findByText(/contact support if this persists/i)).toBeInTheDocument();
+    expect(screen.queryByText(/your accounts have been merged|deine konten wurden zusammengeführt/i)).not.toBeInTheDocument();
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+  });
+
+  it('polls a 202 job and only succeeds when it completes', async () => {
+    mockSearch.value = 'otp=abc123';
+    mockCall
+      .mockResolvedValueOnce({ ...MERGE_JOB, status: JobStatus.PENDING })
+      .mockResolvedValueOnce({ ...MERGE_JOB, status: JobStatus.COMPLETE })
+      .mockResolvedValueOnce({ accessToken: jwt() });
+    renderRoute();
+    await waitFor(() => expect(mockUpdateSession).toHaveBeenCalled(), { timeout: 3000 });
+    expect(mockCall).toHaveBeenCalledWith({ url: 'job/job-uid', method: 'GET', token: false });
+    expect(mockNavigate).toHaveBeenCalledWith('/account');
+  });
+
+  it('tells the user to come back later when the merge job is still running', async () => {
+    mockSearch.value = 'otp=abc123';
+    mockCall.mockResolvedValue({ ...MERGE_JOB, expectedSeconds: 0, status: JobStatus.PENDING });
+    renderRoute();
+    expect(await screen.findByText(/taking longer than expected|dauert länger als erwartet/i)).toBeInTheDocument();
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+  });
+
+  it('reports a dead-letter merge job without treating it as success', async () => {
+    mockSearch.value = 'otp=abc123';
+    mockCall.mockResolvedValue({ ...MERGE_JOB, status: JobStatus.DEAD_LETTER });
+    renderRoute();
+    expect(await screen.findByText(/account merge failed|kontozusammenführung ist fehlgeschlagen/i)).toBeInTheDocument();
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+  });
+
+  it('treats a second job ticket after Complete as a failed merge', async () => {
+    mockSearch.value = 'otp=abc123';
+    mockCall
+      .mockResolvedValueOnce({ ...MERGE_JOB, status: JobStatus.COMPLETE })
+      .mockResolvedValueOnce({ ...MERGE_JOB, status: JobStatus.COMPLETE });
+    renderRoute();
+    expect(await screen.findByText(/account merge failed|kontozusammenführung ist fehlgeschlagen/i)).toBeInTheDocument();
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+  });
+
+  it('drops a merge confirm after unmount', async () => {
+    mockSearch.value = 'otp=abc123';
+    let resolveMerge!: (value: { accessToken: string }) => void;
+    mockCall.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveMerge = resolve;
+        }),
+    );
+    const { unmount } = renderRoute();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    unmount();
+    await act(async () => {
+      resolveMerge({ accessToken: jwt() });
+    });
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+
+    let rejectMerge!: (error: unknown) => void;
+    mockCall.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectMerge = reject;
+        }),
+    );
+    const dropping = renderRoute();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    dropping.unmount();
+    await act(async () => {
+      rejectMerge(new ApiException(500, 'late-fail'));
+    });
   });
 
   it('maps merge 409 and a generic merge error', async () => {
