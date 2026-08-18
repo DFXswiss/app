@@ -147,6 +147,29 @@ export function restoreSessionProviderBindings(
   setActiveConnector(snapshot.connector);
 }
 
+/** The live EIP-1193 instance a snapshot is actually bound to, if any. */
+export function boundProviderFromSnapshot(snapshot: SessionProviderSnapshot): Eip1193Provider | undefined {
+  if (snapshot.connector === 'injected') return snapshot.injected;
+  if (snapshot.connector === 'wallet-connect') return snapshot.wc;
+  return undefined;
+}
+
+/** Whether an EIP-1193 provider currently exposes `address` (case-insensitive).
+ * A rejected or missing `eth_accounts` answer is treated as "does not hold". */
+export async function providerHoldsAddress(
+  provider: Eip1193Provider | undefined,
+  address: string,
+): Promise<boolean> {
+  if (!provider?.request) return false;
+  try {
+    const accounts = await provider.request<string[]>({ method: 'eth_accounts' });
+    const target = address.toLowerCase();
+    return (accounts ?? []).some((account) => String(account).toLowerCase() === target);
+  } catch {
+    return false;
+  }
+}
+
 /** WC disconnect then JWT logout — shared by explicit logout and accountsChanged invalidate. */
 export async function teardownWalletSession(
   disconnectWc: () => Promise<unknown>,
@@ -317,20 +340,9 @@ function hasCredentialParams(params: URLSearchParams): boolean {
   return Boolean(token) || Boolean(address && signature);
 }
 
-(function clearStaleSessionOnCredentialedLoad() {
-  if (!hasCredentialParams(new URLSearchParams(window.location.search))) return;
-  try {
-    // 'dfx.authenticationToken' is @dfx.swiss/react's StoreKey.AUTH_TOKEN
-    // (hooks/store.hook.ts) — the only storage key the library itself owns.
-    window.localStorage.removeItem('dfx.authenticationToken');
-    window.sessionStorage.clear();
-  } catch {
-    // storage unavailable (private mode, sandboxed embed, ...) — nothing to clear
-  }
-})();
-
 // ---------------------------------------------------------------------------
 // JWT sanity check (mirrors public/app2/index.html's tokenValid/jwtPayload)
+// Function declarations so the IIFE below can call them (const arrows are not hoisted).
 // ---------------------------------------------------------------------------
 
 function decodeJwtPayload(token: string): { exp?: number; blockchains?: Blockchain[] } | undefined {
@@ -356,6 +368,50 @@ function isLikelyValidJwt(token: string): boolean {
   const payload = decodeJwtPayload(token);
   return typeof payload?.exp === 'number' && payload.exp * 1000 > Date.now() + 60_000; // 60s skew
 }
+
+/** Rejects empty values and obvious placeholders. Stronger checks need the server. */
+function isPlausibleCredentialValue(value: string | null): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  return lower !== 'undefined' && lower !== 'null' && lower !== '0x' && lower !== '-' && lower !== 'n/a';
+}
+
+function credentialsJustifyClearingSession(params: URLSearchParams): boolean {
+  const token = params.get('session') ?? params.get('token') ?? params.get('accessToken');
+  if (token) return isLikelyValidJwt(token);
+  return isPlausibleCredentialValue(params.get('address')) && isPlausibleCredentialValue(params.get('signature'));
+}
+
+// sessionStorage.setItem in this repo: session-store.hook.ts + bank-tx-cache.ts.
+// App 2.0 and @dfx.swiss/react write none; these are the same-origin keys we own.
+const OWNED_SESSION_STORAGE_KEYS = ['dfx.supportIssueUid', 'dfx.paymentLinkApiUrl'] as const;
+const OWNED_SESSION_STORAGE_PREFIXES = ['dfx.bankTx.'] as const;
+
+function removeOwnedSessionStorage(): void {
+  for (const key of OWNED_SESSION_STORAGE_KEYS) {
+    window.sessionStorage.removeItem(key);
+  }
+  const stale: string[] = [];
+  for (let i = 0; i < window.sessionStorage.length; i++) {
+    const key = window.sessionStorage.key(i);
+    if (key && OWNED_SESSION_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix))) stale.push(key);
+  }
+  for (const key of stale) window.sessionStorage.removeItem(key);
+}
+
+(function clearStaleSessionOnCredentialedLoad() {
+  if (!credentialsJustifyClearingSession(new URLSearchParams(window.location.search))) return;
+  try {
+    // 'dfx.authenticationToken' is @dfx.swiss/react's StoreKey.AUTH_TOKEN
+    // (hooks/store.hook.ts) — the only storage key the library itself owns.
+    window.localStorage.removeItem('dfx.authenticationToken');
+    removeOwnedSessionStorage();
+  } catch {
+    // storage unavailable (private mode, sandboxed embed, ...) — nothing to clear
+  }
+})();
 
 function shortAddress(address: string): string {
   return address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
@@ -399,10 +455,6 @@ function needsRecommendation(error: unknown): boolean {
   // exact literal, matching src/util/api-error.ts's getKycErrorFromMessage — not a loose
   // /recommend/i regex, which would also match unrelated server messages
   return apiErrorText(error).includes('RecommendationRequired');
-}
-
-function isUnauthorized(error: unknown): boolean {
-  return (error as { statusCode?: unknown } | undefined)?.statusCode === 401;
 }
 
 // ---------------------------------------------------------------------------
@@ -478,10 +530,6 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const [activeConnector, setActiveConnector] = useState<SessionConnector | undefined>();
   const busyRef = useRef(false); // guards against double-sign on rapid repeat clicks
   const bootstrappedRef = useRef(false);
-  // isLoggedIn as of the moment a sign-in attempt *started* — read via a ref
-  // because signInWith is async and the session-context value can move under it.
-  const isLoggedInRef = useRef(isLoggedIn);
-  isLoggedInRef.current = isLoggedIn;
   // Per-attempt cancellation: `attemptIdRef` invalidates whatever
   // handleSelectWallet() call is in flight so a late resolution after Cancel is discarded
   // instead of signing in behind the user's back; `wcTokenRef` is the live WalletConnect
@@ -568,10 +616,6 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       // own view so a bad signature drops back to the (still-filled-in) form, not the wallet list.
       fallbackView: ConnectView = { kind: 'list' },
     ) => {
-      // Captured *before* the request, not read in the catch block: only a session that was
-      // genuinely live when this attempt started should ever be reported as having "expired"
-      // — a failed first-ever login has no session to expire.
-      const wasLoggedIn = isLoggedInRef.current;
       // The invite code picked up from the URL/landing field can be either API shape — a short
       // partner ref (`usedRef`) or a full referral code (`recommendationCode`); the two DTO
       // fields are mutually exclusive and sending the wrong one is a guaranteed 400.
@@ -642,12 +686,11 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           setSheetOpen(true);
           return false;
         }
-        if (wasLoggedIn && isUnauthorized(error)) {
-          await libLogout();
-          showToast(t('sessionExpired'), { assertive: true });
-        } else {
-          showToast(t('signFail'), { assertive: true });
-        }
+        // A 401 here is the *new* /auth attempt (rejected signature, bad
+        // credentials) — it says nothing about the live JWT. Logging out would
+        // destroy a still-valid session. A 401 on a call that used the current
+        // JWT still tears down via the monitor / teardownWalletSession paths.
+        showToast(t('signFail'), { assertive: true });
         setView(fallbackView);
         return false;
       }
@@ -1051,16 +1094,21 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         pendingWcProviderRef,
       );
       clearSessionProviderBindings(setActiveConnector, injectedProviderRef, wcProviderRef, pendingWcProviderRef);
+      // Park a linked switch on `'other'` *before* any await. Leaving
+      // activeConnector undefined arms the reload eth_accounts probe against
+      // window.ethereum (often still the previous wallet) and would log the
+      // new JWT out while we ask the previous provider whether it holds the
+      // target. Restore below overwrites this when eth_accounts says it does;
+      // otherwise `'other'` stays, so the probe does not run and the old
+      // wallet's events cannot kill the new session.
+      if (entry.linked) setActiveConnector('other');
       showToast(`${t('switching')} · ${shortAddress(entry.address)}`);
       try {
         // SDK changeAddress is a silent no-op when user has not loaded (resolves, no token).
         if (!user) throw new Error('user not loaded');
         // Seamless re-issue for any address linked to the active account (no re-signing).
         await changeAddress(entry.address);
-        // Keep the live EIP-1193 binding after a linked switch. Leaving activeConnector
-        // undefined arms the eth_accounts reload probe; if the extension still sits on the
-        // previous address, that probe would log the new JWT session out immediately.
-        if (entry.linked) {
+        if (entry.linked && (await providerHoldsAddress(boundProviderFromSnapshot(previous), entry.address))) {
           restoreSessionProviderBindings(
             previous,
             setActiveConnector,

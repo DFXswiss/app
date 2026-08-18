@@ -40,12 +40,29 @@ jest.mock('../assets/wallets/pecunity.png', () => 'pecunity.png');
 jest.mock('../assets/wallets/realunit.svg', () => 'realunit.svg');
 jest.mock('../assets/wallets/urble.webp', () => 'urble.webp');
 
+function plausibleJwt(exp = Math.floor(Date.now() / 1000) + 3600): string {
+  const payload = btoa(JSON.stringify({ exp, blockchains: ['Ethereum'] }))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  return `e30.${payload}.sig`;
+}
+
+function seedOwnedAndForeignStorage(): void {
+  window.localStorage.setItem('dfx.authenticationToken', 'stale');
+  window.sessionStorage.setItem('dfx.supportIssueUid', 'issue-1');
+  window.sessionStorage.setItem('dfx.paymentLinkApiUrl', 'https://api.example/pl');
+  window.sessionStorage.setItem('dfx.bankTx.99', '{"id":99}');
+  window.sessionStorage.setItem('other.origin.key', 'keep-me');
+}
+
 describe('credentialed-load storage clear', () => {
   const original = window.location;
 
   afterEach(() => {
     Object.defineProperty(window, 'location', { configurable: true, value: original });
     window.localStorage.clear();
+    window.sessionStorage.clear();
+    jest.restoreAllMocks();
   });
 
   function loadWithSearch(search: string, throwOnStorage = false) {
@@ -63,10 +80,37 @@ describe('credentialed-load storage clear', () => {
     });
   }
 
-  it('clears the auth token when the URL carries a session', () => {
-    window.localStorage.setItem('dfx.authenticationToken', 'stale');
-    loadWithSearch('?session=fresh-token');
+  it('leaves token and storage alone when ?session= is not a usable JWT', () => {
+    seedOwnedAndForeignStorage();
+    loadWithSearch('?session=garbage');
+    expect(window.localStorage.getItem('dfx.authenticationToken')).toBe('stale');
+    expect(window.sessionStorage.getItem('dfx.supportIssueUid')).toBe('issue-1');
+    expect(window.sessionStorage.getItem('dfx.paymentLinkApiUrl')).toBe('https://api.example/pl');
+    expect(window.sessionStorage.getItem('dfx.bankTx.99')).toBe('{"id":99}');
+    expect(window.sessionStorage.getItem('other.origin.key')).toBe('keep-me');
+  });
+
+  it('clears the auth token and owned session keys when the URL carries a usable JWT', () => {
+    seedOwnedAndForeignStorage();
+    loadWithSearch(`?session=${plausibleJwt()}`);
     expect(window.localStorage.getItem('dfx.authenticationToken')).toBeNull();
+    expect(window.sessionStorage.getItem('dfx.supportIssueUid')).toBeNull();
+    expect(window.sessionStorage.getItem('dfx.paymentLinkApiUrl')).toBeNull();
+    expect(window.sessionStorage.getItem('dfx.bankTx.99')).toBeNull();
+    expect(window.sessionStorage.getItem('other.origin.key')).toBe('keep-me');
+  });
+
+  it('leaves storage alone when address+signature are obvious placeholders', () => {
+    seedOwnedAndForeignStorage();
+    loadWithSearch('?address=undefined&signature=null');
+    expect(window.localStorage.getItem('dfx.authenticationToken')).toBe('stale');
+    expect(window.sessionStorage.getItem('other.origin.key')).toBe('keep-me');
+  });
+
+  it('leaves storage alone when address+signature are only whitespace', () => {
+    seedOwnedAndForeignStorage();
+    loadWithSearch('?address=%20%20&signature=0xsig');
+    expect(window.localStorage.getItem('dfx.authenticationToken')).toBe('stale');
   });
 
   it('clears storage for address+signature params and swallows a storage throw', () => {
