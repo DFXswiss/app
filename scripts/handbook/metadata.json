@@ -31,6 +31,10 @@
     "title": "Transaktion zuordnen",
     "description": "Zuweisungs-Formular für nicht zugeordnete Banküberweisungen: Liste, Vorauswahl bei genau einem Ziel und deaktivierter Button bei mehreren Zielen."
   },
+  "guest-tx-action-secret": {
+    "title": "Einzahlungs-Mail: Aktions-Secret",
+    "description": "Öffentliche Statusseite mit Aktions-Secret (Assign- und Refund-Buttons), dieselbe Seite ohne Secret, das Guest-Assign-Formular und das Guest-Refund-Formular."
+  },
   "sell-process": {
     "title": "Verkaufsprozess",
     "description": "Sell-Flow: geladene Seite, Betrag und Sepolia-ETH/USDT-Verkaufsschritte."
