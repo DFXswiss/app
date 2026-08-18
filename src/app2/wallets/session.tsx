@@ -43,6 +43,8 @@ import {
 import { connectChainWallet } from './chain-providers';
 import { isPlausibleCliAddress } from './cli';
 import { connectHardware, isWebHidAvailable, type HardwareChain, type HardwareId } from './hardware-providers';
+import { SessionStoreKey } from 'src/hooks/session-store.hook';
+import { BANK_TX_CACHE_PREFIX } from 'src/util/bank-tx-cache';
 import { firstQueryParam } from '../utils/url';
 import { classifyInviteCode, normalizeInviteCode } from './invite';
 import { rememberWallet, seenWallets, type SeenWallet } from './seen';
@@ -386,8 +388,8 @@ function credentialsJustifyClearingSession(params: URLSearchParams): boolean {
 
 // sessionStorage.setItem in this repo: session-store.hook.ts + bank-tx-cache.ts.
 // App 2.0 and @dfx.swiss/react write none; these are the same-origin keys we own.
-const OWNED_SESSION_STORAGE_KEYS = ['dfx.supportIssueUid', 'dfx.paymentLinkApiUrl'] as const;
-const OWNED_SESSION_STORAGE_PREFIXES = ['dfx.bankTx.'] as const;
+const OWNED_SESSION_STORAGE_KEYS = [SessionStoreKey.SUPPORT_ISSUE_UID, SessionStoreKey.PAYMENT_LINK_API_URL] as const;
+const OWNED_SESSION_STORAGE_PREFIXES = [BANK_TX_CACHE_PREFIX] as const;
 
 function removeOwnedSessionStorage(): void {
   for (const key of OWNED_SESSION_STORAGE_KEYS) {
@@ -1094,28 +1096,39 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         pendingWcProviderRef,
       );
       clearSessionProviderBindings(setActiveConnector, injectedProviderRef, wcProviderRef, pendingWcProviderRef);
-      // Park a linked switch on `'other'` *before* any await. Leaving
+      // Park on `'other'` *before* any await — linked or not. Leaving
       // activeConnector undefined arms the reload eth_accounts probe against
       // window.ethereum (often still the previous wallet) and would log the
-      // new JWT out while we ask the previous provider whether it holds the
-      // target. Restore below overwrites this when eth_accounts says it does;
+      // current JWT out while we ask a provider whether it holds the target.
+      // Restore below overwrites this when eth_accounts says it does;
       // otherwise `'other'` stays, so the probe does not run and the old
       // wallet's events cannot kill the new session.
-      if (entry.linked) setActiveConnector('other');
+      setActiveConnector('other');
       showToast(`${t('switching')} · ${shortAddress(entry.address)}`);
       try {
         // SDK changeAddress is a silent no-op when user has not loaded (resolves, no token).
         if (!user) throw new Error('user not loaded');
         // Seamless re-issue for any address linked to the active account (no re-signing).
         await changeAddress(entry.address);
-        if (entry.linked && (await providerHoldsAddress(boundProviderFromSnapshot(previous), entry.address))) {
-          restoreSessionProviderBindings(
-            previous,
-            setActiveConnector,
-            injectedProviderRef,
-            wcProviderRef,
-            pendingWcProviderRef,
-          );
+        if (entry.linked) {
+          const bound = boundProviderFromSnapshot(previous);
+          // After a reload there is no remembered connector; ask the injected
+          // provider itself rather than giving up and staying on `'other'`.
+          const candidate = bound ?? getInjectedProvider();
+          if (await providerHoldsAddress(candidate, entry.address)) {
+            if (bound) {
+              restoreSessionProviderBindings(
+                previous,
+                setActiveConnector,
+                injectedProviderRef,
+                wcProviderRef,
+                pendingWcProviderRef,
+              );
+            } else {
+              injectedProviderRef.current = candidate;
+              setActiveConnector('injected');
+            }
+          }
         }
         void reloadUser();
         showToast(`${t('connected')} · ${shortAddress(entry.address)}`);
@@ -1145,9 +1158,11 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
 
   // URL-param session bootstrap: ?session=/?token=/?accessToken= logs in
   // directly; ?address=&signature= performs the same sign-in the connect
-  // sheet uses. Runs once — the stale-session clear above already ran (at
-  // module-eval time) before this component ever mounted, so there is no
-  // stale token in storage for AuthContextProvider to have picked up first.
+  // sheet uses. Runs once. The module-eval clear only drops storage when
+  // incoming credentials are usable (valid JWT / plausible address+signature),
+  // so a present-but-unusable token parameter can still leave a previous
+  // `dfx.authenticationToken` in storage — and already in AuthContext, which
+  // mounted on it. Those cases logout here; placeholders are only scrubbed.
   useEffect(() => {
     if (bootstrappedRef.current) return;
     bootstrappedRef.current = true;
@@ -1160,15 +1175,29 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     const signatureParam = params.get('signature');
 
     if (tokenParam) {
-      if (isLikelyValidJwt(tokenParam)) updateSession(tokenParam);
+      if (isLikelyValidJwt(tokenParam)) {
+        updateSession(tokenParam);
+      } else {
+        try {
+          window.localStorage.removeItem('dfx.authenticationToken');
+          removeOwnedSessionStorage();
+        } catch {
+          // storage unavailable (private mode, sandboxed embed, ...)
+        }
+        void libLogout();
+      }
       scrubCredentialParams();
       return;
     }
 
-    signInWith({
-      address: addressParam as string,
-      signature: signatureParam as string,
-    }).finally(scrubCredentialParams);
+    if (credentialsJustifyClearingSession(params)) {
+      signInWith({
+        address: addressParam as string,
+        signature: signatureParam as string,
+      }).finally(scrubCredentialParams);
+      return;
+    }
+    scrubCredentialParams();
     // Intentionally run once on mount (empty deps): bootstrappedRef makes
     // re-runs a no-op, and re-reading `signInWith`/`updateSession` identities
     // here would only ever re-guard against the same already-consumed URL
