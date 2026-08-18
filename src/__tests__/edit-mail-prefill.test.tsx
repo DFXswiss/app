@@ -7,6 +7,12 @@ const mockUpdateMail = jest.fn();
 const mockVerifyMail = jest.fn();
 const mockNavigate = jest.fn();
 const mockHandleMergedError = jest.fn();
+const mockSetRedirectPath = jest.fn();
+const mockEditMailReturn = {
+  get: jest.fn(),
+  set: jest.fn(),
+  remove: jest.fn(),
+};
 const mockUserState: { user?: { mail?: string } } = {};
 
 class MockApiError extends Error {
@@ -104,6 +110,19 @@ jest.mock('src/hooks/navigation.hook', () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
 }));
 
+jest.mock('src/contexts/app-handling.context', () => ({
+  useAppHandlingContext: () => ({
+    redirectPath: undefined,
+    setRedirectPath: mockSetRedirectPath,
+  }),
+}));
+
+jest.mock('src/hooks/session-store.hook', () => ({
+  useSessionStore: () => ({
+    editMailReturn: mockEditMailReturn,
+  }),
+}));
+
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import EditMailScreen from '../screens/edit-mail.screen';
 
@@ -117,6 +136,11 @@ describe('EditMailScreen waits for the user before prefilling', () => {
     mockNavigate.mockReset();
     mockHandleMergedError.mockReset();
     mockHandleMergedError.mockReturnValue(false);
+    mockSetRedirectPath.mockReset();
+    mockEditMailReturn.get.mockReset();
+    mockEditMailReturn.set.mockReset();
+    mockEditMailReturn.remove.mockReset();
+    mockEditMailReturn.get.mockReturnValue(undefined);
   });
 
   it('keeps the spinner after 2FA until the user context arrives', async () => {
