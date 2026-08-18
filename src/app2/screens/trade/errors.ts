@@ -1,0 +1,149 @@
+// DFX App 2.0 — trade error mapping.
+//
+// Two distinct error shapes come back from the SDK:
+//  1. A thrown `ApiException` (network error, 4xx/5xx) from `useApi().call()` — statusCode +
+//     message. A 401 means the session died mid-flow (`useApi` already tries once with a
+//     refreshed token internally; a 401 that still reaches us means the session is gone).
+//  2. A *successful* response with `isValid: false` and a `TransactionError` enum on
+//     `Buy`/`Sell`/`Swap` — the quote itself is invalid (amount out of range, KYC needed, ...).
+//     This replaces the static app's regex-on-message heuristics (`/kyc/i.test(m)`, ...) with a
+//     real enum, which is strictly more reliable.
+
+import { ApiException, TransactionError } from '@dfx.swiss/react';
+import { getKycErrorFromMessage } from '../../../util/api-error';
+import type { Language, TranslationKey } from '../../i18n';
+import { formatAmount, formatFiat } from './amount';
+
+export type TradeErrorKind = 'session' | 'email' | 'setup' | 'generic';
+
+export interface TradeErrorInfo {
+  kind: TradeErrorKind;
+  message: string;
+}
+
+type T = (key: TranslationKey, vars?: Record<string, string | number>) => string;
+
+/** Raw `QuoteError` values for the email gate that predate the SDK's `TransactionError` enum. */
+const PRIMARY_EMAIL_ERRORS = new Set(['PrimaryEmailRequired', 'PrimaryEmailNotConfirmed']);
+
+/** True for every error code that should open the sheet's inline e-mail field (not the generic
+ * "finish on DFX" setup gate) — `EMAIL_REQUIRED` plus the pre-SDK PrimaryEmail* quote codes. */
+export function isEmailGateError(error: TransactionError | string | undefined): boolean {
+  if (error == null || error === '') return false;
+  if (error === TransactionError.EMAIL_REQUIRED) return true;
+  if (PRIMARY_EMAIL_ERRORS.has(String(error))) return true;
+  const code = String(error)
+    .replace(/[^a-z0-9]/gi, '')
+    .toLowerCase();
+  return code === 'emailrequired' || code === 'primaryemailrequired' || code === 'primaryemailnotconfirmed';
+}
+
+/** Maps a thrown error from `receiveFor(...)` to a friendly, already-translated message. */
+export function mapThrownError(t: T, err: unknown): TradeErrorInfo {
+  if (err instanceof ApiException) {
+    if (err.statusCode === 401) return { kind: 'session', message: t('sessionExpired') };
+    const code = String(err.code ?? '')
+      .replace(/[^a-z0-9]/gi, '')
+      .toLowerCase();
+    if (isEmailGateError(err.code) || isEmailGateError(code)) {
+      return { kind: 'email', message: t('verifyEmailNote') };
+    }
+    if (code === 'recommendationrequired') return { kind: 'setup', message: t('inviteGateNote') };
+    if (code.includes('kyc') || code === 'namerequired' || code === 'videoidentrequired') {
+      return { kind: 'setup', message: t('needKyc') };
+    }
+    if (code.includes('limit')) return { kind: 'setup', message: t('needLimit') };
+    if (code.includes('iban')) return { kind: 'setup', message: t('ibanInvalid') };
+
+    // Nest 400s put the QuoteError token in `message` and leave `code` unset
+    // (`{ statusCode: 400, message: "KycRequired" }`). The phrase fallbacks below
+    // require word boundaries / spaces and miss those tokens.
+    const fromMessage = getKycErrorFromMessage(err.message);
+    if (fromMessage) {
+      if (isEmailGateError(fromMessage)) return { kind: 'email', message: t('verifyEmailNote') };
+      const mappedMessage = mapTransactionError(t, fromMessage, undefined, undefined, String);
+      return { kind: 'setup', message: mappedMessage as string };
+    }
+
+    // Older API deployments did not always provide `code`; retain narrow message fallbacks for
+    // compatibility, but never surface the raw server string in the localized UI.
+    const msg = err.message || '';
+    if (/\bemail\s*required\b/i.test(msg)) return { kind: 'email', message: t('verifyEmailNote') };
+    if (/\brecommendation\s*required\b/i.test(msg)) return { kind: 'setup', message: t('inviteGateNote') };
+    if (/\bkyc\b|identity verification/i.test(msg)) return { kind: 'setup', message: t('needKyc') };
+    if (/\blimit\s*(?:exceeded|required)\b/i.test(msg)) return { kind: 'setup', message: t('needLimit') };
+    if (/\biban\b/i.test(msg)) return { kind: 'setup', message: t('ibanInvalid') };
+    return { kind: 'generic', message: t('genErr') };
+  }
+  return { kind: 'generic', message: t('genErr') };
+}
+
+/** Maps the `TransactionError` enum a *successful* (200) but invalid quote carries. `min`/`max`
+ * are the response's `minVolume`/`maxVolume` (source-unit for buy, i.e. fiat; source-crypto-unit
+ * for sell/swap) — pass a formatter so the caller controls fiat-vs-crypto precision. */
+export function mapTransactionError(
+  t: T,
+  error: TransactionError | undefined,
+  min: number | undefined,
+  max: number | undefined,
+  format: (n: number) => string,
+): string | undefined {
+  switch (error) {
+    case undefined:
+      return undefined;
+    case TransactionError.AMOUNT_TOO_LOW:
+      return `${t('minAmount')} ${format(min ?? 0)}`;
+    case TransactionError.AMOUNT_TOO_HIGH:
+      return `${t('maxAmount')} ${format(max ?? 0)}`;
+    case TransactionError.KYC_REQUIRED:
+    case TransactionError.KYC_DATA_REQUIRED:
+    case TransactionError.VIDEO_IDENT_REQUIRED:
+    case TransactionError.NAME_REQUIRED:
+    case TransactionError.KYC_REQUIRED_INSTANT:
+      return t('needKyc');
+    case TransactionError.LIMIT_EXCEEDED:
+      return t('needLimit');
+    case TransactionError.EMAIL_REQUIRED:
+      return t('verifyEmailNote');
+    case TransactionError.RECOMMENDATION_REQUIRED:
+      return t('inviteGateNote');
+    case TransactionError.IBAN_CURRENCY_MISMATCH:
+      return t('ibanInvalid');
+    default: {
+      const code = String(error);
+      // The quote endpoints answer an unsupported combination with values the SDK enum doesn't
+      // know (`AssetUnsupported`/`CurrencyUnsupported`/`PaymentMethodNotAllowed`, see api ›
+      // QuoteError). Telling that user to finish their account setup would send them off to fix
+      // something that isn't broken — the combination is.
+      if (COMBINATION_ERRORS.has(code)) return t('comboUnavailable');
+      // CountryNotAllowed/NationalityNotAllowed are account properties (the address country /
+      // nationality on file — transaction-helper.ts checks `country.dfxEnable` and
+      // `nationality.bankEnable`/`cryptoEnable`), not a combination problem: no other asset,
+      // currency or payment method will change the outcome, so "pick another asset" here would
+      // be actively misleading.
+      if (ACCOUNT_RESTRICTED_ERRORS.has(code)) return t('accountRestricted');
+      // PrimaryEmailRequired/PrimaryEmailNotConfirmed exist in the API's QuoteError enum but
+      // aren't in the SDK's TransactionError yet — route them to the same email-verification
+      // gate as EMAIL_REQUIRED above instead of the generic "finish setup" message.
+      if (PRIMARY_EMAIL_ERRORS.has(code)) return t('verifyEmailNote');
+      return t('needSetup');
+    }
+  }
+}
+
+/** Raw `QuoteError` values that mean "this asset/currency/payment-method combination", not
+ * "your account". Compared as strings because they are absent from the SDK's TransactionError. */
+const COMBINATION_ERRORS = new Set(['AssetUnsupported', 'CurrencyUnsupported', 'PaymentMethodNotAllowed']);
+
+/** Raw `QuoteError` values that mean "your account", not the combination you picked — see the
+ * `default` branch above for why these were previously (incorrectly) in `COMBINATION_ERRORS`. */
+const ACCOUNT_RESTRICTED_ERRORS = new Set(['CountryNotAllowed', 'NationalityNotAllowed']);
+
+/** Convenience formatters for `mapTransactionError`'s `format` param. */
+export function fiatFormatter(currencyCode: string, language: Language): (n: number) => string {
+  return (n) => formatFiat(n, currencyCode, language);
+}
+
+export function assetFormatter(code: string, language: Language, decimals = 8): (n: number) => string {
+  return (n) => `${formatAmount(n, decimals, language)} ${code}`;
+}

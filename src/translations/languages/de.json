@@ -178,6 +178,7 @@
     "City": "Ort",
     "Country": "Land",
     "Email address": "E-Mail Adresse",
+    "Unable to load user": "Benutzer konnte nicht geladen werden",
     "example@mail.com": "beispiel@mail.de",
     "Website": "Website",
     "https://example.com": "https://beispiel.de",

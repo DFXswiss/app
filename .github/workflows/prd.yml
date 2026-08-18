@@ -60,6 +60,17 @@ jobs:
 
           sed -i "s|main-widget.css|https://app.dfx.swiss/widget/$version.css|g" "./build/widget/$version"
 
+      - name: Build DFX App 2.0
+        run: npm run app2
+
+      # Staged into the same directory wrangler uploads, so the App 2.0 artifact ships with the
+      # main app instead of needing a second deploy. build-app2.sh writes to ./app2-dist
+      # (BUILD_PATH), which is gitignored; only the copy below is what the deploy sees.
+      - name: Stage DFX App 2.0 artifact
+        run: |
+          mkdir -p ./build/app2
+          cp -R ./app2-dist/. ./build/app2/
+
       - name: Install Wrangler
         run: npm install -g wrangler@4
 

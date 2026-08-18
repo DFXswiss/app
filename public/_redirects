@@ -15,4 +15,21 @@
 # and rewrites with 200, and a rule written with 404 is rejected as invalid. Narrowing the rule
 # below is not an option either: Cloudflare documents that redirects apply whether or not an asset
 # matches the request, so an explicit /static/* rule would shadow the assets themselves.
+#
+# /app2 without a trailing slash would otherwise match /* below and serve the main app shell
+# instead of App2. Rules are first-match wins, so this redirect must sit above /*.
+# /app2/ and /app2/index.html stay out of _routes.json include (see public/_headers): the
+# Function would 404 the App2 shell itself if they were listed.
+/app2    /app2/    308
+# App 2.0 is hash-routed. Checkout.com and e-mail callbacks hit real paths under
+# /app2/.... A 200 rewrite to index.html would keep the nested document URL, so
+# relative ./static/js bundles would 404 under /app2/buy/... — redirect into the
+# hash under /app2/ instead (query is preserved). foldApp2PathIntoHash remains as
+# a client-side belt for any host that does not apply these rules.
+/app2/buy/success    /app2/#/buy/success    302
+/app2/buy/success/   /app2/#/buy/success    302
+/app2/buy/failure    /app2/#/buy/failure    302
+/app2/buy/failure/   /app2/#/buy/failure    302
+/app2/account-merge  /app2/#/account-merge  302
+/app2/account-merge/ /app2/#/account-merge  302
 /*    /index.html    200
