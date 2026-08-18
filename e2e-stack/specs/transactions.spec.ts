@@ -193,6 +193,12 @@ test('Open invoice is shown on a completed CHF buy and hidden on pending buy and
     amount: 701,
     inputAsset: 'CHF',
   });
+  const secondAsset = await queryOne<{ id: number }>(
+    `SELECT id FROM asset WHERE buyable = true AND blockchain != 'Ethereum' ORDER BY id ASC LIMIT 1`,
+  );
+  const secondBuy = await createBuy(user.jwt, {
+    assetId: required(secondAsset, 'seed must provide a buyable non-Ethereum asset').id,
+  });
   await createTransaction({
     state: 'pending_buy',
     tag: 'tx-inv-vis-pend',
@@ -201,6 +207,7 @@ test('Open invoice is shown on a completed CHF buy and hidden on pending buy and
     jwt: user.jwt,
     amount: 702,
     inputAsset: 'CHF',
+    buyId: secondBuy.buyId,
   });
   await createTransaction({
     state: 'pending_sell',
