@@ -1147,6 +1147,17 @@ describe('SupportIssueScreen tx query param', () => {
   beforeEach(() => {
     mockUseUserGuard.mockReset();
     mockClearParams.mockReset();
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: false, logout: jest.fn() });
+    mockUseUserContext.mockReturnValue({ user: undefined });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    jest.useRealTimers();
   });
 
   it('skips the login guard when tx is present', () => {
