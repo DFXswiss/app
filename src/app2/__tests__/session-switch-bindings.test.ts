@@ -94,7 +94,9 @@ jest.mock('../assets/wallets/trust.svg', () => 'trust.svg');
 jest.mock('../assets/wallets/wallet-connect.svg', () => 'wallet-connect.svg');
 
 import {
+  boundProviderFromSnapshot,
   clearSessionProviderBindings,
+  providerHoldsAddress,
   restoreSessionProviderBindings,
   snapshotSessionProviderBindings,
   teardownWalletSession,
@@ -126,6 +128,38 @@ describe('clearSessionProviderBindings', () => {
     expect(injectedRef.current).toBeUndefined();
     expect(wcRef.current).toBeUndefined();
     expect(setActiveConnector).toHaveBeenCalledWith(undefined);
+  });
+});
+
+describe('providerHoldsAddress / boundProviderFromSnapshot', () => {
+  it('reports whether eth_accounts includes the target, case-insensitively', async () => {
+    const provider = {
+      request: jest.fn().mockResolvedValue(['0xAA', '0xBB']),
+    } as unknown as Eip1193Provider;
+    await expect(providerHoldsAddress(provider, '0xaa')).resolves.toBe(true);
+    await expect(providerHoldsAddress(provider, '0xcc')).resolves.toBe(false);
+  });
+
+  it('treats a missing provider or a rejected request as not holding the address', async () => {
+    await expect(providerHoldsAddress(undefined, '0xaa')).resolves.toBe(false);
+    const failing = { request: jest.fn().mockRejectedValue(new Error('denied')) } as unknown as Eip1193Provider;
+    await expect(providerHoldsAddress(failing, '0xaa')).resolves.toBe(false);
+    const empty = { request: jest.fn().mockResolvedValue(undefined) } as unknown as Eip1193Provider;
+    await expect(providerHoldsAddress(empty, '0xaa')).resolves.toBe(false);
+  });
+
+  it('picks the snapshot provider that matches the remembered connector', () => {
+    const injected = { request: jest.fn() } as unknown as Eip1193Provider;
+    const wc = { request: jest.fn() } as unknown as Eip1193Provider;
+    expect(
+      boundProviderFromSnapshot({ connector: 'injected', injected, wc, pendingWc: undefined }),
+    ).toBe(injected);
+    expect(
+      boundProviderFromSnapshot({ connector: 'wallet-connect', injected, wc, pendingWc: undefined }),
+    ).toBe(wc);
+    expect(
+      boundProviderFromSnapshot({ connector: 'other', injected, wc, pendingWc: undefined }),
+    ).toBeUndefined();
   });
 });
 
