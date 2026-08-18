@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Staff identity — current UI</title>
+  <style>
+    :root {
+      --blue-800: #072440;
+      --blue-400: #124370;
+      --gray-300: #f3f4f7;
+      --gray-400: #eaecf0;
+      --gray-500: #d6dbe2;
+      --gray-700: #9aa5b8;
+      --gray-800: #65728a;
+      --red-100: #f5516c;
+      --bg: #f4f6f8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--blue-800);
+    }
+    header.app {
+      height: 56px;
+      background: #f7f9fb;
+      border-bottom: 1px solid var(--gray-400);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      font-weight: 700;
+      font-size: 20px;
+    }
+    header.app .back, header.app .menu {
+      position: absolute;
+      top: 0;
+      height: 56px;
+      width: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+    header.app .back { left: 8px; }
+    header.app .menu { right: 8px; }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px 20px 40px; }
+    .screen { display: none; }
+    .screen.on { display: block; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr 280px; gap: 16px; }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(7,36,64,0.06);
+      padding: 16px 18px 18px;
+    }
+    .span2 { grid-column: 1 / 3; }
+    h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--gray-700);
+      margin: 0 0 12px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    td { padding: 4px 0; vertical-align: top; }
+    td.k { width: 38%; color: var(--blue-800); font-weight: 600; }
+    .pill {
+      display: inline-block;
+      background: var(--gray-300);
+      color: var(--blue-800);
+      border-radius: 999px;
+      padding: 1px 10px;
+      font-size: 13px;
+    }
+    .link { color: #2a6aa8; text-decoration: none; }
+    .muted { color: var(--gray-700); font-size: 16px; padding-top: 80px; text-align: center; }
+    .assign { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    .assign .col { min-width: 130px; }
+    label.field { display: block; font-size: 12px; color: var(--gray-700); margin-bottom: 4px; }
+    select, textarea, button { font-family: inherit; }
+    select {
+      width: 140px;
+      padding: 6px 8px;
+      font-size: 12px;
+      color: var(--blue-800);
+      background: #fff;
+      border: 1px solid #c5ced8;
+      border-radius: 6px;
+    }
+    .btn {
+      background: var(--blue-400);
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 6px 16px;
+      font-size: 12px;
+    }
+    .btn.save {
+      background: var(--blue-800);
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+      margin-top: 14px;
+    }
+    .msg {
+      background: var(--gray-300);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      margin-bottom: 8px;
+      max-width: 92%;
+    }
+    .msg.staff { margin-left: auto; }
+    .msg .meta { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; font-weight: 600; color: var(--blue-800); margin-bottom: 2px; }
+    .msg .meta span:last-child { font-weight: 400; color: var(--gray-800); }
+    .compose { display: flex; gap: 8px; align-items: flex-start; }
+    .icon { width: 28px; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--gray-800); }
+    textarea {
+      flex: 1;
+      min-height: 40px;
+      padding: 8px 12px;
+      font-size: 14px;
+      color: var(--blue-800);
+      border: 1px solid #c5ced8;
+      border-radius: 6px;
+      resize: none;
+    }
+    .author { padding: 8px; font-size: 12px; white-space: nowrap; }
+    .send {
+      background: var(--blue-400);
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+    .send[disabled] { opacity: 0.45; }
+    .hint .err { color: var(--red-100); margin: 0 0 4px; font-size: 14px; }
+    .hint .sub { color: var(--gray-800); margin: 0 0 10px; font-size: 13px; }
+    .editor-row { display: flex; align-items: center; justify-content: space-between; }
+    .editor-row .lbl { font-size: 14px; font-weight: 500; }
+    .editor-row .val { font-size: 14px; }
+    .narrow { max-width: 520px; }
+  </style>
+</head>
+<body>
+  <header class="app"><span class="back">‹</span><span id="title">Support Issue</span><span class="menu">☰</span></header>
+
+  <main>
+    <section id="issue" class="screen on">
+      <div class="cols">
+        <div class="card">
+          <h2>Issue Details</h2>
+          <table>
+            <tr><td class="k">ID:</td><td>7001</td></tr>
+            <tr><td class="k">UID:</td><td>RU-7001-UID</td></tr>
+            <tr><td class="k">Name:</td><td>Alice Muster</td></tr>
+            <tr><td class="k">Type:</td><td>Transaction issue</td></tr>
+            <tr><td class="k">Reason:</td><td>Funds not received</td></tr>
+            <tr><td class="k">State:</td><td><span class="pill">Pending</span></td></tr>
+            <tr><td class="k">Department:</td><td>Support</td></tr>
+            <tr><td class="k">Created:</td><td>1/1/2024, 10:00:00 AM</td></tr>
+          </table>
+        </div>
+        <div class="card">
+          <h2>Account Data</h2>
+          <table>
+            <tr><td class="k">Customer ID:</td><td><a class="link" href="#">8001</a></td></tr>
+            <tr><td class="k">Status:</td><td><span class="pill">Active</span></td></tr>
+            <tr><td class="k">Verified Name:</td><td>Alice Muster</td></tr>
+            <tr><td class="k">DFX Name:</td><td>Alice Muster</td></tr>
+            <tr><td class="k">Account Type:</td><td>Personal</td></tr>
+            <tr><td class="k">KYC Level:</td><td>50</td></tr>
+            <tr><td class="k">Country:</td><td>Switzerland</td></tr>
+            <tr><td class="k">Language:</td><td>English (EN)</td></tr>
+          </table>
+        </div>
+        <div class="card">
+          <h2>File Preview</h2>
+          <p class="muted">Click a file to preview</p>
+        </div>
+
+        <div class="card span2">
+          <h2>Update Issue</h2>
+          <div class="assign">
+            <div class="col">
+              <label class="field">State</label>
+              <select><option>Pending</option></select>
+            </div>
+            <div class="col">
+              <label class="field">Department</label>
+              <select><option>Support</option></select>
+            </div>
+            <div class="col">
+              <label class="field">Clerk</label>
+              <select>
+                <option selected>Rita Clerk</option>
+                <option>Tom Support</option>
+              </select>
+            </div>
+            <button class="btn">Update</button>
+          </div>
+        </div>
+
+        <div class="card span2">
+          <h2>Messages (3)</h2>
+          <div class="msg">
+            <div class="meta"><span>Customer</span><span>1/1/2024, 10:05:00 AM</span></div>
+            Hello, I did not receive my funds for the last transaction.
+          </div>
+          <div class="msg staff">
+            <div class="meta"><span>Rita Clerk</span><span>1/1/2024, 11:30:00 AM</span></div>
+            We are looking into this and will update you shortly.
+          </div>
+          <div class="compose">
+            <span class="icon">📎</span>
+            <textarea placeholder="Type a message..."></textarea>
+            <span class="author">Ada Lovelace</span>
+            <button class="send">Send</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="editor" class="screen">
+      <div class="card narrow">
+        <div class="editor-row">
+          <span class="lbl">Editor:</span>
+          <span class="val">Ada Lovelace</span>
+        </div>
+        <button class="btn save">Speichern</button>
+      </div>
+    </section>
+
+    <section id="missing" class="screen">
+      <div class="card">
+        <h2>Messages (3)</h2>
+        <div class="hint">
+          <p class="err">Something went wrong. Please try again. If the issue persists please reach out to our support.</p>
+          <p class="sub">Staff identification requires a verified name on this account.</p>
+        </div>
+        <div class="compose">
+          <span class="icon">📎</span>
+          <textarea placeholder="Type a message..."></textarea>
+          <span class="author">—</span>
+          <button class="send" disabled>Send</button>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    const view = new URLSearchParams(location.search).get('view') || 'issue';
+    document.querySelectorAll('.screen').forEach((el) => el.classList.toggle('on', el.id === view));
+    const titles = { issue: 'Support Issue', editor: 'KYC Management', missing: 'Support Issue' };
+    document.getElementById('title').textContent = titles[view] || 'Support Issue';
+  </script>
+</body>
+</html>
