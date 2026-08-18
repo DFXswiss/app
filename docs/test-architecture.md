@@ -132,6 +132,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixture with `{ userData: { verifiedName } }`. A green run proves that the review screen
   accepts that name, not that the API returns the logged-in staff member's `verifiedName`.
   The spec stays on the AML reset path and does not assert the Editor label.
+- **Full-stack guest assign/refund specs SQL-write `transaction.actionSecretHash`.**
+  `e2e-stack/specs/transactions.spec.ts` (`seedActionSecret`) updates the hash directly. A green run
+  does **not** prove that the mail/API path creates, hashes, or delivers the action secret.
 
 ## Known gaps
 

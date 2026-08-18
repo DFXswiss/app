@@ -75,6 +75,7 @@ export enum ExportType {
 export default function TransactionScreen(): JSX.Element {
   const { id, secret } = useParams();
   const { user } = useUserContext();
+  const { isLoggedIn } = useSessionContext();
   const { pathname } = useLocation();
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
@@ -88,7 +89,9 @@ export default function TransactionScreen(): JSX.Element {
 
   const isTransaction = id && (id.startsWith('T') || id.startsWith('Q'));
   const hasActionSecret = !!secret && /^[0-9a-f]{64}$/.test(secret);
-  const isRefund = isTransaction && hasActionSecret && pathname.includes('/refund');
+  // Logged-in list refund opens /tx/:uid/refund without a mail secret; guest mail stays secret-only.
+  const isRefund = isTransaction && pathname.includes('/refund') && (hasActionSecret || isLoggedIn);
+  // isAssign stays secret-only (list assign already uses /tx/:numericId/assign)
   const isAssign = isTransaction && hasActionSecret && pathname.includes('/assign');
 
   async function exportCsv(type: ExportType) {
@@ -321,7 +324,8 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   const { navigate } = useNavigation();
   const { translate, allowedCountries } = useSettingsContext();
   const { rootRef } = useLayoutContext();
-  const { getTransactionByUid } = useTransaction();
+  const { isLoggedIn } = useSessionContext();
+  const { getTransactionByUid, getTransactionRefund, setTransactionRefundTarget } = useTransaction();
   const { getRefund, setRefund } = useTransactionGuest();
   const refetchTimeout = useRef<ReturnType<typeof setTimeout> | undefined>();
 
@@ -331,6 +335,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   const [localError, setLocalError] = useState<string>();
 
   const isBuy = transaction?.type === TransactionType.BUY;
+  const hasActionSecret = !!secret && /^[0-9a-f]{64}$/.test(secret);
 
   const {
     control,
@@ -348,9 +353,19 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
 
   useEffect(() => {
     async function fetchRefund() {
-      if (!id || !secret) return;
+      if (!id || !transaction) return;
 
-      getRefund(id, secret)
+      // Guest money APIs require a valid action secret; do not fall through without one.
+      const loadRefund =
+        hasActionSecret && secret
+          ? getRefund(id, secret)
+          : isLoggedIn && typeof transaction.id === 'number'
+            ? getTransactionRefund(transaction.id)
+            : undefined;
+
+      if (!loadRefund) return;
+
+      loadRefund
         .then((response) => {
           setRefundDetails(response);
           if (response.expiryDate) {
@@ -362,12 +377,12 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
     }
 
-    if (transaction && id && secret) fetchRefund();
+    if (transaction && id) fetchRefund();
 
     return () => {
       if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
     };
-  }, [transaction, id, secret]);
+  }, [transaction, id, secret, hasActionSecret, isLoggedIn]);
 
   // Bank refund = BUY transaction with non-card payment method
   const isBankRefund = isBuy && transaction?.inputPaymentMethod !== FiatPaymentMethod.CARD;
@@ -414,8 +429,15 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
           : undefined,
       };
 
-      if (!id || !secret) return;
-      await setRefund(id, secret, payload);
+      if (hasActionSecret) {
+        if (!id || !secret) return;
+        await setRefund(id, secret, payload);
+      } else if (isLoggedIn && typeof transaction?.id === 'number') {
+        await setTransactionRefundTarget(transaction.id, payload);
+      } else {
+        // Guest money APIs require a valid action secret; do not fall through without one.
+        return;
+      }
       navigate(`/tx/${id}`);
     } catch (e) {
       const error = e as ApiError;

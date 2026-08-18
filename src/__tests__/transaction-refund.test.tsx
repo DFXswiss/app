@@ -1258,6 +1258,37 @@ describe('TransactionRefund rendered view', () => {
   });
 });
 
+describe('TransactionRefund logged-in list path', () => {
+  it('loads and submits via JWT APIs on /tx/T123/refund without secret', async () => {
+    mockIsLoggedIn = true;
+    mockGetTransactionByUid.mockResolvedValue(
+      makeTx({ id: 42, uid: 'T123', type: 'Buy', inputPaymentMethod: 'Card', state: 'Failed' }),
+    );
+    mockGetTransactionRefund.mockResolvedValue(makeRefund());
+    mockSetTransactionRefundTarget.mockResolvedValue(undefined);
+
+    renderRefund('/tx/T123/refund');
+    await waitForRefundFormLoaded();
+
+    expect(mockGetTransactionRefund).toHaveBeenCalledWith(42);
+    expect(mockGetGuestRefund).not.toHaveBeenCalled();
+
+    await waitForSubmitEnabled('Confirm refund');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }));
+    });
+
+    await waitFor(() => {
+      expect(mockSetTransactionRefundTarget).toHaveBeenCalledWith(42, {
+        refundTarget: undefined,
+        creditorData: undefined,
+      });
+    });
+    expect(mockSetGuestRefund).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith('/tx/T123');
+  });
+});
+
 describe('TransactionRefund guest uid path', () => {
   it('loads and submits refund data via the guest hook when not logged in', async () => {
     mockIsLoggedIn = false;
