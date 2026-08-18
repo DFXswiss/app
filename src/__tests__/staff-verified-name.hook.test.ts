@@ -180,6 +180,26 @@ describe('useStaffVerifiedName', () => {
     expect(mockGetUserData).not.toHaveBeenCalled();
   });
 
+  it('reloads from the RealUnit endpoint when the same account changes role', async () => {
+    mockGetSupportClerk.mockResolvedValue('Ada Lovelace');
+    mockGetRealunitClerk.mockResolvedValue('Real Unit Clerk');
+
+    const { result, rerender } = renderHook(() => useStaffVerifiedName());
+    await waitFor(() => expect(result.current.name).toBe('Ada Lovelace'));
+    expect(mockGetSupportClerk).toHaveBeenCalledTimes(1);
+    expect(mockGetRealunitClerk).not.toHaveBeenCalled();
+
+    mockAuth.session = { account: 42, role: 'RealUnit' };
+    rerender();
+
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.name).toBeUndefined();
+
+    await waitFor(() => expect(result.current.name).toBe('Real Unit Clerk'));
+    expect(mockGetRealunitClerk).toHaveBeenCalledTimes(1);
+    expect(mockGetSupportClerk).toHaveBeenCalledTimes(1);
+  });
+
   it('reuses the in-flight request for the same account', async () => {
     let resolveRequest!: (value: string | undefined) => void;
     const request = new Promise<string | undefined>((resolve) => {

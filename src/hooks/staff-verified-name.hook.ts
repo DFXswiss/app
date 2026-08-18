@@ -4,7 +4,11 @@ import { useCompliance } from './compliance.hook';
 import { useRealunitSupport } from './realunit-support.hook';
 import { useSupportDashboard } from './support-dashboard.hook';
 
-const cache = new Map<number, Promise<string | undefined>>();
+const cache = new Map<string, Promise<string | undefined>>();
+
+function cacheKey(account: number, role: UserRole | string | undefined): string {
+  return `${role === UserRole.REALUNIT ? 'ru' : 'sup'}:${account}`;
+}
 
 function readVerifiedName(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -22,7 +26,7 @@ export function useStaffVerifiedName(): { name?: string; isLoading: boolean; err
   const { getMyClerk: getRealunitClerk } = useRealunitSupport();
   const account = session?.account;
   const role = session?.role;
-  const [resolved, setResolved] = useState<{ account: number; name?: string; error?: string }>();
+  const [resolved, setResolved] = useState<{ key: string; name?: string; error?: string }>();
 
   useEffect(() => {
     if (account == null) {
@@ -31,8 +35,9 @@ export function useStaffVerifiedName(): { name?: string; isLoading: boolean; err
     }
 
     let cancelled = false;
+    const key = cacheKey(account, role);
 
-    let pending = cache.get(account);
+    let pending = cache.get(key);
     if (!pending) {
       const loadClerk = role === UserRole.REALUNIT ? getRealunitClerk : getSupportClerk;
       pending = loadClerk()
@@ -44,20 +49,20 @@ export function useStaffVerifiedName(): { name?: string; isLoading: boolean; err
           return getUserData(account).then((data) => readVerifiedName(data.userData.verifiedName));
         })
         .catch((e: unknown) => {
-          cache.delete(account);
+          cache.delete(key);
           throw e;
         });
-      cache.set(account, pending);
+      cache.set(key, pending);
     }
 
     pending
       .then((name) => {
-        if (!cancelled) setResolved({ account, name });
+        if (!cancelled) setResolved({ key, name });
       })
       .catch((e: unknown) => {
         if (!cancelled) {
           setResolved({
-            account,
+            key,
             name: undefined,
             error: e instanceof Error && e.message ? e.message : 'Unknown error',
           });
@@ -70,6 +75,7 @@ export function useStaffVerifiedName(): { name?: string; isLoading: boolean; err
   }, [account, role]);
 
   if (account == null) return { name: undefined, isLoading: false, error: undefined };
-  if (!resolved || resolved.account !== account) return { name: undefined, isLoading: true, error: undefined };
+  const key = cacheKey(account, role);
+  if (!resolved || resolved.key !== key) return { name: undefined, isLoading: true, error: undefined };
   return { name: resolved.name, isLoading: false, error: resolved.error };
 }
