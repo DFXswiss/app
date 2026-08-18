@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { getCachedAuth } from './helpers/auth-cache';
+import { app2ScreenshotOpts as screenshotOpts } from './helpers/app2-screenshot';
 
 /**
  * App 2.0 handbook baselines for every screen that needs a wallet.
@@ -16,12 +17,6 @@ import { getCachedAuth } from './helpers/auth-cache';
  * The stack's mock providers do not serve quotes, so the buy picture shows
  * the no-quote state. The account is fresh, so the transaction list is empty.
  */
-// Measured 2026-08-18 against the local e2e stack.
-// Noise: 0 px on 14/18 screens across two consecutive runs with maxDiffPixels: 0.
-// Signal: kycNoteOpen "Verification open" → "Verification pending" = 45 px on app2-account-in.
-// 15 sits between them. A 2000 budget swallowed that line change.
-const screenshotOpts = { maxDiffPixels: 15, fullPage: true } as const;
-
 async function openApp2Session(
   page: import('@playwright/test').Page,
   token: string,

@@ -141,7 +141,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 
 ## Known gaps
 
-All five points below concern the full-stack harness.
+All four points below concern the full-stack harness.
 
 - **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*`
   (`e2e-stack/env/api.env`); what that switches off in the API is described in the companion document

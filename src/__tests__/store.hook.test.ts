@@ -5,7 +5,7 @@ import { StoreKey, useStore } from '../hooks/store.hook';
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
-    getItem: (key: string) => store[key] || null,
+    getItem: (key: string) => store[key] ?? null,
     setItem: (key: string, value: string) => {
       store[key] = value;
     },
@@ -47,6 +47,16 @@ describe('useStore', () => {
     it('should return undefined when not set', () => {
       const { result } = renderHook(() => useStore());
       expect(result.current.redirectUri.get()).toBeUndefined();
+    });
+
+    it('returns an empty string as stored, not as missing', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.redirectUri.set('');
+      });
+
+      expect(result.current.redirectUri.get()).toBe('');
     });
 
     it('should remove redirectUri', () => {
