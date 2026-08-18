@@ -13,7 +13,7 @@ const mockEditMailReturn = {
   set: jest.fn(),
   remove: jest.fn(),
 };
-const mockUserState: { user?: { mail?: string } } = {};
+const mockUserState: { user?: { mail?: string }; isUserLoading: boolean } = { isUserLoading: false };
 
 class MockApiError extends Error {
   statusCode?: number;
@@ -37,6 +37,7 @@ jest.mock('@dfx.swiss/react', () => ({
   useKyc: () => ({ check2fa: mockCheck2fa }),
   useUserContext: () => ({
     user: mockUserState.user,
+    isUserLoading: mockUserState.isUserLoading,
     updateMail: mockUpdateMail,
     verifyMail: mockVerifyMail,
   }),
@@ -129,6 +130,7 @@ import EditMailScreen from '../screens/edit-mail.screen';
 describe('EditMailScreen waits for the user before prefilling', () => {
   beforeEach(() => {
     mockUserState.user = undefined;
+    mockUserState.isUserLoading = false;
     mockCheck2fa.mockReset();
     mockCheck2fa.mockResolvedValue(undefined);
     mockUpdateMail.mockReset();
@@ -144,12 +146,24 @@ describe('EditMailScreen waits for the user before prefilling', () => {
   });
 
   it('keeps the spinner after 2FA until the user context arrives', async () => {
+    mockUserState.isUserLoading = true;
     render(<EditMailScreen />);
     await act(async () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(mockCheck2fa).toHaveBeenCalled());
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Email address' })).not.toBeInTheDocument();
+  });
+
+  it('shows an error instead of a spinner when the user failed to load', async () => {
+    render(<EditMailScreen />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(mockCheck2fa).toHaveBeenCalled());
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Unable to load user');
     expect(screen.queryByRole('textbox', { name: 'Email address' })).not.toBeInTheDocument();
   });
 
@@ -164,6 +178,7 @@ describe('EditMailScreen waits for the user before prefilling', () => {
   });
 
   it('does not mount an empty field when the user arrives after check2fa', async () => {
+    mockUserState.isUserLoading = true;
     const view = render(<EditMailScreen />);
     await act(async () => {
       await Promise.resolve();
@@ -172,6 +187,7 @@ describe('EditMailScreen waits for the user before prefilling', () => {
     expect(screen.queryByRole('textbox', { name: 'Email address' })).not.toBeInTheDocument();
 
     mockUserState.user = { mail: 'e2e+acct-mail-chg@dfx.swiss' };
+    mockUserState.isUserLoading = false;
     view.rerender(<EditMailScreen />);
 
     const input = await screen.findByRole('textbox', { name: 'Email address' });
@@ -218,6 +234,14 @@ describe('EditMailScreen waits for the user before prefilling', () => {
     render(<EditMailScreen />);
     fireEvent.click(await screen.findByRole('button', { name: 'Save email' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('server down');
+  });
+
+  it('falls back to Unknown error when an update failure has no message', async () => {
+    mockUserState.user = { mail: 'old@example.com' };
+    mockUpdateMail.mockRejectedValue({ statusCode: 500 });
+    render(<EditMailScreen />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save email' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unknown error');
   });
 
   it('does not show an error when the merge handler consumes the update failure', async () => {

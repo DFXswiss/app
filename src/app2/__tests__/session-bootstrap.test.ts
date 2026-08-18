@@ -1,3 +1,6 @@
+import { SessionStoreKey } from 'src/hooks/session-store.hook';
+import { StoreKey } from 'src/hooks/store.hook';
+
 jest.mock('@dfx.swiss/react', () => ({
   AuthWalletType: { METAMASK: 'MetaMask', CLI: 'CLI', ALBY: 'Alby', LEDGER: 'Ledger' },
   Blockchain: { ETHEREUM: 'Ethereum' },
@@ -48,11 +51,38 @@ function plausibleJwt(exp = Math.floor(Date.now() / 1000) + 3600): string {
 }
 
 function seedOwnedAndForeignStorage(): void {
-  window.localStorage.setItem('dfx.authenticationToken', 'stale');
-  window.sessionStorage.setItem('dfx.supportIssueUid', 'issue-1');
-  window.sessionStorage.setItem('dfx.paymentLinkApiUrl', 'https://api.example/pl');
+  window.localStorage.setItem(StoreKey.AUTH_TOKEN, 'stale');
+  window.localStorage.setItem(StoreKey.ACTIVE_WALLET, 'MetaMask');
+  window.localStorage.setItem(StoreKey.QUERY_PARAMS, '{"mail":"prev@example.com"}');
+  window.localStorage.setItem(StoreKey.LANGUAGE, 'de');
+  for (const key of Object.values(SessionStoreKey)) {
+    window.sessionStorage.setItem(key, `owned-${key}`);
+  }
   window.sessionStorage.setItem('dfx.bankTx.99', '{"id":99}');
   window.sessionStorage.setItem('other.origin.key', 'keep-me');
+}
+
+function expectOwnedStorageCleared(): void {
+  expect(window.localStorage.getItem(StoreKey.AUTH_TOKEN)).toBeNull();
+  expect(window.localStorage.getItem(StoreKey.ACTIVE_WALLET)).toBeNull();
+  expect(window.localStorage.getItem(StoreKey.QUERY_PARAMS)).toBeNull();
+  expect(window.localStorage.getItem(StoreKey.LANGUAGE)).toBe('de');
+  for (const key of Object.values(SessionStoreKey)) {
+    expect(window.sessionStorage.getItem(key)).toBeNull();
+  }
+  expect(window.sessionStorage.getItem('dfx.bankTx.99')).toBeNull();
+  expect(window.sessionStorage.getItem('other.origin.key')).toBe('keep-me');
+}
+
+function expectOwnedStorageIntact(): void {
+  expect(window.localStorage.getItem(StoreKey.AUTH_TOKEN)).toBe('stale');
+  expect(window.localStorage.getItem(StoreKey.ACTIVE_WALLET)).toBe('MetaMask');
+  expect(window.localStorage.getItem(StoreKey.QUERY_PARAMS)).toBe('{"mail":"prev@example.com"}');
+  for (const key of Object.values(SessionStoreKey)) {
+    expect(window.sessionStorage.getItem(key)).toBe(`owned-${key}`);
+  }
+  expect(window.sessionStorage.getItem('dfx.bankTx.99')).toBe('{"id":99}');
+  expect(window.sessionStorage.getItem('other.origin.key')).toBe('keep-me');
 }
 
 describe('credentialed-load storage clear', () => {
@@ -83,38 +113,29 @@ describe('credentialed-load storage clear', () => {
   it('leaves token and storage alone when ?session= is not a usable JWT', () => {
     seedOwnedAndForeignStorage();
     loadWithSearch('?session=garbage');
-    expect(window.localStorage.getItem('dfx.authenticationToken')).toBe('stale');
-    expect(window.sessionStorage.getItem('dfx.supportIssueUid')).toBe('issue-1');
-    expect(window.sessionStorage.getItem('dfx.paymentLinkApiUrl')).toBe('https://api.example/pl');
-    expect(window.sessionStorage.getItem('dfx.bankTx.99')).toBe('{"id":99}');
-    expect(window.sessionStorage.getItem('other.origin.key')).toBe('keep-me');
+    expectOwnedStorageIntact();
   });
 
   it('clears the auth token and owned session keys when the URL carries a usable JWT', () => {
     seedOwnedAndForeignStorage();
     loadWithSearch(`?session=${plausibleJwt()}`);
-    expect(window.localStorage.getItem('dfx.authenticationToken')).toBeNull();
-    expect(window.sessionStorage.getItem('dfx.supportIssueUid')).toBeNull();
-    expect(window.sessionStorage.getItem('dfx.paymentLinkApiUrl')).toBeNull();
-    expect(window.sessionStorage.getItem('dfx.bankTx.99')).toBeNull();
-    expect(window.sessionStorage.getItem('other.origin.key')).toBe('keep-me');
+    expectOwnedStorageCleared();
   });
 
   it('leaves storage alone when address+signature are obvious placeholders', () => {
     seedOwnedAndForeignStorage();
     loadWithSearch('?address=undefined&signature=null');
-    expect(window.localStorage.getItem('dfx.authenticationToken')).toBe('stale');
-    expect(window.sessionStorage.getItem('other.origin.key')).toBe('keep-me');
+    expectOwnedStorageIntact();
   });
 
   it('leaves storage alone when address+signature are only whitespace', () => {
     seedOwnedAndForeignStorage();
     loadWithSearch('?address=%20%20&signature=0xsig');
-    expect(window.localStorage.getItem('dfx.authenticationToken')).toBe('stale');
+    expect(window.localStorage.getItem(StoreKey.AUTH_TOKEN)).toBe('stale');
   });
 
   it('clears storage for address+signature params and swallows a storage throw', () => {
-    window.localStorage.setItem('dfx.authenticationToken', 'stale');
+    window.localStorage.setItem(StoreKey.AUTH_TOKEN, 'stale');
     expect(() => loadWithSearch('?address=0xabc&signature=0xsig', true)).not.toThrow();
   });
 });

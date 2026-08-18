@@ -630,6 +630,72 @@ describe('WalletSessionProvider flows', () => {
     });
   });
 
+  it('restores provider bindings after a successful unlinked switch when the provider still holds the address', async () => {
+    const listeners: Record<string, (value?: unknown) => void> = {};
+    const provider = {
+      request: jest.fn().mockImplementation(async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [other];
+        return [];
+      }),
+      on: jest.fn((event: string, handler: (value?: unknown) => void) => {
+        listeners[event] = handler;
+      }),
+      removeListener: jest.fn(),
+    };
+    mockResolveInjected.mockReturnValue(provider);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockUserAddresses.push({ address, label: 'Here', wallet: 'MetaMask', blockchains: ['Ethereum'] });
+    mockSeen.mockReturnValue([{ address: other, walletType: 'MetaMask', walletId: 'MetaMask' }]);
+    renderSession();
+    fireEvent.click(screen.getByText('pick-mm'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    await waitFor(() => expect(provider.on).toHaveBeenCalled());
+    const onCallsAfterConnect = provider.on.mock.calls.length;
+    fireEvent.click(screen.getByText('switch'));
+    await waitFor(() => expect(mockChangeAddress).toHaveBeenCalledWith(other));
+    await waitFor(() => expect(provider.on.mock.calls.length).toBeGreaterThan(onCallsAfterConnect));
+    act(() => {
+      listeners.chainChanged?.();
+    });
+    await waitFor(() => expect(mockLogout).toHaveBeenCalled());
+  });
+
+  it('does not rebind injected after a reload switch without an injected-EVM association', async () => {
+    const listeners: Record<string, (value?: unknown) => void> = {};
+    const injected = {
+      request: jest.fn().mockImplementation(async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [other];
+        return [];
+      }),
+      on: jest.fn((event: string, handler: (value?: unknown) => void) => {
+        listeners[event] = handler;
+      }),
+      removeListener: jest.fn(),
+    };
+    mockGetInjected.mockReturnValue(injected);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Bitcoin'] };
+    mockUserAddresses.push(
+      { address, label: 'Here', wallet: 'Ledger', blockchains: ['Bitcoin'] },
+      { address: other, label: 'There', wallet: 'Ledger', blockchains: ['Bitcoin'] },
+    );
+    renderSession();
+    await waitFor(() => expect(injected.request).toHaveBeenCalled());
+    await waitFor(() => expect(injected.on).toHaveBeenCalled());
+    const onCallsAfterMount = injected.on.mock.calls.length;
+    mockLogout.mockClear();
+    fireEvent.click(screen.getByText('switch'));
+    await waitFor(() => expect(mockChangeAddress).toHaveBeenCalledWith(other));
+    await expect(
+      waitFor(() => expect(injected.on.mock.calls.length).toBeGreaterThan(onCallsAfterMount), { timeout: 150 }),
+    ).rejects.toThrow();
+    act(() => {
+      listeners.accountsChanged?.(['0x' + '99'.repeat(20)]);
+    });
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
   it('rebinds the injected provider after a linked switch when the session had no connector', async () => {
     const listeners: Record<string, (value?: unknown) => void> = {};
     const injected = {
@@ -643,13 +709,13 @@ describe('WalletSessionProvider flows', () => {
       removeListener: jest.fn(),
     };
     mockGetInjected.mockReturnValue(injected);
-    mockSeen.mockReturnValue([{ address, walletType: 'MetaMask', walletId: 'MetaMask' }]);
+    mockUserAddr.list = undefined;
+    mockSeen.mockReturnValue([
+      { address, walletType: 'MetaMask', walletId: 'MetaMask' },
+      { address: other, walletType: 'MetaMask', walletId: 'MetaMask' },
+    ]);
     mockSessionCtx.isLoggedIn = true;
     mockAuth.session = { address, blockchains: ['Ethereum'] };
-    mockUserAddresses.push(
-      { address, label: 'Here', wallet: 'MetaMask', blockchains: ['Ethereum'] },
-      { address: other, label: 'There', wallet: 'MetaMask', blockchains: ['Ethereum'] },
-    );
     renderSession();
     await waitFor(() => expect(injected.request).toHaveBeenCalled());
     await waitFor(() => expect(injected.on).toHaveBeenCalled());
