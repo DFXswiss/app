@@ -70,27 +70,37 @@ jest.mock('src/components/error-hint', () => ({
   ErrorHint: ({ message }: { message: string }) => <div role="alert">{message}</div>,
 }));
 
-jest.mock('src/components/overlay/edit-overlay', () => ({
-  EditOverlay: ({
-    prefill,
-    onEdit,
-    onCancel,
-  }: {
-    prefill?: string;
-    onEdit: (value: string) => Promise<void> | void;
-    onCancel: () => void;
-  }) => (
-    <div>
-      <input aria-label="Email address" readOnly value={prefill ?? ''} />
-      <button type="button" onClick={() => onEdit('new@example.com')}>
-        Save email
-      </button>
-      <button type="button" onClick={onCancel}>
-        Cancel
-      </button>
-    </div>
-  ),
-}));
+jest.mock('src/components/overlay/edit-overlay', () => {
+  const { useState } = jest.requireActual<typeof import('react')>('react');
+  return {
+    EditOverlay: ({
+      prefill,
+      onEdit,
+      onCancel,
+    }: {
+      prefill?: string;
+      onEdit: (value: string) => Promise<void> | void;
+      onCancel: () => void;
+    }) => {
+      const [value, setValue] = useState(prefill ?? '');
+      return (
+        <div>
+          <input
+            aria-label="Email address"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+          />
+          <button type="button" onClick={() => onEdit('new@example.com')}>
+            Save email
+          </button>
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      );
+    },
+  };
+});
 
 jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({
@@ -177,6 +187,21 @@ describe('EditMailScreen waits for the user before prefilling', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/account');
   });
 
+  it('keeps the form and its typed value when reloadUser sets isUserLoading again', async () => {
+    mockUserState.user = { mail: 'old@example.com' };
+    const view = render(<EditMailScreen />);
+    const input = await screen.findByRole('textbox', { name: 'Email address' });
+    fireEvent.change(input, { target: { value: 'typed@example.com' } });
+    expect((input as HTMLInputElement).value).toBe('typed@example.com');
+
+    mockUserState.isUserLoading = true;
+    view.rerender(<EditMailScreen />);
+
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    const still = screen.getByRole('textbox', { name: 'Email address' });
+    expect((still as HTMLInputElement).value).toBe('typed@example.com');
+  });
+
   it('does not mount an empty field when the user arrives after check2fa', async () => {
     mockUserState.isUserLoading = true;
     const view = render(<EditMailScreen />);
@@ -236,9 +261,9 @@ describe('EditMailScreen waits for the user before prefilling', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('server down');
   });
 
-  it('falls back to Unknown error when an update failure has no message', async () => {
+  it('falls back to Unknown error when an update failure has an empty message', async () => {
     mockUserState.user = { mail: 'old@example.com' };
-    mockUpdateMail.mockRejectedValue({ statusCode: 500 });
+    mockUpdateMail.mockRejectedValue(new MockApiError(500, ''));
     render(<EditMailScreen />);
     fireEvent.click(await screen.findByRole('button', { name: 'Save email' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Unknown error');
@@ -316,10 +341,10 @@ describe('EditMailScreen waits for the user before prefilling', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('falls back to Unknown error when a verification failure has no message', async () => {
+  it('falls back to Unknown error when a verification failure has an empty message', async () => {
     mockUserState.user = { mail: 'old@example.com' };
     mockUpdateMail.mockResolvedValue(undefined);
-    mockVerifyMail.mockRejectedValue({ statusCode: 500 });
+    mockVerifyMail.mockRejectedValue(new MockApiError(500, ''));
     render(<EditMailScreen />);
     fireEvent.click(await screen.findByRole('button', { name: 'Save email' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
