@@ -4,13 +4,17 @@ import { getCachedAuth } from './helpers/auth-cache';
 /**
  * App 2.0 handbook baselines for every screen that needs a wallet.
  *
- * Requires:
- *   - `app2-dist/` served at /app2/ (same API the artifact was built against)
- *   - TEST_SEED and REACT_APP_API_URL in `.env` (see `.env.sample`)
+ * Intended path: start the local stack with `bash e2e-stack/scripts/up.sh`,
+ * set `REACT_APP_API_URL=http://localhost:3000` in `.env`, then run this spec
+ * against `http://localhost:3001`.
+ *
+ * Do not take these pictures against the production API. The wallet from
+ * `.env.sample` is public; on production, other people's account data can
+ * land in the image.
  *
  * These pictures are a real session against that API, not a mocked shell.
- * Quotes, the transaction list, KYC progress and OpenCryptoPay activation
- * follow the TEST_SEED wallet's current state and will drift.
+ * The stack's mock providers do not serve quotes, so the buy picture shows
+ * the no-quote state. The account is fresh, so the transaction list is empty.
  */
 async function openApp2Session(
   page: import('@playwright/test').Page,
