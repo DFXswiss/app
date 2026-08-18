@@ -455,6 +455,78 @@ describe('WalletSessionProvider flows', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
   });
 
+  it('drops previous provider bindings when a linked switch lands on an address that provider does not hold', async () => {
+    const provider = {
+      request: jest.fn().mockResolvedValue([address]),
+      on: jest.fn(),
+      removeListener: jest.fn(),
+    };
+    const probeProvider = {
+      request: jest.fn().mockResolvedValue([address]),
+      on: jest.fn(),
+      removeListener: jest.fn(),
+    };
+    mockResolveInjected.mockReturnValue(provider);
+    mockGetInjected.mockReturnValue(probeProvider);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockUserAddresses.push(
+      { address, label: 'Here', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: other, label: 'There', wallet: 'Rabby', blockchains: ['Ethereum'] },
+    );
+    renderSession();
+    fireEvent.click(screen.getByText('pick-mm'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    await waitFor(() => expect(provider.on).toHaveBeenCalled());
+    const onCallsAfterConnect = provider.on.mock.calls.length;
+    const probeCallsAfterConnect = probeProvider.request.mock.calls.length;
+    mockLogout.mockClear();
+    fireEvent.click(screen.getByText('switch'));
+    await waitFor(() => expect(mockChangeAddress).toHaveBeenCalledWith(other));
+    await waitFor(() => expect(provider.request).toHaveBeenCalledWith({ method: 'eth_accounts' }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(provider.on.mock.calls.length).toBe(onCallsAfterConnect);
+    expect(probeProvider.request.mock.calls.length).toBe(probeCallsAfterConnect);
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('keeps provider bindings when a linked switch lands on an address that provider still holds', async () => {
+    const listeners: Record<string, (value?: unknown) => void> = {};
+    const provider = {
+      request: jest.fn().mockImplementation(async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [other];
+        return [];
+      }),
+      on: jest.fn((event: string, handler: (value?: unknown) => void) => {
+        listeners[event] = handler;
+      }),
+      removeListener: jest.fn(),
+    };
+    mockResolveInjected.mockReturnValue(provider);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockUserAddresses.push(
+      { address, label: 'Here', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: other, label: 'There', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+    );
+    renderSession();
+    fireEvent.click(screen.getByText('pick-mm'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    await waitFor(() => expect(provider.on).toHaveBeenCalled());
+    const onCallsAfterConnect = provider.on.mock.calls.length;
+    fireEvent.click(screen.getByText('switch'));
+    await waitFor(() => expect(mockChangeAddress).toHaveBeenCalledWith(other));
+    await waitFor(() => expect(provider.request).toHaveBeenCalledWith({ method: 'eth_accounts' }));
+    await waitFor(() => expect(provider.on.mock.calls.length).toBeGreaterThan(onCallsAfterConnect));
+    act(() => {
+      listeners.chainChanged?.();
+    });
+    await waitFor(() => expect(mockLogout).toHaveBeenCalled());
+  });
+
   it('does not call changeAddress when the user object is missing', async () => {
     mockUserState.user = undefined;
     mockAuth.session = { address, blockchains: ['Ethereum'] };
@@ -539,13 +611,14 @@ describe('WalletSessionProvider flows', () => {
     release();
   });
 
-  it('toasts session-expired on a 401 while already logged in', async () => {
+  it('does not log out the live session when a new auth attempt returns 401', async () => {
     mockSessionCtx.isLoggedIn = true;
     mockAuth.session = { address, blockchains: ['Ethereum'] };
     mockCreateSession.mockRejectedValueOnce({ statusCode: 401, message: 'gone' });
     renderSession();
     fireEvent.click(screen.getByText('pick-mm'));
-    await waitFor(() => expect(mockLogout).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/sign-in failed/i));
+    expect(mockLogout).not.toHaveBeenCalled();
   });
 
   it('refuses a missing Rabby without opening an install page', async () => {
