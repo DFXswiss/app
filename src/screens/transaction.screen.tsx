@@ -73,7 +73,7 @@ export enum ExportType {
 }
 
 export default function TransactionScreen(): JSX.Element {
-  const { id } = useParams();
+  const { id, secret } = useParams();
   const { user } = useUserContext();
   const { pathname } = useLocation();
   const { navigate } = useNavigation();
@@ -87,8 +87,9 @@ export default function TransactionScreen(): JSX.Element {
   const [error, setError] = useState<string>();
 
   const isTransaction = id && (id.startsWith('T') || id.startsWith('Q'));
-  const isRefund = isTransaction && pathname.includes('/refund');
-  const isAssign = isTransaction && pathname.includes('/assign');
+  const hasActionSecret = !!secret && /^[0-9a-f]{64}$/.test(secret);
+  const isRefund = isTransaction && hasActionSecret && pathname.includes('/refund');
+  const isAssign = isTransaction && hasActionSecret && pathname.includes('/assign');
 
   async function exportCsv(type: ExportType) {
     if (!user) return;
@@ -216,10 +217,11 @@ interface TransactionStatusProps {
 function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
-  const { id } = useParams();
+  const { id, secret } = useParams();
   const { getTransactionByUid } = useTransaction();
   const { user } = useUserContext();
 
+  const hasActionSecret = !!secret && /^[0-9a-f]{64}$/.test(secret);
   const isRealUnit = user?.activeAddress?.wallet?.startsWith('RealUnit') ?? false;
 
   const [transaction, setTransaction] = useState<Transaction>();
@@ -248,10 +250,10 @@ function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
       <TxInfo tx={transaction} showUserDetails={false} />
 
       <StyledVerticalStack gap={4} full>
-        {transaction.state === TransactionState.UNASSIGNED && (
+        {transaction.state === TransactionState.UNASSIGNED && hasActionSecret && (
           <StyledButton
             label={translate('screens/payment', 'Assign transaction')}
-            onClick={() => handleTransactionNavigation(`/tx/${transaction.uid}/assign`)}
+            onClick={() => handleTransactionNavigation(`/tx/${transaction.uid}/${secret}/assign`)}
             width={StyledButtonWidth.FULL}
           />
         )}
@@ -268,13 +270,15 @@ function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
           !transaction.chargebackAmount &&
           !isRealUnit && (
             <>
-              <StyledButton
-                label={translate(
-                  'general/actions',
-                  transaction.state === TransactionState.FAILED ? 'Confirm refund' : 'Request refund',
-                )}
-                onClick={() => handleTransactionNavigation(`/tx/${transaction.uid}/refund`)}
-              />
+              {hasActionSecret && (
+                <StyledButton
+                  label={translate(
+                    'general/actions',
+                    transaction.state === TransactionState.FAILED ? 'Confirm refund' : 'Request refund',
+                  )}
+                  onClick={() => handleTransactionNavigation(`/tx/${transaction.uid}/${secret}/refund`)}
+                />
+              )}
               <StyledButton
                 label={translate('general/actions', 'Create support ticket')}
                 onClick={() =>
@@ -311,7 +315,7 @@ interface TransactionRefundProps {
 }
 
 function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
-  const { id } = useParams();
+  const { id, secret } = useParams();
 
   const { state } = useLocation();
   const { navigate } = useNavigation();
@@ -344,9 +348,9 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
 
   useEffect(() => {
     async function fetchRefund() {
-      if (!id) return;
+      if (!id || !secret) return;
 
-      getRefund(id)
+      getRefund(id, secret)
         .then((response) => {
           setRefundDetails(response);
           if (response.expiryDate) {
@@ -358,12 +362,12 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
     }
 
-    if (transaction && id) fetchRefund();
+    if (transaction && id && secret) fetchRefund();
 
     return () => {
       if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
     };
-  }, [transaction, id]);
+  }, [transaction, id, secret]);
 
   // Bank refund = BUY transaction with non-card payment method
   const isBankRefund = isBuy && transaction?.inputPaymentMethod !== FiatPaymentMethod.CARD;
@@ -410,8 +414,8 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
           : undefined,
       };
 
-      if (!id) return;
-      await setRefund(id, payload);
+      if (!id || !secret) return;
+      await setRefund(id, secret, payload);
       navigate(`/tx/${id}`);
     } catch (e) {
       const error = e as ApiError;
@@ -596,7 +600,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
 }
 
 function TransactionAssign({ setError }: TransactionStatusProps): JSX.Element {
-  const { id } = useParams();
+  const { id, secret } = useParams();
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
   const { rootRef } = useLayoutContext();
@@ -619,22 +623,22 @@ function TransactionAssign({ setError }: TransactionStatusProps): JSX.Element {
   });
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !secret) return;
 
-    getTargets(id)
+    getTargets(id, secret)
       .then((list) => {
         setTargets(list);
         if (list.length === 1) setValue('target', list[0]);
       })
       .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
-  }, [id]);
+  }, [id, secret]);
 
   async function onSubmit({ target }: { target: TransactionTarget }) {
-    if (!id) return;
+    if (!id || !secret) return;
 
     setIsSubmitting(true);
     try {
-      await setTarget(id, target.id);
+      await setTarget(id, secret, target.id);
       navigate(`/tx/${id}`);
     } catch (error) {
       setError((error as ApiError).message ?? 'Unknown error');

@@ -530,13 +530,19 @@ function makeListTx(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const ACTION_SECRET = 'ab'.repeat(32);
+const GUEST_REFUND_PATH = `/tx/T123/${ACTION_SECRET}/refund`;
+
 function renderScreen(path: string) {
   const router = createMemoryRouter(
     [
       { path: '/tx', element: <TransactionScreen /> },
-      { path: '/tx/:id', element: <TransactionScreen /> },
-      { path: '/tx/:id/refund', element: <TransactionScreen /> },
+      { path: '/tx/:id/:secret/assign', element: <TransactionScreen /> },
+      { path: '/tx/:id/:secret/refund', element: <TransactionScreen /> },
       { path: '/tx/:id/assign', element: <TransactionScreen /> },
+      { path: '/tx/:id/refund', element: <TransactionScreen /> },
+      { path: '/tx/:id/:secret', element: <TransactionScreen /> },
+      { path: '/tx/:id', element: <TransactionScreen /> },
     ],
     { initialEntries: [path] },
   );
@@ -647,7 +653,7 @@ describe('TransactionRefund creditorCountry search helpers', () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
-    renderScreen('/tx/T123/refund');
+    renderScreen(GUEST_REFUND_PATH);
 
     await waitFor(() => {
       expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
@@ -667,7 +673,7 @@ describe('TransactionRefund creditorCountry search helpers', () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
-    renderScreen('/tx/T123/refund');
+    renderScreen(GUEST_REFUND_PATH);
 
     await waitFor(() => {
       expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();

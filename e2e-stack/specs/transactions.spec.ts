@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { expect, openScreen, queryOne, queryRows, required, test } from './fixtures';
 import {
   createUser,
@@ -7,6 +8,13 @@ import {
   cleanupCreatedData,
   TEST_IBAN,
 } from './fixtures/factories';
+
+const ACTION_SECRET = 'ab'.repeat(32);
+
+async function seedActionSecret(uid: string, secret = ACTION_SECRET): Promise<void> {
+  const actionSecretHash = createHash('sha256').update(secret).digest('hex');
+  await queryRows(`UPDATE transaction SET "actionSecretHash" = $1 WHERE uid = $2`, [actionSecretHash, uid]);
+}
 
 test.describe.configure({ mode: 'serial' });
 
@@ -582,8 +590,15 @@ test('public uid assign route opens the guest assign form and assigns to the sin
      WHERE id = $3`,
     [required(baRow, 'created bank_data row must exist').iban, 445, unassigned.bankTxId],
   );
+  await seedActionSecret(unassigned.uid);
 
-  await openScreen(page, `/tx/${unassigned.uid}/assign`, user.jwt);
+  // Cover /tx/:id/:secret (status with action secret) before the unauthenticated guest assign form.
+  await openScreen(page, `/tx/${unassigned.uid}/${ACTION_SECRET}`, user.jwt);
+  await expect(page.getByRole('button', { name: 'Assign transaction' })).toBeVisible();
+
+  await page.context().clearCookies();
+  await page.goto(`/tx/${unassigned.uid}/${ACTION_SECRET}/assign`);
+  await page.waitForLoadState('networkidle');
 
   await expect(page.getByRole('heading', { name: 'Assign transaction', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Your Transactions', exact: true })).not.toBeVisible();
@@ -675,8 +690,11 @@ test('pending buy refund form submits and writes chargeback columns', async ({ p
     amount: 188,
     inputAsset: 'CHF',
   });
+  await seedActionSecret(tx.uid);
 
-  await openScreen(page, `/tx/${tx.uid}/refund`, user.jwt);
+  await page.context().clearCookies();
+  await page.goto(`/tx/${tx.uid}/${ACTION_SECRET}/refund`);
+  await page.waitForLoadState('networkidle');
 
   await expect(page.getByText('Transaction refund', { exact: true })).toBeVisible();
 
@@ -735,8 +753,11 @@ test('refund form with invalid ZIP keeps submit disabled and leaves buy_crypto u
     amount: 189,
     inputAsset: 'CHF',
   });
+  await seedActionSecret(tx.uid);
 
-  await openScreen(page, `/tx/${tx.uid}/refund`, user.jwt);
+  await page.context().clearCookies();
+  await page.goto(`/tx/${tx.uid}/${ACTION_SECRET}/refund`);
+  await page.waitForLoadState('networkidle');
 
   await expect(page.getByText('Transaction refund', { exact: true })).toBeVisible();
 
@@ -783,8 +804,11 @@ test('completed buy is not refundable and shows ErrorHint with DB unchanged', as
     amount: 190,
     inputAsset: 'CHF',
   });
+  await seedActionSecret(tx.uid);
 
-  await openScreen(page, `/tx/${tx.uid}/refund`, user.jwt);
+  await page.context().clearCookies();
+  await page.goto(`/tx/${tx.uid}/${ACTION_SECRET}/refund`);
+  await page.waitForLoadState('networkidle');
 
   await expect(
     page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.', {

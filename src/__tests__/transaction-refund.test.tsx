@@ -456,11 +456,15 @@ function makeRefund(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderRefund(path = '/tx/T123/refund', state?: Record<string, unknown>) {
+const ACTION_SECRET = 'ab'.repeat(32);
+const GUEST_REFUND_PATH = `/tx/T123/${ACTION_SECRET}/refund`;
+
+function renderRefund(path = GUEST_REFUND_PATH, state?: Record<string, unknown>) {
   const router = createMemoryRouter(
     [
       { path: '/tx', element: <TransactionScreen /> },
       { path: '/tx/:id', element: <TransactionScreen /> },
+      { path: '/tx/:id/:secret/refund', element: <TransactionScreen /> },
       { path: '/tx/:id/refund', element: <TransactionScreen /> },
     ],
     {
@@ -580,7 +584,7 @@ describe('TransactionRefund fetchRefund', () => {
     renderRefund();
 
     await waitForRefundFormLoaded();
-    expect(mockGetGuestRefund).toHaveBeenCalledWith('T123');
+    expect(mockGetGuestRefund).toHaveBeenCalledWith('T123', ACTION_SECRET);
     expect(screen.getByTestId('row-Transaction amount')).toHaveTextContent('100 EUR');
     expect(screen.getByTestId('row-Refund amount')).toHaveTextContent('98.4 EUR');
   });
@@ -756,7 +760,7 @@ describe('TransactionRefund onSubmit', () => {
     });
 
     await waitFor(() => {
-      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', {
+      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', ACTION_SECRET, {
         refundTarget: BANK_IBAN_DE,
         creditorData: {
           name: 'Jane Doe',
@@ -787,7 +791,7 @@ describe('TransactionRefund onSubmit', () => {
     await waitFor(() => {
       expect(mockSetGuestRefund).toHaveBeenCalled();
     });
-    const payload = mockSetGuestRefund.mock.calls[0][1];
+    const payload = mockSetGuestRefund.mock.calls[0][2];
     expect(payload.creditorData.houseNumber).toBeUndefined();
   });
 
@@ -828,7 +832,7 @@ describe('TransactionRefund onSubmit', () => {
     });
 
     await waitFor(() => {
-      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', {
+      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', ACTION_SECRET, {
         refundTarget: undefined,
         creditorData: {
           name: 'Fixed Bank Name',
@@ -865,7 +869,7 @@ describe('TransactionRefund onSubmit', () => {
     await waitFor(() => {
       expect(mockSetGuestRefund).toHaveBeenCalled();
     });
-    const payload = mockSetGuestRefund.mock.calls[0][1];
+    const payload = mockSetGuestRefund.mock.calls[0][2];
     expect(payload.refundTarget).toBeUndefined();
     expect(payload.creditorData.name).toBe('Fallback Name');
   });
@@ -888,7 +892,7 @@ describe('TransactionRefund onSubmit', () => {
     });
 
     await waitFor(() => {
-      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', {
+      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', ACTION_SECRET, {
         refundTarget: undefined,
         creditorData: undefined,
       });
@@ -919,7 +923,7 @@ describe('TransactionRefund onSubmit', () => {
     });
 
     await waitFor(() => {
-      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', {
+      expect(mockSetGuestRefund).toHaveBeenCalledWith('T123', ACTION_SECRET, {
         refundTarget: '0xcrypto2',
         creditorData: undefined,
       });
@@ -1264,10 +1268,10 @@ describe('TransactionRefund guest uid path', () => {
     mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: 'CH9300762011623852957' }));
     mockSetGuestRefund.mockResolvedValue(undefined);
 
-    renderRefund('/tx/T123/refund');
+    renderRefund(GUEST_REFUND_PATH);
     await waitForRefundFormLoaded();
 
-    expect(mockGetGuestRefund).toHaveBeenCalledWith('T123');
+    expect(mockGetGuestRefund).toHaveBeenCalledWith('T123', ACTION_SECRET);
     expect(mockGetTransactionRefund).not.toHaveBeenCalled();
 
     await fillBankCreditorFields();
@@ -1298,7 +1302,7 @@ describe('TransactionRefund guest uid path', () => {
     mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
     mockSetGuestRefund.mockResolvedValue(undefined);
 
-    renderRefund('/tx/T123/refund');
+    renderRefund(GUEST_REFUND_PATH);
     await waitForRefundFormLoaded();
 
     expect(screen.getByTestId('refundAddress')).toBeInTheDocument();
@@ -1314,6 +1318,7 @@ describe('TransactionRefund guest uid path', () => {
     await waitFor(() => {
       expect(mockSetGuestRefund).toHaveBeenCalledWith(
         'T123',
+        ACTION_SECRET,
         expect.objectContaining({ refundTarget: '0xabc' }),
       );
     });
@@ -1327,10 +1332,10 @@ describe('TransactionRefund guest uid path', () => {
     mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: 'CH9300762011623852957' }));
     mockSetGuestRefund.mockResolvedValue(undefined);
 
-    renderRefund('/tx/T123/refund');
+    renderRefund(GUEST_REFUND_PATH);
     await waitForRefundFormLoaded();
 
-    expect(mockGetGuestRefund).toHaveBeenCalledWith('T123');
+    expect(mockGetGuestRefund).toHaveBeenCalledWith('T123', ACTION_SECRET);
     expect(mockGetTransactionRefund).not.toHaveBeenCalled();
     expect(screen.queryByTestId('iban-dropdown')).not.toBeInTheDocument();
 

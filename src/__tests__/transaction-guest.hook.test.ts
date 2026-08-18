@@ -10,6 +10,7 @@ import { useTransactionGuest } from '../hooks/transaction-guest.hook';
 
 describe('useTransactionGuest', () => {
   const uid = 'T1E448FF200A877DC';
+  const secret = 'ab'.repeat(32);
 
   beforeEach(() => {
     mockCall.mockReset();
@@ -21,9 +22,9 @@ describe('useTransactionGuest', () => {
     mockCall.mockResolvedValue(targets);
     const { result } = renderHook(() => useTransactionGuest());
 
-    await expect(result.current.getTargets(uid)).resolves.toBe(targets);
+    await expect(result.current.getTargets(uid, secret)).resolves.toBe(targets);
     expect(mockCall).toHaveBeenCalledWith({
-      url: `transaction/uid/${uid}/targets`,
+      url: `transaction/uid/${uid}/${secret}/targets`,
       method: 'GET',
       token: false,
     });
@@ -32,9 +33,9 @@ describe('useTransactionGuest', () => {
   it('assigns a buy route without a session token', async () => {
     const { result } = renderHook(() => useTransactionGuest());
 
-    await result.current.setTarget(uid, 7);
+    await result.current.setTarget(uid, secret, 7);
     expect(mockCall).toHaveBeenCalledWith({
-      url: `transaction/uid/${uid}/target?buyId=7`,
+      url: `transaction/uid/${uid}/${secret}/target?buyId=7`,
       method: 'PUT',
       token: false,
     });
@@ -45,9 +46,9 @@ describe('useTransactionGuest', () => {
     mockCall.mockResolvedValue(refund);
     const { result } = renderHook(() => useTransactionGuest());
 
-    await expect(result.current.getRefund(uid)).resolves.toBe(refund);
+    await expect(result.current.getRefund(uid, secret)).resolves.toBe(refund);
     expect(mockCall).toHaveBeenCalledWith({
-      url: `transaction/uid/${uid}/refund`,
+      url: `transaction/uid/${uid}/${secret}/refund`,
       method: 'GET',
       token: false,
     });
@@ -57,9 +58,9 @@ describe('useTransactionGuest', () => {
     const target = { refundTarget: 'CH93' };
     const { result } = renderHook(() => useTransactionGuest());
 
-    await result.current.setRefund(uid, target);
+    await result.current.setRefund(uid, secret, target);
     expect(mockCall).toHaveBeenCalledWith({
-      url: `transaction/uid/${uid}/refund`,
+      url: `transaction/uid/${uid}/${secret}/refund`,
       method: 'PUT',
       data: target,
       token: false,
