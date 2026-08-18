@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { app2ScreenshotOpts as screenshotOpts } from './helpers/app2-screenshot';
 
 /**
  * App 2.0 handbook baselines. Requires `app2-dist/` to be served at /app2/
@@ -14,12 +15,6 @@ import { test, expect } from '@playwright/test';
  * a product bug. To match Pages there, copy the six 302 rules into that
  * nginx.conf and rebuild the frontend image.
  */
-// Measured 2026-08-18 against the local e2e stack.
-// Noise: 0 px on 14/18 screens across two consecutive runs with maxDiffPixels: 0.
-// Signal: kycNoteOpen "Verification open" → "Verification pending" = 45 px on app2-account-in.
-// 15 sits between them. A 2000 budget swallowed that line change.
-const screenshotOpts = { maxDiffPixels: 15, fullPage: true } as const;
-
 async function openApp2(page: import('@playwright/test').Page, hash: string): Promise<void> {
   const response = await page.goto(`/app2/${hash}`, { waitUntil: 'domcontentloaded' });
   expect(response, `/app2/${hash} must be served`).toBeTruthy();

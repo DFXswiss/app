@@ -50,6 +50,7 @@ describe('useSessionStore', () => {
       });
 
       expect(result.current.supportIssueUid.get()).toBe('issue-uid-123');
+      expect(sessionStorage.getItem(SessionStoreKey.SUPPORT_ISSUE_UID)).toBe('issue-uid-123');
     });
 
     it('returns an empty string as stored, not as missing', () => {
@@ -71,6 +72,7 @@ describe('useSessionStore', () => {
       });
 
       expect(result.current.supportIssueUid.get()).toBeUndefined();
+      expect(sessionStorage.getItem(SessionStoreKey.SUPPORT_ISSUE_UID)).toBeNull();
     });
   });
 
@@ -88,6 +90,7 @@ describe('useSessionStore', () => {
       });
 
       expect(result.current.paymentLinkApiUrlStore.get()).toBe('https://api.example.com/payment');
+      expect(sessionStorage.getItem(SessionStoreKey.PAYMENT_LINK_API_URL)).toBe('https://api.example.com/payment');
     });
 
     it('should remove paymentLinkApiUrlStore', () => {
@@ -99,6 +102,7 @@ describe('useSessionStore', () => {
       });
 
       expect(result.current.paymentLinkApiUrlStore.get()).toBeUndefined();
+      expect(sessionStorage.getItem(SessionStoreKey.PAYMENT_LINK_API_URL)).toBeNull();
     });
   });
 
@@ -116,6 +120,7 @@ describe('useSessionStore', () => {
       });
 
       expect(result.current.editMailReturn.get()).toBe('/account');
+      expect(sessionStorage.getItem(SessionStoreKey.EDIT_MAIL_RETURN)).toBe('/account');
     });
 
     it('should remove editMailReturn', () => {
@@ -127,6 +132,7 @@ describe('useSessionStore', () => {
       });
 
       expect(result.current.editMailReturn.get()).toBeUndefined();
+      expect(sessionStorage.getItem(SessionStoreKey.EDIT_MAIL_RETURN)).toBeNull();
     });
   });
 

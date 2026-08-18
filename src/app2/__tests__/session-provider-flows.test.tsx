@@ -696,7 +696,7 @@ describe('WalletSessionProvider flows', () => {
     expect(mockLogout).not.toHaveBeenCalled();
   });
 
-  it('rebinds the injected provider after a linked switch when the session had no connector', async () => {
+  it('rebinds the injected provider after a remembered-wallet switch when the session had no connector', async () => {
     const listeners: Record<string, (value?: unknown) => void> = {};
     const injected = {
       request: jest.fn().mockImplementation(async ({ method }: { method: string }) => {
@@ -714,6 +714,43 @@ describe('WalletSessionProvider flows', () => {
       { address, walletType: 'MetaMask', walletId: 'MetaMask' },
       { address: other, walletType: 'MetaMask', walletId: 'MetaMask' },
     ]);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    renderSession();
+    await waitFor(() => expect(injected.request).toHaveBeenCalled());
+    await waitFor(() => expect(injected.on).toHaveBeenCalled());
+    injected.request.mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'eth_accounts') return [other];
+      return [];
+    });
+    mockLogout.mockClear();
+    fireEvent.click(screen.getByText('switch'));
+    await waitFor(() => expect(mockChangeAddress).toHaveBeenCalledWith(other));
+    await waitFor(() => expect(injected.on.mock.calls.length).toBeGreaterThan(2));
+    act(() => {
+      listeners.accountsChanged?.(['0x' + '99'.repeat(20)]);
+    });
+    await waitFor(() => expect(mockLogout).toHaveBeenCalled());
+  });
+
+  it('rebinds the injected provider after a linked-address switch when the session had no connector', async () => {
+    const listeners: Record<string, (value?: unknown) => void> = {};
+    const injected = {
+      request: jest.fn().mockImplementation(async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [address];
+        return [];
+      }),
+      on: jest.fn((event: string, handler: (value?: unknown) => void) => {
+        listeners[event] = handler;
+      }),
+      removeListener: jest.fn(),
+    };
+    mockGetInjected.mockReturnValue(injected);
+    mockUserAddresses.push(
+      { address, label: 'Here', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: other, label: 'There', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+    );
+    mockSeen.mockReturnValue([]);
     mockSessionCtx.isLoggedIn = true;
     mockAuth.session = { address, blockchains: ['Ethereum'] };
     renderSession();
