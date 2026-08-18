@@ -1278,6 +1278,47 @@ describe('TransactionList open receipt success', () => {
       expect(mockOpenPdfFromString).toHaveBeenCalledWith('receipt-pdf-bytes', false);
     });
   });
+
+  it('assigns the PDF via the reserved window when window.open returns a live preview', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+    (global.URL as any).createObjectURL = jest.fn(() => 'blob:receipt');
+
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 78, state: 'Completed' })]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+    mockGetTransactionReceipt.mockResolvedValue({ pdfData: btoa('pdf') });
+
+    renderList();
+
+    const openReceipt = await screen.findByRole('button', { name: 'Open receipt' });
+    await userEvent.click(openReceipt);
+
+    await waitFor(() => {
+      expect(window.open).toHaveBeenCalledWith('about:blank');
+      expect(preview.location.href).toBe('blob:receipt');
+      expect((global.URL as any).createObjectURL).toHaveBeenCalled();
+    });
+    expect(mockOpenPdfFromString).not.toHaveBeenCalled();
+  });
+
+  it('closes the reserved window and shows ErrorHint when getTransactionReceipt rejects', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 79, state: 'Completed' })]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+    mockGetTransactionReceipt.mockRejectedValue({ message: 'Receipt network failure' });
+
+    renderList();
+
+    const openReceipt = await screen.findByRole('button', { name: 'Open receipt' });
+    await userEvent.click(openReceipt);
+
+    await waitFor(() => {
+      expect(preview.close).toHaveBeenCalled();
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Receipt network failure');
+    });
+  });
 });
 
 // Lines 942-975: refund / increase limit / complete KYC / support Select buttons.
