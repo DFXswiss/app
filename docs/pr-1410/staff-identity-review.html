@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Staff identity — before / after</title>
+  <style>
+    :root {
+      --blue-800: #072440;
+      --blue-400: #124370;
+      --gray-300: #f3f4f7;
+      --gray-400: #eaecf0;
+      --gray-500: #d6dbe2;
+      --gray-700: #9aa5b8;
+      --gray-800: #65728a;
+      --red-100: #f5516c;
+      --bg: #f4f6f8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--blue-800);
+    }
+    header.app {
+      height: 56px;
+      background: #f7f9fb;
+      border-bottom: 1px solid var(--gray-400);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      font-weight: 700;
+      font-size: 20px;
+    }
+    header.app .back, header.app .menu {
+      position: absolute;
+      top: 0;
+      height: 56px;
+      width: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--blue-800);
+      font-size: 22px;
+    }
+    header.app .back { left: 8px; }
+    header.app .menu { right: 8px; }
+    main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 48px; }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    .lede { color: var(--gray-800); margin: 0 0 22px; font-size: 14px; line-height: 1.45; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .panel {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(7,36,64,0.06);
+      padding: 16px;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+    }
+    .tag.before { background: #fde8ea; color: #9b2436; }
+    .tag.after { background: #e6f0ea; color: #1f6b45; }
+    h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--gray-700);
+      margin: 0 0 12px;
+    }
+    label.field {
+      display: block;
+      font-size: 12px;
+      color: var(--gray-700);
+      margin-bottom: 4px;
+    }
+    select, input, textarea {
+      font-family: inherit;
+      color: var(--blue-800);
+      background: #fff;
+      border: 1px solid #c5ced8;
+      border-radius: 6px;
+    }
+    select.editor {
+      margin-left: 16px;
+      padding: 4px 8px;
+      font-size: 14px;
+    }
+    .editor-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .editor-row .lbl { font-size: 14px; font-weight: 500; }
+    .editor-row .val { font-size: 14px; margin-left: 16px; }
+    .caption { font-size: 12px; color: var(--gray-800); margin: 10px 0 0; line-height: 1.4; }
+    .btn {
+      margin-top: 14px;
+      background: var(--blue-800);
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+    .btn.update {
+      margin-top: 0;
+      background: var(--blue-400);
+      border-radius: 6px;
+      padding: 6px 16px;
+      font-size: 12px;
+    }
+    .compose {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .icon {
+      width: 28px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gray-800);
+      font-size: 16px;
+    }
+    textarea {
+      flex: 1;
+      min-height: 40px;
+      padding: 8px 12px;
+      font-size: 14px;
+      resize: none;
+    }
+    select.author {
+      padding: 8px;
+      font-size: 12px;
+    }
+    .author-text {
+      padding: 8px;
+      font-size: 12px;
+      white-space: nowrap;
+      color: var(--blue-800);
+    }
+    .send {
+      background: var(--blue-400);
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+    .send[disabled] { opacity: 0.45; }
+    .assign { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    .assign .col { min-width: 130px; }
+    .assign select { width: 140px; padding: 6px 8px; font-size: 12px; }
+    .hint .err { color: var(--red-100); margin: 0 0 4px; font-size: 14px; }
+    .hint .sub { color: var(--gray-800); margin: 0 0 10px; font-size: 13px; }
+    .span2 { grid-column: 1 / -1; }
+    @media (max-width: 800px) {
+      .grid { grid-template-columns: 1fr; }
+      .span2 { grid-column: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="app">
+    <span class="back">‹</span>
+    Staff identity
+    <span class="menu">☰</span>
+  </header>
+  <main>
+    <h1>Clerk dropdowns become the logged-in verified name</h1>
+    <p class="lede">
+      Actor fields (Editor, Signature, Author) are read-only text from the account.
+      Ticket assignment to a colleague stays a dropdown.
+    </p>
+
+    <div class="grid">
+      <section class="panel" id="before-editor">
+        <div class="tag before">Before</div>
+        <h2>Compliance Editor / Signature</h2>
+        <div class="editor-row">
+          <span class="lbl">Editor:</span>
+          <select class="editor" aria-label="Editor">
+            <option>—</option>
+            <option selected>JR</option>
+            <option>CT</option>
+            <option>VR</option>
+            <option>YO</option>
+          </select>
+        </div>
+        <p class="caption">Anyone on the list could sign as a colleague.</p>
+        <button class="btn">Speichern</button>
+      </section>
+
+      <section class="panel" id="after-editor">
+        <div class="tag after">After</div>
+        <h2>Compliance Editor / Signature</h2>
+        <div class="editor-row">
+          <span class="lbl">Editor:</span>
+          <span class="val">Ada Lovelace</span>
+        </div>
+        <p class="caption">Name comes from the logged-in account. Save stays disabled until it is present.</p>
+        <button class="btn">Speichern</button>
+      </section>
+
+      <section class="panel" id="before-author">
+        <div class="tag before">Before</div>
+        <h2>Support message author</h2>
+        <div class="compose">
+          <span class="icon" title="Attach file">📎</span>
+          <textarea placeholder="Type a message... (Shift+Enter = neue Zeile, Enter = senden)"></textarea>
+          <select class="author" aria-label="Author">
+            <option>Wendel</option>
+            <option selected>Josh</option>
+            <option>Vesa</option>
+          </select>
+          <button class="send">Send</button>
+        </div>
+      </section>
+
+      <section class="panel" id="after-author">
+        <div class="tag after">After</div>
+        <h2>Support message author</h2>
+        <div class="compose">
+          <span class="icon" title="Attach file">📎</span>
+          <textarea placeholder="Type a message... (Shift+Enter = neue Zeile, Enter = senden)"></textarea>
+          <span class="author-text">Ada Lovelace</span>
+          <button class="send">Send</button>
+        </div>
+      </section>
+
+      <section class="panel span2" id="assignment">
+        <div class="tag after">Unchanged</div>
+        <h2>Update Issue — ticket assignment still chooses a colleague</h2>
+        <div class="assign">
+          <div class="col">
+            <label class="field">State</label>
+            <select><option>Pending</option></select>
+          </div>
+          <div class="col">
+            <label class="field">Department</label>
+            <select><option>Support</option></select>
+          </div>
+          <div class="col">
+            <label class="field">Clerk</label>
+            <select>
+              <option>Wendel</option>
+              <option selected>Josh</option>
+              <option>Vesa</option>
+              <option>Jana</option>
+            </select>
+          </div>
+          <button class="btn update">Update</button>
+        </div>
+      </section>
+
+      <section class="panel span2" id="missing-name">
+        <div class="tag after">After — missing name</div>
+        <h2>Send stays disabled; hint sits above the compose row</h2>
+        <div class="hint">
+          <p class="err">Something went wrong. Please try again. If the issue persists please reach out to our support.</p>
+          <p class="sub">Staff identification requires a verified name on this account.</p>
+        </div>
+        <div class="compose">
+          <span class="icon" title="Attach file">📎</span>
+          <textarea placeholder="Type a message... (Shift+Enter = neue Zeile, Enter = senden)"></textarea>
+          <span class="author-text">—</span>
+          <button class="send" disabled>Send</button>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
