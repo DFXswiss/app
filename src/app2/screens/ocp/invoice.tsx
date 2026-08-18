@@ -84,6 +84,9 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
   const [generating, setGenerating] = useState(false);
   const [note, setNote] = useState<NoteState | null>(null);
   const [out, setOut] = useState<InvoiceOut | null>(null);
+  // Synchronous lock: `generating` cannot stop a second click in the same tick,
+  // before React commits. Matches pos.tsx `chargingRef`.
+  const generatingRef = useRef(false);
 
   const invIdRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
@@ -124,6 +127,7 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
   const currency = selectedRoute.currency?.name || 'CHF';
 
   const generate = async () => {
+    if (generatingRef.current) return;
     const trimmedInvId = invId.trim();
     if (!trimmedInvId) {
       invIdRef.current?.focus();
@@ -137,6 +141,7 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
       return;
     }
 
+    generatingRef.current = true;
     setOut(null);
     setGenerating(true);
     setNote({
@@ -161,6 +166,7 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
       const msg = err instanceof ApiException ? err.message : '';
       setNote({ variant: 'warn', node: `${t('genErr')}${msg ? `: ${msg}` : ''}` });
     } finally {
+      generatingRef.current = false;
       setGenerating(false);
     }
   };

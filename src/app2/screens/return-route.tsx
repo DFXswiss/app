@@ -20,8 +20,18 @@
 import { ApiException, useApi, useApiSession, useTransaction } from '@dfx.swiss/react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { JobResponse, JobStatus, isJobResponse, isJobTerminal, pollJobUntilTerminal } from 'src/util/job';
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
+
+interface MergeRedirect {
+  kycHash?: string;
+  accessToken?: string;
+}
+
+// The merge ran as a job and did not end in a usable result. Carries an already user-facing message,
+// which is what tells it apart from an ApiException in the catch below.
+class MergeJobError extends Error {}
 
 const SPINNER = <span className="spin" />;
 
@@ -247,12 +257,33 @@ export default function ReturnRouteScreen() {
 
     setPanel({ kind: 'spinner', msgKey: 'mergeVerifying' });
     void (async () => {
-      try {
-        const data = await call<{ accessToken?: string }>({
+      const confirmMerge = () =>
+        call<MergeRedirect | JobResponse>({
           url: `auth/mail/confirm?code=${encodeURIComponent(otp)}`,
           method: 'GET',
           token: isLoggedIn ? undefined : false,
         });
+
+      const mergeJobError = (job: JobResponse): MergeJobError => {
+        if (!isJobTerminal(job.status)) return new MergeJobError(t('mergeJobSlow'));
+        return new MergeJobError(job.error ?? t('mergeJobFailed'));
+      };
+
+      try {
+        const response = await confirmMerge();
+        let data: MergeRedirect = response as MergeRedirect;
+        if (isJobResponse(response)) {
+          const job = await pollJobUntilTerminal(
+            response,
+            (uid) => call<JobResponse>({ url: `job/${uid}`, method: 'GET', token: false }),
+            { isCancelled: () => cancelledRef.current },
+          );
+          if (job.status !== JobStatus.COMPLETE) throw mergeJobError(job);
+          const result = await confirmMerge();
+          if (isJobResponse(result)) throw mergeJobError(result);
+          data = result;
+        }
+        if (cancelledRef.current) return;
         const token = data?.accessToken;
         if (token && isValidJwt(token)) {
           updateSession(token); // adopt the merged account's token, then land on /account
@@ -266,6 +297,16 @@ export default function ReturnRouteScreen() {
           buttons: [{ label: t('routeContinue'), onClick: goContinue, primary: true }],
         });
       } catch (error) {
+        if (cancelledRef.current) return;
+        if (error instanceof MergeJobError) {
+          setPanel({
+            kind: 'result',
+            variant: 'warn',
+            title: error.message,
+            buttons: [{ label: t('routeContinue'), onClick: goContinue, primary: true }],
+          });
+          return;
+        }
         const status = statusOf(error);
         const key: TranslationKey = status === 400 ? 'mergeBad' : status === 409 ? 'mergeDone' : 'mergeErr';
         setPanel({

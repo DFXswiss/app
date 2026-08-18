@@ -290,11 +290,12 @@ describe('POS extra paths', () => {
     jest.useRealTimers();
   });
 
-  it('expires a poll that never settles', async () => {
+  it('keeps the till locked when the local deadline elapses without a server status', async () => {
     jest.useFakeTimers();
     let now = 1_000_000;
     jest.spyOn(Date, 'now').mockImplementation(() => now);
-    renderPos(buildOcp({ pollPayment: jest.fn().mockResolvedValue('Pending') }));
+    const pollPayment = jest.fn().mockResolvedValue('Pending');
+    renderPos(buildOcp({ pollPayment }));
     fireEvent.change(amountField(), { target: { value: '6' } });
     fireEvent.click(chargeButton());
     await act(async () => {
@@ -307,7 +308,30 @@ describe('POS extra paths', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByText(/expired|abgelaufen|scaduto|expiré/i)).toBeInTheDocument();
+    expect(screen.getByText(/no confirmation|keine rückmeldung|nessuna conferma|pas encore de confirmation/i)).toBeInTheDocument();
+    expect(chargeButton()).toBeDisabled();
+    expect(document.querySelector('.qcap')).toBeTruthy();
+
+    const pollsBeforeWait = pollPayment.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: /keep waiting|weiter warten|continua ad aspettare|continuer d'attendre/i }));
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment.mock.calls.length).toBeGreaterThan(pollsBeforeWait);
+    expect(chargeButton()).toBeDisabled();
+
+    now = now + 300_000 + 1;
+    await act(async () => {
+      jest.advanceTimersByTime(2700);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /end this payment|vorgang beenden|termina questo|terminer ce paiement/i }));
+    expect(chargeButton()).not.toBeDisabled();
+    expect(document.querySelector('.qcap')).toBeTruthy();
+
     jest.spyOn(Date, 'now').mockRestore();
     jest.useRealTimers();
   });

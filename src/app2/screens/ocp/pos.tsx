@@ -32,7 +32,7 @@ const CHECK_SVG = (
   </svg>
 );
 
-type FailKey = 'posFailed' | 'posExpired';
+type FailKey = 'posFailed' | 'posNoUpdate';
 
 // The active charge being awaited. A fresh `token` on every charge restarts the
 // polling effect (and its cleanup tears down the previous timer — no leak).
@@ -180,9 +180,10 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
         return;
       }
       if (Date.now() >= deadline) {
-        setFailKey('posExpired');
+        // Local silence is not a server Expired/Cancelled/Completed. Keep the
+        // till locked so a new charge cannot replace a still-payable LNURL.
+        setFailKey('posNoUpdate');
         setStatus('failed');
-        unlockTill();
         return;
       }
       timer = setTimeout(tick, delay);
@@ -267,14 +268,34 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
             ) : status === 'failed' ? (
               <div className="posstat fail">
                 {t(failKey)}{' '}
-                <button
-                  className="btn-mini"
-                  onClick={() => void doCharge()}
-                  disabled={charging}
-                  style={{ marginLeft: 10, width: 'auto' }}
-                >
-                  {t('retry')}
-                </button>
+                {failKey === 'posNoUpdate' ? (
+                  <>
+                    <button
+                      className="btn-mini"
+                      onClick={() => setStatus('waiting')}
+                      style={{ marginLeft: 10, width: 'auto' }}
+                    >
+                      {t('posKeepWaiting')}
+                    </button>
+                    <button
+                      className="btn-mini"
+                      onClick={unlockTill}
+                      disabled={!charging}
+                      style={{ marginLeft: 10, width: 'auto' }}
+                    >
+                      {t('posEndCharge')}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="btn-mini"
+                    onClick={() => void doCharge()}
+                    disabled={charging}
+                    style={{ marginLeft: 10, width: 'auto' }}
+                  >
+                    {t('retry')}
+                  </button>
+                )}
               </div>
             ) : (
               <div className="posstat">

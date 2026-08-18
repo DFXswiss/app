@@ -9,6 +9,13 @@ const mockReceiveForSell = jest.fn();
 const mockCall = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
+  ApiException: class ApiException extends Error {
+    statusCode: number;
+    constructor(httpStatus: number, errorMessage: string) {
+      super(errorMessage);
+      this.statusCode = httpStatus;
+    }
+  },
   BuyUrl: { quote: 'buy/quote', receive: 'buy/paymentInfos' },
   SellUrl: { quote: 'sell/quote', receive: 'sell/paymentInfos' },
   SwapUrl: { quote: 'swap/quote', receive: 'swap/paymentInfos' },
@@ -19,9 +26,9 @@ jest.mock('@dfx.swiss/react', () => ({
   useSwap: () => ({ receiveFor: mockReceiveForSwap }),
 }));
 
-import { render, waitFor } from '@testing-library/react';
-import { FiatPaymentMethod, type Asset, type Fiat } from '@dfx.swiss/react';
-import { useBuyQuote, useSellQuote, useSwapQuote } from '../screens/trade/useTradeQuote';
+import { act, render, waitFor } from '@testing-library/react';
+import { ApiException, FiatPaymentMethod, type Asset, type Fiat } from '@dfx.swiss/react';
+import { isTransientQuoteError, useBuyQuote, useSellQuote, useSwapQuote } from '../screens/trade/useTradeQuote';
 
 const currency = { id: 2, name: 'EUR' } as Fiat;
 const asset = { id: 123, name: 'USDT' } as Asset;
@@ -63,6 +70,16 @@ function SellHarness({ iban }: { iban?: string }) {
   });
   return null;
 }
+
+describe('isTransientQuoteError', () => {
+  it('treats persistent 4xx as non-retryable except 429', () => {
+    expect(isTransientQuoteError(new Error('network'))).toBe(true);
+    expect(isTransientQuoteError(new ApiException(400, 'EmailRequired'))).toBe(false);
+    expect(isTransientQuoteError(new ApiException(429, 'slow'))).toBe(true);
+    expect(isTransientQuoteError(new ApiException(500, 'down'))).toBe(true);
+    expect(isTransientQuoteError(new ApiException(399, 'odd'))).toBe(true);
+  });
+});
 
 describe('App2 trade quote endpoints', () => {
   beforeEach(() => {
@@ -152,6 +169,25 @@ describe('App2 trade quote endpoints', () => {
       externalTransactionId: 'tx-42',
     });
     expect(mockCall).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a lost paymentInfos response', async () => {
+    jest.useFakeTimers();
+    mockReceiveForBuy.mockRejectedValue(new Error('network'));
+    render(<BuyHarness withPaymentInfo />);
+
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(mockReceiveForBuy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(5_000 + 15_000 + 30_000);
+      await Promise.resolve();
+    });
+    expect(mockReceiveForBuy).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
   });
 
   it('switches endpoints when the caller moves to pay, without losing the input identity', async () => {

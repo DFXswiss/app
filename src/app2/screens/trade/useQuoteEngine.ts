@@ -42,6 +42,12 @@ export interface QuoteEngineState<TResult> {
   refresh: () => void;
 }
 
+export interface QuoteEngineRetryOptions {
+  /** A lost response may already have created a route or payment on the server.
+   * When set, a failed fetch is reported once and never retried. */
+  retryWouldDuplicateServerWork?: boolean;
+}
+
 export function useQuoteEngine<TResult>(
   enabled: boolean,
   key: string,
@@ -54,6 +60,7 @@ export function useQuoteEngine<TResult>(
   /** Persistent 4xx account/validation errors must not climb the backoff ladder — each
    * authenticated paymentInfos retry can create another route + transaction request. */
   isRetryable: (error: unknown) => boolean = () => true,
+  options?: QuoteEngineRetryOptions,
 ): QuoteEngineState<TResult> {
   const [data, setData] = useState<TResult | null>(null);
   const [dataKey, setDataKey] = useState<string | null>(null);
@@ -75,6 +82,8 @@ export function useQuoteEngine<TResult>(
   pausedRef.current = paused;
   const isRetryableRef = useRef(isRetryable);
   isRetryableRef.current = isRetryable;
+  const retryWouldDuplicateServerWorkRef = useRef(Boolean(options?.retryWouldDuplicateServerWork));
+  retryWouldDuplicateServerWorkRef.current = Boolean(options?.retryWouldDuplicateServerWork);
 
   const clearTimers = useCallback(() => {
     clearTimeout(debounceRef.current);
@@ -122,7 +131,11 @@ export function useQuoteEngine<TResult>(
         // retrying rather than hammering the endpoint or leaving a timer running indefinitely.
         clearInterval(countdownRef.current);
         const attempt = retryAttemptRef.current;
-        if (isRetryableRef.current(err) && attempt < RETRY_BACKOFF_MS.length) {
+        if (
+          !retryWouldDuplicateServerWorkRef.current &&
+          isRetryableRef.current(err) &&
+          attempt < RETRY_BACKOFF_MS.length
+        ) {
           retryAttemptRef.current = attempt + 1;
           clearTimeout(retryRef.current);
           retryRef.current = setTimeout(() => {

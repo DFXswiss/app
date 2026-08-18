@@ -188,9 +188,13 @@ describe('OCP invoice view', () => {
 
     fireEvent.change(screen.getByLabelText('Invoice ID'), { target: { value: 'INV-3' } });
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '1' } });
-    fireEvent.click(screen.getByRole('button', { name: /generate invoice/i }));
-    fireEvent.click(screen.getByRole('button', { name: /generate invoice/i }));
-    await waitFor(() => expect(mockCreateInvoice).toHaveBeenCalledTimes(1));
+    const generateBtn = screen.getByRole('button', { name: /generate invoice/i });
+    // Two clicks in one act — before React can commit `generating` — must share the ref lock.
+    act(() => {
+      generateBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      generateBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(mockCreateInvoice).toHaveBeenCalledTimes(1);
     await act(async () => {
       resolveInvoice({ lnurl: 'LNURL1ONCE' });
     });
