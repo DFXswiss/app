@@ -236,6 +236,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   run does **not** prove the API's natural latency or that production clients never race; it
   only proves the wait barriers refuse to conclude while that held real response is still
   undelivered, and that hub re-navigation does not abort it.
+  The spec stays on the AML reset path and does not assert the Editor label.
+- **The nine App 2.0 session baselines are a logged-in walk through the harness, not a funded
+  account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
+  fresh account. A green run does not prove that the buy screen ever renders a real rate, nor that the
+  transaction list ever shows rows.
 
 ## Known gaps
 
@@ -257,10 +262,6 @@ All five points below concern the full-stack harness.
   worker with retries disabled (`workers: 1` and `retries: 0` in `e2e-stack/playwright.config.ts`, whose
   comment states the reason): a retry would mask exactly the order-dependent failure this arrangement
   produces. It bounds how far the suite can grow.
-- **The nine App 2.0 session baselines are a logged-in walk through the harness, not a funded
-  account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
-  fresh account. A green run does not prove that the buy screen ever renders a real rate, nor that the
-  transaction list ever shows rows.
 
 ## Target architecture
 
