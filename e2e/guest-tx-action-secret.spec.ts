@@ -42,16 +42,6 @@ const REFUND = {
   bankDetails: undefined,
 };
 
-function jwt(): string {
-  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
-  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
-    account: 1,
-    user: 1,
-    role: 'User',
-    exp: Math.floor(Date.now() / 1000) + 3600,
-  })}.synthetic`;
-}
-
 async function fulfillJson(route: Route, body: unknown): Promise<void> {
   await route.fulfill({
     status: 200,

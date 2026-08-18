@@ -1106,7 +1106,7 @@ describe('TransactionRefund rendered view', () => {
     expect(screen.queryByTestId('row-Name')).not.toBeInTheDocument();
   });
 
-  it('shows the free-text chargeback address for crypto refunds without refundTarget and hides bank fields', async () => {
+  it('shows the free-text chargeback address for crypto refunds without refundTarget', async () => {
     mockUserAddresses = [{ address: '0xsolo', blockchains: ['Ethereum'] }];
     mockGetTransactionByUid.mockResolvedValue(
       makeTx({ type: 'Sell', inputPaymentMethod: 'Crypto', inputBlockchain: 'Ethereum' }),
