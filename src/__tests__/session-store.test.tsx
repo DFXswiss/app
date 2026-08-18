@@ -1,11 +1,11 @@
 import { renderHook, act } from '@testing-library/react';
-import { useSessionStore } from '../hooks/session-store.hook';
+import { SessionStoreKey, useSessionStore } from '../hooks/session-store.hook';
 
 // Mock sessionStorage
 const sessionStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
-    getItem: (key: string) => store[key] || null,
+    getItem: (key: string) => store[key] ?? null,
     setItem: (key: string, value: string) => {
       store[key] = value;
     },
@@ -25,6 +25,14 @@ describe('useSessionStore', () => {
     sessionStorageMock.clear();
   });
 
+  describe('SessionStoreKey', () => {
+    it('uses the owned dfx. prefixes that session cleanup allowlists', () => {
+      expect(SessionStoreKey.SUPPORT_ISSUE_UID).toBe('dfx.supportIssueUid');
+      expect(SessionStoreKey.PAYMENT_LINK_API_URL).toBe('dfx.paymentLinkApiUrl');
+      expect(SessionStoreKey.EDIT_MAIL_RETURN).toBe('dfx.editMailReturn');
+    });
+  });
+
   describe('supportIssueUid', () => {
     it('should return undefined when not set', () => {
       const { result } = renderHook(() => useSessionStore());
@@ -39,6 +47,16 @@ describe('useSessionStore', () => {
       });
 
       expect(result.current.supportIssueUid.get()).toBe('issue-uid-123');
+    });
+
+    it('returns an empty string as stored, not as missing', () => {
+      const { result } = renderHook(() => useSessionStore());
+
+      act(() => {
+        result.current.supportIssueUid.set('');
+      });
+
+      expect(result.current.supportIssueUid.get()).toBe('');
     });
 
     it('should remove supportIssueUid', () => {

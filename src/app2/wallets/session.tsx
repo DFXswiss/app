@@ -44,6 +44,7 @@ import { connectChainWallet } from './chain-providers';
 import { isPlausibleCliAddress } from './cli';
 import { connectHardware, isWebHidAvailable, type HardwareChain, type HardwareId } from './hardware-providers';
 import { SessionStoreKey } from 'src/hooks/session-store.hook';
+import { StoreKey } from 'src/hooks/store.hook';
 import { BANK_TX_CACHE_PREFIX } from 'src/util/bank-tx-cache';
 import { firstQueryParam } from '../utils/url';
 import { classifyInviteCode, normalizeInviteCode } from './invite';
@@ -388,8 +389,14 @@ function credentialsJustifyClearingSession(params: URLSearchParams): boolean {
 
 // sessionStorage.setItem in this repo: session-store.hook.ts + bank-tx-cache.ts.
 // App 2.0 and @dfx.swiss/react write none; these are the same-origin keys we own.
-const OWNED_SESSION_STORAGE_KEYS = [SessionStoreKey.SUPPORT_ISSUE_UID, SessionStoreKey.PAYMENT_LINK_API_URL] as const;
+const OWNED_SESSION_STORAGE_KEYS = Object.values(SessionStoreKey);
 const OWNED_SESSION_STORAGE_PREFIXES = [BANK_TX_CACHE_PREFIX] as const;
+// Same three localStorage keys src/index.tsx drops on a credentialed load.
+const CREDENTIAL_LOAD_LOCAL_STORAGE_KEYS = [
+  StoreKey.AUTH_TOKEN,
+  StoreKey.ACTIVE_WALLET,
+  StoreKey.QUERY_PARAMS,
+] as const;
 
 function removeOwnedSessionStorage(): void {
   for (const key of OWNED_SESSION_STORAGE_KEYS) {
@@ -403,16 +410,24 @@ function removeOwnedSessionStorage(): void {
   for (const key of stale) window.sessionStorage.removeItem(key);
 }
 
-(function clearStaleSessionOnCredentialedLoad() {
-  if (!credentialsJustifyClearingSession(new URLSearchParams(window.location.search))) return;
+/** Drops the credential-load storage the main app clears in src/index.tsx.
+ * StoreKey.AUTH_TOKEN is @dfx.swiss/react's token (hooks/store.hook.ts);
+ * ACTIVE_WALLET and QUERY_PARAMS are this app's persisted session leftovers
+ * (queryParams can hold PII across tabs). */
+function clearOwnedStorageOnCredentialedLoad(): void {
   try {
-    // 'dfx.authenticationToken' is @dfx.swiss/react's StoreKey.AUTH_TOKEN
-    // (hooks/store.hook.ts) — the only storage key the library itself owns.
-    window.localStorage.removeItem('dfx.authenticationToken');
+    for (const key of CREDENTIAL_LOAD_LOCAL_STORAGE_KEYS) {
+      window.localStorage.removeItem(key);
+    }
     removeOwnedSessionStorage();
   } catch {
     // storage unavailable (private mode, sandboxed embed, ...) — nothing to clear
   }
+}
+
+(function clearStaleSessionOnCredentialedLoad() {
+  if (!credentialsJustifyClearingSession(new URLSearchParams(window.location.search))) return;
+  clearOwnedStorageOnCredentialedLoad();
 })();
 
 function shortAddress(address: string): string {
@@ -1110,24 +1125,22 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         if (!user) throw new Error('user not loaded');
         // Seamless re-issue for any address linked to the active account (no re-signing).
         await changeAddress(entry.address);
-        if (entry.linked) {
-          const bound = boundProviderFromSnapshot(previous);
-          // After a reload there is no remembered connector; ask the injected
-          // provider itself rather than giving up and staying on `'other'`.
-          const candidate = bound ?? getInjectedProvider();
-          if (await providerHoldsAddress(candidate, entry.address)) {
-            if (bound) {
-              restoreSessionProviderBindings(
-                previous,
-                setActiveConnector,
-                injectedProviderRef,
-                wcProviderRef,
-                pendingWcProviderRef,
-              );
-            } else {
-              injectedProviderRef.current = candidate;
-              setActiveConnector('injected');
-            }
+        const bound = boundProviderFromSnapshot(previous);
+        // After a reload there is no remembered connector; ask the injected
+        // provider itself rather than giving up and staying on `'other'`.
+        const candidate = bound ?? getInjectedProvider();
+        if (await providerHoldsAddress(candidate, entry.address)) {
+          if (bound) {
+            restoreSessionProviderBindings(
+              previous,
+              setActiveConnector,
+              injectedProviderRef,
+              wcProviderRef,
+              pendingWcProviderRef,
+            );
+          } else if (isInjectedEvmSession(entry.address, seenWallets(), userAddresses ?? [])) {
+            injectedProviderRef.current = candidate;
+            setActiveConnector('injected');
           }
         }
         void reloadUser();
@@ -1153,7 +1166,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         if (catalogEntry) void handleSelectWallet(catalogEntry);
       }
     },
-    [activeConnector, changeAddress, reloadUser, showToast, t, openConnect, handleSelectWallet, user],
+    [activeConnector, changeAddress, reloadUser, showToast, t, openConnect, handleSelectWallet, user, userAddresses],
   );
 
   // URL-param session bootstrap: ?session=/?token=/?accessToken= logs in
@@ -1178,12 +1191,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       if (isLikelyValidJwt(tokenParam)) {
         updateSession(tokenParam);
       } else {
-        try {
-          window.localStorage.removeItem('dfx.authenticationToken');
-          removeOwnedSessionStorage();
-        } catch {
-          // storage unavailable (private mode, sandboxed embed, ...)
-        }
+        clearOwnedStorageOnCredentialedLoad();
         void libLogout();
       }
       scrubCredentialParams();

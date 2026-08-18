@@ -134,6 +134,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixture with `{ userData: { verifiedName } }`. A green run proves that the review screen
   accepts that name, not that the API returns the logged-in staff member's `verifiedName`.
   The spec stays on the AML reset path and does not assert the Editor label.
+- **The nine App 2.0 session baselines are a logged-in walk through the harness, not a funded
+  account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
+  fresh account. A green run does not prove that the buy screen ever renders a real rate, nor that the
+  transaction list ever shows rows.
 
 ## Known gaps
 
@@ -155,10 +159,6 @@ All five points below concern the full-stack harness.
   worker with retries disabled (`workers: 1` and `retries: 0` in `e2e-stack/playwright.config.ts`, whose
   comment states the reason): a retry would mask exactly the order-dependent failure this arrangement
   produces. It bounds how far the suite can grow.
-- **The nine App 2.0 session baselines are a logged-in walk through the harness, not a funded
-  account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
-  fresh account. A green run does not prove that the buy screen ever renders a real rate, nor that the
-  transaction list ever shows rows.
 
 ## Target architecture
 

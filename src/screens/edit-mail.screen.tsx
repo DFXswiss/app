@@ -24,7 +24,7 @@ export default function EditMailScreen(): JSX.Element {
   const { updateMail, verifyMail } = useUserContext();
   const { navigate } = useNavigation();
   const { handleMergedError } = useMergedAccount();
-  const { user } = useUserContext();
+  const { user, isUserLoading } = useUserContext();
   const { check2fa } = useKyc();
   const { redirectPath, setRedirectPath } = useAppHandlingContext();
   const { editMailReturn } = useSessionStore();
@@ -79,7 +79,7 @@ export default function EditMailScreen(): JSX.Element {
             setError(e.message);
           }
         } else {
-          setError(e.message);
+          setError(e.message ?? 'Unknown error');
         }
       });
   }
@@ -142,8 +142,10 @@ export default function EditMailScreen(): JSX.Element {
             }}
           />
         </StyledVerticalStack>
-      ) : checking2fa || user == null ? (
+      ) : checking2fa || isUserLoading ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
+      ) : user == null ? (
+        <ErrorHint message="Unable to load user" />
       ) : !mailVerificationStep ? (
         <EditOverlay
           label={translate('screens/kyc', 'Email address')}
