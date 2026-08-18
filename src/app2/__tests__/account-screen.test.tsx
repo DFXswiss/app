@@ -24,7 +24,7 @@ const mockUserState: { user?: Record<string, unknown>; isUserLoading: boolean } 
 const i18nOverride: { language?: string } = {};
 
 jest.mock('@dfx.swiss/react', () => ({
-  KycLevel: { Completed: 50, Sell: 30 },
+  KycLevel: { Completed: 50, Sell: 20 },
   Blockchain: { ETHEREUM: 'Ethereum', BITCOIN: 'Bitcoin', SEPOLIA: 'Sepolia' },
   useUser: () => ({ getRef: mockGetRef, getProfile: mockGetProfile }),
   useUserContext: () => ({
@@ -360,7 +360,7 @@ describe('AccountScreen', () => {
 
   it('shows a warning badge and details-confirmed note at sell KYC', async () => {
     mockSession.isLoggedIn = true;
-    mockUserState.user = { mail: 'ada@example.com', kyc: { level: 30 } };
+    mockUserState.user = { mail: 'ada@example.com', kyc: { level: 20 } };
     const { container } = renderAccount();
     await screen.findByText(/ada@example.com/i);
     const badge = container.querySelector('.verified') as HTMLElement;
@@ -369,6 +369,19 @@ describe('AccountScreen', () => {
     expect(badge).toHaveTextContent(/^Verified$/);
     expect(badge.querySelector('path[d="M9 12l2 2 4-4"]')).not.toBeNull();
     expect(container.querySelector('.statcard .note')).toHaveTextContent('Details confirmed');
+  });
+
+  it('shows a neutral badge and pending note just below sell KYC', async () => {
+    mockSession.isLoggedIn = true;
+    mockUserState.user = { mail: 'ada@example.com', kyc: { level: 19 } };
+    const { container } = renderAccount();
+    await screen.findByText(/ada@example.com/i);
+    const badge = container.querySelector('.verified') as HTMLElement;
+    expect(badge).toHaveClass('neutral');
+    expect(badge).not.toHaveClass('warn');
+    expect(badge).toHaveTextContent('Not verified');
+    expect(badge.querySelector('path[d="M9 12l2 2 4-4"]')).toBeNull();
+    expect(container.querySelector('.statcard .note')).toHaveTextContent('Verification pending');
   });
 
   it('shows a neutral badge and open note below sell KYC', async () => {
@@ -381,7 +394,7 @@ describe('AccountScreen', () => {
     expect(badge).not.toHaveClass('warn');
     expect(badge).toHaveTextContent('Not verified');
     expect(badge.querySelector('path[d="M9 12l2 2 4-4"]')).toBeNull();
-    expect(container.querySelector('.statcard .note')).toHaveTextContent('Verification open');
+    expect(container.querySelector('.statcard .note')).toHaveTextContent('Verification pending');
   });
 
   it('shows a neutral connected badge and open note when KYC level is missing', async () => {
@@ -394,6 +407,6 @@ describe('AccountScreen', () => {
     expect(badge).not.toHaveClass('warn');
     expect(badge).toHaveTextContent('Connected');
     expect(badge.querySelector('path[d="M9 12l2 2 4-4"]')).toBeNull();
-    expect(container.querySelector('.statcard .note')).toHaveTextContent('Verification open');
+    expect(container.querySelector('.statcard .note')).toHaveTextContent('Verification pending');
   });
 });

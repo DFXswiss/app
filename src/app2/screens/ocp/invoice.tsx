@@ -85,7 +85,8 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
   const [note, setNote] = useState<NoteState | null>(null);
   const [out, setOut] = useState<InvoiceOut | null>(null);
   // Synchronous lock: `generating` cannot stop a second click in the same tick,
-  // before React commits. Matches pos.tsx `chargingRef`.
+  // before React commits. Unlike pos.tsx `chargingRef` (held for the whole open
+  // payment), this ref only covers the in-flight request and is released in `finally`.
   const generatingRef = useRef(false);
 
   const invIdRef = useRef<HTMLInputElement>(null);

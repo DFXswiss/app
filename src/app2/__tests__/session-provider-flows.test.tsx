@@ -412,6 +412,47 @@ describe('WalletSessionProvider flows', () => {
     replace.mockRestore();
   });
 
+  it('logs out a previous session when the URL token is expired', async () => {
+    window.localStorage.setItem('dfx.authenticationToken', 'stale');
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        search: `?session=${jwt(['Ethereum'], Math.floor(Date.now() / 1000) - 120)}`,
+        pathname: '/app2/',
+        hash: '',
+      },
+    });
+    const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    renderSession();
+    await waitFor(() => expect(mockLogout).toHaveBeenCalled());
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem('dfx.authenticationToken')).toBeNull();
+    replace.mockRestore();
+  });
+
+  it('scrubs placeholder address+signature params without signing in or logging out', async () => {
+    window.localStorage.setItem('dfx.authenticationToken', 'stale');
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, search: '?address=undefined&signature=null', pathname: '/app2/', hash: '' },
+    });
+    const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    renderSession();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockCreateSession).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem('dfx.authenticationToken')).toBe('stale');
+    expect(replace).toHaveBeenCalled();
+    replace.mockRestore();
+  });
+
   it('opens a filtered connect sheet and the switcher', async () => {
     mockAuth.session = { address, blockchains: ['Ethereum'] };
     mockSessionCtx.isLoggedIn = true;
@@ -539,6 +580,91 @@ describe('WalletSessionProvider flows', () => {
     fireEvent.click(screen.getByText('switch'));
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(mockChangeAddress).not.toHaveBeenCalled();
+  });
+
+  it('parks the connector so an in-flight unlinked switch does not probe window.ethereum', async () => {
+    let releaseChange: (err: Error) => void = () => undefined;
+    mockChangeAddress.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          releaseChange = reject;
+        }),
+    );
+    const probeProvider = {
+      request: jest.fn().mockResolvedValue(['0x' + '99'.repeat(20)]),
+      on: jest.fn(),
+      removeListener: jest.fn(),
+    };
+    mockSeen.mockReturnValue([
+      { address, walletType: 'MetaMask', walletId: 'MetaMask' },
+      { address: other, walletType: 'MetaMask', walletId: 'MetaMask' },
+    ]);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockUserAddresses.push({ address, label: 'Here', wallet: 'MetaMask', blockchains: ['Ethereum'] });
+    const provider = {
+      request: jest.fn().mockResolvedValue([address]),
+      on: jest.fn(),
+      removeListener: jest.fn(),
+    };
+    mockResolveInjected.mockReturnValue(provider);
+    renderSession();
+    fireEvent.click(screen.getByText('pick-mm'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    await waitFor(() => expect(provider.on).toHaveBeenCalled());
+    mockGetInjected.mockReturnValue(probeProvider);
+    mockLogout.mockClear();
+    probeProvider.request.mockClear();
+
+    fireEvent.click(screen.getByText('switch'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(probeProvider.request).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releaseChange(new Error('not-linked'));
+      await Promise.resolve();
+    });
+  });
+
+  it('rebinds the injected provider after a linked switch when the session had no connector', async () => {
+    const listeners: Record<string, (value?: unknown) => void> = {};
+    const injected = {
+      request: jest.fn().mockImplementation(async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [address];
+        return [];
+      }),
+      on: jest.fn((event: string, handler: (value?: unknown) => void) => {
+        listeners[event] = handler;
+      }),
+      removeListener: jest.fn(),
+    };
+    mockGetInjected.mockReturnValue(injected);
+    mockSeen.mockReturnValue([{ address, walletType: 'MetaMask', walletId: 'MetaMask' }]);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockUserAddresses.push(
+      { address, label: 'Here', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: other, label: 'There', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+    );
+    renderSession();
+    await waitFor(() => expect(injected.request).toHaveBeenCalled());
+    await waitFor(() => expect(injected.on).toHaveBeenCalled());
+    injected.request.mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'eth_accounts') return [other];
+      return [];
+    });
+    mockLogout.mockClear();
+    fireEvent.click(screen.getByText('switch'));
+    await waitFor(() => expect(mockChangeAddress).toHaveBeenCalledWith(other));
+    await waitFor(() => expect(injected.on.mock.calls.length).toBeGreaterThan(2));
+    act(() => {
+      listeners.accountsChanged?.(['0x' + '99'.repeat(20)]);
+    });
+    await waitFor(() => expect(mockLogout).toHaveBeenCalled());
   });
 
   it('re-authenticates an unlinked remembered wallet', async () => {

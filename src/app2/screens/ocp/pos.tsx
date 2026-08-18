@@ -81,6 +81,12 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
     setCharging(false);
   }, []);
 
+  const endCharge = useCallback(() => {
+    unlockTill();
+    setCharge(null);
+    setStatus('waiting');
+  }, [unlockTill]);
+
   // Load links + routes on entry — routes supply the currency for the selected link.
   useEffect(() => {
     if (ocp.links === null) void ocp.loadLinks();
@@ -122,6 +128,8 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
     chargingRef.current = true;
     const chargeCurrency = currency;
     setNote(null);
+    setCharge(null);
+    setStatus('waiting');
     setCharging(true);
     try {
       const { lnurl } = await ocp.charge(selectedId, amt);
@@ -279,7 +287,7 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
                     </button>
                     <button
                       className="btn-mini"
-                      onClick={unlockTill}
+                      onClick={endCharge}
                       disabled={!charging}
                       style={{ marginLeft: 10, width: 'auto' }}
                     >
