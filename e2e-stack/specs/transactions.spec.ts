@@ -337,6 +337,96 @@ test('Open invoice error closes the reserved tab and shows the API message', asy
   await expect.poll(() => popup.isClosed()).toBe(true);
 });
 
+test('Open receipt click opens a tab before the receipt request returns', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-list-receipt-tab',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-rcpt-tab',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 731,
+    inputAsset: 'CHF',
+  });
+
+  await openScreen(page, '/tx', user.jwt);
+
+  // Delay the receipt route so a post-await window.open would miss the user gesture window.
+  // Old code (open after await) fails this 800ms popup wait against a 2000ms delayed response.
+  await page.route('**/v1/transaction/*/receipt*', async (route) => {
+    await new Promise((r) => setTimeout(r, 2000));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ pdfData: MINIMAL_PDF_B64 }),
+    });
+  });
+
+  const buyRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '731' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  await buyRow.click();
+
+  const openReceipt = page.getByRole('button', { name: 'Open receipt' });
+  await expect(openReceipt).toBeVisible();
+
+  const popupPromise = page.waitForEvent('popup', { timeout: 800 });
+  await openReceipt.click();
+  const popup = await popupPromise;
+
+  expect(popup.url()).toMatch(/about:blank|blob:/);
+});
+
+test('Open receipt error closes the reserved tab and shows the API message', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-list-receipt-err',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-rcpt-err',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 741,
+    inputAsset: 'CHF',
+  });
+
+  await openScreen(page, '/tx', user.jwt);
+
+  await page.route('**/v1/transaction/*/receipt*', async (route) => {
+    await route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: 'Missing receipt information' }),
+    });
+  });
+
+  const buyRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '741' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  await buyRow.click();
+
+  const openReceipt = page.getByRole('button', { name: 'Open receipt' });
+  await expect(openReceipt).toBeVisible();
+
+  const popupPromise = page.waitForEvent('popup');
+  await openReceipt.click();
+  const popup = await popupPromise;
+
+  await expect(page.getByText('Missing receipt information', { exact: true })).toBeVisible();
+  await expect.poll(() => popup.isClosed()).toBe(true);
+});
+
 // ---------------------------------------------------------------------------
 // /tx/:id — detail / status view (uid)
 // ---------------------------------------------------------------------------

@@ -121,10 +121,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the screen guard and `mail` is present if the cached wallet session has none. A green visual run
   therefore does not prove the mail-first redirect, nor that the account actually has mail or a
   completed KYC level.
-- **The list Open-invoice tests fulfill the invoice PUT.** `e2e-stack/specs/transactions.spec.ts`
-  answers `PUT /v1/transaction/:uid/invoice` with a static PDF body or a `400` with a fixed message,
-  so a green run proves that the click reserves a tab and surfaces the error, not that the API can
-  build an invoice from SQL-seeded `buy_crypto`.
+- **The list Open-invoice and Open-receipt tests fulfill the document routes.**
+  `e2e-stack/specs/transactions.spec.ts` answers `PUT /v1/transaction/:uid/invoice` and
+  `/v1/transaction/:id/receipt` with a static PDF body or a `400` with a fixed message, so a green
+  run proves that the click reserves a tab and surfaces the error, not that the API can build an
+  invoice or receipt from SQL-seeded `buy_crypto`.
 
 ## Known gaps
 

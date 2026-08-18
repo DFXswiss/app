@@ -1260,9 +1260,9 @@ describe('TransactionList open invoice visibility', () => {
   });
 });
 
-// Line 915: Open receipt success path calls openPdfFromString.
+// Open receipt: reserved about:blank window + embed fallback when window.open is blocked.
 describe('TransactionList open receipt success', () => {
-  it('opens the receipt PDF via openPdfFromString on success', async () => {
+  it('opens about:blank then falls back to openPdfFromString(pdf, false) when window.open returns null', async () => {
     mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 77, state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
     mockGetTransactionReceipt.mockResolvedValue({ pdfData: 'receipt-pdf-bytes' });
@@ -1274,7 +1274,8 @@ describe('TransactionList open receipt success', () => {
 
     await waitFor(() => {
       expect(mockGetTransactionReceipt).toHaveBeenCalledWith(77);
-      expect(mockOpenPdfFromString).toHaveBeenCalledWith('receipt-pdf-bytes');
+      expect(window.open).toHaveBeenCalledWith('about:blank');
+      expect(mockOpenPdfFromString).toHaveBeenCalledWith('receipt-pdf-bytes', false);
     });
   });
 });

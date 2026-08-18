@@ -66,7 +66,7 @@ import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import { getStoredPaymentDetailErrorMessage } from '../util/personal-iban';
 import { canOpenInvoice, revealInvoicePdf } from '../util/transaction-invoice';
-import { blankedAddress, formatSwissDateTimeWithSeconds, openPdfFromString } from '../util/utils';
+import { blankedAddress, formatSwissDateTimeWithSeconds } from '../util/utils';
 import { ZipValidation } from '../util/validation-rules';
 
 export enum ExportType {
@@ -906,14 +906,15 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                               label={translate('general/actions', 'Open receipt')}
                               onClick={() => {
                                 if (!tx.id) return;
-
+                                const preview = window.open('about:blank');
                                 setIsReceiptLoading(tx.id);
                                 setDocumentError(undefined);
                                 getTransactionReceipt(tx.id)
                                   .then((response: PdfDocument) => {
-                                    openPdfFromString(response.pdfData);
+                                    revealInvoicePdf(response.pdfData, preview);
                                   })
                                   .catch((error: ApiError) => {
+                                    preview?.close();
                                     const storedDetailErrorText = getStoredPaymentDetailErrorMessage(error.message);
                                     setDocumentError({
                                       key: String(tx.id),
