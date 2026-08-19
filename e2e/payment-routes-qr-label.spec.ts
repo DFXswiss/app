@@ -66,7 +66,7 @@ const PAYMENT_LINKS = [
 ];
 
 async function installRoutesMocks(page: Page): Promise<void> {
-  await page.route(/dev\.api\.dfx\.swiss\/v[12]\//, async (route: Route) => {
+  await page.route(/\/v[12]\//, async (route: Route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
 
