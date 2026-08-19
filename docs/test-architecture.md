@@ -137,7 +137,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fulfils `GET /v1/paymentLink/recipient` with a static `200` (`{ currency: { name: 'CHF' } }`) or a
   `404`, so a green run proves that the screen renders the payer wording, the display-only payee and
   the unknown-payee error for those two answers — not that the API resolves a printed recipient. The
-  real lookup is exercised by the three payer tests in `e2e-stack/specs/payment-links.spec.ts`.
+  real lookup runs in `e2e-stack/specs/payment-links.spec.ts` — in the recipient test and in the two
+  payer tests that carry a printed recipient; the payer test with an editable payee triggers none.
 - **The same two specs fabricate the invoice rejection.** Each answers
   `**/v1/buy/paymentInfos/*/invoice*` with a `400` and the fixed
   `CollectionAccountInvoicePersonalIbanMissing` error token, so a green run proves that the screen
