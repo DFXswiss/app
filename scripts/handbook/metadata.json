@@ -163,6 +163,14 @@
     "title": "Session-Wechsel (Debug)",
     "description": "Debug-Screenshots zum Session-/Account-Wechsel."
   },
+  "payment-qr-device": {
+    "title": "Zahlungs-QR geräteabhängig",
+    "description": "Zahlungsseite mit fester Quote: Desktop zeigt großen QR und Scan-Satz, Handheld nur Wallet-Auswahl."
+  },
+  "payment-routes-qr-label": {
+    "title": "Payment-Routen QR-Einstellung",
+    "description": "Payment-Routen: Default-Konfiguration mit dem Label „Always show QR code“ statt „Display QR code“."
+  },
   "docs": {
     "docs/EIP7702-Implementierungsplan.md": {
       "title": "EIP-7702 Implementierungsplan"

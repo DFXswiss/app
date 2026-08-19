@@ -132,6 +132,23 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixture with `{ userData: { verifiedName } }`. A green run proves that the review screen
   accepts that name, not that the API returns the logged-in staff member's `verifiedName`.
   The spec stays on the AML reset path and does not assert the Editor label.
+- **The payment-link device-split tests answer the pay-request endpoint themselves.** The loc API
+  cannot build a Lightning/BTC transfer amount (`404 No BTC transfer amount found`), so
+  `e2e-stack/specs/payment-links.spec.ts` fulfils `paymentLink/payment` with a quoted OpenCryptoPay
+  payload (`displayQr: false`) and holds `lnurlp/wait` / `paymentLink/payment/wait` open. A green
+  run proves the desktop QR / handheld wallet-copy split for that payload, not that the loc API can
+  produce a quote or that a real quote's transfer amounts, expiry or callback match what the screen
+  then renders.
+
+- **The two payment visual specs answer every API they need themselves.**
+  `e2e/payment-qr-device.spec.ts` fulfils the `/v1/` payment routes with a fixed quote whose
+  expiry is a constant ISO string, holds the wait-polling open so it never re-fetches, and pins
+  wall-clock time; `e2e/payment-routes-qr-label.spec.ts` answers `GET /v2/user`,
+  `GET /v1/route`, the payment-link list, its config and POS endpoints and the info banner with
+  static payloads, and mounts the screen on a synthetic unsigned JWT. A green
+  run of either proves that the screen renders those payloads — the device split, the wallet copy
+  and the renamed setting label — not that a real session passes the address guard, that the API
+  returns these shapes, or that a live quote expires when the baseline says it does.
 
 ## Known gaps
 

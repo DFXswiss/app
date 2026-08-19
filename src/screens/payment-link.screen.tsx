@@ -59,6 +59,7 @@ import {
   PaymentStandard,
   WalletInfo,
 } from 'src/dto/payment-link.dto';
+import { useIsHandheld } from 'src/hooks/device.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { usePaymentLinkWallets } from 'src/hooks/payment-link-wallets.hook';
 import { useWeb3 } from 'src/hooks/web3.hook';
@@ -117,6 +118,8 @@ export default function PaymentLinkScreen(): JSX.Element {
     error: walletsError,
   } = usePaymentLinkWallets();
 
+  const isHandheld = useIsHandheld();
+
   const [assetObject, setAssetObject] = useState<Asset>();
   const [showContract, setShowContract] = useState(false);
   const [walletData, setWalletData] = useState<WalletInfo>();
@@ -135,6 +138,15 @@ export default function PaymentLinkScreen(): JSX.Element {
 
   const selectedPaymentStandard = useWatch({ control, name: 'paymentStandard' });
   const selectedAsset = useWatch({ control, name: 'asset' });
+
+  // Large QR only exists inside the OpenCryptoPay section; displayQr forces it there on every device.
+  // Outside OCP (or MetaMask error/info), fall back to the collapsible "QR Code" row.
+  // Form standard is set asynchronously; fall back to the payment's own standard so an unset form is not OCP.
+  const showsOcpSection =
+    !metaMaskError &&
+    !metaMaskInfo &&
+    (selectedPaymentStandard?.id ?? payRequest?.standard) === PaymentStandardType.OPEN_CRYPTO_PAY;
+  const showLargeQr = showsOcpSection && (Boolean(payRequest?.displayQr) || !isHandheld);
 
   useEffect(() => {
     const walletIdParam = searchParams.get('wallet-id');
@@ -253,7 +265,7 @@ export default function PaymentLinkScreen(): JSX.Element {
       ) : (
         <StyledVerticalStack full gap={4} center className="pt-8">
           <div className="flex flex-col w-full gap-6 justify-center">
-            <p className="text-dfxBlue-800 font-bold text-xl">{payRequest?.displayName ?? merchant}</p>
+            <p className="text-dfxBlue-800 font-bold text-xl">{payRequest.displayName ?? merchant}</p>
             <div className="w-full h-[1px] bg-gradient-to-r bg-dfxGray-500 from-white via-dfxGray-500 to-white" />
             {!merchant && (
               <>
@@ -340,7 +352,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                               <StyledDropdown<string>
                                 rootRef={rootRef}
                                 name="asset"
-                                items={assetsList?.map((item) => item.asset) ?? []}
+                                items={assetsList.map((item) => item.asset)}
                                 labelFunc={(item) => item}
                                 descriptionFunc={() => selectedPaymentStandard?.blockchain ?? ''}
                                 full
@@ -381,7 +393,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                             ].filter((item) => item.text) as any
                           }
                         >
-                          <p>{blankedAddress(payRequest.externalId ?? payRequest.id, { width, scale: 0.9 })}</p>
+                          <p>{blankedAddress(payRequest.externalId, { width, scale: 0.9 })}</p>
                         </StyledDataTableExpandableRow>
                       )}
                       {paymentHasQuote(payRequest) && (
@@ -394,7 +406,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                                   isLoading={isLoadingPaymentIdentifier || !paymentIdentifier}
                                 >
                                   <p>{formatUnits(parsedEvmUri.amount, assetObject?.decimals)}</p>
-                                  <CopyButton onCopy={() => copy(parsedEvmUri.amount ?? '')} />
+                                  <CopyButton onCopy={() => copy(parsedEvmUri.amount as string)} />
                                 </StyledDataTableRow>
                               )}
 
@@ -402,10 +414,10 @@ export default function PaymentLinkScreen(): JSX.Element {
                                 <StyledDataTableRow label={translate('screens/sell', 'Asset')}>
                                   {showContract && assetObject.chainId ? (
                                     <StyledHorizontalStack gap={2}>
-                                      <span>{blankedAddress(assetObject.chainId ?? '', { width, scale: 0.75 })}</span>
+                                      <span>{blankedAddress(assetObject.chainId, { width, scale: 0.75 })}</span>
                                       <StyledIconButton
                                         icon={IconVariant.COPY}
-                                        onClick={() => copy(assetObject.chainId ?? '')}
+                                        onClick={() => copy(assetObject.chainId as string)}
                                         size={IconSize.SM}
                                       />
                                       {assetObject.explorerUrl && (
@@ -434,20 +446,25 @@ export default function PaymentLinkScreen(): JSX.Element {
                                   label={translate('screens/home', 'Address')}
                                   isLoading={isLoadingPaymentIdentifier || !paymentIdentifier}
                                 >
-                                  <p>{blankedAddress(parsedEvmUri.address ?? '', { width, scale: 0.8 })}</p>
-                                  <CopyButton onCopy={() => copy(parsedEvmUri.address ?? '')} />
+                                  <p>{blankedAddress(parsedEvmUri.address, { width, scale: 0.8 })}</p>
+                                  <CopyButton onCopy={() => copy(parsedEvmUri.address as string)} />
                                 </StyledDataTableRow>
                               )}
 
-                              {toBlockchain(parsedEvmUri.chainId ?? '') && (
-                                <StyledDataTableRow
-                                  label={translate('screens/home', 'Blockchain')}
-                                  isLoading={isLoadingPaymentIdentifier || !paymentIdentifier}
-                                >
-                                  <p>{toBlockchain(parsedEvmUri.chainId ?? '')}</p>
-                                  <CopyButton onCopy={() => copy(toBlockchain(parsedEvmUri.chainId ?? '') ?? '')} />
-                                </StyledDataTableRow>
-                              )}
+                              {(() => {
+                                const chain = toBlockchain(parsedEvmUri.chainId ?? '');
+                                return (
+                                  chain && (
+                                    <StyledDataTableRow
+                                      label={translate('screens/home', 'Blockchain')}
+                                      isLoading={isLoadingPaymentIdentifier || !paymentIdentifier}
+                                    >
+                                      <p>{chain}</p>
+                                      <CopyButton onCopy={() => copy(chain)} />
+                                    </StyledDataTableRow>
+                                  )
+                                );
+                              })()}
                             </>
                           )}
                         </>
@@ -517,7 +534,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                           <p>{new Date(payRequest.quote.expiration).toLocaleString()}</p>
                         </StyledDataTableExpandableRow>
                       )}
-                      {paymentHasQuote(payRequest) && !payRequest.displayQr && (
+                      {paymentHasQuote(payRequest) && !showLargeQr && (
                         <StyledDataTableExpandableRow
                           label={translate('screens/payment', 'QR Code')}
                           expansionContent={
@@ -603,12 +620,11 @@ export default function PaymentLinkScreen(): JSX.Element {
                   />
                 </>
               ) : (
-                (!selectedPaymentStandard ||
-                  PaymentStandardType.OPEN_CRYPTO_PAY === (selectedPaymentStandard.id as PaymentStandardType)) && (
+                showsOcpSection && (
                   <StyledVerticalStack full gap={8} center>
                     {paymentHasQuote(payRequest) ? (
                       <div className="flex flex-col w-full items-center justify-center">
-                        {payRequest.displayQr && (
+                        {showLargeQr && (
                           <div className="w-48 my-3">
                             <QrBasic
                               data={OpenCryptoPayUtils.getOcpUrlByUniqueId(payRequest.id)}
@@ -619,7 +635,9 @@ export default function PaymentLinkScreen(): JSX.Element {
                         <p className="text-base pt-3 text-dfxGray-700">
                           {translate(
                             'screens/payment',
-                            'Scan the QR-Code with a compatible app to complete the payment.',
+                            showLargeQr
+                              ? 'Scan the QR-Code with a compatible app to complete the payment.'
+                              : 'Choose your wallet to open the payment.',
                           )}
                         </p>
                       </div>
@@ -629,7 +647,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                       <p className="text-base pt-3 text-dfxGray-700">
                         {translate(
                           'screens/payment',
-                          'Tell the cashier that you want to pay with crypto and then scan the QR-Code with a compatible app to complete the payment.',
+                          'Tell the cashier that you want to pay with crypto to start the payment.',
                         )}
                       </p>
                     )}
@@ -774,8 +792,8 @@ function TransferMethodsContent({ payRequest, walletData }: TransferMethodsConte
   const { isMerchantMode } = usePaymentLinkContext();
 
   const filteredTransferAmounts = walletData
-    ? Wallet.filterTransferInfoByWallet(walletData, payRequest.transferAmounts)
-    : payRequest.transferAmounts;
+    ? Wallet.filterTransferInfoByWallet(walletData, payRequest.transferAmounts ?? [])
+    : (payRequest.transferAmounts ?? []);
   const supportedMethods = filteredTransferAmounts.filter((ta) => ta.available !== false);
 
   const assetMap = new Map<string, { amount?: string; methods: string[] }>();
@@ -852,11 +870,9 @@ function WalletGrid({ wallets, header }: WalletGridProps): JSX.Element {
   );
 }
 
-function DividerWithHeader({ header, py }: { header: string; py?: number }): JSX.Element {
-  const pyClass = py === 4 ? 'py-4' : py === 2 ? 'py-2' : py === 1 ? 'py-1' : '';
-
+function DividerWithHeader({ header }: { header: string }): JSX.Element {
   return (
-    <div className={`flex flex-row items-center gap-2 ${pyClass} w-full`}>
+    <div className="flex flex-row items-center gap-2 w-full">
       <div className="flex-grow bg-gradient-to-r from-white to-dfxGray-600 h-[1px]" />
       <p className="text-xs font-medium text-dfxGray-600 whitespace-nowrap">{header}</p>
       <div className="flex-grow bg-gradient-to-r from-dfxGray-600 to-white h-[1px]" />

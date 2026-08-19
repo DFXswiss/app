@@ -10,7 +10,7 @@
  * SQL factory instead.
  */
 
-import type { Page } from '@playwright/test';
+import { devices, type Page, type Route } from '@playwright/test';
 import {
   apiGet,
   cleanupCreatedData,
@@ -26,6 +26,70 @@ import {
   test,
   waitForRow,
 } from './fixtures';
+
+const SCAN_COPY = 'Scan the QR-Code with a compatible app to complete the payment.';
+const WALLET_COPY = 'Choose your wallet to open the payment.';
+
+/**
+ * The loc API cannot build a Lightning/BTC transfer amount, so a quoted pay-request
+ * never reaches the browser (see docs/test-architecture.md). These two device-split tests
+ * replace only that response; everything else hits the real stack.
+ */
+async function installQuotedPayRequest(
+  page: Page,
+  opts: { merchant: string; amount: number; uniqueId: string },
+): Promise<void> {
+  const quoted = {
+    id: opts.uniqueId,
+    externalId: `ext-${opts.uniqueId}`,
+    tag: 'payRequest',
+    displayName: opts.merchant,
+    standard: 'OpenCryptoPay',
+    possibleStandards: ['OpenCryptoPay'],
+    displayQr: false,
+    mode: 'Multiple',
+    route: 'e2e-quoted-route',
+    currency: 'CHF',
+    recipient: { name: opts.merchant },
+    transferAmounts: [
+      {
+        method: 'Lightning',
+        minFee: 0,
+        assets: [{ asset: 'BTC', amount: 0.00025 }],
+        available: true,
+      },
+    ],
+    requestedAmount: { asset: 'CHF', amount: opts.amount },
+    quote: {
+      id: `q-${opts.uniqueId}`,
+      expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      payment: `pay-${opts.uniqueId}`,
+    },
+    callback: 'https://api.example.test/v1/lnurlp/cb/quoted',
+    metadata: 'e2e-quoted',
+    minSendable: 1,
+    maxSendable: 100000000,
+  };
+
+  await page.route('**/v1/**', async (route: Route) => {
+    const url = route.request().url();
+    if (url.includes('/lnurlp/wait') || url.includes('paymentLink/payment/wait')) {
+      await new Promise(() => {
+        /* intentionally never resolves — same as the visual suite */
+      });
+      return;
+    }
+    if (url.includes('/paymentLink/payment')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(quoted),
+      });
+      return;
+    }
+    await route.continue();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Types & helpers
@@ -254,6 +318,11 @@ test.describe('Payment links / routes / invoice', () => {
     // Payment Links section + card content unique to this screen.
     await expect(page.getByRole('heading', { name: 'Payment Links', exact: true })).toBeVisible();
     await expect(page.getByText('e2e-routes-pl-label', { exact: true })).toBeVisible();
+
+    // `displayQr` is a force switch; the merchant-facing label has to say so.
+    await page.getByText('Default configuration', { exact: true }).locator('xpath=following-sibling::div').click();
+    await expect(page.getByText('Always show QR code', { exact: true })).toBeVisible();
+    await expect(page.getByText('Display QR code', { exact: true })).toHaveCount(0);
     if (pl.routeId) {
       await expect(page.getByText(`Payment route ${pl.routeId}`, { exact: true })).toBeVisible();
     }
@@ -350,6 +419,102 @@ test.describe('Payment links / routes / invoice', () => {
       expect(Number(pay?.amount)).toBe(22);
       expect(pay?.status).toBe('Pending');
     }
+  });
+
+  test.describe('device-aware /pl quote view', () => {
+    test.describe('desktop', () => {
+      test.use({
+        viewport: { width: 1280, height: 900 },
+        isMobile: false,
+        hasTouch: false,
+      });
+
+      test('/pl: desktop with a quote shows the large QR and the scan sentence', async ({ page }) => {
+        const user = await createUser({
+          tag: 'pl-qr-desktop',
+          language: 'EN',
+          kycLevel: 30,
+          completePersonalData: true,
+        });
+        const externalId = 'e2e-pl-qr-desktop';
+        const merchant = 'E2E Desktop Quoted Merchant';
+        const pl = await createPaymentLink(user.jwt, {
+          tag: 'pl-qr-desktop',
+          amount: 24,
+          label: 'e2e-pl-qr-desktop',
+          externalId,
+        });
+
+        await installQuotedPayRequest(page, {
+          merchant,
+          amount: 24,
+          uniqueId: pl.uniqueId,
+        });
+        await page.goto(
+          `/pl?routeId=${pl.routeId}&externalId=${encodeURIComponent(externalId)}&amount=24&currency=CHF`,
+          { waitUntil: 'domcontentloaded' },
+        );
+        await expect
+          .poll(() => normPath(new URL(page.url()).pathname), {
+            message: 'expected pathname /pl',
+            timeout: 20000,
+          })
+          .toBe('/pl');
+
+        await expect(page.getByText(merchant, { exact: true })).toBeVisible({ timeout: 20000 });
+        await expect(page.getByText(SCAN_COPY, { exact: true })).toBeVisible();
+        await expect(page.getByText(WALLET_COPY, { exact: true })).toHaveCount(0);
+        await expect(page.locator('.w-48.my-3 svg')).toBeVisible();
+      });
+    });
+
+    test.describe('handheld', () => {
+      test.use({
+        userAgent: devices['iPhone 13'].userAgent,
+        viewport: devices['iPhone 13'].viewport,
+        deviceScaleFactor: devices['iPhone 13'].deviceScaleFactor,
+        isMobile: true,
+        hasTouch: true,
+      });
+
+      test('/pl: handheld with a quote shows wallet copy and the collapsed QR row', async ({ page }) => {
+        const user = await createUser({
+          tag: 'pl-qr-handheld',
+          language: 'EN',
+          kycLevel: 30,
+          completePersonalData: true,
+        });
+        const externalId = 'e2e-pl-qr-handheld';
+        const merchant = 'E2E Handheld Quoted Merchant';
+        const pl = await createPaymentLink(user.jwt, {
+          tag: 'pl-qr-handheld',
+          amount: 24,
+          label: 'e2e-pl-qr-handheld',
+          externalId,
+        });
+
+        await installQuotedPayRequest(page, {
+          merchant,
+          amount: 24,
+          uniqueId: pl.uniqueId,
+        });
+        await page.goto(
+          `/pl?routeId=${pl.routeId}&externalId=${encodeURIComponent(externalId)}&amount=24&currency=CHF`,
+          { waitUntil: 'domcontentloaded' },
+        );
+        await expect
+          .poll(() => normPath(new URL(page.url()).pathname), {
+            message: 'expected pathname /pl',
+            timeout: 20000,
+          })
+          .toBe('/pl');
+
+        await expect(page.getByText(merchant, { exact: true })).toBeVisible({ timeout: 20000 });
+        await expect(page.getByText(WALLET_COPY, { exact: true })).toBeVisible();
+        await expect(page.getByText(SCAN_COPY, { exact: true })).toHaveCount(0);
+        await expect(page.locator('.w-48.my-3 svg')).toHaveCount(0);
+      });
+    });
   });
 
   test('/pl: the real lightning= URL from GET /paymentLink now resolves through the tests-container forwarder', async ({
