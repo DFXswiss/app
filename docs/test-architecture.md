@@ -133,6 +133,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for
   a customer who has not completed KYC; a unit test covers that path.
+- **The invoice-screen specs answer the recipient lookup themselves.** `e2e/invoice-screen.spec.ts`
+  fulfils `GET /v1/paymentLink/recipient` with a static `200` (`{ currency: { name: 'CHF' } }`) or a
+  `404`, so a green run proves that the screen renders the payer wording, the display-only payee and
+  the unknown-payee error for those two answers — not that the API resolves a printed recipient. The
+  real lookup is exercised by the three payer tests in `e2e-stack/specs/payment-links.spec.ts`.
 - **The same two specs fabricate the invoice rejection.** Each answers
   `**/v1/buy/paymentInfos/*/invoice*` with a `400` and the fixed
   `CollectionAccountInvoicePersonalIbanMissing` error token, so a green run proves that the screen
