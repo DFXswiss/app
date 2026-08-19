@@ -52,7 +52,7 @@ Compliance and lower. Prefer Fail or Reset so the automatic AML pipeline can re-
 
 `docs/test-architecture.md` describes the test layers this repository owns, with
 measured numbers for the current state, and points at the canonical
-cross-repository description in `DFXswiss/api`. Read it before adding a test
+cross-repository description in `DFXswiss/backend`. Read it before adding a test
 layer, moving a test between layers, or extending the full-stack harness. (Given
 as a path rather than a link on purpose: the handbook build renders every markdown
 file to HTML, and its integrity check then requires every relative reference

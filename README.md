@@ -9,7 +9,7 @@ Reusable web widget to buy, sell and swap crypto assets
 ### Prerequisites
 
 - **Node.js** (LTS version) - [Download](https://nodejs.org)
-- **DFX API** running locally - see [API repository](https://github.com/DFXswiss/api#local-development)
+- **DFX API** running locally - see [API repository](https://github.com/DFXswiss/backend#local-development)
 
 ### Quick Start
 
@@ -103,7 +103,7 @@ Similar to the Web Component, the React component requires a closing callback (`
 
 #### Direct Login
 
-Credentials can be provided directly when opening DFX services. This is recommended for integrators with access to the wallet of the user. The services can be opened with a JWT access token for DFX API. Details on the authentication can be found in the [API documentation](https://github.com/DFXswiss/api#registration). Use the following parameter.
+Credentials can be provided directly when opening DFX services. This is recommended for integrators with access to the wallet of the user. The services can be opened with a JWT access token for DFX API. Details on the authentication can be found in the [API documentation](https://github.com/DFXswiss/backend#registration). Use the following parameter.
 
 - `session`: access token for the DFX API
 
@@ -141,7 +141,7 @@ DFX services supports the following parameters. Note that for the React componen
 - User information
 
   - E-mail (`mail`): user email
-  - Wallet (`wallet`): wallet/client identifier (name or ID), used for sign up, see [API documentation](https://github.com/DFXswiss/api#initial-wallet-setup-optional) (optional, but recommended)
+  - Wallet (`wallet`): wallet/client identifier (name or ID), used for sign up, see [API documentation](https://github.com/DFXswiss/backend#initial-wallet-setup-optional) (optional, but recommended)
   - Referral code (`refcode`): sign-up referral code
   - Special code (`special-code`): special/promo code
 

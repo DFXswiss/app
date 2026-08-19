@@ -22,7 +22,7 @@ export interface AssignBankTxDto {
   buyId?: number;
 }
 
-// Mirrors BankTxType in DFXswiss/api (bank-tx.entity.ts), minus the three unassigned markers:
+// Mirrors BankTxType in DFXswiss/backend (bank-tx.entity.ts), minus the three unassigned markers:
 // setting a transaction back to Pending/GSheet/Unknown is not an assignment, and the API maps
 // those to a null transaction type.
 export const AssignableBankTxTypes = [

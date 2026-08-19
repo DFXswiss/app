@@ -3,7 +3,7 @@
 This document describes the test layers **this repository** owns, with measured numbers for the
 current state. The canonical, cross-repository description of all layers — what each one proves, what
 it deliberately does not prove, and the reality-declaration requirement — lives in
-`DFXswiss/api` under `docs/test-architecture.md`. Read that one first if you need the whole picture.
+`DFXswiss/backend` under `docs/test-architecture.md`. Read that one first if you need the whole picture.
 
 Current state and target are kept apart on purpose. Sections marked _target_ describe what is not
 built yet; nothing here may describe a capability as existing when it does not.
@@ -18,7 +18,7 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
 payout, ledger booking — is **not** testable from this repository. It belongs to the integration
-layer in `DFXswiss/api`, which runs against a real database. Do not try to cover it from here.
+layer in `DFXswiss/backend`, which runs against a real database. Do not try to cover it from here.
 
 ## Current state — measured
 
@@ -84,7 +84,7 @@ declaration.** Anything its parser cannot resolve is a hard failure rather than 
 ## Reality declaration — hard requirement
 
 Full definition, including the categories that count as a fake and the mandatory fields per entry, is in
-`DFXswiss/api` under `docs/test-architecture.md` — that document owns the taxonomy, and its exact extent
+`DFXswiss/backend` under `docs/test-architecture.md` — that document owns the taxonomy, and its exact extent
 is not verifiable from this repository. The short form that binds every pull request here:
 
 Whenever you introduce, remove or change a fake — a faked external provider, a disabled cron job, a
@@ -101,7 +101,7 @@ from memory, with omissions.
 
 This section lists the fakes introduced by this repository's own suites and states what a green
 run does not prove for each one; the taxonomy and cross-repository entries live in
-`DFXswiss/api` under `docs/test-architecture.md`.
+`DFXswiss/backend` under `docs/test-architecture.md`.
 
 - **The buy-process specs answer the quote endpoint themselves.** `e2e/buy-process.spec.ts` fulfils
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
@@ -142,12 +142,12 @@ All four points below concern the full-stack harness.
   there — every process-gated cron job — so the processing chain never executes;
   transaction states are inserted with SQL instead. What is verified is the synchronous path:
   interaction, HTTP, validation, authorisation, persistence, display. (A cron without a `process` field
-  is not covered by that switch and keeps running — see the companion document in `DFXswiss/api`.)
+  is not covered by that switch and keeps running — see the companion document in `DFXswiss/backend`.)
 - **The harness does not exercise the migration chain.** It builds the schema from the entities,
   because one migration requires a seed row that does not exist at migration time on a fresh
-  database. Migrations are covered in `DFXswiss/api` instead.
+  database. Migrations are covered in `DFXswiss/backend` instead.
 - **The harness lives in the wrong repository.** It tests the API as much as this frontend, and
-  `DFXswiss/api` has to check this repository out to obtain it. See the target below.
+  `DFXswiss/backend` has to check this repository out to obtain it. See the target below.
 - **The suite is serialised.** All specs share one database and one API instance — `e2e-stack/compose.yml`
   declares a single `db` and a single `api` service — with no per-test isolation, so it runs on a single
   worker with retries disabled (`workers: 1` and `retries: 0` in `e2e-stack/playwright.config.ts`, whose
@@ -160,7 +160,7 @@ _Target — not built yet._ In the order the work should happen:
 
 1. **Per-worker isolation** (a schema or database per worker), so the suite can be parallelised. Cheap
    while it is small.
-2. **Move the harness out of this repository** — into `DFXswiss/api` or a repository of its own,
+2. **Move the harness out of this repository** — into `DFXswiss/backend` or a repository of its own,
    consuming published frontend and API images by tag instead of sibling checkouts. The stage depends
    on the applications, never the reverse.
 3. **Adopt a coverage ratchet for the unit layer**, replacing a rule that CI cannot enforce with one
