@@ -141,11 +141,11 @@ export default function PaymentLinkScreen(): JSX.Element {
 
   // Large QR only exists inside the OpenCryptoPay section; displayQr forces it there on every device.
   // Outside OCP (or MetaMask error/info), fall back to the collapsible "QR Code" row.
+  // Form standard is set asynchronously; fall back to the payment's own standard so an unset form is not OCP.
   const showsOcpSection =
     !metaMaskError &&
     !metaMaskInfo &&
-    (!selectedPaymentStandard ||
-      PaymentStandardType.OPEN_CRYPTO_PAY === (selectedPaymentStandard.id as PaymentStandardType));
+    (selectedPaymentStandard?.id ?? payRequest?.standard) === PaymentStandardType.OPEN_CRYPTO_PAY;
   const showLargeQr = showsOcpSection && (Boolean(payRequest?.displayQr) || !isHandheld);
 
   useEffect(() => {

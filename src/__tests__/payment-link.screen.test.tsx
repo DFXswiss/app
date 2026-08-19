@@ -311,7 +311,7 @@ function mockContext(displayQr: boolean) {
 }
 
 /** Non-OCP standard (PayToAddress) — form selects it from payRequest.standard. */
-function mockContextNonOcp(displayQr: boolean) {
+function mockContextNonOcp(displayQr: boolean, overrides: Record<string, unknown> = {}) {
   mockUsePaymentLinkContext.mockReturnValue({
     error: undefined,
     merchant: undefined,
@@ -341,6 +341,7 @@ function mockContextNonOcp(displayQr: boolean) {
     fetchPayRequest: jest.fn().mockResolvedValue(undefined),
     fetchPaymentIdentifier: jest.fn().mockResolvedValue(undefined),
     payWithMetaMask: jest.fn(),
+    ...overrides,
   });
 
   mockWallets();
@@ -547,6 +548,17 @@ describe('PaymentLinkScreen device-aware QR', () => {
       expect(screen.getByTestId('expandable-QR Code')).toBeInTheDocument();
     });
     expect(queryLargePaymentQr()).toBeUndefined();
+    expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
+  });
+
+  it('desktop + non-OCP payment + form standard unset → collapsible QR row, no large QR', () => {
+    mockDevice.isMobile = false;
+    setMatchMedia(false);
+    mockContextNonOcp(false, { paymentStandards: undefined });
+    renderScreen();
+
+    expect(queryLargePaymentQr()).toBeUndefined();
+    expect(screen.getByTestId('expandable-QR Code')).toBeInTheDocument();
     expect(screen.queryByText(SCAN_COPY)).not.toBeInTheDocument();
   });
 });
