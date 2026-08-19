@@ -143,8 +143,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The two payment visual specs answer every API they need themselves.**
   `e2e/payment-qr-device.spec.ts` fulfils the `/v1/` payment routes with a fixed quote whose
   expiry is a constant ISO string, holds the wait-polling open so it never re-fetches, and pins
-  wall-clock time; `e2e/payment-routes-qr-label.spec.ts` fulfils `/v1/` and `/v2/` with static
-  route, wallet and standard payloads and mounts the screen on a synthetic unsigned JWT. A green
+  wall-clock time; `e2e/payment-routes-qr-label.spec.ts` answers `GET /v2/user`,
+  `GET /v1/route`, the payment-link list, its config and POS endpoints and the info banner with
+  static payloads, and mounts the screen on a synthetic unsigned JWT. A green
   run of either proves that the screen renders those payloads — the device split, the wallet copy
   and the renamed setting label — not that a real session passes the address guard, that the API
   returns these shapes, or that a live quote expires when the baseline says it does.
