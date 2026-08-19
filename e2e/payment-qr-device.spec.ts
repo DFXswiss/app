@@ -135,13 +135,6 @@ async function installPaymentMocks(page: Page): Promise<void> {
 }
 
 async function openPaymentPage(page: Page): Promise<void> {
-  page.on('pageerror', (err) => {
-    console.log('[pageerror]', err.message);
-  });
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') console.log('[console.error]', msg.text());
-  });
-
   await installPaymentMocks(page);
   // Wall-clock pin for any Date.now() consumers; the rate/timer copy does not render
   // here because PAYMENT_STANDARDS has no blockchain field (see payment-link.screen rate guard).
