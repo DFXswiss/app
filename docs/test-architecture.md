@@ -140,6 +140,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   produce a quote or that a real quote's transfer amounts, expiry or callback match what the screen
   then renders.
 
+- **The two payment visual specs answer every API they need themselves.**
+  `e2e/payment-qr-device.spec.ts` fulfils the `/v1/` payment routes with a fixed quote whose
+  expiry is a constant ISO string, holds the wait-polling open so it never re-fetches, and pins
+  wall-clock time; `e2e/payment-routes-qr-label.spec.ts` fulfils `/v1/` and `/v2/` with static
+  route, wallet and standard payloads and mounts the screen on a synthetic unsigned JWT. A green
+  run of either proves that the screen renders those payloads — the device split, the wallet copy
+  and the renamed setting label — not that a real session passes the address guard, that the API
+  returns these shapes, or that a live quote expires when the baseline says it does.
+
 ## Known gaps
 
 All four points below concern the full-stack harness.
