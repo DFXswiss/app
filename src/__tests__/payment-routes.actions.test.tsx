@@ -1023,6 +1023,17 @@ describe('PaymentRoutesScreen actions', () => {
     expect(screen.getByTestId('error-hint')).toHaveTextContent('server exploded');
   });
 
+  it('shows the local error instead of permission denied when both are set', async () => {
+    mockRoutesState.overrides = { error: 'permission denied' };
+    mockUpdateUserPaymentLinksConfig.mockRejectedValueOnce({ message: 'config-save-failed' });
+    renderScreen();
+    fireEvent.click(screen.getAllByText('Edit configuration')[0]);
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('config-save-failed');
+    });
+  });
+
   it('copies LNURL expansion items when clicked', () => {
     renderScreen();
     fireEvent.click(screen.getAllByTestId('item-LNURL-Link')[0]);
