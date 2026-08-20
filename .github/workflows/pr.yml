@@ -252,3 +252,20 @@ jobs:
 
       - name: Build widget
         run: npm run widget:dev
+
+  # After Build and test so E2E cannot start (and occupy a runner) while unit
+  # tests are still queued. Develop without ci:full is an in-job no-op.
+  e2e:
+    name: Full-stack E2E
+    needs: [build]
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.draft == false ||
+      contains(github.event.pull_request.labels.*.name, 'ci') ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
+    uses: ./.github/workflows/e2e-stack.yml
+    with:
+      pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
+      base_ref: ${{ github.base_ref || inputs.base_ref }}
+      full: ${{ (github.event_name == 'pull_request' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) || (github.event_name != 'pull_request' && (inputs.base_ref == '' || inputs.base_ref == 'main')) }}
+    secrets: inherit

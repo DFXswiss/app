@@ -96,8 +96,9 @@ and deleting or renaming files under `src/` or `functions/`. Lint, Markdown
 formatting (`format:md:check`), `build:dev` and `widget:dev` always run in full
 when the job runs. A standard PR into `develop` (no `ci:full`) must finish CI
 in under 10 minutes wall-clock; the full-stack E2E job is an in-job no-op
-unless `ci:full` is set. Full runs (`ci:full`, PRs into `main`, a bare
-`workflow_dispatch`) may take longer.
+unless `ci:full` is set. Full-stack E2E is called from PR CI after Build and
+test succeed, so it cannot start while unit tests are still queued. Full runs
+(`ci:full`, PRs into `main`, a bare `workflow_dispatch`) may take longer.
 
 #### Coverage
 

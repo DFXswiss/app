@@ -101,7 +101,7 @@ jobs:
             --arg pr "$PR_NUMBER" \
             --arg base "$BASE_REF" \
             '{ref:$ref, inputs:{pr_number:$pr, base_ref:$base}}')"
-          for wf in pr.yml e2e-stack.yml codeql.yml pr-review-bot.yml; do
+          for wf in pr.yml codeql.yml pr-review-bot.yml; do
             code="$(curl -sS -o "$tmp" -w '%{http_code}' \
               -X POST \
               -H "Authorization: Bearer ${GH_TOKEN}" \
