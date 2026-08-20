@@ -101,6 +101,13 @@ export function useRealunitApi() {
     });
   }
 
+  async function deactivateQuote(id: number): Promise<void> {
+    return call<void>({
+      url: `realunit/admin/quotes/${id}/deactivate`,
+      method: 'PUT',
+    });
+  }
+
   return useMemo(
     () => ({
       getAccountSummary,
@@ -112,6 +119,7 @@ export function useRealunitApi() {
       getAdminQuotes,
       getAdminTransactions,
       confirmPayment,
+      deactivateQuote,
     }),
     [call],
   );

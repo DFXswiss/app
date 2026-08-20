@@ -85,17 +85,32 @@ export function UsersTable({ users }: { users: UserInfo[] }): JSX.Element {
 
 function formatStepResult(stepName: string, result?: string): string {
   if (!result) return '-';
-  // Only Recommendation step results are shown (key = refCode | mail | invitationCode).
-  // Other steps store complex JSON that is not useful as a column value.
-  if (stepName !== 'Recommendation') return '-';
-  try {
-    const parsed = JSON.parse(result) as unknown;
-    if (parsed && typeof parsed === 'object' && 'key' in parsed) {
-      return String((parsed as { key: unknown }).key);
+
+  switch (stepName) {
+    case 'Recommendation': {
+      try {
+        const parsed = JSON.parse(result) as unknown;
+        if (parsed && typeof parsed === 'object' && 'key' in parsed) {
+          return String((parsed as { key: unknown }).key);
+        }
+      } catch {
+        // not JSON
+      }
+      return result;
     }
-    return result;
-  } catch {
-    return result;
+
+    case 'NationalityData': {
+      try {
+        const parsed = JSON.parse(result) as { nationality?: { id: number; symbol: string } };
+        if (parsed.nationality?.symbol) return parsed.nationality.symbol;
+      } catch {
+        // not JSON
+      }
+      return '-';
+    }
+
+    default:
+      return '-';
   }
 }
 

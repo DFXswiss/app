@@ -2,7 +2,7 @@
 // so it is cheap to unit-test in isolation.
 import type { SupportIssueListItem } from 'src/hooks/support-dashboard.hook';
 
-// Author marker the backend stamps on customer messages (mirrors `CustomerAuthor` in DFXswiss/api).
+// Author marker the backend stamps on customer messages (mirrors `CustomerAuthor` in DFXswiss/backend).
 export const CustomerAuthor = 'Customer';
 
 // --- Customer waiting & escalation ---
@@ -75,7 +75,7 @@ export interface ResolutionBucket {
   count: number;
 }
 
-// Ticket state marking a resolved ticket (mirrors SupportIssueInternalState.COMPLETED in DFXswiss/api).
+// Ticket state marking a resolved ticket (mirrors SupportIssueInternalState.COMPLETED in DFXswiss/backend).
 export const COMPLETED_STATE = 'Completed';
 
 export interface TicketStatistics {

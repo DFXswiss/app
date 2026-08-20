@@ -14,10 +14,8 @@ import {
   TransactionState,
   TransactionTarget,
   TransactionType,
-  UserAddress,
   Utils,
   Validations,
-  useBankAccountContext,
   useSessionContext,
   useTransaction,
   useUserContext,
@@ -50,22 +48,22 @@ import {
 } from '@dfx.swiss/react-components';
 import copy from 'copy-to-clipboard';
 import { useEffect, useRef, useState } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { useLocation, useParams } from 'react-router-dom';
 import CoinTracking from 'src/components/cointracking';
-import { AddBankAccount } from 'src/components/payment/add-bank-account';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import { ErrorHint } from '../components/error-hint';
 import { PaymentFailureReasons, PaymentMethodLabels, toPaymentStateLabel } from '../config/labels';
-import { useAppHandlingContext } from '../contexts/app-handling.context';
 import { useSettingsContext } from '../contexts/settings.context';
 import { useBlockchain } from '../hooks/blockchain.hook';
 import { useUserGuard } from '../hooks/guard.hook';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useNavigation } from '../hooks/navigation.hook';
+import { useTransactionGuest } from '../hooks/transaction-guest.hook';
 import { getStoredPaymentDetailErrorMessage } from '../util/personal-iban';
-import { blankedAddress, formatSwissDateTimeWithSeconds, openPdfFromString } from '../util/utils';
+import { canOpenInvoice, revealInvoicePdf } from '../util/transaction-invoice';
+import { blankedAddress, formatSwissDateTimeWithSeconds } from '../util/utils';
 import { ZipValidation } from '../util/validation-rules';
 
 export enum ExportType {
@@ -75,8 +73,9 @@ export enum ExportType {
 }
 
 export default function TransactionScreen(): JSX.Element {
-  const { id } = useParams();
+  const { id, secret } = useParams();
   const { user } = useUserContext();
+  const { isLoggedIn } = useSessionContext();
   const { pathname } = useLocation();
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
@@ -89,7 +88,11 @@ export default function TransactionScreen(): JSX.Element {
   const [error, setError] = useState<string>();
 
   const isTransaction = id && (id.startsWith('T') || id.startsWith('Q'));
-  const isRefund = isTransaction && pathname.includes('/refund');
+  const hasActionSecret = !!secret && /^[0-9a-f]{64}$/.test(secret);
+  // Logged-in list refund opens /tx/:uid/refund without a mail secret; guest mail stays secret-only.
+  const isRefund = isTransaction && pathname.includes('/refund') && (hasActionSecret || isLoggedIn);
+  // isAssign stays secret-only (list assign already uses /tx/:numericId/assign)
+  const isAssign = isTransaction && hasActionSecret && pathname.includes('/assign');
 
   async function exportCsv(type: ExportType) {
     if (!user) return;
@@ -122,21 +125,28 @@ export default function TransactionScreen(): JSX.Element {
 
   const title = isRefund
     ? translate('screens/payment', 'Transaction refund')
-    : isTransaction
-      ? translate('screens/payment', 'Transaction status')
-      : showCoinTracking
-        ? translate('screens/payment', 'Cointracking Link (read rights)')
-        : translate('screens/payment', 'Transactions');
+    : isAssign
+      ? translate('screens/payment', 'Assign transaction')
+      : isTransaction
+        ? translate('screens/payment', 'Transaction status')
+        : showCoinTracking
+          ? translate('screens/payment', 'Cointracking Link (read rights)')
+          : translate('screens/payment', 'Transactions');
 
   const onBack =
-    isTransaction || isRefund || error
+    isAssign || isRefund
       ? () => {
           setError(undefined);
-          navigate('/tx');
+          navigate(`/tx/${id}`);
         }
-      : showCoinTracking
-        ? () => setShowCoinTracking(false)
-        : undefined;
+      : isTransaction || error
+        ? () => {
+            setError(undefined);
+            navigate('/tx');
+          }
+        : showCoinTracking
+          ? () => setShowCoinTracking(false)
+          : undefined;
 
   useLayoutOptions({ title, onBack });
 
@@ -146,6 +156,8 @@ export default function TransactionScreen(): JSX.Element {
         <ErrorHint message={error} />
       ) : isRefund ? (
         <TransactionRefund setError={setError} />
+      ) : isAssign ? (
+        <TransactionAssign setError={setError} />
       ) : isTransaction ? (
         <TransactionStatus setError={setError} />
       ) : showCoinTracking ? (
@@ -208,12 +220,11 @@ interface TransactionStatusProps {
 function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
-  const { id } = useParams();
+  const { id, secret } = useParams();
   const { getTransactionByUid } = useTransaction();
-  const { isLoggedIn } = useSessionContext();
-  const { setRedirectPath } = useAppHandlingContext();
   const { user } = useUserContext();
 
+  const hasActionSecret = !!secret && /^[0-9a-f]{64}$/.test(secret);
   const isRealUnit = user?.activeAddress?.wallet?.startsWith('RealUnit') ?? false;
 
   const [transaction, setTransaction] = useState<Transaction>();
@@ -234,12 +245,7 @@ function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
   }, [id, transaction?.state]);
 
   function handleTransactionNavigation(path: string) {
-    if (isLoggedIn) {
-      navigate(path);
-    } else {
-      setRedirectPath(path);
-      navigate('/login');
-    }
+    navigate(path);
   }
 
   return transaction ? (
@@ -247,10 +253,10 @@ function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
       <TxInfo tx={transaction} showUserDetails={false} />
 
       <StyledVerticalStack gap={4} full>
-        {transaction.state === TransactionState.UNASSIGNED && (
+        {transaction.state === TransactionState.UNASSIGNED && hasActionSecret && (
           <StyledButton
             label={translate('screens/payment', 'Assign transaction')}
-            onClick={() => handleTransactionNavigation(`/tx/${transaction.id}/assign`)}
+            onClick={() => handleTransactionNavigation(`/tx/${transaction.uid}/${secret}/assign`)}
             width={StyledButtonWidth.FULL}
           />
         )}
@@ -267,16 +273,20 @@ function TransactionStatus({ setError }: TransactionStatusProps): JSX.Element {
           !transaction.chargebackAmount &&
           !isRealUnit && (
             <>
-              <StyledButton
-                label={translate(
-                  'general/actions',
-                  transaction.state === TransactionState.FAILED ? 'Confirm refund' : 'Request refund',
-                )}
-                onClick={() => handleTransactionNavigation(`/tx/${transaction.uid}/refund`)}
-              />
+              {hasActionSecret && (
+                <StyledButton
+                  label={translate(
+                    'general/actions',
+                    transaction.state === TransactionState.FAILED ? 'Confirm refund' : 'Request refund',
+                  )}
+                  onClick={() => handleTransactionNavigation(`/tx/${transaction.uid}/${secret}/refund`)}
+                />
+              )}
               <StyledButton
                 label={translate('general/actions', 'Create support ticket')}
-                onClick={() => handleTransactionNavigation('/support/issue?issue-type=TransactionIssue')}
+                onClick={() =>
+                  handleTransactionNavigation(`/support/issue?issue-type=TransactionIssue&tx=${transaction.uid}`)
+                }
                 color={StyledButtonColor.STURDY_WHITE}
               />
             </>
@@ -293,7 +303,7 @@ interface RefundDetails extends TransactionRefundData {
 }
 
 interface FormData {
-  address: UserAddress;
+  refundAddress: string;
   iban: string;
   creditorName: string;
   creditorStreet: string;
@@ -307,88 +317,82 @@ interface TransactionRefundProps {
   setError: (error: string) => void;
 }
 
-const AddAccount = 'Add bank account';
-
 function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
-  useUserGuard('/login');
+  const { id, secret } = useParams();
 
-  const { id } = useParams();
   const { state } = useLocation();
-  const { width } = useWindowContext();
   const { navigate } = useNavigation();
   const { translate, allowedCountries } = useSettingsContext();
-  const { user, userAddresses } = useUserContext();
   const { rootRef } = useLayoutContext();
-  const { bankAccounts } = useBankAccountContext();
   const { isLoggedIn } = useSessionContext();
   const { getTransactionByUid, getTransactionRefund, setTransactionRefundTarget } = useTransaction();
+  const { getRefund, setRefund } = useTransactionGuest();
   const refetchTimeout = useRef<ReturnType<typeof setTimeout> | undefined>();
 
   const [isLoading, setIsLoading] = useState(false);
   const [refundDetails, setRefundDetails] = useState<RefundDetails>();
   const [transaction, setTransaction] = useState<Transaction>();
-  const [addresses, setAddresses] = useState<UserAddress[]>();
   const [localError, setLocalError] = useState<string>();
 
   const isBuy = transaction?.type === TransactionType.BUY;
+  const hasActionSecret = !!secret && /^[0-9a-f]{64}$/.test(secret);
 
   const {
     control,
     handleSubmit,
-    setValue,
     formState: { errors, isValid },
   } = useForm<FormData>({ mode: 'onTouched', defaultValues: { iban: state?.newIban } });
 
-  const selectedIban = useWatch({ control, name: 'iban' });
-
   useEffect(() => {
-    if (id && !transaction && isLoggedIn) {
+    if (id && !transaction) {
       getTransactionByUid(id)
         .then(setTransaction)
         .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
     }
-  }, [id, transaction, isLoggedIn]);
+  }, [id, transaction]);
 
   useEffect(() => {
-    async function fetchRefund(txId: number) {
-      getTransactionRefund(txId)
+    async function fetchRefund() {
+      if (!id || !transaction) return;
+
+      // Guest money APIs require a valid action secret; do not fall through without one.
+      const loadRefund =
+        hasActionSecret && secret
+          ? getRefund(id, secret)
+          : isLoggedIn && typeof transaction.id === 'number'
+            ? getTransactionRefund(transaction.id)
+            : undefined;
+
+      if (!loadRefund) return;
+
+      loadRefund
         .then((response) => {
           setRefundDetails(response);
-          if (transaction?.id && response.expiryDate) {
+          if (response.expiryDate) {
             const timeout = new Date(response.expiryDate).getTime() - Date.now();
             if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
-            refetchTimeout.current = setTimeout(() => fetchRefund(txId), timeout > 0 ? timeout : 0);
+            refetchTimeout.current = setTimeout(() => fetchRefund(), timeout > 0 ? timeout : 0);
           }
         })
         .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
     }
 
-    if (transaction?.id) fetchRefund(transaction.id);
+    if (transaction && id) fetchRefund();
 
     return () => {
       if (refetchTimeout.current) clearTimeout(refetchTimeout.current);
     };
-  }, [transaction]);
-
-  useEffect(() => {
-    if (transaction && user) {
-      const allowedAddresses = userAddresses.filter(
-        (a) => transaction?.inputBlockchain && a.blockchains.includes(transaction?.inputBlockchain),
-      );
-      setAddresses(allowedAddresses);
-      if (allowedAddresses?.length === 1) setValue('address', allowedAddresses[0]);
-    }
-  }, [transaction, user]);
+  }, [transaction, id, secret, hasActionSecret, isLoggedIn]);
 
   // Bank refund = BUY transaction with non-card payment method
   const isBankRefund = isBuy && transaction?.inputPaymentMethod !== FiatPaymentMethod.CARD;
 
   // Validation rules based on refund type:
-  // - address: only required for crypto refunds (not isBuy)
+  // - refundAddress: only required for crypto refunds (not isBuy)
   // - iban/creditorName: only required for bank refunds if not already fixed from bankTx
   // - creditorStreet/zip/city/country: only required for bank refunds
   const rules = Utils.createRules({
-    address: !isBuy ? Validations.Required : undefined,
+    refundAddress: !isBuy && !refundDetails?.refundTarget ? Validations.Required : undefined,
     iban: !isBankRefund || refundDetails?.refundTarget ? undefined : Validations.Required,
     creditorName:
       !isBankRefund || (refundDetails?.bankDetails?.name?.trim() && refundDetails?.refundTarget)
@@ -400,19 +404,18 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
     creditorCountry: isBankRefund ? Validations.Required : undefined,
   });
 
-  const inputBlockchain = transaction?.inputBlockchain;
-  const transactionId = transaction?.id;
-
-  async function onSubmit(data: FormData, transactionId: number) {
+  async function onSubmit(data: FormData) {
     setIsLoading(true);
     setLocalError(undefined);
 
     try {
-      const formTarget = isBuy ? (data.iban ?? '') : data.address?.address;
+      const formTarget = isBuy ? (data.iban ?? '') : data.refundAddress;
 
-      const refundName = !refundDetails?.refundTarget ? data.creditorName : (refundDetails?.bankDetails?.name ?? data.creditorName);
+      const refundName = !refundDetails?.refundTarget
+        ? data.creditorName
+        : (refundDetails?.bankDetails?.name ?? data.creditorName);
 
-      await setTransactionRefundTarget(transactionId, {
+      const payload = {
         refundTarget: !isBuy || (isBankRefund && !refundDetails?.refundTarget) ? formTarget : undefined,
         creditorData: isBankRefund
           ? {
@@ -424,18 +427,24 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
               country: data.creditorCountry?.symbol,
             }
           : undefined,
-      });
-      // Navigate only on success
-      navigate('/tx');
+      };
+
+      if (hasActionSecret) {
+        if (!id || !secret) return;
+        await setRefund(id, secret, payload);
+      } else if (isLoggedIn && typeof transaction?.id === 'number') {
+        await setTransactionRefundTarget(transaction.id, payload);
+      } else {
+        // Guest money APIs require a valid action secret; do not fall through without one.
+        return;
+      }
+      navigate(`/tx/${id}`);
     } catch (e) {
       const error = e as ApiError;
       if (error.message?.includes('MultiAccountIban')) {
         // Use local error to keep the form visible (setError would replace the entire form)
         setLocalError(
-          translate(
-            'screens/payment',
-            'This IBAN cannot be used for refunds. Please select a personal bank account.',
-          ),
+          translate('screens/payment', 'This IBAN cannot be used for refunds. Please select a personal bank account.'),
         );
       } else {
         setError(error.message ?? 'Unknown error');
@@ -445,15 +454,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
     }
   }
 
-  return selectedIban === AddAccount ? (
-    <AddBankAccount
-      onSubmit={(account) => setValue('iban', account.iban)}
-      confirmationText={translate(
-        'screens/iban',
-        'The bank account has been added, all transactions from this IBAN will now be associated with your account.',
-      )}
-    />
-  ) : refundDetails && transaction && transactionId != null ? (
+  return refundDetails && transaction ? (
     <StyledVerticalStack gap={6} full>
       <StyledDataTable alignContent={AlignContent.RIGHT} showBorder minWidth={false}>
         <StyledDataTableRow label={translate('screens/payment', 'Transaction amount')}>
@@ -517,38 +518,24 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
           </StyledDataTableRow>
         )}
       </StyledDataTable>
-      <Form
-        control={control}
-        rules={rules}
-        errors={errors}
-      >
+      <Form control={control} rules={rules} errors={errors}>
         <StyledVerticalStack gap={6} full>
-          {!refundDetails.refundTarget && addresses && !isBuy && (
-            <StyledDropdown<UserAddress>
-              name="address"
-              rootRef={rootRef}
+          {!refundDetails.refundTarget && !isBuy && (
+            <StyledInput
+              name="refundAddress"
               label={translate('screens/payment', 'Chargeback address')}
-              items={addresses}
-              labelFunc={(item) => blankedAddress(item.address, { width })}
-              descriptionFunc={inputBlockchain ? () => inputBlockchain.toString() : undefined}
+              placeholder={translate('screens/payment', 'Chargeback address')}
               full
             />
           )}
           {transaction.inputPaymentMethod !== FiatPaymentMethod.CARD && isBuy && (
             <>
-              {/* IBAN selection only when no fixed refundTarget */}
-              {!refundDetails.refundTarget && bankAccounts && (
-                <StyledDropdown<string>
-                  rootRef={rootRef}
+              {!refundDetails.refundTarget && (
+                <StyledInput
                   name="iban"
+                  autocomplete="iban"
                   label={translate('screens/payment', 'Chargeback IBAN')}
-                  items={[...bankAccounts.map((b) => b.iban), AddAccount]}
-                  labelFunc={(item) =>
-                    item === AddAccount ? translate('general/actions', item) : (Utils.formatIban(item) ?? '')
-                  }
-                  descriptionFunc={(item) => bankAccounts.find((b) => b.iban === item)?.label ?? ''}
-                  placeholder={translate('general/actions', 'Select') + '...'}
-                  forceEnable
+                  placeholder="XX XXXX XXXX XXXX XXXX X"
                   full
                 />
               )}
@@ -621,7 +608,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
               'general/actions',
               transaction.state === TransactionState.FAILED ? 'Confirm refund' : 'Request refund',
             )}
-            onClick={handleSubmit((data) => onSubmit(data, transactionId))}
+            onClick={handleSubmit((data) => onSubmit(data))}
             width={StyledButtonWidth.FULL}
             disabled={!isValid}
             isLoading={isLoading}
@@ -629,6 +616,83 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         </StyledVerticalStack>
       </Form>
     </StyledVerticalStack>
+  ) : (
+    <StyledLoadingSpinner size={SpinnerSize.LG} />
+  );
+}
+
+function TransactionAssign({ setError }: TransactionStatusProps): JSX.Element {
+  const { id, secret } = useParams();
+  const { navigate } = useNavigation();
+  const { translate } = useSettingsContext();
+  const { rootRef } = useLayoutContext();
+  const { toString } = useBlockchain();
+  const { width } = useWindowContext();
+  const { getTargets, setTarget } = useTransactionGuest();
+
+  const [targets, setTargets] = useState<TransactionTarget[]>();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    formState: { isValid, errors },
+  } = useForm<{ target: TransactionTarget }>();
+
+  const rules = Utils.createRules({
+    target: Validations.Required,
+  });
+
+  useEffect(() => {
+    if (!id || !secret) return;
+
+    getTargets(id, secret)
+      .then((list) => {
+        setTargets(list);
+        if (list.length === 1) setValue('target', list[0]);
+      })
+      .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
+  }, [id, secret]);
+
+  async function onSubmit({ target }: { target: TransactionTarget }) {
+    if (!id || !secret) return;
+
+    setIsSubmitting(true);
+    try {
+      await setTarget(id, secret, target.id);
+      navigate(`/tx/${id}`);
+    } catch (error) {
+      setError((error as ApiError).message ?? 'Unknown error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return targets ? (
+    <Form control={control} errors={errors} rules={rules}>
+      <StyledVerticalStack gap={3} full>
+        <p className="text-dfxGray-700">{translate('screens/payment', 'Remittance info')}</p>
+        <StyledDropdown<TransactionTarget>
+          rootRef={rootRef}
+          items={targets}
+          labelFunc={(item) => `${item.bankUsage}`}
+          placeholder={translate('general/actions', 'Select') + '...'}
+          descriptionFunc={(item) =>
+            `${toString(item.asset.blockchain)}/${item.asset.name} ${blankedAddress(item.address, { width })}`
+          }
+          full
+          name="target"
+        />
+        <StyledButton
+          type="submit"
+          isLoading={isSubmitting}
+          disabled={!isValid}
+          label={translate('screens/payment', 'Assign transaction')}
+          onClick={handleSubmit(onSubmit)}
+        />
+      </StyledVerticalStack>
+    </Form>
   ) : (
     <StyledLoadingSpinner size={SpinnerSize.LG} />
   );
@@ -878,13 +942,15 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                             <StyledButton
                               label={translate('general/actions', 'Open invoice')}
                               onClick={() => {
+                                const preview = window.open('about:blank');
                                 setIsInvoiceLoading(tx.uid);
                                 setDocumentError(undefined);
                                 getTransactionInvoice(tx.uid)
                                   .then((response: PdfDocument) => {
-                                    openPdfFromString(response.pdfData);
+                                    revealInvoicePdf(response.pdfData, preview);
                                   })
                                   .catch((error: ApiError) => {
+                                    preview?.close();
                                     const storedDetailErrorText = getStoredPaymentDetailErrorMessage(error.message);
                                     setDocumentError({
                                       key: tx.uid,
@@ -897,20 +963,21 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                               }}
                               isLoading={isInvoiceLoading === tx.uid}
                               color={StyledButtonColor.STURDY_WHITE}
-                              hidden={isSupport}
+                              hidden={isSupport || !canOpenInvoice(tx)}
                             />
                             <StyledButton
                               label={translate('general/actions', 'Open receipt')}
                               onClick={() => {
                                 if (!tx.id) return;
-
+                                const preview = window.open('about:blank');
                                 setIsReceiptLoading(tx.id);
                                 setDocumentError(undefined);
                                 getTransactionReceipt(tx.id)
                                   .then((response: PdfDocument) => {
-                                    openPdfFromString(response.pdfData);
+                                    revealInvoicePdf(response.pdfData, preview);
                                   })
                                   .catch((error: ApiError) => {
+                                    preview?.close();
                                     const storedDetailErrorText = getStoredPaymentDetailErrorMessage(error.message);
                                     setDocumentError({
                                       key: String(tx.id),
@@ -925,10 +992,9 @@ export function TransactionList({ isSupport, setError, onSelectTransaction }: Tr
                               isLoading={isReceiptLoading === tx.id}
                               color={StyledButtonColor.STURDY_WHITE}
                             />
-                            {documentError &&
-                              (documentError.key === tx.uid || documentError.key === String(tx.id)) && (
-                                <ErrorHint message={documentError.message} />
-                              )}
+                            {documentError && (documentError.key === tx.uid || documentError.key === String(tx.id)) && (
+                              <ErrorHint message={documentError.message} />
+                            )}
                             <StyledButton
                               label={translate(
                                 'general/actions',

@@ -1,7 +1,7 @@
 import { delay } from './utils';
 
 /**
- * Async job contract of the API (DFXswiss/api#4496): an endpoint whose work outruns its short wait
+ * Async job contract of the API (DFXswiss/backend#4496): an endpoint whose work outruns its short wait
  * window answers HTTP 202 with a job ticket instead of the result. The client polls `GET /job/:uid`
  * until the job is terminal and then asks the originating endpoint for the result again — the
  * result is deliberately not carried in the job.

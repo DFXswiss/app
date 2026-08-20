@@ -45,11 +45,23 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PaymentQrCode } from '../components/payment/payment-qr-code';
 
+const originalCreateObjectURL = (global.URL as any).createObjectURL;
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockInvoiceFor.mockResolvedValue({ pdfData: 'JVBERi0x' });
   mockUser = { accountId: 1, kyc: { dataComplete: true } };
   mockSession = { account: 1, user: 1 };
+  jest.spyOn(window, 'open').mockImplementation(() => null);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+  if (originalCreateObjectURL) {
+    (global.URL as any).createObjectURL = originalCreateObjectURL;
+  } else {
+    delete (global.URL as any).createObjectURL;
+  }
 });
 
 const NO_COLLECTION_QR_HINT =
@@ -69,6 +81,7 @@ describe('PaymentQrCode incomplete KYC', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/profile', { setRedirect: true });
     expect(mockInvoiceFor).not.toHaveBeenCalled();
     expect(mockOpenPdf).not.toHaveBeenCalled();
+    expect(window.open).not.toHaveBeenCalled();
   });
 });
 
@@ -94,9 +107,10 @@ describe('PaymentQrCode missing value', () => {
     expect(mockInvoiceFor).toHaveBeenCalledWith(42, true);
 
     await waitFor(() => {
+      expect(window.open).toHaveBeenCalledWith('about:blank');
       expect(mockOpenPdf).toHaveBeenCalledTimes(1);
     });
-    expect(mockOpenPdf).toHaveBeenCalledWith('JVBERi0x');
+    expect(mockOpenPdf).toHaveBeenCalledWith('JVBERi0x', false);
   });
 });
 
@@ -129,6 +143,45 @@ describe('PaymentQrCode invoice errors', () => {
       expect(screen.getByText('Invoice service is unavailable')).toBeVisible();
     });
     expect(screen.queryByText('Unknown error')).not.toBeInTheDocument();
+  });
+
+  it('closes the reserved preview when invoice generation rejects', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+    mockInvoiceFor.mockRejectedValue({ message: 'Invoice service is unavailable' });
+
+    render(<PaymentQrCode value="<svg>QR bill</svg>" txId={42} />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(preview.close).toHaveBeenCalled();
+      expect(screen.getByText('Invoice service is unavailable')).toBeVisible();
+    });
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+  });
+});
+
+describe('PaymentQrCode reserved preview success', () => {
+  it('assigns the PDF via the reserved window when window.open returns a live preview', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+    (global.URL as any).createObjectURL = jest.fn(() => 'blob:invoice');
+
+    render(<PaymentQrCode value="BCD\n001" txId={42} />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(window.open).toHaveBeenCalledWith('about:blank');
+      expect(preview.location.href).toBe('blob:invoice');
+      expect((global.URL as any).createObjectURL).toHaveBeenCalled();
+    });
+    expect(mockOpenPdf).not.toHaveBeenCalled();
   });
 });
 
@@ -244,6 +297,33 @@ describe('PaymentQrCode stale-response guard', () => {
     expect(button).toBeEnabled();
   });
 
+  it('closes the reserved preview and does not assign a PDF when the request goes stale', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+    (global.URL as any).createObjectURL = jest.fn(() => 'blob:invoice');
+
+    const { rerender } = render(<PaymentQrCode value="BCD\n001" txId={42} collectionAccount />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'PDF Invoice' }));
+    });
+
+    await waitFor(() => {
+      expect(mockInvoiceFor).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(<PaymentQrCode value="BCD\n001" txId={42} />);
+
+    await act(async () => {
+      resolveInvoice({ pdfData: 'JVBERi0x' });
+    });
+
+    expect(preview.close).toHaveBeenCalled();
+    expect(preview.location.href).toBe('');
+    expect(mockOpenPdf).not.toHaveBeenCalled();
+    expect((global.URL as any).createObjectURL).not.toHaveBeenCalled();
+  });
+
   it('does not show an error when the collection mode changes while a failing request is in flight', async () => {
     let rejectInvoice: (reason: unknown) => void;
     mockInvoiceFor.mockImplementation(
@@ -339,9 +419,10 @@ describe('PaymentQrCode stale-response guard', () => {
     });
 
     await waitFor(() => {
+      expect(window.open).toHaveBeenCalledWith('about:blank');
       expect(mockOpenPdf).toHaveBeenCalledTimes(1);
     });
-    expect(mockOpenPdf).toHaveBeenCalledWith('JVBERi0x');
+    expect(mockOpenPdf).toHaveBeenCalledWith('JVBERi0x', false);
   });
 
   it('clears a shown error when the mode changes', async () => {
@@ -449,8 +530,9 @@ describe('PaymentQrCode stale-response guard', () => {
     });
 
     await waitFor(() => {
+      expect(window.open).toHaveBeenCalledWith('about:blank');
       expect(mockOpenPdf).toHaveBeenCalledTimes(1);
     });
-    expect(mockOpenPdf).toHaveBeenCalledWith('JVBERi0x');
+    expect(mockOpenPdf).toHaveBeenCalledWith('JVBERi0x', false);
   });
 });

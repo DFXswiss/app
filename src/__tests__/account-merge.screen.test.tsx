@@ -76,7 +76,7 @@ describe('AccountMerge', () => {
 
     render(<AccountMerge />);
 
-    expect(await screen.findByText('Account merged successfully!')).toBeInTheDocument();
+    expect(await screen.findByText('Wallet address added')).toBeInTheDocument();
     expect(mockSetAuthToken).toHaveBeenCalledWith('token');
     expect(mergeCalls()).toBe(1);
     expect(mockNavigate).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe('AccountMerge', () => {
 
     render(<AccountMerge />);
 
-    expect(await screen.findByText('Account merged successfully!', {}, { timeout: POLL_TIMEOUT })).toBeInTheDocument();
+    expect(await screen.findByText('Wallet address added', {}, { timeout: POLL_TIMEOUT })).toBeInTheDocument();
     expect(mockCall).toHaveBeenCalledWith({ url: 'job/job-uid', method: 'GET', token: false });
     // The access token is only issued in the HTTP context, so the result has to be fetched again.
     expect(mergeCalls()).toBe(2);
@@ -114,7 +114,7 @@ describe('AccountMerge', () => {
     });
 
     render(<AccountMerge />);
-    await screen.findByText('Account merged successfully!', {}, { timeout: POLL_TIMEOUT });
+    await screen.findByText('Wallet address added', {}, { timeout: POLL_TIMEOUT });
 
     const [jobCall] = mockCall.mock.calls.map(([c]) => c).filter((c) => c.url.startsWith('job/'));
     const mergeCallConfigs = mockCall.mock.calls.map(([c]) => c).filter((c) => c.url.startsWith(MERGE_URL));
@@ -131,7 +131,7 @@ describe('AccountMerge', () => {
 
     render(<AccountMerge />);
 
-    expect(await screen.findByText('Account merged successfully!')).toBeInTheDocument();
+    expect(await screen.findByText('Wallet address added')).toBeInTheDocument();
     expect(mockCall).not.toHaveBeenCalledWith(expect.objectContaining({ url: 'job/job-uid' }));
     expect(mergeCalls()).toBe(2);
   });
@@ -144,8 +144,8 @@ describe('AccountMerge', () => {
     await waitFor(() => expect(mockCall).toHaveBeenCalledWith({ url: 'job/job-uid', method: 'GET', token: false }), {
       timeout: POLL_TIMEOUT,
     });
-    expect(screen.getByText('Merging your accounts...')).toBeInTheDocument();
-    expect(screen.queryByText('Account merged successfully!')).not.toBeInTheDocument();
+    expect(screen.getByText('Adding the wallet address...')).toBeInTheDocument();
+    expect(screen.queryByText('Wallet address added')).not.toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -159,7 +159,7 @@ describe('AccountMerge', () => {
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith({
         pathname: '/error',
-        search: 'msg=Merging your accounts is taking longer than expected. Please try again later.',
+        search: 'msg=Adding the address is taking longer than expected. Please try again later.',
       }),
     );
   });
@@ -195,7 +195,7 @@ describe('AccountMerge', () => {
     render(<AccountMerge />);
 
     await waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/error', search: 'msg=Account merge failed' }),
+      expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/error', search: 'msg=The address could not be added' }),
     );
   });
 
@@ -213,7 +213,7 @@ describe('AccountMerge', () => {
     render(<AccountMerge />);
 
     await waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/error', search: 'msg=Merge is already completed' }),
+      expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/error', search: 'msg=This address has already been added' }),
     );
   });
 
@@ -297,6 +297,6 @@ describe('AccountMerge', () => {
       </React.StrictMode>,
     );
 
-    expect(await screen.findByText('Account merged successfully!')).toBeInTheDocument();
+    expect(await screen.findByText('Wallet address added')).toBeInTheDocument();
   });
 });

@@ -22,6 +22,12 @@ granted in writing on the pull request.
 A follow-up that exists only as an intention is a follow-up nobody opens. The
 next reviewer then finds the same points again and the work is done twice.
 
+### Releases into main
+
+Open feature pull requests against `develop`. CI rejects a pull request into
+`main` unless its head is this repository's `develop` (check name `Main only
+from develop`).
+
 ### Report every bug you find, including pre-existing ones
 
 A defect in code a pull request touches is reported as a bug — with the same
@@ -46,7 +52,7 @@ Compliance and lower. Prefer Fail or Reset so the automatic AML pipeline can re-
 
 `docs/test-architecture.md` describes the test layers this repository owns, with
 measured numbers for the current state, and points at the canonical
-cross-repository description in `DFXswiss/api`. Read it before adding a test
+cross-repository description in `DFXswiss/backend`. Read it before adding a test
 layer, moving a test between layers, or extending the full-stack harness. (Given
 as a path rather than a link on purpose: the handbook build renders every markdown
 file to HTML, and its integrity check then requires every relative reference
@@ -75,9 +81,14 @@ Two obligations follow from it for every pull request:
 npm run test
 ```
 
-Unit tests run in CI on every pull request against `develop` or `main` and must
-pass. The one exception is the release pull request, whose head branch is
-`develop` — there the build job is skipped by design.
+The PR CI job always runs. Develop PRs without `ci:full` run Jest
+`--findRelatedTests` on changed files under `src/` and `functions/`. A PR with
+no such files and no full-run trigger records `mode=none` and skips the suite
+without failing. Apply `ci:full` to force the full suite, as do PRs into `main`,
+`workflow_dispatch`, unsafe path characters, test/build infrastructure, and
+deleting or renaming files under `src/` or `functions/`. Lint, Markdown
+formatting (`format:md:check`), `build:dev` and `widget:dev` always run in full.
+The job is never skipped.
 
 #### Coverage
 
@@ -195,14 +206,19 @@ yourself, so nothing fails at build time.
 The full-stack harness under `e2e-stack/` runs the real frontend, API, and
 Postgres together (external providers are mocked). Unlike the visual-regression
 suite under `e2e/` — see [Visual regression tests (Playwright)](#visual-regression-tests-playwright)
-above, which does not run in CI — this harness runs on every pull request in CI.
+above, which does not run in CI — this harness's job runs on every pull request.
+The stack comes up only for runtime-relevant changes. Documentation-only PRs with
+safe path characters record `mode=none` and skip the stack. Apply `ci:full` (or
+target `main`, run `workflow_dispatch`, use unsafe path characters, or touch
+`e2e-stack/` / `.github/workflows/e2e-stack.yml`) to force a full run.
 
 A pull request that changes a screen or an API contract should bring or update
 the matching full-stack test.
 
 Coverage of the route tree is enforced, not tracked by hand. The suite reads the
 route definitions out of `src/App.tsx` and fails if a route is claimed by no test
-file or by more than one, and — on a full run, which is what CI does — if a route
+file or by more than one, and — on a full run (`E2E_FULL_RUN=1`, which CI sets
+whenever it brings the stack up) — if a route
 was never actually opened by any test. The browser records every navigation it
 makes, and the gate compares that recording against the route list, so a claim
 pointing at a file that never visits the route does not satisfy it. Adding a route

@@ -17,13 +17,13 @@ import { getCachedAuth } from './helpers/auth-cache';
  * Two endpoints are MOCKED with synthetic or rewritten responses via page.route(...):
  * PUT bank/receiveIban (full URL /v1/bank/receiveIban after useApi) is intercepted with synthetic
  * status responses so each of the tested check states is reproducible on demand; GET /v2/user is
- * intercepted as a second, side-effect-free exception that pins kyc.level in the response body
- * to a fixed value so the screen-level KYC guard passes (see KYC note below). Everything else
- * (auth/user/settings/…) is passed through via route.continue() to the local running stack.
+ * intercepted as a second, side-effect-free exception that pins kyc.level and, if missing, mail
+ * so the KYC guard and the mail-first gate both let the form render (see KYC note below). Everything
+ * else (auth/user/settings/…) is passed through via route.continue() to the local running stack.
  *
  * Intercepted endpoints:
  *   - PUT bank/receiveIban (base `/v1/` is prepended by useApi)   body { iban }; success body { status: ReceiveIbanStatus }
- *   - GET /v2/user   response rewritten to pin kyc.level to a fixed value so the screen's KYC guard passes
+ *   - GET /v2/user   response rewritten to pin kyc.level and, if absent, mail so the KYC guard and mail gate pass
  *
  * Synthetic fixtures: fixed example IBAN string.
  *
@@ -111,7 +111,7 @@ async function installReceiveIbanRoutes(
 
     await route.fulfill({
       response,
-      json: { ...user, kyc: { ...user.kyc, level: GUARD_KYC_LEVEL } },
+      json: { ...user, kyc: { ...user.kyc, level: GUARD_KYC_LEVEL }, mail: user.mail || 'visual-e2e@example.com' },
     });
   });
 }

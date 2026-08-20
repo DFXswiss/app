@@ -184,14 +184,14 @@ describe('ErrorScreen reporting', () => {
   // Screens navigate to /error?msg=... deliberately; that path has no route, so the router
   // reports a bare 404 that says nothing about the actual failure.
   it('reports the explicit message instead of the 404 behind it', async () => {
-    renderAt('/error?msg=Account%20merge%20failed');
+    renderAt('/error?msg=The%20address%20could%20not%20be%20added');
 
     await waitFor(() => expect(mockReportClientError).toHaveBeenCalledTimes(1));
     expect(mockReportClientError.mock.calls[0][0]).toMatchObject({
-      message: 'Account merge failed',
+      message: 'The address could not be added',
       name: 'HandledError',
     });
-    expect(screen.getByText('Account merge failed')).toBeInTheDocument();
+    expect(screen.getByText('The address could not be added')).toBeInTheDocument();
     expect(mockReloadOnceForChunkError).not.toHaveBeenCalled();
   });
 });

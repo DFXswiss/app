@@ -57,7 +57,7 @@ export default function AccountMerge() {
             : error.statusCode === 400
             ? translate('screens/error', 'Invalid link')
             : error.statusCode === 409
-            ? translate('screens/error', 'Merge is already completed')
+            ? translate('screens/error', 'This address has already been added')
             : error.message;
 
         navigate({ pathname: '/error', search: `msg=${errorMessage}` });
@@ -104,12 +104,12 @@ export default function AccountMerge() {
     // Still running: the job may yet succeed, so this is a "come back later", not a failure.
     if (!isJobTerminal(job.status))
       return new MergeJobError(
-        translate('screens/error', 'Merging your accounts is taking longer than expected. Please try again later.'),
+        translate('screens/error', 'Adding the address is taking longer than expected. Please try again later.'),
       );
 
     // Failed carries a generic support hint from the API, DeadLetter a domain reason — both are meant
     // for the user, so they are shown as-is instead of being mapped to a status code.
-    return new MergeJobError(job.error ?? translate('screens/error', 'Account merge failed'));
+    return new MergeJobError(job.error ?? translate('screens/error', 'The address could not be added'));
   }
 
   useLayoutOptions({});
@@ -119,7 +119,7 @@ export default function AccountMerge() {
       {kycHash ? (
         <>
           <div>
-            <h2 className="text-dfxBlue-800">{translate('screens/kyc', 'Account merged successfully!')}</h2>
+            <h2 className="text-dfxBlue-800">{translate('screens/kyc', 'Wallet address added')}</h2>
             <p className="text-dfxGray-700">{translate('screens/kyc', 'You can now access your account.')}</p>
           </div>
 
@@ -131,7 +131,7 @@ export default function AccountMerge() {
       ) : (
         <>
           <StyledLoadingSpinner size={SpinnerSize.LG} />
-          <p className="text-dfxGray-700">{translate('screens/kyc', 'Merging your accounts...')} </p>
+          <p className="text-dfxGray-700">{translate('screens/kyc', 'Adding the wallet address...')} </p>
         </>
       )}
     </StyledVerticalStack>

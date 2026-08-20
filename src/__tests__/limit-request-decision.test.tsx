@@ -1,4 +1,9 @@
 // jest.mock factories may only reference variables whose name starts with `mock`.
+const mockStaffName: { name?: string; isLoading: boolean; error?: string } = {
+  name: 'JR',
+  isLoading: false,
+};
+
 const mockDecideLimitRequest = jest.fn();
 const mockFileLimitRequestNote = jest.fn();
 const mockToBase64 = jest.fn();
@@ -26,6 +31,10 @@ jest.mock('src/contexts/settings.context', () => ({
     translate: (_ns: string, key: string, params?: Record<string, string | number>) =>
       params ? Object.entries(params).reduce((acc, [k, v]) => acc.split(`{{${k}}}`).join(String(v)), key) : key,
   }),
+}));
+
+jest.mock('src/hooks/staff-verified-name.hook', () => ({
+  useStaffVerifiedName: () => mockStaffName,
 }));
 
 jest.mock('src/components/error-hint', () => {
@@ -57,8 +66,6 @@ function renderForm(overrides: Partial<Parameters<typeof LimitRequestDecisionFor
       fundOrigin="Savings"
       investmentDate="Now"
       currentDepositLimit={CURRENT_LIMIT}
-      clerks={['JR', 'VR']}
-      defaultClerk="JR"
       onDecided={onDecided}
       {...overrides}
     />,
@@ -82,6 +89,9 @@ async function clickSave() {
 
 describe('LimitRequestDecisionForm', () => {
   beforeEach(() => {
+    mockStaffName.name = 'JR';
+    mockStaffName.isLoading = false;
+    mockStaffName.error = undefined;
     jest.clearAllMocks();
     mockDecideLimitRequest.mockResolvedValue({ success: true, completedSteps: [] });
     mockFileLimitRequestNote.mockResolvedValue({ success: true, completedSteps: ['log'] });
@@ -466,49 +476,21 @@ describe('LimitRequestDecisionForm', () => {
     expect(mockDecideLimitRequest).toHaveBeenCalledTimes(1);
   });
 
-  // The clerk list arrives after the first render; a name typed before that must not stay in state
-  // behind a select that shows something else.
-  it('adopts a clerk from the list once it arrives', async () => {
-    const { rerender } = render(
-      <LimitRequestDecisionForm
-        limitRequestId={LIMIT_REQUEST_ID}
-        userDataId={USER_DATA_ID}
-        requestedLimit={REQUESTED}
-        currentDepositLimit={CURRENT_LIMIT}
-        clerks={[]}
-        onDecided={jest.fn()}
-      />,
-    );
-    fireEvent.change(screen.getByPlaceholderText('Sign'), { target: { value: 'typed-before-load' } });
-
-    rerender(
-      <LimitRequestDecisionForm
-        limitRequestId={LIMIT_REQUEST_ID}
-        userDataId={USER_DATA_ID}
-        requestedLimit={REQUESTED}
-        currentDepositLimit={CURRENT_LIMIT}
-        clerks={['JR', 'VR']}
-        defaultClerk="VR"
-        onDecided={jest.fn()}
-      />,
-    );
-
-    const select = screen.getByLabelText('Clerk', { selector: 'select' }) as HTMLSelectElement;
-    expect(select.value).toBe('VR');
-
+  it('disables save while the verified name is missing', () => {
+    mockStaffName.name = undefined;
+    renderForm();
     selectDecision('Rejected');
-    await clickSave();
-    expect(mockDecideLimitRequest).toHaveBeenCalledWith(CONTEXT, 'Rejected', expect.objectContaining({ clerk: 'VR' }));
+    expect(saveButton()).toBeDisabled();
   });
 
-  it('falls back to a free-text clerk field when no clerk list is available', async () => {
-    renderForm({ clerks: [], defaultClerk: undefined });
+  it('signs the decision with the loaded verified name and has no clerk select', async () => {
+    renderForm();
 
-    expect(saveButton()).toBeDisabled();
-    fireEvent.change(screen.getByPlaceholderText('Sign'), { target: { value: 'JR' } });
+    expect(screen.queryByRole('combobox', { name: 'Clerk' })).not.toBeInTheDocument();
+    expect(screen.getByText('JR')).toBeInTheDocument();
+
     selectDecision('Rejected');
     await clickSave();
-
     expect(mockDecideLimitRequest).toHaveBeenCalledWith(CONTEXT, 'Rejected', expect.objectContaining({ clerk: 'JR' }));
   });
 });

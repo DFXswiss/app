@@ -36,9 +36,7 @@ jest.mock('@dfx.swiss/react-components', () => {
       <div data-testid={`row-${label}`}>
         <span data-testid={`row-label-${label}`}>{label}</span>
         <span data-testid={`row-value-${label}`}>{children}</span>
-        {infoText != null && infoText !== '' && (
-          <span data-testid={`row-info-${label}`}>{infoText}</span>
-        )}
+        {infoText != null && infoText !== '' && <span data-testid={`row-info-${label}`}>{infoText}</span>}
       </div>
     ),
     StyledInfoText: ({ children }: any) => <div>{children}</div>,
@@ -142,11 +140,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
   });
 
   it('toggles the displayed and copied IBAN between the personal and collection account', () => {
-    render(
-      <PaymentInformationContent
-        info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })}
-      />,
-    );
+    render(<PaymentInformationContent info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })} />);
 
     const ibanRow = screen.getByTestId('row-value-IBAN');
     expect(ibanRow).toHaveTextContent(PERSONAL_IBAN);
@@ -168,6 +162,14 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
     fireEvent.click(within(ibanRow).getByTestId('copy'));
     expect(mockCopy).toHaveBeenLastCalledWith(PERSONAL_IBAN);
+  });
+
+  it('does not offer provider-switch labels when only the collection account is available', () => {
+    render(<PaymentInformationContent info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })} />);
+
+    expect(screen.getByRole('button', { name: 'Show collection IBAN' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show legacy Yapeal IBAN' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show Bank Frick IBAN' })).not.toBeInTheDocument();
   });
 
   it('does not show the toggle when the customer already sees the collection account (isPersonalIban false)', () => {
@@ -241,9 +243,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
   it('does not show the toggle for a legacy Yapeal virtual IBAN', () => {
     render(
-      <PaymentInformationContent
-        info={baseInfo({ isPersonalIban: true, bank: 'Yapeal', name: 'Alice Example' })}
-      />,
+      <PaymentInformationContent info={baseInfo({ isPersonalIban: true, bank: 'Yapeal', name: 'Alice Example' })} />,
     );
 
     expect(screen.queryByRole('button', { name: 'Show collection IBAN' })).not.toBeInTheDocument();
@@ -265,11 +265,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
   });
 
   it('shows the discoverability hint in the initial state when the toggle is offered', () => {
-    render(
-      <PaymentInformationContent
-        info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })}
-      />,
-    );
+    render(<PaymentInformationContent info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })} />);
 
     const infoEl = screen.getByTestId('row-info-IBAN');
     expect(infoEl).toHaveTextContent(DISCOVERABILITY_HINT);
@@ -277,11 +273,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
   });
 
   it('shows the collection remittance hint after switching to the collection account', () => {
-    render(
-      <PaymentInformationContent
-        info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })}
-      />,
-    );
+    render(<PaymentInformationContent info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Show collection IBAN' }));
 
@@ -297,11 +289,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
   });
 
   it('exposes the toggle as a plain action button without aria-pressed', () => {
-    render(
-      <PaymentInformationContent
-        info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })}
-      />,
-    );
+    render(<PaymentInformationContent info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })} />);
 
     const button = screen.getByRole('button', { name: 'Show collection IBAN' });
     expect(button).not.toHaveAttribute('aria-pressed');
@@ -312,11 +300,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
   });
 
   it('renders a SWAP icon instead of the refresh emoji', () => {
-    render(
-      <PaymentInformationContent
-        info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })}
-      />,
-    );
+    render(<PaymentInformationContent info={baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })} />);
 
     const button = screen.getByRole('button', { name: 'Show collection IBAN' });
     expect(within(button).getByTestId('icon-SWAP')).toBeInTheDocument();
@@ -487,9 +471,9 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
 describe('getOfferableCollectionIban', () => {
   it('returns the EUR collection IBAN for a verified Bank Frick personal IBAN with remittanceInfo', () => {
-    expect(
-      getOfferableCollectionIban(baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' })),
-    ).toBe(FRICK_COLLECTION_IBANS.EUR);
+    expect(getOfferableCollectionIban(baseInfo({ isPersonalIban: true, bank: 'Bank Frick', name: 'DFX AG' }))).toBe(
+      FRICK_COLLECTION_IBANS.EUR,
+    );
   });
 
   it('returns the CHF collection IBAN for a verified Bank Frick personal IBAN with CHF currency', () => {

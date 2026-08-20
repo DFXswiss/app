@@ -31,6 +31,10 @@
     "title": "Transaktion zuordnen",
     "description": "Zuweisungs-Formular für nicht zugeordnete Banküberweisungen: Liste, Vorauswahl bei genau einem Ziel und deaktivierter Button bei mehreren Zielen."
   },
+  "guest-tx-action-secret": {
+    "title": "Einzahlungs-Mail: Aktions-Secret",
+    "description": "Öffentliche Statusseite mit Aktions-Secret (Assign- und Refund-Buttons), dieselbe Seite ohne Secret, das Guest-Assign-Formular und das Guest-Refund-Formular."
+  },
   "sell-process": {
     "title": "Verkaufsprozess",
     "description": "Sell-Flow: geladene Seite, Betrag und Sepolia-ETH/USDT-Verkaufsschritte."
@@ -87,6 +91,10 @@
     "title": "RealUnit Support",
     "description": "RealUnit-Support: Fallliste und Issue-Detail."
   },
+  "realunit-quotes": {
+    "title": "RealUnit Quotes",
+    "description": "RealUnit-Quote-Liste und -Detail: aktives WaitingForPayment-Buy mit Confirm Payment und Deactivate, Bestätigungs-Overlay, deaktiviertes Quote mit Deactivated At ohne Aktions-Buttons, und Support sieht bei aktivem WaitingForPayment-Buy nur Deactivate (kein Confirm Payment)."
+  },
   "responsive": {
     "title": "Responsive Layout",
     "description": "Homepage, Buy und Login auf Mobile, Tablet und Desktop."
@@ -138,6 +146,10 @@
   "trading-flows": {
     "title": "Trading-Flows",
     "description": "Trading-bezogene End-to-End-Flows."
+  },
+  "support-issue-receiver-iban": {
+    "title": "Support-Ticket Formular",
+    "description": "Kunden-Supportformular: Empfänger-IBAN-Check; Ticket erst nach gesetzter Konto-Mail."
   },
   "support-dashboard": {
     "title": "Support-Dashboard",

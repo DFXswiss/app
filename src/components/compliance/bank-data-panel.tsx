@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { BankDataAlternative, BankDataInfo, UserDataDetail } from 'src/hooks/compliance.hook';
+import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { statusBadge } from 'src/util/compliance-helpers';
 import { formatSwissDate } from 'src/util/utils';
+import { StaffIdentityBlock } from './staff-identity';
 
 interface BankDataReviewPanelProps {
   bankDatas: BankDataInfo[];
   userData: UserDataDetail;
-  clerks: string[];
   onApprove: (bankDataId: number, clerk: string) => Promise<void>;
   onReject: (bankDataId: number, clerk: string) => Promise<void>;
   isSaving: boolean;
@@ -81,22 +82,20 @@ function YesNoSelect({ value, onChange }: { value: YesNo; onChange: (v: YesNo) =
 function BankDataEntry({
   entry,
   verifiedName,
-  clerks,
   onApprove,
   onReject,
   isSaving,
 }: {
   entry: BankDataInfo;
   verifiedName: string;
-  clerks: string[];
   onApprove: (id: number, clerk: string) => Promise<void>;
   onReject: (id: number, clerk: string) => Promise<void>;
   isSaving: boolean;
 }): JSX.Element {
+  const { name: clerk, isLoading: isLoadingClerk } = useStaffVerifiedName();
   const [decision, setDecision] = useState<DecisionValue>(
     entry.status === 'Completed' ? 'Akzeptiert' : entry.status === 'Failed' ? 'Abgelehnt' : '',
   );
-  const [clerk, setClerk] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const nameMismatch = verifiedName && entry.name && verifiedName.toLowerCase() !== entry.name.toLowerCase();
 
@@ -198,23 +197,8 @@ function BankDataEntry({
             </div>
           </div>
 
-          {/* Clerk */}
           <div className="bg-white rounded-lg shadow-sm px-3 py-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-dfxBlue-800 font-medium">Editor:</span>
-              <select
-                className="ml-4 shrink-0 px-2 py-1 text-sm border border-dfxGray-400 rounded bg-white text-dfxBlue-800"
-                value={clerk}
-                onChange={(e) => setClerk(e.target.value)}
-              >
-                <option value="">—</option>
-                {clerks.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <StaffIdentityBlock label="Editor:" />
           </div>
 
           {/* Save */}
@@ -222,7 +206,7 @@ function BankDataEntry({
             <button
               className="px-4 py-2 text-sm text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded-lg transition-colors disabled:opacity-50"
               onClick={handleSave}
-              disabled={isSaving || isProcessing || !decision || !clerk}
+              disabled={isSaving || isProcessing || isLoadingClerk || !decision || !clerk}
             >
               {isProcessing ? 'Speichern...' : 'Speichern'}
             </button>
@@ -241,7 +225,6 @@ function BankDataEntry({
 export function BankDataReviewPanel({
   bankDatas,
   userData,
-  clerks,
   onApprove,
   onReject,
   isSaving,
@@ -265,7 +248,6 @@ export function BankDataReviewPanel({
           <BankDataEntry
             entry={entry}
             verifiedName={verifiedName}
-            clerks={clerks}
             onApprove={onApprove}
             onReject={onReject}
             isSaving={isSaving}

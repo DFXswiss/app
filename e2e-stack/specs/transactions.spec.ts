@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { expect, openScreen, queryOne, queryRows, required, test } from './fixtures';
 import {
   createUser,
@@ -7,6 +8,13 @@ import {
   cleanupCreatedData,
   TEST_IBAN,
 } from './fixtures/factories';
+
+const ACTION_SECRET = 'ab'.repeat(32);
+
+async function seedActionSecret(uid: string, secret = ACTION_SECRET): Promise<void> {
+  const actionSecretHash = createHash('sha256').update(secret).digest('hex');
+  await queryRows(`UPDATE transaction SET "actionSecretHash" = $1 WHERE uid = $2`, [actionSecretHash, uid]);
+}
 
 test.describe.configure({ mode: 'serial' });
 
@@ -173,6 +181,267 @@ test("transaction list does not show another user's transactions", async ({ page
   await expect(page.getByText('No transactions found', { exact: true })).toBeVisible();
 });
 
+// Minimal valid-looking PDF bytes as base64 for the fulfilled invoice PUT body.
+// The suite only needs the frontend to accept { pdfData }; it does not render the PDF.
+const MINIMAL_PDF_B64 = Buffer.from('%PDF-1.1\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF').toString('base64');
+
+test('Open invoice is shown on a completed CHF buy and hidden on pending buy and sell', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-list-invoice-vis',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+
+  await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-inv-vis-done',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 701,
+    inputAsset: 'CHF',
+  });
+  const secondAsset = await queryOne<{ id: number }>(
+    `SELECT id FROM asset WHERE buyable = true AND blockchain != 'Ethereum' ORDER BY id ASC LIMIT 1`,
+  );
+  const secondBuy = await createBuy(user.jwt, {
+    assetId: required(secondAsset, 'seed must provide a buyable non-Ethereum asset').id,
+  });
+  await createTransaction({
+    state: 'pending_buy',
+    tag: 'tx-inv-vis-pend',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 702,
+    inputAsset: 'CHF',
+    buyId: secondBuy.buyId,
+  });
+  await createTransaction({
+    state: 'pending_sell',
+    tag: 'tx-inv-vis-sell',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 703,
+  });
+
+  await openScreen(page, '/tx', user.jwt);
+
+  const completedRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '701' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  const pendingBuyRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '702' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  const sellRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '703' })
+    .filter({ hasText: 'ETH' })
+    .first();
+
+  // Expand completed buy → Open invoice must be available.
+  await completedRow.click();
+  await expect(page.getByRole('button', { name: 'Open invoice' })).toBeVisible();
+  // Collapse so pending/sell expanded content is the only place a button could appear.
+  await completedRow.click();
+
+  // Pending buy: no Open invoice.
+  await pendingBuyRow.click();
+  await expect(page.getByRole('button', { name: 'Open invoice' })).toHaveCount(0);
+  await pendingBuyRow.click();
+
+  // Sell: no Open invoice.
+  await sellRow.click();
+  await expect(page.getByRole('button', { name: 'Open invoice' })).toHaveCount(0);
+});
+
+test('Open invoice click opens a tab before the invoice PUT returns', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-list-invoice-tab',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-inv-tab',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 711,
+    inputAsset: 'CHF',
+  });
+
+  await openScreen(page, '/tx', user.jwt);
+
+  // Delay the invoice PUT so a post-await window.open would miss the user gesture window.
+  // Old code (open after await) fails this 800ms popup wait against a 2000ms delayed response.
+  await page.route('**/v1/transaction/*/invoice', async (route) => {
+    await new Promise((r) => setTimeout(r, 2000));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ pdfData: MINIMAL_PDF_B64 }),
+    });
+  });
+
+  const buyRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '711' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  await buyRow.click();
+
+  const openInvoice = page.getByRole('button', { name: 'Open invoice' });
+  await expect(openInvoice).toBeVisible();
+
+  const popupPromise = page.waitForEvent('popup', { timeout: 800 });
+  await openInvoice.click();
+  const popup = await popupPromise;
+
+  expect(popup.url()).toMatch(/about:blank|blob:/);
+});
+
+test('Open invoice error closes the reserved tab and shows the API message', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-list-invoice-err',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-inv-err',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 721,
+    inputAsset: 'CHF',
+  });
+
+  await openScreen(page, '/tx', user.jwt);
+
+  await page.route('**/v1/transaction/*/invoice', async (route) => {
+    await route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: 'Missing invoice information' }),
+    });
+  });
+
+  const buyRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '721' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  await buyRow.click();
+
+  const openInvoice = page.getByRole('button', { name: 'Open invoice' });
+  await expect(openInvoice).toBeVisible();
+
+  const popupPromise = page.waitForEvent('popup');
+  await openInvoice.click();
+  const popup = await popupPromise;
+
+  // ErrorHint surfaces the API message (no data-testid on the real component).
+  await expect(page.getByText('Missing invoice information', { exact: true })).toBeVisible();
+  // Reserved tab is closed in the catch path (preview?.close()).
+  await expect.poll(() => popup.isClosed()).toBe(true);
+});
+
+test('Open receipt click opens a tab before the receipt request returns', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-list-receipt-tab',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-rcpt-tab',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 731,
+    inputAsset: 'CHF',
+  });
+
+  await openScreen(page, '/tx', user.jwt);
+
+  // Delay the receipt route so a post-await window.open would miss the user gesture window.
+  // Old code (open after await) fails this 800ms popup wait against a 2000ms delayed response.
+  await page.route('**/v1/transaction/*/receipt*', async (route) => {
+    await new Promise((r) => setTimeout(r, 2000));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ pdfData: MINIMAL_PDF_B64 }),
+    });
+  });
+
+  const buyRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '731' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  await buyRow.click();
+
+  const openReceipt = page.getByRole('button', { name: 'Open receipt' });
+  await expect(openReceipt).toBeVisible();
+
+  const popupPromise = page.waitForEvent('popup', { timeout: 800 });
+  await openReceipt.click();
+  const popup = await popupPromise;
+
+  expect(popup.url()).toMatch(/about:blank|blob:/);
+});
+
+test('Open receipt error closes the reserved tab and shows the API message', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-list-receipt-err',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  await createTransaction({
+    state: 'completed_buy',
+    tag: 'tx-rcpt-err',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 741,
+    inputAsset: 'CHF',
+  });
+
+  await openScreen(page, '/tx', user.jwt);
+
+  await page.route('**/v1/transaction/*/receipt*', async (route) => {
+    await route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: 'Missing receipt information' }),
+    });
+  });
+
+  const buyRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '741' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  await buyRow.click();
+
+  const openReceipt = page.getByRole('button', { name: 'Open receipt' });
+  await expect(openReceipt).toBeVisible();
+
+  const popupPromise = page.waitForEvent('popup');
+  await openReceipt.click();
+  const popup = await popupPromise;
+
+  await expect(page.getByText('Missing receipt information', { exact: true })).toBeVisible();
+  await expect.poll(() => popup.isClosed()).toBe(true);
+});
+
 // ---------------------------------------------------------------------------
 // /tx/:id — detail / status view (uid)
 // ---------------------------------------------------------------------------
@@ -298,6 +567,70 @@ test('assign route opens list with unassigned row and assigns to single buy targ
     .toEqual({ bankTxType: 'BuyCrypto', buyCryptoBuyId: buy.buyId });
 });
 
+test('public uid assign route opens the guest assign form and assigns to the single buy target', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-assign-uid',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  const ba = await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'Assign UID IBAN' });
+  const baRow = await queryOne<{ iban: string }>('SELECT iban FROM bank_data WHERE id = $1', [ba.bankAccountId]);
+  const buy = await createBuy(user.jwt);
+  const unassigned = await createTransaction({
+    state: 'bank_tx_only',
+    tag: 'tx-assign-uid',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    amount: 445,
+  });
+  await queryRows(
+    `UPDATE bank_tx SET "senderAccount" = $1, "txAmount" = $2, "txCurrency" = 'CHF', type = 'Unknown'
+     WHERE id = $3`,
+    [required(baRow, 'created bank_data row must exist').iban, 445, unassigned.bankTxId],
+  );
+  await seedActionSecret(unassigned.uid);
+
+  // Cover /tx/:id/:secret (status with action secret) before the unauthenticated guest assign form.
+  await openScreen(page, `/tx/${unassigned.uid}/${ACTION_SECRET}`, user.jwt);
+  await expect(page.getByRole('button', { name: 'Assign transaction' })).toBeVisible();
+
+  await page.context().clearCookies();
+  await page.goto(`/tx/${unassigned.uid}/${ACTION_SECRET}/assign`);
+  await page.waitForLoadState('networkidle');
+
+  // The screen title comes from useLayoutOptions and renders in the app bar as a plain element, not
+  // as a heading, so getByRole('heading') never matches it - the other title assertions in this file
+  // use getByText for the same reason.
+  // first() is load-bearing: the submit button carries the same accessible name, so the exact text
+  // locator matches the app-bar title and that button. It is safe because exact matching resolves to
+  // the *smallest* element whose text is exactly this string - a wrapping container is never the
+  // smallest match, so ancestors stay out of the set. The app bar precedes the form, so first() is
+  // the title.
+  // 'Your Transactions' is a real in-page heading (see the list tests above), so the negative
+  // assertion below stays role-based and keeps its meaning.
+  await expect(page.getByText('Assign transaction', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your Transactions', exact: true })).not.toBeVisible();
+
+  const assignBtn = page.getByRole('button', { name: 'Assign transaction' });
+  await expect(assignBtn).toBeVisible();
+  await assignBtn.click();
+
+  await expect(page).toHaveURL(new RegExp(`/tx/${unassigned.uid}$`));
+
+  await expect
+    .poll(async () => {
+      const bankTxRow = await queryOne<{ type: string }>(`SELECT type FROM bank_tx WHERE id = $1`, [
+        unassigned.bankTxId,
+      ]);
+      const buyCryptoRow = await queryOne<{ id: number; buyId: number | null }>(
+        `SELECT id, "buyId" FROM buy_crypto WHERE "bankTxId" = $1`,
+        [unassigned.bankTxId],
+      );
+      return { bankTxType: bankTxRow?.type ?? null, buyCryptoBuyId: buyCryptoRow?.buyId ?? null };
+    })
+    .toEqual({ bankTxType: 'BuyCrypto', buyCryptoBuyId: buy.buyId });
+});
+
 test("assign route for another user's unassigned tx leaves list empty of that row and DB unchanged", async ({
   page,
 }) => {
@@ -350,6 +683,32 @@ test("assign route for another user's unassigned tx leaves list empty of that ro
 // /tx/:id/refund — refund form (uid)
 // ---------------------------------------------------------------------------
 
+// The refund screen opens on either an action secret or a session (transaction.screen.tsx:
+// `isRefund = ... && (hasActionSecret || isLoggedIn)`). Every other refund test below takes the
+// guest path with a secret, so without this one the logged-in half of that condition is untested
+// and /tx/:id/refund - claimed in the route registry - is never opened.
+test('logged-in refund route opens the refund form without an action secret', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-refund-session',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  const tx = await createTransaction({
+    state: 'pending_buy',
+    tag: 'tx-refund-session',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 189,
+    inputAsset: 'CHF',
+  });
+
+  await openScreen(page, `/tx/${tx.uid}/refund`, user.jwt);
+
+  await expect(page.getByText('Transaction refund', { exact: true })).toBeVisible();
+  await expect(page.locator('input[name="street"]')).toBeVisible();
+});
+
 test('pending buy refund form submits and writes chargeback columns', async ({ page }) => {
   const user = await createUser({
     tag: 'tx-refund-ok',
@@ -365,8 +724,11 @@ test('pending buy refund form submits and writes chargeback columns', async ({ p
     amount: 188,
     inputAsset: 'CHF',
   });
+  await seedActionSecret(tx.uid);
 
-  await openScreen(page, `/tx/${tx.uid}/refund`, user.jwt);
+  await page.context().clearCookies();
+  await page.goto(`/tx/${tx.uid}/${ACTION_SECRET}/refund`);
+  await page.waitForLoadState('networkidle');
 
   await expect(page.getByText('Transaction refund', { exact: true })).toBeVisible();
 
@@ -386,8 +748,8 @@ test('pending buy refund form submits and writes chargeback columns', async ({ p
   await expect(submit).toBeEnabled();
   await submit.click();
 
-  await expect(page).toHaveURL(/\/tx$/);
-  expect(new URL(page.url()).pathname).toBe('/tx');
+  await expect(page).toHaveURL(new RegExp(`/tx/${tx.uid}$`));
+  expect(new URL(page.url()).pathname).toBe(`/tx/${tx.uid}`);
 
   await expect
     .poll(async () => {
@@ -425,8 +787,11 @@ test('refund form with invalid ZIP keeps submit disabled and leaves buy_crypto u
     amount: 189,
     inputAsset: 'CHF',
   });
+  await seedActionSecret(tx.uid);
 
-  await openScreen(page, `/tx/${tx.uid}/refund`, user.jwt);
+  await page.context().clearCookies();
+  await page.goto(`/tx/${tx.uid}/${ACTION_SECRET}/refund`);
+  await page.waitForLoadState('networkidle');
 
   await expect(page.getByText('Transaction refund', { exact: true })).toBeVisible();
 
@@ -473,8 +838,11 @@ test('completed buy is not refundable and shows ErrorHint with DB unchanged', as
     amount: 190,
     inputAsset: 'CHF',
   });
+  await seedActionSecret(tx.uid);
 
-  await openScreen(page, `/tx/${tx.uid}/refund`, user.jwt);
+  await page.context().clearCookies();
+  await page.goto(`/tx/${tx.uid}/${ACTION_SECRET}/refund`);
+  await page.waitForLoadState('networkidle');
 
   await expect(
     page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.', {

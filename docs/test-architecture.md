@@ -3,22 +3,22 @@
 This document describes the test layers **this repository** owns, with measured numbers for the
 current state. The canonical, cross-repository description of all layers — what each one proves, what
 it deliberately does not prove, and the reality-declaration requirement — lives in
-`DFXswiss/api` under `docs/test-architecture.md`. Read that one first if you need the whole picture.
+`DFXswiss/backend` under `docs/test-architecture.md`. Read that one first if you need the whole picture.
 
 Current state and target are kept apart on purpose. Sections marked _target_ describe what is not
 built yet; nothing here may describe a capability as existing when it does not.
 
 ## The layers this repository owns
 
-| Layer             | Location     | What it proves                                                               | What it cannot prove                                               | Runs in CI |
-| ----------------- | ------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------- |
-| Unit              | `src/`       | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | yes        |
-| Full-stack E2E    | `e2e-stack/` | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | yes        |
-| Visual regression | `e2e/`       | appearance against committed screenshot baselines                            | function                                                           | no         |
+| Layer             | Location     | What it proves                                                               | What it cannot prove                                               | Runs in CI                                   |
+| ----------------- | ------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------- |
+| Unit              | `src/`       | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | job always; suite full / related / none      |
+| Full-stack E2E    | `e2e-stack/` | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | job always; stack not on safe-path docs-only |
+| Visual regression | `e2e/`       | appearance against committed screenshot baselines                            | function                                                           | no                                           |
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
 payout, ledger booking — is **not** testable from this repository. It belongs to the integration
-layer in `DFXswiss/api`, which runs against a real database. Do not try to cover it from here.
+layer in `DFXswiss/backend`, which runs against a real database. Do not try to cover it from here.
 
 ## Current state — measured
 
@@ -71,7 +71,10 @@ the spec file a claim names does not exist. When `E2E_FULL_RUN=1` is set, it add
 claimed route the browser never opened. That flag is declared by the run, not measured from it, so it may
 only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
 no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
-whatever the caller's environment holds — and the CI workflow sets it for its own unfiltered invocation.
+whatever the caller's environment holds — and the CI workflow sets it when it brings the stack up (full run). Safe-path
+documentation-only PRs never set it; `ci:full`, PRs into `main`,
+`workflow_dispatch`, unsafe path characters, and changes under `e2e-stack/` or
+`.github/workflows/e2e-stack.yml` force that full invocation.
 Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
 there.
 
@@ -81,7 +84,7 @@ declaration.** Anything its parser cannot resolve is a hard failure rather than 
 ## Reality declaration — hard requirement
 
 Full definition, including the categories that count as a fake and the mandatory fields per entry, is in
-`DFXswiss/api` under `docs/test-architecture.md` — that document owns the taxonomy, and its exact extent
+`DFXswiss/backend` under `docs/test-architecture.md` — that document owns the taxonomy, and its exact extent
 is not verifiable from this repository. The short form that binds every pull request here:
 
 Whenever you introduce, remove or change a fake — a faked external provider, a disabled cron job, a
@@ -98,7 +101,7 @@ from memory, with omissions.
 
 This section lists the fakes introduced by this repository's own suites and states what a green
 run does not prove for each one; the taxonomy and cross-repository entries live in
-`DFXswiss/api` under `docs/test-architecture.md`.
+`DFXswiss/backend` under `docs/test-architecture.md`.
 
 - **The buy-process specs answer the quote endpoint themselves.** `e2e/buy-process.spec.ts` fulfils
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
@@ -113,6 +116,25 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `CollectionAccountInvoicePersonalIbanMissing` error token, so a green run proves that the screen
   displays that token, not that the API emits it for this request. A unit test against the message
   mapping pins the token contract instead.
+- **The support-issue receiver-IBAN spec pins KYC level and account mail on GET /v2/user.**
+  `e2e/support-issue-receiver-iban.spec.ts` rewrites that response so `kyc.level` is high enough for
+  the screen guard and `mail` is present if the cached wallet session has none. A green visual run
+  therefore does not prove the mail-first redirect, nor that the account actually has mail or a
+  completed KYC level.
+- **The list Open-invoice and Open-receipt tests fulfill the document routes.**
+  `e2e-stack/specs/transactions.spec.ts` answers `PUT /v1/transaction/:uid/invoice` and
+  `/v1/transaction/:id/receipt` with a static PDF body or a `400` with a fixed message, so a green
+  run proves that the click reserves a tab and surfaces the error, not that the API can build an
+  invoice or receipt from SQL-seeded `buy_crypto`.
+- **The compliance-review KYC-status spec answers staff identity itself.**
+  `e2e/compliance-review-kyc-status.spec.ts` fulfils `GET /v1/support/issue/clerk` with
+  `{ clerk }` and, as fallback, `GET /v1/support/{id}` for any account other than the customer
+  fixture with `{ userData: { verifiedName } }`. A green run proves that the review screen
+  accepts that name, not that the API returns the logged-in staff member's `verifiedName`.
+  The spec stays on the AML reset path and does not assert the Editor label.
+- **Full-stack guest assign/refund specs SQL-write `transaction.actionSecretHash`.**
+  `e2e-stack/specs/transactions.spec.ts` (`seedActionSecret`) updates the hash directly. A green run
+  does **not** prove that the mail/API path creates, hashes, or delivers the action secret.
 
 ## Known gaps
 
@@ -123,12 +145,12 @@ All four points below concern the full-stack harness.
   there — every process-gated cron job — so the processing chain never executes;
   transaction states are inserted with SQL instead. What is verified is the synchronous path:
   interaction, HTTP, validation, authorisation, persistence, display. (A cron without a `process` field
-  is not covered by that switch and keeps running — see the companion document in `DFXswiss/api`.)
+  is not covered by that switch and keeps running — see the companion document in `DFXswiss/backend`.)
 - **The harness does not exercise the migration chain.** It builds the schema from the entities,
   because one migration requires a seed row that does not exist at migration time on a fresh
-  database. Migrations are covered in `DFXswiss/api` instead.
+  database. Migrations are covered in `DFXswiss/backend` instead.
 - **The harness lives in the wrong repository.** It tests the API as much as this frontend, and
-  `DFXswiss/api` has to check this repository out to obtain it. See the target below.
+  `DFXswiss/backend` has to check this repository out to obtain it. See the target below.
 - **The suite is serialised.** All specs share one database and one API instance — `e2e-stack/compose.yml`
   declares a single `db` and a single `api` service — with no per-test isolation, so it runs on a single
   worker with retries disabled (`workers: 1` and `retries: 0` in `e2e-stack/playwright.config.ts`, whose
@@ -141,7 +163,7 @@ _Target — not built yet._ In the order the work should happen:
 
 1. **Per-worker isolation** (a schema or database per worker), so the suite can be parallelised. Cheap
    while it is small.
-2. **Move the harness out of this repository** — into `DFXswiss/api` or a repository of its own,
+2. **Move the harness out of this repository** — into `DFXswiss/backend` or a repository of its own,
    consuming published frontend and API images by tag instead of sibling checkouts. The stage depends
    on the applications, never the reverse.
 3. **Adopt a coverage ratchet for the unit layer**, replacing a rule that CI cannot enforce with one

@@ -1,8 +1,10 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { KycFile, KycStepInfo, UserDataDetail } from 'src/hooks/compliance.hook';
+import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { extractLegalEntity, statusBadge, todayAsString } from 'src/util/compliance-helpers';
 import { formatSwissDate } from 'src/util/utils';
 import { CheckItemConfig } from './compliance-review-configs';
+import { StaffIdentityBlock } from './staff-identity';
 
 type DecisionValue = '' | 'Akzeptiert' | 'Abgelehnt';
 
@@ -16,7 +18,6 @@ interface ComplianceReviewPanelProps {
   rejectionReasons: string[];
   userData: UserDataDetail;
   kycSteps: KycStepInfo[];
-  clerks: string[];
   onOpenFile: (file: KycFile) => void;
   onSave: (
     stepId: number,
@@ -131,15 +132,14 @@ export function ComplianceReviewPanel({
   rejectionReasons,
   userData,
   kycSteps,
-  clerks,
   onOpenFile,
   onSave,
   isSaving,
 }: ComplianceReviewPanelProps): JSX.Element {
+  const { name: clerk, isLoading: isLoadingClerk } = useStaffVerifiedName();
   const [checks, setChecks] = useState<Record<string, string>>({});
   const [decision, setDecision] = useState<DecisionValue>('');
   const [rejectionComment, setRejectionComment] = useState('');
-  const [clerk, setClerk] = useState('');
 
   // Labels can reference fields that live outside UserData (e.g. {legalEntity}
   // is stored on the LegalEntity step result). Merge them into the resolver source.
@@ -417,23 +417,8 @@ export function ComplianceReviewPanel({
             </div>
           )}
 
-          {/* Clerk */}
           <div className="bg-white rounded-lg shadow-sm px-3 py-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-dfxBlue-800 font-medium">Editor:</span>
-              <select
-                className="ml-4 shrink-0 px-2 py-1 text-sm border border-dfxGray-400 rounded bg-white text-dfxBlue-800"
-                value={clerk}
-                onChange={(e) => setClerk(e.target.value)}
-              >
-                <option value="">—</option>
-                {clerks.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <StaffIdentityBlock label="Editor:" />
           </div>
 
           {/* Save */}
@@ -441,7 +426,7 @@ export function ComplianceReviewPanel({
             <button
               className="px-4 py-2 text-sm text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded-lg transition-colors disabled:opacity-50"
               onClick={handleSave}
-              disabled={isSaving || !decision || !clerk}
+              disabled={isSaving || isLoadingClerk || !decision || !clerk}
             >
               {isSaving ? 'Speichern...' : 'Speichern'}
             </button>

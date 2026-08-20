@@ -182,7 +182,7 @@ export function useSupportDashboard() {
       url: 'support/issue/clerk',
       method: 'GET',
     });
-    return result.clerk ?? undefined;
+    return result.clerk?.trim() || undefined;
   }
 
   async function getIssueData(issueId: number): Promise<SupportIssueInternalData> {

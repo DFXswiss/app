@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import {
@@ -7,7 +7,9 @@ import {
   LimitRequestGrantingDecisions,
   useCompliance,
 } from 'src/hooks/compliance.hook';
+import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { toBase64 } from 'src/util/utils';
+import { STAFF_NAME_MISSING, staffNameLoadError } from './staff-identity';
 
 interface Props {
   limitRequestId: number;
@@ -23,8 +25,6 @@ interface Props {
    * report or note failed halfway, and it is how a document arriving later gets into the file.
    */
   decidedAs?: string;
-  clerks: string[];
-  defaultClerk?: string;
   onDecided: () => void;
 }
 
@@ -40,12 +40,11 @@ export function LimitRequestDecisionForm({
   investmentDate,
   currentDepositLimit,
   decidedAs,
-  clerks,
-  defaultClerk,
   onDecided,
 }: Props): JSX.Element {
   const { translate } = useSettingsContext();
   const { decideLimitRequest, fileLimitRequestNote } = useCompliance();
+  const { name: clerk, isLoading: isLoadingClerk, error: clerkError } = useStaffVerifiedName();
 
   // A decision recorded by this very attempt whose later step failed: the request is final from then
   // on, so the form must stop offering a decision before the clerk retries. Also set on success so the
@@ -53,15 +52,6 @@ export function LimitRequestDecisionForm({
   const [recordedDecision, setRecordedDecision] = useState<string>();
   const isDecided = !!decidedAs || !!recordedDecision;
   const effectiveDecision = decidedAs ?? recordedDecision;
-
-  const [clerk, setClerk] = useState(defaultClerk ?? '');
-  // The clerk list arrives after the first render. A name typed into the free-text fallback before it
-  // does would survive in state while the select shows "-", signing the decision with a name the clerk
-  // can no longer see.
-  useEffect(() => {
-    if (clerks.length && !clerks.includes(clerk))
-      setClerk(defaultClerk && clerks.includes(defaultClerk) ? defaultClerk : (clerks[0] ?? ''));
-  }, [clerks]);
 
   const [decision, setDecision] = useState<LimitRequestDecision | ''>('');
   // Prefilled with the requested amount: accepting in full is the common case. On ACCEPTED the field
@@ -96,8 +86,8 @@ export function LimitRequestDecisionForm({
     (currentDepositLimit == null || parsedLimit > currentDepositLimit);
   const isLimitValid = !grantsLimit || decision === LimitRequestDecision.ACCEPTED || isPartialLimitValid;
   const canSubmit = isDecided
-    ? !!clerk.trim() && (!!comment.trim() || !!document) && !isSaving
-    : !!clerk.trim() && !!decision && isLimitValid && !isSaving;
+    ? !!clerk?.trim() && (!!comment.trim() || !!document) && !isSaving && !isLoadingClerk
+    : !!clerk?.trim() && !!decision && isLimitValid && !isSaving && !isLoadingClerk;
 
   function handleDecisionChange(e: ChangeEvent<HTMLSelectElement>): void {
     const value = e.target.value as LimitRequestDecision | '';
@@ -155,13 +145,14 @@ export function LimitRequestDecisionForm({
       return;
     }
 
+    const signedBy = clerk?.trim() ?? '';
     const result = isDecided
       ? await fileLimitRequestNote(
           { limitRequestId, userDataId },
-          { clerk, decision: effectiveDecision as string, comment: comment.trim() || undefined, attachment },
+          { clerk: signedBy, decision: effectiveDecision as string, comment: comment.trim() || undefined, attachment },
         )
       : await decideLimitRequest({ limitRequestId, userDataId }, decision as LimitRequestDecision, {
-          clerk,
+          clerk: signedBy,
           requestedLimit,
           grantedLimit: grantsLimit ? parsedLimit : undefined,
           currentDepositLimit,
@@ -243,31 +234,14 @@ export function LimitRequestDecisionForm({
         )}
 
         <div className="flex flex-col gap-1">
-          <label htmlFor={clerkId} className="text-xs text-dfxGray-700">
+          <span id={clerkId} className="text-xs text-dfxGray-700">
             {translate('screens/compliance', 'Clerk')}
-          </label>
-          {clerks.length ? (
-            <select
-              id={clerkId}
-              className="px-2 py-1.5 text-xs border border-dfxGray-400 rounded bg-white text-dfxBlue-800 min-w-[130px]"
-              value={clerk}
-              onChange={(e) => setClerk(e.target.value)}
-            >
-              <option value="">-</option>
-              {clerks.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              id={clerkId}
-              className="px-2 py-1.5 text-xs border border-dfxGray-400 rounded bg-white text-dfxBlue-800 min-w-[130px]"
-              value={clerk}
-              onChange={(e) => setClerk(e.target.value)}
-              placeholder={translate('screens/compliance', 'Sign')}
-            />
+          </span>
+          <p className="px-2 py-1.5 text-xs text-dfxBlue-800 min-w-[130px]">
+            {isLoadingClerk ? '…' : (clerk ?? '—')}
+          </p>
+          {!isLoadingClerk && !clerk && (
+            <ErrorHint message={clerkError ? staffNameLoadError(clerkError) : STAFF_NAME_MISSING} />
           )}
         </div>
 

@@ -296,7 +296,11 @@ export const Routes = [
         element: withSuspense(<TransactionScreen />),
       },
       {
-        path: 'tx/:id',
+        path: 'tx/:id/:secret/assign',
+        element: withSuspense(<TransactionScreen />),
+      },
+      {
+        path: 'tx/:id/:secret/refund',
         element: withSuspense(<TransactionScreen />),
       },
       {
@@ -305,6 +309,14 @@ export const Routes = [
       },
       {
         path: 'tx/:id/refund',
+        element: withSuspense(<TransactionScreen />),
+      },
+      {
+        path: 'tx/:id/:secret',
+        element: withSuspense(<TransactionScreen />),
+      },
+      {
+        path: 'tx/:id',
         element: withSuspense(<TransactionScreen />),
       },
       {

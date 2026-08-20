@@ -221,13 +221,14 @@ test.describe('Buy Info - UI Flow', () => {
       });
     });
 
-    await page.goto(
-      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`,
-    );
+    await page.goto(`/buy/info?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`);
 
     const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
-    const toYapealToggle = paymentDetails.getByRole('button', { name: 'Show legacy Yapeal IBAN' });
-    await expect(toYapealToggle).toBeVisible({ timeout: 15000 });
+    // Verified Frick personal quotes also offer the collection IBAN, so the first switch target
+    // is the collection account; the legacy Yapeal provider is the next step after that.
+    const toCollectionToggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
+    await expect(toCollectionToggle).toBeVisible({ timeout: 15000 });
+    await expect(paymentDetails.getByRole('button', { name: 'Show legacy Yapeal IBAN' })).not.toBeVisible();
     await expect.poll(() => receivedProvider).toBe('Frick');
     await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible();
     await expect(page).toHaveScreenshot('buy-info-provider-toggle-frick-page.png', {
@@ -235,6 +236,11 @@ test.describe('Buy Info - UI Flow', () => {
       maxDiffPixels: 10000,
     });
 
+    await toCollectionToggle.click();
+    await expect(paymentDetails.getByText('LI32 0881 1010 5923 K000 C')).toBeVisible();
+
+    const toYapealToggle = paymentDetails.getByRole('button', { name: 'Show legacy Yapeal IBAN' });
+    await expect(toYapealToggle).toBeVisible();
     await toYapealToggle.click();
 
     const toFrickToggle = paymentDetails.getByRole('button', { name: 'Show Bank Frick IBAN' });
@@ -249,15 +255,15 @@ test.describe('Buy Info - UI Flow', () => {
 
     await toFrickToggle.click();
 
-    await expect(toYapealToggle).toBeVisible({ timeout: 15000 });
+    await expect(paymentDetails.getByRole('button', { name: 'Show collection IBAN' })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(paymentDetails.getByRole('button', { name: 'Show legacy Yapeal IBAN' })).not.toBeVisible();
     await expect.poll(() => receivedProvider).toBe('Frick');
     await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible({ timeout: 15000 });
   });
 
-  test('shows an error when the legacy Yapeal provider is unavailable', async ({
-    page,
-    request,
-  }) => {
+  test('shows an error when the legacy Yapeal provider is unavailable', async ({ page, request }) => {
     const token = await getToken(request);
     const sessionAccount = (
       JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as { account: number }
@@ -413,9 +419,13 @@ test.describe('Buy Info - UI Flow', () => {
       });
     });
 
-    await page.goto(
-      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`,
-    );
+    await page.goto(`/buy/info?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`);
+
+    // Collection is the first switch target on a verified Frick personal quote; advance past it
+    // before requesting the unavailable Yapeal provider.
+    const toCollectionToggle = page.getByRole('button', { name: 'Show collection IBAN' });
+    await expect(toCollectionToggle).toBeVisible({ timeout: 15000 });
+    await toCollectionToggle.click();
 
     const toYapealToggle = page.getByRole('button', { name: 'Show legacy Yapeal IBAN' });
     await expect(toYapealToggle).toBeVisible({ timeout: 15000 });
@@ -543,14 +553,10 @@ test.describe('Buy Info - UI Flow', () => {
       });
     });
 
-    await page.goto(
-      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`,
-    );
+    await page.goto(`/buy/info?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`);
 
     await expect(
-      page.getByText(
-        'Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.',
-      ),
+      page.getByText('Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.'),
     ).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('CH93 0076 2011 6238 5295 7')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Complete KYC' })).not.toBeVisible();

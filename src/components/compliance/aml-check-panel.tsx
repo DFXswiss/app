@@ -1,7 +1,9 @@
 import { AmlReason, CallQueue, CheckStatus, useAuthContext } from '@dfx.swiss/react';
 import { useState } from 'react';
 import type { ComplianceUserData, TransactionInfo } from 'src/hooks/compliance.hook';
+import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { StaffIdentityBlock } from './staff-identity';
 import { canManuallySetAmlPass } from 'src/util/aml-pass.util';
 import { canResetBuyCryptoAmlForReview, hasBuyCryptoReviewResetEligibleState } from 'src/util/buy-crypto-reset.util';
 import { statusBadge } from 'src/util/compliance-helpers';
@@ -21,7 +23,6 @@ export interface AmlCheckUpdate {
 
 interface AmlCheckPendingPanelProps {
   data: ComplianceUserData;
-  clerks: string[];
   isSaving: boolean;
   onUpdate: (tx: TransactionInfo, update: AmlCheckUpdate, clerk: string) => Promise<void>;
   onReset: (tx: TransactionInfo, clerk: string) => Promise<void>;
@@ -37,7 +38,6 @@ const AML_REASON_OPTIONS: AmlReason[] = [
 
 function TransactionEntry({
   tx,
-  clerks,
   onUpdate,
   onReset,
   isSaving,
@@ -45,7 +45,6 @@ function TransactionEntry({
   canResetBuyCrypto,
 }: {
   tx: TransactionInfo;
-  clerks: string[];
   onUpdate: (data: AmlCheckUpdate, clerk: string) => Promise<void>;
   onReset: (clerk: string) => Promise<void>;
   isSaving: boolean;
@@ -56,10 +55,10 @@ function TransactionEntry({
   const { session } = useAuthContext();
   const allowPass = canManuallySetAmlPass(session?.role);
   const amlCheckOptions = AML_CHECK_OPTIONS.filter((opt) => opt !== CheckStatus.PASS || allowPass);
+  const { name: clerk, isLoading: isLoadingClerk } = useStaffVerifiedName();
   const [amlCheck, setAmlCheck] = useState(tx.amlCheck ?? '');
   const [amlReason, setAmlReason] = useState<AmlReason>((tx.amlReason as AmlReason) ?? AmlReason.NA);
   const [setPriceDate, setSetPriceDate] = useState(false);
-  const [clerk, setClerk] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
   async function handleSave(): Promise<void> {
@@ -218,30 +217,15 @@ function TransactionEntry({
         </div>
       </div>
 
-      {/* Clerk */}
       <div className="bg-white rounded-lg shadow-sm px-3 py-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-dfxBlue-800 font-medium">Editor:</span>
-          <select
-            className="ml-4 shrink-0 px-2 py-1 text-sm border border-dfxGray-400 rounded bg-white text-dfxBlue-800"
-            value={clerk}
-            onChange={(e) => setClerk(e.target.value)}
-          >
-            <option value="">—</option>
-            {clerks.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </div>
+        <StaffIdentityBlock label="Editor:" />
       </div>
 
       <div>
         <button
           className="px-4 py-2 text-sm text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded-lg transition-colors disabled:opacity-50"
           onClick={handleSave}
-          disabled={isSaving || isProcessing || !amlCheck || !clerk}
+          disabled={isSaving || isProcessing || isLoadingClerk || !amlCheck || !clerk}
         >
           {isProcessing ? 'Speichern...' : 'Speichern'}
         </button>
@@ -314,7 +298,6 @@ function ResettableTransactionEntry({
 
 export function AmlCheckPendingPanel({
   data,
-  clerks,
   isSaving,
   onUpdate,
   onReset,
@@ -476,7 +459,6 @@ export function AmlCheckPendingPanel({
         <div key={tx.id} className="border-b border-dfxGray-300 pb-6 last:border-0">
           <TransactionEntry
             tx={tx}
-            clerks={clerks}
             onUpdate={(updateData, clerk) => onUpdate(tx, updateData, clerk)}
             onReset={(clerk) => onReset(tx, clerk)}
             isSaving={isSaving}

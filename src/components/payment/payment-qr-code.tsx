@@ -11,7 +11,7 @@ import { RiExternalLinkFill } from 'react-icons/ri';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { getStoredPaymentDetailErrorMessage } from 'src/util/personal-iban';
-import { openPdfFromString } from 'src/util/utils';
+import { revealInvoicePdf } from 'src/util/transaction-invoice';
 import { ErrorHint } from '../error-hint';
 import { QrBasic } from './qr-code';
 
@@ -57,14 +57,19 @@ export function PaymentQrCode({ value, txId, collectionAccount = false }: GiroCo
       navigate('/profile', { setRedirect: true });
       return;
     }
+    const preview = window.open('about:blank');
     const generation = invoiceGeneration.current;
     try {
       setIsLoading(true);
       setInvoiceError(undefined);
       const response = await invoiceFor(txId, collectionAccount);
-      if (generation !== invoiceGeneration.current) return;
-      openPdfFromString(response.pdfData);
+      if (generation !== invoiceGeneration.current) {
+        preview?.close();
+        return;
+      }
+      revealInvoicePdf(response.pdfData, preview);
     } catch (err) {
+      preview?.close();
       if (generation !== invoiceGeneration.current) return;
       setInvoiceError(err as ApiError);
     } finally {

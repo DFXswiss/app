@@ -5,7 +5,7 @@ import { CustodyAccount } from 'src/dto/safe.dto';
  *
  * The account list marks foreign accounts with their owner and leaves the field off the
  * caller's own; the legacy Safe carries the caller as its owner. That distinction is a side
- * effect of how the API loads its relations rather than a documented guarantee — DFXswiss/api
+ * effect of how the API loads its relations rather than a documented guarantee — DFXswiss/backend
  * PR 4424 adds an explicit flag, and this should move to it once that lands.
  */
 export function isOwnAccount(account: CustodyAccount): boolean {

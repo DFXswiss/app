@@ -12,10 +12,12 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { ErrorHint } from 'src/components/error-hint';
 import { EditOverlay } from 'src/components/overlay/edit-overlay';
+import { useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useMergedAccount } from 'src/hooks/merged-account.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { useSessionStore } from 'src/hooks/session-store.hook';
 
 export default function EditMailScreen(): JSX.Element {
   const { translate, translateError } = useSettingsContext();
@@ -24,6 +26,8 @@ export default function EditMailScreen(): JSX.Element {
   const { handleMergedError } = useMergedAccount();
   const { user } = useUserContext();
   const { check2fa } = useKyc();
+  const { redirectPath, setRedirectPath } = useAppHandlingContext();
+  const { editMailReturn } = useSessionStore();
 
   const [checking2fa, setChecking2fa] = useState(true);
   const [mailVerificationStep, setMailVerificationStep] = useState(false);
@@ -38,6 +42,18 @@ export default function EditMailScreen(): JSX.Element {
       .finally(() => setChecking2fa(false));
   }, []);
 
+  function abandonMailReturn() {
+    editMailReturn.remove();
+    setRedirectPath(undefined);
+  }
+
+  useEffect(() => {
+    if (redirectPath && redirectPath !== '/account/mail') {
+      editMailReturn.set(redirectPath);
+      setRedirectPath(undefined);
+    }
+  }, [redirectPath]);
+
   const {
     control,
     handleSubmit,
@@ -51,7 +67,10 @@ export default function EditMailScreen(): JSX.Element {
     return updateMail(newEmail)
       .then(() => setMailVerificationStep(true))
       .catch((e: ApiError) => {
-        if (handleMergedError(e)) return;
+        if (handleMergedError(e)) {
+          abandonMailReturn();
+          return;
+        }
 
         if (e.statusCode === 409 && e.message?.includes('exists')) {
           if (e.message.includes('merge')) {
@@ -71,18 +90,29 @@ export default function EditMailScreen(): JSX.Element {
     setIsSubmitting(true);
 
     verifyMail(data.token)
-      .then(() => navigate('/account'))
-      .catch((e: ApiError) =>
-        handleMergedError(e)
-          ? undefined
-          : e.statusCode === 403
-          ? setTokenInvalid(true)
-          : e.statusCode === 409 && e.message?.includes('exists')
-          ? e.message.includes('merge')
-            ? setShowLinkHint(true)
-            : setError(e.message ?? 'Unknown error')
-          : setError(e.message ?? 'Unknown error'),
-      )
+      .then(() => {
+        const stored = editMailReturn.get();
+        editMailReturn.remove();
+        navigate(stored ?? '/account');
+      })
+      .catch((e: ApiError) => {
+        if (handleMergedError(e)) {
+          abandonMailReturn();
+          return;
+        }
+
+        if (e.statusCode === 403) {
+          setTokenInvalid(true);
+        } else if (e.statusCode === 409 && e.message?.includes('exists')) {
+          if (e.message.includes('merge')) {
+            setShowLinkHint(true);
+          } else {
+            setError(e.message ?? 'Unknown error');
+          }
+        } else {
+          setError(e.message ?? 'Unknown error');
+        }
+      })
       .finally(() => setIsSubmitting(false));
   }
 
@@ -106,7 +136,10 @@ export default function EditMailScreen(): JSX.Element {
           <StyledButton
             width={StyledButtonWidth.MIN}
             label={translate('general/actions', 'OK')}
-            onClick={() => navigate('/account')}
+            onClick={() => {
+              abandonMailReturn();
+              navigate('/account');
+            }}
           />
         </StyledVerticalStack>
       ) : checking2fa ? (
@@ -118,7 +151,10 @@ export default function EditMailScreen(): JSX.Element {
           prefill={user?.mail}
           placeholder={translate('screens/kyc', 'Email address')}
           validation={Validations.Mail}
-          onCancel={() => navigate('/account')}
+          onCancel={() => {
+            abandonMailReturn();
+            navigate('/account');
+          }}
           onEdit={onSubmit}
         />
       ) : (

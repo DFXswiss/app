@@ -32,11 +32,49 @@ interface PaymentInformationContentProps {
   };
 }
 
-interface PaymentInformationTextProps extends PaymentInformationContentProps {
+type IbanSwitchTarget =
+  | { kind: 'personal' }
+  | { kind: 'collection' }
+  | {
+      kind: 'provider';
+      provider: PersonalIbanProvider;
+      onSwitch: (provider: PersonalIbanProvider) => void;
+    };
+
+/** Applies the next IBAN-switch target; provider targets carry their own callback. */
+function applyIbanSwitchTarget(next: IbanSwitchTarget, setShowCollectionIban: (value: boolean) => void): void {
+  if (next.kind === 'personal') {
+    setShowCollectionIban(false);
+    return;
+  }
+  if (next.kind === 'collection') {
+    setShowCollectionIban(true);
+    return;
+  }
+
+  next.onSwitch(next.provider);
+}
+
+function ibanSwitchLabelKey(target: IbanSwitchTarget): string {
+  if (target.kind === 'personal') {
+    return 'Show personal IBAN';
+  }
+  if (target.kind === 'collection') {
+    return 'Show collection IBAN';
+  }
+  return target.provider === PersonalIbanProvider.YAPEAL ? 'Show legacy Yapeal IBAN' : 'Show Bank Frick IBAN';
+}
+
+interface PaymentInformationTextProps {
+  info: Buy;
+  showBank?: boolean;
   showCollectionIban: boolean;
   offerCollectionIban: boolean;
   collectionIban: string | undefined;
-  onToggleCollectionIban: () => void;
+  ibanSwitch?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 
 export function PaymentInformationContent({
@@ -49,15 +87,38 @@ export function PaymentInformationContent({
   const collectionIban = getOfferableCollectionIban(info);
   const offerCollectionIban = collectionIban !== undefined;
 
+  // Cycle: personal → collection (if offered) → provider (if offered) → wrap to personal.
+  const switchTargets: IbanSwitchTarget[] = [{ kind: 'personal' }];
+  if (collectionIban !== undefined) {
+    switchTargets.push({ kind: 'collection' });
+  }
+  if (personalIbanProviderSwitch !== undefined) {
+    switchTargets.push({
+      kind: 'provider',
+      provider: personalIbanProviderSwitch.target,
+      onSwitch: personalIbanProviderSwitch.onSwitch,
+    });
+  }
+
+  let ibanSwitch: PaymentInformationTextProps['ibanSwitch'];
+  if (switchTargets.length >= 2) {
+    // Collection is always at index 1 when offered; provider is never the "current" local state.
+    const currentIndex = showCollectionIban && collectionIban !== undefined ? 1 : 0;
+    const nextTarget = switchTargets[(currentIndex + 1) % switchTargets.length];
+    ibanSwitch = {
+      label: translate('screens/payment', ibanSwitchLabelKey(nextTarget)),
+      onClick: () => applyIbanSwitchTarget(nextTarget, setShowCollectionIban),
+    };
+  }
+
   const textContent = (
     <PaymentInformationText
       info={info}
       showBank={showBank}
-      personalIbanProviderSwitch={personalIbanProviderSwitch}
       showCollectionIban={showCollectionIban}
       offerCollectionIban={offerCollectionIban}
       collectionIban={collectionIban}
-      onToggleCollectionIban={() => setShowCollectionIban((current) => !current)}
+      ibanSwitch={ibanSwitch}
     />
   );
 
@@ -129,11 +190,10 @@ export function PaymentInformationContent({
 function PaymentInformationText({
   info,
   showBank,
-  personalIbanProviderSwitch,
   showCollectionIban,
   offerCollectionIban,
   collectionIban,
-  onToggleCollectionIban,
+  ibanSwitch,
 }: PaymentInformationTextProps): JSX.Element {
   const { translate } = useSettingsContext();
   const { copy } = useClipboard();
@@ -172,45 +232,15 @@ function PaymentInformationText({
               </div>
             )}
           </div>
-          {offerCollectionIban && (
+          {ibanSwitch !== undefined && (
             <button
               type="button"
               className="flex h-full hover:scale-110 transition ease-in-out delay-100 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-dfxRed-100"
-              onClick={onToggleCollectionIban}
-              aria-label={translate(
-                'screens/payment',
-                showCollectionIban ? 'Show personal IBAN' : 'Show collection IBAN',
-              )}
-              title={translate('screens/payment', showCollectionIban ? 'Show personal IBAN' : 'Show collection IBAN')}
+              onClick={ibanSwitch.onClick}
+              aria-label={ibanSwitch.label}
+              title={ibanSwitch.label}
             >
               <DfxIcon icon={IconVariant.SWAP} />
-            </button>
-          )}
-          {personalIbanProviderSwitch !== undefined && (
-            <button
-              type="button"
-              className="ml-1"
-              onClick={() =>
-                personalIbanProviderSwitch.onSwitch(personalIbanProviderSwitch.target)
-              }
-              aria-label={translate(
-                'screens/payment',
-                personalIbanProviderSwitch.target === PersonalIbanProvider.YAPEAL
-                  ? 'Show legacy Yapeal IBAN'
-                  : 'Show Bank Frick IBAN',
-              )}
-              title={translate(
-                'screens/payment',
-                personalIbanProviderSwitch.target === PersonalIbanProvider.YAPEAL
-                  ? 'Show legacy Yapeal IBAN'
-                  : 'Show Bank Frick IBAN',
-              )}
-            >
-              {/* Two adjacent switches (the collection-IBAN toggle above and this provider
-                  switch) need visually distinct affordances, so this cannot reuse the collection
-                  toggle's 🔄 glyph. IconVariant.BANK exists in the icon catalog - use it instead
-                  of a second emoji. */}
-              <DfxIcon icon={IconVariant.BANK} color={IconColor.BLUE} />
             </button>
           )}
           <CopyButton onCopy={() => copy(displayedIban)} />

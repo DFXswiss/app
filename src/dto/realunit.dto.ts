@@ -103,6 +103,11 @@ export interface RealUnitQuote {
   estimatedAmount: number;
   created: string;
   userAddress?: string;
+  deactivatedAt?: string;
+}
+
+export function quoteIsDeactivated(quote: Pick<RealUnitQuote, 'deactivatedAt'>): boolean {
+  return quote.deactivatedAt != null && quote.deactivatedAt !== '';
 }
 
 export interface RealUnitTransaction {
@@ -144,4 +149,5 @@ export interface RealunitContextInterface {
   resetQuotes: () => void;
   fetchTransactions: () => void;
   confirmPayment: (id: number) => Promise<void>;
+  deactivateQuote: (id: number) => Promise<void>;
 }

@@ -19,6 +19,12 @@ export function useRealunitGuard(redirectPath = '/', isActive = true) {
   useUserRoleGuard([UserRole.ADMIN, UserRole.REALUNIT, UserRole.COMPLIANCE], redirectPath, isActive);
 }
 
+export const REALUNIT_QUOTES_ROLES = [UserRole.ADMIN, UserRole.REALUNIT, UserRole.COMPLIANCE, UserRole.SUPPORT];
+
+export function useRealunitQuotesGuard(redirectPath = '/', isActive = true) {
+  useUserRoleGuard(REALUNIT_QUOTES_ROLES, redirectPath, isActive);
+}
+
 export function useComplianceGuard(redirectPath = '/', isActive = true) {
   useUserRoleGuard([UserRole.ADMIN, UserRole.COMPLIANCE], redirectPath, isActive);
 }

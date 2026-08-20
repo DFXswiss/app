@@ -46,6 +46,14 @@ function stripIban(value: string): string {
   return value.replace(/\s+/g, '').toUpperCase();
 }
 
+/** Never more than one IBAN switch once Payment Information is visible. */
+const IBAN_SWITCH_NAME = /Show (collection|personal|legacy Yapeal|Bank Frick) IBAN/;
+
+async function expectAtMostOneIbanSwitch(page: Page): Promise<void> {
+  const switches = page.getByRole('button', { name: IBAN_SWITCH_NAME });
+  expect(await switches.count(), 'payment details must not render two IBAN switch buttons').toBeLessThanOrEqual(1);
+}
+
 /**
  * Read a StyledDataTableRow value: label is a <p> in a flex-none wrapper;
  * value is the following sibling <div>.
@@ -490,6 +498,7 @@ test.describe('Buy flow', () => {
     // Displayed values must match the API response (not hardcoded seed IBANs).
     const ibanCell = dataTableValue(page, 'IBAN');
     await expect(ibanCell).toBeVisible();
+    await expectAtMostOneIbanSwitch(page);
     const displayedIban = stripIban(await ibanCell.innerText());
     if (apiBuy?.iban) {
       expect(displayedIban).toContain(stripIban(apiBuy.iban).slice(0, 8));
@@ -569,6 +578,7 @@ test.describe('Buy flow', () => {
     const apiBuy = capture.get();
     const ibanCell = dataTableValue(page, 'IBAN');
     await expect(ibanCell).toBeVisible();
+    await expectAtMostOneIbanSwitch(page);
     if (apiBuy?.iban) {
       expect(stripIban(await ibanCell.innerText())).toContain(stripIban(apiBuy.iban).slice(0, 8));
     }
@@ -770,7 +780,7 @@ test.describe('Buy flow', () => {
 
   // Known API bug: BuyCryptoService.changeRoute throws when userData on the route is null under
   // this request shape. test.fail keeps the case running; remove once the API is fixed.
-  test("/buyCrypto/update: Admin save updates buyId and shows Saved", async ({ page }) => {
+  test('/buyCrypto/update: Admin save updates buyId and shows Saved', async ({ page }) => {
     test.fail(
       true,
       'BuyCryptoService.changeRoute throws TypeError reading id of null userData on the route (API 500).',

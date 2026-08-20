@@ -237,8 +237,8 @@
     "I am already verified with DFX": "Je suis déjà vérifié par DFX",
     "I hereby authorize DFX to transfer my KYC data to {{client}}.": "Par la présente, je charge DFX de transmettre mes données KYC à {{client}}.",
     "The identification has failed.": "L'identification a échoué.",
-    "Merging your accounts...": "Fusion de vos comptes...",
-    "Account merged successfully!": "Compte fusionné avec succès!",
+    "Adding the wallet address...": "Ajout de l'adresse du portefeuille...",
+    "Wallet address added": "Adresse du portefeuille ajoutée",
     "You can now access your account.": "Vous pouvez maintenant accéder à votre compte.",
     "My account": "Mon compte",
     "Upload your SEPA file here": "Téléchargez votre fichier SEPA ici",
@@ -463,9 +463,9 @@
   "screens/error": {
     "Oh, sorry, something went wrong": "Désolé, il y a eu un problème",
     "Invalid link": "Lien invalide",
-    "Merge is already completed": "La fusion est déjà terminée",
-    "Merging your accounts is taking longer than expected. Please try again later.": "La fusion de vos comptes prend plus de temps que prévu. Veuillez réessayer plus tard.",
-    "Account merge failed": "Échec de la fusion des comptes",
+    "This address has already been added": "Cette adresse a déjà été ajoutée",
+    "Adding the address is taking longer than expected. Please try again later.": "L'ajout de l'adresse prend plus de temps que prévu. Veuillez réessayer plus tard.",
+    "The address could not be added": "L'adresse n'a pas pu être ajoutée",
     "Please return to the previous page. If this problem persists, please contact our support.": "Veuillez revenir à la page précédente. Si le problème persiste, veuillez contacter notre service d'assistance.",
     "Please reload this page. If this problem persists, please contact our support.": "Veuillez recharger cette page. Si le problème persiste, veuillez contacter notre service d'assistance."
   },
@@ -929,6 +929,8 @@
     "Waiting tickets": "Tickets en attente",
     "No tickets waiting this long": "Aucun ticket en attente depuis aussi longtemps",
     "Your account is not linked to a support clerk": "Votre compte n'est lié à aucun agent de support",
+    "Staff identification requires a verified name on this account.": "L'identification du personnel exige un nom vérifié sur ce compte.",
+    "Could not load your verified name: {{error}}": "Impossible de charger votre nom vérifié : {{error}}",
     "No tickets assigned to you": "Aucun ticket ne vous est attribué",
     "Support": "Support",
     "Support tickets": "Tickets de support",
@@ -1106,7 +1108,10 @@
     "Date": "Date",
     "Confirm Payment Received": "Confirmer la réception du paiement",
     "Are you sure you want to confirm the payment receipt?": "Êtes-vous sûr de vouloir confirmer la réception du paiement?",
-    "Payment confirmed successfully": "Réception du paiement confirmée avec succès"
+    "Payment confirmed successfully": "Réception du paiement confirmée avec succès",
+    "Deactivate Quote": "Désactiver l'offre",
+    "Are you sure you want to deactivate this quote?": "Êtes-vous sûr de vouloir désactiver cette offre?",
+    "Deactivated At": "Désactivé le"
   },
   "screens/blockchain": {
     "Transaction signing": "Signature de la transaction",

@@ -169,24 +169,16 @@ test.describe('Buy Process - UI Flow', () => {
       });
     });
 
-    await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&amount-in=100&personal-iban=frick`,
-    );
+    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&amount-in=100&personal-iban=frick`);
 
     // No intermediate confirmation step: the selector is applied directly and the
     // Frick-backed payment details render as soon as the quote resolves.
     const bankLabel = page.getByText('Bank', { exact: true });
     await expect(bankLabel).toBeVisible({ timeout: 15000 });
     await expect.poll(() => receivedProvider).toBe('Frick');
-    const paymentDetails = page
-      .getByRole('heading', { name: 'Payment Information' })
-      .locator('..');
-    await expect(
-      paymentDetails.getByText('DFX AG', { exact: true }),
-    ).toBeVisible();
-    await expect(paymentDetails).toHaveScreenshot(
-      'buy-bank-frick-payment-details.png',
-    );
+    const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
+    await expect(paymentDetails.getByText('DFX AG', { exact: true })).toBeVisible();
+    await expect(paymentDetails).toHaveScreenshot('buy-bank-frick-payment-details.png');
   });
 
   // Visual review aid for the collection-IBAN toggle. The neighboring test above
@@ -213,9 +205,7 @@ test.describe('Buy Process - UI Flow', () => {
       `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick`,
     );
 
-    const paymentDetails = page
-      .getByRole('heading', { name: 'Payment Information' })
-      .locator('..');
+    const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
 
     const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
     await expect(toggle).toBeVisible({ timeout: 15000 });
@@ -299,9 +289,7 @@ test.describe('Buy Process - UI Flow', () => {
       `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&personal-iban=frick`,
     );
 
-    const paymentDetails = page
-      .getByRole('heading', { name: 'Payment Information' })
-      .locator('..');
+    const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
 
     const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
     await expect(toggle).toBeVisible({ timeout: 15000 });
@@ -398,9 +386,7 @@ test.describe('Buy Process - UI Flow', () => {
       `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
-    const paymentDetails = page
-      .getByRole('heading', { name: 'Payment Information' })
-      .locator('..');
+    const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
 
     const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
     await expect(toggle).toBeVisible({ timeout: 15000 });
@@ -627,13 +613,9 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     // No personal-iban param: no selector at all, the precondition the promo banner requires.
-    await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100`,
-    );
+    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100`);
 
-    const promoBlock = page
-      .getByRole('heading', { name: 'New: Personal IBAN in your own name!' })
-      .locator('..');
+    const promoBlock = page.getByRole('heading', { name: 'New: Personal IBAN in your own name!' }).locator('..');
     await expect(promoBlock.getByRole('heading', { name: 'New: Personal IBAN in your own name!' })).toBeVisible({
       timeout: 15000,
     });
@@ -759,15 +741,16 @@ test.describe('Buy Process - UI Flow', () => {
 
     // lang=en pins text selectors regardless of the test account's language preference, same as
     // neighboring tests in this file.
-    await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`,
-    );
+    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`);
 
     const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
 
     // Wait for the gated auto-Frick-default state before asserting and screenshotting.
-    const toYapealToggle = paymentDetails.getByRole('button', { name: 'Show legacy Yapeal IBAN' });
-    await expect(toYapealToggle).toBeVisible({ timeout: 15000 });
+    // Verified Frick personal quotes also offer the collection IBAN, so the first switch target
+    // is the collection account; the legacy Yapeal provider is the next step after that.
+    const toCollectionToggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
+    await expect(toCollectionToggle).toBeVisible({ timeout: 15000 });
+    await expect(paymentDetails.getByRole('button', { name: 'Show legacy Yapeal IBAN' })).not.toBeVisible();
     await expect.poll(() => receivedProvider).toBe('Frick');
 
     await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible();
@@ -776,6 +759,11 @@ test.describe('Buy Process - UI Flow', () => {
       maxDiffPixels: 10000,
     });
 
+    await toCollectionToggle.click();
+    await expect(paymentDetails.getByText('LI32 0881 1010 5923 K000 C')).toBeVisible();
+
+    const toYapealToggle = paymentDetails.getByRole('button', { name: 'Show legacy Yapeal IBAN' });
+    await expect(toYapealToggle).toBeVisible();
     await toYapealToggle.click();
 
     const toFrickToggle = paymentDetails.getByRole('button', { name: 'Show Bank Frick IBAN' });
@@ -791,12 +779,11 @@ test.describe('Buy Process - UI Flow', () => {
     await toFrickToggle.click();
 
     await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible({ timeout: 15000 });
+    await expect(paymentDetails.getByRole('button', { name: 'Show collection IBAN' })).toBeVisible();
+    await expect(paymentDetails.getByRole('button', { name: 'Show legacy Yapeal IBAN' })).not.toBeVisible();
   });
 
-  test('shows an error when the legacy Yapeal provider is unavailable', async ({
-    page,
-    request,
-  }) => {
+  test('shows an error when the legacy Yapeal provider is unavailable', async ({ page, request }) => {
     const token = await getToken(request);
     const sessionAccount = (
       JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as { account: number }
@@ -952,9 +939,13 @@ test.describe('Buy Process - UI Flow', () => {
       });
     });
 
-    await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`,
-    );
+    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`);
+
+    // Collection is the first switch target on a verified Frick personal quote; advance past it
+    // before requesting the unavailable Yapeal provider.
+    const toCollectionToggle = page.getByRole('button', { name: 'Show collection IBAN' });
+    await expect(toCollectionToggle).toBeVisible({ timeout: 15000 });
+    await toCollectionToggle.click();
 
     const toYapealToggle = page.getByRole('button', { name: 'Show legacy Yapeal IBAN' });
     await expect(toYapealToggle).toBeVisible({ timeout: 15000 });
@@ -1085,14 +1076,10 @@ test.describe('Buy Process - UI Flow', () => {
       });
     });
 
-    await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`,
-    );
+    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=CHF&asset-out=ETH&amount-in=100&lang=en`);
 
     await expect(
-      page.getByText(
-        'Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.',
-      ),
+      page.getByText('Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.'),
     ).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('CH93 0076 2011 6238 5295 7')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Complete KYC' })).not.toBeVisible();
@@ -1140,9 +1127,7 @@ test.describe('Buy Process - UI Flow', () => {
       `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
-    const paymentDetails = page
-      .getByRole('heading', { name: 'Payment Information' })
-      .locator('..');
+    const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
 
     const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
     await expect(toggle).toBeVisible({ timeout: 15000 });
@@ -1252,9 +1237,7 @@ test.describe('Buy Process - UI Flow', () => {
       `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
-    const paymentDetails = page
-      .getByRole('heading', { name: 'Payment Information' })
-      .locator('..');
+    const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
 
     const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
     await expect(toggle).toBeVisible({ timeout: 15000 });
@@ -1390,9 +1373,7 @@ test.describe('Buy Process - UI Flow', () => {
 });
 
 test.describe('Buy Process - Wallet 2 (BIP-44 derived)', () => {
-  async function getTokenWallet2(
-    request: Parameters<Parameters<typeof test>[1]>[0]['request'],
-  ): Promise<string> {
+  async function getTokenWallet2(request: Parameters<Parameters<typeof test>[1]>[0]['request']): Promise<string> {
     const auth = await getCachedAuth(request, 'evm-wallet2');
     return auth.token;
   }

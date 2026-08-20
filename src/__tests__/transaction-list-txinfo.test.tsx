@@ -161,17 +161,7 @@ jest.mock('@dfx.swiss/react-components', () => {
     });
   });
 
-  function StyledDropdown({
-    control,
-    name,
-    label,
-    items,
-    labelFunc,
-    descriptionFunc,
-    placeholder,
-    rules,
-    error,
-  }: any) {
+  function StyledDropdown({ control, name, label, items, labelFunc, descriptionFunc, placeholder, rules, error }: any) {
     const [open, setOpen] = useState(false);
     return React.createElement(Controller, {
       control,
@@ -308,11 +298,7 @@ jest.mock('@dfx.swiss/react-components', () => {
 
   function StyledButton({ label, onClick, disabled, isLoading, type, hidden }: any) {
     if (hidden) return null;
-    return React.createElement(
-      'button',
-      { type: type ?? 'button', onClick, disabled: disabled || isLoading },
-      label,
-    );
+    return React.createElement('button', { type: type ?? 'button', onClick, disabled: disabled || isLoading }, label);
   }
 
   return {
@@ -362,16 +348,11 @@ jest.mock('@dfx.swiss/react-components', () => {
       ),
     StyledIconButton: ({ onClick }: any) =>
       React.createElement('button', { type: 'button', 'data-testid': 'reload-button', onClick }, 'Reload'),
-    DfxAssetIcon: ({ asset }: any) =>
-      React.createElement('div', { 'data-testid': 'dfx-asset-icon' }, asset),
+    DfxAssetIcon: ({ asset }: any) => React.createElement('div', { 'data-testid': 'dfx-asset-icon' }, asset),
     DfxIcon: () => React.createElement('div', { 'data-testid': 'dfx-help-icon' }),
     // Must be clickable so TxInfo chargeback CopyButton onCopy (line 1216) is reachable.
     CopyButton: ({ onCopy }: any) =>
-      React.createElement(
-        'button',
-        { type: 'button', 'data-testid': 'copy-button', onClick: onCopy },
-        'Copy',
-      ),
+      React.createElement('button', { type: 'button', 'data-testid': 'copy-button', onClick: onCopy }, 'Copy'),
     StyledLink: ({ label, children, url }: any) =>
       React.createElement('a', { 'data-testid': 'styled-link', href: url }, label ?? children),
     StyledLoadingSpinner: () => React.createElement('div', { 'data-testid': 'loading-spinner' }),
@@ -441,6 +422,15 @@ jest.mock('../hooks/layout-config.hook', () => ({
   },
 }));
 
+jest.mock('../hooks/transaction-guest.hook', () => ({
+  useTransactionGuest: () => ({
+    getTargets: jest.fn(),
+    setTarget: jest.fn(),
+    getRefund: mockGetTransactionRefund,
+    setRefund: jest.fn(),
+  }),
+}));
+
 jest.mock('../hooks/navigation.hook', () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
 }));
@@ -460,7 +450,12 @@ jest.mock('../util/validation-rules', () => ({
   ZipValidation: undefined,
 }));
 
-jest.mock('copy-to-clipboard', () => (...args: any[]) => mockCopy(...args));
+jest.mock(
+  'copy-to-clipboard',
+  () =>
+    (...args: any[]) =>
+      mockCopy(...args),
+);
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -535,13 +530,19 @@ function makeListTx(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const ACTION_SECRET = 'ab'.repeat(32);
+const GUEST_REFUND_PATH = `/tx/T123/${ACTION_SECRET}/refund`;
+
 function renderScreen(path: string) {
   const router = createMemoryRouter(
     [
       { path: '/tx', element: <TransactionScreen /> },
-      { path: '/tx/:id', element: <TransactionScreen /> },
-      { path: '/tx/:id/refund', element: <TransactionScreen /> },
+      { path: '/tx/:id/:secret/assign', element: <TransactionScreen /> },
+      { path: '/tx/:id/:secret/refund', element: <TransactionScreen /> },
       { path: '/tx/:id/assign', element: <TransactionScreen /> },
+      { path: '/tx/:id/refund', element: <TransactionScreen /> },
+      { path: '/tx/:id/:secret', element: <TransactionScreen /> },
+      { path: '/tx/:id', element: <TransactionScreen /> },
     ],
     { initialEntries: [path] },
   );
@@ -619,8 +620,15 @@ beforeEach(() => {
   jest.spyOn(window, 'open').mockImplementation(() => null);
 });
 
+const originalCreateObjectURL = (global.URL as any).createObjectURL;
+
 afterEach(() => {
   jest.restoreAllMocks();
+  if (originalCreateObjectURL) {
+    (global.URL as any).createObjectURL = originalCreateObjectURL;
+  } else {
+    delete (global.URL as any).createObjectURL;
+  }
 });
 
 // Line 281: Create support ticket onClick in TransactionStatus (via TransactionScreen).
@@ -634,7 +642,7 @@ describe('TransactionStatus Create support ticket', () => {
     const support = await screen.findByRole('button', { name: 'Create support ticket' });
     await userEvent.click(support);
 
-    expect(mockNavigate).toHaveBeenCalledWith('/support/issue?issue-type=TransactionIssue');
+    expect(mockNavigate).toHaveBeenCalledWith('/support/issue?issue-type=TransactionIssue&tx=T123');
   });
 });
 
@@ -645,7 +653,7 @@ describe('TransactionRefund creditorCountry search helpers', () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
-    renderScreen('/tx/T123/refund');
+    renderScreen(GUEST_REFUND_PATH);
 
     await waitFor(() => {
       expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
@@ -665,7 +673,7 @@ describe('TransactionRefund creditorCountry search helpers', () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank' }));
     mockGetTransactionRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
 
-    renderScreen('/tx/T123/refund');
+    renderScreen(GUEST_REFUND_PATH);
 
     await waitFor(() => {
       expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
@@ -709,9 +717,7 @@ describe('TransactionList loadTransactions errors', () => {
 describe('TransactionList submitAssignment errors', () => {
   it('calls setError when setTransactionTarget rejects', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockResolvedValue([TARGET_A]);
     mockSetTransactionTarget.mockRejectedValue({ message: 'assign failed' });
 
@@ -731,9 +737,7 @@ describe('TransactionList submitAssignment errors', () => {
 
   it('calls setError with "Unknown error" when setTransactionTarget rejects without message', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockResolvedValue([TARGET_A]);
     mockSetTransactionTarget.mockRejectedValue({});
 
@@ -754,10 +758,7 @@ describe('TransactionList submitAssignment errors', () => {
 
 // Lines 672-687: scroll-into-view, logged-out skip, auto-assign path, date sort.
 describe('TransactionList load effects and sorting', () => {
-  const originalScrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(
-    Element.prototype,
-    'scrollIntoView',
-  );
+  const originalScrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
 
   afterEach(() => {
     if (originalScrollIntoViewDescriptor) {
@@ -771,9 +772,7 @@ describe('TransactionList load effects and sorting', () => {
     const scrollIntoView = jest.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
 
-    mockGetDetailTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Completed' }),
-    ]);
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
 
     renderListAt('/tx/1');
@@ -801,9 +800,7 @@ describe('TransactionList load effects and sorting', () => {
 
   it('auto-opens the assignment form when the path is /tx/:id/assign', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockResolvedValue([TARGET_A, TARGET_B]);
 
     // Numeric id → TransactionScreen list branch (not T/Q status); assign path auto-opens form.
@@ -855,9 +852,7 @@ describe('TransactionList load effects and sorting', () => {
 describe('TransactionList assignTransaction errors', () => {
   it('calls setError with the API message when getTransactionTargets rejects', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockRejectedValue({ message: 'targets failed' });
 
     const { setError } = renderList();
@@ -872,9 +867,7 @@ describe('TransactionList assignTransaction errors', () => {
 
   it('calls setError with "Unknown error" when getTransactionTargets rejects without message', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockRejectedValue({});
 
     const { setError } = renderList();
@@ -942,9 +935,7 @@ describe('TransactionList row presentation', () => {
   });
 
   it('renders a row when tx.id is missing (ref callback skips numeric id key)', async () => {
-    mockGetDetailTransactions.mockResolvedValue([
-      makeListTx({ id: undefined, uid: 'uid-only', state: 'Completed' }),
-    ]);
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: undefined, uid: 'uid-only', state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
 
     renderList();
@@ -957,9 +948,7 @@ describe('TransactionList row presentation', () => {
   });
 
   it('sets isExpanded when route id matches a transaction uid and leaves it undefined without id', async () => {
-    mockGetDetailTransactions.mockResolvedValue([
-      makeListTx({ id: 5, uid: 'match-uid', state: 'Completed' }),
-    ]);
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 5, uid: 'match-uid', state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
 
     renderListAt('/tx/match-uid');
@@ -970,9 +959,7 @@ describe('TransactionList row presentation', () => {
   });
 
   it('leaves collapsible isExpanded undefined when no route id is present', async () => {
-    mockGetDetailTransactions.mockResolvedValue([
-      makeListTx({ id: 5, uid: 'match-uid', state: 'Completed' }),
-    ]);
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 5, uid: 'match-uid', state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
 
     renderList();
@@ -1083,9 +1070,7 @@ describe('TransactionList missing-transaction navigation', () => {
     const missing = await screen.findByRole('button', { name: 'My transaction is missing' });
     await userEvent.click(missing);
 
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/support/issue?issue-type=TransactionIssue&reason=TransactionMissing',
-    );
+    expect(mockNavigate).toHaveBeenCalledWith('/support/issue?issue-type=TransactionIssue&reason=TransactionMissing');
   });
 });
 
@@ -1093,9 +1078,7 @@ describe('TransactionList missing-transaction navigation', () => {
 describe('TransactionList target dropdown descriptionFunc', () => {
   it('renders descriptionFunc text when a target option is selected', async () => {
     mockGetDetailTransactions.mockResolvedValue([]);
-    mockGetUnassignedTransactions.mockResolvedValue([
-      makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' }),
-    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([makeListTx({ id: 1, uid: 'tx-uid-1', state: 'Unassigned' })]);
     mockGetTransactionTargets.mockResolvedValue([TARGET_A, TARGET_B]);
 
     renderList();
@@ -1136,9 +1119,9 @@ describe('TransactionList block explorer button', () => {
   });
 });
 
-// Line 889: Open invoice success path calls openPdfFromString.
+// Open invoice: reserved about:blank window + embed fallback when window.open is blocked.
 describe('TransactionList open invoice success', () => {
-  it('opens the invoice PDF via openPdfFromString on success', async () => {
+  it('opens about:blank then falls back to openPdfFromString(pdf, false) when window.open returns null', async () => {
     mockGetDetailTransactions.mockResolvedValue([makeListTx({ state: 'Completed', uid: 'inv-1' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
     mockGetTransactionInvoice.mockResolvedValue({ pdfData: 'invoice-pdf-bytes' });
@@ -1150,14 +1133,112 @@ describe('TransactionList open invoice success', () => {
 
     await waitFor(() => {
       expect(mockGetTransactionInvoice).toHaveBeenCalledWith('inv-1');
-      expect(mockOpenPdfFromString).toHaveBeenCalledWith('invoice-pdf-bytes');
+      expect(window.open).toHaveBeenCalledWith('about:blank');
+      expect(mockOpenPdfFromString).toHaveBeenCalledWith('invoice-pdf-bytes', false);
+    });
+  });
+
+  it('assigns the PDF via the reserved window when window.open returns a live preview', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+    (global.URL as any).createObjectURL = jest.fn(() => 'blob:invoice');
+
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ state: 'Completed', uid: 'inv-live' })]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+    mockGetTransactionInvoice.mockResolvedValue({ pdfData: btoa('pdf') });
+
+    renderList();
+
+    const openInvoice = await screen.findByRole('button', { name: 'Open invoice' });
+    await userEvent.click(openInvoice);
+
+    await waitFor(() => {
+      expect(window.open).toHaveBeenCalledWith('about:blank');
+      expect(preview.location.href).toBe('blob:invoice');
+      expect((global.URL as any).createObjectURL).toHaveBeenCalled();
+    });
+    expect(mockOpenPdfFromString).not.toHaveBeenCalled();
+  });
+
+  it('closes the reserved window and shows ErrorHint when getTransactionInvoice rejects', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ state: 'Completed', uid: 'inv-err' })]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+    mockGetTransactionInvoice.mockRejectedValue({ message: 'Network failure detail' });
+
+    renderList();
+
+    const openInvoice = await screen.findByRole('button', { name: 'Open invoice' });
+    await userEvent.click(openInvoice);
+
+    await waitFor(() => {
+      expect(preview.close).toHaveBeenCalled();
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Network failure detail');
     });
   });
 });
 
-// Line 915: Open receipt success path calls openPdfFromString.
+describe('TransactionList open invoice visibility', () => {
+  it('hides Open invoice for Completed SELL EUR', async () => {
+    mockGetDetailTransactions.mockResolvedValue([
+      makeListTx({ type: 'Sell', state: 'Completed', inputAsset: 'EUR', uid: 'sell-1' }),
+    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+
+    renderList();
+
+    await screen.findByRole('button', { name: 'Open receipt' });
+    expect(screen.queryByRole('button', { name: 'Open invoice' })).not.toBeInTheDocument();
+  });
+
+  it('hides Open invoice for Failed Buy EUR', async () => {
+    mockGetDetailTransactions.mockResolvedValue([
+      makeListTx({
+        type: 'Buy',
+        state: 'Failed',
+        inputAsset: 'EUR',
+        uid: 'fail-buy',
+        reason: undefined,
+        chargebackAmount: undefined,
+      }),
+    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+
+    renderList();
+
+    await screen.findByRole('button', { name: 'Confirm refund' });
+    expect(screen.queryByRole('button', { name: 'Open invoice' })).not.toBeInTheDocument();
+  });
+
+  it('hides Open invoice for Completed Buy BTC', async () => {
+    mockGetDetailTransactions.mockResolvedValue([
+      makeListTx({ type: 'Buy', state: 'Completed', inputAsset: 'BTC', uid: 'buy-btc' }),
+    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+
+    renderList();
+
+    await screen.findByRole('button', { name: 'Open receipt' });
+    expect(screen.queryByRole('button', { name: 'Open invoice' })).not.toBeInTheDocument();
+  });
+
+  it('shows Open invoice for Completed Buy CHF', async () => {
+    mockGetDetailTransactions.mockResolvedValue([
+      makeListTx({ type: 'Buy', state: 'Completed', inputAsset: 'CHF', uid: 'buy-chf' }),
+    ]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+
+    renderList();
+
+    expect(await screen.findByRole('button', { name: 'Open invoice' })).toBeInTheDocument();
+  });
+});
+
+// Open receipt: reserved about:blank window + embed fallback when window.open is blocked.
 describe('TransactionList open receipt success', () => {
-  it('opens the receipt PDF via openPdfFromString on success', async () => {
+  it('opens about:blank then falls back to openPdfFromString(pdf, false) when window.open returns null', async () => {
     mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 77, state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
     mockGetTransactionReceipt.mockResolvedValue({ pdfData: 'receipt-pdf-bytes' });
@@ -1169,7 +1250,49 @@ describe('TransactionList open receipt success', () => {
 
     await waitFor(() => {
       expect(mockGetTransactionReceipt).toHaveBeenCalledWith(77);
-      expect(mockOpenPdfFromString).toHaveBeenCalledWith('receipt-pdf-bytes');
+      expect(window.open).toHaveBeenCalledWith('about:blank');
+      expect(mockOpenPdfFromString).toHaveBeenCalledWith('receipt-pdf-bytes', false);
+    });
+  });
+
+  it('assigns the PDF via the reserved window when window.open returns a live preview', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+    (global.URL as any).createObjectURL = jest.fn(() => 'blob:receipt');
+
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 78, state: 'Completed' })]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+    mockGetTransactionReceipt.mockResolvedValue({ pdfData: btoa('pdf') });
+
+    renderList();
+
+    const openReceipt = await screen.findByRole('button', { name: 'Open receipt' });
+    await userEvent.click(openReceipt);
+
+    await waitFor(() => {
+      expect(window.open).toHaveBeenCalledWith('about:blank');
+      expect(preview.location.href).toBe('blob:receipt');
+      expect((global.URL as any).createObjectURL).toHaveBeenCalled();
+    });
+    expect(mockOpenPdfFromString).not.toHaveBeenCalled();
+  });
+
+  it('closes the reserved window and shows ErrorHint when getTransactionReceipt rejects', async () => {
+    const preview = { closed: false, close: jest.fn(), location: { href: '' } };
+    jest.spyOn(window, 'open').mockImplementation(() => preview as unknown as Window);
+
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ id: 79, state: 'Completed' })]);
+    mockGetUnassignedTransactions.mockResolvedValue([]);
+    mockGetTransactionReceipt.mockRejectedValue({ message: 'Receipt network failure' });
+
+    renderList();
+
+    const openReceipt = await screen.findByRole('button', { name: 'Open receipt' });
+    await userEvent.click(openReceipt);
+
+    await waitFor(() => {
+      expect(preview.close).toHaveBeenCalled();
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Receipt network failure');
     });
   });
 });
@@ -1225,9 +1348,7 @@ describe('TransactionList action buttons by state and support mode', () => {
 
   it('shows Select in support mode and calls onSelectTransaction with uid and state', async () => {
     const onSelectTransaction = jest.fn();
-    mockGetDetailTransactions.mockResolvedValue([
-      makeListTx({ uid: 'sup-1', state: 'Completed' }),
-    ]);
+    mockGetDetailTransactions.mockResolvedValue([makeListTx({ uid: 'sup-1', state: 'Completed' })]);
     mockGetUnassignedTransactions.mockResolvedValue([]);
 
     renderList({ isSupport: true, onSelectTransaction });
@@ -1265,9 +1386,7 @@ describe('TxInfo priceSteps base rate info', () => {
     );
 
     // baseRateInfo is infoText on the Base rate expansion item (built by the priceSteps map).
-    expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent(
-      /EUR to BTC at 50000 EUR\/BTC \(Kraken,/,
-    );
+    expect(screen.getByTestId('expansion-info-Base rate')).toHaveTextContent(/EUR to BTC at 50000 EUR\/BTC \(Kraken,/);
   });
 });
 
@@ -1415,9 +1534,7 @@ describe('TxInfo phone verification hint', () => {
       />,
     );
 
-    expect(screen.getByTestId('row-Failure reason')).toHaveTextContent(
-      'we will call you at +41123456789',
-    );
+    expect(screen.getByTestId('row-Failure reason')).toHaveTextContent('we will call you at +41123456789');
   });
 
   it('hides the call-you text when showUserDetails is false', () => {
