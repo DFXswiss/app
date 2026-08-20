@@ -17,11 +17,11 @@
 # A develop PR without the ci:full label does not bring up the stack (mode=none
 # inside the job). That is what keeps a standard develop PR under 10 minutes.
 # PRs into main, a bare workflow_dispatch, and the ci:full label run the full
-# suite. When PR CI calls this workflow with base_ref, scope follows the pull
-# request (also none unless ci:full). Fork pull requests also take mode=none:
-# they do not receive repository secrets, so E2E_API_CHECKOUT_KEY is empty and
-# Checkout API would
-# fail as "repository not found". The probe is the secret, not github.head_ref
+# suite. PR CI passes the boolean `full` (derived from base branch and labels);
+# the workflow_call path only reads that input. Fork pull requests also take
+# mode=none: they do not receive repository secrets, so E2E_API_CHECKOUT_KEY is
+# empty and Checkout API would fail as "repository not found". The probe is the
+# secret, not github.head_ref
 # (that name is fork-spoofable). Draft skip is the only job-level `if:`. API
 # checkout, bootstrap resolution, and harness tsc run only when mode != none.
 # There is no selected/partial spec mapping in this repository.
@@ -120,7 +120,7 @@ jobs:
             exit 0
           fi
 
-          # Ready kick: workflow_dispatch with a non-empty base_ref maps to
+          # Manual workflow_dispatch with a non-empty base_ref maps to
           # pull-request scope. A bare manual dispatch has empty BASE and stays full.
           if [ "$EVENT_NAME" = 'workflow_dispatch' ] && [ -n "${BASE:-}" ]; then
             EVENT_NAME=pull_request
