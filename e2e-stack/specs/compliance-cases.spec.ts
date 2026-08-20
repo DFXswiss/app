@@ -15,17 +15,7 @@
  */
 
 import type { Locator, Page } from '@playwright/test';
-import {
-  expect,
-  loginAs,
-  normPath,
-  openScreen,
-  queryOne,
-  queryRows,
-  test,
-  waitForRow,
-  withDb,
-} from './fixtures';
+import { expect, loginAs, normPath, openScreen, queryOne, queryRows, test, waitForRow, withDb } from './fixtures';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -43,7 +33,7 @@ test.describe.configure({ mode: 'serial' });
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Raise staff kycLevel + name so clerks lists and MROS caseManager resolve. */
+/** Raise staff kycLevel + name so MROS caseManager and staff identity resolve. */
 async function ensureStaffReady(userId: number, surname = 'Compliance'): Promise<void> {
   await withDb(async (client) => {
     await client.query(
@@ -52,51 +42,6 @@ async function ensureStaffReady(userId: number, surname = 'Compliance'): Promise
       [userId, surname],
     );
   });
-}
-
-/**
- * GET support/call-queues/clerks still reads setting key `complianceClerks` (no default).
- * Self-identification no longer uses that list; keep a value so later suites see a stable setting.
- */
-/**
- * The previous value, so afterAll can put it back. This is a shared setting: leaving this suite's
- * clerks behind would change what every later suite — and every later run against the same
- * database — sees on the compliance screens.
- */
-let previousComplianceClerks: { existed: boolean; value: string | null } | undefined;
-
-async function ensureComplianceClerks(clerks: string[] = ['E2E Clerk']): Promise<void> {
-  const value = JSON.stringify(clerks);
-  await withDb(async (client) => {
-    const existing = await client.query<{ id: number; value: string | null }>(
-      `SELECT id, value FROM setting WHERE key = $1 LIMIT 1`,
-      ['complianceClerks'],
-    );
-    if (previousComplianceClerks === undefined) {
-      previousComplianceClerks =
-        existing.rows.length > 0
-          ? { existed: true, value: existing.rows[0].value }
-          : { existed: false, value: null };
-    }
-    if (existing.rows.length > 0) {
-      await client.query(`UPDATE setting SET value = $1 WHERE key = $2`, [value, 'complianceClerks']);
-    } else {
-      await client.query(`INSERT INTO setting (key, value) VALUES ($1, $2)`, ['complianceClerks', value]);
-    }
-  });
-}
-
-async function restoreComplianceClerks(): Promise<void> {
-  const previous = previousComplianceClerks;
-  if (!previous) return;
-  await withDb(async (client) => {
-    if (previous.existed) {
-      await client.query(`UPDATE setting SET value = $1 WHERE key = $2`, [previous.value, 'complianceClerks']);
-    } else {
-      await client.query(`DELETE FROM setting WHERE key = $1`, ['complianceClerks']);
-    }
-  });
-  previousComplianceClerks = undefined;
 }
 
 /**
@@ -138,7 +83,6 @@ function styledInput(page: Page, fieldLabel: string): Locator {
 
 test.describe('Compliance area (cases)', () => {
   test.afterAll(async () => {
-    await restoreComplianceClerks();
     await cleanupCreatedData();
   });
 
@@ -149,7 +93,6 @@ test.describe('Compliance area (cases)', () => {
   test('/compliance/user/:id/kyc approves ManualReview bank data via UI', async ({ page }) => {
     const { jwt, userId } = await loginAs('Compliance');
     await ensureStaffReady(userId);
-    await ensureComplianceClerks(['E2E Clerk']);
 
     const customer = await createUser({
       tag: 'cmp-kyc-bd',
@@ -501,7 +444,6 @@ test.describe('Compliance area (cases)', () => {
   test('/compliance/call-queues/:queue and detail save a call outcome', async ({ page }) => {
     const { jwt, userId } = await loginAs('Compliance');
     await ensureStaffReady(userId, 'CallClerk');
-    await ensureComplianceClerks(['E2E Clerk']);
 
     const entry = await createCallQueueEntry({
       tag: 'cmp-callq-outcome',
@@ -576,7 +518,9 @@ test.describe('Compliance area (cases)', () => {
     await expect(page.getByText('Signature', { exact: true })).toBeVisible();
     await expect(page.getByText('Outcome', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save Outcome', exact: true })).toBeVisible();
-    await expect(page.getByText('Signature', { exact: true }).locator('xpath=following-sibling::select')).toHaveCount(0);
+    await expect(page.getByText('Signature', { exact: true }).locator('xpath=following-sibling::select')).toHaveCount(
+      0,
+    );
 
     const outcomeSelect = page.getByText('Outcome', { exact: true }).locator('xpath=following-sibling::select');
     await outcomeSelect.selectOption('Completed');

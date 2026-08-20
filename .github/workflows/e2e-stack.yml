@@ -1,93 +1,129 @@
 # Full-stack E2E: real frontend + API + Postgres against mocked external providers.
 #
-# Do not add a job-level `if:` skip condition (for draft PRs, path filters, or similar).
-# A skipped GitHub Actions check counts as passing, which would silently defeat the
-# merge gate. If you ever consider adding a skip anywhere in this file, justify it in
-# a comment right there.
+# Draft skip lives on the caller in pr.yml (job `if:`). This file has no
+# pull_request trigger, so `labeled` and Ready do not start it. Ready dispatches
+# pr.yml (not this file); pr.yml then workflow_calls here after Build and test.
+# workflow_dispatch remains for manual runs. Never listen to ready_for_review
+# here. Scope (full vs none) still happens inside the job (the "Determine e2e
+# scope" step) instead of `on.paths` or a job `if:` that would skip a required
+# check. If you ever consider adding another skip anywhere in this file,
+# justify it in a comment right there.
 #
 # Relation to DFXswiss/backend: the corresponding workflow there checks this repository out to
 # find e2e-stack/, so it reads whatever is on develop at the time it runs. Until this pull
 # request has merged, that workflow bootstraps the harness from this pull request's head
 # instead, which means neither side is blocked on the other and either merge order works.
 #
-# Documentation-only PRs (docs/ and *.md) with safe path characters bring up no stack
-# (mode=none); the job still runs and the Playwright step succeeds with a message.
-# Fork pull requests also take mode=none: they do not receive repository secrets, so
-# E2E_API_CHECKOUT_KEY is empty and Checkout API would fail as "repository not found".
-# The job still runs (no job-level `if:`). API checkout, bootstrap resolution, and
-# harness tsc run only when mode != none.
-# PRs into main, workflow_dispatch, and PRs with the `ci:full` label always run the full
-# suite. A change under e2e-stack/ or to .github/workflows/e2e-stack.yml always forces
-# full (the workflow must not classify itself as none). Every other remaining change
-# after filtering docs/ and *.md is treated as runtime-relevant and runs full. There is
-# no selected/partial spec mapping in this repository.
+# A develop PR without the ci:full label does not bring up the stack (mode=none
+# inside the job). That is what keeps a standard develop PR under 10 minutes.
+# PRs into main, a bare workflow_dispatch, and the ci:full label run the full
+# suite. PR CI passes the boolean `full` (derived from base branch and labels);
+# the workflow_call path only reads that input. Fork pull requests also take
+# mode=none: they do not receive repository secrets, so E2E_API_CHECKOUT_KEY is
+# empty and Checkout API would fail as "repository not found". The probe is the
+# secret, not github.head_ref
+# (that name is fork-spoofable). Draft skip is the only job-level `if:`. API
+# checkout, bootstrap resolution, and harness tsc run only when mode != none.
+# There is no selected/partial spec mapping in this repository.
 
 name: Full-stack E2E
 
 on:
-  pull_request:
-    branches:
-      - main
-      - develop
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
-      - edited
-      - labeled
-      - unlabeled
+  # Called from pr.yml after Build and test succeed. A pull_request trigger
+  # here would start this job in parallel with unit tests.
+  workflow_call:
+    inputs:
+      pr_number:
+        description: PR number when called from PR CI
+        required: false
+        type: string
+      base_ref:
+        description: PR base branch when called from PR CI
+        required: false
+        type: string
+      full:
+        description: Bring up the stack (main / ci:full / bare dispatch)
+        required: false
+        type: boolean
+        default: false
+      api_ref:
+        description: Git ref of the companion API to build against
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       api_ref:
-        description: 'Git ref of DFXswiss/backend to check out and build against'
+        description: 'Git ref of DFXswiss/backend to check out and build against (empty = develop)'
         required: false
-        default: 'develop'
+        type: string
+      pr_number:
+        description: PR number for manual dispatch (empty = no PR)
+        required: false
+        type: string
+      base_ref:
+        description: PR base branch for manual dispatch (empty = bare/full run)
+        required: false
         type: string
 
 permissions:
   contents: read
 
+# Draft-skip runs must not share the working group with a live call.
+# workflow_call (PR path) and workflow_dispatch (manual) must not share a
+# cancel group either. Include event_name so a dispatch cannot cancel the
+# nested required check.
 concurrency:
-  group: e2e-stack-${{ github.event.pull_request.number || github.ref }}
+  group: e2e-stack-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ github.event_name }}-${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'ci:full')) && 'run' || 'skip' }}
   cancel-in-progress: true
 
 jobs:
   e2e:
     name: Full-stack E2E
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.draft == false ||
+      contains(github.event.pull_request.labels.*.name, 'ci') ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      # Full history (fetch-depth: 0): the scope step below diffs against the merge base
-      # with the PR's base branch (`origin/BASE...HEAD`), which a shallow single-commit
-      # checkout cannot resolve.
-      - name: Checkout services
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # Decides in-job whether to bring the stack up — never via a job `if:` or a `paths:`
-      # filter, because a skipped check counts as passing (see header comment). Modes are
-      # only full and none; there is no selected/partial spec mapping in this repository.
+      # Event-only: no checkout. Develop PRs without ci:full stop here.
+      # Draft skip is the job `if:` above (see header). Modes are only full
+      # and none; there is no selected/partial spec mapping in this repository.
       - name: Determine e2e scope
         id: scope
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE: ${{ github.base_ref }}
+          BASE: ${{ github.base_ref || inputs.base_ref }}
+          FULL: ${{ inputs.full }}
           HAS_API_KEY: ${{ secrets.E2E_API_CHECKOUT_KEY != '' }}
         run: |
           set -euo pipefail
 
-          # Fork PRs never receive repository secrets. Without E2E_API_CHECKOUT_KEY the
-          # next step cannot read the companion API and fails as "repository not found".
-          # Same shape as documentation-only: mode=none, job still runs, check stays
-          # present. Must be first — a change to this file would otherwise force full
-          # and then die on checkout. The probe is the secret, not github.head_ref
-          # (that name is fork-spoofable). workflow_dispatch keeps the secret.
+          # Fork PRs never receive repository secrets. Probe the secret, not
+          # github.head_ref (that name is fork-spoofable).
           if [ "$HAS_API_KEY" != 'true' ]; then
             echo 'No run: E2E_API_CHECKOUT_KEY is not available (typical of a fork pull request).'
             echo "mode=none" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+
+          # Caller (PR CI) already decided full vs none after unit tests passed.
+          if [ "$EVENT_NAME" = 'workflow_call' ]; then
+            if [ "$FULL" = 'true' ]; then
+              echo 'Full run: caller requested a full stack.'
+              echo "mode=full" >> "$GITHUB_OUTPUT"
+            else
+              echo 'E2E skipped: add the ci:full label to run the stack.'
+              echo "mode=none" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          # Manual workflow_dispatch with a non-empty base_ref maps to
+          # pull-request scope. A bare manual dispatch has empty BASE and stays full.
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ] && [ -n "${BASE:-}" ]; then
+            EVENT_NAME=pull_request
           fi
 
           # Release PRs into main (and any non-develop base) and manual dispatches always
@@ -113,74 +149,12 @@ jobs:
             exit 0
           fi
 
-          # Safety net: guarantee the base ref exists locally even if the checkout behavior changes.
-          git fetch --quiet origin "$BASE"
+          echo 'E2E skipped: add the ci:full label to run the stack.'
+          echo "mode=none" >> "$GITHUB_OUTPUT"
 
-          # Deletions stay in the diff on purpose (no --diff-filter=d): a PR that only
-          # deletes a runtime-relevant file would otherwise produce an empty list, select
-          # 'none' and bring up no stack at all.
-          #
-          # --no-renames: git's rename detection reports only the NEW path of a renamed
-          # file. With --no-renames a rename is classified as a deletion plus an addition.
-          CHANGED=$(git diff --no-renames --name-only "origin/$BASE...HEAD")
-          echo 'Changed files:'
-          printf '%s\n' "$CHANGED"
-
-          # Path-safety guard on the RAW diff, before filtering: git quotes exotic path
-          # names (core.quotePath), which would distort the classification below - the full
-          # run is the lossless answer for anything outside the safe character set.
-          # Herestring instead of a pipe: with pipefail, grep -q quitting early could turn
-          # a hit into a SIGPIPE failure and silently defuse the guard. grep exit codes 1
-          # (no match) and >=2 (failure) must not be conflated.
-          rc=0
-          grep -qv '^[A-Za-z0-9._/-]*$' <<< "$CHANGED" || rc=$?
-          if (( rc >= 2 )); then
-            echo "::error::grep failed while validating changed paths (exit $rc)."
-            exit 1
-          fi
-          if (( rc == 0 )); then
-            echo 'Full run: a changed path contains characters outside the safe set A-Za-z0-9._/-.'
-            echo "mode=full" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Harness and this workflow are taken from the PR head. A change to either must
-          # not be allowed to classify itself as mode=none.
-          rc=0
-          e2e_hit=$(grep -E '^(e2e-stack/|\.github/workflows/e2e-stack\.yml$)' <<< "$CHANGED") || rc=$?
-          if (( rc >= 2 )); then
-            echo "::error::grep failed while matching e2e-stack or workflow paths (exit $rc)."
-            exit 1
-          fi
-          if (( rc == 0 )); then
-            echo 'Full run: the PR touches e2e-stack/ or this workflow:'
-            echo "$e2e_hit"
-            echo "mode=full" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Drop documentation: a path is documentation if it starts with docs/ or ends
-          # with .md. Empty remainder (docs-only or originally empty diff) → none. Every
-          # leftover path is treated as runtime-relevant → full. grep exit 1 (no remaining
-          # files) is none; >=2 must fail the step.
-          rc=0
-          remaining=$(grep -Ev '(^docs/|\.md$)' <<< "$CHANGED") || rc=$?
-          if (( rc >= 2 )); then
-            echo "::error::grep failed while filtering documentation paths (exit $rc)."
-            exit 1
-          fi
-          # rc==1: grep found no remaining files. Empty remaining after command
-          # substitution also covers an originally empty diff (grep may still exit 0
-          # on a blank herestring line that then collapses to "").
-          if (( rc == 1 )) || [[ -z "$remaining" ]]; then
-            echo 'No run: documentation-only or empty diff (no runtime-relevant changes).'
-            echo "mode=none" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo 'Full run: remaining paths are treated as runtime-relevant:'
-          echo "$remaining"
-          echo "mode=full" >> "$GITHUB_OUTPUT"
+      - name: Checkout services
+        if: steps.scope.outputs.mode != 'none'
+        uses: actions/checkout@v4
 
       # GITHUB_TOKEN of this public repository cannot read the private API
       # repository. A read-only deploy key (secret E2E_API_CHECKOUT_KEY) is
@@ -189,6 +163,7 @@ jobs:
       # Playwright step can take the documented no-stack path instead of
       # failing at checkout with "repository not found".
       - name: Detect API checkout credential
+        if: steps.scope.outputs.mode != 'none'
         id: api_cred
         env:
           KEY: ${{ secrets.E2E_API_CHECKOUT_KEY }}
@@ -300,22 +275,23 @@ jobs:
         # `if: always()` so artifact collection and teardown still run.
         # --env-file is not optional here: up.sh writes the values it resolved into that file, and
         # a compose run that resolves them differently recreates the API container mid-run.
-        # The step always runs: selection is in-job rather than a skip, so the merge gate
-        # cannot be defeated by a skipped check (see header comment).
+        # Draft skip is the job `if:` above. Inside a run, selection is this step
+        # rather than a `paths:` filter or a scope `if:` (see header comment).
         env:
           MODE: ${{ steps.scope.outputs.mode }}
           API_CRED: ${{ steps.api_cred.outputs.available }}
         run: |
           set -euo pipefail
-          if [ "${API_CRED}" != 'yes' ]; then
-            echo 'No API checkout credential — not starting the e2e stack. The job ran.'
-            exit 0
-          fi
           case "$MODE" in
             none)
-              echo 'No runtime-relevant changes in this PR (documentation-only or empty diff) — not running the e2e stack.'
+              echo 'E2E skipped: add the ci:full label to run the stack (or target main / dispatch).'
+              exit 0
               ;;
             full)
+              if [ "${API_CRED}" != 'yes' ]; then
+                echo 'No API checkout credential — not starting the e2e stack. The job ran.'
+                exit 0
+              fi
               # Every spec is in scope here, so the coverage gate checks navigations, not just claims.
               # E2E_FULL_RUN is inline on this command only — not a static step env that would also
               # apply to mode=none.

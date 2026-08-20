@@ -1,12 +1,20 @@
 # PR CI: lint, format, tests, and builds.
 #
-# The job has no `if:` because a skipped required check counts as passing.
-# Develop PRs without the `ci:full` label run only Jest `--findRelatedTests` on
-# changed files under `src/**` and `functions/**`. The full suite runs for PRs
-# into main, workflow_dispatch, the `ci:full` label, test/build infrastructure
-# changes, unsafe path characters, and any deleted (or renamed-as-deleted)
-# source file under `src/` or `functions/`. Lint, Markdown format check,
-# `build:dev`, and `widget:dev` always run in full.
+# A job-level skip is intentional only for drafts that lack `ci`/`ci:full`.
+# A skipped required check counts as passing; that is acceptable only because
+# GitHub cannot merge a draft. Ready is handled exclusively by ci-on-ready.yaml
+# (adds `ci` and workflow_dispatches this suite; GITHUB_TOKEN cannot trigger
+# `labeled`). Never listen to `ready_for_review` here. A human-applied `ci`
+# still starts via `labeled`.
+#
+# When the job runs, develop PRs without the `ci:full` label run only Jest
+# `--findRelatedTests` on changed files under `src/**` and `functions/**`. The
+# full suite runs for PRs into main, a bare workflow_dispatch (empty
+# base_ref), the `ci:full` label, test/build infrastructure changes, unsafe
+# path characters, and any deleted (or renamed-as-deleted) source file under
+# `src/` or `functions/`. A Ready kick with base_ref follows pull-request
+# scope. Lint, Markdown format check, `build:dev`, and `widget:dev` always
+# run in full.
 
 name: PR CI
 
@@ -19,11 +27,18 @@ on:
       - opened
       - synchronize
       - reopened
-      - ready_for_review
-      - edited
       - labeled
       - unlabeled
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number when kicked by ci-on-ready (empty = manual full run)
+        required: false
+        type: string
+      base_ref:
+        description: PR base branch when kicked by ci-on-ready
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -31,9 +46,22 @@ permissions:
 env:
   NODE_VERSION: '20.x'
 
+# A new push must cancel the previous run of this PR. Ready dispatch uses
+# pr_number so it shares the group and does not start a sibling suite.
+# Draft-skip runs (job `if:` false) must not share that group: concurrency
+# fires before the skip, and would cancel a live Ready dispatch.
+concurrency:
+  group: pr-ci-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'ci:full')) && 'run' || 'skip' }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build and test
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.draft == false ||
+      contains(github.event.pull_request.labels.*.name, 'ci') ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on: ubuntu-latest
     steps:
       # Full history (fetch-depth: 0): the scope step below diffs against the merge base
@@ -45,13 +73,13 @@ jobs:
           fetch-depth: 0
 
       # Decides, inside the job, whether this run needs the full suite or only the tests
-      # related to the PR's changed files. Never a job `if:` or a `paths:` filter: a
-      # skipped required check counts as passing.
+      # related to the PR's changed files. Never a `paths:` filter: a skipped required
+      # check counts as passing. Draft skip is the job `if:` above, not this step.
       - name: Determine test scope
         id: scope
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE: ${{ github.base_ref }}
+          BASE: ${{ github.base_ref || inputs.base_ref }}
         run: |
           set -euo pipefail
 
@@ -64,6 +92,12 @@ jobs:
             { echo "mode=$mode"; echo "files=$files"; } >> "$GITHUB_OUTPUT"
             exit 0
           }
+
+          # Ready kick: workflow_dispatch with a non-empty base_ref maps to
+          # pull-request scope. A bare manual dispatch has empty BASE and stays full.
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ] && [ -n "${BASE:-}" ]; then
+            EVENT_NAME=pull_request
+          fi
 
           if [[ "$EVENT_NAME" != 'pull_request' ]]; then
             echo "Full run: event is '$EVENT_NAME', not a pull request."
@@ -218,3 +252,20 @@ jobs:
 
       - name: Build widget
         run: npm run widget:dev
+
+  # After Build and test so E2E cannot start (and occupy a runner) while unit
+  # tests are still queued. Develop without ci:full is an in-job no-op.
+  e2e:
+    name: Full-stack E2E
+    needs: [build]
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.draft == false ||
+      contains(github.event.pull_request.labels.*.name, 'ci') ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
+    uses: ./.github/workflows/e2e-stack.yml
+    with:
+      pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
+      base_ref: ${{ github.base_ref || inputs.base_ref }}
+      full: ${{ (github.event_name == 'pull_request' && (github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) || (github.event_name != 'pull_request' && (inputs.base_ref == '' || inputs.base_ref == 'main')) }}
+    secrets: inherit

@@ -121,12 +121,13 @@ The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (ov
 
 The suite under `e2e/` is visual-regression testing (screenshot baselines). It deliberately does not run in CI, because baselines are platform- and font-dependent.
 
-This harness checks function, not appearance. The CI job always runs; the stack
-comes up only for runtime-relevant changes. Documentation-only PRs with safe path
-characters skip the stack (`mode=none`). There is no selected/partial mode:
-every leftover runtime path, the `ci:full` label, PRs into `main`,
-`workflow_dispatch`, unsafe path characters, and changes under `e2e-stack/` or
-`.github/workflows/e2e-stack.yml` force a full run. Both suites exist side by side and serve different purposes.
+This harness checks function, not appearance. Draft PRs skip the CI job unless
+they carry `ci` or `ci:full`; a same-repo ready requests it once and does not
+start a second run when that label is already present. A develop PR without
+`ci:full` records `mode=none` and does not bring the stack up. There is no
+selected/partial mode: `ci:full`, PRs into `main`, and a bare
+`workflow_dispatch` (empty `base_ref`) force a full run. Both suites exist
+side by side and serve different purposes.
 
 ## Relationship with the API repository
 
@@ -184,7 +185,7 @@ docker run --rm -v "${project}_e2e-test-results:/vol" -v "$(pwd)/test-results:/d
 docker run --rm -v "${project}_e2e-playwright-report:/vol" -v "$(pwd)/playwright-report:/dest" alpine cp -a /vol/. /dest/
 ```
 
-In CI the workflow does this automatically on a full run and uploads an artifact named `e2e-stack-report`. Docs-only runs (`mode=none`) produce no artifact.
+In CI the workflow does this automatically on a full run and uploads an artifact named `e2e-stack-report`. Skipped stack runs (`mode=none`) produce no artifact.
 
 **Stack does not become healthy**
 
