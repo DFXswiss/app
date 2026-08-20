@@ -1,0 +1,130 @@
+# Ready adds the `ci` label and workflow_dispatches the heavy suite because
+# GITHUB_TOKEN cannot trigger `labeled`. If `ci` or `ci:full` is already set,
+# this job is skipped — no dispatch, no cancel-in-progress restart.
+
+name: Request CI on ready
+
+on:
+  pull_request:
+    types: [ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  # Creating the repo label `ci` (POST /labels) needs issues:write.
+  # Adding it to the PR needs pull-requests:write. Both are required
+  # for the Ready path when the label does not already exist.
+  issues: write
+  # workflow_dispatch of the heavy workflows, then label (label must not
+  # stick if a dispatch failed).
+  actions: write
+
+jobs:
+  ensure-ci-label:
+    name: Ensure CI label
+    if: >
+      !contains(github.event.pull_request.labels.*.name, 'ci') &&
+      !contains(github.event.pull_request.labels.*.name, 'ci:full')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch heavy workflows, then create/add ci label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          # Use the REST API via curl so this job does not depend on `gh`
+          # being installed on the runner.
+          set -euo pipefail
+          api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}"
+          tmp="$(mktemp)"
+
+          # ready_for_review already flipped the PR out of draft. If this
+          # kick fails, leftover skipped heavy checks would count as passing
+          # on a mergeable PR. Put it back to draft so merge stays blocked.
+          # EXIT (not ERR): the fail paths use explicit `exit 1`.
+          revert_to_draft() {
+            local code
+            code="$(curl -sS -o "$tmp" -w '%{http_code}' \
+              -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${api}/pulls/${PR_NUMBER}/convert_to_draft")" || code="000"
+            if [ "${code#2}" = "$code" ]; then
+              echo "::error::convert_to_draft failed: HTTP ${code}" >&2
+              python3 -c 'import sys; print(sys.stdin.read())' < "$tmp" >&2
+              return 1
+            fi
+            echo "converted PR ${PR_NUMBER} back to draft (HTTP ${code})"
+          }
+          trap 'revert_to_draft' EXIT
+
+          # Fork heads cannot be workflow_dispatched from this repo. Do not add
+          # `ci` with GITHUB_TOKEN first: that would skip later Ready runs and
+          # would not fire `labeled`. A human-applied `ci` still starts CI.
+          # Fork runs get a read-only GITHUB_TOKEN, so convert_to_draft in the
+          # EXIT trap may also fail; the job still fails loud. A maintainer
+          # must apply `ci` (and approve the run) rather than rely on revert.
+          if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
+            echo "error: fork draft — GITHUB_TOKEN cannot workflow_dispatch a fork head." >&2
+            echo "error: a human must apply the ci label so the labeled event starts CI." >&2
+            exit 1
+          fi
+
+          # Dispatch first. Adding `ci` with GITHUB_TOKEN does not start
+          # `labeled` runs, but it would skip this job on a later Ready, so
+          # the label must not stick if a dispatch failed.
+          body="$(jq -n \
+            --arg ref "$HEAD_REF" \
+            --arg pr "$PR_NUMBER" \
+            --arg base "$BASE_REF" \
+            '{ref:$ref, inputs:{pr_number:$pr, base_ref:$base}}')"
+          for wf in pr.yml e2e-stack.yml codeql.yml pr-review-bot.yml; do
+            code="$(curl -sS -o "$tmp" -w '%{http_code}' \
+              -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              -H "Content-Type: application/json" \
+              -d "$body" \
+              "${api}/actions/workflows/${wf}/dispatches")"
+            if [ "${code#2}" = "$code" ]; then
+              echo "dispatch ${wf} failed: HTTP ${code}" >&2
+              python3 -c 'import sys; print(sys.stdin.read())' < "$tmp" >&2
+              exit 1
+            fi
+            echo "dispatched ${wf} on ref ${HEAD_REF} (pr ${PR_NUMBER}, base ${BASE_REF})"
+          done
+
+          code="$(curl -sS -o "$tmp" -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"ci","color":"0E8A16","description":"Run PR CI on this draft"}' \
+            "${api}/labels")"
+          if [ "$code" != "422" ] && [ "${code#2}" = "$code" ]; then
+            echo "create label failed: HTTP ${code}" >&2
+            python3 -c 'import sys; print(sys.stdin.read())' < "$tmp" >&2
+            exit 1
+          fi
+          code="$(curl -sS -o "$tmp" -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Content-Type: application/json" \
+            -d '{"labels":["ci"]}' \
+            "${api}/issues/${PR_NUMBER}/labels")"
+          if [ "${code#2}" = "$code" ]; then
+            echo "add label failed: HTTP ${code}" >&2
+            python3 -c 'import sys; print(sys.stdin.read())' < "$tmp" >&2
+            exit 1
+          fi
+          trap - EXIT

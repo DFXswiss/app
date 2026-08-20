@@ -81,14 +81,20 @@ Two obligations follow from it for every pull request:
 npm run test
 ```
 
-The PR CI job always runs. Develop PRs without `ci:full` run Jest
+Draft PRs skip the PR CI job unless they carry the `ci` or `ci:full` label.
+Apply `ci` on a draft to run the job, or `ci:full` to force the full Jest
+suite. Marking a same-repo PR ready for review requests CI once: it adds `ci`
+and dispatches the suite. If `ci` or `ci:full` is already present, ready does
+not start a second run. Fork heads cannot be dispatched that way; apply `ci`
+so the `labeled` event starts CI (a maintainer may still need to approve the
+run). When the job runs, develop PRs without `ci:full` run Jest
 `--findRelatedTests` on changed files under `src/` and `functions/`. A PR with
 no such files and no full-run trigger records `mode=none` and skips the suite
 without failing. Apply `ci:full` to force the full suite, as do PRs into `main`,
-`workflow_dispatch`, unsafe path characters, test/build infrastructure, and
-deleting or renaming files under `src/` or `functions/`. Lint, Markdown
-formatting (`format:md:check`), `build:dev` and `widget:dev` always run in full.
-The job is never skipped.
+a bare `workflow_dispatch`, unsafe path characters, test/build infrastructure,
+and deleting or renaming files under `src/` or `functions/`. Lint, Markdown
+formatting (`format:md:check`), `build:dev` and `widget:dev` always run in full
+when the job runs.
 
 #### Coverage
 
@@ -206,11 +212,15 @@ yourself, so nothing fails at build time.
 The full-stack harness under `e2e-stack/` runs the real frontend, API, and
 Postgres together (external providers are mocked). Unlike the visual-regression
 suite under `e2e/` — see [Visual regression tests (Playwright)](#visual-regression-tests-playwright)
-above, which does not run in CI — this harness's job runs on every pull request.
-The stack comes up only for runtime-relevant changes. Documentation-only PRs with
-safe path characters record `mode=none` and skip the stack. Apply `ci:full` (or
-target `main`, run `workflow_dispatch`, use unsafe path characters, or touch
-`e2e-stack/` / `.github/workflows/e2e-stack.yml`) to force a full run.
+above, which does not run in CI — this harness's job follows the same draft
+policy as PR CI: drafts skip it unless they carry `ci` or `ci:full`; a
+same-repo ready requests it once and does not start a second run when that
+label is already present; fork heads need `ci` (and possibly run approval).
+When the job runs, the stack comes up only for runtime-relevant
+changes. Documentation-only PRs with safe path characters record `mode=none`
+and skip the stack. Apply `ci:full` (or target `main`, run a bare
+`workflow_dispatch`, use unsafe path characters, or touch `e2e-stack/` /
+`.github/workflows/e2e-stack.yml`) to force a full run.
 
 A pull request that changes a screen or an API contract should bring or update
 the matching full-stack test.

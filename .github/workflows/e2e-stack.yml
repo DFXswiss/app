@@ -1,9 +1,15 @@
 # Full-stack E2E: real frontend + API + Postgres against mocked external providers.
 #
-# Do not add a job-level `if:` skip condition (for draft PRs, path filters, or similar).
-# A skipped GitHub Actions check counts as passing, which would silently defeat the
-# merge gate. If you ever consider adding a skip anywhere in this file, justify it in
-# a comment right there.
+# A job-level skip is intentional only for drafts that lack `ci`/`ci:full`.
+# A skipped required check counts as passing; that is acceptable only because
+# GitHub cannot merge a draft. Ready is handled exclusively by ci-on-ready.yaml
+# (adds `ci` and workflow_dispatches this suite; GITHUB_TOKEN cannot trigger
+# `labeled`). Never listen to `ready_for_review` here. A human-applied `ci`
+# still starts via `labeled`. Scope (full vs none) still happens inside the
+# job (the "Determine e2e scope" step) instead of `on.paths` or a job `if:`
+# that would skip a ready or labeled required check.
+# If you ever consider adding another skip anywhere in this file, justify it
+# in a comment right there.
 #
 # Relation to DFXswiss/backend: the corresponding workflow there checks this repository out to
 # find e2e-stack/, so it reads whatever is on develop at the time it runs. Until this pull
@@ -11,13 +17,14 @@
 # instead, which means neither side is blocked on the other and either merge order works.
 #
 # Documentation-only PRs (docs/ and *.md) with safe path characters bring up no stack
-# (mode=none); the job still runs and the Playwright step succeeds with a message.
+# (mode=none); when the job is allowed to run, Playwright succeeds with a message.
 # Fork pull requests also take mode=none: they do not receive repository secrets, so
 # E2E_API_CHECKOUT_KEY is empty and Checkout API would fail as "repository not found".
-# The job still runs (no job-level `if:`). API checkout, bootstrap resolution, and
+# Draft skip is the only job-level `if:`. API checkout, bootstrap resolution, and
 # harness tsc run only when mode != none.
-# PRs into main, workflow_dispatch, and PRs with the `ci:full` label always run the full
-# suite. A change under e2e-stack/ or to .github/workflows/e2e-stack.yml always forces
+# PRs into main, a bare workflow_dispatch (empty base_ref), and PRs with the `ci:full`
+# label always run the full suite. A Ready kick with base_ref follows pull-request
+# scope. A change under e2e-stack/ or to .github/workflows/e2e-stack.yml always forces
 # full (the workflow must not classify itself as none). Every other remaining change
 # after filtering docs/ and *.md is treated as runtime-relevant and runs full. There is
 # no selected/partial spec mapping in this repository.
@@ -33,8 +40,6 @@ on:
       - opened
       - synchronize
       - reopened
-      - ready_for_review
-      - edited
       - labeled
       - unlabeled
   workflow_dispatch:
@@ -44,17 +49,32 @@ on:
         required: false
         default: 'develop'
         type: string
+      pr_number:
+        description: PR number when kicked by ci-on-ready (empty = manual full run)
+        required: false
+        type: string
+      base_ref:
+        description: PR base branch when kicked by ci-on-ready
+        required: false
+        type: string
 
 permissions:
   contents: read
 
+# Draft-skip runs must not share the working group: concurrency fires before
+# the job `if:` and would cancel a live Ready dispatch.
 concurrency:
-  group: e2e-stack-${{ github.event.pull_request.number || github.ref }}
+  group: e2e-stack-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'ci:full')) && 'run' || 'skip' }}
   cancel-in-progress: true
 
 jobs:
   e2e:
     name: Full-stack E2E
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.draft == false ||
+      contains(github.event.pull_request.labels.*.name, 'ci') ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -66,17 +86,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Decides in-job whether to bring the stack up — never via a job `if:` or a `paths:`
-      # filter, because a skipped check counts as passing (see header comment). Modes are
-      # only full and none; there is no selected/partial spec mapping in this repository.
+      # Decides in-job whether to bring the stack up — never via a `paths:` filter.
+      # Draft skip is the job `if:` above (see header). Modes are only full and none;
+      # there is no selected/partial spec mapping in this repository.
       - name: Determine e2e scope
         id: scope
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE: ${{ github.base_ref }}
+          BASE: ${{ github.base_ref || inputs.base_ref }}
           HAS_API_KEY: ${{ secrets.E2E_API_CHECKOUT_KEY != '' }}
         run: |
           set -euo pipefail
+
+          # Ready kick: workflow_dispatch with a non-empty base_ref maps to
+          # pull-request scope. A bare manual dispatch has empty BASE and stays full.
+          if [ "$EVENT_NAME" = 'workflow_dispatch' ] && [ -n "${BASE:-}" ]; then
+            EVENT_NAME=pull_request
+          fi
 
           # Fork PRs never receive repository secrets. Without E2E_API_CHECKOUT_KEY the
           # next step cannot read the companion API and fails as "repository not found".
@@ -300,8 +326,8 @@ jobs:
         # `if: always()` so artifact collection and teardown still run.
         # --env-file is not optional here: up.sh writes the values it resolved into that file, and
         # a compose run that resolves them differently recreates the API container mid-run.
-        # The step always runs: selection is in-job rather than a skip, so the merge gate
-        # cannot be defeated by a skipped check (see header comment).
+        # Draft skip is the job `if:` above. Inside a run, selection is this step
+        # rather than a `paths:` filter or a scope `if:` (see header comment).
         env:
           MODE: ${{ steps.scope.outputs.mode }}
           API_CRED: ${{ steps.api_cred.outputs.available }}

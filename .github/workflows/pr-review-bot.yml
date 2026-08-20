@@ -5,7 +5,23 @@ on:
     branches:
       - main
       - develop
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number when kicked by ci-on-ready (required for a useful run)
+        required: false
+        type: string
+      base_ref:
+        description: PR base branch when kicked by ci-on-ready
+        required: false
+        type: string
+
+# Draft-skip runs must not share the working group: concurrency fires before
+# the job `if:` and would cancel a live Ready dispatch.
+concurrency:
+  group: review-pr-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'ci:full')) && 'run' || 'skip' }}
+  cancel-in-progress: true
 
 permissions:
   pull-requests: write
@@ -13,7 +29,18 @@ permissions:
 
 jobs:
   review:
+    # Draft skip only: a skipped required check counts as passing, which is
+    # acceptable only because GitHub cannot merge a draft. Ready is handled
+    # exclusively by ci-on-ready.yaml. Never listen to ready_for_review here.
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.draft == false ||
+      contains(github.event.pull_request.labels.*.name, 'ci') ||
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+      BASE_REF: ${{ github.base_ref || inputs.base_ref }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,10 +61,11 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const prNumber = Number(process.env.PR_NUMBER || context.issue.number);
             const commits = await github.rest.pulls.listCommits({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: context.issue.number
+              pull_number: prNumber
             });
 
             const unverified = commits.data.filter(c => !c.commit.verification?.verified);
@@ -103,18 +131,27 @@ jobs:
       - name: Check for new TODOs/FIXMEs
         id: todos
         run: |
-          git diff origin/${{ github.base_ref }}...HEAD -- '*.ts' '*.tsx' | grep -E '^\+.*\b(TODO|FIXME|HACK|XXX)\b' | head -20 > new-todos.txt || true
+          set -euo pipefail
+          if [ -z "${BASE_REF:-}" ]; then
+            echo "::error::BASE_REF is empty; cannot diff TODOs against the PR base."
+            exit 1
+          fi
+          git fetch --quiet origin "$BASE_REF"
+          git diff "origin/${BASE_REF}"...HEAD -- '*.ts' '*.tsx' | grep -E '^\+.*\b(TODO|FIXME|HACK|XXX)\b' | head -20 > new-todos.txt || true
           COUNT=$(wc -l < new-todos.txt | tr -d ' ')
           echo "count=$COUNT" >> $GITHUB_OUTPUT
 
       - name: Post PR comment
         # Fork PRs run with a read-only GITHUB_TOKEN, so the issue-comment API returns 403 and fails the whole job.
         # The bot can only post on same-repo PRs; skip cleanly on forks instead of turning the check red.
-        if: github.event.pull_request.head.repo.full_name == github.repository
+        # workflow_dispatch is the in-repo ready kick, so it must post.
+        if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
+
+            const prNumber = Number(process.env.PR_NUMBER || context.issue.number);
 
             const unverified = '${{ steps.verify-commits.outputs.unverified }}' === 'true';
             const unverifiedCount = '${{ steps.verify-commits.outputs.unverified_count }}';
@@ -203,7 +240,7 @@ jobs:
             const existingComments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number
+              issue_number: prNumber
             });
 
             const botComment = existingComments.data.find(c =>
@@ -221,7 +258,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: prNumber,
                 body
               });
             }
