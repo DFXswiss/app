@@ -1,15 +1,13 @@
 # Full-stack E2E: real frontend + API + Postgres against mocked external providers.
 #
-# A job-level skip is intentional only for drafts that lack `ci`/`ci:full`.
-# A skipped required check counts as passing; that is acceptable only because
-# GitHub cannot merge a draft. Ready is handled exclusively by ci-on-ready.yaml
-# (adds `ci` and workflow_dispatches this suite; GITHUB_TOKEN cannot trigger
-# `labeled`). Never listen to `ready_for_review` here. A human-applied `ci`
-# still starts via `labeled`. Scope (full vs none) still happens inside the
-# job (the "Determine e2e scope" step) instead of `on.paths` or a job `if:`
-# that would skip a ready or labeled required check.
-# If you ever consider adding another skip anywhere in this file, justify it
-# in a comment right there.
+# Draft skip lives on the caller in pr.yml (job `if:`). This file has no
+# pull_request trigger, so `labeled` and Ready do not start it. Ready dispatches
+# pr.yml (not this file); pr.yml then workflow_calls here after Build and test.
+# workflow_dispatch remains for manual runs. Never listen to ready_for_review
+# here. Scope (full vs none) still happens inside the job (the "Determine e2e
+# scope" step) instead of `on.paths` or a job `if:` that would skip a required
+# check. If you ever consider adding another skip anywhere in this file,
+# justify it in a comment right there.
 #
 # Relation to DFXswiss/backend: the corresponding workflow there checks this repository out to
 # find e2e-stack/, so it reads whatever is on develop at the time it runs. Until this pull
@@ -19,9 +17,10 @@
 # A develop PR without the ci:full label does not bring up the stack (mode=none
 # inside the job). That is what keeps a standard develop PR under 10 minutes.
 # PRs into main, a bare workflow_dispatch, and the ci:full label run the full
-# suite. A Ready kick with base_ref follows pull-request scope (also none
-# unless ci:full). Fork pull requests also take mode=none: they do not receive
-# repository secrets, so E2E_API_CHECKOUT_KEY is empty and Checkout API would
+# suite. When PR CI calls this workflow with base_ref, scope follows the pull
+# request (also none unless ci:full). Fork pull requests also take mode=none:
+# they do not receive repository secrets, so E2E_API_CHECKOUT_KEY is empty and
+# Checkout API would
 # fail as "repository not found". The probe is the secret, not github.head_ref
 # (that name is fork-spoofable). Draft skip is the only job-level `if:`. API
 # checkout, bootstrap resolution, and harness tsc run only when mode != none.
@@ -58,21 +57,23 @@ on:
         required: false
         type: string
       pr_number:
-        description: PR number when kicked by ci-on-ready (empty = manual full run)
+        description: PR number for manual dispatch (empty = no PR)
         required: false
         type: string
       base_ref:
-        description: PR base branch when kicked by ci-on-ready
+        description: PR base branch for manual dispatch (empty = bare/full run)
         required: false
         type: string
 
 permissions:
   contents: read
 
-# Draft-skip runs must not share the working group: concurrency fires before
-# the job `if:` and would cancel a live Ready dispatch.
+# Draft-skip runs must not share the working group with a live call.
+# workflow_call (PR path) and workflow_dispatch (manual) must not share a
+# cancel group either. Include event_name so a dispatch cannot cancel the
+# nested required check.
 concurrency:
-  group: e2e-stack-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'ci:full')) && 'run' || 'skip' }}
+  group: e2e-stack-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ github.event_name }}-${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'ci:full')) && 'run' || 'skip' }}
   cancel-in-progress: true
 
 jobs:
