@@ -12,8 +12,8 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 | Layer             | Location     | What it proves                                                               | What it cannot prove                                               | Runs in CI                                   |
 | ----------------- | ------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------- |
-| Unit              | `src/`       | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | job always; suite full / related / none      |
-| Full-stack E2E    | `e2e-stack/` | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | job always; stack not on safe-path docs-only |
+| Unit              | `src/`       | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts skip unless `ci`/`ci:full`; suite full / related / none |
+| Full-stack E2E    | `e2e-stack/` | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts skip unless `ci`/`ci:full`; stack not on safe-path docs-only |
 | Visual regression | `e2e/`       | appearance against committed screenshot baselines                            | function                                                           | no                                           |
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
