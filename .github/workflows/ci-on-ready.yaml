@@ -70,8 +70,10 @@ jobs:
               python3 -c 'import sys; print(sys.stdin.read())' < "$tmp" >&2
               return 1
             fi
-            if jq -e '.errors != null' "$tmp" >/dev/null; then
-              echo "::error::convert_to_draft GraphQL errors:" >&2
+            # Fail closed: parse errors, GraphQL errors, and isDraft!=true
+            # must not look like a successful revert.
+            if ! jq -e '.errors == null and .data.convertPullRequestToDraft.pullRequest.isDraft == true' "$tmp" >/dev/null; then
+              echo "::error::convert_to_draft did not confirm isDraft=true:" >&2
               python3 -c 'import sys; print(sys.stdin.read())' < "$tmp" >&2
               return 1
             fi
