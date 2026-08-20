@@ -567,9 +567,7 @@ test('assign route opens list with unassigned row and assigns to single buy targ
     .toEqual({ bankTxType: 'BuyCrypto', buyCryptoBuyId: buy.buyId });
 });
 
-test('public uid assign route opens the guest assign form and assigns to the single buy target', async ({
-  page,
-}) => {
+test('public uid assign route opens the guest assign form and assigns to the single buy target', async ({ page }) => {
   const user = await createUser({
     tag: 'tx-assign-uid',
     kycLevel: 30,
@@ -600,7 +598,12 @@ test('public uid assign route opens the guest assign form and assigns to the sin
   await page.goto(`/tx/${unassigned.uid}/${ACTION_SECRET}/assign`);
   await page.waitForLoadState('networkidle');
 
-  await expect(page.getByRole('heading', { name: 'Assign transaction', exact: true })).toBeVisible();
+  // The screen title comes from useLayoutOptions and renders in the app bar as a plain element, not
+  // as a heading, so getByRole('heading') never matches it - the other title assertions in this file
+  // use getByText for the same reason. The submit button carries the same accessible name, so the
+  // text locator matches twice; the app bar precedes the form, hence first(). 'Your Transactions' is
+  // a real in-page heading, so the negative assertion below stays role-based and keeps its meaning.
+  await expect(page.getByText('Assign transaction', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Your Transactions', exact: true })).not.toBeVisible();
 
   const assignBtn = page.getByRole('button', { name: 'Assign transaction' });
