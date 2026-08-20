@@ -682,6 +682,32 @@ test("assign route for another user's unassigned tx leaves list empty of that ro
 // /tx/:id/refund — refund form (uid)
 // ---------------------------------------------------------------------------
 
+// The refund screen opens on either an action secret or a session (transaction.screen.tsx:
+// `isRefund = ... && (hasActionSecret || isLoggedIn)`). Every other refund test below takes the
+// guest path with a secret, so without this one the logged-in half of that condition is untested
+// and /tx/:id/refund - claimed in the route registry - is never opened.
+test('logged-in refund route opens the refund form without an action secret', async ({ page }) => {
+  const user = await createUser({
+    tag: 'tx-refund-session',
+    kycLevel: 30,
+    completePersonalData: true,
+  });
+  const tx = await createTransaction({
+    state: 'pending_buy',
+    tag: 'tx-refund-session',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 189,
+    inputAsset: 'CHF',
+  });
+
+  await openScreen(page, `/tx/${tx.uid}/refund`, user.jwt);
+
+  await expect(page.getByText('Transaction refund', { exact: true })).toBeVisible();
+  await expect(page.locator('input[name="street"]')).toBeVisible();
+});
+
 test('pending buy refund form submits and writes chargeback columns', async ({ page }) => {
   const user = await createUser({
     tag: 'tx-refund-ok',
