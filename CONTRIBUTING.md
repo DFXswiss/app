@@ -234,8 +234,9 @@ was never actually opened by any test. The browser records every navigation it
 makes, and the gate compares that recording against the route list, so a claim
 pointing at a file that never visits the route does not satisfy it. Adding a route
 therefore means adding a claim in `e2e-stack/specs/registry/` and a test that
-navigates there; otherwise CI goes red on the new route, not on some unrelated
-assertion.
+navigates there. That gate runs only when the stack comes up (`ci:full`, a PR
+into `main`, or a bare `workflow_dispatch`); a standard develop PR without
+`ci:full` does not enforce it.
 
 Run locally:
 
