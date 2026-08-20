@@ -600,9 +600,13 @@ test('public uid assign route opens the guest assign form and assigns to the sin
 
   // The screen title comes from useLayoutOptions and renders in the app bar as a plain element, not
   // as a heading, so getByRole('heading') never matches it - the other title assertions in this file
-  // use getByText for the same reason. The submit button carries the same accessible name, so the
-  // text locator matches twice; the app bar precedes the form, hence first(). 'Your Transactions' is
-  // a real in-page heading, so the negative assertion below stays role-based and keeps its meaning.
+  // use getByText for the same reason.
+  // first() is load-bearing and safe: exact getByText resolves like :text-is, i.e. the *smallest*
+  // element whose own text nodes match, so it finds the app-bar title and the identically named
+  // submit button - two elements, not their shared ancestors, which contribute no text of their own.
+  // The app bar precedes the form, so first() is the title.
+  // 'Your Transactions' is a real in-page heading (see the list tests above), so the negative
+  // assertion below stays role-based and keeps its meaning.
   await expect(page.getByText('Assign transaction', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Your Transactions', exact: true })).not.toBeVisible();
 
