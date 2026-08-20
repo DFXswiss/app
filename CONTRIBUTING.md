@@ -94,7 +94,10 @@ without failing. Apply `ci:full` to force the full suite, as do PRs into `main`,
 a bare `workflow_dispatch`, unsafe path characters, test/build infrastructure,
 and deleting or renaming files under `src/` or `functions/`. Lint, Markdown
 formatting (`format:md:check`), `build:dev` and `widget:dev` always run in full
-when the job runs.
+when the job runs. A standard PR into `develop` (no `ci:full`) must finish CI
+in under 10 minutes wall-clock; the full-stack E2E job is an in-job no-op
+unless `ci:full` is set. Full runs (`ci:full`, PRs into `main`, a bare
+`workflow_dispatch`) may take longer.
 
 #### Coverage
 
@@ -216,11 +219,9 @@ above, which does not run in CI — this harness's job follows the same draft
 policy as PR CI: drafts skip it unless they carry `ci` or `ci:full`; a
 same-repo ready requests it once and does not start a second run when that
 label is already present; fork heads need `ci` (and possibly run approval).
-When the job runs, the stack comes up only for runtime-relevant
-changes. Documentation-only PRs with safe path characters record `mode=none`
-and skip the stack. Apply `ci:full` (or target `main`, run a bare
-`workflow_dispatch`, use unsafe path characters, or touch `e2e-stack/` /
-`.github/workflows/e2e-stack.yml`) to force a full run.
+A develop PR without `ci:full` records `mode=none` and does not bring the
+stack up (the job still runs). Apply `ci:full`, target `main`, or run a bare
+`workflow_dispatch` to force a full run.
 
 A pull request that changes a screen or an API contract should bring or update
 the matching full-stack test.
