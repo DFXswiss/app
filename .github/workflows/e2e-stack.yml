@@ -45,9 +45,8 @@ on:
   workflow_dispatch:
     inputs:
       api_ref:
-        description: 'Git ref of DFXswiss/backend to check out and build against'
+        description: 'Git ref of DFXswiss/backend to check out and build against (empty = develop)'
         required: false
-        default: 'develop'
         type: string
       pr_number:
         description: PR number when kicked by ci-on-ready (empty = manual full run)
