@@ -32,13 +32,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           THIS_REPO: ${{ github.repository }}
         run: |
-          # Use the REST API via curl so this job does not depend on `gh`
-          # being installed on the runner.
+          # Use the REST/GraphQL APIs via curl so this job does not depend
+          # on `gh` being installed on the runner.
           set -euo pipefail
           api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}"
           tmp="$(mktemp)"
@@ -46,17 +47,31 @@ jobs:
           # ready_for_review already flipped the PR out of draft. If this
           # kick fails, leftover skipped heavy checks would count as passing
           # on a mergeable PR. Put it back to draft so merge stays blocked.
-          # EXIT (not ERR): the fail paths use explicit `exit 1`.
+          # REST has no convert-to-draft endpoint; GraphQL does
+          # (convertPullRequestToDraft). EXIT (not ERR): fail paths `exit 1`.
           revert_to_draft() {
-            local code
+            local code gql
+            if [ -z "${PR_NODE_ID:-}" ]; then
+              echo "::error::PR_NODE_ID is empty; cannot convert to draft." >&2
+              return 1
+            fi
+            gql="$(jq -n --arg id "$PR_NODE_ID" \
+              '{query:"mutation($id:ID!){ convertPullRequestToDraft(input:{pullRequestId:$id}) { pullRequest { isDraft } } }",variables:{id:$id}}')"
             code="$(curl -sS -o "$tmp" -w '%{http_code}' \
               -X POST \
               -H "Authorization: Bearer ${GH_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              "${api}/pulls/${PR_NUMBER}/convert_to_draft")" || code="000"
+              -H "Content-Type: application/json" \
+              -d "$gql" \
+              "${GITHUB_GRAPHQL_URL}")" || code="000"
             if [ "${code#2}" = "$code" ]; then
               echo "::error::convert_to_draft failed: HTTP ${code}" >&2
+              python3 -c 'import sys; print(sys.stdin.read())' < "$tmp" >&2
+              return 1
+            fi
+            if jq -e '.errors != null' "$tmp" >/dev/null; then
+              echo "::error::convert_to_draft GraphQL errors:" >&2
               python3 -c 'import sys; print(sys.stdin.read())' < "$tmp" >&2
               return 1
             fi
