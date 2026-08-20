@@ -72,8 +72,8 @@ claimed route the browser never opened. That flag is declared by the run, not me
 only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
 no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
 whatever the caller's environment holds — and the CI workflow sets it when it brings the stack up (full run). Safe-path
-documentation-only PRs never set it; `ci:full`, PRs into `main`,
-`workflow_dispatch`, unsafe path characters, and changes under `e2e-stack/` or
+documentation-only PRs never set it; `ci:full`, PRs into `main`, a
+bare `workflow_dispatch` (empty `base_ref`), unsafe path characters, and changes under `e2e-stack/` or
 `.github/workflows/e2e-stack.yml` force that full invocation.
 Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
 there.

@@ -121,12 +121,15 @@ The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (ov
 
 The suite under `e2e/` is visual-regression testing (screenshot baselines). It deliberately does not run in CI, because baselines are platform- and font-dependent.
 
-This harness checks function, not appearance. The CI job always runs; the stack
-comes up only for runtime-relevant changes. Documentation-only PRs with safe path
-characters skip the stack (`mode=none`). There is no selected/partial mode:
-every leftover runtime path, the `ci:full` label, PRs into `main`,
-`workflow_dispatch`, unsafe path characters, and changes under `e2e-stack/` or
-`.github/workflows/e2e-stack.yml` force a full run. Both suites exist side by side and serve different purposes.
+This harness checks function, not appearance. Draft PRs skip the CI job unless
+they carry `ci` or `ci:full`; a same-repo ready requests it once and does not
+start a second run when that label is already present. When the job runs, the
+stack comes up only for runtime-relevant changes. Documentation-only PRs with
+safe path characters skip the stack (`mode=none`). There is no selected/partial
+mode: every leftover runtime path, the `ci:full` label, PRs into `main`, a
+bare `workflow_dispatch` (empty `base_ref`), unsafe path characters, and
+changes under `e2e-stack/` or `.github/workflows/e2e-stack.yml` force a full
+run. Both suites exist side by side and serve different purposes.
 
 ## Relationship with the API repository
 
