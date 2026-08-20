@@ -998,13 +998,6 @@ export function useCompliance() {
     });
   }
 
-  async function getCallQueueClerks(): Promise<string[]> {
-    return call<string[]>({
-      url: 'support/call-queues/clerks',
-      method: 'GET',
-    });
-  }
-
   // `file` is a data URL (`data:<contentType>;base64,<data>`, what `toBase64` produces). The API stores
   // it under the account's UserNotes and links it to this very log entry, so the document and the note
   // explaining it stay together — which is what filing a customer's proof of funds needs.
@@ -1534,7 +1527,6 @@ export function useCompliance() {
       getPendingReviewItems,
       getCallQueues,
       getCallQueueItems,
-      getCallQueueClerks,
       saveCallOutcome,
       createKycLog,
       downloadUserFiles,

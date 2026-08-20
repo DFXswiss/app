@@ -78,12 +78,7 @@ const USER_CONTEXT = { queue: 'UnavailableSuspicious', userDataId: 1 } as any;
 
 function renderForm(context: any = TX_CONTEXT) {
   return render(
-    <CallQueueOutcomeForm
-      context={context}
-      availableOutcomes={OUTCOMES}
-      onSaved={jest.fn()}
-      title="Save Outcome"
-    />,
+    <CallQueueOutcomeForm context={context} availableOutcomes={OUTCOMES} onSaved={jest.fn()} title="Save Outcome" />,
   );
 }
 
@@ -142,6 +137,14 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
     renderForm();
 
     expect(screen.getByRole('button', { name: 'Save Outcome' })).toBeDisabled();
+  });
+
+  it('shows the loaded verified name as a read-only signature and has no clerk select', () => {
+    renderForm();
+
+    expect(screen.getByText('JR')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Signature' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Clerk' })).not.toBeInTheDocument();
   });
 
   it('saves the loaded verified name as the signature', async () => {
