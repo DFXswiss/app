@@ -202,7 +202,11 @@ describe('RealunitScreen', () => {
       ],
     });
     render(<RealunitScreen />);
-    fireEvent.click(screen.getAllByRole('button').find((b) => b.textContent?.includes('0xabcd'))!);
+    const holderButton = screen.getAllByRole('button').find((b) => b.textContent?.includes('0xabcd'));
+    if (!holderButton) {
+      throw new Error('holder address button missing');
+    }
+    fireEvent.click(holderButton);
     expect(mockNavigate).toHaveBeenCalledWith(`/realunit/user/${encodeURIComponent(HOLDER.address)}`);
     fireEvent.click(screen.getAllByTestId('copy-button')[0]);
     expect(mockCopy).toHaveBeenCalledWith(HOLDER.address);
