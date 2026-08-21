@@ -132,8 +132,9 @@ test.describe('RealUnit dashboard - Visual Regression Tests', () => {
     await expect(page.getByRole('cell', { name: 'Active Buyer' }).first()).toBeVisible();
     await expect(page.getByText('Deactivated Buyer')).toHaveCount(0);
 
-    await expect(page).toHaveScreenshot('realunit-dashboard-01-home.png', {
-      fullPage: true,
+    const pendingSection = page.getByRole('heading', { name: 'Pending Transactions' }).locator('xpath=..');
+    await pendingSection.scrollIntoViewIfNeeded();
+    await expect(pendingSection).toHaveScreenshot('realunit-dashboard-01-pending.png', {
       maxDiffPixels: 5000,
     });
   });
