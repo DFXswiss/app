@@ -97,12 +97,16 @@ async function fulfillJson(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: string[] }> {
+async function installSyntheticApi(
+  page: Page,
+): Promise<{ unexpectedRequests: string[]; seenGets: string[] }> {
   const unexpectedRequests: string[] = [];
+  const seenGets: string[] = [];
 
   await page.route('**/v1/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET') seenGets.push(path);
 
     if (request.method() === 'GET' && path === `/v1/support/${USER_DATA_ID}`) {
       await fulfillJson(route, userFixture);
@@ -115,7 +119,7 @@ async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: st
     }
 
     if (request.method() === 'GET' && path === `/v1/support/${STAFF_ACCOUNT}`) {
-      await fulfillJson(route, { userData: { verifiedName: SIGNATURE } });
+      await fulfillJson(route, { userData: { verifiedName: 'Fallback Name' } });
       return;
     }
 
@@ -163,13 +167,13 @@ async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: st
     });
   });
 
-  return { unexpectedRequests };
+  return { unexpectedRequests, seenGets };
 }
 
 test.describe('Call-queue outcome form signature', () => {
   test('shows the logged-in staff verified name and no clerk select', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 1400 });
-    const { unexpectedRequests } = await installSyntheticApi(page);
+    const { unexpectedRequests, seenGets } = await installSyntheticApi(page);
 
     await page.goto(`/compliance/call-queues/${QUEUE}/${USER_DATA_ID}?session=${jwt()}&txId=101`);
 
@@ -186,6 +190,8 @@ test.describe('Call-queue outcome form signature', () => {
       maxDiffPixels: 5000,
     });
 
+    expect(seenGets).toContain('/v1/support/issue/clerk');
+    expect(seenGets).not.toContain(`/v1/support/${STAFF_ACCOUNT}`);
     expect(unexpectedRequests.filter((r) => r.includes('clerk'))).toEqual([]);
     expect(unexpectedRequests).toEqual([]);
   });
