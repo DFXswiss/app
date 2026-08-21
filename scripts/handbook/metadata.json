@@ -84,8 +84,8 @@
     "description": "Liste unzugeordneter Bankeingänge mit hervorgehobener Lastschrift-Zeile und das aufgeklappte Zuordnungsformular für die Admin-Rolle."
   },
   "compliance-call-queue-outcome": {
-    "title": "Compliance: Call-Queue Outcome",
-    "description": "Outcome-Formular mit der Signatur als verified name des eingeloggten Staff, ohne Clerks-Select."
+    "title": "Compliance: Call-Queue-Outcome",
+    "description": "Outcome-Formular mit der Signatur als verified name des eingeloggten Bearbeiters, ohne Clerks-Auswahlliste."
   },
   "realunit-compliance": {
     "title": "RealUnit Compliance",
