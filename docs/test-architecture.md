@@ -106,6 +106,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
   payloads, not that the API produces them. Unit tests against the utility pin the payload shapes
   instead.
+- **The RealUnit quotes and dashboard visual specs answer the admin list themselves.**
+  `e2e/realunit-quotes.spec.ts` and `e2e/realunit-dashboard.spec.ts` fulfil
+  `GET /v1/realunit/admin/quotes` (and, on the dashboard, holders, token info, price history and
+  transactions) with synthetic fixtures that include `userId`, `userName` and `deactivatedAt`.
+  The session is a synthetic unsigned JWT. A green run proves the screens render those fixtures, not
+  that the API returns them or that login works.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for
