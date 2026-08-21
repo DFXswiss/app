@@ -187,8 +187,9 @@ test.describe('Call-queue outcome form signature', () => {
       page.getByRole('combobox').filter({ has: page.locator('option', { hasText: SIGNATURE }) }),
     ).toHaveCount(0);
 
-    await expect(page).toHaveScreenshot('compliance-call-queue-outcome-signature.png', {
-      fullPage: true,
+    const form = signatureBlock.locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]');
+    await form.scrollIntoViewIfNeeded();
+    await expect(form).toHaveScreenshot('compliance-call-queue-outcome-signature.png', {
       maxDiffPixels: 5000,
     });
 
