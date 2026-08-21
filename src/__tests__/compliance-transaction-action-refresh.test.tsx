@@ -133,6 +133,7 @@ function renderTable(onStatusChanged?: () => void, rows: TransactionInfo[] = [tx
         onExpandBankTx={jest.fn()}
         onExpandCryptoInput={jest.fn()}
         onExpandBankData={jest.fn()}
+        onExpandFiatOutput={jest.fn()}
         onExpandTxUid={setExpandedTxUid}
         expandedTxUid={expandedTxUid}
         onStatusChanged={onStatusChanged}
