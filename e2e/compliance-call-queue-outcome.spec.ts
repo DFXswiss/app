@@ -97,9 +97,7 @@ async function fulfillJson(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function installSyntheticApi(
-  page: Page,
-): Promise<{ unexpectedRequests: string[]; seenGets: string[] }> {
+async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: string[]; seenGets: string[] }> {
   const unexpectedRequests: string[] = [];
   const seenGets: string[] = [];
 
@@ -171,6 +169,10 @@ async function installSyntheticApi(
 }
 
 test.describe('Call-queue outcome form signature', () => {
+  // Fixture timestamps are UTC; the screen formats them in the browser locale without an
+  // explicit timeZone, so pin Zurich like the other fullPage compliance screenshots.
+  test.use({ timezoneId: 'Europe/Zurich' });
+
   test('shows the logged-in staff verified name and no clerk select', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 1400 });
     const { unexpectedRequests, seenGets } = await installSyntheticApi(page);
@@ -181,9 +183,9 @@ test.describe('Call-queue outcome form signature', () => {
     const signatureBlock = page.locator('label', { hasText: 'Signature' }).locator('..');
     await expect(signatureBlock.getByRole('combobox')).toHaveCount(0);
     await expect(signatureBlock.getByText(SIGNATURE)).toBeVisible();
-    await expect(page.getByRole('combobox').filter({ has: page.locator('option', { hasText: SIGNATURE }) })).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByRole('combobox').filter({ has: page.locator('option', { hasText: SIGNATURE }) }),
+    ).toHaveCount(0);
 
     await expect(page).toHaveScreenshot('compliance-call-queue-outcome-signature.png', {
       fullPage: true,
