@@ -3,10 +3,11 @@ import { useEffect } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { useRealunitContext } from 'src/contexts/realunit.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
+import { quoteIsDeactivated } from 'src/dto/realunit.dto';
 import { useRealunitQuotesGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
-import { blankedAddress, formatSwissDateTimeWithSeconds } from 'src/util/utils';
+import { formatSwissDateTimeWithSeconds } from 'src/util/utils';
 
 export default function RealunitQuotesScreen(): JSX.Element {
   useRealunitQuotesGuard();
@@ -27,6 +28,8 @@ export default function RealunitQuotesScreen(): JSX.Element {
         return type;
     }
   };
+
+  const pendingQuotes = quotes.filter((quote) => !quoteIsDeactivated(quote));
 
   useEffect(() => {
     if (!quotes.length) fetchQuotes();
@@ -53,12 +56,15 @@ export default function RealunitQuotesScreen(): JSX.Element {
                     {translate('screens/realunit', 'User')}
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                    {translate('screens/realunit', 'Name')}
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
                     {translate('screens/realunit', 'Created')}
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {quotes.map((quote) => (
+                {pendingQuotes.map((quote) => (
                   <tr
                     key={quote.id}
                     className="border-b border-dfxGray-300 transition-colors hover:bg-dfxGray-300 cursor-pointer"
@@ -67,16 +73,17 @@ export default function RealunitQuotesScreen(): JSX.Element {
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{displayType(quote.type)}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{quote.amount?.toLocaleString()}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
-                      {quote.userAddress ? blankedAddress(quote.userAddress, { displayLength: 12 }) : '-'}
+                      {quote.userId != null ? String(quote.userId) : '-'}
                     </td>
+                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{quote.userName ? quote.userName : '-'}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
                       {formatSwissDateTimeWithSeconds(quote.created)}
                     </td>
                   </tr>
                 ))}
-                {!quotes.length && !quotesLoading && !quotesError && (
+                {!pendingQuotes.length && !quotesLoading && !quotesError && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-3 text-center text-sm text-dfxGray-700">
+                    <td colSpan={5} className="px-4 py-3 text-center text-sm text-dfxGray-700">
                       {translate('screens/realunit', 'No pending transactions found')}
                     </td>
                   </tr>

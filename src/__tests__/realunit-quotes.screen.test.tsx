@@ -67,6 +67,8 @@ const QUOTE = {
   estimatedAmount: 25,
   created: '2026-01-15T10:00:00.000Z',
   userAddress: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+  userId: 42,
+  userName: 'Ada Lovelace',
 };
 
 function setContext(overrides: Partial<typeof mockContext> = {}) {
@@ -129,10 +131,49 @@ describe('RealunitQuotesScreen', () => {
     expect(screen.getByText('Other')).toBeInTheDocument();
   });
 
-  it('shows "-" when userAddress is missing', () => {
-    setContext({ quotes: [{ ...QUOTE, userAddress: undefined }] });
+  it('shows userId and userName and the Name header', () => {
+    setContext({ quotes: [QUOTE] });
     render(<RealunitQuotesScreen />);
-    expect(screen.getByText('-')).toBeInTheDocument();
+    expect(screen.getByText('Name')).toBeInTheDocument();
+    expect(screen.getByText('42')).toBeInTheDocument();
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+  });
+
+  it('hides deactivated quotes from the pending list', () => {
+    setContext({
+      quotes: [
+        QUOTE,
+        {
+          ...QUOTE,
+          id: 99,
+          amount: 999,
+          userId: 99,
+          userName: 'Cancelled Person',
+          deactivatedAt: '2026-02-02T12:00:00.000Z',
+        },
+      ],
+    });
+    render(<RealunitQuotesScreen />);
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(screen.queryByText('Cancelled Person')).not.toBeInTheDocument();
+    expect(screen.queryByText('999')).not.toBeInTheDocument();
+  });
+
+  it('shows "-" when userId and userName are missing', () => {
+    setContext({ quotes: [{ ...QUOTE, userId: undefined, userName: undefined }] });
+    render(<RealunitQuotesScreen />);
+    expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows empty copy when the only quotes are deactivated', () => {
+    setContext({
+      quotes: [{ ...QUOTE, deactivatedAt: '2026-02-02T12:00:00.000Z' }],
+      quotesLoading: false,
+      quotesError: false,
+    });
+    render(<RealunitQuotesScreen />);
+    expect(screen.getByText('No pending transactions found')).toBeInTheDocument();
+    expect(screen.queryByText('Ada Lovelace')).not.toBeInTheDocument();
   });
 
   it('More button calls fetchQuotes and is disabled while loading', () => {

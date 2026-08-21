@@ -103,6 +103,8 @@ export interface RealUnitQuote {
   estimatedAmount: number;
   created: string;
   userAddress?: string;
+  userId?: number;
+  userName?: string;
   deactivatedAt?: string;
 }
 

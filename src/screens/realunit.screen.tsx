@@ -12,6 +12,7 @@ import { ErrorHint } from 'src/components/error-hint';
 import { PriceHistoryChart } from 'src/components/realunit/price-history-chart';
 import { useRealunitContext } from 'src/contexts/realunit.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
+import { quoteIsDeactivated } from 'src/dto/realunit.dto';
 import { useClipboard } from 'src/hooks/clipboard.hook';
 import { useRealunitGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
@@ -54,7 +55,8 @@ export default function RealunitScreen(): JSX.Element {
   }, [fetchHolders, fetchTokenInfo, fetchQuotes, fetchTransactions]);
 
   const topHolders = holders.slice(0, 3);
-  const topQuotes = quotes.slice(0, 3);
+  const pendingQuotes = quotes.filter((quote) => !quoteIsDeactivated(quote));
+  const topQuotes = pendingQuotes.slice(0, 3);
   const topTransactions = transactions.slice(0, 3);
 
   const displayType = (type: string): string => {
@@ -235,6 +237,9 @@ export default function RealunitScreen(): JSX.Element {
                     {translate('screens/realunit', 'User')}
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                    {translate('screens/realunit', 'Name')}
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
                     {translate('screens/realunit', 'Created')}
                   </th>
                 </tr>
@@ -249,16 +254,17 @@ export default function RealunitScreen(): JSX.Element {
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{displayType(quote.type)}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{quote.amount?.toLocaleString()}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
-                      {quote.userAddress ? blankedAddress(quote.userAddress, { displayLength: 12 }) : '-'}
+                      {quote.userId != null ? String(quote.userId) : '-'}
                     </td>
+                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{quote.userName ? quote.userName : '-'}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
                       {formatSwissDateTimeWithSeconds(quote.created)}
                     </td>
                   </tr>
                 ))}
-                {!quotes.length && !quotesLoading && (
+                {!pendingQuotes.length && !quotesLoading && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-3 text-center text-sm text-dfxGray-700">
+                    <td colSpan={5} className="px-4 py-3 text-center text-sm text-dfxGray-700">
                       {translate('screens/realunit', 'No pending transactions found')}
                     </td>
                   </tr>
@@ -272,7 +278,7 @@ export default function RealunitScreen(): JSX.Element {
             )}
           </div>
 
-          {quotes.length > 3 && (
+          {pendingQuotes.length > 3 && (
             <div className="flex justify-center mt-4">
               <StyledButton
                 label={translate('general/actions', 'More')}

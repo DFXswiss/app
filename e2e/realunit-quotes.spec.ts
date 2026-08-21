@@ -77,6 +77,8 @@ interface RealUnitQuote {
   estimatedAmount: number;
   created: string;
   userAddress?: string;
+  userId?: number;
+  userName?: string;
   deactivatedAt?: string;
 }
 
@@ -89,6 +91,8 @@ const ACTIVE_BUY: RealUnitQuote = {
   estimatedAmount: 9.87,
   created: '2026-02-01T12:00:00.000Z',
   userAddress: '0xabc0000000000000000000000000000000008001',
+  userId: 8001,
+  userName: 'Active Buyer',
 };
 
 const DEACTIVATED_BUY: RealUnitQuote = {
@@ -101,6 +105,8 @@ const DEACTIVATED_BUY: RealUnitQuote = {
   created: '2026-02-01T12:00:00.000Z',
   deactivatedAt: '2026-02-02T12:00:00.000Z',
   userAddress: '0xdef0000000000000000000000000000000008002',
+  userId: 8002,
+  userName: 'Deactivated Buyer',
 };
 
 // Stable order for the GET list mock (detail screens also consume this list and find by id).
@@ -195,7 +201,7 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
     token = await getAdminAuth(request);
   });
 
-  test('list shows active and deactivated WaitingForPayment Buy rows', async ({ page }) => {
+  test('list shows only pending WaitingForPayment Buy rows', async ({ page }) => {
     await installQuotesRoutes(page);
 
     // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
@@ -204,9 +210,9 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
     await page.waitForTimeout(1000);
 
     await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
-    // blanked addresses uniquely identify each fixture row (list does not render uid)
-    await expect(page.getByText(/0xabc00\.\.\.08001/)).toBeVisible();
-    await expect(page.getByText(/0xdef00\.\.\.08002/)).toBeVisible();
+    await expect(page.getByText('Active Buyer')).toBeVisible();
+    await expect(page.getByText('8001')).toBeVisible();
+    await expect(page.getByText('Deactivated Buyer')).toHaveCount(0);
 
     await expect(page).toHaveScreenshot('realunit-quotes-01-list.png', {
       fullPage: true,
