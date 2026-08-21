@@ -202,6 +202,7 @@ test.describe('RealUnit area', () => {
     await expect(tableHeader(page, 'Type')).toBeVisible();
     await expect(tableHeader(page, 'Amount')).toBeVisible();
     await expect(tableHeader(page, 'User')).toBeVisible();
+    await expect(tableHeader(page, 'Name')).toBeVisible();
     await expect(tableHeader(page, 'Created')).toBeVisible();
 
     // Empty success → "No pending transactions found"; fetch failure → ErrorHint with quotesError copy.
