@@ -71,18 +71,7 @@ export default function RealunitScreen(): JSX.Element {
     if (!priceHistory.length) fetchPriceHistory();
     if (!quotes.length) fetchQuotes();
     if (!transactions.length) fetchTransactions();
-  }, [
-    fetchHolders,
-    fetchTokenInfo,
-    fetchQuotes,
-    fetchTransactions,
-    fetchPriceHistory,
-    holders.length,
-    tokenInfo,
-    priceHistory.length,
-    quotes.length,
-    transactions.length,
-  ]);
+  }, [fetchHolders, fetchTokenInfo, fetchQuotes, fetchTransactions, fetchPriceHistory]);
 
   useEffect(() => {
     fetchBuyVolume(Timeframe.ALL);
