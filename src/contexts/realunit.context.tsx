@@ -1,4 +1,4 @@
-import { PropsWithChildren, createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { PropsWithChildren, createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import {
   AccountHistory,
   AccountSummary,
@@ -59,6 +59,9 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
   const [buyVolumeTimeframe, setBuyVolumeTimeframe] = useState(Timeframe.ALL);
   const [holderCountTimeframe, setHolderCountTimeframe] = useState(Timeframe.ALL);
   const [registrationTimeframe, setRegistrationTimeframe] = useState(Timeframe.ALL);
+  const buyVolumeRequest = useRef(0);
+  const holderCountRequest = useRef(0);
+  const registrationRequest = useRef(0);
 
   const {
     getAccountSummary,
@@ -169,45 +172,69 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
 
   const fetchBuyVolume = useCallback(
     (nextTimeframe = Timeframe.ALL) => {
+      const requestId = ++buyVolumeRequest.current;
       setBuyVolumeLoading(true);
       setBuyVolumeError(false);
       getBuyVolume(nextTimeframe)
         .then((data) => {
+          if (requestId !== buyVolumeRequest.current) return;
           setBuyVolume(data);
           setBuyVolumeTimeframe(nextTimeframe);
         })
-        .catch(() => setBuyVolumeError(true))
-        .finally(() => setBuyVolumeLoading(false));
+        .catch(() => {
+          if (requestId !== buyVolumeRequest.current) return;
+          setBuyVolumeError(true);
+        })
+        .finally(() => {
+          if (requestId !== buyVolumeRequest.current) return;
+          setBuyVolumeLoading(false);
+        });
     },
     [getBuyVolume],
   );
 
   const fetchHolderCount = useCallback(
     (nextTimeframe = Timeframe.ALL) => {
+      const requestId = ++holderCountRequest.current;
       setHolderCountLoading(true);
       setHolderCountError(false);
       getHolderCount(nextTimeframe)
         .then((data) => {
+          if (requestId !== holderCountRequest.current) return;
           setHolderCount(data);
           setHolderCountTimeframe(nextTimeframe);
         })
-        .catch(() => setHolderCountError(true))
-        .finally(() => setHolderCountLoading(false));
+        .catch(() => {
+          if (requestId !== holderCountRequest.current) return;
+          setHolderCountError(true);
+        })
+        .finally(() => {
+          if (requestId !== holderCountRequest.current) return;
+          setHolderCountLoading(false);
+        });
     },
     [getHolderCount],
   );
 
   const fetchRegistrationStats = useCallback(
     (nextTimeframe = Timeframe.ALL) => {
+      const requestId = ++registrationRequest.current;
       setRegistrationLoading(true);
       setRegistrationError(false);
       getRegistrationStats(nextTimeframe)
         .then((data) => {
+          if (requestId !== registrationRequest.current) return;
           setRegistrationStats(data);
           setRegistrationTimeframe(nextTimeframe);
         })
-        .catch(() => setRegistrationError(true))
-        .finally(() => setRegistrationLoading(false));
+        .catch(() => {
+          if (requestId !== registrationRequest.current) return;
+          setRegistrationError(true);
+        })
+        .finally(() => {
+          if (requestId !== registrationRequest.current) return;
+          setRegistrationLoading(false);
+        });
     },
     [getRegistrationStats],
   );
