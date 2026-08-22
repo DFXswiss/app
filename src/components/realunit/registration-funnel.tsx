@@ -31,10 +31,10 @@ export const RegistrationFunnel = ({ timeframe, stats, onTimeframeChange }: Regi
     { label: translate('screens/realunit', 'Active users'), value: snapshot.usersActive },
     { label: translate('screens/realunit', 'NA users'), value: snapshot.usersNa },
   ];
-  if (snapshot && snapshot.usersBlocked > 0) {
+  if (snapshot.usersBlocked > 0) {
     tiles.push({ label: translate('screens/realunit', 'Blocked users'), value: snapshot.usersBlocked });
   }
-  if (snapshot && snapshot.usersDeleted > 0) {
+  if (snapshot.usersDeleted > 0) {
     tiles.push({ label: translate('screens/realunit', 'Deleted users'), value: snapshot.usersDeleted });
   }
 
