@@ -6,6 +6,9 @@ const mockFetchPriceHistory = jest.fn();
 const mockFetchTokenInfo = jest.fn();
 const mockFetchQuotes = jest.fn();
 const mockFetchTransactions = jest.fn();
+const mockFetchBuyVolume = jest.fn();
+const mockFetchHolderCount = jest.fn();
+const mockFetchRegistrationStats = jest.fn();
 
 let mockContext: Record<string, unknown>;
 
@@ -37,6 +40,15 @@ jest.mock('src/components/realunit/price-history-chart', () => ({
       chart
     </button>
   ),
+}));
+jest.mock('src/components/realunit/buy-volume-chart', () => ({
+  BuyVolumeChart: () => <div data-testid="buy-volume-chart" />,
+}));
+jest.mock('src/components/realunit/holder-count-chart', () => ({
+  HolderCountChart: () => <div data-testid="holder-count-chart" />,
+}));
+jest.mock('src/components/realunit/registration-funnel', () => ({
+  RegistrationFunnel: () => <div data-testid="registration-funnel" />,
 }));
 
 jest.mock('src/hooks/guard.hook', () => ({
@@ -123,6 +135,18 @@ function setContext(overrides: Record<string, unknown> = {}) {
     fetchTokenInfo: mockFetchTokenInfo,
     fetchQuotes: mockFetchQuotes,
     fetchTransactions: mockFetchTransactions,
+    buyVolume: [],
+    buyVolumeLoading: false,
+    buyVolumeError: false,
+    holderCount: [],
+    holderCountLoading: false,
+    holderCountError: false,
+    registrationStats: undefined,
+    registrationLoading: false,
+    registrationError: false,
+    fetchBuyVolume: mockFetchBuyVolume,
+    fetchHolderCount: mockFetchHolderCount,
+    fetchRegistrationStats: mockFetchRegistrationStats,
     ...overrides,
   };
 }

@@ -7,9 +7,12 @@ import {
   StyledButtonWidth,
   StyledLoadingSpinner,
 } from '@dfx.swiss/react-components';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
+import { BuyVolumeChart } from 'src/components/realunit/buy-volume-chart';
+import { HolderCountChart } from 'src/components/realunit/holder-count-chart';
 import { PriceHistoryChart } from 'src/components/realunit/price-history-chart';
+import { RegistrationFunnel } from 'src/components/realunit/registration-funnel';
 import { useRealunitContext } from 'src/contexts/realunit.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { quoteIsDeactivated } from 'src/dto/realunit.dto';
@@ -17,6 +20,7 @@ import { useClipboard } from 'src/hooks/clipboard.hook';
 import { useRealunitGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { Timeframe } from 'src/util/chart';
 import { blankedAddress, formatSwissDateTimeWithSeconds } from 'src/util/utils';
 export default function RealunitScreen(): JSX.Element {
   useRealunitGuard();
@@ -42,7 +46,23 @@ export default function RealunitScreen(): JSX.Element {
     fetchTokenInfo,
     fetchQuotes,
     fetchTransactions,
+    buyVolume,
+    buyVolumeLoading,
+    buyVolumeError,
+    holderCount,
+    holderCountLoading,
+    holderCountError,
+    registrationStats,
+    registrationLoading,
+    registrationError,
+    fetchBuyVolume,
+    fetchHolderCount,
+    fetchRegistrationStats,
   } = useRealunitContext();
+
+  const [buyVolumeTimeframe, setBuyVolumeTimeframe] = useState(Timeframe.ALL);
+  const [holderCountTimeframe, setHolderCountTimeframe] = useState(Timeframe.ALL);
+  const [registrationTimeframe, setRegistrationTimeframe] = useState(Timeframe.ALL);
 
   useLayoutOptions({ backButton: true });
 
@@ -52,7 +72,18 @@ export default function RealunitScreen(): JSX.Element {
     if (!priceHistory.length) fetchPriceHistory();
     if (!quotes.length) fetchQuotes();
     if (!transactions.length) fetchTransactions();
-  }, [fetchHolders, fetchTokenInfo, fetchQuotes, fetchTransactions]);
+    fetchBuyVolume(Timeframe.ALL);
+    fetchHolderCount(Timeframe.ALL);
+    fetchRegistrationStats(Timeframe.ALL);
+  }, [
+    fetchHolders,
+    fetchTokenInfo,
+    fetchQuotes,
+    fetchTransactions,
+    fetchBuyVolume,
+    fetchHolderCount,
+    fetchRegistrationStats,
+  ]);
 
   const topHolders = holders.slice(0, 3);
   const pendingQuotes = quotes.filter((quote) => !quoteIsDeactivated(quote));
@@ -105,6 +136,69 @@ export default function RealunitScreen(): JSX.Element {
             {priceHistoryError && (
               <div className="mt-4">
                 <ErrorHint message={translate('screens/realunit', 'Failed to load price history.')} />
+              </div>
+            )}
+          </div>
+
+          <div className="mb-6">
+            <h2 className="text-dfxGray-700 mb-2">{translate('screens/realunit', 'Buy Volume')}</h2>
+            {buyVolumeLoading && !buyVolume.length ? (
+              <StyledLoadingSpinner size={SpinnerSize.MD} />
+            ) : (
+              <BuyVolumeChart
+                timeframe={buyVolumeTimeframe}
+                series={buyVolume}
+                onTimeframeChange={(next) => {
+                  setBuyVolumeTimeframe(next);
+                  fetchBuyVolume(next);
+                }}
+              />
+            )}
+            {buyVolumeError && (
+              <div className="mt-4">
+                <ErrorHint message={translate('screens/realunit', 'Failed to load buy volume.')} />
+              </div>
+            )}
+          </div>
+
+          <div className="mb-6">
+            <h2 className="text-dfxGray-700 mb-2">{translate('screens/realunit', 'Holders over time')}</h2>
+            {holderCountLoading && !holderCount.length ? (
+              <StyledLoadingSpinner size={SpinnerSize.MD} />
+            ) : (
+              <HolderCountChart
+                timeframe={holderCountTimeframe}
+                series={holderCount}
+                onTimeframeChange={(next) => {
+                  setHolderCountTimeframe(next);
+                  fetchHolderCount(next);
+                }}
+              />
+            )}
+            {holderCountError && (
+              <div className="mt-4">
+                <ErrorHint message={translate('screens/realunit', 'Failed to load holder count.')} />
+              </div>
+            )}
+          </div>
+
+          <div className="mb-6">
+            <h2 className="text-dfxGray-700 mb-2">{translate('screens/realunit', 'Registration')}</h2>
+            {registrationLoading && !registrationStats ? (
+              <StyledLoadingSpinner size={SpinnerSize.MD} />
+            ) : (
+              <RegistrationFunnel
+                timeframe={registrationTimeframe}
+                stats={registrationStats}
+                onTimeframeChange={(next) => {
+                  setRegistrationTimeframe(next);
+                  fetchRegistrationStats(next);
+                }}
+              />
+            )}
+            {registrationError && (
+              <div className="mt-4">
+                <ErrorHint message={translate('screens/realunit', 'Failed to load registration stats.')} />
               </div>
             )}
           </div>
@@ -256,7 +350,9 @@ export default function RealunitScreen(): JSX.Element {
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
                       {quote.userId != null ? String(quote.userId) : '-'}
                     </td>
-                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{quote.userName ? quote.userName : '-'}</td>
+                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                      {quote.userName ? quote.userName : '-'}
+                    </td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
                       {formatSwissDateTimeWithSeconds(quote.created)}
                     </td>
@@ -316,9 +412,7 @@ export default function RealunitScreen(): JSX.Element {
                     onClick={() => navigate(`/realunit/transactions/${tx.id}`)}
                   >
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{displayType(tx.type)}</td>
-                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
-                      {tx.amountInChf?.toLocaleString()}
-                    </td>
+                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{tx.amountInChf?.toLocaleString()}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
                       {tx.userAddress ? blankedAddress(tx.userAddress, { displayLength: 12 }) : '-'}
                     </td>

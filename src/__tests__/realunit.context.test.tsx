@@ -10,6 +10,9 @@ const mockGetAdminQuotes = jest.fn();
 const mockGetAdminTransactions = jest.fn();
 const mockConfirmPayment = jest.fn();
 const mockDeactivateQuote = jest.fn();
+const mockGetBuyVolume = jest.fn();
+const mockGetRegistrationStats = jest.fn();
+const mockGetHolderCount = jest.fn();
 
 jest.mock('src/hooks/realunit-api.hook', () => ({
   useRealunitApi: () => ({
@@ -23,6 +26,9 @@ jest.mock('src/hooks/realunit-api.hook', () => ({
     getAdminTransactions: mockGetAdminTransactions,
     confirmPayment: mockConfirmPayment,
     deactivateQuote: mockDeactivateQuote,
+    getBuyVolume: mockGetBuyVolume,
+    getRegistrationStats: mockGetRegistrationStats,
+    getHolderCount: mockGetHolderCount,
   }),
 }));
 
@@ -54,6 +60,20 @@ describe('RealunitContextProvider', () => {
     mockGetTokenPrice.mockResolvedValue(undefined);
     mockGetAdminQuotes.mockResolvedValue([]);
     mockGetAdminTransactions.mockResolvedValue([]);
+    mockGetBuyVolume.mockResolvedValue([]);
+    mockGetRegistrationStats.mockResolvedValue({
+      snapshot: {
+        completed: 0,
+        manualReview: 0,
+        confirmed: 0,
+        usersActive: 0,
+        usersNa: 0,
+        usersBlocked: 0,
+        usersDeleted: 0,
+      },
+      series: [],
+    });
+    mockGetHolderCount.mockResolvedValue([]);
   });
 
   it('fetchAccountSummary sets accountSummary on success and clears it on catch', async () => {
@@ -282,5 +302,66 @@ describe('RealunitContextProvider', () => {
     const { result } = renderHook(() => useRealunitContext(), { wrapper });
     expect(result.current.confirmPayment).toBe(mockConfirmPayment);
     expect(result.current.deactivateQuote).toBe(mockDeactivateQuote);
+  });
+
+  it('fetchBuyVolume sets series on success and error on catch', async () => {
+    const series = [{ timestamp: '2026-08-01T00:00:00.000Z', chf: 10, shares: 7, priceChf: 1.4 }];
+    mockGetBuyVolume.mockResolvedValueOnce(series);
+    const { result } = renderHook(() => useRealunitContext(), { wrapper });
+    act(() => {
+      result.current.fetchBuyVolume(Timeframe.WEEK);
+    });
+    await waitFor(() => {
+      expect(result.current.buyVolume).toEqual(series);
+      expect(result.current.buyVolumeLoading).toBe(false);
+    });
+    expect(mockGetBuyVolume).toHaveBeenCalledWith(Timeframe.WEEK);
+
+    mockGetBuyVolume.mockRejectedValueOnce(new Error('fail'));
+    act(() => {
+      result.current.fetchBuyVolume();
+    });
+    await waitFor(() => {
+      expect(result.current.buyVolumeError).toBe(true);
+      expect(result.current.buyVolumeLoading).toBe(false);
+    });
+  });
+
+  it('fetchHolderCount and fetchRegistrationStats set state and error flags', async () => {
+    const holders = [{ timestamp: '2026-08-01T00:00:00.000Z', holders: 9 }];
+    const registration = {
+      snapshot: {
+        completed: 1,
+        manualReview: 2,
+        confirmed: 1,
+        usersActive: 3,
+        usersNa: 4,
+        usersBlocked: 0,
+        usersDeleted: 0,
+      },
+      series: [{ timestamp: '2026-08-01T00:00:00.000Z', registered: 1, confirmed: 0 }],
+    };
+    mockGetHolderCount.mockResolvedValueOnce(holders);
+    mockGetRegistrationStats.mockResolvedValueOnce(registration);
+    const { result } = renderHook(() => useRealunitContext(), { wrapper });
+    act(() => {
+      result.current.fetchHolderCount(Timeframe.MONTH);
+      result.current.fetchRegistrationStats(Timeframe.YEAR);
+    });
+    await waitFor(() => {
+      expect(result.current.holderCount).toEqual(holders);
+      expect(result.current.registrationStats).toEqual(registration);
+    });
+
+    mockGetHolderCount.mockRejectedValueOnce(new Error('fail'));
+    mockGetRegistrationStats.mockRejectedValueOnce(new Error('fail'));
+    act(() => {
+      result.current.fetchHolderCount();
+      result.current.fetchRegistrationStats();
+    });
+    await waitFor(() => {
+      expect(result.current.holderCountError).toBe(true);
+      expect(result.current.registrationError).toBe(true);
+    });
   });
 });

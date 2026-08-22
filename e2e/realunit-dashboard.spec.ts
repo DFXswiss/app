@@ -88,6 +88,35 @@ async function installDashboardRoutes(page: Page): Promise<void> {
     if (path === '/v1/realunit/price') {
       return json(route, { timestamp: '2026-02-01T12:00:00.000Z', chf: 10, eur: 10, usd: 11 });
     }
+    if (path === '/v1/realunit/admin/stats/buy-volume') {
+      return json(route, [
+        { timestamp: '2026-02-01T00:00:00.000Z', chf: 1000, shares: 700, priceChf: 1.4 },
+        { timestamp: '2026-02-02T00:00:00.000Z', chf: 2500, shares: 1800, priceChf: 1.41 },
+      ]);
+    }
+    if (path === '/v1/realunit/admin/stats/holders') {
+      return json(route, [
+        { timestamp: '2026-02-01T00:00:00.000Z', holders: 10 },
+        { timestamp: '2026-02-02T00:00:00.000Z', holders: 12 },
+      ]);
+    }
+    if (path === '/v1/realunit/admin/stats/registration') {
+      return json(route, {
+        snapshot: {
+          completed: 194,
+          manualReview: 23,
+          confirmed: 111,
+          usersActive: 61,
+          usersNa: 402,
+          usersBlocked: 0,
+          usersDeleted: 2,
+        },
+        series: [
+          { timestamp: '2026-02-01T00:00:00.000Z', registered: 3, confirmed: 1 },
+          { timestamp: '2026-02-02T00:00:00.000Z', registered: 5, confirmed: 2 },
+        ],
+      });
+    }
 
     if (
       request.method() === 'GET' &&

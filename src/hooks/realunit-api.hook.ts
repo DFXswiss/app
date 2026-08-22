@@ -6,7 +6,10 @@ import {
   HoldersResponse,
   PaginationDirection,
   PriceHistoryEntry,
+  RealUnitBuyVolumePoint,
+  RealUnitHolderCountPoint,
   RealUnitQuote,
+  RealUnitRegistrationStats,
   RealUnitTransaction,
   TokenInfo,
   TokenPrice,
@@ -108,6 +111,33 @@ export function useRealunitApi() {
     });
   }
 
+  async function getBuyVolume(timeFrame: Timeframe): Promise<RealUnitBuyVolumePoint[]> {
+    const params = new URLSearchParams();
+    params.set('timeFrame', timeFrame.toUpperCase());
+    return call<RealUnitBuyVolumePoint[]>({
+      url: apiUrl({ path: 'realunit/admin/stats/buy-volume', params }),
+      method: 'GET',
+    });
+  }
+
+  async function getRegistrationStats(timeFrame: Timeframe): Promise<RealUnitRegistrationStats> {
+    const params = new URLSearchParams();
+    params.set('timeFrame', timeFrame.toUpperCase());
+    return call<RealUnitRegistrationStats>({
+      url: apiUrl({ path: 'realunit/admin/stats/registration', params }),
+      method: 'GET',
+    });
+  }
+
+  async function getHolderCount(timeFrame: Timeframe): Promise<RealUnitHolderCountPoint[]> {
+    const params = new URLSearchParams();
+    params.set('timeFrame', timeFrame.toUpperCase());
+    return call<RealUnitHolderCountPoint[]>({
+      url: apiUrl({ path: 'realunit/admin/stats/holders', params }),
+      method: 'GET',
+    });
+  }
+
   return useMemo(
     () => ({
       getAccountSummary,
@@ -120,6 +150,9 @@ export function useRealunitApi() {
       getAdminTransactions,
       confirmPayment,
       deactivateQuote,
+      getBuyVolume,
+      getRegistrationStats,
+      getHolderCount,
     }),
     [call],
   );

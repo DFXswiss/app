@@ -136,6 +136,33 @@ describe('useRealunitApi', () => {
     });
   });
 
+  it('getBuyVolume uppercases the timeframe query param', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.getBuyVolume(Timeframe.ALL);
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'realunit/admin/stats/buy-volume?timeFrame=ALL',
+      method: 'GET',
+    });
+  });
+
+  it('getRegistrationStats uppercases the timeframe query param', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.getRegistrationStats(Timeframe.MONTH);
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'realunit/admin/stats/registration?timeFrame=1M',
+      method: 'GET',
+    });
+  });
+
+  it('getHolderCount uppercases the timeframe query param', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.getHolderCount(Timeframe.WEEK);
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'realunit/admin/stats/holders?timeFrame=1W',
+      method: 'GET',
+    });
+  });
+
   it('deactivateQuote PUTs realunit/admin/quotes/:id/deactivate', async () => {
     const { result } = renderHook(() => useRealunitApi());
     await result.current.deactivateQuote(7);

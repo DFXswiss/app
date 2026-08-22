@@ -1112,7 +1112,20 @@
     "Payment confirmed successfully": "Ricezione del pagamento confermata con successo",
     "Deactivate Quote": "Disattiva offerta",
     "Are you sure you want to deactivate this quote?": "Sei sicuro di voler disattivare questa offerta?",
-    "Deactivated At": "Disattivato il"
+    "Deactivated At": "Disattivato il",
+    "Buy Volume": "Volume di acquisto",
+    "Holders over time": "Holder nel tempo",
+    "Registration": "Registrazione",
+    "Manual review": "Revisione manuale",
+    "Confirmed": "Confermato",
+    "Active users": "Utenti attivi",
+    "NA users": "Utenti NA",
+    "Blocked users": "Utenti bloccati",
+    "Deleted users": "Utenti eliminati",
+    "Registered": "Registrati",
+    "Failed to load buy volume.": "Impossibile caricare il volume di acquisto.",
+    "Failed to load holder count.": "Impossibile caricare il numero di holder.",
+    "Failed to load registration stats.": "Impossibile caricare le registrazioni."
   },
   "screens/blockchain": {
     "Transaction signing": "Firma della transazione",
