@@ -16,20 +16,20 @@ const SUPPORTED_TIMEFRAMES: Timeframe[] = [
 
 interface RegistrationFunnelProps {
   timeframe: Timeframe;
-  stats?: RealUnitRegistrationStats;
+  stats: RealUnitRegistrationStats;
   onTimeframeChange: (timeframe: Timeframe) => void;
 }
 
 export const RegistrationFunnel = ({ timeframe, stats, onTimeframeChange }: RegistrationFunnelProps) => {
   const { translate } = useSettingsContext();
-  const snapshot = stats?.snapshot;
+  const snapshot = stats.snapshot;
 
   const tiles = [
-    { label: translate('screens/realunit', 'Completed'), value: snapshot?.completed ?? 0 },
-    { label: translate('screens/realunit', 'Manual review'), value: snapshot?.manualReview ?? 0 },
-    { label: translate('screens/realunit', 'Confirmed'), value: snapshot?.confirmed ?? 0 },
-    { label: translate('screens/realunit', 'Active users'), value: snapshot?.usersActive ?? 0 },
-    { label: translate('screens/realunit', 'NA users'), value: snapshot?.usersNa ?? 0 },
+    { label: translate('screens/realunit', 'Completed'), value: snapshot.completed },
+    { label: translate('screens/realunit', 'Manual review'), value: snapshot.manualReview },
+    { label: translate('screens/realunit', 'Confirmed'), value: snapshot.confirmed },
+    { label: translate('screens/realunit', 'Active users'), value: snapshot.usersActive },
+    { label: translate('screens/realunit', 'NA users'), value: snapshot.usersNa },
   ];
   if (snapshot && snapshot.usersBlocked > 0) {
     tiles.push({ label: translate('screens/realunit', 'Blocked users'), value: snapshot.usersBlocked });
@@ -63,7 +63,7 @@ export const RegistrationFunnel = ({ timeframe, stats, onTimeframeChange }: Regi
   }, []);
 
   const chartSeries = useMemo(() => {
-    const points = stats?.series ?? [];
+    const points = stats.series;
     return [
       {
         name: translate('screens/realunit', 'Registered'),

@@ -182,11 +182,13 @@ export default function RealunitScreen(): JSX.Element {
             {registrationLoading && !registrationStats ? (
               <StyledLoadingSpinner size={SpinnerSize.MD} />
             ) : (
-              <RegistrationFunnel
-                timeframe={registrationTimeframe}
-                stats={registrationStats}
-                onTimeframeChange={fetchRegistrationStats}
-              />
+              registrationStats && (
+                <RegistrationFunnel
+                  timeframe={registrationTimeframe}
+                  stats={registrationStats}
+                  onTimeframeChange={fetchRegistrationStats}
+                />
+              )
             )}
             {registrationError && (
               <div className="mt-4">

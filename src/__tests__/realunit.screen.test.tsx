@@ -225,6 +225,47 @@ describe('RealunitScreen', () => {
     });
     render(<RealunitScreen />);
     expect(screen.getAllByTestId('loading-spinner').some((el) => el.getAttribute('data-size') === 'md')).toBe(true);
+    expect(screen.queryByTestId('buy-volume-chart')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('holder-count-chart')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('registration-funnel')).not.toBeInTheDocument();
+  });
+
+  it('keeps stats charts visible while a timeframe refetch is loading', () => {
+    setContext({
+      buyVolumeLoading: true,
+      buyVolume: [{ timestamp: '2026-08-01T00:00:00.000Z', chf: 10, shares: 5, priceChf: 2 }],
+      holderCountLoading: true,
+      holderCount: [{ timestamp: '2026-08-01T00:00:00.000Z', holders: 3 }],
+      registrationLoading: true,
+      registrationStats: {
+        snapshot: {
+          completed: 1,
+          manualReview: 0,
+          confirmed: 1,
+          usersActive: 1,
+          usersNa: 0,
+          usersBlocked: 0,
+          usersDeleted: 0,
+        },
+        series: [{ timestamp: '2026-08-01T00:00:00.000Z', registered: 1, confirmed: 1 }],
+      },
+    });
+    render(<RealunitScreen />);
+    expect(screen.getByTestId('buy-volume-chart')).toBeInTheDocument();
+    expect(screen.getByTestId('holder-count-chart')).toBeInTheDocument();
+    expect(screen.getByTestId('registration-funnel')).toBeInTheDocument();
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+  });
+
+  it('does not render the registration funnel when stats failed without a snapshot', () => {
+    setContext({
+      registrationError: true,
+      registrationStats: undefined,
+      registrationLoading: false,
+    });
+    render(<RealunitScreen />);
+    expect(screen.queryByTestId('registration-funnel')).not.toBeInTheDocument();
+    expect(screen.getByText('Failed to load registration stats.')).toBeInTheDocument();
   });
 
   it('shows token overview, totalCount fallback, price-history error, and support/compliance links', () => {
