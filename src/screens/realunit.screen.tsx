@@ -7,7 +7,7 @@ import {
   StyledButtonWidth,
   StyledLoadingSpinner,
 } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { BuyVolumeChart } from 'src/components/realunit/buy-volume-chart';
 import { HolderCountChart } from 'src/components/realunit/holder-count-chart';
@@ -58,11 +58,10 @@ export default function RealunitScreen(): JSX.Element {
     fetchBuyVolume,
     fetchHolderCount,
     fetchRegistrationStats,
+    buyVolumeTimeframe,
+    holderCountTimeframe,
+    registrationTimeframe,
   } = useRealunitContext();
-
-  const [buyVolumeTimeframe, setBuyVolumeTimeframe] = useState(Timeframe.ALL);
-  const [holderCountTimeframe, setHolderCountTimeframe] = useState(Timeframe.ALL);
-  const [registrationTimeframe, setRegistrationTimeframe] = useState(Timeframe.ALL);
 
   useLayoutOptions({ backButton: true });
 
@@ -72,18 +71,24 @@ export default function RealunitScreen(): JSX.Element {
     if (!priceHistory.length) fetchPriceHistory();
     if (!quotes.length) fetchQuotes();
     if (!transactions.length) fetchTransactions();
-    fetchBuyVolume(Timeframe.ALL);
-    fetchHolderCount(Timeframe.ALL);
-    fetchRegistrationStats(Timeframe.ALL);
   }, [
     fetchHolders,
     fetchTokenInfo,
     fetchQuotes,
     fetchTransactions,
-    fetchBuyVolume,
-    fetchHolderCount,
-    fetchRegistrationStats,
+    fetchPriceHistory,
+    holders.length,
+    tokenInfo,
+    priceHistory.length,
+    quotes.length,
+    transactions.length,
   ]);
+
+  useEffect(() => {
+    fetchBuyVolume(Timeframe.ALL);
+    fetchHolderCount(Timeframe.ALL);
+    fetchRegistrationStats(Timeframe.ALL);
+  }, [fetchBuyVolume, fetchHolderCount, fetchRegistrationStats]);
 
   const topHolders = holders.slice(0, 3);
   const pendingQuotes = quotes.filter((quote) => !quoteIsDeactivated(quote));
@@ -145,14 +150,7 @@ export default function RealunitScreen(): JSX.Element {
             {buyVolumeLoading && !buyVolume.length ? (
               <StyledLoadingSpinner size={SpinnerSize.MD} />
             ) : (
-              <BuyVolumeChart
-                timeframe={buyVolumeTimeframe}
-                series={buyVolume}
-                onTimeframeChange={(next) => {
-                  setBuyVolumeTimeframe(next);
-                  fetchBuyVolume(next);
-                }}
-              />
+              <BuyVolumeChart timeframe={buyVolumeTimeframe} series={buyVolume} onTimeframeChange={fetchBuyVolume} />
             )}
             {buyVolumeError && (
               <div className="mt-4">
@@ -169,10 +167,7 @@ export default function RealunitScreen(): JSX.Element {
               <HolderCountChart
                 timeframe={holderCountTimeframe}
                 series={holderCount}
-                onTimeframeChange={(next) => {
-                  setHolderCountTimeframe(next);
-                  fetchHolderCount(next);
-                }}
+                onTimeframeChange={fetchHolderCount}
               />
             )}
             {holderCountError && (
@@ -190,10 +185,7 @@ export default function RealunitScreen(): JSX.Element {
               <RegistrationFunnel
                 timeframe={registrationTimeframe}
                 stats={registrationStats}
-                onTimeframeChange={(next) => {
-                  setRegistrationTimeframe(next);
-                  fetchRegistrationStats(next);
-                }}
+                onTimeframeChange={fetchRegistrationStats}
               />
             )}
             {registrationError && (

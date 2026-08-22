@@ -314,6 +314,7 @@ describe('RealunitContextProvider', () => {
     await waitFor(() => {
       expect(result.current.buyVolume).toEqual(series);
       expect(result.current.buyVolumeLoading).toBe(false);
+      expect(result.current.buyVolumeTimeframe).toBe(Timeframe.WEEK);
     });
     expect(mockGetBuyVolume).toHaveBeenCalledWith(Timeframe.WEEK);
 

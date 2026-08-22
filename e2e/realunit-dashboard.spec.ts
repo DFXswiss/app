@@ -158,6 +158,9 @@ test.describe('RealUnit dashboard - Visual Regression Tests', () => {
     await page.waitForTimeout(1000);
 
     await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Buy Volume' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Holders over time' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Registration' })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Active Buyer' }).first()).toBeVisible();
     await expect(page.getByText('Deactivated Buyer')).toHaveCount(0);
 

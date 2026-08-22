@@ -183,6 +183,9 @@ export interface RealunitContextInterface {
   registrationStats?: RealUnitRegistrationStats;
   registrationLoading: boolean;
   registrationError: boolean;
+  buyVolumeTimeframe: Timeframe;
+  holderCountTimeframe: Timeframe;
+  registrationTimeframe: Timeframe;
   fetchAccountSummary: (address: string) => void;
   fetchAccountHistory: (address: string, cursor?: string, direction?: PaginationDirection) => void;
   fetchHolders: (cursor?: string, direction?: PaginationDirection) => void;

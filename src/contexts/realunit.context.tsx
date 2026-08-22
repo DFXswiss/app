@@ -56,6 +56,9 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
   const [registrationStats, setRegistrationStats] = useState<RealUnitRegistrationStats | undefined>();
   const [registrationLoading, setRegistrationLoading] = useState(false);
   const [registrationError, setRegistrationError] = useState(false);
+  const [buyVolumeTimeframe, setBuyVolumeTimeframe] = useState(Timeframe.ALL);
+  const [holderCountTimeframe, setHolderCountTimeframe] = useState(Timeframe.ALL);
+  const [registrationTimeframe, setRegistrationTimeframe] = useState(Timeframe.ALL);
 
   const {
     getAccountSummary,
@@ -169,7 +172,10 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
       setBuyVolumeLoading(true);
       setBuyVolumeError(false);
       getBuyVolume(nextTimeframe)
-        .then((data) => setBuyVolume(data))
+        .then((data) => {
+          setBuyVolume(data);
+          setBuyVolumeTimeframe(nextTimeframe);
+        })
         .catch(() => setBuyVolumeError(true))
         .finally(() => setBuyVolumeLoading(false));
     },
@@ -181,7 +187,10 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
       setHolderCountLoading(true);
       setHolderCountError(false);
       getHolderCount(nextTimeframe)
-        .then((data) => setHolderCount(data))
+        .then((data) => {
+          setHolderCount(data);
+          setHolderCountTimeframe(nextTimeframe);
+        })
         .catch(() => setHolderCountError(true))
         .finally(() => setHolderCountLoading(false));
     },
@@ -193,7 +202,10 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
       setRegistrationLoading(true);
       setRegistrationError(false);
       getRegistrationStats(nextTimeframe)
-        .then((data) => setRegistrationStats(data))
+        .then((data) => {
+          setRegistrationStats(data);
+          setRegistrationTimeframe(nextTimeframe);
+        })
         .catch(() => setRegistrationError(true))
         .finally(() => setRegistrationLoading(false));
     },
@@ -239,6 +251,9 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
       fetchTransactions,
       confirmPayment,
       deactivateQuote,
+      buyVolumeTimeframe,
+      holderCountTimeframe,
+      registrationTimeframe,
       fetchBuyVolume,
       fetchHolderCount,
       fetchRegistrationStats,
@@ -270,6 +285,9 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
       registrationStats,
       registrationLoading,
       registrationError,
+      buyVolumeTimeframe,
+      holderCountTimeframe,
+      registrationTimeframe,
       fetchAccountSummary,
       fetchAccountHistory,
       fetchHolders,

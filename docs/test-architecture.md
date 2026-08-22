@@ -108,12 +108,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   instead.
 - **The RealUnit quotes and dashboard visual specs answer the admin list themselves.**
   `e2e/realunit-quotes.spec.ts` and `e2e/realunit-dashboard.spec.ts` fulfil
-  `GET /v1/realunit/admin/quotes` (and, on the dashboard, holders, token info, price history and
-  transactions) with synthetic fixtures that include `userId`, `userName` and `deactivatedAt`.
+  `GET /v1/realunit/admin/quotes` (and, on the dashboard, holders, token info, price history,
+  transactions, and the three admin stats paths buy-volume, holders and registration) with
+  synthetic fixtures that include `userId`, `userName` and `deactivatedAt`.
   They also fulfil staff/bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`,
   `/v1/country`, `/v1/setting/infoBanner`, `/v2/user`) so a synthetic unsigned JWT does not 401.
   A green run proves the screens render those fixtures, not that the API returns them, not that
-  login or token verification works, and not that those staff/settings endpoints return real
+  login or token verification works, and not that those staff/settings or stats endpoints return real
   payloads.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because

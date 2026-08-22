@@ -147,6 +147,9 @@ function setContext(overrides: Record<string, unknown> = {}) {
     fetchBuyVolume: mockFetchBuyVolume,
     fetchHolderCount: mockFetchHolderCount,
     fetchRegistrationStats: mockFetchRegistrationStats,
+    buyVolumeTimeframe: 'All',
+    holderCountTimeframe: 'All',
+    registrationTimeframe: 'All',
     ...overrides,
   };
 }
@@ -182,6 +185,9 @@ describe('RealunitScreen', () => {
     expect(mockFetchPriceHistory).toHaveBeenCalled();
     expect(mockFetchQuotes).toHaveBeenCalled();
     expect(mockFetchTransactions).toHaveBeenCalled();
+    expect(mockFetchBuyVolume).toHaveBeenCalledWith('All');
+    expect(mockFetchHolderCount).toHaveBeenCalledWith('All');
+    expect(mockFetchRegistrationStats).toHaveBeenCalledWith('All');
     unmount();
 
     jest.clearAllMocks();
@@ -191,6 +197,21 @@ describe('RealunitScreen', () => {
     expect(mockFetchTokenInfo).not.toHaveBeenCalled();
     expect(mockFetchQuotes).not.toHaveBeenCalled();
     expect(mockFetchTransactions).not.toHaveBeenCalled();
+    expect(mockFetchBuyVolume).toHaveBeenCalledWith('All');
+    expect(mockFetchHolderCount).toHaveBeenCalledWith('All');
+    expect(mockFetchRegistrationStats).toHaveBeenCalledWith('All');
+  });
+
+  it('shows stats error hints and loading spinners', () => {
+    setContext({
+      buyVolumeError: true,
+      holderCountError: true,
+      registrationError: true,
+    });
+    render(<RealunitScreen />);
+    expect(screen.getByText('Failed to load buy volume.')).toBeInTheDocument();
+    expect(screen.getByText('Failed to load holder count.')).toBeInTheDocument();
+    expect(screen.getByText('Failed to load registration stats.')).toBeInTheDocument();
   });
 
   it('shows token overview, totalCount fallback, price-history error, and support/compliance links', () => {
