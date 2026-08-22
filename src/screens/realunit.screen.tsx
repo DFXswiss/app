@@ -76,7 +76,10 @@ export default function RealunitScreen(): JSX.Element {
     if (!transactions.length) fetchTransactions();
   }, [fetchHolders, fetchTokenInfo, fetchQuotes, fetchTransactions, fetchPriceHistory]);
 
+  const didBootstrapStats = useRef(false);
   useEffect(() => {
+    if (didBootstrapStats.current) return;
+    didBootstrapStats.current = true;
     fetchBuyVolume(Timeframe.ALL);
     fetchHolderCount(Timeframe.ALL);
     fetchRegistrationStats(Timeframe.ALL);

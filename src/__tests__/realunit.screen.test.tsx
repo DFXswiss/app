@@ -80,6 +80,7 @@ jest.mock('src/util/utils', () => ({
   formatSwissDateTimeWithSeconds: (value: string) => value,
 }));
 
+import { StrictMode } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import RealunitScreen from 'src/screens/realunit.screen';
 
@@ -200,6 +201,29 @@ describe('RealunitScreen', () => {
     expect(mockFetchBuyVolume).toHaveBeenCalledWith('All');
     expect(mockFetchHolderCount).toHaveBeenCalledWith('All');
     expect(mockFetchRegistrationStats).toHaveBeenCalledWith('All');
+  });
+
+  it('bootstraps lists and stats only once when StrictMode re-invokes effects', () => {
+    setContext({
+      holders: [],
+      tokenInfo: undefined,
+      priceHistory: [],
+      quotes: [],
+      transactions: [],
+    });
+    render(
+      <StrictMode>
+        <RealunitScreen />
+      </StrictMode>,
+    );
+    expect(mockFetchHolders).toHaveBeenCalledTimes(1);
+    expect(mockFetchTokenInfo).toHaveBeenCalledTimes(1);
+    expect(mockFetchPriceHistory).toHaveBeenCalledTimes(1);
+    expect(mockFetchQuotes).toHaveBeenCalledTimes(1);
+    expect(mockFetchTransactions).toHaveBeenCalledTimes(1);
+    expect(mockFetchBuyVolume).toHaveBeenCalledTimes(1);
+    expect(mockFetchHolderCount).toHaveBeenCalledTimes(1);
+    expect(mockFetchRegistrationStats).toHaveBeenCalledTimes(1);
   });
 
   it('shows stats error hints and loading spinners', () => {
