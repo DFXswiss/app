@@ -214,6 +214,19 @@ describe('RealunitScreen', () => {
     expect(screen.getByText('Failed to load registration stats.')).toBeInTheDocument();
   });
 
+  it('shows medium spinners while stats are loading without data', () => {
+    setContext({
+      buyVolumeLoading: true,
+      buyVolume: [],
+      holderCountLoading: true,
+      holderCount: [],
+      registrationLoading: true,
+      registrationStats: undefined,
+    });
+    render(<RealunitScreen />);
+    expect(screen.getAllByTestId('loading-spinner').some((el) => el.getAttribute('data-size') === 'md')).toBe(true);
+  });
+
   it('shows token overview, totalCount fallback, price-history error, and support/compliance links', () => {
     setContext({ totalCount: undefined, priceHistoryError: true });
     render(<RealunitScreen />);
