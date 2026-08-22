@@ -7,7 +7,7 @@ import {
   StyledButtonWidth,
   StyledLoadingSpinner,
 } from '@dfx.swiss/react-components';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { BuyVolumeChart } from 'src/components/realunit/buy-volume-chart';
 import { HolderCountChart } from 'src/components/realunit/holder-count-chart';
@@ -65,7 +65,10 @@ export default function RealunitScreen(): JSX.Element {
 
   useLayoutOptions({ backButton: true });
 
+  const didBootstrapLists = useRef(false);
   useEffect(() => {
+    if (didBootstrapLists.current) return;
+    didBootstrapLists.current = true;
     if (!holders.length) fetchHolders();
     if (!tokenInfo) fetchTokenInfo();
     if (!priceHistory.length) fetchPriceHistory();

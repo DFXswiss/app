@@ -101,7 +101,7 @@
   },
   "realunit-dashboard": {
     "title": "RealUnit Dashboard",
-    "description": "RealUnit-Startseite: Pending-Tabelle mit User-Id und Kundenname, ohne deaktivierte Quotes. Visual baseline bleibt die Pending-Sektion; Buy-Volume-, Holder- und Register-Charts werden per Heading sichtbar geprüft, nicht als eigene Goldens."
+    "description": "RealUnit home: pending table with user id and customer name, excluding deactivated quotes. The visual baseline remains the pending section; buy-volume, holder, and registration charts are asserted by heading visibility, not as extra goldens."
   },
   "responsive": {
     "title": "Responsive Layout",
