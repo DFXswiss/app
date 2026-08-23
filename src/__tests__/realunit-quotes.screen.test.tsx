@@ -20,8 +20,11 @@ jest.mock('@dfx.swiss/react', () => ({
   },
 }));
 
+const mockCopy = jest.fn();
+
 jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', LG: 'lg' },
+  IconColor: { GRAY: 'gray' },
   StyledLoadingSpinner: ({ size }: { size?: string }) => <div data-testid="loading-spinner" data-size={size} />,
   StyledButton: ({ label, onClick, disabled }: { label: string; onClick?: () => void; disabled?: boolean }) => (
     <button type="button" onClick={onClick} disabled={disabled}>
@@ -29,6 +32,15 @@ jest.mock('@dfx.swiss/react-components', () => ({
     </button>
   ),
   StyledButtonWidth: { FULL: 'full' },
+  CopyButton: ({ onCopy }: { onCopy?: () => void }) => (
+    <button type="button" data-testid="copy-button" onClick={onCopy}>
+      copy
+    </button>
+  ),
+}));
+
+jest.mock('src/hooks/clipboard.hook', () => ({
+  useClipboard: () => ({ copy: mockCopy, isCopying: false }),
 }));
 
 jest.mock('src/components/error-hint', () => ({
@@ -140,6 +152,10 @@ describe('RealunitQuotesScreen', () => {
     expect(screen.getByText('0xabcde...fabcd')).toBeInTheDocument();
     expect(screen.queryByText('42')).not.toBeInTheDocument();
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('0xabcde...fabcd'));
+    expect(mockCopy).toHaveBeenCalledWith(QUOTE.userAddress);
+    expect(screen.getByText('Copied')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('hides deactivated quotes from the pending list', () => {

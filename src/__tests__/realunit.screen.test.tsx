@@ -360,6 +360,10 @@ describe('RealunitScreen', () => {
     expect(screen.getAllByText(QUOTE.userAddress as string).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('42')).not.toBeInTheDocument();
     expect(screen.queryByText('Cancelled Person')).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByText(QUOTE.userAddress as string)[0]);
+    expect(mockCopy).toHaveBeenCalledWith(QUOTE.userAddress);
+    expect(screen.getByText('Copied')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('Ada Lovelace'));
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/quotes/42');
   });

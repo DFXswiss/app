@@ -10,6 +10,7 @@ import {
 import { useEffect, useRef } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { BuyVolumeChart } from 'src/components/realunit/buy-volume-chart';
+import { CopyableAddress } from 'src/components/realunit/copyable-address';
 import { HolderCountChart } from 'src/components/realunit/holder-count-chart';
 import { PriceHistoryChart } from 'src/components/realunit/price-history-chart';
 import { RegistrationFunnel } from 'src/components/realunit/registration-funnel';
@@ -331,7 +332,7 @@ export default function RealunitScreen(): JSX.Element {
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{displayType(quote.type)}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{quote.amount?.toLocaleString()}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
-                      {quote.userAddress ? blankedAddress(quote.userAddress, { displayLength: 12 }) : '-'}
+                      <CopyableAddress address={quote.userAddress} />
                     </td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
                       {quote.userName ? quote.userName : '-'}
