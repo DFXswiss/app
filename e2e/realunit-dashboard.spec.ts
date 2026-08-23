@@ -1,10 +1,12 @@
 import { test, expect, Page, Route } from '@playwright/test';
 
 /**
- * Visual regression: RealUnit dashboard home (`/realunit`) pending-quotes table.
+ * Visual regression: RealUnit dashboard home (`/realunit`) pending-quotes table
+ * and monitoring charts (buy volume, holders over time, registration).
  *
- * Auth is a synthetic Admin JWT. Holders, token info, price history, quotes and
- * transactions are mocked. A green run does not prove the live API returns these fields.
+ * Auth is a synthetic Admin JWT. Holders, token info, price history, quotes,
+ * transactions and admin stats are mocked. A green run does not prove the live
+ * API returns these fields.
  */
 
 function jwt(): string {
@@ -163,11 +165,28 @@ test.describe('RealUnit dashboard - Visual Regression Tests', () => {
     await expect(page.getByRole('heading', { name: 'Registration' })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Active Buyer' }).first()).toBeVisible();
     await expect(page.getByText('Deactivated Buyer')).toHaveCount(0);
+    await expect(page.locator('.apexcharts-canvas').first()).toBeVisible();
 
-    const pendingSection = page.getByRole('heading', { name: 'Pending Transactions' }).locator('xpath=..');
+    const screenshotOpts = { maxDiffPixels: 5000 };
+    const section = (heading: string) => page.getByRole('heading', { name: heading }).locator('xpath=..');
+
+    const pendingSection = section('Pending Transactions');
     await pendingSection.scrollIntoViewIfNeeded();
-    await expect(pendingSection).toHaveScreenshot('realunit-dashboard-01-pending.png', {
-      maxDiffPixels: 5000,
-    });
+    await expect(pendingSection).toHaveScreenshot('realunit-dashboard-01-pending.png', screenshotOpts);
+
+    const buyVolume = section('Buy Volume');
+    await buyVolume.scrollIntoViewIfNeeded();
+    await expect(buyVolume).toHaveScreenshot('realunit-dashboard-02-buy-volume-chf.png', screenshotOpts);
+    await buyVolume.getByRole('button', { name: 'Shares' }).click();
+    await expect(buyVolume.locator('.apexcharts-canvas')).toBeVisible();
+    await expect(buyVolume).toHaveScreenshot('realunit-dashboard-03-buy-volume-shares.png', screenshotOpts);
+
+    const holders = section('Holders over time');
+    await holders.scrollIntoViewIfNeeded();
+    await expect(holders).toHaveScreenshot('realunit-dashboard-04-holders.png', screenshotOpts);
+
+    const registration = section('Registration');
+    await registration.scrollIntoViewIfNeeded();
+    await expect(registration).toHaveScreenshot('realunit-dashboard-05-registration.png', screenshotOpts);
   });
 });

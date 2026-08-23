@@ -113,10 +113,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   synthetic fixtures that include `userId`, `userName` and `deactivatedAt`.
   They also fulfil staff/bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`,
   `/v1/country`, `/v1/setting/infoBanner`, `/v2/user`) so a synthetic unsigned JWT does not 401.
-  A green run proves the quote list and pending-table fixtures render, and that the stats chart
-  headings are visible. It does not prove that the charts consume the stats fixtures, that the API
-  returns those payloads, that login or token verification works, or that those staff/settings or
-  stats endpoints return real data.
+  A green run proves the quote list, pending-table and stats-chart fixtures render. It does not
+  prove that the API returns those payloads, that login or token verification works, or that those
+  staff/settings or stats endpoints return real data.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for
