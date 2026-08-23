@@ -104,7 +104,7 @@ export default function RealunitQuoteDetailScreen(): JSX.Element {
             <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{quote.estimatedAmount?.toLocaleString()}</td>
           </tr>
           <tr className="border-b border-dfxGray-300 transition-colors hover:bg-dfxGray-300">
-            <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{translate('screens/realunit', 'User')}</td>
+            <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{translate('screens/realunit', 'Address')}</td>
             <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
               {userAddress ? (
                 <button

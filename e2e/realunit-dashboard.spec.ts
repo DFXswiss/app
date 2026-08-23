@@ -153,7 +153,7 @@ async function installDashboardRoutes(page: Page): Promise<void> {
 }
 
 test.describe('RealUnit dashboard - Visual Regression Tests', () => {
-  test('home pending table shows user id and name and hides deactivated quotes', async ({ page }) => {
+  test('home pending table shows address and name and hides deactivated quotes', async ({ page }) => {
     await installDashboardRoutes(page);
     await page.goto(`/realunit?session=${encodeURIComponent(jwt())}&lang=en`);
     await page.waitForLoadState('networkidle');
@@ -172,6 +172,8 @@ test.describe('RealUnit dashboard - Visual Regression Tests', () => {
 
     const pendingSection = section('Pending Transactions');
     await pendingSection.scrollIntoViewIfNeeded();
+    await expect(pendingSection.getByRole('columnheader', { name: 'Address' })).toBeVisible();
+    await expect(pendingSection.getByRole('columnheader', { name: 'User' })).toHaveCount(0);
     await expect(pendingSection).toHaveScreenshot('realunit-dashboard-01-pending.png', screenshotOpts);
 
     const buyVolume = section('Buy Volume');

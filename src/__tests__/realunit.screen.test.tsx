@@ -103,6 +103,7 @@ const QUOTE = {
   amount: 250,
   estimatedAmount: 25,
   created: '2026-01-15T10:00:00.000Z',
+  userAddress: '0x1234567890abcdef1234567890abcdef12345678',
   userId: 42,
   userName: 'Ada Lovelace',
 };
@@ -337,7 +338,7 @@ describe('RealunitScreen', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/holders');
   });
 
-  it('shows userId and userName on pending quotes and hides deactivated ones', () => {
+  it('shows address and userName on pending quotes and hides deactivated ones', () => {
     setContext({
       quotes: [
         QUOTE,
@@ -352,16 +353,19 @@ describe('RealunitScreen', () => {
       ],
     });
     render(<RealunitScreen />);
+    expect(screen.getAllByText('Address').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('User')).not.toBeInTheDocument();
     expect(screen.getByText('Name')).toBeInTheDocument();
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
-    expect(screen.getByText('42')).toBeInTheDocument();
+    expect(screen.getAllByText(QUOTE.userAddress as string).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('42')).not.toBeInTheDocument();
     expect(screen.queryByText('Cancelled Person')).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Ada Lovelace'));
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/quotes/42');
   });
 
-  it('shows dashes when pending quote userId and userName are missing', () => {
-    setContext({ quotes: [{ ...QUOTE, userId: undefined, userName: undefined, amount: undefined }] });
+  it('shows dashes when pending quote userAddress and userName are missing', () => {
+    setContext({ quotes: [{ ...QUOTE, userAddress: undefined, userName: undefined, amount: undefined }] });
     render(<RealunitScreen />);
     expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(2);
   });

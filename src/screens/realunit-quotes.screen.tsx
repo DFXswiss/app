@@ -7,7 +7,7 @@ import { quoteIsDeactivated } from 'src/dto/realunit.dto';
 import { useRealunitQuotesGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
-import { formatSwissDateTimeWithSeconds } from 'src/util/utils';
+import { blankedAddress, formatSwissDateTimeWithSeconds } from 'src/util/utils';
 
 export default function RealunitQuotesScreen(): JSX.Element {
   useRealunitQuotesGuard();
@@ -53,7 +53,7 @@ export default function RealunitQuotesScreen(): JSX.Element {
                     {translate('screens/realunit', 'Amount')}
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
-                    {translate('screens/realunit', 'User')}
+                    {translate('screens/realunit', 'Address')}
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
                     {translate('screens/realunit', 'Name')}
@@ -73,9 +73,11 @@ export default function RealunitQuotesScreen(): JSX.Element {
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{displayType(quote.type)}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{quote.amount?.toLocaleString()}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
-                      {quote.userId != null ? String(quote.userId) : '-'}
+                      {quote.userAddress ? blankedAddress(quote.userAddress, { displayLength: 12 }) : '-'}
                     </td>
-                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{quote.userName ? quote.userName : '-'}</td>
+                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                      {quote.userName ? quote.userName : '-'}
+                    </td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
                       {formatSwissDateTimeWithSeconds(quote.created)}
                     </td>

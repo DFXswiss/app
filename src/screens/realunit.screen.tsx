@@ -22,6 +22,7 @@ import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { Timeframe } from 'src/util/chart';
 import { blankedAddress, formatSwissDateTimeWithSeconds } from 'src/util/utils';
+
 export default function RealunitScreen(): JSX.Element {
   useRealunitGuard();
 
@@ -310,7 +311,7 @@ export default function RealunitScreen(): JSX.Element {
                     {translate('screens/realunit', 'Amount')}
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
-                    {translate('screens/realunit', 'User')}
+                    {translate('screens/realunit', 'Address')}
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
                     {translate('screens/realunit', 'Name')}
@@ -330,7 +331,7 @@ export default function RealunitScreen(): JSX.Element {
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{displayType(quote.type)}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{quote.amount?.toLocaleString()}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
-                      {quote.userId != null ? String(quote.userId) : '-'}
+                      {quote.userAddress ? blankedAddress(quote.userAddress, { displayLength: 12 }) : '-'}
                     </td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
                       {quote.userName ? quote.userName : '-'}
@@ -379,7 +380,7 @@ export default function RealunitScreen(): JSX.Element {
                     {translate('screens/realunit', 'Amount CHF')}
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
-                    {translate('screens/realunit', 'User')}
+                    {translate('screens/realunit', 'Address')}
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
                     {translate('screens/realunit', 'Date')}

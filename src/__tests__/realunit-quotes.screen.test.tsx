@@ -131,11 +131,14 @@ describe('RealunitQuotesScreen', () => {
     expect(screen.getByText('Other')).toBeInTheDocument();
   });
 
-  it('shows userId and userName and the Name header', () => {
+  it('shows address and userName and the Address header', () => {
     setContext({ quotes: [QUOTE] });
     render(<RealunitQuotesScreen />);
+    expect(screen.getByText('Address')).toBeInTheDocument();
+    expect(screen.queryByText('User')).not.toBeInTheDocument();
     expect(screen.getByText('Name')).toBeInTheDocument();
-    expect(screen.getByText('42')).toBeInTheDocument();
+    expect(screen.getByText('0xabcde...fabcd')).toBeInTheDocument();
+    expect(screen.queryByText('42')).not.toBeInTheDocument();
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
   });
 
@@ -159,8 +162,8 @@ describe('RealunitQuotesScreen', () => {
     expect(screen.queryByText('999')).not.toBeInTheDocument();
   });
 
-  it('shows "-" when userId and userName are missing', () => {
-    setContext({ quotes: [{ ...QUOTE, userId: undefined, userName: undefined }] });
+  it('shows "-" when userAddress and userName are missing', () => {
+    setContext({ quotes: [{ ...QUOTE, userAddress: undefined, userName: undefined }] });
     render(<RealunitQuotesScreen />);
     expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(2);
   });

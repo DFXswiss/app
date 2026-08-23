@@ -152,7 +152,8 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
 
     await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
     await expect(page.getByText('Active Buyer')).toBeVisible();
-    await expect(page.getByText('8001')).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Address' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'User' })).toHaveCount(0);
     await expect(page.getByText('Deactivated Buyer')).toHaveCount(0);
 
     await expect(page).toHaveScreenshot('realunit-quotes-01-list.png', {
