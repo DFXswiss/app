@@ -187,6 +187,7 @@ test.describe('RealUnit dashboard - Visual Regression Tests', () => {
 
     const registration = section('Registration');
     await registration.scrollIntoViewIfNeeded();
+    await expect(registration.getByText('Registered')).toBeVisible();
     await expect(registration).toHaveScreenshot('realunit-dashboard-05-registration.png', screenshotOpts);
   });
 });

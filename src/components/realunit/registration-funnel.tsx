@@ -1,99 +1,81 @@
-import { ApexOptions } from 'apexcharts';
-import { useMemo } from 'react';
-import Chart from 'react-apexcharts';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { RealUnitRegistrationStats } from 'src/dto/realunit.dto';
-import { Timeframe } from 'src/util/chart';
-import { ButtonGroup } from '../safe/button-group';
-
-const SUPPORTED_TIMEFRAMES: Timeframe[] = [
-  Timeframe.WEEK,
-  Timeframe.MONTH,
-  Timeframe.QUARTER,
-  Timeframe.YEAR,
-  Timeframe.ALL,
-];
 
 interface RegistrationFunnelProps {
-  timeframe: Timeframe;
   stats: RealUnitRegistrationStats;
-  onTimeframeChange: (timeframe: Timeframe) => void;
 }
 
-export const RegistrationFunnel = ({ timeframe, stats, onTimeframeChange }: RegistrationFunnelProps) => {
-  const { translate } = useSettingsContext();
-  const snapshot = stats.snapshot;
+interface FunnelStage {
+  key: string;
+  value: number;
+}
 
-  const tiles = [
-    { label: translate('screens/realunit', 'Completed'), value: snapshot.completed },
-    { label: translate('screens/realunit', 'Manual review'), value: snapshot.manualReview },
-    { label: translate('screens/realunit', 'Confirmed'), value: snapshot.confirmed },
-    { label: translate('screens/realunit', 'Active users'), value: snapshot.usersActive },
-    { label: translate('screens/realunit', 'NA users'), value: snapshot.usersNa },
-  ];
-  if (snapshot.usersBlocked > 0) {
-    tiles.push({ label: translate('screens/realunit', 'Blocked users'), value: snapshot.usersBlocked });
-  }
-  if (snapshot.usersDeleted > 0) {
-    tiles.push({ label: translate('screens/realunit', 'Deleted users'), value: snapshot.usersDeleted });
-  }
+function pct(part: number, whole: number): number {
+  return Math.round((part / whole) * 100);
+}
 
-  const chartOptions = useMemo((): ApexOptions => {
-    return {
-      theme: { monochrome: { color: '#092f62', enabled: true } },
-      chart: {
-        type: 'line',
-        dropShadow: { enabled: false },
-        toolbar: { show: false },
-        zoom: { enabled: false },
-        background: '0',
-      },
-      stroke: { width: 3 },
-      dataLabels: { enabled: false },
-      grid: { show: false },
-      xaxis: {
-        type: 'datetime',
-        labels: { show: false, datetimeUTC: false, format: 'dd MMM' },
-        axisBorder: { show: false },
-        axisTicks: { show: false },
-      },
-      yaxis: { show: false, min: 0 },
-      tooltip: { x: { format: 'dd MMM yyyy' } },
-    };
-  }, []);
-
-  const chartSeries = useMemo(() => {
-    const points = stats.series;
-    return [
-      {
-        name: translate('screens/realunit', 'Registered'),
-        data: points.map((point) => [new Date(point.timestamp).getTime(), point.registered]),
-      },
-      {
-        name: translate('screens/realunit', 'Confirmed'),
-        data: points.map((point) => [new Date(point.timestamp).getTime(), point.confirmed]),
-      },
-    ];
-  }, [stats, translate]);
+function FunnelConnector({ fromPct, toPct }: { fromPct: number; toPct: number }) {
+  const topLeft = (100 - fromPct) / 2;
+  const topRight = topLeft + fromPct;
+  const botLeft = (100 - toPct) / 2;
+  const botRight = botLeft + toPct;
 
   return (
-    <div className="justify-center text-dfxBlue-500">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
-        {tiles.map((tile) => (
-          <div key={tile.label} className="bg-white rounded-lg shadow-sm p-3 text-center">
-            <div className="text-xs text-dfxGray-700">{tile.label}</div>
-            <div className="text-lg font-semibold text-dfxBlue-800">{tile.value.toLocaleString()}</div>
+    <svg viewBox="0 0 100 20" className="w-full h-6" preserveAspectRatio="none" aria-hidden>
+      <polygon points={`${topLeft},0 ${topRight},0 ${botRight},20 ${botLeft},20`} fill="#5A81BB" />
+    </svg>
+  );
+}
+
+export const RegistrationFunnel = ({ stats }: RegistrationFunnelProps) => {
+  const { translate } = useSettingsContext();
+  const { completed, manualReview, confirmed } = stats.snapshot;
+  const registered = completed + manualReview;
+  const head = Math.max(registered, 1);
+  const stages: FunnelStage[] = [
+    { key: 'Registered', value: registered },
+    { key: 'Completed', value: completed },
+  ];
+
+  return (
+    <div className="flex flex-col items-center text-dfxBlue-500 w-full">
+      {stages.map((stage, index) => {
+        const previous = index > 0 ? stages[index - 1] : stage;
+        const drop = previous.value - stage.value;
+        const widthPct = Math.min(100, (stage.value / head) * 100);
+        const prevWidthPct = Math.min(100, (previous.value / head) * 100);
+
+        return (
+          <div key={stage.key} className="w-full flex flex-col items-center">
+            {index > 0 && (
+              <div className="relative w-full">
+                <FunnelConnector fromPct={prevWidthPct} toPct={widthPct} />
+                {drop > 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="bg-white text-dfxBlue-800 text-xs px-2 py-0.5 text-center leading-tight">
+                      <div>
+                        −{drop.toLocaleString()} (−{pct(drop, previous.value)}%)
+                      </div>
+                      <div>{translate('screens/realunit', 'Manual review')}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="bg-dfxBlue-800 text-white py-4 px-4 text-center" style={{ width: `${widthPct}%` }}>
+              <div className="text-xs opacity-90">{translate('screens/realunit', stage.key)}</div>
+              <div className="text-lg font-semibold">
+                {stage.value.toLocaleString()}
+                <span className="text-sm font-normal ml-2">{pct(stage.value, head)}%</span>
+              </div>
+            </div>
           </div>
-        ))}
-      </div>
-      <Chart type="line" height={280} options={chartOptions} series={chartSeries} />
-      <div className="mt-4 flex justify-center">
-        <ButtonGroup<Timeframe>
-          items={SUPPORTED_TIMEFRAMES}
-          selected={timeframe}
-          onClick={onTimeframeChange}
-          buttonLabel={(tf) => tf}
-        />
+        );
+      })}
+      <div className="mt-4 text-sm text-dfxGray-800">
+        {translate('screens/realunit', 'Confirmed')}{' '}
+        <span className="font-semibold text-dfxBlue-800">{confirmed.toLocaleString()}</span>
+        <span className="ml-2">{pct(confirmed, head)}%</span>
       </div>
     </div>
   );

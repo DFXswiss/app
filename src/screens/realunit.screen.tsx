@@ -60,7 +60,6 @@ export default function RealunitScreen(): JSX.Element {
     fetchRegistrationStats,
     buyVolumeTimeframe,
     holderCountTimeframe,
-    registrationTimeframe,
   } = useRealunitContext();
 
   useLayoutOptions({ backButton: true });
@@ -177,13 +176,7 @@ export default function RealunitScreen(): JSX.Element {
             {registrationLoading && !registrationStats ? (
               <StyledLoadingSpinner size={SpinnerSize.MD} />
             ) : (
-              registrationStats && (
-                <RegistrationFunnel
-                  timeframe={registrationTimeframe}
-                  stats={registrationStats}
-                  onTimeframeChange={fetchRegistrationStats}
-                />
-              )
+              registrationStats && <RegistrationFunnel stats={registrationStats} />
             )}
             {registrationError && (
               <div className="mt-4">

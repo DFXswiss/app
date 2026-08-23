@@ -101,7 +101,7 @@
   },
   "realunit-dashboard": {
     "title": "RealUnit Dashboard",
-    "description": "RealUnit-Startseite: Pending-Tabelle mit User-Id und Kundenname ohne deaktivierte Quotes, Kaufvolumen (CHF und Shares), Holder im Zeitverlauf und Register-Trichter."
+    "description": "RealUnit-Startseite: Pending-Tabelle mit User-Id und Kundenname ohne deaktivierte Quotes, Kaufvolumen (CHF und Shares), Holder im Zeitverlauf und Registrierungs-Funnel (Registered → Completed, Drop-off Manual review)."
   },
   "responsive": {
     "title": "Responsive Layout",

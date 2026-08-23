@@ -28,58 +28,69 @@ describe('RealUnit monitoring charts', () => {
     expect(screen.getByTestId('chart')).toBeInTheDocument();
   });
 
-  it('renders holder count and registration funnel including optional blocked/deleted tiles', () => {
+  it('renders holder count and a registration funnel with stage counts and conversion', () => {
     const onTimeframeChange = jest.fn();
     const { unmount } = render(
       <HolderCountChart timeframe={Timeframe.WEEK} series={[]} onTimeframeChange={onTimeframeChange} />,
     );
     unmount();
-    render(
+    const holders = render(
       <HolderCountChart
         timeframe={Timeframe.WEEK}
         series={[{ timestamp: '2026-08-01T00:00:00.000Z', holders: 4 }]}
         onTimeframeChange={onTimeframeChange}
       />,
     );
-    render(
+    expect(holders.getByTestId('chart')).toBeInTheDocument();
+    holders.unmount();
+
+    const funnel = render(
       <RegistrationFunnel
-        timeframe={Timeframe.ALL}
         stats={{
           snapshot: {
-            completed: 1,
-            manualReview: 2,
-            confirmed: 3,
+            completed: 80,
+            manualReview: 20,
+            confirmed: 50,
             usersActive: 4,
             usersNa: 5,
-            usersBlocked: 6,
-            usersDeleted: 7,
-          },
-          series: [{ timestamp: '2026-08-01T00:00:00.000Z', registered: 1, confirmed: 1 }],
-        }}
-        onTimeframeChange={onTimeframeChange}
-      />,
-    );
-    expect(screen.getByText('Blocked users')).toBeInTheDocument();
-    expect(screen.getByText('Deleted users')).toBeInTheDocument();
-    render(
-      <RegistrationFunnel
-        timeframe={Timeframe.ALL}
-        stats={{
-          snapshot: {
-            completed: 1,
-            manualReview: 0,
-            confirmed: 1,
-            usersActive: 2,
-            usersNa: 3,
             usersBlocked: 0,
             usersDeleted: 0,
           },
           series: [],
         }}
-        onTimeframeChange={onTimeframeChange}
       />,
     );
-    expect(screen.getAllByText('Blocked users')).toHaveLength(1);
-    expect(screen.getAllByTestId('chart').length).toBeGreaterThan(0);
+    expect(funnel.getByText('Registered')).toBeInTheDocument();
+    expect(funnel.getByText('Completed')).toBeInTheDocument();
+    expect(funnel.getByText('100')).toBeInTheDocument();
+    expect(funnel.getByText('80')).toBeInTheDocument();
+    expect(funnel.getByText('−20 (−20%)')).toBeInTheDocument();
+    expect(funnel.getByText('Manual review')).toBeInTheDocument();
+    expect(funnel.getByText('Confirmed')).toBeInTheDocument();
+    expect(funnel.getByText('50')).toBeInTheDocument();
+    expect(funnel.queryByText('Blocked users')).not.toBeInTheDocument();
+    expect(funnel.queryByText('Active users')).not.toBeInTheDocument();
+    expect(funnel.queryByTestId('chart')).not.toBeInTheDocument();
+    funnel.unmount();
+
+    const noDrop = render(
+      <RegistrationFunnel
+        stats={{
+          snapshot: {
+            completed: 10,
+            manualReview: 0,
+            confirmed: 4,
+            usersActive: 0,
+            usersNa: 0,
+            usersBlocked: 0,
+            usersDeleted: 0,
+          },
+          series: [],
+        }}
+      />,
+    );
+    expect(noDrop.getAllByText('10')).toHaveLength(2);
+    expect(noDrop.getAllByText('100%')).toHaveLength(2);
+    expect(noDrop.queryByText('Manual review')).not.toBeInTheDocument();
   });
 });
