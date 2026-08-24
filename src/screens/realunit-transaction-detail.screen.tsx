@@ -87,7 +87,7 @@ export default function RealunitTransactionDetailScreen(): JSX.Element {
           </tr>
           <tr className="border-b border-dfxGray-300 transition-colors hover:bg-dfxGray-300">
             <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
-              {translate('screens/realunit', 'User')}
+              {translate('screens/realunit', 'Address')}
             </td>
             <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
               {transaction.userAddress ? (

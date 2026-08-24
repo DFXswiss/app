@@ -106,6 +106,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
   payloads, not that the API produces them. Unit tests against the utility pin the payload shapes
   instead.
+- **The RealUnit quotes and dashboard visual specs answer the admin list themselves.**
+  `e2e/realunit-quotes.spec.ts` and `e2e/realunit-dashboard.spec.ts` fulfil
+  `GET /v1/realunit/admin/quotes` (and, on the dashboard, holders, token info, price history,
+  transactions, and the three admin stats paths buy-volume, holders and registration) with
+  synthetic fixtures that include `userId`, `userName` and `deactivatedAt`.
+  They also fulfil staff/bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`,
+  `/v1/country`, `/v1/setting/infoBanner`, `/v2/user`) so a synthetic unsigned JWT does not 401.
+  A green run proves the quote list, pending-table and stats-chart fixtures render. It does not
+  prove that the API returns those payloads, that login or token verification works, or that those
+  staff/settings or stats endpoints return real data.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for
@@ -131,6 +141,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixture with `{ userData: { verifiedName } }`. A green run proves that the review screen
   accepts that name, not that the API returns the logged-in staff member's `verifiedName`.
   The spec stays on the AML reset path and does not assert the Editor label.
+- **The call-queue outcome spec answers staff identity and the dossier itself.**
+  `e2e/compliance-call-queue-outcome.spec.ts` fulfils `GET /v1/support/issue/clerk` with
+  `{ clerk }`, a differently named fallback on `GET /v1/support/{staffAccount}`,
+  `GET /v1/support/{customer}` with a synthetic dossier, empty lookup lists, a null
+  info banner, and `GET /v2/user` with a synthetic account. A green run proves the
+  outcome form renders that clerk name as a read-only signature and does not request a
+  clerks list, not that the API returns those records or the logged-in staff member's
+  `verifiedName`. The session is a synthetic unsigned JWT, so a green run also does not
+  prove login or token verification.
 - **Full-stack guest assign/refund specs SQL-write `transaction.actionSecretHash`.**
   `e2e-stack/specs/transactions.spec.ts` (`seedActionSecret`) updates the hash directly. A green run
   does **not** prove that the mail/API path creates, hashes, or delivers the action secret.

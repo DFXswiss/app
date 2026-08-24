@@ -201,7 +201,8 @@ test.describe('RealUnit area', () => {
     await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
     await expect(tableHeader(page, 'Type')).toBeVisible();
     await expect(tableHeader(page, 'Amount')).toBeVisible();
-    await expect(tableHeader(page, 'User')).toBeVisible();
+    await expect(tableHeader(page, 'Address')).toBeVisible();
+    await expect(tableHeader(page, 'Name')).toBeVisible();
     await expect(tableHeader(page, 'Created')).toBeVisible();
 
     // Empty success → "No pending transactions found"; fetch failure → ErrorHint with quotesError copy.
@@ -379,7 +380,7 @@ test.describe('RealUnit area', () => {
     await expect(page.getByRole('heading', { name: 'Received Transactions' })).toBeVisible();
     await expect(tableHeader(page, 'Type')).toBeVisible();
     await expect(tableHeader(page, 'Amount CHF')).toBeVisible();
-    await expect(tableHeader(page, 'User')).toBeVisible();
+    await expect(tableHeader(page, 'Address')).toBeVisible();
     await expect(tableHeader(page, 'Date')).toBeVisible();
 
     const emptyOrError = page

@@ -1,7 +1,4 @@
-import { test, expect, APIRequestContext, Page, Route } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
-import { createTestCredentials } from './test-wallet';
+import { test, expect, Page, Route } from '@playwright/test';
 
 /**
  * E2E Visual Regression Tests: RealUnit quote list + detail variants
@@ -10,13 +7,12 @@ import { createTestCredentials } from './test-wallet';
  *   - /realunit/quotes        (pending quote list)
  *   - /realunit/quotes/:id    (quote detail: active actions, deactivate overlay, deactivated)
  *
- * Auth is REAL (same admin-token flow as realunit-compliance.spec.ts): the api must be reachable for `/v1/auth`
- * and the frontend's own user/role fetch. The admin user has the ADMIN role, which can see both Confirm Payment
- * and Deactivate on an active WaitingForPayment Buy.
+ * Auth is a synthetic Admin/Support JWT. Staff GETs and the quotes admin endpoints are mocked, so
+ * the suite does not need a live API. A green run does not prove production auth or that the API
+ * returns these quote fields.
  *
  * Feature data is MOCKED with synthetic fixtures via page.route(...), so the baselines are deterministic AND contain
- * NO real production data. Only the RealUnit quotes admin endpoints are intercepted; everything else
- * (auth/role/user/settings) is passed through via route.continue().
+ * NO real production data.
  *
  * Intercepted endpoints (base `/v1/` is prepended by useApi):
  *   - GET  realunit/admin/quotes[?limit=&offset=]     (list — detail screen also loads this and finds by id)
@@ -25,44 +21,6 @@ import { createTestCredentials } from './test-wallet';
  *
  * Synthetic fixtures: fake ids (8000+), fixed ISO dates, fake addresses — no production data.
  */
-
-const API_URL = process.env.REACT_APP_API_URL! + '/v1';
-
-/**
- * Read ADMIN_SEED from the API .env file
- */
-function getAdminSeed(): string {
-  const apiEnvPath = path.join(__dirname, '../../api/.env');
-  if (!fs.existsSync(apiEnvPath)) {
-    throw new Error(`API .env file not found at ${apiEnvPath}. Run 'npm run setup' in the API directory first.`);
-  }
-  const content = fs.readFileSync(apiEnvPath, 'utf8');
-  const match = content.match(/^ADMIN_SEED=(.*)$/m);
-  if (!match || !match[1]) {
-    throw new Error('ADMIN_SEED not found in API .env file. Run "npm run setup" in the API directory first.');
-  }
-  return match[1];
-}
-
-/**
- * Authenticate with admin credentials
- */
-async function getAdminAuth(request: APIRequestContext): Promise<string> {
-  const adminSeed = getAdminSeed();
-  const credentials = await createTestCredentials(adminSeed);
-
-  const response = await request.post(`${API_URL}/auth`, {
-    data: credentials,
-  });
-
-  if (!response.ok()) {
-    const body = await response.text().catch(() => 'unknown');
-    throw new Error(`Admin auth failed: ${response.status()} - ${body}`);
-  }
-
-  const data = await response.json();
-  return data.accessToken;
-}
 
 // ---------------------------------------------------------------------------
 // Synthetic fixtures (mirror RealUnitQuote from the admin quotes list/detail screens).
@@ -77,6 +35,8 @@ interface RealUnitQuote {
   estimatedAmount: number;
   created: string;
   userAddress?: string;
+  userId?: number;
+  userName?: string;
   deactivatedAt?: string;
 }
 
@@ -89,6 +49,8 @@ const ACTIVE_BUY: RealUnitQuote = {
   estimatedAmount: 9.87,
   created: '2026-02-01T12:00:00.000Z',
   userAddress: '0xabc0000000000000000000000000000000008001',
+  userId: 8001,
+  userName: 'Active Buyer',
 };
 
 const DEACTIVATED_BUY: RealUnitQuote = {
@@ -101,6 +63,8 @@ const DEACTIVATED_BUY: RealUnitQuote = {
   created: '2026-02-01T12:00:00.000Z',
   deactivatedAt: '2026-02-02T12:00:00.000Z',
   userAddress: '0xdef0000000000000000000000000000000008002',
+  userId: 8002,
+  userName: 'Deactivated Buyer',
 };
 
 // Stable order for the GET list mock (detail screens also consume this list and find by id).
@@ -129,20 +93,7 @@ function jwt(role: 'Admin' | 'Support'): string {
   })}.synthetic`;
 }
 
-async function installQuotesRoutes(page: Page): Promise<void> {
-  await page.route('**/v1/**', async (route: Route) => {
-    const url = route.request().url();
-
-    if (DEACTIVATE_RE.test(url)) return json(route, {});
-    if (CONFIRM_PAYMENT_RE.test(url)) return json(route, {});
-    if (LIST_RE.test(url)) return json(route, QUOTES);
-
-    // everything else (auth, role, user, settings) hits the real api
-    await route.continue();
-  });
-}
-
-/** Quotes mocks plus staff GETs so a synthetic Support JWT does not 401-clear the session. */
+/** Quotes mocks plus staff GETs so a synthetic JWT does not 401-clear the session. */
 async function installQuotesRoutesWithStaffMocks(page: Page): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
@@ -189,14 +140,10 @@ async function installQuotesRoutesWithStaffMocks(page: Page): Promise<void> {
 }
 
 test.describe('RealUnit Quotes - Visual Regression Tests', () => {
-  let token: string;
+  const token = jwt('Admin');
 
-  test.beforeAll(async ({ request }) => {
-    token = await getAdminAuth(request);
-  });
-
-  test('list shows active and deactivated WaitingForPayment Buy rows', async ({ page }) => {
-    await installQuotesRoutes(page);
+  test('list shows only pending WaitingForPayment Buy rows', async ({ page }) => {
+    await installQuotesRoutesWithStaffMocks(page);
 
     // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
     await page.goto(`/realunit/quotes?session=${encodeURIComponent(token)}&lang=en`);
@@ -204,9 +151,10 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
     await page.waitForTimeout(1000);
 
     await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
-    // blanked addresses uniquely identify each fixture row (list does not render uid)
-    await expect(page.getByText(/0xabc00\.\.\.08001/)).toBeVisible();
-    await expect(page.getByText(/0xdef00\.\.\.08002/)).toBeVisible();
+    await expect(page.getByText('Active Buyer')).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Address' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'User' })).toHaveCount(0);
+    await expect(page.getByText('Deactivated Buyer')).toHaveCount(0);
 
     await expect(page).toHaveScreenshot('realunit-quotes-01-list.png', {
       fullPage: true,
@@ -215,7 +163,7 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
   });
 
   test('active WaitingForPayment Buy detail shows Confirm Payment and Deactivate', async ({ page }) => {
-    await installQuotesRoutes(page);
+    await installQuotesRoutesWithStaffMocks(page);
 
     await page.goto(`/realunit/quotes/${ACTIVE_BUY.id}?session=${encodeURIComponent(token)}&lang=en`);
     await page.waitForLoadState('networkidle');
@@ -231,7 +179,7 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
   });
 
   test('Deactivate Quote opens the confirmation overlay', async ({ page }) => {
-    await installQuotesRoutes(page);
+    await installQuotesRoutesWithStaffMocks(page);
 
     await page.goto(`/realunit/quotes/${ACTIVE_BUY.id}?session=${encodeURIComponent(token)}&lang=en`);
     await page.waitForLoadState('networkidle');
@@ -249,7 +197,7 @@ test.describe('RealUnit Quotes - Visual Regression Tests', () => {
   });
 
   test('deactivated quote detail shows Deactivated At and no action buttons', async ({ page }) => {
-    await installQuotesRoutes(page);
+    await installQuotesRoutesWithStaffMocks(page);
 
     await page.goto(`/realunit/quotes/${DEACTIVATED_BUY.id}?session=${encodeURIComponent(token)}&lang=en`);
     await page.waitForLoadState('networkidle');

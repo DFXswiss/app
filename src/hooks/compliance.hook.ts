@@ -1059,6 +1059,20 @@ export function useCompliance() {
 
     // 2) Transaction update (if applicable)
     try {
+      // Repeat releases THIS transaction while the account stays in the queue: no check date was written
+      // above, so the AML re-run would otherwise hold it for the very same reason again. The API clears
+      // only the call-queue errors for this transaction and still decides the verdict itself. Runs before
+      // any reset, because it is only accepted while the transaction still carries its queue reason.
+      if (tx && outcome === CallOutcome.REPEAT) {
+        if (tx.sourceType === 'BuyCrypto') await clearBuyCryptoPhoneCall(tx.id);
+        else await clearBuyFiatPhoneCall(tx.id);
+        results.push({
+          table: tx.sourceType === 'BuyCrypto' ? 'buyCrypto' : 'buyFiat',
+          column: 'phoneCallClearedDate',
+          value: 'released for this transaction',
+        });
+        completedSteps.push('transaction');
+      }
       if (tx && options.amlAction) {
         const signature = options.signature.trim();
         const txTable = tx.sourceType === 'BuyCrypto' ? 'buyCrypto' : 'buyFiat';
@@ -1092,7 +1106,7 @@ export function useCompliance() {
           } else await resetBuyFiatAml(tx.id);
           results.push({ table: txTable, column: 'amlCheck', value: 'Reset' });
         }
-        completedSteps.push('transaction');
+        if (!completedSteps.includes('transaction')) completedSteps.push('transaction');
       }
     } catch (e) {
       return fail('transaction', e);
@@ -1433,6 +1447,22 @@ export function useCompliance() {
     return call<void>({
       url: `buyFiat/${id}/amlCheck`,
       method: 'DELETE',
+    });
+  }
+
+  // Releases a single transaction from its call queue without writing a check date on the account, so
+  // the account is called again on its next transaction. Sets no verdict — the API's AML run decides.
+  async function clearBuyCryptoPhoneCall(id: number): Promise<void> {
+    return call<void>({
+      url: `buyCrypto/${id}/phoneCallCleared`,
+      method: 'PUT',
+    });
+  }
+
+  async function clearBuyFiatPhoneCall(id: number): Promise<void> {
+    return call<void>({
+      url: `buyFiat/${id}/phoneCallCleared`,
+      method: 'PUT',
     });
   }
 

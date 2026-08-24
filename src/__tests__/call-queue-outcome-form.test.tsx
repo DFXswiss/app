@@ -277,6 +277,35 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
   it('defaults an open-ended outcome to no change', async () => {
     renderForm(TX_CONTEXT);
 
+    fillAndSubmit(CallOutcome.SUSPICIOUS);
+
+    await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
+    expect(submittedAmlAction()).toBeUndefined();
+  });
+
+  // Repeat decides the transaction on its own: the hook releases this one transaction and the account
+  // stays in the queue for its next one. Asking for an AML action on top would only offer the plain
+  // reset, which re-runs the very check the still-missing check date is failing.
+  it('asks for no AML action on Repeat', () => {
+    renderForm(TX_CONTEXT);
+
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: CallOutcome.REPEAT } });
+
+    expect(screen.getAllByRole('combobox')).toHaveLength(1);
+  });
+
+  it('sends the automatic reset on Repeat for a recheck-blocked queue', async () => {
+    renderForm(TX_CONTEXT);
+
+    fillAndSubmit(CallOutcome.REPEAT);
+
+    await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
+    expect(submittedAmlAction()).toBe('Reset');
+  });
+
+  it('sends no AML action on Repeat where the cron re-evaluates anyway', async () => {
+    renderForm(PLAIN_PHONE_TX_CONTEXT);
+
     fillAndSubmit(CallOutcome.REPEAT);
 
     await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));

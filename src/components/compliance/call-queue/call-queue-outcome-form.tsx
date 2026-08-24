@@ -15,10 +15,16 @@ import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { canManuallySetAmlPass } from 'src/util/aml-pass.util';
 import { STAFF_NAME_MISSING, staffNameLoadError } from '../staff-identity';
 
-// Completed and Failed leave nothing to decide: the phone-call status written in the same save
-// already determines the transaction — the API passes it on the check date a completed call writes,
-// and fails it on a failed one (`UserDataFailedCall`).
-const OutcomesImplyingAmlAction: (CallOutcome | '')[] = [CallOutcome.COMPLETED, CallOutcome.FAILED];
+// These outcomes leave nothing to decide: the save itself already determines the transaction — the API
+// passes it on the check date a completed call writes, fails it on a failed one (`UserDataFailedCall`),
+// and on Repeat releases this one transaction while the account stays in the queue. Offering an AML
+// action on top would only invite the combination that cannot work: a plain reset re-runs the very
+// check the missing check date is still failing.
+const OutcomesImplyingAmlAction: (CallOutcome | '')[] = [
+  CallOutcome.COMPLETED,
+  CallOutcome.FAILED,
+  CallOutcome.REPEAT,
+];
 
 interface Props {
   context: CallOutcomeContext;
@@ -58,10 +64,11 @@ export function CallQueueOutcomeForm({
   const canSubmit =
     !!signature && !!outcome && !!comment.trim() && !isSaving && !isLoadingSignature && !impliedResetUnavailable;
 
-  // What the save sends for a Completed/Failed outcome. Only the queues whose AML reason the API
-  // excludes from the recheck cron need an explicit action: their transaction would otherwise stay
+  // What the save sends for an outcome that implies its action. Only the queues whose AML reason the
+  // API excludes from the recheck cron need an explicit action: their transaction would otherwise stay
   // Pending forever. Reset (never Pass/Fail) clears amlCheck + amlReason so the cron re-runs the FULL
-  // AML check on the state the call just produced — the API decides the outcome, not the tool.
+  // AML check on the state the call just produced — the API decides the outcome, not the tool. On
+  // Repeat the release is written before this reset, so the re-run no longer sees the call-queue error.
   function impliedAmlAction(): AmlAction | undefined {
     if (!needsExplicitAmlReset(context.queue) || buyCryptoResetUnavailable) return undefined;
     return 'Reset';
@@ -69,8 +76,8 @@ export function CallQueueOutcomeForm({
 
   function handleOutcomeChange(value: CallOutcome | '') {
     setOutcome(value);
-    // Drop a selection made before the outcome was known; it is not submitted for Completed/Failed
-    // and must not reappear when the clerk switches back to another outcome.
+    // Drop a selection made before the outcome was known; it is not submitted for the outcomes that
+    // imply their action and must not reappear when the clerk switches back to another outcome.
     setAmlAction('');
   }
 

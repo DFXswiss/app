@@ -50,7 +50,7 @@ export default function RealunitTransactionsScreen(): JSX.Element {
                     {translate('screens/realunit', 'Amount CHF')}
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
-                    {translate('screens/realunit', 'User')}
+                    {translate('screens/realunit', 'Address')}
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
                     {translate('screens/realunit', 'Date')}

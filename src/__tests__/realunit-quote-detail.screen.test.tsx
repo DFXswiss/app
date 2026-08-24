@@ -163,7 +163,8 @@ describe('RealunitQuoteDetailScreen', () => {
     expect(screen.getByText('WaitingForPayment')).toBeInTheDocument();
     expect(screen.getByText(BASE_QUOTE.amount.toLocaleString())).toBeInTheDocument();
     expect(screen.getByText(BASE_QUOTE.estimatedAmount.toLocaleString())).toBeInTheDocument();
-    expect(screen.getByText('User')).toBeInTheDocument();
+    expect(screen.getByText('Address')).toBeInTheDocument();
+    expect(screen.queryByText('User')).not.toBeInTheDocument();
     expect(screen.getByText('Created')).toBeInTheDocument();
   });
 

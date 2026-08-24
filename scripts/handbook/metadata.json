@@ -83,6 +83,10 @@
     "title": "Compliance: Unzugeordnete Bankeingänge",
     "description": "Liste unzugeordneter Bankeingänge mit hervorgehobener Lastschrift-Zeile und das aufgeklappte Zuordnungsformular für die Admin-Rolle."
   },
+  "compliance-call-queue-outcome": {
+    "title": "Compliance: Call-Queue-Outcome",
+    "description": "Outcome-Formular mit der Signatur als verified name des eingeloggten Bearbeiters, ohne Clerks-Auswahlliste."
+  },
   "realunit-compliance": {
     "title": "RealUnit Compliance",
     "description": "RealUnit-spezifische Compliance-Suche und Dossier."
@@ -94,6 +98,10 @@
   "realunit-quotes": {
     "title": "RealUnit Quotes",
     "description": "RealUnit-Quote-Liste und -Detail: aktives WaitingForPayment-Buy mit Confirm Payment und Deactivate, Bestätigungs-Overlay, deaktiviertes Quote mit Deactivated At ohne Aktions-Buttons, und Support sieht bei aktivem WaitingForPayment-Buy nur Deactivate (kein Confirm Payment)."
+  },
+  "realunit-dashboard": {
+    "title": "RealUnit Dashboard",
+    "description": "RealUnit-Startseite: Pending-Tabelle mit Address und Kundenname ohne deaktivierte Quotes, Kaufvolumen (CHF und Shares), Holder im Zeitverlauf und Registrierungs-Funnel (Registered → Completed, Drop-off Manual review)."
   },
   "responsive": {
     "title": "Responsive Layout",

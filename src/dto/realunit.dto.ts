@@ -103,6 +103,8 @@ export interface RealUnitQuote {
   estimatedAmount: number;
   created: string;
   userAddress?: string;
+  userId?: number;
+  userName?: string;
   deactivatedAt?: string;
 }
 
@@ -119,6 +121,39 @@ export interface RealUnitTransaction {
   created: string;
   outputDate?: string;
   userAddress?: string;
+}
+
+export interface RealUnitBuyVolumePoint {
+  timestamp: string;
+  chf: number;
+  shares: number;
+  priceChf: number;
+}
+
+export interface RealUnitRegistrationSnapshot {
+  completed: number;
+  manualReview: number;
+  confirmed: number;
+  usersActive: number;
+  usersNa: number;
+  usersBlocked: number;
+  usersDeleted: number;
+}
+
+export interface RealUnitRegistrationSeriesPoint {
+  timestamp: string;
+  registered: number;
+  confirmed: number;
+}
+
+export interface RealUnitRegistrationStats {
+  snapshot: RealUnitRegistrationSnapshot;
+  series: RealUnitRegistrationSeriesPoint[];
+}
+
+export interface RealUnitHolderCountPoint {
+  timestamp: string;
+  holders: number;
 }
 
 export interface RealunitContextInterface {
@@ -139,6 +174,18 @@ export interface RealunitContextInterface {
   quotesError: boolean;
   transactionsError: boolean;
   priceHistoryError: boolean;
+  buyVolume: RealUnitBuyVolumePoint[];
+  buyVolumeLoading: boolean;
+  buyVolumeError: boolean;
+  holderCount: RealUnitHolderCountPoint[];
+  holderCountLoading: boolean;
+  holderCountError: boolean;
+  registrationStats?: RealUnitRegistrationStats;
+  registrationLoading: boolean;
+  registrationError: boolean;
+  buyVolumeTimeframe: Timeframe;
+  holderCountTimeframe: Timeframe;
+  registrationTimeframe: Timeframe;
   fetchAccountSummary: (address: string) => void;
   fetchAccountHistory: (address: string, cursor?: string, direction?: PaginationDirection) => void;
   fetchHolders: (cursor?: string, direction?: PaginationDirection) => void;
@@ -150,4 +197,7 @@ export interface RealunitContextInterface {
   fetchTransactions: () => void;
   confirmPayment: (id: number) => Promise<void>;
   deactivateQuote: (id: number) => Promise<void>;
+  fetchBuyVolume: (timeframe?: Timeframe) => void;
+  fetchHolderCount: (timeframe?: Timeframe) => void;
+  fetchRegistrationStats: (timeframe?: Timeframe) => void;
 }
