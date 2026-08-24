@@ -464,7 +464,7 @@ export function TransactionsTable({
                           <tbody>
                             <DetailRow label="Type" value={fiatOutput.type} />
                             <DetailRow
-                              label="Amount"
+                              label="Amount (buyFiat possibly batched)"
                               value={
                                 fiatOutput.amount != null
                                   ? `${fiatOutput.amount} ${fiatOutput.currency ?? ''}`
