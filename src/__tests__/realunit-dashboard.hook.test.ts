@@ -60,11 +60,11 @@ describe('useRealunitSupport', () => {
     await result.current.getIssueData(42);
     expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/42/data', method: 'GET' });
 
-    await result.current.updateIssue(42, { state: 'Completed', clerk: 'Alice' });
+    await result.current.updateIssue(42, { state: 'Completed', clerkUserDataId: 9 });
     expect(mockCall).toHaveBeenCalledWith({
       url: 'realunit/support/42',
       method: 'PUT',
-      data: { state: 'Completed', clerk: 'Alice' },
+      data: { state: 'Completed', clerkUserDataId: 9 },
     });
 
     await result.current.createMessage(42, { author: 'Alice', message: 'hi' });
@@ -89,13 +89,13 @@ describe('useRealunitSupport', () => {
   });
 
   it('getMyClerk GETs realunit/support/clerk and trims the clerk name', async () => {
-    mockCall.mockResolvedValue({ clerk: '  Ada  ' });
+    mockCall.mockResolvedValue({ clerkUserDataId: 7, clerk: '  Ada  ' });
     const { result } = renderHook(() => useRealunitSupport());
 
     const clerk = await result.current.getMyClerk();
 
     expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/clerk', method: 'GET' });
-    expect(clerk).toBe('Ada');
+    expect(clerk).toEqual({ clerkUserDataId: 7, clerk: 'Ada' });
   });
 
   it('getMyClerk returns undefined when clerk is null or blank', async () => {

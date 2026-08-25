@@ -16,6 +16,7 @@ import { useNavigation } from 'src/hooks/navigation.hook';
 import { useSplitPane } from 'src/hooks/split-pane.hook';
 import {
   ASSIGNABLE_DEPARTMENTS,
+  SupportClerk,
   SupportIssueInternalData,
   SupportMessageInfo,
   useSupportDashboard,
@@ -45,7 +46,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const [messages, setMessages] = useState<SupportMessageInfo[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const visibleIdsRef = useRef<Set<number>>(new Set());
-  const [clerks, setClerks] = useState<string[]>([]);
+  const [clerks, setClerks] = useState<SupportClerk[]>([]);
 
   // Update form state
   const [updateState, setUpdateState] = useState('');
@@ -97,7 +98,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
-        setUpdateClerk(data.clerk ?? '');
+        setUpdateClerk(data.clerkUserDataId != null ? String(data.clerkUserDataId) : '');
       })
       .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
       .finally(() => setIsLoading(false));
@@ -182,7 +183,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       await updateIssue(+id, {
         state: updateState || undefined,
         department: updateDepartment || undefined,
-        clerk: updateClerk || undefined,
+        ...(updateClerk !== ''
+          ? { clerkUserDataId: +updateClerk }
+          : issueData?.clerkUserDataId != null
+            ? { clerkUserDataId: null }
+            : {}),
       });
       loadIssue();
     } catch (e: unknown) {
@@ -480,15 +485,15 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                 value={updateClerk}
                 onChange={(e) => setUpdateClerk(e.target.value)}
               >
-                {!issueData?.clerk && <option value="">-</option>}
-                {updateClerk && !clerks.includes(updateClerk) && (
+                <option value="">-</option>
+                {updateClerk && !clerks.some((c) => String(c.userDataId) === updateClerk) && (
                   <option key={updateClerk} value={updateClerk}>
-                    {updateClerk}
+                    {issueData?.clerk ?? updateClerk}
                   </option>
                 )}
                 {clerks.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                  <option key={c.userDataId} value={String(c.userDataId)}>
+                    {c.name}
                   </option>
                 ))}
               </select>

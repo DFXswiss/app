@@ -15,6 +15,7 @@ export interface SupportIssueListItem {
   state: string;
   name: string;
   clerk?: string;
+  clerkUserDataId?: number;
   department?: string;
   created: string;
   updated?: string;
@@ -79,6 +80,7 @@ export interface SupportIssueInternalData {
   state: string;
   name: string;
   clerk?: string;
+  clerkUserDataId?: number;
   account: SupportIssueInternalAccountData;
   transaction?: SupportIssueInternalTransactionData;
   limitRequest?: SupportIssueInternalLimitRequestData;
@@ -121,6 +123,11 @@ export interface SupportStatisticsDto {
   trend: SupportStatBucket[]; // oldest first
   avgResolutionHours: number;
   resolutionByType: SupportResolutionBucket[];
+}
+
+export interface SupportClerk {
+  userDataId: number;
+  name: string;
 }
 
 export function useSupportDashboard() {
@@ -169,20 +176,20 @@ export function useSupportDashboard() {
     });
   }
 
-  async function getClerks(): Promise<string[]> {
-    return guardedCall<string[]>({
+  async function getClerks(): Promise<SupportClerk[]> {
+    return guardedCall<SupportClerk[]>({
       url: 'support/issue/clerks',
       method: 'GET',
     });
   }
 
-  // the clerk name mapped to the logged-in support account (null if unmapped)
-  async function getMyClerk(): Promise<string | undefined> {
-    const result = await guardedCall<{ clerk: string | null }>({
+  async function getMyClerk(): Promise<{ clerkUserDataId: number; clerk: string } | undefined> {
+    const result = await guardedCall<{ clerkUserDataId: number; clerk: string }>({
       url: 'support/issue/clerk',
       method: 'GET',
     });
-    return result.clerk?.trim() || undefined;
+    const clerk = result.clerk?.trim();
+    return clerk ? { clerkUserDataId: result.clerkUserDataId, clerk } : undefined;
   }
 
   async function getIssueData(issueId: number): Promise<SupportIssueInternalData> {
@@ -194,7 +201,7 @@ export function useSupportDashboard() {
 
   async function updateIssue(
     issueId: number,
-    data: { state?: string; clerk?: string; department?: string },
+    data: { state?: string; clerkUserDataId?: number | null; department?: string },
   ): Promise<void> {
     return guardedCall<void>({
       url: `support/issue/${issueId}`,
