@@ -88,6 +88,16 @@ describe('useRealunitSupport', () => {
     expect(messages).toEqual([{ id: 1, author: 'Alice', created: 'now' }]);
   });
 
+  it('getClerks returns { userDataId, name }[] from GET realunit/support/clerks', async () => {
+    mockCall.mockResolvedValue([{ userDataId: 3, name: 'Alex' }]);
+    const { result } = renderHook(() => useRealunitSupport());
+
+    const clerks = await result.current.getClerks();
+
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/clerks', method: 'GET' });
+    expect(clerks).toEqual([{ userDataId: 3, name: 'Alex' }]);
+  });
+
   it('getMyClerk GETs realunit/support/clerk and trims the clerk name', async () => {
     mockCall.mockResolvedValue({ clerkUserDataId: 7, clerk: '  Ada  ' });
     const { result } = renderHook(() => useRealunitSupport());

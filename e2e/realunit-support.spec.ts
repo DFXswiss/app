@@ -215,7 +215,10 @@ const COUNTS: Record<string, number> = {
   Completed: 9,
 };
 
-const CLERKS: string[] = ['Rita Clerk', 'Tom Support'];
+const CLERKS: { userDataId: number; name: string }[] = [
+  { userDataId: 101, name: 'Rita Clerk' },
+  { userDataId: 102, name: 'Tom Support' },
+];
 
 // Detail for ISSUE_ID (7001), matching the OPEN_ISSUES[0] header fields.
 const ISSUE_DATA: SupportIssueInternalData = {
@@ -228,6 +231,7 @@ const ISSUE_DATA: SupportIssueInternalData = {
   state: 'Pending',
   name: 'Alice Muster',
   clerk: 'Rita Clerk',
+  clerkUserDataId: 101,
   account: {
     id: 8001,
     status: 'Active',
