@@ -42,6 +42,7 @@ import {
   formatLocationAddress,
   apiUrl,
   relativeUrl,
+  url,
 } from '../util/utils';
 
 describe('utils', () => {
@@ -133,6 +134,27 @@ describe('utils', () => {
     it('should return false for relative URLs', () => {
       expect(isAbsoluteUrl('/path/to/page')).toBe(false);
       expect(isAbsoluteUrl('path/to/page')).toBe(false);
+    });
+  });
+
+  describe('url', () => {
+    it('should keep the base without a trailing slash when there is no path (referral link)', () => {
+      expect(url({ base: 'https://dfx.swiss/app/services', params: new URLSearchParams({ code: '185-151' }) })).toBe(
+        'https://dfx.swiss/app/services?code=185-151',
+      );
+    });
+
+    it('should keep a trailing slash that is part of the base when there is no path', () => {
+      expect(url({ base: 'https://dfx.swiss/app/services/' })).toBe('https://dfx.swiss/app/services/');
+    });
+
+    it('should join base and path with a single slash', () => {
+      expect(url({ base: 'https://dfx.swiss/app', path: 'services' })).toBe('https://dfx.swiss/app/services');
+      expect(url({ base: 'https://dfx.swiss/app/', path: '/services' })).toBe('https://dfx.swiss/app/services');
+    });
+
+    it('should use an absolute path as base', () => {
+      expect(url({ base: 'https://dfx.swiss', path: 'https://app.dfx.swiss' })).toBe('https://app.dfx.swiss/');
     });
   });
 
