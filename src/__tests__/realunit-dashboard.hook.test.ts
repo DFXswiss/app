@@ -27,6 +27,7 @@ jest.mock('src/util/utils', () => ({
 import { ResponseType } from '@dfx.swiss/react';
 import { useRealunitCompliance } from '../hooks/realunit-compliance.hook';
 import { useRealunitSupport } from '../hooks/realunit-support.hook';
+import { clerkAssignmentPayload, usableClerks } from '../hooks/support-dashboard.hook';
 
 describe('useRealunitSupport', () => {
   beforeEach(() => {
@@ -98,6 +99,17 @@ describe('useRealunitSupport', () => {
     expect(clerks).toEqual([{ userDataId: 3, name: 'Alex' }]);
   });
 
+  it('getClerks drops entries without a finite userDataId', async () => {
+    mockCall.mockResolvedValue([
+      { userDataId: 3, name: 'Alex' },
+      { userDataId: Number.NaN, name: 'Broken' },
+      { name: 'NoId' },
+    ]);
+    const { result } = renderHook(() => useRealunitSupport());
+
+    await expect(result.current.getClerks()).resolves.toEqual([{ userDataId: 3, name: 'Alex' }]);
+  });
+
   it('getMyClerk GETs realunit/support/clerk and trims the clerk name', async () => {
     mockCall.mockResolvedValue({ clerkUserDataId: 7, clerk: '  Ada  ' });
     const { result } = renderHook(() => useRealunitSupport());
@@ -116,6 +128,42 @@ describe('useRealunitSupport', () => {
 
     mockCall.mockResolvedValue({ clerk: '   ' });
     await expect(result.current.getMyClerk()).resolves.toBeUndefined();
+  });
+});
+
+describe('clerkAssignmentPayload', () => {
+  it('omits the field when the selected clerk is unchanged', () => {
+    expect(clerkAssignmentPayload('101', 101)).toEqual({});
+  });
+
+  it('sends the id when assigning a different clerk', () => {
+    expect(clerkAssignmentPayload('102', 101)).toEqual({ clerkUserDataId: 102 });
+  });
+
+  it('sends null when clearing an existing assignment', () => {
+    expect(clerkAssignmentPayload('', 101)).toEqual({ clerkUserDataId: null });
+  });
+
+  it('omits the field when already unassigned and the select is empty', () => {
+    expect(clerkAssignmentPayload('', null)).toEqual({});
+    expect(clerkAssignmentPayload('')).toEqual({});
+  });
+
+  it('omits the field when the selected value is not a finite id', () => {
+    expect(clerkAssignmentPayload('undefined', 101)).toEqual({});
+    expect(clerkAssignmentPayload('NaN', 101)).toEqual({});
+  });
+});
+
+describe('usableClerks', () => {
+  it('keeps only entries with a finite userDataId and a name', () => {
+    expect(
+      usableClerks([
+        { userDataId: 1, name: 'Ada' },
+        { userDataId: Number.NaN, name: 'Bad' },
+        { userDataId: 2, name: '' },
+      ]),
+    ).toEqual([{ userDataId: 1, name: 'Ada' }]);
   });
 });
 

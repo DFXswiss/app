@@ -16,6 +16,7 @@ import { useNavigation } from 'src/hooks/navigation.hook';
 import { useSplitPane } from 'src/hooks/split-pane.hook';
 import {
   ASSIGNABLE_DEPARTMENTS,
+  clerkAssignmentPayload,
   SupportClerk,
   SupportIssueInternalData,
   SupportMessageInfo,
@@ -183,11 +184,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       await updateIssue(+id, {
         state: updateState || undefined,
         department: updateDepartment || undefined,
-        ...(updateClerk !== ''
-          ? { clerkUserDataId: +updateClerk }
-          : issueData?.clerkUserDataId != null
-            ? { clerkUserDataId: null }
-            : {}),
+        ...clerkAssignmentPayload(updateClerk, issueData?.clerkUserDataId),
       });
       loadIssue();
     } catch (e: unknown) {
@@ -486,11 +483,14 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                 onChange={(e) => setUpdateClerk(e.target.value)}
               >
                 <option value="">-</option>
-                {updateClerk && !clerks.some((c) => String(c.userDataId) === updateClerk) && (
-                  <option key={updateClerk} value={updateClerk}>
-                    {issueData?.clerk ?? updateClerk}
-                  </option>
-                )}
+                {updateClerk &&
+                  Number.isFinite(Number(updateClerk)) &&
+                  issueData?.clerk &&
+                  !clerks.some((c) => String(c.userDataId) === updateClerk) && (
+                    <option key={updateClerk} value={updateClerk}>
+                      {issueData.clerk}
+                    </option>
+                  )}
                 {clerks.map((c) => (
                   <option key={c.userDataId} value={String(c.userDataId)}>
                     {c.name}

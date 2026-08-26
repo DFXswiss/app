@@ -130,6 +130,24 @@ export interface SupportClerk {
   name: string;
 }
 
+/** PUT payload for the clerk select: omit when unchanged, null to unassign, skip non-finite values. */
+export function clerkAssignmentPayload(
+  selected: string,
+  previousId?: number | null,
+): { clerkUserDataId: number | null } | Record<string, never> {
+  const previous = previousId ?? null;
+  if (selected === '') {
+    return previous != null ? { clerkUserDataId: null } : {};
+  }
+  const nextId = Number(selected);
+  if (!Number.isFinite(nextId) || nextId === previous) return {};
+  return { clerkUserDataId: nextId };
+}
+
+export function usableClerks(clerks: SupportClerk[]): SupportClerk[] {
+  return clerks.filter((c) => Number.isFinite(c.userDataId) && c.name);
+}
+
 export function useSupportDashboard() {
   // staff endpoints answer with HTTP 403 { code: 'TFA_REQUIRED' } when the session still needs 2FA;
   // useGuardedApi routes that into the bearer-based 2FA flow instead of surfacing a raw error
@@ -177,14 +195,15 @@ export function useSupportDashboard() {
   }
 
   async function getClerks(): Promise<SupportClerk[]> {
-    return guardedCall<SupportClerk[]>({
+    const list = await guardedCall<SupportClerk[]>({
       url: 'support/issue/clerks',
       method: 'GET',
     });
+    return usableClerks(list);
   }
 
   async function getMyClerk(): Promise<{ clerkUserDataId: number; clerk: string } | undefined> {
-    const result = await guardedCall<{ clerkUserDataId: number; clerk: string }>({
+    const result = await guardedCall<{ clerkUserDataId: number; clerk: string | null }>({
       url: 'support/issue/clerk',
       method: 'GET',
     });
