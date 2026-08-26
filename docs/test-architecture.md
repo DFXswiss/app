@@ -139,7 +139,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the unknown-payee error for those two answers — not that the API resolves a printed recipient. The
   real lookup runs in `e2e-stack/specs/payment-links.spec.ts` — in the recipient test and in the two
   payer tests that carry a printed recipient; the payer test with an editable payee triggers none.
-- **The same two specs fabricate the invoice rejection.** Each answers
+- **Both collection-invoice specs also fabricate the invoice rejection.** Each answers
   `**/v1/buy/paymentInfos/*/invoice*` with a `400` and the fixed
   `CollectionAccountInvoicePersonalIbanMissing` error token, so a green run proves that the screen
   displays that token, not that the API emits it for this request. A unit test against the message
