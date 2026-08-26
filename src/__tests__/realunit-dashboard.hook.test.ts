@@ -27,7 +27,7 @@ jest.mock('src/util/utils', () => ({
 import { ResponseType } from '@dfx.swiss/react';
 import { useRealunitCompliance } from '../hooks/realunit-compliance.hook';
 import { useRealunitSupport } from '../hooks/realunit-support.hook';
-import { clerkAssignmentPayload, usableClerks } from '../hooks/support-dashboard.hook';
+import { clerkAssignmentPayload, isAssignedToMe, usableClerks } from '../hooks/support-dashboard.hook';
 
 describe('useRealunitSupport', () => {
   beforeEach(() => {
@@ -149,9 +149,32 @@ describe('clerkAssignmentPayload', () => {
     expect(clerkAssignmentPayload('')).toEqual({});
   });
 
+  it('sends null when the leftover name is still set and the select is empty', () => {
+    expect(clerkAssignmentPayload('', null, { leftover: true })).toEqual({ clerkUserDataId: null });
+  });
+
   it('omits the field when the selected value is not a finite id', () => {
     expect(clerkAssignmentPayload('undefined', 101)).toEqual({});
     expect(clerkAssignmentPayload('NaN', 101)).toEqual({});
+  });
+
+  it('omits the field when the id is not on the allow list', () => {
+    expect(clerkAssignmentPayload('99', null, { allowedIds: [101, 102] })).toEqual({});
+    expect(clerkAssignmentPayload('101', null, { allowedIds: [101, 102] })).toEqual({ clerkUserDataId: 101 });
+  });
+});
+
+describe('isAssignedToMe', () => {
+  it('matches the JWT account even when the leftover name differs', () => {
+    expect(isAssignedToMe({ clerkUserDataId: 7, clerk: 'Josh' }, 7, 'JOSHUA BEN KRUEGER')).toBe(true);
+  });
+
+  it('matches a leftover name when the id is still missing', () => {
+    expect(isAssignedToMe({ clerk: 'Ada' }, 7, 'Ada')).toBe(true);
+  });
+
+  it('does not match a leftover name against a different session', () => {
+    expect(isAssignedToMe({ clerkUserDataId: 9, clerk: 'Ada' }, 7, 'Ada')).toBe(false);
   });
 });
 
