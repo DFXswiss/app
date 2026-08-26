@@ -97,6 +97,9 @@ const RealunitComplianceScreen = lazy(() => import('./screens/realunit-complianc
 const RealunitComplianceUserScreen = lazy(() => import('./screens/realunit-compliance-user.screen'));
 const PersonalIbanScreen = lazy(() => import('./screens/personal-iban.screen'));
 const BuyCryptoUpdateScreen = lazy(() => import('./screens/buy-crypto-update.screen'));
+const PartnerScreen = lazy(() => import('./screens/partner.screen'));
+const PartnerOnboardingScreen = lazy(() => import('./screens/partner-onboarding.screen'));
+const PartnerHistoryScreen = lazy(() => import('./screens/partner-history.screen'));
 const DashboardScreen = lazy(() => import('./screens/dashboard.screen'));
 const DashboardFinancialScreen = lazy(() => import('./screens/dashboard-financial.screen'));
 const DashboardFinancialOverviewScreen = lazy(() => import('./screens/dashboard-financial-overview.screen'));
@@ -566,6 +569,14 @@ export const Routes = [
             path: 'compliance/user/:id',
             element: withSuspense(<RealunitComplianceUserScreen />),
           },
+        ],
+      },
+      {
+        path: 'partner',
+        children: [
+          { index: true, element: withSuspense(<PartnerScreen />) },
+          { path: 'onboarding', element: withSuspense(<PartnerOnboardingScreen />) },
+          { path: 'history', element: withSuspense(<PartnerHistoryScreen />) },
         ],
       },
       {
