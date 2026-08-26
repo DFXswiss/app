@@ -29,10 +29,10 @@ describe('canActOn', () => {
     expect(canActOn(account({ accessLevel: 'Read', owner: { id: 42 } }))).toBe(false);
   });
 
-  it('refuses acting on a foreign account even with a write mandate', () => {
-    // The case this predicate exists for. Orders carry no account, so acting here would book
-    // against the caller's own Safe while the screen names someone else's.
-    expect(canActOn(account({ accessLevel: 'Write', owner: { id: 42 } }))).toBe(false);
+  it('allows acting on a foreign account held under a write mandate', () => {
+    // The case this predicate exists for. Orders now go through the account resource, so a
+    // write mandate books against the selected Safe rather than the caller.
+    expect(canActOn(account({ accessLevel: 'Write', owner: { id: 42 } }))).toBe(true);
   });
 
   it("allows acting on the legacy Safe, which is the caller's own by definition", () => {
