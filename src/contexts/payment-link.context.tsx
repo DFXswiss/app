@@ -23,14 +23,14 @@ import { Api } from 'src/config/api';
 import { CloseType, useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { AssetBalance } from 'src/contexts/balance.context';
 import {
-  Amount,
-  ExtendedPaymentLinkStatus,
-  MetaMaskInfo,
-  NoPaymentLinkPaymentStatus,
+  PaymentAmount,
   PaymentLinkPayRequest,
+  PaymentLinkPayResponse,
   PaymentLinkPayTerminal,
   PaymentStandard,
-} from 'src/dto/payment-link.dto';
+  hasPaymentQuote as hasQuoteField,
+} from '@dfx.swiss/react';
+import { ExtendedPaymentLinkStatus, MetaMaskInfo, NoPaymentLinkPaymentStatus } from 'src/dto/payment-link.dto';
 import { usePolling } from 'src/hooks/polling';
 import { useSessionStore } from 'src/hooks/session-store.hook';
 import { Evm } from 'src/util/evm';
@@ -237,14 +237,14 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
     try {
       const urlObj = new URL(url);
       urlObj.searchParams.set('timeout', '0');
-      const payRequest = await fetchJson<PaymentLinkPayRequest>(urlObj);
+      const payRequest = await fetchJson<PaymentLinkPayResponse>(urlObj);
 
       if (merchantMode) {
         setPayRequest(payRequest);
         return;
       }
 
-      if (payRequest.statusCode === 400 && payRequest.message?.includes('not assigned')) {
+      if (!hasQuoteField(payRequest) && payRequest.statusCode === 400 && payRequest.message.includes('not assigned')) {
         setPayRequest(payRequest);
         navigate('/pl/assign');
         return;
@@ -255,7 +255,8 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
       setPayRequest(payRequest);
       setPaymentStatus(status);
 
-      if (status === PaymentLinkPaymentStatus.PENDING) {
+      // A pending status is only ever derived from a quoted response, but the type cannot know that.
+      if (status === PaymentLinkPaymentStatus.PENDING && hasQuoteField(payRequest)) {
         return waitPayment(payRequest);
       }
 
@@ -470,7 +471,7 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
   async function findAssetWithBalance(
     address: string,
     blockchain: Blockchain,
-    transferAmounts: Amount[],
+    transferAmounts: PaymentAmount[],
   ): Promise<AssetBalance | undefined> {
     transferAmounts.sort((a, b) => (a.asset === 'dEURO' ? -1 : b.asset === 'dEURO' ? 1 : 0));
 

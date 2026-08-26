@@ -1,8 +1,8 @@
-import { Blockchain, PaymentLinkMode } from '@dfx.swiss/react';
+import { Blockchain, C2BPaymentMethod, PaymentLinkMode, TransferMethod } from '@dfx.swiss/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Api } from 'src/config/api';
 import { usePaymentLinkContext } from 'src/contexts/payment-link.context';
-import { C2BPaymentMethod, TransferMethod, WalletInfo } from 'src/dto/payment-link.dto';
+import { WalletInfo } from 'src/dto/payment-link.dto';
 import { Wallet } from 'src/util/payment-link-wallet';
 import { fetchJson, url } from 'src/util/utils';
 
@@ -118,7 +118,7 @@ export const usePaymentLinkWallets = (): PaymentLinkWalletsProps => {
 
       case 'KuCoin Pay':
         const { uri: kucoinUri } =
-          (await fetchCallbackUrlForTransferMethod<{ uri: string }>(C2BPaymentMethod.KUCOINPAY)) ?? {};
+          (await fetchCallbackUrlForTransferMethod<{ uri: string }>(C2BPaymentMethod.KUCOIN_PAY)) ?? {};
         return kucoinUri;
 
       default:

@@ -1,12 +1,8 @@
 import { ApiError, PaymentLink, PaymentLinkPaymentStatus, useApi } from '@dfx.swiss/react';
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  ExtendedPaymentLinkStatus,
-  NoPaymentLinkPaymentStatus,
-  PaymentLinkHistory,
-  PaymentLinkPayRequest,
-} from 'src/dto/payment-link.dto';
+import { PaymentLinkHistory, PaymentLinkPayRequest } from '@dfx.swiss/react';
+import { ExtendedPaymentLinkStatus, NoPaymentLinkPaymentStatus } from 'src/dto/payment-link.dto';
 import { Lnurl } from 'src/util/lnurl';
 import { fetchJson, url } from 'src/util/utils';
 
