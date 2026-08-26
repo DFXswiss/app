@@ -130,6 +130,9 @@ export interface SupportClerk {
   name: string;
 }
 
+/** Select value while a leftover name is still shown and the id is missing. Not a finite id, so PUT omits. */
+export const LEFTOVER_CLERK_VALUE = 'leftover';
+
 /** PUT payload for the clerk select: omit when unchanged, null to unassign, skip non-finite values. */
 export function clerkAssignmentPayload(
   selected: string,

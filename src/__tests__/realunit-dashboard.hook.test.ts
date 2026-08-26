@@ -27,7 +27,12 @@ jest.mock('src/util/utils', () => ({
 import { ResponseType } from '@dfx.swiss/react';
 import { useRealunitCompliance } from '../hooks/realunit-compliance.hook';
 import { useRealunitSupport } from '../hooks/realunit-support.hook';
-import { clerkAssignmentPayload, isAssignedToMe, usableClerks } from '../hooks/support-dashboard.hook';
+import {
+  clerkAssignmentPayload,
+  isAssignedToMe,
+  LEFTOVER_CLERK_VALUE,
+  usableClerks,
+} from '../hooks/support-dashboard.hook';
 
 describe('useRealunitSupport', () => {
   beforeEach(() => {
@@ -151,6 +156,10 @@ describe('clerkAssignmentPayload', () => {
 
   it('sends null when the leftover name is still set and the select is empty', () => {
     expect(clerkAssignmentPayload('', null, { leftover: true })).toEqual({ clerkUserDataId: null });
+  });
+
+  it('omits the field while the leftover name is still selected', () => {
+    expect(clerkAssignmentPayload(LEFTOVER_CLERK_VALUE, null, { leftover: true })).toEqual({});
   });
 
   it('omits the field when the selected value is not a finite id', () => {
