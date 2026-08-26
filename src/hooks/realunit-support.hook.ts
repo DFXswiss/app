@@ -5,6 +5,7 @@ import {
   SupportIssueInternalData,
   SupportIssueListItem,
   SupportMessageInfo,
+  usableClerks,
 } from './support-dashboard.hook';
 
 // RealUnit tenant support dashboard hook. Thin wrapper over the strictly customer-scoped `/v1/realunit/support/*`
@@ -48,14 +49,15 @@ export function useRealunitSupport() {
   }
 
   async function getClerks(): Promise<SupportClerk[]> {
-    return call<SupportClerk[]>({
+    const list = await call<SupportClerk[]>({
       url: 'realunit/support/clerks',
       method: 'GET',
     });
+    return usableClerks(list);
   }
 
   async function getMyClerk(): Promise<{ clerkUserDataId: number; clerk: string } | undefined> {
-    const result = await call<{ clerkUserDataId: number; clerk: string }>({
+    const result = await call<{ clerkUserDataId: number; clerk: string | null }>({
       url: 'realunit/support/clerk',
       method: 'GET',
     });
