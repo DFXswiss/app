@@ -1,10 +1,13 @@
 // Component-level: ConnectMail builds redirectUri via relativeUrl so magic-link return
 // keeps personal-iban and other query params from redirectPath / current search.
+// Also covers the house-brand wallet default when no `?wallet=` URL param is present.
 
 const mockSignInWithMail = jest.fn();
 const mockRedirectPath = jest.fn();
 const mockNavigate = jest.fn();
 const mockUseAppParams = jest.fn();
+const mockOnCancel = jest.fn();
+const mockLocationSearch = jest.fn(() => '?user=user@example.com');
 
 jest.mock('@dfx.swiss/react', () => ({
   Utils: { createRules: () => ({}) },
@@ -27,7 +30,7 @@ jest.mock('@dfx.swiss/react-components', () => ({
 }));
 
 jest.mock('react-router-dom', () => ({
-  useLocation: () => ({ search: '?user=user@example.com' }),
+  useLocation: () => ({ search: mockLocationSearch() }),
 }));
 
 jest.mock('../contexts/app-handling.context', () => ({
@@ -51,6 +54,10 @@ jest.mock('../hooks/navigation.hook', () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
 }));
 
+jest.mock('../components/home/connect-shared', () => ({
+  ConnectError: ({ error }: { error: string }) => <div data-testid="connect-error">{error}</div>,
+}));
+
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { createRef } from 'react';
 import ConnectMail from '../components/home/wallet/connect-mail';
@@ -63,6 +70,8 @@ describe('ConnectMail login redirect', () => {
     jest.clearAllMocks();
     mockSignInWithMail.mockResolvedValue(undefined);
     mockUseAppParams.mockReturnValue({ wallet: undefined, recommendationCode: undefined });
+    mockRedirectPath.mockReturnValue('/buy');
+    mockLocationSearch.mockReturnValue('?user=user@example.com');
 
     locationStub = {
       href: 'http://localhost/login',
@@ -86,7 +95,7 @@ describe('ConnectMail login redirect', () => {
         blockchain={undefined}
         isConnect={false}
         onLogin={jest.fn()}
-        onCancel={jest.fn()}
+        onCancel={mockOnCancel}
         onSwitch={jest.fn()}
       />,
     );
@@ -141,5 +150,118 @@ describe('ConnectMail login redirect', () => {
     const redirectUri = mockSignInWithMail.mock.calls[0][1] as string;
     expect(redirectUri).toBe('http://localhost/buy');
     expect(redirectUri).not.toContain('?');
+  });
+
+  it('sends wallet=DFX Wallet when no wallet URL param is present', async () => {
+    mockUseAppParams.mockReturnValue({ wallet: undefined, recommendationCode: undefined });
+
+    renderConnectMail();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Next' }).click();
+    });
+
+    await waitFor(() => expect(mockSignInWithMail).toHaveBeenCalled());
+
+    expect(mockSignInWithMail).toHaveBeenCalledWith(
+      'user@example.com',
+      'http://localhost/buy',
+      undefined,
+      'DFX Wallet',
+    );
+  });
+
+  it('forwards an explicit wallet URL param unchanged', async () => {
+    mockUseAppParams.mockReturnValue({ wallet: 'RealUnit', recommendationCode: 'ref-1' });
+
+    renderConnectMail();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Next' }).click();
+    });
+
+    await waitFor(() => expect(mockSignInWithMail).toHaveBeenCalled());
+
+    expect(mockSignInWithMail).toHaveBeenCalledWith(
+      'user@example.com',
+      'http://localhost/buy',
+      'ref-1',
+      'RealUnit',
+    );
+  });
+
+  it('shows the sent confirmation and Back returns to home', async () => {
+    renderConnectMail();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Next' }).click();
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('We have sent an email with further instructions to the address provided.'),
+      ).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Back' }).click();
+    });
+
+    expect(mockOnCancel).toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/' }, { clearParams: ['user'] });
+  });
+
+  it('surfaces the API error message when sign-in fails', async () => {
+    mockSignInWithMail.mockRejectedValue({ message: 'Mail service down' });
+
+    renderConnectMail();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Next' }).click();
+    });
+
+    await waitFor(() => expect(screen.getByTestId('connect-error')).toHaveTextContent('Mail service down'));
+  });
+
+  it('falls back to Unknown error when the rejection has no message', async () => {
+    mockSignInWithMail.mockRejectedValue({});
+
+    renderConnectMail();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Next' }).click();
+    });
+
+    await waitFor(() => expect(screen.getByTestId('connect-error')).toHaveTextContent('Unknown error'));
+  });
+
+  it('omits redirectUri when redirectPath is unset', async () => {
+    mockRedirectPath.mockReturnValue(undefined);
+
+    renderConnectMail();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Next' }).click();
+    });
+
+    await waitFor(() => expect(mockSignInWithMail).toHaveBeenCalled());
+
+    expect(mockSignInWithMail.mock.calls[0][1]).toBeFalsy();
+  });
+
+  it('submits without a prefilled mail when the user query param is absent', async () => {
+    mockLocationSearch.mockReturnValue('');
+
+    renderConnectMail();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Next' }).click();
+    });
+
+    await waitFor(() => expect(mockSignInWithMail).toHaveBeenCalled());
+
+    // No `user` query → RHF default is undefined; the form still submits under the test mock.
+    expect(mockSignInWithMail.mock.calls[0][0]).toBeUndefined();
+    expect(mockSignInWithMail.mock.calls[0][3]).toBe('DFX Wallet');
   });
 });
