@@ -83,8 +83,9 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
     getClerks()
       .then((list) => {
         setClerks(list);
+        if (list.length === 0) setActionError('Clerk list is empty. Assign after the API update is live.');
       })
-      .catch(() => undefined);
+      .catch((e: unknown) => setActionError(e instanceof Error ? e.message : 'Failed to load clerks'));
   }, [getClerks]);
 
   const loadIssue = useCallback((): void => {
@@ -159,7 +160,10 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
       await updateIssue(+id, {
         state: updateState || undefined,
         department: updateDepartment || undefined,
-        ...clerkAssignmentPayload(updateClerk, issueData?.clerkUserDataId),
+        ...clerkAssignmentPayload(updateClerk, issueData?.clerkUserDataId, {
+          leftover: !!issueData?.clerk,
+          allowedIds: clerks.map((c) => c.userDataId),
+        }),
       });
       loadIssue();
     } catch (e: unknown) {

@@ -1,4 +1,4 @@
-import { SupportIssueInternalState, SupportIssueType } from '@dfx.swiss/react';
+import { SupportIssueInternalState, SupportIssueType, useAuthContext } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
@@ -8,7 +8,7 @@ import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { STAFF_NAME_MISSING } from 'src/components/compliance/staff-identity';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
-import { SupportIssueListItem, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
+import { isAssignedToMe, SupportIssueListItem, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 import { formatDateTimeShort } from 'src/util/compliance-helpers';
 import {
   computeStatistics,
@@ -46,10 +46,11 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
   const { translate, locale } = useSettingsContext();
   const { getIssueList, getIssueStatistics } = useSupportDashboard();
   const { name: verifiedName, isLoading: isLoadingName, error: nameError } = useStaffVerifiedName();
+  const { session } = useAuthContext();
   const { navigate } = useNavigation();
 
-  const mineKeys = verifiedName ? [verifiedName] : [];
-  const mineLoading = isLoadingName;
+  const canIdentifyMine = session?.account != null || Boolean(verifiedName);
+  const mineLoading = isLoadingName && session?.account == null;
 
   const [issues, setIssues] = useState<SupportIssueListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -92,8 +93,6 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
     const id = setInterval(() => loadIssues(false), REFRESH_MS);
     return () => clearInterval(id);
   }, [loadIssues]);
-
-
 
   const scrollToSection = useCallback((id: string): void => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -157,11 +156,9 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
   }, [tab, statsPeriod, loadStats]);
 
   const stats = useMemo(() => {
-    const mine = verifiedName
-      ? issues
-          .filter((i) => !!i.clerk && i.clerk === verifiedName)
-          .sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime())
-      : [];
+    const mine = issues
+      .filter((i) => isAssignedToMe(i, session?.account, verifiedName))
+      .sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime());
 
     // tickets where the customer is waiting, sorted by waiting time (longest first)
     const waitingSorted = issues
@@ -178,7 +175,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
       .sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime());
 
     return { mine, waitingSorted, waitingLongerThan, limitRequests };
-  }, [issues, verifiedName, now]);
+  }, [issues, verifiedName, now, session?.account]);
 
   const waitingList = useMemo(
     () => stats.waitingSorted.filter((x) => x.hours >= waitFilter).map((x) => x.issue),
@@ -242,7 +239,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
                 label={translate('screens/support', 'My tickets')}
                 value={
                   <span title={translate('screens/support', '{{count}} open tickets total', { count: issues.length })}>
-                    {mineKeys.length ? stats.mine.length : '–'}
+                    {canIdentifyMine ? stats.mine.length : '–'}
                     <span className="text-lg font-semibold text-dfxGray-700 ml-2">/ {issues.length}</span>
                   </span>
                 }
@@ -313,20 +310,20 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
               anchorId="my-tickets"
               title={translate('screens/support', 'My tickets')}
               subtitle={translate('screens/support', 'Tickets assigned to me')}
-              count={mineKeys.length ? stats.mine.length : undefined}
+              count={canIdentifyMine ? stats.mine.length : undefined}
               accent="neutral"
             >
               {mineLoading ? (
                 <div className="flex justify-center py-6">
                   <StyledLoadingSpinner size={SpinnerSize.LG} />
                 </div>
-              ) : nameError && !mineKeys.length ? (
+              ) : nameError && !canIdentifyMine ? (
                 <EmptyState
                   text={translate('screens/support', 'Could not load your verified name: {{error}}', {
                     error: nameError,
                   })}
                 />
-              ) : !mineKeys.length ? (
+              ) : !canIdentifyMine ? (
                 <EmptyState text={translate('screens/support', STAFF_NAME_MISSING)} />
               ) : stats.mine.length === 0 ? (
                 <EmptyState text={translate('screens/support', 'No tickets assigned to you')} />
