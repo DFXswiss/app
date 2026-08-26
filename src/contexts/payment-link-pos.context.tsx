@@ -1,5 +1,5 @@
 import { ApiError, PaymentLink, PaymentLinkPaymentStatus, useApi } from '@dfx.swiss/react';
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   ExtendedPaymentLinkStatus,
@@ -43,6 +43,19 @@ export default function PaymentLinkPosContext({ children }: { children: React.Re
 
   const lightning = urlParams.get('lightning') ?? undefined;
   const key = urlParams.get('key') ?? '';
+
+  // a set, not a single id: creating a payment starts a wait of its own, so more than one
+  // retry can be pending at a time and a single slot would lose the older one
+  const waitRetryTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
+
+  useEffect(() => {
+    const timers = waitRetryTimers.current;
+
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.clear();
+    };
+  }, []);
 
   const fetchPayRequest = async (url: string) => {
     const api = new URL(url);
@@ -93,7 +106,20 @@ export default function PaymentLinkPosContext({ children }: { children: React.Re
     })
       .then(({ payment }) => setPaymentStatus(payment.status))
       .catch(unauthorizedResponse)
-      .catch(fetchWait);
+      // The wait call answers 408 once its window closes, which lands here like any other
+      // error. Ask again after a moment, so an error that comes back immediately cannot turn
+      // this retry into a tight loop — but stop once the session is gone, since re-asking
+      // without a valid key only repeats the same 401.
+      .catch((e: ApiError) => {
+        if (e.statusCode === 401) return;
+
+        const timer = setTimeout(() => {
+          waitRetryTimers.current.delete(timer);
+          void fetchWait();
+        }, 2 * 1000);
+
+        waitRetryTimers.current.add(timer);
+      });
   };
 
   const createPayment = useCallback(
