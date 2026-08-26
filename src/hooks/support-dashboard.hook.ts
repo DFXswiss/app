@@ -134,18 +134,31 @@ export interface SupportClerk {
 export function clerkAssignmentPayload(
   selected: string,
   previousId?: number | null,
+  options?: { leftover?: boolean; allowedIds?: number[] },
 ): { clerkUserDataId: number | null } | Record<string, never> {
   const previous = previousId ?? null;
   if (selected === '') {
-    return previous != null ? { clerkUserDataId: null } : {};
+    return previous != null || options?.leftover ? { clerkUserDataId: null } : {};
   }
   const nextId = Number(selected);
-  if (!Number.isFinite(nextId) || nextId === previous) return {};
+  if (!Number.isFinite(nextId)) return {};
+  if (options?.allowedIds && !options.allowedIds.includes(nextId)) return {};
+  if (nextId === previous) return {};
   return { clerkUserDataId: nextId };
 }
 
 export function usableClerks(clerks: SupportClerk[]): SupportClerk[] {
   return clerks.filter((c) => Number.isFinite(c.userDataId) && c.name);
+}
+
+/** Mine-filter: JWT account id wins; leftover clerk name only when the id is still missing. */
+export function isAssignedToMe(
+  issue: { clerkUserDataId?: number; clerk?: string },
+  sessionAccount?: number | null,
+  verifiedName?: string | null,
+): boolean {
+  if (issue.clerkUserDataId != null) return issue.clerkUserDataId === sessionAccount;
+  return !!verifiedName && !!issue.clerk && issue.clerk === verifiedName;
 }
 
 export function useSupportDashboard() {
