@@ -18,6 +18,7 @@ import { useSplitPane } from 'src/hooks/split-pane.hook';
 import {
   ASSIGNABLE_DEPARTMENTS,
   clerkAssignmentPayload,
+  LEFTOVER_CLERK_VALUE,
   SupportClerk,
   SupportIssueInternalData,
   SupportMessageInfo,
@@ -120,7 +121,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
-        setUpdateClerk(data.clerkUserDataId != null ? String(data.clerkUserDataId) : '');
+        setUpdateClerk(
+          data.clerkUserDataId != null ? String(data.clerkUserDataId) : data.clerk ? LEFTOVER_CLERK_VALUE : '',
+        );
       })
       .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
       .finally(() => setIsLoading(false));
@@ -545,6 +548,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                 onChange={(e) => setUpdateClerk(e.target.value)}
               >
                 <option value="">-</option>
+                {updateClerk === LEFTOVER_CLERK_VALUE && issueData?.clerk && (
+                  <option value={LEFTOVER_CLERK_VALUE}>{issueData.clerk}</option>
+                )}
                 {updateClerk &&
                   Number.isFinite(Number(updateClerk)) &&
                   issueData?.clerk &&
