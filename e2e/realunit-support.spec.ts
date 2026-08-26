@@ -119,6 +119,7 @@ interface SupportIssueInternalData {
   state: string;
   name: string;
   clerk?: string;
+  clerkUserDataId?: number;
   account: SupportIssueInternalAccountData;
 }
 
