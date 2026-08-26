@@ -1,5 +1,12 @@
 import { useAuthContext, UserRole, useKyc } from '@dfx.swiss/react';
-import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
+import {
+  SpinnerSize,
+  StyledButton,
+  StyledButtonColor,
+  StyledButtonWidth,
+  StyledLoadingSpinner,
+  StyledVerticalStack,
+} from '@dfx.swiss/react-components';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -23,6 +30,7 @@ import { SupportIssuesPanel } from 'src/components/compliance/support-issues-pan
 import { SupportUserOverviewPanel } from 'src/components/compliance/support-user-overview-panel';
 import { TransactionsTable } from 'src/components/compliance/transactions-tab';
 import { UserDataPanel } from 'src/components/compliance/user-data-panel';
+import { ConfirmDialog } from 'src/components/confirm-dialog';
 import { ErrorHint } from 'src/components/error-hint';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { ComplianceUserData, KycFile, useCompliance } from 'src/hooks/compliance.hook';
@@ -57,7 +65,7 @@ export default function ComplianceUserScreen(): JSX.Element {
 
   const { translate } = useSettingsContext();
   const { id: userDataId } = useParams();
-  const { getUserData } = useCompliance();
+  const { getUserData, openPaymentAgreement } = useCompliance();
   const { getFile } = useKyc();
   const navigate = useNavigate();
 
@@ -70,6 +78,10 @@ export default function ComplianceUserScreen(): JSX.Element {
   const [expandedBankDataId, setExpandedBankDataId] = useState<number>();
   const [expandedFiatOutputId, setExpandedFiatOutputId] = useState<number>();
   const [expandedTxUid, setExpandedTxUid] = useState<string>();
+  const [showPaymentAgreementConfirm, setShowPaymentAgreementConfirm] = useState(false);
+  const [paymentAgreementLoading, setPaymentAgreementLoading] = useState(false);
+  const [paymentAgreementError, setPaymentAgreementError] = useState<string>();
+  const [paymentAgreementSuccess, setPaymentAgreementSuccess] = useState(false);
   const { containerRef, splitPercent, setSplitPercent, handleSplitDrag } = useSplitPane();
 
   function handleExpandBankTx(id: number | undefined): void {
@@ -138,6 +150,26 @@ export default function ComplianceUserScreen(): JSX.Element {
       .then(setData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Unknown error'));
   }, [userDataId, getUserData]);
+
+  async function handleOpenPaymentAgreement(): Promise<void> {
+    if (!userDataId) return;
+
+    setPaymentAgreementLoading(true);
+    setPaymentAgreementError(undefined);
+    setPaymentAgreementSuccess(false);
+
+    try {
+      await openPaymentAgreement(+userDataId);
+      setPaymentAgreementSuccess(true);
+      setShowPaymentAgreementConfirm(false);
+      loadData();
+    } catch (e: unknown) {
+      setPaymentAgreementError(e instanceof Error ? e.message : 'Unknown error');
+      setShowPaymentAgreementConfirm(false);
+    } finally {
+      setPaymentAgreementLoading(false);
+    }
+  }
 
   useEffect(() => {
     loadData();
@@ -256,7 +288,11 @@ export default function ComplianceUserScreen(): JSX.Element {
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                setPaymentAgreementSuccess(false);
+                setPaymentAgreementError(undefined);
+                setActiveTab(tab.id);
+              }}
               className={`px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === tab.id
                   ? 'text-dfxBlue-800 border-b-2 border-dfxBlue-800 bg-white'
@@ -293,7 +329,32 @@ export default function ComplianceUserScreen(): JSX.Element {
           )}
 
           {activeTab === 'users' && <UsersTable users={data.users} />}
-          {activeTab === 'kycSteps' && <KycStepsTable kycSteps={data.kycSteps} />}
+          {activeTab === 'kycSteps' && (
+            <StyledVerticalStack gap={4} full>
+              <div className="flex flex-col items-start gap-2">
+                <StyledButton
+                  label={translate('screens/compliance', 'Open PaymentAgreement')}
+                  color={StyledButtonColor.STURDY_WHITE}
+                  onClick={() => {
+                    setPaymentAgreementError(undefined);
+                    setPaymentAgreementSuccess(false);
+                    setShowPaymentAgreementConfirm(true);
+                  }}
+                  width={StyledButtonWidth.MD}
+                />
+                {paymentAgreementSuccess && (
+                  <p className="text-sm text-dfxGreen-700">
+                    {translate(
+                      'screens/compliance',
+                      'The PaymentAgreement step has been opened and an email with the KYC link has been sent to the customer.',
+                    )}
+                  </p>
+                )}
+                {paymentAgreementError && <ErrorHint message={paymentAgreementError} />}
+              </div>
+              <KycStepsTable kycSteps={data.kycSteps} />
+            </StyledVerticalStack>
+          )}
           {activeTab === 'kycLogs' && <KycLogsTable kycLogs={data.kycLogs ?? []} />}
           {activeTab === 'bankDatas' && <BankDatasTable bankDatas={data.bankDatas} />}
           {activeTab === 'buyRoutes' && <BuyRoutesTable buyRoutes={data.buyRoutes} />}
@@ -307,6 +368,18 @@ export default function ComplianceUserScreen(): JSX.Element {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showPaymentAgreementConfirm}
+        title={translate('screens/compliance', 'Open PaymentAgreement')}
+        message={translate(
+          'screens/compliance',
+          'This opens the PaymentAgreement KYC step for the customer and sends them an email with the KYC link. The customer must then complete and accept the agreement themselves. Do you want to continue?',
+        )}
+        isLoading={paymentAgreementLoading}
+        onConfirm={handleOpenPaymentAgreement}
+        onCancel={() => setShowPaymentAgreementConfirm(false)}
+      />
     </div>
   );
 }
