@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Handbook assembly for DFXswiss/services.
+ * Handbook assembly for DFXswiss/app.
  *
  * Auto-discovers screenshot baselines, design tokens, logos and markdown
  * docs; generates a single deterministic index.html + manifest.json.
