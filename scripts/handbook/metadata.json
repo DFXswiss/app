@@ -139,6 +139,10 @@
     "title": "Swap Lightning (URL-Parameter)",
     "description": "Swap-Flow mit Lightning-URL-Parameter."
   },
+  "kyc-screen": {
+    "title": "KYC (Nutzer)",
+    "description": "KYC-Schritt-Ergebnis: Empfehlung wartet auf Bestätigung der Ansprechperson; abgeschlossener Schritt; fehlgeschlagener Schritt."
+  },
   "login-process": {
     "title": "Login-Prozess",
     "description": "Login und Home-Seite nach Authentifizierung."

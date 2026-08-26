@@ -252,6 +252,21 @@ test.describe('KYC area e2e', () => {
     expect(new URL(page.url()).pathname).toMatch(/login/);
   });
 
+  test('/kyc?step=Recommendation shows the pending confirmation hint', async ({ page }) => {
+    const user = await createUser({ tag: 'kyc-rec-pending', kycLevel: 10, language: 'EN' });
+    await createKycStep(user.userDataId, { name: 'Recommendation', status: 'InternalReview' });
+
+    await gotoWithSession(page, '/kyc?step=Recommendation', user.jwt);
+
+    await expect(
+      page.getByText(
+        'Your recommendation request has been sent. Your contact person has to confirm it before you can continue.',
+      ),
+    ).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('This step has already been finished.')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible();
+  });
+
   // ---------------------------------------------------------------------------
   // /kyc/redirect - do NOT use openScreen (immediate navigate to /kyc)
   // ---------------------------------------------------------------------------
