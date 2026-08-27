@@ -47,7 +47,7 @@ interface FormData {
   acceptCall: boolean;
 }
 
-enum OverlayType {
+export enum OverlayType {
   NONE,
   DELETE_ADDRESS,
   DELETE_ACCOUNT,
@@ -389,7 +389,7 @@ interface SettingsOverlayProps {
   onClose: () => void;
 }
 
-function SettingsOverlay({ type, data, onClose }: SettingsOverlayProps): JSX.Element {
+export function SettingsOverlay({ type, data, onClose }: SettingsOverlayProps): JSX.Element {
   const { user } = useUserContext();
   const { width } = useWindowContext();
   const { translate } = useSettingsContext();
