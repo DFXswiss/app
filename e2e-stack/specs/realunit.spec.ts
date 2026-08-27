@@ -30,10 +30,9 @@ import {
   openScreen,
   queryOne,
   required,
-  TEST_IBAN,
   test,
 } from './fixtures';
-import { cleanupCreatedData, createSupportIssue, createUser, trackRow } from './fixtures/factories';
+import { cleanupCreatedData, createSupportIssue, createUser, TEST_IBAN, trackRow } from './fixtures/factories';
 
 test.beforeAll(async () => {
   await ensureSepoliaZchfAsset();

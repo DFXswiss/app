@@ -349,3 +349,4 @@ Against an API image without those stubs the process tests **fail**. Run them on
 - Live EIP-7702 authorization (the sell quote carries a loc dummy; this path signs unsigned txs)
 - That Sepolia/ZCHF or sellable Sepolia/REALU exist in the unmodified API seed
 - Smart-contract execution or token-balance change (loc JSON-RPC does not run brokerbot/ERC-20 bytecode)
+- That `transaction_request` reached a terminal status (the spec asserts HTTP hashes and faucet Reset only)

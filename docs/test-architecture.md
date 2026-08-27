@@ -107,9 +107,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   against the loc API. Loc JSON-RPC, loc brokerbot price 1.57, loc EIP-7702 dummy, a copied
   Sepolia/ZCHF row, sellable Sepolia/REALU, and a SQL-inserted Aktionariat registration stand
   in for a live node, live BrokerBot, live EIP-7702, the unmodified seed, and `registerUser`.
-  A green run proves the HTTP contracts and persistence of that path. It does not prove Ethereum
-  inclusion, live gasUsed, BitBox signing, Aktionariat forward, bank payout, or token-balance
-  change. Details: `e2e-stack/docs/test-data.md` (RealUnit sell process).
+  A green run proves those HTTP contracts and that the faucet row is Reset after broadcast. It does
+  not prove Ethereum inclusion, live gasUsed, BitBox signing, Aktionariat forward, bank payout,
+  token-balance change, or that `transaction_request` reached a terminal status. Details:
+  `e2e-stack/docs/test-data.md` (RealUnit sell process).
 - **The buy-process specs answer the quote endpoint themselves.** `e2e/buy-process.spec.ts` fulfils
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
   payloads, not that the API produces them. Unit tests against the utility pin the payload shapes
