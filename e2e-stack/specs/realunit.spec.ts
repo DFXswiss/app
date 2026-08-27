@@ -708,10 +708,12 @@ test.describe('RealUnit sell process (API path)', () => {
     const depositHash = await signAndBroadcastSellTx(user.jwt, sell.id, unsigned.deposit, user.wallet.privateKey);
     expect(depositHash).toMatch(TX_HASH_RE);
 
-    // Broadcast resets the faucet, so a new request succeeds with a fresh txId.
-    const faucetAgain = await apiPost<{ amount: number; txId: string }>('faucet', {}, { jwt: user.jwt });
-    expect(faucetAgain.amount).toBe(LOC_FAUCET_AMOUNT_ETH);
-    expect(faucetAgain.txId).toMatch(TX_HASH_RE);
-    expect(faucetAgain.txId).not.toBe(faucet.txId);
+    // Broadcast must reset the faucet row. Do not POST faucet again: that would leave leftover ETH
+    // on a reused loc wallet if the stack is kept up.
+    const faucetRow = await queryOne<{ status: string }>(
+      `SELECT status FROM faucet_request WHERE "userId" = $1 ORDER BY id DESC LIMIT 1`,
+      [user.userId],
+    );
+    expect(faucetRow?.status).toBe('Reset');
   });
 });
