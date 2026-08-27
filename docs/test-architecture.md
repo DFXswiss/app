@@ -166,15 +166,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   directly so `LIMIT_EXCEEDED` does not hide payment info. A green run does **not** prove that a
   customer reaches that limit through the product path.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
-  `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
-  (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
+  `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with five synthetic kyc payloads
+  (`phoneCallAccepted` unset / true / false and `phoneCallStatus` Completed / Failed) and fulfils
+  the Settings bootstrap GETs
   (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
   `/v1/setting/infoBanner`) plus user PUT/PATCH. Unmatched `/v1/**` and `/v2/**` calls
   get `501`. The session is a synthetic unsigned JWT, so a green run does not prove
-  login or token verification. A green run proves those three consent states render.
-  It does not prove that a live account has those kyc fields, that those bootstrap
-  endpoints return real data, that `updateCallSettings` persists, or that
-  Completed/Failed hide the section.
+  login or token verification. A green run proves those five states render the consent
+  UI or the applicable status notice and button. It does not prove that a live account
+  has those kyc fields or ever reaches either `phoneCallStatus`, that those bootstrap
+  endpoints return real data, that `updateCallSettings` persists, or that the target
+  screen of the `Request a new call` button exists.
 
 ## Known gaps
 

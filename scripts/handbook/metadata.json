@@ -125,7 +125,7 @@
   },
   "settings-verification-call": {
     "title": "Verifizierungsanruf (Settings)",
-    "description": "Settings-Sektion Verifizierungsanruf: ungesetzte Einwilligung (Platzhalter Auswählen), Ja mit bevorzugter Anrufzeit, und Nein ohne Zeitauswahl. Die Sektion ist der Ort, an dem Kundinnen den Anruf erlauben oder ablehnen."
+    "description": "Settings-Sektion Verifizierungsanruf: ungesetzte Einwilligung (Platzhalter Auswählen), Ja mit bevorzugter Anrufzeit, Nein ohne Zeitauswahl, Completed mit Abschlusshinweis und Failed mit Fehlerhinweis und Button für einen neuen Anruf."
   },
   "swap-process": {
     "title": "Swap-Prozess",
