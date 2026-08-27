@@ -3,8 +3,11 @@ import { fireEvent, render, screen } from '@testing-library/react';
 const mockNavigate = jest.fn();
 const mockUpdateCallSettings = jest.fn();
 
+type MockAnchorCall = [string, { current: HTMLHeadingElement | null }, boolean];
+
 let mockUser: { kyc: Record<string, unknown>; disabledAddresses: unknown[] } | undefined;
 let mockIsUserLoading = false;
+let mockAnchorCalls: MockAnchorCall[] = [];
 
 jest.mock('@dfx.swiss/react', () => ({
   PhoneCallStatus: {
@@ -106,7 +109,9 @@ jest.mock('src/contexts/window.context', () => ({
 }));
 
 jest.mock('src/hooks/anchor.hook', () => ({
-  useAnchor: jest.fn(),
+  useAnchor: (...args: MockAnchorCall) => {
+    mockAnchorCalls.push(args);
+  },
 }));
 
 jest.mock('src/hooks/guard.hook', () => ({
@@ -139,6 +144,36 @@ describe('Verification Call section', () => {
     jest.clearAllMocks();
     mockIsUserLoading = false;
     mockUser = undefined;
+    mockAnchorCalls = [];
+  });
+
+  it('anchors the completed verification call heading when user data is ready', () => {
+    renderSettings({ phoneCallStatus: 'Completed' });
+
+    expect(mockAnchorCalls.length).toBeGreaterThan(0);
+    const [anchorName, anchorRef, isReady] = mockAnchorCalls[mockAnchorCalls.length - 1];
+    expect(anchorName).toBe('call');
+    expect(isReady).toBe(true);
+    expect(anchorRef.current).toBe(screen.getByRole('heading', { name: 'Verification Call' }));
+  });
+
+  it('anchors the failed verification call heading and waits while user data is loading', () => {
+    const { rerender } = renderSettings({ phoneCallStatus: 'Failed' });
+
+    expect(mockAnchorCalls.length).toBeGreaterThan(0);
+    const [anchorName, anchorRef, isReady] = mockAnchorCalls[mockAnchorCalls.length - 1];
+    expect(anchorName).toBe('call');
+    expect(isReady).toBe(true);
+    expect(anchorRef.current).toBe(screen.getByRole('heading', { name: 'Verification Call' }));
+
+    const readyCallCount = mockAnchorCalls.length;
+    mockIsUserLoading = true;
+    rerender(<SettingsScreen />);
+
+    expect(mockAnchorCalls.length).toBeGreaterThan(readyCallCount);
+    const [loadingAnchorName, , loadingIsReady] = mockAnchorCalls[mockAnchorCalls.length - 1];
+    expect(loadingAnchorName).toBe('call');
+    expect(loadingIsReady).toBe(false);
   });
 
   it('shows the completed notice and no call form when the call is completed', () => {
