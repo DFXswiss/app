@@ -57,6 +57,24 @@ NODE_PATH=./_handbook-deps/node_modules node scripts/handbook/build.js docs/hand
 
 Anschliessend `docs/handbook/build/index.html` im Browser öffnen.
 
+## Deep-Link zu einem Screenshot
+
+HTTP Basic Auth verschluckt `#fragment` oft. Deshalb gilt der **Query-Parameter** `shot`
+(überlebt den Login) und klappt alle anderen Gruppen zu:
+
+```
+https://handbook.app.dfx.swiss/?shot=shot-<id>
+```
+
+Beispiel — Call-Queue-Outcome (ein Bild, Formular „Save Outcome“):
+
+```
+https://handbook.app.dfx.swiss/?shot=shot-compliance-call-queue-outcome-spec-ts-compliance-call-queue-outcome-signature-chromium-darwin
+```
+
+`?group=<group-id>` öffnet nur die Gruppe. Jede Karte hat einen „Direktlink“.
+Die IDs stehen als `id="shot-…"` / `id="group-…"` in `index.html`.
+
 Das Scratch-Verzeichnis `_handbook-deps/` und `docs/handbook/build/` sind gitignored.
 
 Optional: `GIT_SHA=…` (oder `HANDBOOK_GIT_SHA`) setzt den Stand im Seitenkopf.
