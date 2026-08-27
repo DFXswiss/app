@@ -345,3 +345,6 @@ Against an API image without those stubs the process tests **fail**. Run them on
 - BitBox hardware signing
 - Aktionariat `registerUser` / live share-register forward
 - Bank payout of the ZCHF→CHF sell leg
+- Live BrokerBot `getSellPrice` (loc returns 1.57 ZCHF per share)
+- Live EIP-7702 authorization (the sell quote carries a loc dummy; this path signs unsigned txs)
+- That Sepolia/ZCHF or sellable Sepolia/REALU exist in the unmodified API seed

@@ -13,7 +13,8 @@
  *
  * A second describe below covers the RealUnit BitBox sell as a DFX API process (faucet → unsigned
  * REALU→ZCHF swap → ZCHF deposit broadcast). No browser, no BitBox, no live Ethereum — same
- * factory-only pattern as sell-swap.spec.ts. Requires the loc API JSON-RPC / faucet / broadcast stubs.
+ * factory-only pattern as sell-swap.spec.ts. Requires the loc API JSON-RPC / faucet / broadcast /
+ * brokerbot / EIP-7702 stubs.
  */
 
 import type { Locator, Page } from '@playwright/test';
@@ -520,7 +521,7 @@ test.describe('RealUnit area', () => {
 // ---------------------------------------------------------------------------
 // RealUnit sell process (API path) — faucet → unsigned swap → deposit broadcast
 // Wallet band 8000100 (sell-swap uses 8000000; role wallets use 0–6).
-// Requires the loc API JSON-RPC / faucet / broadcast / brokerbot stubs.
+// Requires the loc API JSON-RPC / faucet / broadcast / brokerbot / EIP-7702 stubs.
 // ---------------------------------------------------------------------------
 
 let __ruSell_WALLET_SEQ = 0;
