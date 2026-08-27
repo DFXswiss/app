@@ -10,11 +10,12 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 ## The layers this repository owns
 
-| Layer             | Location     | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                          |
-| ----------------- | ------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| Unit              | `src/`       | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts skip unless `ci`/`ci:full`; suite full / related / none                      |
-| Full-stack E2E    | `e2e-stack/` | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts skip unless `ci`/`ci:full`; stack only with `ci:full` / main / bare dispatch |
-| Visual regression | `e2e/`       | appearance against committed screenshot baselines                            | function                                                           | no                                                                                  |
+| Layer                | Location                              | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                          |
+| -------------------- | ------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Unit                 | `src/`                                | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts skip unless `ci`/`ci:full`; suite full / related / none                      |
+| Handbook deep-link   | `scripts/handbook/deep-link.js`       | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (non-draft PRs that touch handbook paths)                     |
+| Full-stack E2E       | `e2e-stack/`                          | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts skip unless `ci`/`ci:full`; stack only with `ci:full` / main / bare dispatch |
+| Visual regression    | `e2e/`                                | appearance against committed screenshot baselines                            | function                                                           | no                                                                                  |
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
 payout, ledger booking — is **not** testable from this repository. It belongs to the integration
@@ -41,6 +42,13 @@ Read that number together with the coverage rule in `CONTRIBUTING.md`, section
 all four metrics, and CI does not enforce it — it is a review gate. With the repository at 18 %, that
 means touching a long-neglected file makes its whole coverage your obligation. Plan for it rather
 than discovering it in review.
+
+### Handbook deep-link — `node --test scripts/handbook/deep-link.node-test.cjs`
+
+Five cases in `scripts/handbook/deep-link.node-test.cjs`: query over hash, `?group=`, id prefixes,
+isolate, and clearing a previous `handbook-target`. This is not the Jest suite. It runs in
+`handbook-check.yaml` before the image build. A green run does not prove the live page after
+Basic Auth.
 
 ### Full-stack E2E — `npm run e2e:stack`
 

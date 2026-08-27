@@ -63,3 +63,37 @@ test('revealTarget closes other groups and opens the match', () => {
   assert.equal(shot.scrolled, true);
   assert.deepEqual(shot.classList.added, ['handbook-target']);
 });
+
+test('revealTarget clears a previous handbook-target before highlighting the new one', () => {
+  const stale = {
+    classList: {
+      added: ['handbook-target'],
+      remove(c) {
+        this.added = this.added.filter((x) => x !== c);
+      },
+    },
+  };
+  const group = { open: false, id: 'group-b', tagName: 'DETAILS' };
+  const next = {
+    id: 'shot-b',
+    tagName: 'DIV',
+    classList: { added: [], add(c) { this.added.push(c); } },
+    closest() {
+      return group;
+    },
+    scrollIntoView() {},
+  };
+  const doc = {
+    getElementById(id) {
+      return id === 'shot-b' ? next : null;
+    },
+    querySelectorAll(sel) {
+      if (sel === 'details.spec') return [group];
+      if (sel === '.handbook-target') return [stale];
+      return [];
+    },
+  };
+  revealTarget(doc, { search: '?shot=shot-b', hash: '' });
+  assert.deepEqual(stale.classList.added, []);
+  assert.deepEqual(next.classList.added, ['handbook-target']);
+});

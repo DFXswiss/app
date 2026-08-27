@@ -43,6 +43,12 @@ function revealTarget(doc, loc) {
   var details = el.closest ? el.closest('details.spec') : null;
   if (!details && el.tagName === 'DETAILS') details = el;
   if (details) details.open = true;
+  var prev = doc.querySelectorAll ? doc.querySelectorAll('.handbook-target') : [];
+  for (var j = 0; j < prev.length; j++) {
+    if (prev[j].classList && typeof prev[j].classList.remove === 'function') {
+      prev[j].classList.remove('handbook-target');
+    }
+  }
   if (el.classList && typeof el.classList.add === 'function') el.classList.add('handbook-target');
   if (typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'start' });
   return el;
