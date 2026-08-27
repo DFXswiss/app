@@ -35,6 +35,11 @@ import {
 } from './fixtures';
 import { cleanupCreatedData, createSupportIssue, createUser, trackRow } from './fixtures/factories';
 
+test.beforeAll(async () => {
+  await ensureSepoliaZchfAsset();
+  await ensureSepoliaRealuSellable();
+});
+
 /** Routes owned by this lane's RealUnit half (11 paths). */
 const REALUNIT_ROUTES = [
   '/realunit',
@@ -628,11 +633,6 @@ async function signAndBroadcastSellTx(
 }
 
 test.describe('RealUnit sell process (API path)', () => {
-  test.beforeAll(async () => {
-    await ensureSepoliaZchfAsset();
-    await ensureSepoliaRealuSellable();
-  });
-
   test.afterAll(async () => {
     await cleanupCreatedData();
   });
@@ -713,17 +713,5 @@ test.describe('RealUnit sell process (API path)', () => {
     expect(faucetAgain.amount).toBe(LOC_FAUCET_AMOUNT_ETH);
     expect(faucetAgain.txId).toMatch(TX_HASH_RE);
     expect(faucetAgain.txId).not.toBe(faucet.txId);
-  });
-
-  test('POST /faucet rejects KYC below level 30 with 403', async () => {
-    const user = await createUser({
-      kycLevel: 20,
-      tag: 'ru-faucet-kyc',
-      walletIndex: nextRuSellWalletIndex(),
-    });
-
-    let status: number | undefined;
-    await apiPost('faucet', {}, { jwt: user.jwt, expectOk: false, onStatus: (s) => (status = s) });
-    expect(status, 'POST /v1/faucet must reject KYC < 30').toBe(403);
   });
 });

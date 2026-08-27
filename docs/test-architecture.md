@@ -102,6 +102,14 @@ This section lists the fakes introduced by this repository's own suites and stat
 run does not prove for each one; the taxonomy and cross-repository entries live in
 `DFXswiss/backend` under `docs/test-architecture.md`.
 
+- **The RealUnit sell-process spec uses loc JSON-RPC stubs and SQL seed corrections.**
+  `e2e-stack/specs/realunit.spec.ts` drives `POST /v1/faucet` then unsigned swap and deposit
+  against the loc API. Loc JSON-RPC, loc brokerbot price 1.57, loc EIP-7702 dummy, a copied
+  Sepolia/ZCHF row, sellable Sepolia/REALU, and a SQL-inserted Aktionariat registration stand
+  in for a live node, live BrokerBot, live EIP-7702, the unmodified seed, and `registerUser`.
+  A green run proves the HTTP contracts and persistence of that path. It does not prove Ethereum
+  inclusion, live gasUsed, BitBox signing, Aktionariat forward, bank payout, or token-balance
+  change. Details: `e2e-stack/docs/test-data.md` (RealUnit sell process).
 - **The buy-process specs answer the quote endpoint themselves.** `e2e/buy-process.spec.ts` fulfils
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
   payloads, not that the API produces them. Unit tests against the utility pin the payload shapes
