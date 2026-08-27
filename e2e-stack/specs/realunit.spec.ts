@@ -531,7 +531,8 @@ test.describe('RealUnit area', () => {
 let __ruSell_WALLET_SEQ = 0;
 function nextRuSellWalletIndex(): number {
   __ruSell_WALLET_SEQ += 1;
-  return 8000100 + __ruSell_WALLET_SEQ;
+  // Time slice so a rerun against a kept-up stack does not reuse 8000101 and its leftover loc ETH.
+  return 8000100 + (Date.now() % 50_000) + __ruSell_WALLET_SEQ;
 }
 
 const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/;
@@ -544,7 +545,7 @@ const DEPOSIT_GAS_LIMIT = 100000;
 function apiErrorMessage(body: unknown): string {
   if (body && typeof body === 'object' && 'message' in body) {
     const message = (body as { message: unknown }).message;
-    return typeof message === 'string' ? message : JSON.stringify(message);
+    return typeof message === 'string' ? message : JSON.stringify(message ?? '');
   }
   return typeof body === 'string' ? body : JSON.stringify(body ?? '');
 }
