@@ -157,6 +157,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`openQuoteCapableBuy` and older quote cases) updates the limit
   directly so `LIMIT_EXCEEDED` does not hide payment info. A green run does **not** prove that a
   customer reaches that limit through the product path.
+- **The settings verification-call visual spec answers GET /v2/user itself.**
+  `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
+  (`phoneCallAccepted` unset / true / false) and fulfils language, fiat, bankAccount and user
+  PUT/PATCH so a synthetic JWT does not 401. A green run proves those three consent states
+  render. It does not prove that a live account has those kyc fields, that `updateCallSettings`
+  persists, or that Completed/Failed hide the section.
 
 ## Known gaps
 

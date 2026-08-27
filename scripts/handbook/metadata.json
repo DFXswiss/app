@@ -123,6 +123,10 @@
     "title": "User-Flows",
     "description": "Übergreifende Nutzerflüsse der Services-App."
   },
+  "settings-verification-call": {
+    "title": "Verifizierungsanruf (Settings)",
+    "description": "Settings-Sektion Verifizierungsanruf: ungesetzte Einwilligung (Platzhalter Auswählen), Ja mit bevorzugter Anrufzeit, und Nein ohne Zeitauswahl. Die Sektion ist der Ort, an dem Kundinnen den Anruf erlauben oder ablehnen."
+  },
   "swap-process": {
     "title": "Swap-Prozess",
     "description": "Swap-Flow der Services-App."
