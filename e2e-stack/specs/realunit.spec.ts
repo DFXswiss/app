@@ -10,10 +10,28 @@
  *
  * Subgraph-backed surfaces (holders / tokenInfo / account history) remain unreachable here;
  * Aktionariat price is mocked. Admin transactions may be empty or error without a seed.
+ *
+ * A second describe below covers the RealUnit BitBox sell as a DFX API process (faucet → unsigned
+ * REALU→ZCHF swap → ZCHF deposit broadcast). No browser, no BitBox, no live Ethereum — same
+ * factory-only pattern as sell-swap.spec.ts. Requires the loc API JSON-RPC / faucet / broadcast stubs.
  */
 
 import type { Locator, Page } from '@playwright/test';
-import { apiGet, expect, gotoWithSession, loginAs, normPath, openScreen, queryOne, required, test } from './fixtures';
+import { ethers } from 'ethers';
+import {
+  apiGet,
+  apiPost,
+  apiPut,
+  expect,
+  gotoWithSession,
+  loginAs,
+  normPath,
+  openScreen,
+  queryOne,
+  required,
+  TEST_IBAN,
+  test,
+} from './fixtures';
 import { cleanupCreatedData, createSupportIssue, createUser, trackRow } from './fixtures/factories';
 
 /** Routes owned by this lane's RealUnit half (11 paths). */
@@ -243,7 +261,7 @@ test.describe('RealUnit area', () => {
       `SELECT id FROM asset WHERE name = 'REALU' AND blockchain = 'Sepolia' AND type = 'Token' ORDER BY id ASC LIMIT 1`,
     );
     if (realu?.id == null) {
-      throw new Error("seedWaitingForPaymentBuyQuote: no loc REALU token on Sepolia in seed data");
+      throw new Error('seedWaitingForPaymentBuyQuote: no loc REALU token on Sepolia in seed data');
     }
 
     const uid = `RQ${Date.now().toString(36)}${customer.userId}`.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
@@ -286,9 +304,7 @@ test.describe('RealUnit area', () => {
       )
       .not.toBeNull();
 
-    await expect
-      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
-      .toBe('/realunit/quotes');
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 }).toBe('/realunit/quotes');
 
     assertNoErrors(pageErrors, consoleErrors);
   });
@@ -327,9 +343,7 @@ test.describe('RealUnit area', () => {
       )
       .not.toBeNull();
 
-    await expect
-      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
-      .toBe('/realunit/quotes');
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 }).toBe('/realunit/quotes');
 
     assertNoErrors(pageErrors, consoleErrors);
   });
@@ -500,5 +514,215 @@ test.describe('RealUnit area', () => {
     ).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RealUnit sell process (API path) — faucet → unsigned swap → deposit broadcast
+// Wallet band 8000100 (sell-swap uses 8000000; role wallets use 0–6).
+// Requires the loc API JSON-RPC / faucet / broadcast / brokerbot stubs.
+// ---------------------------------------------------------------------------
+
+let __ruSell_WALLET_SEQ = 0;
+function nextRuSellWalletIndex(): number {
+  __ruSell_WALLET_SEQ += 1;
+  return 8000100 + __ruSell_WALLET_SEQ;
+}
+
+const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/;
+const LOC_REQUIRED_GAS_ETH = 0.00045; // 1 gwei × 450_000
+const LOC_FAUCET_AMOUNT_ETH = 0.0005625; // 1 gwei × 450_000 × 1.25
+const SEPOLIA_CHAIN_ID = 11155111;
+const SWAP_GAS_LIMIT = 350000;
+const DEPOSIT_GAS_LIMIT = 100000;
+
+function apiErrorMessage(body: unknown): string {
+  if (body && typeof body === 'object' && 'message' in body) {
+    const message = (body as { message: unknown }).message;
+    return typeof message === 'string' ? message : JSON.stringify(message);
+  }
+  return typeof body === 'string' ? body : JSON.stringify(body ?? '');
+}
+
+async function ensureSepoliaZchfAsset(): Promise<void> {
+  const existing = await queryOne<{ id: number }>(
+    `SELECT id FROM asset WHERE name = 'ZCHF' AND blockchain = 'Sepolia' AND type = 'Token' LIMIT 1`,
+  );
+  if (existing?.id != null) return;
+
+  // Seed correction: loc getZchfAsset() queries Sepolia/ZCHF Token; asset.csv has only Ethereum/ZCHF.
+  // Leave untracked as master data (inserted once in beforeAll).
+  const inserted = await queryOne<{ id: number }>(
+    `INSERT INTO asset (
+       name, type, buyable, sellable, "chainId", "sellCommand", "dexName", category, blockchain, "uniqueName",
+       description, "comingSoon", "sortOrder", "approxPriceUsd", ikna, "approxPriceChf", "cardBuyable",
+       "cardSellable", "instantBuyable", "instantSellable", "financialType", decimals, "paymentEnabled",
+       "amlRuleFrom", "amlRuleTo", "approxPriceEur", "refundEnabled", "refEnabled", "personalIbanEnabled"
+     )
+     SELECT
+       name, type, buyable, sellable, "chainId", "sellCommand", "dexName", category, 'Sepolia', 'Sepolia/ZCHF',
+       description, "comingSoon", "sortOrder", "approxPriceUsd", ikna, "approxPriceChf", "cardBuyable",
+       "cardSellable", "instantBuyable", "instantSellable", "financialType", decimals, "paymentEnabled",
+       "amlRuleFrom", "amlRuleTo", "approxPriceEur", "refundEnabled", "refEnabled", "personalIbanEnabled"
+     FROM asset
+     WHERE name = 'ZCHF' AND blockchain = 'Ethereum' AND type = 'Token'
+     LIMIT 1
+     RETURNING id`,
+  );
+  if (inserted?.id == null) {
+    throw new Error('ensureSepoliaZchfAsset: failed to copy Ethereum/ZCHF into Sepolia/ZCHF (source row missing?)');
+  }
+}
+
+async function ensureSepoliaRealuSellable(): Promise<void> {
+  // Seed correction: asset.csv row 408 is Sepolia/REALU with sellable=FALSE.
+  await queryOne(`UPDATE asset SET sellable = true WHERE name = 'REALU' AND blockchain = 'Sepolia'`);
+}
+
+async function seedAktionariatRegistration(user: { userId: number; address: string; mail?: string }): Promise<number> {
+  const mail = required(user.mail, 'seedAktionariatRegistration: createUser must set mail');
+  const row = await queryOne<{ id: number }>(
+    `INSERT INTO aktionariat_registration
+       ("userId", "walletAddress", email, "registrationDate", signature, status, active, "requiresEmailConfirmation",
+        created, updated)
+     VALUES ($1, $2, $3, '2026-01-01', '0xloc', 'Completed', true, false, NOW(), NOW())
+     RETURNING id`,
+    [user.userId, user.address.toLowerCase(), mail.toLowerCase()],
+  );
+  const id = required(row?.id, 'seedAktionariatRegistration: INSERT must return id');
+  trackRow('aktionariat_registration', id);
+  return id;
+}
+
+async function signAndBroadcastSellTx(
+  jwt: string,
+  sellId: number,
+  unsignedHex: string,
+  privateKey: string,
+): Promise<string> {
+  const parsed = ethers.utils.parseTransaction(unsignedHex);
+  const signedHex = await new ethers.Wallet(privateKey).signTransaction({
+    type: 2,
+    chainId: parsed.chainId,
+    nonce: parsed.nonce,
+    maxPriorityFeePerGas: parsed.maxPriorityFeePerGas,
+    maxFeePerGas: parsed.maxFeePerGas,
+    gasLimit: parsed.gasLimit,
+    to: parsed.to,
+    value: parsed.value,
+    data: parsed.data,
+  });
+  const signed = ethers.utils.parseTransaction(signedHex);
+  const result = await apiPut<{ txHash: string }>(
+    `realunit/sell/${sellId}/broadcast`,
+    {
+      unsignedTx: unsignedHex,
+      r: required(signed.r, 'signed tx must include r'),
+      s: required(signed.s, 'signed tx must include s'),
+      v: required(signed.v, 'signed tx must include v'),
+    },
+    { jwt },
+  );
+  return result.txHash;
+}
+
+test.describe('RealUnit sell process (API path)', () => {
+  test.beforeAll(async () => {
+    await ensureSepoliaZchfAsset();
+    await ensureSepoliaRealuSellable();
+  });
+
+  test.afterAll(async () => {
+    await cleanupCreatedData();
+  });
+
+  test('faucet → unsigned swap → deposit broadcast (happy path)', async () => {
+    const user = await createUser({
+      kycLevel: 30,
+      tag: 'ru-sell',
+      walletIndex: nextRuSellWalletIndex(),
+    });
+    await seedAktionariatRegistration(user);
+
+    const sell = await apiPut<{ id: number; requiredGasEth: number; ethBalance: number }>(
+      'realunit/sell',
+      { amount: 1, iban: TEST_IBAN, currency: 'CHF' },
+      { jwt: user.jwt },
+    );
+
+    expect(sell.requiredGasEth).toBe(LOC_REQUIRED_GAS_ETH);
+    expect(sell.ethBalance).toBe(0);
+    expect(sell.id, 'PUT realunit/sell must return a transaction request id').toBeGreaterThan(0);
+
+    let status: number | undefined;
+    const beforeFaucet = await apiPut<unknown>(
+      `realunit/sell/${sell.id}/unsigned-transactions`,
+      {},
+      { jwt: user.jwt, expectOk: false, onStatus: (s) => (status = s) },
+    );
+    expect(status, 'unsigned-transactions before faucet must be 400').toBe(400);
+    expect(apiErrorMessage(beforeFaucet)).toMatch(/Insufficient ETH/i);
+
+    const faucet = await apiPost<{ amount: number; txId: string; asset: { blockchain?: string } }>(
+      'faucet',
+      {},
+      { jwt: user.jwt },
+    );
+    expect(faucet.amount).toBe(LOC_FAUCET_AMOUNT_ETH);
+    expect(faucet.txId).toMatch(TX_HASH_RE);
+    expect(faucet.asset.blockchain).toBe('Sepolia');
+
+    status = undefined;
+    const faucetReuse = await apiPost<unknown>(
+      'faucet',
+      {},
+      { jwt: user.jwt, expectOk: false, onStatus: (s) => (status = s) },
+    );
+    expect(status, 'second faucet call must be 400').toBe(400);
+    expect(apiErrorMessage(faucetReuse)).toMatch(/already used/i);
+
+    const unsigned = await apiPut<{ swap: string; deposit: string }>(
+      `realunit/sell/${sell.id}/unsigned-transactions`,
+      {},
+      { jwt: user.jwt },
+    );
+    expect(typeof unsigned.swap).toBe('string');
+    expect(typeof unsigned.deposit).toBe('string');
+    expect(unsigned.swap.startsWith('0x')).toBe(true);
+    expect(unsigned.deposit.startsWith('0x')).toBe(true);
+
+    const swapTx = ethers.utils.parseTransaction(unsigned.swap);
+    const depositTx = ethers.utils.parseTransaction(unsigned.deposit);
+    expect(swapTx.gasLimit.toNumber()).toBe(SWAP_GAS_LIMIT);
+    expect(depositTx.gasLimit.toNumber()).toBe(DEPOSIT_GAS_LIMIT);
+    expect(depositTx.nonce).toBe((swapTx.nonce ?? 0) + 1);
+    expect(swapTx.type).toBe(2);
+    expect(depositTx.type).toBe(2);
+    expect(swapTx.chainId).toBe(SEPOLIA_CHAIN_ID);
+    expect(depositTx.chainId).toBe(SEPOLIA_CHAIN_ID);
+
+    const swapHash = await signAndBroadcastSellTx(user.jwt, sell.id, unsigned.swap, user.wallet.privateKey);
+    expect(swapHash).toMatch(TX_HASH_RE);
+
+    const depositHash = await signAndBroadcastSellTx(user.jwt, sell.id, unsigned.deposit, user.wallet.privateKey);
+    expect(depositHash).toMatch(TX_HASH_RE);
+
+    // Broadcast resets the faucet, so a new request succeeds with a fresh txId.
+    const faucetAgain = await apiPost<{ amount: number; txId: string }>('faucet', {}, { jwt: user.jwt });
+    expect(faucetAgain.amount).toBe(LOC_FAUCET_AMOUNT_ETH);
+    expect(faucetAgain.txId).toMatch(TX_HASH_RE);
+    expect(faucetAgain.txId).not.toBe(faucet.txId);
+  });
+
+  test('POST /faucet rejects KYC below level 30 with 403', async () => {
+    const user = await createUser({
+      kycLevel: 20,
+      tag: 'ru-faucet-kyc',
+      walletIndex: nextRuSellWalletIndex(),
+    });
+
+    let status: number | undefined;
+    await apiPost('faucet', {}, { jwt: user.jwt, expectOk: false, onStatus: (s) => (status = s) });
+    expect(status, 'POST /v1/faucet must reject KYC < 30').toBe(403);
   });
 });

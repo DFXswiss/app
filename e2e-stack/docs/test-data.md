@@ -297,3 +297,51 @@ See also `e2e-stack/specs/factories.spec.ts` for end-to-end factory coverage wit
 - Base: `E2E_API_URL` (default `http://api:3000`)
 - `version`: `'v1' | 'v2'` (default `v1`); path must **not** include the version prefix
 - Non-2xx throws: `METHOD /v1/path failed: HTTP status — body`
+
+---
+
+## RealUnit sell process (API path)
+
+Covered by the second describe in `e2e-stack/specs/realunit.spec.ts` (not a browser / BitBox flow).
+Wallet indices use the **8000100** band so they do not collide with role wallets (`0–6`) or
+`sell-swap.spec.ts` (`8000000`).
+
+### Companion API change required
+
+These tests expect loc API stubs that are not on current API `develop`:
+
+- loc JSON-RPC (native balance, nonce, gas price, send)
+- loc brokerbot sell price `1.57`
+- loc broadcast
+- loc EIP-7702 dummy
+- faucet amount `0.0005625` (= 1 gwei × 450_000 × 1.25)
+
+Against an API image without those stubs the process tests **fail**. Run them only with that API present.
+
+### Seed corrections (SQL shortcuts in the spec)
+
+| Correction                      | Why                                                                                                                                            | How                                                                                                                                                                                                         |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sepolia/ZCHF Token row          | Loc `getZchfAsset()` queries `{ name: 'ZCHF', blockchain: 'Sepolia', type: 'Token' }`; `asset.csv` has only Ethereum/ZCHF                      | Idempotent `INSERT … SELECT` from Ethereum/ZCHF with `blockchain = 'Sepolia'`, `uniqueName = 'Sepolia/ZCHF'` (same `chainId` placeholder is fine). Inserted once in `beforeAll` as master data (untracked). |
+| Sepolia/REALU `sellable = true` | Seed row 408 is `sellable=FALSE`                                                                                                               | `UPDATE asset SET sellable = true WHERE name = 'REALU' AND blockchain = 'Sepolia'` in `beforeAll`.                                                                                                          |
+| `aktionariat_registration`      | `assertRealUnitAccess` needs an active registration for the wallet (`status` not Failed/Canceled, `active = true`, lowercased `walletAddress`) | Per-user `INSERT` with `status = 'Completed'`, `requiresEmailConfirmation = false`, `signature = '0xloc'`; `trackRow('aktionariat_registration', id)`.                                                      |
+
+### What is real vs fake
+
+| Layer                                                                                    | Status                                      |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------- |
+| API HTTP contract (`PUT realunit/sell`, unsigned-transactions, broadcast, `POST faucet`) | **Real** (against the loc API container)    |
+| Postgres (users, assets, registration, transaction_request, faucet_request)              | **Real**                                    |
+| Loc JSON-RPC / native balances / broadcast hashes                                        | **Fake** (in-process loc gateway)           |
+| Loc brokerbot price `1.57`                                                               | **Fake**                                    |
+| Loc EIP-7702 dummy                                                                       | **Fake**                                    |
+| Seeded Aktionariat registration                                                          | **Fake** (SQL shortcut; not `registerUser`) |
+| Seeded Sepolia/ZCHF (+ REALU sellable flip)                                              | **Fake** relative to production seed        |
+
+### What a green run does **not** prove
+
+- Ethereum inclusion or finality of broadcast txs
+- Live `gasUsed` (unsigned txs use fixed BitBox gasLimits 350k / 100k)
+- BitBox hardware signing
+- Aktionariat `registerUser` / live share-register forward
+- Bank payout of the ZCHF→CHF sell leg
