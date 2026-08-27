@@ -419,6 +419,50 @@ describe('SettingsScreen', () => {
     expect(mockUpdateCallSettings).not.toHaveBeenCalled();
   });
 
+  it('propagates form values changed after the initial render', () => {
+    mockUser = makeUser({
+      kyc: { preferredPhoneTimes: ['H9To10'], phoneCallAccepted: true },
+    });
+    mockWatchedValues = {
+      language: ENGLISH,
+      currency: EUR,
+      preferredPhoneTimes: ['H9To10'],
+      acceptCall: true,
+    };
+
+    const { rerender } = render(<SettingsScreen />);
+
+    expect(mockChangeLanguage).not.toHaveBeenCalled();
+    expect(mockChangeCurrency).not.toHaveBeenCalled();
+    expect(mockUpdateCallSettings).not.toHaveBeenCalled();
+
+    mockWatchedValues = {
+      language: GERMAN,
+      currency: CHF,
+      preferredPhoneTimes: ['H10To11'],
+      acceptCall: false,
+    };
+    rerender(<SettingsScreen />);
+
+    expect(mockChangeLanguage).toHaveBeenCalledTimes(1);
+    expect(mockChangeLanguage).toHaveBeenCalledWith(GERMAN);
+    expect(mockChangeCurrency).toHaveBeenCalledTimes(1);
+    expect(mockChangeCurrency).toHaveBeenCalledWith(CHF);
+    expect(mockUpdateCallSettings).toHaveBeenCalledTimes(2);
+    expect(mockUpdateCallSettings).toHaveBeenNthCalledWith(1, ['H10To11']);
+    expect(mockUpdateCallSettings).toHaveBeenNthCalledWith(2, undefined, false);
+
+    mockSetValue.mockClear();
+    mockWatchedValues = { ...mockWatchedValues, acceptCall: undefined };
+    mockUser = makeUser({
+      kyc: { preferredPhoneTimes: ['H9To10'], phoneCallAccepted: false },
+    });
+    rerender(<SettingsScreen />);
+
+    expect(mockSetValue).toHaveBeenCalledTimes(1);
+    expect(mockSetValue).toHaveBeenCalledWith('acceptCall', false);
+  });
+
   it('shows the completed verification-call notice', () => {
     mockUser = makeUser({ kyc: { phoneCallStatus: 'Completed' } });
 
