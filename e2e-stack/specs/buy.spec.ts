@@ -961,13 +961,7 @@ test.describe('Buy flow', () => {
     await expect(save).toBeDisabled();
   });
 
-  // Known API bug: BuyCryptoService.changeRoute throws when userData on the route is null under
-  // this request shape. test.fail keeps the case running; remove once the API is fixed.
   test('/buyCrypto/update: Admin save updates buyId and shows Saved', async ({ page }) => {
-    test.fail(
-      true,
-      'BuyCryptoService.changeRoute throws TypeError reading id of null userData on the route (API 500).',
-    );
     test.setTimeout(90000);
     const { jwt: adminJwt } = await loginAs('Admin');
 
