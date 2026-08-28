@@ -74,7 +74,7 @@ export function CallQueueUserInfo({ userData, users, kycSteps, highlightCheckDat
     { label: 'Status', value: userData.status },
     { label: 'KYC Level', value: userData.kycLevel == null ? undefined : String(userData.kycLevel) },
     { label: 'KYC Status', value: userData.kycStatus },
-    { label: 'Wallet', value: primaryUser?.walletName ?? userData.wallet?.name },
+    { label: 'Wallet', value: primaryUser?.walletName },
     { label: 'User Ref', value: primaryUser?.ref },
     { label: 'Used Ref', value: primaryUser?.usedRef },
     { label: 'Referrer (Ref Werber)', value: refUserName },

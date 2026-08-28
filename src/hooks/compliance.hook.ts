@@ -276,10 +276,6 @@ export interface LanguageRef {
   symbol?: string;
 }
 
-export interface WalletRef {
-  name?: string;
-}
-
 export interface OrganizationDetail {
   id?: number;
   name?: string;
@@ -307,7 +303,6 @@ export interface UserDataDetail {
   kycStatus?: string;
   kycLevel?: number;
   depositLimit?: number;
-  wallet?: WalletRef;
 
   // Personal Data
   accountType?: string;
