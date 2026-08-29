@@ -27,7 +27,7 @@ import {
   waitForRow,
   withDb,
 } from './fixtures';
-import { cleanupCreatedData, createUser, e2eMail } from './fixtures/factories';
+import { cleanupCreatedData, createUser, e2eMail, type CreateUserResult } from './fixtures/factories';
 
 /** Parse a 6-digit verification code from a notification row (VerificationMail / EmailVerification). */
 function codeFromNotificationData(data: string): string {
@@ -61,6 +61,80 @@ async function waitForVerificationCode(
     timeoutMs,
   );
   return codeFromNotificationData(row.data);
+}
+
+function mergeMailFromNotification(data: string): { url?: string; walletName?: string } {
+  let parsed: { wallet?: { name?: string }; texts?: Array<{ params?: { url?: string } }> };
+  try {
+    parsed = JSON.parse(data) as typeof parsed;
+  } catch (e) {
+    throw new Error(`mergeMailFromNotification: failed to JSON.parse notification.data: ${e}`);
+  }
+  const url = parsed.texts?.find((t) => typeof t?.params?.url === 'string')?.params?.url;
+  return { url, walletName: parsed.wallet?.name };
+}
+
+async function waitForMergeMail(userDataId: number): Promise<{ url?: string; walletName?: string }> {
+  const row = await waitForRow<{ data: string }>(
+    `SELECT n.data FROM notification n
+     WHERE n."userDataId" = $1 AND n.context = 'AccountMergeRequest'
+     ORDER BY n.id DESC LIMIT 1`,
+    [userDataId],
+    20000,
+  );
+  return mergeMailFromNotification(row.data);
+}
+
+async function walletIdNamed(name: string): Promise<number> {
+  const existing = await queryOne<{ id: number }>(`SELECT id FROM wallet WHERE name = $1 ORDER BY id ASC LIMIT 1`, [
+    name,
+  ]);
+  if (existing?.id) return existing.id;
+  if (name !== 'RealUnit') {
+    throw new Error(`walletIdNamed: no wallet named ${name}`);
+  }
+  const inserted = await withDb(async (client) => {
+    const result = await client.query<{ id: number }>(
+      `INSERT INTO wallet (name, "displayName", created, updated)
+       VALUES ('RealUnit', 'RealUnit', NOW(), NOW())
+       RETURNING id`,
+    );
+    return result.rows[0];
+  });
+  if (!inserted?.id) throw new Error('walletIdNamed: failed to insert RealUnit wallet');
+  return inserted.id;
+}
+
+async function setUserWallet(userId: number, walletId: number): Promise<void> {
+  await withDb(async (client) => {
+    await client.query(`UPDATE "user" SET "walletId" = $1 WHERE id = $2`, [walletId, userId]);
+  });
+}
+
+/** B requests A's mail after 2FA — the product path that sends the merge mail to A. */
+async function triggerMergeViaMailChange(
+  page: Page,
+  master: CreateUserResult,
+  slave: CreateUserResult,
+): Promise<string> {
+  await openScreen(page, '/2fa', slave.jwt);
+  await completeMail2faOnPage(page, slave.userDataId);
+  await page.goto('/account/mail');
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('textbox', { name: 'Email address' })).toBeVisible({ timeout: 20000 });
+  await page.getByRole('textbox', { name: 'Email address' }).fill(master.mail);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('It looks like you already have an account with DFX.')).toBeVisible({
+    timeout: 20000,
+  });
+  const mergeRow = await waitForRow<{ code: string }>(
+    `SELECT code FROM account_merge
+     WHERE "masterId" = $1 AND "slaveId" = $2
+     ORDER BY id DESC LIMIT 1`,
+    [master.userDataId, slave.userDataId],
+    20000,
+  );
+  return mergeRow.code;
 }
 
 /** Complete the mail-based /2fa screen for a customer account (same browser IP for later check2fa). */
@@ -347,40 +421,17 @@ test.describe('Auth area e2e', () => {
   test('/account-merge?otp=… adds wallet address (UI + Postgres)', async ({ page }) => {
     test.setTimeout(120000);
 
-    const mailA = e2eMail('merge-master');
-    const mailB = e2eMail('merge-slave');
-    const userA = await createUser({ tag: 'merge-a', mail: mailA, language: 'EN' });
-    const userB = await createUser({ tag: 'merge-b', mail: mailB, language: 'EN' });
+    const userA = await createUser({ tag: 'merge-a', mail: e2eMail('merge-master'), language: 'EN' });
+    const userB = await createUser({ tag: 'merge-b', mail: e2eMail('merge-slave'), language: 'EN' });
+    const code = await triggerMergeViaMailChange(page, userA, userB);
+    expect(code).toBeTruthy();
 
-    // Trigger merge the same way the product does: B requests A's mail after 2FA.
-    await openScreen(page, '/2fa', userB.jwt);
-    await completeMail2faOnPage(page, userB.userDataId);
-
-    await page.goto('/account/mail');
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByRole('textbox', { name: 'Email address' })).toBeVisible({
-      timeout: 20000,
-    });
-
-    const mailInput = page.getByRole('textbox', { name: 'Email address' });
-    await mailInput.fill(mailA);
-    await page.getByRole('button', { name: 'Save' }).click();
-
-    await expect(page.getByText('It looks like you already have an account with DFX.')).toBeVisible({
-      timeout: 20000,
-    });
-
-    const mergeRow = await waitForRow<{ code: string }>(
-      `SELECT code FROM account_merge
-       WHERE "masterId" = $1 AND "slaveId" = $2
-       ORDER BY id DESC LIMIT 1`,
-      [userA.userDataId, userB.userDataId],
-      20000,
-    );
-    expect(mergeRow.code).toBeTruthy();
+    const mail = await waitForMergeMail(userA.userDataId);
+    expect(mail.url, 'DFX merge mail must link to /account-merge').toContain('/account-merge?otp=');
+    expect(mail.url, 'default DFX account must not use the RealUnit host').not.toMatch(/realunit\.app/i);
 
     // Confirm merge unauthenticated (OptionalJwtAuthGuard).
-    await page.goto(`/account-merge?otp=${encodeURIComponent(mergeRow.code)}`);
+    await page.goto(`/account-merge?otp=${encodeURIComponent(code)}`);
     await expect(page.getByText('Wallet address added', { exact: true })).toBeVisible({ timeout: 30000 });
     await expect(page.getByText('You can now access your account.', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'My account' })).toBeVisible();
@@ -400,6 +451,55 @@ test.describe('Auth area e2e', () => {
       20000,
     );
     expect(slave.status).toBe('Merged');
+  });
+
+  test('unanimous RealUnit merge mail links to realunit.app and still confirms on DFX', async ({ page }) => {
+    test.setTimeout(120000);
+    const userA = await createUser({ tag: 'merge-ru-a', mail: e2eMail('merge-ru-master'), language: 'EN' });
+    const userB = await createUser({ tag: 'merge-ru-b', mail: e2eMail('merge-ru-slave'), language: 'EN' });
+    const realunitId = await walletIdNamed('RealUnit');
+    await setUserWallet(userA.userId, realunitId);
+
+    const code = await triggerMergeViaMailChange(page, userA, userB);
+    const mail = await waitForMergeMail(userA.userDataId);
+    expect(mail.walletName).toBe('RealUnit');
+    expect(mail.url).toMatch(/realunit\.app\/account-merge\?otp=/i);
+    expect(mail.url).toContain(code);
+
+    await page.goto(`/account-merge?otp=${encodeURIComponent(code)}`);
+    await expect(page.getByText('Wallet address added', { exact: true })).toBeVisible({ timeout: 30000 });
+  });
+
+  test('unanimous Denario merge mail stays on the DFX confirmation host', async ({ page }) => {
+    test.setTimeout(120000);
+    const userA = await createUser({ tag: 'merge-de-a', mail: e2eMail('merge-de-master'), language: 'EN' });
+    const userB = await createUser({ tag: 'merge-de-b', mail: e2eMail('merge-de-slave'), language: 'EN' });
+    const denarioId = await walletIdNamed('Denario');
+    await setUserWallet(userA.userId, denarioId);
+
+    await triggerMergeViaMailChange(page, userA, userB);
+    const mail = await waitForMergeMail(userA.userDataId);
+    expect(mail.walletName).toBeUndefined();
+    expect(mail.url).toContain('/account-merge?otp=');
+    expect(mail.url).not.toMatch(/realunit\.app/i);
+  });
+
+  test('mixed RealUnit+DFX addresses on the master stay on the DFX confirmation host', async ({ page }) => {
+    test.setTimeout(120000);
+    const userA = await createUser({ tag: 'merge-mx-a', mail: e2eMail('merge-mx-master'), language: 'EN' });
+    const extra = await createUser({ tag: 'merge-mx-extra', mail: e2eMail('merge-mx-extra'), language: 'EN' });
+    const userB = await createUser({ tag: 'merge-mx-b', mail: e2eMail('merge-mx-slave'), language: 'EN' });
+    const realunitId = await walletIdNamed('RealUnit');
+    await setUserWallet(userA.userId, realunitId);
+    await withDb(async (client) => {
+      await client.query(`UPDATE "user" SET "userDataId" = $1 WHERE id = $2`, [userA.userDataId, extra.userId]);
+    });
+
+    await triggerMergeViaMailChange(page, userA, userB);
+    const mail = await waitForMergeMail(userA.userDataId);
+    expect(mail.walletName).toBeUndefined();
+    expect(mail.url).toContain('/account-merge?otp=');
+    expect(mail.url).not.toMatch(/realunit\.app/i);
   });
 
   test('/account-merge without otp ends on /login when there is no session', async ({ page }) => {
