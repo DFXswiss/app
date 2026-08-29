@@ -122,7 +122,7 @@ async function triggerMergeViaMailChange(
   await page.goto('/account/mail');
   await page.waitForLoadState('networkidle');
   await expect(page.getByRole('textbox', { name: 'Email address' })).toBeVisible({ timeout: 20000 });
-  await page.getByRole('textbox', { name: 'Email address' }).fill(master.mail);
+  await page.getByRole('textbox', { name: 'Email address' }).fill(required(master.mail, 'master.mail'));
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('It looks like you already have an account with DFX.')).toBeVisible({
     timeout: 20000,
