@@ -176,9 +176,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the master address so the mail URL can be asserted. If the named wallet row is missing, the spec
   inserts it. A green run does **not** prove that a customer registered through that partner app,
   or that partner wallet rows are provisioned by the regular seed or migration path.
+  Those three cases are `test.skip` until DFXswiss/backend#5270 is on develop: the e2e-stack API
+  image is built from backend@develop, which still brands merge from the default wallet.
 - **Full-stack auth merge specs SQL-write `user.userDataId` to attach a second address.**
   `e2e-stack/specs/auth.spec.ts` (mixed RealUnit+DFX) re-parents an extra user onto the master
   account. A green run does **not** prove that a dual-account is created through the product path.
+  Skipped with the other host-matrix cases until DFXswiss/backend#5270 is on develop.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
