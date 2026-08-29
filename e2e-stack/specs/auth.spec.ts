@@ -402,15 +402,15 @@ test.describe('Auth area e2e', () => {
     expect(slave.status).toBe('Merged');
   });
 
-  test('/account-merge without otp goes to /kyc', async ({ page }) => {
+  test('/account-merge without otp ends on /login when there is no session', async ({ page }) => {
     await page.goto('/account-merge');
     await page.waitForLoadState('networkidle');
     await expect
       .poll(() => normPath(new URL(page.url()).pathname), {
-        message: 'missing merge otp should navigate to /kyc',
+        message: 'missing merge otp without a session should end on /login',
         timeout: 20000,
       })
-      .toBe('/kyc');
+      .toBe('/login');
   });
 
   test('/account-merge already-completed otp lands on /error', async ({ page }) => {
@@ -425,6 +425,9 @@ test.describe('Auth area e2e', () => {
     await completeMail2faOnPage(page, userB.userDataId);
     await page.goto('/account/mail');
     await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('textbox', { name: 'Email address' })).toBeVisible({
+      timeout: 20000,
+    });
     await page.getByRole('textbox', { name: 'Email address' }).fill(mailA);
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('It looks like you already have an account with DFX.')).toBeVisible({
@@ -464,6 +467,9 @@ test.describe('Auth area e2e', () => {
     await completeMail2faOnPage(page, userB.userDataId);
     await page.goto('/account/mail');
     await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('textbox', { name: 'Email address' })).toBeVisible({
+      timeout: 20000,
+    });
     await page.getByRole('textbox', { name: 'Email address' }).fill(mailA);
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByText('It looks like you already have an account with DFX.')).toBeVisible({
