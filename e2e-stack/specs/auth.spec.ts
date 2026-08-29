@@ -71,7 +71,8 @@ function assertMergeMailUrl(url: string | undefined, code: string, host: 'dfx' |
   if (host === 'realunit') {
     expect(['realunit.app', 'dev.realunit.app']).toContain(parsed.hostname);
   } else {
-    expect(parsed.hostname).not.toMatch(/(^|\.)realunit\.app$/i);
+    const dfxOrigin = new URL(process.env.E2E_FRONTEND_URL ?? 'http://frontend').origin;
+    expect(parsed.origin).toBe(dfxOrigin);
   }
 }
 
