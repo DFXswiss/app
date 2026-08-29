@@ -426,6 +426,7 @@ test.describe('Auth area e2e', () => {
 
     const mail = await waitForMergeMail(userA.userDataId);
     expect(mail.url, 'DFX merge mail must link to /account-merge').toContain('/account-merge?otp=');
+    expect(mail.url).toContain(code);
     expect(mail.url, 'default DFX account must not use the RealUnit host').not.toMatch(/realunit\.app/i);
 
     // Confirm merge unauthenticated (OptionalJwtAuthGuard).
@@ -453,9 +454,9 @@ test.describe('Auth area e2e', () => {
 
   test('unanimous RealUnit merge mail links to realunit.app and still confirms on DFX', async ({ page }) => {
     test.setTimeout(120000);
+    const realunitId = await walletIdNamed('RealUnit');
     const userA = await createUser({ tag: 'merge-ru-a', mail: e2eMail('merge-ru-master'), language: 'EN' });
     const userB = await createUser({ tag: 'merge-ru-b', mail: e2eMail('merge-ru-slave'), language: 'EN' });
-    const realunitId = await walletIdNamed('RealUnit');
     await setUserWallet(userA.userId, realunitId);
 
     const code = await triggerMergeViaMailChange(page, userA, userB);
@@ -470,33 +471,35 @@ test.describe('Auth area e2e', () => {
 
   test('unanimous Denario merge mail stays on the DFX confirmation host', async ({ page }) => {
     test.setTimeout(120000);
+    const denarioId = await walletIdNamed('Denario');
     const userA = await createUser({ tag: 'merge-de-a', mail: e2eMail('merge-de-master'), language: 'EN' });
     const userB = await createUser({ tag: 'merge-de-b', mail: e2eMail('merge-de-slave'), language: 'EN' });
-    const denarioId = await walletIdNamed('Denario');
     await setUserWallet(userA.userId, denarioId);
 
-    await triggerMergeViaMailChange(page, userA, userB);
+    const code = await triggerMergeViaMailChange(page, userA, userB);
     const mail = await waitForMergeMail(userA.userDataId);
     expect(mail.walletName).toBeUndefined();
     expect(mail.url).toContain('/account-merge?otp=');
+    expect(mail.url).toContain(code);
     expect(mail.url).not.toMatch(/realunit\.app/i);
   });
 
   test('mixed RealUnit+DFX addresses on the master stay on the DFX confirmation host', async ({ page }) => {
     test.setTimeout(120000);
+    const realunitId = await walletIdNamed('RealUnit');
     const userA = await createUser({ tag: 'merge-mx-a', mail: e2eMail('merge-mx-master'), language: 'EN' });
     const extra = await createUser({ tag: 'merge-mx-extra', mail: e2eMail('merge-mx-extra'), language: 'EN' });
     const userB = await createUser({ tag: 'merge-mx-b', mail: e2eMail('merge-mx-slave'), language: 'EN' });
-    const realunitId = await walletIdNamed('RealUnit');
     await setUserWallet(userA.userId, realunitId);
     await withDb(async (client) => {
       await client.query(`UPDATE "user" SET "userDataId" = $1 WHERE id = $2`, [userA.userDataId, extra.userId]);
     });
 
-    await triggerMergeViaMailChange(page, userA, userB);
+    const code = await triggerMergeViaMailChange(page, userA, userB);
     const mail = await waitForMergeMail(userA.userDataId);
     expect(mail.walletName).toBeUndefined();
     expect(mail.url).toContain('/account-merge?otp=');
+    expect(mail.url).toContain(code);
     expect(mail.url).not.toMatch(/realunit\.app/i);
   });
 
