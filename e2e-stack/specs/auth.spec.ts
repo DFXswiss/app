@@ -63,6 +63,18 @@ async function waitForVerificationCode(
   return codeFromNotificationData(row.data);
 }
 
+function assertMergeMailUrl(url: string | undefined, code: string, host: 'dfx' | 'realunit'): void {
+  expect(url, 'merge mail must include a confirmation URL').toBeTruthy();
+  const parsed = new URL(url as string);
+  expect(parsed.pathname).toBe('/account-merge');
+  expect(parsed.searchParams.get('otp')).toBe(code);
+  if (host === 'realunit') {
+    expect(['realunit.app', 'dev.realunit.app']).toContain(parsed.hostname);
+  } else {
+    expect(parsed.hostname).not.toMatch(/(^|\.)realunit\.app$/i);
+  }
+}
+
 function mergeMailFromNotification(data: string): { url?: string; walletName?: string } {
   let parsed: { wallet?: { name?: string }; texts?: Array<{ params?: { url?: string } }> };
   try {
@@ -425,9 +437,7 @@ test.describe('Auth area e2e', () => {
     expect(code).toBeTruthy();
 
     const mail = await waitForMergeMail(userA.userDataId);
-    expect(mail.url, 'DFX merge mail must link to /account-merge').toContain('/account-merge?otp=');
-    expect(mail.url).toContain(code);
-    expect(mail.url, 'default DFX account must not use the RealUnit host').not.toMatch(/realunit\.app/i);
+    assertMergeMailUrl(mail.url, code, 'dfx');
 
     // Confirm merge unauthenticated (OptionalJwtAuthGuard).
     await page.goto(`/account-merge?otp=${encodeURIComponent(code)}`);
@@ -462,8 +472,7 @@ test.describe('Auth area e2e', () => {
     const code = await triggerMergeViaMailChange(page, userA, userB);
     const mail = await waitForMergeMail(userA.userDataId);
     expect(mail.walletName).toBe('RealUnit');
-    expect(mail.url).toMatch(/realunit\.app\/account-merge\?otp=/i);
-    expect(mail.url).toContain(code);
+    assertMergeMailUrl(mail.url, code, 'realunit');
 
     await page.goto(`/account-merge?otp=${encodeURIComponent(code)}`);
     await expect(page.getByText('Wallet address added', { exact: true })).toBeVisible({ timeout: 30000 });
@@ -479,9 +488,7 @@ test.describe('Auth area e2e', () => {
     const code = await triggerMergeViaMailChange(page, userA, userB);
     const mail = await waitForMergeMail(userA.userDataId);
     expect(mail.walletName).toBeUndefined();
-    expect(mail.url).toContain('/account-merge?otp=');
-    expect(mail.url).toContain(code);
-    expect(mail.url).not.toMatch(/realunit\.app/i);
+    assertMergeMailUrl(mail.url, code, 'dfx');
   });
 
   test('mixed RealUnit+DFX addresses on the master stay on the DFX confirmation host', async ({ page }) => {
@@ -498,9 +505,7 @@ test.describe('Auth area e2e', () => {
     const code = await triggerMergeViaMailChange(page, userA, userB);
     const mail = await waitForMergeMail(userA.userDataId);
     expect(mail.walletName).toBeUndefined();
-    expect(mail.url).toContain('/account-merge?otp=');
-    expect(mail.url).toContain(code);
-    expect(mail.url).not.toMatch(/realunit\.app/i);
+    assertMergeMailUrl(mail.url, code, 'dfx');
   });
 
   test('/account-merge without otp ends on /login when there is no session', async ({ page }) => {
