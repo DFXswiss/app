@@ -25,6 +25,7 @@ import {
   testEmail,
   testWallet,
   waitForRow,
+  withDb,
 } from './fixtures';
 import { cleanupCreatedData, createUser, e2eMail } from './fixtures/factories';
 
@@ -399,5 +400,97 @@ test.describe('Auth area e2e', () => {
       20000,
     );
     expect(slave.status).toBe('Merged');
+  });
+
+  test('/account-merge without otp goes to /kyc', async ({ page }) => {
+    await page.goto('/account-merge');
+    await page.waitForLoadState('networkidle');
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), {
+        message: 'missing merge otp should navigate to /kyc',
+        timeout: 20000,
+      })
+      .toBe('/kyc');
+  });
+
+  test('/account-merge already-completed otp lands on /error', async ({ page }) => {
+    test.setTimeout(120000);
+
+    const mailA = e2eMail('merge-done-master');
+    const mailB = e2eMail('merge-done-slave');
+    const userA = await createUser({ tag: 'merge-done-a', mail: mailA, language: 'EN' });
+    const userB = await createUser({ tag: 'merge-done-b', mail: mailB, language: 'EN' });
+
+    await openScreen(page, '/2fa', userB.jwt);
+    await completeMail2faOnPage(page, userB.userDataId);
+    await page.goto('/account/mail');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('textbox', { name: 'Email address' }).fill(mailA);
+    await page.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByText('It looks like you already have an account with DFX.')).toBeVisible({
+      timeout: 20000,
+    });
+
+    const mergeRow = await waitForRow<{ code: string }>(
+      `SELECT code FROM account_merge
+       WHERE "masterId" = $1 AND "slaveId" = $2
+       ORDER BY id DESC LIMIT 1`,
+      [userA.userDataId, userB.userDataId],
+      20000,
+    );
+
+    await page.goto(`/account-merge?otp=${encodeURIComponent(mergeRow.code)}`);
+    await expect(page.getByText('Wallet address added', { exact: true })).toBeVisible({ timeout: 30000 });
+
+    await page.goto(`/account-merge?otp=${encodeURIComponent(mergeRow.code)}`);
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), {
+        message: 'already-merged otp should navigate to /error',
+        timeout: 20000,
+      })
+      .toBe('/error');
+    await expect(page.getByText(/already been added/i)).toBeVisible();
+  });
+
+  test('/account-merge expired otp lands on /error', async ({ page }) => {
+    test.setTimeout(120000);
+
+    const mailA = e2eMail('merge-exp-master');
+    const mailB = e2eMail('merge-exp-slave');
+    const userA = await createUser({ tag: 'merge-exp-a', mail: mailA, language: 'EN' });
+    const userB = await createUser({ tag: 'merge-exp-b', mail: mailB, language: 'EN' });
+
+    await openScreen(page, '/2fa', userB.jwt);
+    await completeMail2faOnPage(page, userB.userDataId);
+    await page.goto('/account/mail');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('textbox', { name: 'Email address' }).fill(mailA);
+    await page.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByText('It looks like you already have an account with DFX.')).toBeVisible({
+      timeout: 20000,
+    });
+
+    const mergeRow = await waitForRow<{ code: string }>(
+      `SELECT code FROM account_merge
+       WHERE "masterId" = $1 AND "slaveId" = $2
+       ORDER BY id DESC LIMIT 1`,
+      [userA.userDataId, userB.userDataId],
+      20000,
+    );
+
+    await withDb(async (client) => {
+      await client.query(`UPDATE account_merge SET expiration = $1 WHERE code = $2`, [
+        new Date('2000-01-01T00:00:00Z'),
+        mergeRow.code,
+      ]);
+    });
+
+    await page.goto(`/account-merge?otp=${encodeURIComponent(mergeRow.code)}`);
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), {
+        message: 'expired merge otp should navigate to /error',
+        timeout: 20000,
+      })
+      .toBe('/error');
   });
 });
