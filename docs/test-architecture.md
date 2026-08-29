@@ -171,10 +171,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **Full-stack auth merge specs SQL-write `account_merge.expiration`.**
   `e2e-stack/specs/auth.spec.ts` (expired otp) updates expiration directly. A green run does **not**
   prove that merge links expire through the product path or that the API sets expiration on create.
-- **Full-stack auth merge specs SQL-write `user.walletId` (and may insert a RealUnit `wallet` row).**
+- **Full-stack auth merge specs SQL-write `user.walletId` (and may insert a partner `wallet` row).**
   `e2e-stack/specs/auth.spec.ts` (RealUnit / Denario merge-mail cases) assigns the partner wallet on
-  the master address so the mail URL can be asserted. A green run does **not** prove that a customer
-  registered through that partner app.
+  the master address so the mail URL can be asserted. If the named wallet row is missing, the spec
+  inserts it. A green run does **not** prove that a customer registered through that partner app.
 - **Full-stack auth merge specs SQL-write `user.userDataId` to attach a second address.**
   `e2e-stack/specs/auth.spec.ts` (mixed RealUnit+DFX) re-parents an extra user onto the master
   account. A green run does **not** prove that a dual-account is created through the product path.

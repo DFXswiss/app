@@ -90,18 +90,16 @@ async function walletIdNamed(name: string): Promise<number> {
     name,
   ]);
   if (existing?.id) return existing.id;
-  if (name !== 'RealUnit') {
-    throw new Error(`walletIdNamed: no wallet named ${name}`);
-  }
   const inserted = await withDb(async (client) => {
     const result = await client.query<{ id: number }>(
       `INSERT INTO wallet (name, "displayName", created, updated)
-       VALUES ('RealUnit', 'RealUnit', NOW(), NOW())
+       VALUES ($1, $1, NOW(), NOW())
        RETURNING id`,
+      [name],
     );
     return result.rows[0];
   });
-  if (!inserted?.id) throw new Error('walletIdNamed: failed to insert RealUnit wallet');
+  if (!inserted?.id) throw new Error(`walletIdNamed: failed to insert wallet ${name}`);
   return inserted.id;
 }
 
