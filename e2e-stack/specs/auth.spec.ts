@@ -492,5 +492,6 @@ test.describe('Auth area e2e', () => {
         timeout: 20000,
       })
       .toBe('/error');
+    await expect(page.getByText(/expired|Invalid link/i)).toBeVisible();
   });
 });

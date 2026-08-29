@@ -168,6 +168,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`openQuoteCapableBuy` and older quote cases) updates the limit
   directly so `LIMIT_EXCEEDED` does not hide payment info. A green run does **not** prove that a
   customer reaches that limit through the product path.
+- **Full-stack auth merge specs SQL-write `account_merge.expiration`.**
+  `e2e-stack/specs/auth.spec.ts` (expired otp) updates expiration directly. A green run does **not**
+  prove that merge links expire through the product path or that the API sets expiration on create.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
