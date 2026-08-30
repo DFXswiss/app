@@ -27,6 +27,12 @@ jest.mock('src/util/utils', () => ({
 import { ResponseType } from '@dfx.swiss/react';
 import { useRealunitCompliance } from '../hooks/realunit-compliance.hook';
 import { useRealunitSupport } from '../hooks/realunit-support.hook';
+import {
+  clerkAssignmentPayload,
+  isAssignedToMe,
+  LEFTOVER_CLERK_VALUE,
+  usableClerks,
+} from '../hooks/support-dashboard.hook';
 
 describe('useRealunitSupport', () => {
   beforeEach(() => {
@@ -60,11 +66,11 @@ describe('useRealunitSupport', () => {
     await result.current.getIssueData(42);
     expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/42/data', method: 'GET' });
 
-    await result.current.updateIssue(42, { state: 'Completed', clerk: 'Alice' });
+    await result.current.updateIssue(42, { state: 'Completed', clerkUserDataId: 9 });
     expect(mockCall).toHaveBeenCalledWith({
       url: 'realunit/support/42',
       method: 'PUT',
-      data: { state: 'Completed', clerk: 'Alice' },
+      data: { state: 'Completed', clerkUserDataId: 9 },
     });
 
     await result.current.createMessage(42, { author: 'Alice', message: 'hi' });
@@ -88,14 +94,35 @@ describe('useRealunitSupport', () => {
     expect(messages).toEqual([{ id: 1, author: 'Alice', created: 'now' }]);
   });
 
+  it('getClerks returns { userDataId, name }[] from GET realunit/support/clerks', async () => {
+    mockCall.mockResolvedValue([{ userDataId: 3, name: 'Alex' }]);
+    const { result } = renderHook(() => useRealunitSupport());
+
+    const clerks = await result.current.getClerks();
+
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/clerks', method: 'GET' });
+    expect(clerks).toEqual([{ userDataId: 3, name: 'Alex' }]);
+  });
+
+  it('getClerks drops entries without a finite userDataId', async () => {
+    mockCall.mockResolvedValue([
+      { userDataId: 3, name: 'Alex' },
+      { userDataId: Number.NaN, name: 'Broken' },
+      { name: 'NoId' },
+    ]);
+    const { result } = renderHook(() => useRealunitSupport());
+
+    await expect(result.current.getClerks()).resolves.toEqual([{ userDataId: 3, name: 'Alex' }]);
+  });
+
   it('getMyClerk GETs realunit/support/clerk and trims the clerk name', async () => {
-    mockCall.mockResolvedValue({ clerk: '  Ada  ' });
+    mockCall.mockResolvedValue({ clerkUserDataId: 7, clerk: '  Ada  ' });
     const { result } = renderHook(() => useRealunitSupport());
 
     const clerk = await result.current.getMyClerk();
 
     expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/clerk', method: 'GET' });
-    expect(clerk).toBe('Ada');
+    expect(clerk).toEqual({ clerkUserDataId: 7, clerk: 'Ada' });
   });
 
   it('getMyClerk returns undefined when clerk is null or blank', async () => {
@@ -106,6 +133,69 @@ describe('useRealunitSupport', () => {
 
     mockCall.mockResolvedValue({ clerk: '   ' });
     await expect(result.current.getMyClerk()).resolves.toBeUndefined();
+  });
+});
+
+describe('clerkAssignmentPayload', () => {
+  it('omits the field when the selected clerk is unchanged', () => {
+    expect(clerkAssignmentPayload('101', 101)).toEqual({});
+  });
+
+  it('sends the id when assigning a different clerk', () => {
+    expect(clerkAssignmentPayload('102', 101)).toEqual({ clerkUserDataId: 102 });
+  });
+
+  it('sends null when clearing an existing assignment', () => {
+    expect(clerkAssignmentPayload('', 101)).toEqual({ clerkUserDataId: null });
+  });
+
+  it('omits the field when already unassigned and the select is empty', () => {
+    expect(clerkAssignmentPayload('', null)).toEqual({});
+    expect(clerkAssignmentPayload('')).toEqual({});
+  });
+
+  it('sends null when the leftover name is still set and the select is empty', () => {
+    expect(clerkAssignmentPayload('', null, { leftover: true })).toEqual({ clerkUserDataId: null });
+  });
+
+  it('omits the field while the leftover name is still selected', () => {
+    expect(clerkAssignmentPayload(LEFTOVER_CLERK_VALUE, null, { leftover: true })).toEqual({});
+  });
+
+  it('omits the field when the selected value is not a finite id', () => {
+    expect(clerkAssignmentPayload('undefined', 101)).toEqual({});
+    expect(clerkAssignmentPayload('NaN', 101)).toEqual({});
+  });
+
+  it('omits the field when the id is not on the allow list', () => {
+    expect(clerkAssignmentPayload('99', null, { allowedIds: [101, 102] })).toEqual({});
+    expect(clerkAssignmentPayload('101', null, { allowedIds: [101, 102] })).toEqual({ clerkUserDataId: 101 });
+  });
+});
+
+describe('isAssignedToMe', () => {
+  it('matches the JWT account even when the leftover name differs', () => {
+    expect(isAssignedToMe({ clerkUserDataId: 7, clerk: 'Josh' }, 7, 'JOSHUA BEN KRUEGER')).toBe(true);
+  });
+
+  it('matches a leftover name when the id is still missing', () => {
+    expect(isAssignedToMe({ clerk: 'Ada' }, 7, 'Ada')).toBe(true);
+  });
+
+  it('does not match a leftover name against a different session', () => {
+    expect(isAssignedToMe({ clerkUserDataId: 9, clerk: 'Ada' }, 7, 'Ada')).toBe(false);
+  });
+});
+
+describe('usableClerks', () => {
+  it('keeps only entries with a finite userDataId and a name', () => {
+    expect(
+      usableClerks([
+        { userDataId: 1, name: 'Ada' },
+        { userDataId: Number.NaN, name: 'Bad' },
+        { userDataId: 2, name: '' },
+      ]),
+    ).toEqual([{ userDataId: 1, name: 'Ada' }]);
   });
 });
 

@@ -165,7 +165,7 @@
   },
   "support-dashboard": {
     "title": "Support-Dashboard",
-    "description": "Support-Dashboard: Übersicht und Detailansichten."
+    "description": "Support-Dashboard: Übersicht der offenen Tickets und die Ticket-Detailansicht mit Clerk-Zuweisung."
   },
   "support-dashboard-overview": {
     "title": "Support-Dashboard Übersicht",
