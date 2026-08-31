@@ -10,11 +10,14 @@ import { TransactionInfo, UserDataDetail, UserSearchResult, useCompliance } from
 import { SUPPORT_STAFF_ROLES, useSupportDashboardGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
-import { CustomerAuthor, SupportIssueListItem, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
+import { SupportIssueListItem, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 import { typeLabel, visibleDepartmentsForRole } from 'src/util/support-helpers';
+import { countOpenIssueGroups, groupOpenIssues } from 'src/util/support-stats';
 
 type PagedTab = 'OnHold' | 'Canceled' | 'Completed';
-type Tab = 'open' | PagedTab;
+// 'limit' is a dedicated view of the open limit-increase requests (same open states, same
+// grouping as 'open'), so compliance can work them without scrolling the full ticket list.
+type Tab = 'open' | 'limit' | PagedTab;
 
 const OPEN_STATES = [SupportIssueInternalState.CREATED, SupportIssueInternalState.PENDING];
 const PAGED_TABS: PagedTab[] = ['OnHold', 'Canceled', 'Completed'];
@@ -54,6 +57,8 @@ export default function SupportDashboardScreen(): JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [openIssues, setOpenIssues] = useState<SupportIssueListItem[]>([]);
+  const [limitIssues, setLimitIssues] = useState<SupportIssueListItem[]>([]);
+  const [isLimitLoading, setIsLimitLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('open');
 
   const [typeFilter, setTypeFilter] = useState<string>('');
@@ -68,6 +73,8 @@ export default function SupportDashboardScreen(): JSX.Element {
 
   const [searchQuery, setSearchQuery] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const openLoadGen = useRef(0);
+  const limitLoadGen = useRef(0);
 
   const [newMessageCount, setNewMessageCount] = useState(0);
   const baselineRef = useRef<Date>(new Date());
@@ -79,6 +86,7 @@ export default function SupportDashboardScreen(): JSX.Element {
 
   const loadOpenIssues = useCallback(
     (query: string): void => {
+      const gen = ++openLoadGen.current;
       setIsLoading(true);
       setError(undefined);
 
@@ -88,12 +96,53 @@ export default function SupportDashboardScreen(): JSX.Element {
       if (query) params.query = query;
 
       getIssueList(params)
-        .then((res) => setOpenIssues(res.data))
-        .catch((e: Error) => setError(e.message ?? 'Unknown error'))
-        .finally(() => setIsLoading(false));
+        .then((res) => {
+          if (gen !== openLoadGen.current) return;
+          setOpenIssues(res.data);
+        })
+        .catch((e: Error) => {
+          if (gen !== openLoadGen.current) return;
+          setError(e.message || 'Unknown error');
+        })
+        .finally(() => {
+          if (gen !== openLoadGen.current) return;
+          setIsLoading(false);
+        });
     },
     [typeFilter, departmentFilter, getIssueList],
   );
+
+  // Loaded independently of the open list so the tab count is right even while the open tab is
+  // narrowed by type/department, and independent of the open tab's search query.
+  const loadLimitIssues = useCallback(
+    (query: string): void => {
+      const gen = ++limitLoadGen.current;
+      setIsLimitLoading(true);
+      setError(undefined);
+
+      const params: Record<string, string> = { states: OPEN_STATES.join(','), type: SupportIssueType.LIMIT_REQUEST };
+      if (query) params.query = query;
+
+      getIssueList(params)
+        .then((res) => {
+          if (gen !== limitLoadGen.current) return;
+          setLimitIssues(res.data);
+        })
+        .catch((e: Error) => {
+          if (gen !== limitLoadGen.current) return;
+          setError(e.message || 'Unknown error');
+        })
+        .finally(() => {
+          if (gen !== limitLoadGen.current) return;
+          setIsLimitLoading(false);
+        });
+    },
+    [getIssueList],
+  );
+
+  useEffect(() => {
+    loadLimitIssues('');
+  }, [loadLimitIssues]);
 
   useEffect(() => {
     getIssueCounts()
@@ -125,7 +174,7 @@ export default function SupportDashboardScreen(): JSX.Element {
           }));
         })
         .catch((e: Error) => {
-          setError(e.message ?? 'Unknown error');
+          setError(e.message || 'Unknown error');
           setTabs((prev) => ({ ...prev, [state]: { ...prev[state], loading: false } }));
         });
     },
@@ -133,20 +182,21 @@ export default function SupportDashboardScreen(): JSX.Element {
   );
 
   useEffect(() => {
-    if (activeTab !== 'open' && !tabs[activeTab].loaded) loadPaged(activeTab, 0, '', false);
+    if (activeTab !== 'open' && activeTab !== 'limit' && !tabs[activeTab].loaded) loadPaged(activeTab, 0, '', false);
   }, [activeTab, loadPaged]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       if (activeTab === 'open') loadOpenIssues(searchQuery);
+      else if (activeTab === 'limit') loadLimitIssues(searchQuery);
       else loadPaged(activeTab, 0, searchQuery, false);
     }, 300);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [searchQuery, activeTab, loadPaged, loadOpenIssues]);
+  }, [searchQuery, activeTab, loadPaged, loadOpenIssues, loadLimitIssues]);
 
   useEffect(() => {
     const tick = (): void => {
@@ -158,16 +208,16 @@ export default function SupportDashboardScreen(): JSX.Element {
     return () => clearInterval(id);
   }, [getIssueActivity]);
 
+  // Only reachable from the activity badge on grouped tabs (open / limit).
   const reloadAfterActivity = useCallback((): void => {
     baselineRef.current = new Date();
     setNewMessageCount(0);
     if (activeTab === 'open') {
       loadOpenIssues(searchQuery);
     } else {
-      setTabs((prev) => ({ ...prev, [activeTab]: { ...prev[activeTab], loaded: false } }));
-      loadPaged(activeTab, 0, searchQuery, false);
+      loadLimitIssues(searchQuery);
     }
-  }, [activeTab, searchQuery, loadOpenIssues, loadPaged]);
+  }, [activeTab, searchQuery, loadOpenIssues, loadLimitIssues]);
 
   useLayoutOptions({
     title: translate('screens/support', 'All Tickets'),
@@ -176,26 +226,11 @@ export default function SupportDashboardScreen(): JSX.Element {
     noPadding: true,
   });
 
-  const openIssueGroups = useMemo(() => {
-    const filtered = stateFilter ? openIssues.filter((i) => i.state === stateFilter) : openIssues;
+  const openIssueGroups = useMemo(() => groupOpenIssues(openIssues, stateFilter), [openIssues, stateFilter]);
+  const limitIssueGroups = useMemo(() => groupOpenIssues(limitIssues, stateFilter), [limitIssues, stateFilter]);
 
-    const customerWaiting = filtered
-      .filter((i) => i.lastMessageAuthor === CustomerAuthor)
-      .sort((a, b) => new Date(b.lastMessageDate ?? 0).getTime() - new Date(a.lastMessageDate ?? 0).getTime());
-
-    const rest = filtered.filter((i) => i.lastMessageAuthor !== CustomerAuthor);
-    const byCreated = (a: SupportIssueListItem, b: SupportIssueListItem): number =>
-      new Date(b.created).getTime() - new Date(a.created).getTime();
-
-    return {
-      customerWaiting,
-      created: rest.filter((i) => i.state === SupportIssueInternalState.CREATED).sort(byCreated),
-      pending: rest.filter((i) => i.state === SupportIssueInternalState.PENDING).sort(byCreated),
-    };
-  }, [openIssues, stateFilter]);
-
-  const openIssueCount =
-    openIssueGroups.customerWaiting.length + openIssueGroups.created.length + openIssueGroups.pending.length;
+  const openIssueCount = countOpenIssueGroups(openIssueGroups);
+  const limitIssueCount = countOpenIssueGroups(limitIssueGroups);
 
   function handleCustomerSearch(): void {
     if (!customerSearchKey.trim()) return;
@@ -204,7 +239,7 @@ export default function SupportDashboardScreen(): JSX.Element {
     setCustomerSearchResults(undefined);
     searchCustomers(customerSearchKey.trim())
       .then((result) => setCustomerSearchResults(result.userDatas))
-      .catch((e: Error) => setCustomerSearchError(e.message ?? 'Unknown error'))
+      .catch((e: Error) => setCustomerSearchError(e.message || 'Unknown error'))
       .finally(() => setCustomerSearchLoading(false));
   }
 
@@ -235,16 +270,23 @@ export default function SupportDashboardScreen(): JSX.Element {
     closeTemplatePicker();
   }
 
-  const currentTab = activeTab === 'open' ? null : tabs[activeTab];
+  const isGroupedTab = activeTab === 'open' || activeTab === 'limit';
+  const currentTab = isGroupedTab ? null : tabs[activeTab];
   const displayedIssues = currentTab?.issues ?? [];
   const displayedTotal = currentTab?.total ?? 0;
-  const isTabLoading = activeTab === 'open' ? isLoading : (currentTab?.loading ?? false);
   const hasMore = currentTab != null && displayedIssues.length < displayedTotal;
 
-  function handleLoadMore(): void {
-    if (activeTab === 'open') return;
-    loadPaged(activeTab, displayedIssues.length, searchQuery, true);
+  let isTabLoading = false;
+  if (activeTab === 'open') {
+    isTabLoading = isLoading;
+  } else if (activeTab === 'limit') {
+    isTabLoading = isLimitLoading;
+  } else {
+    isTabLoading = tabs[activeTab].loading;
   }
+
+  const hasZeroGroupedIssues = activeTab === 'open' ? openIssueCount === 0 : limitIssueCount === 0;
+  const showLoadingSpinner = isTabLoading && (isGroupedTab ? hasZeroGroupedIssues : displayedIssues.length === 0);
 
   return (
     <div className="w-full max-w-screen-xl mx-auto flex flex-col gap-3 flex-1 min-h-0 p-4 md:p-6 text-left">
@@ -382,6 +424,11 @@ export default function SupportDashboardScreen(): JSX.Element {
           active={activeTab === 'open'}
           onClick={() => setActiveTab('open')}
         />
+        <TabButton
+          label={`Limit Requests (${limitIssueCount})`}
+          active={activeTab === 'limit'}
+          onClick={() => setActiveTab('limit')}
+        />
         {PAGED_TABS.map((tab) => (
           <TabButton
             key={tab}
@@ -392,25 +439,27 @@ export default function SupportDashboardScreen(): JSX.Element {
         ))}
       </div>
 
-      {/* Filters - only for Open tab */}
-      {activeTab === 'open' && (
+      {/* Filters - only for the grouped tabs; the limit tab is already narrowed to one type */}
+      {isGroupedTab && (
         <div className="flex gap-3 flex-wrap items-end">
-          <FilterSelect
-            label="Type"
-            value={typeFilter}
-            onChange={setTypeFilter}
-            options={Object.values(SupportIssueType).map((t) => ({
-              value: t,
-              label: translate('screens/support', typeLabel(t)),
-            }))}
-          />
+          {activeTab === 'open' && (
+            <FilterSelect
+              label="Type"
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={Object.values(SupportIssueType).map((t) => ({
+                value: t,
+                label: translate('screens/support', typeLabel(t)),
+              }))}
+            />
+          )}
           <FilterSelect
             label="State"
             value={stateFilter}
             onChange={setStateFilter}
             options={OPEN_STATES.map((s) => ({ value: s, label: s }))}
           />
-          {canFilterDepartment && (
+          {activeTab === 'open' && canFilterDepartment && (
             <FilterSelect
               label="Department"
               value={departmentFilter}
@@ -451,11 +500,11 @@ export default function SupportDashboardScreen(): JSX.Element {
 
       {/* Content */}
       {error && <ErrorHint message={error} />}
-      {isTabLoading && (activeTab === 'open' ? openIssueCount === 0 : displayedIssues.length === 0) ? (
+      {showLoadingSpinner ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
-      ) : activeTab === 'open' ? (
+      ) : isGroupedTab ? (
         <GroupedIssueTable
-          groups={openIssueGroups}
+          groups={activeTab === 'open' ? openIssueGroups : limitIssueGroups}
           showDepartment={canFilterDepartment}
           onRowClick={(issue) => navigate(`/support/dashboard/issue/${issue.id}`)}
         />
@@ -469,7 +518,7 @@ export default function SupportDashboardScreen(): JSX.Element {
           {hasMore && (
             <button
               className="px-4 py-2 text-sm text-dfxBlue-400 hover:text-dfxBlue-800 transition-colors self-center disabled:opacity-50"
-              onClick={handleLoadMore}
+              onClick={() => loadPaged(activeTab as PagedTab, displayedIssues.length, searchQuery, true)}
               disabled={isTabLoading}
             >
               {isTabLoading ? 'Loading...' : `Load more (${displayedIssues.length} / ${displayedTotal})`}

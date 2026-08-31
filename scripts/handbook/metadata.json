@@ -165,7 +165,7 @@
   },
   "support-dashboard": {
     "title": "Support-Dashboard",
-    "description": "Support-Dashboard: Übersicht und Detailansichten."
+    "description": "Support-Dashboard: Übersicht und Detailansichten; Limit-Requests-Tab neben Open."
   },
   "support-dashboard-overview": {
     "title": "Support-Dashboard Übersicht",

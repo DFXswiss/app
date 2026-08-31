@@ -20,7 +20,7 @@ import {
   test,
   waitForRow,
 } from './fixtures';
-import { cleanupCreatedData, createSupportIssue, createUser } from './fixtures/factories';
+import { cleanupCreatedData, createLimitRequest, createSupportIssue, createUser } from './fixtures/factories';
 
 const STAFF_ROUTES = [
   '/support/dashboard',
@@ -110,11 +110,32 @@ test.describe('Support dashboard (staff)', () => {
     await expect(page.getByRole('button', { name: 'Notes' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Templates' })).toBeVisible();
 
-    // Tabs: Open / OnHold / Canceled / Completed
+    // Tabs: Open / Limit Requests / OnHold / Canceled / Completed
     await expect(page.getByRole('button', { name: /^Open \(/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Limit Requests \(/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^OnHold \(/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Canceled \(/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Completed \(/ })).toBeVisible();
+  });
+
+  test('/support/dashboard/all Limit Requests tab lists a LimitRequest without Open type filter', async ({
+    page,
+  }) => {
+    const created = await createLimitRequest({ tag: 'supdash-limit-tab' });
+    const issueRow = created.supportIssueId
+      ? await queryOne<{ id: number; name: string }>(`SELECT id, name FROM support_issue WHERE id = $1`, [
+          created.supportIssueId,
+        ])
+      : await queryOne<{ id: number; name: string }>(`SELECT id, name FROM support_issue WHERE uid = $1`, [
+          required(created.supportIssueUid, 'createLimitRequest must return supportIssueId or supportIssueUid'),
+        ]);
+    const issue = required(issueRow, 'createLimitRequest must leave a support_issue row');
+
+    const { jwt } = await loginAs('Support');
+    await openScreen(page, '/support/dashboard/all', jwt);
+
+    await page.getByRole('button', { name: /^Limit Requests \(/ }).click();
+    await expect(page.getByText(issue.name, { exact: true })).toBeVisible({ timeout: 15000 });
   });
 
   test('/support/dashboard/create creates an issue for a searched customer', async ({ page }) => {
