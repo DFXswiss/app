@@ -6,6 +6,7 @@ export * from './api-client';
 export * from './auth';
 export * from './db';
 export * from './factories';
+export * from './lnurl';
 export * from './mail';
 export * from './routes';
 export * from './test-data';

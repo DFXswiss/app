@@ -11,6 +11,7 @@ factories, auth, db, and the other helpers) or from a specific module such as
 | -------- | ----------------------------------------------------------------------- |
 | API      | `http://api:3000` (`E2E_API_URL`), routes under `/v1` (KYC under `/v2`) |
 | Frontend | `http://frontend`                                                       |
+| LNURL    | `http://localhost:80` (inside the API container's network namespace)     |
 | Postgres | `sql-dfx-api-loc:5432`, db `dfx`, user `sa`                             |
 
 A local forwarder on `127.0.0.1:3000` (started by the tests image entrypoint) also relays to the real API. That is why `http://localhost:3000` works from inside the container even though no API process runs there — code paths that hit `localhost` directly (e.g. server-built KYC-step URLs under `Environment.LOC`) need it.
@@ -181,6 +182,13 @@ the "level 50 but no limit granted" case instead.
 | **Path**    | **SQL** (deposit + `deposit_route` type Sell on Lightning + `payment_link` + `payment_link_payment`)                                                                                                                                                                                                            |
 | **Returns** | `{ paymentLinkId, uniqueId, paymentId?, routeId? }`                                                                                                                                                                                                                                                             |
 | **Why SQL** | API `POST /paymentLink` only allows **Lightning** routes and requires free Lightning deposits + `paymentLinksAllowed`. Global EVM deposit seed does not include Lightning, so the API path is usually unavailable. Factory enables `paymentLinksAllowed` and inserts a synthetic Lightning deposit when needed. |
+
+### `createLightningDeposit(url)`
+
+- **Path:** SQL into `deposit`; first reuses an unassigned row for the same encoded URL if one exists.
+- **Returns:** `{ depositId, address, url }`; `address` is the uppercase bech32 LNURL derived from `url`.
+- **Precondition:** The URL must resolve from the API container. The Lightning sell spec uses the
+  internal `lnurl` service.
 
 ### `createKycStep(userDataId, options?)`
 

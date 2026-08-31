@@ -168,6 +168,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`openQuoteCapableBuy` and older quote cases) updates the limit
   directly so `LIMIT_EXCEEDED` does not hide payment info. A green run does **not** prove that a
   customer reaches that limit through the product path.
+- **The full-stack Lightning sell spec answers LNURL-pay itself.**
+  `e2e-stack/images/lnurl/` serves a static pay request and an official BOLT-11 specification test
+  vector on the internal stack network. A green run does **not** prove that a Lightning node can
+  create a payable invoice, nor that a payment arrives, is credited, or is paid out.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs

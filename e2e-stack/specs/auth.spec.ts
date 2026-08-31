@@ -20,9 +20,11 @@ import {
   queryOne,
   requestMailLogin,
   required,
+  selfCustodialLightningLogin,
   signatureLogin,
   test,
   testEmail,
+  testLightningWallet,
   testWallet,
   waitForRow,
 } from './fixtures';
@@ -85,6 +87,51 @@ test.describe.configure({ mode: 'serial' });
 test.describe('Auth area e2e', () => {
   test.afterAll(async () => {
     await cleanupCreatedData();
+  });
+
+  test.describe('Self-custodial Lightning authentication', () => {
+    test('new wallet receives a token and stores its exact signature', async () => {
+      const wallet = testLightningWallet();
+
+      const accessToken = await selfCustodialLightningLogin(wallet);
+
+      expect(accessToken).toBeTruthy();
+      const stored = await queryOne<{ signature: string | null }>(
+        `SELECT signature FROM "user" WHERE address = $1`,
+        [wallet.address],
+      );
+      expect(stored?.signature).toBe(wallet.signature);
+    });
+
+    test('same wallet and signature receive another token', async () => {
+      const wallet = testLightningWallet();
+      await selfCustodialLightningLogin(wallet);
+
+      const accessToken = await selfCustodialLightningLogin(wallet);
+
+      expect(accessToken).toBeTruthy();
+    });
+
+    test('same wallet with a different signature receives 401', async () => {
+      const wallet = testLightningWallet();
+      const otherWallet = testLightningWallet();
+      await selfCustodialLightningLogin(wallet);
+
+      await expect(
+        selfCustodialLightningLogin({ address: wallet.address, signature: otherWallet.signature }),
+      ).rejects.toThrow(/POST \/v1\/auth failed: 401/);
+    });
+
+    test('Lightning access token authenticates the frontend navigation', async ({ page }) => {
+      const wallet = testLightningWallet();
+      const accessToken = await selfCustodialLightningLogin(wallet);
+
+      await gotoWithSession(page, '/', accessToken);
+      await page.waitForLoadState('networkidle');
+      await page.locator('div.absolute.right-4').click();
+
+      await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible({ timeout: 10000 });
+    });
   });
 
   // ---------------------------------------------------------------------------

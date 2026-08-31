@@ -14,6 +14,7 @@ import { randomBytes } from 'node:crypto';
 import { apiPost, apiPut } from './api-client';
 import { queryOne, queryRows, withDb } from './db';
 import { signatureLogin, testWallet, type TestRole, type TestWallet } from './auth';
+import { encodeLnurl } from './lnurl';
 import { TEST_IBAN } from './test-data';
 
 // ---------------------------------------------------------------------------
@@ -412,6 +413,12 @@ export interface CreatePaymentLinkResult {
   routeId?: number;
 }
 
+export interface CreateLightningDepositResult {
+  depositId: number;
+  address: string;
+  url: string;
+}
+
 export interface CreateKycStepOptions {
   name?: string;
   status?: string;
@@ -646,6 +653,46 @@ export async function requireUnusedDeposit(blockchain: string): Promise<void> {
         `Checked: deposit rows with blockchains LIKE '%${blockchain}%' and no deposit_route."depositId" link.`,
     );
   }
+}
+
+/**
+ * Ensure an unused Lightning deposit exists for an in-stack LNURL endpoint.
+ * Mirrors createPaymentLink's prefer-existing-then-insert pattern, but derives the auditable
+ * bech32 address from the URL instead of storing an opaque placeholder address.
+ */
+export async function createLightningDeposit(url: string): Promise<CreateLightningDepositResult> {
+  await ensureFactoryTagCounterSeeded();
+  uniqueTag('lnurl');
+  const address = encodeLnurl(url);
+
+  let deposit = await queryOne<{ id: number }>(
+    `SELECT d.id
+     FROM deposit d
+     LEFT JOIN deposit_route r ON r."depositId" = d.id
+     WHERE r.id IS NULL AND d.address = $1 AND d.blockchains LIKE '%Lightning%'
+     LIMIT 1`,
+    [address],
+  );
+
+  if (!deposit) {
+    const occupied = await queryOne<{ id: number }>(
+      `SELECT id FROM deposit WHERE address = $1 LIMIT 1`,
+      [address],
+    );
+    if (occupied) {
+      throw new Error(`Lightning deposit for ${url} already belongs to a deposit route (deposit ${occupied.id})`);
+    }
+
+    deposit = {
+      id: await insertReturningId(
+        'deposit',
+        ['address', 'blockchains', 'accountIndex'],
+        [address, 'Lightning', 990000 + factoryTagCounter],
+      ),
+    };
+  }
+
+  return { depositId: deposit.id, address, url };
 }
 
 /**

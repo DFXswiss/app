@@ -20,6 +20,10 @@ services:
       # be a mapping; a bare key fails schema validation and takes the entire stack with it.
       frontend-widget:
         condition: service_healthy
+      # The Lightning sell spec makes the API perform both LNURL-pay requests against this
+      # in-stack nginx endpoint. Waiting here makes nginx readiness an explicit precondition.
+      lnurl:
+        condition: service_healthy
     environment:
       E2E_FRONTEND_URL: ${E2E_FRONTEND_URL:-http://frontend}
       E2E_API_URL: ${E2E_API_URL:-http://api:3000}

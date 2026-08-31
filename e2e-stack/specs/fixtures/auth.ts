@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { ethers } from 'ethers';
 import type { Page } from '@playwright/test';
 import { withDb } from './db';
@@ -9,6 +10,11 @@ export interface TestWallet {
   mnemonic: string;
 }
 
+export interface SelfCustodialLightningWallet {
+  address: string;
+  signature: string;
+}
+
 /**
  * Role values match the DB `role` column and JWT `role` claim 1:1.
  * Source: api/src/shared/auth/user-role.enum.ts lines 1–22
@@ -17,6 +23,8 @@ export interface TestWallet {
  * Keys of ROLE_WALLET_INDEX keep this union in lockstep with test-data.ts.
  */
 export type TestRole = keyof typeof ROLE_WALLET_INDEX;
+
+let lightningWalletCounter = 0;
 
 function apiBase(): string {
   return process.env.E2E_API_URL ?? 'http://api:3000';
@@ -30,6 +38,19 @@ export function testWallet(index = 0): TestWallet {
     address: wallet.address,
     privateKey: wallet.privateKey,
     mnemonic: TEST_WALLET_MNEMONIC,
+  };
+}
+
+/** Unique LNNID wallet and 128-character lowercase hexadecimal shared secret for Lightning login tests. */
+export function testLightningWallet(): SelfCustodialLightningWallet {
+  lightningWalletCounter += 1;
+  const counter = lightningWalletCounter.toString(16).padStart(8, '0').slice(-8);
+  const publicKey = ethers.utils.computePublicKey(randomBytes(32), true).slice(2).toUpperCase();
+
+  return {
+    address: `LNNID${publicKey}`,
+    // Prefix guarantees both a letter and a digit; counter + entropy keeps calls and separate runs unique.
+    signature: `a1${counter}${randomBytes(59).toString('hex')}`,
   };
 }
 
@@ -50,6 +71,35 @@ export async function signatureLogin(wallet: TestWallet): Promise<string> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ address: wallet.address, signature }),
+  });
+  if (!authRes.ok) {
+    const body = await authRes.text();
+    throw new Error(`POST /v1/auth failed: ${authRes.status} ${body}`);
+  }
+  const { accessToken } = (await authRes.json()) as { accessToken: string };
+  if (!accessToken) {
+    throw new Error('POST /v1/auth returned no accessToken');
+  }
+  return accessToken;
+}
+
+/** Self-custodial Lightning login: fetch the server message, then use the wallet's signature as its shared secret. */
+export async function selfCustodialLightningLogin(wallet: SelfCustodialLightningWallet): Promise<string> {
+  const base = apiBase();
+  const signRes = await fetch(`${base}/v1/auth/signMessage?address=${encodeURIComponent(wallet.address)}`);
+  if (!signRes.ok) {
+    const body = await signRes.text();
+    throw new Error(`signMessage failed: ${signRes.status} ${body}`);
+  }
+  const { message } = (await signRes.json()) as { message?: string };
+  if (!message) {
+    throw new Error('signMessage returned no message');
+  }
+
+  const authRes = await fetch(`${base}/v1/auth`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ address: wallet.address, signature: wallet.signature }),
   });
   if (!authRes.ok) {
     const body = await authRes.text();

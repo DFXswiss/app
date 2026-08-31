@@ -29,6 +29,25 @@ services:
       retries: 20
       start_period: 10s
 
+  lnurl:
+    image: nginx:alpine
+    network_mode: "service:api"
+    # up.sh startet die API waehrend des Seedings neu; ohne restart-Policy verliert dieser
+    # Sidecar dabei den geteilten Netzwerk-Namensraum und kommt nicht zurueck.
+    restart: unless-stopped
+    depends_on:
+      - api
+    volumes:
+      - ./images/lnurl/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./images/lnurl/pay-request.json:/usr/share/nginx/html/pay-request.json:ro
+      - ./images/lnurl/invoice.json:/usr/share/nginx/html/invoice.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/lnurlp/e2e"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
   api:
     image: ${E2E_API_IMAGE:-dfx-api:e2e}
     env_file:

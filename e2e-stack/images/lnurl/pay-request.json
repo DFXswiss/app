@@ -1,0 +1,7 @@
+{
+  "tag": "payRequest",
+  "callback": "http://localhost:80/cb",
+  "minSendable": 1000,
+  "maxSendable": 1000000000,
+  "metadata": "[[\"text/plain\",\"DFX full-stack E2E Lightning sell\"]]"
+}

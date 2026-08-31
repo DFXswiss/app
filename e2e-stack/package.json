@@ -8,6 +8,7 @@
     "@playwright/test": "1.56.0",
     "@types/node": "^22.10.0",
     "@types/pg": "^8.11.10",
+    "bech32": "1.1.4",
     "ethers": "5.7.2",
     "pg": "^8.13.1",
     "typescript": "^5.7.2"
