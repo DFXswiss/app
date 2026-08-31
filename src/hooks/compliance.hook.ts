@@ -515,6 +515,37 @@ export interface UserInfo {
   created: string;
 }
 
+export interface BankInfo {
+  id: number;
+  name?: string;
+  iban?: string;
+}
+
+export interface FiatOutputInfo {
+  id: number;
+  valutaDate?: string;
+  currency?: string;
+  amount?: number;
+  name?: string;
+  address?: string;
+  houseNumber?: string;
+  zip?: string;
+  city?: string;
+  country?: string;
+  iban?: string;
+  bic?: string;
+  isReadyDate?: string;
+  isTransmittedDate?: string;
+  isConfirmedDate?: string;
+  isApprovedDate?: string;
+  isComplete?: boolean;
+  outputDate?: string;
+  originEntityId?: number;
+  type?: string;
+  bank?: BankInfo;
+  bankTxId?: number;
+}
+
 export interface TransactionInfo {
   id: number;
   uid: string;
@@ -541,6 +572,7 @@ export interface TransactionInfo {
   chargebackAllowedDateUser?: string;
   chargebackDate?: string;
   amlReason?: string;
+  fiatOutput?: FiatOutputInfo;
   isCompleted: boolean;
   created: string;
 }

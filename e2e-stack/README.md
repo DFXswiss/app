@@ -131,7 +131,7 @@ side by side and serve different purposes.
 
 ## Relationship with the API repository
 
-The API repository has its own workflow that checks out this repository (`DFXswiss/services`)
+The API repository has its own workflow that checks out this repository (`DFXswiss/app`)
 to obtain `e2e-stack/`. Conversely, this harness builds the API image from a checked-out API
 repo (`E2E_API_REPO`, default `../api`) or uses a pre-built image (`E2E_API_IMAGE`). The two
 repos therefore depend on each other for full-stack CI: the harness lives here; the API image

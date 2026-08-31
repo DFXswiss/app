@@ -10,11 +10,12 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 ## The layers this repository owns
 
-| Layer             | Location     | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                          |
-| ----------------- | ------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| Unit              | `src/`       | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts skip unless `ci`/`ci:full`; suite full / related / none                      |
-| Full-stack E2E    | `e2e-stack/` | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts skip unless `ci`/`ci:full`; stack only with `ci:full` / main / bare dispatch |
-| Visual regression | `e2e/`       | appearance against committed screenshot baselines                            | function                                                           | no                                                                                  |
+| Layer              | Location                        | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                          |
+| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts skip unless `ci`/`ci:full`; suite full / related / none                      |
+| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (non-draft PRs that touch handbook paths)                     |
+| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts skip unless `ci`/`ci:full`; stack only with `ci:full` / main / bare dispatch |
+| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                           | no                                                                                  |
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
 payout, ledger booking — is **not** testable from this repository. It belongs to the integration
@@ -41,6 +42,13 @@ Read that number together with the coverage rule in `CONTRIBUTING.md`, section
 all four metrics, and CI does not enforce it — it is a review gate. With the repository at 18 %, that
 means touching a long-neglected file makes its whole coverage your obligation. Plan for it rather
 than discovering it in review.
+
+### Handbook deep-link — `node --test scripts/handbook/deep-link.node-test.cjs`
+
+Five cases in `scripts/handbook/deep-link.node-test.cjs`: query over hash, `?group=`, id prefixes,
+isolate, and clearing a previous `handbook-target`. This is not the Jest suite. It runs in
+`handbook-check.yaml` before the image build. A green run does not prove the live page after
+Basic Auth.
 
 ### Full-stack E2E — `npm run e2e:stack`
 
@@ -140,7 +148,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `{ clerk }` and, as fallback, `GET /v1/support/{id}` for any account other than the customer
   fixture with `{ userData: { verifiedName } }`. A green run proves that the review screen
   accepts that name, not that the API returns the logged-in staff member's `verifiedName`.
-  The spec stays on the AML reset path and does not assert the Editor label.
+  The spec covers the resettable AML-reset path and the pending ManualCheck decision form
+  in the Fail (AmlReason visible, priceDefinitionAllowedDate hidden) and Reset (hint, both
+  hidden) variants. A green run does not prove live API payloads or that the Editor label
+  is the logged-in staff member's `verifiedName`.
 - **The call-queue outcome spec answers staff identity and the dossier itself.**
   `e2e/compliance-call-queue-outcome.spec.ts` fulfils `GET /v1/support/issue/clerk` with
   `{ clerk }`, a differently named fallback on `GET /v1/support/{staffAccount}`,
@@ -153,6 +164,20 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **Full-stack guest assign/refund specs SQL-write `transaction.actionSecretHash`.**
   `e2e-stack/specs/transactions.spec.ts` (`seedActionSecret`) updates the hash directly. A green run
   does **not** prove that the mail/API path creates, hashes, or delivers the action secret.
+- **Full-stack buy specs SQL-write `user_data.depositLimit`.**
+  `e2e-stack/specs/buy.spec.ts` (`openQuoteCapableBuy` and older quote cases) updates the limit
+  directly so `LIMIT_EXCEEDED` does not hide payment info. A green run does **not** prove that a
+  customer reaches that limit through the product path.
+- **The settings verification-call visual spec answers GET /v2/user itself.**
+  `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
+  (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
+  (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner`) plus user PUT/PATCH. Unmatched `/v1/**` and `/v2/**` calls
+  get `501`. The session is a synthetic unsigned JWT, so a green run does not prove
+  login or token verification. A green run proves those three consent states render.
+  It does not prove that a live account has those kyc fields, that those bootstrap
+  endpoints return real data, that `updateCallSettings` persists, or that
+  Completed/Failed hide the section.
 
 ## Known gaps
 

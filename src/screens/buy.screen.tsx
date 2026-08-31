@@ -44,7 +44,6 @@ import { PaymentInformationContent } from 'src/components/payment/payment-info-b
 import { useWindowContext } from 'src/contexts/window.context';
 import { getKycErrorFromMessage } from 'src/util/api-error';
 import { blankedAddress } from 'src/util/utils';
-import { NameEdit } from '../components/edit/name.edit';
 import { ErrorHint } from '../components/error-hint';
 import { ExchangeRate } from '../components/exchange-rate';
 import { AddressSwitch } from '../components/payment/address-switch';
@@ -209,9 +208,7 @@ export default function BuyScreen(): JSX.Element {
     identity: number | undefined;
   }>();
   const [showsSwitchScreen, setShowsSwitchScreen] = useState(false);
-  const [showsNameForm, setShowsNameForm] = useState(false);
   const [isLoading, setIsLoading] = useState<Side>();
-  const [isContinue, setIsContinue] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [validatedData, setValidatedData] = useState<ValidatedData>();
   // Re-run the guarded quote effect when Retry is clicked even if the canonical request is equal.
@@ -294,7 +291,6 @@ export default function BuyScreen(): JSX.Element {
   // Live-input generation: bumps immediately when form inputs or selector change so stale
   // debounced responses and confirm actions never commit against a newer form state (B4).
   const quoteGeneration = useRef(0);
-  const committedQuoteGeneration = useRef(0);
   const lastQuoteRequestSignature = useRef<string>();
   const pendingFormSynchronization = useRef<string>();
   const customerIdentityRef = useRef(customerIdentity);
@@ -302,6 +298,14 @@ export default function BuyScreen(): JSX.Element {
   const activePaymentInfoIdRef = useRef<number>();
   activePaymentInfoIdRef.current = paymentInfo?.id;
   const isMountedRef = useRef(true);
+  // A field the user emptied stays an edit in progress until they type again. The one-frame
+  // non-empty → empty edge is not enough: a later currency/asset effect would otherwise take
+  // the cross-side fallback and the exact-price echo would write back into the empty field.
+  // Never-set fields (deep links, first render) still resolve over the fallbacks.
+  const previousAmountRef = useRef<string>();
+  const previousTargetAmountRef = useRef<string>();
+  const spendClearedByUserRef = useRef(false);
+  const targetClearedByUserRef = useRef(false);
 
   const effectivePersonalIban = activeSuppressPersonalIban ? undefined : personalIban;
   const personalIbanSelector = activeSuppressPersonalIban
@@ -317,6 +321,10 @@ export default function BuyScreen(): JSX.Element {
   const selectedTargetAmount = useWatch({ control, name: 'targetAmount' });
   const selectedPaymentMethod = useWatch({ control, name: 'paymentMethod' });
   const selectedAddress = useWatch({ control, name: 'address' });
+
+  // Same-turn clear+resolveExact: the amount effect has not run yet, so latch here.
+  if (!selectedAmount && previousAmountRef.current) spendClearedByUserRef.current = true;
+  if (!selectedTargetAmount && previousTargetAmountRef.current) targetClearedByUserRef.current = true;
 
   function setVal(field: FieldPath<FormData>, value: FieldPathValue<FormData, FieldPath<FormData>>) {
     setValue(field, value, { shouldValidate: true });
@@ -341,23 +349,7 @@ export default function BuyScreen(): JSX.Element {
       : [];
   const availablePaymentMethods = [FiatPaymentMethod.BANK];
 
-  // no instant payments ATM
-  // (!selectedAsset || selectedAsset.instantBuyable) && availablePaymentMethods.push(FiatPaymentMethod.INSTANT);
-
-  // Credit card payments disabled
-  // (isDfxHosted || !isEmbedded) &&
-  //   wallet !== EmbeddedWallet &&
-  //   user?.activeAddress?.wallet !== EmbeddedWallet &&
-  //   (!selectedAsset || selectedAsset?.cardBuyable) &&
-  //   availablePaymentMethods.push(FiatPaymentMethod.CARD);
-
-  const availableCurrencies = currencies?.filter((c) =>
-    selectedPaymentMethod === FiatPaymentMethod.CARD
-      ? c.cardSellable
-      : selectedPaymentMethod === FiatPaymentMethod.INSTANT
-      ? c.instantSellable
-      : c.sellable,
-  );
+  const availableCurrencies = currencies?.filter((c) => c.sellable);
 
   useEffect(() => {
     const activeBlockchain = walletBlockchain ?? blockchain;
@@ -380,7 +372,7 @@ export default function BuyScreen(): JSX.Element {
       getCurrency(availableCurrencies, prefCurrency?.name) ??
       getDefaultCurrency(availableCurrencies);
     if (prefCurrency && currency) setVal('currency', currency);
-  }, [assetIn, getCurrency, prefCurrency, currencies, selectedPaymentMethod]);
+  }, [assetIn, getCurrency, prefCurrency, currencies]);
 
   useEffect(() => {
     const selectedMethod =
@@ -393,11 +385,18 @@ export default function BuyScreen(): JSX.Element {
 
   useEffect(() => {
     if (amountIn) {
-      setVal('amount', amountIn);
+      if (!spendClearedByUserRef.current) setVal('amount', amountIn);
     } else if (amountOut) {
-      setVal('targetAmount', amountOut);
-    } else if (selectedAsset && !selectedAmount && !selectedTargetAmount) {
-      // Always set amount (input field) - backend calculates targetAmount
+      if (!targetClearedByUserRef.current) setVal('targetAmount', amountOut);
+    } else if (
+      selectedAsset &&
+      !selectedAmount &&
+      !selectedTargetAmount &&
+      !spendClearedByUserRef.current &&
+      !targetClearedByUserRef.current
+    ) {
+      // Always set amount (input field) - backend calculates targetAmount.
+      // Do not restore the default into a field the user just emptied.
       setVal('amount', '300');
     }
   }, [amountIn, amountOut, selectedAsset]);
@@ -444,6 +443,18 @@ export default function BuyScreen(): JSX.Element {
 
   // SPEND data changed
   useEffect(() => {
+    if (selectedAmount) {
+      spendClearedByUserRef.current = false;
+      // A newly typed spend amount starts a spend-side quote. Exact-price echo must not
+      // look like typing: it sets pendingFormSynchronization before writing the field.
+      if (selectedAmount !== previousAmountRef.current && pendingFormSynchronization.current == null) {
+        targetClearedByUserRef.current = false;
+      }
+    } else if (previousAmountRef.current) {
+      spendClearedByUserRef.current = true;
+    }
+    previousAmountRef.current = selectedAmount;
+
     const requiresUpdate =
       selectedAmount !== paymentInfo?.amount?.toString() ||
       selectedCurrency?.name !== paymentInfo?.currency.name ||
@@ -453,8 +464,12 @@ export default function BuyScreen(): JSX.Element {
     const hasGetData = selectedTargetAmount && selectedAsset;
 
     if (requiresUpdate) {
-      if (hasSpendData) {
+      if (hasSpendData && !targetClearedByUserRef.current) {
         updateData(Side.GET);
+      } else if (spendClearedByUserRef.current || targetClearedByUserRef.current) {
+        // the user is retyping — never refill the emptied field from the opposite side
+        setValidatedData(undefined);
+        setIsLoading(undefined);
       } else if (hasGetData) {
         updateData(Side.SPEND);
       }
@@ -463,6 +478,16 @@ export default function BuyScreen(): JSX.Element {
 
   // GET data changed
   useEffect(() => {
+    if (selectedTargetAmount) {
+      targetClearedByUserRef.current = false;
+      if (selectedTargetAmount !== previousTargetAmountRef.current && pendingFormSynchronization.current == null) {
+        spendClearedByUserRef.current = false;
+      }
+    } else if (previousTargetAmountRef.current) {
+      targetClearedByUserRef.current = true;
+    }
+    previousTargetAmountRef.current = selectedTargetAmount;
+
     const isSameTargetAmount = selectedTargetAmount === paymentInfo?.estimatedAmount?.toString();
     const requiresUpdate = !isSameTargetAmount || selectedAsset?.uniqueName !== paymentInfo?.asset?.uniqueName;
 
@@ -470,8 +495,12 @@ export default function BuyScreen(): JSX.Element {
     const hasGetData = selectedTargetAmount && selectedAsset;
 
     if (requiresUpdate) {
-      if (hasGetData) {
+      if (hasGetData && !spendClearedByUserRef.current) {
         updateData(Side.SPEND);
+      } else if (targetClearedByUserRef.current || spendClearedByUserRef.current) {
+        // the user is retyping — never refill the emptied field from the opposite side
+        setValidatedData(undefined);
+        setIsLoading(undefined);
       } else if (hasSpendData) {
         updateData(Side.GET);
       }
@@ -487,15 +516,8 @@ export default function BuyScreen(): JSX.Element {
       paymentMethod: selectedPaymentMethod,
     });
 
-    data && setValidatedData({ ...data, sideToUpdate });
+    setValidatedData(data ? { ...data, sideToUpdate } : undefined);
   }
-
-  // name edited
-  useEffect(() => {
-    if (showsNameForm && paymentInfo?.isValid) {
-      openPaymentLink();
-    }
-  }, [showsNameForm, paymentInfo?.isValid]);
 
   const hasCompleteSpendSide = Boolean(selectedAmount && selectedCurrency && selectedPaymentMethod);
   const hasCompleteGetSide = Boolean(selectedTargetAmount && selectedAsset);
@@ -566,7 +588,9 @@ export default function BuyScreen(): JSX.Element {
     setPaymentInfoState(undefined);
     setIsConfirming(false);
     setContinueWithoutPersonalIban(undefined);
-    if (!hasCompleteSpendSide && !hasCompleteGetSide) {
+    if (spendClearedByUserRef.current || targetClearedByUserRef.current) {
+      setIsLoading(undefined);
+    } else if (!hasCompleteSpendSide && !hasCompleteGetSide) {
       setValidatedData(undefined);
       setIsLoading(undefined);
     } else {
@@ -654,6 +678,26 @@ export default function BuyScreen(): JSX.Element {
       };
     }
 
+    // Live clear invalidates immediately; debounce can still hold the previous request.
+    // Extra effect deps (personal-IBAN rows, provider, retry) must not restart that request,
+    // including when the user already typed a new non-empty amount.
+    if (
+      !validatedData ||
+      spendClearedByUserRef.current ||
+      targetClearedByUserRef.current ||
+      validatedData.sideToUpdate !== debouncedValidatedData.sideToUpdate ||
+      validatedData.amount !== debouncedValidatedData.amount ||
+      validatedData.targetAmount !== debouncedValidatedData.targetAmount ||
+      validatedData.currency?.name !== debouncedValidatedData.currency?.name ||
+      validatedData.asset?.uniqueName !== debouncedValidatedData.asset?.uniqueName ||
+      validatedData.paymentMethod !== debouncedValidatedData.paymentMethod
+    ) {
+      setIsLoading(undefined);
+      return () => {
+        isRunning = false;
+      };
+    }
+
     if (shouldWaitForApplicableExplicitCustomer || shouldWaitForPersonalIbanRows) {
       setPaymentInfoState(undefined);
       setErrorMessage(undefined);
@@ -666,16 +710,11 @@ export default function BuyScreen(): JSX.Element {
     }
 
     if (hasUnsupportedPersonalIbanRequest) {
-      const personalIbanErrorText = getPersonalIbanErrorMessage('PersonalIbanProviderUnsupported');
-      if (generation === quoteGeneration.current) {
-        setPaymentInfoState(undefined);
-        setErrorMessage(
-          personalIbanErrorText
-            ? translate('screens/payment', personalIbanErrorText)
-            : translate('screens/payment', 'The requested personal IBAN provider is not recognized.'),
-        );
-        setIsLoading(undefined);
-      }
+      setPaymentInfoState(undefined);
+      setErrorMessage(
+        translate('screens/payment', 'The requested personal IBAN provider is not recognized.'),
+      );
+      setIsLoading(undefined);
       return () => {
         isRunning = false;
       };
@@ -689,19 +728,18 @@ export default function BuyScreen(): JSX.Element {
         : {}),
     };
 
-    if (generation === quoteGeneration.current) {
-      setErrorMessage(undefined);
-      setKycError(undefined);
-      setKycMessageOverride(undefined);
-      setPaymentInfoState(undefined);
-      setIsLoading(debouncedValidatedData.sideToUpdate);
-    }
+    setErrorMessage(undefined);
+    setKycError(undefined);
+    setKycMessageOverride(undefined);
+    setPaymentInfoState(undefined);
+    setIsLoading(debouncedValidatedData.sideToUpdate);
     receiveFor(data)
       .then((buy) => {
         if (
           !isRunning ||
           generation !== quoteGeneration.current ||
-          customerIdentityRef.current !== loadingCustomerIdentity
+          customerIdentityRef.current !== loadingCustomerIdentity ||
+          !buy
         )
           return;
         validateBuy(buy);
@@ -712,21 +750,12 @@ export default function BuyScreen(): JSX.Element {
           identity: loadingCustomerIdentity,
           isFinalQuote: false,
         });
-        committedQuoteGeneration.current = generation;
-
-        // load exact price
-        if (buy) {
-          return receiveFor({ ...data, exactPrice: true });
-        }
+        return receiveFor({ ...data, exactPrice: true });
       })
       .then((info) => {
-        if (
-          !isRunning ||
-          generation !== quoteGeneration.current ||
-          customerIdentityRef.current !== loadingCustomerIdentity ||
-          !info
-        )
-          return;
+        if (!isRunning || !info) return;
+        if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
+        if (generation !== quoteGeneration.current || customerIdentityRef.current !== loadingCustomerIdentity) return;
         const synchronizedAmount =
           debouncedValidatedData.sideToUpdate === Side.SPEND
             ? info.amount.toString()
@@ -744,9 +773,11 @@ export default function BuyScreen(): JSX.Element {
           personalIbanProvider: data.personalIbanProvider,
           customerIdentity: loadingCustomerIdentity,
         });
-        debouncedValidatedData.sideToUpdate === Side.SPEND
-          ? setVal('amount', info.amount.toString())
-          : setVal('targetAmount', info.estimatedAmount.toString());
+        if (debouncedValidatedData.sideToUpdate === Side.SPEND) {
+          setVal('amount', info.amount.toString());
+        } else {
+          setVal('targetAmount', info.estimatedAmount.toString());
+        }
         setPaymentInfoState({
           info,
           paymentMethod: data.paymentMethod,
@@ -754,7 +785,6 @@ export default function BuyScreen(): JSX.Element {
           identity: loadingCustomerIdentity,
           isFinalQuote: true,
         });
-        committedQuoteGeneration.current = generation;
       })
       .catch((error: ApiError) => {
         if (
@@ -896,7 +926,7 @@ export default function BuyScreen(): JSX.Element {
     asset,
     targetAmount: targetAmountStr,
     paymentMethod,
-  }: Partial<FormData> = {}): BuyPaymentInfo | undefined {
+  }: Partial<FormData>): BuyPaymentInfo | undefined {
     const amount = Number(amountStr);
     const targetAmount = Number(targetAmountStr);
     if (asset != null && currency != null && paymentMethod != null) {
@@ -916,8 +946,20 @@ export default function BuyScreen(): JSX.Element {
     return assets.filter((a) => allowedAssets.some((f) => isSameAsset(a, f)));
   }
 
-  function onSubmit(_data: FormData) {
-    // TODO: (Krysh fix broken form validation and onSubmit
+  function onSubmit(_data?: FormData) {
+    if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
+    if (
+      !paymentInfo ||
+      kycError ||
+      errorMessage ||
+      customAmountError ||
+      needsPersonalIbanAcknowledgement ||
+      isConfirming
+    ) {
+      return;
+    }
+    if (selectedAsset?.category === AssetCategory.PRIVATE && !flags?.includes('private')) return;
+    confirm(paymentInfo.id);
   }
 
   function setAddress() {
@@ -934,8 +976,6 @@ export default function BuyScreen(): JSX.Element {
 
   function confirm(id: number) {
     const confirmingGeneration = quoteGeneration.current;
-    // Refuse confirmation against a quote that no longer matches the live form generation (B4).
-    if (committedQuoteGeneration.current !== quoteGeneration.current) return;
     if (activePaymentInfoState?.isFinalQuote !== true || activePaymentInfoState.info.id !== id)
       return;
 
@@ -987,24 +1027,8 @@ export default function BuyScreen(): JSX.Element {
       });
   }
 
-  function onCardBuy(info: Buy) {
-    if (info.error === TransactionError.NAME_REQUIRED) {
-      setShowsNameForm(true);
-    } else {
-      openPaymentLink();
-    }
-  }
-
-  function openPaymentLink() {
-    if (!paymentInfo?.paymentLink) return;
-
-    setIsContinue(true);
-    window.location.href = paymentInfo.paymentLink;
-  }
-
-  function onCreatePersonalIban() {
-    if (!selectedCurrency) return;
-    navigate({ pathname: '/buy/personal-iban', search: `?currency=${selectedCurrency.name}` }, { setRedirect: true });
+  function onCreatePersonalIban(currencyName: string) {
+    navigate({ pathname: '/buy/personal-iban', search: `?currency=${currencyName}` }, { setRedirect: true });
   }
 
   function onSwitchPersonalIbanProvider(provider: PersonalIbanProvider) {
@@ -1019,9 +1043,7 @@ export default function BuyScreen(): JSX.Element {
     setPersonalIbanProviderUnavailable(undefined);
     setContinueWithoutPersonalIban(undefined);
     setProviderOverride(undefined);
-    if (requestedPersonalIban !== undefined) {
-      setSuppressPersonalIban({ value: true, identity: customerIdentity });
-    }
+    setSuppressPersonalIban({ value: true, identity: customerIdentity });
     setAutomaticFrickSuppressed({ value: true, identity: customerIdentity });
   }
 
@@ -1040,7 +1062,6 @@ export default function BuyScreen(): JSX.Element {
   useLayoutOptions({
     title,
     backButton: !showsActiveCompletion,
-    onBack: showsNameForm ? () => setShowsNameForm(false) : undefined,
     textStart: true,
   });
 
@@ -1097,10 +1118,22 @@ export default function BuyScreen(): JSX.Element {
           paymentInfo={activeCompletedPaymentInfo}
           navigateOnClose
         />
-      ) : showsNameForm ? (
-        <NameEdit onSuccess={() => updateData(Side.GET)} />
       ) : (
-        <Form control={control} rules={rules} errors={{}} onSubmit={handleSubmit(onSubmit)} translate={translateError}>
+        <form
+          className="w-full"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+        <Form
+          control={control}
+          rules={rules}
+          errors={{}}
+          onSubmit={handleSubmit(onSubmit)}
+          translate={translateError}
+          hasFormElement={false}
+        >
           <StyledVerticalStack gap={8} full center>
             {availableCurrencies && availableAssets && (
               <>
@@ -1266,110 +1299,84 @@ export default function BuyScreen(): JSX.Element {
                             type={TransactionType.BUY}
                           />
 
-                          {selectedPaymentMethod !== FiatPaymentMethod.CARD ? (
-                            <>
-                              <div>
-                                <PaymentInformationContent
-                                  info={paymentInfo}
-                                  showBank={showBank}
-                                  personalIbanProviderSwitch={
-                                    switchTarget === undefined
-                                      ? undefined
-                                      : {
-                                          target: switchTarget,
-                                          onSwitch: onSwitchPersonalIbanProvider,
-                                        }
-                                  }
-                                />
-                              </div>
-                              <SanctionHint />
-                              {activeFrickKycFallbackHint && (
+                          <div>
+                            <PaymentInformationContent
+                              info={paymentInfo}
+                              showBank={showBank}
+                              personalIbanProviderSwitch={
+                                switchTarget === undefined
+                                  ? undefined
+                                  : {
+                                      target: switchTarget,
+                                      onSwitch: onSwitchPersonalIbanProvider,
+                                    }
+                              }
+                            />
+                          </div>
+                          <SanctionHint />
+                          {activeFrickKycFallbackHint && (
+                            <StyledInfoText iconColor={IconColor.BLUE}>
+                              {translate(
+                                'screens/payment',
+                                'Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.',
+                              )}
+                            </StyledInfoText>
+                          )}
+                          {effectivePersonalIban !== undefined &&
+                            paymentInfoPaymentMethod !== undefined &&
+                            !isPersonalIbanApplicable(
+                              paymentInfo.currency.name,
+                              paymentInfoPaymentMethod,
+                            ) && (
+                              <StyledInfoText iconColor={IconColor.BLUE}>
+                                {translate(
+                                  'screens/payment',
+                                  'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.',
+                                )}
+                              </StyledInfoText>
+                            )}
+                          {!paymentInfo.isPersonalIban &&
+                            (selectedCurrency?.name === undefined ||
+                              !FRICK_CURRENCIES.includes(selectedCurrency.name)) &&
+                            effectivePersonalIban === undefined && (
+                              <StyledVerticalStack gap={4}>
+                                <h2 className="text-dfxBlue-800 text-center">
+                                  {translate('screens/payment', 'New: Personal IBAN in your own name!')}
+                                </h2>
                                 <StyledInfoText iconColor={IconColor.BLUE}>
                                   {translate(
                                     'screens/payment',
-                                    'Your new Bank Frick IBAN requires KYC level 50 - we are showing your existing IBAN instead.',
+                                    'Personal IBANs are in your own name, which means you make the transfer to yourself instead of DFX AG. Such transactions are often processed faster and more reliably by banks.',
                                   )}
                                 </StyledInfoText>
+                                <StyledButton
+                                  width={StyledButtonWidth.FULL}
+                                  label={translate('screens/payment', 'Generate personal IBAN')}
+                                  onClick={() => onCreatePersonalIban(paymentInfo.currency.name)}
+                                  color={StyledButtonColor.STURDY_WHITE}
+                                />
+                              </StyledVerticalStack>
+                            )}
+                          <div className="w-full leading-none">
+                            <StyledLink
+                              label={translate(
+                                'screens/payment',
+                                'Please note that by using this service you automatically accept our terms and conditions. The effective exchange rate is fixed when the money is received and processed by DFX.',
                               )}
-                              {effectivePersonalIban !== undefined &&
-                                paymentInfoPaymentMethod !== undefined &&
-                                !isPersonalIbanApplicable(
-                                  paymentInfo.currency.name,
-                                  paymentInfoPaymentMethod,
-                                ) && (
-                                  <StyledInfoText iconColor={IconColor.BLUE}>
-                                    {translate(
-                                      'screens/payment',
-                                      'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.',
-                                    )}
-                                  </StyledInfoText>
-                                )}
-                              {!paymentInfo.isPersonalIban &&
-                                (selectedCurrency?.name === undefined ||
-                                  !FRICK_CURRENCIES.includes(selectedCurrency.name)) &&
-                                effectivePersonalIban === undefined && (
-                                  <StyledVerticalStack gap={4}>
-                                    <h2 className="text-dfxBlue-800 text-center">
-                                      {translate('screens/payment', 'New: Personal IBAN in your own name!')}
-                                    </h2>
-                                    <StyledInfoText iconColor={IconColor.BLUE}>
-                                      {translate(
-                                        'screens/payment',
-                                        'Personal IBANs are in your own name, which means you make the transfer to yourself instead of DFX AG. Such transactions are often processed faster and more reliably by banks.',
-                                      )}
-                                    </StyledInfoText>
-                                    <StyledButton
-                                      width={StyledButtonWidth.FULL}
-                                      label={translate('screens/payment', 'Generate personal IBAN')}
-                                      onClick={onCreatePersonalIban}
-                                      color={StyledButtonColor.STURDY_WHITE}
-                                    />
-                                  </StyledVerticalStack>
-                                )}
-                              <div className="w-full leading-none">
-                                <StyledLink
-                                  label={translate(
-                                    'screens/payment',
-                                    'Please note that by using this service you automatically accept our terms and conditions. The effective exchange rate is fixed when the money is received and processed by DFX.',
-                                  )}
-                                  url={Urls.termsAndConditions}
-                                  small
-                                  dark
-                                />
-                                <StyledButton
-                                  width={StyledButtonWidth.FULL}
-                                  label={translate('screens/buy', 'Click here once you have issued the transfer')}
-                                  onClick={() => confirm(paymentInfo.id)}
-                                  disabled={!isQuoteFinal}
-                                  isLoading={isConfirming}
-                                  caps={false}
-                                  className="mt-4"
-                                />
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <SanctionHint />
-                              <div className="leading-none">
-                                <StyledLink
-                                  label={translate(
-                                    'screens/payment',
-                                    'Please note that by using this service you automatically accept our terms and conditions and authorize DFX.swiss to collect the above amount via your chosen payment method and agree that this amount cannot be canceled, recalled or refunded.',
-                                  )}
-                                  url={Urls.termsAndConditions}
-                                  small
-                                  dark
-                                />
-                                <StyledButton
-                                  width={StyledButtonWidth.FULL}
-                                  label={translate('general/actions', 'Next')}
-                                  onClick={() => onCardBuy(paymentInfo)}
-                                  isLoading={isContinue}
-                                  className="mt-4"
-                                />
-                              </div>
-                            </>
-                          )}
+                              url={Urls.termsAndConditions}
+                              small
+                              dark
+                            />
+                            <StyledButton
+                              width={StyledButtonWidth.FULL}
+                              label={translate('screens/buy', 'Click here once you have issued the transfer')}
+                              onClick={() => onSubmit()}
+                              disabled={!isQuoteFinal}
+                              isLoading={isConfirming}
+                              caps={false}
+                              className="mt-4"
+                            />
+                          </div>
                         </>
                       ))}
                   </>
@@ -1378,6 +1385,7 @@ export default function BuyScreen(): JSX.Element {
             )}
           </StyledVerticalStack>
         </Form>
+        </form>
       )}
     </>
   );

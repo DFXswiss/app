@@ -33,7 +33,7 @@ import {
   StyledSearchDropdown,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FieldPath, FieldPathValue, useForm, useWatch } from 'react-hook-form';
 import { PaymentInformationContent } from 'src/components/payment/payment-info-sell';
 import { PrivateAssetHint } from 'src/components/private-asset-hint';
@@ -128,12 +128,14 @@ export default function SwapScreen(): JSX.Element {
   const [kycError, setKycError] = useState<TransactionError>();
   const [isLoading, setIsLoading] = useState<Side>();
   const [paymentInfo, setPaymentInfo] = useState<Swap>();
+  const [isQuoteFinal, setIsQuoteFinal] = useState(false);
   const [balances, setBalances] = useState<AssetBalance[]>();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isTxDone, setTxDone] = useState<boolean>(false);
   const [swapTxId, setSwapTxId] = useState<string>();
   const [showsSwitchScreen, setShowsSwitchScreen] = useState(false);
   const [validatedData, setValidatedData] = useState<ValidatedData>();
+  const [retryToken, setRetryToken] = useState(0);
 
   // form
   const { control, handleSubmit, setValue, resetField } = useForm<FormData>({ mode: 'onTouched' });
@@ -143,6 +145,19 @@ export default function SwapScreen(): JSX.Element {
   const selectedTargetAmount = useWatch({ control, name: 'targetAmount' });
   const selectedTargetAsset = useWatch({ control, name: 'targetAsset' });
   const selectedAddress = useWatch({ control, name: 'address' });
+
+  const previousAmountRef = useRef<string>();
+  const previousTargetAmountRef = useRef<string>();
+  const spendClearedByUserRef = useRef(false);
+  const targetClearedByUserRef = useRef(false);
+  const isExactPriceWriteRef = useRef(false);
+  const quoteGeneration = useRef(0);
+  const enteredAmountLiveRef = useRef(enteredAmount);
+  const selectedTargetAmountLiveRef = useRef(selectedTargetAmount);
+  enteredAmountLiveRef.current = enteredAmount;
+  selectedTargetAmountLiveRef.current = selectedTargetAmount;
+  if (!enteredAmount && previousAmountRef.current) spendClearedByUserRef.current = true;
+  if (!selectedTargetAmount && previousTargetAmountRef.current) targetClearedByUserRef.current = true;
 
   useEffect(() => {
     if (sourceAssets && session?.address) {
@@ -194,7 +209,7 @@ export default function SwapScreen(): JSX.Element {
     .filter((b) => filteredAssets?.some((a) => a.blockchain === b));
 
   const addressItems: Address[] =
-    userAddressItems.length > 0 && targetBlockchains?.length
+    userAddressItems.length > 0 && targetBlockchains.length
       ? [
           ...targetBlockchains.flatMap((b) => {
             const addresses = userAddressItems.filter((a) => a.blockchains.includes(b));
@@ -213,12 +228,12 @@ export default function SwapScreen(): JSX.Element {
       : [];
 
   useEffect(() => {
-    const blockchainSourceAssets = getAssets(sourceBlockchains ?? [], { sellable: true, comingSoon: false });
+    const blockchainSourceAssets = getAssets(sourceBlockchains, { sellable: true, comingSoon: false });
     const activeSourceAssets = filterAssets(blockchainSourceAssets, assetFilter);
     setSourceAssets(activeSourceAssets);
 
-    const activeTargetBlockchains = blockchain ? [blockchain as Blockchain] : (targetBlockchains ?? []);
-    const blockchainTargetAssets = getAssets(activeTargetBlockchains ?? [], { buyable: true, comingSoon: false });
+    const activeTargetBlockchains = blockchain ? [blockchain as Blockchain] : targetBlockchains;
+    const blockchainTargetAssets = getAssets(activeTargetBlockchains, { buyable: true, comingSoon: false });
     const activeTargetAssets = filterAssets(blockchainTargetAssets, assetFilter);
     setTargetAssets(activeTargetAssets);
 
@@ -244,9 +259,14 @@ export default function SwapScreen(): JSX.Element {
 
   useEffect(() => {
     if (amountIn) {
-      setVal('amount', amountIn);
-    } else if (selectedSourceAsset && !enteredAmount) {
-      // Set default amount based on asset type
+      if (!spendClearedByUserRef.current) setVal('amount', amountIn);
+    } else if (
+      selectedSourceAsset &&
+      !enteredAmount &&
+      !selectedTargetAmount &&
+      !spendClearedByUserRef.current &&
+      !targetClearedByUserRef.current
+    ) {
       const isStablecoin = ['USDT', 'USDC', 'DAI', 'ZCHF', 'dEURO', 'XCHF'].includes(selectedSourceAsset.name);
       setVal('amount', isStablecoin ? '100' : '0.1');
     }
@@ -295,8 +315,21 @@ export default function SwapScreen(): JSX.Element {
     }
   }, [enteredAmount]);
 
+  // A field the user emptied stays an edit in progress until they type again.
   // SPEND data changed
   useEffect(() => {
+    const exactPriceWrite = isExactPriceWriteRef.current;
+    if (enteredAmount) {
+      spendClearedByUserRef.current = false;
+      if (enteredAmount !== previousAmountRef.current && !exactPriceWrite) {
+        targetClearedByUserRef.current = false;
+      }
+    } else if (previousAmountRef.current) {
+      spendClearedByUserRef.current = true;
+    }
+    if (enteredAmount !== previousAmountRef.current) isExactPriceWriteRef.current = false;
+    previousAmountRef.current = enteredAmount;
+
     const requiresUpdate =
       enteredAmount !== paymentInfo?.amount?.toString() ||
       selectedSourceAsset?.uniqueName !== paymentInfo?.sourceAsset.uniqueName;
@@ -304,9 +337,26 @@ export default function SwapScreen(): JSX.Element {
     const hasSpendData = enteredAmount && selectedSourceAsset;
     const hasGetData = selectedTargetAmount && selectedTargetAsset && selectedAddress;
 
+    if (spendClearedByUserRef.current || targetClearedByUserRef.current) {
+      quoteGeneration.current += 1;
+      isExactPriceWriteRef.current = false;
+      setIsQuoteFinal(false);
+    } else if (requiresUpdate && !exactPriceWrite) {
+      quoteGeneration.current += 1;
+      setIsQuoteFinal(false);
+      setPaymentInfo(undefined);
+    }
+
     if (requiresUpdate) {
-      if (hasSpendData) {
+      if (hasSpendData && !targetClearedByUserRef.current) {
         updateData(Side.GET);
+      } else if (spendClearedByUserRef.current || targetClearedByUserRef.current) {
+        setValidatedData(undefined);
+        setPaymentInfo(undefined);
+        setKycError(undefined);
+        setErrorMessage(undefined);
+        setCustomAmountError(undefined);
+        setIsLoading(undefined);
       } else if (hasGetData) {
         updateData(Side.SPEND);
       }
@@ -315,21 +365,57 @@ export default function SwapScreen(): JSX.Element {
 
   // GET data changed
   useEffect(() => {
+    const exactPriceWrite = isExactPriceWriteRef.current;
+    if (selectedTargetAmount) {
+      targetClearedByUserRef.current = false;
+      if (selectedTargetAmount !== previousTargetAmountRef.current && !exactPriceWrite) {
+        spendClearedByUserRef.current = false;
+      }
+    } else if (previousTargetAmountRef.current) {
+      targetClearedByUserRef.current = true;
+    }
+    if (selectedTargetAmount !== previousTargetAmountRef.current) isExactPriceWriteRef.current = false;
+    previousTargetAmountRef.current = selectedTargetAmount;
+
     const isSameTargetAmount = selectedTargetAmount === paymentInfo?.estimatedAmount?.toString();
     const requiresUpdate =
-      !isSameTargetAmount || selectedTargetAsset?.uniqueName !== paymentInfo?.targetAsset?.uniqueName;
+      !isSameTargetAmount ||
+      selectedTargetAsset?.uniqueName !== paymentInfo?.targetAsset?.uniqueName ||
+      selectedAddress?.address !== validatedData?.receiverAddress;
 
     const hasSpendData = enteredAmount && selectedSourceAsset;
     const hasGetData = selectedTargetAmount && selectedTargetAsset && selectedAddress;
 
+    if (spendClearedByUserRef.current || targetClearedByUserRef.current) {
+      quoteGeneration.current += 1;
+      isExactPriceWriteRef.current = false;
+      setIsQuoteFinal(false);
+    } else if (requiresUpdate && !exactPriceWrite) {
+      quoteGeneration.current += 1;
+      setIsQuoteFinal(false);
+      setPaymentInfo(undefined);
+    }
+
     if (requiresUpdate) {
-      if (hasGetData) {
-        updateData(Side.SPEND);
+      if (hasGetData && !spendClearedByUserRef.current) {
+        const addressOnlyChange =
+          Boolean(enteredAmount) &&
+          selectedAddress?.address !== validatedData?.receiverAddress &&
+          selectedTargetAmount === paymentInfo?.estimatedAmount?.toString() &&
+          selectedTargetAsset?.uniqueName === paymentInfo?.targetAsset?.uniqueName;
+        updateData(addressOnlyChange ? Side.GET : Side.SPEND);
+      } else if (targetClearedByUserRef.current || spendClearedByUserRef.current) {
+        setValidatedData(undefined);
+        setPaymentInfo(undefined);
+        setKycError(undefined);
+        setErrorMessage(undefined);
+        setCustomAmountError(undefined);
+        setIsLoading(undefined);
       } else if (hasSpendData) {
         updateData(Side.GET);
       }
     }
-  }, [selectedTargetAmount, selectedTargetAsset]);
+  }, [selectedTargetAmount, selectedTargetAsset, selectedAddress]);
 
   function updateData(sideToUpdate: Side) {
     const data = validateData({
@@ -340,62 +426,78 @@ export default function SwapScreen(): JSX.Element {
       address: selectedAddress,
     });
 
-    data && setValidatedData({ ...data, sideToUpdate });
+    setValidatedData(data ? { ...data, sideToUpdate } : undefined);
   }
 
   useEffect(() => {
     let isRunning = true;
 
     setErrorMessage(undefined);
+    setKycError(undefined);
     setPaymentInfo(undefined);
+    setIsQuoteFinal(false);
     setIsLoading(undefined);
 
     if (!validatedData) return;
 
+    const generation = quoteGeneration.current;
     const data: SwapPaymentInfo = { ...validatedData, externalTransactionId };
 
     setIsLoading(validatedData.sideToUpdate);
     receiveFor(data)
       .then((swap) => {
-        if (isRunning) {
-          validateSwap(swap);
-          setPaymentInfo(swap);
-
-          // load exact price
-          if (swap) {
-            return receiveFor({ ...data, exactPrice: true });
-          }
-        }
+        if (!isRunning || !swap || generation !== quoteGeneration.current) return;
+        validateSwap(swap);
+        setPaymentInfo(swap);
+        return receiveFor({ ...data, exactPrice: true });
       })
       .then((info) => {
-        if (isRunning && info) {
-          validatedData.sideToUpdate === Side.SPEND
-            ? setVal('amount', info.amount.toString())
-            : setVal('targetAmount', info.estimatedAmount.toString());
-          setPaymentInfo(info);
+        if (!isRunning || !info) return;
+        if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
+        if (generation !== quoteGeneration.current) return;
+        if (validatedData.sideToUpdate === Side.SPEND) {
+          const nextAmount = info.amount.toString();
+          if (enteredAmountLiveRef.current !== nextAmount) {
+            isExactPriceWriteRef.current = true;
+            setVal('amount', nextAmount);
+          } else {
+            isExactPriceWriteRef.current = false;
+          }
+        } else {
+          const nextTarget = info.estimatedAmount.toString();
+          if (selectedTargetAmountLiveRef.current !== nextTarget) {
+            isExactPriceWriteRef.current = true;
+            setVal('targetAmount', nextTarget);
+          } else {
+            isExactPriceWriteRef.current = false;
+          }
         }
+        setPaymentInfo(info);
+        setIsQuoteFinal(true);
       })
       .catch((error: ApiError) => {
-        if (isRunning) {
-          if (error.statusCode === 400 && error.message === 'Ident data incomplete') {
-            navigate('/profile');
+        if (!isRunning || generation !== quoteGeneration.current) return;
+        if (error.statusCode === 400 && error.message === 'Ident data incomplete') {
+          navigate('/profile');
+        } else {
+          setPaymentInfo(undefined);
+          setIsQuoteFinal(false);
+          const kycErrorFromMessage = getKycErrorFromMessage(error.message);
+          if (kycErrorFromMessage) {
+            setKycError(kycErrorFromMessage);
           } else {
-            setPaymentInfo(undefined);
-            const kycErrorFromMessage = getKycErrorFromMessage(error.message);
-            if (kycErrorFromMessage) {
-              setKycError(kycErrorFromMessage);
-            } else {
-              setErrorMessage(error.message ?? 'Unknown error');
-            }
+            setErrorMessage(error.message ?? 'Unknown error');
           }
         }
       })
-      .finally(() => isRunning && setIsLoading(undefined));
+      .finally(() => {
+        if (isRunning && generation === quoteGeneration.current) setIsLoading(undefined);
+      });
 
     return () => {
       isRunning = false;
     };
-  }, [useDebounce(validatedData, 500)]);
+  }, [useDebounce(validatedData, 500), retryToken]);
 
   function validateSwap(swap: Swap): void {
     setCustomAmountError(undefined);
@@ -466,7 +568,7 @@ export default function SwapScreen(): JSX.Element {
     targetAsset,
     targetAmount: targetAmountStr,
     address,
-  }: Partial<FormData> = {}): SwapPaymentInfo | undefined {
+  }: Partial<FormData>): SwapPaymentInfo | undefined {
     const amount = Number(amountStr);
     const targetAmount = Number(targetAmountStr);
     if (sourceAsset != null && targetAsset != null && address != null) {
@@ -496,27 +598,34 @@ export default function SwapScreen(): JSX.Element {
   }
 
   function getPaymentInfoString(paymentInfo: Swap): string {
-    return (
-      paymentInfo &&
-      translate(
-        'screens/swap',
-        'Send the selected amount to the address below. This address can be used multiple times, it is always the same for swaps from {{sourceChain}} to {{asset}} on {{targetChain}}.',
-        {
-          sourceChain: toString(paymentInfo.sourceAsset.blockchain),
-          targetChain: toString(paymentInfo.targetAsset.blockchain),
-          asset: paymentInfo.targetAsset.name,
-        },
-      )
+    return translate(
+      'screens/swap',
+      'Send the selected amount to the address below. This address can be used multiple times, it is always the same for swaps from {{sourceChain}} to {{asset}} on {{targetChain}}.',
+      {
+        sourceChain: toString(paymentInfo.sourceAsset.blockchain),
+        targetChain: toString(paymentInfo.targetAsset.blockchain),
+        asset: paymentInfo.targetAsset.name,
+      },
     );
   }
 
-  function onSubmit(_data: FormData) {
-    // TODO: (Krysh fix broken form validation and onSubmit
+  function onSubmit(_data?: FormData) {
+    if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
+    if (!paymentInfo || !isQuoteFinal || kycError || errorMessage || customAmountError?.hideInfos || isProcessing)
+      return;
+    if (
+      (selectedSourceAsset?.category === AssetCategory.PRIVATE ||
+        selectedTargetAsset?.category === AssetCategory.PRIVATE) &&
+      !flags?.includes('private')
+    ) {
+      return;
+    }
+    void handleNext(paymentInfo);
   }
 
   function setAddress() {
     if (session?.address && addressItems.length > 0) {
-      // Priorität: 1. blockchain URL-Parameter, 2. assetOut Blockchain, 3. erste Adresse
+      // Prefer URL blockchain, then assetOut chain, then the first address.
       let preferredChain = blockchain;
       if (!preferredChain && assetOut) {
         // Extract blockchain from assetOut (format: Blockchain/AssetName)
@@ -537,15 +646,27 @@ export default function SwapScreen(): JSX.Element {
 
   async function handleNext(paymentInfo: Swap): Promise<void> {
     setIsProcessing(true);
-
-    if (canSendTransaction() && !activeWallet) return close(paymentInfo, false);
+    setErrorMessage(undefined);
 
     try {
+      if (canSendTransaction() && !activeWallet) {
+        close(paymentInfo, false);
+        return;
+      }
+
       if (canSendTransaction()) {
         await sendTransaction(paymentInfo).then(setSwapTxId);
       }
 
       setTxDone(true);
+    } catch (error: any) {
+      if (error.code === 4001) return;
+      setErrorMessage(
+        translate(
+          'screens/swap',
+          'Transaction failed. Click Retry to see the deposit address for manual transfer.',
+        ),
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -571,6 +692,13 @@ export default function SwapScreen(): JSX.Element {
       ) : showsSwitchScreen ? (
         <AddressSwitch onClose={(r) => (r ? onAddressSwitch() : setShowsSwitchScreen(false))} />
       ) : (
+        <form
+          className="w-full"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
         <Form
           control={control}
           rules={rules}
@@ -608,6 +736,8 @@ export default function SwapScreen(): JSX.Element {
                           customAmountError.interpolation,
                         )
                       }
+                      loading={isLoading === Side.SPEND}
+                      disabled={isLoading === Side.SPEND}
                       full
                     />
                   </div>
@@ -700,7 +830,7 @@ export default function SwapScreen(): JSX.Element {
                       <StyledButton
                         width={StyledButtonWidth.MIN}
                         label={translate('general/actions', 'Retry')}
-                        onClick={() => setVal('amount', enteredAmount)} // re-trigger
+                        onClick={() => setRetryToken((token) => token + 1)}
                         className="mt-4"
                         color={StyledButtonColor.STURDY_WHITE}
                       />
@@ -758,7 +888,8 @@ export default function SwapScreen(): JSX.Element {
                                 ? 'Complete transaction in your wallet'
                                 : 'Click here once you have issued the transaction',
                             )}
-                            onClick={() => handleNext(paymentInfo)}
+                            onClick={() => onSubmit()}
+                            disabled={!isQuoteFinal}
                             caps={false}
                             className="mt-4"
                             isLoading={isProcessing}
@@ -771,6 +902,7 @@ export default function SwapScreen(): JSX.Element {
             </StyledVerticalStack>
           )}
         </Form>
+        </form>
       )}
     </>
   );

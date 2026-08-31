@@ -92,10 +92,11 @@ async function fulfillJson(route: Route, body: unknown): Promise<void> {
 
 async function installSyntheticApi(
   page: Page,
+  fixtureSource: typeof complianceFixture = complianceFixture,
 ): Promise<{ unexpectedRequests: string[]; mutations: { method: string; path: string; body: unknown }[] }> {
   const unexpectedRequests: string[] = [];
   const mutations: { method: string; path: string; body: unknown }[] = [];
-  const currentFixture = structuredClone(complianceFixture);
+  const currentFixture = structuredClone(fixtureSource);
 
   await page.route('**/v1/**', async (route) => {
     const request = route.request();
@@ -214,6 +215,68 @@ test.describe('Compliance review KYC and AML actions', () => {
         body: { expectedAmlCheck: 'Pass', expectedAmlReason: 'NA' },
       },
     ]);
+    expect(unexpectedRequests).toEqual([]);
+  });
+
+  test('shows the pending ManualCheck Fail and Reset decision variants', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1200 });
+
+    const pendingFixture = structuredClone(complianceFixture);
+    pendingFixture.transactions = [
+      {
+        id: 326324,
+        uid: 'synthetic-buy-crypto-130504',
+        buyCryptoId: 130504,
+        type: 'Buy',
+        sourceType: 'BuyCrypto',
+        inputAmount: 300000,
+        inputAsset: 'EUR',
+        outputAsset: 'BTC',
+        amountInChf: 280000,
+        amlCheck: 'Pending',
+        amlReason: 'ManualCheck',
+        isCompleted: false,
+        buyCryptoIsComplete: false,
+        buyCryptoStatus: 'MissingLiquidity',
+        buyCryptoHasBatch: false,
+        buyCryptoHasChargeback: false,
+        buyCryptoReviewResetBlocked: false,
+        created: '2026-07-31T08:30:00.000Z',
+      },
+    ];
+
+    const { unexpectedRequests } = await installSyntheticApi(page, pendingFixture);
+
+    await page.goto(`/compliance/user/${USER_DATA_ID}/kyc?session=${jwt()}&tab=amlPending`);
+
+    await expect(page.getByText('AmlCheck', { exact: true })).toBeVisible();
+
+    await page.locator('select').first().selectOption('Fail');
+
+    await expect(page.getByText('AmlReason', { exact: true })).toBeVisible();
+    await expect(page.getByText('priceDefinitionAllowedDate setzen')).toHaveCount(0);
+    await expect(page.getByText(/Reset entfernt AmlCheck, AmlReason und priceDefinitionAllowedDate/)).toHaveCount(0);
+
+    await page.getByText('AmlCheck', { exact: true }).scrollIntoViewIfNeeded();
+
+    await expect(page).toHaveScreenshot('compliance-review-aml-pending-fail.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+
+    await page.locator('select').first().selectOption('Reset');
+
+    await expect(page.getByText(/Reset entfernt AmlCheck, AmlReason und priceDefinitionAllowedDate/)).toBeVisible();
+    await expect(page.getByText('priceDefinitionAllowedDate setzen')).toHaveCount(0);
+    await expect(page.getByText('AmlReason', { exact: true })).toHaveCount(0);
+
+    await page.getByText(/Reset entfernt AmlCheck, AmlReason und priceDefinitionAllowedDate/).scrollIntoViewIfNeeded();
+
+    await expect(page).toHaveScreenshot('compliance-review-aml-pending-reset-hint.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+
     expect(unexpectedRequests).toEqual([]);
   });
 });

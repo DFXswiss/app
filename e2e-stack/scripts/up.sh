@@ -4,8 +4,8 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 if [[ -z "${E2E_API_IMAGE:-}" ]]; then
-  # Default: API repo checked out as sibling directory "api" next to "services".
-  # Relative paths resolve from the services repository root so caller cwd does not matter.
+  # Default: backend repo checked out as sibling directory "api" next to "app".
+  # Relative paths resolve from the app repository root so caller cwd does not matter.
   api_repo_raw="${E2E_API_REPO:-../api}"
   if [[ "$api_repo_raw" = /* ]]; then
     api_repo="$api_repo_raw"
@@ -19,7 +19,7 @@ if [[ -z "${E2E_API_IMAGE:-}" ]]; then
 
   if [[ ! -d "$api_repo" ]]; then
     log_error "API image not set and API repository not found."
-    log_error "Either check out the API repo as a sibling directory named 'api' next to 'services',"
+    log_error "Either check out the backend repo as a sibling directory named 'api' next to 'app',"
     log_error "or set E2E_API_IMAGE to a pre-built image tag (e.g. export E2E_API_IMAGE=dfx-api:e2e)."
     log_error "Looked for: ${api_repo} (override with E2E_API_REPO)."
     exit 1

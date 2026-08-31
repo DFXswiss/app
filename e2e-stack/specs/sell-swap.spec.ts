@@ -5,8 +5,9 @@
  * Browser drives the real frontend; Postgres proves writes where the UI mutates data.
  * UI flows that depend on pricing (`PUT /sell/paymentInfos`, `PUT /swap/paymentInfos`) are split
  * into two tests each — the deposit_route write and the payment panel — and both assert hard.
- * Neither is skipped: pricing does work here, once the URL leaves out the bank-account parameter
- * that sends the sell screen into an endless create-bank-account loop (its own test below).
+ * Neither is skipped: pricing does work here, once the URL leaves out the bank-account parameter.
+ * Passing `bank-account` used to recreate accounts in a loop; that regression is pinned by the
+ * dedicated test at the end of this file (select the existing account, do not POST again).
  * Factory-only tests (`createSell` / `createSwap`) remain as independent API-path proofs.
  */
 
@@ -215,10 +216,10 @@ async function setupSellFullUiFlow(
 
   // Pre-fill amount, asset and currency via URL params so the form is complete without fragile
   // dropdown clicks. The bank account is deliberately NOT passed as a parameter: the account
-  // created above is picked up on its own, and adding `bank-account` to this URL makes the screen
-  // create bank accounts in an endless loop and never price anything — see the dedicated test at
-  // the end of this file. Do not wait for 'networkidle' either: pricing effects keep the network
-  // busy on this screen, so content-based waits are what gate these tests.
+  // created above is picked up on its own. Passing `bank-account` is covered by the dedicated
+  // regression test at the end of this file (select existing, do not recreate). Do not wait for
+  // 'networkidle' either: pricing effects keep the network busy on this screen, so content-based
+  // waits are what gate these tests.
   await gotoWithSession(page, `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1`, user.jwt);
   expect(normPath(new URL(page.url()).pathname)).toBe('/sell');
 
@@ -446,14 +447,9 @@ test.describe('Sell + Swap e2e', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('/sell currency dropdown offers non-sellable fiats (sell.hook filters buyable, not sellable)', async ({
+  test('/sell currency dropdown only offers sellable fiats', async ({
     page,
   }) => {
-    // CONFIRMED product bug: sell.hook.js's currency dropdown filters options on
-    // buyable || cardBuyable || instantBuyable instead of sellable, so it can offer fiats that
-    // POST /sell would reject. Remove this test.fail() once the hook filters on `sellable`.
-    test.fail(true, 'sell.hook.js filters currency options on buyable||cardBuyable||instantBuyable, not sellable');
-
     const user = await createUser({
       walletIndex: nextWalletIndex(),
       tag: 'sell-fiat',
@@ -481,8 +477,6 @@ test.describe('Sell + Swap e2e', () => {
     const offered = fiatCodes.filter((code) => optionTexts.some((t) => t === code || t.startsWith(code)));
     expect(offered.length, 'currency dropdown should list at least one fiat').toBeGreaterThan(0);
 
-    // Correct behaviour: every offered currency must be sellable. Fails today (test.fail above)
-    // because the hook filters on the wrong flag; passes once the hook is fixed.
     for (const name of offered) {
       expect(sellableNames.includes(name), `currency "${name}" must be sellable`).toBe(true);
     }
@@ -550,6 +544,68 @@ test.describe('Sell + Swap e2e', () => {
         page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
       ).toBeVisible({ timeout: 15000 });
     }
+  });
+
+  test('/sell: native form submit completes the transaction', async ({ page }) => {
+    test.setTimeout(90000);
+    await setupSellFullUiFlow(page, 'sell-form-submit');
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    expect(outcome.kind).toBe('payment_info');
+    // Wallet CTA (`Complete transaction in your wallet`) is also payment_info; handleNext then
+    // closes instead of completing. Pin the manual path like the panel test and buy form-submit.
+    const completeBtn = page.getByRole('button', {
+      name: /Click here once you have issued the transaction/i,
+    });
+    await expect(completeBtn).toBeEnabled();
+    const form = page.locator('form').first();
+    await expect(form).toBeVisible();
+    await form.evaluate((el) => (el as HTMLFormElement).requestSubmit());
+    await expect(
+      page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
+    ).toBeVisible({ timeout: 15000 });
+  });
+
+  test('/sell: native form submit does not complete after spend is cleared', async ({ page }) => {
+    test.setTimeout(90000);
+    await setupSellFullUiFlow(page, 'sell-form-submit-cleared');
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    expect(outcome.kind).toBe('payment_info');
+    const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
+    await spend.click();
+    await spend.fill('');
+    await spend.blur();
+    await expect.poll(async () => spend.inputValue(), { timeout: 8000 }).toBe('');
+    const form = page.locator('form').first();
+    await form.evaluate((el) => (el as HTMLFormElement).requestSubmit());
+    await expect(page.getByText(/Nice! You are all set!/i)).toHaveCount(0);
+    await expect(spend).toHaveValue('');
+  });
+
+  test('/sell: clearing the spend amount keeps the field empty (no cross-side refill)', async ({ page }) => {
+    test.setTimeout(90000);
+    await setupSellFullUiFlow(page, 'sell-clear-spend');
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    expect(outcome.kind).toBe('payment_info');
+
+    const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
+    await expect(spend).toHaveValue('0.1');
+    await spend.click();
+    await spend.fill('');
+    await spend.blur();
+
+    await expect
+      .poll(
+        async () => {
+          const value = await spend.inputValue();
+          const paymentVisible = await page
+            .getByRole('heading', { name: 'Payment Information' })
+            .isVisible()
+            .catch(() => false);
+          return { value, paymentVisible };
+        },
+        { timeout: 8000, message: 'cleared sell spend amount must stay empty' },
+      )
+      .toEqual({ value: '', paymentVisible: false });
   });
 
   // ---------------------------------------------------------------------------
@@ -773,6 +829,66 @@ test.describe('Sell + Swap e2e', () => {
     }
   });
 
+  test('/swap: native form submit completes the transaction', async ({ page }) => {
+    test.setTimeout(90000);
+    await setupSwapFullUiFlow(page, 'swap-form-submit');
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    expect(outcome.kind).toBe('payment_info');
+    const completeBtn = page.getByRole('button', {
+      name: /Click here once you have issued the transaction/i,
+    });
+    await expect(completeBtn).toBeEnabled();
+    const form = page.locator('form').first();
+    await expect(form).toBeVisible();
+    await form.evaluate((el) => (el as HTMLFormElement).requestSubmit());
+    await expect(
+      page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
+    ).toBeVisible({ timeout: 15000 });
+  });
+
+  test('/swap: native form submit does not complete after spend is cleared', async ({ page }) => {
+    test.setTimeout(90000);
+    await setupSwapFullUiFlow(page, 'swap-form-submit-cleared');
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    expect(outcome.kind).toBe('payment_info');
+    const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
+    await spend.click();
+    await spend.fill('');
+    await spend.blur();
+    await expect.poll(async () => spend.inputValue(), { timeout: 8000 }).toBe('');
+    const form = page.locator('form').first();
+    await form.evaluate((el) => (el as HTMLFormElement).requestSubmit());
+    await expect(page.getByText(/Nice! You are all set!/i)).toHaveCount(0);
+    await expect(spend).toHaveValue('');
+  });
+
+  test('/swap: clearing the spend amount keeps the field empty (no cross-side refill)', async ({ page }) => {
+    test.setTimeout(90000);
+    await setupSwapFullUiFlow(page, 'swap-clear-spend');
+    const outcome = await waitForPricingOutcome(page, { timeoutMs: 25000 });
+    expect(outcome.kind).toBe('payment_info');
+
+    const spend = page.locator('h2', { hasText: 'You spend' }).locator('..').locator('input[type="number"]').first();
+    await expect(spend).toHaveValue('0.1');
+    await spend.click();
+    await spend.fill('');
+    await spend.blur();
+
+    await expect
+      .poll(
+        async () => {
+          const value = await spend.inputValue();
+          const paymentVisible = await page
+            .getByRole('heading', { name: 'Payment Information' })
+            .isVisible()
+            .catch(() => false);
+          return { value, paymentVisible };
+        },
+        { timeout: 8000, message: 'cleared swap spend amount must stay empty' },
+      )
+      .toEqual({ value: '', paymentVisible: false });
+  });
+
   // Sanity: incomplete personal data is redirected off /sell by the API/UI (Ident data incomplete).
   test('/sell with incomplete personal data redirects to /profile', async ({ page }) => {
     // Same rationale as the other full-URL-param /sell tests: skip 'networkidle' (fully-populated
@@ -824,11 +940,6 @@ test.describe('Sell + Swap e2e', () => {
   });
 
   test('/sell?bank-account=<iban> selects the account once instead of recreating it', async ({ page }) => {
-    // Measured: the screen answers this parameter by posting /v1/bankAccount over and over — more
-    // than thirty times in twenty seconds — and never gets as far as requesting payment
-    // information, so the sell flow cannot complete at all when the link carries the parameter.
-    // Reported to the team. Remove test.fail() once one request is enough.
-    test.fail(true, 'A bank-account deep link makes /sell create bank accounts in a loop and never price.');
     test.setTimeout(75000);
 
     const user = await createUser({
@@ -854,7 +965,7 @@ test.describe('Sell + Swap e2e', () => {
     await expect(page.getByText('You spend', { exact: true })).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(20000);
 
-    expect(bankAccountPosts, 'an existing bank account must not be created again').toBeLessThanOrEqual(1);
+    expect(bankAccountPosts, 'an existing bank account must not be created again').toBe(0);
     expect(paymentInfos.last, 'the screen must get as far as requesting payment information').toBeTruthy();
   });
 });

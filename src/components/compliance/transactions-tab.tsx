@@ -9,12 +9,13 @@ import {
   BankDataInfo,
   BankTxInfo,
   CryptoInputInfo,
+  FiatOutputInfo,
   RecallInfo,
   TransactionInfo,
-  UserDataDetail,
   useCompliance,
+  UserDataDetail,
 } from 'src/hooks/compliance.hook';
-import { boolBadge, DetailRow, statusBadge, TransactionDetailRows, formatDate } from 'src/util/compliance-helpers';
+import { boolBadge, DetailRow, formatDate, statusBadge, TransactionDetailRows } from 'src/util/compliance-helpers';
 import { PdfLang } from 'src/util/pdf/support-pdf-common';
 
 interface TransactionsTableProps {
@@ -27,11 +28,13 @@ interface TransactionsTableProps {
   expandedBankTxId?: number;
   expandedCryptoInputId?: number;
   expandedBankDataId?: number;
+  expandedFiatOutputId?: number;
   expandedTxUid?: string;
   canPerformActions?: boolean;
   onExpandBankTx: (id: number | undefined) => void;
   onExpandCryptoInput: (id: number | undefined) => void;
   onExpandBankData: (id: number | undefined) => void;
+  onExpandFiatOutput: (id: number | undefined) => void;
   onExpandTxUid: (uid: string | undefined) => void;
   onStatusChanged?: () => void;
 }
@@ -46,11 +49,13 @@ export function TransactionsTable({
   expandedBankTxId,
   expandedCryptoInputId,
   expandedBankDataId,
+  expandedFiatOutputId,
   expandedTxUid,
   canPerformActions = true,
   onExpandBankTx,
   onExpandCryptoInput,
   onExpandBankData,
+  onExpandFiatOutput,
   onExpandTxUid,
   onStatusChanged,
 }: TransactionsTableProps): JSX.Element {
@@ -246,6 +251,7 @@ export function TransactionsTable({
             <th className="px-3 py-2 text-center text-sm font-semibold text-dfxBlue-800">Bank TX</th>
             <th className="px-3 py-2 text-center text-sm font-semibold text-dfxBlue-800">Bank Data</th>
             <th className="px-3 py-2 text-center text-sm font-semibold text-dfxBlue-800">Crypto In</th>
+            <th className="px-3 py-2 text-center text-sm font-semibold text-dfxBlue-800">Fiat Out</th>
             <th className="px-3 py-2 text-center text-sm font-semibold text-dfxBlue-800">Created</th>
             <th className="px-3 py-2 text-center text-sm font-semibold text-dfxBlue-800">Completed</th>
           </tr>
@@ -256,9 +262,11 @@ export function TransactionsTable({
               const bankTx = bankTxByTxId.get(tx.id);
               const cryptoInput = cryptoInputByTxId.get(tx.id);
               const bankData = tx.bankDataId != null ? bankDataById.get(tx.bankDataId) : undefined;
+              const fiatOutput: FiatOutputInfo | undefined = tx.fiatOutput;
               const isBankTxExpanded = expandedBankTxId === bankTx?.id;
               const isCryptoExpanded = expandedCryptoInputId === cryptoInput?.id;
               const isBankDataExpanded = expandedBankDataId === bankData?.id;
+              const isFiatOutputExpanded = expandedFiatOutputId === fiatOutput?.id;
               const detailError = txDetailErrors.get(tx.uid);
 
               return (
@@ -341,6 +349,18 @@ export function TransactionsTable({
                         '-'
                       )}
                     </td>
+                    <td className="px-3 py-2 text-sm text-dfxBlue-800 text-center">
+                      {fiatOutput ? (
+                        <button
+                          className="text-dfxBlue-300 underline hover:text-dfxBlue-800"
+                          onClick={() => onExpandFiatOutput(isFiatOutputExpanded ? undefined : fiatOutput.id)}
+                        >
+                          {fiatOutput.id}
+                        </button>
+                      ) : (
+                        '-'
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-sm text-dfxBlue-800">{formatDate(tx.created)}</td>
                     <td className="px-3 py-2 text-sm text-dfxBlue-800 text-center">
                       {tx.isCompleted ? (
@@ -353,7 +373,7 @@ export function TransactionsTable({
 
                   {isBankTxExpanded && bankTx && (
                     <tr key={`bankTx-${bankTx.id}`} className="bg-dfxGray-300/50">
-                      <td colSpan={15} className="px-6 py-3">
+                      <td colSpan={16} className="px-6 py-3">
                         <table className="text-sm text-dfxBlue-800 text-left">
                           <tbody>
                             <DetailRow label="Account Service Ref" value={bankTx.accountServiceRef} />
@@ -368,7 +388,7 @@ export function TransactionsTable({
 
                   {isBankDataExpanded && bankData && (
                     <tr key={`bankData-${bankData.id}`} className="bg-dfxGray-300/50">
-                      <td colSpan={15} className="px-6 py-3">
+                      <td colSpan={16} className="px-6 py-3">
                         <table className="text-sm text-dfxBlue-800 text-left">
                           <tbody>
                             <DetailRow label="IBAN" value={bankData.iban} mono />
@@ -404,7 +424,7 @@ export function TransactionsTable({
 
                   {isCryptoExpanded && cryptoInput && (
                     <tr key={`ci-${cryptoInput.id}`} className="bg-dfxGray-300/50">
-                      <td colSpan={15} className="px-6 py-3">
+                      <td colSpan={16} className="px-6 py-3">
                         <table className="text-sm text-dfxBlue-800 text-left">
                           <tbody>
                             <DetailRow
@@ -437,9 +457,78 @@ export function TransactionsTable({
                     </tr>
                   )}
 
+                  {isFiatOutputExpanded && fiatOutput && (
+                    <tr key={`fo-${fiatOutput.id}`} className="bg-dfxGray-300/50">
+                      <td colSpan={16} className="px-6 py-3">
+                        <table className="text-sm text-dfxBlue-800 text-left">
+                          <tbody>
+                            <DetailRow label="Type" value={fiatOutput.type} />
+                            <DetailRow
+                              label="Amount (buyFiat possibly batched)"
+                              value={
+                                fiatOutput.amount != null
+                                  ? `${fiatOutput.amount} ${fiatOutput.currency ?? ''}`
+                                  : undefined
+                              }
+                            />
+                            <DetailRow
+                              label="Valuta Date"
+                              value={fiatOutput.valutaDate ? formatDate(fiatOutput.valutaDate) : undefined}
+                            />
+                            <DetailRow label="Name" value={fiatOutput.name} />
+                            <DetailRow
+                              label="Address"
+                              value={
+                                [fiatOutput.address, fiatOutput.houseNumber].filter(Boolean).join(' ') || undefined
+                              }
+                            />
+                            <DetailRow
+                              label="ZIP / City"
+                              value={[fiatOutput.zip, fiatOutput.city].filter(Boolean).join(' ') || undefined}
+                            />
+                            <DetailRow label="Country" value={fiatOutput.country} />
+                            <DetailRow label="IBAN" value={fiatOutput.iban} mono />
+                            <DetailRow label="BIC" value={fiatOutput.bic} mono />
+                            <DetailRow label="Bank ID" value={fiatOutput.bank?.id} />
+                            <DetailRow label="Bank Name" value={fiatOutput.bank?.name} />
+                            <DetailRow label="Bank IBAN" value={fiatOutput.bank?.iban} mono />
+                            <DetailRow label="Bank Tx ID" value={fiatOutput.bankTxId} />
+                            <DetailRow label="Origin Entity ID" value={fiatOutput.originEntityId} />
+                            <DetailRow
+                              label="Ready Date"
+                              value={fiatOutput.isReadyDate ? formatDate(fiatOutput.isReadyDate) : undefined}
+                            />
+                            <DetailRow
+                              label="Transmitted Date"
+                              value={
+                                fiatOutput.isTransmittedDate ? formatDate(fiatOutput.isTransmittedDate) : undefined
+                              }
+                            />
+                            <DetailRow
+                              label="Confirmed Date"
+                              value={fiatOutput.isConfirmedDate ? formatDate(fiatOutput.isConfirmedDate) : undefined}
+                            />
+                            <DetailRow
+                              label="Approved Date"
+                              value={fiatOutput.isApprovedDate ? formatDate(fiatOutput.isApprovedDate) : undefined}
+                            />
+                            <DetailRow
+                              label="Output Date"
+                              value={fiatOutput.outputDate ? formatDate(fiatOutput.outputDate) : undefined}
+                            />
+                            <DetailRow
+                              label="Completed"
+                              value={fiatOutput.isComplete != null ? String(fiatOutput.isComplete) : undefined}
+                            />
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+
                   {expandedTxUid === tx.uid && (
                     <tr key={`txDetail-${tx.uid}`} className="bg-dfxGray-300/50">
-                      <td colSpan={15} className="px-6 py-3">
+                      <td colSpan={16} className="px-6 py-3">
                         {txDetailLoading === tx.uid ? (
                           <StyledLoadingSpinner size={SpinnerSize.SM} />
                         ) : detailError != null && !txDetailCache.has(tx.uid) ? (
@@ -579,7 +668,7 @@ export function TransactionsTable({
             })
           ) : (
             <tr>
-              <td colSpan={15} className="px-3 py-4 text-center text-dfxGray-700">
+              <td colSpan={16} className="px-3 py-4 text-center text-dfxGray-700">
                 No transactions
               </td>
             </tr>

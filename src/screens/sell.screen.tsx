@@ -34,7 +34,7 @@ import {
   StyledSearchDropdown,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FieldPath, FieldPathValue, useForm, useWatch } from 'react-hook-form';
 import { BankAccountSelector } from 'src/components/order/bank-account-selector';
 import { AddressSwitch } from 'src/components/payment/address-switch';
@@ -123,6 +123,7 @@ export default function SellScreen(): JSX.Element {
   } = useAppParams();
   const { toDescription, getCurrency, getDefaultCurrency } = useFiat();
   const { currencies, receiveFor } = useSell();
+  const sellableCurrencies = useMemo(() => currencies?.filter((c) => c.sellable), [currencies]);
   const { toString } = useBlockchain();
   const { rootRef } = useLayoutContext();
 
@@ -132,6 +133,7 @@ export default function SellScreen(): JSX.Element {
   const [kycError, setKycError] = useState<TransactionError>();
   const [isLoading, setIsLoading] = useState<Side>();
   const [paymentInfo, setPaymentInfo] = useState<Sell>();
+  const [isQuoteFinal, setIsQuoteFinal] = useState(false);
   const [balances, setBalances] = useState<AssetBalance[]>();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isTxDone, setTxDone] = useState<boolean>(false);
@@ -139,6 +141,7 @@ export default function SellScreen(): JSX.Element {
   const [bankAccountSelection, setBankAccountSelection] = useState(false);
   const [showsSwitchScreen, setShowsSwitchScreen] = useState(false);
   const [validatedData, setValidatedData] = useState<ValidatedData>();
+  const [retryToken, setRetryToken] = useState(0);
 
   // form
   const { control, handleSubmit, setValue, resetField } = useForm<FormData>({ mode: 'onTouched' });
@@ -149,6 +152,19 @@ export default function SellScreen(): JSX.Element {
   const selectedCurrency = useWatch({ control, name: 'currency' });
   const selectedTargetAmount = useWatch({ control, name: 'targetAmount' });
   const selectedAddress = useWatch({ control, name: 'address' });
+
+  const previousAmountRef = useRef<string>();
+  const previousTargetAmountRef = useRef<string>();
+  const spendClearedByUserRef = useRef(false);
+  const targetClearedByUserRef = useRef(false);
+  const isExactPriceWriteRef = useRef(false);
+  const quoteGeneration = useRef(0);
+  const enteredAmountLiveRef = useRef(enteredAmount);
+  const selectedTargetAmountLiveRef = useRef(selectedTargetAmount);
+  enteredAmountLiveRef.current = enteredAmount;
+  selectedTargetAmountLiveRef.current = selectedTargetAmount;
+  if (!enteredAmount && previousAmountRef.current) spendClearedByUserRef.current = true;
+  if (!selectedTargetAmount && previousTargetAmountRef.current) targetClearedByUserRef.current = true;
 
   const availableBalance = selectedAsset && findBalance(selectedAsset);
 
@@ -195,19 +211,24 @@ export default function SellScreen(): JSX.Element {
 
   useEffect(() => {
     const currency =
-      getCurrency(currencies, assetOut) ??
-      getCurrency(currencies, prefCurrency?.name) ??
-      getDefaultCurrency(currencies);
+      getCurrency(sellableCurrencies, assetOut) ??
+      getCurrency(sellableCurrencies, prefCurrency?.name) ??
+      getDefaultCurrency(sellableCurrencies);
     if (prefCurrency && currency) setVal('currency', currency);
-  }, [assetOut, getCurrency, prefCurrency, currencies]);
+  }, [assetOut, getCurrency, prefCurrency, sellableCurrencies]);
 
   useEffect(() => {
     if (amountIn) {
-      setVal('amount', amountIn);
+      if (!spendClearedByUserRef.current) setVal('amount', amountIn);
     } else if (amountOut) {
-      setVal('targetAmount', amountOut);
-    } else if (selectedAsset && !enteredAmount) {
-      // Asset-specific default amounts
+      if (!targetClearedByUserRef.current) setVal('targetAmount', amountOut);
+    } else if (
+      selectedAsset &&
+      !enteredAmount &&
+      !selectedTargetAmount &&
+      !spendClearedByUserRef.current &&
+      !targetClearedByUserRef.current
+    ) {
       const defaultAmount =
         selectedAsset.name === 'BTC' ? '0.001' : selectedAsset.name === 'ETH' ? '0.1' : '300';
       setVal('amount', defaultAmount);
@@ -233,9 +254,10 @@ export default function SellScreen(): JSX.Element {
   }, [selectedAddress]);
 
   useEffect(() => {
-    if (selectedBankAccount && selectedBankAccount.preferredCurrency)
-      setVal('currency', selectedBankAccount.preferredCurrency);
-  }, [selectedBankAccount]);
+    if (!selectedBankAccount?.preferredCurrency) return;
+    const currency = getCurrency(sellableCurrencies, selectedBankAccount.preferredCurrency.name);
+    if (currency) setVal('currency', currency);
+  }, [selectedBankAccount, sellableCurrencies, getCurrency]);
 
   useEffect(() => {
     if (!enteredAmount) {
@@ -243,27 +265,67 @@ export default function SellScreen(): JSX.Element {
     }
   }, [enteredAmount]);
 
+  // A field the user emptied stays an edit in progress until they type again.
   // SPEND data changed
   useEffect(() => {
+    const exactPriceWrite = isExactPriceWriteRef.current;
+    if (enteredAmount) {
+      spendClearedByUserRef.current = false;
+      if (enteredAmount !== previousAmountRef.current && !exactPriceWrite) {
+        targetClearedByUserRef.current = false;
+      }
+    } else if (previousAmountRef.current) {
+      spendClearedByUserRef.current = true;
+    }
+    if (enteredAmount !== previousAmountRef.current) isExactPriceWriteRef.current = false;
+    previousAmountRef.current = enteredAmount;
+
     const requiresUpdate =
       enteredAmount !== paymentInfo?.amount?.toString() || selectedAsset?.uniqueName !== paymentInfo?.asset.uniqueName;
 
     const hasSpendData = enteredAmount && selectedAsset;
     const hasGetData = selectedTargetAmount && selectedCurrency && selectedBankAccount;
 
+    if (spendClearedByUserRef.current || targetClearedByUserRef.current) {
+      quoteGeneration.current += 1;
+      isExactPriceWriteRef.current = false;
+      setIsQuoteFinal(false);
+    } else if (requiresUpdate && !exactPriceWrite) {
+      quoteGeneration.current += 1;
+      setIsQuoteFinal(false);
+      setPaymentInfo(undefined);
+    }
+
     if (requiresUpdate) {
-      if (hasSpendData) {
+      if (hasSpendData && !targetClearedByUserRef.current) {
         updateData(Side.GET);
+      } else if (spendClearedByUserRef.current || targetClearedByUserRef.current) {
+        setValidatedData(undefined);
+        setPaymentInfo(undefined);
+        setKycError(undefined);
+        setErrorMessage(undefined);
+        setCustomAmountError(undefined);
+        setIsLoading(undefined);
       } else if (hasGetData) {
         updateData(Side.SPEND);
       }
     }
-
-    // requiresUpdate && updateData(Side.GET);
   }, [enteredAmount, selectedAsset]);
 
   // GET data changed
   useEffect(() => {
+    const exactPriceWrite = isExactPriceWriteRef.current;
+    if (selectedTargetAmount) {
+      targetClearedByUserRef.current = false;
+      if (selectedTargetAmount !== previousTargetAmountRef.current && !exactPriceWrite) {
+        spendClearedByUserRef.current = false;
+      }
+    } else if (previousTargetAmountRef.current) {
+      targetClearedByUserRef.current = true;
+    }
+    if (selectedTargetAmount !== previousTargetAmountRef.current) isExactPriceWriteRef.current = false;
+    previousTargetAmountRef.current = selectedTargetAmount;
+
     const requiresUpdate =
       selectedTargetAmount !== paymentInfo?.estimatedAmount?.toString() ||
       selectedCurrency?.name !== paymentInfo?.currency?.name ||
@@ -272,15 +334,35 @@ export default function SellScreen(): JSX.Element {
     const hasSpendData = enteredAmount && selectedAsset;
     const hasGetData = selectedTargetAmount && selectedCurrency && selectedBankAccount;
 
+    if (spendClearedByUserRef.current || targetClearedByUserRef.current) {
+      quoteGeneration.current += 1;
+      isExactPriceWriteRef.current = false;
+      setIsQuoteFinal(false);
+    } else if (requiresUpdate && !exactPriceWrite) {
+      quoteGeneration.current += 1;
+      setIsQuoteFinal(false);
+      setPaymentInfo(undefined);
+    }
+
     if (requiresUpdate) {
-      if (hasGetData) {
-        updateData(Side.SPEND);
+      if (hasGetData && !spendClearedByUserRef.current) {
+        const ibanOnlyChange =
+          Boolean(enteredAmount) &&
+          selectedBankAccount?.iban !== validatedData?.iban &&
+          selectedTargetAmount === paymentInfo?.estimatedAmount?.toString() &&
+          selectedCurrency?.name === paymentInfo?.currency?.name;
+        updateData(ibanOnlyChange ? Side.GET : Side.SPEND);
+      } else if (targetClearedByUserRef.current || spendClearedByUserRef.current) {
+        setValidatedData(undefined);
+        setPaymentInfo(undefined);
+        setKycError(undefined);
+        setErrorMessage(undefined);
+        setCustomAmountError(undefined);
+        setIsLoading(undefined);
       } else if (hasSpendData) {
         updateData(Side.GET);
       }
     }
-
-    // requiresUpdate && updateData(isSameTargetAmount && enteredAmount ? Side.GET : Side.SPEND);
   }, [selectedTargetAmount, selectedCurrency, selectedBankAccount]);
 
   function updateData(sideToUpdate: Side) {
@@ -292,62 +374,78 @@ export default function SellScreen(): JSX.Element {
       bankAccount: selectedBankAccount,
     });
 
-    data && setValidatedData({ ...data, sideToUpdate });
+    setValidatedData(data ? { ...data, sideToUpdate } : undefined);
   }
 
   useEffect(() => {
     let isRunning = true;
 
     setErrorMessage(undefined);
+    setKycError(undefined);
     setPaymentInfo(undefined);
+    setIsQuoteFinal(false);
     setIsLoading(undefined);
 
     if (!validatedData) return;
 
+    const generation = quoteGeneration.current;
     const data: SellPaymentInfo = { ...validatedData, externalTransactionId };
 
     setIsLoading(validatedData.sideToUpdate);
     receiveFor(data)
       .then((sell) => {
-        if (isRunning) {
-          validateSell(sell);
-          setPaymentInfo(sell);
-
-          // load exact price
-          if (sell) {
-            return receiveFor({ ...data, exactPrice: true });
-          }
-        }
+        if (!isRunning || !sell || generation !== quoteGeneration.current) return;
+        validateSell(sell);
+        setPaymentInfo(sell);
+        return receiveFor({ ...data, exactPrice: true });
       })
       .then((info) => {
-        if (isRunning && info) {
-          validatedData.sideToUpdate === Side.SPEND
-            ? setVal('amount', info.amount.toString())
-            : setVal('targetAmount', info.estimatedAmount.toString());
-          setPaymentInfo(info);
+        if (!isRunning || !info) return;
+        if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
+        if (generation !== quoteGeneration.current) return;
+        if (validatedData.sideToUpdate === Side.SPEND) {
+          const nextAmount = info.amount.toString();
+          if (enteredAmountLiveRef.current !== nextAmount) {
+            isExactPriceWriteRef.current = true;
+            setVal('amount', nextAmount);
+          } else {
+            isExactPriceWriteRef.current = false;
+          }
+        } else {
+          const nextTarget = info.estimatedAmount.toString();
+          if (selectedTargetAmountLiveRef.current !== nextTarget) {
+            isExactPriceWriteRef.current = true;
+            setVal('targetAmount', nextTarget);
+          } else {
+            isExactPriceWriteRef.current = false;
+          }
         }
+        setPaymentInfo(info);
+        setIsQuoteFinal(true);
       })
       .catch((error: ApiError) => {
-        if (isRunning) {
-          if (error.statusCode === 400 && error.message === 'Ident data incomplete') {
-            navigate('/profile');
+        if (!isRunning || generation !== quoteGeneration.current) return;
+        if (error.statusCode === 400 && error.message === 'Ident data incomplete') {
+          navigate('/profile');
+        } else {
+          setPaymentInfo(undefined);
+          setIsQuoteFinal(false);
+          const kycErrorFromMessage = getKycErrorFromMessage(error.message);
+          if (kycErrorFromMessage) {
+            setKycError(kycErrorFromMessage);
           } else {
-            setPaymentInfo(undefined);
-            const kycErrorFromMessage = getKycErrorFromMessage(error.message);
-            if (kycErrorFromMessage) {
-              setKycError(kycErrorFromMessage);
-            } else {
-              setErrorMessage(error.message ?? 'Unknown error');
-            }
+            setErrorMessage(error.message ?? 'Unknown error');
           }
         }
       })
-      .finally(() => isRunning && setIsLoading(undefined));
+      .finally(() => {
+        if (isRunning && generation === quoteGeneration.current) setIsLoading(undefined);
+      });
 
     return () => {
       isRunning = false;
     };
-  }, [useDebounce(validatedData, 500)]);
+  }, [useDebounce(validatedData, 500), retryToken]);
 
   function validateSell(sell: Sell): void {
     setCustomAmountError(undefined);
@@ -418,7 +516,7 @@ export default function SellScreen(): JSX.Element {
     asset,
     targetAmount: targetAmountStr,
     bankAccount,
-  }: Partial<FormData> = {}): SellPaymentInfo | undefined {
+  }: Partial<FormData>): SellPaymentInfo | undefined {
     const amount = Number(amountStr);
     const targetAmount = Number(targetAmountStr);
     if (asset != null && currency != null && bankAccount != null) {
@@ -467,8 +565,12 @@ export default function SellScreen(): JSX.Element {
     return assets.filter((a) => allowedAssets.some((f) => isSameAsset(a, f)));
   }
 
-  function onSubmit(_data: FormData) {
-    // TODO: (Krysh fix broken form validation and onSubmit
+  function onSubmit(_data?: FormData) {
+    if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
+    if (!paymentInfo || !isQuoteFinal || kycError || errorMessage || customAmountError?.hideInfos || isProcessing)
+      return;
+    if (selectedAsset?.category === AssetCategory.PRIVATE && !flags?.includes('private')) return;
+    void handleNext(paymentInfo);
   }
 
   function setAddress() {
@@ -487,14 +589,14 @@ export default function SellScreen(): JSX.Element {
     setIsProcessing(true);
     setErrorMessage(undefined);
 
-    await updateBankAccount();
-
-    if (canSendTransaction() && !activeWallet) {
-      closeServices({ type: CloseType.SELL, isComplete: false, sell: paymentInfo }, false);
-      return;
-    }
-
     try {
+      await updateBankAccount();
+
+      if (canSendTransaction() && !activeWallet) {
+        closeServices({ type: CloseType.SELL, isComplete: false, sell: paymentInfo }, false);
+        return;
+      }
+
       if (canSendTransaction()) {
         await sendTransaction(paymentInfo).then(setSellTxId);
       }
@@ -531,6 +633,13 @@ export default function SellScreen(): JSX.Element {
       ) : paymentInfo && isTxDone ? (
         <SellCompletion paymentInfo={paymentInfo} navigateOnClose={true} txId={sellTxId} />
       ) : (
+        <form
+          className="w-full"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
         <Form
           control={control}
           rules={rules}
@@ -539,7 +648,7 @@ export default function SellScreen(): JSX.Element {
           translate={translateError}
           hasFormElement={false}
         >
-          {availableAssets && currencies && bankAccounts && (
+          {availableAssets && sellableCurrencies && bankAccounts && (
             <StyledVerticalStack gap={8} full center className="relative">
               <StyledVerticalStack gap={2} full>
                 <h2 className="text-dfxGray-700">{translate('screens/buy', 'You spend')}</h2>
@@ -628,7 +737,7 @@ export default function SellScreen(): JSX.Element {
                       rootRef={rootRef}
                       name="currency"
                       placeholder={translate('general/actions', 'Select') + '...'}
-                      items={currencies}
+                      items={sellableCurrencies}
                       labelFunc={(item) => item.name}
                       descriptionFunc={(item) => toDescription(item)}
                       full
@@ -659,7 +768,7 @@ export default function SellScreen(): JSX.Element {
                       <StyledButton
                         width={StyledButtonWidth.MIN}
                         label={translate('general/actions', 'Retry')}
-                        onClick={() => updateData(Side.GET)} // re-trigger
+                        onClick={() => setRetryToken((token) => token + 1)}
                         className="mt-4"
                         color={StyledButtonColor.STURDY_WHITE}
                       />
@@ -712,7 +821,8 @@ export default function SellScreen(): JSX.Element {
                                 ? 'Complete transaction in your wallet'
                                 : 'Click here once you have issued the transaction',
                             )}
-                            onClick={() => handleNext(paymentInfo)}
+                            onClick={() => onSubmit()}
+                            disabled={!isQuoteFinal}
                             caps={false}
                             className="mt-4"
                             isLoading={isProcessing}
@@ -725,6 +835,7 @@ export default function SellScreen(): JSX.Element {
             </StyledVerticalStack>
           )}
         </Form>
+        </form>
       )}
     </>
   );

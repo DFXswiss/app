@@ -1,6 +1,6 @@
 import { BankAccount, useBankAccount, useBankAccountContext, Utils, Validations } from '@dfx.swiss/react';
 import { StyledModalButton, StyledVerticalStack } from '@dfx.swiss/react-components';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AddBankAccount } from 'src/components/payment/add-bank-account';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useWindowContext } from 'src/contexts/window.context';
@@ -34,27 +34,55 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
   const { width } = useWindowContext();
 
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
+  const requestedCreateIbanRef = useRef<string>();
+  const bankAccountLiveRef = useRef(bankAccount);
+  const mountedRef = useRef(true);
+  bankAccountLiveRef.current = bankAccount;
 
   useEffect(() => {
-    if (bankAccounts) {
-      const account =
-        getAccount(bankAccounts, bankAccount) ??
-        bankAccounts.find((a) => a.default) ??
-        (bankAccounts.length === 1 ? bankAccounts[0] : undefined);
-      if (account && !value) {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!bankAccounts) return;
+
+    const fromParam = bankAccount ? getAccount(bankAccounts, bankAccount) : undefined;
+    const fallback =
+      bankAccounts.find((a) => a.default) ?? (bankAccounts.length === 1 ? bankAccounts[0] : undefined);
+    const account = fromParam ?? (bankAccount ? undefined : fallback);
+
+    if (account) {
+      if (bankAccount) {
+        if (value?.id !== account.id) onChange(account);
+      } else if (!value) {
         onChange(account);
-      } else if (
-        bankAccount &&
-        !isCreatingAccount &&
-        Validations.Iban(allowedCountries).validate(bankAccount) === true
-      ) {
-        setIsCreatingAccount(true);
-        createAccount({ iban: bankAccount })
-          .then((b) => onChange(b))
-          .finally(() => setIsCreatingAccount(false));
       }
+      return;
     }
-  }, [bankAccount, getAccount, bankAccounts, allowedCountries, value, onChange]);
+
+    if (
+      bankAccount &&
+      !isCreatingAccount &&
+      requestedCreateIbanRef.current !== bankAccount &&
+      Validations.Iban(allowedCountries).validate(bankAccount) === true
+    ) {
+      const requestedIban = bankAccount;
+      requestedCreateIbanRef.current = requestedIban;
+      setIsCreatingAccount(true);
+      createAccount({ iban: requestedIban })
+        .then((b) => {
+          if (!mountedRef.current || bankAccountLiveRef.current !== requestedIban) return;
+          onChange(b);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (mountedRef.current) setIsCreatingAccount(false);
+        });
+    }
+  }, [bankAccount, getAccount, bankAccounts, allowedCountries, value, onChange, isCreatingAccount, createAccount]);
 
   return (
     <>

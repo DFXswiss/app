@@ -14,18 +14,18 @@ Reusable web widget to buy, sell and swap crypto assets
 ### Quick Start
 
 ```bash
-# 1. Start the API first (in the api repository)
+# 1. Start the API first (in the backend repository; local folder is still named api)
 cd ../api
 docker-compose up -d
 npm run start:local
 
-# 2. Then start the services (in this repository)
-cd ../services
+# 2. Then start the app (in this repository)
+cd ../app
 npm install
 npm run start
 ```
 
-The services will be available at http://localhost:3001
+The app will be available at http://localhost:3001
 
 ### Configuration
 

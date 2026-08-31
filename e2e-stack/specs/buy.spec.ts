@@ -193,13 +193,38 @@ async function chooseFromSectionSearchDropdown(
     .click();
 }
 
+function spendAmountInput(page: Page): Locator {
+  return spendSection(page).locator('input[type="number"]').first();
+}
+
+function getAmountInput(page: Page): Locator {
+  return getSection(page).locator('input[type="number"]').first();
+}
+
 async function setSpendAmount(page: Page, amount: string): Promise<void> {
-  const input = spendSection(page).locator('input[type="number"]').first();
+  const input = spendAmountInput(page);
   await input.click();
   await input.fill('');
   await input.fill(amount);
   await input.blur();
 }
+
+async function clearNumberInput(input: Locator): Promise<void> {
+  await input.click();
+  await input.fill('');
+  await input.blur();
+}
+
+/** Quote-capable /buy user: KYC 50 plus a deposit limit so LIMIT_EXCEEDED does not hide payment info. */
+async function openQuoteCapableBuy(page: Page, tag: string) {
+  const user = await createUser({ tag, kycLevel: 50, completePersonalData: true });
+  await queryRows(`UPDATE user_data SET "depositLimit" = 1000000 WHERE id = $1`, [user.userDataId]);
+  await openScreen(page, '/buy', user.jwt);
+  await expect(page.getByRole('heading', { name: 'You spend' })).toBeVisible();
+  return user;
+}
+
+
 
 /** Capture the latest successful PUT /v1/buy/paymentInfos JSON body. */
 function attachPaymentInfoCapture(page: Page): { get: () => PaymentInfoPayload | undefined } {
@@ -534,6 +559,164 @@ test.describe('Buy flow', () => {
     await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
   });
 
+  async function submitBuyForm(page: Page): Promise<void> {
+    const form = page.locator('form').first();
+    await expect(form).toBeVisible();
+    await form.evaluate((el) => (el as HTMLFormElement).requestSubmit());
+  }
+
+  test('/buy: native form submit confirms a final quote', async ({ page }) => {
+    test.setTimeout(90000);
+    await openChfEthAmountIn(page, 'buy-form-submit', '100');
+    expect(await waitForQuoteUi(page, 45000)).toBe('payment');
+    // Payment Information can appear before the exact-price quote is final; confirm()
+    // no-ops until then. The CTA is disabled until isQuoteFinal — wait for that, same
+    // as the click path.
+    const confirmBtn = page.getByRole('button', { name: /Click here once you have issued the transfer/i });
+    await expect(confirmBtn).toBeEnabled();
+
+    await submitBuyForm(page);
+    await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
+  });
+
+  test('/buy: native form submit does not confirm after spend is cleared', async ({ page }) => {
+    test.setTimeout(90000);
+    await openChfEthAmountIn(page, 'buy-form-submit-cleared', '100');
+    expect(await waitForQuoteUi(page, 45000)).toBe('payment');
+
+    await clearNumberInput(spendAmountInput(page));
+    await expect.poll(async () => spendAmountInput(page).inputValue(), { timeout: 8000 }).toBe('');
+
+    await submitBuyForm(page);
+    await expect(page.getByText(/Nice! You are all set!/i)).toHaveCount(0);
+    await expect(spendAmountInput(page)).toHaveValue('');
+  });
+
+  async function openChfEthAmountIn(page: Page, tag: string, amountIn: string) {
+    await openQuoteCapableBuy(page, tag);
+    await page.goto(`/buy?asset-in=CHF&asset-out=ETH&amount-in=${amountIn}&blockchain=Ethereum`);
+    await page.waitForLoadState('networkidle');
+    await expect.poll(() => normPath(new URL(page.url()).pathname)).toBe('/buy');
+    await expect(spendAmountInput(page)).toHaveValue(amountIn);
+  }
+
+  test('/buy: default spend amount stays 300 after quote settlement', async ({ page }) => {
+    test.setTimeout(90000);
+    await openQuoteCapableBuy(page, 'buy-default-300');
+
+    await expect(spendAmountInput(page)).toHaveValue('300');
+    const state = await waitForQuoteUi(page, 45000);
+    expect(state, 'default 300 must leave the loading spinner').not.toBe('pending');
+    // Exact-price used to write 299.98 back into the spend field. The default side stays 300
+    // even when the quote itself is limit/min (seed limits can reject 300).
+    await expect(spendAmountInput(page)).toHaveValue('300');
+  });
+
+  test('/buy: clearing the spend amount keeps the field empty (no cross-side refill)', async ({ page }) => {
+    test.setTimeout(90000);
+    await openChfEthAmountIn(page, 'buy-clear-spend', '100');
+    expect(await waitForQuoteUi(page, 45000)).toBe('payment');
+    await expect(spendAmountInput(page)).toHaveValue('100');
+
+    await clearNumberInput(spendAmountInput(page));
+
+    await expect
+      .poll(
+        async () => {
+          const value = await spendAmountInput(page).inputValue();
+          const paymentVisible = await page
+            .getByRole('heading', { name: 'Payment Information' })
+            .isVisible()
+            .catch(() => false);
+          return { value, paymentVisible };
+        },
+        { timeout: 8000, message: 'cleared spend amount must stay empty and must not refill from the target side' },
+      )
+      .toEqual({ value: '', paymentVisible: false });
+  });
+
+  test('/buy: switching currency after clearing spend does not refill the field', async ({ page }) => {
+    test.setTimeout(90000);
+    await openChfEthAmountIn(page, 'buy-clear-fx', '100');
+    expect(await waitForQuoteUi(page, 45000)).toBe('payment');
+
+    await clearNumberInput(spendAmountInput(page));
+    await expect.poll(async () => spendAmountInput(page).inputValue(), { timeout: 8000 }).toBe('');
+
+    await chooseFromSectionDropdown(page, spendSection(page), 'EUR');
+
+    await expect
+      .poll(async () => spendAmountInput(page).inputValue(), {
+        timeout: 8000,
+        message: 'cleared spend amount must stay empty after a currency change',
+      })
+      .toBe('');
+  });
+
+  test('/buy: retyping a custom spend amount quotes exactly that amount', async ({ page }) => {
+    test.setTimeout(90000);
+    const capture = attachPaymentInfoCapture(page);
+    await openChfEthAmountIn(page, 'buy-retype-150', '100');
+    expect(await waitForQuoteUi(page, 45000)).toBe('payment');
+
+    await clearNumberInput(spendAmountInput(page));
+    await expect.poll(async () => spendAmountInput(page).inputValue(), { timeout: 8000 }).toBe('');
+
+    await setSpendAmount(page, '150');
+    const state = await waitForQuoteUi(page, 45000);
+    expect(state, 'retyped 150 must reach Payment Information').toBe('payment');
+    await expect(spendAmountInput(page)).toHaveValue('150');
+
+    await expect
+      .poll(
+        () => capture.get()?.amount,
+        { timeout: 10000, message: 'PUT /buy/paymentInfos must quote the retyped amount' },
+      )
+      .toBeCloseTo(150, 2);
+  });
+
+  test('/buy: clearing the target amount keeps it empty', async ({ page }) => {
+    test.setTimeout(90000);
+    await openChfEthAmountIn(page, 'buy-clear-target', '100');
+    expect(await waitForQuoteUi(page, 45000)).toBe('payment');
+    await expect(getAmountInput(page)).not.toHaveValue('');
+
+    await clearNumberInput(getAmountInput(page));
+
+    await expect
+      .poll(
+        async () => {
+          const value = await getAmountInput(page).inputValue();
+          const paymentVisible = await page
+            .getByRole('heading', { name: 'Payment Information' })
+            .isVisible()
+            .catch(() => false);
+          return { value, paymentVisible };
+        },
+        { timeout: 8000, message: 'cleared target amount must stay empty and must not refill from the spend side' },
+      )
+      .toEqual({ value: '', paymentVisible: false });
+  });
+
+  test('/buy: amount-in deep link is used instead of default 300', async ({ page }) => {
+    test.setTimeout(90000);
+    await openChfEthAmountIn(page, 'buy-amount-in', '100');
+    const state = await waitForQuoteUi(page, 45000);
+    expect(state).not.toBe('pending');
+    await expect(spendAmountInput(page)).toHaveValue('100');
+  });
+
+  test('/buy: switching currency after a quote invalidates payment information', async ({ page }) => {
+    test.setTimeout(90000);
+    await openChfEthAmountIn(page, 'buy-fx-switch', '100');
+    expect(await waitForQuoteUi(page, 45000)).toBe('payment');
+    await expect(page.getByRole('heading', { name: 'Payment Information' })).toBeVisible();
+
+    await chooseFromSectionDropdown(page, spendSection(page), 'EUR');
+
+    await expect(page.getByRole('heading', { name: 'Payment Information' })).toHaveCount(0);
+  });
+
   // =========================================================================
   // /buy/info
   // =========================================================================
@@ -778,13 +961,7 @@ test.describe('Buy flow', () => {
     await expect(save).toBeDisabled();
   });
 
-  // Known API bug: BuyCryptoService.changeRoute throws when userData on the route is null under
-  // this request shape. test.fail keeps the case running; remove once the API is fixed.
   test('/buyCrypto/update: Admin save updates buyId and shows Saved', async ({ page }) => {
-    test.fail(
-      true,
-      'BuyCryptoService.changeRoute throws TypeError reading id of null userData on the route (API 500).',
-    );
     test.setTimeout(90000);
     const { jwt: adminJwt } = await loginAs('Admin');
 

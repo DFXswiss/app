@@ -68,6 +68,7 @@ export default function ComplianceUserScreen(): JSX.Element {
   const [expandedBankTxId, setExpandedBankTxId] = useState<number>();
   const [expandedCryptoInputId, setExpandedCryptoInputId] = useState<number>();
   const [expandedBankDataId, setExpandedBankDataId] = useState<number>();
+  const [expandedFiatOutputId, setExpandedFiatOutputId] = useState<number>();
   const [expandedTxUid, setExpandedTxUid] = useState<string>();
   const { containerRef, splitPercent, setSplitPercent, handleSplitDrag } = useSplitPane();
 
@@ -75,12 +76,22 @@ export default function ComplianceUserScreen(): JSX.Element {
     setExpandedBankTxId(id);
     setExpandedCryptoInputId(undefined);
     setExpandedBankDataId(undefined);
+    setExpandedFiatOutputId(undefined);
     setExpandedTxUid(undefined);
   }
 
   function handleExpandCryptoInput(id: number | undefined): void {
     setExpandedCryptoInputId(id);
     setExpandedBankTxId(undefined);
+    setExpandedBankDataId(undefined);
+    setExpandedFiatOutputId(undefined);
+    setExpandedTxUid(undefined);
+  }
+
+  function handleExpandFiatOutput(id: number | undefined): void {
+    setExpandedFiatOutputId(id);
+    setExpandedBankTxId(undefined);
+    setExpandedCryptoInputId(undefined);
     setExpandedBankDataId(undefined);
     setExpandedTxUid(undefined);
   }
@@ -89,6 +100,7 @@ export default function ComplianceUserScreen(): JSX.Element {
     setExpandedBankDataId(id);
     setExpandedBankTxId(undefined);
     setExpandedCryptoInputId(undefined);
+    setExpandedFiatOutputId(undefined);
     setExpandedTxUid(undefined);
   }
 
@@ -97,6 +109,7 @@ export default function ComplianceUserScreen(): JSX.Element {
     setExpandedBankTxId(undefined);
     setExpandedCryptoInputId(undefined);
     setExpandedBankDataId(undefined);
+    setExpandedFiatOutputId(undefined);
   }
 
   async function openFile(file: KycFile): Promise<void> {
@@ -267,11 +280,13 @@ export default function ComplianceUserScreen(): JSX.Element {
               expandedBankTxId={expandedBankTxId}
               expandedCryptoInputId={expandedCryptoInputId}
               expandedBankDataId={expandedBankDataId}
+              expandedFiatOutputId={expandedFiatOutputId}
               expandedTxUid={expandedTxUid}
               canPerformActions={data.permissions.canPerformTransactionActions}
               onExpandBankTx={handleExpandBankTx}
               onExpandCryptoInput={handleExpandCryptoInput}
               onExpandBankData={handleExpandBankData}
+              onExpandFiatOutput={handleExpandFiatOutput}
               onExpandTxUid={handleExpandTxUid}
               onStatusChanged={loadData}
             />

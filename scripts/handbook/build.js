@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Handbook assembly for DFXswiss/services.
+ * Handbook assembly for DFXswiss/app.
  *
  * Auto-discovers screenshot baselines, design tokens, logos and markdown
  * docs; generates a single deterministic index.html + manifest.json.
@@ -898,10 +898,21 @@ function main() {
         overflow: hidden;
         scroll-margin-top: 20px;
       }
-      .test:target {
-        outline: 2px solid var(--brand);
-        outline-offset: -1px;
+      .test:target,
+      .test.handbook-target,
+      details.spec.handbook-target {
+        outline: 3px solid var(--brand);
+        outline-offset: 4px;
       }
+      .permalink {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--brand);
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .permalink:hover { text-decoration: underline; }
       .test .head {
         display: flex;
         flex-wrap: wrap;
@@ -1064,23 +1075,19 @@ function main() {
       .doc-preview img { max-width: 100%; height: auto; }
   `;
 
+  const deepLinkJs = fs.readFileSync(path.join(scriptDir, 'deep-link.js'), 'utf8');
   const script = `
+    ${deepLinkJs}
     (function () {
-      function openTargetFromHash() {
-        var hash = location.hash ? location.hash.slice(1) : '';
-        if (!hash) return;
-        // IDs may start with a digit — use getElementById, not querySelector('#'+…).
-        var el = document.getElementById(hash);
-        if (!el) return;
-        var details = el.closest ? el.closest('details.spec') : null;
-        if (!details && el.tagName === 'DETAILS') details = el;
-        if (details) details.open = true;
-        if (typeof el.scrollIntoView === 'function') {
-          el.scrollIntoView({ block: 'start' });
+      function run() {
+        if (globalThis.handbookDeepLink) {
+          globalThis.handbookDeepLink.revealTarget(document, location);
         }
       }
-      document.addEventListener('DOMContentLoaded', openTargetFromHash);
-      window.addEventListener('hashchange', openTargetFromHash);
+      document.addEventListener('DOMContentLoaded', run);
+      window.addEventListener('load', run);
+      window.addEventListener('hashchange', run);
+      window.addEventListener('popstate', run);
 
       document.addEventListener('click', function (ev) {
         var t = ev.target;
@@ -1192,10 +1199,12 @@ function main() {
         badges += `<span class="badge platform">${escapeHtml(e.platform)}</span>`;
       }
       const shotHref = escapeHtml(encodeHtmlPath(e.outputPath));
+      const shotLink = `?shot=${encodeURIComponent(cardId)}`;
       cards +=
         `<div class="test" id="${escapeHtml(cardId)}">` +
-        `<div class="head"><span class="name">${escapeHtml(e.title)}</span>${badges}</div>` +
-        `<div class="img"><a href="${shotHref}">` +
+        `<div class="head"><span class="name">${escapeHtml(e.title)}</span>${badges}` +
+        `<a class="permalink" href="${escapeHtml(shotLink)}">Direktlink</a></div>` +
+        `<div class="img"><a href="${escapeHtml(shotLink)}">` +
         `<img src="${shotHref}" alt="${escapeHtml(e.title)}" loading="lazy"></a></div>` +
         `</div>`;
     }
@@ -1236,7 +1245,7 @@ function main() {
   let tocHtml = '<ol>';
   for (const t of tocItems) {
     tocHtml +=
-      `<li><a href="#${escapeHtml(t.id)}"><span class="spec-num">${escapeHtml(t.n)}</span>` +
+      `<li><a href="?group=${encodeURIComponent(t.id)}"><span class="spec-num">${escapeHtml(t.n)}</span>` +
       `${escapeHtml(t.title.replace(/&amp;/g, '&'))}</a></li>`;
   }
   tocHtml += '</ol>';

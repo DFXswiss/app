@@ -31,6 +31,11 @@ interface AmlCheckPendingPanelProps {
 
 const AML_CHECK_OPTIONS = [CheckStatus.PASS, CheckStatus.FAIL, CheckStatus.PENDING, 'Reset'] as const;
 
+// Narrowed by the panel's filters below: a pending manual check always carries type, amlCheck and amlReason,
+// a resettable BuyCrypto always carries buyCryptoId, amlCheck and buyCryptoStatus.
+type PendingTransaction = TransactionInfo & { type: string; amlCheck: string; amlReason: string };
+type ResettableTransaction = TransactionInfo & { buyCryptoId: number; amlCheck: string; buyCryptoStatus: string };
+
 const AML_REASON_OPTIONS: AmlReason[] = [
   AmlReason.NA,
   ...(Object.values(AmlReason) as AmlReason[]).filter((r) => r !== AmlReason.NA).sort((a, b) => a.localeCompare(b)),
@@ -44,7 +49,7 @@ function TransactionEntry({
   userDataId,
   canResetBuyCrypto,
 }: {
-  tx: TransactionInfo;
+  tx: PendingTransaction;
   onUpdate: (data: AmlCheckUpdate, clerk: string) => Promise<void>;
   onReset: (clerk: string) => Promise<void>;
   isSaving: boolean;
@@ -56,27 +61,32 @@ function TransactionEntry({
   const allowPass = canManuallySetAmlPass(session?.role);
   const amlCheckOptions = AML_CHECK_OPTIONS.filter((opt) => opt !== CheckStatus.PASS || allowPass);
   const { name: clerk, isLoading: isLoadingClerk } = useStaffVerifiedName();
-  const [amlCheck, setAmlCheck] = useState(tx.amlCheck ?? '');
-  const [amlReason, setAmlReason] = useState<AmlReason>((tx.amlReason as AmlReason) ?? AmlReason.NA);
+  const [amlCheck, setAmlCheck] = useState<string>(tx.amlCheck);
+  const [amlReason, setAmlReason] = useState<AmlReason>(tx.amlReason as AmlReason);
   const [setPriceDate, setSetPriceDate] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  // Reset clears amlCheck, amlReason and priceDefinitionAllowedDate on the API side and hands the
+  // transaction back to the automatic AML run, so the decision inputs below carry no meaning for it.
+  // Fail never sets priceDefinitionAllowedDate (backend uses that field for Pass / payout price definition).
+  const isReset = amlCheck === 'Reset';
+  const isFail = amlCheck === CheckStatus.FAIL;
 
-  async function handleSave(): Promise<void> {
-    if (!amlCheck || !clerk) return;
+  async function handleSave(signedBy: string): Promise<void> {
     // Fail-closed client guard; API rejects Pass for non-Admin regardless.
     if (amlCheck === CheckStatus.PASS && !allowPass) return;
     setIsProcessing(true);
     try {
       if (amlCheck === 'Reset') {
-        await onReset(clerk);
+        await onReset(signedBy);
       } else {
         await onUpdate(
           {
             amlCheck,
             amlReason,
-            priceDefinitionAllowedDate: setPriceDate ? new Date().toISOString() : undefined,
+            priceDefinitionAllowedDate:
+              setPriceDate && amlCheck !== CheckStatus.FAIL ? new Date().toISOString() : undefined,
           },
-          clerk,
+          signedBy,
         );
       }
     } finally {
@@ -89,7 +99,7 @@ function TransactionEntry({
       {/* Status */}
       <div className="flex items-center gap-3">
         <span className="text-sm text-dfxGray-700 font-medium">Status:</span>
-        {statusBadge(tx.amlCheck ?? '-')}
+        {statusBadge(tx.amlCheck)}
         <span className="text-xs text-dfxGray-700">Eingangsdatum: {formatSwissDate(tx.created)}</span>
       </div>
 
@@ -107,7 +117,7 @@ function TransactionEntry({
           </div>
           <div className="flex items-center justify-between px-3 py-2 border-b border-dfxGray-300">
             <span className="text-sm text-dfxBlue-800">Type</span>
-            <span className="text-sm text-dfxBlue-800">{tx.type ?? '-'}</span>
+            <span className="text-sm text-dfxBlue-800">{tx.type}</span>
           </div>
           <div className="flex items-center justify-between px-3 py-2 border-b border-dfxGray-300">
             <span className="text-sm text-dfxBlue-800">Source</span>
@@ -155,7 +165,7 @@ function TransactionEntry({
           </div>
           <div className="flex items-center justify-between px-3 py-2 border-b border-dfxGray-300">
             <span className="text-sm text-dfxBlue-800">AML Reason</span>
-            <span className="text-sm text-dfxBlue-800">{tx.amlReason ?? '-'}</span>
+            <span className="text-sm text-dfxBlue-800">{tx.amlReason}</span>
           </div>
         </div>
       </div>
@@ -191,29 +201,40 @@ function TransactionEntry({
               Reset ist erst verfügbar, wenn der BuyCrypto noch unvollständig ist und kein Payout/Refund/Batch läuft.
             </p>
           )}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-dfxGray-300">
-            <span className="text-sm text-dfxBlue-800">AmlReason</span>
-            <select
-              className="ml-4 shrink-0 px-2 py-1 text-sm border border-dfxGray-400 rounded bg-white text-dfxBlue-800 max-w-[250px]"
-              value={amlReason}
-              onChange={(e) => setAmlReason(e.target.value as AmlReason)}
-            >
-              {AML_REASON_OPTIONS.map((reason) => (
-                <option key={reason} value={reason}>
-                  {reason}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center justify-between px-3 py-2 border-b border-dfxGray-300 last:border-0">
-            <span className="text-sm text-dfxBlue-800">priceDefinitionAllowedDate setzen</span>
-            <input
-              type="checkbox"
-              checked={setPriceDate}
-              onChange={(e) => setSetPriceDate(e.target.checked)}
-              className="rounded"
-            />
-          </div>
+          {isReset ? (
+            <p className="px-3 py-2 text-xs text-dfxGray-700">
+              Reset entfernt AmlCheck, AmlReason und priceDefinitionAllowedDate. Die automatische AML-Prüfung
+              entscheidet neu.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between px-3 py-2 border-b border-dfxGray-300">
+                <span className="text-sm text-dfxBlue-800">AmlReason</span>
+                <select
+                  className="ml-4 shrink-0 px-2 py-1 text-sm border border-dfxGray-400 rounded bg-white text-dfxBlue-800 max-w-[250px]"
+                  value={amlReason}
+                  onChange={(e) => setAmlReason(e.target.value as AmlReason)}
+                >
+                  {AML_REASON_OPTIONS.map((reason) => (
+                    <option key={reason} value={reason}>
+                      {reason}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {!isFail && (
+                <div className="flex items-center justify-between px-3 py-2 border-b border-dfxGray-300 last:border-0">
+                  <span className="text-sm text-dfxBlue-800">priceDefinitionAllowedDate setzen</span>
+                  <input
+                    type="checkbox"
+                    checked={setPriceDate}
+                    onChange={(e) => setSetPriceDate(e.target.checked)}
+                    className="rounded"
+                  />
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -224,7 +245,8 @@ function TransactionEntry({
       <div>
         <button
           className="px-4 py-2 text-sm text-white bg-dfxBlue-800 hover:bg-dfxBlue-800/80 rounded-lg transition-colors disabled:opacity-50"
-          onClick={handleSave}
+          // Disabled while the clerk is missing, so the cast never sees undefined.
+          onClick={() => handleSave(clerk as string)}
           disabled={isSaving || isProcessing || isLoadingClerk || !amlCheck || !clerk}
         >
           {isProcessing ? 'Speichern...' : 'Speichern'}
@@ -237,19 +259,17 @@ function TransactionEntry({
 function ResettableTransactionEntry({
   tx,
   isSaving,
-  canReset,
   onReset,
 }: {
-  tx: TransactionInfo;
+  tx: ResettableTransaction;
   isSaving: boolean;
-  canReset: boolean;
   onReset: () => Promise<void>;
 }): JSX.Element {
   const [isProcessing, setIsProcessing] = useState(false);
   const sourceLabel = `BuyCrypto ${tx.buyCryptoId}`;
 
+  // The reset button is disabled while saving or processing, so a click never overlaps a running reset.
   async function handleReset(): Promise<void> {
-    if (!canReset || isSaving || isProcessing) return;
     if (
       !window.confirm(
         `AML-Check für ${sourceLabel} wirklich zurücksetzen?\n\nDer Status ${tx.amlCheck} wird entfernt und die Transaktion erneut durch den AML-Check verarbeitet.`,
@@ -272,26 +292,20 @@ function ResettableTransactionEntry({
           <h3 className="text-dfxBlue-800 font-semibold">{sourceLabel}</h3>
           <p className="text-xs text-dfxGray-700">
             Transaction {tx.id} · AML {tx.amlCheck}
-            {tx.amlReason ? ` · ${tx.amlReason}` : ''}
-            {tx.buyCryptoStatus ? ` · Status ${tx.buyCryptoStatus}` : ''}
+            {tx.amlReason ? ` · ${tx.amlReason}` : ''} · Status {tx.buyCryptoStatus}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             className="px-3 py-1.5 text-sm text-white bg-dfxRed-100 hover:bg-dfxRed-150 rounded transition-colors disabled:opacity-50"
-            disabled={!canReset || isSaving || isProcessing}
+            disabled={isSaving || isProcessing}
             onClick={handleReset}
           >
             {isProcessing ? 'Wird zurückgesetzt...' : 'AML-Check zurücksetzen'}
           </button>
         </div>
       </div>
-      {!canReset && (
-        <p className="text-sm text-dfxRed-100">
-          Reset nicht möglich: BuyCrypto ist abgeschlossen, gestoppt, in Batch/Chargeback oder Refund/Payout läuft.
-        </p>
-      )}
     </div>
   );
 }
@@ -306,14 +320,17 @@ export function AmlCheckPendingPanel({
   const { navigate } = useNavigation();
 
   const pendingTxs = data.transactions.filter(
-    (tx) => tx.type != null && tx.amlCheck === CheckStatus.PENDING && tx.amlReason === AmlReason.MANUAL_CHECK,
+    (tx): tx is PendingTransaction =>
+      tx.type != null && tx.amlCheck === CheckStatus.PENDING && tx.amlReason === AmlReason.MANUAL_CHECK,
   );
   const callQueueTxs = data.transactions.filter(
-    (tx) => tx.type != null && tx.amlCheck === CheckStatus.PENDING && callQueueForReason(tx.amlReason),
+    (tx): tx is TransactionInfo & { type: string } =>
+      tx.type != null && tx.amlCheck === CheckStatus.PENDING && callQueueForReason(tx.amlReason) != null,
   );
   const handledTransactionIds = new Set([...pendingTxs, ...callQueueTxs].map((tx) => tx.id));
+  // hasBuyCryptoReviewResetEligibleState guarantees buyCryptoId and buyCryptoStatus.
   const resettableTxs = data.transactions.filter(
-    (tx) =>
+    (tx): tx is ResettableTransaction =>
       tx.type != null &&
       tx.amlCheck != null &&
       hasBuyCryptoReviewResetEligibleState(tx) &&
@@ -398,7 +415,7 @@ export function AmlCheckPendingPanel({
               <li key={tx.id} className="py-2 flex items-start justify-between gap-3">
                 <div className="text-sm text-dfxBlue-800 flex flex-col items-start flex-1 min-w-0 text-left">
                   <span>
-                    <span className="font-mono">{tx.id}</span> · {tx.type ?? '-'}
+                    <span className="font-mono">{tx.id}</span> · {tx.type}
                   </span>
                   <span className="text-xs text-dfxGray-700 break-all">{tx.amlReason}</span>
                 </div>
@@ -445,13 +462,7 @@ export function AmlCheckPendingPanel({
         <div className="flex flex-col gap-3">
           <h3 className="text-dfxGray-700 font-semibold text-sm">Bestehenden AML-Check zurücksetzen</h3>
           {resettableTxs.map((tx) => (
-            <ResettableTransactionEntry
-              key={tx.id}
-              tx={tx}
-              isSaving={isSaving}
-              canReset={canResetBuyCryptoAmlForReview(tx)}
-              onReset={() => onReviewReset(tx)}
-            />
+            <ResettableTransactionEntry key={tx.id} tx={tx} isSaving={isSaving} onReset={() => onReviewReset(tx)} />
           ))}
         </div>
       )}
