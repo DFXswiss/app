@@ -226,6 +226,14 @@ const DOSSIER = {
       created: '2024-01-02T00:00:00.000Z',
     },
   ],
+  addresses: [
+    {
+      id: 7901,
+      address: '0xabc0000000000000000000000000000000000001',
+      status: 'Active',
+      created: '2024-01-02T00:00:00.000Z',
+    },
+  ],
   buyRoutes: [
     {
       id: 7501,
@@ -393,6 +401,8 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     // title AND the identity "Account Type" value).
     await expect(page.getByText('Identity')).toBeVisible();
     await expect(page.getByText('Account Opener Authorization', { exact: false })).toBeVisible();
+    // Wallet address from the Addresses table (Buy Routes keep the same hex as targetAddress but do not render it).
+    await expect(page.getByText('0xabc0000000000000000000000000000000000001')).toBeVisible();
     await expect(page.getByText('Support Issues', { exact: false })).toBeVisible();
     await expect(page.getByText('Missing incoming transfer')).toBeVisible();
 

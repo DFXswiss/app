@@ -55,6 +55,7 @@ const DOSSIER: RealUnitCustomerDetailDto = {
   kycSteps: [],
   transactions: [],
   bankDatas: [],
+  addresses: [],
   buyRoutes: [],
   sellRoutes: [],
   swapRoutes: [],
