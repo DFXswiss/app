@@ -16,7 +16,7 @@ export function decodeLnurl(lnurl: string): string {
   return Buffer.from(fromWords(decoded.words)).toString('utf8');
 }
 
-/** Parse enough of a BOLT-11 invoice to prove its mainnet prefix and bech32 checksum are valid. */
+/** Decode a BOLT-11 invoice and return its human-readable prefix after bech32 checksum validation. */
 export function decodeBolt11Prefix(invoice: string): string {
   return decode(invoice, BECH32_LIMIT).prefix;
 }

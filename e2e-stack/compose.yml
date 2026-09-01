@@ -33,8 +33,8 @@ services:
     build:
       context: ./images/lnurl
     network_mode: "service:api"
-    # up.sh startet die API waehrend des Seedings neu; ohne restart-Policy verliert dieser
-    # Sidecar dabei den geteilten Netzwerk-Namensraum und kommt nicht zurueck.
+    # up.sh restarts the API during seeding; without a restart policy, this sidecar loses the
+    # shared network namespace and does not come back.
     restart: unless-stopped
     depends_on:
       - api

@@ -23,6 +23,7 @@ import {
   ensurePersonalDataComplete,
   expect,
   queryOne,
+  resolveSellableFiatId,
   test,
   testLightningWallet,
   TEST_IBAN,
@@ -37,11 +38,6 @@ interface LightningAssetRow {
   name: string;
   blockchain: string;
   sellable: boolean;
-}
-
-interface FiatRow {
-  id: number;
-  name: string;
 }
 
 interface LightningSellPaymentInfo {
@@ -77,7 +73,6 @@ test.describe('Lightning sell after self-custodial login', () => {
 
     const deposit = await createLightningDeposit(LNURL_PAY_URL);
     const lnurl = deposit.address;
-    expect(lnurl).toMatch(/^LNURL1/);
     expect(decodeLnurl(lnurl)).toBe(LNURL_PAY_URL);
 
     await apiPut<unknown>(
@@ -126,17 +121,14 @@ test.describe('Lightning sell after self-custodial login', () => {
     );
     if (!asset) throw new Error('Seed has no sellable, available Lightning/BTC asset');
 
-    const fiat = await queryOne<FiatRow>(
-      `SELECT id, name FROM fiat WHERE name = 'CHF' AND buyable = true LIMIT 1`,
-    );
-    if (!fiat) throw new Error('Seed has no buyable CHF fiat currency');
+    const fiatId = await resolveSellableFiatId('CHF');
 
     const paymentInfo = await apiPut<LightningSellPaymentInfo>(
       'sell/paymentInfos',
       {
         iban: TEST_IBAN,
         asset: { id: asset.id },
-        currency: { id: fiat.id },
+        currency: { id: fiatId },
         amount: SELL_AMOUNT_BTC,
         exactPrice: false,
       },

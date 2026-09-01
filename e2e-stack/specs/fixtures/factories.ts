@@ -636,7 +636,7 @@ async function resolveBuyableAsset(
 }
 
 /** Resolve a sellable fiat id (default CHF). */
-async function resolveSellableFiatId(nameOrId?: number | string): Promise<number> {
+export async function resolveSellableFiatId(nameOrId?: number | string): Promise<number> {
   if (typeof nameOrId === 'number') return nameOrId;
   const name = (nameOrId ?? 'CHF').toUpperCase();
   const row = await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = $1 AND sellable = true LIMIT 1`, [name]);

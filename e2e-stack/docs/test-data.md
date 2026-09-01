@@ -98,6 +98,14 @@ before any other check runs — a real level-50 approval always comes with a sup
 set to `50` and no explicit `depositLimit` is passed. Pass `depositLimit: 0` explicitly to test
 the "level 50 but no limit granted" case instead.
 
+### `createSelfCustodialLightningUser(wallet)`
+
+|             |                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| **Path**    | Lightning self-custodial login via `GET /v1/auth/signMessage` → `POST /v1/auth`                |
+| **Returns** | `{ jwt, userId, userDataId }`                                                                 |
+| **Cleanup** | Registers `user_data` and `user`; `cleanupCreatedData()` deletes `user` before its parent row |
+
 ### `createBankAccount(jwt, options?)`
 
 |                     |                                                                                                                                                                                                                                                                     |
