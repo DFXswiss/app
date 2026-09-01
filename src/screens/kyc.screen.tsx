@@ -205,18 +205,19 @@ export default function KycScreen(): JSX.Element {
         )
           .then(handleReload)
           .then(() => clearParams(['step']))
-      : callKyc(() => getKycInfo(kycCode)).then(handleInitial);
+      : callKyc(() => getKycInfo(kycCode)).then(async (info) => {
+          setError(undefined);
+          await handleInitial(info);
+        });
 
-    request
-      .then(() => setError(undefined))
-      .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
+    request.catch((error: ApiError) => setError(error.message ?? 'Unknown error')).finally(() => setIsLoading(false));
   }, [kycCode, stepName, stepType]);
 
   async function onLoad(next: boolean): Promise<void> {
     if (!kycCode) return;
 
-    if (!next) continueFlight.current = createSingleFlight();
+    if (next) infoFlight.current = createSingleFlight();
+    else continueFlight.current = createSingleFlight();
     const flight = next ? continueFlight : infoFlight;
     return flight.current(() => {
       const gen = ++loadGen.current;
