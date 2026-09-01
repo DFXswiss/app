@@ -12,9 +12,8 @@ export function createKeyedSerial(): <T>(key: string, fn: () => Promise<T>) => P
       () => undefined,
       () => undefined,
     );
-    void next.finally(() => {
-      if (inflight.get(key) === next) inflight.delete(key);
-    });
+    const cleanup = () => inflight.delete(key);
+    void next.then(cleanup, cleanup);
     return next;
   };
 }
