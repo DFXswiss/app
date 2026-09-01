@@ -1,5 +1,15 @@
 import { CustodyAccount } from 'src/dto/safe.dto';
-import { canActOn } from '../safe-account';
+import { canActOn, isOwnAccount } from '../safe-account';
+
+function account(overrides: Partial<CustodyAccount>): CustodyAccount {
+  return {
+    id: 1,
+    title: 'Safe',
+    isLegacy: false,
+    accessLevel: 'Write',
+    ...overrides,
+  };
+}
 
 /**
  * Whether a Safe may be acted on decides whether the screen offers deposits, withdrawals and
@@ -7,16 +17,6 @@ import { canActOn } from '../safe-account';
  * it — and that is explicitly not a CI gate. This is.
  */
 describe('canActOn', () => {
-  function account(overrides: Partial<CustodyAccount>): CustodyAccount {
-    return {
-      id: 1,
-      title: 'Safe',
-      isLegacy: false,
-      accessLevel: 'Write',
-      ...overrides,
-    };
-  }
-
   it('allows acting on an own account with write access', () => {
     expect(canActOn(account({ accessLevel: 'Write' }))).toBe(true);
   });
@@ -37,5 +37,19 @@ describe('canActOn', () => {
 
   it("allows acting on the legacy Safe, which is the caller's own by definition", () => {
     expect(canActOn(account({ id: null, isLegacy: true, accessLevel: 'Write', owner: { id: 7 } }))).toBe(true);
+  });
+});
+
+describe('isOwnAccount', () => {
+  it('own non-legacy without owner → true', () => {
+    expect(isOwnAccount(account({ isLegacy: false }))).toBe(true);
+  });
+
+  it('foreign with owner → false', () => {
+    expect(isOwnAccount(account({ owner: { id: 42 } }))).toBe(false);
+  });
+
+  it('legacy (id null, isLegacy true, owner set) → true', () => {
+    expect(isOwnAccount(account({ id: null, isLegacy: true, owner: { id: 7 } }))).toBe(true);
   });
 });
