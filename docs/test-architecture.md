@@ -185,6 +185,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `(userDataId, name, type, sequenceNumber)` and creates `IDX_3a1150791476264753a67212a1`
   with `NULLS NOT DISTINCT`, matching production. A green run does **not** prove the
   migration chain applied that index.
+- **Full-stack continue-race specs SQL-complete KYC steps.**
+  `e2e-stack/specs/kyc-continue-race.spec.ts` upserts ContactData, PersonalData, NationalityData
+  and Ident (`SumsubAuto`) to `Completed`. A green run does **not** prove those steps complete
+  through the product path, including live ident.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
