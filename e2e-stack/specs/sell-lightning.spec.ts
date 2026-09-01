@@ -16,17 +16,16 @@ import {
   cleanupCreatedData,
   createBankAccount,
   createLightningDeposit,
+  createSelfCustodialLightningUser,
   decodeBolt11Prefix,
   decodeLnurl,
   e2eMail,
   ensurePersonalDataComplete,
   expect,
   queryOne,
-  selfCustodialLightningLogin,
   test,
   testLightningWallet,
   TEST_IBAN,
-  trackRow,
   withDb,
 } from './fixtures';
 
@@ -72,40 +71,29 @@ test.describe('Lightning sell after self-custodial login', () => {
     await cleanupCreatedData();
   });
 
-  test('returns the configured LNURL and a BOLT-11 payment request', async () => {
+  test('returns the configured LNURL and a mainnet-prefixed, checksum-valid payment request', async () => {
     const wallet = testLightningWallet();
-    const jwt = await selfCustodialLightningLogin(wallet);
-
-    const user = await queryOne<{ id: number; userDataId: number }>(
-      `SELECT id, "userDataId" AS "userDataId" FROM "user" WHERE address = $1 LIMIT 1`,
-      [wallet.address],
-    );
-    if (!user) throw new Error(`Lightning login created no user row for address ${wallet.address}`);
+    const { jwt, userDataId } = await createSelfCustodialLightningUser(wallet);
 
     const deposit = await createLightningDeposit(LNURL_PAY_URL);
     const lnurl = deposit.address;
     expect(lnurl).toMatch(/^LNURL1/);
     expect(decodeLnurl(lnurl)).toBe(LNURL_PAY_URL);
 
-    // Register parents in dependency-safe order: cleanup runs in reverse, so the user (and the
-    // API-written sell route beneath it) is deleted before the deposit that route references.
-    trackRow('user_data', user.userDataId);
-    trackRow('user', user.id);
-
     await apiPut<unknown>(
       'user/mail',
       { mail: e2eMail(`sell-lightning-${wallet.address.slice(-12)}`) },
       { jwt, version: 'v2', expectOk: true },
     );
-    await ensurePersonalDataComplete(user.userDataId, { country: 'CH' });
+    await ensurePersonalDataComplete(userDataId, { country: 'CH' });
     const personalData = await queryOne<RequiredKycDataRow>(
       `SELECT "accountType" AS "accountType", mail, phone, firstname, surname, street, location, zip,
               "countryId" AS "countryId"
        FROM user_data
        WHERE id = $1`,
-      [user.userDataId],
+      [userDataId],
     );
-    if (!personalData) throw new Error(`Lightning sell user_data row ${user.userDataId} disappeared`);
+    if (!personalData) throw new Error(`Lightning sell user_data row ${userDataId} disappeared`);
 
     const requiredKycFields: [string, string | number | null][] = [
       ['accountType', personalData.accountType],
@@ -126,7 +114,7 @@ test.describe('Lightning sell after self-custodial login', () => {
     }
 
     await withDb(async (client) => {
-      await client.query(`UPDATE user_data SET "kycLevel" = 30 WHERE id = $1`, [user.userDataId]);
+      await client.query(`UPDATE user_data SET "kycLevel" = 30 WHERE id = $1`, [userDataId]);
     });
     await createBankAccount(jwt, { iban: TEST_IBAN, label: 'Lightning sell E2E' });
 

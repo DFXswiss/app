@@ -13,7 +13,14 @@
 import { randomBytes } from 'node:crypto';
 import { apiPost, apiPut } from './api-client';
 import { queryOne, queryRows, withDb } from './db';
-import { signatureLogin, testWallet, type TestRole, type TestWallet } from './auth';
+import {
+  selfCustodialLightningLogin,
+  signatureLogin,
+  testWallet,
+  type SelfCustodialLightningWallet,
+  type TestRole,
+  type TestWallet,
+} from './auth';
 import { encodeLnurl } from './lnurl';
 import { TEST_IBAN } from './test-data';
 
@@ -279,6 +286,12 @@ export interface CreateUserResult {
   jwt: string;
   wallet: TestWallet;
   mail?: string;
+}
+
+export interface CreatedSelfCustodialLightningUser {
+  jwt: string;
+  userId: number;
+  userDataId: number;
 }
 
 export interface CreateBankAccountOptions {
@@ -717,6 +730,26 @@ export async function ensurePersonalDataComplete(userDataId: number, options?: {
 // ---------------------------------------------------------------------------
 // 1. createUser
 // ---------------------------------------------------------------------------
+
+/** Log in a fresh Lightning wallet and immediately register both account rows for cleanup. */
+export async function createSelfCustodialLightningUser(
+  wallet: SelfCustodialLightningWallet,
+): Promise<CreatedSelfCustodialLightningUser> {
+  const jwt = await selfCustodialLightningLogin(wallet);
+  const user = await queryOne<{ id: number; userDataId: number }>(
+    `SELECT id, "userDataId" AS "userDataId" FROM "user" WHERE address = $1 LIMIT 1`,
+    [wallet.address],
+  );
+  if (!user) {
+    throw new Error(`Lightning login created no user row for address ${wallet.address}`);
+  }
+
+  // cleanupCreatedData() deletes in reverse: user first, then its required user_data parent.
+  track('user_data', user.userDataId);
+  track('user', user.id);
+
+  return { jwt, userId: user.id, userDataId: user.userDataId };
+}
 
 export async function createUser(options: CreateUserOptions = {}): Promise<CreateUserResult> {
   if (options.walletIndex == null) await ensureFactoryWalletCounterSeeded();

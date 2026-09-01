@@ -172,6 +172,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/images/lnurl/` serves a static pay request and an official BOLT-11 specification test
   vector on the internal stack network. A green run does **not** prove that a Lightning node can
   create a payable invoice, nor that a payment arrives, is credited, or is paid out.
+- **The full-stack Lightning sell spec SQL-creates the Lightning deposit address.**
+  `e2e-stack/specs/sell-lightning.spec.ts` inserts the address through
+  `createLightningDeposit`. A green run does **not** prove that production provisions a Lightning
+  deposit address for the customer.
+- **The full-stack Lightning sell spec SQL-completes personal data and sets the KYC level.**
+  `e2e-stack/specs/sell-lightning.spec.ts` uses `ensurePersonalDataComplete` and writes
+  `user_data.kycLevel` directly. A green run does **not** prove that a customer progresses through
+  a real KYC process.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs

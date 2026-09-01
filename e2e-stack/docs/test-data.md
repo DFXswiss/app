@@ -7,12 +7,12 @@ factories, auth, db, and the other helpers) or from a specific module such as
 
 **Environment (inside the test container)**
 
-| Service  | URL / connection                                                        |
-| -------- | ----------------------------------------------------------------------- |
-| API      | `http://api:3000` (`E2E_API_URL`), routes under `/v1` (KYC under `/v2`) |
-| Frontend | `http://frontend`                                                       |
-| LNURL    | `http://localhost:80` (inside the API container's network namespace)     |
-| Postgres | `sql-dfx-api-loc:5432`, db `dfx`, user `sa`                             |
+| Service  | URL / connection                                                                           |
+| -------- | ------------------------------------------------------------------------------------------ |
+| API      | `http://api:3000` (`E2E_API_URL`), routes under `/v1` (KYC under `/v2`)                    |
+| Frontend | `http://frontend`                                                                          |
+| LNURL    | `http://localhost:80` from the API process (inside its container's network namespace)      |
+| Postgres | `sql-dfx-api-loc:5432`, db `dfx`, user `sa`                                                |
 
 A local forwarder on `127.0.0.1:3000` (started by the tests image entrypoint) also relays to the real API. That is why `http://localhost:3000` works from inside the container even though no API process runs there — code paths that hit `localhost` directly (e.g. server-built KYC-step URLs under `Environment.LOC`) need it.
 

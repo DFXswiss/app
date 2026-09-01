@@ -112,6 +112,12 @@ else
   log_info "Using prebuilt frontend-widget image ${E2E_WIDGET_IMAGE} - skipping the local build."
 fi
 
+# The LNURL configuration and static responses are COPYed into its image (bind mounts are not
+# supported in every harness environment). Rebuild explicitly so edits cannot leave a stale
+# existing image serving old callback behavior while the Lightning spec stays green.
+log_info "Building LNURL image..."
+compose build lnurl
+
 log_info "Starting stack (db, api, frontend, proxy)..."
 compose up -d db api frontend proxy
 
