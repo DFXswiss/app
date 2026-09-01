@@ -70,7 +70,7 @@ import {
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
 import SumsubWebSdk from '@sumsub/websdk-react';
-import { RefObject, useEffect, useState } from 'react';
+import { RefObject, useEffect, useRef, useState } from 'react';
 import { isMobile } from 'react-device-detect';
 import { useForm, useWatch } from 'react-hook-form';
 import { Trans } from 'react-i18next';
@@ -90,6 +90,7 @@ import { useUserGuard } from '../hooks/guard.hook';
 import { useKycHelper } from '../hooks/kyc-helper.hook';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useNavigation } from '../hooks/navigation.hook';
+import { createSingleFlight } from '../util/single-flight';
 import { delay, toBase64, url } from '../util/utils';
 import { AddressZipValidation } from '../util/validation-rules';
 import { IframeMessageType } from './kyc-redirect.screen';
@@ -127,6 +128,7 @@ export default function KycScreen(): JSX.Element {
   const [showLinkHint, setShowLinkHint] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   const { rootRef } = useLayoutContext();
+  const loadFlight = useRef(createSingleFlight());
 
   const mode = pathname.includes('/profile') ? Mode.PROFILE : pathname.includes('/contact') ? Mode.CONTACT : Mode.KYC;
   const urlParams = new URLSearchParams(search);
@@ -212,14 +214,16 @@ export default function KycScreen(): JSX.Element {
   async function onLoad(next: boolean): Promise<void> {
     if (!kycCode) return;
 
-    setIsSubmitting(true);
-    setError(undefined);
-    setShowLinkHint(false);
-    setConsentClient(undefined);
-    return (next ? callKyc(() => continueKyc(kycCode)) : callKyc(() => getKycInfo(kycCode)))
-      .then(handleReload)
-      .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
-      .finally(() => setIsSubmitting(false));
+    return loadFlight.current(() => {
+      setIsSubmitting(true);
+      setError(undefined);
+      setShowLinkHint(false);
+      setConsentClient(undefined);
+      return (next ? callKyc(() => continueKyc(kycCode)) : callKyc(() => getKycInfo(kycCode)))
+        .then(handleReload)
+        .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
+        .finally(() => setIsSubmitting(false));
+    });
   }
 
   async function handleInitial(info: KycInfo): Promise<void> {
@@ -1800,23 +1804,30 @@ function Ident({ step, lang, onDone, onBack, onError }: EditProps): JSX.Element 
   const [isDone, setIsDone] = useState(false);
   const [error, setError] = useState<string>();
 
-  useEffect(() => {
-    onDone();
+  const onDoneRef = useRef(onDone);
+  const onBackRef = useRef(onBack);
+  onDoneRef.current = onDone;
+  onBackRef.current = onBack;
 
-    const refreshInterval = setInterval(() => isDone && onDone(), 1000);
+  useEffect(() => {
+    if (!isDone) return;
+
+    onDoneRef.current();
+    const refreshInterval = setInterval(() => onDoneRef.current(), 1000);
     return () => clearInterval(refreshInterval);
   }, [isDone]);
 
-  // listen to close events
   useEffect(() => {
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('keydown', onMessage);
-  }, []);
+    function onMessage(e: Event) {
+      const message = (e as MessageEvent<{ type: string; status: KycStepStatus }>).data;
+      if (message.type === IframeMessageType) {
+        isStepDone(message as KycStepBase) ? onDoneRef.current() : onBackRef.current();
+      }
+    }
 
-  function onMessage(e: Event) {
-    const message = (e as MessageEvent<{ type: string; status: KycStepStatus }>).data;
-    if (message.type === IframeMessageType) isStepDone(message as KycStepBase) ? onDone() : onBack();
-  }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
 
   return step.session ? (
     error ? (
