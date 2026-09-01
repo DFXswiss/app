@@ -216,6 +216,7 @@ export default function KycScreen(): JSX.Element {
   async function onLoad(next: boolean): Promise<void> {
     if (!kycCode) return;
 
+    if (!next) continueFlight.current = createSingleFlight();
     const flight = next ? continueFlight : infoFlight;
     return flight.current(() => {
       const gen = ++loadGen.current;
@@ -245,7 +246,7 @@ export default function KycScreen(): JSX.Element {
       if (info.kycLevel >= RequiredKycLevel[mode] || !kycCode) {
         goBack();
       } else {
-        return callKyc(() => continueKyc(kycCode)).then(handleReload);
+        return onLoad(true);
       }
     }
   }
