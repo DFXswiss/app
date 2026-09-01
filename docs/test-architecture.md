@@ -173,6 +173,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`openQuoteCapableBuy` and older quote cases) updates the limit
   directly so `LIMIT_EXCEEDED` does not hide payment info. A green run does **not** prove that a
   customer reaches that limit through the product path.
+- **Full-stack continue-race specs SQL-write `user_data.tradeApprovalDate`.**
+  `e2e-stack/specs/kyc-continue-race.spec.ts` sets the date so recommendation is skipped. A green
+  run does **not** prove that a customer obtains trade approval through the product path.
+- **Full-stack continue-race specs SQL-insert STRICT `TfaLog` rows.**
+  `e2e-stack/specs/kyc-continue-race.spec.ts` inserts `kyc_log` type `TfaLog` with comment
+  `Strict (App)` so `continue()` does not 403 after FinancialData starts. A green run does
+  **not** prove the mail/app 2FA enrolment or verification path.
+- **Full-stack continue-race specs recreate `kyc_step` unique index `NULLS NOT DISTINCT`.**
+  `e2e-stack/specs/kyc-continue-race.spec.ts` drops the synchronize unique index on
+  `(userDataId, name, type, sequenceNumber)` and creates `IDX_3a1150791476264753a67212a1`
+  with `NULLS NOT DISTINCT`, matching production. A green run does **not** prove the
+  migration chain applied that index.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
