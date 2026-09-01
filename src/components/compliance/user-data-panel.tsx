@@ -109,7 +109,6 @@ function userDataRows(d: UserDataDetail, depositLimitNode: ReactNode, idNode: Re
     { key: 'kycStatus', value: display(d.kycStatus) },
     { key: 'kycLevel', value: display(d.kycLevel) },
     { key: 'depositLimit', value: depositLimitNode },
-    { key: 'wallet', value: refName(d.wallet) },
   ];
 }
 
