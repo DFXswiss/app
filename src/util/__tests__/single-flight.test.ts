@@ -48,6 +48,31 @@ describe('createKeyedSerial', () => {
     expect(infoCalls).toBe(1);
   });
 
+  it('joins a second continue while an info load is queued', async () => {
+    const run = createKeyedSerial();
+    let continueCalls = 0;
+    let resolveContinue: (value: string) => void = () => undefined;
+
+    const first = run('continue', () => {
+      continueCalls += 1;
+      return new Promise<string>((resolve) => {
+        resolveContinue = resolve;
+      });
+    });
+    const infoP = run('info', () => Promise.resolve('info'));
+    const second = run('continue', () => {
+      continueCalls += 1;
+      return Promise.resolve('second');
+    });
+
+    expect(continueCalls).toBe(1);
+    resolveContinue('put');
+    await expect(first).resolves.toBe('put');
+    await expect(second).resolves.toBe('put');
+    await expect(infoP).resolves.toBe('info');
+    expect(continueCalls).toBe(1);
+  });
+
   it('invokes fn again after the previous call with the same key resolves', async () => {
     const run = createKeyedSerial();
     let calls = 0;
