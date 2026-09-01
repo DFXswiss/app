@@ -90,7 +90,7 @@ import { useUserGuard } from '../hooks/guard.hook';
 import { useKycHelper } from '../hooks/kyc-helper.hook';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useNavigation } from '../hooks/navigation.hook';
-import { createSingleFlight } from '../util/single-flight';
+import { createKeyedSerial } from '../util/single-flight';
 import { delay, toBase64, url } from '../util/utils';
 import { AddressZipValidation } from '../util/validation-rules';
 import { IframeMessageType } from './kyc-redirect.screen';
@@ -128,8 +128,7 @@ export default function KycScreen(): JSX.Element {
   const [showLinkHint, setShowLinkHint] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   const { rootRef } = useLayoutContext();
-  const continueFlight = useRef(createSingleFlight());
-  const infoFlight = useRef(createSingleFlight());
+  const loadSerial = useRef(createKeyedSerial());
   const loadGen = useRef(0);
 
   const mode = pathname.includes('/profile') ? Mode.PROFILE : pathname.includes('/contact') ? Mode.CONTACT : Mode.KYC;
@@ -216,10 +215,7 @@ export default function KycScreen(): JSX.Element {
   async function onLoad(next: boolean): Promise<void> {
     if (!kycCode) return;
 
-    if (next) infoFlight.current = createSingleFlight();
-    else continueFlight.current = createSingleFlight();
-    const flight = next ? continueFlight : infoFlight;
-    return flight.current(() => {
+    return loadSerial.current(next ? 'continue' : 'info', () => {
       const gen = ++loadGen.current;
       setIsSubmitting(true);
       setError(undefined);
