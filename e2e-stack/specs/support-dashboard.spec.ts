@@ -131,7 +131,9 @@ test.describe('Support dashboard (staff)', () => {
         ]);
     const issue = required(issueRow, 'createLimitRequest must leave a support_issue row');
 
-    const { jwt } = await loginAs('Support');
+    // Customer LimitRequests are filed under Department.Compliance. Support's issue list is
+    // restricted to Department.Support, so this listing uses Compliance (who can open the dashboard).
+    const { jwt } = await loginAs('Compliance');
     await openScreen(page, '/support/dashboard/all', jwt);
 
     await page.getByRole('button', { name: /^Limit Requests \(/ }).click();
