@@ -130,6 +130,7 @@ export default function KycScreen(): JSX.Element {
   const { rootRef } = useLayoutContext();
   const continueFlight = useRef(createSingleFlight());
   const infoFlight = useRef(createSingleFlight());
+  const loadGen = useRef(0);
 
   const mode = pathname.includes('/profile') ? Mode.PROFILE : pathname.includes('/contact') ? Mode.CONTACT : Mode.KYC;
   const urlParams = new URLSearchParams(search);
@@ -217,14 +218,23 @@ export default function KycScreen(): JSX.Element {
 
     const flight = next ? continueFlight : infoFlight;
     return flight.current(() => {
+      const gen = ++loadGen.current;
       setIsSubmitting(true);
       setError(undefined);
       setShowLinkHint(false);
       setConsentClient(undefined);
       return (next ? callKyc(() => continueKyc(kycCode)) : callKyc(() => getKycInfo(kycCode)))
-        .then(handleReload)
-        .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
-        .finally(() => setIsSubmitting(false));
+        .then((info) => {
+          if (gen !== loadGen.current) return;
+          return handleReload(info);
+        })
+        .catch((error: ApiError) => {
+          if (gen !== loadGen.current) return;
+          setError(error.message ?? 'Unknown error');
+        })
+        .finally(() => {
+          if (gen === loadGen.current) setIsSubmitting(false);
+        });
     });
   }
 
