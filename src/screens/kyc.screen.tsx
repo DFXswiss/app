@@ -128,7 +128,8 @@ export default function KycScreen(): JSX.Element {
   const [showLinkHint, setShowLinkHint] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   const { rootRef } = useLayoutContext();
-  const loadFlight = useRef(createSingleFlight());
+  const continueFlight = useRef(createSingleFlight());
+  const infoFlight = useRef(createSingleFlight());
 
   const mode = pathname.includes('/profile') ? Mode.PROFILE : pathname.includes('/contact') ? Mode.CONTACT : Mode.KYC;
   const urlParams = new URLSearchParams(search);
@@ -214,7 +215,8 @@ export default function KycScreen(): JSX.Element {
   async function onLoad(next: boolean): Promise<void> {
     if (!kycCode) return;
 
-    return loadFlight.current(() => {
+    const flight = next ? continueFlight : infoFlight;
+    return flight.current(() => {
       setIsSubmitting(true);
       setError(undefined);
       setShowLinkHint(false);
