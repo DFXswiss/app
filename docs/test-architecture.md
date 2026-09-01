@@ -124,6 +124,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   A green run proves the quote list, pending-table and stats-chart fixtures render. It does not
   prove that the API returns those payloads, that login or token verification works, or that those
   staff/settings or stats endpoints return real data.
+- **The RealUnit compliance visual spec answers the customer list and dossier itself.**
+  `e2e/realunit-compliance.spec.ts` fulfils `GET /v1/realunit/compliance/customers` and
+  `GET /v1/realunit/compliance/customers/:id` with synthetic fixtures (including `addresses`).
+  A green run proves those fixtures render. It does not prove that the API returns that payload
+  or that the server filters to RealUnit wallets.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for

@@ -338,7 +338,7 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
       {/* Addresses (RealUnit-app wallet rows) */}
       <CollectionTable
         title={translate('screens/compliance', 'Addresses')}
-        rows={customer.addresses ?? []}
+        rows={customer.addresses}
         emptyText={translate('screens/compliance', 'No addresses')}
         columns={[
           { header: translate('screens/compliance', 'ID'), render: (a) => a.id },

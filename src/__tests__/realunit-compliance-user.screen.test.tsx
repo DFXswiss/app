@@ -82,6 +82,8 @@ describe('RealunitComplianceUserScreen Addresses table', () => {
     await waitFor(() => {
       expect(screen.getByText(/Addresses/)).toBeInTheDocument();
       expect(screen.getByText('0xrealunitonly')).toBeInTheDocument();
+      expect(screen.getByText('11')).toBeInTheDocument();
+      expect(screen.getByText('Active')).toBeInTheDocument();
     });
   });
 
