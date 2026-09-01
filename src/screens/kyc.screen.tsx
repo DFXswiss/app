@@ -202,7 +202,10 @@ export default function KycScreen(): JSX.Element {
             stepSequence ? +stepSequence : undefined,
           ),
         )
-          .then(handleReload)
+          .then((session) => {
+            setError(undefined);
+            return handleReload(session);
+          })
           .then(() => clearParams(['step']))
       : callKyc(() => getKycInfo(kycCode)).then(async (info) => {
           setError(undefined);

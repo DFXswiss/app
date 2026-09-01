@@ -14,6 +14,7 @@ describe('createKeyedSerial', () => {
 
     const first = run('continue', fn);
     const second = run('continue', fn);
+    await Promise.resolve();
     expect(calls).toBe(1);
 
     resolveFirst('ok');
@@ -39,6 +40,7 @@ describe('createKeyedSerial', () => {
       return Promise.resolve('info');
     });
 
+    await Promise.resolve();
     expect(continueCalls).toBe(1);
     expect(infoCalls).toBe(0);
 
@@ -65,6 +67,7 @@ describe('createKeyedSerial', () => {
       return Promise.resolve('second');
     });
 
+    await Promise.resolve();
     expect(continueCalls).toBe(1);
     resolveContinue('put');
     await expect(first).resolves.toBe('put');
@@ -120,6 +123,7 @@ describe('createKeyedSerial', () => {
       });
     });
 
+    await Promise.resolve();
     expect(aCalls).toBe(1);
     expect(bCalls).toBe(1);
 
