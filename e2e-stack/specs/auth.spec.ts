@@ -90,7 +90,7 @@ test.describe('Auth area e2e', () => {
     await cleanupCreatedData();
   });
 
-  test.describe('Self-custodial Lightning authentication', () => {
+  test.describe('Self-custodial Lightning API authentication path', () => {
     test('new wallet receives a token and stores its exact signature', async () => {
       const wallet = testLightningWallet();
 

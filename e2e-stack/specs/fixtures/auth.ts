@@ -41,7 +41,7 @@ export function testWallet(index = 0): TestWallet {
   };
 }
 
-/** Unique LNNID wallet and 128-character lowercase hexadecimal shared secret for Lightning login tests. */
+/** Synthetic LNNID key and 128-character random secret for the Lightning API authentication path. */
 export function testLightningWallet(): SelfCustodialLightningWallet {
   lightningWalletCounter += 1;
   const counter = lightningWalletCounter.toString(16).padStart(8, '0').slice(-8);
@@ -83,7 +83,7 @@ export async function signatureLogin(wallet: TestWallet): Promise<string> {
   return accessToken;
 }
 
-/** Self-custodial Lightning login: fetch the server message, then use the wallet's signature as its shared secret. */
+/** Lightning API authentication path: fetch the server message, then submit the synthetic shared secret. */
 export async function selfCustodialLightningLogin(wallet: SelfCustodialLightningWallet): Promise<string> {
   const base = apiBase();
   const signRes = await fetch(`${base}/v1/auth/signMessage?address=${encodeURIComponent(wallet.address)}`);

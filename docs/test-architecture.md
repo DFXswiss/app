@@ -168,6 +168,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`openQuoteCapableBuy` and older quote cases) updates the limit
   directly so `LIMIT_EXCEEDED` does not hide payment info. A green run does **not** prove that a
   customer reaches that limit through the product path.
+- **The full-stack Lightning API authentication path uses synthetic credentials.**
+  `e2e-stack/specs/fixtures/auth.ts` creates a synthetic LNNID key and a random 128-character
+  secret. A green run does **not** prove signature generation by a real wallet or compatibility
+  with one.
 - **The full-stack Lightning sell spec answers LNURL-pay itself.**
   `e2e-stack/images/lnurl/` serves a static pay request and an official BOLT-11 specification test
   vector on the internal stack network. A green run does **not** prove that a Lightning node can

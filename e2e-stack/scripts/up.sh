@@ -158,6 +158,15 @@ if ! wait_for_healthy api 540; then
   exit 1
 fi
 
+# Recreate the running sidecar from the image built above. Its healthcheck budget is start_period
+# 5s + retries 10 * (interval 5s + timeout 3s) = 85s, rounded up.
+compose up -d --no-deps lnurl
+if ! wait_for_healthy lnurl 120; then
+  log_error "LNURL failed to become healthy. Recent LNURL logs:"
+  compose logs --tail=200 lnurl || true
+  exit 1
+fi
+
 # frontend healthcheck budget (compose.yml): start_period 5s + retries 10 * (interval 5s +
 # timeout 3s) = 85s, rounded up.
 if ! wait_for_healthy frontend 120; then
