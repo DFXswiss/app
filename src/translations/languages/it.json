@@ -1026,6 +1026,9 @@
     "No, don't call me": "No, non chiamatemi",
     "Verification may require a phone call. Should we call you?": "La verifica potrebbe richiedere una telefonata. Dobbiamo chiamarti?",
     "Phone verification": "Verifica telefonica",
+    "Your verification call has already been completed. There is nothing left to do.": "La tua chiamata di verifica è già stata completata. Non c'è altro da fare.",
+    "We were unable to reach you by phone. You can request a new call here.": "Non siamo riusciti a raggiungerti per telefono. Qui puoi richiedere una nuova chiamata.",
+    "Request a new call": "Richiedi una nuova chiamata",
     "Danger Zone": "Zona pericolosa"
   },
   "screens/safe": {
