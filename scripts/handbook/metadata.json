@@ -121,7 +121,7 @@
   },
   "invoice-screen": {
     "title": "Rechnung (Invoice)",
-    "description": "Invoice-Screen in vier Varianten: Händler (ohne Query) mit leeren Feldern und QR-Ladeskelett; Zahler mit leerem Empfängerfeld (?pay=1); Zahler mit vorbefülltem Empfänger als Anzeige und Fehlerhinweis (unbekannt); Zahler mit bestätigtem Empfänger und Haken (gestubbte API)."
+    "description": "Invoice-Screen in fünf Varianten: Händler (ohne Query) mit leeren Feldern und QR-Ladeskelett; Zahler mit leerem Empfängerfeld (?pay=1); Zahler mit vorbefülltem Empfänger als Anzeige und Fehlerhinweis (unbekannt); Zahler mit bestätigtem Empfänger und Haken (gestubbte API); Zahler mit getipptem, bestätigtem Empfänger im Eingabe-Zweig (Haken, aktivierte Felder, Währungs-Prefix)."
   },
   "user-flows": {
     "title": "User-Flows",
