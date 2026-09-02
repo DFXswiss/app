@@ -79,10 +79,7 @@ describe('QrCopy', () => {
   it('renders the QR and copies the data when Copy is clicked', () => {
     render(<QrCopy data="https://app.dfx.swiss/invoice?pay=1" />);
 
-    expect(screen.getByTestId('qr-code')).toHaveAttribute(
-      'data-value',
-      'https://app.dfx.swiss/invoice?pay=1',
-    );
+    expect(screen.getByTestId('qr-code')).toHaveAttribute('data-value', 'https://app.dfx.swiss/invoice?pay=1');
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
     expect(mockCopy).toHaveBeenCalledWith('https://app.dfx.swiss/invoice?pay=1');
