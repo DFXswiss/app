@@ -13,12 +13,10 @@ export function isOwnAccount(account: CustodyAccount): boolean {
 }
 
 /**
- * Whether the caller may act on this Safe — own it and hold full disposal.
- *
- * A write grant on another person's account does not qualify. Orders carry no account, so an
- * order placed while looking at someone else's Safe would be booked against the caller's own,
- * and acting on another person's behalf does not exist in the backend at all.
+ * Whether the caller may act on this Safe — Write is enough, including a write mandate on
+ * someone else's Safe. Orders now go through the account resource, so they book against the
+ * selected Safe rather than the caller. Read (own or foreign) remains view-only.
  */
 export function canActOn(account: CustodyAccount): boolean {
-  return isOwnAccount(account) && account.accessLevel === 'Write';
+  return account.accessLevel === 'Write';
 }
