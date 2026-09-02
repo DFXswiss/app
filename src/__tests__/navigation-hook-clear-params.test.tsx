@@ -51,9 +51,7 @@ function StringNavigateProbe({ replaceParams }: { replaceParams?: boolean }) {
   return (
     <button
       type="button"
-      onClick={() =>
-        navigate(`/pl?${PAYMENT_SEARCH}`, replaceParams ? { replaceParams: true } : undefined)
-      }
+      onClick={() => navigate(`/pl?${PAYMENT_SEARCH}`, replaceParams ? { replaceParams: true } : undefined)}
     >
       String navigate
     </button>
@@ -81,10 +79,7 @@ function GoBackProbe() {
 function SetParamsProbe() {
   const { setParams } = useNavigation();
   return (
-    <button
-      type="button"
-      onClick={() => setParams(new URLSearchParams('added=1&routeId=7'))}
-    >
+    <button type="button" onClick={() => setParams(new URLSearchParams('added=1&routeId=7'))}>
       Set params
     </button>
   );
@@ -99,11 +94,7 @@ function ClearParamsProbe() {
   );
 }
 
-function SetRedirectProbe({
-  redirectPath,
-}: {
-  redirectPath?: string;
-}) {
+function SetRedirectProbe({ redirectPath }: { redirectPath?: string }) {
   const { navigate } = useNavigation();
   return (
     <button
@@ -213,9 +204,7 @@ describe('useNavigation object-form replaceParams / clearParams', () => {
         { path: '/pl', element: <PaymentLocation /> },
       ],
       {
-        initialEntries: [
-          '/invoice?recipient=Foo&pay=1&lightning=lnurl1attacker&merchant=evil&routeId=999',
-        ],
+        initialEntries: ['/invoice?recipient=Foo&pay=1&lightning=lnurl1attacker&merchant=evil&routeId=999'],
       },
     );
 
@@ -261,13 +250,7 @@ describe('useNavigation object-form replaceParams / clearParams', () => {
     expect(params.get('expiryDate')).toBe(EXPIRY);
     // clearParams is a blocklist: unrelated keys from the location survive.
     expect(params.get('lightning')).toBe('keepme');
-    expect([...params.keys()].sort()).toEqual([
-      'amount',
-      'expiryDate',
-      'lightning',
-      'message',
-      'routeId',
-    ]);
+    expect([...params.keys()].sort()).toEqual(['amount', 'expiryDate', 'lightning', 'message', 'routeId']);
   });
 });
 
@@ -383,10 +366,9 @@ describe('useNavigation history, goBack, setParams, clearParams, setRedirect', (
   });
 
   it('setParams merges the given keys into the current location search', async () => {
-    const router = createMemoryRouter(
-      [{ path: '/invoice', element: <SetParamsProbe /> }],
-      { initialEntries: ['/invoice?recipient=Foo&pay=1'] },
-    );
+    const router = createMemoryRouter([{ path: '/invoice', element: <SetParamsProbe /> }], {
+      initialEntries: ['/invoice?recipient=Foo&pay=1'],
+    });
 
     render(<RouterProvider router={router} />);
 
@@ -403,10 +385,9 @@ describe('useNavigation history, goBack, setParams, clearParams, setRedirect', (
   });
 
   it('clearParams drops the named keys from the current location and stays on the path', async () => {
-    const router = createMemoryRouter(
-      [{ path: '/invoice', element: <ClearParamsProbe /> }],
-      { initialEntries: ['/invoice?recipient=Foo&pay=1&lightning=keep'] },
-    );
+    const router = createMemoryRouter([{ path: '/invoice', element: <ClearParamsProbe /> }], {
+      initialEntries: ['/invoice?recipient=Foo&pay=1&lightning=keep'],
+    });
 
     render(<RouterProvider router={router} />);
 
