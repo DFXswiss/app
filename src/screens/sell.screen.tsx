@@ -46,6 +46,7 @@ import { useLayoutContext } from 'src/contexts/layout.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { ErrorHint } from '../components/error-hint';
+import { resolveWalletTxError } from '../util/wallet-tx-error';
 import { ExchangeRate } from '../components/exchange-rate';
 import { SellCompletion } from '../components/payment/sell-completion';
 import { QuoteErrorHint } from '../components/quote-error-hint';
@@ -602,10 +603,16 @@ export default function SellScreen(): JSX.Element {
       }
       setTxDone(true);
     } catch (error: any) {
+      const { cancelled, messageKey } = resolveWalletTxError(error);
       // User rejected in wallet - silently return, user stays on form
-      if (error.code === 4001) return;
-      // Other errors - show message, user can click Retry to see deposit address for manual transfer
-      setErrorMessage(translate('screens/sell', 'Transaction failed. Click Retry to see the deposit address for manual transfer.'));
+      if (cancelled) return;
+      // A curated wallet error (e.g. a request still pending in the wallet) already tells the user what to
+      // do; surface it. Otherwise keep the generic hint that points to the manual deposit address.
+      setErrorMessage(
+        messageKey
+          ? translate('screens/home', messageKey)
+          : translate('screens/sell', 'Transaction failed. Click Retry to see the deposit address for manual transfer.'),
+      );
     } finally {
       setIsProcessing(false);
     }

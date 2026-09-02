@@ -60,6 +60,7 @@ import { useBlockchain } from '../hooks/blockchain.hook';
 import { useAddressGuard } from '../hooks/guard.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import { useTxHelper } from '../hooks/tx-helper.hook';
+import { resolveWalletTxError } from '../util/wallet-tx-error';
 
 enum Side {
   SPEND = 'SPEND',
@@ -660,12 +661,15 @@ export default function SwapScreen(): JSX.Element {
 
       setTxDone(true);
     } catch (error: any) {
-      if (error.code === 4001) return;
+      const { cancelled, messageKey } = resolveWalletTxError(error);
+      if (cancelled) return;
       setErrorMessage(
-        translate(
-          'screens/swap',
-          'Transaction failed. Click Retry to see the deposit address for manual transfer.',
-        ),
+        messageKey
+          ? translate('screens/home', messageKey)
+          : translate(
+              'screens/swap',
+              'Transaction failed. Click Retry to see the deposit address for manual transfer.',
+            ),
       );
     } finally {
       setIsProcessing(false);
