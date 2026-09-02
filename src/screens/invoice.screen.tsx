@@ -16,7 +16,7 @@ import {
 } from '@dfx.swiss/react-components';
 import copy from 'copy-to-clipboard';
 import { addYears } from 'date-fns';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Trans } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
@@ -46,6 +46,9 @@ export default function InvoiceScreen(): JSX.Element {
   const { navigate } = useNavigation();
 
   const recipientFieldRef = useRef<HTMLInputElement>(null);
+  const paymentGeneration = useRef(0);
+  const payeeLabelId = useId();
+  const payeeErrorId = `${payeeLabelId}-error`;
 
   const [urlParams, setUrlParams] = useSearchParams();
   const [currency, setCurrency] = useState<string>();
@@ -74,6 +77,8 @@ export default function InvoiceScreen(): JSX.Element {
   });
 
   const data = useDebounce(watch(), 500);
+  const liveInvoiceId = watch('invoiceId');
+  const liveAmount = watch('amount');
 
   useEffect(() => {
     const recipient = urlParams.get('recipient');
@@ -102,6 +107,11 @@ export default function InvoiceScreen(): JSX.Element {
       validatePayment(data);
   }, [data?.recipient, data?.invoiceId, data?.amount, validatedRecipient]);
 
+  useEffect(() => {
+    setCallback(undefined);
+    setCallbackSearch(undefined);
+  }, [liveInvoiceId, liveAmount]);
+
   async function validateRecipient(recipient: string) {
     setValidatedRecipient(undefined);
     setErrorRecipient(undefined);
@@ -120,6 +130,7 @@ export default function InvoiceScreen(): JSX.Element {
   }
 
   async function validatePayment(data: FormData) {
+    const generation = ++paymentGeneration.current;
     setErrorPayment(undefined);
     setErrorRecipient(undefined);
     setCallback(undefined);
@@ -135,6 +146,7 @@ export default function InvoiceScreen(): JSX.Element {
 
     fetchJson(url({ base: baseUrl, params: searchParams }))
       .then((response) => {
+        if (generation !== paymentGeneration.current) return;
         if (response.error) {
           setErrorPayment(response.message ?? 'Unknown Error');
         } else {
@@ -142,8 +154,14 @@ export default function InvoiceScreen(): JSX.Element {
           setCallbackSearch(searchParams.toString());
         }
       })
-      .catch((error: ApiError) => setErrorPayment(error.message ?? 'Unknown Error'))
-      .finally(() => setIsLoadingPayment(false));
+      .catch((error: ApiError) => {
+        if (generation !== paymentGeneration.current) return;
+        setErrorPayment(error.message ?? 'Unknown Error');
+      })
+      .finally(() => {
+        if (generation !== paymentGeneration.current) return;
+        setIsLoadingPayment(false);
+      });
   }
 
   const rules = Utils.createRules({
@@ -188,11 +206,13 @@ export default function InvoiceScreen(): JSX.Element {
                 render={({ field }) => (
                   <div
                     role="group"
-                    aria-labelledby="invoice-payee-label"
+                    aria-labelledby={payeeLabelId}
+                    aria-invalid={!!errorRecipient}
+                    aria-describedby={errorRecipient ? payeeErrorId : undefined}
                     aria-busy={isLoadingRecipient}
                     className="w-full text-start"
                   >
-                    <p id="invoice-payee-label" className="text-sm font-semibold pl-3 text-dfxGray-800">
+                    <p id={payeeLabelId} className="text-sm font-semibold pl-3 text-dfxGray-800">
                       {translate('screens/payment', 'Payee')}
                     </p>
                     <div className="flex flex-row items-center gap-2 pl-3">
@@ -272,7 +292,7 @@ export default function InvoiceScreen(): JSX.Element {
             isLoading={isLoadingPayment}
           />
           {errorRecipient && (
-            <p className="text-dfxGray-800 text-sm">
+            <p id={payeeErrorId} className="text-dfxGray-800 text-sm">
               <Trans
                 i18nKey="general/errors.invoice"
                 defaults="DFX does not recognize a recipient with the name <strong>{{recipient}}</strong>. This service can only be used for recipients who have an active account with DFX and are activated for the invoicing service. If you wish to register as a recipient with DFX, please contact support at <link>{{supportLink}}</link>."
