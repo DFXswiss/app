@@ -24,11 +24,7 @@ jest.mock('@dfx.swiss/react-components', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { Controller } = require('react-hook-form');
 
-  function enrich(
-    elements: unknown,
-    control: unknown,
-    rules?: Record<string, unknown>,
-  ): unknown {
+  function enrich(elements: unknown, control: unknown, rules?: Record<string, unknown>): unknown {
     if (!elements) return elements;
     return React.Children.map(elements, (element: unknown) => {
       if (!React.isValidElement(element)) return element;
@@ -64,15 +60,7 @@ jest.mock('@dfx.swiss/react-components', () => {
     IconVariant: { CHECK: 'check' },
     SpinnerSize: { SM: 'sm' },
     StyledLoadingSpinner: () => <span role="status">loading</span>,
-    StyledButton: ({
-      label,
-      onClick,
-      disabled,
-    }: {
-      label: string;
-      onClick?: () => void;
-      disabled?: boolean;
-    }) => (
+    StyledButton: ({ label, onClick, disabled }: { label: string; onClick?: () => void; disabled?: boolean }) => (
       <button type="button" onClick={onClick} disabled={disabled}>
         {label}
       </button>
@@ -127,9 +115,7 @@ jest.mock('@dfx.swiss/react-components', () => {
                 onBlur={field.onBlur}
                 disabled={disabled}
               />
-              {fieldState.error?.message ? (
-                <span role="alert">{fieldState.error.message}</span>
-              ) : null}
+              {fieldState.error?.message ? <span role="alert">{fieldState.error.message}</span> : null}
             </div>
           )}
         />
@@ -202,8 +188,7 @@ import InvoiceScreen from '../screens/invoice.screen';
 
 const mockCopy = copy as jest.MockedFunction<typeof copy>;
 
-const PAYER_HINT =
-  'Enter the invoice number and invoice amount exactly as printed on your invoice.';
+const PAYER_HINT = 'Enter the invoice number and invoice amount exactly as printed on your invoice.';
 
 const INVOICE_ERROR_DEFAULT =
   'DFX does not recognize a recipient with the name <strong>{{recipient}}</strong>. This service can only be used for recipients who have an active account with DFX and are activated for the invoicing service. If you wish to register as a recipient with DFX, please contact support at <link>{{supportLink}}</link>.';
@@ -487,9 +472,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(labelledBy).toBeTruthy();
     expect(labelledBy).toMatch(/^[A-Za-z][\w-]*$/);
     await waitFor(() => {
-      expect(
-        within(payeeGroup).getByRole('img', { name: 'Recipient verified' }),
-      ).toBeInTheDocument();
+      expect(within(payeeGroup).getByRole('img', { name: 'Recipient verified' })).toBeInTheDocument();
     });
   });
 
@@ -567,9 +550,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(expiryDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     expect(expiryDate).not.toMatch(/\?/);
     // Screen uses addYears(new Date(), 1) — pin ~1 year ahead, not mere presence.
-    expect(Math.abs(Date.parse(expiryDate as string) - addYears(new Date(), 1).getTime())).toBeLessThan(
-      60_000,
-    );
+    expect(Math.abs(Date.parse(expiryDate as string) - addYears(new Date(), 1).getTime())).toBeLessThan(60_000);
     expect(search.get('recipient')).toBeNull();
     expect(search.get('pay')).toBeNull();
     // Exactly the payment param set — no payer query leftovers in search string.
@@ -739,9 +720,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     await act(async () => {
       fireEvent.click(button);
     });
-    expect(
-      mockNavigate.mock.calls.some(([to]) => new URLSearchParams(to.search).get('amount') === '10'),
-    ).toBe(false);
+    expect(mockNavigate.mock.calls.some(([to]) => new URLSearchParams(to.search).get('amount') === '10')).toBe(false);
   });
 
   it('does not navigate with a delayed validatePayment amount after the amount changes to a different value', async () => {
@@ -916,9 +895,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(search.get('message')).toBe('INV-1');
     const expiryDate = search.get('expiryDate');
     expect(expiryDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-    expect(Math.abs(Date.parse(expiryDate as string) - addYears(new Date(), 1).getTime())).toBeLessThan(
-      60_000,
-    );
+    expect(Math.abs(Date.parse(expiryDate as string) - addYears(new Date(), 1).getTime())).toBeLessThan(60_000);
     expect(search.get('recipient')).toBeNull();
     expect(search.get('pay')).toBeNull();
     expect([...search.keys()].sort()).toEqual(['amount', 'expiryDate', 'message', 'routeId']);

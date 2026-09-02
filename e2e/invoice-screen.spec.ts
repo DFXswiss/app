@@ -12,10 +12,7 @@ function recipientInput(page: Page) {
   return page.locator('input[name="name"], input[autocomplete="name"]');
 }
 
-async function installRecipientRoute(
-  page: Page,
-  mock: { ok: true; currency?: string } | { ok: false },
-): Promise<void> {
+async function installRecipientRoute(page: Page, mock: { ok: true; currency?: string } | { ok: false }): Promise<void> {
   await page.route(RECIPIENT_RE, async (route: Route) => {
     if (route.request().method() !== 'GET') {
       await route.continue();
@@ -115,9 +112,7 @@ test.describe('Invoice Screen', () => {
     // Real input would use autocomplete="name"; display mode has none.
     await expect(recipientInput(page)).toHaveCount(0);
 
-    await expect(
-      page.getByText(/does not recognize a recipient|kennt keinen Empfänger/i),
-    ).toBeVisible();
+    await expect(page.getByText(/does not recognize a recipient|kennt keinen Empfänger/i)).toBeVisible();
 
     const pageContent = await page.textContent('body');
 
@@ -159,9 +154,7 @@ test.describe('Invoice Screen', () => {
     await expect(recipientInput(page)).toHaveCount(0);
 
     // Confirmed recipient: accessible verification name next to the value.
-    await expect(
-      page.getByRole('img', { name: /Recipient verified|Empfänger bestätigt/i }),
-    ).toBeVisible();
+    await expect(page.getByRole('img', { name: /Recipient verified|Empfänger bestätigt/i })).toBeVisible();
 
     // Invoice fields unlock after a known recipient.
     await expect(page.locator('input[name="invoice-id"], input[autocomplete="invoice-id"]')).toBeEnabled({
