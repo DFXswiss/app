@@ -339,7 +339,7 @@ describe('useNavigation history, goBack, setParams, clearParams, setRedirect', (
     expect(new URLSearchParams(router.state.location.search).get('routeId')).toBe('1');
   });
 
-  it('goBack navigates to /account when no redirectPath is set', async () => {
+  it('goBack navigates to /account and keeps ?pay=1 when no redirectPath is set', async () => {
     const router = createMemoryRouter(
       [
         { path: '/invoice', element: <GoBackProbe /> },
@@ -357,6 +357,7 @@ describe('useNavigation history, goBack, setParams, clearParams, setRedirect', (
     await screen.findByTestId('account-location');
     expect(mockSetRedirectPath).toHaveBeenCalledWith(undefined);
     expect(router.state.location.pathname).toBe('/account');
+    expect(router.state.location.search).toBe('?pay=1');
   });
 
   it('goBack navigates to the stored redirectPath when set', async () => {

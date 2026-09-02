@@ -34,9 +34,18 @@ describe('QrBasic', () => {
     expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
     expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
     expect(screen.queryByTestId('qr-code')).not.toBeInTheDocument();
-    expect(screen.queryByAltText('Swiss QR Bill')).not.toBeInTheDocument();
     // Must not encode the real URL into any scannable surface while loading.
     expect(container.innerHTML).not.toContain('https://pay.example/invoice');
+  });
+
+  it('renders a non-scannable skeleton while loading even when data is SVG markup', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>';
+    const { container } = render(<QrBasic data={svg} isLoading />);
+
+    expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
+    expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
+    expect(screen.queryByTestId('qr-code')).not.toBeInTheDocument();
+    expect(screen.queryByAltText('Swiss QR Bill')).not.toBeInTheDocument();
   });
 
   it('renders a Swiss QR Bill image when data is SVG markup', () => {
