@@ -483,6 +483,9 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(payeeGroup).toHaveTextContent('Foo');
     expect(payeeGroup).toHaveAttribute('aria-invalid', 'false');
     expect(payeeGroup).not.toHaveAttribute('aria-describedby');
+    const labelledBy = payeeGroup.getAttribute('aria-labelledby');
+    expect(labelledBy).toBeTruthy();
+    expect(labelledBy).toMatch(/^[A-Za-z][\w-]*$/);
     await waitFor(() => {
       expect(
         within(payeeGroup).getByRole('img', { name: 'Recipient verified' }),
@@ -503,8 +506,11 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(payeeGroup).toHaveAttribute('aria-invalid', 'true');
     const describedBy = payeeGroup.getAttribute('aria-describedby');
     expect(describedBy).toBeTruthy();
-    const description = document.getElementById(describedBy as string);
+    if (describedBy === null) return;
+    expect(describedBy).toMatch(/^[A-Za-z][\w-]*$/);
+    const description = document.getElementById(describedBy);
     expect(description).not.toBeNull();
+    expect(description).toHaveAttribute('role', 'alert');
     expect(description).toContainElement(screen.getByTestId('recipient-error'));
     expect(within(payeeGroup).queryByRole('img', { name: 'Recipient verified' })).not.toBeInTheDocument();
   });
@@ -647,6 +653,97 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it('does not navigate with the previous recipient after it changes to a different non-empty value', async () => {
+    renderAt('/invoice?pay=1');
+
+    await waitFor(() => {
+      expect(lastLayoutTitle()).toBe('Pay invoice');
+    });
+
+    const payeeInput = await screen.findByRole('textbox', { name: 'Payee' });
+    await act(async () => {
+      fireEvent.change(payeeInput, { target: { value: 'AcmeCorp' } });
+      fireEvent.blur(payeeInput);
+    });
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('AcmeCorp');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+
+    const button = await screen.findByRole('button', { name: 'Continue to payment' });
+    await waitFor(() => {
+      expect(button).not.toBeDisabled();
+    });
+
+    mockNavigate.mockClear();
+    mockDebounceHold.active = true;
+    await act(async () => {
+      fireEvent.change(payeeInput, { target: { value: 'Bakery' } });
+      fireEvent.blur(payeeInput);
+    });
+
+    expect(button).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    const navigatedWithStaleRecipient = mockNavigate.mock.calls.some(([to]) => {
+      const search = new URLSearchParams(to.search);
+      return search.get('route') === 'AcmeCorp';
+    });
+    expect(navigatedWithStaleRecipient).toBe(false);
+  });
+
+  it('does not enable continue from a delayed validatePayment response after the amount changes', async () => {
+    let resolveStale: ((value: { json: () => Promise<unknown> }) => void) | undefined;
+    (global.fetch as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStale = resolve;
+        }),
+    );
+
+    renderAt('/invoice?recipient=42&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled();
+    });
+
+    mockDebounceHold.active = true;
+    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(amountInput, { target: { value: '20' } });
+      fireEvent.blur(amountInput);
+    });
+
+    mockNavigate.mockClear();
+    expect(resolveStale).toBeDefined();
+    if (resolveStale === undefined) return;
+    await act(async () => {
+      resolveStale({ json: async () => ({}) });
+    });
+
+    const button = screen.getByRole('button', { name: 'Continue to payment' });
+    expect(button).toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(
+      mockNavigate.mock.calls.some(([to]) => new URLSearchParams(to.search).get('amount') === '10'),
+    ).toBe(false);
+  });
+
   it('does not navigate with a delayed validatePayment amount after the amount changes to a different value', async () => {
     let resolveStale: ((value: { json: () => Promise<unknown> }) => void) | undefined;
     (global.fetch as jest.Mock).mockImplementationOnce(
@@ -736,6 +833,49 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     if (rejectStale === undefined) return;
     await act(async () => {
       rejectStale({ message: 'stale payment error' });
+    });
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+  });
+
+  it('does not show a delayed validatePayment error body after the amount changes to a different value', async () => {
+    let resolveStale: ((value: { json: () => Promise<unknown> }) => void) | undefined;
+    (global.fetch as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStale = resolve;
+        }),
+    );
+
+    renderAt('/invoice?recipient=42&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(amountInput, { target: { value: '20' } });
+      fireEvent.blur(amountInput);
+    });
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Continue to payment' })).not.toBeDisabled();
+    });
+
+    expect(resolveStale).toBeDefined();
+    if (resolveStale === undefined) return;
+    await act(async () => {
+      resolveStale({ json: async () => ({ error: true, message: 'stale payment error body' }) });
     });
 
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
