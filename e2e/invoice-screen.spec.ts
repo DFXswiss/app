@@ -172,4 +172,35 @@ test.describe('Invoice Screen', () => {
       maxDiffPixels: 10000,
     });
   });
+
+  test('payer mode: typed verified payee shows confirmation and unlocked invoice fields', async ({ page }) => {
+    await installRecipientRoute(page, { ok: true, currency: 'CHF' });
+
+    await page.goto('/invoice?pay=1');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(500);
+
+    const payee = recipientInput(page);
+    await expect(payee).toBeVisible();
+    await payee.fill('AcmeCorp');
+    await payee.blur();
+
+    // Input branch stays an input (not the printed-QR display group).
+    await expect(page.getByRole('group', { name: /Payee|Zahlungsempfänger/i })).toHaveCount(0);
+    await expect(recipientInput(page)).toHaveCount(1);
+
+    // Invoice fields unlock after a known recipient.
+    await expect(page.locator('input[name="invoice-id"], input[autocomplete="invoice-id"]')).toBeEnabled({
+      timeout: 10000,
+    });
+    await expect(page.getByPlaceholder(/Invoice amount|Rechnungsbetrag/i)).toBeEnabled();
+
+    // Currency prefix on the amount field; check overlay on the payee input.
+    await expect(page.getByText('CHF', { exact: true })).toBeVisible();
+    await expect(page.locator('.absolute.bottom-\\[19px\\].right-5')).toBeVisible();
+
+    await expect(page).toHaveScreenshot('invoice-payer-typed-verified.png', {
+      maxDiffPixels: 10000,
+    });
+  });
 });
