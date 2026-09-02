@@ -42,9 +42,9 @@ export function AccountSelector({ accounts, selected, onSelect }: AccountSelecto
         smallLabel
         items={accounts}
         labelFunc={(account) => account.title}
-        // Labelled by the same predicate the screen acts on: a mandate over someone else's
-        // account cannot transact either, and an entry that looks fully usable but silently
-        // drops the transaction area on selection is worse than one that says so upfront.
+        // Labelled by the same predicate the screen acts on: View only when the caller cannot
+        // act (Read, own or foreign). A write mandate is no longer View only, because orders
+        // now go through the account resource.
         descriptionFunc={(account) => (canActOn(account) ? '' : translate('screens/safe', 'View only'))}
       />
     </Form>

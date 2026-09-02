@@ -37,6 +37,14 @@ export interface RealUnitDossierMessage {
   created: string;
 }
 
+// RealUnit-app wallet row from the user table (filtered api-side to this customer's wallets).
+export interface RealUnitWalletAddress {
+  id: number;
+  address: string;
+  status: string;
+  created: string; // ISO over the wire
+}
+
 export interface RealUnitBuyRoute {
   id: number;
   iban?: string;
@@ -234,6 +242,7 @@ export interface RealUnitCustomerDetailDto {
   kycSteps: RealUnitDossierKycStepDto[];
   transactions: RealUnitDossierTxDto[];
   bankDatas: RealUnitDossierBankDataDto[];
+  addresses: RealUnitWalletAddress[];
   buyRoutes: RealUnitBuyRoute[];
   sellRoutes: RealUnitSellRoute[];
   swapRoutes: RealUnitSwapRoute[];

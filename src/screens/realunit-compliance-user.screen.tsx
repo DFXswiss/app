@@ -335,6 +335,22 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
         ]}
       />
 
+      {/* Addresses (RealUnit-app wallet rows) */}
+      <CollectionTable
+        title={translate('screens/compliance', 'Addresses')}
+        rows={customer.addresses}
+        emptyText={translate('screens/compliance', 'No addresses')}
+        columns={[
+          { header: translate('screens/compliance', 'ID'), render: (a) => a.id },
+          {
+            header: translate('screens/compliance', 'Address'),
+            render: (a) => <span className="font-mono break-all">{a.address}</span>,
+          },
+          { header: translate('screens/compliance', 'Status'), render: (a) => statusBadge(a.status) },
+          { header: translate('screens/compliance', 'Created'), render: (a) => formatDate(a.created) },
+        ]}
+      />
+
       {/* Buy Routes */}
       <CollectionTable
         title={translate('screens/compliance', 'Buy Routes')}

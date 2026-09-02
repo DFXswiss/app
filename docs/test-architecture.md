@@ -124,6 +124,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   A green run proves the quote list, pending-table and stats-chart fixtures render. It does not
   prove that the API returns those payloads, that login or token verification works, or that those
   staff/settings or stats endpoints return real data.
+- **The RealUnit compliance visual spec answers the customer list and dossier itself.**
+  `e2e/realunit-compliance.spec.ts` fulfils `GET /v1/realunit/compliance/customers` and
+  `GET /v1/realunit/compliance/customers/:id` with synthetic fixtures (including `addresses`).
+  A green run proves those fixtures render. It does not prove that the API returns that payload
+  or that the server filters to RealUnit wallets.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for
@@ -168,6 +173,22 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/buy.spec.ts` (`openQuoteCapableBuy` and older quote cases) updates the limit
   directly so `LIMIT_EXCEEDED` does not hide payment info. A green run does **not** prove that a
   customer reaches that limit through the product path.
+- **Full-stack continue-race specs SQL-write `user_data.tradeApprovalDate`.**
+  `e2e-stack/specs/kyc-continue-race.spec.ts` sets the date so recommendation is skipped. A green
+  run does **not** prove that a customer obtains trade approval through the product path.
+- **Full-stack continue-race specs SQL-insert STRICT `TfaLog` rows.**
+  `e2e-stack/specs/kyc-continue-race.spec.ts` inserts `kyc_log` type `TfaLog` with comment
+  `Strict (App)` so `continue()` does not 403 after FinancialData starts. A green run does
+  **not** prove the mail/app 2FA enrolment or verification path.
+- **Full-stack continue-race specs recreate `kyc_step` unique index `NULLS NOT DISTINCT`.**
+  `e2e-stack/specs/kyc-continue-race.spec.ts` drops the synchronize unique index on
+  `(userDataId, name, type, sequenceNumber)` and creates `IDX_3a1150791476264753a67212a1`
+  with `NULLS NOT DISTINCT`, matching production. A green run does **not** prove the
+  migration chain applied that index.
+- **Full-stack continue-race specs SQL-complete KYC steps.**
+  `e2e-stack/specs/kyc-continue-race.spec.ts` upserts ContactData, PersonalData, NationalityData
+  and Ident (`SumsubAuto`) to `Completed`. A green run does **not** prove those steps complete
+  through the product path, including live ident.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs

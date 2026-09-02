@@ -357,7 +357,7 @@ export function useSafe(): UseSafeResult {
 
   async function fetchPaymentInfo(data: OrderFormData): Promise<OrderPaymentInfo> {
     const order = await call<OrderPaymentInfo>({
-      url: 'custody/order',
+      url: accountPath(selectedAccount, 'order', 'custody/order'),
       method: 'POST',
       data: {
         type: CustodyOrderType.DEPOSIT,
@@ -375,7 +375,7 @@ export function useSafe(): UseSafeResult {
 
   async function fetchReceiveInfo(data: OrderFormData): Promise<OrderPaymentInfo> {
     const order = await call<OrderPaymentInfo>({
-      url: 'custody/order',
+      url: accountPath(selectedAccount, 'order', 'custody/order'),
       method: 'POST',
       data: {
         type: CustodyOrderType.RECEIVE,
@@ -392,7 +392,7 @@ export function useSafe(): UseSafeResult {
 
   async function fetchSwapInfo(data: OrderFormData): Promise<OrderPaymentInfo> {
     const order = await call<OrderPaymentInfo>({
-      url: 'custody/order',
+      url: accountPath(selectedAccount, 'order', 'custody/order'),
       method: 'POST',
       data: {
         type: CustodyOrderType.SWAP,
@@ -410,7 +410,7 @@ export function useSafe(): UseSafeResult {
 
   async function fetchWithdrawInfo(data: OrderFormData): Promise<OrderPaymentInfo> {
     const order = await call<OrderPaymentInfo>({
-      url: 'custody/order',
+      url: accountPath(selectedAccount, 'order', 'custody/order'),
       method: 'POST',
       data: {
         type: CustodyOrderType.WITHDRAWAL,
@@ -429,7 +429,7 @@ export function useSafe(): UseSafeResult {
 
   async function fetchSendInfo(data: SendOrderFormData): Promise<OrderPaymentInfo> {
     const order = await call<OrderPaymentInfo>({
-      url: 'custody/order',
+      url: accountPath(selectedAccount, 'order', 'custody/order'),
       method: 'POST',
       data: {
         type: CustodyOrderType.SEND,

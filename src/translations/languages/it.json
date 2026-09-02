@@ -377,6 +377,8 @@
     "Pass only allowed when all errors are phone-related": "Pass consentito solo se tutti gli errori sono relativi al telefono",
     "Hide empty accounts": "Nascondi conti vuoti",
     "All accounts are hidden by the filter above": "Tutti i conti sono nascosti dal filtro sopra",
+    "Addresses": "Indirizzi",
+    "No addresses": "Nessun indirizzo",
     "Scorechain screenings": "Screening Scorechain",
     "Invalid user id": "ID utente non valido",
     "Unknown error": "Errore sconosciuto",
