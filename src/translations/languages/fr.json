@@ -364,6 +364,7 @@
     "No. Onboarding at DFX is only possible through a referral. You need the ref code, ref link, or email address of an existing customer who confirms your registration.": "Non. L'inscription chez DFX n'est possible que par parrainage. Vous avez besoin du code de parrainage, du lien de parrainage ou de l'adresse e-mail d'un client existant qui confirme votre inscription."
   },
   "screens/compliance": {
+    "Phone Call Times": "Heures d'appel",
     "Compliance": "Compliance",
     "Database search": "Recherche dans la base de données",
     "Matching Entries": "Entrées correspondantes",

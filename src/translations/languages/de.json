@@ -364,6 +364,7 @@
     "No. Onboarding at DFX is only possible through a referral. You need the ref code, ref link, or email address of an existing customer who confirms your registration.": "Nein. Das Onboarding bei DFX ist ausschliesslich über eine Empfehlung möglich. Du benötigst dafür den Ref-Code, Ref-Link oder die E-Mail-Adresse eines Bestandskunden, der Deine Registrierung bestätigt."
   },
   "screens/compliance": {
+    "Phone Call Times": "Anrufzeiten",
     "Compliance": "Compliance",
     "Database search": "Datenbank-Suche",
     "Matching Entries": "Passende Einträge",
