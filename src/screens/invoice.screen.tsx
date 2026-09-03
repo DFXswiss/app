@@ -114,6 +114,7 @@ export default function InvoiceScreen(): JSX.Element {
   useEffect(() => {
     setCallback(undefined);
     setCallbackSearch(undefined);
+    setErrorPayment(undefined);
     setIsLoadingPayment(false);
   }, [liveRecipient, liveInvoiceId, liveAmount]);
 
@@ -149,25 +150,28 @@ export default function InvoiceScreen(): JSX.Element {
       expiryDate: addYears(new Date(), 1).toISOString(),
     });
 
+    const isStaleForm = () => {
+      const live = liveFormRef.current;
+      return (
+        `${live.recipient}\0${live.invoiceId}\0${live.amount}` !==
+        `${data.recipient}\0${data.invoiceId}\0${data.amount}`
+      );
+    };
+
     fetchJson(url({ base: baseUrl, params: searchParams }))
       .then((response) => {
         if (generation !== paymentGeneration.current) return;
+        if (isStaleForm()) return;
         if (response.error) {
           setErrorPayment(response.message ?? 'Unknown Error');
         } else {
-          const live = liveFormRef.current;
-          if (
-            `${live.recipient}\0${live.invoiceId}\0${live.amount}` !==
-            `${data.recipient}\0${data.invoiceId}\0${data.amount}`
-          ) {
-            return;
-          }
           setCallback(relativeUrl({ path: relativeBaseUrl, params: searchParams }));
           setCallbackSearch(searchParams.toString());
         }
       })
       .catch((error: ApiError) => {
         if (generation !== paymentGeneration.current) return;
+        if (isStaleForm()) return;
         setErrorPayment(error.message ?? 'Unknown Error');
       })
       .finally(() => {
@@ -264,7 +268,13 @@ export default function InvoiceScreen(): JSX.Element {
                 />
                 {validatedRecipient && (
                   <div className="absolute bottom-[19px] right-5">
-                    <DfxIcon icon={IconVariant.CHECK} size={IconSize.MD} color={IconColor.BLUE} />
+                    <span
+                      role="img"
+                      aria-label={translate('screens/payment', 'Recipient verified')}
+                      className="inline-flex"
+                    >
+                      <DfxIcon icon={IconVariant.CHECK} size={IconSize.MD} color={IconColor.BLUE} />
+                    </span>
                   </div>
                 )}
               </>
