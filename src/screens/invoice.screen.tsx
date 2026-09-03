@@ -66,6 +66,7 @@ export default function InvoiceScreen(): JSX.Element {
   const isPayerMode = payParam != null && PAYER_PAY_VALUES.includes(payParam.trim().toLowerCase());
   // Printed QR: payee is information, not an input — show text instead of a disabled field.
   const isPayeeFromUrl = isPayerMode && !!recipientFromUrl;
+  const recipientLabel = translate('screens/payment', isPayerMode ? 'Payee' : 'Recipient');
 
   const {
     watch,
@@ -258,8 +259,9 @@ export default function InvoiceScreen(): JSX.Element {
                 <StyledInput
                   name="recipient"
                   autocomplete="name"
-                  label={translate('screens/payment', isPayerMode ? 'Payee' : 'Recipient')}
+                  label={recipientLabel}
                   placeholder={isPayerMode ? undefined : translate('screens/kyc', 'John Doe')}
+                  aria-label={recipientLabel}
                   full
                   smallLabel
                   forceError={!!errorRecipient}

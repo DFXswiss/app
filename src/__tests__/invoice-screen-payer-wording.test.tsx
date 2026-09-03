@@ -87,6 +87,7 @@ jest.mock('@dfx.swiss/react-components', () => {
         type,
         rules,
         autocomplete,
+        'aria-label': ariaLabel,
       }: {
         control?: unknown;
         name: string;
@@ -96,6 +97,7 @@ jest.mock('@dfx.swiss/react-components', () => {
         type?: string;
         rules?: unknown;
         autocomplete?: string;
+        'aria-label'?: string;
       },
       ref: React.Ref<HTMLInputElement>,
     ) {
@@ -112,14 +114,14 @@ jest.mock('@dfx.swiss/react-components', () => {
             fieldState: { error?: { message?: string } };
           }) => (
             <div>
-              {label ? <label htmlFor={name}>{label}</label> : null}
+              {label ? <label>{label}</label> : null}
               <input
-                id={name}
                 ref={ref}
                 name={name}
                 type={type}
                 autoComplete={autocomplete}
                 placeholder={placeholder}
+                aria-label={ariaLabel}
                 value={field.value ?? ''}
                 onChange={(e) => field.onChange(e.target.value)}
                 onBlur={field.onBlur}
@@ -221,9 +223,19 @@ function lastLayoutTitle(): string | undefined {
   return (calls[calls.length - 1][0] as { title?: string } | undefined)?.title;
 }
 
+function getInvoiceIdInput(): HTMLInputElement {
+  const input = screen.queryByPlaceholderText('Invoice number') ?? screen.getByPlaceholderText('Invoice ID');
+  return input as HTMLInputElement;
+}
+
+function getAmountInput(): HTMLInputElement {
+  const input = screen.queryByPlaceholderText('Invoice amount') ?? screen.getByPlaceholderText('Amount');
+  return input as HTMLInputElement;
+}
+
 async function fillInvoiceFields(invoiceId = 'INV-1', amount = '10') {
-  const invoiceInput = document.getElementById('invoiceId') as HTMLInputElement;
-  const amountInput = document.getElementById('amount') as HTMLInputElement;
+  const invoiceInput = getInvoiceIdInput();
+  const amountInput = getAmountInput();
   await act(async () => {
     fireEvent.change(invoiceInput, { target: { value: invoiceId } });
     fireEvent.blur(invoiceInput);
@@ -325,6 +337,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(screen.getByRole('button', { name: 'Open invoice' })).toBeInTheDocument();
     expect(screen.queryByText(PAYER_HINT)).not.toBeInTheDocument();
     expect(screen.getByText('Recipient')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Recipient' })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('John Doe')).toBeInTheDocument();
     expect(screen.getByTestId('qr-basic')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy Link' })).toBeInTheDocument();
@@ -457,7 +470,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(payeeGroup).toHaveTextContent('Foo');
 
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
 
     await fillInvoiceFields();
@@ -547,6 +560,19 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(recipientInput).toHaveValue('');
   });
 
+  it('payer mode without recipient: the payee input is named by its field label', async () => {
+    renderAt('/invoice?pay=1');
+
+    await waitFor(() => {
+      expect(lastLayoutTitle()).toBe('Pay invoice');
+    });
+
+    expect(screen.getByRole('textbox', { name: 'Payee' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'John Doe' })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('John Doe')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Payee')).not.toBeInTheDocument();
+  });
+
   it('validatePayment success sets callback and enables the button; navigate uses payment params only', async () => {
     renderAt('/invoice?recipient=42&pay=1');
 
@@ -554,7 +580,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
 
     await fillInvoiceFields('INV-1', '10');
@@ -617,7 +643,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields('INV-1', '10');
 
@@ -626,7 +652,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(button).not.toBeDisabled();
     });
 
-    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    const amountInput = getAmountInput();
     await act(async () => {
       fireEvent.change(amountInput, { target: { value: '' } });
       fireEvent.blur(amountInput);
@@ -644,7 +670,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields('INV-1', '10');
 
@@ -655,7 +681,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
 
     // Keep debounced form data at the validated values so only the live watch() sees '20'.
     mockDebounceHold.active = true;
-    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    const amountInput = getAmountInput();
     await act(async () => {
       fireEvent.change(amountInput, { target: { value: '20' } });
       fireEvent.blur(amountInput);
@@ -680,7 +706,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('AcmeCorp');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields('INV-1', '10');
 
@@ -713,7 +739,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields('INV-1', '10');
     await waitFor(() => {
@@ -721,7 +747,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     });
 
     mockDebounceHold.active = true;
-    const invoiceInput = document.getElementById('invoiceId') as HTMLInputElement;
+    const invoiceInput = getInvoiceIdInput();
     await act(async () => {
       fireEvent.change(invoiceInput, { target: { value: 'INV-2' } });
       fireEvent.blur(invoiceInput);
@@ -752,7 +778,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields('INV-1', '10');
     await waitFor(() => {
@@ -760,7 +786,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     });
 
     mockDebounceHold.active = true;
-    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    const amountInput = getAmountInput();
     await act(async () => {
       fireEvent.change(amountInput, { target: { value: '20' } });
       fireEvent.blur(amountInput);
@@ -782,6 +808,61 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(mockNavigate.mock.calls.some(([to]) => new URLSearchParams(to.search).get('amount') === '10')).toBe(false);
   });
 
+  it('does not enable continue from a delayed validatePayment response after the recipient changes', async () => {
+    let resolveStale: ((value: { json: () => Promise<unknown> }) => void) | undefined;
+    (global.fetch as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStale = resolve;
+        }),
+    );
+
+    renderAt('/invoice?pay=1');
+
+    await waitFor(() => {
+      expect(lastLayoutTitle()).toBe('Pay invoice');
+    });
+
+    const payeeInput = await screen.findByRole('textbox', { name: 'Payee' });
+    await act(async () => {
+      fireEvent.change(payeeInput, { target: { value: 'AcmeCorp' } });
+      fireEvent.blur(payeeInput);
+    });
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('AcmeCorp');
+    });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled();
+    });
+
+    mockDebounceHold.active = true;
+    await act(async () => {
+      fireEvent.change(payeeInput, { target: { value: 'Bakery' } });
+      fireEvent.blur(payeeInput);
+    });
+
+    mockNavigate.mockClear();
+    expect(resolveStale).toBeDefined();
+    if (resolveStale === undefined) return;
+    await act(async () => {
+      resolveStale({ json: async () => ({}) });
+    });
+
+    const button = screen.getByRole('button', { name: 'Continue to payment' });
+    expect(button).toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(mockNavigate.mock.calls.some(([to]) => new URLSearchParams(to.search).get('route') === 'AcmeCorp')).toBe(
+      false,
+    );
+  });
+
   it('navigate uses the new amount after a delayed validatePayment for the previous amount', async () => {
     let resolveStale: ((value: { json: () => Promise<unknown> }) => void) | undefined;
     (global.fetch as jest.Mock).mockImplementationOnce(
@@ -797,14 +878,14 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields('INV-1', '10');
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    const amountInput = getAmountInput();
     await act(async () => {
       fireEvent.change(amountInput, { target: { value: '20' } });
       fireEvent.blur(amountInput);
@@ -851,14 +932,14 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields('INV-1', '10');
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    const amountInput = getAmountInput();
     await act(async () => {
       fireEvent.change(amountInput, { target: { value: '20' } });
       fireEvent.blur(amountInput);
@@ -905,14 +986,14 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields('INV-1', '10');
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    const amountInput = getAmountInput();
     await act(async () => {
       fireEvent.change(amountInput, { target: { value: '' } });
       fireEvent.blur(amountInput);
@@ -957,7 +1038,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     });
 
     mockDebounceHold.active = true;
-    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    const amountInput = getAmountInput();
     await act(async () => {
       fireEvent.change(amountInput, { target: { value: '20' } });
       fireEvent.blur(amountInput);
@@ -981,14 +1062,14 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields('INV-1', '10');
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    const amountInput = getAmountInput();
     await act(async () => {
       fireEvent.change(amountInput, { target: { value: '20' } });
       fireEvent.blur(amountInput);
@@ -1032,7 +1113,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice ID' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice ID')).not.toBeDisabled();
     });
 
     await fillInvoiceFields('INV-1', '10');
@@ -1068,7 +1149,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     renderAt('/invoice?recipient=Foo&pay=1');
     await waitFor(() => expect(mockGetPaymentRecipient).toHaveBeenCalled());
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields();
 
@@ -1077,7 +1158,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     });
     expect(screen.queryByTestId('recipient-error')).not.toBeInTheDocument();
 
-    const amountInput = document.getElementById('amount') as HTMLInputElement;
+    const amountInput = getAmountInput();
     await act(async () => {
       fireEvent.change(amountInput, { target: { value: '' } });
       fireEvent.blur(amountInput);
@@ -1095,7 +1176,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     renderAt('/invoice?recipient=Foo&pay=1');
     await waitFor(() => expect(mockGetPaymentRecipient).toHaveBeenCalled());
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields();
 
@@ -1112,7 +1193,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     renderAt('/invoice?recipient=Foo&pay=1');
     await waitFor(() => expect(mockGetPaymentRecipient).toHaveBeenCalled());
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields();
 
@@ -1127,7 +1208,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     renderAt('/invoice?recipient=Foo&pay=1');
     await waitFor(() => expect(mockGetPaymentRecipient).toHaveBeenCalled());
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields();
 
@@ -1142,7 +1223,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     renderAt('/invoice?recipient=Foo&pay=1');
     await waitFor(() => expect(mockGetPaymentRecipient).toHaveBeenCalled());
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields();
 
@@ -1179,7 +1260,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice ID' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice ID')).not.toBeDisabled();
     });
 
     await fillInvoiceFields('INV-9', '25');
@@ -1206,7 +1287,7 @@ describe('InvoiceScreen payer wording (?pay)', () => {
 
     await waitFor(() => expect(mockGetPaymentRecipient).toHaveBeenCalledWith('AcmeCorp'));
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
     await fillInvoiceFields();
 

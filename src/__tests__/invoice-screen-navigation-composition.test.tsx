@@ -85,6 +85,7 @@ jest.mock('@dfx.swiss/react-components', () => {
         type,
         rules,
         autocomplete,
+        'aria-label': ariaLabel,
       }: {
         control?: unknown;
         name: string;
@@ -94,6 +95,7 @@ jest.mock('@dfx.swiss/react-components', () => {
         type?: string;
         rules?: unknown;
         autocomplete?: string;
+        'aria-label'?: string;
       },
       ref: React.Ref<HTMLInputElement>,
     ) {
@@ -110,14 +112,14 @@ jest.mock('@dfx.swiss/react-components', () => {
             fieldState: { error?: { message?: string } };
           }) => (
             <div>
-              {label ? <label htmlFor={name}>{label}</label> : null}
+              {label ? <label>{label}</label> : null}
               <input
-                id={name}
                 ref={ref}
                 name={name}
                 type={type}
                 autoComplete={autocomplete}
                 placeholder={placeholder}
+                aria-label={ariaLabel}
                 value={field.value ?? ''}
                 onChange={(e) => field.onChange(e.target.value)}
                 onBlur={field.onBlur}
@@ -210,8 +212,8 @@ function renderInvoice(path: string) {
 }
 
 async function fillInvoiceFields(invoiceId = 'INV-1', amount = '10') {
-  const invoiceInput = document.getElementById('invoiceId') as HTMLInputElement;
-  const amountInput = document.getElementById('amount') as HTMLInputElement;
+  const invoiceInput = screen.getByPlaceholderText('Invoice number') as HTMLInputElement;
+  const amountInput = screen.getByPlaceholderText('Invoice amount') as HTMLInputElement;
   await act(async () => {
     fireEvent.change(invoiceInput, { target: { value: invoiceId } });
     fireEvent.blur(invoiceInput);
@@ -246,7 +248,7 @@ describe('InvoiceScreen + useNavigation composition', () => {
       expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
     });
     await waitFor(() => {
-      expect(screen.getByRole('textbox', { name: 'Invoice number' })).not.toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
     });
 
     await fillInvoiceFields('INV-1', '10');
