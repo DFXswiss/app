@@ -188,9 +188,9 @@ test.describe('Invoice Screen', () => {
     });
     await expect(page.getByPlaceholder(/Invoice amount|Rechnungsbetrag/i)).toBeEnabled();
 
-    // Currency prefix on the amount field; check overlay on the payee input.
+    // Currency prefix on the amount field; confirmed recipient on the payee input.
     await expect(page.getByText('CHF', { exact: true })).toBeVisible();
-    await expect(page.locator('.absolute.bottom-\\[19px\\].right-5')).toBeVisible();
+    await expect(page.getByRole('img', { name: /Recipient verified|Empfänger bestätigt/i })).toBeVisible();
 
     await expect(page).toHaveScreenshot('invoice-payer-typed-verified.png', {
       maxDiffPixels: 10000,
