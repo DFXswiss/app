@@ -1,6 +1,7 @@
 // Component-level: ConnectTaro creates an LNURL auth challenge, shows it as a Taro link, polls its
-// status and resolves the login with the access token. An expired challenge (404 after the TTL
-// cleanup) rejects the login with a dedicated message; every other poll failure keeps the generic one.
+// status one request at a time and resolves the login with the access token. A challenge the API
+// no longer knows once its 5-minute lifetime is over (404) rejects the login with a dedicated
+// message; every other poll failure keeps the generic one.
 
 const mockCreateLnurlAuth = jest.fn();
 const mockGetLnurlAuth = jest.fn();
@@ -60,18 +61,25 @@ jest.mock('../components/home/connect-base', () => ({
   },
 }));
 
-import { ApiException } from '@dfx.swiss/react';
+import { ApiException, Blockchain, LnurlAuthStatus } from '@dfx.swiss/react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import { Account } from '../components/home/connect-shared';
 import ConnectTaro from '../components/home/wallet/connect-taro';
 import { WalletType } from '../contexts/wallet.context';
 
+const CHALLENGE_LIFETIME_MS = 5 * 60 * 1000;
+
 interface ConnectBaseProps {
   isSupported: () => boolean;
-  getAccount: (wallet: WalletType, blockchain: string, isReconnect: boolean) => Promise<Account>;
+  getAccount: (wallet: WalletType, blockchain: Blockchain, isReconnect: boolean) => Promise<Account>;
   signMessage: () => Promise<never>;
   autoConnect?: boolean;
+}
+
+interface PendingPoll {
+  resolve: (status: LnurlAuthStatus) => void;
+  reject: (error: unknown) => void;
 }
 
 function connectBase(): ConnectBaseProps {
@@ -98,7 +106,7 @@ async function startLogin(): Promise<{ outcome: Promise<Account | unknown> }> {
 
   await act(async () => {
     outcome = connectBase()
-      .getAccount(WalletType.DFX_TARO, 'Lightning', false)
+      .getAccount(WalletType.DFX_TARO, Blockchain.LIGHTNING, false)
       .catch((e: unknown) => e);
 
     // let createLnurlAuth resolve and the token promise be created before React renders
@@ -108,9 +116,22 @@ async function startLogin(): Promise<{ outcome: Promise<Account | unknown> }> {
   return { outcome };
 }
 
-async function advancePolling(ms: number): Promise<void> {
+async function advanceTime(ms: number): Promise<void> {
   await act(async () => {
     jest.advanceTimersByTime(ms);
+  });
+}
+
+// status requests stay pending until the test settles them
+function holdPolls(): PendingPoll[] {
+  const polls: PendingPoll[] = [];
+  mockGetLnurlAuth.mockImplementation(() => new Promise((resolve, reject) => polls.push({ resolve, reject })));
+  return polls;
+}
+
+async function settle(action: () => void): Promise<void> {
+  await act(async () => {
+    action();
   });
 }
 
@@ -141,7 +162,7 @@ describe('ConnectTaro', () => {
       mockAuthContext.session = { address: 'LNURL1SESSION' };
       renderConnectTaro();
 
-      await expect(connectBase().getAccount(WalletType.DFX_TARO, 'Lightning', true)).resolves.toEqual({
+      await expect(connectBase().getAccount(WalletType.DFX_TARO, Blockchain.LIGHTNING, true)).resolves.toEqual({
         address: 'LNURL1SESSION',
       });
       expect(mockCreateLnurlAuth).not.toHaveBeenCalled();
@@ -149,7 +170,7 @@ describe('ConnectTaro', () => {
 
     it('shows the challenge as a Taro link and opens the app with it', async () => {
       const open = jest.spyOn(window, 'open').mockImplementation(() => null);
-      mockGetLnurlAuth.mockResolvedValue({ isComplete: false });
+      holdPolls();
       renderConnectTaro();
 
       expect(screen.getByTestId('spinner')).toBeInTheDocument();
@@ -170,12 +191,25 @@ describe('ConnectTaro', () => {
       renderConnectTaro();
 
       const { outcome } = await startLogin();
-      await advancePolling(1000);
-      await advancePolling(1000);
+      await advanceTime(1000);
+      await advanceTime(1000);
 
       await expect(outcome).resolves.toEqual({ session: 'access-token' });
 
-      await advancePolling(5000);
+      await advanceTime(5000);
+      expect(mockGetLnurlAuth).toHaveBeenCalledTimes(2);
+    });
+
+    it('sends the next status request only after the previous one has settled', async () => {
+      const polls = holdPolls();
+      renderConnectTaro();
+
+      await startLogin();
+      await advanceTime(5000);
+      expect(mockGetLnurlAuth).toHaveBeenCalledTimes(1);
+
+      await settle(() => polls[0].resolve({ isComplete: false }));
+      await advanceTime(1000);
       expect(mockGetLnurlAuth).toHaveBeenCalledTimes(2);
     });
 
@@ -184,29 +218,40 @@ describe('ConnectTaro', () => {
 
       await startLogin();
       unmount();
-      await advancePolling(5000);
+      await advanceTime(5000);
 
       expect(mockGetLnurlAuth).not.toHaveBeenCalled();
     });
   });
 
   describe('status poll failure', () => {
-    async function loginWithPollError(pollError: unknown): Promise<unknown> {
-      mockGetLnurlAuth.mockRejectedValue(pollError);
+    // fails the first status request once the challenge is `challengeAge` ms old
+    async function loginWithPollError(pollError: unknown, challengeAge: number): Promise<unknown> {
+      const polls = holdPolls();
       renderConnectTaro();
 
       const { outcome } = await startLogin();
-      await advancePolling(1000);
+      await advanceTime(1000);
+      await advanceTime(challengeAge - 1000);
+      await settle(() => polls[0].reject(pollError));
 
       expect(mockGetLnurlAuth).toHaveBeenCalledWith('k1-challenge');
       return outcome;
     }
 
-    it('rejects with "LNURL login expired" when the challenge is no longer known (404)', async () => {
-      const error = await loginWithPollError(new ApiException(404, 'k1 not found'));
+    it('rejects with "LNURL login expired" when the challenge is unknown (404) after its lifetime', async () => {
+      const error = await loginWithPollError(new ApiException(404, 'k1 not found'), CHALLENGE_LIFETIME_MS);
 
       expect(error).toBeInstanceOf(Error);
       expect((error as Error).message).toBe('LNURL login expired');
+      expect(screen.queryByTestId('qr')).not.toBeInTheDocument();
+    });
+
+    it('rejects with "Authentication failed" when the challenge is unknown (404) before its lifetime ends', async () => {
+      const error = await loginWithPollError(new ApiException(404, 'k1 not found'), CHALLENGE_LIFETIME_MS - 1);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe('Authentication failed');
       expect(screen.queryByTestId('qr')).not.toBeInTheDocument();
     });
 
@@ -215,8 +260,8 @@ describe('ConnectTaro', () => {
       ['a server error', new ApiException(500, 'Internal server error')],
       ['a non-API error', new Error('404')],
       ['a non-ApiException object carrying statusCode 404', { statusCode: 404, message: 'k1 not found' }],
-    ])('rejects with "Authentication failed" on %s', async (_label, pollError) => {
-      const error = await loginWithPollError(pollError);
+    ])('rejects with "Authentication failed" on %s after the challenge lifetime', async (_label, pollError) => {
+      const error = await loginWithPollError(pollError, CHALLENGE_LIFETIME_MS);
 
       expect(error).toBeInstanceOf(Error);
       expect((error as Error).message).toBe('Authentication failed');
@@ -224,66 +269,47 @@ describe('ConnectTaro', () => {
     });
 
     it('stops polling after the first failed status check', async () => {
-      await loginWithPollError(new ApiException(404, 'k1 not found'));
-      await advancePolling(5000);
+      await loginWithPollError(new ApiException(404, 'k1 not found'), CHALLENGE_LIFETIME_MS);
+      await advanceTime(5000);
 
       expect(mockGetLnurlAuth).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe('overlapping status polls', () => {
-    interface PendingPoll {
-      resolve: (status: object) => void;
-      reject: (error: unknown) => void;
-    }
-
-    let polls: PendingPoll[];
-
-    beforeEach(() => {
-      polls = [];
-      mockGetLnurlAuth.mockImplementation(() => new Promise((resolve, reject) => polls.push({ resolve, reject })));
-    });
-
-    async function settle(action: () => void): Promise<void> {
-      await act(async () => {
-        action();
-      });
-    }
-
-    it('ignores a stale poll failure after a retry and completes the new login', async () => {
+  describe('replaced challenge', () => {
+    async function replaceChallengeWhilePolling(): Promise<{ polls: PendingPoll[]; outcome: Promise<unknown> }> {
+      const polls = holdPolls();
       renderConnectTaro();
 
-      const first = await startLogin();
-      await advancePolling(2000);
-      expect(polls).toHaveLength(2);
-
-      await settle(() => polls[0].reject(new ApiException(404, 'k1 not found')));
-      expect(((await first.outcome) as Error).message).toBe('LNURL login expired');
+      await startLogin();
+      await advanceTime(1000);
 
       mockCreateLnurlAuth.mockResolvedValueOnce({ k1: 'k1-retry', lnurl: 'LNURL1RETRY' });
-      const retry = await startLogin();
-      await settle(() => polls[1].reject(new ApiException(500, 'Internal server error')));
+      const { outcome } = await startLogin();
 
+      return { polls, outcome };
+    }
+
+    it('ignores a failed status request of the replaced challenge and completes the new login', async () => {
+      const { polls, outcome } = await replaceChallengeWhilePolling();
+
+      await settle(() => polls[0].reject(new ApiException(404, 'k1 not found')));
       expect(screen.getByTestId('qr')).toHaveTextContent('dfxtaro:lightning:LNURL1RETRY');
 
-      await advancePolling(1000);
+      await advanceTime(1000);
       expect(mockGetLnurlAuth).toHaveBeenLastCalledWith('k1-retry');
 
-      await settle(() => polls[2].resolve({ isComplete: true, accessToken: 'retry-token' }));
-      await expect(retry.outcome).resolves.toEqual({ session: 'retry-token' });
+      await settle(() => polls[1].resolve({ isComplete: true, accessToken: 'retry-token' }));
+      await expect(outcome).resolves.toEqual({ session: 'retry-token' });
     });
 
-    it('ignores a stale poll failure after the login completed', async () => {
-      renderConnectTaro();
+    it('does not keep polling the replaced challenge after its pending status request', async () => {
+      const { polls } = await replaceChallengeWhilePolling();
 
-      const { outcome } = await startLogin();
-      await advancePolling(2000);
+      await settle(() => polls[0].resolve({ isComplete: false }));
+      await advanceTime(1000);
 
-      await settle(() => polls[0].resolve({ isComplete: true, accessToken: 'access-token' }));
-      await settle(() => polls[1].reject(new ApiException(404, 'k1 not found')));
-
-      await expect(outcome).resolves.toEqual({ session: 'access-token' });
-      expect(screen.getByTestId('qr')).toHaveTextContent('dfxtaro:lightning:LNURL1TEST');
+      expect(mockGetLnurlAuth.mock.calls).toEqual([['k1-challenge'], ['k1-retry']]);
     });
   });
 
