@@ -1,4 +1,4 @@
-import { Blockchain, LnurlAuth, useAuth, useAuthContext } from '@dfx.swiss/react';
+import { ApiException, Blockchain, LnurlAuth, useAuth, useAuthContext } from '@dfx.swiss/react';
 import {
   SpinnerSize,
   StyledButton,
@@ -48,10 +48,11 @@ export default function ConnectTaro(props: ConnectProps): JSX.Element {
                 tokenPromise?.resolve(r.accessToken);
               }
             })
-            .catch(() => {
+            .catch((error: unknown) => {
               clearInterval(poller);
               setAuth(undefined);
-              tokenPromise?.reject(new Error('Authentication failed'));
+              const isExpiredChallenge = error instanceof ApiException && error.statusCode === 404;
+              tokenPromise?.reject(new Error(isExpiredChallenge ? 'LNURL login expired' : 'Authentication failed'));
             }),
         1000,
       );
