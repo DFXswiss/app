@@ -231,6 +231,62 @@ describe('ConnectTaro', () => {
     });
   });
 
+  describe('overlapping status polls', () => {
+    interface PendingPoll {
+      resolve: (status: object) => void;
+      reject: (error: unknown) => void;
+    }
+
+    let polls: PendingPoll[];
+
+    beforeEach(() => {
+      polls = [];
+      mockGetLnurlAuth.mockImplementation(() => new Promise((resolve, reject) => polls.push({ resolve, reject })));
+    });
+
+    async function settle(action: () => void): Promise<void> {
+      await act(async () => {
+        action();
+      });
+    }
+
+    it('ignores a stale poll failure after a retry and completes the new login', async () => {
+      renderConnectTaro();
+
+      const first = await startLogin();
+      await advancePolling(2000);
+      expect(polls).toHaveLength(2);
+
+      await settle(() => polls[0].reject(new ApiException(404, 'k1 not found')));
+      expect(((await first.outcome) as Error).message).toBe('LNURL login expired');
+
+      mockCreateLnurlAuth.mockResolvedValueOnce({ k1: 'k1-retry', lnurl: 'LNURL1RETRY' });
+      const retry = await startLogin();
+      await settle(() => polls[1].reject(new ApiException(500, 'Internal server error')));
+
+      expect(screen.getByTestId('qr')).toHaveTextContent('dfxtaro:lightning:LNURL1RETRY');
+
+      await advancePolling(1000);
+      expect(mockGetLnurlAuth).toHaveBeenLastCalledWith('k1-retry');
+
+      await settle(() => polls[2].resolve({ isComplete: true, accessToken: 'retry-token' }));
+      await expect(retry.outcome).resolves.toEqual({ session: 'retry-token' });
+    });
+
+    it('ignores a stale poll failure after the login completed', async () => {
+      renderConnectTaro();
+
+      const { outcome } = await startLogin();
+      await advancePolling(2000);
+
+      await settle(() => polls[0].resolve({ isComplete: true, accessToken: 'access-token' }));
+      await settle(() => polls[1].reject(new ApiException(404, 'k1 not found')));
+
+      await expect(outcome).resolves.toEqual({ session: 'access-token' });
+      expect(screen.getByTestId('qr')).toHaveTextContent('dfxtaro:lightning:LNURL1TEST');
+    });
+  });
+
   describe('content', () => {
     it('shows the connect error with a retry button', () => {
       mockContentError = 'LNURL login expired';

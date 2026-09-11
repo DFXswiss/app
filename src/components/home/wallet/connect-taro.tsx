@@ -38,18 +38,23 @@ export default function ConnectTaro(props: ConnectProps): JSX.Element {
 
   useEffect(() => {
     if (auth?.k1) {
+      // requests still in flight when polling stops (settled, restarted or unmounted) must not touch a newer login
+      let isPolling = true;
+
       // start polling
       const poller = setInterval(
         () =>
           getLnurlAuth(auth.k1)
             .then((r) => {
-              if (r.isComplete) {
-                clearInterval(poller);
+              if (isPolling && r.isComplete) {
+                stopPolling();
                 tokenPromise?.resolve(r.accessToken);
               }
             })
             .catch((error: unknown) => {
-              clearInterval(poller);
+              if (!isPolling) return;
+
+              stopPolling();
               setAuth(undefined);
               const isExpiredChallenge = error instanceof ApiException && error.statusCode === 404;
               tokenPromise?.reject(new Error(isExpiredChallenge ? 'LNURL login expired' : 'Authentication failed'));
@@ -57,7 +62,12 @@ export default function ConnectTaro(props: ConnectProps): JSX.Element {
         1000,
       );
 
-      return () => clearInterval(poller);
+      const stopPolling = (): void => {
+        isPolling = false;
+        clearInterval(poller);
+      };
+
+      return stopPolling;
     }
   }, [auth?.k1]);
 
