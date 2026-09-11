@@ -15,7 +15,7 @@ import { QrCopy } from '../../payment/qr-code';
 import { ConnectBase } from '../connect-base';
 import { Account, ConnectContentProps, ConnectError, ConnectProps } from '../connect-shared';
 
-// the API drops an LNURL challenge 5 minutes after creating it; keep in sync with the API
+// the API's cleanup job removes LNURL challenges once they are older than 5 minutes; keep in sync with the API
 const LNURL_CHALLENGE_LIFETIME_MS = 5 * 60 * 1000;
 
 export default function ConnectTaro(props: ConnectProps): JSX.Element {
