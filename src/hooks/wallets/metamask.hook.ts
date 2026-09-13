@@ -76,7 +76,7 @@ export function useMetaMask(): MetaMaskInterface {
   const web3 = useMemo(() => {
     try {
       return new Web3(Web3.givenProvider);
-    } catch (e) {
+    } catch {
       // conflicting wallet extensions may inject a provider proxy that throws on access
       return new Web3();
     }
