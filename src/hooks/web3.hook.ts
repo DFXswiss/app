@@ -4,8 +4,8 @@ import Web3 from 'web3';
 
 export interface Web3Interface {
   toBlockchain: (chainId: string | number) => Blockchain | undefined;
-  toChainHex: (blockchain: Blockchain) => string | number | undefined;
-  toChainId: (blockchain: Blockchain) => string | number | undefined;
+  toChainHex: (blockchain: Blockchain) => string | undefined;
+  toChainId: (blockchain: Blockchain) => string | undefined;
   toChainObject: (blockchain: Blockchain) => MetaMaskChainInterface | undefined;
 }
 

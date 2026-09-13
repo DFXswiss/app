@@ -157,6 +157,7 @@ describe('useMetaMask', () => {
       expect(typeof result.current.createTransaction).toBe('function');
       expect(typeof result.current.sendCallsWithPaymaster).toBe('function');
       expect(typeof result.current.supportsEip5792Paymaster).toBe('function');
+      expect(typeof result.current.signEip7702Authorization).toBe('function');
     });
   });
 });
