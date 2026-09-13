@@ -63,6 +63,7 @@ jest.mock('react-device-detect', () => ({
   isMobile: false,
 }));
 
+import Web3 from 'web3';
 import { useMetaMask } from '../metamask.hook';
 
 describe('useMetaMask', () => {
@@ -117,6 +118,23 @@ describe('useMetaMask', () => {
     it('should return undefined when no wallet is detected', () => {
       const { result } = renderHook(() => useMetaMask());
       expect(result.current.getWalletType()).toBeUndefined();
+    });
+  });
+
+  describe('conflicting injected provider', () => {
+    it('should not throw when the injected provider breaks the Web3 constructor', () => {
+      (window as any).ethereum = { isMetaMask: true };
+      (Web3 as unknown as jest.Mock).mockImplementationOnce(() => {
+        throw new TypeError(
+          "'get' on proxy: property 'on' is a read-only and non-configurable data property on the proxy target but the proxy did not return its actual value",
+        );
+      });
+
+      const { result } = renderHook(() => useMetaMask());
+
+      expect(result.current.isInstalled()).toBe(true);
+      expect(result.current.getWalletType()).toBe('MetaMask');
+      expect(Web3).toHaveBeenLastCalledWith();
     });
   });
 
