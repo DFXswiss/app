@@ -19,7 +19,6 @@ const CSV_HEADERS = ['Account', 'AccountKey', 'Line', 'Currency', 'Count', 'Amou
 interface OpenedLine {
   accountKey: string;
   lineKey: string;
-  year: number;
   list?: KundengelderTxList;
   error?: string;
 }
@@ -99,16 +98,16 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
     const lineKey = line.key;
     const requestId = lineRequestId.current + 1;
     lineRequestId.current = requestId;
-    setOpened({ accountKey, lineKey, year });
+    setOpened({ accountKey, lineKey });
 
     getKundengelderLines(year, accountKey, lineKey)
       .then((list) => {
         if (lineRequestId.current !== requestId) return;
-        setOpened({ accountKey, lineKey, year, list });
+        setOpened({ accountKey, lineKey, list });
       })
       .catch((err: unknown) => {
         if (lineRequestId.current !== requestId) return;
-        setOpened({ accountKey, lineKey, year, error: errorMessage(err) });
+        setOpened({ accountKey, lineKey, error: errorMessage(err) });
       });
   }
 

@@ -71,5 +71,15 @@ test.describe('Kundengelder year extract', () => {
       fullPage: true,
       maxDiffPixels: 1000,
     });
+
+    const firstLine = page.getByRole('row').nth(1);
+    if ((await firstLine.count()) > 0) {
+      await firstLine.click();
+      await page.waitForTimeout(500);
+      await expect(page).toHaveScreenshot('dashboard-financial-kundengelder-line.png', {
+        fullPage: true,
+        maxDiffPixels: 1000,
+      });
+    }
   });
 });

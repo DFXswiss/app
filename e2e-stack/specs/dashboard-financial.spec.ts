@@ -301,4 +301,18 @@ test.describe('Financial dashboard', () => {
 
     assertNoErrors(pageErrors, consoleErrors);
   });
+
+  test('/dashboard/financial/kundengelder: heading, year select, extract GET ok', async ({ page }) => {
+    const { jwt } = await loginAs('Admin');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+
+    const extractRequests = waitForFinancialDestinationRequests(page, '/dashboard/financial/kundengelder');
+    await openScreen(page, '/dashboard/financial/kundengelder', jwt);
+    const responses = await extractRequests;
+    expect(responses.every((r) => r.ok())).toBeTruthy();
+    await expect(page.getByRole('heading', { name: 'Kundengelder' })).toBeVisible();
+    await expect(page.getByLabel('Year')).toBeVisible();
+
+    assertNoErrors(pageErrors, consoleErrors);
+  });
 });
