@@ -31,6 +31,18 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      // App 2.0 full-bleed layout under 460px (`src/app2/styles.css`). Desktop
+      // Chrome plus a viewport below that breakpoint; testMatch keeps this
+      // project off every spec that is not app2, so the other baselines stay
+      // named `*-chromium-darwin.png`.
+      name: 'chromium-mobile',
+      testMatch: ['**/app2-preview.spec.ts', '**/app2-session.spec.ts'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 390, height: 844 },
+      },
+    },
   ],
 
   webServer: {
