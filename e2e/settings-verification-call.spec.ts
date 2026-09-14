@@ -18,7 +18,7 @@ import { test, expect, Page, Route } from '@playwright/test';
  *
  * Intercepted endpoints:
  *   - GET  /v1/language, /v1/fiat, /v1/asset, /v1/bankAccount, /v1/country, /v1/setting/infoBanner
- *   - GET  /v2/user   (three synthetic kyc consent payloads)
+ *   - GET  /v2/user   (five synthetic kyc payloads)
  *   - PUT/PATCH /v1/user, /v2/user  (empty body so updateCallSettings cannot hit a real API)
  *
  * Synthetic fixtures: fake ids/addresses only — no production data.
@@ -186,6 +186,44 @@ test.describe('Settings Verification Call - Visual Regression Tests', () => {
     await expect(page.getByText('Preferred call time')).toHaveCount(0);
 
     await expect(page).toHaveScreenshot('settings-verification-call-03-no.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('completed call shows completion notice', async ({ page }) => {
+    await installSettingsRoutes(page, { phoneCallStatus: 'Completed' });
+
+    await page.goto(`/settings?session=${encodeURIComponent(token)}&lang=en&a=call`);
+    await expect(page.getByRole('heading', { name: 'Verification Call' })).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(1000);
+
+    await expect(
+      page.getByText('Your verification call has already been completed. There is nothing left to do.'),
+    ).toBeVisible();
+    await expect(page.getByText('Verification may require a phone call. Should we call you?')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Request a new call' })).toHaveCount(0);
+
+    await expect(page).toHaveScreenshot('settings-verification-call-04-completed.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('failed call shows retry notice and button', async ({ page }) => {
+    await installSettingsRoutes(page, { phoneCallStatus: 'Failed' });
+
+    await page.goto(`/settings?session=${encodeURIComponent(token)}&lang=en&a=call`);
+    await expect(page.getByRole('heading', { name: 'Verification Call' })).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(1000);
+
+    await expect(
+      page.getByText('We were unable to reach you by phone. You can request a new call here.'),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Request a new call' })).toBeVisible();
+    await expect(page.getByText('Verification may require a phone call. Should we call you?')).toHaveCount(0);
+
+    await expect(page).toHaveScreenshot('settings-verification-call-05-failed.png', {
       fullPage: true,
       maxDiffPixels: 5000,
     });

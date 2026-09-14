@@ -47,7 +47,7 @@ interface FormData {
   acceptCall: boolean;
 }
 
-enum OverlayType {
+export enum OverlayType {
   NONE,
   DELETE_ADDRESS,
   DELETE_ACCOUNT,
@@ -297,9 +297,7 @@ export default function SettingsScreen(): JSX.Element {
             />
           )}
 
-          {!isUserLoading &&
-            (!user?.kyc.phoneCallStatus ||
-              ![PhoneCallStatus.COMPLETED, PhoneCallStatus.FAILED].includes(user.kyc.phoneCallStatus)) && (
+          {!isUserLoading && (
             <StyledVerticalStack full gap={2}>
               <h1
                 ref={verificationCallRef}
@@ -308,41 +306,64 @@ export default function SettingsScreen(): JSX.Element {
                 {translate('screens/settings', 'Verification Call')}
               </h1>
 
-              <StyledVerticalStack full gap={4}>
+              {user?.kyc.phoneCallStatus === PhoneCallStatus.COMPLETED ? (
                 <p className="text-dfxGray-700 text-sm text-center">
-                  {translate('screens/settings', 'Verification may require a phone call. Should we call you?')}
+                  {translate(
+                    'screens/settings',
+                    'Your verification call has already been completed. There is nothing left to do.',
+                  )}
                 </p>
-
-                <Form control={control} errors={errors}>
-                  <StyledDropdown<boolean>
-                    rootRef={rootRef}
-                    name="acceptCall"
-                    label={translate('screens/settings', 'Phone verification')}
-                    smallLabel={true}
-                    placeholder={translate('general/actions', 'Select') + '...'}
-                    items={[true, false]}
-                    labelFunc={(item) =>
-                      item
-                        ? translate('screens/settings', 'Yes, call me')
-                        : translate('screens/settings', "No, don't call me")
-                    }
+              ) : user?.kyc.phoneCallStatus === PhoneCallStatus.FAILED ? (
+                <StyledVerticalStack full gap={4}>
+                  <p className="text-dfxGray-700 text-sm text-center">
+                    {translate(
+                      'screens/settings',
+                      'We were unable to reach you by phone. You can request a new call here.',
+                    )}
+                  </p>
+                  <StyledButton
+                    width={StyledButtonWidth.FULL}
+                    label={translate('screens/settings', 'Request a new call')}
+                    onClick={() => navigate('/support/issue?issue-type=VerificationCall&reason=RepeatCall')}
                   />
-                </Form>
+                </StyledVerticalStack>
+              ) : (
+                <StyledVerticalStack full gap={4}>
+                  <p className="text-dfxGray-700 text-sm text-center">
+                    {translate('screens/settings', 'Verification may require a phone call. Should we call you?')}
+                  </p>
 
-                {acceptCall && (
                   <Form control={control} errors={errors}>
-                    <StyledDropdownMultiChoice<PhoneCallTime>
+                    <StyledDropdown<boolean>
                       rootRef={rootRef}
-                      name="preferredPhoneTimes"
-                      label={translate('screens/settings', 'Preferred call time')}
+                      name="acceptCall"
+                      label={translate('screens/settings', 'Phone verification')}
                       smallLabel={true}
                       placeholder={translate('general/actions', 'Select') + '...'}
-                      items={Object.values(PhoneCallTime)}
-                      labelFunc={(item) => translate('screens/settings', PhoneCallTimeLabels[item])}
+                      items={[true, false]}
+                      labelFunc={(item) =>
+                        item
+                          ? translate('screens/settings', 'Yes, call me')
+                          : translate('screens/settings', "No, don't call me")
+                      }
                     />
                   </Form>
-                )}
-              </StyledVerticalStack>
+
+                  {acceptCall && (
+                    <Form control={control} errors={errors}>
+                      <StyledDropdownMultiChoice<PhoneCallTime>
+                        rootRef={rootRef}
+                        name="preferredPhoneTimes"
+                        label={translate('screens/settings', 'Preferred call time')}
+                        smallLabel={true}
+                        placeholder={translate('general/actions', 'Select') + '...'}
+                        items={Object.values(PhoneCallTime)}
+                        labelFunc={(item) => translate('screens/settings', PhoneCallTimeLabels[item])}
+                      />
+                    </Form>
+                  )}
+                </StyledVerticalStack>
+              )}
             </StyledVerticalStack>
           )}
 
@@ -368,7 +389,7 @@ interface SettingsOverlayProps {
   onClose: () => void;
 }
 
-function SettingsOverlay({ type, data, onClose }: SettingsOverlayProps): JSX.Element {
+export function SettingsOverlay({ type, data, onClose }: SettingsOverlayProps): JSX.Element {
   const { user } = useUserContext();
   const { width } = useWindowContext();
   const { translate } = useSettingsContext();
