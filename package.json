@@ -76,8 +76,8 @@
   "scripts": {
     "start": "react-app-rewired start",
     "start:dev": "./scripts/start-dev.sh",
-    "build": "node scripts/generate-version.js && ./scripts/build.sh",
-    "build:dev": "node scripts/generate-version.js && ./scripts/build.sh dev",
+    "build": "node scripts/generate-version.js && ./scripts/build.sh && ./scripts/build-app2.sh && ./scripts/stage-app2.sh",
+    "build:dev": "node scripts/generate-version.js && ./scripts/build.sh dev && ./scripts/build-app2.sh dev && ./scripts/stage-app2.sh",
     "build:lib": "tsc -p tsconfig.build.json",
     "link": "npm run build:lib && npm link",
     "widget": "./scripts/build-widget.sh",
