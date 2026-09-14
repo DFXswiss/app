@@ -83,6 +83,12 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
     const next = Number(value);
     const maxYear = new Date().getUTCFullYear();
     if (!Number.isInteger(next) || next < 2022 || next > maxYear) return;
+    if (next === year) return;
+    lineRequestId.current += 1;
+    setIsLoading(true);
+    setOpened(undefined);
+    setError(undefined);
+    setExtract(undefined);
     setYear(next);
   }
 
