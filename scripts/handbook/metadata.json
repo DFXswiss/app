@@ -135,6 +135,10 @@
     "title": "Verifizierungsanruf (Settings)",
     "description": "Settings-Sektion Verifizierungsanruf: ungesetzte Einwilligung (Platzhalter Auswählen), Ja mit bevorzugter Anrufzeit, und Nein ohne Zeitauswahl. Die Sektion ist der Ort, an dem Kundinnen den Anruf erlauben oder ablehnen."
   },
+  "settings-danger-zone": {
+    "title": "Danger Zone (Settings)",
+    "description": "Settings Danger Zone: collapsed by default so Delete account is hidden; expanded it shows the Swiss 10-year retention notice and the delete button; confirming opens the overlay with the same notice."
+  },
   "swap-process": {
     "title": "Swap-Prozess",
     "description": "Swap-Flow der Services-App."

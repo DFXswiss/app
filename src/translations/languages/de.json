@@ -1024,7 +1024,7 @@
     "Hide deleted addresses": "Gelöschte Adressen ausblenden",
     "delete": "Bist Du sicher, dass Du die Adresse <1>{{address}}</1> von Deinem DFX-Konto löschen möchtest? Diese Aktion ist nicht rückgängig zu machen.",
     "delete_iban": "Bist Du sicher, dass Du das Bankkonto <1>{{address}}</1> von Deinem DFX-Konto löschen möchtest?",
-    "Your data will remain on our servers temporarily before permanent deletion. If you have any questions, please contact our support team.": "Deine Daten verbleiben vorübergehend auf unseren Servern, bevor sie dauerhaft gelöscht werden. Wenn Du Fragen hast, wende Dich bitte an unser Support-Team.",
+    "Deleting your account ends our business relationship. Under Swiss law we are required to retain all data for 10 years and then permanently delete it.": "Mit dem Löschen des Kontos beenden wir die Geschäftsbeziehung. Nach schweizerischem Recht sind wir verpflichtet, sämtliche Daten 10 Jahre zu speichern und sie anschliessend endgültig zu löschen.",
     "Verification Call": "Verifizierungsanruf",
     "Preferred call time": "Bevorzugte Anrufzeit",
     "Morning": "Vormittag",

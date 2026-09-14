@@ -11,7 +11,10 @@ import {
   Utils,
 } from '@dfx.swiss/react';
 import {
+  DfxIcon,
   Form,
+  IconSize,
+  IconVariant,
   SpinnerSize,
   StyledButton,
   StyledButtonWidth,
@@ -81,6 +84,7 @@ export default function SettingsScreen(): JSX.Element {
 
   const [overlayData, setOverlayData] = useState<UserAddress | BankAccount>();
   const [overlayType, setOverlayType] = useState<OverlayType>(OverlayType.NONE);
+  const [open, setOpen] = useState(false);
 
   useUserGuard('/login');
 
@@ -347,14 +351,30 @@ export default function SettingsScreen(): JSX.Element {
           )}
 
           <StyledVerticalStack full gap={2}>
-            <h1 className="text-dfxGray-800 font-semibold text-base flex justify-center items-center">
+            <button
+              type="button"
+              className="text-dfxGray-800 font-semibold text-base flex justify-center items-center gap-1 w-full"
+              aria-expanded={open}
+              onClick={() => setOpen((current) => !current)}
+            >
               {translate('screens/settings', 'Danger Zone')}
-            </h1>
-            <StyledButton
-              width={StyledButtonWidth.FULL}
-              label={translate('general/actions', 'Delete account')}
-              onClick={() => setOverlayType(OverlayType.DELETE_ACCOUNT)}
-            />
+              <DfxIcon icon={open ? IconVariant.EXPAND_LESS : IconVariant.EXPAND_MORE} size={IconSize.LG} />
+            </button>
+            {open && (
+              <StyledVerticalStack full gap={4}>
+                <p className="text-dfxGray-700 text-sm text-center">
+                  {translate(
+                    'screens/settings',
+                    'Deleting your account ends our business relationship. Under Swiss law we are required to retain all data for 10 years and then permanently delete it.',
+                  )}
+                </p>
+                <StyledButton
+                  width={StyledButtonWidth.FULL}
+                  label={translate('general/actions', 'Delete account')}
+                  onClick={() => setOverlayType(OverlayType.DELETE_ACCOUNT)}
+                />
+              </StyledVerticalStack>
+            )}
           </StyledVerticalStack>
         </StyledVerticalStack>
       )}
@@ -408,7 +428,7 @@ function SettingsOverlay({ type, data, onClose }: SettingsOverlayProps): JSX.Ele
         <ConfirmationOverlay
           message={translate(
             'screens/settings',
-            'Your data will remain on our servers temporarily before permanent deletion. If you have any questions, please contact our support team.',
+            'Deleting your account ends our business relationship. Under Swiss law we are required to retain all data for 10 years and then permanently delete it.',
           )}
           cancelLabel={translate('general/actions', 'Cancel')}
           confirmLabel={translate('general/actions', 'Delete')}
