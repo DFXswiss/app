@@ -1,0 +1,204 @@
+const mockUseSessionContext = jest.fn();
+jest.mock('@dfx.swiss/react', () => ({
+  useSessionContext: () => mockUseSessionContext(),
+}));
+
+jest.mock('@dfx.swiss/react-components', () => ({
+  SpinnerSize: { LG: 'lg' },
+  StyledLoadingSpinner: () => <div data-testid="loading-spinner" />,
+  StyledButtonWidth: { MIN: 'min' },
+  StyledButtonColor: { STURDY_WHITE: 'sturdy-white' },
+  StyledButton: ({
+    label,
+    onClick,
+    disabled,
+  }: {
+    label: string;
+    onClick?: () => void;
+    disabled?: boolean;
+  }) => (
+    <button type="button" onClick={onClick} disabled={disabled}>
+      {label}
+    </button>
+  ),
+}));
+
+jest.mock('src/components/error-hint', () => ({
+  ErrorHint: ({ message }: { message: string }) => <div data-testid="error-hint">{message}</div>,
+}));
+
+const mockGetKundengelderExtract = jest.fn();
+const mockGetKundengelderLines = jest.fn();
+jest.mock('src/hooks/dashboard.hook', () => ({
+  useDashboard: () => ({
+    getKundengelderExtract: mockGetKundengelderExtract,
+    getKundengelderLines: mockGetKundengelderLines,
+  }),
+}));
+
+const mockUseAdminGuard = jest.fn();
+jest.mock('src/hooks/guard.hook', () => ({
+  useAdminGuard: () => mockUseAdminGuard(),
+}));
+
+const mockUseLayoutOptions = jest.fn();
+jest.mock('src/hooks/layout-config.hook', () => ({
+  useLayoutOptions: (options: unknown) => mockUseLayoutOptions(options),
+}));
+
+const mockDownloadCsv = jest.fn();
+jest.mock('src/util/semicolon-csv', () => {
+  const actual = jest.requireActual('src/util/semicolon-csv') as typeof import('src/util/semicolon-csv');
+  return {
+    ...actual,
+    downloadCsv: (...args: unknown[]) => mockDownloadCsv(...args),
+  };
+});
+
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { KundengelderExtract } from 'src/dto/dashboard.dto';
+import DashboardFinancialKundengelderScreen from 'src/screens/dashboard-financial-kundengelder.screen';
+
+const chf = (value: number): string => `${value.toLocaleString('de-CH')} CHF`;
+
+const YEAR = new Date().getUTCFullYear();
+
+const EXTRACT: KundengelderExtract = {
+  year: YEAR,
+  eurRate: 1,
+  accounts: [
+    {
+      key: 'CH9300762011623852957',
+      name: 'Test CHF Account',
+      iban: 'CH9300762011623852957',
+      currency: 'CHF',
+      lines: [
+        {
+          key: 'BuyCrypto after Fee',
+          label: 'BuyCrypto after Fee',
+          currency: 'CHF',
+          amount: 1234.5,
+          amountChf: 1234.5,
+          count: 3,
+        },
+        { key: 'SellFiat', label: 'SellFiat', currency: 'CHF', amount: 10, amountChf: 10, count: 1 },
+      ],
+    },
+    {
+      key: 'CheckoutLtdEUR',
+      name: 'Checkout Ltd EUR',
+      currency: 'EUR',
+      lines: [{ key: 'Checkout', label: 'Checkout', currency: 'EUR', amount: 50, amountChf: 50, count: 2 }],
+    },
+  ],
+  diffs: [{ key: 'CH9300762011623852957|BuyCrypto after Fee', live: 100, booked: 90, delta: 10 }],
+};
+
+describe('DashboardFinancialKundengelderScreen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true });
+    mockGetKundengelderExtract.mockResolvedValue(EXTRACT);
+    mockGetKundengelderLines.mockResolvedValue({ year: YEAR, accountKey: EXTRACT.accounts[0].key, line: '', rows: [] });
+  });
+
+  it('guards the screen for admins and keeps the spinner while logged out', () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: false });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(mockUseAdminGuard).toHaveBeenCalled();
+    expect(mockUseLayoutOptions).toHaveBeenCalledWith({ title: 'Kundengelder', noMaxWidth: true });
+    expect(mockGetKundengelderExtract).not.toHaveBeenCalled();
+  });
+
+  it('loads the current UTC year extract, line amounts and a visible non-zero diff', async () => {
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    expect(mockGetKundengelderExtract).toHaveBeenCalledWith(YEAR);
+    expect(screen.getByRole('heading', { name: 'Checkout Ltd EUR' })).toBeInTheDocument();
+    expect(screen.getAllByText(chf(1234.5)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(chf(10)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(chf(50)).length).toBeGreaterThan(0);
+
+    expect(screen.getByRole('heading', { name: 'Live vs booked' })).toBeInTheDocument();
+    const diffRow = screen.getByText('CH9300762011623852957|BuyCrypto after Fee').closest('tr');
+    if (!diffRow) throw new Error('expected diff row');
+    expect(within(diffRow).getByText('100')).toBeInTheDocument();
+    expect(within(diffRow).getByText('90')).toBeInTheDocument();
+    expect(within(diffRow).getByText('10')).toBeInTheDocument();
+  });
+
+  it('refetches extract when the year changes and closes opened lines', async () => {
+    mockGetKundengelderLines.mockResolvedValue({
+      year: YEAR,
+      accountKey: EXTRACT.accounts[0].key,
+      line: EXTRACT.accounts[0].lines[0].key,
+      rows: [{ id: 99, type: 'BuyCrypto', amount: 1 }],
+    });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    expect(await screen.findByText('99')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '2022' } });
+
+    await waitFor(() => expect(mockGetKundengelderExtract).toHaveBeenCalledWith(2022));
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    expect(screen.queryByText('99')).not.toBeInTheDocument();
+  });
+
+  it('loads line transactions on row click and shows No transactions when rows are empty', async () => {
+    mockGetKundengelderLines
+      .mockResolvedValueOnce({
+        year: YEAR,
+        accountKey: EXTRACT.accounts[0].key,
+        line: EXTRACT.accounts[0].lines[0].key,
+        rows: [{ id: 99, type: 'BuyCrypto', amount: 1 }],
+      })
+      .mockResolvedValueOnce({
+        year: YEAR,
+        accountKey: EXTRACT.accounts[0].key,
+        line: EXTRACT.accounts[0].lines[1].key,
+        rows: [],
+      });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    const chfAccount = EXTRACT.accounts[0];
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+
+    expect(await screen.findByText('99')).toBeInTheDocument();
+    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, chfAccount.key, chfAccount.lines[0].key);
+
+    fireEvent.click(screen.getByText('SellFiat'));
+    expect(await screen.findByText('No transactions')).toBeInTheDocument();
+    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, chfAccount.key, chfAccount.lines[1].key);
+  });
+
+  it('exports CSV with the selected year in the filename', async () => {
+    render(<DashboardFinancialKundengelderScreen />);
+
+    const button = await screen.findByRole('button', { name: 'Export CSV' });
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.any(String));
+  });
+
+  it('shows ErrorHint after a rejected extract and still renders the heading', async () => {
+    mockGetKundengelderExtract.mockRejectedValue(new Error('extract failed'));
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('extract failed');
+    expect(screen.getByRole('heading', { name: 'Kundengelder' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Year')).toBeInTheDocument();
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+  });
+});

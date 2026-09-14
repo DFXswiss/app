@@ -20,7 +20,7 @@ import {
   waitForFinancialDestinationRequests,
 } from './fixtures';
 
-/** Routes owned by this lane's dashboard half (8 paths). */
+/** Routes owned by this lane's dashboard half (9 paths). */
 const DASHBOARD_ROUTES = [
   '/dashboard',
   '/dashboard/financial',
@@ -30,6 +30,7 @@ const DASHBOARD_ROUTES = [
   '/dashboard/financial/history/expenses',
   '/dashboard/financial/liquidity',
   '/dashboard/financial/log-validity',
+  '/dashboard/financial/kundengelder',
 ] as const;
 
 const FINANCIAL_HUB_TILES: { title: string; path: string }[] = [
@@ -39,6 +40,7 @@ const FINANCIAL_HUB_TILES: { title: string; path: string }[] = [
   { title: 'Liquidity', path: '/dashboard/financial/liquidity' },
   { title: 'Expenses', path: '/dashboard/financial/history/expenses' },
   { title: 'Log Validity', path: '/dashboard/financial/log-validity' },
+  { title: 'Kundengelder', path: '/dashboard/financial/kundengelder' },
 ];
 
 function attachErrorListeners(page: Page): { pageErrors: string[]; consoleErrors: string[] } {
