@@ -201,4 +201,13 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.getByLabelText('Year')).toBeInTheDocument();
     expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
   });
+
+  it('shows ErrorHint after a rejected getKundengelderLines path', async () => {
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    mockGetKundengelderLines.mockRejectedValueOnce(new Error('line boom'));
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('line boom');
+  });
 });

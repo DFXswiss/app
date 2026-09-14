@@ -19,6 +19,7 @@ const CSV_HEADERS = ['Account', 'AccountKey', 'Line', 'Currency', 'Count', 'Amou
 interface OpenedLine {
   accountKey: string;
   lineKey: string;
+  year: number;
   list?: KundengelderTxList;
   error?: string;
 }
@@ -55,18 +56,25 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
 
   useEffect(() => {
     if (!isLoggedIn) return;
-
+    let cancelled = false;
     setIsLoading(true);
     setOpened(undefined);
     setError(undefined);
-
     getKundengelderExtract(year)
-      .then(setExtract)
+      .then((data) => {
+        if (!cancelled) setExtract(data);
+      })
       .catch((err: unknown) => {
+        if (cancelled) return;
         setExtract(undefined);
         setError(errorMessage(err));
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isLoggedIn, year]);
 
   function onYearChange(value: string): void {
@@ -84,20 +92,20 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
 
     const accountKey = account.key;
     const lineKey = line.key;
-    setOpened({ accountKey, lineKey });
+    setOpened({ accountKey, lineKey, year });
 
     getKundengelderLines(year, accountKey, lineKey)
       .then((list) => {
         setOpened((current) =>
-          current && current.accountKey === accountKey && current.lineKey === lineKey
-            ? { accountKey, lineKey, list }
+          current && current.accountKey === accountKey && current.lineKey === lineKey && current.year === year
+            ? { accountKey, lineKey, year, list }
             : current,
         );
       })
       .catch((err: unknown) => {
         setOpened((current) =>
-          current && current.accountKey === accountKey && current.lineKey === lineKey
-            ? { accountKey, lineKey, error: errorMessage(err) }
+          current && current.accountKey === accountKey && current.lineKey === lineKey && current.year === year
+            ? { accountKey, lineKey, year, error: errorMessage(err) }
             : current,
         );
       });
