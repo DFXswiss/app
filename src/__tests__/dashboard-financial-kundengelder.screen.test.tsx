@@ -278,6 +278,38 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.queryByText('99')).not.toBeInTheDocument();
   });
 
+  it('ignores a line reject that arrives after the row is closed', async () => {
+    let rejectLines: (reason: Error) => void = () => undefined;
+    mockGetKundengelderLines.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectLines = reject;
+        }),
+    );
+
+    render(<DashboardFinancialKundengelderScreen />);
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+
+    await act(async () => {
+      rejectLines(new Error('late line boom'));
+    });
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+  });
+
+  it('opens a line on the second account without treating it as a toggle', async () => {
+    render(<DashboardFinancialKundengelderScreen />);
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    expect(await screen.findByText('No transactions')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Checkout'));
+    await waitFor(() =>
+      expect(mockGetKundengelderLines).toHaveBeenLastCalledWith(YEAR, 'CheckoutLtdEUR', 'Checkout'),
+    );
+  });
+
   it('does not download CSV when Export is clicked after an extract error', async () => {
     mockGetKundengelderExtract.mockRejectedValue(new Error('extract failed'));
 
