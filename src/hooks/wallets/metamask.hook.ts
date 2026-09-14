@@ -3,9 +3,7 @@ import BigNumber from 'bignumber.js';
 import { Buffer } from 'buffer';
 import { useMemo } from 'react';
 import { isMobile } from 'react-device-detect';
-import Web3 from 'web3';
-import { TransactionConfig } from 'web3-core';
-import { Contract } from 'web3-eth-contract';
+import { Address, BaseError, createPublicClient, createWalletClient, custom, getAddress, isHex } from 'viem';
 import { AssetBalance } from '../../contexts/balance.context';
 import ERC20_ABI from '../../static/erc20.abi.json';
 import { AbortError } from '../../util/abort-error';
@@ -72,13 +70,26 @@ interface MetaMaskError {
   message: string;
 }
 
+// No injected wallet: defer the error to first use instead of throwing during client setup.
+const noProvider = { request: () => Promise.reject(new Error('No wallet provider available')) };
+
 export function useMetaMask(): MetaMaskInterface {
-  const web3 = useMemo(() => new Web3(Web3.givenProvider), []);
   const { toBlockchain, toChainHex, toChainObject } = useWeb3();
 
   function ethereum() {
     return (window as any).ethereum;
   }
+
+  function provider() {
+    const eth = ethereum();
+    return typeof eth?.request === 'function' ? eth : noProvider;
+  }
+
+  // retryCount 0: the previous web3 implementation never retried, and viem's default
+  // (3 retries with backoff) makes a fast-failing provider exceed checkConnection's
+  // 1s timeout, which reloads the page.
+  const publicClient = useMemo(() => createPublicClient({ transport: custom(provider(), { retryCount: 0 }) }), []);
+  const walletClient = useMemo(() => createWalletClient({ transport: custom(provider(), { retryCount: 0 }) }), []);
 
   function isInstalled(): boolean {
     const eth = ethereum();
@@ -102,12 +113,14 @@ export function useMetaMask(): MetaMaskInterface {
     onAccountChanged: (account?: string) => void,
     onBlockchainChanged: (blockchain?: Blockchain) => void,
   ) {
-    web3.eth.getAccounts((_err, accounts) => {
-      onAccountChanged(verifyAccount(accounts));
-    });
-    web3.eth.getChainId((_err, chainId) => {
-      onBlockchainChanged(toBlockchain(chainId));
-    });
+    walletClient
+      .getAddresses()
+      .then((accounts) => onAccountChanged(verifyAccount(accounts)))
+      .catch(() => onAccountChanged(undefined));
+    publicClient
+      .getChainId()
+      .then((chainId) => onBlockchainChanged(toBlockchain(chainId)))
+      .catch(() => onBlockchainChanged(undefined));
     ethereum()?.on('accountsChanged', (accounts: string[]) => {
       onAccountChanged(verifyAccount(accounts));
     });
@@ -117,7 +130,7 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function getAccount(): Promise<string | undefined> {
-    return verifyAccount(await web3.eth.getAccounts());
+    return verifyAccount(await walletClient.getAddresses());
   }
 
   async function checkConnection(): Promise<void> {
@@ -128,7 +141,7 @@ export function useMetaMask(): MetaMaskInterface {
     await checkConnection();
 
     try {
-      const accounts = await web3.eth.requestAccounts();
+      const accounts = await walletClient.requestAddresses();
       return verifyAccount(accounts);
     } catch (e) {
       handleError(e as MetaMaskError);
@@ -136,7 +149,7 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function requestBlockchain(): Promise<Blockchain | undefined> {
-    return toBlockchain(await web3.eth.getChainId());
+    return toBlockchain(await publicClient.getChainId());
   }
 
   async function requestChangeToBlockchain(blockchain?: Blockchain): Promise<void> {
@@ -167,11 +180,15 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function requestBalance(account: string): Promise<string | undefined> {
-    return web3.eth.getBalance(account);
+    return (await publicClient.getBalance({ address: account as Address })).toString();
   }
 
   async function sign(address: string, message: string): Promise<string> {
-    return web3.eth.personal.sign(message, address, '').catch(handleError);
+    // Hex-shaped messages are signed as the bytes they encode (web3's inputSignFormatter
+    // passed hex through unchanged); viem would otherwise sign the UTF-8 of the literal text.
+    return walletClient
+      .signMessage({ account: address as Address, message: isHex(message) ? { raw: message } : message })
+      .catch(handleError);
   }
 
   async function addContract(asset: Asset, svgData: string, currentBlockchain?: Blockchain): Promise<boolean> {
@@ -179,10 +196,9 @@ export function useMetaMask(): MetaMaskInterface {
       await requestChangeToBlockchain(asset.blockchain);
       return false;
     }
-    const tokenContract = createContract(asset.chainId);
 
-    const symbol = await tokenContract.methods.symbol().call();
-    const decimals = await tokenContract.methods.decimals().call();
+    const symbol = await readErc20(asset.chainId, 'symbol');
+    const decimals = await readErc20(asset.chainId, 'decimals');
 
     return ethereum().request({
       method: 'wallet_watchAsset',
@@ -199,14 +215,18 @@ export function useMetaMask(): MetaMaskInterface {
     });
   }
 
-  function verifyAccount(accounts: string[]): string | undefined {
+  function verifyAccount(accounts: readonly string[]): string | undefined {
     if ((accounts?.length ?? 0) <= 0) return undefined;
     // check if address is valid
-    return Web3.utils.toChecksumAddress(accounts[0]);
+    return getAddress(accounts[0]);
   }
 
-  function toUsableNumber(balance: any, decimals = 18): BigNumber {
+  function toUsableNumber(balance: BigNumber.Value, decimals = 18): BigNumber {
     return new BigNumber(balance).dividedBy(Math.pow(10, decimals));
+  }
+
+  function readErc20(tokenAddress: string | undefined, functionName: 'symbol' | 'decimals'): Promise<any> {
+    return publicClient.readContract({ address: tokenAddress as Address, abi: ERC20_ABI, functionName });
   }
 
   async function readBalance(asset: Asset, address?: string, throwExceptions?: boolean): Promise<AssetBalance> {
@@ -218,20 +238,56 @@ export function useMetaMask(): MetaMaskInterface {
 
     try {
       if (asset.type === AssetType.COIN) {
-        return web3.eth.getBalance(address).then((balance) => ({ asset, amount: toUsableNumber(balance).toNumber() }));
+        const balance = await publicClient.getBalance({ address: address as Address });
+        return { asset, amount: toUsableNumber(balance.toString()).toNumber() };
       }
 
-      const tokenContract = createContract(asset.chainId);
-      const decimals = await tokenContract.methods.decimals().call();
-      return await tokenContract.methods
-        .balanceOf(address)
-        .call()
-        .then((balance: any) => ({ asset, amount: toUsableNumber(balance, decimals).toNumber() }));
+      const decimals = await readErc20(asset.chainId, 'decimals');
+      const balance = (await publicClient.readContract({
+        address: asset.chainId as Address,
+        abi: ERC20_ABI,
+        functionName: 'balanceOf',
+        args: [address as Address],
+      })) as bigint;
+      return { asset, amount: toUsableNumber(balance.toString(), decimals).toNumber() };
     } catch (e) {
       if (throwExceptions) throw e;
 
       return { asset, amount: 0 };
     }
+  }
+
+  // viem wraps provider errors in TransactionExecutionError/ContractFunctionExecutionError,
+  // which carry no top-level `code`; callers rely on the raw EIP-1193 shape (e.g. the sell
+  // screen checks `error.code === 4001` to swallow a deliberate cancel), so rethrow the
+  // first cause that still has one.
+  function toProviderError(e: unknown): never {
+    const cause = e instanceof BaseError ? e.walk((c) => typeof (c as any)?.code === 'number') : undefined;
+    throw cause ?? e;
+  }
+
+  // web3 polled for the receipt for up to 750s (transactionPollingTimeout); viem's default
+  // gives up after 180s, turning a slow-to-mine transaction into a false failure.
+  const RECEIPT_TIMEOUT = 750_000;
+
+  // web3 rejected when the mined receipt had status false, and kept polling the original
+  // hash when the wallet replaced or cancelled the transaction; viem resolves with the
+  // replacement receipt instead, so only a repriced (fee-bumped) replacement is still the
+  // same payment — and the receipt's hash, not the submitted one, is the one that mined.
+  async function waitForTransaction(hash: `0x${string}`): Promise<string> {
+    let replaced: 'repriced' | 'cancelled' | 'replaced' | undefined;
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: RECEIPT_TIMEOUT,
+      onReplaced: (replacement) => (replaced = replacement.reason),
+    });
+
+    if (replaced === 'cancelled') throw new Error('Transaction was cancelled in the wallet');
+    if (replaced === 'replaced') throw new Error('Transaction was replaced in the wallet');
+    if (receipt.status === 'reverted')
+      throw new Error(`Transaction has been reverted by the EVM: ${receipt.transactionHash}`);
+
+    return receipt.transactionHash;
   }
 
   async function createTransaction(
@@ -241,35 +297,50 @@ export function useMetaMask(): MetaMaskInterface {
     to: string,
     config?: { isWeiAmount?: boolean; gasPrice?: number },
   ): Promise<string> {
+    // The previous web3-based implementation nulled maxFeePerGas/maxPriorityFeePerGas (see
+    // #163/DEV-2129) purely to suppress web3's own fee filling and passed gasPrice only when
+    // an override was given — the request reached MetaMask without fee fields and the wallet
+    // did its own estimation. Keep that exact wire shape: no fee fields unless overridden.
+    const gasPrice = config?.gasPrice != null ? BigInt(config.gasPrice) : undefined;
+
+    // toFixed() throughout: BigNumber emits exponential notation from 1e21 (a thousand units
+    // of an 18-decimals token), which BigInt rejects. Wei conversion is explicit instead of
+    // parseEther: web3's toWei threw on more than 18 decimals, parseEther silently rounds.
     if (asset.type === AssetType.COIN) {
-      const transactionData: TransactionConfig = {
-        from,
-        to,
-        value: config?.isWeiAmount ? amount.toString() : web3.utils.toWei(amount.toString(), 'ether'),
-        maxPriorityFeePerGas: null as any,
-        maxFeePerGas: null as any,
-        gasPrice: config?.gasPrice,
-      };
+      const hash = await walletClient
+        .sendTransaction({
+          account: from as Address,
+          chain: null,
+          to: to as Address,
+          value: config?.isWeiAmount
+            ? BigInt(amount.toFixed())
+            : BigInt(amount.multipliedBy(Math.pow(10, 18)).toFixed()),
+          gasPrice,
+        })
+        .catch(toProviderError);
 
-      return web3.eth.sendTransaction(transactionData).then((value) => value.transactionHash);
+      return waitForTransaction(hash);
     } else {
-      const tokenContract = createContract(asset.chainId);
-
-      let adjustedAmount = amount.toString();
+      let adjustedAmount = amount.toFixed();
       if (!config?.isWeiAmount) {
-        const decimals = await tokenContract.methods.decimals().call();
+        const decimals = await readErc20(asset.chainId, 'decimals');
         adjustedAmount = amount.multipliedBy(Math.pow(10, decimals)).toFixed();
       }
 
-      return tokenContract.methods
-        .transfer(to, adjustedAmount)
-        .send({ from, maxPriorityFeePerGas: null, maxFeePerGas: null, gasPrice: config?.gasPrice })
-        .then((value: any) => value.transactionHash);
-    }
-  }
+      const hash = await walletClient
+        .writeContract({
+          account: from as Address,
+          chain: null,
+          address: asset.chainId as Address,
+          abi: ERC20_ABI,
+          functionName: 'transfer',
+          args: [to as Address, BigInt(adjustedAmount)],
+          gasPrice,
+        })
+        .catch(toProviderError);
 
-  function createContract(chainId?: string): Contract {
-    return new web3.eth.Contract(ERC20_ABI as any, chainId);
+      return waitForTransaction(hash);
+    }
   }
 
   /**
@@ -426,6 +497,6 @@ export function useMetaMask(): MetaMaskInterface {
       supportsEip5792Paymaster,
       signEip7702Authorization,
     }),
-    [web3, toBlockchain, toChainHex, toChainObject],
+    [publicClient, walletClient, toBlockchain, toChainHex, toChainObject],
   );
 }
