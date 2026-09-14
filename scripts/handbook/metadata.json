@@ -136,8 +136,8 @@
     "description": "Settings-Sektion Verifizierungsanruf: ungesetzte Einwilligung (Platzhalter Auswählen), Ja mit bevorzugter Anrufzeit, und Nein ohne Zeitauswahl. Die Sektion ist der Ort, an dem Kundinnen den Anruf erlauben oder ablehnen."
   },
   "settings-danger-zone": {
-    "title": "Danger Zone (Settings)",
-    "description": "Settings Danger Zone: collapsed by default so Delete account is hidden; expanded it shows the Swiss 10-year retention notice and the delete button; confirming opens the overlay with the same notice."
+    "title": "Gefahrenzone (Settings)",
+    "description": "Settings-Sektion Gefahrenzone: zugeklappt bleibt Konto löschen verborgen; aufgeklappt erscheinen der Hinweis zur zehnjährigen Aufbewahrung nach Schweizer Recht und der Lösch-Button; die Bestätigung zeigt denselben Hinweis."
   },
   "swap-process": {
     "title": "Swap-Prozess",

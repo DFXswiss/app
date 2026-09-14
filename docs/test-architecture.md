@@ -217,6 +217,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   It does not prove that a live account has those kyc fields, that those bootstrap
   endpoints return real data, that `updateCallSettings` persists, or that
   Completed/Failed hide the section.
+- **The settings Danger Zone visual spec answers GET /v2/user itself.**
+  `e2e/settings-danger-zone.spec.ts` fulfils `/v2/user` with a synthetic kyc payload
+  (`phoneCallStatus: 'Completed'`) and fulfils the Settings bootstrap GETs
+  (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner`) plus user PUT/PATCH. Unmatched `/v1/**` and `/v2/**` calls
+  get `501`. The session is a synthetic unsigned JWT, so a green run does not prove
+  login or token verification. A green run proves the collapsed, expanded and overlay
+  fixtures render. It does not prove that those bootstrap endpoints return real data,
+  that a live account has that kyc status, or that `deleteAccount` persists against
+  the API.
 - **The info-banner layout visual spec answers GET /v1/setting/infoBanner itself.**
   `e2e/info-banner-layout.spec.ts` fulfils `/v1/setting/infoBanner` with synthetic
   multilingual copy, fulfils `GET /v1/support/issue` with one fixture ticket, and
