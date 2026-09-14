@@ -55,8 +55,8 @@ jest.mock('src/util/semicolon-csv', () => {
   };
 });
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { KundengelderExtract } from 'src/dto/dashboard.dto';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { KundengelderExtract, KundengelderTx } from 'src/dto/dashboard.dto';
 import DashboardFinancialKundengelderScreen from 'src/screens/dashboard-financial-kundengelder.screen';
 
 const chf = (value: number): string => `${value.toLocaleString('de-CH')} CHF`;
@@ -283,6 +283,50 @@ describe('DashboardFinancialKundengelderScreen', () => {
     const yearSelect = screen.getByLabelText('Year');
     expect(within(yearSelect).getByRole('option', { name: '2022' })).toHaveAttribute('value', '2022');
     expect(within(yearSelect).getByRole('option', { name: `${YEAR}` })).toHaveAttribute('value', `${YEAR}`);
+  });
+
+  it('does not show extract after unmount while the extract request is pending', async () => {
+    let resolveExtract: (value: KundengelderExtract) => void = () => undefined;
+    mockGetKundengelderExtract.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveExtract = resolve;
+        }),
+    );
+
+    const { unmount } = render(<DashboardFinancialKundengelderScreen />);
+    expect(mockGetKundengelderExtract).toHaveBeenCalledWith(YEAR);
+    expect(() => unmount()).not.toThrow();
+
+    await act(async () => {
+      resolveExtract(EXTRACT);
+    });
+
+    expect(screen.queryByRole('heading', { name: 'Test CHF Account' })).not.toBeInTheDocument();
+  });
+
+  it('renders optional TxTable cells for a full row and an id-and-type-only row', async () => {
+    const rows: KundengelderTx[] = [
+      { id: 101, type: 'BuyCrypto', bookingDate: '2026-01-15', amount: 12.5, afterFee: 11, instructionId: 'instr-101' },
+      { id: 102, type: 'SellFiat' },
+    ];
+    mockGetKundengelderLines.mockResolvedValue({
+      year: YEAR,
+      accountKey: EXTRACT.accounts[0].key,
+      line: EXTRACT.accounts[0].lines[0].key,
+      rows,
+    });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+
+    expect(await screen.findByText('instr-101')).toBeInTheDocument();
+    expect(screen.getByText('101')).toBeInTheDocument();
+    expect(screen.getByText('102')).toBeInTheDocument();
+    expect(screen.getByText('2026-01-15')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
   });
 });
 
