@@ -210,4 +210,41 @@ describe('DashboardFinancialKundengelderScreen', () => {
     fireEvent.click(screen.getByText('BuyCrypto after Fee'));
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('line boom');
   });
+
+  it('disables Export CSV when the extract has no accounts', async () => {
+    mockGetKundengelderExtract.mockResolvedValue({ year: YEAR, eurRate: 1, accounts: [], diffs: [] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Kundengelder' })).toBeInTheDocument();
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Export CSV' })).toBeDisabled();
+  });
+
+  it('shows ErrorHint Unknown error after a non-Error extract reject and still renders the heading', async () => {
+    mockGetKundengelderExtract.mockRejectedValueOnce('not-an-error');
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
+    expect(screen.getByRole('heading', { name: 'Kundengelder' })).toBeInTheDocument();
+  });
+
+  it('closes an opened empty line on a second click and hides No transactions', async () => {
+    mockGetKundengelderLines.mockResolvedValueOnce({
+      year: YEAR,
+      accountKey: EXTRACT.accounts[0].key,
+      line: EXTRACT.accounts[0].lines[0].key,
+      rows: [],
+    });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    expect(await screen.findByText('No transactions')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    expect(screen.queryByText('No transactions')).not.toBeInTheDocument();
+  });
 });

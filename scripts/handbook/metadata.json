@@ -179,6 +179,10 @@
     "title": "Support-Dashboard Übersicht",
     "description": "Support-Dashboard-Übersicht und Statistiken."
   },
+  "dashboard-financial-kundengelder": {
+    "title": "Kundengelder year extract",
+    "description": "Admin Financial Dashboard year extract of customer-fund totals, account cards, live-vs-booked diffs, and CSV export."
+  },
   "support-ticket-note": {
     "title": "Support-Ticket Kundennotiz",
     "description": "Staff-Issue: interne Kundennotiz mit Ticket-Betreff und Entwurf, nicht in den Kunden-Thread."
