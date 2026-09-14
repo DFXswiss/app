@@ -76,6 +76,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
       });
     return () => {
       cancelled = true;
+      lineRequestId.current += 1;
     };
   }, [isLoggedIn, year]);
 

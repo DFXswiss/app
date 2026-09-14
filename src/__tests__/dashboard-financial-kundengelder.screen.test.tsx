@@ -56,7 +56,7 @@ jest.mock('src/util/semicolon-csv', () => {
 });
 
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { KundengelderExtract, KundengelderTx } from 'src/dto/dashboard.dto';
+import { KundengelderExtract, KundengelderTx, KundengelderTxList } from 'src/dto/dashboard.dto';
 import DashboardFinancialKundengelderScreen from 'src/screens/dashboard-financial-kundengelder.screen';
 
 const chf = (value: number): string => `${value.toLocaleString('de-CH')} CHF`;
@@ -250,6 +250,41 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     fireEvent.click(screen.getByText('BuyCrypto after Fee'));
     expect(screen.queryByText('No transactions')).not.toBeInTheDocument();
+  });
+
+  it('ignores a line response that resolves after the row is closed', async () => {
+    let resolveLines: (value: KundengelderTxList) => void = () => undefined;
+    mockGetKundengelderLines.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLines = resolve;
+        }),
+    );
+
+    render(<DashboardFinancialKundengelderScreen />);
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+
+    await act(async () => {
+      resolveLines({
+        year: YEAR,
+        accountKey: EXTRACT.accounts[0].key,
+        line: EXTRACT.accounts[0].lines[0].key,
+        rows: [{ id: 99, type: 'BuyCrypto' }],
+      });
+    });
+
+    expect(screen.queryByText('99')).not.toBeInTheDocument();
+  });
+
+  it('does not download CSV when Export is clicked after an extract error', async () => {
+    mockGetKundengelderExtract.mockRejectedValue(new Error('extract failed'));
+
+    render(<DashboardFinancialKundengelderScreen />);
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('extract failed');
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+    expect(mockDownloadCsv).not.toHaveBeenCalled();
   });
 
   it('does not refetch extract when the year select changes to nope', async () => {
