@@ -261,6 +261,12 @@ describe('DashboardFinancialKundengelderScreen', () => {
     fireEvent.change(screen.getByLabelText('Year'), { target: { value: 'nope' } });
 
     expect(mockGetKundengelderExtract).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '2021' } });
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: `${YEAR + 1}` } });
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '' } });
+
+    expect(mockGetKundengelderExtract).toHaveBeenCalledTimes(1);
   });
 
   it('renders Live vs booked when a diff has a zero delta', async () => {
@@ -303,6 +309,25 @@ describe('DashboardFinancialKundengelderScreen', () => {
     });
 
     expect(screen.queryByRole('heading', { name: 'Test CHF Account' })).not.toBeInTheDocument();
+  });
+
+  it('does not show ErrorHint after unmount while the extract request rejects', async () => {
+    let rejectExtract: (reason: Error) => void = () => undefined;
+    mockGetKundengelderExtract.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectExtract = reject;
+        }),
+    );
+
+    const { unmount } = render(<DashboardFinancialKundengelderScreen />);
+    expect(() => unmount()).not.toThrow();
+
+    await act(async () => {
+      rejectExtract(new Error('late boom'));
+    });
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 
   it('renders optional TxTable cells for a full row and an id-and-type-only row', async () => {
