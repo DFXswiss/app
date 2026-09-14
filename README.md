@@ -175,18 +175,6 @@ _Hint: Asset selection parameters may be overwritten when using [wallet login](#
 - Blockchain (`blockchain`): filter for the asset selection (useful if the user has a multi-chain address)
 - Blockchains (`blockchains`): supported blockchains to which the user can switch
 
-**Special parameters**
-
-- Redirect URI (`redirect-uri`): URI to redirect the user to after cancel or completion (only for [standalone](#standalone) or [Iframe](#iframe) integration, see [closing](#closing))
-- Headless (`headless=true`): hides the menu bar
-- Borderless (`borderless=true`): removes the page padding
-
-#### Hints
-
-- To select an asset, either the name of the asset (e.g. `BTC`, caution when using multi-chain accounts - not recommended), the unique name (e.g. `Ethereum/ETH`) or the DFX asset ID (get from [asset endpoint](https://api.dfx.swiss/swagger#/Asset/AssetController_getAllAsset)) can be used.
-- To select a currency, either the name (e.g. `USD`) or the DFX fiat ID (get from [fiat endpoint](https://api.dfx.swiss/swagger#/Fiat/FiatController_getAllFiat)) can be used.
-- To select a bank account, either an IBAN, the account id or the account label (get from [bank accounts endpoint](https://api.dfx.swiss/swagger#/BankAccount/BankAccountController_getAllUserBankAccount)) can be used.
-
 ### Closing
 
 There are multiple types of closings.
