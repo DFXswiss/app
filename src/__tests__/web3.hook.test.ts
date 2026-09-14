@@ -20,11 +20,8 @@ jest.mock('@dfx.swiss/react', () => ({
   },
 }));
 
-// constructing Web3 throws, like with a conflicting injected wallet provider; only the static utils are usable
 jest.mock('web3', () => {
-  const MockWeb3: any = jest.fn().mockImplementation(() => {
-    throw new TypeError("'get' on proxy: property 'on' is a read-only and non-configurable data property");
-  });
+  const MockWeb3: any = jest.fn();
   MockWeb3.utils = jest.requireActual('web3').utils;
   return MockWeb3;
 });
@@ -48,6 +45,14 @@ const chains: [Blockchain, string, string][] = [
 ];
 
 describe('useWeb3', () => {
+  beforeEach(() => {
+    // constructing Web3 throws, like with a conflicting injected wallet provider; only the static utils are usable
+    // (set per test, because resetMocks clears mock implementations before each test)
+    (Web3 as unknown as jest.Mock).mockImplementation(() => {
+      throw new TypeError("'get' on proxy: property 'on' is a read-only and non-configurable data property");
+    });
+  });
+
   describe.each(chains)('%s', (blockchain: Blockchain, chainId: string, chainHex: string) => {
     it('should map the chain id both ways', () => {
       const { result } = renderHook(() => useWeb3());
@@ -100,6 +105,7 @@ describe('useWeb3', () => {
 
     expect(result.current.toChainHex(Blockchain.ETHEREUM)).toBe('0x1');
     expect(Web3).not.toHaveBeenCalled();
+    expect(() => new (Web3 as any)()).toThrow('read-only and non-configurable');
   });
 
   it('should keep the same interface across renders', () => {
