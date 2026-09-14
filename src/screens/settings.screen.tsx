@@ -50,7 +50,7 @@ interface FormData {
   acceptCall: boolean;
 }
 
-enum OverlayType {
+export enum OverlayType {
   NONE,
   DELETE_ADDRESS,
   DELETE_ACCOUNT,
@@ -69,6 +69,29 @@ const OverlayHeader: { [key in OverlayType]: string } = {
   [OverlayType.ADD_BANK_ACCOUNT]: 'Add bank account',
   [OverlayType.DELETE_BANK_ACCOUNT]: 'Delete bank account',
 };
+
+function useSavedFlash(): [boolean, () => void] {
+  const [visible, setVisible] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>();
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== undefined) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  function flash(): void {
+    setVisible(true);
+    if (timeoutRef.current !== undefined) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(() => setVisible(false), 2000);
+  }
+
+  return [visible, flash];
+}
 
 export default function SettingsScreen(): JSX.Element {
   const { translate, language, currency, availableLanguages, changeLanguage, changeCurrency } = useSettingsContext();
@@ -95,6 +118,8 @@ export default function SettingsScreen(): JSX.Element {
   } = useForm<FormData>();
   const selectedLanguage = useWatch({ control, name: 'language' });
   const selectedCurrency = useWatch({ control, name: 'currency' });
+  const [languageSaved, flashLanguage] = useSavedFlash();
+  const [currencySaved, flashCurrency] = useSavedFlash();
   const selectedPreferredPhoneTimes = useWatch({ control, name: 'preferredPhoneTimes' });
   const acceptCall = useWatch({ control, name: 'acceptCall' });
 
@@ -122,12 +147,14 @@ export default function SettingsScreen(): JSX.Element {
   useEffect(() => {
     if (selectedLanguage && selectedLanguage?.id !== language?.id) {
       changeLanguage(selectedLanguage);
+      flashLanguage();
     }
   }, [selectedLanguage]);
 
   useEffect(() => {
     if (selectedCurrency && selectedCurrency?.id !== currency?.id) {
       changeCurrency(selectedCurrency);
+      flashCurrency();
     }
   }, [selectedCurrency]);
 
@@ -168,30 +195,50 @@ export default function SettingsScreen(): JSX.Element {
       ) : (
         <StyledVerticalStack full gap={8}>
           <StyledVerticalStack full gap={4}>
-            <Form control={control} errors={errors}>
-              <StyledDropdown<Language>
-                rootRef={rootRef}
-                name="language"
-                label={translate('screens/settings', 'Language')}
-                smallLabel={true}
-                placeholder={translate('general/actions', 'Select') + '...'}
-                items={availableLanguages}
-                labelFunc={(item) => item.name}
-                descriptionFunc={(item) => item.foreignName}
-              />
-            </Form>
+            <div className="relative w-full">
+              <div
+                data-testid="settings-saved-language"
+                className={`absolute text-sm text-dfxRed-100 text-right w-full pr-4 pointer-events-none transition-opacity duration-100 ${
+                  languageSaved ? 'opacity-100' : 'opacity-0'
+                }`}
+              >
+                {translate('screens/payment', 'Saved')}!
+              </div>
+              <Form control={control} errors={errors}>
+                <StyledDropdown<Language>
+                  rootRef={rootRef}
+                  name="language"
+                  label={translate('screens/settings', 'Language')}
+                  smallLabel={true}
+                  placeholder={translate('general/actions', 'Select') + '...'}
+                  items={availableLanguages}
+                  labelFunc={(item) => item.name}
+                  descriptionFunc={(item) => item.foreignName}
+                />
+              </Form>
+            </div>
 
-            <Form control={control} errors={errors}>
-              <StyledDropdown
-                rootRef={rootRef}
-                name="currency"
-                label={translate('screens/settings', 'Currency')}
-                smallLabel={true}
-                placeholder={translate('general/actions', 'Select') + '...'}
-                items={currencies ?? []}
-                labelFunc={(item) => item.name}
-              />
-            </Form>
+            <div className="relative w-full">
+              <div
+                data-testid="settings-saved-currency"
+                className={`absolute text-sm text-dfxRed-100 text-right w-full pr-4 pointer-events-none transition-opacity duration-100 ${
+                  currencySaved ? 'opacity-100' : 'opacity-0'
+                }`}
+              >
+                {translate('screens/payment', 'Saved')}!
+              </div>
+              <Form control={control} errors={errors}>
+                <StyledDropdown
+                  rootRef={rootRef}
+                  name="currency"
+                  label={translate('screens/settings', 'Currency')}
+                  smallLabel={true}
+                  placeholder={translate('general/actions', 'Select') + '...'}
+                  items={currencies ?? []}
+                  labelFunc={(item) => item.name}
+                />
+              </Form>
+            </div>
           </StyledVerticalStack>
 
           {isLoadingBankAccounts ? (
@@ -388,7 +435,7 @@ interface SettingsOverlayProps {
   onClose: () => void;
 }
 
-function SettingsOverlay({ type, data, onClose }: SettingsOverlayProps): JSX.Element {
+export function SettingsOverlay({ type, data, onClose }: SettingsOverlayProps): JSX.Element {
   const { user } = useUserContext();
   const { width } = useWindowContext();
   const { translate } = useSettingsContext();
