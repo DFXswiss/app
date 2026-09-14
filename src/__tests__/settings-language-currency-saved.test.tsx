@@ -74,6 +74,9 @@ jest.mock('@dfx.swiss/react-components', () => {
 
   return {
     Form: ({ children, control }: any) => <div>{enrich(children, control)}</div>,
+    DfxIcon: ({ icon }: { icon: string }) => <span data-testid="danger-zone-chevron" data-icon={icon} />,
+    IconSize: { SM: 'sm', LG: 'lg' },
+    IconVariant: { EXPAND_MORE: 'expand_more', EXPAND_LESS: 'expand_less' },
     SpinnerSize: { SM: 'sm', LG: 'lg' },
     StyledButton: ({ label, onClick }: any) => (
       <button type="button" onClick={onClick}>
@@ -677,10 +680,19 @@ describe('Settings screen remaining coverage', () => {
     expect(screen.queryByTestId('select-preferredPhoneTimes-09:00 - 10:00')).not.toBeInTheDocument();
   });
 
+  it('keeps delete account collapsed until danger zone is opened', () => {
+    render(<SettingsScreen />);
+
+    expect(screen.queryByRole('button', { name: 'Delete account' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Danger Zone' }));
+    expect(screen.getByRole('button', { name: 'Delete account' })).toBeInTheDocument();
+  });
+
   it('deletes the account and clears the wallet', async () => {
     loadUser();
     render(<SettingsScreen />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Danger Zone' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
     expect(screen.getByTestId('confirmation-overlay')).toBeInTheDocument();
     await act(async () => {
@@ -695,6 +707,7 @@ describe('Settings screen remaining coverage', () => {
     loadUser();
     render(<SettingsScreen />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Danger Zone' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
     expect(mockUseLayoutOptions).toHaveBeenLastCalledWith(
       expect.objectContaining({ title: 'Delete account?', onBack: expect.any(Function) }),
