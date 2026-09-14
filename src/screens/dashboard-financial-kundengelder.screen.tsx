@@ -6,7 +6,7 @@ import {
   StyledButtonWidth,
   StyledLoadingSpinner,
 } from '@dfx.swiss/react-components';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { KundengelderAccount, KundengelderExtract, KundengelderLine, KundengelderTxList } from 'src/dto/dashboard.dto';
 import { useDashboard } from 'src/hooks/dashboard.hook';
@@ -53,10 +53,12 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
   const [error, setError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [opened, setOpened] = useState<OpenedLine>();
+  const lineRequestId = useRef(0);
 
   useEffect(() => {
     if (!isLoggedIn) return;
     let cancelled = false;
+    lineRequestId.current += 1;
     setIsLoading(true);
     setOpened(undefined);
     setError(undefined);
@@ -87,28 +89,25 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
   function onLineClick(account: KundengelderAccount, line: KundengelderLine): void {
     const currentOpened = opened;
     if (currentOpened && currentOpened.accountKey === account.key && currentOpened.lineKey === line.key) {
+      lineRequestId.current += 1;
       setOpened(undefined);
       return;
     }
 
     const accountKey = account.key;
     const lineKey = line.key;
+    const requestId = lineRequestId.current + 1;
+    lineRequestId.current = requestId;
     setOpened({ accountKey, lineKey, year });
 
     getKundengelderLines(year, accountKey, lineKey)
       .then((list) => {
-        setOpened((current) =>
-          current && current.accountKey === accountKey && current.lineKey === lineKey && current.year === year
-            ? { accountKey, lineKey, year, list }
-            : current,
-        );
+        if (lineRequestId.current !== requestId) return;
+        setOpened({ accountKey, lineKey, year, list });
       })
       .catch((err: unknown) => {
-        setOpened((current) =>
-          current && current.accountKey === accountKey && current.lineKey === lineKey && current.year === year
-            ? { accountKey, lineKey, year, error: errorMessage(err) }
-            : current,
-        );
+        if (lineRequestId.current !== requestId) return;
+        setOpened({ accountKey, lineKey, year, error: errorMessage(err) });
       });
   }
 
