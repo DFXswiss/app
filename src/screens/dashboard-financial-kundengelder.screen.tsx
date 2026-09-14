@@ -79,7 +79,8 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
 
   function onYearChange(value: string): void {
     const next = Number(value);
-    if (!Number.isInteger(next)) return;
+    const maxYear = new Date().getUTCFullYear();
+    if (!Number.isInteger(next) || next < 2022 || next > maxYear) return;
     setYear(next);
   }
 
@@ -226,7 +227,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
         </div>
       ))}
 
-      {extract !== undefined && extract.diffs !== undefined && (
+      {extract !== undefined && (
         <div className="bg-white rounded-lg shadow p-4">
           <h2 className="text-lg font-semibold mb-3">Live vs booked</h2>
           <div className="overflow-auto">
