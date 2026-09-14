@@ -326,6 +326,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(mockGetKundengelderExtract).toHaveBeenCalledTimes(1);
 
     fireEvent.change(screen.getByLabelText('Year'), { target: { value: 'nope' } });
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: String(YEAR) } });
 
     expect(mockGetKundengelderExtract).toHaveBeenCalledTimes(1);
 

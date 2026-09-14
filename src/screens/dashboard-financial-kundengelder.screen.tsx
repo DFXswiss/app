@@ -197,11 +197,6 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
               </thead>
               <tbody>
                 {account.lines.map((line) => {
-                  const currentOpened = opened;
-                  const isOpen =
-                    currentOpened !== undefined &&
-                    currentOpened.accountKey === account.key &&
-                    currentOpened.lineKey === line.key;
                   return (
                     <Fragment key={line.key}>
                       <tr
@@ -215,11 +210,11 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
                         </td>
                         <td className="py-1.5 px-3 text-right font-medium">{formatChf(line.amountChf)}</td>
                       </tr>
-                      {isOpen && currentOpened && (
+                      {opened && opened.accountKey === account.key && opened.lineKey === line.key && (
                         <tr>
                           <td colSpan={4} className="py-2 px-3 bg-gray-50">
-                            {currentOpened.error && <ErrorHint message={currentOpened.error} />}
-                            {currentOpened.list && <TxTable list={currentOpened.list} />}
+                            {opened.error && <ErrorHint message={opened.error} />}
+                            {opened.list && <TxTable list={opened.list} />}
                           </td>
                         </tr>
                       )}
