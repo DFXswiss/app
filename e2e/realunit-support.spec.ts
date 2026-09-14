@@ -131,7 +131,7 @@ interface SupportMessageInfo {
 }
 
 // Open issues (states Created/Pending) returned by realunit/support/list for the default Open tab. Spread across
-// the two groups the screen renders: "Awaiting reply" (customer or bot wrote last) and "Answered" (we wrote last).
+// the two groups the screen renders: "Awaiting reply" (customer wrote last) and "Answered" (we or the bot wrote last).
 const OPEN_ISSUES: SupportIssueListItem[] = [
   // Awaiting reply (customer waiting) — sorted by lastMessageDate desc by the screen
   {
