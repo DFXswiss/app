@@ -56,6 +56,9 @@ jobs:
     name: Lint and Markdown format
     runs-on: ubuntu-latest
     steps:
+      - name: hello test
+        run: echo "hello"
+
       - name: Checkout
         uses: actions/checkout@v4
 
