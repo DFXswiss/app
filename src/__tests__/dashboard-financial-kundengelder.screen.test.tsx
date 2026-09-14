@@ -188,7 +188,11 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(button).not.toBeDisabled();
     fireEvent.click(button);
 
-    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.any(String));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Account'));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(
+      `kundengelder-${YEAR}.csv`,
+      expect.stringContaining('Test CHF Account'),
+    );
   });
 
   it('shows ErrorHint after a rejected extract and still renders the heading', async () => {
@@ -247,4 +251,38 @@ describe('DashboardFinancialKundengelderScreen', () => {
     fireEvent.click(screen.getByText('BuyCrypto after Fee'));
     expect(screen.queryByText('No transactions')).not.toBeInTheDocument();
   });
+
+  it('does not refetch extract when the year select changes to nope', async () => {
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    expect(mockGetKundengelderExtract).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: 'nope' } });
+
+    expect(mockGetKundengelderExtract).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders Live vs booked when a diff has a zero delta', async () => {
+    mockGetKundengelderExtract.mockResolvedValue({
+      ...EXTRACT,
+      diffs: [{ key: 'CH9300762011623852957|BuyCrypto after Fee', live: 50, booked: 50, delta: 0 }],
+    });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Live vs booked' })).toBeInTheDocument();
+    expect(screen.getByText('CH9300762011623852957|BuyCrypto after Fee')).toBeInTheDocument();
+  });
+
+  it('year select options include 2022 and the current UTC year', async () => {
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+
+    const yearSelect = screen.getByLabelText('Year');
+    expect(within(yearSelect).getByRole('option', { name: '2022' })).toHaveAttribute('value', '2022');
+    expect(within(yearSelect).getByRole('option', { name: `${YEAR}` })).toHaveAttribute('value', `${YEAR}`);
+  });
 });
+

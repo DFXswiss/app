@@ -42,3 +42,130 @@ describe('useDashboard Kundengelder methods', () => {
     expect(params.get('line')).toBe('BuyCrypto after Fee');
   });
 });
+
+describe('useDashboard financial methods', () => {
+  beforeEach(() => {
+    mockCall.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('getFinancialLog() calls GET dashboard/financial/log', async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getFinancialLog();
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'dashboard/financial/log',
+      method: 'GET',
+    });
+  });
+
+  it("getFinancialLog('2024-01-01') calls GET dashboard/financial/log?from=2024-01-01", async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getFinancialLog('2024-01-01');
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'dashboard/financial/log?from=2024-01-01',
+      method: 'GET',
+    });
+  });
+
+  it('getFinancialLog(undefined, false) calls GET dashboard/financial/log?dailySample=false', async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getFinancialLog(undefined, false);
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'dashboard/financial/log?dailySample=false',
+      method: 'GET',
+    });
+  });
+
+  it('getFinancialLogChart() calls GET dashboard/financial/log?byType=false', async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getFinancialLogChart();
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'dashboard/financial/log?byType=false',
+      method: 'GET',
+    });
+  });
+
+  it('getFinancialChanges() calls GET dashboard/financial/changes', async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getFinancialChanges();
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'dashboard/financial/changes',
+      method: 'GET',
+    });
+  });
+
+  it("getFinancialChanges('2024-01-01') calls GET dashboard/financial/changes?from=2024-01-01", async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getFinancialChanges('2024-01-01');
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'dashboard/financial/changes?from=2024-01-01',
+      method: 'GET',
+    });
+  });
+
+  it('getFinancialChanges(undefined, true) calls GET dashboard/financial/changes?dailySample=true', async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getFinancialChanges(undefined, true);
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'dashboard/financial/changes?dailySample=true',
+      method: 'GET',
+    });
+  });
+
+  it('getLatestBalance() calls GET dashboard/financial/latest', async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getLatestBalance();
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'dashboard/financial/latest',
+      method: 'GET',
+    });
+  });
+
+  it('getLatestChanges() calls GET dashboard/financial/changes/latest', async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getLatestChanges();
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'dashboard/financial/changes/latest',
+      method: 'GET',
+    });
+  });
+
+  it('getRefRecipients() calls GET dashboard/financial/ref-recipients', async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getRefRecipients();
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'dashboard/financial/ref-recipients',
+      method: 'GET',
+    });
+  });
+
+  it("getRefRecipients('2024-01-01') calls GET dashboard/financial/ref-recipients?from=2024-01-01", async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getRefRecipients('2024-01-01');
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'dashboard/financial/ref-recipients?from=2024-01-01',
+      method: 'GET',
+    });
+  });
+});
