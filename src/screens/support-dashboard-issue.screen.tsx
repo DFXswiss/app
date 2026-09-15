@@ -151,7 +151,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     loadMessages();
   }, [loadMessages]);
 
-  // Clear send UI and an in-progress note draft when navigating to a different ticket.
+  // Clear send UI, an in-progress note draft, and the previous ticket's messages when navigating
+  // to a different ticket. The screen does not remount on :id change; leaving `messages` in place
+  // would paint ticket A's thread on route B until loadMessages returns (or forever if it fails).
   useEffect(() => {
     sendInFlight.current = false;
     setIsSending(false);
@@ -159,6 +161,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setActionError(undefined);
     setNoteDraft(undefined);
     noteGenRef.current += 1;
+    setMessages([]);
+    setPendingCount(0);
   }, [id]);
 
   // Reset cached UserData when the issue (and thus the account) changes
@@ -591,7 +595,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             ref={messagesContainerRef}
             className="flex flex-col gap-2 max-h-[40vh] overflow-auto mb-4 p-2 scroll-shadow"
           >
-            <SupportMessageList messages={messages} onOpenFile={(msg) => openFile(msg as SupportMessageInfo)} />
+            <SupportMessageList
+              key={id}
+              messages={messages}
+              onOpenFile={(msg) => openFile(msg as SupportMessageInfo)}
+            />
           </div>
 
           {/* Message Input */}
