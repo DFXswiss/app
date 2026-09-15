@@ -569,20 +569,32 @@ test.describe('Buy flow', () => {
     const state = await waitForQuoteUi(page, 45000);
     expect(state, 'quote must reach Payment Information').toBe('payment');
 
+    // Payment Information can appear before the exact-price quote is final, which would still be
+    // a different (provisional) transaction request id — wait for the CTA to enable, same as the
+    // sibling '/buy: native form submit confirms a final quote' test, so the captured id below is
+    // guaranteed to be the final one the UI itself will confirm.
+    const confirmBtn = page.getByRole('button', { name: /Click here once you have issued the transfer/i });
+    await expect(confirmBtn).toBeEnabled();
+
     const apiBuy = capture.get();
     expect(apiBuy?.id, 'PUT /buy/paymentInfos should have returned an id').toBeTruthy();
 
-    // Confirm once directly against the API — moves the request server-side to
-    // WAITING_FOR_PAYMENT, simulating a client that already confirmed but is
-    // about to retry (e.g. it missed the first response).
+    // Confirm once directly against the API — moves the request server-side to WAITING_FOR_PAYMENT,
+    // simulating a client that already confirmed but is about to retry (e.g. it missed the first
+    // response).
     await apiPut(`buy/paymentInfos/${apiBuy!.id}/confirm`, undefined, { jwt: user.jwt });
 
-    // The UI's own confirm click now hits the real, unmocked backend and gets a
-    // genuine 409 ("already confirmed"). It must render the completion screen,
-    // not an error.
-    const confirmBtn = page.getByRole('button', { name: /Click here once you have issued the transfer/i });
-    await expect(confirmBtn).toBeVisible();
+    // The UI's own confirm click now hits the real, unmocked backend for the SAME id and must get a
+    // genuine 409 ("already confirmed") — assert the response itself, not just the rendered outcome,
+    // so this test cannot pass for a reason unrelated to the 409 branch under test.
+    const confirmResponsePromise = page.waitForResponse(
+      (r) => r.url().includes(`/buy/paymentInfos/${apiBuy!.id}/confirm`) && r.request().method() === 'PUT',
+      { timeout: 15000 },
+    );
     await confirmBtn.click();
+    const confirmResponse = await confirmResponsePromise;
+    expect(confirmResponse.status(), 'the UI\'s own confirm call must receive the real 409').toBe(409);
+
     await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
   });
 
