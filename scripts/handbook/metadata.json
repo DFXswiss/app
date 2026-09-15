@@ -188,8 +188,8 @@
     "description": "Staff-Issue: interne Kundennotiz mit Ticket-Betreff und Entwurf, nicht in den Kunden-Thread."
   },
   "support-kyc-file-transfer": {
-    "title": "Support ticket KYC file transfer",
-    "description": "Staff ticket: transfer an attachment from the message thread into the customer's KYC file."
+    "title": "Support-Ticket KYC-File-Übernahme",
+    "description": "Staff-Ticket: Anhang aus dem Nachrichten-Thread ins KYC-File des Kunden übernehmen."
   },
   "subpage": {
     "title": "Unterseiten",
