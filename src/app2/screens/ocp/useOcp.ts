@@ -30,7 +30,7 @@ import {
   useApi,
   usePaymentRoutes,
 } from '@dfx.swiss/react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useToast } from '../../components/ui';
 import { useT } from '../../i18n';
 import { useWalletSession } from '../../wallets/session';
@@ -210,6 +210,8 @@ export function useOcp(): OcpApi {
   const [routesError, setRoutesError] = useState(false);
   const [links, setLinks] = useState<PaymentLink[] | null>(null);
   const [history, setHistory] = useState<OcpHistory | null>(null);
+  // Bumped on every demo on/off so a response that started under the other mode cannot write after the switch.
+  const demoEpochRef = useRef(0);
 
   const demoLnurl = useCallback((id: string) => lnurlEncode(`${apiBaseUrl}/lnurlp/${id}`), [apiBaseUrl]);
 
@@ -307,6 +309,7 @@ export function useOcp(): OcpApi {
   }, []);
 
   const enableDemo = useCallback(() => {
+    demoEpochRef.current += 1;
     setDemo(true);
     setActive(true);
     setProbeError(false);
@@ -318,6 +321,7 @@ export function useOcp(): OcpApi {
   }, [buildDemoConfig, buildDemoRoutes, buildDemoLinks, showToast, t]);
 
   const disableDemo = useCallback(() => {
+    demoEpochRef.current += 1;
     setDemo(false);
     setActive(null);
     setProbeError(false);
@@ -335,12 +339,15 @@ export function useOcp(): OcpApi {
       setProbeError(false);
       return;
     }
+    const epoch = demoEpochRef.current;
     try {
       const cfg = (await getUserPaymentLinksConfig()) as OcpConfig;
+      if (epoch !== demoEpochRef.current) return;
       setActive(true);
       setProbeError(false);
       setConfig(cfg);
     } catch (error) {
+      if (epoch !== demoEpochRef.current) return;
       const status = error instanceof ApiException ? error.statusCode : undefined;
       // Only 403 means "not activated". Network/5xx/401 must not drop an active
       // merchant into the apply/demo view or discard a previously good config.
@@ -359,11 +366,14 @@ export function useOcp(): OcpApi {
       setRoutesError(false);
       return;
     }
+    const epoch = demoEpochRef.current;
     try {
       const data = await getPaymentRoutes();
+      if (epoch !== demoEpochRef.current) return;
       setRoutes(data ?? { buy: [], sell: [], swap: [] });
       setRoutesError(false);
     } catch {
+      if (epoch !== demoEpochRef.current) return;
       setRoutes({ buy: [], sell: [], swap: [] });
       setRoutesError(true);
     }
@@ -373,11 +383,14 @@ export function useOcp(): OcpApi {
     if (demo) {
       return;
     }
+    const epoch = demoEpochRef.current;
     try {
       const data = await getPaymentLinks();
+      if (epoch !== demoEpochRef.current) return;
       const list = (Array.isArray(data) ? data : [data]).filter(Boolean) as PaymentLink[];
       setLinks(list);
     } catch {
+      if (epoch !== demoEpochRef.current) return;
       setLinks([]);
     }
   }, [demo, getPaymentLinks]);
@@ -387,8 +400,10 @@ export function useOcp(): OcpApi {
       setHistory(buildDemoHistory());
       return;
     }
+    const epoch = demoEpochRef.current;
     try {
       const data = await call<HistoryLink[]>({ url: '/paymentLink/history', method: 'GET' });
+      if (epoch !== demoEpochRef.current) return;
       const items: OcpHistoryItem[] = [];
       let total = 0;
       if (Array.isArray(data)) {
@@ -409,6 +424,7 @@ export function useOcp(): OcpApi {
       items.sort((a, b) => Number(b.id) - Number(a.id));
       setHistory({ items, total });
     } catch {
+      if (epoch !== demoEpochRef.current) return;
       setHistory({ items: [], total: 0 });
     }
   }, [demo, call, language, buildDemoHistory]);
