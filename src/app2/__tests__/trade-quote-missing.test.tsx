@@ -3,6 +3,11 @@ const mockReceiveForSwap = jest.fn();
 const mockReceiveForSell = jest.fn();
 const mockCall = jest.fn();
 const mockEngine = jest.fn();
+const mockQuoteSession = { address: undefined as string | undefined };
+
+jest.mock('../wallets/session', () => ({
+  useWalletSession: () => mockQuoteSession,
+}));
 
 jest.mock('@dfx.swiss/react', () => ({
   BuyUrl: { quote: 'buy/quote', receive: 'buy/paymentInfos' },

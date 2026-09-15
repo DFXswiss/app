@@ -111,6 +111,261 @@ describe('KycScreen', () => {
     });
   });
 
+  it('discards a late KYC overview when the hash has changed', async () => {
+    mockSession.isLoggedIn = true;
+    let resolveFirst: (value: unknown) => void = () => undefined;
+    mockGetKycInfo.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    mockGetKycInfo.mockResolvedValueOnce({
+      kycLevel: 0,
+      kycSteps: [{ name: 'ContactData', status: 'NotStarted' }],
+    });
+    const view = renderKyc();
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledTimes(1));
+    mockUser.user = { kyc: { hash: 'other-hash', level: 0 } };
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <KycScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      resolveFirst({
+        kycLevel: 50,
+        kycSteps: [{ name: 'PersonalData', status: 'Completed' }],
+      });
+    });
+    expect(screen.queryByText(/all done|alles erledigt|tutto fatto|tout est fait/i)).not.toBeInTheDocument();
+  });
+
+  it('discards a late 2FA setup secret after the KYC hash has changed', async () => {
+    mockSession.isLoggedIn = true;
+    mockContinueKyc.mockRejectedValue({ code: 'TFA_REQUIRED' });
+    let resolveSetup: (value: unknown) => void = () => undefined;
+    mockSetup2fa.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSetup = resolve;
+        }),
+    );
+    const view = renderKyc();
+    fireEvent.click(await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i }));
+    await waitFor(() => expect(mockSetup2fa).toHaveBeenCalled());
+    mockUser.user = { kyc: { hash: 'other-hash', level: 0 } };
+    mockGetKycInfo.mockResolvedValue({
+      kycLevel: 0,
+      kycSteps: [{ name: 'ContactData', status: 'NotStarted' }],
+    });
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <KycScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      resolveSetup({ secret: 'STALESECRET', uri: 'otpauth://stale' });
+    });
+    expect(screen.queryByText('STALESECRET')).not.toBeInTheDocument();
+  });
+
+  it('discards a late KYC error after the hash has changed', async () => {
+    mockSession.isLoggedIn = true;
+    let rejectFirst: (error: Error) => void = () => undefined;
+    mockGetKycInfo.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectFirst = reject;
+        }),
+    );
+    mockGetKycInfo.mockResolvedValueOnce({
+      kycLevel: 0,
+      kycSteps: [{ name: 'ContactData', status: 'NotStarted' }],
+    });
+    const view = renderKyc();
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledTimes(1));
+    mockUser.user = { kyc: { hash: 'other-hash', level: 0 } };
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <KycScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      rejectFirst(new Error('stale-down'));
+    });
+    expect(screen.queryByText(/couldn't load|nicht laden|caricare|charger/i)).not.toBeInTheDocument();
+  });
+
+  it('discards a late 2FA setup failure after the KYC hash has changed', async () => {
+    mockSession.isLoggedIn = true;
+    mockContinueKyc.mockRejectedValue({ code: 'TFA_REQUIRED' });
+    let rejectSetup: (error: unknown) => void = () => undefined;
+    mockSetup2fa.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectSetup = reject;
+        }),
+    );
+    const view = renderKyc();
+    fireEvent.click(await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i }));
+    await waitFor(() => expect(mockSetup2fa).toHaveBeenCalled());
+    mockUser.user = { kyc: { hash: 'other-hash', level: 0 } };
+    mockGetKycInfo.mockResolvedValue({
+      kycLevel: 0,
+      kycSteps: [{ name: 'ContactData', status: 'NotStarted' }],
+    });
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <KycScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      rejectSetup({ statusCode: 409 });
+    });
+    expect(screen.queryByText(/current 6-digit code|aktuellen 6-stelligen|codice a 6|code à 6/i)).not.toBeInTheDocument();
+  });
+
+  it('discards a late continue after the KYC hash has changed', async () => {
+    mockSession.isLoggedIn = true;
+    let resolveContinue: (value: unknown) => void = () => undefined;
+    mockContinueKyc.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveContinue = resolve;
+        }),
+    );
+    const view = renderKyc();
+    fireEvent.click(await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i }));
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalled());
+    mockUser.user = { kyc: { hash: 'other-hash', level: 0 } };
+    mockGetKycInfo.mockResolvedValue({
+      kycLevel: 0,
+      kycSteps: [{ name: 'ContactData', status: 'NotStarted' }],
+    });
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <KycScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      resolveContinue({ currentStep: { name: 'ContactData', status: 'InProgress', sequenceNumber: 1 } });
+    });
+    expect(screen.queryByTestId('kyc-step-form')).not.toBeInTheDocument();
+  });
+
+  it('discards a late continue error after the KYC hash has changed', async () => {
+    mockSession.isLoggedIn = true;
+    let rejectContinue: (error: unknown) => void = () => undefined;
+    mockContinueKyc.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectContinue = reject;
+        }),
+    );
+    const view = renderKyc();
+    fireEvent.click(await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i }));
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalled());
+    mockUser.user = { kyc: { hash: 'other-hash', level: 0 } };
+    mockGetKycInfo.mockResolvedValue({
+      kycLevel: 0,
+      kycSteps: [{ name: 'ContactData', status: 'NotStarted' }],
+    });
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <KycScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      rejectContinue({ code: 'TFA_REQUIRED' });
+    });
+    expect(mockSetup2fa).not.toHaveBeenCalled();
+  });
+
+  it('discards a late 2FA verify after the KYC hash has changed', async () => {
+    mockSession.isLoggedIn = true;
+    mockContinueKyc.mockRejectedValue({ code: 'TFA_REQUIRED' });
+    mockSetup2fa.mockResolvedValue({ type: 'App', secret: 'SECRET' });
+    let rejectVerify: (error: Error) => void = () => undefined;
+    mockVerify2fa.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectVerify = reject;
+        }),
+    );
+    const view = renderKyc();
+    fireEvent.click(await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i }));
+    expect(await screen.findByText(/SECRET/)).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('000000'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    await waitFor(() => expect(mockVerify2fa).toHaveBeenCalled());
+    mockUser.user = { kyc: { hash: 'other-hash', level: 0 } };
+    mockGetKycInfo.mockResolvedValue({
+      kycLevel: 0,
+      kycSteps: [{ name: 'ContactData', status: 'NotStarted' }],
+    });
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <KycScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      rejectVerify(new Error('wrong'));
+    });
+    expect(screen.queryByText(/invalid or expired|ungültig|non valido|expiré/i)).not.toBeInTheDocument();
+  });
+
+  it('discards a late 2FA verify success after the KYC hash has changed', async () => {
+    mockSession.isLoggedIn = true;
+    mockContinueKyc.mockRejectedValue({ code: 'TFA_REQUIRED' });
+    mockSetup2fa.mockResolvedValue({ type: 'App', secret: 'SECRET' });
+    let resolveVerify: () => void = () => undefined;
+    mockVerify2fa.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveVerify = resolve;
+        }),
+    );
+    const view = renderKyc();
+    fireEvent.click(await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i }));
+    expect(await screen.findByText(/SECRET/)).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('000000'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    await waitFor(() => expect(mockVerify2fa).toHaveBeenCalled());
+    mockUser.user = { kyc: { hash: 'other-hash', level: 0 } };
+    mockGetKycInfo.mockResolvedValue({
+      kycLevel: 0,
+      kycSteps: [{ name: 'ContactData', status: 'NotStarted' }],
+    });
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <KycScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      resolveVerify();
+    });
+    expect(screen.queryByTestId('kyc-step-form')).not.toBeInTheDocument();
+  });
+
   it('asks a logged-out visitor to connect', () => {
     renderKyc();
     expect(screen.getByRole('heading')).toBeInTheDocument();

@@ -385,6 +385,13 @@ describe('TransactionsScreen', () => {
 
     mockSession.address = '0xabc';
     mockGetHistory.mockRejectedValueOnce(new Error('ct-down'));
+    // Mutating the mock is invisible until a render reads it. This click both
+    // opens the menu and re-renders with the new address, which reloads and
+    // unmounts the menu (`state === 'loaded'`). Wait for that reload, then open
+    // the menu again.
+    fireEvent.click(screen.getByRole('button', { name: /export csv|csv exportieren|esporta csv|exporter csv/i }));
+    await waitFor(() => expect(mockGetDetail).toHaveBeenCalledTimes(2));
+    await screen.findByText(/no transactions yet/i);
     fireEvent.click(screen.getByRole('button', { name: /export csv|csv exportieren|esporta csv|exporter csv/i }));
     fireEvent.click(screen.getByRole('button', { name: /cointracking/i }));
     await waitFor(() => expect(mockGetHistory).toHaveBeenCalled());
@@ -707,6 +714,340 @@ describe('TransactionsScreen', () => {
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     expect(mockSetRefund).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops a late public-history fallback error after the session address changes', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    mockGetDetail.mockRejectedValueOnce(new Error('detail-down'));
+    let rejectFallback: (error: Error) => void = () => undefined;
+    mockGetTx.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectFallback = reject;
+        }),
+    );
+    mockGetUnassigned.mockResolvedValue([]);
+    const view = renderTx();
+    await waitFor(() => expect(mockGetTx).toHaveBeenCalledTimes(1));
+    mockSession.address = '0xbbb';
+    mockGetDetail.mockResolvedValueOnce([]);
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      rejectFallback(new Error('stale-fallback'));
+    });
+    expect(screen.queryByText(/couldn't load|nicht laden|caricare|charger/i)).not.toBeInTheDocument();
+  });
+
+  it('drops a late unassigned list after the session address changes', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    let resolveUnassigned: (value: unknown[]) => void = () => undefined;
+    mockGetUnassigned.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveUnassigned = resolve;
+        }),
+    );
+    mockGetDetail.mockResolvedValueOnce([]);
+    const view = renderTx();
+    await waitFor(() => expect(mockGetUnassigned).toHaveBeenCalledTimes(1));
+    mockSession.address = '0xbbb';
+    mockGetUnassigned.mockResolvedValueOnce([]);
+    mockGetDetail.mockResolvedValueOnce([]);
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      resolveUnassigned([
+        { id: 77, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z', uid: 'pay-77' },
+      ]);
+    });
+    expect(
+      screen.queryByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('drops a late unassigned-list failure after the session address changes', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    let rejectUnassigned: (error: Error) => void = () => undefined;
+    mockGetUnassigned.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectUnassigned = reject;
+        }),
+    );
+    mockGetDetail.mockResolvedValueOnce([]);
+    const view = renderTx();
+    await waitFor(() => expect(mockGetUnassigned).toHaveBeenCalledTimes(1));
+    mockSession.address = '0xbbb';
+    mockGetUnassigned.mockResolvedValueOnce([]);
+    mockGetDetail.mockResolvedValueOnce([]);
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      rejectUnassigned(new Error('stale-ua'));
+    });
+    expect(
+      screen.queryByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not start the public-history fallback after the session address has already changed', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    let rejectDetail: (error: Error) => void = () => undefined;
+    mockGetDetail.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectDetail = reject;
+        }),
+    );
+    mockGetDetail.mockResolvedValueOnce([]);
+    const view = renderTx();
+    await waitFor(() => expect(mockGetDetail).toHaveBeenCalledTimes(1));
+    mockSession.address = '0xbbb';
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(mockGetDetail).toHaveBeenCalledTimes(2));
+    mockGetTx.mockClear();
+    await act(async () => {
+      rejectDetail(new Error('stale-detail'));
+    });
+    expect(mockGetTx).not.toHaveBeenCalled();
+  });
+
+  it('drops a late public-history fallback after the session address changes', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    mockGetDetail.mockRejectedValueOnce(new Error('detail-down'));
+    let resolveFallback: (value: unknown[]) => void = () => undefined;
+    mockGetTx.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFallback = resolve;
+        }),
+    );
+    mockGetTx.mockResolvedValueOnce([]);
+    mockGetUnassigned.mockResolvedValue([]);
+    const view = renderTx();
+    await waitFor(() => expect(mockGetTx).toHaveBeenCalledTimes(1));
+    mockSession.address = '0xbbb';
+    mockGetDetail.mockResolvedValueOnce([]);
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      resolveFallback([tx({ id: 9, outputAsset: 'FALLBACK', uid: 'tx-fb' })]);
+    });
+    expect(screen.queryByText('FALLBACK')).not.toBeInTheDocument();
+  });
+
+  it('drops in-flight history when the session address changes', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    let resolveFirst: (value: unknown[]) => void = () => undefined;
+    mockGetDetail.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    mockGetDetail.mockResolvedValue([tx({ id: 2, outputAsset: 'USDC', uid: 'tx-new' })]);
+    mockGetUnassigned.mockResolvedValue([]);
+    const view = renderTx();
+    await waitFor(() => expect(mockGetDetail).toHaveBeenCalledTimes(1));
+    mockSession.address = '0xbbb';
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(mockGetDetail).toHaveBeenCalledTimes(2));
+    expect(await screen.findAllByText(/USDC/)).not.toHaveLength(0);
+    await act(async () => {
+      resolveFirst([tx({ id: 1, outputAsset: 'STALE', uid: 'tx-stale' })]);
+    });
+    expect(screen.queryAllByText(/STALE/)).toHaveLength(0);
+    expect(screen.getAllByText(/USDC/).length).toBeGreaterThan(0);
+  });
+
+  it('clears history on logout so a later assign cannot send another account’s id', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    mockGetUnassigned.mockResolvedValueOnce([
+      { id: 77, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z', uid: 'pay-77' },
+    ]);
+    mockGetDetail.mockResolvedValueOnce([]);
+    const view = renderTx();
+    expect(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    ).toBeInTheDocument();
+    mockSession.isLoggedIn = false;
+    mockSession.address = undefined;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(
+      screen.queryByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not apply a late assign after the session has changed', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    mockGetUnassigned.mockResolvedValue([
+      { id: 8, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z', uid: 'pay-8' },
+    ]);
+    mockGetTargets.mockResolvedValue([{ id: 44, asset: { name: 'BTC' }, address: 'bc1qassign' }]);
+    let resolveAssign: () => void = () => undefined;
+    let rejectAssign: (error: Error) => void = () => undefined;
+    mockSetTarget.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          resolveAssign = resolve;
+          rejectAssign = reject;
+        }),
+    );
+    const view = renderTx();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    );
+    await screen.findAllByRole('combobox');
+    fireEvent.click(screen.getAllByRole('button', { name: /assign|zuordnen|assegna|attribuer/i })[0]);
+    await waitFor(() => expect(mockSetTarget).toHaveBeenCalled());
+    mockSession.address = '0xbbb';
+    mockGetUnassigned.mockResolvedValue([]);
+    mockGetDetail.mockResolvedValue([]);
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      resolveAssign();
+    });
+    expect(screen.queryByText(/assigned|zugeordnet|assegnat|attribué/i)).not.toBeInTheDocument();
+
+    mockSetTarget.mockImplementationOnce(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectAssign = reject;
+        }),
+    );
+    mockSession.address = '0xaaa';
+    mockGetUnassigned.mockResolvedValue([
+      { id: 8, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z', uid: 'pay-8' },
+    ]);
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    );
+    await screen.findAllByRole('combobox');
+    fireEvent.click(screen.getAllByRole('button', { name: /assign|zuordnen|assegna|attribuer/i })[0]);
+    mockSession.address = '0xccc';
+    mockGetUnassigned.mockResolvedValue([]);
+    mockGetDetail.mockResolvedValue([]);
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      rejectAssign(new Error('late'));
+    });
+  });
+
+  it('does not toast a late assign failure after the session address has changed', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    mockGetUnassigned.mockResolvedValue([
+      { id: 8, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z', uid: 'pay-8' },
+    ]);
+    mockGetTargets.mockResolvedValue([{ id: 44, asset: { name: 'BTC' }, address: 'bc1qassign' }]);
+    let rejectAssign: (error: Error) => void = () => undefined;
+    mockSetTarget.mockImplementationOnce(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectAssign = reject;
+        }),
+    );
+    const view = renderTx();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    );
+    await screen.findAllByRole('combobox');
+    fireEvent.click(screen.getAllByRole('button', { name: /assign|zuordnen|assegna|attribuer/i })[0]);
+    await waitFor(() => expect(mockSetTarget).toHaveBeenCalled());
+    mockSession.address = '0xbbb';
+    mockGetUnassigned.mockResolvedValue([]);
+    mockGetDetail.mockResolvedValue([]);
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      rejectAssign(new Error('late-assign'));
+    });
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/something went wrong|schiefgelaufen|storto|produite/i);
   });
 
   it('revokes the CoinTracking blob after download', async () => {

@@ -5,7 +5,7 @@
   },
   "app2-session": {
     "title": "DFX App 2.0 (angemeldet)",
-    "description": "App 2.0 hinter einer Wallet: Kauf, Verkauf, Tausch, angemeldetes Konto, Transaktionen, KYC-Schritte, Limit-Antrag, OpenCryptoPay-Hub und Apply-Bogen sowie die fünf Händler-Unterseiten Rechnung, POS, Links, Verlauf und Einstellungen. Die Aufnahmen stammen aus dem lokalen E2E-Stack. Die Unterseiten setzen ein aktives Händlerkonto voraus; die Bilder zeigen deshalb den eingebauten Demo-Modus, erkennbar am Demo-Abzeichen in der Kopfzeile. Auch hier liegt jeder Screen in beiden Seiten des 460px-Umbruchs vor."
+    "description": "App 2.0 hinter einer Wallet: Kauf, Verkauf, Tausch, angemeldetes Konto, Transaktionen, KYC-Schritte, Limit-Antrag, OpenCryptoPay-Hub und Apply-Bogen sowie die sechs Händler-Unterseiten Zahlungswege, Rechnung, POS, Links, Verlauf und Einstellungen. Die Aufnahmen stammen aus dem lokalen E2E-Stack. Die Unterseiten setzen ein aktives Händlerkonto voraus; die Bilder zeigen deshalb den eingebauten Demo-Modus, erkennbar am Demo-Abzeichen in der Kopfzeile. Auch hier liegt jeder Screen in beiden Seiten des 460px-Umbruchs vor."
   },
   "buy-process": {
     "title": "Kaufprozess",

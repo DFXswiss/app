@@ -52,7 +52,7 @@ jest.mock('@dfx.swiss/react', () => ({
 
 const mockUpdateMail = jest.fn();
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ApiException, TransactionError, type Buy, type Sell, type Swap } from '@dfx.swiss/react';
 import { PaymentSheet } from '../screens/trade/PaymentSheet';
 import { isEmailGateError, mapThrownError } from '../screens/trade/errors';
@@ -645,14 +645,15 @@ describe('payment sheet actions', () => {
   });
 
   it('falls back to the panel amount, a dash IBAN and an empty deposit address', async () => {
-    renderBuySheet({
+    const buy = renderBuySheet({
       isValid: true,
       estimatedAmount: 0.002,
       fees: { total: 1 },
       currency: { name: 'EUR' },
       paymentRequest: 'payload',
     } as unknown as Buy);
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    expect(within(buy.container).getAllByText('—').length).toBeGreaterThan(0);
+    buy.unmount();
 
     const sell = renderSellSheet({
       isValid: true,
@@ -662,7 +663,7 @@ describe('payment sheet actions', () => {
       depositAddress: '',
       paymentRequest: 'payreq',
     } as unknown as Sell);
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    expect(within(sell.container).getAllByText('—').length).toBeGreaterThan(0);
     sell.unmount();
 
     renderSwapSheet({
