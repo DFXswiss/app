@@ -553,6 +553,12 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   // attempt's CancelToken (see providers.ts), used to stop connectWalletConnect() from waiting
   // on a pairing nobody is going to approve.
   const attemptIdRef = useRef(0);
+  // Latest linked-address switchTo target. A superseded changeAddress may still
+  // write the global JWT; the stale attempt re-applies this if it is no longer current.
+  const switchTargetRef = useRef<string | undefined>();
+  // Token of the last sign-in that passed stillCurrent. A superseded createSessionNew
+  // restores this instead of logging out a newer session.
+  const latestAuthRef = useRef<string | undefined>();
   const wcTokenRef = useRef<CancelToken | null>(null);
   const providerChangeRef = useRef(false);
   // The exact EIP-1193 provider instance an injected-wallet session authenticated with (resolved
@@ -654,13 +660,19 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           recommendationCode ?? inviteRecommendationCode,
           language.toUpperCase(),
         );
-        // The auth request itself cannot be aborted by the SDK. If the sheet was closed while
-        // it was in flight, immediately discard the newly created DFX session and do not let a
-        // late response sign in behind the user's back.
+        // The auth request itself cannot be aborted by the SDK. createSessionNew already wrote
+        // this JWT. If the attempt was cancelled, restore a newer successful sign-in or discard
+        // this session — never log out a session a later attempt already owns.
         if (!stillCurrent()) {
-          await libLogout();
+          const latest = latestAuthRef.current;
+          if (latest) {
+            updateSession(latest);
+          } else {
+            await libLogout();
+          }
           return false;
         }
+        latestAuthRef.current = token;
         setActiveConnector(creds.connector);
         // Promote a pending WC provider only after a successful session — never while the
         // QR pairing or recommendation gate is still open.
@@ -712,7 +724,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         return false;
       }
     },
-    [createSessionNew, language, libLogout, showToast, t, walletParam],
+    [createSessionNew, language, libLogout, showToast, t, updateSession, walletParam],
   );
 
   const handleSelectWallet = useCallback(
@@ -1105,6 +1117,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       // round so it cannot restore the previous wallet's bindings onto the new session.
       const myAttempt = ++attemptIdRef.current;
       const isCurrent = () => myAttempt === attemptIdRef.current;
+      switchTargetRef.current = entry.address;
       busyRef.current = false;
       // Snapshot then drop provider bindings for the previous address before the JWT address
       // changes. On failure, restore so the old JWT does not stay active without its EIP-1193
@@ -1130,6 +1143,13 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         if (!user) throw new Error('user not loaded');
         // Seamless re-issue for any address linked to the active account (no re-signing).
         await changeAddress(entry.address);
+        if (!isCurrent()) {
+          const latest = switchTargetRef.current;
+          if (latest && latest !== entry.address) {
+            await changeAddress(latest);
+          }
+          return;
+        }
         const bound = boundProviderFromSnapshot(previous);
         // After a reload there is no remembered connector; ask the injected
         // provider itself rather than giving up and staying on `'other'`.
@@ -1319,6 +1339,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         injectedProviderRef.current = undefined;
         wcProviderRef.current = undefined;
         pendingWcProviderRef.current = undefined;
+        latestAuthRef.current = undefined;
         await teardownWalletSession(disconnectWalletConnect, libLogout);
         showToast(t('signOut'));
       },

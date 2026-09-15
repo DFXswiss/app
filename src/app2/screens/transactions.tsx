@@ -564,8 +564,10 @@ export default function TransactionsScreen() {
   const [targetsState, setTargetsState] = useState<LoadState>('loading');
   const [picked, setPicked] = useState<Record<number, string>>({});
   const [assigning, setAssigning] = useState<number | null>(null);
+  const loadGenRef = useRef(0);
 
   const load = () => {
+    const gen = ++loadGenRef.current;
     const sortByDate = (list: DetailTransaction[]) =>
       [...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     setState('loading');
@@ -576,22 +578,34 @@ export default function TransactionsScreen() {
     // /transaction?userAddress=…) before giving up, mirroring `buildTx`.
     getDetailTransactions()
       .then((list) => {
+        if (gen !== loadGenRef.current) return;
         setTransactions(sortByDate(list));
         setState('loaded');
       })
       .catch(() => {
+        if (gen !== loadGenRef.current) return;
         getTransactions()
           .then((list) => {
+            if (gen !== loadGenRef.current) return;
             setTransactions(sortByDate(list as DetailTransaction[]));
             setState('loaded');
           })
-          .catch(() => setState('error'));
+          .catch(() => {
+            if (gen !== loadGenRef.current) return;
+            setState('error');
+          });
       });
     // Bank payments DFX couldn't match to a buy route — best-effort, a failure
     // here must not blow up the main history (mirrors buildTx's separate catch).
     getUnassignedTransactions()
-      .then((list) => setUnassigned(Array.isArray(list) ? list : []))
-      .catch(() => setUnassigned([]));
+      .then((list) => {
+        if (gen !== loadGenRef.current) return;
+        setUnassigned(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (gen !== loadGenRef.current) return;
+        setUnassigned([]);
+      });
   };
 
   const openAssign = () => {
@@ -609,15 +623,23 @@ export default function TransactionsScreen() {
     const raw = picked[index] ?? (targets[0]?.id != null ? String(targets[0].id) : '');
     const buyId = Number(raw);
     if (payment?.id == null || !raw || Number.isNaN(buyId)) return;
+    const gen = loadGenRef.current;
     setAssigning(index);
     setTransactionTarget(payment.id, buyId)
       .then(() => {
+        if (gen !== loadGenRef.current) return;
         showToast(t('txAssignOk'));
         setAssignOpen(false);
         load(); // refresh reloads the (now shorter) unassigned list
       })
-      .catch(() => showToast(t('genErr')))
-      .finally(() => setAssigning(null));
+      .catch(() => {
+        if (gen !== loadGenRef.current) return;
+        showToast(t('genErr'));
+      })
+      .finally(() => {
+        if (gen !== loadGenRef.current) return;
+        setAssigning(null);
+      });
   };
 
   const exportCompactCsv = () => {
@@ -674,12 +696,22 @@ export default function TransactionsScreen() {
   };
 
   useEffect(() => {
-    if (!isLoggedIn) return;
+    setAssignOpen(false);
+    setPicked({});
+    setRefundActiveId(null);
+    setTargets([]);
+    setMenuOpen(false);
+    if (!isLoggedIn) {
+      loadGenRef.current += 1;
+      setTransactions([]);
+      setUnassigned([]);
+      return;
+    }
     load();
     // `load` intentionally omitted — it closes over `getDetailTransactions`,
     // which is re-created every render (no memoization in the hook), and
     // re-running this effect should only be driven by the session state.
-  }, [isLoggedIn]);
+  }, [isLoggedIn, address]);
 
   if (!isLoggedIn) return <LoggedOutState title={t('mTx')} />;
 
