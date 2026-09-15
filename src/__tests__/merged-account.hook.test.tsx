@@ -47,9 +47,14 @@ describe('useMergedAccount', () => {
     );
   });
 
-  it('logs out after navigating on a handled merge error', () => {
+  it('logs out after navigating on a handled merge error, in that order', () => {
+    const callOrder: string[] = [];
+    mockNavigate.mockImplementation(() => callOrder.push('navigate'));
+    mockLogout.mockImplementation(() => callOrder.push('logout'));
+
     const { result } = renderHook(() => useMergedAccount());
     result.current.handleMergedError({ statusCode: 401, switchToCode: 'MASTER_CODE' } as any);
-    expect(mockLogout).toHaveBeenCalled();
+
+    expect(callOrder).toEqual(['navigate', 'logout']);
   });
 });

@@ -158,6 +158,7 @@ describe('LinkScreen handleMergedError', () => {
     });
 
     expect(mockHandleMergedError).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 
   it('getKycInfo then: a stale resolve after a re-run does not act on stale data', async () => {

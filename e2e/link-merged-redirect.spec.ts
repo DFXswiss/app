@@ -1,4 +1,5 @@
-import { expect, Page, Route, test } from '@playwright/test';
+import { expect, Page, test } from '@playwright/test';
+import { fulfillJson, kycInfoFixture } from './helpers/merged-redirect-fixtures';
 
 const SLAVE_KYC_CODE = 'SLAVE_KYC_HASH_XYZ';
 const MASTER_KYC_CODE = 'MASTER_KYC_HASH_ABC';
@@ -11,18 +12,6 @@ const mergedErrorBody = {
   switchToCode: MASTER_KYC_CODE,
 };
 
-// Matches the @dfx.swiss/core KycInfo shape (kycLevel, tradingLimit, language, kycSteps,
-// kycClients all required) so the /kyc screen the redirect lands on can render without an
-// undefined-field crash — a prior version of this fixture omitted these and passed the test
-// while silently crashing the destination screen.
-const kycInfoFixture = {
-  kycLevel: 0,
-  tradingLimit: { limit: 500000, period: 'Day' },
-  language: { id: 1, name: 'English', symbol: 'EN', foreignName: 'English', enable: true },
-  kycSteps: [],
-  kycClients: [],
-};
-
 function jwt(): string {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
   return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
@@ -31,10 +20,6 @@ function jwt(): string {
     role: 'User',
     exp: Math.floor(Date.now() / 1000) + 3600,
   })}.synthetic`;
-}
-
-async function fulfillJson(route: Route, body: unknown, status = 200): Promise<void> {
-  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
 async function assertRedirectedToMasterKycAndLoggedOut(page: Page): Promise<void> {

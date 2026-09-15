@@ -275,8 +275,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   calls get `501`. The initial navigation also carries a synthetic
   `kyc-redirect=https://evil.example` param; the app itself (not mocked) runs the real
   `navigation.hook.ts` merge/strip logic, and the spec asserts that param is absent from the
-  post-redirect URL. A green run proves the `/kyc` screen renders without a `pageerror` on the
-  synthetic follow-up payload, and that the `kyc-redirect` param is genuinely stripped by the
+  post-redirect URL. It also proves the synthetic auth token is cleared from `localStorage`
+  after the redirect — not that any server-side session or token is actually invalidated,
+  since the backend is entirely mocked. A green run proves the `/kyc` screen renders without a
+  `pageerror` on the synthetic follow-up payload, and that the `kyc-redirect` param is
+  genuinely stripped by the
   real code (not just requested — `src/__tests__/merged-account.hook.test.tsx` only proves
   `handleMergedError` calls `navigate` with `clearParams: ['kyc-redirect']` against a mocked
   `useNavigation`, not that the real merge logic honors it). It does not prove that login or

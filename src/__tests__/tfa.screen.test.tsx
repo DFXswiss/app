@@ -31,7 +31,8 @@ jest.mock('@dfx.swiss/react-components', () => ({
     </button>
   ),
   StyledButtonWidth: { MIN: 'min', FULL: 'full' },
-  StyledInput: () => null,
+  StyledInput: ({ forceError, forceErrorMessage }: any) =>
+    forceError ? <div data-testid="token-error">{forceErrorMessage}</div> : null,
   StyledLoadingSpinner: () => <div role="progressbar" />,
   StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
 }));
@@ -131,6 +132,19 @@ describe('TfaScreen handleMergedError', () => {
     expect(mockHandleMergedError).toHaveBeenCalledWith(error);
   });
 
+  it('setup2fa/load catch: handleMergedError false with the "2FA already set up" message does not set error', async () => {
+    const error = { statusCode: 401, switchToCode: 'MASTER', message: '2FA already set up' };
+    mockKycSetup2fa.mockRejectedValue(error);
+
+    render(<TfaScreen />);
+
+    await waitFor(() => {
+      expect(mockHandleMergedError).toHaveBeenCalledWith(error);
+    });
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+  });
+
   it('setup2fa/load catch: does not call handleMergedError for a response that arrives after unmount', async () => {
     const error = { statusCode: 401, switchToCode: 'MASTER', message: 'unauthorized' };
     let rejectSetup2fa: (e: unknown) => void = () => undefined;
@@ -173,6 +187,7 @@ describe('TfaScreen handleMergedError', () => {
     });
 
     expect(mockHandleMergedError).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 
   it('setup2fa/load then: a stale resolve after a re-run does not overwrite the newer setup info', async () => {
@@ -236,6 +251,24 @@ describe('TfaScreen handleMergedError', () => {
     });
 
     expect(await screen.findByTestId('error-hint')).toBeInTheDocument();
+    expect(mockHandleMergedError).toHaveBeenCalledWith(error);
+  });
+
+  it('verify2fa/onSubmit catch: handleMergedError false with statusCode 403 marks the token invalid instead of setting error', async () => {
+    mockKycSetup2fa.mockResolvedValue({ type: 'Mail', secret: '', uri: '' });
+    const error = { statusCode: 403, switchToCode: 'MASTER', message: 'unauthorized' };
+    mockKycVerify2fa.mockRejectedValue(error);
+    mockFormData = { token: '123456' };
+
+    render(<TfaScreen />);
+    const next = await screen.findByRole('button', { name: 'Next' });
+
+    await act(async () => {
+      next.click();
+    });
+
+    expect(await screen.findByTestId('token-error')).toHaveTextContent('Invalid or expired code');
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
     expect(mockHandleMergedError).toHaveBeenCalledWith(error);
   });
 });
