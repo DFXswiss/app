@@ -90,6 +90,30 @@ describe('KycFileTransfer', () => {
       expect(screen.queryByRole('button')).not.toBeInTheDocument();
     });
 
+    it('renders nothing when the route issue id drifts from the id bound at mount', () => {
+      const { rerender, container } = render(<KycFileTransfer message={attachment} />);
+      expect(screen.getByRole('button', { name: 'Transfer to KYC file' })).toBeInTheDocument();
+
+      mockParams.id = 'I999';
+      rerender(<KycFileTransfer message={attachment} />);
+      expect(container).toBeEmptyDOMElement();
+      expect(mockTransfer).not.toHaveBeenCalled();
+    });
+
+    it('shows In KYC file from remounted GET fields without another PUT', () => {
+      const { unmount } = render(<KycFileTransfer message={attachment} />);
+      expect(screen.getByRole('button', { name: 'Transfer to KYC file' })).toBeInTheDocument();
+      unmount();
+
+      render(
+        <KycFileTransfer
+          message={{ ...attachment, kycFileId: 371611, kycFileName: '20260915_112046-liste-304535.pdf' }}
+        />,
+      );
+      expect(screen.getByText('In KYC file: 20260915_112046-liste-304535.pdf')).toBeInTheDocument();
+      expect(mockTransfer).not.toHaveBeenCalled();
+    });
+
     it.each(['vertrag.docx', 'scan', 'foto.HEIC'])('explains why %s cannot be transferred', (fileName) => {
       render(<KycFileTransfer message={{ id: 7, fileName }} />);
       expect(screen.getByText('Only PDF, JPG or PNG files can be transferred to the KYC file')).toBeInTheDocument();

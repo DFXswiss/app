@@ -38,7 +38,7 @@ export interface KycFileTransferMessage {
 // API would refuse anyway; a transferred attachment shows the name it got in the KYC file instead.
 export function KycFileTransfer({ message }: { message: KycFileTransferMessage }): JSX.Element | null {
   const { session } = useAuthContext();
-  const { id: issueId } = useParams();
+  const { id: routeIssueId } = useParams();
   const { translate } = useSettingsContext();
   const { transferMessageFileToKycFile } = useSupportDashboard();
 
@@ -52,6 +52,10 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
   // Sync guard: isSubmitting only disables the button after re-render; a second click in the same
   // tick must not start another transfer (the API would answer 409, but the file would be uploaded twice).
   const submittingRef = useRef(false);
+  // Freeze the ticket id at first render. After client-side navigation the first paint can still
+  // show the previous ticket's messages while useParams().id already points at the new ticket.
+  const boundIssueIdRef = useRef<string | undefined>(undefined);
+  if (boundIssueIdRef.current === undefined) boundIssueIdRef.current = routeIssueId;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -61,10 +65,18 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
   }, []);
 
   const { id: messageId, fileName } = message;
-  if (!issueId || messageId == null || !fileName || !session?.role || !TRANSFER_ROLES.includes(session.role))
+  const boundIssueId = boundIssueIdRef.current;
+  if (
+    !boundIssueId ||
+    routeIssueId !== boundIssueId ||
+    messageId == null ||
+    !fileName ||
+    !session?.role ||
+    !TRANSFER_ROLES.includes(session.role)
+  )
     return null;
   // Narrowed copies for the submit closure (control-flow narrowing does not reach into it).
-  const transferIssueId: string = issueId;
+  const transferIssueId: string = boundIssueId;
   const transferMessageId: number = messageId;
 
   const transferred =
