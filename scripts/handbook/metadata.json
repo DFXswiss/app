@@ -1,11 +1,11 @@
 {
   "app2-preview": {
     "title": "DFX App 2.0",
-    "description": "App-2.0-Vorschau unter /app2/. Die visuellen Baselines decken die abgemeldete Startseite, Konto, Transaktionen, KYC, Limit, Support, den OpenCryptoPay-Hub und die 404-Seiten ab, plus den Verbindungsbogen."
+    "description": "App-2.0-Vorschau unter /app2/. Die visuellen Baselines decken die abgemeldete Startseite, Konto, Transaktionen, KYC, Limit, Support, den OpenCryptoPay-Hub und die 404-Seite ab, plus den Verbindungsbogen. Jeder Screen liegt in beiden Seiten des 460px-Umbruchs vor: als gerahmte Karte auf dem Desktop und vollflächig auf dem Mobilgerät."
   },
   "app2-session": {
     "title": "DFX App 2.0 (angemeldet)",
-    "description": "App 2.0 hinter einer Wallet: Kauf, Verkauf, Tausch, angemeldetes Konto, Transaktionen, KYC-Schritte, Limit-Antrag, OpenCryptoPay-Hub und der Apply-Bogen. Die Aufnahmen stammen aus dem lokalen E2E-Stack. Die Händler-Unterseiten (Rechnung, POS, Links, Verlauf, Config) fehlen: sie brauchen ein aktives Merchant-Konto, und ein Load-Fehler ist kein Bild der Seite."
+    "description": "App 2.0 hinter einer Wallet: Kauf, Verkauf, Tausch, angemeldetes Konto, Transaktionen, KYC-Schritte, Limit-Antrag, OpenCryptoPay-Hub und Apply-Bogen sowie die fünf Händler-Unterseiten Rechnung, POS, Links, Verlauf und Einstellungen. Die Aufnahmen stammen aus dem lokalen E2E-Stack. Die Unterseiten setzen ein aktives Händlerkonto voraus; die Bilder zeigen deshalb den eingebauten Demo-Modus, erkennbar am Demo-Abzeichen in der Kopfzeile. Auch hier liegt jeder Screen in beiden Seiten des 460px-Umbruchs vor."
   },
   "buy-process": {
     "title": "Kaufprozess",
