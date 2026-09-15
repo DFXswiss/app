@@ -7,7 +7,7 @@
 
 import type { Locator, Page } from '@playwright/test';
 import { expect, gotoWithSession, loginAs, openScreen, queryOne, queryRows, test, waitForRow } from './fixtures';
-import { apiGet } from './fixtures/api-client';
+import { apiGet, apiPut } from './fixtures/api-client';
 import { cleanupCreatedData, createBuy, createTransaction, createUser } from './fixtures/factories';
 
 // ---------------------------------------------------------------------------
@@ -553,6 +553,33 @@ test.describe('Buy flow', () => {
     expect(buyRow.userId).toBe(user.userId);
 
     // Confirm transfer → in-place completion (BuyCompletion with mail).
+    const confirmBtn = page.getByRole('button', { name: /Click here once you have issued the transfer/i });
+    await expect(confirmBtn).toBeVisible();
+    await confirmBtn.click();
+    await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
+  });
+
+  test('/buy: confirm after already confirmed shows completion, not error', async ({ page }) => {
+    test.setTimeout(90000);
+    const user = await openQuoteCapableBuy(page, 'buy-409-replay');
+    const capture = attachPaymentInfoCapture(page);
+
+    await page.goto('/buy?asset-in=CHF&asset-out=ETH&amount-in=100&blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+    const state = await waitForQuoteUi(page, 45000);
+    expect(state, 'quote must reach Payment Information').toBe('payment');
+
+    const apiBuy = capture.get();
+    expect(apiBuy?.id, 'PUT /buy/paymentInfos should have returned an id').toBeTruthy();
+
+    // Confirm once directly against the API — moves the request server-side to
+    // WAITING_FOR_PAYMENT, simulating a client that already confirmed but is
+    // about to retry (e.g. it missed the first response).
+    await apiPut(`buy/paymentInfos/${apiBuy!.id}/confirm`, undefined, { jwt: user.jwt });
+
+    // The UI's own confirm click now hits the real, unmocked backend and gets a
+    // genuine 409 ("already confirmed"). It must render the completion screen,
+    // not an error.
     const confirmBtn = page.getByRole('button', { name: /Click here once you have issued the transfer/i });
     await expect(confirmBtn).toBeVisible();
     await confirmBtn.click();
