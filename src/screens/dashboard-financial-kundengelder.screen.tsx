@@ -142,7 +142,6 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
   }
 
   const years = utcYearsFrom2022();
-  const csvDisabled = !extract || extract.accounts.length === 0;
 
   return (
     <div className="space-y-4 p-4 w-full self-stretch" style={{ color: '#111827' }}>
@@ -165,13 +164,15 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
             ))}
           </select>
           {extract !== undefined && <div className="text-sm">EUR rate {extract.eurRate}</div>}
-          <StyledButton
-            label="Export CSV"
-            width={StyledButtonWidth.MIN}
-            color={StyledButtonColor.STURDY_WHITE}
-            disabled={csvDisabled}
-            onClick={extract ? () => exportCsv(extract) : undefined}
-          />
+          {extract !== undefined && (
+            <StyledButton
+              label="Export CSV"
+              width={StyledButtonWidth.MIN}
+              color={StyledButtonColor.STURDY_WHITE}
+              disabled={extract.accounts.length === 0}
+              onClick={() => exportCsv(extract)}
+            />
+          )}
         </div>
       </div>
 

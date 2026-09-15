@@ -315,7 +315,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('extract failed');
-    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+    expect(screen.queryByRole('button', { name: 'Export CSV' })).not.toBeInTheDocument();
     expect(mockDownloadCsv).not.toHaveBeenCalled();
   });
 
