@@ -107,10 +107,10 @@ describe('KycFileTransfer', () => {
 
       render(
         <KycFileTransfer
-          message={{ ...attachment, kycFileId: 371611, kycFileName: '20260915_112046-liste-304535.pdf' }}
+          message={{ ...attachment, kycFileId: 9, kycFileName: '20240101_090000-liste-7.pdf' }}
         />,
       );
-      expect(screen.getByText('In KYC file: 20260915_112046-liste-304535.pdf')).toBeInTheDocument();
+      expect(screen.getByText('In KYC file: 20240101_090000-liste-7.pdf')).toBeInTheDocument();
       expect(mockTransfer).not.toHaveBeenCalled();
     });
 
@@ -166,13 +166,13 @@ describe('KycFileTransfer', () => {
 
   describe('submit', () => {
     it('transfers with the trimmed title and then shows the name the file got', async () => {
-      mockTransfer.mockResolvedValue({ id: 7, kycFileId: 371611, kycFileName: '20260915_112046-liste-304535.pdf' });
+      mockTransfer.mockResolvedValue({ id: 7, kycFileId: 9, kycFileName: '20240101_090000-liste-7.pdf' });
       render(<KycFileTransfer message={attachment} />);
       openForm();
       typeTitle('  Liste  ');
       fireEvent.click(save());
 
-      expect(await screen.findByText('In KYC file: 20260915_112046-liste-304535.pdf')).toBeInTheDocument();
+      expect(await screen.findByText('In KYC file: 20240101_090000-liste-7.pdf')).toBeInTheDocument();
       expect(mockTransfer).toHaveBeenCalledWith('I123', 7, 'Liste');
     });
 

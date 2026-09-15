@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { CustomerAuthor } from 'src/hooks/support-dashboard.hook';
 import { formatDateTime } from 'src/util/compliance-helpers';
@@ -90,7 +91,16 @@ export function SupportMessageList({
 }): JSX.Element {
   const { pathname } = useLocation();
   const onDfxStaffTicket = pathname.includes('/support/dashboard/issue/') && !pathname.includes('realunit');
-  const sorted = [...messages].sort(
+  // The staff-issue screen does not remount on :id change. Until the parent replaces `messages`,
+  // hide the previous ticket's thread so Transfer cannot PUT against the new route id.
+  const pathAtMessages = useRef(pathname);
+  const messagesRef = useRef(messages);
+  if (messagesRef.current !== messages) {
+    messagesRef.current = messages;
+    pathAtMessages.current = pathname;
+  }
+  const visibleMessages = pathAtMessages.current === pathname ? messages : [];
+  const sorted = [...visibleMessages].sort(
     (a, b) => (a.id ?? 0) - (b.id ?? 0) || new Date(a.created).getTime() - new Date(b.created).getTime(),
   );
 

@@ -63,7 +63,7 @@ describe('useSupportDashboard', () => {
   });
 
   it.each([
-    ['  Jana  ', 'Jana'],
+    ['  Fixture Clerk  ', 'Fixture Clerk'],
     ['', undefined],
     ['   ', undefined],
     [null, undefined],
@@ -75,18 +75,18 @@ describe('useSupportDashboard', () => {
 
   it('getIssueData, updateIssue, sendMessage and createIssue address the issue routes', async () => {
     await hook().getIssueData(42);
-    await hook().updateIssue(42, { state: 'Closed', clerk: 'Jana' });
-    await hook().sendMessage(42, { author: 'Jana', message: 'Hallo' });
-    await hook().createIssue(304535, { type: 'GenericIssue', reason: 'Other', name: 'Frage', author: 'Jana' });
+    await hook().updateIssue(42, { state: 'Closed', clerk: 'Fixture Clerk' });
+    await hook().sendMessage(42, { author: 'Fixture Clerk', message: 'Hallo' });
+    await hook().createIssue(7, { type: 'GenericIssue', reason: 'Other', name: 'Frage', author: 'Fixture Clerk' });
     expect(mockCall.mock.calls).toEqual([
       [{ url: 'support/issue/42/data', method: 'GET' }],
-      [{ url: 'support/issue/42', method: 'PUT', data: { state: 'Closed', clerk: 'Jana' } }],
-      [{ url: 'support/issue/42/message', method: 'POST', data: { author: 'Jana', message: 'Hallo' } }],
+      [{ url: 'support/issue/42', method: 'PUT', data: { state: 'Closed', clerk: 'Fixture Clerk' } }],
+      [{ url: 'support/issue/42/message', method: 'POST', data: { author: 'Fixture Clerk', message: 'Hallo' } }],
       [
         {
-          url: 'support/issue/support?userDataId=304535',
+          url: 'support/issue/support?userDataId=7',
           method: 'POST',
-          data: { type: 'GenericIssue', reason: 'Other', name: 'Frage', author: 'Jana' },
+          data: { type: 'GenericIssue', reason: 'Other', name: 'Frage', author: 'Fixture Clerk' },
         },
       ],
     ]);
@@ -129,7 +129,7 @@ describe('useSupportDashboard', () => {
   });
 
   it('transferMessageFileToKycFile PUTs the title and returns the updated message', async () => {
-    const updated = { id: 7, author: 'Customer', created: '2026-09-01', kycFileId: 371611 };
+    const updated = { id: 7, author: 'Customer', created: '2026-09-01', kycFileId: 9 };
     mockCall.mockResolvedValue(updated);
     await expect(hook().transferMessageFileToKycFile('I123', 7, 'Gesellschafterliste')).resolves.toBe(updated);
     expect(mockCall).toHaveBeenCalledWith({

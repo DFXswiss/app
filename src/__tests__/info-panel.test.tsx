@@ -153,4 +153,15 @@ describe('SupportMessageList', () => {
     rerender(<SupportMessageList messages={[withFile, withoutFile]} />);
     expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
   });
+
+  it('hides the previous ticket thread when the path changes before messages are replaced', () => {
+    const msgs = [{ id: 1, author: 'Customer', fileName: 'ausweis.pdf', created: '2026-09-01' }];
+    mockedUseLocation.mockReturnValue({ pathname: '/support/dashboard/issue/1' });
+    const { rerender } = render(<SupportMessageList messages={msgs} onOpenFile={jest.fn()} />);
+    expect(screen.getByRole('button', { name: 'ausweis.pdf' })).toBeInTheDocument();
+
+    mockedUseLocation.mockReturnValue({ pathname: '/support/dashboard/issue/2' });
+    rerender(<SupportMessageList messages={msgs} onOpenFile={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: 'ausweis.pdf' })).not.toBeInTheDocument();
+  });
 });

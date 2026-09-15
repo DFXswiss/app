@@ -95,8 +95,8 @@ describe('PendingReviewsSection', () => {
 
   it('expands a KYC row into its items, links each item to the review tab, and collapses again', async () => {
     mockGetPendingReviewItems.mockResolvedValue([
-      { id: 1, userDataId: 305938, userName: 'SAMY AMBES', accountType: 'Personal', kycLevel: 51, date: '2026-09-11' },
-      { id: 2, userDataId: 423889, date: '2026-09-12' },
+      { id: 1, userDataId: 7, userName: 'Fixture User', accountType: 'Personal', kycLevel: 51, date: '2026-09-11' },
+      { id: 2, userDataId: 8, date: '2026-09-12' },
     ]);
     render(<PendingReviewsSection entries={[entry(PendingReviewType.KYC_STEP, 'Ident', 2)]} />);
 
@@ -104,19 +104,19 @@ describe('PendingReviewsSection', () => {
     expect(screen.getByText('Loading…')).toBeInTheDocument();
     expect(mockGetPendingReviewItems).toHaveBeenCalledWith('KycStep', 'ManualReview', 'Ident');
 
-    const item = await screen.findByText('SAMY AMBES');
+    const item = await screen.findByText('Fixture User');
     expect(
       within(item.closest('tr') as HTMLElement)
         .getAllByRole('cell')
         .map((c) => c.textContent),
-    ).toEqual(['305938', 'Personal', 'SAMY AMBES', '51', expect.stringContaining('11')]);
-    expect(within(screen.getByText('423889').closest('tr') as HTMLElement).getAllByText('-')).toHaveLength(3);
+    ).toEqual(['7', 'Personal', 'Fixture User', '51', expect.stringContaining('11')]);
+    expect(within(screen.getByText('8').closest('tr') as HTMLElement).getAllByText('-')).toHaveLength(3);
 
     fireEvent.click(item);
-    expect(mockNavigate).toHaveBeenCalledWith('compliance/user/305938/kyc?tab=ident');
+    expect(mockNavigate).toHaveBeenCalledWith('compliance/user/7/kyc?tab=ident');
 
     fireEvent.click(rowOf('Ident'));
-    expect(screen.queryByText('SAMY AMBES')).not.toBeInTheDocument();
+    expect(screen.queryByText('Fixture User')).not.toBeInTheDocument();
     expect(mockGetPendingReviewItems).toHaveBeenCalledTimes(1);
   });
 
