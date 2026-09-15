@@ -112,6 +112,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const loadIssue = useCallback((): void => {
     if (!id) return;
     const requestId = id;
+    if (idRef.current !== requestId) return;
+    setLoadError(undefined);
     setIsLoading(true);
     getIssueData(+id)
       .then((data) => {
@@ -131,7 +133,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }, [id, getIssueData]);
 
   const loadMessages = useCallback((): void => {
-    if (!issueData?.uid || !id) return;
+    if (!issueData?.uid || !id || issueData.id !== +id) return;
     const requestId = id;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
@@ -143,10 +145,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         if (idRef.current !== requestId) return;
         setActionError(e.message ?? 'Failed to load messages');
       });
-  }, [issueData?.uid, id, getIssueMessages]);
+  }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
 
   const pollForNewMessages = useCallback((): void => {
-    if (!issueData?.uid || !id) return;
+    if (!issueData?.uid || !id || issueData.id !== +id) return;
     const requestId = id;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
@@ -158,7 +160,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         if (idRef.current !== requestId) return;
         setActionError(e.message ?? 'Failed to load messages');
       });
-  }, [issueData?.uid, id, getIssueMessages]);
+  }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
 
   useEffect(() => {
     loadIssue();
@@ -180,6 +182,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     noteGenRef.current += 1;
     setMessages([]);
     setPendingCount(0);
+    setFilePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return undefined;
+    });
   }, [id]);
 
   // Reset cached UserData when the issue (and thus the account) changes
@@ -227,6 +233,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   async function handleUpdate(): Promise<void> {
     if (!id) return;
+    const requestId = id;
     setIsUpdating(true);
     setActionError(undefined);
     try {
@@ -235,11 +242,13 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         department: updateDepartment || undefined,
         clerk: updateClerk || undefined,
       });
+      if (idRef.current !== requestId) return;
       loadIssue();
     } catch (e: unknown) {
+      if (idRef.current !== requestId) return;
       setActionError(e instanceof Error ? e.message : 'Update failed');
     } finally {
-      setIsUpdating(false);
+      if (idRef.current === requestId) setIsUpdating(false);
     }
   }
 
@@ -321,32 +330,41 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }
 
   async function openFile(msg: SupportMessageInfo): Promise<void> {
-    if (!issueData?.uid || !msg.fileName) return;
+    if (!issueData?.uid || !msg.fileName || !id) return;
+    const requestId = id;
     try {
       const { data, contentType } = await getMessageFile(issueData.uid, msg.id, 'View');
+      if (idRef.current !== requestId) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
       }
-      if (filePreview) URL.revokeObjectURL(filePreview.url);
+      setFilePreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return undefined;
+      });
       const blob = new Blob([new Uint8Array(data.data)], { type: contentType });
       const url = URL.createObjectURL(blob);
       setFilePreview({ url, contentType, name: msg.fileName, messageId: msg.id });
     } catch (e: unknown) {
+      if (idRef.current !== requestId) return;
       setActionError(e instanceof Error ? e.message : 'Error loading file');
     }
   }
 
   async function downloadPreview(): Promise<void> {
-    if (!issueData?.uid || !filePreview) return;
+    if (!issueData?.uid || !filePreview || !id) return;
+    const requestId = id;
     try {
       const { data, contentType } = await getMessageFile(issueData.uid, filePreview.messageId, 'Download');
+      if (idRef.current !== requestId) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
       }
       saveBufferedFile(data, contentType, filePreview.name);
     } catch (e: unknown) {
+      if (idRef.current !== requestId) return;
       setActionError(e instanceof Error ? e.message : 'Error downloading file');
     }
   }
