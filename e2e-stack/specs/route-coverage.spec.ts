@@ -20,6 +20,15 @@ import { evaluateClaimedRouteVisits, readVisitedRoutes, specClaimName, visitedRo
 
 const APP_SOURCE_PATH = '/work/app-source/App.tsx';
 
+// Floor, not a target. extractAppRoutes currently yields 108 unique paths (duplicate
+// `path: 'support'` collapses in the Set). 50 is well below that and well above an
+// empty parse. Exceeding is never an error; falling below always is.
+const MIN_APP_ROUTES = 50;
+
+// Floor, not a target. The registry currently claims 109 unique paths (108 app routes
+// plus hosted `/app2/`). Same rule as MIN_APP_ROUTES.
+const MIN_CLAIMED_ROUTES = 50;
+
 /**
  * Format a source location as `App.tsx:123` (1-based line) for fail-loud parser errors.
  * Without line numbers, unsupported constructs would be hard to locate in a large Routes tree.
@@ -282,6 +291,17 @@ test('every app route is claimed by exactly one registry entry @coverage-gate', 
   const hosted = new Set(claims.filter((claim) => claim.hosted).map((claim) => claim.path));
   const appRoutes = extractAppRoutes(APP_SOURCE_PATH);
   const real = new Set([...appRoutes, ...hosted]);
+
+  expect(
+    appRoutes.size,
+    `extractAppRoutes found ${appRoutes.size} routes in ${APP_SOURCE_PATH} (floor ${MIN_APP_ROUTES}, not a target). ` +
+      `If extraction returns nothing, the unclaimed-route check is vacuously true and this gate proves nothing.`,
+  ).toBeGreaterThanOrEqual(MIN_APP_ROUTES);
+  expect(
+    claimed.size,
+    `loadRegistryClaims found ${claimed.size} unique claimed paths under ${registryDir} (floor ${MIN_CLAIMED_ROUTES}, not a target). ` +
+      `If the registry yields nothing, the orphaned-claim check is vacuously true and this gate proves nothing.`,
+  ).toBeGreaterThanOrEqual(MIN_CLAIMED_ROUTES);
 
   const unclaimed = [...appRoutes].filter((p) => !claimed.has(p)).sort();
   const orphaned = [...claimed].filter((p) => !real.has(p)).sort();
