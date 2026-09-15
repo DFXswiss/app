@@ -994,7 +994,14 @@
     "Document": "Document",
     "Created on": "Créé le",
     "Hide completed tickets": "Masquer les tickets terminés",
-    "Show completed tickets": "Afficher les tickets terminés"
+    "Show completed tickets": "Afficher les tickets terminés",
+    "Transfer to KYC file": "Transférer dans le dossier KYC",
+    "In KYC file": "Dans le dossier KYC",
+    "Document title": "Titre du document",
+    "Stored as": "Enregistré sous",
+    "Date and customer number are added automatically": "La date et le numéro de client sont ajoutés automatiquement",
+    "Only PDF, JPG or PNG files can be transferred to the KYC file": "Seuls les fichiers PDF, JPG ou PNG peuvent être transférés dans le dossier KYC",
+    "Failed to transfer file": "Le transfert a échoué"
   },
   "screens/recommendation": {
     "Recommendations": "Recommandations",

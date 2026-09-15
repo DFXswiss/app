@@ -8,29 +8,27 @@ import { CollapsibleSection } from './collapsible-section';
 import { reviewTabs } from './compliance-review-configs';
 
 // Steps without an own review tab — inserted between the last KYC-flow step
-// and DfxApproval in the overview order.
-const EXTRA_STEPS_BEFORE_APPROVAL = ['AdditionalDocuments', 'NameChange', 'AddressChange'];
+// and DfxApproval in the overview order. AdditionalDocuments is not listed: that step is retired
+// (documents reach the KYC file through the support ticket) and can no longer be pending.
+const EXTRA_STEPS_BEFORE_APPROVAL = ['NameChange', 'AddressChange'];
 
-// Canonical ordered list of pending-review rows. Derived from `reviewTabs` so
-// the dashboard overview and the review-screen tabs stay in sync. All rows are
-// always shown (even with count 0) in this stable order.
-const kycStepsFromTabs = reviewTabs.filter((t) => t.group === 'kyc' && t.stepName).map((t) => t.stepName);
-
-const ORDERED_REVIEW_ROWS: Array<{ type: PendingReviewType; name: string }> = [
-  { type: PendingReviewType.BANK_DATA, name: 'BankData' },
-  ...kycStepsFromTabs.filter((s) => s !== 'DfxApproval').map((name) => ({ type: PendingReviewType.KYC_STEP, name })),
-  ...EXTRA_STEPS_BEFORE_APPROVAL.map((name) => ({ type: PendingReviewType.KYC_STEP, name })),
-  { type: PendingReviewType.KYC_STEP, name: 'DfxApproval' },
-];
-
-// Map a pending-review row to the review-screen tab key so navigation lands on
-// the right tab instead of the default first one.
-function getTabKey(type: PendingReviewType, name: string): string | undefined {
-  if (type === PendingReviewType.BANK_DATA) return 'bankDataReview';
-  if (name === 'NameChange' || name === 'AddressChange') return 'stammdaten';
-  if (name === 'DfxApproval') return 'freigabe';
-  return reviewTabs.find((t) => t.stepName === name)?.key;
+// Canonical ordered list of pending-review rows, each with the review-screen tab its items open.
+// Derived from `reviewTabs` so the dashboard overview and the review-screen tabs stay in sync. All
+// rows are always shown (even with count 0) in this stable order.
+interface ReviewRow {
+  type: PendingReviewType;
+  name: string;
+  tabKey: string;
 }
+
+const ORDERED_REVIEW_ROWS: ReviewRow[] = [
+  { type: PendingReviewType.BANK_DATA, name: 'BankData', tabKey: 'bankDataReview' },
+  ...reviewTabs
+    .filter((t) => t.group === 'kyc' && t.stepName && t.stepName !== 'DfxApproval')
+    .map((t) => ({ type: PendingReviewType.KYC_STEP, name: t.stepName, tabKey: t.key })),
+  ...EXTRA_STEPS_BEFORE_APPROVAL.map((name) => ({ type: PendingReviewType.KYC_STEP, name, tabKey: 'stammdaten' })),
+  { type: PendingReviewType.KYC_STEP, name: 'DfxApproval', tabKey: 'freigabe' },
+];
 
 interface Props {
   entries: PendingReviewSummaryEntry[];
@@ -46,9 +44,10 @@ export function PendingReviewsSection({ entries }: Props): JSX.Element | null {
   const [expanded, setExpanded] = useState<Record<string, ExpandState>>({});
 
   const entriesByKey = new Map(entries.map((e) => [`${e.type}:${e.name}`, e]));
-  const rows: PendingReviewSummaryEntry[] = ORDERED_REVIEW_ROWS.map(
-    ({ type, name }) => entriesByKey.get(`${type}:${name}`) ?? { type, name, manualReview: 0, internalReview: 0 },
-  );
+  const rows: (ReviewRow & PendingReviewSummaryEntry)[] = ORDERED_REVIEW_ROWS.map((row) => ({
+    ...row,
+    ...(entriesByKey.get(`${row.type}:${row.name}`) ?? { manualReview: 0, internalReview: 0 }),
+  }));
 
   const totalCount = rows.reduce((sum, r) => sum + r.manualReview, 0);
 
@@ -119,7 +118,7 @@ export function PendingReviewsSection({ entries }: Props): JSX.Element | null {
                       ) : (
                         <ReviewItemsTable
                           items={expandState.items}
-                          tabKey={getTabKey(r.type, r.name)}
+                          tabKey={r.tabKey}
                           navigate={navigate}
                           translate={translate}
                         />
@@ -143,7 +142,7 @@ function ReviewItemsTable({
   translate,
 }: {
   items: PendingReviewItem[];
-  tabKey?: string;
+  tabKey: string;
   navigate: (to: string) => void;
   translate: (namespace: string, key: string) => string;
 }): JSX.Element {
@@ -173,7 +172,7 @@ function ReviewItemsTable({
           <tr
             key={item.id}
             className="border-b border-dfxGray-300 transition-colors hover:bg-dfxGray-300 cursor-pointer"
-            onClick={() => navigate(`compliance/user/${item.userDataId}/kyc${tabKey ? `?tab=${tabKey}` : ''}`)}
+            onClick={() => navigate(`compliance/user/${item.userDataId}/kyc?tab=${tabKey}`)}
           >
             <td className="px-3 py-2 text-left text-xs text-dfxBlue-800">{item.userDataId}</td>
             <td className="px-3 py-2 text-left text-xs text-dfxBlue-800">{item.accountType ?? '-'}</td>

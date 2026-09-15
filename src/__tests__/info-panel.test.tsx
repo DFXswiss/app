@@ -9,6 +9,13 @@ jest.mock('src/util/compliance-helpers', () => ({
   formatDateTime: (value: string) => `dt:${value}`,
 }));
 
+// The transfer action has its own tests; here only its placement in the thread matters.
+jest.mock('src/components/support/kyc-file-transfer', () => ({
+  KycFileTransfer: ({ message }: { message: { fileName?: string } }) => (
+    <div data-testid="kyc-file-transfer">{message.fileName}</div>
+  ),
+}));
+
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { InfoPanel, InfoRow, LinkedText, SupportMessageList } from 'src/components/support/info-panel';
 
@@ -109,5 +116,16 @@ describe('SupportMessageList', () => {
     expect(
       within(screen.getByText('Anhang').closest('div.flex') as HTMLElement).getByText('Customer'),
     ).toBeInTheDocument();
+  });
+
+  it('offers the KYC file transfer only next to a file link, and only with an onOpenFile handler', () => {
+    const withFile = { id: 1, author: 'Customer', fileName: 'ausweis.pdf', created: '2026-09-01' };
+    const withoutFile = { id: 2, author: 'Customer', message: 'Text', created: '2026-09-02' };
+
+    const { rerender } = render(<SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} />);
+    expect(screen.getAllByTestId('kyc-file-transfer').map((el) => el.textContent)).toEqual(['ausweis.pdf']);
+
+    rerender(<SupportMessageList messages={[withFile, withoutFile]} />);
+    expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
   });
 });
