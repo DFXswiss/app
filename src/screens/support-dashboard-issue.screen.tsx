@@ -111,37 +111,54 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   const loadIssue = useCallback((): void => {
     if (!id) return;
+    const requestId = id;
     setIsLoading(true);
     getIssueData(+id)
       .then((data) => {
+        if (idRef.current !== requestId) return;
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
         setUpdateClerk(data.clerk ?? '');
       })
-      .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
+      .catch((e: Error) => {
+        if (idRef.current !== requestId) return;
+        setLoadError(e.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (idRef.current === requestId) setIsLoading(false);
+      });
   }, [id, getIssueData]);
 
   const loadMessages = useCallback((): void => {
-    if (!issueData?.uid) return;
+    if (!issueData?.uid || !id) return;
+    const requestId = id;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
+        if (idRef.current !== requestId) return;
         setMessages(fetched);
         setPendingCount(0);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
-  }, [issueData?.uid, getIssueMessages]);
+      .catch((e: Error) => {
+        if (idRef.current !== requestId) return;
+        setActionError(e.message ?? 'Failed to load messages');
+      });
+  }, [issueData?.uid, id, getIssueMessages]);
 
   const pollForNewMessages = useCallback((): void => {
-    if (!issueData?.uid) return;
+    if (!issueData?.uid || !id) return;
+    const requestId = id;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
+        if (idRef.current !== requestId) return;
         const newCount = fetched.filter((m) => !visibleIdsRef.current.has(m.id)).length;
         if (newCount > 0) setPendingCount(newCount);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
-  }, [issueData?.uid, getIssueMessages]);
+      .catch((e: Error) => {
+        if (idRef.current !== requestId) return;
+        setActionError(e.message ?? 'Failed to load messages');
+      });
+  }, [issueData?.uid, id, getIssueMessages]);
 
   useEffect(() => {
     loadIssue();
@@ -343,7 +360,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const unresolvedInMessage = useMemo(() => detectPlaceholders(messageText), [messageText]);
 
   if (loadError) return <ErrorHint message={loadError} />;
-  if (isLoading || !issueData) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
+  if (isLoading || !issueData || !id || issueData.id !== +id)
+    return <StyledLoadingSpinner size={SpinnerSize.LG} />;
 
   return (
     <div ref={containerRef} className="w-full flex text-left">
