@@ -5,7 +5,7 @@
 // same client-side check the static app used before ever calling the API (iban.ts —
 // `ibanCheck`), then creates it via `createAccount({ iban })`.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { BankAccount } from '@dfx.swiss/react';
 import { useBankAccountContext } from '@dfx.swiss/react';
 import { ibanCheck, ibanErrorMessage } from '../../screens/trade/iban';
@@ -28,6 +28,8 @@ export function BankAccountPicker({ open, onClose, titleId, value, onSelect }: B
   const [iban, setIban] = useState('');
   const [fieldError, setFieldError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const openRef = useRef(open);
+  openRef.current = open;
 
   const accounts = bankAccounts ?? [];
 
@@ -54,10 +56,13 @@ export function BankAccountPicker({ open, onClose, titleId, value, onSelect }: B
     try {
       const account = await createAccount({ iban: iban.replace(/\s+/g, '').toUpperCase() });
       setSubmitting(false);
+      // Sheet closed while createAccount was in flight — keep the stored account, do not select or toast.
+      if (!openRef.current) return;
       showToast(t('personalIbanCreated'));
       pick(account);
     } catch {
       setSubmitting(false);
+      if (!openRef.current) return;
       setFieldError(t('genErr'));
     }
   };
