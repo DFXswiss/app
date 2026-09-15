@@ -13,7 +13,14 @@ import { useRealunitSupport } from 'src/hooks/realunit-support.hook';
 import { STAFF_NAME_MISSING, staffNameLoadError } from 'src/components/compliance/staff-identity';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { useSplitPane } from 'src/hooks/split-pane.hook';
-import { ASSIGNABLE_DEPARTMENTS, SupportIssueInternalData, SupportMessageInfo } from 'src/hooks/support-dashboard.hook';
+import {
+  ASSIGNABLE_DEPARTMENTS,
+  clerkAssignmentPayload,
+  LEFTOVER_CLERK_VALUE,
+  SupportClerk,
+  SupportIssueInternalData,
+  SupportMessageInfo,
+} from 'src/hooks/support-dashboard.hook';
 import { useSupportDraft } from 'src/hooks/support-draft.hook';
 import { formatDateTime, statusBadge } from 'src/util/compliance-helpers';
 import { isSendShortcut } from 'src/util/message-composer';
@@ -36,7 +43,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   const [messages, setMessages] = useState<SupportMessageInfo[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const visibleIdsRef = useRef<Set<number>>(new Set());
-  const [clerks, setClerks] = useState<string[]>([]);
+  const [clerks, setClerks] = useState<SupportClerk[]>([]);
 
   // Update form state
   const [updateState, setUpdateState] = useState('');
@@ -77,8 +84,9 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
     getClerks()
       .then((list) => {
         setClerks(list);
+        if (list.length === 0) setActionError('Clerk list is empty. Assign after the API update is live.');
       })
-      .catch(() => undefined);
+      .catch((e: unknown) => setActionError(e instanceof Error ? e.message : 'Failed to load clerks'));
   }, [getClerks]);
 
   const loadIssue = useCallback((): void => {
@@ -89,7 +97,9 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
-        setUpdateClerk(data.clerk ?? '');
+        setUpdateClerk(
+          data.clerkUserDataId != null ? String(data.clerkUserDataId) : data.clerk ? LEFTOVER_CLERK_VALUE : '',
+        );
       })
       .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
       .finally(() => setIsLoading(false));
@@ -153,7 +163,10 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
       await updateIssue(+id, {
         state: updateState || undefined,
         department: updateDepartment || undefined,
-        clerk: updateClerk || undefined,
+        ...clerkAssignmentPayload(updateClerk, issueData?.clerkUserDataId, {
+          leftover: !!issueData?.clerk,
+          allowedIds: clerks.map((c) => c.userDataId),
+        }),
       });
       loadIssue();
     } catch (e: unknown) {
@@ -343,15 +356,21 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
                 value={updateClerk}
                 onChange={(e) => setUpdateClerk(e.target.value)}
               >
-                {!issueData?.clerk && <option value="">-</option>}
-                {updateClerk && !clerks.includes(updateClerk) && (
-                  <option key={updateClerk} value={updateClerk}>
-                    {updateClerk}
-                  </option>
+                <option value="">-</option>
+                {updateClerk === LEFTOVER_CLERK_VALUE && issueData?.clerk && (
+                  <option value={LEFTOVER_CLERK_VALUE}>{issueData.clerk}</option>
                 )}
+                {updateClerk &&
+                  Number.isFinite(Number(updateClerk)) &&
+                  issueData?.clerk &&
+                  !clerks.some((c) => String(c.userDataId) === updateClerk) && (
+                    <option key={updateClerk} value={updateClerk}>
+                      {issueData.clerk}
+                    </option>
+                  )}
                 {clerks.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                  <option key={c.userDataId} value={String(c.userDataId)}>
+                    {c.name}
                   </option>
                 ))}
               </select>
@@ -450,10 +469,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
               className="px-4 py-2 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
               onClick={() => handleSendMessage()}
               disabled={
-                isSending ||
-                isLoadingAuthor ||
-                !messageAuthor ||
-                (!messageText.trim() && selectedFiles.length === 0)
+                isSending || isLoadingAuthor || !messageAuthor || (!messageText.trim() && selectedFiles.length === 0)
               }
             >
               {isSending ? '...' : 'Send'}

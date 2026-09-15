@@ -15,6 +15,7 @@ export interface SupportIssueListItem {
   state: string;
   name: string;
   clerk?: string;
+  clerkUserDataId?: number;
   department?: string;
   created: string;
   updated?: string;
@@ -79,6 +80,7 @@ export interface SupportIssueInternalData {
   state: string;
   name: string;
   clerk?: string;
+  clerkUserDataId?: number;
   account: SupportIssueInternalAccountData;
   transaction?: SupportIssueInternalTransactionData;
   limitRequest?: SupportIssueInternalLimitRequestData;
@@ -121,6 +123,45 @@ export interface SupportStatisticsDto {
   trend: SupportStatBucket[]; // oldest first
   avgResolutionHours: number;
   resolutionByType: SupportResolutionBucket[];
+}
+
+export interface SupportClerk {
+  userDataId: number;
+  name: string;
+}
+
+/** Select value while a leftover name is still shown and the id is missing. Not a finite id, so PUT omits. */
+export const LEFTOVER_CLERK_VALUE = 'leftover';
+
+/** PUT payload for the clerk select: omit when unchanged, null to unassign, skip non-finite values. */
+export function clerkAssignmentPayload(
+  selected: string,
+  previousId?: number | null,
+  options?: { leftover?: boolean; allowedIds?: number[] },
+): { clerkUserDataId: number | null } | Record<string, never> {
+  const previous = previousId ?? null;
+  if (selected === '') {
+    return previous != null || options?.leftover ? { clerkUserDataId: null } : {};
+  }
+  const nextId = Number(selected);
+  if (!Number.isFinite(nextId)) return {};
+  if (options?.allowedIds && !options.allowedIds.includes(nextId)) return {};
+  if (nextId === previous) return {};
+  return { clerkUserDataId: nextId };
+}
+
+export function usableClerks(clerks: SupportClerk[]): SupportClerk[] {
+  return clerks.filter((c) => Number.isFinite(c.userDataId) && c.name);
+}
+
+/** Mine-filter: JWT account id wins; leftover clerk name only when the id is still missing. */
+export function isAssignedToMe(
+  issue: { clerkUserDataId?: number; clerk?: string },
+  sessionAccount?: number | null,
+  verifiedName?: string | null,
+): boolean {
+  if (issue.clerkUserDataId != null) return issue.clerkUserDataId === sessionAccount;
+  return !!verifiedName && !!issue.clerk && issue.clerk === verifiedName;
 }
 
 export function useSupportDashboard() {
@@ -169,20 +210,21 @@ export function useSupportDashboard() {
     });
   }
 
-  async function getClerks(): Promise<string[]> {
-    return guardedCall<string[]>({
+  async function getClerks(): Promise<SupportClerk[]> {
+    const list = await guardedCall<SupportClerk[]>({
       url: 'support/issue/clerks',
       method: 'GET',
     });
+    return usableClerks(list);
   }
 
-  // the clerk name mapped to the logged-in support account (null if unmapped)
-  async function getMyClerk(): Promise<string | undefined> {
-    const result = await guardedCall<{ clerk: string | null }>({
+  async function getMyClerk(): Promise<{ clerkUserDataId: number; clerk: string } | undefined> {
+    const result = await guardedCall<{ clerkUserDataId: number; clerk: string | null }>({
       url: 'support/issue/clerk',
       method: 'GET',
     });
-    return result.clerk?.trim() || undefined;
+    const clerk = result.clerk?.trim();
+    return clerk ? { clerkUserDataId: result.clerkUserDataId, clerk } : undefined;
   }
 
   async function getIssueData(issueId: number): Promise<SupportIssueInternalData> {
@@ -194,7 +236,7 @@ export function useSupportDashboard() {
 
   async function updateIssue(
     issueId: number,
-    data: { state?: string; clerk?: string; department?: string },
+    data: { state?: string; clerkUserDataId?: number | null; department?: string },
   ): Promise<void> {
     return guardedCall<void>({
       url: `support/issue/${issueId}`,
