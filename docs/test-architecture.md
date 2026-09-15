@@ -244,6 +244,23 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   run does **not** prove the API's natural latency or that production clients never race; it
   only proves the wait barriers refuse to conclude while that held real response is still
   undelivered, and that hub re-navigation does not abort it.
+- **The 2FA merged-account redirect spec answers the 2FA setup call and its post-redirect
+  follow-up itself.** `e2e/tfa-merged-redirect.spec.ts` fulfils `POST /v2/kyc/2fa` with a
+  synthetic 401 merged-account error (`switchToCode`) and `GET /v2/kyc` — the call the `/kyc`
+  screen makes on its own after the redirect — with a synthetic success payload, plus the
+  language/fiat/asset/bankAccount/country/infoBanner bootstrap GETs and
+  `POST /v1/log/clientError`. A green run proves the screen redirects on that specific error
+  shape. It does not prove that the API ever returns a 401 with `switchToCode` for a merged
+  account, or that the `/kyc` screen's own follow-up call succeeds against a real backend.
+- **The link merged-account redirect spec answers GET /v2/user and GET /v2/kyc itself.**
+  `e2e/link-merged-redirect.spec.ts` seeds a synthetic unsigned JWT into
+  `localStorage['dfx.authenticationToken']`, fulfils `GET /v2/user` with a synthetic account
+  whose `kyc.hash` matches the merged (slave) account, and fulfils `GET /v2/kyc` with a
+  synthetic 401 merged-account error on the first call and a synthetic success payload on the
+  follow-up call after the redirect, plus the same bootstrap GETs and
+  `POST /v1/log/clientError`. A green run proves the screen redirects on that specific error
+  shape. It does not prove that login or token verification works, that the API returns that
+  user/`kyc.hash` pairing, or that a merged account really produces a 401 with `switchToCode`.
 
 ## Known gaps
 
