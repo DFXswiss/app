@@ -157,6 +157,7 @@ describe('isInjectedEvmSession association', () => {
 
   it('returns false without an address and when labels are not in the catalog', () => {
     expect(isInjectedEvmSession(undefined, [])).toBe(false);
+    expect(isInjectedEvmSession('', [])).toBe(false);
     expect(isInjectedEvmSession(jwt, [{ address: jwt, walletType: 'NotAWallet', walletId: 'Nope' }])).toBe(false);
     expect(isInjectedEvmSession(jwt, [], [{ address: jwt, wallet: 'UnknownWallet' }])).toBe(false);
     expect(isInjectedEvmSession(jwt, [], [{ address: '0xother', wallet: 'MetaMask' }])).toBe(false);

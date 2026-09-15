@@ -15,13 +15,14 @@ import {
   KycLevel,
   PhoneCallTime,
   type Referral,
-  useApi,
   useBankAccountContext,
   useFiatContext,
   useUserContext,
 } from '@dfx.swiss/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type TranslationKey, useT } from '../i18n';
+import { Recommendation } from 'src/dto/recommendation.dto';
+import useRecommendation from 'src/hooks/recommendation.hook';
 import { localeFor, shortAddress } from '../screens/parts/format';
 import { ibanCheck, ibanErrorMessage } from '../screens/trade/iban';
 import { FiatPicker } from './pickers/FiatPicker';
@@ -106,6 +107,8 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
   const [busyId, setBusyId] = useState<number | null>(null);
   const editIdRef = useRef(editId);
   editIdRef.current = editId;
+  const editGenRef = useRef(0);
+  const busyGenRef = useRef(0);
 
   useEffect(() => {
     if (!open) return;
@@ -115,6 +118,8 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
     setAddError('');
     setEditId(null);
     setRemoveId(null);
+    setBusyId(null);
+    editGenRef.current += 1;
   }, [open]);
 
   const fiats = currencies ?? [];
@@ -123,6 +128,8 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
 
   const openEdit = (account: BankAccount) => {
     setRemoveId(null);
+    editGenRef.current += 1;
+    setBusyId(null);
     if (editId === account.id) {
       setEditId(null);
       return;
@@ -134,36 +141,44 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
 
   const openRemove = (account: BankAccount) => {
     setEditId(null);
+    editGenRef.current += 1;
+    setBusyId(null);
     setRemoveId(removeId === account.id ? null : account.id);
   };
 
   const saveEdit = async (account: BankAccount) => {
     const targetId = account.id;
+    const gen = editGenRef.current;
+    busyGenRef.current = gen;
     setBusyId(targetId);
     try {
       await updateAccount(targetId, { label: editLabel.trim(), preferredCurrency: fiatById(editCurrency) });
-      if (editIdRef.current !== targetId) return;
+      if (editGenRef.current !== gen) return;
       showToast(t('saved'));
       setEditId(null);
     } catch {
+      if (editGenRef.current !== gen) return;
       showToast(t('genErr'), { assertive: true });
     } finally {
-      setBusyId(null);
+      if (busyGenRef.current === gen) setBusyId(null);
     }
   };
 
   const setDefault = async (account: BankAccount) => {
     const targetId = account.id;
+    const gen = editGenRef.current;
+    busyGenRef.current = gen;
     setBusyId(targetId);
     try {
       await updateAccount(targetId, { default: true });
-      if (editIdRef.current !== targetId) return;
+      if (editGenRef.current !== gen) return;
       showToast(t('saved'));
       setEditId(null);
     } catch {
+      if (editGenRef.current !== gen) return;
       showToast(t('genErr'), { assertive: true });
     } finally {
-      setBusyId(null);
+      if (busyGenRef.current === gen) setBusyId(null);
     }
   };
 
@@ -950,9 +965,8 @@ function CurrencySheet({ open, onClose }: SheetProps) {
 //
 // Ported from `renderInvite()` / `recRow()` / `submitInvite()` / `confirmRec()`
 // in the static preview. The referral summary comes from `getRef()` (passed in
-// from the account screen); the per-person recommendation CRUD has no dedicated
-// @dfx.swiss/react hook, so it uses the library's low-level `useApi().call`
-// against `/recommendation` (a v1 endpoint — the API hook's default version).
+// from the account screen); per-person recommendation CRUD goes through
+// `useRecommendation` (GET/POST /recommendation and confirm/reject).
 // ---------------------------------------------------------------------------
 
 const REF_LINK_BASE = 'https://app.dfx.swiss/login?code=';
@@ -975,14 +989,6 @@ export function inviteReferralView(referral?: Referral | null): {
     commission: referral.commission,
     userCount: referral.userCount,
   };
-}
-
-interface Recommendation {
-  id: number;
-  name?: string;
-  mail?: string;
-  code?: string;
-  status: string;
 }
 
 /** Chip variant per recommendation status (matches recRow's `chip` mapping). */
@@ -1029,7 +1035,7 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
   const { t, language } = useT();
   const { showToast } = useToast();
   const { user } = useUserContext();
-  const { call } = useApi();
+  const { getRecommendations, createRecommendation, confirmRecommendation, rejectRecommendation } = useRecommendation();
 
   const [recs, setRecs] = useState<Recommendation[] | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -1045,13 +1051,13 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
   const load = useCallback(async () => {
     setLoadError(false);
     try {
-      const data = await call<Recommendation[]>({ url: '/recommendation', method: 'GET' });
+      const data = await getRecommendations();
       setRecs(Array.isArray(data) ? data : []);
     } catch {
       setRecs([]);
       setLoadError(true);
     }
-  }, [call]);
+  }, [getRecommendations]);
 
   useEffect(() => {
     if (!open) return;
@@ -1070,11 +1076,9 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
     setGenerating(true);
     setFormError('');
     try {
-      await call({
-        url: '/recommendation',
-        method: 'POST',
-        data: email ? { recommendedAlias: name, recommendedMail: email } : { recommendedAlias: name },
-      });
+      await createRecommendation(
+        email ? { recommendedAlias: name, recommendedMail: email } : { recommendedAlias: name },
+      );
       setAlias('');
       setMail('');
       await load();
@@ -1091,9 +1095,15 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
   };
 
   const confirm = async (id: number, accept: boolean) => {
+    const rec = recs?.find((row) => row.id === id);
+    if (!rec) return;
     setBusyId(id);
     try {
-      await call({ url: `/recommendation/${id}/${accept ? 'confirm' : 'reject'}`, method: 'PUT' });
+      if (accept) {
+        await confirmRecommendation(rec);
+      } else {
+        await rejectRecommendation(rec);
+      }
       showToast(accept ? t('inviteConfirmed') : t('inviteRejected'));
       await load();
     } catch {

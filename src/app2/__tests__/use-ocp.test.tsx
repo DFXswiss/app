@@ -11,6 +11,7 @@ const mockCreatePayment = jest.fn();
 const mockUpdateLink = jest.fn();
 const mockUpdateConfig = jest.fn();
 const mockCreatePos = jest.fn();
+const mockDeleteRoute = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
   ApiException: class ApiException extends Error {
@@ -32,13 +33,17 @@ jest.mock('@dfx.swiss/react', () => ({
     updatePaymentLink: mockUpdateLink,
     updateUserPaymentLinksConfig: mockUpdateConfig,
     createPosLink: mockCreatePos,
+    deletePaymentRoute: mockDeleteRoute,
   }),
 }));
 
-const mockSessionBlockchains: { value: string[] | undefined } = { value: ['Lightning'] };
+const mockOcpSession: { blockchains: string[] | undefined; address: string | undefined } = {
+  blockchains: ['Lightning'],
+  address: '0xaaa',
+};
 
 jest.mock('../wallets/session', () => ({
-  useWalletSession: () => ({ blockchains: mockSessionBlockchains.value }),
+  useWalletSession: () => mockOcpSession,
 }));
 
 import { act, renderHook, waitFor } from '@testing-library/react';
@@ -68,7 +73,9 @@ function deferred<T>() {
 describe('useOcp', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSessionBlockchains.value = ['Lightning'];
+    mockOcpSession.blockchains = ['Lightning'];
+    mockOcpSession.address = '0xaaa';
+    mockDeleteRoute.mockResolvedValue({});
     mockGetConfig.mockResolvedValue({ accessKey: 'k' });
     mockGetPaymentRoutes.mockResolvedValue({ sell: [], buy: [], swap: [] });
     mockGetPaymentLinks.mockResolvedValue([]);
@@ -296,7 +303,7 @@ describe('useOcp', () => {
   });
 
   it('treats a non-API probe failure as transient and works without a blockchain list', async () => {
-    mockSessionBlockchains.value = undefined;
+    mockOcpSession.blockchains = undefined;
     mockGetConfig.mockRejectedValueOnce(new Error('offline'));
     const { result } = renderHook(() => useOcp(), { wrapper });
     await act(async () => {
@@ -497,5 +504,152 @@ describe('useOcp', () => {
     expect(result.current.demo).toBe(true);
     expect(result.current.links).toBe(demoLinks);
     expect(result.current.links).not.toEqual([]);
+  });
+
+  it('deactivates a live route through the SDK and activates with PUT', async () => {
+    const { result, rerender } = renderHook(() => useOcp(), { wrapper });
+    await act(async () => {
+      await result.current.toggleRoute('sell', '12', false);
+    });
+    expect(mockDeleteRoute).toHaveBeenCalledWith(12, 'sell');
+    mockDeleteRoute.mockClear();
+    await act(async () => {
+      await result.current.toggleRoute('sell', 1, false);
+    });
+    expect(mockDeleteRoute).toHaveBeenCalledWith(1, 'sell');
+    expect(mockCall).not.toHaveBeenCalledWith(expect.objectContaining({ url: '/sell/1' }));
+
+    mockCall.mockClear();
+    await act(async () => {
+      await result.current.toggleRoute('sell', 1, true);
+    });
+    expect(mockCall).toHaveBeenCalledWith({ url: '/sell/1', method: 'PUT', data: { active: true } });
+    rerender();
+  });
+
+  it('resets merchant state when the session address changes', async () => {
+    mockGetConfig.mockResolvedValueOnce({ accessKey: 'from-a' });
+    const { result, rerender } = renderHook(() => useOcp(), { wrapper });
+    await act(async () => {
+      await result.current.probe();
+    });
+    expect(result.current.config).toEqual({ accessKey: 'from-a' });
+    expect(result.current.active).toBe(true);
+
+    mockOcpSession.address = '0xbbb';
+    rerender();
+    expect(result.current.active).toBeNull();
+    expect(result.current.config).toBeNull();
+    expect(result.current.demo).toBe(false);
+  });
+
+  it('discards a late live write after demo is turned on', async () => {
+    const save = deferred<void>();
+    const sell = deferred<void>();
+    mockUpdateConfig.mockReturnValueOnce(save.promise);
+    mockCall.mockReturnValueOnce(sell.promise);
+
+    const { result } = renderHook(() => useOcp(), { wrapper });
+    let saveP!: Promise<void>;
+    let routeP!: Promise<void>;
+    act(() => {
+      saveP = result.current.saveConfig({ displayQr: true } as never);
+      routeP = result.current.createRoute({ iban: 'CH93', blockchain: 'Bitcoin' });
+    });
+    act(() => {
+      result.current.enableDemo();
+    });
+    const demoConfig = result.current.config;
+    await act(async () => {
+      save.resolve();
+      sell.resolve();
+      await Promise.allSettled([saveP, routeP]);
+    });
+    expect(result.current.demo).toBe(true);
+    expect(result.current.config).toBe(demoConfig);
+  });
+
+  it('discards a late live toggle after demo is turned on', async () => {
+    const del = deferred<void>();
+    mockDeleteRoute.mockReturnValueOnce(del.promise);
+    const { result } = renderHook(() => useOcp(), { wrapper });
+    let toggleP!: Promise<void>;
+    act(() => {
+      toggleP = result.current.toggleRoute('sell', 1, false);
+    });
+    act(() => {
+      result.current.enableDemo();
+    });
+    const demoRoutes = result.current.routes;
+    await act(async () => {
+      del.resolve();
+      await Promise.allSettled([toggleP]);
+    });
+    expect(result.current.routes).toBe(demoRoutes);
+  });
+
+  it('discards a late live route activation after demo is turned on', async () => {
+    const put = deferred<void>();
+    mockCall.mockReturnValueOnce(put.promise);
+    const { result } = renderHook(() => useOcp(), { wrapper });
+    let toggleP!: Promise<void>;
+    act(() => {
+      toggleP = result.current.toggleRoute('buy', 2, true);
+    });
+    act(() => {
+      result.current.enableDemo();
+    });
+    const demoRoutes = result.current.routes;
+    await act(async () => {
+      put.resolve();
+      await Promise.allSettled([toggleP]);
+    });
+    expect(result.current.routes).toBe(demoRoutes);
+  });
+
+  it('discards late live link, invoice, charge, poll and POS writes after demo is turned on', async () => {
+    const link = deferred<unknown>();
+    const invoice = deferred<{ id: string }>();
+    const charged = deferred<{ payment: { lnurl: string } }>();
+    const polled = deferred<{ payment: { status: string } }>();
+    const pos = deferred<{ url: string }>();
+    const updated = deferred<unknown>();
+    mockCreatePaymentLink.mockReturnValueOnce(link.promise);
+    mockCall.mockReturnValueOnce(invoice.promise);
+    mockCreatePayment.mockReturnValueOnce(charged.promise);
+    mockCall.mockReturnValueOnce(polled.promise);
+    mockCreatePos.mockReturnValueOnce(pos.promise);
+    mockUpdateLink.mockReturnValueOnce(updated.promise);
+
+    const { result } = renderHook(() => useOcp(), { wrapper });
+    let linkP!: Promise<void>;
+    let invoiceP!: Promise<{ lnurl: string }>;
+    let chargeP!: Promise<{ lnurl: string }>;
+    let pollP!: Promise<string | undefined>;
+    let posP!: Promise<string | undefined>;
+    let toggleP!: Promise<void>;
+    act(() => {
+      linkP = result.current.createLink(1);
+      invoiceP = result.current.createInvoice({ routeId: 1, amount: 1, currency: 'CHF', message: 'x' });
+      chargeP = result.current.charge(1, 2);
+      pollP = result.current.pollPayment(1);
+      posP = result.current.createPosLink(1);
+      toggleP = result.current.toggleLink(1, false);
+    });
+    act(() => {
+      result.current.enableDemo();
+    });
+    const demoLinks = result.current.links;
+    await act(async () => {
+      link.resolve({});
+      invoice.resolve({ id: 'stale' });
+      charged.resolve({ payment: { lnurl: 'LNURL1STALE' } });
+      polled.resolve({ payment: { status: 'Completed' } });
+      pos.resolve({ url: 'https://app.dfx.swiss/pos/stale' });
+      updated.resolve({});
+      await Promise.allSettled([linkP, invoiceP, chargeP, pollP, posP, toggleP]);
+    });
+    expect(result.current.demo).toBe(true);
+    expect(result.current.links).toBe(demoLinks);
   });
 });

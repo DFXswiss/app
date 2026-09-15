@@ -7,6 +7,11 @@ const mockReceiveForBuy = jest.fn();
 const mockReceiveForSwap = jest.fn();
 const mockReceiveForSell = jest.fn();
 const mockCall = jest.fn();
+const mockQuoteSession = { address: undefined as string | undefined };
+
+jest.mock('../wallets/session', () => ({
+  useWalletSession: () => mockQuoteSession,
+}));
 
 jest.mock('@dfx.swiss/react', () => ({
   ApiException: class ApiException extends Error {

@@ -193,4 +193,4 @@ if (unexpectedRootEntries.length > 0) {
   );
 }
 
-console.log('App2 artifact staged with its own CSP, PWA identity, and social-preview metadata.');
+process.stdout.write('App2 artifact staged with its own CSP, PWA identity, and social-preview metadata.\n');

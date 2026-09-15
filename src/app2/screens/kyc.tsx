@@ -26,7 +26,7 @@ import {
   useKyc,
   useUserContext,
 } from '@dfx.swiss/react';
-import { AnchorHTMLAttributes, FormEvent, ReactNode, useEffect, useState } from 'react';
+import { AnchorHTMLAttributes, FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import QRCode from 'react-qr-code';
 import { LoadingRow, useToast } from '../components/ui';
 import { useT, type TranslationKey } from '../i18n';
@@ -113,23 +113,36 @@ export default function KycScreen() {
   const [busy, setBusy] = useState(false);
   const [tfaToken, setTfaToken] = useState('');
   const [tfaError, setTfaError] = useState('');
+  const reqRef = useRef(0);
 
   const code = user?.kyc.hash;
 
   const loadOverview = (hash: string) => {
+    const req = ++reqRef.current;
     setPhase({ kind: 'loading' });
     kyc
       .getKycInfo(hash)
-      .then((info) => setPhase({ kind: 'overview', info }))
-      .catch((err: unknown) => setPhase({ kind: 'error', message: apiErrorMessage(t, err) }));
+      .then((info) => {
+        if (req !== reqRef.current) return;
+        setPhase({ kind: 'overview', info });
+      })
+      .catch((err: unknown) => {
+        if (req !== reqRef.current) return;
+        setPhase({ kind: 'error', message: apiErrorMessage(t, err) });
+      });
   };
 
   const beginTfaSetup = (info: KycInfo, hash: string) => {
+    const req = ++reqRef.current;
     setPhase({ kind: 'tfa', info, alreadyEnrolled: false });
     kyc
       .setup2fa(hash)
-      .then((setup) => setPhase({ kind: 'tfa', info, setup, alreadyEnrolled: false }))
+      .then((setup) => {
+        if (req !== reqRef.current) return;
+        setPhase({ kind: 'tfa', info, setup, alreadyEnrolled: false });
+      })
       .catch((error: unknown) => {
+        if (req !== reqRef.current) return;
         if (isTfaAlreadyEnrolledError(error)) {
           setPhase({ kind: 'tfa', info, alreadyEnrolled: true });
           return;
@@ -177,15 +190,18 @@ export default function KycScreen() {
   }
 
   const runContinue = (info: KycInfo) => {
+    const req = ++reqRef.current;
     setBusy(true);
     setTfaError('');
     kyc
       .continueKyc(code, true)
       .then((session) => {
+        if (req !== reqRef.current) return;
         if (session.currentStep) setPhase({ kind: 'step', info: session, step: session.currentStep });
         else setPhase({ kind: 'overview', info: session });
       })
       .catch((err: unknown) => {
+        if (req !== reqRef.current) return;
         // KYC calls return the structured API error body directly. Branch only on its machine
         // fields; never parse a localized human-readable message.
         if (isTfaRequiredError(err)) {
@@ -200,22 +216,33 @@ export default function KycScreen() {
         }
         setPhase({ kind: 'error', message: apiErrorMessage(t, err) });
       })
-      .finally(() => setBusy(false));
+      .finally(() => {
+        if (req !== reqRef.current) return;
+        setBusy(false);
+      });
   };
 
   const verifyTfa = (info: KycInfo) => (e: FormEvent) => {
     e.preventDefault();
     if (busy || !/^\d{6}$/.test(tfaToken)) return;
+    const req = ++reqRef.current;
     setBusy(true);
     kyc
       .verify2fa(code, tfaToken)
       .then(() => {
+        if (req !== reqRef.current) return;
         setTfaToken('');
         setTfaError('');
         runContinue(info);
       })
-      .catch(() => setTfaError(t('kycTfaWrong')))
-      .finally(() => setBusy(false));
+      .catch(() => {
+        if (req !== reqRef.current) return;
+        setTfaError(t('kycTfaWrong'));
+      })
+      .finally(() => {
+        if (req !== reqRef.current) return;
+        setBusy(false);
+      });
   };
 
   if (phase.kind === 'loading') {

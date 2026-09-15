@@ -126,6 +126,17 @@ test.describe('App2 session screens', () => {
     await expect(page).toHaveScreenshot('app2-ocp-apply.png', screenshotOpts);
   });
 
+  test('OpenCryptoPay payment routes (logged in)', async ({ page }) => {
+    await openOcpDemoTile(page, token, /^(payment routes|zahlungswege|metodi di pagamento|moyens de paiement)$/i);
+    await expect(
+      page
+        .getByRole('heading', { name: /payment routes|zahlungswege|metodi di pagamento|moyens de paiement/i })
+        .first(),
+    ).toBeVisible();
+    await expect(page.locator('.demobadge')).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-ocp-routes.png', screenshotOpts);
+  });
+
   test('OpenCryptoPay invoice (logged in)', async ({ page }) => {
     await openOcpDemoTile(page, token, /^(create invoice|rechnung erstellen|crea fattura|créer une facture)$/i);
     await expect(

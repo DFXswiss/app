@@ -258,6 +258,127 @@ describe('AccountSheets', () => {
     expect(screen.queryByText('No bank accounts yet.')).not.toBeInTheDocument();
   });
 
+  it('does not apply a late save after the same bank account is closed and reopened', async () => {
+    mockBank.bankAccounts = [
+      { id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true },
+    ];
+    let resolveSave: () => void = () => undefined;
+    mockUpdateAccount.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    renderSheet('bankaccts');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByDisplayValue('Main'), { target: { value: 'Stale' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByDisplayValue('Main')).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue('Main'), { target: { value: 'Fresh' } });
+    await act(async () => {
+      resolveSave();
+    });
+    expect(screen.getByDisplayValue('Fresh')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).not.toHaveTextContent('Saved');
+  });
+
+  it('does not clear a newer save’s busy state when a stale save finishes', async () => {
+    mockBank.bankAccounts = [{ id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true }];
+    let resolveFirst: () => void = () => undefined;
+    let resolveSecond: () => void = () => undefined;
+    mockUpdateAccount
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSecond = resolve;
+          }),
+      );
+    renderSheet('bankaccts');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await act(async () => {
+      resolveFirst();
+    });
+    const busySave = screen.getByRole('dialog').querySelector('.tform .btn-primary');
+    expect(busySave).toBeInstanceOf(HTMLButtonElement);
+    expect(busySave).toBeDisabled();
+    await act(async () => {
+      resolveSecond();
+    });
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Saved');
+  });
+
+  it('does not toast a late save failure after the same bank account is reopened', async () => {
+    mockBank.bankAccounts = [{ id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true }];
+    let rejectSave: (error: Error) => void = () => undefined;
+    mockUpdateAccount.mockImplementationOnce(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectSave = reject;
+        }),
+    );
+    renderSheet('bankaccts');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await act(async () => {
+      rejectSave(new Error('stale'));
+    });
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/something went wrong|schiefgelaufen|storto|produite/i);
+    expect(screen.getByDisplayValue('Main')).toBeInTheDocument();
+  });
+
+  it('does not apply a late set-default after the same bank account is reopened', async () => {
+    mockBank.bankAccounts = [{ id: 1, iban: 'CH9300762011623852957', label: 'Main', default: false }];
+    let resolveDefault: () => void = () => undefined;
+    let rejectDefault: (error: Error) => void = () => undefined;
+    mockUpdateAccount.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDefault = resolve;
+        }),
+    );
+    renderSheet('bankaccts');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Set as default' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByDisplayValue('Main')).toBeInTheDocument();
+    await act(async () => {
+      resolveDefault();
+    });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).not.toHaveTextContent('Saved');
+
+    mockUpdateAccount.mockImplementationOnce(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectDefault = reject;
+        }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Set as default' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await act(async () => {
+      rejectDefault(new Error('stale-default'));
+    });
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/something went wrong|schiefgelaufen|storto|produite/i);
+  });
+
   it('does not close another bank editor when a late save settles or fails', async () => {
     mockBank.bankAccounts = [
       { id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true },
@@ -295,7 +416,7 @@ describe('AccountSheets', () => {
     await act(async () => {
       rejectSave(new Error('save'));
     });
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong'));
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/something went wrong|schiefgelaufen|storto|produite/i);
     expect(screen.getByDisplayValue('Other')).toBeInTheDocument();
   });
 
@@ -336,7 +457,7 @@ describe('AccountSheets', () => {
     await act(async () => {
       rejectDefault(new Error('default'));
     });
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong'));
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/something went wrong|schiefgelaufen|storto|produite/i);
     expect(screen.getByDisplayValue('Main')).toBeInTheDocument();
   });
 
@@ -723,7 +844,7 @@ describe('AccountSheets', () => {
     fireEvent.click(generate());
     await waitFor(() => expect(screen.getByText('Invite created')).toBeInTheDocument());
     expect(mockCall).toHaveBeenCalledWith({
-      url: '/recommendation',
+      url: 'recommendation',
       method: 'POST',
       data: { recommendedAlias: 'Sam' },
     });
@@ -733,7 +854,7 @@ describe('AccountSheets', () => {
     fireEvent.click(generate());
     await waitFor(() =>
       expect(mockCall).toHaveBeenCalledWith({
-        url: '/recommendation',
+        url: 'recommendation',
         method: 'POST',
         data: { recommendedAlias: 'Sam', recommendedMail: 'sam@x.c' },
       }),
@@ -744,6 +865,17 @@ describe('AccountSheets', () => {
     await waitFor(() => expect(screen.getByText('Invitation confirmed')).toBeInTheDocument());
     fireEvent.click(within(invite()).getByRole('button', { name: 'Reject' }));
     await waitFor(() => expect(screen.getByText('Invitation rejected')).toBeInTheDocument());
+  });
+
+  it('does not confirm a pending invite that is no longer in the loaded list', async () => {
+    mockCall.mockImplementation(async (req: { method: string }) => {
+      if (req.method === 'GET') return [{ id: Number('missing'), name: 'Pat', status: 'Pending' }];
+      throw new Error('must-not-write');
+    });
+    renderSheet('referral');
+    expect(await screen.findByText('Pat')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(mockCall.mock.calls.some((call) => call[0].method === 'PUT')).toBe(false);
   });
 
   it('surfaces invite load, submit and confirm failures', async () => {

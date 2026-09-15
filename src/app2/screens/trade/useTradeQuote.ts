@@ -59,6 +59,7 @@ import {
 } from '@dfx.swiss/react';
 import type { Asset, Buy, BuyPaymentInfo, Fiat, Sell, SellPaymentInfo, Swap, SwapPaymentInfo } from '@dfx.swiss/react';
 import { useCallback } from 'react';
+import { useWalletSession } from '../../wallets/session';
 import { QuoteEngineState, useQuoteEngine } from './useQuoteEngine';
 
 /** 4xx account/validation errors will not become 200 on retry; 429 is the exception. */
@@ -88,15 +89,17 @@ export interface BuyQuoteParams {
 export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
   const { receiveFor } = useBuy();
   const { call } = useApi();
+  const { address: sessionAddress } = useWalletSession();
   const { asset, currency, amount, paymentMethod, externalTransactionId, withPaymentInfo } = params;
   const ready = !!asset && !!currency && !!amount;
   // `externalTransactionId` identifies a payment attempt — omit the segment when unset so an
   // undefined id keeps the same key as before (no needless cache invalidation). Leading `:`
   // when set avoids colliding with the trailing `quote`/`info` token.
   const extKey = externalTransactionId ? `:${externalTransactionId}` : '';
+  const sessionKey = sessionAddress ?? '';
   const key =
     asset && currency && amount
-      ? `${asset.id}:${currency.id}:${amount}:${paymentMethod}:${withPaymentInfo ? 'info' : 'quote'}${extKey}`
+      ? `${sessionKey}:${asset.id}:${currency.id}:${amount}:${paymentMethod}:${withPaymentInfo ? 'info' : 'quote'}${extKey}`
       : '';
 
   const fetcher = useCallback((): Promise<Buy> => {
@@ -132,6 +135,7 @@ export interface SellQuoteParams {
 export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
   const { receiveFor } = useSell();
   const { call } = useApi();
+  const { address: sessionAddress } = useWalletSession();
   const { asset, currency, amount, iban, externalTransactionId } = params;
   // Match the static app (`updateQuote()` → token-less `PUT /sell/quote {asset,currency,amount}`):
   // the sell rate + full fee breakdown are shown as soon as asset+currency+amount are set, with
@@ -140,8 +144,11 @@ export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
   // payment requests must never share cache state.
   const ready = !!asset && !!currency && !!amount;
   const extKey = externalTransactionId ? `:${externalTransactionId}` : '';
+  const sessionKey = sessionAddress ?? '';
   const key =
-    ready && asset && currency && amount ? `${asset.id}:${currency.id}:${amount}:${iban ?? 'quote'}${extKey}` : '';
+    ready && asset && currency && amount
+      ? `${sessionKey}:${asset.id}:${currency.id}:${amount}:${iban ?? 'quote'}${extKey}`
+      : '';
 
   const fetcher = useCallback((): Promise<Sell> => {
     if (!asset || !currency || !amount) return Promise.reject(new Error('sell quote: missing input'));
@@ -179,12 +186,14 @@ export interface SwapQuoteParams {
 export function useSwapQuote(params: SwapQuoteParams): QuoteEngineState<Swap> {
   const { receiveFor } = useSwap();
   const { call } = useApi();
+  const { address: sessionAddress } = useWalletSession();
   const { sourceAsset, targetAsset, amount, externalTransactionId, withPaymentInfo } = params;
   const ready = !!sourceAsset && !!targetAsset && !!amount && sourceAsset.id !== targetAsset.id;
   const extKey = externalTransactionId ? `:${externalTransactionId}` : '';
+  const sessionKey = sessionAddress ?? '';
   const key =
     sourceAsset && targetAsset && amount && ready
-      ? `${sourceAsset.id}:${targetAsset.id}:${amount}:${withPaymentInfo ? 'info' : 'quote'}${extKey}`
+      ? `${sessionKey}:${sourceAsset.id}:${targetAsset.id}:${amount}:${withPaymentInfo ? 'info' : 'quote'}${extKey}`
       : '';
 
   const fetcher = useCallback((): Promise<Swap> => {

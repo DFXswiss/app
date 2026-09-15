@@ -615,9 +615,97 @@ describe('WalletSessionProvider flows', () => {
     await act(async () => {
       pending[0].resolve();
     });
+    await waitFor(() => expect(pending.length).toBe(3));
+    await act(async () => {
+      pending[2].resolve();
+    });
+    expect(mockChangeAddress.mock.calls.map((call) => call[0])).toEqual([other, third, third]);
     expect(screen.getByRole('status')).toHaveTextContent('Connected · 0x3333…3333');
     expect(screen.getByRole('status')).not.toHaveTextContent('0x2222…2222');
     expect(mockReloadUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-applies the latest switch target when a stale changeAddress finishes last', async () => {
+    const pending: Array<{ resolve: () => void; reject: (error: Error) => void; address?: string }> = [];
+    mockChangeAddress.mockImplementation((next: string) => {
+      return new Promise<void>((resolve, reject) => {
+        pending.push({ resolve, reject, address: next });
+      });
+    });
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockUserAddresses.push(
+      { address, label: 'A', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: other, label: 'B', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: third, label: 'C', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+    );
+    renderSession();
+    fireEvent.click(screen.getByText('switch-other'));
+    await waitFor(() => expect(pending.length).toBe(1));
+    fireEvent.click(screen.getByText('switch-third'));
+    await waitFor(() => expect(pending.length).toBe(2));
+    await act(async () => {
+      pending[1].resolve();
+    });
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Connected · 0x3333…3333'));
+    await act(async () => {
+      pending[0].resolve();
+    });
+    await waitFor(() => expect(pending.length).toBe(3));
+    expect(pending[2].address).toBe(third);
+    await act(async () => {
+      pending[2].resolve();
+    });
+    expect(mockChangeAddress).toHaveBeenLastCalledWith(third);
+  });
+
+  it('restores a newer sign-in instead of logging it out when a stale createSession finishes', async () => {
+    let releaseFirst: (token: string) => void = () => undefined;
+    const firstToken = jwt();
+    const secondToken = jwt(['Bitcoin']);
+    mockCreateSession.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          releaseFirst = resolve;
+        }),
+    );
+    mockCreateSession.mockResolvedValueOnce(secondToken);
+    renderSession();
+    fireEvent.click(screen.getByText('pick-mm'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText('close'));
+    fireEvent.click(screen.getByText('pick-rabby'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(2));
+    mockLogout.mockClear();
+    mockUpdateSession.mockClear();
+    await act(async () => {
+      releaseFirst(firstToken);
+      await Promise.resolve();
+    });
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(mockUpdateSession).toHaveBeenCalledWith(secondToken);
+  });
+
+  it('discards a cancelled first sign-in with logout when no newer session exists', async () => {
+    let releaseFirst: (token: string) => void = () => undefined;
+    mockCreateSession.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          releaseFirst = resolve;
+        }),
+    );
+    renderSession();
+    fireEvent.click(screen.getByText('pick-mm'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText('close'));
+    mockLogout.mockClear();
+    mockUpdateSession.mockClear();
+    await act(async () => {
+      releaseFirst(jwt());
+      await Promise.resolve();
+    });
+    expect(mockLogout).toHaveBeenCalled();
+    expect(mockUpdateSession).not.toHaveBeenCalled();
   });
 
   it('discards a superseded switch failure so it cannot restore bindings or toast switchFail', async () => {
@@ -649,6 +737,56 @@ describe('WalletSessionProvider flows', () => {
     });
     expect(screen.queryByRole('alert')).not.toHaveTextContent(/could not switch/i);
     expect(screen.getByRole('status')).toHaveTextContent('Connected · 0x3333…3333');
+  });
+
+  it('discards a late provider-holds result after a newer switch has started', async () => {
+    let releaseHolds: (accounts: string[]) => void = () => undefined;
+    const provider = {
+      request: jest.fn().mockImplementation(async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [address];
+        return [];
+      }),
+      on: jest.fn(),
+      removeListener: jest.fn(),
+    };
+    mockResolveInjected.mockReturnValue(provider);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockUserAddresses.push(
+      { address, label: 'A', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: other, label: 'B', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: third, label: 'C', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+    );
+    renderSession();
+    fireEvent.click(screen.getByText('pick-mm'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    await waitFor(() => expect(provider.on).toHaveBeenCalled());
+    provider.request.mockClear();
+    provider.request.mockImplementation(
+      ({ method }: { method: string }) =>
+        method === 'eth_accounts'
+          ? new Promise<string[]>((resolve) => {
+              releaseHolds = resolve;
+            })
+          : Promise.resolve([]),
+    );
+    fireEvent.click(screen.getByText('switch-other'));
+    await waitFor(() => expect(mockChangeAddress).toHaveBeenCalledWith(other));
+    await waitFor(() => expect(provider.request).toHaveBeenCalled());
+    provider.request.mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'eth_accounts') return [third];
+      return [];
+    });
+    fireEvent.click(screen.getByText('switch-third'));
+    await waitFor(() => expect(mockChangeAddress).toHaveBeenCalledWith(third));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Connected · 0x3333…3333'));
+    mockReloadUser.mockClear();
+    await act(async () => {
+      releaseHolds([other]);
+    });
+    expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(screen.getByRole('status')).toHaveTextContent('Connected · 0x3333…3333');
+    expect(screen.getByRole('status')).not.toHaveTextContent('0x2222…2222');
   });
 
   it('does not call changeAddress when the user object is missing', async () => {

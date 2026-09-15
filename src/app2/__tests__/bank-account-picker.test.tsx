@@ -174,4 +174,3 @@ describe('BankAccountPicker', () => {
     expect(screen.queryByText(/something went wrong|fehler|errore|erreur|genErr/i)).not.toBeInTheDocument();
   });
 });
-

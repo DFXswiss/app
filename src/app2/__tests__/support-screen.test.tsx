@@ -59,7 +59,9 @@ jest.mock('@dfx.swiss/react', () => ({
   },
   SupportIssueState: { PENDING: 'Pending', COMPLETED: 'Completed', CREATED: 'Created', CANCELED: 'Canceled' },
   SupportMessageStatus: { SENT: 'Sent', FAILED: 'Failed', PENDING: 'Pending' },
-  SupportChatContextProvider: ({ children }: { children: React.ReactNode }) => children,
+  SupportChatContextProvider: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="support-chat">{children}</div>
+  ),
   useSupportChatContext: () => mockSupport,
   useUser: () => ({ getProfile: mockGetProfile }),
   useUserContext: () => ({ user: mockUser.user, updateMail: mockUpdateMail }),
@@ -134,6 +136,44 @@ describe('SupportScreen', () => {
       chips.scrollTo = jest.fn();
     }
     fireEvent.click(screen.getByRole('button', { name: /more topics/i }));
+  });
+
+  it('drops an open thread when the session address changes', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    mockSupport.tickets = [
+      {
+        uid: 't1',
+        type: 'GenericIssue',
+        state: 'Pending',
+        created: '2026-01-02T10:00:00Z',
+        messages: [{ id: 1, message: 'hello-thread', status: 'Sent' }],
+      },
+    ];
+    mockSupport.supportIssue = {
+      uid: 't1',
+      type: 'GenericIssue',
+      state: 'Pending',
+      messages: [{ id: 1, message: 'hello-thread', status: 'Sent' }],
+    };
+    const view = renderSupport();
+    fireEvent.click((await screen.findAllByText('hello-thread'))[0]);
+    const threadDialog = () => document.querySelector('.chatwrap')?.closest('[role="dialog"]');
+    expect(threadDialog()).toHaveAttribute('aria-hidden', 'false');
+    expect(mockSupport.loadSupportIssue).toHaveBeenCalledWith('t1');
+    const ticketLoads = mockSupport.loadTickets.mock.calls.length;
+    mockSession.address = '0xbbb';
+    mockSupport.supportIssue = undefined;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <SupportScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(threadDialog()).toHaveAttribute('aria-hidden', 'true');
+    expect(mockSupport.loadTickets.mock.calls.length).toBeGreaterThan(ticketLoads);
+    expect(screen.getAllByText('hello-thread').length).toBeGreaterThan(0);
   });
 
   it('lists tickets, opens a thread and submits a new issue', async () => {
