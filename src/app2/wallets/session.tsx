@@ -1101,6 +1101,11 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     async (entry: WalletSwitchEntry) => {
       setSwitcherOpen(false);
       if (entry.active) return;
+      // Same attempt counter as handleSelectWallet: a newer switch (or connect) discards this
+      // round so it cannot restore the previous wallet's bindings onto the new session.
+      const myAttempt = ++attemptIdRef.current;
+      const isCurrent = () => myAttempt === attemptIdRef.current;
+      busyRef.current = false;
       // Snapshot then drop provider bindings for the previous address before the JWT address
       // changes. On failure, restore so the old JWT does not stay active without its EIP-1193
       // bindings (accountsChanged monitor + sign path).
@@ -1129,7 +1134,9 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         // After a reload there is no remembered connector; ask the injected
         // provider itself rather than giving up and staying on `'other'`.
         const candidate = bound ?? getInjectedProvider();
-        if (await providerHoldsAddress(candidate, entry.address)) {
+        const holds = await providerHoldsAddress(candidate, entry.address);
+        if (!isCurrent()) return;
+        if (holds) {
           if (bound) {
             restoreSessionProviderBindings(
               previous,
@@ -1146,6 +1153,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         void reloadUser();
         showToast(`${t('connected')} · ${shortAddress(entry.address)}`);
       } catch {
+        if (!isCurrent()) return;
         restoreSessionProviderBindings(
           previous,
           setActiveConnector,
