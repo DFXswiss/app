@@ -16,8 +16,16 @@ jest.mock('src/components/support/kyc-file-transfer', () => ({
   ),
 }));
 
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useLocation: jest.fn(() => ({ pathname: '/' })),
+}));
+
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { useLocation } from 'react-router-dom';
 import { InfoPanel, InfoRow, LinkedText, SupportMessageList } from 'src/components/support/info-panel';
+
+const mockedUseLocation = useLocation as jest.Mock;
 
 describe('InfoPanel / InfoRow', () => {
   it('renders the title and rows; labels cannot be selected, mono values select as a whole', () => {
@@ -59,6 +67,10 @@ describe('LinkedText', () => {
 });
 
 describe('SupportMessageList', () => {
+  beforeEach(() => {
+    mockedUseLocation.mockReturnValue({ pathname: '/' });
+  });
+
   it('orders by id, styles customer and staff bubbles differently and shows a dash without text', () => {
     render(
       <SupportMessageList
@@ -118,21 +130,26 @@ describe('SupportMessageList', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers the KYC file transfer only next to a file link, and only with onOpenFile and enableKycTransfer', () => {
+  it('offers the KYC file transfer only next to a file link, and only on the DFX staff ticket path with onOpenFile', () => {
     const withFile = { id: 1, author: 'Customer', fileName: 'ausweis.pdf', created: '2026-09-01' };
     const withoutFile = { id: 2, author: 'Customer', message: 'Text', created: '2026-09-02' };
 
     const { rerender } = render(<SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} />);
     expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
 
-    rerender(
-      <SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} enableKycTransfer />,
-    );
+    mockedUseLocation.mockReturnValue({ pathname: '/support/dashboard/issue/123' });
+    rerender(<SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} />);
     expect(screen.getAllByTestId('kyc-file-transfer').map((el) => el.textContent)).toEqual(['ausweis.pdf']);
 
-    rerender(<SupportMessageList messages={[withFile, withoutFile]} enableKycTransfer />);
+    mockedUseLocation.mockReturnValue({ pathname: '/realunit/support/issue/123' });
+    rerender(<SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} />);
     expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
 
+    mockedUseLocation.mockReturnValue({ pathname: '/realunit/support/dashboard/issue/123' });
+    rerender(<SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} />);
+    expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
+
+    mockedUseLocation.mockReturnValue({ pathname: '/support/dashboard/issue/123' });
     rerender(<SupportMessageList messages={[withFile, withoutFile]} />);
     expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
   });

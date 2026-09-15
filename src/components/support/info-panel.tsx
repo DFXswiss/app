@@ -1,3 +1,4 @@
+import { useLocation } from 'react-router-dom';
 import { CustomerAuthor } from 'src/hooks/support-dashboard.hook';
 import { formatDateTime } from 'src/util/compliance-helpers';
 import { KycFileTransfer } from './kyc-file-transfer';
@@ -75,19 +76,20 @@ export interface SupportMessageListItem {
 }
 
 // Read-only message thread (bubbles), no composer. `onOpenFile` is optional: when omitted, file links are not
-// rendered (read-only dossier). The "transfer to KYC file" action is a separate opt-in (`enableKycTransfer`) so
-// writable RealUnit tickets can keep file links without inheriting the DFX KYC-file transfer. Ordering mirrors
-// the DFX support-issue screen (by message id) and falls back to the created timestamp when ids are absent, so a
-// DFX thread renders byte-for-byte identically to before extraction.
+// rendered (read-only dossier). The "transfer to KYC file" action is a pathname opt-in: it only renders on the
+// DFX staff ticket detail route (`/support/dashboard/issue/`), never on a RealUnit path, so writable RealUnit
+// tickets can keep file links without inheriting the DFX KYC-file transfer. Ordering mirrors the DFX
+// support-issue screen (by message id) and falls back to the created timestamp when ids are absent, so a DFX
+// thread renders byte-for-byte identically to before extraction.
 export function SupportMessageList({
   messages,
   onOpenFile,
-  enableKycTransfer,
 }: {
   messages: SupportMessageListItem[];
   onOpenFile?: (msg: SupportMessageListItem) => void;
-  enableKycTransfer?: boolean;
 }): JSX.Element {
+  const { pathname } = useLocation();
+  const onDfxStaffTicket = pathname.includes('/support/dashboard/issue/') && !pathname.includes('realunit');
   const sorted = [...messages].sort(
     (a, b) => (a.id ?? 0) - (b.id ?? 0) || new Date(a.created).getTime() - new Date(b.created).getTime(),
   );
@@ -123,7 +125,7 @@ export function SupportMessageList({
                   {msg.fileName}
                 </button>
               )}
-              {enableKycTransfer && msg.fileName && onOpenFile && <KycFileTransfer message={msg} />}
+              {onDfxStaffTicket && onOpenFile && msg.fileName && <KycFileTransfer message={msg} />}
             </div>
           </div>
         );
