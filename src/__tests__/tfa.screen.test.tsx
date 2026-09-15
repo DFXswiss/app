@@ -175,6 +175,32 @@ describe('TfaScreen handleMergedError', () => {
     expect(mockHandleMergedError).not.toHaveBeenCalled();
   });
 
+  it('setup2fa/load then: a stale resolve after a re-run does not overwrite the newer setup info', async () => {
+    let resolveFirstSetup2fa: (info: unknown) => void = () => undefined;
+    mockKycSetup2fa.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirstSetup2fa = resolve;
+        }),
+    );
+    mockKycSetup2fa.mockResolvedValueOnce({ type: 'App', secret: 'SECOND_SECRET', uri: 'otpauth://second' });
+
+    const { rerender } = render(<TfaScreen />);
+
+    mockSearch = '?code=OTHER_MASTER_CODE';
+    rerender(<TfaScreen />);
+
+    await screen.findByText('SECOND_SECRET');
+
+    await act(async () => {
+      resolveFirstSetup2fa({ type: 'App', secret: 'STALE_SECRET', uri: 'otpauth://stale' });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('STALE_SECRET')).not.toBeInTheDocument();
+    expect(screen.getByText('SECOND_SECRET')).toBeInTheDocument();
+  });
+
   it('verify2fa/onSubmit catch: handleMergedError true skips setError', async () => {
     mockKycSetup2fa.mockResolvedValue({ type: 'Mail', secret: '', uri: '' });
     const error = { statusCode: 401, switchToCode: 'MASTER', message: 'unauthorized' };

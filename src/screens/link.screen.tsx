@@ -60,7 +60,10 @@ export default function LinkScreen(): JSX.Element {
         goBack();
       } else {
         return continueKyc(kycCode, false)
-          .then(handleReload)
+          .then((session) => {
+            if (cancelled) return;
+            handleReload(session);
+          })
           .catch((error: ApiError) => {
             if (cancelled) return;
             if (handleMergedError(error)) return;
@@ -70,13 +73,19 @@ export default function LinkScreen(): JSX.Element {
     }
 
     getKycInfo(kycCode)
-      .then(handleInitial)
+      .then((info) => {
+        if (cancelled) return;
+        return handleInitial(info);
+      })
       .catch((error: ApiError) => {
         if (cancelled) return;
         if (handleMergedError(error)) return;
         setError(error.message ?? 'Unknown error');
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (cancelled) return;
+        setIsLoading(false);
+      });
 
     return () => {
       cancelled = true;

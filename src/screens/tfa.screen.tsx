@@ -73,7 +73,10 @@ export default function TfaScreen(): JSX.Element {
     async function load(): Promise<void> {
       if (!isSessionMode && !kycCode) return;
       return (isSessionMode ? authSetup2fa(tfaLevel) : kycSetup2fa(kycCode as string, tfaLevel))
-        .then(setSetupInfo)
+        .then((info) => {
+          if (cancelled) return;
+          setSetupInfo(info);
+        })
         .catch((error: ApiError) => {
           if (cancelled) return;
           if (handleMergedError(error)) return;
@@ -81,7 +84,10 @@ export default function TfaScreen(): JSX.Element {
             setError(error.message ?? 'Unknown error');
           }
         })
-        .finally(() => setIsLoading(false));
+        .finally(() => {
+          if (cancelled) return;
+          setIsLoading(false);
+        });
     }
 
     load();

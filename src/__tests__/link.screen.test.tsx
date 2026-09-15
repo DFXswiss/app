@@ -160,6 +160,32 @@ describe('LinkScreen handleMergedError', () => {
     expect(mockHandleMergedError).not.toHaveBeenCalled();
   });
 
+  it('getKycInfo then: a stale resolve after a re-run does not act on stale data', async () => {
+    let resolveFirstGetKycInfo: (info: unknown) => void = () => undefined;
+    mockGetKycInfo.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirstGetKycInfo = resolve;
+        }),
+    );
+    mockGetKycInfo.mockResolvedValueOnce({ kycLevel: 0 });
+
+    const { rerender } = render(<LinkScreen />);
+
+    mockKycHash = 'OTHER_MASTER_CODE';
+    rerender(<LinkScreen />);
+
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalled());
+
+    await act(async () => {
+      // A stale kycLevel > 0 would call goBack() via handleInitial if not guarded.
+      resolveFirstGetKycInfo({ kycLevel: 1 });
+      await Promise.resolve();
+    });
+
+    expect(mockNavigateBack).not.toHaveBeenCalled();
+  });
+
   it('continueKyc catch: handleMergedError true skips setError', async () => {
     mockGetKycInfo.mockResolvedValue({ kycLevel: 0 });
     mockContinueKyc.mockRejectedValue(mergeError);
