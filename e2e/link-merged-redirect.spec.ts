@@ -184,6 +184,7 @@ test.describe('Link screen merged-account redirect - Visual Regression Tests', (
     await expect(page).toHaveURL(new RegExp(`/kyc\\?code=${MASTER_KYC_CODE}$`));
     await assertRedirectedToMasterKycAndLoggedOut(page);
 
+    await expect(page.getByText('KYC level')).toBeVisible();
     expect(unexpectedRequests).toEqual([]);
     expect(pageErrors).toEqual([]);
   });

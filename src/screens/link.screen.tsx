@@ -25,7 +25,7 @@ import {
   StyledLoadingSpinner,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { ErrorHint } from '../components/error-hint';
 import { useSettingsContext } from '../contexts/settings.context';
@@ -48,17 +48,24 @@ export default function LinkScreen(): JSX.Element {
   const [showLinkHint, setShowLinkHint] = useState(false);
 
   const kycCode = user?.kyc.hash;
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
     if (!kycCode) return;
+    cancelledRef.current = false;
 
     getKycInfo(kycCode)
       .then(handleInitial)
       .catch((error: ApiError) => {
+        if (cancelledRef.current) return;
         if (handleMergedError(error)) return;
         setError(error.message ?? 'Unknown error');
       })
       .finally(() => setIsLoading(false));
+
+    return () => {
+      cancelledRef.current = true;
+    };
   }, [kycCode]);
 
   function handleInitial(info: KycInfo) {
@@ -68,6 +75,7 @@ export default function LinkScreen(): JSX.Element {
       return continueKyc(kycCode, false)
         .then(handleReload)
         .catch((error: ApiError) => {
+          if (cancelledRef.current) return;
           if (handleMergedError(error)) return;
           setError(error.message ?? 'Unknown error');
         });

@@ -19,7 +19,7 @@ import {
   StyledLoadingSpinner,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import QRCode from 'react-qr-code';
 import { useLocation } from 'react-router-dom';
@@ -53,6 +53,7 @@ export default function TfaScreen(): JSX.Element {
   const [tokenInvalid, setTokenInvalid] = useState(false);
 
   const [setupInfo, setSetupInfo] = useState<TfaSetup>();
+  const cancelledRef = useRef(false);
 
   const params = new URLSearchParams(search);
   const urlCode = params.get('code');
@@ -66,7 +67,11 @@ export default function TfaScreen(): JSX.Element {
   useUserGuard('/login', isSessionMode || !kycCode);
 
   useEffect(() => {
+    cancelledRef.current = false;
     load();
+    return () => {
+      cancelledRef.current = true;
+    };
   }, [isSessionMode, kycCode]);
 
   const {
@@ -84,6 +89,7 @@ export default function TfaScreen(): JSX.Element {
     return (isSessionMode ? authSetup2fa(tfaLevel) : kycSetup2fa(kycCode as string, tfaLevel))
       .then(setSetupInfo)
       .catch((error: ApiError) => {
+        if (cancelledRef.current) return;
         if (handleMergedError(error)) return;
         if (error.message !== '2FA already set up') {
           setError(error.message ?? 'Unknown error');
