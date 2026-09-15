@@ -83,7 +83,7 @@ DFX services can be integrated using a browser redirect to [app.dfx.swiss](https
 
 #### Iframe
 
-DFX services can be integrated by opening [app.dfx.swiss](https://app.dfx.swiss/) with the desired parameters (see [below](#query-parameters)) in an Iframe. See the [code example](#iframe-example) below.
+DFX services can be integrated by opening [app.dfx.swiss](https://app.dfx.swiss/) with the desired parameters (see [below](#query-parameters)) in an Iframe. See the [code example](#iframe-example) below. The `allow="clipboard-write"` attribute should be set on the Iframe, as Chromium-based browsers do not grant the asynchronous Clipboard API (`navigator.clipboard`) to cross-origin Iframes without it.
 
 On cancel or completion, a message will be sent on the window object of the browser. See [below](#close-message) for details on the message format. If a redirect URI is specified, the user will be redirected to this URI (see [redirect](#redirect)).
 
@@ -253,7 +253,7 @@ Documentation on `BuyPaymentInfoDto`, `SellPaymentInfoDto` and `SwapPaymentInfoD
   }
 </script>
 
-<iframe src="https://app.dfx.swiss" height="600" width="450" frameborder="0" />
+<iframe src="https://app.dfx.swiss" height="600" width="450" frameborder="0" allow="clipboard-write"></iframe>
 ```
 
 #### Web Component Example
