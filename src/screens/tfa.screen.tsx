@@ -1,4 +1,14 @@
-import { ApiError, TfaLevel, TfaSetup, TfaType, Utils, Validations, useAuth, useKyc, useUserContext } from '@dfx.swiss/react';
+import {
+  ApiError,
+  TfaLevel,
+  TfaSetup,
+  TfaType,
+  Utils,
+  Validations,
+  useAuth,
+  useKyc,
+  useUserContext,
+} from '@dfx.swiss/react';
 import {
   CopyButton,
   Form,
@@ -14,6 +24,7 @@ import { useForm } from 'react-hook-form';
 import QRCode from 'react-qr-code';
 import { useLocation } from 'react-router-dom';
 import { BadgeType } from 'src/util/app-store-badges';
+import { useMergedAccount } from 'src/hooks/merged-account.hook';
 import { AppStoreBadge } from '../components/app-store-badge';
 import { ErrorHint } from '../components/error-hint';
 import { useSettingsContext } from '../contexts/settings.context';
@@ -34,6 +45,7 @@ export default function TfaScreen(): JSX.Element {
   const { search, state } = useLocation();
   const { copy } = useClipboard();
   const { goBack } = useNavigation();
+  const { handleMergedError } = useMergedAccount();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,7 +66,35 @@ export default function TfaScreen(): JSX.Element {
   useUserGuard('/login', isSessionMode || !kycCode);
 
   useEffect(() => {
+    // Local per-run flag, not a ref: a ref shared across effect re-runs would be reset to
+    // false by a newer run while an older run's request is still in flight, un-cancelling it.
+    let cancelled = false;
+
+    async function load(): Promise<void> {
+      if (!isSessionMode && !kycCode) return;
+      return (isSessionMode ? authSetup2fa(tfaLevel) : kycSetup2fa(kycCode as string, tfaLevel))
+        .then((info) => {
+          if (cancelled) return;
+          setSetupInfo(info);
+        })
+        .catch((error: ApiError) => {
+          if (cancelled) return;
+          if (handleMergedError(error)) return;
+          if (error.message !== '2FA already set up') {
+            setError(error.message ?? 'Unknown error');
+          }
+        })
+        .finally(() => {
+          if (cancelled) return;
+          setIsLoading(false);
+        });
+    }
+
     load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isSessionMode, kycCode]);
 
   const {
@@ -67,18 +107,6 @@ export default function TfaScreen(): JSX.Element {
     token: [Validations.Required, Validations.Custom((v: string) => (v?.length === 6 ? true : 'pattern'))],
   });
 
-  async function load(): Promise<void> {
-    if (!isSessionMode && !kycCode) return;
-    return (isSessionMode ? authSetup2fa(tfaLevel) : kycSetup2fa(kycCode as string, tfaLevel))
-      .then(setSetupInfo)
-      .catch((error: ApiError) => {
-        if (error.message !== '2FA already set up') {
-          setError(error.message ?? 'Unknown error');
-        }
-      })
-      .finally(() => setIsLoading(false));
-  }
-
   async function onSubmit(data: { token: string }) {
     setError(undefined);
     setTokenInvalid(false);
@@ -86,7 +114,14 @@ export default function TfaScreen(): JSX.Element {
 
     (isSessionMode ? authVerify2fa(data.token) : kycVerify2fa(kycCode as string, data.token))
       .then(() => goBack())
-      .catch((e: ApiError) => (e.statusCode === 403 ? setTokenInvalid(true) : setError(e.message ?? 'Unknown error')))
+      .catch((e: ApiError) => {
+        if (handleMergedError(e)) return;
+        if (e.statusCode === 403) {
+          setTokenInvalid(true);
+        } else {
+          setError(e.message ?? 'Unknown error');
+        }
+      })
       .finally(() => setIsSubmitting(false));
   }
 

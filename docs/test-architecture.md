@@ -244,6 +244,49 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   run does **not** prove the API's natural latency or that production clients never race; it
   only proves the wait barriers refuse to conclude while that held real response is still
   undelivered, and that hub re-navigation does not abort it.
+- **The 2FA merged-account redirect spec answers the 2FA setup call and its post-redirect
+  follow-up itself.** `e2e/tfa-merged-redirect.spec.ts` fulfils `POST /v2/kyc/2fa` with a
+  synthetic 401 merged-account error (`switchToCode`) and fulfils `GET /v2/kyc` — the call the
+  `/kyc` screen makes on its own after the redirect — with a synthetic success payload, plus
+  the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner`) and `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**`
+  calls get `501`. This spec does not seed an auth token — the `/2fa` merged-account path is
+  reached via the URL `code` param without a login, so there is no session to assert cleared,
+  unlike the link spec below. The initial navigation also carries a synthetic
+  `kyc-redirect=https://evil.example` param; the app itself (not mocked) runs the real
+  `navigation.hook.ts` merge/strip logic, and the spec asserts that param is absent from the
+  post-redirect URL. A green run proves the `/kyc` screen renders without a `pageerror` on the
+  synthetic follow-up payload, and that the `kyc-redirect` param is genuinely stripped by the
+  real code (not just requested — `src/__tests__/merged-account.hook.test.tsx` only proves
+  `handleMergedError` calls `navigate` with `clearParams: ['kyc-redirect']` against a mocked
+  `useNavigation`, not that the real merge logic honors it). It does not prove that the API
+  ever returns a 401 with `switchToCode` for a merged account, that a real 2FA setup call has
+  that shape, or that the `/kyc` screen's own follow-up call succeeds against a real backend.
+  `src/__tests__/tfa.screen.test.tsx` pins that `handleMergedError` is tried first at every
+  catch site instead.
+- **The link merged-account redirect spec answers GET /v2/user and GET /v2/kyc itself.**
+  `e2e/link-merged-redirect.spec.ts` seeds a synthetic unsigned JWT into
+  `localStorage['dfx.authenticationToken']` and fulfils `GET /v2/user` with a synthetic account
+  whose `kyc.hash` matches the merged (slave) account. It fulfils `GET /v2/kyc` with a
+  synthetic 401 merged-account error on the first call and a synthetic success payload on the
+  follow-up call after the redirect (the `/kyc` screen's own call), plus the bootstrap GETs
+  (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner`) and `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**`
+  calls get `501`. The initial navigation also carries a synthetic
+  `kyc-redirect=https://evil.example` param; the app itself (not mocked) runs the real
+  `navigation.hook.ts` merge/strip logic, and the spec asserts that param is absent from the
+  post-redirect URL. It also proves the synthetic auth token is cleared from `localStorage`
+  after the redirect — not that any server-side session or token is actually invalidated,
+  since the backend is entirely mocked. A green run proves the `/kyc` screen renders without a
+  `pageerror` on the synthetic follow-up payload, and that the `kyc-redirect` param is
+  genuinely stripped by the
+  real code (not just requested — `src/__tests__/merged-account.hook.test.tsx` only proves
+  `handleMergedError` calls `navigate` with `clearParams: ['kyc-redirect']` against a mocked
+  `useNavigation`, not that the real merge logic honors it). It does not prove that login or
+  token verification works, that the API returns that user/`kyc.hash` pairing, or that a
+  merged account really produces a 401 with `switchToCode`.
+  `src/__tests__/link.screen.test.tsx` pins that `handleMergedError` is tried first at every
+  catch site instead.
 
 ## Known gaps
 
