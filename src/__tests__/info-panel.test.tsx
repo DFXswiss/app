@@ -9,8 +9,23 @@ jest.mock('src/util/compliance-helpers', () => ({
   formatDateTime: (value: string) => `dt:${value}`,
 }));
 
+// The transfer action has its own tests; here only its placement in the thread matters.
+jest.mock('src/components/support/kyc-file-transfer', () => ({
+  KycFileTransfer: ({ message }: { message: { fileName?: string } }) => (
+    <div data-testid="kyc-file-transfer">{message.fileName}</div>
+  ),
+}));
+
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useLocation: jest.fn(() => ({ pathname: '/' })),
+}));
+
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { useLocation } from 'react-router-dom';
 import { InfoPanel, InfoRow, LinkedText, SupportMessageList } from 'src/components/support/info-panel';
+
+const mockedUseLocation = useLocation as jest.Mock;
 
 describe('InfoPanel / InfoRow', () => {
   it('renders the title and rows; labels cannot be selected, mono values select as a whole', () => {
@@ -52,6 +67,10 @@ describe('LinkedText', () => {
 });
 
 describe('SupportMessageList', () => {
+  beforeEach(() => {
+    mockedUseLocation.mockReturnValue({ pathname: '/' });
+  });
+
   it('orders by id, styles customer and staff bubbles differently and shows a dash without text', () => {
     render(
       <SupportMessageList
@@ -109,5 +128,40 @@ describe('SupportMessageList', () => {
     expect(
       within(screen.getByText('Anhang').closest('div.flex') as HTMLElement).getByText('Customer'),
     ).toBeInTheDocument();
+  });
+
+  it('offers the KYC file transfer only next to a file link, and only on the DFX staff ticket path with onOpenFile', () => {
+    const withFile = { id: 1, author: 'Customer', fileName: 'ausweis.pdf', created: '2026-09-01' };
+    const withoutFile = { id: 2, author: 'Customer', message: 'Text', created: '2026-09-02' };
+
+    const { rerender } = render(<SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} />);
+    expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
+
+    mockedUseLocation.mockReturnValue({ pathname: '/support/dashboard/issue/123' });
+    rerender(<SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} />);
+    expect(screen.getAllByTestId('kyc-file-transfer').map((el) => el.textContent)).toEqual(['ausweis.pdf']);
+
+    mockedUseLocation.mockReturnValue({ pathname: '/realunit/support/issue/123' });
+    rerender(<SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} />);
+    expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
+
+    mockedUseLocation.mockReturnValue({ pathname: '/realunit/support/dashboard/issue/123' });
+    rerender(<SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} />);
+    expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
+
+    mockedUseLocation.mockReturnValue({ pathname: '/support/dashboard/issue/123' });
+    rerender(<SupportMessageList messages={[withFile, withoutFile]} />);
+    expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
+  });
+
+  it('hides the previous ticket thread when the path changes before messages are replaced', () => {
+    const msgs = [{ id: 1, author: 'Customer', fileName: 'ausweis.pdf', created: '2026-09-01' }];
+    mockedUseLocation.mockReturnValue({ pathname: '/support/dashboard/issue/1' });
+    const { rerender } = render(<SupportMessageList messages={msgs} onOpenFile={jest.fn()} />);
+    expect(screen.getByRole('button', { name: 'ausweis.pdf' })).toBeInTheDocument();
+
+    mockedUseLocation.mockReturnValue({ pathname: '/support/dashboard/issue/2' });
+    rerender(<SupportMessageList messages={msgs} onOpenFile={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: 'ausweis.pdf' })).not.toBeInTheDocument();
   });
 });

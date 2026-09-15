@@ -111,37 +111,56 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   const loadIssue = useCallback((): void => {
     if (!id) return;
+    const requestId = id;
+    if (idRef.current !== requestId) return;
+    setLoadError(undefined);
     setIsLoading(true);
     getIssueData(+id)
       .then((data) => {
+        if (idRef.current !== requestId) return;
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
         setUpdateClerk(data.clerk ?? '');
       })
-      .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
+      .catch((e: Error) => {
+        if (idRef.current !== requestId) return;
+        setLoadError(e.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (idRef.current === requestId) setIsLoading(false);
+      });
   }, [id, getIssueData]);
 
   const loadMessages = useCallback((): void => {
-    if (!issueData?.uid) return;
+    if (!issueData?.uid || !id || issueData.id !== +id) return;
+    const requestId = id;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
+        if (idRef.current !== requestId) return;
         setMessages(fetched);
         setPendingCount(0);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
-  }, [issueData?.uid, getIssueMessages]);
+      .catch((e: Error) => {
+        if (idRef.current !== requestId) return;
+        setActionError(e.message ?? 'Failed to load messages');
+      });
+  }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
 
   const pollForNewMessages = useCallback((): void => {
-    if (!issueData?.uid) return;
+    if (!issueData?.uid || !id || issueData.id !== +id) return;
+    const requestId = id;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
+        if (idRef.current !== requestId) return;
         const newCount = fetched.filter((m) => !visibleIdsRef.current.has(m.id)).length;
         if (newCount > 0) setPendingCount(newCount);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
-  }, [issueData?.uid, getIssueMessages]);
+      .catch((e: Error) => {
+        if (idRef.current !== requestId) return;
+        setActionError(e.message ?? 'Failed to load messages');
+      });
+  }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
 
   useEffect(() => {
     loadIssue();
@@ -151,14 +170,23 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     loadMessages();
   }, [loadMessages]);
 
-  // Clear send UI and an in-progress note draft when navigating to a different ticket.
+  // Clear send UI, an in-progress note draft, and the previous ticket's messages when navigating
+  // to a different ticket. The screen does not remount on :id change; leaving `messages` in place
+  // would paint ticket A's thread on route B until loadMessages returns (or forever if it fails).
   useEffect(() => {
     sendInFlight.current = false;
     setIsSending(false);
+    setIsUpdating(false);
     setSelectedFiles([]);
     setActionError(undefined);
     setNoteDraft(undefined);
     noteGenRef.current += 1;
+    setMessages([]);
+    setPendingCount(0);
+    setFilePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return undefined;
+    });
   }, [id]);
 
   // Reset cached UserData when the issue (and thus the account) changes
@@ -206,6 +234,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   async function handleUpdate(): Promise<void> {
     if (!id) return;
+    const requestId = id;
     setIsUpdating(true);
     setActionError(undefined);
     try {
@@ -214,11 +243,13 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         department: updateDepartment || undefined,
         clerk: updateClerk || undefined,
       });
+      if (idRef.current !== requestId) return;
       loadIssue();
     } catch (e: unknown) {
+      if (idRef.current !== requestId) return;
       setActionError(e instanceof Error ? e.message : 'Update failed');
     } finally {
-      setIsUpdating(false);
+      if (idRef.current === requestId) setIsUpdating(false);
     }
   }
 
@@ -300,32 +331,41 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }
 
   async function openFile(msg: SupportMessageInfo): Promise<void> {
-    if (!issueData?.uid || !msg.fileName) return;
+    if (!issueData?.uid || !msg.fileName || !id) return;
+    const requestId = id;
     try {
       const { data, contentType } = await getMessageFile(issueData.uid, msg.id, 'View');
+      if (idRef.current !== requestId) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
       }
-      if (filePreview) URL.revokeObjectURL(filePreview.url);
+      setFilePreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return undefined;
+      });
       const blob = new Blob([new Uint8Array(data.data)], { type: contentType });
       const url = URL.createObjectURL(blob);
       setFilePreview({ url, contentType, name: msg.fileName, messageId: msg.id });
     } catch (e: unknown) {
+      if (idRef.current !== requestId) return;
       setActionError(e instanceof Error ? e.message : 'Error loading file');
     }
   }
 
   async function downloadPreview(): Promise<void> {
-    if (!issueData?.uid || !filePreview) return;
+    if (!issueData?.uid || !filePreview || !id) return;
+    const requestId = id;
     try {
       const { data, contentType } = await getMessageFile(issueData.uid, filePreview.messageId, 'Download');
+      if (idRef.current !== requestId) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
       }
       saveBufferedFile(data, contentType, filePreview.name);
     } catch (e: unknown) {
+      if (idRef.current !== requestId) return;
       setActionError(e instanceof Error ? e.message : 'Error downloading file');
     }
   }
@@ -339,7 +379,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const unresolvedInMessage = useMemo(() => detectPlaceholders(messageText), [messageText]);
 
   if (loadError) return <ErrorHint message={loadError} />;
-  if (isLoading || !issueData) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
+  if (isLoading || !issueData || !id || issueData.id !== +id)
+    return <StyledLoadingSpinner size={SpinnerSize.LG} />;
 
   return (
     <div ref={containerRef} className="w-full flex text-left">
@@ -591,7 +632,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             ref={messagesContainerRef}
             className="flex flex-col gap-2 max-h-[40vh] overflow-auto mb-4 p-2 scroll-shadow"
           >
-            <SupportMessageList messages={messages} onOpenFile={(msg) => openFile(msg as SupportMessageInfo)} />
+            <SupportMessageList
+              key={id}
+              messages={messages}
+              onOpenFile={(msg) => openFile(msg as SupportMessageInfo)}
+            />
           </div>
 
           {/* Message Input */}
