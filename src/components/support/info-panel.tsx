@@ -75,14 +75,18 @@ export interface SupportMessageListItem {
 }
 
 // Read-only message thread (bubbles), no composer. `onOpenFile` is optional: when omitted, file links are not
-// rendered (read-only dossier) and neither is the "transfer to KYC file" action that sits next to them. Ordering mirrors the DFX support-issue screen (by message id) and falls back to the
-// created timestamp when ids are absent, so a DFX thread renders byte-for-byte identically to before extraction.
+// rendered (read-only dossier). The "transfer to KYC file" action is a separate opt-in (`enableKycTransfer`) so
+// writable RealUnit tickets can keep file links without inheriting the DFX KYC-file transfer. Ordering mirrors
+// the DFX support-issue screen (by message id) and falls back to the created timestamp when ids are absent, so a
+// DFX thread renders byte-for-byte identically to before extraction.
 export function SupportMessageList({
   messages,
   onOpenFile,
+  enableKycTransfer,
 }: {
   messages: SupportMessageListItem[];
   onOpenFile?: (msg: SupportMessageListItem) => void;
+  enableKycTransfer?: boolean;
 }): JSX.Element {
   const sorted = [...messages].sort(
     (a, b) => (a.id ?? 0) - (b.id ?? 0) || new Date(a.created).getTime() - new Date(b.created).getTime(),
@@ -119,7 +123,7 @@ export function SupportMessageList({
                   {msg.fileName}
                 </button>
               )}
-              {msg.fileName && onOpenFile && <KycFileTransfer message={msg} />}
+              {enableKycTransfer && msg.fileName && onOpenFile && <KycFileTransfer message={msg} />}
             </div>
           </div>
         );

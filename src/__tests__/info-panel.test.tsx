@@ -118,12 +118,20 @@ describe('SupportMessageList', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers the KYC file transfer only next to a file link, and only with an onOpenFile handler', () => {
+  it('offers the KYC file transfer only next to a file link, and only with onOpenFile and enableKycTransfer', () => {
     const withFile = { id: 1, author: 'Customer', fileName: 'ausweis.pdf', created: '2026-09-01' };
     const withoutFile = { id: 2, author: 'Customer', message: 'Text', created: '2026-09-02' };
 
     const { rerender } = render(<SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} />);
+    expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
+
+    rerender(
+      <SupportMessageList messages={[withFile, withoutFile]} onOpenFile={jest.fn()} enableKycTransfer />,
+    );
     expect(screen.getAllByTestId('kyc-file-transfer').map((el) => el.textContent)).toEqual(['ausweis.pdf']);
+
+    rerender(<SupportMessageList messages={[withFile, withoutFile]} enableKycTransfer />);
+    expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
 
     rerender(<SupportMessageList messages={[withFile, withoutFile]} />);
     expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();

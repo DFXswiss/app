@@ -591,7 +591,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             ref={messagesContainerRef}
             className="flex flex-col gap-2 max-h-[40vh] overflow-auto mb-4 p-2 scroll-shadow"
           >
-            <SupportMessageList messages={messages} onOpenFile={(msg) => openFile(msg as SupportMessageInfo)} />
+            <SupportMessageList
+              messages={messages}
+              onOpenFile={(msg) => openFile(msg as SupportMessageInfo)}
+              enableKycTransfer
+            />
           </div>
 
           {/* Message Input */}

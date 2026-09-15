@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 
-// What the KYC file accepts (DFXswiss/backend KycDocumentService.isPermittedFileType). Anything else
+// What the KYC file accepts (`KycDocumentService.isPermittedFileType`). Anything else
 // stays in the ticket; the customer has to resend it as PDF.
 export const TRANSFERABLE_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
 
@@ -13,7 +13,7 @@ const TRANSFER_ROLES: string[] = [UserRole.ADMIN, UserRole.COMPLIANCE];
 
 const UMLAUTS: Record<string, string> = { ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' };
 
-// Mirrors SupportKycFileService.toKycFileName in DFXswiss/backend: the descriptive part of the stored
+// Mirrors SupportKycFileService.toKycFileName: the descriptive part of the stored
 // file name is the title, made file-safe. Shown as a preview so the clerk sees what the file will be
 // called before the (write-once) transfer.
 export function toKycFileSlug(title: string): string {
