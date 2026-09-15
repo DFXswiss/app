@@ -19,7 +19,7 @@ import {
   StyledLoadingSpinner,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import QRCode from 'react-qr-code';
 import { useLocation } from 'react-router-dom';
@@ -53,7 +53,6 @@ export default function TfaScreen(): JSX.Element {
   const [tokenInvalid, setTokenInvalid] = useState(false);
 
   const [setupInfo, setSetupInfo] = useState<TfaSetup>();
-  const cancelledRef = useRef(false);
 
   const params = new URLSearchParams(search);
   const urlCode = params.get('code');
@@ -67,10 +66,28 @@ export default function TfaScreen(): JSX.Element {
   useUserGuard('/login', isSessionMode || !kycCode);
 
   useEffect(() => {
-    cancelledRef.current = false;
+    // Local per-run flag, not a ref: a ref shared across effect re-runs would be reset to
+    // false by a newer run while an older run's request is still in flight, un-cancelling it.
+    let cancelled = false;
+
+    async function load(): Promise<void> {
+      if (!isSessionMode && !kycCode) return;
+      return (isSessionMode ? authSetup2fa(tfaLevel) : kycSetup2fa(kycCode as string, tfaLevel))
+        .then(setSetupInfo)
+        .catch((error: ApiError) => {
+          if (cancelled) return;
+          if (handleMergedError(error)) return;
+          if (error.message !== '2FA already set up') {
+            setError(error.message ?? 'Unknown error');
+          }
+        })
+        .finally(() => setIsLoading(false));
+    }
+
     load();
+
     return () => {
-      cancelledRef.current = true;
+      cancelled = true;
     };
   }, [isSessionMode, kycCode]);
 
@@ -83,20 +100,6 @@ export default function TfaScreen(): JSX.Element {
   const rules = Utils.createRules({
     token: [Validations.Required, Validations.Custom((v: string) => (v?.length === 6 ? true : 'pattern'))],
   });
-
-  async function load(): Promise<void> {
-    if (!isSessionMode && !kycCode) return;
-    return (isSessionMode ? authSetup2fa(tfaLevel) : kycSetup2fa(kycCode as string, tfaLevel))
-      .then(setSetupInfo)
-      .catch((error: ApiError) => {
-        if (cancelledRef.current) return;
-        if (handleMergedError(error)) return;
-        if (error.message !== '2FA already set up') {
-          setError(error.message ?? 'Unknown error');
-        }
-      })
-      .finally(() => setIsLoading(false));
-  }
 
   async function onSubmit(data: { token: string }) {
     setError(undefined);

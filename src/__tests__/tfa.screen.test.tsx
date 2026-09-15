@@ -131,6 +131,26 @@ describe('TfaScreen handleMergedError', () => {
     expect(mockHandleMergedError).toHaveBeenCalledWith(error);
   });
 
+  it('setup2fa/load catch: does not call handleMergedError for a response that arrives after unmount', async () => {
+    const error = { statusCode: 401, switchToCode: 'MASTER', message: 'unauthorized' };
+    let rejectSetup2fa: (e: unknown) => void = () => undefined;
+    mockKycSetup2fa.mockReturnValue(
+      new Promise((_, reject) => {
+        rejectSetup2fa = reject;
+      }),
+    );
+
+    const { unmount } = render(<TfaScreen />);
+    unmount();
+
+    await act(async () => {
+      rejectSetup2fa(error);
+      await Promise.resolve();
+    });
+
+    expect(mockHandleMergedError).not.toHaveBeenCalled();
+  });
+
   it('verify2fa/onSubmit catch: handleMergedError true skips setError', async () => {
     mockKycSetup2fa.mockResolvedValue({ type: 'Mail', secret: '', uri: '' });
     const error = { statusCode: 401, switchToCode: 'MASTER', message: 'unauthorized' };

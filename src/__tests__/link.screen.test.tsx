@@ -116,6 +116,25 @@ describe('LinkScreen handleMergedError', () => {
     expect(mockHandleMergedError).toHaveBeenCalledWith(mergeError);
   });
 
+  it('getKycInfo catch: does not call handleMergedError for a response that arrives after unmount', async () => {
+    let rejectGetKycInfo: (e: unknown) => void = () => undefined;
+    mockGetKycInfo.mockReturnValue(
+      new Promise((_, reject) => {
+        rejectGetKycInfo = reject;
+      }),
+    );
+
+    const { unmount } = render(<LinkScreen />);
+    unmount();
+
+    await act(async () => {
+      rejectGetKycInfo(mergeError);
+      await Promise.resolve();
+    });
+
+    expect(mockHandleMergedError).not.toHaveBeenCalled();
+  });
+
   it('continueKyc catch: handleMergedError true skips setError', async () => {
     mockGetKycInfo.mockResolvedValue({ kycLevel: 0 });
     mockContinueKyc.mockRejectedValue(mergeError);

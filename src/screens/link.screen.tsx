@@ -25,7 +25,7 @@ import {
   StyledLoadingSpinner,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { ErrorHint } from '../components/error-hint';
 import { useSettingsContext } from '../contexts/settings.context';
@@ -48,39 +48,40 @@ export default function LinkScreen(): JSX.Element {
   const [showLinkHint, setShowLinkHint] = useState(false);
 
   const kycCode = user?.kyc.hash;
-  const cancelledRef = useRef(false);
 
   useEffect(() => {
     if (!kycCode) return;
-    cancelledRef.current = false;
+    // Local per-run flag, not a ref: a ref shared across effect re-runs would be reset to
+    // false by a newer run while an older run's request is still in flight, un-cancelling it.
+    let cancelled = false;
+
+    function handleInitial(info: KycInfo) {
+      if (info.kycLevel > 0 || !kycCode) {
+        goBack();
+      } else {
+        return continueKyc(kycCode, false)
+          .then(handleReload)
+          .catch((error: ApiError) => {
+            if (cancelled) return;
+            if (handleMergedError(error)) return;
+            setError(error.message ?? 'Unknown error');
+          });
+      }
+    }
 
     getKycInfo(kycCode)
       .then(handleInitial)
       .catch((error: ApiError) => {
-        if (cancelledRef.current) return;
+        if (cancelled) return;
         if (handleMergedError(error)) return;
         setError(error.message ?? 'Unknown error');
       })
       .finally(() => setIsLoading(false));
 
     return () => {
-      cancelledRef.current = true;
+      cancelled = true;
     };
   }, [kycCode]);
-
-  function handleInitial(info: KycInfo) {
-    if (info.kycLevel > 0 || !kycCode) {
-      goBack();
-    } else {
-      return continueKyc(kycCode, false)
-        .then(handleReload)
-        .catch((error: ApiError) => {
-          if (cancelledRef.current) return;
-          if (handleMergedError(error)) return;
-          setError(error.message ?? 'Unknown error');
-        });
-    }
-  }
 
   function handleReload(info: KycSession) {
     if (info.kycLevel === KycLevel.Link) {

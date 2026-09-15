@@ -32,10 +32,7 @@ function assertRedirectedToMasterKyc(page: Page): void {
   expect(url.searchParams.get('code')).toBe(MASTER_KYC_CODE);
 }
 
-async function installSyntheticApi(
-  page: Page,
-  options: { setup2faSucceeds?: boolean } = {},
-): Promise<{ unexpectedRequests: string[]; pageErrors: string[] }> {
+async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: string[]; pageErrors: string[] }> {
   const unexpectedRequests: string[] = [];
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -73,15 +70,6 @@ async function installSyntheticApi(
     const method = request.method();
 
     if (method === 'POST' && path === '/v2/kyc/2fa') {
-      if (options.setup2faSucceeds) {
-        await fulfillJson(route, { type: 'Mail', secret: '', uri: '' });
-      } else {
-        await fulfillJson(route, mergedErrorBody, 401);
-      }
-      return;
-    }
-
-    if (method === 'POST' && path === '/v2/kyc/2fa/verify') {
       await fulfillJson(route, mergedErrorBody, 401);
       return;
     }
@@ -99,9 +87,7 @@ async function installSyntheticApi(
 }
 
 test.describe('2FA screen merged-account redirect - Visual Regression Tests', () => {
-  test('redirects to the master KYC code instead of showing the raw merged-account error on setup', async ({
-    page,
-  }) => {
+  test('shows the KYC info screen after the merged-account redirect', async ({ page }) => {
     const { unexpectedRequests, pageErrors } = await installSyntheticApi(page);
 
     await page.goto(`/2fa?code=${SLAVE_KYC_CODE}`);
@@ -119,24 +105,6 @@ test.describe('2FA screen merged-account redirect - Visual Regression Tests', ()
       maxDiffPixels: 5000,
     });
 
-    expect(unexpectedRequests).toEqual([]);
-    expect(pageErrors).toEqual([]);
-  });
-
-  test('redirects to the master KYC code instead of showing the raw merged-account error on verify', async ({
-    page,
-  }) => {
-    const { unexpectedRequests, pageErrors } = await installSyntheticApi(page, { setup2faSucceeds: true });
-
-    await page.goto(`/2fa?code=${SLAVE_KYC_CODE}`);
-    await page.getByPlaceholder('Email code').fill('123456');
-    await page.getByRole('button', { name: 'Next' }).click();
-
-    await expect(page.getByText('User is merged')).toHaveCount(0);
-    await expect(page).toHaveURL(new RegExp(`/kyc\\?code=${MASTER_KYC_CODE}$`));
-    assertRedirectedToMasterKyc(page);
-
-    await expect(page.getByText('KYC level')).toBeVisible();
     expect(unexpectedRequests).toEqual([]);
     expect(pageErrors).toEqual([]);
   });

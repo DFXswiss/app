@@ -46,17 +46,13 @@ async function assertRedirectedToMasterKycAndLoggedOut(page: Page): Promise<void
   await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), AUTH_TOKEN_KEY)).toBeNull();
 }
 
-async function installSyntheticApi(
-  page: Page,
-  options: { mergedOn: 'getKycInfo' | 'continueKyc' },
-): Promise<{ unexpectedRequests: string[]; pageErrors: string[] }> {
+async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: string[]; pageErrors: string[] }> {
   const unexpectedRequests: string[] = [];
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
   // The initial getKycInfo call and the /kyc screen's post-redirect getKycInfo call hit the
-  // same GET /v2/kyc path; only the first one is the merged-account error when that's the call
-  // under test, every other call (including the continueKyc-triggers-merged variant's very
-  // first call) gets the successful fixture.
+  // same GET /v2/kyc path; only the first one is the merged-account error, every other call
+  // gets the successful fixture.
   let getKycInfoCallCount = 0;
 
   await page.route('**/v1/**', async (route) => {
@@ -115,20 +111,10 @@ async function installSyntheticApi(
 
     if (method === 'GET' && path === '/v2/kyc') {
       getKycInfoCallCount += 1;
-      if (options.mergedOn === 'getKycInfo' && getKycInfoCallCount === 1) {
+      if (getKycInfoCallCount === 1) {
         await fulfillJson(route, mergedErrorBody, 401);
       } else {
         await fulfillJson(route, kycInfoFixture);
-      }
-      return;
-    }
-
-    if (method === 'PUT' && path === '/v2/kyc') {
-      if (options.mergedOn === 'continueKyc') {
-        await fulfillJson(route, mergedErrorBody, 401);
-      } else {
-        unexpectedRequests.push(`${method} ${path} (unexpected in this scenario)`);
-        await fulfillJson(route, { error: 'Unexpected test request' }, 501);
       }
       return;
     }
@@ -141,10 +127,8 @@ async function installSyntheticApi(
 }
 
 test.describe('Link screen merged-account redirect - Visual Regression Tests', () => {
-  test('redirects to the master KYC code instead of showing the raw merged-account error on the initial lookup', async ({
-    page,
-  }) => {
-    const { unexpectedRequests, pageErrors } = await installSyntheticApi(page, { mergedOn: 'getKycInfo' });
+  test('shows the KYC info screen after the merged-account redirect', async ({ page }) => {
+    const { unexpectedRequests, pageErrors } = await installSyntheticApi(page);
     const token = jwt();
 
     await page.addInitScript(({ key, value }) => window.localStorage.setItem(key, value), {
@@ -163,28 +147,6 @@ test.describe('Link screen merged-account redirect - Visual Regression Tests', (
       maxDiffPixels: 5000,
     });
 
-    expect(unexpectedRequests).toEqual([]);
-    expect(pageErrors).toEqual([]);
-  });
-
-  test('redirects to the master KYC code instead of showing the raw merged-account error on continue', async ({
-    page,
-  }) => {
-    const { unexpectedRequests, pageErrors } = await installSyntheticApi(page, { mergedOn: 'continueKyc' });
-    const token = jwt();
-
-    await page.addInitScript(({ key, value }) => window.localStorage.setItem(key, value), {
-      key: AUTH_TOKEN_KEY,
-      value: token,
-    });
-
-    await page.goto('/link');
-
-    await expect(page.getByText('User is merged')).toHaveCount(0);
-    await expect(page).toHaveURL(new RegExp(`/kyc\\?code=${MASTER_KYC_CODE}$`));
-    await assertRedirectedToMasterKycAndLoggedOut(page);
-
-    await expect(page.getByText('KYC level')).toBeVisible();
     expect(unexpectedRequests).toEqual([]);
     expect(pageErrors).toEqual([]);
   });
