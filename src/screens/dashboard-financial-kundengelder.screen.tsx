@@ -117,10 +117,8 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
       });
   }
 
-  function exportCsv(): void {
-    if (!extract) return;
-
-    const rows = extract.accounts.flatMap((account) =>
+  function exportCsv(data: KundengelderExtract): void {
+    const rows = data.accounts.flatMap((account) =>
       account.lines.map((line) => [
         account.name,
         account.key,
@@ -172,7 +170,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
             width={StyledButtonWidth.MIN}
             color={StyledButtonColor.STURDY_WHITE}
             disabled={csvDisabled}
-            onClick={exportCsv}
+            onClick={extract ? () => exportCsv(extract) : undefined}
           />
         </div>
       </div>

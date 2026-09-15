@@ -92,7 +92,10 @@ export function waitForFinancialDestinationRequests(page: Page, path: string): P
   return Promise.all(
     parts.map((part) =>
       page.waitForResponse(
-        (r) => r.request().method() === 'GET' && matchesFinancialGet(r.url(), part),
+        (r) =>
+          r.request().method() === 'GET' &&
+          r.request().resourceType() !== 'document' &&
+          matchesFinancialGet(r.url(), part),
         { timeout: 15000 },
       ),
     ),
