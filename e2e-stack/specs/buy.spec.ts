@@ -564,19 +564,20 @@ test.describe('Buy flow', () => {
     const user = await openQuoteCapableBuy(page, 'buy-409-replay');
 
     // Identify the exact-price PUT /buy/paymentInfos response by its own request payload
-    // (exactPrice: true) rather than by counting or ordering responses — two separate
-    // page.on('response') handler invocations are not guaranteed to resolve their res.json()
-    // in request-dispatch order, even though the underlying HTTP requests are proven sequential
-    // (buy.screen.tsx's two-phase receiveFor calls: the exact-price call only dispatches inside
-    // the .then() of the provisional call).
+    // (exactPrice: true AND amount === 100) rather than by counting or ordering responses.
+    // Pinning the amount too also rules out a still-settling default quote cycle from
+    // openQuoteCapableBuy's bare /buy navigation (that cycle quotes the default amount 300,
+    // not this test's 100 — see the sibling '/buy: default spend amount stays 300 after quote
+    // settlement' test, which needs its own extra wait for exactly this reason).
     const exactPriceResponsePromise = page.waitForResponse(
-      (r) =>
-        r.request().method() === 'PUT' &&
-        r.url().includes('/buy/paymentInfos') &&
-        !r.url().includes('/confirm') &&
-        !r.url().includes('/invoice') &&
-        r.ok() &&
-        r.request().postDataJSON()?.exactPrice === true,
+      (r) => {
+        if (r.request().method() !== 'PUT') return false;
+        if (!r.url().includes('/buy/paymentInfos')) return false;
+        if (r.url().includes('/confirm') || r.url().includes('/invoice')) return false;
+        if (!r.ok()) return false;
+        const body = r.request().postDataJSON();
+        return body?.exactPrice === true && Number(body?.amount) === 100;
+      },
       { timeout: 45000 },
     );
 
