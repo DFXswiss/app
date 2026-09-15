@@ -1,5 +1,6 @@
 {
   "general/actions": {
+    "Loading": "Chargement",
     "Select": "Choisir",
     "Search": "Recherche",
     "Start": "Lancer",
