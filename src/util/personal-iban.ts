@@ -5,6 +5,7 @@ import {
   VirtualIban,
   VirtualIbanStatus,
 } from '@dfx.swiss/react';
+import { allowedParamsOnly, EXTERNAL_LOGIN_ALLOWED_PARAMS } from './redirect-params';
 
 /** Bank Frick personal-IBAN accounts are held by DFX AG (routing sub-account), never the customer. */
 export const FRICK_BANK_NAME = 'Bank Frick';
@@ -297,17 +298,9 @@ export function toCollectionIbanGiroCode(
   return lines.join('\n');
 }
 
-/**
- * Allowlist for external-login callbacks: only forward an explicitly present `personal-iban`.
- * Do not copy the entire live search (would leak `user`, `arbitrary`, etc.).
- */
+/** External-login allowlist; see EXTERNAL_LOGIN_ALLOWED_PARAMS in redirect-params.ts. */
 export function personalIbanOnlyParams(search: string): URLSearchParams {
-  const params = new URLSearchParams();
-  const personalIban = new URLSearchParams(search).get('personal-iban');
-  if (personalIban != null) {
-    params.set('personal-iban', personalIban);
-  }
-  return params;
+  return allowedParamsOnly(search, EXTERNAL_LOGIN_ALLOWED_PARAMS);
 }
 
 /**
