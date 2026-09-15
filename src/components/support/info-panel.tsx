@@ -1,5 +1,6 @@
 import { CustomerAuthor } from 'src/hooks/support-dashboard.hook';
 import { formatDateTime } from 'src/util/compliance-helpers';
+import { KycFileTransfer } from './kyc-file-transfer';
 
 // Presentational info/chat building blocks, extracted verbatim from support-dashboard-issue.screen.tsx so both the
 // DFX support-issue screen and the read-only RealUnit compliance/support screens can share them. InfoPanel/InfoRow/
@@ -69,10 +70,12 @@ export interface SupportMessageListItem {
   message?: string;
   fileName?: string;
   created: string;
+  kycFileId?: number;
+  kycFileName?: string;
 }
 
 // Read-only message thread (bubbles), no composer. `onOpenFile` is optional: when omitted, file links are not
-// rendered (read-only dossier). Ordering mirrors the DFX support-issue screen (by message id) and falls back to the
+// rendered (read-only dossier) and neither is the "transfer to KYC file" action that sits next to them. Ordering mirrors the DFX support-issue screen (by message id) and falls back to the
 // created timestamp when ids are absent, so a DFX thread renders byte-for-byte identically to before extraction.
 export function SupportMessageList({
   messages,
@@ -116,6 +119,7 @@ export function SupportMessageList({
                   {msg.fileName}
                 </button>
               )}
+              {msg.fileName && onOpenFile && <KycFileTransfer message={msg} />}
             </div>
           </div>
         );
