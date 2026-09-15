@@ -77,11 +77,11 @@ describe('support-helpers customer waiting', () => {
     ).toBeCloseTo(5);
   });
 
-  it('returns null when we replied last (timer resets on author flip) or there are no messages', () => {
+  it('returns null when we or the bot replied last (timer resets on author flip) or there are no messages', () => {
     expect(customerWaitingHours(issue({ lastMessageAuthor: 'Josh', lastMessageDate: hoursAgo(40) }), NOW)).toBeNull();
     expect(
       customerWaitingHours(issue({ lastMessageAuthor: 'AutoResponder', lastMessageDate: hoursAgo(2) }), NOW),
-    ).toBeCloseTo(2, 5);
+    ).toBeNull();
     expect(customerWaitingHours(issue({ messageCount: 0 }), NOW)).toBeNull();
     expect(customerWaitingHours(issue({ lastMessageAuthor: 'Customer', lastMessageDate: undefined }), NOW)).toBeNull();
   });
@@ -278,15 +278,24 @@ describe('groupOpenIssues', () => {
     expect(groups.answered.map((i) => i.id)).toEqual([2, 1]);
   });
 
-  it('treats a bot auto-response and a ticket without any message as still awaiting a human reply', () => {
+  it('counts a bot auto-response as an answer and a ticket without any message as awaiting a reply', () => {
     const groups = groupOpenIssues([
       issue({ id: 1, lastMessageAuthor: 'AutoResponder', lastMessageDate: '2026-08-30T11:00:00Z' }),
       issue({ id: 2, lastMessageAuthor: 'Jana', lastMessageDate: '2026-08-31T09:00:00Z' }),
       issue({ id: 3, created: '2026-08-29T10:00:00Z', lastMessageAuthor: undefined, messageCount: 0 }),
     ]);
 
-    expect(groups.needsReply.map((i) => i.id)).toEqual([1, 3]);
-    expect(groups.answered.map((i) => i.id)).toEqual([2]);
+    expect(groups.needsReply.map((i) => i.id)).toEqual([3]);
+    expect(groups.answered.map((i) => i.id)).toEqual([2, 1]);
+  });
+
+  it('brings a bot-answered ticket back once the customer writes again', () => {
+    const groups = groupOpenIssues([
+      issue({ id: 1, lastMessageAuthor: 'Customer', lastMessageDate: '2026-08-30T12:00:00Z', messageCount: 3 }),
+    ]);
+
+    expect(groups.needsReply.map((i) => i.id)).toEqual([1]);
+    expect(groups.answered).toEqual([]);
   });
 
   it('falls back to the creation date for tickets without a message', () => {

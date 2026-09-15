@@ -1,4 +1,5 @@
 import { Asset, AssetType } from '@dfx.swiss/react';
+import { WalletReadyState } from '@solana/wallet-adapter-base';
 import { TrustWalletAdapter } from '@solana/wallet-adapter-trust';
 import BigNumber from 'bignumber.js';
 import { encodeBase58 } from 'ethers';
@@ -22,7 +23,7 @@ export function useTrustSol(): TrustInterface {
   }
 
   function isInstalled(): boolean {
-    return (window as any).ethereum?.isTrustWallet;
+    return wallet.readyState === WalletReadyState.Installed;
   }
 
   async function connect(): Promise<string> {

@@ -10,12 +10,12 @@ built yet; nothing here may describe a capability as existing when it does not.
 
 ## The layers this repository owns
 
-| Layer              | Location                        | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                          |
-| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts skip unless `ci`/`ci:full`; suite full / related / none                      |
-| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (non-draft PRs that touch handbook paths)                     |
-| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts skip unless `ci`/`ci:full`; stack only with `ci:full` / main / bare dispatch |
-| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                           | no                                                                                  |
+| Layer              | Location                        | What it proves                                                               | What it cannot prove                                               | Runs in CI                                                                                       |
+| ------------------ | ------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Unit               | `src/`                          | the logic of a component, hook or utility, with its surroundings replaced    | that any two parts fit together                                    | drafts run (forks may wait as `action_required`); suite full / related / none                    |
+| Handbook deep-link | `scripts/handbook/deep-link.js` | `?shot=` / `?group=` / hash isolate one handbook card in a fake document     | the browser after Basic Auth, or that nginx serves the query       | `handbook-check.yaml` (drafts that touch handbook paths; Ready does not start CI)                |
+| Full-stack E2E     | `e2e-stack/`                    | the seam between frontend, API and database: screens, contracts, persistence | any money movement — every process-gated job is off during the run | drafts run (job `mode=none` without `ci:full`); stack only with `ci:full` / main / bare dispatch |
+| Visual regression  | `e2e/`                          | appearance against committed screenshot baselines                            | function                                                           | no                                                                                               |
 
 The processing chain behind the API — incoming transfers, AML, purchase calculation, liquidity,
 payout, ledger booking — is **not** testable from this repository. It belongs to the integration
@@ -217,6 +217,26 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   It does not prove that a live account has those kyc fields, that those bootstrap
   endpoints return real data, that `updateCallSettings` persists, or that
   Completed/Failed hide the section.
+- **The settings Danger Zone visual spec answers GET /v2/user itself.**
+  `e2e/settings-danger-zone.spec.ts` fulfils `/v2/user` with a synthetic kyc payload
+  (`phoneCallStatus: 'Completed'`) and fulfils the Settings bootstrap GETs
+  (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner`) plus user PUT/PATCH. Unmatched `/v1/**` and `/v2/**` calls
+  get `501`. The session is a synthetic unsigned JWT, so a green run does not prove
+  login or token verification. A green run proves the collapsed, expanded and overlay
+  fixtures render. It does not prove that those bootstrap endpoints return real data,
+  that a live account has that kyc status, or that `deleteAccount` persists against
+  the API.
+- **The info-banner layout visual spec answers GET /v1/setting/infoBanner itself.**
+  `e2e/info-banner-layout.spec.ts` fulfils `/v1/setting/infoBanner` with synthetic
+  multilingual copy, fulfils `GET /v1/support/issue` with one fixture ticket, and
+  fulfils the Support bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`,
+  `/v1/bankAccount`, `/v1/country`, `/v2/user`). Unmatched `/v1/**` and `/v2/**`
+  calls get `501`. The session is a synthetic unsigned JWT, so a green run does not
+  prove login or token verification. A green run proves the banner renders below
+  the header on `/support` and `/support/tickets`. It does not prove that the API
+  returns that banner copy, that those bootstrap endpoints return real data, or
+  that a live account has that ticket.
 - **Full-stack screen-sync regressions hold delivery of real API responses.**
   `e2e-stack/specs/screen-sync.spec.ts` intercepts `GET /v2/kyc/file/:id` and
   `GET /v1/dashboard/financial/latest`, calls `route.fetch()` against the real API, then

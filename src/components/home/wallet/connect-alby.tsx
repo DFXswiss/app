@@ -19,7 +19,7 @@ import { Account, ConnectContentProps, ConnectError, ConnectProps } from '../con
 
 export default function ConnectAlby(props: ConnectProps): JSX.Element {
   const { redirectPath, params: appParams } = useAppHandlingContext();
-  const { isInstalled, enable, signMessage } = useAlby();
+  const { isAvailable, enable, signMessage } = useAlby();
 
   async function getAccount(): Promise<Account> {
     const account = await enable();
@@ -64,7 +64,7 @@ export default function ConnectAlby(props: ConnectProps): JSX.Element {
 
   return (
     <ConnectBase
-      isSupported={isInstalled}
+      isSupported={isAvailable}
       getAccount={getAccount}
       signMessage={(msg) => signMessage(msg)}
       renderContent={Content}

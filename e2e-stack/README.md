@@ -121,13 +121,13 @@ The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (ov
 
 The suite under `e2e/` is visual-regression testing (screenshot baselines). It deliberately does not run in CI, because baselines are platform- and font-dependent.
 
-This harness checks function, not appearance. Draft PRs skip the CI job unless
-they carry `ci` or `ci:full`; a same-repo ready requests it once and does not
-start a second run when that label is already present. A develop PR without
-`ci:full` records `mode=none` and does not bring the stack up. There is no
-selected/partial mode: `ci:full`, PRs into `main`, and a bare
-`workflow_dispatch` (empty `base_ref`) force a full run. Both suites exist
-side by side and serve different purposes.
+This harness checks function, not appearance. Draft pull requests run the
+job (GitHub may hold fork runs as `action_required`). Ready does not start
+CI. After a fresh A38 enforce pass, `dfx pr guard` approves those waiting
+initial runs. A develop PR without `ci:full` records `mode=none` and does
+not bring the stack up. There is no selected/partial mode: `ci:full`, PRs
+into `main`, and a bare `workflow_dispatch` (empty `base_ref`) force a full
+run. Both suites exist side by side and serve different purposes.
 
 ## Relationship with the API repository
 

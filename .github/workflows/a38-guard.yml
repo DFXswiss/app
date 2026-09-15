@@ -1,0 +1,49 @@
+# A38 report guard — trusted-base audit of the author-measured local CI report.
+# Does NOT check out the pull request. Does NOT execute scripts from the PR.
+# The composite action is pinned to a full commit SHA of DFXswiss/agent.
+# Merge this installation onto the default branch to activate it.
+
+name: dfx pr guard
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+  issue_comment:
+    types: [created, edited, deleted]
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to reconcile
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  statuses: write
+  actions: write
+  checks: read
+
+concurrency:
+  group: a38-guard-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: dfx pr guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # No actions/checkout of the PR. The composite action loads trusted code
+      # from its own action_path (DFXswiss/agent) and reads the base manifest
+      # / head workflow YAML via the GitHub API as data only.
+      - name: dfx pr guard
+        uses: DFXswiss/agent/.github/actions/a38-guard@c4a88edb023d1d837d9eaf31253f7282d9985204
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          pr: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
+          all_open: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.pr_number == '') }}

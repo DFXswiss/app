@@ -36,10 +36,8 @@ export function daysSince(date: string | Date, now: Date = new Date()): number {
 }
 
 // Hours the customer has been waiting for a reply, or null if the ball is on our side
-// (we answered last, or there are no messages yet). The clock restarts on every
+// (we or the bot answered last, or there are no messages yet). The clock restarts on every
 // customer message because `lastMessageDate` always points at the latest message.
-// A bot auto-response keeps the ticket waiting; its timestamp is then used as a close
-// approximation of the customer's message (the bot answers within minutes).
 export function customerWaitingHours(issue: SupportIssueListItem, now: Date = new Date()): number | null {
   if (!needsReply(issue) || !issue.lastMessageDate) return null;
   return hoursSince(issue.lastMessageDate, now);
@@ -57,20 +55,16 @@ export function formatElapsed(hours: number): string {
 // --- Open-ticket grouping ---
 
 export interface OpenIssueGroups {
-  needsReply: SupportIssueListItem[]; // the customer (or only the bot) wrote last: our turn
-  answered: SupportIssueListItem[]; // a staff member wrote last: the customer's turn
+  needsReply: SupportIssueListItem[]; // the customer wrote last: our turn
+  answered: SupportIssueListItem[]; // a staff member or the bot wrote last: the customer's turn
 }
 
-// A ticket needs a human reply while the last message came from the customer or from the bot,
-// or while it has no message at all (a ticket a clerk opened, or an automatically filed limit
-// request). A fresh customer ticket starts with a customer message, so new tickets land here as
-// well; a bot auto-response does not count as an answer.
+// A ticket needs a reply while the last message came from the customer, or while it has no
+// message at all (a ticket a clerk opened, or an automatically filed limit request). A fresh
+// customer ticket starts with a customer message, so new tickets land here as well. A bot
+// auto-response counts as an answer: the ticket only comes back once the customer writes again.
 export function needsReply(issue: SupportIssueListItem): boolean {
-  return (
-    !issue.lastMessageAuthor ||
-    issue.lastMessageAuthor === CustomerAuthor ||
-    issue.lastMessageAuthor === AutoResponderAuthor
-  );
+  return !issue.lastMessageAuthor || issue.lastMessageAuthor === CustomerAuthor;
 }
 
 // A ticket nobody has picked up yet: no clerk, or only the bot (the backend stamps the bot as

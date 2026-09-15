@@ -1,11 +1,13 @@
 # PR check: build handbook image (no push) and run container smoke tests.
-# Draft PRs are skipped; ready_for_review re-triggers the check.
+# Drafts run this job when the path filter matches. GitHub may hold fork
+# runs as action_required; dfx pr guard approves them after an A38 enforce
+# pass. Ready does not start CI.
 
 name: Handbook Build Check
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened]
     paths:
       - 'e2e/screenshots/**'
       - 'scripts/handbook/**'
@@ -30,7 +32,6 @@ concurrency:
 jobs:
   build-and-smoke:
     name: Build handbook image + container smoke
-    if: github.event.pull_request.draft == false
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     steps:

@@ -9,31 +9,23 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: PR number when kicked by ci-on-ready (empty = manual full run)
+        description: PR number for a manual run (empty = manual full run)
         required: false
         type: string
       base_ref:
-        description: PR base branch when kicked by ci-on-ready
+        description: PR base branch for a manual run
         required: false
         type: string
 
-# Draft-skip runs must not share the working group: concurrency fires before
-# the job `if:` and would cancel a live Ready dispatch.
+# Drafts run this job. GitHub may hold fork runs as action_required; dfx pr
+# guard approves them after an A38 enforce pass. Ready does not start CI.
 concurrency:
-  group: codeql-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'ci:full')) && 'run' || 'skip' }}
+  group: codeql-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # Draft skip only: a skipped required check counts as passing, which is
-    # acceptable only because GitHub cannot merge a draft. Ready is handled
-    # exclusively by ci-on-ready.yaml. Never listen to ready_for_review here.
-    if: >
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.draft == false ||
-      contains(github.event.pull_request.labels.*.name, 'ci') ||
-      contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on: ubuntu-latest
     permissions:
       security-events: write

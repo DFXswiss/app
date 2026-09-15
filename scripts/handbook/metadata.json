@@ -127,9 +127,17 @@
     "title": "User-Flows",
     "description": "Übergreifende Nutzerflüsse der Services-App."
   },
+  "info-banner-layout": {
+    "title": "Info-Banner in der App",
+    "description": "CMS-Info-Banner auf Support sitzt in der Inhaltsspalte unter dem Header, nicht als Streifen darüber. Varianten: Support-Startseite und Ticket-Liste."
+  },
   "settings-verification-call": {
     "title": "Verifizierungsanruf (Settings)",
     "description": "Settings-Sektion Verifizierungsanruf: ungesetzte Einwilligung (Platzhalter Auswählen), Ja mit bevorzugter Anrufzeit, und Nein ohne Zeitauswahl. Die Sektion ist der Ort, an dem Kundinnen den Anruf erlauben oder ablehnen."
+  },
+  "settings-danger-zone": {
+    "title": "Gefahrenzone (Settings)",
+    "description": "Settings-Sektion Gefahrenzone: zugeklappt bleibt Konto löschen verborgen; aufgeklappt erscheinen der Hinweis zur zehnjährigen Aufbewahrung nach Schweizer Recht und der Lösch-Button; die Bestätigung zeigt denselben Hinweis."
   },
   "swap-process": {
     "title": "Swap-Prozess",
