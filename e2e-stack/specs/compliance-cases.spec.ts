@@ -547,4 +547,56 @@ test.describe('Compliance area (cases)', () => {
     );
     expect(ud.phoneCallStatus).toBe('Completed');
   });
+
+  // -------------------------------------------------------------------------
+  // /compliance/call-queues/:queue — Phone Call Times column (phone queues only)
+  // -------------------------------------------------------------------------
+
+  test('/compliance/call-queues/:queue shows the Phone Call Times column only in the phone queues', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffReady(userId, 'CallClerk');
+
+    const phoneCallTimes = 'H9To10;H10To11';
+    const entry = await createCallQueueEntry({
+      tag: 'cmp-callq-times',
+      phoneCallStatus: 'ManualCheck',
+      amlReason: 'ManualCheckPhone',
+      phoneCallTimes,
+    });
+
+    // Scope every header lookup to the queue table: the layout title repeats the queue name
+    // outside the table, and other tables on the page could carry the same column labels.
+    const queueTable = (): Locator =>
+      page.locator('table').filter({ has: page.getByRole('columnheader', { name: 'User', exact: true }) });
+
+    await openScreen(page, '/compliance/call-queues/ManualCheckPhone', jwt);
+    await expect(queueTable().getByRole('columnheader', { name: 'User', exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(queueTable().getByRole('columnheader', { name: 'Phone Call Times', exact: true })).toHaveCount(1);
+    const headers = await queueTable().getByRole('columnheader').allInnerTexts();
+    expect(headers.indexOf('Phone Call Times'), 'Phone Call Times sits directly before Date').toBe(headers.length - 2);
+    expect(headers[headers.length - 1]).toBe('Date');
+
+    const seededRow = queueTable()
+      .locator('tbody tr')
+      .filter({ hasText: String(entry.userDataId) })
+      .first();
+    await expect(seededRow, `seeded userDataId ${entry.userDataId} must be listed in ManualCheckPhone`).toBeVisible({
+      timeout: 15000,
+    });
+    const timesCell = seededRow.locator('td').nth(headers.length - 2);
+    // Declared in docs/test-architecture.md: until the API delivers CallQueueItem.phoneCallTimes
+    // (DFXswiss/backend#5542) the screen renders the "-" placeholder for the seeded value.
+    await expect(timesCell).toHaveText(new RegExp(`^(${phoneCallTimes}|-)$`));
+
+    await openScreen(page, '/compliance/call-queues/ManualCheckIpPhone', jwt);
+    await expect(queueTable().getByRole('columnheader', { name: 'User', exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(queueTable().getByRole('columnheader', { name: 'IP', exact: true })).toHaveCount(1);
+    await expect(queueTable().getByRole('columnheader', { name: 'Phone Call Times', exact: true })).toHaveCount(0);
+  });
 });

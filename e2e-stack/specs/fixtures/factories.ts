@@ -461,6 +461,8 @@ export interface CreateCallQueueEntryOptions {
   phoneCallStatus?: 'Unavailable' | 'Suspicious' | 'ManualCheck' | 'Failed' | 'Completed' | 'Repeat' | 'UserRejected';
   /** When set, also create a pending buy_crypto with this amlReason for the tx-based queues. */
   amlReason?: string;
+  /** Raw semicolon-separated preferred call slots written to user_data.phoneCallTimes (e.g. "H9To10;H10To11"). */
+  phoneCallTimes?: string;
   userDataId?: number;
   userId?: number;
   jwt?: string;
@@ -1600,6 +1602,7 @@ export async function createCallQueueEntry(
     phoneCallStatus,
     phoneCallCheckDate: new Date(),
     phone: '+41791112233',
+    ...(options.phoneCallTimes !== undefined && { phoneCallTimes: options.phoneCallTimes }),
   });
 
   let transactionId: number | undefined;
