@@ -24,7 +24,7 @@ interface ReviewRow {
 const ORDERED_REVIEW_ROWS: ReviewRow[] = [
   { type: PendingReviewType.BANK_DATA, name: 'BankData', tabKey: 'bankDataReview' },
   ...reviewTabs
-    .filter((t) => t.group === 'kyc' && t.stepName && t.stepName !== 'DfxApproval')
+    .filter((t) => t.group === 'kyc' && t.stepName !== 'DfxApproval')
     .map((t) => ({ type: PendingReviewType.KYC_STEP, name: t.stepName, tabKey: t.key })),
   ...EXTRA_STEPS_BEFORE_APPROVAL.map((name) => ({ type: PendingReviewType.KYC_STEP, name, tabKey: 'stammdaten' })),
   { type: PendingReviewType.KYC_STEP, name: 'DfxApproval', tabKey: 'freigabe' },
