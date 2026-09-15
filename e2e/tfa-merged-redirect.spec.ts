@@ -110,6 +110,10 @@ test.describe('2FA screen merged-account redirect - Visual Regression Tests', ()
     await expect(page).toHaveURL(new RegExp(`/kyc\\?code=${MASTER_KYC_CODE}$`));
     assertRedirectedToMasterKyc(page);
 
+    // Independently generated from this spec, but expected to be pixel-identical to
+    // link-merged-redirect's baseline: both land on the same /kyc?code=MASTER_KYC_CODE URL
+    // with the same kycInfoFixture, and the destination screen doesn't read anything specific
+    // to which flow triggered the redirect.
     await expect(page).toHaveScreenshot('tfa-merged-redirect-01-kyc-destination.png', {
       fullPage: true,
       maxDiffPixels: 5000,
