@@ -11,8 +11,9 @@
 // Endpoints reuse the @dfx.swiss/react SDK (`usePaymentRoutes`) wherever a
 // method matches the static app 1:1; the cases the SDK has no method for
 // (GET /paymentLink/payment invoice lookup, GET /paymentLink/history, route
-// toggle PUT /<type>/<id>, POS poll GET /paymentLink?id=, POST /sell create)
-// go through the raw `useApi` call to preserve functional truth.
+// activation PUT /<type>/<id> { active: true }, POS poll GET /paymentLink?id=,
+// POST /sell create) go through the raw `useApi` call to preserve functional truth.
+// Deactivating a route uses `deletePaymentRoute` (PUT { active: false }).
 
 import {
   ApiException,
@@ -30,7 +31,7 @@ import {
   useApi,
   usePaymentRoutes,
 } from '@dfx.swiss/react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../../components/ui';
 import { useT } from '../../i18n';
 import { useWalletSession } from '../../wallets/session';
@@ -197,8 +198,9 @@ export function useOcp(): OcpApi {
     updatePaymentLink,
     updateUserPaymentLinksConfig,
     createPosLink,
+    deletePaymentRoute,
   } = usePaymentRoutes();
-  const { blockchains } = useWalletSession();
+  const { blockchains, address } = useWalletSession();
   const { showToast } = useToast();
   const { t, language } = useT();
 
@@ -210,8 +212,24 @@ export function useOcp(): OcpApi {
   const [routesError, setRoutesError] = useState(false);
   const [links, setLinks] = useState<PaymentLink[] | null>(null);
   const [history, setHistory] = useState<OcpHistory | null>(null);
-  // Bumped on every demo on/off so a response that started under the other mode cannot write after the switch.
+  // Bumped on every demo on/off and on every session-address change so a response
+  // that started under the other mode or account cannot write after the switch.
   const demoEpochRef = useRef(0);
+  const sessionAddressRef = useRef(address);
+
+  useEffect(() => {
+    if (sessionAddressRef.current === address) return;
+    sessionAddressRef.current = address;
+    demoEpochRef.current += 1;
+    setDemo(false);
+    setActive(null);
+    setProbeError(false);
+    setConfig(null);
+    setRoutes(null);
+    setRoutesError(false);
+    setLinks(null);
+    setHistory(null);
+  }, [address]);
 
   const demoLnurl = useCallback((id: string) => lnurlEncode(`${apiBaseUrl}/lnurlp/${id}`), [apiBaseUrl]);
 
@@ -460,7 +478,9 @@ export function useOcp(): OcpApi {
         currency: currencyId ? { id: +currencyId } : undefined,
         blockchain: blockchain || 'Bitcoin',
       };
+      const epoch = demoEpochRef.current;
       await call({ url: '/sell', method: 'POST', data: body });
+      if (epoch !== demoEpochRef.current) return;
       setRoutes(null);
       await loadRoutes();
     },
@@ -477,11 +497,17 @@ export function useOcp(): OcpApi {
         });
         return;
       }
-      await call({ url: `/${type}/${id}`, method: 'PUT', data: { active: activeTo } });
+      const epoch = demoEpochRef.current;
+      if (activeTo) {
+        await call({ url: `/${type}/${id}`, method: 'PUT', data: { active: true } });
+      } else {
+        await deletePaymentRoute(Number(id), type);
+      }
+      if (epoch !== demoEpochRef.current) return;
       setRoutes(null);
       await loadRoutes();
     },
-    [demo, call, loadRoutes],
+    [demo, call, deletePaymentRoute, loadRoutes],
   );
 
   // ---- link actions ---------------------------------------------------------
@@ -504,7 +530,9 @@ export function useOcp(): OcpApi {
       }
       // Wire body is routeId-only (merchant create-link); SDK types also require
       // recipient for full forms — cast keeps the same payload the API accepts.
+      const epoch = demoEpochRef.current;
       await createPaymentLink({ routeId: +routeId } as CreatePaymentLink);
+      if (epoch !== demoEpochRef.current) return;
       setLinks(null);
       await loadLinks();
     },
@@ -521,7 +549,9 @@ export function useOcp(): OcpApi {
         );
         return;
       }
+      const epoch = demoEpochRef.current;
       await updatePaymentLink({ status: activeTo ? PaymentLinkStatus.ACTIVE : PaymentLinkStatus.INACTIVE }, String(id));
+      if (epoch !== demoEpochRef.current) return;
       setLinks(null);
       await loadLinks();
     },
@@ -531,7 +561,9 @@ export function useOcp(): OcpApi {
   const createPosLinkUrl = useCallback(
     async (id: string | number): Promise<string | undefined> => {
       if (demo) return undefined; // demo terminal lives on the POS sub-view, no external URL
+      const epoch = demoEpochRef.current;
       const pos = await createPosLink(String(id));
+      if (epoch !== demoEpochRef.current) return undefined;
       return safeDfxUrl(pos?.url);
     },
     [demo, createPosLink],
@@ -544,6 +576,7 @@ export function useOcp(): OcpApi {
         const lnurl = demoLnurl(`inv_${routeId}_${Math.round(amount * 100)}_${message.replace(/\W+/g, '')}`);
         return { lnurl };
       }
+      const epoch = demoEpochRef.current;
       const expiryDate = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
       const query = new URLSearchParams({
         routeId: String(routeId),
@@ -553,6 +586,7 @@ export function useOcp(): OcpApi {
         expiryDate,
       }).toString();
       const data = await call<{ id: string | number }>({ url: `/paymentLink/payment?${query}`, method: 'GET' });
+      if (epoch !== demoEpochRef.current) throw new ApiException(0, t('genErr'));
       if (!data?.id) throw new ApiException(0, t('genErr'));
       const lnurl = lnurlEncode(`${apiBaseUrl}/lnurlp/${data.id}`);
       return { lnurl };
@@ -573,10 +607,12 @@ export function useOcp(): OcpApi {
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `pos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      const epoch = demoEpochRef.current;
       const data = await createPaymentLinkPayment(
         { amount, externalId } as CreatePaymentLinkPayment,
         String(linkId),
       );
+      if (epoch !== demoEpochRef.current) throw new ApiException(0, t('genErr'));
       const lnurl = extractChargeLnurl(data);
       if (!lnurl) throw new ApiException(0, t('genErr'));
       return { lnurl };
@@ -586,11 +622,13 @@ export function useOcp(): OcpApi {
 
   const pollPayment = useCallback(
     async (id: string | number): Promise<PaymentLinkPaymentStatus | undefined> => {
+      const epoch = demoEpochRef.current;
       try {
         const data = await call<{ payment?: { status?: PaymentLinkPaymentStatus } }>({
           url: `/paymentLink?id=${encodeURIComponent(String(id))}`,
           method: 'GET',
         });
+        if (epoch !== demoEpochRef.current) return undefined;
         return data?.payment?.status;
       } catch {
         return undefined;
@@ -606,7 +644,9 @@ export function useOcp(): OcpApi {
         setConfig((prev) => ({ ...(prev as NonNullable<typeof prev>), ...body }));
         return;
       }
+      const epoch = demoEpochRef.current;
       await updateUserPaymentLinksConfig(body);
+      if (epoch !== demoEpochRef.current) return;
       setConfig((prev) => (prev ? { ...prev, ...body } : prev));
     },
     [demo, updateUserPaymentLinksConfig],

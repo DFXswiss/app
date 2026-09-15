@@ -5,6 +5,11 @@ const mockReceiveForBuy = jest.fn();
 const mockReceiveForSwap = jest.fn();
 const mockReceiveForSell = jest.fn();
 const mockCall = jest.fn();
+const mockQuoteSession = { address: undefined as string | undefined };
+
+jest.mock('../wallets/session', () => ({
+  useWalletSession: () => mockQuoteSession,
+}));
 
 jest.mock('@dfx.swiss/react', () => ({
   BuyUrl: { quote: 'buy/quote', receive: 'buy/paymentInfos' },
@@ -65,6 +70,7 @@ function SwapHarness({ extId, withPaymentInfo }: { extId?: string; withPaymentIn
 describe('externalTransactionId cache key', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockQuoteSession.address = undefined;
     mockCall.mockResolvedValue({ estimatedAmount: 111 });
     mockReceiveForBuy.mockResolvedValue({ estimatedAmount: 111 });
     mockReceiveForSwap.mockResolvedValue({ estimatedAmount: 99 });
@@ -94,6 +100,37 @@ describe('externalTransactionId cache key', () => {
     await waitFor(() => expect(mockReceiveForSwap).toHaveBeenCalledTimes(1));
 
     rerender(<SwapHarness withPaymentInfo extId="tx-2" />);
+    await waitFor(() => expect(mockReceiveForSwap).toHaveBeenCalledTimes(2));
+  });
+
+  it('refetches buy paymentInfos when the session address changes', async () => {
+    mockQuoteSession.address = '0xaaa';
+    const { rerender } = render(<BuyHarness withPaymentInfo extId="tx-1" />);
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalledTimes(1));
+
+    mockQuoteSession.address = '0xbbb';
+    rerender(<BuyHarness withPaymentInfo extId="tx-1" />);
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalledTimes(2));
+  });
+
+  it('refetches sell paymentInfos when the session address changes', async () => {
+    const iban = 'CH93 0076 2011 6238 5295 7';
+    mockQuoteSession.address = '0xaaa';
+    const { rerender } = render(<SellHarness iban={iban} extId="tx-1" />);
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalledTimes(1));
+
+    mockQuoteSession.address = '0xbbb';
+    rerender(<SellHarness iban={iban} extId="tx-1" />);
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalledTimes(2));
+  });
+
+  it('refetches swap paymentInfos when the session address changes', async () => {
+    mockQuoteSession.address = '0xaaa';
+    const { rerender } = render(<SwapHarness withPaymentInfo extId="tx-1" />);
+    await waitFor(() => expect(mockReceiveForSwap).toHaveBeenCalledTimes(1));
+
+    mockQuoteSession.address = '0xbbb';
+    rerender(<SwapHarness withPaymentInfo extId="tx-1" />);
     await waitFor(() => expect(mockReceiveForSwap).toHaveBeenCalledTimes(2));
   });
 

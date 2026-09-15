@@ -590,8 +590,9 @@ const EXT_ICON = (
 );
 
 export default function SupportScreen() {
+  const { address } = useWalletSession();
   return (
-    <SupportChatContextProvider>
+    <SupportChatContextProvider key={address ?? 'logged-out'}>
       <SupportScreenBody />
     </SupportChatContextProvider>
   );

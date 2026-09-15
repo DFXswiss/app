@@ -8,12 +8,8 @@ import { app2ScreenshotOpts as screenshotOpts } from './helpers/app2-screenshot'
  * `buy success return path lands on hash with cko query` and
  * `buy success trailing-slash return path folds into the same hash` check a
  * Pages 302 from `public/_redirects` (`/app2/buy/success` into
- * `/app2/#/buy/success`). `src/setupProxy.js` mirrors it; the e2e stack's
- * `e2e-stack/images/frontend/nginx.conf` does not — only a try_files fallback
- * for /app2/. Measured 2026-08-18: 11/11 against the local dev server, 9/11
- * against `npm run e2e:stack:up`. Red on the stack is the missing rewrite, not
- * a product bug. To match Pages there, copy the six 302 rules into that
- * nginx.conf and rebuild the frontend image.
+ * `/app2/#/buy/success`). `src/setupProxy.js` and
+ * `e2e-stack/images/frontend/nginx.conf` mirror the six 302 rules.
  */
 async function openApp2(page: import('@playwright/test').Page, hash: string): Promise<void> {
   const response = await page.goto(`/app2/${hash}`, { waitUntil: 'domcontentloaded' });

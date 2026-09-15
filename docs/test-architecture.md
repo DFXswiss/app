@@ -375,9 +375,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
   the real `url()` treats those arguments identically; no assertion pins the outer host.
 - **The nine App 2.0 session baselines are a logged-in walk through the harness, not a funded
+- **The 15 App 2.0 session baselines are a logged-in walk through the harness, not a funded
   account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
-  fresh account. A green run does not prove that the buy screen ever renders a real rate, nor that the
-  transaction list ever shows rows.
+  fresh account. Buy, sell, swap, account, transactions, KYC, limit, the OpenCryptoPay hub and apply
+  form, plus the six merchant sub-pages (payment routes, invoice, POS, links, history, settings) are
+  captured that way. The OpenCryptoPay sub-pages are shown in the built-in demo mode. A green run does
+  not prove that the buy screen ever renders a real rate, nor that the transaction list ever shows rows.
 
 ## Known gaps
 
