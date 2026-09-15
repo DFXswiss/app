@@ -1010,6 +1010,16 @@ export default function BuyScreen(): JSX.Element {
         ) {
           return;
         }
+        // Backend returns 409 when the request is already confirmed (e.g. client missed the first response).
+        if (error.statusCode === 409) {
+          setCompletedPaymentInfo({
+            info: confirmingPaymentInfo,
+            identity: confirmingCustomerIdentity,
+          });
+          setShowsCompletion(true);
+          scrollToTop();
+          return;
+        }
         setPersonalIbanProviderUnavailable(undefined);
         setErrorMessage(
           error.message !== undefined ? error.message : 'Unknown error',
