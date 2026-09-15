@@ -1,4 +1,14 @@
-import { ApiError, TfaLevel, TfaSetup, TfaType, Utils, Validations, useAuth, useKyc, useUserContext } from '@dfx.swiss/react';
+import {
+  ApiError,
+  TfaLevel,
+  TfaSetup,
+  TfaType,
+  Utils,
+  Validations,
+  useAuth,
+  useKyc,
+  useUserContext,
+} from '@dfx.swiss/react';
 import {
   CopyButton,
   Form,
