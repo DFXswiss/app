@@ -75,7 +75,9 @@ The details — the factories and the states that are deliberately not achievabl
 
 The gate reads the route definitions out of `src/App.tsx`, resolves nested paths, and fails when a route
 has no registry claim or more than one — including two claims inside the same registry file — or when
-the spec file a claim names does not exist. When `E2E_FULL_RUN=1` is set, it additionally fails for a
+the spec file a claim names does not exist. App 2.0 is claimed separately as hosted `/app2/` paths
+(`e2e-stack/specs/registry/app2.ts`); those are not in `src/App.tsx`. A green unit run does not prove
+the full-stack harness cloned `DFXswiss/api` or opened those hashes. When `E2E_FULL_RUN=1` is set, it additionally fails for a
 claimed route the browser never opened. That flag is declared by the run, not measured from it, so it may
 only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
 no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
@@ -244,6 +246,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   run does **not** prove the API's natural latency or that production clients never race; it
   only proves the wait barriers refuse to conclude while that held real response is still
   undelivered, and that hub re-navigation does not abort it.
+- **The 15 App 2.0 session baselines are a logged-in walk through the harness, not a funded
+  account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
+  fresh account. Buy, sell, swap, account, transactions, KYC, limit, the OpenCryptoPay hub and apply
+  form, plus the six merchant sub-pages (payment routes, invoice, POS, links, history, settings) are
+  captured that way. The OpenCryptoPay sub-pages are shown in the built-in demo mode. A green run does
+  not prove that the buy screen ever renders a real rate, nor that the transaction list ever shows rows.
 
 ## Known gaps
 

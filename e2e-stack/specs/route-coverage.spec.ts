@@ -16,14 +16,18 @@ import * as path from 'path';
 import * as ts from 'typescript';
 import { expect, test } from '@playwright/test';
 import type { RouteClaim } from './registry/types';
-import {
-  evaluateClaimedRouteVisits,
-  readVisitedRoutes,
-  specClaimName,
-  visitedRoutesPath,
-} from './fixtures/routes';
+import { evaluateClaimedRouteVisits, readVisitedRoutes, specClaimName, visitedRoutesPath } from './fixtures/routes';
 
 const APP_SOURCE_PATH = '/work/app-source/App.tsx';
+
+// Floor, not a target. extractAppRoutes currently yields 108 unique paths (duplicate
+// `path: 'support'` collapses in the Set). 50 is well below that and well above an
+// empty parse. Exceeding is never an error; falling below always is.
+const MIN_APP_ROUTES = 50;
+
+// Floor, not a target. The registry currently claims 109 unique paths (108 app routes
+// plus hosted `/app2/`). Same rule as MIN_APP_ROUTES.
+const MIN_CLAIMED_ROUTES = 50;
 
 /**
  * Format a source location as `App.tsx:123` (1-based line) for fail-loud parser errors.
@@ -272,9 +276,7 @@ test('a claimed route opened only by another suite is reported as wrong-suite co
     specsDir,
   );
 
-  expect(result.wrongSuite).toEqual([
-    '/synthetic/:id (claimed by owner.spec.ts, opened by: different.spec.ts)',
-  ]);
+  expect(result.wrongSuite).toEqual(['/synthetic/:id (claimed by owner.spec.ts, opened by: different.spec.ts)']);
   expect(result.neverOpened).toEqual([]);
   expect(result.correctlyOpened).toEqual([]);
 });
@@ -286,9 +288,22 @@ test('every app route is claimed by exactly one registry entry @coverage-gate', 
 
   const { byPath, claims } = await loadRegistryClaims(registryDir);
   const claimed = new Set(byPath.keys());
-  const real = extractAppRoutes(APP_SOURCE_PATH);
+  const hosted = new Set(claims.filter((claim) => claim.hosted).map((claim) => claim.path));
+  const appRoutes = extractAppRoutes(APP_SOURCE_PATH);
+  const real = new Set([...appRoutes, ...hosted]);
 
-  const unclaimed = [...real].filter((p) => !claimed.has(p)).sort();
+  expect(
+    appRoutes.size,
+    `extractAppRoutes found ${appRoutes.size} routes in ${APP_SOURCE_PATH} (floor ${MIN_APP_ROUTES}, not a target). ` +
+      `If extraction returns nothing, the unclaimed-route check is vacuously true and this gate proves nothing.`,
+  ).toBeGreaterThanOrEqual(MIN_APP_ROUTES);
+  expect(
+    claimed.size,
+    `loadRegistryClaims found ${claimed.size} unique claimed paths under ${registryDir} (floor ${MIN_CLAIMED_ROUTES}, not a target). ` +
+      `If the registry yields nothing, the orphaned-claim check is vacuously true and this gate proves nothing.`,
+  ).toBeGreaterThanOrEqual(MIN_CLAIMED_ROUTES);
+
+  const unclaimed = [...appRoutes].filter((p) => !claimed.has(p)).sort();
   const orphaned = [...claimed].filter((p) => !real.has(p)).sort();
 
   // A typo or deleted suite file would leave a claim that never runs tests for that route.
@@ -344,12 +359,7 @@ test('every app route is claimed by exactly one registry entry @coverage-gate', 
         claimByPath.set(claim.path, claim);
       }
 
-      const { neverOpened, wrongSuite } = evaluateClaimedRouteVisits(
-        real,
-        claimByPath,
-        visited,
-        __dirname,
-      );
+      const { neverOpened, wrongSuite } = evaluateClaimedRouteVisits(real, claimByPath, visited, __dirname);
 
       if (neverOpened.length > 0) {
         messages.push(

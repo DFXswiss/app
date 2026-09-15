@@ -1,0 +1,208 @@
+// After switching to a different linked address, provider bindings for the *previous*
+// wallet must be dropped so the monitor effect does not re-attach to the old EIP-1193 instance.
+// Full effect wiring needs a live provider; this pins the pure clear helper switchTo calls.
+
+jest.mock('@dfx.swiss/react', () => ({
+  AuthWalletType: {
+    METAMASK: 'MetaMask',
+    WALLET_BROWSER: 'WalletBrowser',
+    RABBY: 'Rabby',
+    WALLET_CONNECT: 'WalletConnect',
+    BIT_BOX: 'BitBox',
+    LEDGER: 'Ledger',
+    TREZOR: 'Trezor',
+    ALBY: 'Alby',
+    PHANTOM: 'Phantom',
+    TRUST: 'Trust',
+    TRON_LINK: 'TronLink',
+    CLI: 'CLI',
+  },
+  Blockchain: {
+    ETHEREUM: 'Ethereum',
+    ARBITRUM: 'Arbitrum',
+    OPTIMISM: 'Optimism',
+    POLYGON: 'Polygon',
+    BASE: 'Base',
+    BINANCE_SMART_CHAIN: 'BinanceSmartChain',
+    GNOSIS: 'Gnosis',
+    CITREA: 'Citrea',
+    BITCOIN: 'Bitcoin',
+    LIGHTNING: 'Lightning',
+    SOLANA: 'Solana',
+    TRON: 'Tron',
+    INTERNET_COMPUTER: 'InternetComputer',
+    CARDANO: 'Cardano',
+  },
+  useApi: () => ({ defaultUrl: 'https://api.dfx.swiss/v1' }),
+  useApiSession: () => ({ createSessionNew: jest.fn(), updateSession: jest.fn() }),
+  useAuth: () => ({ getSignMessage: jest.fn() }),
+  useAuthContext: () => ({ session: undefined }),
+  useSessionContext: () => ({ isLoggedIn: false, logout: jest.fn() }),
+  useUserContext: () => ({ userAddresses: [], changeAddress: jest.fn(), reloadUser: jest.fn() }),
+}));
+
+jest.mock('../wallets/providers', () => ({
+  WalletConnectorError: class WalletConnectorError extends Error {
+    reason: string;
+    constructor(message: string, reason: string) {
+      super(message);
+      this.reason = reason;
+    }
+  },
+  connectInjected: jest.fn(),
+  connectWalletConnect: jest.fn(),
+  createCancelToken: jest.fn(),
+  disconnectWalletConnect: jest.fn(),
+  getInjectedProvider: jest.fn(),
+  isUserRejection: jest.fn(),
+  resolveInjectedProvider: jest.fn(),
+  signWithInjected: jest.fn(),
+  signWithWalletConnect: jest.fn(),
+}));
+
+jest.mock('../wallets/alby', () => ({ connectAlby: jest.fn() }));
+jest.mock('../wallets/cardano', () => ({ connectCardano: jest.fn() }));
+jest.mock('../wallets/chain-providers', () => ({ connectChainWallet: jest.fn() }));
+jest.mock('../wallets/hardware-providers', () => ({
+  connectHardware: jest.fn(),
+  isWebHidAvailable: jest.fn(() => false),
+}));
+jest.mock('../wallets/cli', () => ({ isPlausibleCliAddress: jest.fn() }));
+jest.mock('../wallets/seen', () => ({ rememberWallet: jest.fn(), seenWallets: () => [] }));
+jest.mock('../components/ui', () => ({ useToast: () => ({ showToast: jest.fn() }) }));
+jest.mock('../i18n', () => ({ useT: () => ({ t: (k: string) => k, language: 'en' }) }));
+jest.mock('../screens/trade/blockchain-meta', () => ({ mainnetOnly: (x: unknown) => x }));
+
+jest.mock('../assets/brand/dfx-mark.svg', () => 'dfx-mark.svg');
+jest.mock('../assets/wallets/pecunity.png', () => 'pecunity.png');
+jest.mock('../assets/wallets/realunit.svg', () => 'realunit.svg');
+jest.mock('../assets/wallets/urble.webp', () => 'urble.webp');
+jest.mock('../assets/networks/lightning.svg', () => 'lightning.svg');
+jest.mock('../assets/tokens/ICP.svg', () => 'icp.svg');
+jest.mock('../assets/wallets/alby.svg', () => 'alby.svg');
+jest.mock('../assets/wallets/bitbox.svg', () => 'bitbox.svg');
+jest.mock('../assets/networks/cardano.svg', () => 'cardano.svg');
+jest.mock('../assets/wallets/cli.svg', () => 'cli.svg');
+jest.mock('../assets/wallets/coinbase.svg', () => 'coinbase.svg');
+jest.mock('../assets/wallets/ledger.svg', () => 'ledger.svg');
+jest.mock('../assets/wallets/metamask.svg', () => 'metamask.svg');
+jest.mock('../assets/wallets/phantom.svg', () => 'phantom.svg');
+jest.mock('../assets/wallets/rabby.svg', () => 'rabby.svg');
+jest.mock('../assets/wallets/trezor.svg', () => 'trezor.svg');
+jest.mock('../assets/wallets/tron.svg', () => 'tron.svg');
+jest.mock('../assets/wallets/trust.svg', () => 'trust.svg');
+jest.mock('../assets/wallets/wallet-connect.svg', () => 'wallet-connect.svg');
+
+import {
+  boundProviderFromSnapshot,
+  clearSessionProviderBindings,
+  providerHoldsAddress,
+  restoreSessionProviderBindings,
+  snapshotSessionProviderBindings,
+  teardownWalletSession,
+} from '../wallets/session';
+import type { Eip1193Provider } from '../wallets/providers';
+
+describe('clearSessionProviderBindings', () => {
+  it('clears activeConnector and both provider refs', () => {
+    const setActiveConnector = jest.fn();
+    const injectedRef = { current: { request: jest.fn() } as unknown as Eip1193Provider };
+    const wcRef = { current: { request: jest.fn() } as unknown as Eip1193Provider };
+    const pendingWcRef = { current: { request: jest.fn() } as unknown as Eip1193Provider };
+
+    clearSessionProviderBindings(setActiveConnector, injectedRef, wcRef, pendingWcRef);
+
+    expect(injectedRef.current).toBeUndefined();
+    expect(wcRef.current).toBeUndefined();
+    expect(pendingWcRef.current).toBeUndefined();
+    expect(setActiveConnector).toHaveBeenCalledWith(undefined);
+  });
+
+  it('leaves a missing pending-WC ref untouched', () => {
+    const setActiveConnector = jest.fn();
+    const injectedRef = { current: { request: jest.fn() } as unknown as Eip1193Provider };
+    const wcRef = { current: { request: jest.fn() } as unknown as Eip1193Provider };
+
+    clearSessionProviderBindings(setActiveConnector, injectedRef, wcRef);
+
+    expect(injectedRef.current).toBeUndefined();
+    expect(wcRef.current).toBeUndefined();
+    expect(setActiveConnector).toHaveBeenCalledWith(undefined);
+  });
+});
+
+describe('providerHoldsAddress / boundProviderFromSnapshot', () => {
+  it('reports whether eth_accounts includes the target, case-insensitively', async () => {
+    const provider = {
+      request: jest.fn().mockResolvedValue(['0xAA', '0xBB']),
+    } as unknown as Eip1193Provider;
+    await expect(providerHoldsAddress(provider, '0xaa')).resolves.toBe(true);
+    await expect(providerHoldsAddress(provider, '0xcc')).resolves.toBe(false);
+  });
+
+  it('treats a missing provider or a rejected request as not holding the address', async () => {
+    await expect(providerHoldsAddress(undefined, '0xaa')).resolves.toBe(false);
+    const failing = { request: jest.fn().mockRejectedValue(new Error('denied')) } as unknown as Eip1193Provider;
+    await expect(providerHoldsAddress(failing, '0xaa')).resolves.toBe(false);
+    const empty = { request: jest.fn().mockResolvedValue(undefined) } as unknown as Eip1193Provider;
+    await expect(providerHoldsAddress(empty, '0xaa')).resolves.toBe(false);
+  });
+
+  it('picks the snapshot provider that matches the remembered connector', () => {
+    const injected = { request: jest.fn() } as unknown as Eip1193Provider;
+    const wc = { request: jest.fn() } as unknown as Eip1193Provider;
+    expect(
+      boundProviderFromSnapshot({ connector: 'injected', injected, wc, pendingWc: undefined }),
+    ).toBe(injected);
+    expect(
+      boundProviderFromSnapshot({ connector: 'wallet-connect', injected, wc, pendingWc: undefined }),
+    ).toBe(wc);
+    expect(
+      boundProviderFromSnapshot({ connector: 'other', injected, wc, pendingWc: undefined }),
+    ).toBeUndefined();
+  });
+});
+
+describe('snapshot/restore session provider bindings', () => {
+  it('restores connector and provider refs after a failed switch clear', () => {
+    const setActiveConnector = jest.fn();
+    const injected = { request: jest.fn() } as unknown as Eip1193Provider;
+    const wc = { request: jest.fn() } as unknown as Eip1193Provider;
+    const pending = { request: jest.fn() } as unknown as Eip1193Provider;
+    const injectedRef = { current: injected };
+    const wcRef = { current: wc };
+    const pendingWcRef = { current: pending };
+
+    const snapshot = snapshotSessionProviderBindings('injected', injectedRef, wcRef, pendingWcRef);
+    clearSessionProviderBindings(setActiveConnector, injectedRef, wcRef, pendingWcRef);
+    expect(injectedRef.current).toBeUndefined();
+
+    restoreSessionProviderBindings(snapshot, setActiveConnector, injectedRef, wcRef, pendingWcRef);
+    expect(injectedRef.current).toBe(injected);
+    expect(wcRef.current).toBe(wc);
+    expect(pendingWcRef.current).toBe(pending);
+    expect(setActiveConnector).toHaveBeenLastCalledWith('injected');
+  });
+});
+
+describe('teardownWalletSession', () => {
+  it('disconnects WalletConnect before JWT logout', async () => {
+    const order: string[] = [];
+    const disconnectWc = jest.fn(async () => {
+      order.push('wc');
+    });
+    const logout = jest.fn(async () => {
+      order.push('logout');
+    });
+    await teardownWalletSession(disconnectWc, logout);
+    expect(order).toEqual(['wc', 'logout']);
+  });
+
+  it('still logs out when WalletConnect disconnect throws', async () => {
+    const logout = jest.fn(async () => undefined);
+    await teardownWalletSession(async () => {
+      throw new Error('wc fail');
+    }, logout);
+    expect(logout).toHaveBeenCalledTimes(1);
+  });
+});

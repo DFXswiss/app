@@ -2,7 +2,7 @@ jest.mock('@dfx.swiss/react', () => ({}));
 jest.mock('src/dto/safe.dto', () => ({}));
 
 import * as safeStorage from '../util/safe-storage';
-import { cacheBankTx, readCachedBankTx } from '../util/bank-tx-cache';
+import { BANK_TX_CACHE_PREFIX, cacheBankTx, readCachedBankTx } from '../util/bank-tx-cache';
 
 const sample = {
   id: 55,
@@ -35,18 +35,37 @@ describe('bank-tx-cache', () => {
     jest.restoreAllMocks();
   });
 
+  it('exports the prefix that session cleanup allowlists', () => {
+    expect(BANK_TX_CACHE_PREFIX).toBe('dfx.bankTx.');
+  });
+
   it('caches then reads a bank tx', () => {
     cacheBankTx(sample);
     expect(readCachedBankTx('55')).toEqual(sample);
+  });
+
+  it('stores the row as JSON under prefix + id', () => {
+    cacheBankTx(sample);
+    expect(sessionStorageMock.getItem(`${BANK_TX_CACHE_PREFIX}55`)).toBe(JSON.stringify(sample));
   });
 
   it('returns undefined for a missing id', () => {
     expect(readCachedBankTx('999')).toBeUndefined();
   });
 
+  it('does not read a different id', () => {
+    cacheBankTx(sample);
+    expect(readCachedBankTx('56')).toBeUndefined();
+  });
+
   it('returns undefined for invalid JSON without throwing', () => {
     sessionStorageMock.setItem('dfx.bankTx.55', '{kaputt');
     expect(() => readCachedBankTx('55')).not.toThrow();
+    expect(readCachedBankTx('55')).toBeUndefined();
+  });
+
+  it('returns undefined for an empty stored string', () => {
+    sessionStorageMock.setItem(`${BANK_TX_CACHE_PREFIX}55`, '');
     expect(readCachedBankTx('55')).toBeUndefined();
   });
 
