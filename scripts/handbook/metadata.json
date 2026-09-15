@@ -85,7 +85,7 @@
   },
   "compliance-call-queue-outcome": {
     "title": "Compliance: Call-Queue-Outcome",
-    "description": "Outcome-Formular mit der Signatur als verified name des eingeloggten Bearbeiters, ohne Clerks-Auswahlliste."
+    "description": "Ganze Call-Queue-Detailseite (User Info, Transaktion, Fragen, Save Outcome) und darunter der Ausschnitt des Outcome-Formulars mit der Signatur als verified name des eingeloggten Bearbeiters, ohne Clerks-Auswahlliste."
   },
   "realunit-compliance": {
     "title": "RealUnit Compliance",
