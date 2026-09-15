@@ -10,6 +10,7 @@ const mockNavigateBack = jest.fn();
 const mockHandleMergedError = jest.fn(() => false);
 
 let mockFormData: { mail: string } = { mail: 'test@example.com' };
+let mockKycHash = 'SLAVE_CODE';
 
 jest.mock('@dfx.swiss/react', () => ({
   useKyc: () => ({
@@ -18,7 +19,7 @@ jest.mock('@dfx.swiss/react', () => ({
     setContactData: mockSetContactData,
   }),
   useUserContext: () => ({
-    user: { kyc: { hash: 'SLAVE_CODE' } },
+    user: { kyc: { hash: mockKycHash } },
     reloadUser: mockReloadUser,
   }),
   KycLevel: { Link: 10, Sell: 20, Completed: 50 },
@@ -87,6 +88,7 @@ describe('LinkScreen handleMergedError', () => {
     jest.clearAllMocks();
     mockHandleMergedError.mockReturnValue(false);
     mockFormData = { mail: 'test@example.com' };
+    mockKycHash = 'SLAVE_CODE';
     mockGetKycInfo.mockResolvedValue({ kycLevel: 0 });
     mockContinueKyc.mockResolvedValue({
       kycLevel: 5,
@@ -129,6 +131,29 @@ describe('LinkScreen handleMergedError', () => {
 
     await act(async () => {
       rejectGetKycInfo(mergeError);
+      await Promise.resolve();
+    });
+
+    expect(mockHandleMergedError).not.toHaveBeenCalled();
+  });
+
+  it('getKycInfo catch: a re-run after kycCode changes does not un-cancel a still-pending prior run', async () => {
+    let rejectFirstGetKycInfo: (e: unknown) => void = () => undefined;
+    mockGetKycInfo.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectFirstGetKycInfo = reject;
+        }),
+    );
+    mockGetKycInfo.mockResolvedValue({ kycLevel: 5 });
+
+    const { rerender } = render(<LinkScreen />);
+
+    mockKycHash = 'OTHER_MASTER_CODE';
+    rerender(<LinkScreen />);
+
+    await act(async () => {
+      rejectFirstGetKycInfo(mergeError);
       await Promise.resolve();
     });
 

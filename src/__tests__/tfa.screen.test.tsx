@@ -151,6 +151,30 @@ describe('TfaScreen handleMergedError', () => {
     expect(mockHandleMergedError).not.toHaveBeenCalled();
   });
 
+  it('setup2fa/load catch: a re-run after kycCode changes does not un-cancel a still-pending prior run', async () => {
+    const error = { statusCode: 401, switchToCode: 'MASTER', message: 'unauthorized' };
+    let rejectFirstSetup2fa: (e: unknown) => void = () => undefined;
+    mockKycSetup2fa.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectFirstSetup2fa = reject;
+        }),
+    );
+    mockKycSetup2fa.mockResolvedValue({ type: 'Mail', secret: '', uri: '' });
+
+    const { rerender } = render(<TfaScreen />);
+
+    mockSearch = '?code=OTHER_MASTER_CODE';
+    rerender(<TfaScreen />);
+
+    await act(async () => {
+      rejectFirstSetup2fa(error);
+      await Promise.resolve();
+    });
+
+    expect(mockHandleMergedError).not.toHaveBeenCalled();
+  });
+
   it('verify2fa/onSubmit catch: handleMergedError true skips setError', async () => {
     mockKycSetup2fa.mockResolvedValue({ type: 'Mail', secret: '', uri: '' });
     const error = { statusCode: 401, switchToCode: 'MASTER', message: 'unauthorized' };

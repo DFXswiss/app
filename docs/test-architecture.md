@@ -255,9 +255,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   unlike the link spec below. A green run proves the `/kyc` screen renders without a
   `pageerror` on the synthetic follow-up payload. It does not prove that the API ever returns
   a 401 with `switchToCode` for a merged account, that a real 2FA setup call has that shape, or
-  that the `/kyc` screen's own follow-up call succeeds against a real backend. Unit tests
-  against the 2FA screen and `useMergedAccount` (`src/__tests__/tfa.screen.test.tsx`,
-  `src/__tests__/merged-account.hook.test.tsx`) pin the redirect and logout behaviour instead.
+  that the `/kyc` screen's own follow-up call succeeds against a real backend.
+  `src/__tests__/tfa.screen.test.tsx` pins that `handleMergedError` is tried first at every
+  catch site instead; `src/__tests__/merged-account.hook.test.tsx` pins the actual
+  redirect/logout/`clearParams` behaviour behind it.
 - **The link merged-account redirect spec answers GET /v2/user and GET /v2/kyc itself.**
   `e2e/link-merged-redirect.spec.ts` seeds a synthetic unsigned JWT into
   `localStorage['dfx.authenticationToken']` and fulfils `GET /v2/user` with a synthetic account
@@ -269,9 +270,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   calls get `501`. A green run proves the `/kyc` screen renders without a `pageerror` on the
   synthetic follow-up payload. It does not prove that login or token verification works, that
   the API returns that user/`kyc.hash` pairing, or that a merged account really produces a 401
-  with `switchToCode`. Unit tests against the link screen and `useMergedAccount`
-  (`src/__tests__/link.screen.test.tsx`, `src/__tests__/merged-account.hook.test.tsx`) pin the
-  redirect and logout behaviour instead.
+  with `switchToCode`. `src/__tests__/link.screen.test.tsx` pins that `handleMergedError` is
+  tried first at every catch site instead; `src/__tests__/merged-account.hook.test.tsx` pins
+  the actual redirect/logout/`clearParams` behaviour behind it.
 
 ## Known gaps
 
