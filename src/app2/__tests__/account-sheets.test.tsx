@@ -76,7 +76,7 @@ jest.mock('../wallets/session', () => ({
   useWalletSession: () => ({ isLoggedIn: true, address: '0xabc', userAddresses: [] }),
 }));
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ApiException } from '@dfx.swiss/react';
 import { AccountSheets, inviteReferralView } from '../components/AccountSheets';
 import { LanguageProvider } from '../i18n';
@@ -256,6 +256,198 @@ describe('AccountSheets', () => {
     expect(within(screen.getByRole('dialog')).getByText('AB12')).toBeInTheDocument();
     expect(screen.queryByText('12')).not.toBeInTheDocument();
     expect(screen.queryByText('No bank accounts yet.')).not.toBeInTheDocument();
+  });
+
+  it('does not close another bank editor when a late save settles or fails', async () => {
+    mockBank.bankAccounts = [
+      { id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true },
+      { id: 2, iban: 'DE89370400440532013000', label: 'Other', default: false },
+    ];
+    let resolveSave: () => void = () => undefined;
+    mockUpdateAccount.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    renderSheet('bankaccts');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]);
+    expect(screen.getByDisplayValue('Other')).toBeInTheDocument();
+    await act(async () => {
+      resolveSave();
+    });
+    expect(screen.getByDisplayValue('Other')).toBeInTheDocument();
+    expect(screen.getByRole('status')).not.toHaveTextContent('Saved');
+
+    let rejectSave: (error: Error) => void = () => undefined;
+    mockUpdateAccount.mockImplementationOnce(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectSave = reject;
+        }),
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]);
+    expect(screen.getByDisplayValue('Other')).toBeInTheDocument();
+    await act(async () => {
+      rejectSave(new Error('save'));
+    });
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong'));
+    expect(screen.getByDisplayValue('Other')).toBeInTheDocument();
+  });
+
+  it('does not close another bank editor when a late set-default settles or fails', async () => {
+    mockBank.bankAccounts = [
+      { id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true },
+      { id: 2, iban: 'DE89370400440532013000', label: 'Other', default: false },
+    ];
+    let resolveDefault: () => void = () => undefined;
+    mockUpdateAccount.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDefault = resolve;
+        }),
+    );
+    renderSheet('bankaccts');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Set as default' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    expect(screen.getByDisplayValue('Main')).toBeInTheDocument();
+    await act(async () => {
+      resolveDefault();
+    });
+    expect(screen.getByDisplayValue('Main')).toBeInTheDocument();
+    expect(screen.getByRole('status')).not.toHaveTextContent('Saved');
+
+    let rejectDefault: (error: Error) => void = () => undefined;
+    mockUpdateAccount.mockImplementationOnce(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectDefault = reject;
+        }),
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Set as default' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    expect(screen.getByDisplayValue('Main')).toBeInTheDocument();
+    await act(async () => {
+      rejectDefault(new Error('default'));
+    });
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong'));
+    expect(screen.getByDisplayValue('Main')).toBeInTheDocument();
+  });
+
+  it('does not close another address editor when a late rename settles or fails', async () => {
+    mockUserAddresses.push({ address: '0xAAA111222333', label: 'Hot' }, { address: '0xBBB444555666', label: 'Cold' });
+    let resolveRename: () => void = () => undefined;
+    mockRenameAddress.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRename = resolve;
+        }),
+    );
+    renderSheet('addresses');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Rename' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Rename' })[1]);
+    expect(screen.getByDisplayValue('Cold')).toBeInTheDocument();
+    await act(async () => {
+      resolveRename();
+    });
+    expect(screen.getByDisplayValue('Cold')).toBeInTheDocument();
+    expect(screen.getByRole('status')).not.toHaveTextContent('Saved');
+
+    let rejectRename: (error: Error) => void = () => undefined;
+    mockRenameAddress.mockImplementationOnce(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectRename = reject;
+        }),
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Rename' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Rename' })[1]);
+    expect(screen.getByDisplayValue('Cold')).toBeInTheDocument();
+    await act(async () => {
+      rejectRename(new Error('rename'));
+    });
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong'));
+    expect(screen.getByDisplayValue('Cold')).toBeInTheDocument();
+  });
+
+  it('closes the bank editor and toasts saved when the save response matches the open editor', async () => {
+    mockBank.bankAccounts = [
+      { id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true },
+      { id: 2, iban: 'DE89370400440532013000', label: 'Other', default: false },
+    ];
+    let resolveSave: () => void = () => undefined;
+    mockUpdateAccount.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    renderSheet('bankaccts');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    expect(screen.getByDisplayValue('Main')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByDisplayValue('Main')).toBeInTheDocument();
+    await act(async () => {
+      resolveSave();
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Saved');
+    expect(screen.queryByDisplayValue('Main')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  });
+
+  it('closes the bank editor and toasts saved when set-default matches the open editor', async () => {
+    mockBank.bankAccounts = [
+      { id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true },
+      { id: 2, iban: 'DE89370400440532013000', label: 'Other', default: false },
+    ];
+    let resolveDefault: () => void = () => undefined;
+    mockUpdateAccount.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDefault = resolve;
+        }),
+    );
+    renderSheet('bankaccts');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]);
+    expect(screen.getByDisplayValue('Other')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Set as default' }));
+    expect(screen.getByDisplayValue('Other')).toBeInTheDocument();
+    await act(async () => {
+      resolveDefault();
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Saved');
+    expect(screen.queryByDisplayValue('Other')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Set as default' })).not.toBeInTheDocument();
+  });
+
+  it('closes the address editor and toasts saved when the rename response matches the open editor', async () => {
+    mockUserAddresses.push({ address: '0xAAA111222333', label: 'Hot' }, { address: '0xBBB444555666', label: 'Cold' });
+    let resolveRename: () => void = () => undefined;
+    mockRenameAddress.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRename = resolve;
+        }),
+    );
+    renderSheet('addresses');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Rename' })[0]);
+    expect(screen.getByDisplayValue('Hot')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByDisplayValue('Hot')).toBeInTheDocument();
+    await act(async () => {
+      resolveRename();
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Saved');
+    expect(screen.queryByDisplayValue('Hot')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });
 
   it('toggles bank edit/remove and surfaces save, default, remove and add errors', async () => {

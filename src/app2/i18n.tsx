@@ -610,6 +610,7 @@ export const en = {
   cfgTimeout: 'Payment timeout (seconds)',
   cfgDisplayQr: 'Show QR code',
   cfgCancellable: 'Allow cancelling',
+  cfgFormChanged: 'The form changed while saving. Save again to keep these changes.',
   yes: 'Yes',
   no: 'No',
   save: 'Save',
@@ -1295,6 +1296,8 @@ export const de = {
   cfgTimeout: 'Zahlungs-Timeout (Sekunden)',
   cfgDisplayQr: 'QR-Code anzeigen',
   cfgCancellable: 'Stornierung erlauben',
+  cfgFormChanged:
+    'Das Formular hat sich während des Speicherns geändert. Speichere nochmals, um diese Änderungen zu behalten.',
   yes: 'Ja',
   no: 'Nein',
   save: 'Speichern',
@@ -2025,6 +2028,7 @@ export const it = {
   cfgTimeout: 'Timeout pagamento (secondi)',
   cfgDisplayQr: 'Mostra QR',
   cfgCancellable: 'Consenti annullamento',
+  cfgFormChanged: 'Il modulo è cambiato durante il salvataggio. Salva di nuovo per mantenere queste modifiche.',
   yes: 'Sì',
   no: 'No',
   save: 'Salva',
@@ -2758,6 +2762,8 @@ export const fr = {
   cfgTimeout: 'Délai de paiement (secondes)',
   cfgDisplayQr: 'Afficher le QR',
   cfgCancellable: "Autoriser l'annulation",
+  cfgFormChanged:
+    "Le formulaire a changé pendant l'enregistrement. Enregistre à nouveau pour conserver ces modifications.",
   yes: 'Oui',
   no: 'Non',
   save: 'Enregistrer',
