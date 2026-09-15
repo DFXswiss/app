@@ -562,33 +562,49 @@ test.describe('Buy flow', () => {
   test('/buy: confirm after already confirmed shows completion, not error', async ({ page }) => {
     test.setTimeout(90000);
     const user = await openQuoteCapableBuy(page, 'buy-409-replay');
-    const capture = attachPaymentInfoCapture(page);
+
+    // Two PUT /buy/paymentInfos calls happen per quote: a provisional one, then the exact-price one
+    // that replaces it — a fresh transaction request id each time (see buy.screen.tsx's two-phase
+    // receiveFor calls). Count successful quote responses and keep the latest body once at least two
+    // have arrived, so the id used below is the exact-price one the UI itself will confirm, not
+    // whichever response Playwright happened to finish reading first.
+    let quotePutCount = 0;
+    let latestQuote: PaymentInfoPayload | undefined;
+    page.on('response', async (res) => {
+      if (res.request().method() !== 'PUT') return;
+      const url = res.url();
+      if (!url.includes('/buy/paymentInfos') || url.includes('/confirm') || url.includes('/invoice')) return;
+      if (!res.ok()) return;
+      latestQuote = (await res.json()) as PaymentInfoPayload;
+      quotePutCount += 1;
+    });
 
     await page.goto('/buy?asset-in=CHF&asset-out=ETH&amount-in=100&blockchain=Ethereum');
     await page.waitForLoadState('networkidle');
     const state = await waitForQuoteUi(page, 45000);
     expect(state, 'quote must reach Payment Information').toBe('payment');
 
-    // Payment Information can appear before the exact-price quote is final, which would still be
-    // a different (provisional) transaction request id — wait for the CTA to enable, same as the
-    // sibling '/buy: native form submit confirms a final quote' test, so the captured id below is
-    // guaranteed to be the final one the UI itself will confirm.
+    await expect
+      .poll(() => quotePutCount, {
+        timeout: 45000,
+        message: 'must see both the provisional and exact-price PUT /buy/paymentInfos responses',
+      })
+      .toBeGreaterThanOrEqual(2);
+    expect(latestQuote?.id, 'exact-price PUT /buy/paymentInfos should have returned an id').toBeTruthy();
+
     const confirmBtn = page.getByRole('button', { name: /Click here once you have issued the transfer/i });
     await expect(confirmBtn).toBeEnabled();
-
-    const apiBuy = capture.get();
-    expect(apiBuy?.id, 'PUT /buy/paymentInfos should have returned an id').toBeTruthy();
 
     // Confirm once directly against the API — moves the request server-side to WAITING_FOR_PAYMENT,
     // simulating a client that already confirmed but is about to retry (e.g. it missed the first
     // response).
-    await apiPut(`buy/paymentInfos/${apiBuy!.id}/confirm`, undefined, { jwt: user.jwt });
+    await apiPut(`buy/paymentInfos/${latestQuote!.id}/confirm`, undefined, { jwt: user.jwt });
 
     // The UI's own confirm click now hits the real, unmocked backend for the SAME id and must get a
     // genuine 409 ("already confirmed") — assert the response itself, not just the rendered outcome,
     // so this test cannot pass for a reason unrelated to the 409 branch under test.
     const confirmResponsePromise = page.waitForResponse(
-      (r) => r.url().includes(`/buy/paymentInfos/${apiBuy!.id}/confirm`) && r.request().method() === 'PUT',
+      (r) => r.url().includes(`/buy/paymentInfos/${latestQuote!.id}/confirm`) && r.request().method() === 'PUT',
       { timeout: 15000 },
     );
     await confirmBtn.click();
