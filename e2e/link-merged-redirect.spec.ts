@@ -41,6 +41,10 @@ async function assertRedirectedToMasterKycAndLoggedOut(page: Page): Promise<void
   const url = new URL(page.url());
   expect(url.pathname).toBe('/kyc');
   expect(url.searchParams.get('code')).toBe(MASTER_KYC_CODE);
+  // The page was entered with a kyc-redirect param (see the goto below); this asserts it did
+  // not ride along into the post-redirect URL, which is what merged-account.hook.ts's
+  // clearParams fix exists to prevent.
+  expect(url.searchParams.has('kyc-redirect')).toBe(false);
   // logout() runs independently of the navigate() call, so the token clears asynchronously —
   // poll instead of snapshotting once right after the URL settles.
   await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), AUTH_TOKEN_KEY)).toBeNull();
@@ -136,7 +140,9 @@ test.describe('Link screen merged-account redirect - Visual Regression Tests', (
       value: token,
     });
 
-    await page.goto('/link');
+    // The kyc-redirect param exercises the open-redirect fix in merged-account.hook.ts: this
+    // must not survive into the /kyc destination URL (see assertRedirectedToMasterKycAndLoggedOut).
+    await page.goto(`/link?kyc-redirect=${encodeURIComponent('https://evil.example')}`);
 
     await expect(page.getByText('User is merged')).toHaveCount(0);
     await expect(page).toHaveURL(new RegExp(`/kyc\\?code=${MASTER_KYC_CODE}$`));
