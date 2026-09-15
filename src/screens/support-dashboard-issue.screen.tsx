@@ -176,6 +176,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   useEffect(() => {
     sendInFlight.current = false;
     setIsSending(false);
+    setIsUpdating(false);
     setSelectedFiles([]);
     setActionError(undefined);
     setNoteDraft(undefined);
