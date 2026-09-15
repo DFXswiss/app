@@ -13,7 +13,7 @@ jest.mock('@dfx.swiss/react', () => ({
   useBankAccountContext: () => mockBankState,
 }));
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BankAccountPicker } from '../components/pickers/BankAccountPicker';
 import { LanguageProvider } from '../i18n';
 import { ToastProvider } from '../components/ui';
@@ -84,6 +84,94 @@ describe('BankAccountPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: /add bank account/i }));
     fireEvent.keyDown(screen.getByText('Cancel').closest('[role="button"]') as HTMLElement, { key: 'Enter' });
     expect(screen.getByRole('button', { name: /add bank account/i })).toBeInTheDocument();
+  });
+
+  it('does not pick a created account after the sheet is dismissed', async () => {
+    let resolveCreate!: (account: { id: number; iban: string }) => void;
+    mockCreateAccount.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      }),
+    );
+    const onSelect = jest.fn();
+    const onClose = jest.fn();
+    const view = render(
+      <LanguageProvider>
+        <ToastProvider>
+          <BankAccountPicker open onClose={onClose} titleId="ba-title" onSelect={onSelect} />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /add bank account/i }));
+    fireEvent.change(screen.getByLabelText(/payout iban/i), { target: { value: 'CH93 0076 2011 6238 5295 7' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add account' }));
+    await waitFor(() => expect(mockCreateAccount).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalled();
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <BankAccountPicker open={false} onClose={onClose} titleId="ba-title" onSelect={onSelect} />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+
+    await act(async () => {
+      resolveCreate({ id: 2, iban: 'DE89370400440532013000' });
+    });
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(/your personal iban is ready|persönliche iban|iban personale|iban personnel/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not keep a create failure after the sheet is dismissed', async () => {
+    let rejectCreate!: (error: Error) => void;
+    mockCreateAccount.mockReturnValue(
+      new Promise((_, reject) => {
+        rejectCreate = reject;
+      }),
+    );
+    const onSelect = jest.fn();
+    const onClose = jest.fn();
+    const view = render(
+      <LanguageProvider>
+        <ToastProvider>
+          <BankAccountPicker open onClose={onClose} titleId="ba-title" onSelect={onSelect} />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /add bank account/i }));
+    fireEvent.change(screen.getByLabelText(/payout iban/i), { target: { value: 'CH93 0076 2011 6238 5295 7' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add account' }));
+    await waitFor(() => expect(mockCreateAccount).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <BankAccountPicker open={false} onClose={onClose} titleId="ba-title" onSelect={onSelect} />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+
+    await act(async () => {
+      rejectCreate(new Error('down'));
+    });
+
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <BankAccountPicker open onClose={onClose} titleId="ba-title" onSelect={onSelect} />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /add bank account/i }));
+    expect(screen.queryByText(/something went wrong|fehler|errore|erreur|genErr/i)).not.toBeInTheDocument();
   });
 });
 

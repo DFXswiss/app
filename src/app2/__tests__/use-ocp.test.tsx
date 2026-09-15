@@ -55,6 +55,16 @@ function wrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: Error) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('useOcp', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -322,5 +332,170 @@ describe('useOcp', () => {
       await result.current.saveConfig({ displayQr: true } as never);
     });
     expect(result.current.config).toBeNull();
+  });
+
+  it('discards in-flight live loader responses after demo is turned on', async () => {
+    const config = deferred<unknown>();
+    const routes = deferred<unknown>();
+    const links = deferred<unknown>();
+    const history = deferred<unknown>();
+    mockGetConfig.mockReturnValueOnce(config.promise);
+    mockGetPaymentRoutes.mockReturnValueOnce(routes.promise);
+    mockGetPaymentLinks.mockReturnValueOnce(links.promise);
+    mockCall.mockReturnValueOnce(history.promise);
+
+    const { result } = renderHook(() => useOcp(), { wrapper });
+
+    let probeP!: Promise<void>;
+    let routesP!: Promise<void>;
+    let linksP!: Promise<void>;
+    let historyP!: Promise<void>;
+    act(() => {
+      probeP = result.current.probe();
+      routesP = result.current.loadRoutes();
+      linksP = result.current.loadLinks();
+      historyP = result.current.loadHistory();
+    });
+
+    act(() => {
+      result.current.enableDemo();
+    });
+    const demoConfig = result.current.config;
+    const demoRoutes = result.current.routes;
+    const demoLinks = result.current.links;
+    expect(result.current.demo).toBe(true);
+    expect(demoLinks?.map((item) => item.id)).toEqual([301, 302]);
+
+    await act(async () => {
+      config.resolve({ accessKey: 'live-stale' });
+      routes.reject(new Error('down'));
+      links.resolve([{ id: 999 }]);
+      history.reject(new Error('down'));
+      await Promise.allSettled([probeP, routesP, linksP, historyP]);
+    });
+
+    expect(result.current.demo).toBe(true);
+    expect(result.current.config).toBe(demoConfig);
+    expect(result.current.routes).toBe(demoRoutes);
+    expect(result.current.links).toBe(demoLinks);
+    expect(result.current.history).toBeNull();
+    expect(result.current.routesError).toBe(false);
+    expect(result.current.active).toBe(true);
+    expect(result.current.probeError).toBe(false);
+  });
+
+  it('discards in-flight live loader responses after demo is turned off', async () => {
+    const config = deferred<unknown>();
+    const routes = deferred<unknown>();
+    const links = deferred<unknown>();
+    const history = deferred<unknown>();
+    mockGetConfig.mockReturnValueOnce(config.promise);
+    mockGetPaymentRoutes.mockReturnValueOnce(routes.promise);
+    mockGetPaymentLinks.mockReturnValueOnce(links.promise);
+    mockCall.mockReturnValueOnce(history.promise);
+
+    const { result } = renderHook(() => useOcp(), { wrapper });
+
+    let probeP!: Promise<void>;
+    let routesP!: Promise<void>;
+    let linksP!: Promise<void>;
+    let historyP!: Promise<void>;
+    act(() => {
+      probeP = result.current.probe();
+      routesP = result.current.loadRoutes();
+      linksP = result.current.loadLinks();
+      historyP = result.current.loadHistory();
+    });
+
+    act(() => {
+      result.current.enableDemo();
+    });
+    act(() => {
+      result.current.disableDemo();
+    });
+    expect(result.current.demo).toBe(false);
+    expect(result.current.config).toBeNull();
+    expect(result.current.routes).toBeNull();
+    expect(result.current.links).toBeNull();
+    expect(result.current.history).toBeNull();
+    expect(result.current.active).toBeNull();
+
+    await act(async () => {
+      config.resolve({ accessKey: 'live-stale' });
+      routes.resolve({ sell: [{ id: 1 }], buy: [], swap: [] });
+      links.resolve([{ id: 999 }]);
+      history.resolve([
+        {
+          payments: [{ id: 1, amount: 9, currency: 'CHF', status: 'Completed' }],
+          totalCompletedAmount: 9,
+        },
+      ]);
+      await Promise.allSettled([probeP, routesP, linksP, historyP]);
+    });
+
+    expect(result.current.config).toBeNull();
+    expect(result.current.routes).toBeNull();
+    expect(result.current.links).toBeNull();
+    expect(result.current.history).toBeNull();
+    expect(result.current.active).toBeNull();
+    expect(result.current.routesError).toBe(false);
+  });
+
+  it('discards a failed probe after demo is turned on', async () => {
+    const config = deferred<unknown>();
+    mockGetConfig.mockReturnValueOnce(config.promise);
+
+    const { result } = renderHook(() => useOcp(), { wrapper });
+
+    let probeP!: Promise<void>;
+    act(() => {
+      probeP = result.current.probe();
+    });
+
+    act(() => {
+      result.current.enableDemo();
+    });
+    const demoConfig = result.current.config;
+    expect(result.current.demo).toBe(true);
+    expect(result.current.probeError).toBe(false);
+    expect(result.current.active).toBe(true);
+
+    await act(async () => {
+      config.reject(new ApiException(500, 'down'));
+      await Promise.allSettled([probeP]);
+    });
+
+    expect(result.current.demo).toBe(true);
+    expect(result.current.config).toBe(demoConfig);
+    expect(result.current.active).toBe(true);
+    expect(result.current.probeError).toBe(false);
+  });
+
+  it('discards a failed loadLinks after demo is turned on', async () => {
+    const links = deferred<unknown>();
+    mockGetPaymentLinks.mockReturnValueOnce(links.promise);
+
+    const { result } = renderHook(() => useOcp(), { wrapper });
+
+    let linksP!: Promise<void>;
+    act(() => {
+      linksP = result.current.loadLinks();
+    });
+
+    act(() => {
+      result.current.enableDemo();
+    });
+    const demoLinks = result.current.links;
+    expect(result.current.demo).toBe(true);
+    expect(demoLinks?.map((item) => item.id)).toEqual([301, 302]);
+
+    await act(async () => {
+      links.reject(new Error('down'));
+      await Promise.allSettled([linksP]);
+    });
+
+    expect(result.current.demo).toBe(true);
+    expect(result.current.links).toBe(demoLinks);
+    expect(result.current.links).not.toEqual([]);
   });
 });
