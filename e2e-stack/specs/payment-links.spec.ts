@@ -181,6 +181,12 @@ async function fetchPaymentLinkDto(jwt: string, uniqueId: string, paymentLinkId:
   return byNumeric;
 }
 
+// StyledInput writes `autocomplete` onto the HTML `name` attribute. The printed-payee
+// branch renders no input at all — a count of 0 is the display-only assertion.
+function invoiceRecipientInput(page: Page) {
+  return page.locator('input[name="name"], input[autocomplete="name"]');
+}
+
 // ---------------------------------------------------------------------------
 // Suite
 // ---------------------------------------------------------------------------
@@ -716,5 +722,94 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByText('not-a-real-recipient-e2e-xyz', { exact: false })).toBeVisible();
     // Fields re-disabled after failed validation.
     await expect(page.getByPlaceholder('Invoice ID')).toBeDisabled({ timeout: 10000 });
+  });
+
+  test('/invoice?pay=1: payer wording, no merchant QR, editable payee', async ({ page }) => {
+    await page.goto('/invoice?pay=1');
+    await waitForPublicPath(page, '/invoice');
+
+    await expect(page.getByText('Pay invoice', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Create Invoice', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Continue to payment', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Open invoice', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Copy Link', exact: true })).toHaveCount(0);
+    await expect(page.getByPlaceholder('John Doe')).toHaveCount(0);
+    await expect(page.getByPlaceholder('Invoice number')).toBeVisible();
+    await expect(page.getByPlaceholder('Invoice amount')).toBeVisible();
+    await expect(page.getByPlaceholder('Invoice ID')).toHaveCount(0);
+    await expect(
+      page.getByText('Enter the invoice number and invoice amount exactly as printed on your invoice.', {
+        exact: true,
+      }),
+    ).toBeVisible();
+
+    const payee = invoiceRecipientInput(page);
+    await expect(payee).toBeVisible();
+    await expect(payee).toBeEnabled();
+
+    const opened = new URL(page.url());
+    expect(opened.searchParams.get('pay')).toBe('1');
+  });
+
+  test('/invoice?pay=1: printed payee is display-only and shows verified for a real Lightning route', async ({
+    page,
+  }) => {
+    const user = await createUser({
+      tag: 'pl-invoice-payer-ok',
+      language: 'EN',
+      kycLevel: 30,
+      completePersonalData: true,
+    });
+    const pl = await createPaymentLink(user.jwt, { tag: 'pl-invoice-payer-ok', label: 'e2e-invoice-payer-ok' });
+    expect(pl.routeId, 'factory should return the Lightning route id used as printed recipient').toBeTruthy();
+
+    await page.goto(`/invoice?recipient=${encodeURIComponent(String(pl.routeId))}&pay=1`);
+    await waitForPublicPath(page, '/invoice');
+
+    await expect(page.getByText('Pay invoice', { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Copy Link', exact: true })).toHaveCount(0);
+    await expect(invoiceRecipientInput(page)).toHaveCount(0);
+
+    const payeeGroup = page.getByRole('group', { name: 'Payee', exact: true });
+    await expect(payeeGroup).toBeVisible();
+    await expect(payeeGroup).toContainText(String(pl.routeId));
+    await expect(page.getByRole('img', { name: 'Recipient verified', exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+
+    await expect(page.getByPlaceholder('Invoice number')).toBeEnabled({ timeout: 15000 });
+    await expect(page.getByPlaceholder('Invoice amount')).toBeEnabled({ timeout: 5000 });
+    await expect(page.getByText(/DFX does not recognize a recipient with the name/i)).toHaveCount(0);
+
+    const opened = new URL(page.url());
+    expect(opened.searchParams.get('pay')).toBe('1');
+    expect(opened.searchParams.get('recipient')).toBe(String(pl.routeId));
+  });
+
+  test('/invoice?pay=1: unknown printed payee stays display-only and shows the not-recognized message', async ({
+    page,
+  }) => {
+    const unknown = 'not-a-real-recipient-e2e-payer-xyz';
+    await page.goto(`/invoice?recipient=${encodeURIComponent(unknown)}&pay=1`);
+    await waitForPublicPath(page, '/invoice');
+
+    await expect(page.getByText('Pay invoice', { exact: true }).first()).toBeVisible();
+    await expect(invoiceRecipientInput(page)).toHaveCount(0);
+
+    const payeeGroup = page.getByRole('group', { name: 'Payee', exact: true });
+    await expect(payeeGroup).toBeVisible();
+    await expect(payeeGroup).toContainText(unknown);
+    await expect(page.getByRole('img', { name: 'Recipient verified', exact: true })).toHaveCount(0);
+
+    const notRecognized = page.locator('p').filter({
+      hasText: /DFX does not recognize a recipient with the name/i,
+    });
+    await expect(notRecognized).toBeVisible({ timeout: 15000 });
+    await expect(notRecognized).toContainText(unknown);
+    await expect(page.getByPlaceholder('Invoice number')).toBeDisabled({ timeout: 10000 });
+
+    const opened = new URL(page.url());
+    expect(opened.searchParams.get('pay')).toBe('1');
+    expect(opened.searchParams.get('recipient')).toBe(unknown);
   });
 });
