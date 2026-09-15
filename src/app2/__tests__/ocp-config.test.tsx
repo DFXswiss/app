@@ -92,4 +92,47 @@ describe('OCP config view', () => {
     fireEvent.click(screen.getByRole('button', { name: /save|speichern|salva|enregistrer/i }));
     await waitFor(() => expect(mockSaveConfig).toHaveBeenCalledTimes(2));
   });
+
+  it('does not claim saved when the form changes while the PUT is in flight', async () => {
+    let release: () => void = () => undefined;
+    mockSaveConfig.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = () => resolve();
+        }),
+    );
+    renderConfig();
+    fireEvent.click(screen.getByRole('button', { name: /save|speichern|salva|enregistrer/i }));
+    expect(await screen.findByText(/sending|senden|invio|envoi/i)).toBeInTheDocument();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[2], { target: { value: '0' } });
+    release();
+    await waitFor(() => expect(document.querySelector('.paybox-note.warn')).toBeTruthy());
+    expect(document.querySelector('.paybox-note.warn')?.textContent).toMatch(
+      /form changed while saving|formular hat sich|modulo è cambiato|formulaire a changé/i,
+    );
+    expect(document.querySelector('.paybox-note.ok')).toBeNull();
+    expect(screen.queryByText(/^Saved$|^Gespeichert$|^Salvato$|^Enregistré$/)).not.toBeInTheDocument();
+  });
+
+  it('still reports a failed save when the form changes while the PUT is in flight', async () => {
+    let fail: (error: Error) => void = () => undefined;
+    mockSaveConfig.mockImplementation(
+      () =>
+        new Promise<void>((_, reject) => {
+          fail = reject;
+        }),
+    );
+    renderConfig();
+    fireEvent.click(screen.getByRole('button', { name: /save|speichern|salva|enregistrer/i }));
+    expect(await screen.findByText(/sending|senden|invio|envoi/i)).toBeInTheDocument();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[2], { target: { value: '0' } });
+    fail(new ApiException(400, 'nope'));
+    await waitFor(() => expect(screen.getByText(/nope/)).toBeInTheDocument());
+    expect(
+      screen.queryByText(/form changed while saving|formular hat sich|modulo è cambiato|formulaire a changé/i),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector('.paybox-note.ok')).toBeNull();
+  });
 });

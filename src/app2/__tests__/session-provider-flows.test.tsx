@@ -105,6 +105,7 @@ import type { WalletCatalogEntry } from '../wallets/catalog';
 
 const address = '0x' + '11'.repeat(20);
 const other = '0x' + '22'.repeat(20);
+const third = '0x' + '33'.repeat(20);
 
 const metamask = {
   id: 'MetaMask',
@@ -286,6 +287,24 @@ function Probe() {
         }}
       >
         switch
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const entry = session.switcher.entries.find((e) => e.address.toLowerCase() === other.toLowerCase());
+          if (entry) void session.switcher.onSwitch(entry);
+        }}
+      >
+        switch-other
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const entry = session.switcher.entries.find((e) => e.address.toLowerCase() === third.toLowerCase());
+          if (entry) void session.switcher.onSwitch(entry);
+        }}
+      >
+        switch-third
       </button>
       <button
         type="button"
@@ -566,6 +585,70 @@ describe('WalletSessionProvider flows', () => {
       listeners.chainChanged?.();
     });
     await waitFor(() => expect(mockLogout).toHaveBeenCalled());
+  });
+
+  it('discards a superseded switch so it cannot restore bindings or toast connected', async () => {
+    const pending: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
+    mockChangeAddress.mockImplementation(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          pending.push({ resolve, reject });
+        }),
+    );
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockUserAddresses.push(
+      { address, label: 'A', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: other, label: 'B', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: third, label: 'C', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+    );
+    renderSession();
+    fireEvent.click(screen.getByText('switch-other'));
+    await waitFor(() => expect(pending.length).toBe(1));
+    fireEvent.click(screen.getByText('switch-third'));
+    await waitFor(() => expect(pending.length).toBe(2));
+    await act(async () => {
+      pending[1].resolve();
+    });
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Connected · 0x3333…3333'));
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      pending[0].resolve();
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Connected · 0x3333…3333');
+    expect(screen.getByRole('status')).not.toHaveTextContent('0x2222…2222');
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards a superseded switch failure so it cannot restore bindings or toast switchFail', async () => {
+    const pending: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
+    mockChangeAddress.mockImplementation(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          pending.push({ resolve, reject });
+        }),
+    );
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockUserAddresses.push(
+      { address, label: 'A', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: other, label: 'B', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: third, label: 'C', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+    );
+    renderSession();
+    fireEvent.click(screen.getByText('switch-other'));
+    await waitFor(() => expect(pending.length).toBe(1));
+    fireEvent.click(screen.getByText('switch-third'));
+    await waitFor(() => expect(pending.length).toBe(2));
+    await act(async () => {
+      pending[1].resolve();
+    });
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Connected · 0x3333…3333'));
+    await act(async () => {
+      pending[0].reject(new Error('late'));
+    });
+    expect(screen.queryByRole('alert')).not.toHaveTextContent(/could not switch/i);
+    expect(screen.getByRole('status')).toHaveTextContent('Connected · 0x3333…3333');
   });
 
   it('does not call changeAddress when the user object is missing', async () => {

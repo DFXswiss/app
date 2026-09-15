@@ -6,7 +6,7 @@
 // in the shell); saved via `ocp.saveConfig` (PUT /paymentLink/config).
 
 import { ApiException, MinCompletionStatus, PaymentStandardType, type UpdatePaymentLinkConfig } from '@dfx.swiss/react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useToast } from '../../components/ui';
 import { type TranslationKey, useT } from '../../i18n';
 import type { OcpSubViewProps } from './useOcp';
@@ -25,6 +25,25 @@ const COMPLETION: MinCompletionStatus[] = [
 ];
 
 type Result = { kind: 'sending' } | { kind: 'ok'; text: string } | { kind: 'error'; text: string };
+
+type ConfigForm = {
+  standards: PaymentStandardType[];
+  completion: MinCompletionStatus;
+  timeout: string;
+  displayQr: boolean;
+  cancellable: boolean;
+};
+
+/** Canonical form snapshot so a late PUT cannot report success against a newer form. */
+function configFormKey(form: ConfigForm): string {
+  return JSON.stringify({
+    standards: [...form.standards].sort(),
+    completion: form.completion,
+    paymentTimeout: Number(form.timeout) || 60,
+    displayQr: form.displayQr,
+    cancellable: form.cancellable,
+  });
+}
 
 export default function ConfigView({ ocp }: OcpSubViewProps) {
   const { t } = useT();
@@ -47,23 +66,32 @@ export default function ConfigView({ ocp }: OcpSubViewProps) {
 
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
+  const formRef = useRef<ConfigForm>({ standards, completion, timeout, displayQr, cancellable });
+  formRef.current = { standards, completion, timeout, displayQr, cancellable };
 
   function toggleStandard(std: PaymentStandardType, checked: boolean) {
     setStandards((prev) => (checked ? [...prev, std] : prev.filter((s) => s !== std)));
   }
 
   async function save() {
+    const sent = formRef.current;
     const body: UpdatePaymentLinkConfig = {
-      standards,
-      minCompletionStatus: completion,
-      paymentTimeout: Number(timeout) || 60,
-      displayQr,
-      cancellable,
+      standards: sent.standards,
+      minCompletionStatus: sent.completion,
+      paymentTimeout: Number(sent.timeout) || 60,
+      displayQr: sent.displayQr,
+      cancellable: sent.cancellable,
     };
+    const sentKey = configFormKey(sent);
     setSaving(true);
     setResult({ kind: 'sending' });
     try {
       await ocp.saveConfig(body);
+      if (configFormKey(formRef.current) !== sentKey) {
+        setResult({ kind: 'error', text: t('cfgFormChanged') });
+        showToast(t('cfgFormChanged'));
+        return;
+      }
       setResult({ kind: 'ok', text: t('saved') });
       showToast(t('saved'));
     } catch (err) {

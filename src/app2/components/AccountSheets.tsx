@@ -104,6 +104,8 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
   const [editCurrency, setEditCurrency] = useState('');
   const [removeId, setRemoveId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const editIdRef = useRef(editId);
+  editIdRef.current = editId;
 
   useEffect(() => {
     if (!open) return;
@@ -136,9 +138,11 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
   };
 
   const saveEdit = async (account: BankAccount) => {
-    setBusyId(account.id);
+    const targetId = account.id;
+    setBusyId(targetId);
     try {
-      await updateAccount(account.id, { label: editLabel.trim(), preferredCurrency: fiatById(editCurrency) });
+      await updateAccount(targetId, { label: editLabel.trim(), preferredCurrency: fiatById(editCurrency) });
+      if (editIdRef.current !== targetId) return;
       showToast(t('saved'));
       setEditId(null);
     } catch {
@@ -149,9 +153,11 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
   };
 
   const setDefault = async (account: BankAccount) => {
-    setBusyId(account.id);
+    const targetId = account.id;
+    setBusyId(targetId);
     try {
-      await updateAccount(account.id, { default: true });
+      await updateAccount(targetId, { default: true });
+      if (editIdRef.current !== targetId) return;
       showToast(t('saved'));
       setEditId(null);
     } catch {
@@ -394,6 +400,8 @@ function AddressesSheet({ open, onClose }: SheetProps) {
   const [label, setLabel] = useState('');
   const [removeFor, setRemoveFor] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const renameForRef = useRef(renameFor);
+  renameForRef.current = renameFor;
 
   useEffect(() => {
     if (!open) return;
@@ -417,6 +425,7 @@ function AddressesSheet({ open, onClose }: SheetProps) {
     setBusy(address);
     try {
       await renameAddress(address, label.trim());
+      if (renameForRef.current !== address) return;
       showToast(t('saved'));
       setRenameFor(null);
     } catch {
