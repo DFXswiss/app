@@ -15,6 +15,7 @@ import { useToast } from '../../components/ui';
 import { useT, type TranslationKey } from '../../i18n';
 import { qrData } from './lnurl';
 import type { OcpApi, OcpSubViewProps } from './useOcp';
+import { cx } from '../../css';
 
 /**
  * Translates a PaymentLinkStatus / PaymentLinkPaymentStatus enum value the same
@@ -69,9 +70,9 @@ const POS_ICON = (
 
 function KvRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="kv">
-      <span className="kk">{label}</span>
-      <span className="vv">{value}</span>
+    <div className={cx('kv')}>
+      <span className={cx('kk')}>{label}</span>
+      <span className={cx('vv')}>{value}</span>
     </div>
   );
 }
@@ -92,34 +93,39 @@ function LinkCard({ link, ocp, toggling, onToggle, onPos }: LinkCardProps) {
   const payCurrency = pay ? (typeof pay.currency === 'string' ? pay.currency : (pay.currency?.name ?? '')) : '';
 
   return (
-    <details className="rcol">
+    <details className={cx('rcol')} data-testid="ocp-link-card">
       <summary>
-        <span className="rci">{LINK_ICON}</span>
-        <span className="rtt">
+        <span className={cx('rci')}>{LINK_ICON}</span>
+        <span className={cx('rtt')}>
           <b>{title}</b>
           <small>
             {t('route')} {String(link.routeId)} · {paymentLinkStatusLabel(t, link.status)}
           </small>
         </span>
-        <span className={`pill-chip ${active ? 'act' : 'ina'}`}>{paymentLinkStatusLabel(t, link.status)}</span>
-        <span className="chev">{CHEV_ICON}</span>
+        <span className={cx('pill-chip', active ? 'act' : 'ina')}>{paymentLinkStatusLabel(t, link.status)}</span>
+        <span className={cx('chev')}>{CHEV_ICON}</span>
       </summary>
-      <div className="rbody">
+      <div className={cx('rbody')}>
         {link.lnurl && (
-          <div className="qrcard">
+          <div className={cx('qrcard')}>
             <QRCode value={qrData(link.lnurl)} size={212} level="M" bgColor="#ffffff" fgColor="#000000" />
-            <div className="qcap">{link.label || `#${link.id}`}</div>
+            <div className={cx('qcap')}>{link.label || `#${link.id}`}</div>
           </div>
         )}
         <KvRow label="ID" value={`#${link.id}`} />
         {link.externalId && <KvRow label={t('invoiceId')} value={link.externalId} />}
         {link.lnurl && (
-          <div className="kv">
-            <span className="kk">LNURL</span>
-            <span className="vv" style={{ fontSize: 11 }}>
+          <div className={cx('kv')}>
+            <span className={cx('kk')}>LNURL</span>
+            <span className={cx('vv')} style={{ fontSize: 11 }}>
               {link.lnurl.slice(0, 26)}…
             </span>
-            <button type="button" className="cpy" aria-label={t('copyLnurl')} onClick={() => ocp.copy(link.lnurl)}>
+            <button
+              type="button"
+              className={cx('cpy')}
+              aria-label={t('copyLnurl')}
+              onClick={() => ocp.copy(link.lnurl)}
+            >
               {COPY_ICON}
             </button>
           </div>
@@ -131,24 +137,19 @@ function LinkCard({ link, ocp, toggling, onToggle, onPos }: LinkCardProps) {
           </>
         )}
         <div style={{ padding: '10px 12px 4px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div className="row2">
+          <div className={cx('row2')}>
             {link.lnurl && (
-              <button type="button" className="btn-mini" onClick={() => ocp.copy(link.lnurl)}>
+              <button type="button" className={cx('btn-mini')} onClick={() => ocp.copy(link.lnurl)}>
                 {COPY_ICON}
                 {t('copyLnurl')}
               </button>
             )}
-            <button type="button" className="btn-mini" onClick={onPos}>
+            <button type="button" className={cx('btn-mini')} onClick={onPos}>
               {POS_ICON}
               {t('openPos')}
             </button>
           </div>
-          <button
-            type="button"
-            className={`btn-mini ${active ? 'danger' : ''}`.trim()}
-            disabled={toggling}
-            onClick={onToggle}
-          >
+          <button type="button" className={cx('btn-mini', active && 'danger')} disabled={toggling} onClick={onToggle}>
             {active ? t('deactivate') : t('activate')}
           </button>
         </div>
@@ -185,7 +186,7 @@ export default function LinksView({ ocp, go }: OcpSubViewProps) {
       variant: '',
       node: (
         <>
-          <span className="spin" /> {t('tkSending')}
+          <span className={cx('spin')} /> {t('tkSending')}
         </>
       ),
     });
@@ -227,8 +228,8 @@ export default function LinksView({ ocp, go }: OcpSubViewProps) {
 
   if (ocp.links === null) {
     return (
-      <div className="ocp-empty">
-        <span className="spin" /> {t('loading')}
+      <div className={cx('ocp-empty')}>
+        <span className={cx('spin')} /> {t('loading')}
       </div>
     );
   }
@@ -238,7 +239,7 @@ export default function LinksView({ ocp, go }: OcpSubViewProps) {
   return (
     <>
       <p style={{ color: 'var(--t-muted)', fontSize: 13, lineHeight: 1.5, margin: '2px 4px 14px' }}>{t('linksLead')}</p>
-      {!canCreate && <div className="ocp-empty">{t('invoiceNoRoute')}</div>}
+      {!canCreate && <div className={cx('ocp-empty')}>{t('invoiceNoRoute')}</div>}
       {links.length ? (
         links.map((link) => (
           <LinkCard
@@ -251,15 +252,20 @@ export default function LinksView({ ocp, go }: OcpSubViewProps) {
           />
         ))
       ) : (
-        <div className="ocp-empty">{t('linksEmpty')}</div>
+        <div className={cx('ocp-empty')}>{t('linksEmpty')}</div>
       )}
-      <div className="ocp-actions">
-        <button type="button" className="btn-primary" disabled={!canCreate || creating} onClick={() => void create()}>
+      <div className={cx('ocp-actions')}>
+        <button
+          type="button"
+          className={cx('btn-primary')}
+          disabled={!canCreate || creating}
+          onClick={() => void create()}
+        >
           {t('createLink')}
         </button>
       </div>
       {note && (
-        <div className={`paybox-note ${note.variant}`.trim()} style={{ marginTop: 10 }}>
+        <div className={cx('paybox-note', note.variant)} style={{ marginTop: 10 }}>
           {note.node}
         </div>
       )}

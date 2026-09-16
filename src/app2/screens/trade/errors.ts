@@ -10,9 +10,7 @@
 //     real enum, which is strictly more reliable.
 
 import { ApiException, TransactionError } from '@dfx.swiss/react';
-// KYC-message mapper owned by the main app — see docs/test-architecture.md
-// ("App 2.0 talks to two layers, not one").
-import { getKycErrorFromMessage } from '../../../util/api-error';
+import { getKycErrorFromMessage } from '../../lib/api-error';
 import type { Language, TranslationKey } from '../../i18n';
 import { formatAmount, formatFiat } from './amount';
 

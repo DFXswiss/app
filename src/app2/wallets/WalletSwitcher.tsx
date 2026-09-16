@@ -10,6 +10,7 @@ import { Sheet, SheetHeader } from '../components/ui';
 import { useT } from '../i18n';
 import { chainName } from '../screens/trade/blockchain-meta';
 import { useWalletSession, type WalletSwitchEntry } from './session';
+import { cx } from '../css';
 
 function short(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
@@ -33,21 +34,21 @@ export function WalletSwitcher(): JSX.Element {
   return (
     <Sheet open={switcher.open} onClose={switcher.onClose} titleId="switchSheetTitle">
       <SheetHeader titleId="switchSheetTitle" title={t('switchWallet')} onClose={switcher.onClose} />
-      <div className="slist">
-        <p className="tnote" style={{ padding: '0 2px 8px' }}>
+      <div className={cx('slist')}>
+        <p className={cx('tnote')} style={{ padding: '0 2px 8px' }}>
           {t('switchNote')}
         </p>
         {switcher.entries.length === 0 && (
-          <p className="tnote" style={{ padding: 14, textAlign: 'center' }}>
+          <p className={cx('tnote')} style={{ padding: 14, textAlign: 'center' }}>
             {t('noWallets')}
           </p>
         )}
         {switcher.entries.map((entry) => (
           <SwitchRow key={entry.address} entry={entry} onSwitch={switcher.onSwitch} />
         ))}
-        <button className="swrow add" onClick={switcher.onConnectAnother}>
-          <span className="swlogo plus">{PLUS_ICON}</span>
-          <span className="swtx">
+        <button className={cx('swrow', 'add')} onClick={switcher.onConnectAnother}>
+          <span className={cx('swlogo', 'plus')}>{PLUS_ICON}</span>
+          <span className={cx('swtx')}>
             <b>{t('connectAnother')}</b>
           </span>
         </button>
@@ -72,11 +73,11 @@ function SwitchRow({
     .join(' · ');
   return (
     <button
-      className={`swrow${entry.active ? ' active' : ''}`}
+      className={cx('swrow', entry.active && 'active')}
       onClick={() => onSwitch(entry)}
       aria-current={entry.active || undefined}
     >
-      <span className="swlogo">
+      <span className={cx('swlogo')}>
         {entry.icon && !logoFailed ? (
           // Sizing/fit comes from `.swrow .swlogo img` (26px, object-fit: contain); an inline
           // 100%/cover cropped brand marks to the tile edges.
@@ -87,7 +88,7 @@ function SwitchRow({
           </b>
         )}
       </span>
-      <span className="swtx">
+      <span className={cx('swtx')}>
         <b>{entry.name}</b>
         <small>
           {short(entry.address)}
@@ -95,9 +96,9 @@ function SwitchRow({
         </small>
       </span>
       {entry.active ? (
-        <span className="pill-chip act">{t('walletActive')}</span>
+        <span className={cx('pill-chip', 'act')}>{t('walletActive')}</span>
       ) : (
-        <span className="swgo">{GO_ICON}</span>
+        <span className={cx('swgo')}>{GO_ICON}</span>
       )}
     </button>
   );

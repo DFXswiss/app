@@ -17,6 +17,7 @@ import { useWalletSession } from '../../wallets/session';
 import { formatChf } from '../parts/format';
 import { ibanCheck, ibanErrorMessage } from '../trade/iban';
 import type { OcpSubViewProps } from './useOcp';
+import { cx } from '../../css';
 
 const COPY_ICON = (
   <svg viewBox="0 0 24 24" fill="none">
@@ -132,7 +133,7 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
       variant: '',
       node: (
         <>
-          <span className="spin" /> {t('tkSending')}
+          <span className={cx('spin')} /> {t('tkSending')}
         </>
       ),
     });
@@ -159,19 +160,24 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
 
       {!total &&
         (ocp.routesError ? (
-          <div className="ocp-empty" style={{ flexDirection: 'column', gap: 12, textAlign: 'center' }}>
+          <div className={cx('ocp-empty')} style={{ flexDirection: 'column', gap: 12, textAlign: 'center' }}>
             <span>{t('loadFail')}</span>
-            <button type="button" className="btn-mini" style={{ width: 'auto' }} onClick={() => void ocp.loadRoutes()}>
+            <button
+              type="button"
+              className={cx('btn-mini')}
+              style={{ width: 'auto' }}
+              onClick={() => void ocp.loadRoutes()}
+            >
               {t('retry')}
             </button>
           </div>
         ) : (
-          <div className="ocp-empty">{t('routesEmpty')}</div>
+          <div className={cx('ocp-empty')}>{t('routesEmpty')}</div>
         ))}
 
       {sell.length > 0 && (
         <>
-          <div className="sectionlabel tight">{t('sellRoutes')}</div>
+          <div className={cx('sectionlabel', 'tight')}>{t('sellRoutes')}</div>
           {sell.map((r) => (
             <RouteRow
               key={`sell-${r.id}`}
@@ -186,7 +192,7 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
 
       {buy.length > 0 && (
         <>
-          <div className="sectionlabel tight">{t('buyRoutes')}</div>
+          <div className={cx('sectionlabel', 'tight')}>{t('buyRoutes')}</div>
           {buy.map((r) => (
             <RouteRow
               key={`buy-${r.id}`}
@@ -201,7 +207,7 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
 
       {swap.length > 0 && (
         <>
-          <div className="sectionlabel tight">{t('swapRoutes')}</div>
+          <div className={cx('sectionlabel', 'tight')}>{t('swapRoutes')}</div>
           {swap.map((r) => (
             <RouteRow
               key={`swap-${r.id}`}
@@ -215,35 +221,40 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
       )}
 
       {/* Add a Lightning sell route (the OpenCryptoPay payout rail). */}
-      <div className="sectionlabel tight">{t('addSellRoute')}</div>
-      <div className="glass" style={{ borderRadius: 18, padding: 14 }}>
-        <div className="tform">
+      <div className={cx('sectionlabel', 'tight')}>{t('addSellRoute')}</div>
+      <div className={cx('glass')} style={{ borderRadius: 18, padding: 14 }}>
+        <div className={cx('tform')}>
           <p style={{ color: 'var(--t-muted)', fontSize: 12.5, lineHeight: 1.45, margin: '0 2px 4px' }}>
             {t('addSellLead')}
           </p>
 
           {kycWarn && (
-            <div className="paybox-note warn" style={{ margin: '2px 0' }}>
+            <div className={cx('paybox-note', 'warn')} style={{ margin: '2px 0' }}>
               {t('kycNeeded')}
             </div>
           )}
 
-          <label className="flabel" htmlFor="srIban">
+          <label className={cx('flabel')} htmlFor="srIban">
             {t('payoutIban')}
           </label>
           <input
             id="srIban"
-            className="tinput"
+            className={cx('tinput')}
             placeholder="CH.. / DE.."
             autoComplete="off"
             value={iban}
             onChange={(e) => setIban(e.target.value)}
           />
 
-          <label className="flabel" htmlFor="srCur">
+          <label className={cx('flabel')} htmlFor="srCur">
             {t('payoutCur')}
           </label>
-          <select id="srCur" className="tinput" value={currencyId} onChange={(e) => setCurrencyId(e.target.value)}>
+          <select
+            id="srCur"
+            className={cx('tinput')}
+            value={currencyId}
+            onChange={(e) => setCurrencyId(e.target.value)}
+          >
             {sellableCurrencies.map((f) => (
               <option key={f.id} value={String(f.id)}>
                 {f.name}
@@ -251,10 +262,10 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
             ))}
           </select>
 
-          <label className="flabel" htmlFor="srChain">
+          <label className={cx('flabel')} htmlFor="srChain">
             {t('payoutChain')}
           </label>
-          <select id="srChain" className="tinput" value={chain} onChange={(e) => setChain(e.target.value)}>
+          <select id="srChain" className={cx('tinput')} value={chain} onChange={(e) => setChain(e.target.value)}>
             {chainList.length ? (
               chainList.map((c) => (
                 <option key={c} value={c}>
@@ -268,17 +279,23 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
           </select>
 
           {!ocp.lightningReady && (
-            <div className="paybox-note" style={{ marginTop: 8 }}>
+            <div className={cx('paybox-note')} style={{ marginTop: 8 }}>
               {t('ocpLnHint')}
             </div>
           )}
 
-          <button type="button" className="btn-primary" style={{ marginTop: 8 }} disabled={submitting} onClick={submit}>
+          <button
+            type="button"
+            className={cx('btn-primary')}
+            style={{ marginTop: 8 }}
+            disabled={submitting}
+            onClick={submit}
+          >
             {t('createRoute')}
           </button>
 
           {result && (
-            <div className={`paybox-note ${result.variant}`.trim()} style={{ marginTop: 10 }}>
+            <div className={cx('paybox-note', result.variant)} style={{ marginTop: 10 }}>
               {result.node}
             </div>
           )}
@@ -340,29 +357,29 @@ function RouteRow({ model, ocp, busyId, onToggle }: RouteRowProps) {
   const { t } = useT();
   const { type, id, active, subtitle, kvs } = model;
   return (
-    <details className="rcol">
+    <details className={cx('rcol')}>
       <summary>
-        <span className="rci">
+        <span className={cx('rci')}>
           <svg viewBox="0 0 24 24" fill="none">
             {ROUTE_ICON[type]}
           </svg>
         </span>
-        <span className="rtt">
+        <span className={cx('rtt')}>
           <b>
             {t('route')} {id}
           </b>
           <small>{subtitle}</small>
         </span>
-        <span className={`pill-chip ${active ? 'act' : 'ina'}`}>{active ? t('active') : t('inactive')}</span>
-        <span className="chev">{CHEV_ICON}</span>
+        <span className={cx('pill-chip', active ? 'act' : 'ina')}>{active ? t('active') : t('inactive')}</span>
+        <span className={cx('chev')}>{CHEV_ICON}</span>
       </summary>
-      <div className="rbody">
+      <div className={cx('rbody')}>
         {kvs.map((kv, i) => (
-          <div className="kv" key={i}>
-            <span className="kk">{kv.k}</span>
-            <span className="vv">{kv.v}</span>
+          <div className={cx('kv')} key={i}>
+            <span className={cx('kk')}>{kv.k}</span>
+            <span className={cx('vv')}>{kv.v}</span>
             {kv.copy && (
-              <button type="button" className="cpy" aria-label={t('copied')} onClick={() => ocp.copy(kv.v)}>
+              <button type="button" className={cx('cpy')} aria-label={t('copied')} onClick={() => ocp.copy(kv.v)}>
                 {COPY_ICON}
               </button>
             )}
@@ -371,7 +388,7 @@ function RouteRow({ model, ocp, busyId, onToggle }: RouteRowProps) {
         <div style={{ padding: '10px 12px 4px' }}>
           <button
             type="button"
-            className={`btn-mini${active ? ' danger' : ''}`}
+            className={cx('btn-mini', active && 'danger')}
             disabled={busyId === id}
             onClick={() => onToggle(type, id, !active)}
           >

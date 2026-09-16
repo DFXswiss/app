@@ -11,6 +11,7 @@ import { useBankAccountContext } from '@dfx.swiss/react';
 import { ibanCheck, ibanErrorMessage } from '../../screens/trade/iban';
 import { Sheet, SheetHeader, Spinner, onActivate, useToast } from '../ui';
 import { useT } from '../../i18n';
+import { cx } from '../../css';
 
 interface BankAccountPickerProps {
   open: boolean;
@@ -70,53 +71,53 @@ export function BankAccountPicker({ open, onClose, titleId, value, onSelect }: B
   return (
     <Sheet open={open} onClose={close} titleId={titleId}>
       <SheetHeader titleId={titleId} title={t('baAdd')} onClose={close} />
-      <div className="slist" style={{ padding: '6px 16px 22px' }}>
+      <div className={cx('slist')} style={{ padding: '6px 16px 22px' }}>
         {!adding ? (
           <>
             {isLoading && (
-              <div className="glass tkempty">
+              <div className={cx('glass', 'tkempty')}>
                 <Spinner /> {t('loading')}
               </div>
             )}
-            {!isLoading && !accounts.length && <p className="tnote">{t('noBankAccts')}</p>}
+            {!isLoading && !accounts.length && <p className={cx('tnote')}>{t('noBankAccts')}</p>}
             {accounts.map((account) => (
               <button
                 key={account.id}
                 type="button"
-                className={`swrow${value?.id === account.id ? ' active' : ''}`}
+                className={cx('swrow', value?.id === account.id && 'active')}
                 onClick={() => pick(account)}
                 disabled={value?.id === account.id}
               >
-                <span className="swlogo">
+                <span className={cx('swlogo')}>
                   <svg viewBox="0 0 24 24" fill="none" style={{ width: 22, height: 22 }}>
                     <rect x={3} y={6} width={18} height={12} rx={2.4} stroke="#0E3A63" strokeWidth={1.7} />
                     <path d="M3 10h18" stroke="#0E3A63" strokeWidth={1.7} />
                   </svg>
                 </span>
-                <span className="swtx">
+                <span className={cx('swtx')}>
                   <b>{account.label || account.iban}</b>
                   {account.label && <small>{account.iban}</small>}
                 </span>
-                {account.default && <span className="pill-chip act">{t('baDefault')}</span>}
+                {account.default && <span className={cx('pill-chip', 'act')}>{t('baDefault')}</span>}
               </button>
             ))}
-            <button type="button" className="swrow add" onClick={() => setAdding(true)}>
-              <span className="swlogo plus">
+            <button type="button" className={cx('swrow', 'add')} onClick={() => setAdding(true)}>
+              <span className={cx('swlogo', 'plus')}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path d="M12 5v14M5 12h14" strokeLinecap="round" />
                 </svg>
               </span>
-              <span className="swtx">
+              <span className={cx('swtx')}>
                 <b>{t('baAdd')}</b>
               </span>
             </button>
           </>
         ) : (
           <div style={{ padding: '2px 2px 4px' }}>
-            <p className="tnote" style={{ padding: 0, marginBottom: 10 }}>
+            <p className={cx('tnote')} style={{ padding: 0, marginBottom: 10 }}>
               {t('sellNeedIban')}
             </p>
-            <div className="efield">
+            <div className={cx('efield')}>
               <input
                 value={iban}
                 onChange={(e) => setIban(e.target.value)}
@@ -149,12 +150,12 @@ export function BankAccountPicker({ open, onClose, titleId, value, onSelect }: B
               </button>
             </div>
             {fieldError && (
-              <div className="paybox-note warn" style={{ marginTop: 8 }}>
+              <div className={cx('paybox-note', 'warn')} style={{ marginTop: 8 }}>
                 {fieldError}
               </div>
             )}
             <div
-              className="backrow"
+              className={cx('backrow')}
               role="button"
               tabIndex={0}
               style={{ padding: '12px 0 0' }}

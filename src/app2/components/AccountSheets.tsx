@@ -21,15 +21,13 @@ import {
 } from '@dfx.swiss/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type TranslationKey, useT } from '../i18n';
-// Recommendation API owned by the main app — see docs/test-architecture.md
-// ("App 2.0 talks to two layers, not one").
-import { Recommendation } from 'src/dto/recommendation.dto';
-import useRecommendation from 'src/hooks/recommendation.hook';
+import { type Recommendation, useRecommendation } from '../lib/recommendation';
 import { localeFor, shortAddress } from '../screens/parts/format';
 import { ibanCheck, ibanErrorMessage } from '../screens/trade/iban';
 import { FiatPicker } from './pickers/FiatPicker';
 import { LanguageSheet } from './LanguageSheet';
 import { Sheet, SheetHeader, Spinner, useToast } from './ui';
+import { cx } from '../css';
 
 export type AccountSheet =
   'bankaccts' | 'addresses' | 'email' | 'vcall' | 'language' | 'currency' | 'ctkey' | 'referral';
@@ -74,7 +72,7 @@ function CurrencySelect({
   currencies: Fiat[];
 }) {
   return (
-    <select className="tinput" value={value} onChange={(e) => onChange(e.target.value)}>
+    <select className={cx('tinput')} value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">—</option>
       {currencies.map((fiat) => (
         <option key={fiat.id} value={String(fiat.id)}>
@@ -225,22 +223,22 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
   return (
     <Sheet open={open} onClose={onClose} titleId="baSheetTitle">
       <SheetHeader titleId="baSheetTitle" title={t('bankAccounts')} onClose={onClose} />
-      <div className="slist" style={{ paddingBottom: 24 }}>
+      <div className={cx('slist')} style={{ paddingBottom: 24 }}>
         {isLoading && !accounts.length ? (
-          <div className="ocp-empty" style={{ padding: 20, gap: 8 }}>
+          <div className={cx('ocp-empty')} style={{ padding: 20, gap: 8 }}>
             <Spinner /> {t('loading')}
           </div>
         ) : (
           <>
             {!accounts.length && (
-              <div className="ocp-empty" style={{ padding: '12px 4px 4px' }}>
+              <div className={cx('ocp-empty')} style={{ padding: '12px 4px 4px' }}>
                 {t('noBankAccts')}
               </div>
             )}
             {accounts.map((account) => (
               <div
                 key={account.id}
-                className="glass"
+                className={cx('glass')}
                 style={{ borderRadius: 14, padding: '12px 14px', marginBottom: 9 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -281,33 +279,33 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
                       justifyContent: 'flex-end',
                     }}
                   >
-                    {account.default && <span className="pill-chip act">{t('baDefault')}</span>}
+                    {account.default && <span className={cx('pill-chip', 'act')}>{t('baDefault')}</span>}
                     {account.preferredCurrency?.name && (
-                      <span className="pill-chip ina">{account.preferredCurrency.name}</span>
+                      <span className={cx('pill-chip', 'ina')}>{account.preferredCurrency.name}</span>
                     )}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
-                  <button type="button" className="actpill" onClick={() => openEdit(account)}>
+                  <button type="button" className={cx('actpill')} onClick={() => openEdit(account)}>
                     {t('baEdit')}
                   </button>
-                  <button type="button" className="actpill danger" onClick={() => openRemove(account)}>
+                  <button type="button" className={cx('actpill', 'danger')} onClick={() => openRemove(account)}>
                     {t('baRemove')}
                   </button>
                 </div>
                 {editId === account.id && (
                   <div
-                    className="tform"
+                    className={cx('tform')}
                     style={{ marginTop: 10, borderTop: '1px solid var(--hair-soft)', paddingTop: 10 }}
                   >
-                    <label className="flabel">{t('baLabel')}</label>
-                    <input className="tinput" value={editLabel} onChange={(e) => setEditLabel(e.target.value)} />
-                    <label className="flabel">{t('baCurrency')}</label>
+                    <label className={cx('flabel')}>{t('baLabel')}</label>
+                    <input className={cx('tinput')} value={editLabel} onChange={(e) => setEditLabel(e.target.value)} />
+                    <label className={cx('flabel')}>{t('baCurrency')}</label>
                     <CurrencySelect value={editCurrency} onChange={setEditCurrency} currencies={fiats} />
                     {!account.default && (
                       <button
                         type="button"
-                        className="btn-mini"
+                        className={cx('btn-mini')}
                         style={{ width: 'auto', marginTop: 8 }}
                         disabled={busyId === account.id}
                         onClick={() => void setDefault(account)}
@@ -317,7 +315,7 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
                     )}
                     <button
                       type="button"
-                      className="btn-primary"
+                      className={cx('btn-primary')}
                       style={{ marginTop: 8 }}
                       disabled={busyId === account.id}
                       onClick={() => void saveEdit(account)}
@@ -328,13 +326,13 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
                 )}
                 {removeId === account.id && (
                   <div style={{ marginTop: 10, borderTop: '1px solid var(--hair-soft)', paddingTop: 10 }}>
-                    <div className="paybox-note warn" style={{ marginBottom: 9 }}>
+                    <div className={cx('paybox-note', 'warn')} style={{ marginBottom: 9 }}>
                       {t('baRemoveConfirm')}
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button
                         type="button"
-                        className="btn-mini danger"
+                        className={cx('btn-mini', 'danger')}
                         style={{ width: 'auto' }}
                         disabled={busyId === account.id}
                         onClick={() => void remove(account)}
@@ -343,7 +341,7 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
                       </button>
                       <button
                         type="button"
-                        className="btn-mini"
+                        className={cx('btn-mini')}
                         style={{ width: 'auto' }}
                         onClick={() => setRemoveId(null)}
                       >
@@ -354,13 +352,13 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
                 )}
               </div>
             ))}
-            <div className="sectionlabel" style={{ padding: '14px 2px 8px' }}>
+            <div className={cx('sectionlabel')} style={{ padding: '14px 2px 8px' }}>
               {t('baAdd')}
             </div>
-            <div className="tform">
-              <label className="flabel">{t('iban')}</label>
+            <div className={cx('tform')}>
+              <label className={cx('flabel')}>{t('iban')}</label>
               <input
-                className="tinput"
+                className={cx('tinput')}
                 value={iban}
                 onChange={(e) => setIban(e.target.value)}
                 placeholder="CH.. / DE.."
@@ -369,25 +367,25 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
                   if (e.key === 'Enter') void add();
                 }}
               />
-              <label className="flabel">
+              <label className={cx('flabel')}>
                 {t('baLabel')} <span style={{ color: 'var(--t-faint)', fontWeight: 400 }}>{t('optional')}</span>
               </label>
               <input
-                className="tinput"
+                className={cx('tinput')}
                 value={addLabel}
                 onChange={(e) => setAddLabel(e.target.value)}
                 autoComplete="off"
               />
-              <label className="flabel">{t('baCurrency')}</label>
+              <label className={cx('flabel')}>{t('baCurrency')}</label>
               <CurrencySelect value={addCurrency} onChange={setAddCurrency} currencies={fiats} />
               {addError && (
-                <div className="paybox-note warn" style={{ marginTop: 8 }}>
+                <div className={cx('paybox-note', 'warn')} style={{ marginTop: 8 }}>
                   {addError}
                 </div>
               )}
               <button
                 type="button"
-                className="btn-primary"
+                className={cx('btn-primary')}
                 style={{ marginTop: 10 }}
                 disabled={adding}
                 onClick={() => void add()}
@@ -469,16 +467,20 @@ function AddressesSheet({ open, onClose }: SheetProps) {
   return (
     <Sheet open={open} onClose={onClose} titleId="addrSheetTitle">
       <SheetHeader titleId="addrSheetTitle" title={t('addresses')} onClose={onClose} />
-      <div className="slist" style={{ paddingBottom: 24 }}>
+      <div className={cx('slist')} style={{ paddingBottom: 24 }}>
         {!userAddresses.length && (
-          <div className="ocp-empty" style={{ padding: '12px 4px' }}>
+          <div className={cx('ocp-empty')} style={{ padding: '12px 4px' }}>
             {t('noAddresses')}
           </div>
         )}
         {userAddresses.map((a) => {
           const active = activeAddress && a.address.toLowerCase() === activeAddress;
           return (
-            <div key={a.address} className="glass" style={{ borderRadius: 14, padding: '12px 14px', marginBottom: 9 }}>
+            <div
+              key={a.address}
+              className={cx('glass')}
+              style={{ borderRadius: 14, padding: '12px 14px', marginBottom: 9 }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <b
@@ -499,12 +501,12 @@ function AddressesSheet({ open, onClose }: SheetProps) {
                     </small>
                   )}
                 </div>
-                {active && <span className="pill-chip act">{t('addrActive')}</span>}
+                {active && <span className={cx('pill-chip', 'act')}>{t('addrActive')}</span>}
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 <button
                   type="button"
-                  className="actpill"
+                  className={cx('actpill')}
                   style={{ width: 'auto' }}
                   onClick={() => openRename(a.address, a.label ?? '')}
                 >
@@ -512,7 +514,7 @@ function AddressesSheet({ open, onClose }: SheetProps) {
                 </button>
                 <button
                   type="button"
-                  className="actpill danger"
+                  className={cx('actpill', 'danger')}
                   style={{ width: 'auto' }}
                   onClick={() => {
                     setRenameFor(null);
@@ -524,14 +526,14 @@ function AddressesSheet({ open, onClose }: SheetProps) {
               </div>
               {renameFor === a.address && (
                 <div
-                  className="tform"
+                  className={cx('tform')}
                   style={{ marginTop: 10, borderTop: '1px solid var(--hair-soft)', paddingTop: 10 }}
                 >
-                  <label className="flabel">{t('baLabel')}</label>
-                  <input className="tinput" value={label} onChange={(e) => setLabel(e.target.value)} />
+                  <label className={cx('flabel')}>{t('baLabel')}</label>
+                  <input className={cx('tinput')} value={label} onChange={(e) => setLabel(e.target.value)} />
                   <button
                     type="button"
-                    className="btn-primary"
+                    className={cx('btn-primary')}
                     style={{ marginTop: 8 }}
                     disabled={busy === a.address}
                     onClick={() => void save(a.address)}
@@ -542,13 +544,13 @@ function AddressesSheet({ open, onClose }: SheetProps) {
               )}
               {removeFor === a.address && (
                 <div style={{ marginTop: 10, borderTop: '1px solid var(--hair-soft)', paddingTop: 10 }}>
-                  <div className="paybox-note warn" style={{ marginBottom: 9 }}>
+                  <div className={cx('paybox-note', 'warn')} style={{ marginBottom: 9 }}>
                     {t('addrRemove')}?
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       type="button"
-                      className="btn-mini danger"
+                      className={cx('btn-mini', 'danger')}
                       style={{ width: 'auto' }}
                       disabled={busy === a.address}
                       onClick={() => void remove(a.address)}
@@ -557,7 +559,7 @@ function AddressesSheet({ open, onClose }: SheetProps) {
                     </button>
                     <button
                       type="button"
-                      className="btn-mini"
+                      className={cx('btn-mini')}
                       style={{ width: 'auto' }}
                       onClick={() => setRemoveFor(null)}
                     >
@@ -634,16 +636,16 @@ function ChangeEmailSheet({ open, onClose }: SheetProps) {
   return (
     <Sheet open={open} onClose={onClose} titleId="emailSheetTitle">
       <SheetHeader titleId="emailSheetTitle" title={t('changeEmail')} onClose={onClose} />
-      <div className="slist" style={{ paddingBottom: 24 }}>
+      <div className={cx('slist')} style={{ paddingBottom: 24 }}>
         {step === 1 ? (
           <>
-            <p className="paybox-note" style={{ margin: '2px 2px 10px' }}>
+            <p className={cx('paybox-note')} style={{ margin: '2px 2px 10px' }}>
               {t('changeEmailLead')}
             </p>
-            <div className="tform">
-              <label className="flabel">{t('newEmail')}</label>
+            <div className={cx('tform')}>
+              <label className={cx('flabel')}>{t('newEmail')}</label>
               <input
-                className="tinput"
+                className={cx('tinput')}
                 type="email"
                 inputMode="email"
                 placeholder="you@email.com"
@@ -654,13 +656,13 @@ function ChangeEmailSheet({ open, onClose }: SheetProps) {
                 }}
               />
               {error && (
-                <div className="paybox-note warn" style={{ marginTop: 8 }}>
+                <div className={cx('paybox-note', 'warn')} style={{ marginTop: 8 }}>
                   {error}
                 </div>
               )}
               <button
                 type="button"
-                className="btn-primary"
+                className={cx('btn-primary')}
                 style={{ marginTop: 10 }}
                 disabled={busy}
                 onClick={() => void request()}
@@ -671,13 +673,13 @@ function ChangeEmailSheet({ open, onClose }: SheetProps) {
           </>
         ) : (
           <>
-            <p className="paybox-note" style={{ margin: '2px 2px 10px' }}>
+            <p className={cx('paybox-note')} style={{ margin: '2px 2px 10px' }}>
               {t('codeSent')} {mail}
             </p>
-            <div className="tform">
-              <label className="flabel">{t('emailCode')}</label>
+            <div className={cx('tform')}>
+              <label className={cx('flabel')}>{t('emailCode')}</label>
               <input
-                className="tinput"
+                className={cx('tinput')}
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 maxLength={6}
@@ -690,13 +692,13 @@ function ChangeEmailSheet({ open, onClose }: SheetProps) {
                 }}
               />
               {error && (
-                <div className="paybox-note warn" style={{ marginTop: 8 }}>
+                <div className={cx('paybox-note', 'warn')} style={{ marginTop: 8 }}>
                   {error}
                 </div>
               )}
               <button
                 type="button"
-                className="btn-primary"
+                className={cx('btn-primary')}
                 style={{ marginTop: 10 }}
                 disabled={busy}
                 onClick={() => void verify()}
@@ -777,23 +779,23 @@ function VerificationCallSheet({ open, onClose }: SheetProps) {
   return (
     <Sheet open={open} onClose={onClose} titleId="vcallSheetTitle">
       <SheetHeader titleId="vcallSheetTitle" title={t('verifCall')} onClose={onClose} />
-      <div className="slist" style={{ paddingBottom: 24 }}>
-        <p className="paybox-note" style={{ margin: '2px 2px 12px' }}>
+      <div className={cx('slist')} style={{ paddingBottom: 24 }}>
+        <p className={cx('paybox-note')} style={{ margin: '2px 2px 12px' }}>
           {t('verifCallLead')}
         </p>
-        <label className="amtoggle">
+        <label className={cx('amtoggle')}>
           <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
           <span>{t('acceptCall')}</span>
         </label>
-        <div className="sectionlabel" style={{ padding: '14px 2px 8px' }}>
+        <div className={cx('sectionlabel')} style={{ padding: '14px 2px 8px' }}>
           {t('preferredTimes')}
         </div>
-        <div className="tslots">
+        <div className={cx('tslots')}>
           {PHONE_TIMES.map((value) => (
             <button
               key={value}
               type="button"
-              className={`tslot${times.has(value) ? ' on' : ''}`}
+              className={cx('tslot', times.has(value) && 'on')}
               onClick={() => toggle(value)}
             >
               {PHONE_TIME_LABELS[value]}
@@ -802,7 +804,7 @@ function VerificationCallSheet({ open, onClose }: SheetProps) {
         </div>
         <button
           type="button"
-          className="btn-primary"
+          className={cx('btn-primary')}
           style={{ marginTop: 16 }}
           disabled={busy}
           onClick={() => void save()}
@@ -871,28 +873,28 @@ function CoinTrackingSheet({ open, onClose }: SheetProps) {
   return (
     <Sheet open={open} onClose={onClose} titleId="ctSheetTitle">
       <SheetHeader titleId="ctSheetTitle" title={t('ctConnect')} onClose={onClose} />
-      <div className="slist" style={{ paddingBottom: 24 }}>
+      <div className={cx('slist')} style={{ paddingBottom: 24 }}>
         {loading ? (
           <div
-            className="paybox-note"
+            className={cx('paybox-note')}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 14, fontSize: 13 }}
           >
             <Spinner /> {t('loading')}
           </div>
         ) : error ? (
-          <div className="paybox-note warn" style={{ padding: 12 }}>
+          <div className={cx('paybox-note', 'warn')} style={{ padding: 12 }}>
             {t('genErr')}
           </div>
         ) : (
           <>
-            <div className="glass" style={{ borderRadius: 14, padding: '2px 14px' }}>
-              <div className="kv">
-                <span className="kk">{t('ctApiKey')}</span>
-                <span className="vv">{displayKey ?? '—'}</span>
+            <div className={cx('glass')} style={{ borderRadius: 14, padding: '2px 14px' }}>
+              <div className={cx('kv')}>
+                <span className={cx('kk')}>{t('ctApiKey')}</span>
+                <span className={cx('vv')}>{displayKey ?? '—'}</span>
                 {displayKey && !conflict && (
                   <button
                     type="button"
-                    className="cpy"
+                    className={cx('cpy')}
                     aria-label={t('ctApiKey')}
                     onClick={() => copyToClipboard(displayKey, showToast, t)}
                   >
@@ -901,12 +903,12 @@ function CoinTrackingSheet({ open, onClose }: SheetProps) {
                 )}
               </div>
               {secret && (
-                <div className="kv">
-                  <span className="kk">{t('ctSecret')}</span>
-                  <span className="vv">{secret}</span>
+                <div className={cx('kv')}>
+                  <span className={cx('kk')}>{t('ctSecret')}</span>
+                  <span className={cx('vv')}>{secret}</span>
                   <button
                     type="button"
-                    className="cpy"
+                    className={cx('cpy')}
                     aria-label={t('ctSecret')}
                     onClick={() => copyToClipboard(secret, showToast, t)}
                   >
@@ -915,10 +917,10 @@ function CoinTrackingSheet({ open, onClose }: SheetProps) {
                 </div>
               )}
             </div>
-            <p className="paybox-note">{secret ? t('ctHint') : t('ctHintExisting')}</p>
+            <p className={cx('paybox-note')}>{secret ? t('ctHint') : t('ctHintExisting')}</p>
             <button
               type="button"
-              className="btn-mini danger"
+              className={cx('btn-mini', 'danger')}
               style={{ marginTop: 6 }}
               disabled={deleting}
               onClick={() => void remove()}
@@ -1120,46 +1122,46 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
   return (
     <Sheet open={open} onClose={onClose} titleId="inviteSheetTitle">
       <SheetHeader titleId="inviteSheetTitle" title={t('inviteTitle')} onClose={onClose} />
-      <div className="slist" style={{ paddingBottom: 24 }}>
-        <p className="paybox-note" style={{ margin: '2px 2px 12px' }}>
+      <div className={cx('slist')} style={{ paddingBottom: 24 }}>
+        <p className={cx('paybox-note')} style={{ margin: '2px 2px 12px' }}>
           {t('inviteLead')}
         </p>
 
         {level != null && level < KycLevel.Completed && (
-          <div className="paybox-note warn" style={{ marginBottom: 12 }}>
+          <div className={cx('paybox-note', 'warn')} style={{ marginBottom: 12 }}>
             {t('inviteKyc')}
           </div>
         )}
 
         {refView && (
-          <div className="glass" style={{ borderRadius: 18, padding: 14, marginBottom: 12 }}>
-            <div className="kv" style={{ paddingLeft: 0, paddingRight: 0 }}>
-              <span className="kk">{t('inviteCode')}</span>
-              <span className="vv">{refView.code}</span>
+          <div className={cx('glass')} style={{ borderRadius: 18, padding: 14, marginBottom: 12 }}>
+            <div className={cx('kv')} style={{ paddingLeft: 0, paddingRight: 0 }}>
+              <span className={cx('kk')}>{t('inviteCode')}</span>
+              <span className={cx('vv')}>{refView.code}</span>
               <button
                 type="button"
-                className="cpy"
+                className={cx('cpy')}
                 aria-label={t('inviteCopyLink')}
                 onClick={() => copyToClipboard(refView.link, showToast, t)}
               >
                 {COPY_ICON}
               </button>
             </div>
-            <div className="kv" style={{ paddingLeft: 0, paddingRight: 0 }}>
-              <span className="kk">{t('commission')}</span>
-              <span className="vv">
+            <div className={cx('kv')} style={{ paddingLeft: 0, paddingRight: 0 }}>
+              <span className={cx('kk')}>{t('commission')}</span>
+              <span className={cx('vv')}>
                 {refView.commission * 100 >= 0.01
                   ? `${(refView.commission * 100).toLocaleString(localeFor(language), { maximumFractionDigits: 2 })}%`
                   : '0%'}
               </span>
             </div>
-            <div className="kv" style={{ paddingLeft: 0, paddingRight: 0 }}>
-              <span className="kk">{t('invited')}</span>
-              <span className="vv">{String(refView.userCount)}</span>
+            <div className={cx('kv')} style={{ paddingLeft: 0, paddingRight: 0 }}>
+              <span className={cx('kk')}>{t('invited')}</span>
+              <span className={cx('vv')}>{String(refView.userCount)}</span>
             </div>
             <button
               type="button"
-              className="btn-mini"
+              className={cx('btn-mini')}
               style={{ marginTop: 10, width: '100%' }}
               onClick={() => copyToClipboard(refView.link, showToast, t)}
             >
@@ -1169,24 +1171,24 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
           </div>
         )}
 
-        <div className="glass" style={{ borderRadius: 18, padding: 14 }}>
-          <div className="tform">
+        <div className={cx('glass')} style={{ borderRadius: 18, padding: 14 }}>
+          <div className={cx('tform')}>
             <p style={{ color: 'var(--t-muted)', fontSize: 12.5, lineHeight: 1.45, margin: '0 2px 4px' }}>
               {t('inviteFormLead')}
             </p>
-            <label className="flabel">{t('inviteName')}</label>
+            <label className={cx('flabel')}>{t('inviteName')}</label>
             <input
-              className="tinput"
+              className={cx('tinput')}
               value={alias}
               onChange={(e) => setAlias(e.target.value)}
               placeholder={t('inviteNameP')}
               autoComplete="off"
             />
-            <label className="flabel">
+            <label className={cx('flabel')}>
               {t('inviteEmail')} <span style={{ color: 'var(--t-faint)', fontWeight: 400 }}>{t('optional')}</span>
             </label>
             <input
-              className="tinput"
+              className={cx('tinput')}
               type="email"
               inputMode="email"
               value={mail}
@@ -1194,13 +1196,13 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
               placeholder="you@email.com"
             />
             {formError && (
-              <div className="paybox-note warn" style={{ marginTop: 10 }}>
+              <div className={cx('paybox-note', 'warn')} style={{ marginTop: 10 }}>
                 {formError}
               </div>
             )}
             <button
               type="button"
-              className="btn-primary"
+              className={cx('btn-primary')}
               style={{ marginTop: 8 }}
               disabled={generating}
               onClick={() => void submit()}
@@ -1210,47 +1212,47 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
           </div>
         </div>
 
-        <div className="sectionlabel tight">{t('inviteYours')}</div>
+        <div className={cx('sectionlabel', 'tight')}>{t('inviteYours')}</div>
         {recs == null ? (
-          <div className="ocp-empty" style={{ padding: 20, gap: 8 }}>
+          <div className={cx('ocp-empty')} style={{ padding: 20, gap: 8 }}>
             <Spinner /> {t('loading')}
           </div>
         ) : recs.length === 0 ? (
           loadError ? (
-            <div className="ocp-empty" style={{ flexDirection: 'column', gap: 12, textAlign: 'center' }}>
+            <div className={cx('ocp-empty')} style={{ flexDirection: 'column', gap: 12, textAlign: 'center' }}>
               <span>{t('loadFail')}</span>
-              <button type="button" className="btn-mini" style={{ width: 'auto' }} onClick={() => void load()}>
+              <button type="button" className={cx('btn-mini')} style={{ width: 'auto' }} onClick={() => void load()}>
                 {t('retry')}
               </button>
             </div>
           ) : (
-            <div className="ocp-empty">{t('inviteNone')}</div>
+            <div className={cx('ocp-empty')}>{t('inviteNone')}</div>
           )
         ) : (
           recs.map((rec) => {
             const name = rec.name || rec.mail || `#${rec.id}`;
             const link = rec.code ? REF_LINK_BASE + encodeURIComponent(rec.code) : '';
             return (
-              <div key={rec.id} className="rcol" style={{ padding: '14px 15px', marginTop: 10 }}>
+              <div key={rec.id} className={cx('rcol')} style={{ padding: '14px 15px', marginTop: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span className="rci">{PERSON_ICON}</span>
-                  <div className="rtt" style={{ flex: 1 }}>
+                  <span className={cx('rci')}>{PERSON_ICON}</span>
+                  <div className={cx('rtt')} style={{ flex: 1 }}>
                     <b>{name}</b>
                     {rec.mail && rec.mail !== name && <small>{rec.mail}</small>}
                   </div>
-                  <span className={`pill-chip ${statusChip(rec.status)}`}>
+                  <span className={cx('pill-chip', statusChip(rec.status))}>
                     {t(STATUS_LABEL_KEY[rec.status] ?? 'st_Created')}
                   </span>
                 </div>
                 {rec.status === 'Pending' && (
                   <>
-                    <div className="paybox-note" style={{ margin: '8px 0 6px' }}>
+                    <div className={cx('paybox-note')} style={{ margin: '8px 0 6px' }}>
                       {t('invitePendingHint')}
                     </div>
-                    <div className="row2">
+                    <div className={cx('row2')}>
                       <button
                         type="button"
-                        className="btn-mini"
+                        className={cx('btn-mini')}
                         disabled={busyId === rec.id}
                         onClick={() => void confirm(rec.id, true)}
                       >
@@ -1259,7 +1261,7 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
                       </button>
                       <button
                         type="button"
-                        className="btn-mini danger"
+                        className={cx('btn-mini', 'danger')}
                         disabled={busyId === rec.id}
                         onClick={() => void confirm(rec.id, false)}
                       >
@@ -1271,12 +1273,12 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
                 )}
                 {rec.status === 'Created' && rec.code && (
                   <>
-                    <div className="kv" style={{ paddingLeft: 0, paddingRight: 0 }}>
-                      <span className="kk">{t('inviteCode')}</span>
-                      <span className="vv">{rec.code}</span>
+                    <div className={cx('kv')} style={{ paddingLeft: 0, paddingRight: 0 }}>
+                      <span className={cx('kk')}>{t('inviteCode')}</span>
+                      <span className={cx('vv')}>{rec.code}</span>
                       <button
                         type="button"
-                        className="cpy"
+                        className={cx('cpy')}
                         aria-label={t('inviteCopyLink')}
                         onClick={() => copyToClipboard(link, showToast, t)}
                       >
@@ -1285,7 +1287,7 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
                     </div>
                     <button
                       type="button"
-                      className="btn-mini"
+                      className={cx('btn-mini')}
                       style={{ marginTop: 10, width: '100%' }}
                       onClick={() => copyToClipboard(link, showToast, t)}
                     >

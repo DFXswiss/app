@@ -11,6 +11,7 @@ import { useWalletSession } from '../wallets/session';
 import { WalletSwitcher } from '../wallets/WalletSwitcher';
 import { Drawer } from './Drawer';
 import { LanguageMenu } from './LanguageSheet';
+import { cx } from '../css';
 
 /** Mirrors the static app's initials() for the address case: strip a `0x`
  * prefix, take the first two characters, uppercase. */
@@ -42,19 +43,19 @@ export function Shell() {
   }, [location.pathname, closeConnect]);
 
   return (
-    <div className="app" id="app">
-      <div className="layer" id="layer">
-        <div className="topbar" id="topbar">
+    <div className={cx('app')} id="app">
+      <div className={cx('layer')} id="layer">
+        <div className={cx('topbar')} id="topbar">
           <button
-            className="rbtn avatar-btn"
+            className={cx('rbtn', 'avatar-btn')}
             id="leftBtn"
             aria-label="account"
             style={{ visibility: isLoggedIn ? 'visible' : 'hidden' }}
             onClick={() => navigate('/account')}
           >
-            <span className="initials">{address ? addressInitials(address) : '·'}</span>
+            <span className={cx('initials')}>{address ? addressInitials(address) : '·'}</span>
           </button>
-          <img className="brand-logo" src={logoWhite} alt="DFX" />
+          <img className={cx('brand-logo')} src={logoWhite} alt="DFX" />
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {/* The static app hides the language pill once logged in (`langBtn`
                 display:none in the view-change handler, public/app2/index.html) —
@@ -63,7 +64,7 @@ export function Shell() {
             {!isLoggedIn && (
               <button
                 ref={langBtnRef}
-                className="langpill"
+                className={cx('langpill')}
                 aria-label="Change language"
                 aria-haspopup="menu"
                 aria-expanded={langOpen}
@@ -75,7 +76,7 @@ export function Shell() {
                   <path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" strokeLinecap="round" />
                 </svg>
                 <span>{language.toUpperCase()}</span>
-                <svg className="car" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}>
+                <svg className={cx('car')} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}>
                   <path d="M7 10l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
@@ -85,7 +86,7 @@ export function Shell() {
                 `display:grid`). There's no logged-out replacement there: the hero's own
                 "Connect wallet" CTA is the entry point, so this slot renders nothing pre-login. */}
             {isLoggedIn && (
-              <button className="rbtn" aria-label="menu" onClick={() => setDrawerOpen(true)}>
+              <button className={cx('rbtn')} aria-label="menu" onClick={() => setDrawerOpen(true)}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round">
                   <line x1={4} y1={7} x2={20} y2={7} />
                   <line x1={4} y1={12} x2={20} y2={12} />
@@ -96,7 +97,7 @@ export function Shell() {
           </div>
         </div>
 
-        <div className="body">
+        <div className={cx('body')}>
           {/* Mirrors the static app's per-screen `<section class="view on">` wrapper (public/app2/
               index.html) — without it, `.login`/`.buy`'s `min-height:100%` resolves against
               `.body`'s own definite (flex-resolved) height instead of falling back to `auto`
@@ -105,7 +106,7 @@ export function Shell() {
               ~18px gap under the language pill instead of ~190px — a pure CSS
               percentage-resolution difference from the missing wrapper, not a spacing value to
               tune. */}
-          <div className="view on">
+          <div className={cx('view', 'on')}>
             <Outlet />
           </div>
         </div>

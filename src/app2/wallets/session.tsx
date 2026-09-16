@@ -43,11 +43,7 @@ import {
 import { connectChainWallet } from './chain-providers';
 import { isPlausibleCliAddress } from './cli';
 import { connectHardware, isWebHidAvailable, type HardwareChain, type HardwareId } from './hardware-providers';
-// Shared-origin storage with the main app — see docs/test-architecture.md
-// ("App 2.0 talks to two layers, not one"). Not an SDK import.
-import { SessionStoreKey } from 'src/hooks/session-store.hook';
-import { StoreKey } from 'src/hooks/store.hook';
-import { BANK_TX_CACHE_PREFIX } from 'src/util/bank-tx-cache';
+import { BANK_TX_CACHE_PREFIX, SessionStoreKey, StoreKey } from '../lib/storage-keys';
 import { firstQueryParam } from '../utils/url';
 import { classifyInviteCode, normalizeInviteCode } from './invite';
 import { rememberWallet, seenWallets, type SeenWallet } from './seen';

@@ -15,6 +15,7 @@ import flagEu from '../../assets/flags/eu.svg';
 import flagCh from '../../assets/flags/ch.svg';
 import flagUs from '../../assets/flags/us.svg';
 import flagGb from '../../assets/flags/gb.svg';
+import { cx } from '../../css';
 
 // Blockchain enum value → network icon filename (asset-icons.ts key). Chains without an icon
 // fall through to the initials circle.
@@ -269,7 +270,7 @@ export function AssetGlyph({ code, size = 38 }: { code: string; size?: number })
   // Only reach for a remote logo when nothing is bundled; the hook is inert (no fetch) otherwise.
   const remote = useCgLogo(bundled ? undefined : code);
   const icon = bundled ?? remote;
-  if (icon) return <img className="coin" src={icon} width={size} height={size} alt="" style={coinImgStyle} />;
+  if (icon) return <img className={cx('coin')} src={icon} width={size} height={size} alt="" style={coinImgStyle} />;
   return <CoinCircle label={code} size={size} />;
 }
 
@@ -318,7 +319,7 @@ export function ChainGlyphBadge({ blockchain, size = 15 }: { blockchain: string;
       }}
     >
       {icon ? (
-        <img className="coin" src={icon} width={size} height={size} alt="" style={coinImgStyle} />
+        <img className={cx('coin')} src={icon} width={size} height={size} alt="" style={coinImgStyle} />
       ) : (
         <CoinCircle label={blockchain} size={size} fontSize={Math.round(size * 0.5)} />
       )}
@@ -342,7 +343,7 @@ const FIAT_FLAG: Record<string, string> = { EUR: flagEu, CHF: flagCh, USD: flagU
  * fiat vs. asset picker rows. */
 export function FiatGlyph({ code, size = 38 }: { code: string; size?: number }) {
   const flag = FIAT_FLAG[code];
-  if (flag) return <img className="coin" src={flag} width={size} height={size} alt="" style={coinImgStyle} />;
+  if (flag) return <img className={cx('coin')} src={flag} width={size} height={size} alt="" style={coinImgStyle} />;
   const symbol = FIAT_SYMBOL[code] ?? (code ? code[0] : '¤');
   const color = FIAT_COLOR[code] ?? hashColor(code);
   return (
@@ -367,7 +368,7 @@ export function FiatGlyph({ code, size = 38 }: { code: string; size?: number }) 
  * static app's `glyphHTML(tk, bc)` / `assetPillHTML(tk, bc)` markup structure 1:1. */
 export function AssetChainGlyph({ code, blockchain, size = 38 }: { code: string; blockchain?: string; size?: number }) {
   return (
-    <span className="glyph">
+    <span className={cx('glyph')}>
       <AssetGlyph code={code} size={size} />
       {blockchain && <ChainGlyphBadge blockchain={blockchain} size={Math.round(size * 0.4)} />}
     </span>

@@ -8,20 +8,25 @@
 
 import { useNavigate } from 'react-router-dom';
 import { useT } from '../../i18n';
+import { cx } from '../../css';
 
 export function NotFound() {
   const { t } = useT();
   const navigate = useNavigate();
 
   return (
-    <div className="account">
-      <div className="txhead">
+    <div className={cx('account')}>
+      <div className={cx('txhead')}>
         <h2>{t('notFoundTitle')}</h2>
       </div>
-      <p className="tnote" style={{ padding: '0 4px 8px' }}>
+      <p className={cx('tnote')} style={{ padding: '0 4px 8px' }}>
         {t('notFoundBody')}
       </p>
-      <button className="btn-primary" style={{ margin: '8px 4px 0' }} onClick={() => navigate('/', { replace: true })}>
+      <button
+        className={cx('btn-primary')}
+        style={{ margin: '8px 4px 0' }}
+        onClick={() => navigate('/', { replace: true })}
+      >
         <span>{t('backHome')}</span>
       </button>
     </div>

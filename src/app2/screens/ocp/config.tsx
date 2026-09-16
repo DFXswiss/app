@@ -10,6 +10,7 @@ import { useRef, useState } from 'react';
 import { useToast } from '../../components/ui';
 import { type TranslationKey, useT } from '../../i18n';
 import type { OcpSubViewProps } from './useOcp';
+import { cx } from '../../css';
 
 // Same option sets the static app offers (order preserved). COMPLETION mirrors
 // the preview's three-choice list (TxReceived is intentionally omitted there).
@@ -107,11 +108,11 @@ export default function ConfigView({ ocp }: OcpSubViewProps) {
       <p style={{ color: 'var(--t-muted)', fontSize: 13, lineHeight: 1.5, margin: '2px 4px 14px' }}>
         {t('configLead')}
       </p>
-      <div className="tform">
-        <label className="flabel">{t('cfgStandards')}</label>
-        <div className="chkgrid">
+      <div className={cx('tform')}>
+        <label className={cx('flabel')}>{t('cfgStandards')}</label>
+        <div className={cx('chkgrid')}>
           {PAY_STANDARDS.map((s) => (
-            <label className="chk" key={s}>
+            <label className={cx('chk')} key={s}>
               <input
                 type="checkbox"
                 checked={standards.includes(s)}
@@ -122,9 +123,9 @@ export default function ConfigView({ ocp }: OcpSubViewProps) {
           ))}
         </div>
 
-        <label className="flabel">{t('cfgCompletion')}</label>
+        <label className={cx('flabel')}>{t('cfgCompletion')}</label>
         <select
-          className="tinput"
+          className={cx('tinput')}
           value={completion}
           onChange={(e) => setCompletion(e.target.value as MinCompletionStatus)}
         >
@@ -135,23 +136,27 @@ export default function ConfigView({ ocp }: OcpSubViewProps) {
           ))}
         </select>
 
-        <label className="flabel">{t('cfgTimeout')}</label>
+        <label className={cx('flabel')}>{t('cfgTimeout')}</label>
         <input
-          className="tinput"
+          className={cx('tinput')}
           inputMode="numeric"
           value={timeout}
           onChange={(e) => setTimeoutValue(e.target.value)}
         />
 
-        <label className="flabel">{t('cfgDisplayQr')}</label>
-        <select className="tinput" value={displayQr ? '1' : '0'} onChange={(e) => setDisplayQr(e.target.value === '1')}>
+        <label className={cx('flabel')}>{t('cfgDisplayQr')}</label>
+        <select
+          className={cx('tinput')}
+          value={displayQr ? '1' : '0'}
+          onChange={(e) => setDisplayQr(e.target.value === '1')}
+        >
           <option value="1">{t('yes')}</option>
           <option value="0">{t('no')}</option>
         </select>
 
-        <label className="flabel">{t('cfgCancellable')}</label>
+        <label className={cx('flabel')}>{t('cfgCancellable')}</label>
         <select
-          className="tinput"
+          className={cx('tinput')}
           value={cancellable ? '1' : '0'}
           onChange={(e) => setCancellable(e.target.value === '1')}
         >
@@ -159,18 +164,18 @@ export default function ConfigView({ ocp }: OcpSubViewProps) {
           <option value="0">{t('no')}</option>
         </select>
 
-        <button className="btn-primary" style={{ marginTop: 6 }} disabled={saving} onClick={save}>
+        <button className={cx('btn-primary')} style={{ marginTop: 6 }} disabled={saving} onClick={save}>
           {t('save')}
         </button>
 
         {result && (
           <div
-            className={`paybox-note${result.kind === 'ok' ? ' ok' : result.kind === 'error' ? ' warn' : ''}`}
+            className={cx('paybox-note', result.kind === 'ok' ? ' ok' : result.kind === 'error' && 'warn')}
             style={{ marginTop: 10 }}
           >
             {result.kind === 'sending' ? (
               <>
-                <span className="spin" /> {t('tkSending')}
+                <span className={cx('spin')} /> {t('tkSending')}
               </>
             ) : (
               result.text

@@ -7,20 +7,21 @@
 
 import { useT } from '../../i18n';
 import { useWalletSession } from '../../wallets/session';
+import { cx } from '../../css';
 
 export function LoggedOutState({ title }: { title: string }) {
   const { t } = useT();
   const { openConnect } = useWalletSession();
 
   return (
-    <div className="account">
-      <div className="txhead">
+    <div className={cx('account')}>
+      <div className={cx('txhead')}>
         <h2>{title}</h2>
       </div>
-      <p className="tnote" style={{ padding: '0 4px 18px' }}>
+      <p className={cx('tnote')} style={{ padding: '0 4px 18px' }}>
         {t('connectToContinue')}
       </p>
-      <button className="btn-primary" onClick={() => openConnect()}>
+      <button className={cx('btn-primary')} onClick={() => openConnect()}>
         <span>{t('connect')}</span>
       </button>
     </div>
