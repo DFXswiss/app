@@ -163,6 +163,14 @@
     "title": "Signatur-Login",
     "description": "Wallet-Signatur-Login: Home, Buy, Sell, Settings, Transaktionen und Fehlerfall."
   },
+  "link-merged-redirect": {
+    "title": "Link-Screen: Weiterleitung bei zusammengeführtem Account",
+    "description": "/link-Screen für einen Account, der zu einem anderen zusammengeführt wurde: statt des rohen Backend-Fehlertexts landet die Nutzerin auf dem KYC-Screen des Hauptaccounts."
+  },
+  "tfa-merged-redirect": {
+    "title": "2FA-Screen: Weiterleitung bei zusammengeführtem Account",
+    "description": "/2fa-Screen für einen Account, der zu einem anderen zusammengeführt wurde: statt des rohen Backend-Fehlertexts landet die Nutzerin auf dem KYC-Screen des Hauptaccounts."
+  },
   "sepolia-dual-wallet": {
     "title": "Sepolia Dual-Wallet",
     "description": "ETH- und USDT-Verkauf über zwei Sepolia-Testwallets."

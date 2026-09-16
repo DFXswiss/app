@@ -30,6 +30,7 @@ import { useForm } from 'react-hook-form';
 import { ErrorHint } from '../components/error-hint';
 import { useSettingsContext } from '../contexts/settings.context';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
+import { useMergedAccount } from 'src/hooks/merged-account.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 
 export default function LinkScreen(): JSX.Element {
@@ -37,6 +38,7 @@ export default function LinkScreen(): JSX.Element {
   const { getKycInfo, continueKyc, setContactData } = useKyc();
   const { user, reloadUser } = useUserContext();
   const { navigate, goBack: navigateBack } = useNavigation();
+  const { handleMergedError } = useMergedAccount();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -49,22 +51,46 @@ export default function LinkScreen(): JSX.Element {
 
   useEffect(() => {
     if (!kycCode) return;
+    // Local per-run flag, not a ref: a ref shared across effect re-runs would be reset to
+    // false by a newer run while an older run's request is still in flight, un-cancelling it.
+    let cancelled = false;
+
+    function handleInitial(info: KycInfo) {
+      if (info.kycLevel > 0 || !kycCode) {
+        goBack();
+      } else {
+        return continueKyc(kycCode, false)
+          .then((session) => {
+            if (cancelled) return;
+            handleReload(session);
+          })
+          .catch((error: ApiError) => {
+            if (cancelled) return;
+            if (handleMergedError(error)) return;
+            setError(error.message ?? 'Unknown error');
+          });
+      }
+    }
 
     getKycInfo(kycCode)
-      .then(handleInitial)
-      .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
-  }, [kycCode]);
+      .then((info) => {
+        if (cancelled) return;
+        return handleInitial(info);
+      })
+      .catch((error: ApiError) => {
+        if (cancelled) return;
+        if (handleMergedError(error)) return;
+        setError(error.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsLoading(false);
+      });
 
-  function handleInitial(info: KycInfo) {
-    if (info.kycLevel > 0 || !kycCode) {
-      goBack();
-    } else {
-      return continueKyc(kycCode, false)
-        .then(handleReload)
-        .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
-    }
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [kycCode]);
 
   function handleReload(info: KycSession) {
     if (info.kycLevel === KycLevel.Link) {
@@ -103,7 +129,10 @@ export default function LinkScreen(): JSX.Element {
     setError(undefined);
     setContactData(kycCode, contactStep.session.url, data)
       .then((r) => (isStepDone(r) ? linkFailed() : setShowLinkHint(true)))
-      .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
+      .catch((error: ApiError) => {
+        if (handleMergedError(error)) return;
+        setError(error.message ?? 'Unknown error');
+      })
       .finally(() => setIsUpdating(false));
   }
 
