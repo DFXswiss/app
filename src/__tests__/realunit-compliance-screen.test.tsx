@@ -759,26 +759,54 @@ describe('RealunitComplianceScreen name-check', () => {
     resolveBatch({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 });
   });
 
-  it('does not confirm a row screen after the batch has started running', async () => {
-    let resolveBatch: (value: RealUnitNameCheckBatchDto) => void = () => undefined;
+  it('disables Screen until the mount batch status has loaded', async () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
-    mockGetNameCheckBatch.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveBatch = resolve;
-        }),
-    );
+    mockGetNameCheckBatch.mockImplementation(() => new Promise(() => undefined));
     render(<RealunitComplianceScreen />);
     await waitFor(() => {
       expect(screen.getByText('Alice Muster')).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
-    resolveBatch({ status: 'running', total: 2, done: 0, failed: 0, skipped: 0 });
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Screen$/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Screen all' })).toBeDisabled();
+  });
+
+  it('shows a failed mount batch status without reloading the list', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch.mockResolvedValue({
+      status: 'failed',
+      total: 2,
+      done: 0,
+      failed: 2,
+      skipped: 0,
+      error: 'quota',
     });
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('quota')).toBeInTheDocument();
+    });
+    expect(mockSearchCustomers).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a failed Screen-all response without treating it as success', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockStartNameCheckBatch.mockResolvedValue({
+      status: 'failed',
+      total: 1,
+      done: 0,
+      failed: 1,
+      skipped: 0,
+      error: 'quota',
+    });
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    expect(mockScreenCustomer).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByText('quota')).toBeInTheDocument();
+    });
+    expect(mockSearchCustomers).toHaveBeenCalledTimes(1);
   });
 
   it('keeps a failed poll status error instead of reloading the list', async () => {

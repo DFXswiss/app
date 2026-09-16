@@ -71,14 +71,9 @@ export default function RealunitComplianceScreen(): JSX.Element {
       getNameCheckBatch()
         .then((status) => {
           if (generation !== pollGenerationRef.current) return;
-          setBatch(status);
+          settleBatch(status, true);
           if (status.status === 'running') return;
           clearPoll();
-          if (status.status === 'failed') {
-            setError(status.error ?? 'Unknown error');
-            return;
-          }
-          loadCustomers(lastSearchKeyRef.current);
         })
         .catch((e: Error) => {
           if (generation !== pollGenerationRef.current) return;
@@ -99,6 +94,15 @@ export default function RealunitComplianceScreen(): JSX.Element {
     }, 2000);
   }
 
+  function settleBatch(status: RealUnitNameCheckBatchDto, reload: boolean): void {
+    setBatch(status);
+    if (status.status === 'failed') {
+      setError(status.error ?? 'Unknown error');
+      return;
+    }
+    if (reload && status.status !== 'running') loadCustomers(lastSearchKeyRef.current);
+  }
+
   // Load the complete customer list upfront; a search key narrows it down, an empty search returns to the
   // unsearched view. The hide-empty toggle state deliberately persists across searches (user choice wins);
   // "re-engaged" only means the search bypass ends. One GET of the name-check batch on mount; poll while running.
@@ -108,11 +112,12 @@ export default function RealunitComplianceScreen(): JSX.Element {
     getNameCheckBatch()
       .then((status) => {
         if (generation !== pollGenerationRef.current) return;
-        setBatch(status);
+        settleBatch(status, false);
         if (status.status === 'running') startPolling();
       })
       .catch((e: Error) => {
         if (generation !== pollGenerationRef.current) return;
+        setBatch({ status: 'idle', total: 0, done: 0, failed: 0, skipped: 0 });
         setError(e.message ?? 'Unknown error');
       });
     return () => clearPoll();
@@ -139,12 +144,8 @@ export default function RealunitComplianceScreen(): JSX.Element {
     }
     startNameCheckBatch()
       .then((status) => {
-        setBatch(status);
-        if (status.status === 'running') {
-          startPolling();
-          return;
-        }
-        loadCustomers(lastSearchKeyRef.current);
+        settleBatch(status, true);
+        if (status.status === 'running') startPolling();
       })
       .catch((e: Error) => setError(e.message ?? 'Unknown error'))
       .finally(done);
@@ -178,6 +179,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
   const hiddenCount = results && displayedResults ? results.length - displayedResults.length : 0;
   const emptyCount = useMemo(() => (results ?? []).filter(isEmptyAccount).length, [results]);
   const isBatchRunning = batch?.status === 'running';
+  const screeningLocked = batch == null || isBatchRunning || isConfirming;
 
   return (
     <div className="w-full max-w-screen-xl mx-auto flex flex-col gap-3 p-4 md:p-6 text-left">
@@ -202,7 +204,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
           <button
             className="px-4 py-1.5 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50 whitespace-nowrap"
             onClick={() => setPendingConfirm({ type: 'all' })}
-            disabled={isLoading || isBatchRunning || isConfirming}
+            disabled={isLoading || screeningLocked}
           >
             {batch?.status === 'running'
               ? translate('screens/compliance', 'Screening {{done}} / {{total}}', {
@@ -299,7 +301,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
                           e.stopPropagation();
                           setPendingConfirm({ type: 'row', id: u.id });
                         }}
-                        disabled={!u.canScreen || isBatchRunning || isConfirming}
+                        disabled={!u.canScreen || screeningLocked}
                         title={
                           !u.canScreen ? translate('screens/compliance', 'Cannot screen without a name') : undefined
                         }
