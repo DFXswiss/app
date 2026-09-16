@@ -158,12 +158,38 @@ const DOSSIER = {
   // Customer-scoped slices (reduced)
   kycFiles: [
     { uid: 'file-7101-1', type: 'Identification', name: 'passport.pdf', created: '2024-01-02T00:00:00.000Z' },
-    { uid: 'file-7101-2', type: 'AdditionalDocuments', name: 'commercial-register.pdf', created: '2024-01-03T00:00:00.000Z' },
+    {
+      uid: 'file-7101-2',
+      type: 'AdditionalDocuments',
+      name: 'commercial-register.pdf',
+      created: '2024-01-03T00:00:00.000Z',
+    },
   ],
   kycSteps: [
-    { id: 7201, name: 'Contract', type: 'Contract', status: 'Completed', sequenceNumber: 1, created: '2024-01-02T00:00:00.000Z' },
-    { id: 7202, name: 'Ident', type: 'Auto', status: 'Completed', sequenceNumber: 2, created: '2024-01-03T00:00:00.000Z' },
-    { id: 7203, name: 'LegalEntity', type: 'Manual', status: 'InProgress', sequenceNumber: 3, created: '2024-01-04T00:00:00.000Z' },
+    {
+      id: 7201,
+      name: 'Contract',
+      type: 'Contract',
+      status: 'Completed',
+      sequenceNumber: 1,
+      created: '2024-01-02T00:00:00.000Z',
+    },
+    {
+      id: 7202,
+      name: 'Ident',
+      type: 'Auto',
+      status: 'Completed',
+      sequenceNumber: 2,
+      created: '2024-01-03T00:00:00.000Z',
+    },
+    {
+      id: 7203,
+      name: 'LegalEntity',
+      type: 'Manual',
+      status: 'InProgress',
+      sequenceNumber: 3,
+      created: '2024-01-04T00:00:00.000Z',
+    },
   ],
   transactions: [
     {
@@ -283,8 +309,16 @@ const DOSSIER = {
       information: 'Customer reported a missing incoming transfer; resolved after bank reconciliation.',
       transaction: { id: 7301, uid: 'TX-7301', type: 'Buy', sourceType: 'BuyCrypto', amountInChf: 10000 },
       messages: [
-        { author: CUSTOMER_AUTHOR, message: 'I sent 10000 CHF but do not see the tokens yet.', created: '2024-01-05T08:00:00.000Z' },
-        { author: 'Rita Clerk', message: 'We located the payment, the tokens have now been credited.', created: '2024-01-05T11:00:00.000Z' },
+        {
+          author: CUSTOMER_AUTHOR,
+          message: 'I sent 10000 CHF but do not see the tokens yet.',
+          created: '2024-01-05T08:00:00.000Z',
+        },
+        {
+          author: 'Rita Clerk',
+          message: 'We located the payment, the tokens have now been credited.',
+          created: '2024-01-05T11:00:00.000Z',
+        },
       ],
     },
     {
@@ -298,15 +332,24 @@ const DOSSIER = {
       department: 'Compliance',
       information: 'Follow-up on the beneficial ownership declaration for the organization.',
       messages: [
-        { author: CUSTOMER_AUTHOR, message: 'Please find the updated ownership declaration attached.', created: '2024-01-07T09:30:00.000Z' },
-        { author: 'Tom Support', message: 'Thank you, we are reviewing the document.', created: '2024-01-07T14:15:00.000Z' },
+        {
+          author: CUSTOMER_AUTHOR,
+          message: 'Please find the updated ownership declaration attached.',
+          created: '2024-01-07T09:30:00.000Z',
+        },
+        {
+          author: 'Tom Support',
+          message: 'Thank you, we are reviewing the document.',
+          created: '2024-01-07T14:15:00.000Z',
+        },
       ],
     },
   ],
 };
 
 // ---------------------------------------------------------------------------
-// Routing: intercept ONLY the RealUnit compliance endpoints; pass everything else through.
+// Routing: named RealUnit compliance endpoints plus staff bootstrap GETs. Unmatched GET /v1/**
+// returns [] and other unmatched /v1/** methods return {} so a synthetic JWT does not 401.
 // The list endpoint is `.../customers?key=...`; the detail endpoint is `.../customers/:id` — match detail first.
 // ---------------------------------------------------------------------------
 
@@ -451,9 +494,7 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
 
     await expect(page.getByRole('button', { name: 'Screen all' })).toBeVisible();
     await page.getByRole('button', { name: 'Screen all' }).click();
-    await expect(
-      page.getByText('Screening all named shareholders consumes Dilisense quota – continue?'),
-    ).toBeVisible();
+    await expect(page.getByText('Screening all named shareholders consumes Dilisense quota – continue?')).toBeVisible();
     await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot('realunit-compliance-04-screen-all-confirm.png', {

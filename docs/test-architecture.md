@@ -142,9 +142,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `GET /v1/realunit/compliance/customers/:id`, `GET /v1/realunit/compliance/name-check`,
   `POST /v1/realunit/compliance/name-check` and `POST /v1/realunit/compliance/customers/:id/name-check`
   with synthetic fixtures (including `addresses` and name-check results). Auth is a synthetic Admin
-  JWT plus staff bootstrap GETs; a green run proves those fixtures render, including the Screen /
-  Screen-all confirm dialogs and a running-batch state. It does not prove that the API returns that
-  payload, that login works, or that the server filters to RealUnit wallets.
+  JWT plus staff bootstrap GETs. Unmatched `GET /v1/**` calls return `[]` and other unmatched
+  `/v1/**` methods return `{}`, so a green visual run does not prove which other staff endpoints the
+  screen calls. A green run proves those fixtures render, including the Screen / Screen-all confirm
+  dialogs and a running-batch state. It does not prove that the API returns that payload, that login
+  works, or that the server filters to RealUnit wallets.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for
