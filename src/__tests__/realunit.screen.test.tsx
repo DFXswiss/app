@@ -51,6 +51,9 @@ jest.mock('src/components/realunit/registration-funnel', () => ({
   RegistrationFunnel: () => <div data-testid="registration-funnel" />,
 }));
 
+jest.mock('src/components/realunit/buy-limit-panel', () => ({
+  RealunitBuyLimitPanel: () => <div data-testid="buy-limit-panel" />,
+}));
 jest.mock('src/components/realunit/payouts-panel', () => ({
   PayoutsPanel: () => <div data-testid="payouts-panel" />,
 }));
@@ -544,6 +547,11 @@ describe('RealunitScreen', () => {
     expect(screen.getByTestId('payouts-panel')).toBeInTheDocument();
   });
 
+  it('shows the buy limit panel with dashboard content', async () => {
+    await renderScreen();
+    expect(screen.getByTestId('buy-limit-panel')).toBeInTheDocument();
+  });
+
   it('shows the low-balance notify button when the prize wallet loaded', async () => {
     await renderScreen();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Notify on low balance' })).toBeInTheDocument());
@@ -555,6 +563,7 @@ describe('RealunitScreen', () => {
     await renderScreen();
     await waitFor(() => expect(screen.getByText('Prize wallet is not configured')).toBeInTheDocument());
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByTestId('buy-limit-panel')).toBeInTheDocument();
   });
 
   it('shows an error hint when the prize wallet resolve is empty', async () => {
