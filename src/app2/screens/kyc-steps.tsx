@@ -35,6 +35,8 @@ import type {
 import { useCountry } from '@dfx.swiss/react';
 import SumsubWebSdk from '@sumsub/websdk-react';
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+// Sumsub review enums owned by the main app — see docs/test-architecture.md
+// ("App 2.0 talks to two layers, not one").
 import { SumsubReviewAnswer, SumsubReviewRejectType } from '../../dto/sumsub.dto';
 import { LoadingRow } from '../components/ui';
 import { useT, type Language, type TranslationKey } from '../i18n';

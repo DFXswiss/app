@@ -20,6 +20,9 @@
 import { ApiException, useApi, useApiSession, useTransaction } from '@dfx.swiss/react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Spinner } from '../components/ui';
+// Async-job poller owned by the main app — see docs/test-architecture.md
+// ("App 2.0 talks to two layers, not one").
 import { JobResponse, JobStatus, isJobResponse, isJobTerminal, pollJobUntilTerminal } from 'src/util/job';
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
@@ -32,8 +35,6 @@ interface MergeRedirect {
 // The merge ran as a job and did not end in a usable result. Carries an already user-facing message,
 // which is what tells it apart from an ApiException in the catch below.
 class MergeJobError extends Error {}
-
-const SPINNER = <span className="spin" />;
 
 /**
  * CKO payment poll schedule — same shape as ocp/pos.tsx (`pollPos`):
@@ -93,7 +94,7 @@ function ResultPanel({ panel }: { panel: Panel }) {
           fontSize: 13,
         }}
       >
-        {SPINNER} {t(panel.msgKey)}
+        <Spinner /> {t(panel.msgKey)}
       </div>
     );
   }

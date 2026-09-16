@@ -21,6 +21,8 @@ import {
 } from '@dfx.swiss/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type TranslationKey, useT } from '../i18n';
+// Recommendation API owned by the main app — see docs/test-architecture.md
+// ("App 2.0 talks to two layers, not one").
 import { Recommendation } from 'src/dto/recommendation.dto';
 import useRecommendation from 'src/hooks/recommendation.hook';
 import { localeFor, shortAddress } from '../screens/parts/format';
