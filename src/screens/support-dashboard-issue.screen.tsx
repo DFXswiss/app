@@ -118,28 +118,29 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }, [getClerks]);
 
   const loadIssue = useCallback((): void => {
-    if (!id) return;
+    if (!id || idRef.current !== id) return;
     const requestId = id;
     const gen = requestGenRef.current;
     const seq = ++issueLoadSeqRef.current;
-    if (idRef.current !== requestId) return;
     setLoadError(undefined);
     setIsLoading(true);
     getIssueData(+requestId)
       .then((data) => {
-        if (requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
+        if (idRef.current !== requestId || requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
         setUpdateClerk(data.clerk ?? '');
       })
       .catch((e: Error) => {
-        if (requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
+        if (idRef.current !== requestId || requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
         loadErrorTicketIdRef.current = requestId;
         setLoadError(e.message ?? 'Unknown error');
       })
       .finally(() => {
-        if (requestGenRef.current === gen && issueLoadSeqRef.current === seq) setIsLoading(false);
+        if (idRef.current === requestId && requestGenRef.current === gen && issueLoadSeqRef.current === seq) {
+          setIsLoading(false);
+        }
       });
   }, [id, getIssueData]);
 

@@ -129,5 +129,10 @@ test.describe('Staff ticket — KYC file transfer', () => {
     await page.getByRole('button', { name: 'Transfer to KYC file' }).click();
     await expect(page.getByPlaceholder('Document title')).toBeVisible();
     await expect(page.getByText(/Stored as/)).toBeVisible();
+    await page.getByPlaceholder('Document title').scrollIntoViewIfNeeded();
+
+    await expect(messagesPanel).toHaveScreenshot('support-kyc-file-transfer-02-form.png', {
+      maxDiffPixels: 5000,
+    });
   });
 });
