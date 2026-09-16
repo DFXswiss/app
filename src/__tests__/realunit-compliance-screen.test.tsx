@@ -253,16 +253,16 @@ describe('RealunitComplianceScreen name-check', () => {
     expect(screen.getByText('Last Dilisense check')).toBeInTheDocument();
     expect(screen.getByText('Result')).toBeInTheDocument();
     expect(screen.getByText(formatDate(FULL.lastNameCheckDate))).toBeInTheDocument();
-    expect(screen.getByText('Not sanctioned')).toBeInTheDocument();
+    expect(screen.getByText('No match')).toBeInTheDocument();
   });
 
-  it('renders Match without birthday and open vs evaluated Sanctioned', async () => {
+  it('renders Match without Birthday and open vs evaluated Match with Birthday', async () => {
     mockSearchCustomers.mockResolvedValue([
       { ...FULL, lastNameCheckStatus: 'MatchWithoutBirthday' as const },
     ]);
     const { unmount } = render(<RealunitComplianceScreen />);
     await waitFor(() => {
-      expect(screen.getByText('Match without birthday')).toBeInTheDocument();
+      expect(screen.getByText('Match without Birthday')).toBeInTheDocument();
     });
     unmount();
 
@@ -271,7 +271,7 @@ describe('RealunitComplianceScreen name-check', () => {
     ]);
     const second = render(<RealunitComplianceScreen />);
     await waitFor(() => {
-      expect(screen.getByText('Sanctioned (Open hit)')).toBeInTheDocument();
+      expect(screen.getByText('Match with Birthday (Open)')).toBeInTheDocument();
     });
     second.unmount();
 
@@ -280,9 +280,9 @@ describe('RealunitComplianceScreen name-check', () => {
     ]);
     render(<RealunitComplianceScreen />);
     await waitFor(() => {
-      expect(screen.getByText('Sanctioned')).toBeInTheDocument();
+      expect(screen.getByText('Match with Birthday')).toBeInTheDocument();
     });
-    expect(screen.queryByText('Sanctioned (Open hit)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Match with Birthday (Open)')).not.toBeInTheDocument();
   });
 
   it('confirms a row screen and reloads the list', async () => {

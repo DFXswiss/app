@@ -410,9 +410,9 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await expect(page.getByText('7104')).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Last Dilisense check' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Result' })).toBeVisible();
-    await expect(page.getByText('Not sanctioned')).toBeVisible();
-    await expect(page.getByText('Match without birthday')).toBeVisible();
-    await expect(page.getByText('Sanctioned (Open hit)')).toBeVisible();
+    await expect(page.getByText('No match')).toBeVisible();
+    await expect(page.getByText('Match without Birthday')).toBeVisible();
+    await expect(page.getByText('Match with Birthday (Open)')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Screen all' })).toBeVisible();
     await page.waitForTimeout(500);
 

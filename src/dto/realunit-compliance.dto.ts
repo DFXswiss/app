@@ -108,6 +108,8 @@ export interface RealUnitCustomerListDto {
   mail?: string;
   name?: string;
   lastNameCheckDate?: string;
+  // Wire names from the api NameCheckRiskStatus. The UI maps them to Match with/without Birthday
+  // / No match: a Dilisense list hit is not a sanction.
   lastNameCheckStatus?: 'Sanctioned' | 'MatchWithoutBirthday' | 'NotSanctioned';
   lastNameCheckEvaluation?: 'Confirmed' | 'Ignored' | 'NotMatching' | 'Canceled';
   canScreen: boolean;
