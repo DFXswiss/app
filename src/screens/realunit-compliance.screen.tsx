@@ -30,8 +30,11 @@ export default function RealunitComplianceScreen(): JSX.Element {
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [batch, setBatch] = useState<RealUnitNameCheckBatchDto>();
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm>();
+  const [isConfirming, setIsConfirming] = useState(false);
   const lastSearchKeyRef = useRef<string | undefined>();
   const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const pollInFlightRef = useRef(false);
+  const pollGenerationRef = useRef(0);
 
   useLayoutOptions({
     title: translate('screens/compliance', 'RealUnit Compliance'),
@@ -40,6 +43,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
   });
 
   function clearPoll(): void {
+    pollGenerationRef.current++;
     if (pollRef.current !== undefined) {
       clearInterval(pollRef.current);
       pollRef.current = undefined;
@@ -60,17 +64,30 @@ export default function RealunitComplianceScreen(): JSX.Element {
 
   function startPolling(): void {
     clearPoll();
+    const generation = pollGenerationRef.current;
     pollRef.current = setInterval(() => {
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
       getNameCheckBatch()
         .then((status) => {
+          if (generation !== pollGenerationRef.current) return;
           setBatch(status);
           if (status.status === 'running') return;
           clearPoll();
           loadCustomers(lastSearchKeyRef.current);
         })
         .catch((e: Error) => {
+          if (generation !== pollGenerationRef.current) return;
           clearPoll();
+          setBatch((prev) => ({
+            ...prev,
+            status: 'failed',
+            error: e.message ?? 'Unknown error',
+          }));
           setError(e.message ?? 'Unknown error');
+        })
+        .finally(() => {
+          pollInFlightRef.current = false;
         });
     }, 2000);
   }
@@ -94,13 +111,18 @@ export default function RealunitComplianceScreen(): JSX.Element {
   }
 
   function handleConfirmScreen(): void {
-    if (!pendingConfirm) return;
+    if (!pendingConfirm || isConfirming) return;
     const action = pendingConfirm;
-    setPendingConfirm(undefined);
+    setIsConfirming(true);
+    const done = (): void => {
+      setIsConfirming(false);
+      setPendingConfirm(undefined);
+    };
     if (action.type === 'row') {
       screenCustomer(action.id)
         .then(() => loadCustomers(lastSearchKeyRef.current))
-        .catch((e: Error) => setError(e.message ?? 'Unknown error'));
+        .catch((e: Error) => setError(e.message ?? 'Unknown error'))
+        .finally(done);
       return;
     }
     startNameCheckBatch()
@@ -112,7 +134,8 @@ export default function RealunitComplianceScreen(): JSX.Element {
         }
         loadCustomers(lastSearchKeyRef.current);
       })
-      .catch((e: Error) => setError(e.message ?? 'Unknown error'));
+      .catch((e: Error) => setError(e.message ?? 'Unknown error'))
+      .finally(done);
   }
 
   function formatNameCheckResult(customer: RealUnitCustomerListDto): string {
@@ -125,9 +148,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
         return translate('screens/compliance', 'Match without Birthday');
       case 'Sanctioned': {
         const label = translate('screens/compliance', 'Match with Birthday');
-        return customer.lastNameCheckEvaluation
-          ? label
-          : `${label} (${translate('screens/compliance', 'Open')})`;
+        return customer.lastNameCheckEvaluation ? label : `${label} (${translate('screens/compliance', 'Open')})`;
       }
       default:
         return '-';
@@ -169,7 +190,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
           <button
             className="px-4 py-1.5 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50 whitespace-nowrap"
             onClick={() => setPendingConfirm({ type: 'all' })}
-            disabled={isLoading || isBatchRunning}
+            disabled={isLoading || isBatchRunning || isConfirming}
           >
             {batch?.status === 'running'
               ? translate('screens/compliance', 'Screening {{done}} / {{total}}', {
@@ -266,8 +287,10 @@ export default function RealunitComplianceScreen(): JSX.Element {
                           e.stopPropagation();
                           setPendingConfirm({ type: 'row', id: u.id });
                         }}
-                        disabled={!u.canScreen || isBatchRunning}
-                        title={!u.canScreen ? translate('screens/compliance', 'Cannot screen without a name') : undefined}
+                        disabled={!u.canScreen || isBatchRunning || isConfirming}
+                        title={
+                          !u.canScreen ? translate('screens/compliance', 'Cannot screen without a name') : undefined
+                        }
                       >
                         {translate('screens/compliance', 'Screen')}
                       </button>
@@ -289,8 +312,11 @@ export default function RealunitComplianceScreen(): JSX.Element {
             ? 'Screening all named shareholders consumes Dilisense quota – continue?'
             : 'A Dilisense screening consumes provider quota and costs money – continue?',
         )}
+        isLoading={isConfirming}
         onConfirm={handleConfirmScreen}
-        onCancel={() => setPendingConfirm(undefined)}
+        onCancel={() => {
+          if (!isConfirming) setPendingConfirm(undefined);
+        }}
       />
     </div>
   );

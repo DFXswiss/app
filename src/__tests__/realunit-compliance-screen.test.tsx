@@ -7,18 +7,22 @@ jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', LG: 'lg' },
   StyledLoadingSpinner: () => null,
 }));
-jest.mock('src/components/error-hint', () => ({ ErrorHint: () => null }));
+jest.mock('src/components/error-hint', () => ({
+  ErrorHint: ({ message }: { message: string }) => <div>{message}</div>,
+}));
 jest.mock('src/components/confirm-dialog', () => ({
   ConfirmDialog: ({
     isOpen,
     title,
     message,
     onConfirm,
+    onCancel,
   }: {
     isOpen: boolean;
     title?: string;
     message: string;
     onConfirm: () => void;
+    onCancel: () => void;
   }) =>
     isOpen ? (
       <div>
@@ -26,6 +30,9 @@ jest.mock('src/components/confirm-dialog', () => ({
         <p>{message}</p>
         <button type="button" onClick={onConfirm}>
           Confirm
+        </button>
+        <button type="button" onClick={onCancel}>
+          Cancel
         </button>
       </div>
     ) : null,
@@ -59,6 +66,7 @@ jest.mock('src/hooks/realunit-compliance.hook', () => ({
 }));
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { RealUnitNameCheckBatchDto } from 'src/dto/realunit-compliance.dto';
 import RealunitComplianceScreen from 'src/screens/realunit-compliance.screen';
 import { formatDate } from 'src/util/compliance-helpers';
 
@@ -257,9 +265,7 @@ describe('RealunitComplianceScreen name-check', () => {
   });
 
   it('renders Match without Birthday and open vs evaluated Match with Birthday', async () => {
-    mockSearchCustomers.mockResolvedValue([
-      { ...FULL, lastNameCheckStatus: 'MatchWithoutBirthday' as const },
-    ]);
+    mockSearchCustomers.mockResolvedValue([{ ...FULL, lastNameCheckStatus: 'MatchWithoutBirthday' as const }]);
     const { unmount } = render(<RealunitComplianceScreen />);
     await waitFor(() => {
       expect(screen.getByText('Match without Birthday')).toBeInTheDocument();
@@ -336,6 +342,403 @@ describe('RealunitComplianceScreen name-check', () => {
       expect(mockGetNameCheckBatch.mock.calls.length).toBeGreaterThan(1);
     });
 
+    jest.useRealTimers();
+  });
+
+  it('shows an error when the customer list fails to load', async () => {
+    mockSearchCustomers.mockRejectedValue(new Error('list down'));
+    render(<RealunitComplianceScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('list down')).toBeInTheDocument();
+    });
+  });
+
+  it('shows an error when the batch status fails to load', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch.mockRejectedValue(new Error('batch down'));
+    render(<RealunitComplianceScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('batch down')).toBeInTheDocument();
+    });
+  });
+
+  it('shows an error when a row screen fails', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockScreenCustomer.mockRejectedValue(new Error('dilisense down'));
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('dilisense down')).toBeInTheDocument();
+    });
+  });
+
+  it('closes the confirm dialog on Cancel', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
+    expect(
+      screen.getByText('Screening all named shareholders consumes Dilisense quota – continue?'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(
+      screen.queryByText('Screening all named shareholders consumes Dilisense quota – continue?'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('starts polling when a batch is already running on mount', async () => {
+    jest.useFakeTimers();
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch
+      .mockResolvedValueOnce({ status: 'running', total: 3, done: 1, failed: 0, skipped: 0 })
+      .mockResolvedValue({ status: 'completed', total: 3, done: 3, failed: 0, skipped: 0 });
+
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+
+    jest.advanceTimersByTime(2000);
+    await waitFor(() => {
+      expect(mockSearchCustomers.mock.calls.length).toBeGreaterThan(1);
+    });
+    jest.useRealTimers();
+  });
+
+  it('marks a running batch failed when polling errors', async () => {
+    jest.useFakeTimers();
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch
+      .mockResolvedValueOnce({ status: 'running', total: 3, done: 1, failed: 0, skipped: 0 })
+      .mockRejectedValue(new Error('poll down'));
+
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+
+    jest.advanceTimersByTime(2000);
+    await waitFor(() => {
+      expect(screen.getByText('poll down')).toBeInTheDocument();
+    });
+    jest.useRealTimers();
+  });
+
+  it('does not start a second screen while confirm is in flight', async () => {
+    let resolveScreen: () => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockScreenCustomer.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveScreen = () => resolve(undefined);
+        }),
+    );
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    expect(mockScreenCustomer).toHaveBeenCalledTimes(1);
+    resolveScreen();
+    await waitFor(() => {
+      expect(mockSearchCustomers.mock.calls.length).toBeGreaterThan(1);
+    });
+  });
+
+  it('navigates to the customer dossier when a row is clicked', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Alice Muster'));
+    expect(mockNavigate).toHaveBeenCalledWith('/realunit/compliance/user/1');
+  });
+
+  it('reloads the list when Screen all finishes immediately', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockStartNameCheckBatch.mockResolvedValue({
+      status: 'completed',
+      total: 0,
+      done: 0,
+      failed: 0,
+      skipped: 1,
+    });
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => {
+      expect(mockStartNameCheckBatch).toHaveBeenCalled();
+      expect(mockSearchCustomers).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('shows an error when Screen all fails to start', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockStartNameCheckBatch.mockRejectedValue(new Error('quota'));
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('quota')).toBeInTheDocument();
+    });
+  });
+
+  it('renders a dash for an unknown result and a missing date', async () => {
+    mockSearchCustomers.mockResolvedValue([
+      {
+        ...FULL,
+        lastNameCheckDate: undefined,
+        lastNameCheckStatus: undefined,
+        balance: undefined,
+        accountType: undefined,
+        mail: undefined,
+        kycLevel: undefined,
+      },
+    ]);
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+
+    const row = screen.getByText('Alice Muster').closest('tr');
+    if (row == null) throw new Error('expected customer row');
+    expect(within(row).getAllByText('-').length).toBeGreaterThan(0);
+  });
+
+  it('does not navigate when the Screen cell is clicked outside the button', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+
+    const cell = screen.getByRole('button', { name: /^Screen$/ }).closest('td');
+    if (cell == null) throw new Error('expected Screen cell');
+    fireEvent.click(cell);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows Unknown error when a list load fails without a message', async () => {
+    mockSearchCustomers.mockRejectedValue({ message: undefined });
+    render(<RealunitComplianceScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Unknown error')).toBeInTheDocument();
+    });
+  });
+
+  it('keeps the confirm dialog open while a screen request is in flight', async () => {
+    let resolveScreen: () => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockScreenCustomer.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveScreen = () => resolve(undefined);
+        }),
+    );
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(
+      screen.getByText('A Dilisense screening consumes provider quota and costs money – continue?'),
+    ).toBeInTheDocument();
+
+    resolveScreen();
+    await waitFor(() => {
+      expect(
+        screen.queryByText('A Dilisense screening consumes provider quota and costs money – continue?'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('skips overlapping poll ticks while a request is in flight', async () => {
+    jest.useFakeTimers();
+    let resolvePoll: (value: RealUnitNameCheckBatchDto) => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch
+      .mockResolvedValueOnce({ status: 'running', total: 2, done: 0, failed: 0, skipped: 0 })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolvePoll = resolve;
+          }),
+      )
+      .mockResolvedValue({ status: 'completed', total: 2, done: 2, failed: 0, skipped: 0 });
+
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+
+    jest.advanceTimersByTime(2000);
+    jest.advanceTimersByTime(2000);
+    expect(mockGetNameCheckBatch).toHaveBeenCalledTimes(2);
+    resolvePoll({ status: 'running', total: 2, done: 1, failed: 0, skipped: 0 });
+    jest.advanceTimersByTime(2000);
+    await waitFor(() => {
+      expect(mockGetNameCheckBatch.mock.calls.length).toBeGreaterThan(2);
+    });
+    jest.useRealTimers();
+  });
+
+  it('ignores a poll result after the screen unmounts', async () => {
+    let resolvePoll: (value: RealUnitNameCheckBatchDto) => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch
+      .mockResolvedValueOnce({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolvePoll = resolve;
+          }),
+      );
+
+    jest.useFakeTimers();
+    const { unmount } = render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+    jest.advanceTimersByTime(2000);
+    unmount();
+    resolvePoll({ status: 'completed', total: 1, done: 1, failed: 0, skipped: 0 });
+    jest.useRealTimers();
+  });
+
+  it('shows an ellipsis on Search while the list is loading', async () => {
+    let resolveSearch: (value: (typeof FULL)[]) => void = () => undefined;
+    mockSearchCustomers.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSearch = resolve;
+        }),
+    );
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '…' })).toBeDisabled();
+    });
+    resolveSearch([FULL]);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+  });
+
+  it('does not search when a non-Enter key is pressed', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    const input = screen.getByPlaceholderText('Search by ID, email, phone or name...');
+    fireEvent.change(input, { target: { value: 'x' } });
+    fireEvent.keyDown(input, { key: 'a' });
+    expect(mockSearchCustomers).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows Unknown error when polling fails without a message', async () => {
+    jest.useFakeTimers();
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch
+      .mockResolvedValueOnce({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 })
+      .mockRejectedValue({});
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+    jest.advanceTimersByTime(2000);
+    await waitFor(() => {
+      expect(screen.getByText('Unknown error')).toBeInTheDocument();
+    });
+    jest.useRealTimers();
+  });
+
+  it('shows Unknown error when the batch status fails without a message', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch.mockRejectedValue({});
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Unknown error')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Unknown error when a row screen fails without a message', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockScreenCustomer.mockRejectedValue({});
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      expect(screen.getByText('Unknown error')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Unknown error when Screen all fails without a message', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockStartNameCheckBatch.mockRejectedValue({});
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      expect(screen.getByText('Unknown error')).toBeInTheDocument();
+    });
+  });
+
+  it('ignores a poll error after the screen unmounts', async () => {
+    let rejectPoll: (reason: Error) => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch
+      .mockResolvedValueOnce({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 })
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectPoll = reject;
+          }),
+      );
+    jest.useFakeTimers();
+    const { unmount } = render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+    jest.advanceTimersByTime(2000);
+    unmount();
+    rejectPoll(new Error('late'));
     jest.useRealTimers();
   });
 });
