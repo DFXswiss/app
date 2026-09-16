@@ -1,4 +1,4 @@
-import { appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl, isSafeHttpsUrl } from '../utils/url';
+import { appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl, isSafeHttpsUrl, mailRedirectUri } from '../utils/url';
 
 describe('foldApp2PathIntoHash', () => {
   it('folds real-path Checkout/email returns into hash routes and keeps the query', () => {
@@ -155,5 +155,24 @@ describe('appUrl', () => {
     process.env.REACT_APP_PUBLIC_URL = 'https://app.dfx.swiss';
     expect(appUrl()).toBe('https://app.dfx.swiss/');
     expect(appUrl('http://[')).toBeUndefined();
+  });
+});
+
+describe('mailRedirectUri', () => {
+  it('passes through an https production origin so the magic link can return to /app2/', () => {
+    expect(mailRedirectUri('https://app.dfx.swiss', '/app2/')).toBe('https://app.dfx.swiss/app2/');
+  });
+
+  it('omits http origins that fail the auth API @IsUrl() check', () => {
+    expect(mailRedirectUri('http://localhost:3011', '/app2/')).toBeUndefined();
+    expect(mailRedirectUri('http://127.0.0.1:3011', '/app2/')).toBeUndefined();
+  });
+
+  it('returns undefined for a malformed origin', () => {
+    expect(mailRedirectUri('not a url', '/app2/')).toBeUndefined();
+  });
+
+  it('defaults to window.location', () => {
+    expect(mailRedirectUri()).toBe(mailRedirectUri(window.location.origin, window.location.pathname));
   });
 });

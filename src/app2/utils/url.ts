@@ -24,6 +24,23 @@ export function isSafeAppUrl(value: string | undefined | null): value is string 
 }
 
 /**
+ * Magic-link return target for POST /auth/mail.
+ *
+ * The API validates `redirectUri` with `@IsUrl()` (TLD required) and an allowlist.
+ * HTTP origins without a TLD (localhost, local stacks) fail that validator, so
+ * they are omitted and the API uses its default. HTTPS production origins are
+ * passed through so the mailed link can return to `/app2/`.
+ */
+export function mailRedirectUri(origin = window.location.origin, pathname = window.location.pathname): string | undefined {
+  try {
+    const url = new URL(pathname, origin);
+    return url.protocol === 'https:' ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * First non-empty query value across the real search string and the hash query
  * (`#/path?key=val`). Hash-router screens put params in the hash; partner deep
  * links often put them on the real query — both must work.
