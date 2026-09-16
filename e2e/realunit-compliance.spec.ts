@@ -87,6 +87,10 @@ interface RealUnitCustomerListDto {
   name?: string;
   // mirrors the real DTO field since the Balance column was added
   balance?: number;
+  lastNameCheckDate?: string;
+  lastNameCheckStatus?: 'Sanctioned' | 'MatchWithoutBirthday' | 'NotSanctioned';
+  lastNameCheckEvaluation?: 'Confirmed' | 'Ignored' | 'NotMatching' | 'Canceled';
+  canScreen: boolean;
 }
 
 // ~4 synthetic search results (one empty account exercises the default hide-empty toggle).
@@ -99,6 +103,9 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     mail: 'ops@acme-example.com',
     name: 'ACME Example AG',
     balance: 1250,
+    canScreen: true,
+    lastNameCheckDate: '2024-06-15T12:00:00.000Z',
+    lastNameCheckStatus: 'NotSanctioned',
   },
   {
     id: 7102,
@@ -108,6 +115,9 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     mail: 'alice@example.com',
     name: 'Alice Muster',
     balance: 30.5,
+    canScreen: true,
+    lastNameCheckDate: '2024-03-01T12:00:00.000Z',
+    lastNameCheckStatus: 'Sanctioned',
   },
   // Bob stays visible despite balance 0 because name/mail are set — documents the filter semantics
   {
@@ -118,6 +128,7 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     mail: 'bob@example.com',
     name: 'Bob Beispiel',
     balance: 0,
+    canScreen: true,
   },
   // intentionally no name/mail/accountType — the only empty account; hidden by the toggle in the default
   // view, shown in search because an active search bypasses the filter
@@ -126,6 +137,7 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     kycStatus: 'NA',
     kycLevel: '0',
     balance: 0,
+    canScreen: false,
   },
 ];
 
@@ -327,6 +339,10 @@ const DOSSIER = {
 
 const DETAIL_RE = /\/v1\/realunit\/compliance\/customers\/(\d+)(?:\?|$)/;
 const SEARCH_RE = /\/v1\/realunit\/compliance\/customers(?:\?|$)/;
+const NAME_CHECK_BATCH_RE = /\/v1\/realunit\/compliance\/name-check(?:\?|$)/;
+const NAME_CHECK_CUSTOMER_RE = /\/v1\/realunit\/compliance\/customers\/\d+\/name-check(?:\?|$)/;
+
+const NAME_CHECK_BATCH = { status: 'idle', total: 0, done: 0, failed: 0, skipped: 0 };
 
 async function json(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -336,6 +352,10 @@ async function installComplianceRoutes(page: Page): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const url = route.request().url();
 
+    if (NAME_CHECK_CUSTOMER_RE.test(url)) {
+      return json(route, { id: CUSTOMER_ID, riskStatus: 'NotSanctioned', date: '2024-06-15T12:00:00.000Z' });
+    }
+    if (NAME_CHECK_BATCH_RE.test(url)) return json(route, NAME_CHECK_BATCH);
     if (DETAIL_RE.test(url)) return json(route, DOSSIER);
     if (SEARCH_RE.test(url)) return json(route, SEARCH_RESULTS);
 

@@ -4,6 +4,7 @@ import { isEmptyAccount } from 'src/util/realunit-customer-filter';
 const customer = (overrides: Partial<RealUnitCustomerListDto>): RealUnitCustomerListDto => ({
   id: 1,
   kycStatus: 'NA',
+  canScreen: false,
   ...overrides,
 });
 
