@@ -362,6 +362,8 @@ describe('RealunitComplianceScreen name-check', () => {
     await waitFor(() => {
       expect(screen.getByText('batch down')).toBeInTheDocument();
     });
+    expect(screen.getByRole('button', { name: /^Screen$/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Screen all' })).toBeDisabled();
   });
 
   it('shows an error when a row screen fails', async () => {
@@ -416,7 +418,7 @@ describe('RealunitComplianceScreen name-check', () => {
     jest.useRealTimers();
   });
 
-  it('marks a running batch failed when polling errors', async () => {
+  it('keeps screening locked when polling errors', async () => {
     jest.useFakeTimers();
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockGetNameCheckBatch
@@ -432,6 +434,7 @@ describe('RealunitComplianceScreen name-check', () => {
     await waitFor(() => {
       expect(screen.getByText('poll down')).toBeInTheDocument();
     });
+    expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
     jest.useRealTimers();
   });
 

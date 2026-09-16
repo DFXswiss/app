@@ -77,15 +77,6 @@ export default function RealunitComplianceScreen(): JSX.Element {
         })
         .catch((e: Error) => {
           if (generation !== pollGenerationRef.current) return;
-          clearPoll();
-          setBatch({
-            status: 'failed',
-            total: 0,
-            done: 0,
-            failed: 0,
-            skipped: 0,
-            error: e.message ?? 'Unknown error',
-          });
           setError(e.message ?? 'Unknown error');
         })
         .finally(() => {
@@ -117,7 +108,6 @@ export default function RealunitComplianceScreen(): JSX.Element {
       })
       .catch((e: Error) => {
         if (generation !== pollGenerationRef.current) return;
-        setBatch({ status: 'idle', total: 0, done: 0, failed: 0, skipped: 0 });
         setError(e.message ?? 'Unknown error');
       });
     return () => clearPoll();
