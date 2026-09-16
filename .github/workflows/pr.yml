@@ -270,7 +270,6 @@ jobs:
   e2e:
     name: Full-stack E2E
     needs: [build]
-    environment: pr-ci
     uses: ./.github/workflows/e2e-stack.yml
     with:
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
