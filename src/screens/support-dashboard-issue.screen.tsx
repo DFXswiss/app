@@ -57,6 +57,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const [updateDepartment, setUpdateDepartment] = useState('');
   const [updateClerk, setUpdateClerk] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const updatingIssueIdsRef = useRef(new Set<string>());
+  const messageLoadSeqRef = useRef(0);
+  const filePreviewSeqRef = useRef(0);
 
   // Message form state
   // Draft persisted per ticket, so a detour to the customer profile does not lose the text.
@@ -142,14 +145,15 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     if (!issueData?.uid || !id || issueData.id !== +id) return;
     const requestId = id;
     const gen = requestGenRef.current;
+    const seq = ++messageLoadSeqRef.current;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
-        if (idRef.current !== requestId || requestGenRef.current !== gen) return;
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
         setMessages(fetched);
         setPendingCount(0);
       })
       .catch((e: Error) => {
-        if (idRef.current !== requestId || requestGenRef.current !== gen) return;
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
         setActionError(e.message ?? 'Failed to load messages');
       });
   }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
@@ -181,7 +185,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   useEffect(() => {
     sendInFlight.current = false;
     setIsSending(false);
-    setIsUpdating(false);
+    setIsUpdating(id != null && updatingIssueIdsRef.current.has(id));
+    messageLoadSeqRef.current += 1;
+    filePreviewSeqRef.current += 1;
     setSelectedFiles([]);
     setActionError(undefined);
     setLoadError(undefined);
@@ -257,9 +263,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }, [messages]);
 
   async function handleUpdate(): Promise<void> {
-    if (!id) return;
+    if (!id || updatingIssueIdsRef.current.has(id)) return;
     const requestId = id;
     const gen = requestGenRef.current;
+    updatingIssueIdsRef.current.add(requestId);
     setIsUpdating(true);
     setActionError(undefined);
     try {
@@ -274,7 +281,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       if (requestGenRef.current !== gen) return;
       setActionError(e instanceof Error ? e.message : 'Update failed');
     } finally {
-      if (requestGenRef.current === gen) setIsUpdating(false);
+      updatingIssueIdsRef.current.delete(requestId);
+      if (idRef.current === requestId) setIsUpdating(false);
     }
   }
 
@@ -359,9 +367,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   async function openFile(msg: SupportMessageInfo): Promise<void> {
     if (!issueData?.uid || !msg.fileName || !id) return;
     const gen = requestGenRef.current;
+    const seq = ++filePreviewSeqRef.current;
     try {
       const { data, contentType } = await getMessageFile(issueData.uid, msg.id, 'View');
-      if (requestGenRef.current !== gen) return;
+      if (requestGenRef.current !== gen || filePreviewSeqRef.current !== seq) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
@@ -374,7 +383,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       const url = URL.createObjectURL(blob);
       setFilePreview({ url, contentType, name: msg.fileName, messageId: msg.id });
     } catch (e: unknown) {
-      if (requestGenRef.current !== gen) return;
+      if (requestGenRef.current !== gen || filePreviewSeqRef.current !== seq) return;
       setActionError(e instanceof Error ? e.message : 'Error loading file');
     }
   }
