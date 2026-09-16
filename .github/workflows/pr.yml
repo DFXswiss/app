@@ -2,10 +2,12 @@
 #
 # This is a public repository. GitHub-hosted runners execute the heavy suite
 # (Jest, build:dev, widget:dev). A38 locally measures only Lint and Markdown
-# format. Drafts run these jobs. GitHub may hold fork runs as
-# `action_required`. Ready does not start CI. After a fresh A38 enforce pass,
-# `dfx pr guard` approves those waiting initial runs. The merger does not
-# click Approve and run workflows. Never listen to `ready_for_review` here.
+# format. Jobs wait on environment `pr-ci` (Review deployments) until a
+# required reviewer or the A38 guard approves. GitHub may also hold fork
+# runs as `action_required`. Ready does not start CI. After a fresh A38
+# enforce pass, `dfx pr guard` approves those waiting initial runs. The
+# merger does not click Approve and run workflows. Never listen to
+# `ready_for_review` here.
 #
 # When Build and test runs, develop PRs without the `ci:full` label run only
 # Jest `--findRelatedTests` on changed files under `src/**` and `functions/**`.
@@ -55,6 +57,7 @@ jobs:
   lint:
     name: Lint and Markdown format
     runs-on: ubuntu-latest
+    environment: pr-ci
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -77,6 +80,7 @@ jobs:
   build:
     name: Build and test
     runs-on: ubuntu-latest
+    environment: pr-ci
     steps:
       # Full history (fetch-depth: 0): the scope step below diffs against the merge base
       # with the PR's base branch (`origin/BASE...HEAD`), which a shallow single-commit
@@ -266,6 +270,7 @@ jobs:
   e2e:
     name: Full-stack E2E
     needs: [build]
+    environment: pr-ci
     uses: ./.github/workflows/e2e-stack.yml
     with:
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
