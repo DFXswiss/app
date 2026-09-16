@@ -7,7 +7,7 @@ import { useAuth } from '@dfx.swiss/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../../components/ui';
 import { useT } from '../../i18n';
-import { firstQueryParam } from '../../utils/url';
+import { firstQueryParam, mailRedirectUri } from '../../utils/url';
 import { useWalletSession } from '../../wallets/session';
 import { classifyInviteCode, normalizeInviteCode, RECOMMENDATION_CODE_LENGTH } from '../../wallets/invite';
 import { WALLET_CATALOG } from '../../wallets/catalog';
@@ -169,7 +169,7 @@ export function Landing() {
       // inviteNeedsWalletLogin hint above already told the user why, for the usedRef case).
       await signInWithMail(
         value,
-        window.location.origin + window.location.pathname,
+        mailRedirectUri(),
         classifiedInvite?.kind === 'recommendationCode' ? classifiedInvite.code : undefined,
         walletParam,
       );

@@ -149,7 +149,7 @@ describe('Landing', () => {
     await waitFor(() =>
       expect(mockSignInWithMail).toHaveBeenCalledWith(
         'user@example.com',
-        expect.any(String),
+        undefined,
         'AB-CDEF-GHIJ-KL',
         'MetaMask',
       ),
