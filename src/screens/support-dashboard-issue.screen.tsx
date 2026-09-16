@@ -170,12 +170,14 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       });
   }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
 
-  // Clear send UI, an in-progress note draft, the previous ticket's messages, and issueData when
-  // navigating to a different ticket. The screen does not remount on :id change; leaving `messages`
-  // in place would paint ticket A's thread on route B until loadMessages returns (or forever if it
-  // fails). Leaving `issueData` would keep `issueData.id !== +id` true, so the mismatch spinner
-  // outranks ErrorHint if B's load fails. Runs before loadIssue so the new generation is captured
-  // by the in-flight started for this id.
+  // Clear send UI, an in-progress note draft, the previous ticket's messages, issueData, and
+  // template-picker state when navigating to a different ticket. The screen does not remount on
+  // :id change; leaving `messages` in place would paint ticket A's thread on route B until
+  // loadMessages returns (or forever if it fails). Leaving `issueData` would keep
+  // `issueData.id !== +id` true, so the mismatch spinner outranks ErrorHint if B's load fails.
+  // Leaving the picker open (or its in-flight user-data load) would reopen it on B with A's
+  // customer data after B's spinner. Runs before loadIssue so the new generation is captured by
+  // the in-flight started for this id.
   useEffect(() => {
     sendInFlight.current = false;
     setIsSending(false);
@@ -189,6 +191,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     requestGenRef.current += 1;
     setMessages([]);
     setPendingCount(0);
+    setTemplatePickerOpen(false);
+    setPendingTemplateContent(undefined);
+    setIsUserDataLoading(false);
+    setUserDataDetail(undefined);
+    setUserTransactions([]);
     setFilePreview((prev) => {
       if (prev) URL.revokeObjectURL(prev.url);
       return undefined;
@@ -210,6 +217,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }, [issueData?.account.id]);
 
   async function openTemplatePicker(): Promise<void> {
+    const gen = requestGenRef.current;
     const accountId = issueData?.account.id;
     if (accountId == null || isUserDataLoading) return;
     if (userDataDetail) {
@@ -219,13 +227,15 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setIsUserDataLoading(true);
     try {
       const data = await getUserData(accountId);
+      if (requestGenRef.current !== gen) return;
       setUserDataDetail(data.userData);
       setUserTransactions(data.transactions ?? []);
       setTemplatePickerOpen(true);
     } catch (e: unknown) {
+      if (requestGenRef.current !== gen) return;
       setActionError(e instanceof Error ? e.message : 'Failed to load user data for templates');
     } finally {
-      setIsUserDataLoading(false);
+      if (requestGenRef.current === gen) setIsUserDataLoading(false);
     }
   }
 
@@ -288,8 +298,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setIsSending(true);
     setActionError(undefined);
     // The draft is dropped before the request, so a detour during the send cannot bring back text
-    // that is already on its way. On failure, storage is restored for the ticket that was sending;
-    // the composer is only updated if the clerk is still on that same ticket.
+    // that is already on its way. On failure, storage and the composer are restored only if this
+    // send's generation is still current.
     const sendIssueId = id;
     const gen = requestGenRef.current;
     const draft = messageText;
@@ -318,8 +328,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       if (fileInputRef.current) fileInputRef.current.value = '';
       loadMessages();
     } catch (e: unknown) {
-      writeDraft(sendIssueId, draft);
       if (requestGenRef.current !== gen) return;
+      writeDraft(sendIssueId, draft);
       setMessageText(draft);
       setActionError(e instanceof Error ? e.message : 'Send failed');
     } finally {

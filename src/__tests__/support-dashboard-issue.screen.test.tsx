@@ -100,7 +100,8 @@ jest.mock('src/components/support-templates/template-array-picker-modal', () => 
 }));
 
 jest.mock('src/components/support-templates/template-picker-modal', () => ({
-  TemplatePickerModal: () => null,
+  TemplatePickerModal: ({ isOpen }: { isOpen: boolean }) =>
+    isOpen ? <div data-testid="template-picker-modal" /> : null,
 }));
 
 jest.mock('src/components/compliance/staff-identity', () => ({
@@ -368,5 +369,25 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
     navigateTo('2', rerender);
 
     await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:ticket-preview'));
+  });
+
+  it('does not open the template picker on ticket B with ticket A user data', async () => {
+    const userDataA = createDeferred<{ userData: { id: number }; transactions: never[] }>();
+    mockGetUserData.mockReturnValue(userDataA.promise);
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('Vorlage einfügen'));
+    expect(mockGetUserData).toHaveBeenCalledWith(8);
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+
+    await act(async () => {
+      userDataA.resolve({ userData: { id: 8 }, transactions: [] });
+      await userDataA.promise;
+    });
+
+    expect(screen.queryByTestId('template-picker-modal')).not.toBeInTheDocument();
   });
 });
