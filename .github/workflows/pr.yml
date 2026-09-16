@@ -2,8 +2,10 @@
 #
 # This is a public repository. GitHub-hosted runners execute the heavy suite
 # (Jest, build:dev, widget:dev). A38 locally measures only Lint and Markdown
-# format. Jobs wait on environment `pr-ci` (Review deployments) until a
-# required reviewer or the A38 guard approves. GitHub may also hold fork
+# format. Jobs lint and build wait on environment `pr-ci` (Review
+# deployments) until a required reviewer or the A38 guard approves. The
+# reusable E2E caller cannot take `environment`; it stays behind build.
+# GitHub may also hold fork
 # runs as `action_required`. Ready does not start CI. After a fresh A38
 # enforce pass, `dfx pr guard` approves those waiting initial runs. The
 # merger does not click Approve and run workflows. Never listen to
