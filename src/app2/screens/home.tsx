@@ -41,14 +41,12 @@ import { AssetChainGlyph, FiatGlyph } from './trade/glyphs';
 import { FeesPanel } from './trade/FeesPanel';
 import { PaymentSheet } from './trade/PaymentSheet';
 import { Landing } from './parts/Landing';
-import type { Capability, Mode, TradeAsset } from './trade/types';
+import { MODES, type Capability, type Mode, type TradeAsset } from './trade/types';
 import { useBuyQuote, useSellQuote, useSwapQuote } from './trade/useTradeQuote';
 import { useT, type TranslationKey } from '../i18n';
 import { firstQueryParam } from '../utils/url';
 import { useWalletSession } from '../wallets/session';
 import { cx } from '../css';
-
-const MODES: Mode[] = ['buy', 'sell', 'swap'];
 
 const QUICK_FIAT_AMOUNTS = [50, 100, 250, 500];
 

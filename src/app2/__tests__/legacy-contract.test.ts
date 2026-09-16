@@ -34,7 +34,7 @@ import { RecommendationStatus as MainRecStatus } from '../../dto/recommendation.
 import { StoreKey, SessionStoreKey, BANK_TX_CACHE_PREFIX } from '../lib/storage-keys';
 import { JobStatus } from '../lib/job';
 import { BitcoinAddressType, BitcoinAddressPrefix } from '../lib/key-path';
-import { SumsubReviewAnswer, SumsubReviewRejectType } from '../lib/sumsub';
+import { SumsubReviewAnswer, SumsubReviewRejectType, sumsubEnumValues } from '../lib/sumsub';
 import { RecommendationStatus } from '../lib/recommendation';
 
 describe('App 2.0 copies of main-app contracts', () => {
@@ -54,8 +54,13 @@ describe('App 2.0 copies of main-app contracts', () => {
   });
 
   it('shares the same Sumsub review enums', () => {
+    expect(SumsubReviewAnswer.GREEN).toBe('GREEN');
+    expect(SumsubReviewAnswer.RED).toBe('RED');
+    expect(SumsubReviewRejectType.FINAL).toBe('FINAL');
+    expect(SumsubReviewRejectType.RETRY).toBe('RETRY');
     expect({ ...SumsubReviewAnswer }).toEqual({ ...MainSumsubAnswer });
     expect({ ...SumsubReviewRejectType }).toEqual({ ...MainSumsubReject });
+    expect(sumsubEnumValues()).toEqual(['GREEN', 'RED', 'FINAL', 'RETRY']);
   });
 
   it('shares the same recommendation statuses', () => {

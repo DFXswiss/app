@@ -8,8 +8,10 @@
  * this harness exists to check.
  */
 
+import { ethers } from 'ethers';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForRow, withDb } from './fixtures';
+import { testWallet } from './fixtures/auth';
 import { cleanupCreatedData, createUser } from './fixtures/factories';
 
 const APP2_HASH_ROUTES = [
@@ -185,5 +187,50 @@ test.describe('App 2.0 hosted artifact', () => {
       20000,
     );
     expect(row.mail).toBe(newMail);
+  });
+
+  test('metamask: injected EIP-6963 connect signs in and opens buy', async ({ page }) => {
+    test.setTimeout(90000);
+    const wallet = testWallet(250);
+    await page.exposeFunction('e2ePersonalSign', async (hexOrMsg: string) => {
+      let message = hexOrMsg;
+      if (message.startsWith('0x')) {
+        message = Buffer.from(message.slice(2), 'hex').toString('utf8');
+      }
+      const signer = new ethers.Wallet(wallet.privateKey);
+      return signer.signMessage(message);
+    });
+    await page.addInitScript(({ address }) => {
+      const provider = {
+        isMetaMask: true,
+        request: async ({ method, params }: { method: string; params?: string[] }) => {
+          if (method === 'eth_requestAccounts' || method === 'eth_accounts') return [address];
+          if (method === 'personal_sign') {
+            const data = params?.[0];
+            if (typeof data !== 'string') throw new Error('missing personal_sign payload');
+            return (window as unknown as { e2ePersonalSign: (payload: string) => Promise<string> }).e2ePersonalSign(
+              data,
+            );
+          }
+          throw new Error(`unsupported method ${method}`);
+        },
+      };
+      (window as unknown as { ethereum: typeof provider }).ethereum = provider;
+      window.addEventListener('eip6963:requestProvider', () => {
+        window.dispatchEvent(
+          new CustomEvent('eip6963:announceProvider', {
+            detail: { info: { rdns: 'io.metamask', name: 'MetaMask' }, provider },
+          }),
+        );
+      });
+    }, { address: wallet.address });
+
+    const response = await page.goto('/app2/');
+    expect(response?.ok(), `/app2/ status ${response?.status()}`).toBe(true);
+    await page.getByRole('button', { name: /connect wallet/i }).click();
+    await page.getByRole('button', { name: /metamask evm/i }).click();
+    await expect(page.getByRole('tab', { name: /^buy$/i })).toHaveAttribute('aria-selected', 'true', { timeout: 45000 });
+    const token = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
+    expect(token, 'MetaMask connect must store a DFX JWT').toBeTruthy();
   });
 });

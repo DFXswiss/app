@@ -84,4 +84,15 @@ describe('App 2.0 CSS module class names', () => {
     expect(locals.has('soon')).toBe(true);
     expect(locals.has('crow')).toBe(true);
   });
+
+  it('throws when cx() is given a class the module does not export', () => {
+    jest.isolateModules(() => {
+      jest.doMock('../styles.module.css', () => ({ app: 'app_hash' }));
+      // isolateModules needs a runtime load after doMock; CRA has no import() hook here.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { cx } = require('../css') as { cx: (...parts: Array<string | false | 0 | null | undefined>) => string };
+      expect(() => cx('nope')).toThrow(/unknown class "nope"/);
+      expect(cx(false, undefined, 0, '', 'app')).toBe('app_hash');
+    });
+  });
 });
