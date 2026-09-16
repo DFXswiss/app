@@ -25,7 +25,7 @@ import {
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { OcpMark } from '../../components/brand';
-import { useToast } from '../../components/ui';
+import { LoadingRow, useToast } from '../../components/ui';
 import { useT, type TranslationKey } from '../../i18n';
 import { useWalletSession } from '../../wallets/session';
 import { LoggedOutState } from '../parts/LoggedOutState';
@@ -71,12 +71,6 @@ const COPY_ICON = (
   </svg>
 );
 
-const SPINNER_ROW = (label: string): ReactNode => (
-  <div className="ocp-empty">
-    <span className="spin" /> {label}
-  </div>
-);
-
 export default function OcpScreen() {
   const { t } = useT();
   const navigate = useNavigate();
@@ -116,7 +110,11 @@ export default function OcpScreen() {
       </div>
     );
   } else if (ocp.active === null) {
-    body = SPINNER_ROW(t('loading'));
+    body = (
+      <div className="ocp-empty">
+        <LoadingRow label={t('loading')} />
+      </div>
+    );
   } else if (!ocp.active) {
     body = <HomeView ocp={ocp} go={go} />; // redirect to home is in-flight
   } else {
