@@ -170,10 +170,12 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       });
   }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
 
-  // Clear send UI, an in-progress note draft, and the previous ticket's messages when navigating
-  // to a different ticket. The screen does not remount on :id change; leaving `messages` in place
-  // would paint ticket A's thread on route B until loadMessages returns (or forever if it fails).
-  // Runs before loadIssue so the new generation is captured by the in-flight started for this id.
+  // Clear send UI, an in-progress note draft, the previous ticket's messages, and issueData when
+  // navigating to a different ticket. The screen does not remount on :id change; leaving `messages`
+  // in place would paint ticket A's thread on route B until loadMessages returns (or forever if it
+  // fails). Leaving `issueData` would keep `issueData.id !== +id` true, so the mismatch spinner
+  // outranks ErrorHint if B's load fails. Runs before loadIssue so the new generation is captured
+  // by the in-flight started for this id.
   useEffect(() => {
     sendInFlight.current = false;
     setIsSending(false);
@@ -181,6 +183,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setSelectedFiles([]);
     setActionError(undefined);
     setLoadError(undefined);
+    setIssueData(undefined);
     setNoteDraft(undefined);
     noteGenRef.current += 1;
     requestGenRef.current += 1;

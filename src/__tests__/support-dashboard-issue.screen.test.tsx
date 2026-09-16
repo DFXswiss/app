@@ -266,6 +266,21 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
     expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
   });
 
+  it('shows the load error for ticket B after a successful ticket A load', async () => {
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+
+    mockGetIssueData.mockImplementation((id: number) => {
+      if (id === 2) return Promise.reject(new Error('ticket B exploded'));
+      return Promise.resolve(issue(id));
+    });
+    navigateTo('2', rerender);
+
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('ticket B exploded');
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+  });
+
   it('remounts the message list and removes ticket A messages when switching to ticket B', async () => {
     mockGetIssueMessages.mockImplementation((uid: string) =>
       Promise.resolve([{ id: uid === 'SI-1' ? 1 : 2, message: uid === 'SI-1' ? 'body-A' : 'body-B' }]),
