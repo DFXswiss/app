@@ -25,7 +25,7 @@ import {
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { OcpMark } from '../../components/brand';
-import { LoadingRow, useToast } from '../../components/ui';
+import { Spinner, useToast } from '../../components/ui';
 import { useT, type TranslationKey } from '../../i18n';
 import { useWalletSession } from '../../wallets/session';
 import { LoggedOutState } from '../parts/LoggedOutState';
@@ -112,7 +112,7 @@ export default function OcpScreen() {
   } else if (ocp.active === null) {
     body = (
       <div className="ocp-empty">
-        <LoadingRow label={t('loading')} />
+        <Spinner /> {t('loading')}
       </div>
     );
   } else if (!ocp.active) {
