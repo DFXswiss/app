@@ -30,6 +30,7 @@ import { useT, type Language, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { formatDateTime, shortAddress } from './parts/format';
 import { findSendCandidate, shouldSyncSupportIssue, type SendAttempt } from './support-delivery';
+import { cx } from '../css';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const SEND_SETTLE_TIMEOUT_MS = 30_000;
@@ -584,7 +585,7 @@ const X_ICON = (
   </svg>
 );
 const EXT_ICON = (
-  <svg className="ext-ic" viewBox="0 0 24 24" fill="none">
+  <svg className={cx('ext-ic')} viewBox="0 0 24 24" fill="none">
     <path d="M7 17 17 7M9 7h8v8" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
@@ -686,9 +687,7 @@ function SupportScreenBody() {
 
     const succeeded = candidate.status !== SupportMessageStatus.FAILED;
     if (succeeded && sendAttempt.clearComposer) {
-      setComposer((current) =>
-        sendAttempt.text && current.trim() === sendAttempt.text.trim() ? '' : current,
-      );
+      setComposer((current) => (sendAttempt.text && current.trim() === sendAttempt.text.trim() ? '' : current));
       setPendingFile(undefined);
     }
     if (sendAttempt.replacesMessageId != null) {
@@ -933,15 +932,15 @@ function SupportScreenBody() {
   };
 
   return (
-    <div className="account">
-      <div className="txhead">
+    <div className={cx('account')}>
+      <div className={cx('txhead')}>
         <h2>{t('mSupport')}</h2>
       </div>
-      <p className="tnote" style={{ padding: '0 4px 6px' }}>
+      <p className={cx('tnote')} style={{ padding: '0 4px 6px' }}>
         {t('supportLead')}
       </p>
 
-      <div className="search" style={{ margin: '2px 4px 14px' }}>
+      <div className={cx('search')} style={{ margin: '2px 4px 14px' }}>
         <svg viewBox="0 0 24 24" fill="none">
           <circle cx={11} cy={11} r={7} stroke="currentColor" strokeWidth={1.8} />
           <path d="M20 20l-3.2-3.2" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" />
@@ -953,14 +952,14 @@ function SupportScreenBody() {
           aria-label={t('searchHelp')}
         />
       </div>
-      <div className="sectionlabel">{t('faqTitle')}</div>
-      <div className={`kbchips-wrap${kbEnded ? ' ended' : ''}`}>
-        <div className="kbchips" ref={kbChipsRef} onScroll={updateKbArrow}>
+      <div className={cx('sectionlabel')}>{t('faqTitle')}</div>
+      <div className={cx('kbchips-wrap', kbEnded && 'ended')}>
+        <div className={cx('kbchips')} ref={kbChipsRef} onScroll={updateKbArrow}>
           {KB_CATS.map((cat) => (
             <button
               key={cat}
               type="button"
-              className={`kbchip${cat === kbCat ? ' on' : ''}`}
+              className={cx('kbchip', cat === kbCat && 'on')}
               onClick={() => setKbCat(cat)}
             >
               {t(`kc_${cat}` as TranslationKey)}
@@ -968,7 +967,7 @@ function SupportScreenBody() {
           ))}
         </div>
         <button
-          className={`kbchip-arrow${kbEnded ? ' hide' : ''}`}
+          className={cx('kbchip-arrow', kbEnded && 'hide')}
           type="button"
           aria-label="More topics"
           onClick={scrollKbChips}
@@ -984,9 +983,9 @@ function SupportScreenBody() {
           </svg>
         </button>
       </div>
-      <div className="glass faq" style={{ padding: '2px 4px' }}>
+      <div className={cx('glass', 'faq')} style={{ padding: '2px 4px' }}>
         {kbArticles.length === 0 ? (
-          <div className="ans" style={{ padding: '14px 12px', color: 'var(--t-muted)' }}>
+          <div className={cx('ans')} style={{ padding: '14px 12px', color: 'var(--t-muted)' }}>
             {t('kbNoResults')}
           </div>
         ) : (
@@ -994,7 +993,7 @@ function SupportScreenBody() {
             <details key={`${article.c}-${index}`}>
               <summary>
                 {article.q}
-                <svg className="chev" viewBox="0 0 24 24" fill="none">
+                <svg className={cx('chev')} viewBox="0 0 24 24" fill="none">
                   <path
                     d="M7 10l5 5 5-5"
                     stroke="currentColor"
@@ -1005,7 +1004,7 @@ function SupportScreenBody() {
                 </svg>
               </summary>
               {/* Answers are trusted, author-controlled HTML bundled in KB_DATA (mirrors the static app's kb.json). */}
-              <div className="ans" dangerouslySetInnerHTML={{ __html: article.a }} />
+              <div className={cx('ans')} dangerouslySetInnerHTML={{ __html: article.a }} />
             </details>
           ))
         )}
@@ -1013,12 +1012,12 @@ function SupportScreenBody() {
 
       {isLoggedIn && (
         <>
-          <div className="sectionlabel">{t('myTickets')}</div>
+          <div className={cx('sectionlabel')}>{t('myTickets')}</div>
           {ticketsError ? (
-            <div className="glass tkempty" style={{ flexDirection: 'column', gap: 10 }}>
+            <div className={cx('glass', 'tkempty')} style={{ flexDirection: 'column', gap: 10 }}>
               <span>{ticketsError}</span>
               <button
-                className="btn-mini"
+                className={cx('btn-mini')}
                 type="button"
                 onClick={() => {
                   setTicketsError('');
@@ -1029,11 +1028,11 @@ function SupportScreenBody() {
               </button>
             </div>
           ) : support.isLoading && support.tickets.length === 0 ? (
-            <div className="glass tkempty">
+            <div className={cx('glass', 'tkempty')}>
               <LoadingRow label={t('loading')} />
             </div>
           ) : support.tickets.length === 0 ? (
-            <div className="glass tkempty">{t('noTickets')}</div>
+            <div className={cx('glass', 'tkempty')}>{t('noTickets')}</div>
           ) : (
             [...support.tickets]
               .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
@@ -1041,18 +1040,23 @@ function SupportScreenBody() {
                 const preview = ticket.messages[ticket.messages.length - 1];
                 const previewText = preview?.message ?? (preview?.fileName ? `📎 ${preview.fileName}` : '');
                 return (
-                  <button key={ticket.uid} type="button" className="tkrow glass" onClick={() => openThread(ticket.uid)}>
-                    <span className="tx">
-                      <span className="top">
+                  <button
+                    key={ticket.uid}
+                    type="button"
+                    className={cx('tkrow', 'glass')}
+                    onClick={() => openThread(ticket.uid)}
+                  >
+                    <span className={cx('tx')}>
+                      <span className={cx('top')}>
                         <b>{issueTypeLabel(t, ticket.type)}</b>
-                        <span className={`pill-chip ${issueStateVariant(ticket.state)}`}>
+                        <span className={cx('pill-chip', issueStateVariant(ticket.state))}>
                           {t(`is_${ticket.state}` as TranslationKey)}
                         </span>
                       </span>
                       <small>{formatDateTime(ticket.created, language)}</small>
-                      {previewText && <small className="prev">{previewText}</small>}
+                      {previewText && <small className={cx('prev')}>{previewText}</small>}
                     </span>
-                    <span className="chev">{CHEV_ICON}</span>
+                    <span className={cx('chev')}>{CHEV_ICON}</span>
                   </button>
                 );
               })
@@ -1060,15 +1064,15 @@ function SupportScreenBody() {
         </>
       )}
 
-      <div className="sectionlabel">{t('contactTitle')}</div>
+      <div className={cx('sectionlabel')}>{t('contactTitle')}</div>
       <div
-        className="suprow glass"
+        className={cx('suprow', 'glass')}
         role="button"
         tabIndex={0}
         onClick={openNewIssue}
         onKeyDown={onActivate(openNewIssue)}
       >
-        <span className="ic">
+        <span className={cx('ic')}>
           <svg viewBox="0 0 24 24" fill="none">
             <path
               d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5Z"
@@ -1077,48 +1081,48 @@ function SupportScreenBody() {
             />
           </svg>
         </span>
-        <span className="tx">
+        <span className={cx('tx')}>
           <b>{t('supTicket')}</b>
           <small>{t('supTicketSub')}</small>
         </span>
-        <span className="ext-ic">{CHEV_ICON}</span>
+        <span className={cx('ext-ic')}>{CHEV_ICON}</span>
       </div>
-      <a className="suprow glass" href="mailto:support@dfx.swiss">
-        <span className="ic">{MAIL_ICON}</span>
-        <span className="tx">
+      <a className={cx('suprow', 'glass')} href="mailto:support@dfx.swiss">
+        <span className={cx('ic')}>{MAIL_ICON}</span>
+        <span className={cx('tx')}>
           <b>{t('supEmail')}</b>
           <small>support@dfx.swiss</small>
         </span>
         {EXT_ICON}
       </a>
-      <a className="suprow glass" href="https://docs.dfx.swiss/" target="_blank" rel="noopener noreferrer">
-        <span className="ic">{DOCS_ICON}</span>
-        <span className="tx">
+      <a className={cx('suprow', 'glass')} href="https://docs.dfx.swiss/" target="_blank" rel="noopener noreferrer">
+        <span className={cx('ic')}>{DOCS_ICON}</span>
+        <span className={cx('tx')}>
           <b>{t('supDocs')}</b>
           <small>docs.dfx.swiss</small>
         </span>
         {EXT_ICON}
       </a>
-      <a className="suprow glass" href="https://x.com/DFX_Swiss" target="_blank" rel="noopener noreferrer">
-        <span className="ic">{X_ICON}</span>
-        <span className="tx">
+      <a className={cx('suprow', 'glass')} href="https://x.com/DFX_Swiss" target="_blank" rel="noopener noreferrer">
+        <span className={cx('ic')}>{X_ICON}</span>
+        <span className={cx('tx')}>
           <b>{t('supX')}</b>
           <small>x.com/DFX_Swiss</small>
         </span>
         {EXT_ICON}
       </a>
-      <div className="supfoot">{t('supFoot')}</div>
+      <div className={cx('supfoot')}>{t('supFoot')}</div>
 
       {/* ---- create-issue sheet ---- */}
       <Sheet open={newIssueOpen} onClose={() => setNewIssueOpen(false)} titleId={newIssueTitleId}>
         <SheetHeader titleId={newIssueTitleId} title={t('newTicket')} onClose={() => setNewIssueOpen(false)} />
-        <p className="tnote" style={{ padding: '0 4px 8px' }}>
+        <p className={cx('tnote')} style={{ padding: '0 4px 8px' }}>
           {t('ticketLead')}
         </p>
-        <form className="tform" onSubmit={submitNewIssue}>
-          <label className="flabel">{t('ticketTopic')}</label>
+        <form className={cx('tform')} onSubmit={submitNewIssue}>
+          <label className={cx('flabel')}>{t('ticketTopic')}</label>
           <select
-            className="tinput"
+            className={cx('tinput')}
             value={typeIndex}
             onChange={(e) => setTypeIndex(Number(e.target.value))}
             aria-label={t('ticketTopic')}
@@ -1131,9 +1135,9 @@ function SupportScreenBody() {
           </select>
           {(!user?.mail || emailRejected) && (
             <>
-              <label className="flabel">{t('ticketEmail')}</label>
+              <label className={cx('flabel')}>{t('ticketEmail')}</label>
               <input
-                className="tinput"
+                className={cx('tinput')}
                 type="email"
                 placeholder="you@email.com"
                 autoComplete="email"
@@ -1144,48 +1148,48 @@ function SupportScreenBody() {
               />
             </>
           )}
-          <label className="flabel">{t('ticketName')}</label>
+          <label className={cx('flabel')}>{t('ticketName')}</label>
           <input
-            className="tinput"
+            className={cx('tinput')}
             value={name}
             onChange={(e) => setName(e.target.value)}
             autoComplete="name"
             aria-label={t('ticketName')}
           />
-          <label className="flabel">{t('ticketMsg')}</label>
+          <label className={cx('flabel')}>{t('ticketMsg')}</label>
           <textarea
-            className="tinput"
+            className={cx('tinput')}
             rows={6}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             aria-label={t('ticketMsg')}
           />
-          <button className="btn-primary" type="submit" style={{ marginTop: 8 }} disabled={submitting}>
+          <button className={cx('btn-primary')} type="submit" style={{ marginTop: 8 }} disabled={submitting}>
             {submitting ? <LoadingRow label={t('tkSending')} /> : t('submitTicket')}
           </button>
-          {formError && <div className="paybox-note warn">{formError}</div>}
+          {formError && <div className={cx('paybox-note', 'warn')}>{formError}</div>}
         </form>
       </Sheet>
 
       {/* ---- chat thread sheet ---- */}
       <Sheet open={!!activeUid} onClose={closeThread} titleId={threadTitleId} showGrab={false}>
-        <div className="chatwrap">
-          <div className="chathead">
-            <button className="rbtn" aria-label="Back" style={{ width: 40, height: 40 }} onClick={closeThread}>
+        <div className={cx('chatwrap')}>
+          <div className={cx('chathead')}>
+            <button className={cx('rbtn')} aria-label="Back" style={{ width: 40, height: 40 }} onClick={closeThread}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
             <h2 id={threadTitleId}>{issue ? issueTypeLabel(t, issue.type) : t('chatTitle')}</h2>
           </div>
-          <div className="chatthread" aria-live="polite">
-            {support.isError && issue && <div className="paybox-note warn">{t('loadFail')}</div>}
+          <div className={cx('chatthread')} aria-live="polite">
+            {support.isError && issue && <div className={cx('paybox-note', 'warn')}>{t('loadFail')}</div>}
             {threadError ? (
-              <div className="chatempty">
+              <div className={cx('chatempty')}>
                 <span>{t('loadFail')}</span>
                 {activeUid && (
                   <button
-                    className="btn-mini"
+                    className={cx('btn-mini')}
                     type="button"
                     style={{ marginTop: 10 }}
                     onClick={() => openThread(activeUid)}
@@ -1195,11 +1199,11 @@ function SupportScreenBody() {
                 )}
               </div>
             ) : support.isLoading && !issue ? (
-              <div className="chatempty">
+              <div className={cx('chatempty')}>
                 <LoadingRow label={t('loading')} />
               </div>
             ) : !issue || issue.messages.length === 0 ? (
-              <div className="chatempty">{t('chatEmpty')}</div>
+              <div className={cx('chatempty')}>{t('chatEmpty')}</div>
             ) : (
               issue.messages
                 .filter((message) => !hiddenMessageIds.has(message.id))
@@ -1217,18 +1221,18 @@ function SupportScreenBody() {
             )}
           </div>
           {closed ? (
-            <div className="chatclosed">{t('chatClosed')}</div>
+            <div className={cx('chatclosed')}>{t('chatClosed')}</div>
           ) : (
             <>
               {pendingFile && (
-                <div className="chatattach">
+                <div className={cx('chatattach')}>
                   <span>{pendingFile.name}</span>
-                  <span className="rm" role="button" tabIndex={0} onClick={() => setPendingFile(undefined)}>
+                  <span className={cx('rm')} role="button" tabIndex={0} onClick={() => setPendingFile(undefined)}>
                     ✕
                   </span>
                 </div>
               )}
-              <div className="chatcomposer">
+              <div className={cx('chatcomposer')}>
                 <input
                   id="chatFileInput"
                   type="file"
@@ -1237,7 +1241,7 @@ function SupportScreenBody() {
                   onChange={onPickFile}
                 />
                 <button
-                  className="chaticon"
+                  className={cx('chaticon')}
                   aria-label="Attach file"
                   type="button"
                   onClick={() => document.getElementById('chatFileInput')?.click()}
@@ -1258,7 +1262,13 @@ function SupportScreenBody() {
                     }
                   }}
                 />
-                <button className="chaticon chatsend" aria-label="Send" type="button" disabled={sending} onClick={send}>
+                <button
+                  className={cx('chaticon', 'chatsend')}
+                  aria-label="Send"
+                  type="button"
+                  disabled={sending}
+                  onClick={send}
+                >
                   {SEND_ICON}
                 </button>
               </div>
@@ -1342,15 +1352,15 @@ function ChatBubble({
   };
 
   return (
-    <div className={`msg ${mine ? 'msg-cust' : 'msg-supp'}${failed ? ' failed' : ''}`}>
-      <div className="msg-bubble">
-        {message.message && <div className="msg-tx">{message.message}</div>}
+    <div className={cx('msg', mine ? 'msg-cust' : 'msg-supp', failed && 'failed')}>
+      <div className={cx('msg-bubble')}>
+        {message.message && <div className={cx('msg-tx')}>{message.message}</div>}
         {message.fileName &&
           (isImageFile(message.fileName) && loadedUrl ? (
-            <img className="msg-img" alt={message.fileName} src={loadedUrl} />
+            <img className={cx('msg-img')} alt={message.fileName} src={loadedUrl} />
           ) : (
             <div
-              className="msg-file"
+              className={cx('msg-file')}
               role="button"
               tabIndex={0}
               onClick={ensureLoaded}
@@ -1360,13 +1370,13 @@ function ChatBubble({
               <span>{loading ? t('loading') : message.fileName}</span>
             </div>
           ))}
-        <div className="msg-meta">
+        <div className={cx('msg-meta')}>
           {timestamp}
           {message.status === SupportMessageStatus.SENT && !deliveryTimedOut && ` · ${t('chatSending')}`}
           {failed && (
             <>
               {' · '}
-              <button className="msg-retry" type="button" disabled={retrying} onClick={onRetry}>
+              <button className={cx('msg-retry')} type="button" disabled={retrying} onClick={onRetry}>
                 {retrying ? t('chatSending') : t('chatRetry')}
               </button>
             </>

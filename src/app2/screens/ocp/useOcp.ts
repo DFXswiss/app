@@ -608,10 +608,7 @@ export function useOcp(): OcpApi {
           ? crypto.randomUUID()
           : `pos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
       const epoch = demoEpochRef.current;
-      const data = await createPaymentLinkPayment(
-        { amount, externalId } as CreatePaymentLinkPayment,
-        String(linkId),
-      );
+      const data = await createPaymentLinkPayment({ amount, externalId } as CreatePaymentLinkPayment, String(linkId));
       if (epoch !== demoEpochRef.current) throw new ApiException(0, t('genErr'));
       const lnurl = extractChargeLnurl(data);
       if (!lnurl) throw new ApiException(0, t('genErr'));

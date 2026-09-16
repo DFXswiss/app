@@ -1,5 +1,4 @@
-import { SessionStoreKey } from 'src/hooks/session-store.hook';
-import { StoreKey } from 'src/hooks/store.hook';
+import { SessionStoreKey, StoreKey } from '../lib/storage-keys';
 
 jest.mock('@dfx.swiss/react', () => ({
   AuthWalletType: { METAMASK: 'MetaMask', CLI: 'CLI', ALBY: 'Alby', LEDGER: 'Ledger' },

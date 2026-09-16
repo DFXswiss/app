@@ -46,6 +46,7 @@ import { useBuyQuote, useSellQuote, useSwapQuote } from './trade/useTradeQuote';
 import { useT, type TranslationKey } from '../i18n';
 import { firstQueryParam } from '../utils/url';
 import { useWalletSession } from '../wallets/session';
+import { cx } from '../css';
 
 const MODES: Mode[] = ['buy', 'sell', 'swap'];
 
@@ -645,13 +646,13 @@ export default function HomeScreen() {
   if (!session.isLoggedIn) return <Landing />;
 
   return (
-    <div className="buy">
-      <div className="seg" role="tablist" aria-label={t('cta')}>
-        <span className="ind" style={{ transform: `translateX(${modeIndex}00%)` }} />
+    <div className={cx('buy')}>
+      <div className={cx('seg')} role="tablist" aria-label={t('cta')}>
+        <span className={cx('ind')} style={{ transform: `translateX(${modeIndex}00%)` }} />
         {MODES.map((m) => (
           <button
             key={m}
-            className={mode === m ? 'on' : ''}
+            className={mode === m ? cx('on') : undefined}
             role="tab"
             aria-selected={mode === m}
             style={m === 'swap' && !swapAvailable ? { opacity: 0.38, pointerEvents: 'none' } : undefined}
@@ -662,13 +663,13 @@ export default function HomeScreen() {
         ))}
       </div>
 
-      <button className="walletbar" type="button" onClick={() => session.openSwitcher()}>
-        <span className="wbLogo">
+      <button className={cx('walletbar')} type="button" onClick={() => session.openSwitcher()}>
+        <span className={cx('wbLogo')}>
           {/* Sizing/fit belongs to `.walletbar .wbLogo img` (23px, object-fit: contain) — an
               inline 100%/cover here used to crop brand marks to the edges of the white tile. */}
           {session.activeWallet?.icon ? <img src={session.activeWallet.icon} alt="" /> : WALLET_ICON}
         </span>
-        <span className="wbtx">
+        <span className={cx('wbtx')}>
           {(() => {
             const short = session.address ? `${session.address.slice(0, 6)}…${session.address.slice(-4)}` : '';
             const name = session.activeWallet?.name;
@@ -681,7 +682,7 @@ export default function HomeScreen() {
             );
           })()}
         </span>
-        <span className="wbchg">
+        <span className={cx('wbchg')}>
           <svg viewBox="0 0 24 24" fill="none">
             <path
               d="M7 10h10l-3-3M17 14H7l3 3"
@@ -695,15 +696,15 @@ export default function HomeScreen() {
         </span>
       </button>
 
-      <div className="panels">
-        <div className="panel">
-          <div className="prow">
-            <span className="plabel">{t('youPay')}</span>
-            <span className="pmeta" />
+      <div className={cx('panels')}>
+        <div className={cx('panel')}>
+          <div className={cx('prow')}>
+            <span className={cx('plabel')}>{t('youPay')}</span>
+            <span className={cx('pmeta')} />
           </div>
-          <div className="pinput">
+          <div className={cx('pinput')}>
             <input
-              className="amt"
+              className={cx('amt')}
               inputMode="decimal"
               value={payRaw}
               placeholder="0"
@@ -711,21 +712,25 @@ export default function HomeScreen() {
               onChange={(e) => setPayRaw(e.target.value)}
             />
             {isFiatPay ? (
-              <button className="pill" aria-label="Select pay currency" onClick={() => setFiatPickerOpen('buyPay')}>
+              <button
+                className={cx('pill')}
+                aria-label="Select pay currency"
+                onClick={() => setFiatPickerOpen('buyPay')}
+              >
                 {buyFiat ? (
-                  <span className="glyph">
+                  <span className={cx('glyph')}>
                     <FiatGlyph code={buyFiat.name} />
                   </span>
                 ) : null}
-                <span className="meta">
+                <span className={cx('meta')}>
                   <b>{buyFiat?.name ?? ''}</b>
                   <s>{buyFiat ? fiatDescription(t, buyFiat.name) : ''}</s>
                 </span>
-                <span className="caret">{CHEVRON_RIGHT}</span>
+                <span className={cx('caret')}>{CHEVRON_RIGHT}</span>
               </button>
             ) : (
               <button
-                className="pill"
+                className={cx('pill')}
                 aria-label="Select pay asset"
                 onClick={() => setAssetPickerOpen(mode === 'sell' ? 'sellPay' : 'swapFrom')}
               >
@@ -733,14 +738,14 @@ export default function HomeScreen() {
                   asset={mode === 'sell' ? sellAsset : swapFromAsset}
                   chain={mode === 'sell' ? sellChain : swapFromChain}
                 />
-                <span className="caret">{CHEVRON_RIGHT}</span>
+                <span className={cx('caret')}>{CHEVRON_RIGHT}</span>
               </button>
             )}
           </div>
         </div>
 
         <button
-          className="fab"
+          className={cx('fab')}
           aria-label="Flip direction"
           onClick={flip}
           disabled={mode === 'swap' && !canFlipSwap}
@@ -757,43 +762,43 @@ export default function HomeScreen() {
           </svg>
         </button>
 
-        <div className="panel recv" aria-live="polite">
-          <div className="prow">
-            <span className="plabel">{t('youReceive')}</span>
-            <span className="pmeta">
-              {receiveMetaCountdown ? <span className="qcount">{receiveMeta}</span> : receiveMeta}
+        <div className={cx('panel', 'recv')} aria-live="polite">
+          <div className={cx('prow')}>
+            <span className={cx('plabel')}>{t('youReceive')}</span>
+            <span className={cx('pmeta')}>
+              {receiveMetaCountdown ? <span className={cx('qcount')}>{receiveMeta}</span> : receiveMeta}
               {receiveShowRetry && (
                 <>
                   {' · '}
-                  <button className="msg-retry" type="button" onClick={() => activeQuote.refresh()}>
+                  <button className={cx('msg-retry')} type="button" onClick={() => activeQuote.refresh()}>
                     {t('retry')}
                   </button>
                 </>
               )}
             </span>
           </div>
-          <div className="pinput">
-            <input className="amt" value={receiveValue} readOnly aria-label="Amount you receive" />
+          <div className={cx('pinput')}>
+            <input className={cx('amt')} value={receiveValue} readOnly aria-label="Amount you receive" />
             {isFiatReceive ? (
               <button
-                className="pill"
+                className={cx('pill')}
                 aria-label="Select receive currency"
                 onClick={() => setFiatPickerOpen('sellReceive')}
               >
                 {sellFiat ? (
-                  <span className="glyph">
+                  <span className={cx('glyph')}>
                     <FiatGlyph code={sellFiat.name} />
                   </span>
                 ) : null}
-                <span className="meta">
+                <span className={cx('meta')}>
                   <b>{sellFiat?.name ?? ''}</b>
                   <s>{sellFiat ? fiatDescription(t, sellFiat.name) : ''}</s>
                 </span>
-                <span className="caret">{CHEVRON_RIGHT}</span>
+                <span className={cx('caret')}>{CHEVRON_RIGHT}</span>
               </button>
             ) : (
               <button
-                className="pill"
+                className={cx('pill')}
                 aria-label="Select receive asset"
                 onClick={() => setAssetPickerOpen(mode === 'buy' ? 'buyReceive' : 'swapTo')}
               >
@@ -801,7 +806,7 @@ export default function HomeScreen() {
                   asset={mode === 'buy' ? buyAsset : swapToAsset}
                   chain={mode === 'buy' ? buyChain : swapToChain}
                 />
-                <span className="caret">{CHEVRON_RIGHT}</span>
+                <span className={cx('caret')}>{CHEVRON_RIGHT}</span>
               </button>
             )}
           </div>
@@ -809,7 +814,7 @@ export default function HomeScreen() {
       </div>
 
       {mode === 'buy' && buyFiat && (
-        <div className="quick">
+        <div className={cx('quick')}>
           {QUICK_FIAT_AMOUNTS.map((v) => (
             <button key={v} onClick={() => setBuyRaw(String(v))}>
               {quickChipSymbol(buyFiat.name)}
@@ -831,28 +836,29 @@ export default function HomeScreen() {
 
       {mode === 'buy' && (
         <div
-          className="pmethod"
+          className={cx('pmethod')}
           style={buyMethodPickable ? undefined : { cursor: 'default' }}
           role={buyMethodPickable ? 'button' : undefined}
           tabIndex={buyMethodPickable ? 0 : undefined}
           onClick={buyMethodPickable ? () => setPaymentMethodOpen(true) : undefined}
         >
-          <span className="ic">
+          <span className={cx('ic')}>
             <svg viewBox="0 0 24 24" fill="none">
               <rect x={3} y={6} width={18} height={12} rx={2.4} stroke="currentColor" strokeWidth={1.7} />
               <path d="M3 10h18" stroke="currentColor" strokeWidth={1.7} />
             </svg>
           </span>
-          <span className="tx">
+          <span className={cx('tx')}>
             <b>{currentBuyMethod ? t(currentBuyMethod.nameKey) : t('payMethod')}</b>
             <small>{currentBuyMethod ? t(currentBuyMethod.descKey) : t('payMethodSub')}</small>
           </span>
-          {buyMethodPickable && <span className="caret">{CHEVRON_RIGHT}</span>}
+          {buyMethodPickable && <span className={cx('caret')}>{CHEVRON_RIGHT}</span>}
         </div>
       )}
 
       <button
-        className="btn-primary cta"
+        className={cx('btn-primary', 'cta')}
+        data-testid="trade-cta"
         style={mode === 'buy' ? undefined : { marginTop: 'auto' }}
         // The payment-details request between tap and sheet is short but not instant — without
         // this the CTA looked dead for a moment and invited a second tap.
@@ -882,7 +888,7 @@ export default function HomeScreen() {
           </svg>
         )}
       </button>
-      <div className="secure">
+      <div className={cx('secure')}>
         <svg viewBox="0 0 24 24" fill="none">
           <rect x={5} y={11} width={14} height={9} rx={2} stroke="currentColor" strokeWidth={1.6} />
           <path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth={1.6} />
@@ -1011,7 +1017,7 @@ export default function HomeScreen() {
 function PillAsset({ asset, chain }: { asset: TradeAsset | undefined; chain: Blockchain | undefined }) {
   if (!asset) {
     return (
-      <span className="meta">
+      <span className={cx('meta')}>
         <b>—</b>
       </span>
     );
@@ -1019,7 +1025,7 @@ function PillAsset({ asset, chain }: { asset: TradeAsset | undefined; chain: Blo
   return (
     <>
       <AssetChainGlyph code={asset.code} blockchain={chain} />
-      <span className="meta">
+      <span className={cx('meta')}>
         <b>{asset.code}</b>
         <s>{chainName(chain as Blockchain)}</s>
       </span>

@@ -17,6 +17,7 @@ import { useT } from '../../i18n';
 import { parseAmt } from '../trade/amount';
 import { qrData } from './lnurl';
 import type { OcpSubViewProps } from './useOcp';
+import { cx } from '../../css';
 
 const COPY_ICON = (
   <svg viewBox="0 0 24 24" fill="none">
@@ -102,8 +103,8 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
   // Still resolving routes → spinner (matches the static app's gate spinner).
   if (ocp.routes === null) {
     return (
-      <div className="ocp-empty">
-        <span className="spin" /> {t('loading')}
+      <div className={cx('ocp-empty')}>
+        <span className={cx('spin')} /> {t('loading')}
       </div>
     );
   }
@@ -113,9 +114,9 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
   if (!ln.length) {
     return (
       <>
-        <div className="ocp-empty">{t('invoiceNoRoute')}</div>
-        <div className="ocp-actions">
-          <button type="button" className="btn-primary" onClick={() => go('routes')}>
+        <div className={cx('ocp-empty')}>{t('invoiceNoRoute')}</div>
+        <div className={cx('ocp-actions')}>
+          <button type="button" className={cx('btn-primary')} onClick={() => go('routes')}>
             {t('addSellRoute')}
           </button>
         </div>
@@ -149,7 +150,7 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
       variant: '',
       node: (
         <>
-          <span className="spin" /> {t('invoiceGenWait')}
+          <span className={cx('spin')} /> {t('invoiceGenWait')}
         </>
       ),
     });
@@ -258,11 +259,11 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
       <p style={{ color: 'var(--t-muted)', fontSize: 13, lineHeight: 1.5, margin: '2px 4px 14px' }}>
         {t('invoiceLead')}
       </p>
-      <div className="tform">
-        <label className="flabel" htmlFor="invRoute">
+      <div className={cx('tform')}>
+        <label className={cx('flabel')} htmlFor="invRoute">
           {t('invoiceRoute')}
         </label>
-        <select id="invRoute" className="tinput" value={selectedId} onChange={(e) => setRouteId(e.target.value)}>
+        <select id="invRoute" className={cx('tinput')} value={selectedId} onChange={(e) => setRouteId(e.target.value)}>
           {ln.map((r) => (
             <option key={r.id} value={String(r.id)}>
               {t('route')} {r.id} · {r.currency?.name || ''}
@@ -270,70 +271,81 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
           ))}
         </select>
 
-        <label className="flabel" htmlFor="invId">
+        <label className={cx('flabel')} htmlFor="invId">
           {t('invoiceId')}
         </label>
         <input
           id="invId"
           ref={invIdRef}
-          className="tinput"
+          className={cx('tinput')}
           placeholder={t('invoiceIdP')}
           value={invId}
           onChange={(e) => setInvId(e.target.value)}
         />
 
-        <label className="flabel" htmlFor="invAmt">
+        <label className={cx('flabel')} htmlFor="invAmt">
           {t('amount')}
         </label>
         <input
           id="invAmt"
           ref={amountRef}
-          className="tinput"
+          className={cx('tinput')}
           inputMode="decimal"
           placeholder="0.00"
           value={amountText}
           onChange={(e) => setAmountText(e.target.value)}
         />
 
-        <button type="button" className="btn-primary" style={{ marginTop: 6 }} disabled={generating} onClick={generate}>
+        <button
+          type="button"
+          className={cx('btn-primary')}
+          style={{ marginTop: 6 }}
+          disabled={generating}
+          onClick={generate}
+        >
           {t('invoiceGen')}
         </button>
 
         {note && (
-          <div className={`paybox-note ${note.variant}`.trim()} style={{ marginTop: 8 }}>
+          <div className={cx('paybox-note', note.variant)} style={{ marginTop: 8 }}>
             {note.node}
           </div>
         )}
 
         {out && (
           <div>
-            <div className="qrcard" ref={qrCardRef}>
+            <div className={cx('qrcard')} ref={qrCardRef}>
               <QRCode value={qrData(out.lnurl)} size={212} level="M" bgColor="#ffffff" fgColor="#000000" />
-              <div className="qcap">
+              <div className={cx('qcap')}>
                 {out.currency} {out.amount} · {out.invId}
               </div>
             </div>
-            <div className="qractions">
-              <button type="button" className="btn-mini" onClick={downloadPng}>
+            <div className={cx('qractions')}>
+              <button type="button" className={cx('btn-mini')} onClick={downloadPng}>
                 {DOWNLOAD_ICON}
                 {t('downloadQr')}
               </button>
-              <button type="button" className="btn-mini" onClick={printQr}>
+              <button type="button" className={cx('btn-mini')} onClick={printQr}>
                 {PRINT_ICON}
                 {t('printQr')}
               </button>
-              <button type="button" className="btn-mini" onClick={downloadSticker}>
+              <button type="button" className={cx('btn-mini')} onClick={downloadSticker}>
                 {STICKER_ICON}
                 {t('downloadSticker')}
               </button>
             </div>
-            <div className="glass" style={{ borderRadius: 16, marginTop: 6 }}>
-              <div className="kv">
-                <span className="kk">LNURL</span>
-                <span className="vv" style={{ fontSize: 11 }}>
+            <div className={cx('glass')} style={{ borderRadius: 16, marginTop: 6 }}>
+              <div className={cx('kv')}>
+                <span className={cx('kk')}>LNURL</span>
+                <span className={cx('vv')} style={{ fontSize: 11 }}>
                   {out.lnurl.slice(0, 28)}…
                 </span>
-                <button type="button" className="cpy" aria-label={t('copyLnurl')} onClick={() => ocp.copy(out.lnurl)}>
+                <button
+                  type="button"
+                  className={cx('cpy')}
+                  aria-label={t('copyLnurl')}
+                  onClick={() => ocp.copy(out.lnurl)}
+                >
                   {COPY_ICON}
                 </button>
               </div>

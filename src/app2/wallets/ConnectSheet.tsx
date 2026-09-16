@@ -17,6 +17,7 @@ import { isPlausibleCliAddress } from './cli';
 import { RECOMMENDATION_CODE_LENGTH } from './invite';
 import type { HardwareChain } from './hardware-providers';
 import type { ConnectView, PendingCredentials } from './session';
+import { cx } from '../css';
 
 interface ConnectSheetProps {
   open: boolean;
@@ -89,23 +90,23 @@ export function ConnectSheet({
 
   return (
     <Sheet open={open} onClose={onClose} titleId="connectSheetTitle">
-      <div className="shead">
-        <div className="r1">
+      <div className={cx('shead')}>
+        <div className={cx('r1')}>
           <h3 id="connectSheetTitle">{title}</h3>
-          <button className="rbtn" aria-label="Close" style={{ width: 44, height: 44 }} onClick={onClose}>
+          <button className={cx('rbtn')} aria-label="Close" style={{ width: 44, height: 44 }} onClick={onClose}>
             {CLOSE_ICON}
           </button>
         </div>
         {/* Wallet note lives inside .shead (below the title), matching orig line 1147 placement. */}
         {view.kind === 'list' && (
-          <p className="tnote" style={{ padding: '8px 0 0' }}>
+          <p className={cx('tnote')} style={{ padding: '8px 0 0' }}>
             {filterChain ? t('walletNoteChain', { c: chainName(filterChain) }) : t('walletNote')}
           </p>
         )}
       </div>
       {view.kind === 'list' && <WalletList onSelectWallet={onSelectWallet} filterChain={filterChain} />}
       {view.kind === 'connecting' && (
-        <div className="slist" style={{ display: 'grid', placeItems: 'center', minHeight: 160 }}>
+        <div className={cx('slist')} style={{ display: 'grid', placeItems: 'center', minHeight: 160 }}>
           <LoadingRow label={view.label} />
         </div>
       )}
@@ -149,22 +150,22 @@ function HwChainChooser({
     { chain: 'eth', label: t('ethereum'), hint: 'EVM' },
   ];
   return (
-    <div className="slist">
-      <p className="tnote" style={{ padding: '0 2px 8px' }}>
+    <div className={cx('slist')}>
+      <p className={cx('tnote')} style={{ padding: '0 2px 8px' }}>
         {t('hwChoose')}
       </p>
       {chains.map(({ chain, label, hint }) => (
         <div
           key={chain}
-          className="crow"
+          className={cx('crow')}
           role="button"
           tabIndex={0}
           onClick={() => onSelect(entry, chain)}
           onKeyDown={onActivate(() => onSelect(entry, chain))}
         >
-          <div className="ci">
+          <div className={cx('ci')}>
             <b>{label}</b>
-            <div className="net">{hint}</div>
+            <div className={cx('net')}>{hint}</div>
           </div>
         </div>
       ))}
@@ -175,8 +176,8 @@ function HwChainChooser({
 function HwPairing({ code }: { code?: string }): JSX.Element {
   const { t } = useT();
   return (
-    <div className="confirm">
-      <p className="csub">{code ? t('hwPairCode') : t('hwUnlock')}</p>
+    <div className={cx('confirm')}>
+      <p className={cx('csub')}>{code ? t('hwPairCode') : t('hwUnlock')}</p>
       <div
         style={{
           display: 'flex',
@@ -202,7 +203,7 @@ function WalletList({
 }): JSX.Element {
   const { t } = useT();
   return (
-    <div className="slist" id="walletList">
+    <div className={cx('slist')} id="walletList">
       {WALLET_CATALOG.map((group) => {
         // When opened for a specific chain, keep only wallets that can receive on it, and drop
         // groups that end up empty — mirrors the original buildWallets() filter (index.html:3106).
@@ -210,7 +211,7 @@ function WalletList({
         if (!items.length) return null;
         return (
           <div key={group.key}>
-            <div className="sec">{t(group.key)}</div>
+            <div className={cx('sec')}>{t(group.key)}</div>
             {items.map((entry) => (
               <WalletRow key={entry.id} entry={entry} onSelect={onSelectWallet} />
             ))}
@@ -229,7 +230,7 @@ function WalletRow({ entry, onSelect }: { entry: WalletCatalogEntry; onSelect: (
   const hint = entry.hint ?? `EVM · ${EVM_NETWORK_COUNT} ${t('networks')}`;
   return (
     <div
-      className={`crow${soon ? ' soon' : ''}`}
+      className={cx('crow', soon && 'soon')}
       role="button"
       tabIndex={soon ? -1 : 0}
       aria-disabled={soon || undefined}
@@ -242,9 +243,9 @@ function WalletRow({ entry, onSelect }: { entry: WalletCatalogEntry; onSelect: (
         }
       }}
     >
-      <span className="glyph">
+      <span className={cx('glyph')}>
         <img
-          className="coin"
+          className={cx('coin')}
           width={38}
           height={38}
           src={entry.icon}
@@ -257,12 +258,12 @@ function WalletRow({ entry, onSelect }: { entry: WalletCatalogEntry; onSelect: (
           }}
         />
       </span>
-      <div className="ci">
+      <div className={cx('ci')}>
         <b>{entry.name}</b>
-        <div className="net">{hint}</div>
+        <div className={cx('net')}>{hint}</div>
       </div>
       {soon && (
-        <span className="pill-chip ina" style={{ marginLeft: 'auto' }}>
+        <span className={cx('pill-chip', 'ina')} style={{ marginLeft: 'auto' }}>
           {t('comingSoon')}
         </span>
       )}
@@ -291,17 +292,17 @@ function WalletConnectQr({
   };
 
   return (
-    <div className="confirm">
-      <p className="csub">{uri ? t('wcScan') : t('wcStarting')}</p>
+    <div className={cx('confirm')}>
+      <p className={cx('csub')}>{uri ? t('wcScan') : t('wcStarting')}</p>
       <div id="wcQr" style={{ display: 'flex', justifyContent: 'center', margin: '14px 0' }}>
         {uri ? <QRCode value={uri} size={200} bgColor="#ffffff" fgColor="#0a2a4a" /> : <Spinner />}
       </div>
-      <div className="qractions">
-        <button className="btn-mini" onClick={copyUri} disabled={!uri}>
+      <div className={cx('qractions')}>
+        <button className={cx('btn-mini')} onClick={copyUri} disabled={!uri}>
           {COPY_ICON}
           <span>{t('wcCopyUri')}</span>
         </button>
-        <button className="btn-mini" onClick={onCancel}>
+        <button className={cx('btn-mini')} onClick={onCancel}>
           {CLOSE_ICON}
           <span>{t('wcCancel')}</span>
         </button>
@@ -373,15 +374,15 @@ function CliConnectForm({
   };
 
   return (
-    <div className="confirm tform" style={{ textAlign: 'left' }}>
-      <p className="csub">{t('cliIntro')}</p>
+    <div className={cx('confirm', 'tform')} style={{ textAlign: 'left' }}>
+      <p className={cx('csub')}>{t('cliIntro')}</p>
 
-      <label className="flabel" htmlFor="cliAddress">
+      <label className={cx('flabel')} htmlFor="cliAddress">
         {t('walletAddr')}
       </label>
       <input
         id="cliAddress"
-        className="tinput"
+        className={cx('tinput')}
         placeholder={t('cliAddrPh')}
         autoComplete="off"
         autoCapitalize="off"
@@ -401,18 +402,18 @@ function CliConnectForm({
         }}
       />
       {addrError && (
-        <p className="csub" style={{ color: 'var(--warning, #FBBF24)' }}>
+        <p className={cx('csub')} style={{ color: 'var(--warning, #FBBF24)' }}>
           {addrError}
         </p>
       )}
 
       {!signMessage && (
-        <div className="qractions">
-          <button className="btn-mini" onClick={onCancel} disabled={loading}>
+        <div className={cx('qractions')}>
+          <button className={cx('btn-mini')} onClick={onCancel} disabled={loading}>
             {CLOSE_ICON}
             <span>{t('cancel')}</span>
           </button>
-          <button className="btn-mini" onClick={() => void fetchMessage()} disabled={loading || !trimmedAddr}>
+          <button className={cx('btn-mini')} onClick={() => void fetchMessage()} disabled={loading || !trimmedAddr}>
             {loading ? <Spinner /> : <span>{t('routeContinue')}</span>}
           </button>
         </div>
@@ -420,26 +421,26 @@ function CliConnectForm({
 
       {signMessage && (
         <>
-          <p className="csub">{t('cliSignHint')}</p>
-          <label className="flabel">{t('cliMsg')}</label>
+          <p className={cx('csub')}>{t('cliSignHint')}</p>
+          <label className={cx('flabel')}>{t('cliMsg')}</label>
           <div
-            className="glass"
+            className={cx('glass')}
             style={{ borderRadius: 12, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}
           >
             <span style={{ font: '600 12px ui-monospace, monospace', wordBreak: 'break-all', flex: 1 }}>
               {signMessage}
             </span>
-            <button className="cpy" aria-label={t('copied')} onClick={copyMessage}>
+            <button className={cx('cpy')} aria-label={t('copied')} onClick={copyMessage}>
               {COPY_ICON}
             </button>
           </div>
 
-          <label className="flabel" htmlFor="cliSignature">
+          <label className={cx('flabel')} htmlFor="cliSignature">
             {t('cliSig')}
           </label>
           <textarea
             id="cliSignature"
-            className="tinput"
+            className={cx('tinput')}
             rows={2}
             placeholder={t('xmrNeedSig')}
             autoComplete="off"
@@ -451,12 +452,12 @@ function CliConnectForm({
             style={{ resize: 'vertical' }}
           />
 
-          <label className="flabel" htmlFor="cliKey">
+          <label className={cx('flabel')} htmlFor="cliKey">
             {t('cliKey')}
           </label>
           <input
             id="cliKey"
-            className="tinput"
+            className={cx('tinput')}
             autoComplete="off"
             autoCapitalize="off"
             spellCheck={false}
@@ -465,12 +466,12 @@ function CliConnectForm({
             onChange={(e) => setPubKey(e.target.value)}
           />
 
-          <div className="qractions">
-            <button className="btn-mini" onClick={onCancel} disabled={loading}>
+          <div className={cx('qractions')}>
+            <button className={cx('btn-mini')} onClick={onCancel} disabled={loading}>
               {CLOSE_ICON}
               <span>{t('cancel')}</span>
             </button>
-            <button className="btn-mini" onClick={() => void submit()} disabled={loading || !signature.trim()}>
+            <button className={cx('btn-mini')} onClick={() => void submit()} disabled={loading || !signature.trim()}>
               {loading ? <Spinner /> : <span>{t('connect')}</span>}
             </button>
           </div>
@@ -499,15 +500,15 @@ function RecommendationForm({
   const [code, setCode] = useState(() => initialCode?.trim().toUpperCase() ?? '');
 
   return (
-    <div className="confirm tform" style={{ textAlign: 'left' }}>
+    <div className={cx('confirm', 'tform')} style={{ textAlign: 'left' }}>
       <h3 style={{ textAlign: 'center' }}>{t('inviteGateTitle')}</h3>
-      <p className="csub">{t('inviteGateNote')}</p>
-      <label className="flabel" htmlFor="recommendationCode">
+      <p className={cx('csub')}>{t('inviteGateNote')}</p>
+      <label className={cx('flabel')} htmlFor="recommendationCode">
         {t('kycRecPlaceholder')}
       </label>
       <input
         id="recommendationCode"
-        className="tinput"
+        className={cx('tinput')}
         placeholder={t('kycRecPlaceholder')}
         autoComplete="off"
         maxLength={RECOMMENDATION_CODE_LENGTH}
@@ -516,16 +517,16 @@ function RecommendationForm({
         onChange={(e) => setCode(e.target.value.toUpperCase())}
       />
       {invalidCode && (
-        <p className="csub" style={{ color: 'var(--warning, #FBBF24)' }}>
+        <p className={cx('csub')} style={{ color: 'var(--warning, #FBBF24)' }}>
           {t('inviteInvalidKey')}
         </p>
       )}
-      <div className="qractions">
-        <button className="btn-mini" onClick={onCancel}>
+      <div className={cx('qractions')}>
+        <button className={cx('btn-mini')} onClick={onCancel}>
           {CLOSE_ICON}
           <span>{t('cancel')}</span>
         </button>
-        <button className="btn-mini" disabled={!code.trim()} onClick={() => onSubmit(pending, code)}>
+        <button className={cx('btn-mini')} disabled={!code.trim()} onClick={() => onSubmit(pending, code)}>
           <span>{t('routeContinue')}</span>
         </button>
       </div>

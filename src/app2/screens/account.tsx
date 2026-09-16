@@ -17,6 +17,7 @@ import { useWalletSession } from '../wallets/session';
 import { chainName, mainnetOnly } from './trade/blockchain-meta';
 import { formatChf, localeFor, shortAddress } from './parts/format';
 import { LoggedOutState } from './parts/LoggedOutState';
+import { cx } from '../css';
 
 /** Original collapses the chain set: a single chain shows its friendly name, several show
  * "N networks" — never a long raw ·-joined dump (mainnet only, no raw enum values). */
@@ -217,14 +218,14 @@ function AccountRow({
   onOpen: () => void;
 }) {
   return (
-    <div className="arow" role="button" tabIndex={0} onClick={onOpen} onKeyDown={onActivate(onOpen)}>
-      <span className="ic">{icon}</span>
-      <span className="tx">
+    <div className={cx('arow')} role="button" tabIndex={0} onClick={onOpen} onKeyDown={onActivate(onOpen)}>
+      <span className={cx('ic')}>{icon}</span>
+      <span className={cx('tx')}>
         <b>{title}</b>
         {sub && <small>{sub}</small>}
       </span>
-      {value != null && <span className="val">{value}</span>}
-      <span className="caret">{CARET_ICON}</span>
+      {value != null && <span className={cx('val')}>{value}</span>}
+      <span className={cx('caret')}>{CARET_ICON}</span>
     </div>
   );
 }
@@ -286,11 +287,11 @@ export default function AccountScreen() {
 
   if (isUserLoading && !user) {
     return (
-      <div className="account">
-        <div className="txhead">
+      <div className={cx('account')}>
+        <div className={cx('txhead')}>
           <h2>{t('mAcct')}</h2>
         </div>
-        <p className="tnote" style={{ padding: '0 4px 8px' }}>
+        <p className={cx('tnote')} style={{ padding: '0 4px 8px' }}>
           <LoadingRow label={t('loading')} />
         </p>
       </div>
@@ -361,16 +362,16 @@ export default function AccountScreen() {
   const currencyLabel = user?.currency?.name ?? '—';
 
   return (
-    <div className="account">
-      <div className="acct-head">
-        <div className="avatar">{AVATAR_ICON}</div>
+    <div className={cx('account')}>
+      <div className={cx('acct-head')}>
+        <div className={cx('avatar')}>{AVATAR_ICON}</div>
         <h2>{displayName}</h2>
-        <div className="mail">{secondaryLine}</div>
-        <div className={verified.tone === 'ok' ? 'verified' : `verified ${verified.tone}`}>
+        <div className={cx('mail')}>{secondaryLine}</div>
+        <div className={cx('verified', verified.tone === 'ok' ? false : verified.tone)}>
           {verified.tone === 'neutral' ? KYC_ICON : VERIFIED_ICON}
           <span>{t(verified.label)}</span>
         </div>
-        <div className="acct-num">
+        <div className={cx('acct-num')}>
           <span>{t('walletAddr')}</span> <span>{shortAddress(address)}</span>
           <button aria-label="Copy address" onClick={() => copy(address, 'copied')}>
             {COPY_ICON}
@@ -378,43 +379,49 @@ export default function AccountScreen() {
         </div>
       </div>
 
-      <div className="stat2">
+      <div className={cx('stat2')}>
         <div
-          className="statcard glass"
+          className={cx('statcard', 'glass')}
           role="button"
           tabIndex={0}
           style={{ cursor: 'pointer' }}
           onClick={() => navigate('/kyc')}
           onKeyDown={onActivate(() => navigate('/kyc'))}
         >
-          <div className="k">
+          <div className={cx('k')}>
             {KYC_ICON}
             <span>{t('kycLevel')}</span>
           </div>
-          <div className="v">{level != null ? t('levelN', { n: level }) : '—'}</div>
-          <div className="note">{t(verified.note)}</div>
+          <div className={cx('v')}>{level != null ? t('levelN', { n: level }) : '—'}</div>
+          <div className={cx('note')}>{t(verified.note)}</div>
         </div>
         <div
-          className="statcard glass"
+          className={cx('statcard', 'glass')}
           role="button"
           tabIndex={0}
           style={{ cursor: 'pointer' }}
           onClick={() => navigate('/limit')}
           onKeyDown={onActivate(() => navigate('/limit'))}
         >
-          <div className="k">
+          <div className={cx('k')}>
             {LIMIT_ICON}
             <span>{t('limit')}</span>
           </div>
-          <div className="v">{limitLabel}</div>
-          <div className="note">{chainList(user?.activeAddress?.blockchains, t)}</div>
+          <div className={cx('v')}>{limitLabel}</div>
+          <div className={cx('note')}>{chainList(user?.activeAddress?.blockchains, t)}</div>
         </div>
       </div>
 
-      <div className="glass rowlist">
-        <div className="arow" role="button" tabIndex={0} onClick={openSwitcher} onKeyDown={onActivate(openSwitcher)}>
-          <span className="ic">{WALLET_ICON}</span>
-          <span className="tx">
+      <div className={cx('glass', 'rowlist')}>
+        <div
+          className={cx('arow')}
+          role="button"
+          tabIndex={0}
+          onClick={openSwitcher}
+          onKeyDown={onActivate(openSwitcher)}
+        >
+          <span className={cx('ic')}>{WALLET_ICON}</span>
+          <span className={cx('tx')}>
             <b>{t('connWallet')}</b>
             {/* walletDisplayName() + " · " + short(addr) from the static preview (orig 4124):
                 the wallet brand/label first, then the short address. */}
@@ -422,43 +429,43 @@ export default function AccountScreen() {
               {activeWallet?.name ? `${activeWallet.name} · ${shortAddress(address)}` : shortAddress(address)}
             </small>
           </span>
-          <span className="caret">{CARET_ICON}</span>
+          <span className={cx('caret')}>{CARET_ICON}</span>
         </div>
-        <div className="arow static">
-          <span className="ic">{PAYROUTES_ICON}</span>
-          <span className="tx">
+        <div className={cx('arow', 'static')}>
+          <span className={cx('ic')}>{PAYROUTES_ICON}</span>
+          <span className={cx('tx')}>
             <b>{t('payRoutes')}</b>
             <small>{payRoutes}</small>
           </span>
         </div>
         {showVolume && (
           <div
-            className="arow"
+            className={cx('arow')}
             role="button"
             tabIndex={0}
             onClick={() => navigate('/tx')}
             onKeyDown={onActivate(() => navigate('/tx'))}
           >
-            <span className="ic">{VOLUME_ICON}</span>
-            <span className="tx">
+            <span className={cx('ic')}>{VOLUME_ICON}</span>
+            <span className={cx('tx')}>
               <b>{t('tradingVolume')}</b>
               <small>
                 {t('volThisYear')} {formatChf(volumeSums.annual, language)}
               </small>
             </span>
-            <span className="val">{formatChf(volumeSums.total, language)}</span>
-            <span className="caret">{CARET_ICON}</span>
+            <span className={cx('val')}>{formatChf(volumeSums.total, language)}</span>
+            <span className={cx('caret')}>{CARET_ICON}</span>
           </div>
         )}
         <div
-          className="arow"
+          className={cx('arow')}
           role="button"
           tabIndex={0}
           onClick={() => setSheet('referral')}
           onKeyDown={onActivate(() => setSheet('referral'))}
         >
-          <span className="ic">{REFERRAL_ICON}</span>
-          <span className="tx">
+          <span className={cx('ic')}>{REFERRAL_ICON}</span>
+          <span className={cx('tx')}>
             <b>{t('referral')}</b>
             <small>
               {referral?.code
@@ -468,13 +475,13 @@ export default function AccountScreen() {
                 : t('referralSub')}
             </small>
           </span>
-          <span className="val">{referral?.code ?? '—'}</span>
-          <span className="caret">{CARET_ICON}</span>
+          <span className={cx('val')}>{referral?.code ?? '—'}</span>
+          <span className={cx('caret')}>{CARET_ICON}</span>
         </div>
       </div>
 
-      <div className="sectionlabel">{t('accSecurity')}</div>
-      <div className="glass rowlist">
+      <div className={cx('sectionlabel')}>{t('accSecurity')}</div>
+      <div className={cx('glass', 'rowlist')}>
         <AccountRow
           icon={BANK_ICON}
           title={t('bankAccounts')}
@@ -496,8 +503,8 @@ export default function AccountScreen() {
         <AccountRow icon={PHONE_ICON} title={t('verifCall')} sub={t('verifCallSub')} onOpen={() => setSheet('vcall')} />
       </div>
 
-      <div className="sectionlabel">{t('prefs')}</div>
-      <div className="glass rowlist">
+      <div className={cx('sectionlabel')}>{t('prefs')}</div>
+      <div className={cx('glass', 'rowlist')}>
         <AccountRow icon={GLOBE_ICON} title={t('language')} value={languageLabel} onOpen={() => setSheet('language')} />
         <AccountRow
           icon={<CurrencyIcon code={user?.currency?.name} />}
@@ -508,23 +515,23 @@ export default function AccountScreen() {
         <AccountRow icon={KEY_ICON} title={t('ctConnect')} sub={t('ctConnectSub')} onOpen={() => setSheet('ctkey')} />
       </div>
 
-      <button className="signout" onClick={handleLogout} disabled={isLoggingOut}>
+      <button className={cx('signout')} onClick={handleLogout} disabled={isLoggingOut}>
         {SIGNOUT_ICON}
         <span>{t('signOut')}</span>
       </button>
-      <button className="dangerlink" type="button" onClick={() => setConfirmDelete(true)}>
+      <button className={cx('dangerlink')} type="button" onClick={() => setConfirmDelete(true)}>
         {t('deleteAccount')}
       </button>
 
       <Sheet open={confirmDelete} onClose={() => setConfirmDelete(false)} titleId="delAcctTitle">
         <SheetHeader titleId="delAcctTitle" title={t('deleteAccount')} onClose={() => setConfirmDelete(false)} />
-        <div className="slist" style={{ paddingBottom: 24 }}>
-          <p className="paybox-note warn" style={{ margin: '2px 2px 14px' }}>
+        <div className={cx('slist')} style={{ paddingBottom: 24 }}>
+          <p className={cx('paybox-note', 'warn')} style={{ margin: '2px 2px 14px' }}>
             {t('deleteAccountWarn')}
           </p>
           <button
             type="button"
-            className="signout"
+            className={cx('signout')}
             style={{ marginTop: 0 }}
             disabled={isDeleting}
             onClick={handleDeleteAccount}
@@ -533,7 +540,7 @@ export default function AccountScreen() {
           </button>
           <button
             type="button"
-            className="btn-glass"
+            className={cx('btn-glass')}
             style={{ height: 48, justifyContent: 'center', marginTop: 10, color: 'var(--t-muted)' }}
             onClick={() => setConfirmDelete(false)}
           >

@@ -36,6 +36,7 @@ import LinksView from './links';
 import PosView from './pos';
 import RoutesView from './routes';
 import { type OcpApi, type OcpSub, useOcp } from './useOcp';
+import { cx } from '../../css';
 
 const SUBS: OcpSub[] = ['home', 'apply', 'routes', 'invoice', 'links', 'pos', 'history', 'config'];
 const GATED = new Set<OcpSub>(['routes', 'invoice', 'links', 'pos', 'history', 'config']);
@@ -102,16 +103,16 @@ export default function OcpScreen() {
     body = <HomeView ocp={ocp} go={go} />;
   } else if (ocp.probeError && ocp.active !== true) {
     body = (
-      <div className="ocp-empty" style={{ flexDirection: 'column', gap: 12 }}>
+      <div className={cx('ocp-empty')} style={{ flexDirection: 'column', gap: 12 }}>
         <div>{t('loadFail')}</div>
-        <button type="button" className="btn-mini" style={{ width: 'auto' }} onClick={() => void ocp.probe()}>
+        <button type="button" className={cx('btn-mini')} style={{ width: 'auto' }} onClick={() => void ocp.probe()}>
           {t('retry')}
         </button>
       </div>
     );
   } else if (ocp.active === null) {
     body = (
-      <div className="ocp-empty">
+      <div className={cx('ocp-empty')}>
         <Spinner /> {t('loading')}
       </div>
     );
@@ -124,11 +125,11 @@ export default function OcpScreen() {
   const titleKey = TITLE_KEY[sub];
 
   return (
-    <div className="account">
-      <div className="txhead">
+    <div className={cx('account')}>
+      <div className={cx('txhead')}>
         <button
           type="button"
-          className="rbtn"
+          className={cx('rbtn')}
           aria-label="Back"
           style={{ width: 40, height: 40 }}
           onClick={() => (sub === 'home' ? navigate('/account') : go('home'))}
@@ -137,7 +138,11 @@ export default function OcpScreen() {
         </button>
         <h2>
           {titleKey ? t(titleKey) : 'OpenCryptoPay'}
-          {ocp.demo && <span className="demobadge">{t('demoTag')}</span>}
+          {ocp.demo && (
+            <span className={cx('demobadge')} data-testid="ocp-demo-badge">
+              {t('demoTag')}
+            </span>
+          )}
         </h2>
       </div>
       {body}
@@ -326,20 +331,20 @@ function DemoToggle({ ocp }: { ocp: OcpApi }) {
   const { t } = useT();
   return (
     <>
-      <div className="sectionlabel tight">{t('demoSection')}</div>
+      <div className={cx('sectionlabel', 'tight')}>{t('demoSection')}</div>
       <button
         type="button"
-        className="suprow glass"
+        className={cx('suprow', 'glass')}
         style={{ cursor: 'pointer' }}
         onClick={() => (ocp.demo ? ocp.disableDemo() : ocp.enableDemo())}
       >
-        <span className="ic">{PLAY_ICON}</span>
-        <span className="tx">
+        <span className={cx('ic')}>{PLAY_ICON}</span>
+        <span className={cx('tx')}>
           <b>{t(ocp.demo ? 'demoOnTitle' : 'demoOffTitle')}</b>
           <small>{t(ocp.demo ? 'demoOnSub' : 'demoOffSub')}</small>
         </span>
-        <span className={`switch${ocp.demo ? ' on' : ''}`}>
-          <span className="knob" />
+        <span className={cx('switch', ocp.demo && 'on')}>
+          <span className={cx('knob')} />
         </span>
       </button>
     </>
@@ -353,13 +358,13 @@ function HomeView({ ocp, go }: { ocp: OcpApi; go: (sub: OcpSub) => void }) {
 
   return (
     <>
-      <div className="ocp-hero">
-        <div className="ocp-badge">{OCP_BADGE}</div>
+      <div className={cx('ocp-hero')}>
+        <div className={cx('ocp-badge')}>{OCP_BADGE}</div>
         <h3>OpenCryptoPay</h3>
         <p>{t('ocpLead')}</p>
         {active && (
-          <div className="statuschip on">
-            <span className="dot" />
+          <div className={cx('statuschip', 'on')}>
+            <span className={cx('dot')} />
             {t('ocpActive')}
           </div>
         )}
@@ -367,10 +372,10 @@ function HomeView({ ocp, go }: { ocp: OcpApi; go: (sub: OcpSub) => void }) {
 
       {!active ? (
         <>
-          <div className="glass ocp-benefits" style={{ padding: '6px 14px', marginTop: 14 }}>
+          <div className={cx('glass', 'ocp-benefits')} style={{ padding: '6px 14px', marginTop: 14 }}>
             {BENEFITS.map((b) => (
-              <div key={b.title} className="benefit">
-                <span className="bi">{b.icon}</span>
+              <div key={b.title} className={cx('benefit')}>
+                <span className={cx('bi')}>{b.icon}</span>
                 <div>
                   <b>{t(b.title)}</b>
                   <small>{t(b.sub)}</small>
@@ -379,11 +384,11 @@ function HomeView({ ocp, go }: { ocp: OcpApi; go: (sub: OcpSub) => void }) {
             ))}
           </div>
 
-          <div className="sectionlabel tight">{t('ocpHowTitle')}</div>
-          <div className="glass" style={{ borderRadius: 18, padding: '4px 14px' }}>
+          <div className={cx('sectionlabel', 'tight')}>{t('ocpHowTitle')}</div>
+          <div className={cx('glass')} style={{ borderRadius: 18, padding: '4px 14px' }}>
             {([1, 2, 3] as const).map((n) => (
-              <div key={n} className="ocp-step">
-                <span className="stepn">{n}</span>
+              <div key={n} className={cx('ocp-step')}>
+                <span className={cx('stepn')}>{n}</span>
                 <div>
                   <b>{t(`ocpStep${n}` as TranslationKey)}</b>
                   <small>{t(`ocpStep${n}s` as TranslationKey)}</small>
@@ -392,8 +397,8 @@ function HomeView({ ocp, go }: { ocp: OcpApi; go: (sub: OcpSub) => void }) {
             ))}
           </div>
 
-          <div className="ocp-actions" style={{ marginTop: 16 }}>
-            <button type="button" className="btn-primary" onClick={() => go('apply')}>
+          <div className={cx('ocp-actions')} style={{ marginTop: 16 }}>
+            <button type="button" className={cx('btn-primary')} onClick={() => go('apply')}>
               {t('ocpApplyCta')}
             </button>
           </div>
@@ -402,16 +407,22 @@ function HomeView({ ocp, go }: { ocp: OcpApi; go: (sub: OcpSub) => void }) {
         </>
       ) : (
         <>
-          <div className="sectionlabel tight">{t('ocpManage')}</div>
-          <div className="ocp-tiles">
+          <div className={cx('sectionlabel', 'tight')}>{t('ocpManage')}</div>
+          <div className={cx('ocp-tiles')}>
             {TILES.map((tile) => (
-              <button key={tile.sub} type="button" className="octile glass" onClick={() => go(tile.sub)}>
-                <span className="ti">{tile.icon}</span>
-                <span className="tx">
+              <button
+                key={tile.sub}
+                type="button"
+                className={cx('octile', 'glass')}
+                data-testid="ocp-tile"
+                onClick={() => go(tile.sub)}
+              >
+                <span className={cx('ti')}>{tile.icon}</span>
+                <span className={cx('tx')}>
                   <b>{t(tile.title)}</b>
                   <small>{t(tile.subtitle)}</small>
                 </span>
-                <span className="caret">
+                <span className={cx('caret')}>
                   <svg width={18} height={18} viewBox="0 0 24 24" fill="none">
                     <path
                       d="M9 6l6 6-6 6"
@@ -428,14 +439,19 @@ function HomeView({ ocp, go }: { ocp: OcpApi; go: (sub: OcpSub) => void }) {
 
           {accessKey && (
             <>
-              <div className="sectionlabel tight">{t('ocpAccess')}</div>
-              <div className="glass" style={{ borderRadius: 16 }}>
-                <div className="kv">
-                  <span className="kk">{t('ocpKey')}</span>
-                  <span className="vv" style={{ fontSize: 12 }}>
+              <div className={cx('sectionlabel', 'tight')}>{t('ocpAccess')}</div>
+              <div className={cx('glass')} style={{ borderRadius: 16 }}>
+                <div className={cx('kv')}>
+                  <span className={cx('kk')}>{t('ocpKey')}</span>
+                  <span className={cx('vv')} style={{ fontSize: 12 }}>
                     {accessKey}
                   </span>
-                  <button type="button" className="cpy" aria-label={t('copied')} onClick={() => ocp.copy(accessKey)}>
+                  <button
+                    type="button"
+                    className={cx('cpy')}
+                    aria-label={t('copied')}
+                    onClick={() => ocp.copy(accessKey)}
+                  >
                     {COPY_ICON}
                   </button>
                 </div>
@@ -461,7 +477,7 @@ interface ApplyResult {
   node: ReactNode;
 }
 
-const APPLY_SPINNER = <span className="spin" />;
+const APPLY_SPINNER = <span className={cx('spin')} />;
 
 function ApplyView() {
   const { t } = useT();
@@ -573,27 +589,30 @@ function ApplyView() {
 
   return (
     <>
-      <p className="ocp-sub" style={{ color: 'var(--t-muted)', fontSize: 13, lineHeight: 1.5, margin: '2px 4px 14px' }}>
+      <p
+        className={cx('ocp-sub')}
+        style={{ color: 'var(--t-muted)', fontSize: 13, lineHeight: 1.5, margin: '2px 4px 14px' }}
+      >
         {t('ocpApplyLead')}
       </p>
-      <div className="tform">
-        <label className="flabel" htmlFor="apBiz">
+      <div className={cx('tform')}>
+        <label className={cx('flabel')} htmlFor="apBiz">
           {t('ocpBizName')}
         </label>
         <input
           id="apBiz"
-          className="tinput"
+          className={cx('tinput')}
           placeholder={t('ocpBizNameP')}
           value={biz}
           onChange={(e) => setBiz(e.target.value)}
         />
 
-        <label className="flabel" htmlFor="apType">
+        <label className={cx('flabel')} htmlFor="apType">
           {t('ocpBizType')}
         </label>
         <select
           id="apType"
-          className="tinput"
+          className={cx('tinput')}
           value={type}
           onChange={(e) => setType(e.target.value as (typeof STORE_TYPES)[number])}
         >
@@ -604,24 +623,24 @@ function ApplyView() {
           ))}
         </select>
 
-        <label className="flabel" htmlFor="apWeb">
+        <label className={cx('flabel')} htmlFor="apWeb">
           {t('ocpWebsite')}
         </label>
         <input
           id="apWeb"
-          className="tinput"
+          className={cx('tinput')}
           placeholder="https://"
           inputMode="url"
           value={website}
           onChange={(e) => setWebsite(e.target.value)}
         />
 
-        <label className="flabel" htmlFor="apName">
+        <label className={cx('flabel')} htmlFor="apName">
           {t('ocpContact')}
         </label>
         <input
           id="apName"
-          className="tinput"
+          className={cx('tinput')}
           autoComplete="name"
           value={name}
           onChange={(e) => {
@@ -632,12 +651,12 @@ function ApplyView() {
 
         {needMail && (
           <>
-            <label className="flabel" htmlFor="apMail">
+            <label className={cx('flabel')} htmlFor="apMail">
               {t('ticketEmail')}
             </label>
             <input
               id="apMail"
-              className="tinput"
+              className={cx('tinput')}
               type="email"
               placeholder="you@email.com"
               inputMode="email"
@@ -647,12 +666,12 @@ function ApplyView() {
           </>
         )}
 
-        <label className="flabel" htmlFor="apMsg">
+        <label className={cx('flabel')} htmlFor="apMsg">
           {t('ocpAbout')}
         </label>
         <textarea
           id="apMsg"
-          className="tinput"
+          className={cx('tinput')}
           rows={3}
           placeholder={t('ocpAboutP')}
           value={about}
@@ -661,7 +680,7 @@ function ApplyView() {
 
         <button
           type="button"
-          className="btn-primary"
+          className={cx('btn-primary')}
           style={{ marginTop: 6 }}
           disabled={submitting || submitted}
           onClick={submit}
@@ -670,7 +689,7 @@ function ApplyView() {
         </button>
 
         {result && (
-          <div className={`paybox-note ${result.variant}`.trim()} style={{ marginTop: 12 }}>
+          <div className={cx('paybox-note', result.variant)} style={{ marginTop: 12 }}>
             {result.node}
           </div>
         )}
