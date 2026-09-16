@@ -13,6 +13,7 @@ const mockNavigate = jest.fn();
 const mockHandleSplitDrag = jest.fn();
 
 const mockParams: { id?: string } = { id: '1' };
+let mockDraftText = '';
 let mockListMounts = 0;
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -147,7 +148,7 @@ jest.mock('src/hooks/split-pane.hook', () => ({
 }));
 
 jest.mock('src/hooks/support-draft.hook', () => ({
-  useSupportDraft: () => ['', jest.fn(), jest.fn()],
+  useSupportDraft: () => [mockDraftText, jest.fn(), jest.fn()],
 }));
 
 jest.mock('src/hooks/staff-verified-name.hook', () => ({
@@ -241,6 +242,7 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockParams.id = '1';
+    mockDraftText = '';
     mockListMounts = 0;
     mockGetIssueData.mockImplementation((id: number) => Promise.resolve(issue(id)));
     mockGetIssueMessages.mockImplementation((uid: string) => Promise.resolve([{ id: 1, message: `body-${uid}` }]));
@@ -389,5 +391,28 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
     });
 
     expect(screen.queryByTestId('template-picker-modal')).not.toBeInTheDocument();
+  });
+
+  it('does not clear B sendInFlight when a stale A send finishes', async () => {
+    mockDraftText = 'hello';
+    const sendA = createDeferred<void>();
+    mockSendMessage.mockReturnValueOnce(sendA.promise).mockReturnValue(new Promise(() => undefined));
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(screen.getByRole('button', { name: '...' })).toBeDisabled();
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(mockSendMessage).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      sendA.resolve();
+      await sendA.promise;
+    });
+
+    expect(screen.getByRole('button', { name: '...' })).toBeDisabled();
   });
 });
