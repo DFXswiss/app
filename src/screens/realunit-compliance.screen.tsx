@@ -79,11 +79,14 @@ export default function RealunitComplianceScreen(): JSX.Element {
         .catch((e: Error) => {
           if (generation !== pollGenerationRef.current) return;
           clearPoll();
-          setBatch((prev) => ({
-            ...prev,
+          setBatch({
             status: 'failed',
+            total: 0,
+            done: 0,
+            failed: 0,
+            skipped: 0,
             error: e.message ?? 'Unknown error',
-          }));
+          });
           setError(e.message ?? 'Unknown error');
         })
         .finally(() => {
