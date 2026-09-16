@@ -195,6 +195,7 @@ jest.mock('src/util/message-composer', () => ({
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import SupportDashboardIssueScreen from 'src/screens/support-dashboard-issue.screen';
+import { writeDraft } from 'src/util/support-draft';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -414,5 +415,100 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
     });
 
     expect(screen.getByRole('button', { name: '...' })).toBeDisabled();
+  });
+
+  it('does not start a second send on A after A to B to A while A is in flight', async () => {
+    mockDraftText = 'hello';
+    const sendA = createDeferred<void>();
+    mockSendMessage.mockReturnValue(sendA.promise);
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(mockSendMessage).toHaveBeenCalledTimes(1);
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+
+    mockDraftText = 'hello';
+    navigateTo('1', rerender);
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+
+    expect(screen.getByRole('button', { name: '...' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '...' }));
+    expect(mockSendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes ticket A draft after a failed send even if the clerk switched to B', async () => {
+    mockDraftText = 'hello';
+    const sendA = createDeferred<void>();
+    mockSendMessage.mockReturnValue(sendA.promise);
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+
+    await act(async () => {
+      sendA.reject(new Error('Send failed'));
+      await sendA.promise.catch(() => undefined);
+    });
+
+    expect(writeDraft).toHaveBeenCalledWith('1', 'hello');
+  });
+
+  it('keeps A updating after A to B to A and reloads A when the PUT finishes', async () => {
+    const update = createDeferred<void>();
+    mockUpdateIssue.mockReturnValue(update.promise);
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    expect(mockUpdateIssue).toHaveBeenCalledTimes(1);
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+
+    navigateTo('1', rerender);
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Updating...' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Updating...' }));
+    expect(mockUpdateIssue).toHaveBeenCalledTimes(1);
+
+    const ticketALoadsBeforePut = mockGetIssueData.mock.calls.filter((call) => call[0] === 1).length;
+
+    await act(async () => {
+      update.resolve();
+      await update.promise;
+    });
+
+    await waitFor(() => {
+      expect(mockGetIssueData.mock.calls.filter((call) => call[0] === 1).length).toBeGreaterThan(ticketALoadsBeforePut);
+    });
+  });
+
+  it('shows the update error on A after a failed update following A to B to A', async () => {
+    const update = createDeferred<void>();
+    mockUpdateIssue.mockReturnValue(update.promise);
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+
+    navigateTo('1', rerender);
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+
+    await act(async () => {
+      update.reject(new Error('Update failed'));
+      await update.promise.catch(() => undefined);
+    });
+
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('Update failed');
   });
 });

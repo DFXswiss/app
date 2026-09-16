@@ -70,7 +70,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const { name: messageAuthor, isLoading: isLoadingAuthor, error: authorError } = useStaffVerifiedName();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
-  const sendInFlight = useRef(false);
+  const sendingIssueIdsRef = useRef(new Set<string>());
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -183,8 +183,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // customer data after B's spinner. Runs before loadIssue so the new generation is captured by
   // the in-flight started for this id.
   useEffect(() => {
-    sendInFlight.current = false;
-    setIsSending(false);
+    setIsSending(id != null && sendingIssueIdsRef.current.has(id));
     setIsUpdating(id != null && updatingIssueIdsRef.current.has(id));
     messageLoadSeqRef.current += 1;
     filePreviewSeqRef.current += 1;
@@ -265,7 +264,6 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   async function handleUpdate(): Promise<void> {
     if (!id || updatingIssueIdsRef.current.has(id)) return;
     const requestId = id;
-    const gen = requestGenRef.current;
     updatingIssueIdsRef.current.add(requestId);
     setIsUpdating(true);
     setActionError(undefined);
@@ -275,10 +273,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         department: updateDepartment || undefined,
         clerk: updateClerk || undefined,
       });
-      if (requestGenRef.current !== gen) return;
+      if (idRef.current !== requestId) return;
       loadIssue();
     } catch (e: unknown) {
-      if (requestGenRef.current !== gen) return;
+      if (idRef.current !== requestId) return;
       setActionError(e instanceof Error ? e.message : 'Update failed');
     } finally {
       updatingIssueIdsRef.current.delete(requestId);
@@ -287,8 +285,8 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }
 
   async function handleSendMessage(): Promise<void> {
-    if (isSending || sendInFlight.current) return;
-    if (!id || (!messageText.trim() && selectedFiles.length === 0)) return;
+    if (!id || sendingIssueIdsRef.current.has(id)) return;
+    if (!messageText.trim() && selectedFiles.length === 0) return;
     const remainingPlaceholders = detectPlaceholders(messageText);
     if (remainingPlaceholders.length > 0) {
       const keys = remainingPlaceholders.map((t) => `$${t.fullKey}`).join(', ');
@@ -302,12 +300,12 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       setActionError(authorError ? staffNameLoadError(authorError) : STAFF_NAME_MISSING);
       return;
     }
-    sendInFlight.current = true;
+    sendingIssueIdsRef.current.add(id);
     setIsSending(true);
     setActionError(undefined);
     // The draft is dropped before the request, so a detour during the send cannot bring back text
-    // that is already on its way. On failure, storage and the composer are restored only if this
-    // send's generation is still current.
+    // that is already on its way. On failure, storage is always restored for this ticket; the
+    // composer and error are restored only if the clerk is still on it.
     const sendIssueId = id;
     const gen = requestGenRef.current;
     const draft = messageText;
@@ -336,15 +334,13 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       if (fileInputRef.current) fileInputRef.current.value = '';
       loadMessages();
     } catch (e: unknown) {
-      if (requestGenRef.current !== gen) return;
       writeDraft(sendIssueId, draft);
+      if (idRef.current !== sendIssueId) return;
       setMessageText(draft);
       setActionError(e instanceof Error ? e.message : 'Send failed');
     } finally {
-      if (requestGenRef.current === gen) {
-        sendInFlight.current = false;
-        setIsSending(false);
-      }
+      sendingIssueIdsRef.current.delete(sendIssueId);
+      if (idRef.current === sendIssueId) setIsSending(false);
     }
   }
 
