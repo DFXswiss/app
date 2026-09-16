@@ -67,9 +67,16 @@ function attachPaymentInfoCapture(page: Page): { get: () => PaymentInfoPayload |
   return { get: () => last };
 }
 
-async function clearMail(userDataId: number): Promise<void> {
+async function reopenContactData(userDataId: number): Promise<void> {
   await withDb(async (client) => {
     await client.query(`UPDATE user_data SET mail = NULL WHERE id = $1`, [userDataId]);
+    // Signup completes ContactData even when kycLevel is 0. Reset the step so
+    // continueKyc opens the in-app mail form instead of skipping to a later step.
+    await client.query(
+      `UPDATE kyc_step SET status = 'NotStarted', updated = NOW()
+       WHERE "userDataId" = $1 AND name = 'ContactData'`,
+      [userDataId],
+    );
   });
 }
 
@@ -132,7 +139,7 @@ test.describe('App 2.0 hosted artifact', () => {
   test('kyc: submit contact mail through the App 2.0 form, prove user_data write', async ({ page }) => {
     test.setTimeout(90000);
     const user = await createUser({ tag: 'app2-kyc', kycLevel: 0, language: 'EN' });
-    await clearMail(user.userDataId);
+    await reopenContactData(user.userDataId);
 
     await openApp2(page, user.jwt, '#/kyc');
     await expect(page.getByRole('heading', { name: /verification/i })).toBeVisible({ timeout: 20000 });
@@ -142,7 +149,32 @@ test.describe('App 2.0 hosted artifact', () => {
     await start.click();
 
     const mailInput = page.locator('input[type="email"]');
-    await expect(mailInput).toBeVisible({ timeout: 25000 });
+    const firstName = page.locator('input[autocomplete="given-name"]');
+    const form = await Promise.race([
+      mailInput.waitFor({ state: 'visible', timeout: 25000 }).then(() => 'contact' as const),
+      firstName.waitFor({ state: 'visible', timeout: 25000 }).then(() => 'personal' as const),
+    ]).catch(() => 'none' as const);
+    expect(form, 'App 2.0 KYC did not open ContactData or PersonalData after Start verification').not.toBe('none');
+
+    if (form === 'personal') {
+      await firstName.fill('E2EFirst');
+      await page.locator('input[autocomplete="family-name"]').fill('E2ELast');
+      await page.locator('input[autocomplete="street-address"]').fill('Bahnhofstrasse');
+      await page.getByPlaceholder('No.').fill('1');
+      await page.locator('input[autocomplete="postal-code"]').fill('8001');
+      await page.locator('input[autocomplete="address-level2"]').fill('Zurich');
+      await page.locator('input[type="tel"]').fill('+41791234567');
+      await page.getByRole('button', { name: /^continue$/i }).click();
+      const row = await waitForRow<{ id: number; firstname: string; surname: string }>(
+        `SELECT id, firstname, surname FROM user_data
+         WHERE id = $1 AND firstname = $2 AND surname = $3`,
+        [user.userDataId, 'E2EFirst', 'E2ELast'],
+        20000,
+      );
+      expect(row.firstname).toBe('E2EFirst');
+      return;
+    }
+
     const newMail = `e2e+app2-kyc-${Date.now()}@dfx.swiss`;
     await mailInput.fill(newMail);
     await page.getByRole('button', { name: /^continue$/i }).click();

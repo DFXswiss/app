@@ -2340,6 +2340,9 @@ select.tinput:disabled,
   margin-left: auto;
   margin-right: auto;
 }
+.ocp-sub {
+  display: block;
+}
 .statuschip {
   display: inline-flex;
   align-items: center;
@@ -3672,6 +3675,10 @@ select.tinput:disabled,
   border-radius: 14px;
   cursor: pointer;
   transition: background 0.14s var(--ease);
+}
+.crow.soon {
+  opacity: 0.5;
+  pointer-events: none;
 }
 .crow:hover {
   background: rgba(255, 255, 255, 0.05);
