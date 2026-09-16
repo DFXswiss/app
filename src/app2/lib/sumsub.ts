@@ -12,3 +12,7 @@ export enum SumsubReviewRejectType {
   FINAL = 'FINAL',
   RETRY = 'RETRY',
 }
+
+export function sumsubEnumValues(): string[] {
+  return [...Object.values(SumsubReviewAnswer), ...Object.values(SumsubReviewRejectType)];
+}

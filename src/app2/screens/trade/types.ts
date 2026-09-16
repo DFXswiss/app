@@ -8,6 +8,8 @@ import type { Asset, Blockchain } from '@dfx.swiss/react';
 
 export type Mode = 'buy' | 'sell' | 'swap';
 
+export const MODES: Mode[] = ['buy', 'sell', 'swap'];
+
 export type Capability = 'buy' | 'sell';
 
 /** One chain an asset settles on, paired with the underlying API `Asset` (id, buyable/sellable flags, ...). */
