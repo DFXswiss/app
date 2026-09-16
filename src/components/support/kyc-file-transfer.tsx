@@ -1,13 +1,37 @@
 import { useAuthContext, UserRole } from '@dfx.swiss/react';
-import { useRef, useState } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { useParams } from 'react-router-dom';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 
 // Survives unmount: ticket switch remounts this component (`key={id}` + spinner), and a PUT
-// started on A must still block a second transfer after A→B→A.
+// started on A must still block a second transfer after A→B→A. Notify so a remount during the
+// PUT re-renders when the Sets change (disabled Transfer → "In KYC file", or enabled again).
 export const kycTransferInFlight = new Set<string>();
 export const kycTransferDone = new Set<string>();
+
+const kycTransferListeners = new Set<() => void>();
+
+function kycTransferSnapshot(): string {
+  return `${[...kycTransferInFlight].join(',')}|${[...kycTransferDone].join(',')}`;
+}
+
+function kycTransferNotify(): void {
+  kycTransferListeners.forEach((listener) => listener());
+}
+
+function subscribeKycTransfer(listener: () => void): () => void {
+  kycTransferListeners.add(listener);
+  return () => {
+    kycTransferListeners.delete(listener);
+  };
+}
+
+export function resetKycTransfers(): void {
+  kycTransferInFlight.clear();
+  kycTransferDone.clear();
+  kycTransferNotify();
+}
 
 // What the KYC file accepts (`KycDocumentService.isPermittedFileType`). Anything else
 // stays in the ticket; the customer has to resend it as PDF.
@@ -52,10 +76,11 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>();
   const [kycFile, setKycFile] = useState<{ id?: number; name?: string }>();
+  const boundIssueIdRef = useRef<string | undefined>(undefined);
+  useSyncExternalStore(subscribeKycTransfer, kycTransferSnapshot, kycTransferSnapshot);
 
   // Freeze the ticket id at first render. After client-side navigation the first paint can still
   // show the previous ticket's messages while useParams().id already points at the new ticket.
-  const boundIssueIdRef = useRef<string | undefined>(undefined);
   if (boundIssueIdRef.current === undefined) boundIssueIdRef.current = routeIssueId;
 
   const { id: messageId, fileName } = message;
@@ -119,17 +144,20 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
   async function handleSubmit(): Promise<void> {
     if (kycTransferInFlight.has(transferKey) || !slug) return;
     kycTransferInFlight.add(transferKey);
+    kycTransferNotify();
     setIsSubmitting(true);
     setError(undefined);
     try {
       const result = await transferMessageFileToKycFile(transferIssueId, transferMessageId, title.trim());
       kycTransferDone.add(transferKey);
+      kycTransferNotify();
       setKycFile({ id: result.kycFileId, name: result.kycFileName });
       setIsEditing(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : translate('screens/support', 'Failed to transfer file'));
     } finally {
       kycTransferInFlight.delete(transferKey);
+      kycTransferNotify();
       setIsSubmitting(false);
     }
   }

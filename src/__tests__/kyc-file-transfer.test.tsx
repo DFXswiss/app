@@ -23,13 +23,8 @@ jest.mock('src/hooks/support-dashboard.hook', () => ({
   useSupportDashboard: () => ({ transferMessageFileToKycFile: mockTransfer }),
 }));
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import {
-  KycFileTransfer,
-  kycTransferDone,
-  kycTransferInFlight,
-  toKycFileSlug,
-} from 'src/components/support/kyc-file-transfer';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { KycFileTransfer, resetKycTransfers, toKycFileSlug } from 'src/components/support/kyc-file-transfer';
 
 const attachment = { id: 7, fileName: 'Gesellschafterliste.pdf' };
 
@@ -63,8 +58,7 @@ describe('KycFileTransfer', () => {
     jest.clearAllMocks();
     mockAuth.role = 'Compliance';
     mockParams.id = 'I123';
-    kycTransferInFlight.clear();
-    kycTransferDone.clear();
+    resetKycTransfers();
   });
 
   describe('visibility', () => {
@@ -268,6 +262,32 @@ describe('KycFileTransfer', () => {
 
       await act(async () => {
         resolve({ id: 7, kycFileId: 2, kycFileName: 'y.pdf' });
+      });
+      await waitFor(() => {
+        expect(screen.getByText('In KYC file')).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('button', { name: 'Transfer to KYC file' })).not.toBeInTheDocument();
+    });
+
+    it('enables Transfer on the remounted instance when the in-flight PUT fails', async () => {
+      let reject: (reason?: unknown) => void = () => undefined;
+      mockTransfer.mockImplementation(() => new Promise((_, r) => (reject = r)));
+      const { unmount } = render(<KycFileTransfer message={attachment} />);
+      openForm();
+      typeTitle('Liste');
+      fireEvent.click(save());
+      expect(mockTransfer).toHaveBeenCalledTimes(1);
+
+      unmount();
+      render(<KycFileTransfer message={attachment} />);
+
+      expect(screen.getByRole('button', { name: 'Transfer to KYC file' })).toBeDisabled();
+
+      await act(async () => {
+        reject(new Error('nope'));
+      });
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Transfer to KYC file' })).toBeEnabled();
       });
     });
 
