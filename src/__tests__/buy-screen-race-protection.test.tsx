@@ -1291,6 +1291,24 @@ describe('BuyScreen cleared amount protection', () => {
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 
+  it('treats a 409 deactivated response from confirm as an error', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockUseAppParams.mockReturnValue(baseAppParams());
+    mockReceiveFor.mockImplementation((req: any) => Promise.resolve(quoteFor(req)));
+    mockConfirmFor.mockRejectedValue({
+      statusCode: 409,
+      message: 'Transaction request is deactivated',
+    });
+    render(<BuyScreen />);
+    await settle(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+    await act(async () => {
+      screen.getByRole('button', { name: 'Click here once you have issued the transfer' }).click();
+      await Promise.resolve();
+    });
+    await settle(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Transaction request is deactivated'));
+    expect(screen.queryByTestId('buy-completion')).not.toBeInTheDocument();
+  });
+
   it('opens and cancels the address switch', async () => {
     mockPersonalIban.mockReturnValue(undefined);
     mockSession = { address: '0xabc' };
