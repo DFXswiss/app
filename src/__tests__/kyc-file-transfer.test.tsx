@@ -24,7 +24,12 @@ jest.mock('src/hooks/support-dashboard.hook', () => ({
 }));
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { KycFileTransfer, toKycFileSlug } from 'src/components/support/kyc-file-transfer';
+import {
+  KycFileTransfer,
+  kycTransferDone,
+  kycTransferInFlight,
+  toKycFileSlug,
+} from 'src/components/support/kyc-file-transfer';
 
 const attachment = { id: 7, fileName: 'Gesellschafterliste.pdf' };
 
@@ -58,6 +63,8 @@ describe('KycFileTransfer', () => {
     jest.clearAllMocks();
     mockAuth.role = 'Compliance';
     mockParams.id = 'I123';
+    kycTransferInFlight.clear();
+    kycTransferDone.clear();
   });
 
   describe('visibility', () => {
@@ -240,6 +247,43 @@ describe('KycFileTransfer', () => {
         resolve({ id: 7, kycFileId: 2, kycFileName: 'y.pdf' });
       });
       expect(screen.getByText('In KYC file: y.pdf')).toBeInTheDocument();
+    });
+
+    it('does not start a second transfer after unmount and remount while the first PUT is in flight', async () => {
+      let resolve: (value: unknown) => void = () => undefined;
+      mockTransfer.mockImplementation(() => new Promise((r) => (resolve = r)));
+      const { unmount } = render(<KycFileTransfer message={attachment} />);
+      openForm();
+      typeTitle('Liste');
+      fireEvent.click(save());
+      expect(mockTransfer).toHaveBeenCalledTimes(1);
+
+      unmount();
+      render(<KycFileTransfer message={attachment} />);
+
+      const transfer = screen.getByRole('button', { name: 'Transfer to KYC file' });
+      expect(transfer).toBeDisabled();
+      fireEvent.click(transfer);
+      expect(mockTransfer).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolve({ id: 7, kycFileId: 2, kycFileName: 'y.pdf' });
+      });
+    });
+
+    it('keeps the attachment transferred after unmount and remount', async () => {
+      mockTransfer.mockResolvedValue({ id: 7, kycFileId: 9, kycFileName: 'x.pdf' });
+      const { unmount } = render(<KycFileTransfer message={attachment} />);
+      openForm();
+      typeTitle('Liste');
+      fireEvent.click(save());
+      expect(await screen.findByText('In KYC file: x.pdf')).toBeInTheDocument();
+
+      unmount();
+      render(<KycFileTransfer message={attachment} />);
+
+      expect(screen.queryByRole('button', { name: 'Transfer to KYC file' })).not.toBeInTheDocument();
+      expect(screen.getByText('In KYC file')).toBeInTheDocument();
     });
   });
 });

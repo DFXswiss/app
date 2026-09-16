@@ -4,6 +4,11 @@ import { useParams } from 'react-router-dom';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 
+// Survives unmount: ticket switch remounts this component (`key={id}` + spinner), and a PUT
+// started on A must still block a second transfer after A→B→A.
+export const kycTransferInFlight = new Set<string>();
+export const kycTransferDone = new Set<string>();
+
 // What the KYC file accepts (`KycDocumentService.isPermittedFileType`). Anything else
 // stays in the ticket; the customer has to resend it as PDF.
 const TRANSFERABLE_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
@@ -48,9 +53,6 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
   const [error, setError] = useState<string>();
   const [kycFile, setKycFile] = useState<{ id?: number; name?: string }>();
 
-  // Sync guard: isSubmitting only disables the button after re-render; a second click in the same
-  // tick must not start another transfer (the API would answer 409, but the file would be uploaded twice).
-  const submittingRef = useRef(false);
   // Freeze the ticket id at first render. After client-side navigation the first paint can still
   // show the previous ticket's messages while useParams().id already points at the new ticket.
   const boundIssueIdRef = useRef<string | undefined>(undefined);
@@ -70,6 +72,7 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
   // Narrowed copies for the submit closure (control-flow narrowing does not reach into it).
   const transferIssueId: string = boundIssueId;
   const transferMessageId: number = messageId;
+  const transferKey = `${transferIssueId}:${transferMessageId}`;
 
   const transferred =
     kycFile ?? (message.kycFileId != null ? { id: message.kycFileId, name: message.kycFileName } : undefined);
@@ -77,6 +80,13 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
     return (
       <div className="text-xs mt-1 text-dfxGray-700">
         {translate('screens/support', 'In KYC file')}: {transferred.name ?? transferred.id}
+      </div>
+    );
+  if (kycTransferDone.has(transferKey))
+    return (
+      <div className="text-xs mt-1 text-dfxGray-700">
+        {translate('screens/support', 'In KYC file')}
+        {message.kycFileName ? `: ${message.kycFileName}` : ''}
       </div>
     );
 
@@ -88,12 +98,16 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
       </div>
     );
 
+  const inFlight = kycTransferInFlight.has(transferKey);
+
   if (!isEditing)
     return (
       <button
-        className="text-xs mt-1 ml-3 text-dfxBlue-400 underline hover:text-dfxBlue-800"
+        className="text-xs mt-1 ml-3 text-dfxBlue-400 underline hover:text-dfxBlue-800 disabled:opacity-50"
+        disabled={inFlight}
         onClick={(e) => {
           e.stopPropagation();
+          if (kycTransferInFlight.has(transferKey) || kycTransferDone.has(transferKey)) return;
           setIsEditing(true);
         }}
       >
@@ -104,18 +118,21 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
   const slug = toKycFileSlug(title);
 
   async function handleSubmit(): Promise<void> {
-    if (submittingRef.current || !slug) return;
-    submittingRef.current = true;
+    if (kycTransferInFlight.has(transferKey) || kycTransferDone.has(transferKey) || !slug) return;
+    kycTransferInFlight.add(transferKey);
     setIsSubmitting(true);
     setError(undefined);
     try {
       const result = await transferMessageFileToKycFile(transferIssueId, transferMessageId, title.trim());
-      setKycFile({ id: result.kycFileId, name: result.kycFileName });
-      setIsEditing(false);
+      kycTransferDone.add(transferKey);
+      if (routeIssueId === boundIssueId) {
+        setKycFile({ id: result.kycFileId, name: result.kycFileName });
+        setIsEditing(false);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : translate('screens/support', 'Failed to transfer file'));
     } finally {
-      submittingRef.current = false;
+      kycTransferInFlight.delete(transferKey);
       setIsSubmitting(false);
     }
   }

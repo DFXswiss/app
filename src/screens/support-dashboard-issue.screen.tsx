@@ -59,6 +59,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const [isUpdating, setIsUpdating] = useState(false);
   const updatingIssueIdsRef = useRef(new Set<string>());
   const messageLoadSeqRef = useRef(0);
+  const issueLoadSeqRef = useRef(0);
   const filePreviewSeqRef = useRef(0);
 
   // Message form state
@@ -120,24 +121,25 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     if (!id) return;
     const requestId = id;
     const gen = requestGenRef.current;
+    const seq = ++issueLoadSeqRef.current;
     if (idRef.current !== requestId) return;
     setLoadError(undefined);
     setIsLoading(true);
     getIssueData(+requestId)
       .then((data) => {
-        if (requestGenRef.current !== gen) return;
+        if (requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
         setUpdateClerk(data.clerk ?? '');
       })
       .catch((e: Error) => {
-        if (requestGenRef.current !== gen) return;
+        if (requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
         loadErrorTicketIdRef.current = requestId;
         setLoadError(e.message ?? 'Unknown error');
       })
       .finally(() => {
-        if (requestGenRef.current === gen) setIsLoading(false);
+        if (requestGenRef.current === gen && issueLoadSeqRef.current === seq) setIsLoading(false);
       });
   }, [id, getIssueData]);
 
@@ -186,6 +188,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setIsSending(id != null && sendingIssueIdsRef.current.has(id));
     setIsUpdating(id != null && updatingIssueIdsRef.current.has(id));
     messageLoadSeqRef.current += 1;
+    issueLoadSeqRef.current += 1;
     filePreviewSeqRef.current += 1;
     setSelectedFiles([]);
     setActionError(undefined);
@@ -307,7 +310,6 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     // that is already on its way. On failure, storage is always restored for this ticket; the
     // composer and error are restored only if the clerk is still on it.
     const sendIssueId = id;
-    const gen = requestGenRef.current;
     const draft = messageText;
     clearDraft();
     try {
@@ -329,7 +331,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         await sendMessage(+sendIssueId, { author, message: text });
       }
 
-      if (requestGenRef.current !== gen) return;
+      if (idRef.current !== sendIssueId) return;
       setSelectedFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
       loadMessages();

@@ -511,4 +511,84 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
 
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('Update failed');
   });
+
+  it('reloads ticket A messages when send succeeds after A to B to A', async () => {
+    mockDraftText = 'hello';
+    const sendA = createDeferred<void>();
+    mockSendMessage.mockReturnValue(sendA.promise);
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(mockSendMessage).toHaveBeenCalledTimes(1);
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+
+    navigateTo('1', rerender);
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+
+    const ticketAMessageLoads = mockGetIssueMessages.mock.calls.filter((call) => call[0] === 'SI-1').length;
+
+    await act(async () => {
+      sendA.resolve();
+      await sendA.promise;
+    });
+
+    await waitFor(() => {
+      expect(mockGetIssueMessages.mock.calls.filter((call) => call[0] === 'SI-1').length).toBeGreaterThan(
+        ticketAMessageLoads,
+      );
+    });
+  });
+
+  it('does not let a stale loadIssue overwrite the post-PUT payload after A to B to A', async () => {
+    const update = createDeferred<void>();
+    mockUpdateIssue.mockReturnValue(update.promise);
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    const pendingGets: { id: number; deferred: Deferred<ReturnType<typeof issue>> }[] = [];
+    mockGetIssueData.mockImplementation((id: number) => {
+      const deferred = createDeferred<ReturnType<typeof issue>>();
+      pendingGets.push({ id, deferred });
+      return deferred.promise;
+    });
+
+    navigateTo('2', rerender);
+    navigateTo('1', rerender);
+
+    await waitFor(() => {
+      expect(pendingGets.filter((call) => call.id === 1).length).toBe(1);
+    });
+
+    await act(async () => {
+      update.resolve();
+      await update.promise;
+    });
+
+    await waitFor(() => {
+      expect(pendingGets.filter((call) => call.id === 1).length).toBe(2);
+    });
+
+    const ticketAGets = pendingGets.filter((call) => call.id === 1);
+    const staleGet = ticketAGets[0];
+    const postPutGet = ticketAGets[1];
+
+    await act(async () => {
+      staleGet.deferred.resolve(issue(1, { clerk: 'StaleClerk' }));
+      await staleGet.deferred.promise;
+    });
+
+    expect(screen.queryByDisplayValue('StaleClerk')).not.toBeInTheDocument();
+
+    await act(async () => {
+      postPutGet.deferred.resolve(issue(1, { clerk: 'FreshClerk' }));
+      await postPutGet.deferred.promise;
+    });
+
+    expect(await screen.findByDisplayValue('FreshClerk')).toBeInTheDocument();
+  });
 });
