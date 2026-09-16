@@ -333,8 +333,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       setMessageText(draft);
       setActionError(e instanceof Error ? e.message : 'Send failed');
     } finally {
-      sendInFlight.current = false;
-      if (requestGenRef.current === gen) setIsSending(false);
+      if (requestGenRef.current === gen) {
+        sendInFlight.current = false;
+        setIsSending(false);
+      }
     }
   }
 
