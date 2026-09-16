@@ -25,6 +25,8 @@
 // real-device pass is required before it is considered verified.
 
 import { Buffer } from 'buffer';
+// Derivation paths owned by the main app — see docs/test-architecture.md
+// ("App 2.0 talks to two layers, not one").
 import KeyPath, { BitcoinAddressType } from '../../config/key-path';
 import { WalletConnectorError } from './providers';
 

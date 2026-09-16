@@ -78,6 +78,7 @@ jest.mock('../wallets/session', () => ({
 
 jest.mock('../components/ui', () => ({
   useToast: () => ({ showToast: mockShowToast }),
+  Spinner: () => <span className="spin" />,
 }));
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -155,7 +156,9 @@ describe('LimitScreen', () => {
     mockUserState.kyc = { level: 10 };
     mockUserState.tradingLimit = { limit: 1000, period: 'Day' };
     renderLimit();
-    expect(await screen.findByText(/verify your identity|verifizieren \(kyc\)|verificare la tua|vérifier ton identité/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/verify your identity|verifizieren \(kyc\)|verificare la tua|vérifier ton identité/i),
+    ).toBeInTheDocument();
     fireEvent.change(document.getElementById('lmLimit') as HTMLSelectElement, { target: { value: '1000000' } });
     fireEvent.change(document.getElementById('lmWhen') as HTMLSelectElement, { target: { value: 'Future' } });
     fireEvent.change(document.getElementById('lmOrigin') as HTMLSelectElement, { target: { value: 'Inheritance' } });
@@ -180,7 +183,9 @@ describe('LimitScreen', () => {
     const view = renderLimit();
     await waitFor(() => expect(screen.getByDisplayValue('Ada Lovelace')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /submit request|anfrage senden|invia richiesta|envoyer/i }));
-    expect(await screen.findByText(/add an email|gib eine e-mail|aggiungi un'email|ajoute un e-mail/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/add an email|gib eine e-mail|aggiungi un'email|ajoute un e-mail/i),
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText('you@email.com'), { target: { value: 'new@example.com' } });
     mockUpdateMail.mockRejectedValueOnce(new ApiException(409, 'taken'));
@@ -193,7 +198,9 @@ describe('LimitScreen', () => {
     await waitFor(() => expect(screen.getByDisplayValue('Ada Lovelace')).toBeInTheDocument());
     fireEvent.change(screen.getByPlaceholderText('you@email.com'), { target: { value: 'new@example.com' } });
     fireEvent.click(screen.getByRole('button', { name: /submit request|anfrage senden|invia richiesta|envoyer/i }));
-    expect(await screen.findByText(/could not send the code|code konnte nicht|impossibile inviare|impossible d'envoyer/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/could not send the code|code konnte nicht|impossibile inviare|impossible d'envoyer/i),
+    ).toBeInTheDocument();
     again.unmount();
   });
 
@@ -252,7 +259,9 @@ describe('LimitScreen', () => {
     renderLimit();
     await waitFor(() => expect(screen.getByDisplayValue('Ada Lovelace')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /submit request|anfrage senden|invia richiesta|envoyer/i }));
-    const submit = screen.getByRole('button', { name: /submit request|anfrage senden|invia richiesta|envoyer/i }) as HTMLButtonElement;
+    const submit = screen.getByRole('button', {
+      name: /submit request|anfrage senden|invia richiesta|envoyer/i,
+    }) as HTMLButtonElement;
     submit.disabled = false;
     fireEvent.click(submit);
     await waitFor(() => expect(mockCreateIssue).toHaveBeenCalledTimes(1));
@@ -287,7 +296,9 @@ describe('LimitScreen', () => {
     );
     renderLimit();
     await waitFor(() => expect(screen.getByDisplayValue('Ada Lovelace')).toBeInTheDocument());
-    const submit = screen.getByRole('button', { name: /submit request|anfrage senden|invia richiesta|envoyer/i }) as HTMLButtonElement;
+    const submit = screen.getByRole('button', {
+      name: /submit request|anfrage senden|invia richiesta|envoyer/i,
+    }) as HTMLButtonElement;
     fireEvent.click(submit);
     await waitFor(() => expect(mockCreateIssue).toHaveBeenCalledTimes(1));
     submit.disabled = false;

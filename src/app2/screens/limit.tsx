@@ -21,7 +21,7 @@ import {
   useUserContext,
 } from '@dfx.swiss/react';
 import { type ReactNode, useEffect, useState } from 'react';
-import { useToast } from '../components/ui';
+import { Spinner, useToast } from '../components/ui';
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { formatChf } from './parts/format';
@@ -47,8 +47,6 @@ const PERIOD_KEY: Record<string, TranslationKey> = {
   [LimitPeriod.MONTH]: 'perMonth',
   [LimitPeriod.YEAR]: 'perYear',
 };
-
-const SPINNER = <span className="spin" />;
 
 interface Result {
   variant: '' | 'ok' | 'warn';
@@ -116,7 +114,7 @@ export default function LimitScreen() {
       variant: '',
       node: (
         <>
-          {SPINNER} {t('tkSending')}
+          <Spinner /> {t('tkSending')}
         </>
       ),
     });

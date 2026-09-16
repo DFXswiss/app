@@ -76,16 +76,34 @@ The details — the factories and the states that are deliberately not achievabl
 The gate reads the route definitions out of `src/App.tsx`, resolves nested paths, and fails when a route
 has no registry claim or more than one — including two claims inside the same registry file — or when
 the spec file a claim names does not exist. App 2.0 is claimed separately as hosted `/app2/` paths
-(`e2e-stack/specs/registry/app2.ts`); those are not in `src/App.tsx`. A green unit run does not prove
-the full-stack harness cloned `DFXswiss/api` or opened those hashes. When `E2E_FULL_RUN=1` is set, it additionally fails for a
-claimed route the browser never opened. That flag is declared by the run, not measured from it, so it may
-only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
-no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
-whatever the caller's environment holds — and the CI workflow sets it when it brings the stack up (full run).
-Develop PRs without `ci:full` never set it; `ci:full`, PRs into `main`, and a bare `workflow_dispatch`
-(empty `base_ref`) force that full invocation.
-Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
-there.
+(`e2e-stack/specs/registry/app2.ts`); those are not in `src/App.tsx`. `e2e-stack/specs/app2.spec.ts`
+opens every hash route and, for a logged-in user, submits a buy quote and a KYC contact step
+through the App 2.0 UI and checks the matching Postgres row. A green unit run does not prove
+the full-stack harness cloned `DFXswiss/api` or opened those hashes.
+
+### App 2.0 talks to two layers, not one
+
+The HTTP API is reached only through `@dfx.swiss/react`. Separately, App 2.0 imports a short
+list of the main app's private modules so a session at `/` and a session at `/app2/` stay
+one session on this origin. A leak through those keys is not an SDK bug. The list, each
+site commented:
+
+- `src/hooks/store.hook.ts` (`StoreKey`) and `src/hooks/session-store.hook.ts`
+  (`SessionStoreKey`) plus `src/util/bank-tx-cache.ts` — `src/app2/wallets/session.tsx`
+- `src/util/job.ts` — `src/app2/screens/return-route.tsx`
+- `src/util/api-error.ts` — `src/app2/screens/trade/errors.ts`
+- `src/config/key-path.ts` — `src/app2/wallets/hardware-providers.ts`
+- `src/dto/sumsub.dto.ts` — `src/app2/screens/kyc-steps.tsx`
+- `src/dto/recommendation.dto.ts` and `src/hooks/recommendation.hook.ts` —
+  `src/app2/components/AccountSheets.tsx` When `E2E_FULL_RUN=1` is set, it additionally fails for a
+  claimed route the browser never opened. That flag is declared by the run, not measured from it, so it may
+  only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
+  no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
+  whatever the caller's environment holds — and the CI workflow sets it when it brings the stack up (full run).
+  Develop PRs without `ci:full` never set it; `ci:full`, PRs into `main`, and a bare `workflow_dispatch`
+  (empty `base_ref`) force that full invocation.
+  Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
+  there.
 
 That gate is the pattern the reality declaration follows: **measure the run, do not trust the
 declaration.** Anything its parser cannot resolve is a hard failure rather than a silent omission.

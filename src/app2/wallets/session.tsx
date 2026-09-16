@@ -43,6 +43,8 @@ import {
 import { connectChainWallet } from './chain-providers';
 import { isPlausibleCliAddress } from './cli';
 import { connectHardware, isWebHidAvailable, type HardwareChain, type HardwareId } from './hardware-providers';
+// Shared-origin storage with the main app — see docs/test-architecture.md
+// ("App 2.0 talks to two layers, not one"). Not an SDK import.
 import { SessionStoreKey } from 'src/hooks/session-store.hook';
 import { StoreKey } from 'src/hooks/store.hook';
 import { BANK_TX_CACHE_PREFIX } from 'src/util/bank-tx-cache';
@@ -159,10 +161,7 @@ export function boundProviderFromSnapshot(snapshot: SessionProviderSnapshot): Ei
 
 /** Whether an EIP-1193 provider currently exposes `address` (case-insensitive).
  * A rejected or missing `eth_accounts` answer is treated as "does not hold". */
-export async function providerHoldsAddress(
-  provider: Eip1193Provider | undefined,
-  address: string,
-): Promise<boolean> {
+export async function providerHoldsAddress(provider: Eip1193Provider | undefined, address: string): Promise<boolean> {
   if (!provider?.request) return false;
   try {
     const accounts = await provider.request<string[]>({ method: 'eth_accounts' });

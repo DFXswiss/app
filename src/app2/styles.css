@@ -2,7 +2,15 @@
    (public/app2/index.html, the inline <style> block). Same class names,
    same custom properties, same navy/gradient theme. Font + background
    assets are copied into src/app2/assets/ so webpack bundles them —
-   see README note below for the two url() rewrites. */
+   see README note below for the two url() rewrites.
+
+   This file is the stylesheet for App 2.0. Classes are global on purpose:
+   the preview was a single HTML document, and the React port kept that
+   contract so the visual redesign could land without a second migration.
+   Shared markup (spinner, loading row, sheet, toast) lives in
+   components/ui.tsx so screens do not re-declare those primitives.
+   A scoping mechanism (CSS modules, Tailwind, per-component files) is a
+   separate decision; it is not implied by shipping this preview. */
 
 /* ============================================================
    DFX redesign — built on the DFX Design Pod (dark theme canon)
