@@ -146,4 +146,55 @@ describe('RealunitBuyLimitPanel', () => {
     deferred.resolve({ maxTokensPerTx: null });
     await waitFor(() => expect(screen.getByLabelText(HEADING)).toHaveValue(null));
   });
+
+  it('keeps Save disabled after GET failure and does not call updateBuyLimit', async () => {
+    mockGetBuyLimit.mockRejectedValue(new Error('load-fail'));
+    render(<RealunitBuyLimitPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('load-fail'));
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
+    expect(mockUpdateBuyLimit).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Failed to load buy limit. when GET rejects without a message', async () => {
+    mockGetBuyLimit.mockRejectedValue({});
+    render(<RealunitBuyLimitPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Failed to load buy limit.'));
+  });
+
+  it('falls back to Unknown error when PUT rejects without a message', async () => {
+    mockUpdateBuyLimit.mockRejectedValue({});
+    render(<RealunitBuyLimitPanel translate={translate} />);
+    await waitForReady();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error'));
+  });
+
+  it('keeps Save disabled after GET failure until Retry load succeeds', async () => {
+    mockGetBuyLimit.mockRejectedValueOnce(new Error('load-fail'));
+    render(<RealunitBuyLimitPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('load-fail'));
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
+    expect(mockUpdateBuyLimit).not.toHaveBeenCalled();
+
+    let resolveRetry: (value: { maxTokensPerTx: number | null }) => void = () => undefined;
+    mockGetBuyLimit.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRetry = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
+    expect(mockUpdateBuyLimit).not.toHaveBeenCalled();
+
+    resolveRetry({ maxTokensPerTx: null });
+    await waitForReady();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mockUpdateBuyLimit).toHaveBeenCalledWith(null));
+  });
 });

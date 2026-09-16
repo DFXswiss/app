@@ -105,7 +105,7 @@
   },
   "realunit-dashboard": {
     "title": "RealUnit Dashboard",
-    "description": "RealUnit-Startseite: Sektion Bonus und Empfehlungen mit Prize-Wallet-Adresse, QR-Code, ETH- und REALU-Guthaben; Prize-payouts-Tabelle (Rechtsgrund, Kunde, Anzahl, CHF, Tx, Code, qualifizierender Kauf) mit CSV-Export-Button; Pending-Tabelle mit Address und Kundenname ohne deaktivierte Quotes, Kaufvolumen (CHF und Shares), Holder im Zeitverlauf und Registrierungs-Funnel (Registered → Completed, Drop-off Manual review)."
+    "description": "RealUnit-Startseite: Karte Max-tokens-per-buy (leer = keine Limite); Sektion Bonus und Empfehlungen mit Prize-Wallet-Adresse, QR-Code, ETH- und REALU-Guthaben; Prize-payouts-Tabelle (Rechtsgrund, Kunde, Anzahl, CHF, Tx, Code, qualifizierender Kauf) mit CSV-Export-Button; Pending-Tabelle mit Address und Kundenname ohne deaktivierte Quotes, Kaufvolumen (CHF und Shares), Holder im Zeitverlauf und Registrierungs-Funnel (Registered → Completed, Drop-off Manual review)."
   },
   "responsive": {
     "title": "Responsive Layout",

@@ -1137,7 +1137,8 @@
     "Leave empty for no limit. Applies to each bank buy.": "Leer lassen für keine Limite. Gilt für jeden Bankkauf.",
     "Save": "Speichern",
     "Loading": "Laden",
-    "Failed to load buy limit.": "Kauf-Limite konnte nicht geladen werden."
+    "Failed to load buy limit.": "Kauf-Limite konnte nicht geladen werden.",
+    "Unknown error": "Unbekannter Fehler"
   },
   "screens/blockchain": {
     "Transaction signing": "Transaktionssignierung",

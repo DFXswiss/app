@@ -22,6 +22,7 @@ export function RealunitBuyLimitPanel({ translate }: BuyLimitPanelProps): JSX.El
   const [saveError, setSaveError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const isSubmittingRef = useRef(false);
   const loadGenRef = useRef(0);
 
@@ -37,10 +38,12 @@ export function RealunitBuyLimitPanel({ translate }: BuyLimitPanelProps): JSX.El
       .then((limit) => {
         if (gen !== loadGenRef.current) return;
         const maxTokens = limit.maxTokensPerTx;
+        setHasLoaded(true);
         setTokensInput(maxTokens == null ? '' : String(maxTokens));
       })
       .catch((e: Error) => {
         if (gen !== loadGenRef.current) return;
+        setHasLoaded(false);
         setTokensInput('');
         setLoadError(e.message ?? translate('screens/realunit', 'Failed to load buy limit.'));
       })
@@ -50,13 +53,13 @@ export function RealunitBuyLimitPanel({ translate }: BuyLimitPanelProps): JSX.El
       });
   }
 
-  const canSave = !isLoading && !isSubmitting && isValidMaxTokens(tokensInput);
+  const canSave = !isLoading && !isSubmitting && !loadError && hasLoaded && isValidMaxTokens(tokensInput);
 
   function onSubmit(event?: FormEvent): void {
     event?.preventDefault();
     if (isSubmittingRef.current) return;
     const raw = tokensInput.trim();
-    if (isLoading || isSubmitting || !isValidMaxTokens(raw)) return;
+    if (isLoading || isSubmitting || loadError || !hasLoaded || !isValidMaxTokens(raw)) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
     setSaveError(undefined);
@@ -65,8 +68,9 @@ export function RealunitBuyLimitPanel({ translate }: BuyLimitPanelProps): JSX.El
       .then((saved) => {
         const next = saved.maxTokensPerTx;
         setTokensInput(next == null ? '' : String(next));
+        setLoadError(undefined);
       })
-      .catch((e: Error) => setSaveError(e.message ?? 'Unknown error'))
+      .catch((e: Error) => setSaveError(e.message ?? translate('screens/realunit', 'Unknown error')))
       .finally(() => {
         isSubmittingRef.current = false;
         setIsSubmitting(false);
@@ -81,7 +85,17 @@ export function RealunitBuyLimitPanel({ translate }: BuyLimitPanelProps): JSX.El
       </p>
 
       {isLoading && <div data-testid="buy-limit-loading">{translate('screens/realunit', 'Loading')}</div>}
-      {loadError && !isLoading && <ErrorHint message={loadError} />}
+      {loadError && !isLoading && (
+        <>
+          <ErrorHint message={loadError} />
+          <StyledButton
+            label={translate('general/actions', 'Retry')}
+            onClick={loadLimit}
+            width={StyledButtonWidth.MIN}
+            disabled={isSubmitting}
+          />
+        </>
+      )}
       {saveError && <ErrorHint message={saveError} />}
 
       <form className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end" onSubmit={onSubmit}>
