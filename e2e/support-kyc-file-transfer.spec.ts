@@ -92,11 +92,11 @@ async function json(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function installIssueRoutes(page: Page): Promise<void> {
+async function installIssueRoutes(page: Page, messages: unknown = MESSAGES): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const url = route.request().url();
     if (DATA_RE.test(url)) return json(route, ISSUE_DATA);
-    if (MESSAGES_RE.test(url)) return json(route, MESSAGES);
+    if (MESSAGES_RE.test(url)) return json(route, messages);
     if (CLERKS_RE.test(url)) return json(route, ['Rita Clerk', 'Tom Support']);
     if (CLERK_RE.test(url)) return json(route, { clerk: 'Rita Clerk' });
     if (ACTIVITY_RE.test(url)) return json(route, { count: 0 });
@@ -132,6 +132,32 @@ test.describe('Staff ticket — KYC file transfer', () => {
     await page.getByPlaceholder('Document title').scrollIntoViewIfNeeded();
 
     await expect(messagesPanel).toHaveScreenshot('support-kyc-file-transfer-02-form.png', {
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('issue screen shows In KYC file for an already transferred attachment', async ({ page }) => {
+    const transferred = {
+      messages: [
+        {
+          ...MESSAGES.messages[0],
+          kycFileId: 9,
+          kycFileName: '20240101_090000-ausweis.pdf',
+        },
+        MESSAGES.messages[1],
+      ],
+    };
+    await installIssueRoutes(page, transferred);
+    await page.setViewportSize({ width: 1280, height: 1400 });
+    await page.goto(`/support/dashboard/issue/${ISSUE_ID}?session=${token}`);
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText(/In KYC file/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Transfer to KYC file' })).toHaveCount(0);
+
+    const messagesPanel = page.locator('div.bg-white.rounded-lg.shadow-sm.p-4').filter({
+      has: page.getByRole('heading', { name: /Messages/ }),
+    });
+    await expect(messagesPanel).toHaveScreenshot('support-kyc-file-transfer-03-stored.png', {
       maxDiffPixels: 5000,
     });
   });
