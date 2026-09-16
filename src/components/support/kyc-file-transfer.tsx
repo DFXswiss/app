@@ -107,7 +107,6 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
         disabled={inFlight}
         onClick={(e) => {
           e.stopPropagation();
-          if (kycTransferInFlight.has(transferKey) || kycTransferDone.has(transferKey)) return;
           setIsEditing(true);
         }}
       >
@@ -125,10 +124,8 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
     try {
       const result = await transferMessageFileToKycFile(transferIssueId, transferMessageId, title.trim());
       kycTransferDone.add(transferKey);
-      if (routeIssueId === boundIssueId) {
-        setKycFile({ id: result.kycFileId, name: result.kycFileName });
-        setIsEditing(false);
-      }
+      setKycFile({ id: result.kycFileId, name: result.kycFileName });
+      setIsEditing(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : translate('screens/support', 'Failed to transfer file'));
     } finally {

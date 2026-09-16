@@ -285,5 +285,20 @@ describe('KycFileTransfer', () => {
       expect(screen.queryByRole('button', { name: 'Transfer to KYC file' })).not.toBeInTheDocument();
       expect(screen.getByText('In KYC file')).toBeInTheDocument();
     });
+
+    it('shows the KYC file name from the remounted message after a successful transfer', async () => {
+      mockTransfer.mockResolvedValue({ id: 7, kycFileId: 9, kycFileName: 'x.pdf' });
+      const { unmount } = render(<KycFileTransfer message={attachment} />);
+      openForm();
+      typeTitle('Liste');
+      fireEvent.click(save());
+      expect(await screen.findByText('In KYC file: x.pdf')).toBeInTheDocument();
+
+      unmount();
+      render(<KycFileTransfer message={{ ...attachment, kycFileName: '20240101_090000-liste-7.pdf' }} />);
+
+      expect(screen.queryByRole('button', { name: 'Transfer to KYC file' })).not.toBeInTheDocument();
+      expect(screen.getByText('In KYC file: 20240101_090000-liste-7.pdf')).toBeInTheDocument();
+    });
   });
 });
