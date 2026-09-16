@@ -62,6 +62,7 @@ jest.mock('@sumsub/websdk-react', () => () => null);
 
 jest.mock('../components/ui', () => ({
   LoadingRow: () => null,
+  Spinner: () => <span className="spin" />,
   useToast: () => ({ showToast: jest.fn() }),
 }));
 
