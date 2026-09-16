@@ -117,7 +117,7 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
   const slug = toKycFileSlug(title);
 
   async function handleSubmit(): Promise<void> {
-    if (kycTransferInFlight.has(transferKey) || kycTransferDone.has(transferKey) || !slug) return;
+    if (kycTransferInFlight.has(transferKey) || !slug) return;
     kycTransferInFlight.add(transferKey);
     setIsSubmitting(true);
     setError(undefined);
