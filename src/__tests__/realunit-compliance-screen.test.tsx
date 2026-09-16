@@ -741,4 +741,96 @@ describe('RealunitComplianceScreen name-check', () => {
     rejectPoll(new Error('late'));
     jest.useRealTimers();
   });
+
+  it('ignores a late mount batch response after unmount', async () => {
+    let resolveBatch: (value: RealUnitNameCheckBatchDto) => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveBatch = resolve;
+        }),
+    );
+    const { unmount } = render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    unmount();
+    resolveBatch({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 });
+  });
+
+  it('does not confirm a row screen after the batch has started running', async () => {
+    let resolveBatch: (value: RealUnitNameCheckBatchDto) => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveBatch = resolve;
+        }),
+    );
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
+    resolveBatch({ status: 'running', total: 2, done: 0, failed: 0, skipped: 0 });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(mockScreenCustomer).not.toHaveBeenCalled();
+  });
+
+  it('keeps a failed poll status error instead of reloading the list', async () => {
+    jest.useFakeTimers();
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch
+      .mockResolvedValueOnce({ status: 'running', total: 2, done: 0, failed: 0, skipped: 0 })
+      .mockResolvedValue({ status: 'failed', total: 2, done: 0, failed: 2, skipped: 0, error: 'quota' });
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+    const callsBeforePoll = mockSearchCustomers.mock.calls.length;
+    jest.advanceTimersByTime(2000);
+    await waitFor(() => {
+      expect(screen.getByText('quota')).toBeInTheDocument();
+    });
+    expect(mockSearchCustomers.mock.calls.length).toBe(callsBeforePoll);
+    jest.useRealTimers();
+  });
+
+  it('ignores a late mount batch error after unmount', async () => {
+    let rejectBatch: (reason: Error) => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectBatch = reject;
+        }),
+    );
+    const { unmount } = render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    unmount();
+    rejectBatch(new Error('late batch'));
+  });
+
+  it('shows Unknown error when a failed poll status has no error', async () => {
+    jest.useFakeTimers();
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch
+      .mockResolvedValueOnce({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 })
+      .mockResolvedValue({ status: 'failed', total: 1, done: 0, failed: 1, skipped: 0 });
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+    jest.advanceTimersByTime(2000);
+    await waitFor(() => {
+      expect(screen.getByText('Unknown error')).toBeInTheDocument();
+    });
+    jest.useRealTimers();
+  });
 });

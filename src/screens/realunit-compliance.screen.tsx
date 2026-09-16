@@ -74,6 +74,10 @@ export default function RealunitComplianceScreen(): JSX.Element {
           setBatch(status);
           if (status.status === 'running') return;
           clearPoll();
+          if (status.status === 'failed') {
+            setError(status.error ?? 'Unknown error');
+            return;
+          }
           loadCustomers(lastSearchKeyRef.current);
         })
         .catch((e: Error) => {
@@ -99,13 +103,18 @@ export default function RealunitComplianceScreen(): JSX.Element {
   // unsearched view. The hide-empty toggle state deliberately persists across searches (user choice wins);
   // "re-engaged" only means the search bypass ends. One GET of the name-check batch on mount; poll while running.
   useEffect(() => {
+    const generation = pollGenerationRef.current;
     loadCustomers();
     getNameCheckBatch()
       .then((status) => {
+        if (generation !== pollGenerationRef.current) return;
         setBatch(status);
         if (status.status === 'running') startPolling();
       })
-      .catch((e: Error) => setError(e.message ?? 'Unknown error'));
+      .catch((e: Error) => {
+        if (generation !== pollGenerationRef.current) return;
+        setError(e.message ?? 'Unknown error');
+      });
     return () => clearPoll();
   }, []);
 
@@ -114,7 +123,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
   }
 
   function handleConfirmScreen(): void {
-    if (!pendingConfirm || isConfirming) return;
+    if (!pendingConfirm || isConfirming || batch?.status === 'running') return;
     const action = pendingConfirm;
     setIsConfirming(true);
     const done = (): void => {
