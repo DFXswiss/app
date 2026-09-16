@@ -20,6 +20,7 @@ import { Sheet, Spinner, useToast } from '../../components/ui';
 import { useT } from '../../i18n';
 import type { TranslationKey } from '../../i18n';
 import { appUrl } from '../../utils/url';
+import { cx } from '../../css';
 
 const CHECK_ICON = (
   <svg viewBox="0 0 24 24" fill="none">
@@ -50,7 +51,7 @@ function CopyButton({ value, label }: { value: string | undefined; label: string
   if (!value || value === '—') return null;
   return (
     <button
-      className="copybtn"
+      className={cx('copybtn')}
       type="button"
       aria-label={label}
       onClick={() => {
@@ -67,9 +68,9 @@ function CopyButton({ value, label }: { value: string | undefined; label: string
 
 function Row({ label, value, cls }: { label: string; value: string; cls?: string }) {
   return (
-    <div className="pbrow">
+    <div className={cx('pbrow')}>
       <span>{label}</span>
-      <b className={cls}>{value}</b>
+      <b className={cx(cls)}>{value}</b>
     </div>
   );
 }
@@ -236,16 +237,16 @@ export function PaymentSheet({
 
   return (
     <Sheet open={open} onClose={onClose} titleId={titleId}>
-      <div className="confirm">
+      <div className={cx('confirm')}>
         {/* The header must not promise a payment the sheet isn't showing: with a gate up
             (e-mail/KYC/amount) there is no "amount below" to transfer, and the green tick reads
             as confirmation. The gate box carries its own title + instruction. */}
-        <div className={`confirm-ic${showGate ? ' gate' : ''}`}>{showGate ? ALERT_ICON : CHECK_ICON}</div>
+        <div className={cx('confirm-ic', showGate && 'gate')}>{showGate ? ALERT_ICON : CHECK_ICON}</div>
         <h3 id={titleId}>{title}</h3>
-        {!showGate && <p className="csub">{sub}</p>}
+        {!showGate && <p className={cx('csub')}>{sub}</p>}
 
         {rows.length > 0 && (
-          <div className="glass rowlist" style={{ margin: '16px 0 4px' }}>
+          <div className={cx('glass', 'rowlist')} style={{ margin: '16px 0 4px' }}>
             {rows.map((row) => (
               <Row key={row.label} label={row.label} value={row.value} cls={row.cls} />
             ))}
@@ -253,7 +254,7 @@ export function PaymentSheet({
         )}
 
         {loading && (
-          <div className="paybox">
+          <div className={cx('paybox')}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <Spinner /> {t('loading')}
             </span>
@@ -289,8 +290,8 @@ export function PaymentSheet({
         )}
 
         {showGate && (
-          <div className="emailgate">
-            <div className="paybox-title">
+          <div className={cx('emailgate')}>
+            <div className={cx('paybox-title')}>
               {gateKind === 'email'
                 ? t('verifyEmailTitle')
                 : gateKind === 'amount'
@@ -301,13 +302,13 @@ export function PaymentSheet({
             </div>
             {/* Missing-deposit uses the title alone (one i18n key). Other gates keep a note. */}
             {gateKind !== 'missingDeposit' && (
-              <p className="paybox-note" style={{ margin: '6px 0 12px' }}>
+              <p className={cx('paybox-note')} style={{ margin: '6px 0 12px' }}>
                 {/* `needSetup` is the fallback for an invalid quote with no mappable reason. */}
                 {thrownError?.message ?? validityMessage ?? t('needSetup')}
               </p>
             )}
             {gateKind === 'email' && !mailSent && (
-              <div className="efield">
+              <div className={cx('efield')}>
                 <input
                   type="email"
                   value={mailInput}
@@ -326,7 +327,7 @@ export function PaymentSheet({
             )}
             {gateKind === 'email' && mailSent && (
               <button
-                className="btn-glass"
+                className={cx('btn-glass')}
                 style={{
                   height: 48,
                   justifyContent: 'center',
@@ -341,7 +342,7 @@ export function PaymentSheet({
             )}
             {gateKind === 'session' && (
               <button
-                className="btn-primary"
+                className={cx('btn-primary')}
                 style={{ marginTop: 10 }}
                 onClick={() => {
                   onReconnect();
@@ -352,7 +353,7 @@ export function PaymentSheet({
               </button>
             )}
             {gateKind === 'generic' && (
-              <button className="btn-glass" style={{ marginTop: 10 }} type="button" onClick={onRetry}>
+              <button className={cx('btn-glass')} style={{ marginTop: 10 }} type="button" onClick={onRetry}>
                 <span>{t('retry')}</span>
               </button>
             )}
@@ -364,7 +365,7 @@ export function PaymentSheet({
                 style={{ display: 'block', marginTop: 10, textDecoration: 'none' }}
               >
                 <span
-                  className="btn-glass"
+                  className={cx('btn-glass')}
                   style={{
                     height: 48,
                     justifyContent: 'center',
@@ -383,7 +384,7 @@ export function PaymentSheet({
           </div>
         )}
 
-        <button className="btn-primary" style={{ marginTop: 16 }} onClick={onDone}>
+        <button className={cx('btn-primary')} style={{ marginTop: 16 }} onClick={onDone}>
           <span>{t('done')}</span>
         </button>
       </div>
@@ -415,13 +416,13 @@ function BuyPaymentBox({
     .join('\n');
 
   return (
-    <div className="paybox">
-      <div className="paybox-title">{`${t('payInstr')} ${payAmountLabel}`}</div>
+    <div className={cx('paybox')}>
+      <div className={cx('paybox-title')}>{`${t('payInstr')} ${payAmountLabel}`}</div>
       {hasQr && (
-        <div className="payseg" role="tablist">
+        <div className={cx('payseg')} role="tablist">
           <button
             type="button"
-            className={tab === 'details' ? 'on' : ''}
+            className={tab === 'details' ? cx('on') : undefined}
             role="tab"
             aria-selected={tab === 'details'}
             onClick={() => setTab('details')}
@@ -430,7 +431,7 @@ function BuyPaymentBox({
           </button>
           <button
             type="button"
-            className={tab === 'qr' ? 'on' : ''}
+            className={tab === 'qr' ? cx('on') : undefined}
             role="tab"
             aria-selected={tab === 'qr'}
             onClick={() => setTab('qr')}
@@ -441,23 +442,23 @@ function BuyPaymentBox({
       )}
       {tab === 'details' || !hasQr ? (
         <>
-          <div className="pbrow" style={{ alignItems: 'flex-start' }}>
+          <div className={cx('pbrow')} style={{ alignItems: 'flex-start' }}>
             <span>{t('beneficiary')}</span>
             <b style={{ whiteSpace: 'pre-line', textAlign: 'right', lineHeight: 1.45 }}>{beneficiary || '—'}</b>
             <CopyButton value={beneficiary} label={t('beneficiary')} />
           </div>
-          <div className="pbrow">
+          <div className={cx('pbrow')}>
             <span>{t('iban')}</span>
             <b>{buy.iban || '—'}</b>
             <CopyButton value={buy.iban} label={t('iban')} />
           </div>
-          <div className="pbrow">
+          <div className={cx('pbrow')}>
             <span>{t('bic')}</span>
             <b>{buy.bic || '—'}</b>
             <CopyButton value={buy.bic} label={t('bic')} />
           </div>
           {ref && (
-            <div className="pbrow">
+            <div className={cx('pbrow')}>
               <span>{t('reference')}</span>
               <b>{ref}</b>
               <CopyButton value={ref} label={t('reference')} />
@@ -470,11 +471,11 @@ function BuyPaymentBox({
         </div>
       )}
       {tab === 'qr' && hasQr && (
-        <div className="paybox-note" style={{ textAlign: 'center' }}>
+        <div className={cx('paybox-note')} style={{ textAlign: 'center' }}>
           {t('scanToPay')}
         </div>
       )}
-      <div className="paybox-note">{ref ? t('payNote') : t('noRefNeeded')}</div>
+      <div className={cx('paybox-note')}>{ref ? t('payNote') : t('noRefNeeded')}</div>
     </div>
   );
 }
@@ -494,12 +495,12 @@ function DepositBox({
 }) {
   const { t } = useT();
   return (
-    <div className="paybox">
-      <div className="paybox-title">{t('depositInstr')}</div>
+    <div className={cx('paybox')}>
+      <div className={cx('paybox-title')}>{t('depositInstr')}</div>
       <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0 10px' }}>
         <QrBill payload={qrPayload} />
       </div>
-      <div className="pbrow" style={{ alignItems: 'flex-start' }}>
+      <div className={cx('pbrow')} style={{ alignItems: 'flex-start' }}>
         <span>{t('depositAddr')}</span>
         <b
           style={{
@@ -518,7 +519,7 @@ function DepositBox({
       <Row label={t('fPay')} value={amount} />
       {network && <Row label={t('network')} value={network} />}
       {iban && <Row label={t('payoutIban')} value={iban} />}
-      <div className="depwarn">{t('depositWarn')}</div>
+      <div className={cx('depwarn')}>{t('depositWarn')}</div>
     </div>
   );
 }

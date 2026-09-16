@@ -11,6 +11,7 @@
 //    the static app's `qrcode(0,"M")`) instead of hand-rolling a QR renderer.
 
 import QRCode from 'react-qr-code';
+import { cx } from '../../css';
 
 const SVG_PAYLOAD = /^\s*<svg[\s>]/i;
 
@@ -24,13 +25,13 @@ export function QrBill({ payload, caption }: QrBillProps) {
   const isSvg = SVG_PAYLOAD.test(payload);
 
   return (
-    <div className="qrcard">
+    <div className={cx('qrcard')}>
       {isSvg ? (
         <img alt="Swiss QR-bill" src={`data:image/svg+xml;utf8,${encodeURIComponent(payload)}`} />
       ) : (
         <QRCode value={payload} size={212} level="M" bgColor="#ffffff" fgColor="#000000" />
       )}
-      {caption && <div className="qcap">{caption}</div>}
+      {caption && <div className={cx('qcap')}>{caption}</div>}
     </div>
   );
 }

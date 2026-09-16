@@ -11,6 +11,7 @@ import { useT } from '../../i18n';
 import { formatNumber } from '../parts/format';
 import { paymentStatusLabel } from './links';
 import type { OcpHistoryItem, OcpSubViewProps } from './useOcp';
+import { cx } from '../../css';
 
 // Status glyphs, ported verbatim from the static app: CHECK_SVG (Completed),
 // an inline clock (Pending), and an X (Cancelled / Expired / anything else).
@@ -60,8 +61,8 @@ export default function HistoryView({ ocp }: OcpSubViewProps) {
 
   if (history === null) {
     return (
-      <div className="ocp-empty">
-        <span className="spin" />
+      <div className={cx('ocp-empty')}>
+        <span className={cx('spin')} />
       </div>
     );
   }
@@ -70,26 +71,26 @@ export default function HistoryView({ ocp }: OcpSubViewProps) {
 
   return (
     <>
-      <div className="limit-now" style={{ marginBottom: 12 }}>
-        <div className="lab">{t('totalReceived')}</div>
-        <div className="big">{formatNumber(total, language)} CHF</div>
+      <div className={cx('limit-now')} style={{ marginBottom: 12 }}>
+        <div className={cx('lab')}>{t('totalReceived')}</div>
+        <div className={cx('big')}>{formatNumber(total, language)} CHF</div>
       </div>
       {history.items.length === 0 ? (
-        <div className="ocp-empty">{t('historyEmpty')}</div>
+        <div className={cx('ocp-empty')}>{t('historyEmpty')}</div>
       ) : (
-        <div className="glass" style={{ borderRadius: 18, overflow: 'hidden' }}>
+        <div className={cx('glass')} style={{ borderRadius: 18, overflow: 'hidden' }}>
           {history.items.map((p: OcpHistoryItem) => (
-            <div className="hrow" key={p.id}>
-              <span className={`hic ${p.status}`}>
+            <div className={cx('hrow')} key={p.id}>
+              <span className={cx('hic', p.status)}>
                 <StatusIcon status={p.status} />
               </span>
-              <span className="htx">
+              <span className={cx('htx')}>
                 <b>{p.note || t('ocpPayment')}</b>
                 <small>{p.when || ''}</small>
               </span>
-              <span className="hamt">
+              <span className={cx('hamt')}>
                 <b>{`${p.currency || ''} ${p.amount}`}</b>
-                <span className={`pill-chip ${statusChipClass(p.status)}`}>{paymentStatusLabel(t, p.status)}</span>
+                <span className={cx('pill-chip', statusChipClass(p.status))}>{paymentStatusLabel(t, p.status)}</span>
               </span>
             </div>
           ))}

@@ -35,15 +35,14 @@ import type {
 import { useCountry } from '@dfx.swiss/react';
 import SumsubWebSdk from '@sumsub/websdk-react';
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-// Sumsub review enums owned by the main app — see docs/test-architecture.md
-// ("App 2.0 talks to two layers, not one").
-import { SumsubReviewAnswer, SumsubReviewRejectType } from '../../dto/sumsub.dto';
+import { SumsubReviewAnswer, SumsubReviewRejectType } from '../lib/sumsub';
 import { LoadingRow } from '../components/ui';
 import { useT, type Language, type TranslationKey } from '../i18n';
 import { appUrl, isSafeAppUrl } from '../utils/url';
 import { readFileAsBase64 } from './kyc-file-upload';
 import { isSafeHttpsUrl } from './parts/format';
 import { apiStatusCode, isTfaRequiredError, kycHandoffFromError, type KycHandoff } from './kyc-recovery';
+import { cx } from '../css';
 
 type TFn = (key: TranslationKey, vars?: Record<string, string | number>) => string;
 
@@ -207,7 +206,7 @@ export function KycStepForm({ code, step, onAdvance, onFailed, onTfaRequired, on
     return (
       <>
         <StepHead t={t} name={step.name} />
-        <div className="sec" style={{ textAlign: 'center', padding: 24 }}>
+        <div className={cx('sec')} style={{ textAlign: 'center', padding: 24 }}>
           <LoadingRow label={t('loading')} />
         </div>
       </>
@@ -272,13 +271,13 @@ function StepBody({
 function StepHead({ t, name }: { t: TFn; name: KycStepName }) {
   const key = `kn_${name}` as TranslationKey;
   const label = t(key);
-  return <div className="sectionlabel tight">{label === key ? name : label}</div>;
+  return <div className={cx('sectionlabel', 'tight')}>{label === key ? name : label}</div>;
 }
 
 function InlineError({ message }: { message: string }) {
   if (!message) return null;
   return (
-    <div className="paybox-note warn" style={{ marginTop: 10 }}>
+    <div className={cx('paybox-note', 'warn')} style={{ marginTop: 10 }}>
       {message}
     </div>
   );
@@ -286,7 +285,7 @@ function InlineError({ message }: { message: string }) {
 
 function SubmitButton({ ctx, label, disabled }: { ctx: StepContext; label: string; disabled?: boolean }) {
   return (
-    <button className="btn-primary" type="submit" style={{ marginTop: 10 }} disabled={ctx.busy || disabled}>
+    <button className={cx('btn-primary')} type="submit" style={{ marginTop: 10 }} disabled={ctx.busy || disabled}>
       {label}
     </button>
   );
@@ -303,7 +302,7 @@ function CountrySelect({
 }) {
   const sorted = [...countries].sort((a, b) => a.name.localeCompare(b.name));
   return (
-    <select className="tinput" value={value} onChange={(e) => onChange(e.target.value)}>
+    <select className={cx('tinput')} value={value} onChange={(e) => onChange(e.target.value)}>
       {sorted.map((c) => (
         <option key={c.id} value={String(c.id)}>
           {c.name}
@@ -365,17 +364,17 @@ function AddressFields({
   const set = (patch: Partial<AddressState>) => onChange({ ...value, ...patch });
   return (
     <>
-      <label className="flabel">{t('kycStreet')}</label>
+      <label className={cx('flabel')}>{t('kycStreet')}</label>
       <div style={{ display: 'flex', gap: 8 }}>
         <input
-          className="tinput"
+          className={cx('tinput')}
           style={{ flex: 2.2 }}
           autoComplete="street-address"
           value={value.street}
           onChange={(e) => set({ street: e.target.value })}
         />
         <input
-          className="tinput"
+          className={cx('tinput')}
           style={{ flex: 1 }}
           placeholder={t('kycHouseNr')}
           value={value.houseNumber}
@@ -384,7 +383,7 @@ function AddressFields({
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <input
-          className="tinput"
+          className={cx('tinput')}
           style={{ flex: 1, marginTop: 8 }}
           placeholder={t('kycZip')}
           autoComplete="postal-code"
@@ -392,7 +391,7 @@ function AddressFields({
           onChange={(e) => set({ zip: e.target.value })}
         />
         <input
-          className="tinput"
+          className={cx('tinput')}
           style={{ flex: 2.2, marginTop: 8 }}
           placeholder={t('kycCity')}
           autoComplete="address-level2"
@@ -400,7 +399,7 @@ function AddressFields({
           onChange={(e) => set({ city: e.target.value })}
         />
       </div>
-      <label className="flabel">{t('kycCountry')}</label>
+      <label className={cx('flabel')}>{t('kycCountry')}</label>
       <CountrySelect countries={countries} value={value.country} onChange={(country) => set({ country })} />
     </>
   );
@@ -410,13 +409,13 @@ function FileInput({ t, onPick }: { t: TFn; onPick: (file: File | undefined) => 
   return (
     <>
       <input
-        className="tinput"
+        className={cx('tinput')}
         type="file"
         accept=".pdf,.png,.jpg,.jpeg"
         style={{ padding: 10 }}
         onChange={(e: ChangeEvent<HTMLInputElement>) => onPick(e.target.files?.[0])}
       />
-      <div className="tnote" style={{ marginTop: 6 }}>
+      <div className={cx('tnote')} style={{ marginTop: 6 }}>
         {t('kycFileHint')}
       </div>
     </>
@@ -443,10 +442,10 @@ function ContactFields({ ctx }: { ctx: StepContext }) {
   };
 
   return (
-    <form className="tform" onSubmit={onSubmit}>
-      <label className="flabel">{t('ticketEmail')}</label>
+    <form className={cx('tform')} onSubmit={onSubmit}>
+      <label className={cx('flabel')}>{t('ticketEmail')}</label>
       <input
-        className="tinput"
+        className={cx('tinput')}
         type="email"
         placeholder="you@email.com"
         inputMode="email"
@@ -552,31 +551,35 @@ function PersonalFields({ ctx, countries }: { ctx: StepContext; countries: Count
   };
 
   return (
-    <form className="tform" onSubmit={onSubmit}>
-      <label className="flabel">{t('kycAccountType')}</label>
-      <select className="tinput" value={accountType} onChange={(e) => setAccountType(e.target.value as AccountType)}>
+    <form className={cx('tform')} onSubmit={onSubmit}>
+      <label className={cx('flabel')}>{t('kycAccountType')}</label>
+      <select
+        className={cx('tinput')}
+        value={accountType}
+        onChange={(e) => setAccountType(e.target.value as AccountType)}
+      >
         <option value={AccountType.PERSONAL}>{t('at_Personal')}</option>
         <option value={AccountType.ORGANIZATION}>{t('at_Organization')}</option>
         <option value={AccountType.SOLE_PROPRIETORSHIP}>{t('at_SoleProprietorship')}</option>
       </select>
-      <label className="flabel">{t('kycFirstName')}</label>
+      <label className={cx('flabel')}>{t('kycFirstName')}</label>
       <input
-        className="tinput"
+        className={cx('tinput')}
         autoComplete="given-name"
         value={firstName}
         onChange={(e) => setFirstName(e.target.value)}
       />
-      <label className="flabel">{t('kycLastName')}</label>
+      <label className={cx('flabel')}>{t('kycLastName')}</label>
       <input
-        className="tinput"
+        className={cx('tinput')}
         autoComplete="family-name"
         value={lastName}
         onChange={(e) => setLastName(e.target.value)}
       />
       <AddressFields t={t} countries={countries} value={address} onChange={setAddress} />
-      <label className="flabel">{t('kycPhone')}</label>
+      <label className={cx('flabel')}>{t('kycPhone')}</label>
       <input
-        className="tinput"
+        className={cx('tinput')}
         type="tel"
         placeholder="+41 791234567"
         autoComplete="tel"
@@ -585,14 +588,14 @@ function PersonalFields({ ctx, countries }: { ctx: StepContext; countries: Count
       />
       {isOrg && (
         <div>
-          <label className="flabel">{t('kycOrgName')}</label>
+          <label className={cx('flabel')}>{t('kycOrgName')}</label>
           <input
-            className="tinput"
+            className={cx('tinput')}
             autoComplete="organization"
             value={orgName}
             onChange={(e) => setOrgName(e.target.value)}
           />
-          <div className="sectionlabel tight" style={{ marginTop: 10 }}>
+          <div className={cx('sectionlabel', 'tight')} style={{ marginTop: 10 }}>
             {t('kycOrgAddress')}
           </div>
           <AddressFields t={t} countries={countries} value={orgAddress} onChange={setOrgAddress} />
@@ -617,8 +620,8 @@ function NationalityFields({ ctx, countries }: { ctx: StepContext; countries: Co
   };
 
   return (
-    <form className="tform" onSubmit={onSubmit}>
-      <label className="flabel">{t('kycNationality')}</label>
+    <form className={cx('tform')} onSubmit={onSubmit}>
+      <label className={cx('flabel')}>{t('kycNationality')}</label>
       <CountrySelect countries={countries} value={nationality} onChange={setNationality} />
       <InlineError message={ctx.error} />
       <SubmitButton ctx={ctx} label={t('xmrContinue')} disabled={!nationality} />
@@ -642,8 +645,8 @@ function FileFields({ ctx }: { ctx: StepContext }) {
   };
 
   return (
-    <form className="tform" onSubmit={onSubmit}>
-      <label className="flabel">{t('kycUpload')}</label>
+    <form className={cx('tform')} onSubmit={onSubmit}>
+      <label className={cx('flabel')}>{t('kycUpload')}</label>
       <FileInput t={t} onPick={setFile} />
       <InlineError message={ctx.error} />
       <SubmitButton ctx={ctx} label={t('kycSubmit')} disabled={!file} />
@@ -666,16 +669,20 @@ function LegalEntityFields({ ctx }: { ctx: StepContext }) {
   };
 
   return (
-    <form className="tform" onSubmit={onSubmit}>
-      <label className="flabel">{t('kycLegalForm')}</label>
-      <select className="tinput" value={legalEntity} onChange={(e) => setLegalEntity(e.target.value as LegalEntity)}>
+    <form className={cx('tform')} onSubmit={onSubmit}>
+      <label className={cx('flabel')}>{t('kycLegalForm')}</label>
+      <select
+        className={cx('tinput')}
+        value={legalEntity}
+        onChange={(e) => setLegalEntity(e.target.value as LegalEntity)}
+      >
         {LEGAL_ENTITIES.map((entity) => (
           <option key={entity} value={entity}>
             {entity}
           </option>
         ))}
       </select>
-      <label className="flabel">{t('kycUpload')}</label>
+      <label className={cx('flabel')}>{t('kycUpload')}</label>
       <FileInput t={t} onPick={setFile} />
       <InlineError message={ctx.error} />
       <SubmitButton ctx={ctx} label={t('kycSubmit')} disabled={!file} />
@@ -694,10 +701,10 @@ function SignatoryFields({ ctx }: { ctx: StepContext }) {
   };
 
   return (
-    <form className="tform" onSubmit={onSubmit}>
-      <label className="flabel">{t('kycSignatory')}</label>
+    <form className={cx('tform')} onSubmit={onSubmit}>
+      <label className={cx('flabel')}>{t('kycSignatory')}</label>
       <select
-        className="tinput"
+        className={cx('tinput')}
         value={signatoryPower}
         onChange={(e) => setSignatoryPower(e.target.value as SignatoryPower)}
       >
@@ -725,21 +732,21 @@ function OperationalFields({ ctx }: { ctx: StepContext }) {
   };
 
   return (
-    <form className="tform" onSubmit={onSubmit}>
-      <label className="flabel">{t('kycOperational')}</label>
+    <form className={cx('tform')} onSubmit={onSubmit}>
+      <label className={cx('flabel')}>{t('kycOperational')}</label>
       <select
-        className="tinput"
+        className={cx('tinput')}
         value={String(isOperational)}
         onChange={(e) => setIsOperational(e.target.value === 'true')}
       >
         <option value="true">{t('yes')}</option>
         <option value="false">{t('no')}</option>
       </select>
-      <label className="flabel">
+      <label className={cx('flabel')}>
         {t('kycWebsite')} {t('optional')}
       </label>
       <input
-        className="tinput"
+        className={cx('tinput')}
         type="url"
         placeholder="https://…"
         value={websiteUrl}
@@ -764,9 +771,9 @@ function RecommendationFields({ ctx }: { ctx: StepContext }) {
   };
 
   return (
-    <form className="tform" onSubmit={onSubmit}>
-      <label className="flabel">{t('kycRecKey')}</label>
-      <input className="tinput" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} />
+    <form className={cx('tform')} onSubmit={onSubmit}>
+      <label className={cx('flabel')}>{t('kycRecKey')}</label>
+      <input className={cx('tinput')} autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} />
       <InlineError message={ctx.error} />
       <SubmitButton ctx={ctx} label={t('xmrContinue')} disabled={!key.trim()} />
     </form>
@@ -785,7 +792,7 @@ function AcceptFields({ ctx }: { ctx: StepContext }) {
   };
 
   return (
-    <form className="tform" onSubmit={onSubmit}>
+    <form className={cx('tform')} onSubmit={onSubmit}>
       <label
         style={{
           display: 'flex',
@@ -863,18 +870,22 @@ function BeneficialFields({ ctx, countries }: { ctx: StepContext; countries: Cou
   };
 
   return (
-    <form className="tform" onSubmit={onSubmit}>
-      <label className="flabel">{t('kycHasBO')}</label>
+    <form className={cx('tform')} onSubmit={onSubmit}>
+      <label className={cx('flabel')}>{t('kycHasBO')}</label>
       <select
-        className="tinput"
+        className={cx('tinput')}
         value={String(hasBeneficialOwners)}
         onChange={(e) => setHasBeneficialOwners(e.target.value === 'true')}
       >
         <option value="false">{t('no')}</option>
         <option value="true">{t('yes')}</option>
       </select>
-      <label className="flabel">{t('kycBOInvolved')}</label>
-      <select className="tinput" value={String(involved)} onChange={(e) => setInvolved(e.target.value === 'true')}>
+      <label className={cx('flabel')}>{t('kycBOInvolved')}</label>
+      <select
+        className={cx('tinput')}
+        value={String(involved)}
+        onChange={(e) => setInvolved(e.target.value === 'true')}
+      >
         <option value="true">{t('yes')}</option>
         <option value="false">{t('no')}</option>
       </select>
@@ -882,18 +893,18 @@ function BeneficialFields({ ctx, countries }: { ctx: StepContext; countries: Cou
         <div>
           {owners.map((owner, index) => (
             <div key={index}>
-              <div className="sectionlabel tight">
+              <div className={cx('sectionlabel', 'tight')}>
                 {t('kycOwner')} {index + 1}
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
-                  className="tinput"
+                  className={cx('tinput')}
                   placeholder={t('kycFirstName')}
                   value={owner.firstName}
                   onChange={(e) => updateOwner(index, { firstName: e.target.value })}
                 />
                 <input
-                  className="tinput"
+                  className={cx('tinput')}
                   placeholder={t('kycLastName')}
                   value={owner.lastName}
                   onChange={(e) => updateOwner(index, { lastName: e.target.value })}
@@ -901,14 +912,14 @@ function BeneficialFields({ ctx, countries }: { ctx: StepContext; countries: Cou
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <input
-                  className="tinput"
+                  className={cx('tinput')}
                   style={{ flex: 2.2 }}
                   placeholder={t('kycStreet')}
                   value={owner.street}
                   onChange={(e) => updateOwner(index, { street: e.target.value })}
                 />
                 <input
-                  className="tinput"
+                  className={cx('tinput')}
                   style={{ flex: 1 }}
                   placeholder={t('kycHouseNr')}
                   value={owner.houseNumber}
@@ -917,14 +928,14 @@ function BeneficialFields({ ctx, countries }: { ctx: StepContext; countries: Cou
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <input
-                  className="tinput"
+                  className={cx('tinput')}
                   style={{ flex: 1 }}
                   placeholder={t('kycZip')}
                   value={owner.zip}
                   onChange={(e) => updateOwner(index, { zip: e.target.value })}
                 />
                 <input
-                  className="tinput"
+                  className={cx('tinput')}
                   style={{ flex: 2.2 }}
                   placeholder={t('kycCity')}
                   value={owner.city}
@@ -943,7 +954,7 @@ function BeneficialFields({ ctx, countries }: { ctx: StepContext; countries: Cou
           {owners.length < MAX_BENEFICIAL_OWNERS && (
             <button
               type="button"
-              className="btn-mini"
+              className={cx('btn-mini')}
               style={{ marginTop: 10, width: 'auto' }}
               onClick={() => setOwners((list) => [...list, emptyOwner(countries)])}
             >
@@ -1037,7 +1048,7 @@ function FinancialFields({ ctx, setBusy }: { ctx: StepContext; setBusy: (busy: b
 
   if (loading) {
     return (
-      <div className="sec" style={{ textAlign: 'center', padding: 24 }}>
+      <div className={cx('sec')} style={{ textAlign: 'center', padding: 24 }}>
         <LoadingRow label={t('loading')} />
       </div>
     );
@@ -1046,7 +1057,7 @@ function FinancialFields({ ctx, setBusy }: { ctx: StepContext; setBusy: (busy: b
   if (!current) {
     // All answered — the advance effect is running; keep a spinner meanwhile.
     return (
-      <div className="sec" style={{ textAlign: 'center', padding: 24 }}>
+      <div className={cx('sec')} style={{ textAlign: 'center', padding: 24 }}>
         <LoadingRow label={t('loading')} />
       </div>
     );
@@ -1093,15 +1104,15 @@ function FinancialFields({ ctx, setBusy }: { ctx: StepContext; setBusy: (busy: b
     setMultiValues((list) => (checked ? [...list, key] : list.filter((k) => k !== key)));
 
   return (
-    <form className="tform" onSubmit={onSubmit}>
-      <div className="tnote" style={{ marginBottom: 4 }}>
+    <form className={cx('tform')} onSubmit={onSubmit}>
+      <div className={cx('tnote')} style={{ marginBottom: 4 }}>
         {visible.indexOf(current) + 1} / {visible.length}
       </div>
-      <label className="flabel" style={{ fontSize: 14, color: '#fff' }}>
+      <label className={cx('flabel')} style={{ fontSize: 14, color: '#fff' }}>
         {current.title}
       </label>
       {current.type !== QuestionType.CONFIRMATION && current.description && (
-        <div className="tnote" style={{ margin: '-2px 0 8px' }}>
+        <div className={cx('tnote')} style={{ margin: '-2px 0 8px' }}>
           {current.description}
         </div>
       )}
@@ -1119,7 +1130,7 @@ function FinancialFields({ ctx, setBusy }: { ctx: StepContext; setBusy: (busy: b
         </label>
       )}
       {current.type === QuestionType.SINGLE_CHOICE && (
-        <select className="tinput" value={singleValue} onChange={(e) => setSingleValue(e.target.value)}>
+        <select className={cx('tinput')} value={singleValue} onChange={(e) => setSingleValue(e.target.value)}>
           {(current.options ?? []).map((option) => (
             <option key={option.key} value={option.key}>
               {option.text}
@@ -1142,11 +1153,16 @@ function FinancialFields({ ctx, setBusy }: { ctx: StepContext; setBusy: (busy: b
           </label>
         ))}
       {current.type === QuestionType.TEXT && (
-        <input className="tinput" autoComplete="off" value={textValue} onChange={(e) => setTextValue(e.target.value)} />
+        <input
+          className={cx('tinput')}
+          autoComplete="off"
+          value={textValue}
+          onChange={(e) => setTextValue(e.target.value)}
+        />
       )}
       <InlineError message={ctx.error} />
       <button
-        className="btn-primary"
+        className={cx('btn-primary')}
         type="submit"
         style={{ marginTop: 12 }}
         disabled={ctx.busy || answerValue() == null}
@@ -1248,10 +1264,10 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
   if (!session) {
     return (
       <>
-        <div className="paybox-note" style={{ margin: '10px 0' }}>
+        <div className={cx('paybox-note')} style={{ margin: '10px 0' }}>
           {t('kycInReview')}
         </div>
-        <button className="btn-mini" style={{ width: 'auto' }} onClick={onBack}>
+        <button className={cx('btn-mini')} style={{ width: 'auto' }} onClick={onBack}>
           {t('kycOverview')}
         </button>
       </>
@@ -1264,12 +1280,12 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
     const portalUrl = portalKycUrl(ctx.code);
     return (
       <>
-        <div className="paybox-note" style={{ margin: '10px 0' }}>
+        <div className={cx('paybox-note')} style={{ margin: '10px 0' }}>
           {t('kycLegacyNote')}
         </div>
         {(isSafeAppUrl(portalUrl) || isSafeHttpsUrl(portalUrl)) && (
           <a
-            className="btn-primary"
+            className={cx('btn-primary')}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
             href={portalUrl}
             target="_blank"
@@ -1278,7 +1294,12 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
             {t('finishOnDfx')}
           </a>
         )}
-        <button className="btn-mini" style={{ marginTop: 10, width: '100%' }} disabled={ctx.busy} onClick={manualDone}>
+        <button
+          className={cx('btn-mini')}
+          style={{ marginTop: 10, width: '100%' }}
+          disabled={ctx.busy}
+          onClick={manualDone}
+        >
           {t('kycIdentDone2')}
         </button>
       </>
@@ -1286,10 +1307,10 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
   }
 
   const pollTimeoutNote = pollTimedOut ? (
-    <div className="paybox-note warn" style={{ margin: '10px 0' }}>
+    <div className={cx('paybox-note', 'warn')} style={{ margin: '10px 0' }}>
       {t('waitTimedOut')}
       <div style={{ marginTop: 10 }}>
-        <button type="button" className="btn-mini" style={{ width: 'auto' }} onClick={retryPoll}>
+        <button type="button" className={cx('btn-mini')} style={{ width: 'auto' }} onClick={retryPoll}>
           {t('retry')}
         </button>
       </div>
@@ -1300,7 +1321,7 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
     return (
       <>
         {failure ? (
-          <div className="paybox-note warn" style={{ margin: '10px 0' }}>
+          <div className={cx('paybox-note', 'warn')} style={{ margin: '10px 0' }}>
             {t('kycFailed')}
             <br />
             {failure}
@@ -1328,7 +1349,7 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
           </div>
         )}
         {pollTimeoutNote ?? (
-          <div className="tnote" style={{ marginTop: 8, textAlign: 'center' }}>
+          <div className={cx('tnote')} style={{ marginTop: 8, textAlign: 'center' }}>
             {t('kycIdentWait')}
           </div>
         )}
@@ -1339,11 +1360,11 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
   if (browserUrl) {
     return (
       <>
-        <div className="paybox-note" style={{ margin: '10px 0' }}>
+        <div className={cx('paybox-note')} style={{ margin: '10px 0' }}>
           {t('kycIdentLead')}
         </div>
         <a
-          className="btn-primary"
+          className={cx('btn-primary')}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
           href={browserUrl}
           target="_blank"
@@ -1352,7 +1373,7 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
           {t('kycIdentOpen')}
         </a>
         {pollTimeoutNote ?? (
-          <div className="tnote" style={{ marginTop: 10, textAlign: 'center' }}>
+          <div className={cx('tnote')} style={{ marginTop: 10, textAlign: 'center' }}>
             {t('kycIdentWait')}
           </div>
         )}
@@ -1364,11 +1385,16 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
   return (
     <>
       {pollTimeoutNote ?? (
-        <div className="paybox-note" style={{ margin: '10px 0' }}>
+        <div className={cx('paybox-note')} style={{ margin: '10px 0' }}>
           {t('kycInReview')}
         </div>
       )}
-      <button className="btn-mini" style={{ marginTop: 10, width: '100%' }} disabled={ctx.busy} onClick={manualDone}>
+      <button
+        className={cx('btn-mini')}
+        style={{ marginTop: 10, width: '100%' }}
+        disabled={ctx.busy}
+        onClick={manualDone}
+      >
         {t('kycIdentDone2')}
       </button>
     </>

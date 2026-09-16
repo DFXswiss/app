@@ -1,6 +1,6 @@
 import { DfxContextProvider } from '@dfx.swiss/react';
 import App2 from './app2/App';
-import './app2/styles.css';
+import './app2/styles.module.css';
 
 function MainApp2() {
   return (

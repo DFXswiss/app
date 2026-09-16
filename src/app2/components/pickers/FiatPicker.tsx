@@ -7,6 +7,7 @@ import type { Fiat } from '@dfx.swiss/react';
 import { FiatGlyph } from '../../screens/trade/glyphs';
 import { Sheet, SheetHeader, onActivate } from '../ui';
 import { useT } from '../../i18n';
+import { cx } from '../../css';
 
 interface FiatPickerProps {
   open: boolean;
@@ -18,7 +19,7 @@ interface FiatPickerProps {
 }
 
 const CHECK_ICON = (
-  <svg className="ck" viewBox="0 0 24 24" fill="none">
+  <svg className={cx('ck')} viewBox="0 0 24 24" fill="none">
     <path d="M5 12l4 4 10-10" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
@@ -29,7 +30,7 @@ export function FiatPicker({ open, onClose, titleId, currencies, value, onSelect
   return (
     <Sheet open={open} onClose={onClose} titleId={titleId}>
       <SheetHeader titleId={titleId} title={t('chooseCur')} onClose={onClose} />
-      <div className="slist" style={{ paddingBottom: 24 }}>
+      <div className={cx('slist')} style={{ paddingBottom: 24 }}>
         {currencies.map((fiat) => {
           const selected = value?.id === fiat.id;
           const pick = () => {
@@ -39,7 +40,7 @@ export function FiatPicker({ open, onClose, titleId, currencies, value, onSelect
           return (
             <div
               key={fiat.id}
-              className={`optrow${selected ? ' sel' : ''}`}
+              className={cx('optrow', selected && 'sel')}
               role="button"
               tabIndex={0}
               onClick={pick}
@@ -48,7 +49,7 @@ export function FiatPicker({ open, onClose, titleId, currencies, value, onSelect
               <span style={{ flex: '0 0 auto', lineHeight: 0 }}>
                 <FiatGlyph code={fiat.name} />
               </span>
-              <div className="oi">
+              <div className={cx('oi')}>
                 <b>{fiat.name}</b>
               </div>
               {CHECK_ICON}

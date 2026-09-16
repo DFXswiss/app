@@ -21,11 +21,10 @@ import { ApiException, useApi, useApiSession, useTransaction } from '@dfx.swiss/
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Spinner } from '../components/ui';
-// Async-job poller owned by the main app — see docs/test-architecture.md
-// ("App 2.0 talks to two layers, not one").
-import { JobResponse, JobStatus, isJobResponse, isJobTerminal, pollJobUntilTerminal } from 'src/util/job';
+import { JobResponse, JobStatus, isJobResponse, isJobTerminal, pollJobUntilTerminal } from '../lib/job';
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
+import { cx } from '../css';
 
 interface MergeRedirect {
   kycHash?: string;
@@ -84,7 +83,7 @@ function ResultPanel({ panel }: { panel: Panel }) {
   if (panel.kind === 'spinner') {
     return (
       <div
-        className="paybox-note"
+        className={cx('paybox-note')}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -99,8 +98,8 @@ function ResultPanel({ panel }: { panel: Panel }) {
     );
   }
   return (
-    <div className="glass" style={{ padding: '22px 18px', textAlign: 'center', marginTop: 6 }}>
-      <div className={`paybox-note ${panel.variant}`} style={{ fontSize: 14, margin: '0 0 14px' }}>
+    <div className={cx('glass')} style={{ padding: '22px 18px', textAlign: 'center', marginTop: 6 }}>
+      <div className={cx('paybox-note', panel.variant)} style={{ fontSize: 14, margin: '0 0 14px' }}>
         {panel.title}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -108,7 +107,7 @@ function ResultPanel({ panel }: { panel: Panel }) {
           <button
             key={button.label}
             type="button"
-            className={button.primary ? 'btn-primary' : 'btn-mini'}
+            className={cx(button.primary ? 'btn-primary' : 'btn-mini')}
             style={{ width: '100%' }}
             onClick={button.onClick}
           >
@@ -367,7 +366,7 @@ export default function ReturnRouteScreen() {
   }, [pathname]);
 
   return (
-    <div className="account">
+    <div className={cx('account')}>
       <div style={{ padding: '8px 4px' }}>
         <ResultPanel panel={panel} />
       </div>

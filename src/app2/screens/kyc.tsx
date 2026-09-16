@@ -42,6 +42,7 @@ import {
   kycHandoffFromError,
   type KycHandoff,
 } from './kyc-recovery';
+import { cx } from '../css';
 
 const PERIOD_KEY: Record<string, TranslationKey> = { Day: 'perDay', Month: 'perMonth', Year: 'perYear' };
 
@@ -162,11 +163,11 @@ export default function KycScreen() {
 
   if (isUserLoading && !user) {
     return (
-      <div className="account">
-        <div className="txhead">
+      <div className={cx('account')}>
+        <div className={cx('txhead')}>
           <h2>{t('mKyc')}</h2>
         </div>
-        <div className="sec" style={{ textAlign: 'center', padding: 24 }}>
+        <div className={cx('sec')} style={{ textAlign: 'center', padding: 24 }}>
           <LoadingRow label={t('loading')} />
         </div>
       </div>
@@ -175,12 +176,12 @@ export default function KycScreen() {
 
   if (!code) {
     return (
-      <div className="account">
-        <div className="txhead">
+      <div className={cx('account')}>
+        <div className={cx('txhead')}>
           <h2>{t('mKyc')}</h2>
         </div>
         <div
-          className="ocp-empty"
+          className={cx('ocp-empty')}
           style={{ flexDirection: 'column', gap: 12, textAlign: 'center', padding: '30px 8px' }}
         >
           <span>{t('loadFail')}</span>
@@ -247,11 +248,11 @@ export default function KycScreen() {
 
   if (phase.kind === 'loading') {
     return (
-      <div className="account">
-        <div className="txhead">
+      <div className={cx('account')}>
+        <div className={cx('txhead')}>
           <h2>{t('mKyc')}</h2>
         </div>
-        <div className="sec" style={{ textAlign: 'center', padding: 24 }}>
+        <div className={cx('sec')} style={{ textAlign: 'center', padding: 24 }}>
           <LoadingRow label={t('loading')} />
         </div>
       </div>
@@ -260,14 +261,14 @@ export default function KycScreen() {
 
   if (phase.kind === 'error') {
     return (
-      <div className="account">
-        <div className="txhead">
+      <div className={cx('account')}>
+        <div className={cx('txhead')}>
           <h2>{t('mKyc')}</h2>
         </div>
-        <div className="paybox-note warn" style={{ margin: '10px 0' }}>
+        <div className={cx('paybox-note', 'warn')} style={{ margin: '10px 0' }}>
           {phase.message}
         </div>
-        <button className="btn-mini" onClick={() => loadOverview(code)}>
+        <button className={cx('btn-mini')} onClick={() => loadOverview(code)}>
           {t('retry')}
         </button>
       </div>
@@ -283,22 +284,22 @@ export default function KycScreen() {
           ? 'kycAccountMerge'
           : 'kycAccountExists';
     return (
-      <div className="account">
-        <div className="txhead">
+      <div className={cx('account')}>
+        <div className={cx('txhead')}>
           <h2>{t('mKyc')}</h2>
         </div>
-        <div className="paybox-note warn" style={{ margin: '10px 0' }}>
+        <div className={cx('paybox-note', 'warn')} style={{ margin: '10px 0' }}>
           {t(messageKey)}
         </div>
         <SafeExternalLink
           url={portalKycUrl(handoffCode)}
-          className="btn-primary"
+          className={cx('btn-primary')}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
         >
           {t('finishOnDfx')}
         </SafeExternalLink>
         <button
-          className="btn-mini"
+          className={cx('btn-mini')}
           style={{ marginTop: 10, width: '100%' }}
           onClick={() => setPhase({ kind: 'overview', info: phase.info })}
         >
@@ -313,21 +314,21 @@ export default function KycScreen() {
     const appSetup = setup?.type === TfaType.APP;
     const mailSetup = setup?.type === TfaType.MAIL;
     return (
-      <div className="account">
-        <div className="txhead">
+      <div className={cx('account')}>
+        <div className={cx('txhead')}>
           <h2>{t('mKyc')}</h2>
         </div>
-        <div className="sectionlabel tight">{t('kycTfaTitle')}</div>
+        <div className={cx('sectionlabel', 'tight')}>{t('kycTfaTitle')}</div>
         {setupError ? (
           <>
-            <div className="paybox-note warn" style={{ margin: '10px 0' }}>
+            <div className={cx('paybox-note', 'warn')} style={{ margin: '10px 0' }}>
               {t('kycTfaSetupFail')}
             </div>
-            <button className="btn-primary" type="button" onClick={() => beginTfaSetup(info, code)}>
+            <button className={cx('btn-primary')} type="button" onClick={() => beginTfaSetup(info, code)}>
               {t('retry')}
             </button>
             <button
-              className="btn-mini"
+              className={cx('btn-mini')}
               type="button"
               style={{ marginTop: 10, width: '100%' }}
               onClick={() => setPhase({ kind: 'overview', info })}
@@ -366,7 +367,7 @@ export default function KycScreen() {
                 {setup.secret}
               </code>
               <button
-                className="btn-mini"
+                className={cx('btn-mini')}
                 type="button"
                 aria-label="Copy"
                 style={{ width: 'auto', flex: 'none', padding: '0 12px' }}
@@ -377,15 +378,15 @@ export default function KycScreen() {
             </div>
           </>
         ) : (
-          <div className="paybox-note" style={{ margin: '10px 0' }}>
+          <div className={cx('paybox-note')} style={{ margin: '10px 0' }}>
             {alreadyEnrolled ? t('kycTfaExisting') : mailSetup ? t('kycTfaMail') : <LoadingRow label={t('loading')} />}
           </div>
         )}
         {!setupError && (alreadyEnrolled || setup) && (
-          <form className="tform" style={{ marginTop: 12 }} onSubmit={verifyTfa(info)}>
-            <label className="flabel">{t('kycTfaCode')}</label>
+          <form className={cx('tform')} style={{ marginTop: 12 }} onSubmit={verifyTfa(info)}>
+            <label className={cx('flabel')}>{t('kycTfaCode')}</label>
             <input
-              className="tinput"
+              className={cx('tinput')}
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={6}
@@ -395,12 +396,12 @@ export default function KycScreen() {
               onChange={(e) => setTfaToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
             />
             {tfaError && (
-              <div className="paybox-note warn" style={{ marginTop: 10 }}>
+              <div className={cx('paybox-note', 'warn')} style={{ marginTop: 10 }}>
                 {tfaError}
               </div>
             )}
             <button
-              className="btn-primary"
+              className={cx('btn-primary')}
               type="submit"
               style={{ marginTop: 10 }}
               disabled={busy || tfaToken.length !== 6}
@@ -432,12 +433,12 @@ export default function KycScreen() {
             ? ({ kind: 'account-exists' } as const)
             : undefined;
       return (
-        <div className="account">
-          <div className="txhead">
+        <div className={cx('account')}>
+          <div className={cx('txhead')}>
             <h2>{t('mKyc')}</h2>
           </div>
-          <div className="sectionlabel tight">{stepNameLabel(t, step.name)}</div>
-          <div className="paybox-note warn" style={{ margin: '10px 0' }}>
+          <div className={cx('sectionlabel', 'tight')}>{stepNameLabel(t, step.name)}</div>
+          <div className={cx('paybox-note', 'warn')} style={{ margin: '10px 0' }}>
             {t(handoff?.kind === 'merge' ? 'kycAccountMerge' : handoff ? 'kycAccountExists' : 'kycFailed')}
             {/* #75: surface the server's failure reason on a non-hand-off failure. */}
             {!handoff && step.reason && (
@@ -450,17 +451,17 @@ export default function KycScreen() {
           {handoff ? (
             <SafeExternalLink
               url={portalKycUrl(code)}
-              className="btn-primary"
+              className={cx('btn-primary')}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
             >
               {t('finishOnDfx')}
             </SafeExternalLink>
           ) : (
-            <button className="btn-primary" disabled={busy} onClick={() => runContinue(info)}>
+            <button className={cx('btn-primary')} disabled={busy} onClick={() => runContinue(info)}>
               {t('xmrContinue')}
             </button>
           )}
-          <button className="btn-mini" style={{ marginTop: 10, width: '100%' }} onClick={backToOverview}>
+          <button className={cx('btn-mini')} style={{ marginTop: 10, width: '100%' }} onClick={backToOverview}>
             {t('kycOverview')}
           </button>
         </div>
@@ -473,15 +474,15 @@ export default function KycScreen() {
       step.name === KycStepName.COMMERCIAL_REGISTER
     ) {
       return (
-        <div className="account">
-          <div className="txhead">
+        <div className={cx('account')}>
+          <div className={cx('txhead')}>
             <h2>{t('mKyc')}</h2>
           </div>
-          <div className="sectionlabel tight">{stepNameLabel(t, step.name)}</div>
-          <div className="paybox-note" style={{ margin: '10px 0' }}>
+          <div className={cx('sectionlabel', 'tight')}>{stepNameLabel(t, step.name)}</div>
+          <div className={cx('paybox-note')} style={{ margin: '10px 0' }}>
             {t('kycInReview')}
           </div>
-          <button className="btn-mini" style={{ width: 'auto' }} onClick={backToOverview}>
+          <button className={cx('btn-mini')} style={{ width: 'auto' }} onClick={backToOverview}>
             {t('kycOverview')}
           </button>
         </div>
@@ -492,8 +493,8 @@ export default function KycScreen() {
     // LegalEntity, BeneficialOwner, document uploads, ...) — done inside the app.
     if (isInAppStep(step.name)) {
       return (
-        <div className="account">
-          <div className="txhead">
+        <div className={cx('account')}>
+          <div className={cx('txhead')}>
             <h2>{t('mKyc')}</h2>
           </div>
           <KycStepForm
@@ -513,23 +514,23 @@ export default function KycScreen() {
     // Legacy steps with no in-app form (PaymentAgreement, name/address/phone
     // change, unknown future steps) — completed in the DFX portal.
     return (
-      <div className="account">
-        <div className="txhead">
+      <div className={cx('account')}>
+        <div className={cx('txhead')}>
           <h2>{t('mKyc')}</h2>
         </div>
-        <div className="sectionlabel tight">{stepNameLabel(t, step.name)}</div>
-        <div className="paybox-note" style={{ margin: '10px 0' }}>
+        <div className={cx('sectionlabel', 'tight')}>{stepNameLabel(t, step.name)}</div>
+        <div className={cx('paybox-note')} style={{ margin: '10px 0' }}>
           {t('kycLegacyNote')}
         </div>
         <SafeExternalLink
           url={portalKycUrl(code)}
-          className="btn-primary"
+          className={cx('btn-primary')}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
         >
           {t('kycLegacyOpen')}
         </SafeExternalLink>
         <button
-          className="btn-mini"
+          className={cx('btn-mini')}
           style={{ marginTop: 10, width: '100%' }}
           disabled={busy}
           onClick={() => runContinue(info)}
@@ -550,28 +551,31 @@ export default function KycScreen() {
   const allDone = steps.length > 0 && steps.every((s) => isStepDone(s));
 
   return (
-    <div className="account">
-      <div className="txhead">
+    <div className={cx('account')}>
+      <div className={cx('txhead')}>
         <h2>{t('mKyc')}</h2>
       </div>
-      <div className="limit-now">
-        <div className="lab">{t('kycYourLevel')}</div>
-        <div className="big">
+      <div className={cx('limit-now')} data-testid="limit-card">
+        <div className={cx('lab')}>{t('kycYourLevel')}</div>
+        <div className={cx('big')}>
           {/* #76: show "Level —" when the level is unknown, never "Level 0". */}
           {level != null && level >= KycLevel.Completed ? t('kycFull') : t('levelN', { n: level ?? '—' })}
         </div>
-        <div className="per">{limitLabel}</div>
+        <div className={cx('per')}>{limitLabel}</div>
       </div>
       <p style={{ color: 'var(--t-muted)', fontSize: 13, lineHeight: 1.5, margin: '8px 4px 12px' }}>{t('kycLead')}</p>
 
       {steps.length > 0 && (
         <>
-          <div className="sectionlabel tight">{t('kycSteps')}</div>
-          <div className="glass" style={{ borderRadius: 18, padding: '2px 16px', marginBottom: 14 }}>
+          <div className={cx('sectionlabel', 'tight')}>{t('kycSteps')}</div>
+          <div className={cx('glass')} style={{ borderRadius: 18, padding: '2px 16px', marginBottom: 14 }}>
             {steps.map((s) => (
-              <div key={s.name} className="pbrow" style={{ padding: '10px 0' }}>
+              <div key={s.name} className={cx('pbrow')} style={{ padding: '10px 0' }}>
                 <span style={{ color: '#fff', fontWeight: 600 }}>{stepNameLabel(t, s.name)}</span>
-                <span className={`pill-chip ${stepChipVariant(s.status)}`} style={{ marginLeft: 'auto', flex: 'none' }}>
+                <span
+                  className={cx('pill-chip', stepChipVariant(s.status))}
+                  style={{ marginLeft: 'auto', flex: 'none' }}
+                >
                   {statusLabel(t, s.status)}
                 </span>
               </div>
@@ -581,9 +585,9 @@ export default function KycScreen() {
       )}
 
       {allDone ? (
-        <div className="paybox-note ok">{t('kycAllDone')}</div>
+        <div className={cx('paybox-note', 'ok')}>{t('kycAllDone')}</div>
       ) : (
-        <button className="btn-primary" disabled={busy} onClick={() => runContinue(info)}>
+        <button className={cx('btn-primary')} disabled={busy} onClick={() => runContinue(info)}>
           {t(started ? 'xmrContinue' : 'kycStart')}
         </button>
       )}

@@ -10,6 +10,7 @@ import type { Buy, Fees, Sell, Swap } from '@dfx.swiss/react';
 import { formatAmount, formatFiat } from './amount';
 import type { Mode } from './types';
 import { useT, type Language } from '../../i18n';
+import { cx } from '../../css';
 
 const SHIELD_ICON = (
   <svg viewBox="0 0 24 24" fill="none">
@@ -46,18 +47,18 @@ export function FeesPanel({
 
   if (!quote || !isFresh || quote.isValid === false) {
     return (
-      <details className="fees">
+      <details className={cx('fees')}>
         <summary>
-          <span className="l">
+          <span className={cx('l')}>
             {SHIELD_ICON}
             <span>—</span>
           </span>
-          <span className="r">
-            <span className="chip-good">—</span>
-            <span className="chev">{CHEVRON}</span>
+          <span className={cx('r')}>
+            <span className={cx('chip-good')}>—</span>
+            <span className={cx('chev')}>{CHEVRON}</span>
           </span>
         </summary>
-        <div className="fbody" />
+        <div className={cx('fbody')} />
       </details>
     );
   }
@@ -117,18 +118,18 @@ export function FeesPanel({
       : `${formatFiat(quote.exchangeRate ? 1 / quote.exchangeRate : 0, currencyCode, language)} / ${payAssetCode}`;
 
   return (
-    <details className="fees">
+    <details className={cx('fees')}>
       <summary>
-        <span className="l">
+        <span className={cx('l')}>
           {SHIELD_ICON}
           <span>{summaryRate}</span>
         </span>
-        <span className="r">
-          <span className="chip-good">{fv(fees.total ?? 0)}</span>
-          <span className="chev">{CHEVRON}</span>
+        <span className={cx('r')}>
+          <span className={cx('chip-good')}>{fv(fees.total ?? 0)}</span>
+          <span className={cx('chev')}>{CHEVRON}</span>
         </span>
       </summary>
-      <div className="fbody">
+      <div className={cx('fbody')}>
         <FeeRow label={t('fPay')} value={payStr} />
         <FeeRow
           label={`${t('fDfx')}${fees.rate ? ` · ${(fees.rate * 100).toFixed(2)}%` : ''}`}
@@ -155,7 +156,7 @@ export function FeesPanel({
 
 function FeeRow({ label, value, cls }: { label: string; value: string; cls?: string }) {
   return (
-    <div className={`li${cls ? ` ${cls}` : ''}`}>
+    <div className={cx('li', cls)}>
       <span>{label}</span>
       <b>{value}</b>
     </div>

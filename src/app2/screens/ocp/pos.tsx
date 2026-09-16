@@ -18,6 +18,7 @@ import { useT } from '../../i18n';
 import { parseAmt } from '../trade/amount';
 import { qrData } from './lnurl';
 import type { OcpSubViewProps } from './useOcp';
+import { cx } from '../../css';
 
 // Mirrors the static app's CHECK_SVG (public/app2/index.html:2524).
 const CHECK_SVG = (
@@ -206,8 +207,8 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
 
   if (ocp.links === null) {
     return (
-      <div className="ocp-empty">
-        <span className="spin" /> {t('loading')}
+      <div className={cx('ocp-empty')}>
+        <span className={cx('spin')} /> {t('loading')}
       </div>
     );
   }
@@ -215,9 +216,9 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
   if (!activeLinks.length) {
     return (
       <>
-        <div className="ocp-empty">{t('posNoLink')}</div>
-        <div className="ocp-actions">
-          <button className="btn-primary" onClick={() => go('links')}>
+        <div className={cx('ocp-empty')}>{t('posNoLink')}</div>
+        <div className={cx('ocp-actions')}>
+          <button className={cx('btn-primary')} onClick={() => go('links')}>
             {t('createLink')}
           </button>
         </div>
@@ -228,21 +229,26 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
   return (
     <>
       <p style={{ color: 'var(--t-muted)', fontSize: 13, lineHeight: 1.5, margin: '2px 4px 14px' }}>{t('posLead')}</p>
-      <div className="tform">
-        <label className="flabel">{t('posLink')}</label>
-        <select className="tinput" value={selectedId} onChange={(e) => setLinkId(e.target.value)}>
+      <div className={cx('tform')}>
+        <label className={cx('flabel')}>{t('posLink')}</label>
+        <select
+          className={cx('tinput')}
+          data-testid="ocp-pos-register"
+          value={selectedId}
+          onChange={(e) => setLinkId(e.target.value)}
+        >
           {activeLinks.map((l) => (
             <option key={l.id} value={String(l.id)}>
               {l.label || `#${l.id}`}
             </option>
           ))}
         </select>
-        <label className="flabel">
+        <label className={cx('flabel')}>
           {t('amount')} ({currency})
         </label>
         <input
           ref={amountRef}
-          className="tinput"
+          className={cx('tinput')}
           inputMode="decimal"
           placeholder="0.00"
           value={amount}
@@ -254,39 +260,44 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
             }
           }}
         />
-        <button className="btn-primary" onClick={() => void doCharge()} disabled={charging} style={{ marginTop: 6 }}>
+        <button
+          className={cx('btn-primary')}
+          onClick={() => void doCharge()}
+          disabled={charging}
+          style={{ marginTop: 6 }}
+        >
           {t('posCharge')}
         </button>
       </div>
       <div>
-        {note && <div className="paybox-note warn">{note}</div>}
+        {note && <div className={cx('paybox-note', 'warn')}>{note}</div>}
         {charge && (
           <>
-            <div className="qrcard">
+            <div className={cx('qrcard')}>
               <QRCode value={qrData(charge.lnurl)} size={212} level="M" bgColor="#ffffff" fgColor="#000000" />
-              <div className="qcap">
+              <div className={cx('qcap')}>
                 {/* Frozen at charge time — must not track a later select change. */}
                 {charge.currency} {charge.amount}
               </div>
             </div>
             {status === 'paid' ? (
-              <div className="posstat paid">
-                <span className="okbubble">{CHECK_SVG}</span> {t('posPaid')} · {charge.currency} {charge.amount}
+              <div className={cx('posstat', 'paid')}>
+                <span className={cx('okbubble')}>{CHECK_SVG}</span> {t('posPaid')} · {charge.currency} {charge.amount}
               </div>
             ) : status === 'failed' ? (
-              <div className="posstat fail">
+              <div className={cx('posstat', 'fail')}>
                 {t(failKey)}{' '}
                 {failKey === 'posNoUpdate' ? (
                   <>
                     <button
-                      className="btn-mini"
+                      className={cx('btn-mini')}
                       onClick={() => setStatus('waiting')}
                       style={{ marginLeft: 10, width: 'auto' }}
                     >
                       {t('posKeepWaiting')}
                     </button>
                     <button
-                      className="btn-mini"
+                      className={cx('btn-mini')}
                       onClick={endCharge}
                       disabled={!charging}
                       style={{ marginLeft: 10, width: 'auto' }}
@@ -296,7 +307,7 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
                   </>
                 ) : (
                   <button
-                    className="btn-mini"
+                    className={cx('btn-mini')}
                     onClick={() => void doCharge()}
                     disabled={charging}
                     style={{ marginLeft: 10, width: 'auto' }}
@@ -306,8 +317,8 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
                 )}
               </div>
             ) : (
-              <div className="posstat">
-                <span className="spin" /> {t('posWaiting')}
+              <div className={cx('posstat')}>
+                <span className={cx('spin')} /> {t('posWaiting')}
               </div>
             )}
           </>

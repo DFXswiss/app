@@ -103,7 +103,7 @@ test.describe('App 2.0 hosted artifact', () => {
     await expect(amount).toBeVisible();
     await amount.fill('100');
 
-    const cta = page.locator('button.cta');
+    const cta = page.getByTestId('trade-cta');
     await expect(cta).toBeEnabled({ timeout: 45000 });
     await cta.click();
 

@@ -8,6 +8,7 @@ import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { OcpMark } from './brand';
 import { useModalDialog } from './ui';
+import { cx } from '../css';
 
 type MenuAction =
   | { kind: 'route'; path: string; mode?: 'buy' | 'sell' | 'swap'; sub?: string }
@@ -149,7 +150,7 @@ const MENU: MenuGroup[] = [
         // The product's own mark instead of a generic cube — it's the one menu entry that
         // stands for a separate brand. Single-color via currentColor, so it sits in the row
         // with the same weight as the stroke icons around it.
-        icon: <OcpMark className="ocp-mark" />,
+        icon: <OcpMark className={cx('ocp-mark')} />,
       },
       {
         key: 'payRoutes',
@@ -231,7 +232,7 @@ const MENU: MenuGroup[] = [
 ];
 
 const EXT_ICON = (
-  <svg className="ext" viewBox="0 0 24 24" fill="none">
+  <svg className={cx('ext')} viewBox="0 0 24 24" fill="none">
     <path d="M7 17L17 7M9 7h8v8" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
@@ -277,58 +278,58 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
 
   return (
     <>
-      <div ref={scrimRef} className={`scrim${open ? ' on' : ''}`} onClick={onClose} aria-hidden="true" />
+      <div ref={scrimRef} className={cx('scrim', open && 'on')} onClick={onClose} aria-hidden="true" />
       <aside
         ref={ref}
-        className={`drawer${open ? ' on' : ''}`}
+        className={cx('drawer', open && 'on')}
         role="dialog"
         aria-modal="true"
         aria-labelledby="drawerName"
         aria-hidden={!open}
         tabIndex={-1}
       >
-        <div className="dhead">
-          <div className="who">
-            <span className="av">
+        <div className={cx('dhead')}>
+          <div className={cx('who')}>
+            <span className={cx('av')}>
               <svg viewBox="0 0 24 24" fill="none" style={{ width: 18, height: 18 }}>
                 <circle cx={12} cy={8} r={4} stroke="#fff" strokeWidth={1.9} />
                 <path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" stroke="#fff" strokeWidth={1.9} strokeLinecap="round" />
               </svg>
             </span>
-            <span className="nm">
+            <span className={cx('nm')}>
               <b id="drawerName">{t('mAcct')}</b>
               <small>
                 {address ? shortAddress(address) : '—'}
                 {blockchain && (
-                  <span className="pill-chip rdy" style={{ marginLeft: 6 }}>
+                  <span className={cx('pill-chip', 'rdy')} style={{ marginLeft: 6 }}>
                     {blockchain}
                   </span>
                 )}
               </small>
             </span>
           </div>
-          <button className="rbtn" aria-label="Close menu" style={{ width: 44, height: 44 }} onClick={onClose}>
+          <button className={cx('rbtn')} aria-label="Close menu" style={{ width: 44, height: 44 }} onClick={onClose}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
             </svg>
           </button>
         </div>
-        <div className="dscroll">
+        <div className={cx('dscroll')}>
           {MENU.map((group) => (
             <div key={group.key}>
-              <div className="dgroup">{t(group.key)}</div>
+              <div className={cx('dgroup')}>{t(group.key)}</div>
               {group.items.map((item) => (
                 <div
                   key={item.key}
-                  className={`mitem${
+                  className={cx(
+                    'mitem',
                     // Match the static app's buildMenu(): active when S.view===it.act. Since buy/sell/swap
                     // all resolve to the same view, only mBuy (mode 'buy') ever highlights; mSell/mSwap don't.
                     item.action.kind === 'route' &&
-                    item.action.path === activePath &&
-                    (!item.action.mode || item.action.mode === 'buy')
-                      ? ' active'
-                      : ''
-                  }`}
+                      item.action.path === activePath &&
+                      (!item.action.mode || item.action.mode === 'buy') &&
+                      'active',
+                  )}
                   role="button"
                   tabIndex={0}
                   onClick={() => runAction(item.action)}
@@ -339,7 +340,7 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
                     }
                   }}
                 >
-                  <span className="micon">{item.icon}</span>
+                  <span className={cx('micon')}>{item.icon}</span>
                   <span>{t(item.key)}</span>
                   {item.action.kind === 'external' && EXT_ICON}
                 </div>
@@ -347,11 +348,11 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
             </div>
           ))}
           <div>
-            <div className="dgroup" aria-hidden="true">
+            <div className={cx('dgroup')} aria-hidden="true">
               &nbsp;
             </div>
             <div
-              className="mitem"
+              className={cx('mitem')}
               role="button"
               tabIndex={0}
               onClick={() => runAction({ kind: 'logout' })}
@@ -362,13 +363,13 @@ export function Drawer({ open, onClose, activePath }: DrawerProps) {
                 }
               }}
             >
-              <span className="micon">{LOGOUT_ICON}</span>
+              <span className={cx('micon')}>{LOGOUT_ICON}</span>
               <span>{t('mLogout')}</span>
             </div>
           </div>
         </div>
-        <div className="dfoot">
-          <div className="acc">DFX Services AG · Zug</div>
+        <div className={cx('dfoot')}>
+          <div className={cx('acc')}>DFX Services AG · Zug</div>
         </div>
       </aside>
     </>

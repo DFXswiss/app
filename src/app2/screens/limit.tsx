@@ -26,6 +26,7 @@ import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { formatChf } from './parts/format';
 import { LoggedOutState } from './parts/LoggedOutState';
+import { cx } from '../css';
 
 // Matches the production Limit enum; the baseline limit is already 100k so the
 // lower tiers make no sense (mirrors the static app's LIMIT_TIERS).
@@ -172,28 +173,28 @@ export default function LimitScreen() {
   };
 
   return (
-    <div className="account">
-      <div className="limit-now">
-        <div className="lab">{t('currentLimit')}</div>
-        <div className="big">{currentValue}</div>
-        <div className="per">{currentPeriod}</div>
+    <div className={cx('account')}>
+      <div className={cx('limit-now')} data-testid="limit-card">
+        <div className={cx('lab')}>{t('currentLimit')}</div>
+        <div className={cx('big')}>{currentValue}</div>
+        <div className={cx('per')}>{currentPeriod}</div>
       </div>
 
       <p style={{ color: 'var(--t-muted)', fontSize: 13, lineHeight: 1.5, margin: '8px 4px 12px' }}>{t('limitLead')}</p>
 
       {level != null && level < 30 && (
-        <div className="paybox-note warn" style={{ margin: '0 0 12px' }}>
+        <div className={cx('paybox-note', 'warn')} style={{ margin: '0 0 12px' }}>
           {t('kycNeeded')}
         </div>
       )}
 
-      <div className="tform">
-        <label className="flabel" htmlFor="lmLimit">
+      <div className={cx('tform')}>
+        <label className={cx('flabel')} htmlFor="lmLimit">
           {t('limitWanted')}
         </label>
         <select
           id="lmLimit"
-          className="tinput"
+          className={cx('tinput')}
           value={limit}
           onChange={(e) => setLimit(Number(e.target.value) as Limit)}
         >
@@ -204,20 +205,25 @@ export default function LimitScreen() {
           ))}
         </select>
 
-        <label className="flabel" htmlFor="lmWhen">
+        <label className={cx('flabel')} htmlFor="lmWhen">
           {t('limitWhen')}
         </label>
-        <select id="lmWhen" className="tinput" value={when} onChange={(e) => setWhen(e.target.value as InvestmentDate)}>
+        <select
+          id="lmWhen"
+          className={cx('tinput')}
+          value={when}
+          onChange={(e) => setWhen(e.target.value as InvestmentDate)}
+        >
           <option value={InvestmentDate.NOW}>{t('invNow')}</option>
           <option value={InvestmentDate.FUTURE}>{t('invFuture')}</option>
         </select>
 
-        <label className="flabel" htmlFor="lmOrigin">
+        <label className={cx('flabel')} htmlFor="lmOrigin">
           {t('limitOrigin')}
         </label>
         <select
           id="lmOrigin"
-          className="tinput"
+          className={cx('tinput')}
           value={origin}
           onChange={(e) => setOrigin(e.target.value as FundOrigin)}
         >
@@ -228,24 +234,24 @@ export default function LimitScreen() {
           ))}
         </select>
 
-        <label className="flabel" htmlFor="lmText">
+        <label className={cx('flabel')} htmlFor="lmText">
           {t('limitDetails')}
         </label>
         <textarea
           id="lmText"
-          className="tinput"
+          className={cx('tinput')}
           rows={3}
           placeholder={t('limitDetailsP')}
           value={details}
           onChange={(e) => setDetails(e.target.value)}
         />
 
-        <label className="flabel" htmlFor="lmName">
+        <label className={cx('flabel')} htmlFor="lmName">
           {t('ticketName')}
         </label>
         <input
           id="lmName"
-          className="tinput"
+          className={cx('tinput')}
           autoComplete="name"
           value={name}
           onChange={(e) => {
@@ -256,12 +262,12 @@ export default function LimitScreen() {
 
         {needMail && (
           <>
-            <label className="flabel" htmlFor="lmMail">
+            <label className={cx('flabel')} htmlFor="lmMail">
               {t('ticketEmail')}
             </label>
             <input
               id="lmMail"
-              className="tinput"
+              className={cx('tinput')}
               type="email"
               placeholder="you@email.com"
               inputMode="email"
@@ -273,7 +279,7 @@ export default function LimitScreen() {
 
         <button
           type="button"
-          className="btn-primary"
+          className={cx('btn-primary')}
           style={{ marginTop: 6 }}
           disabled={submitting || submitted}
           onClick={submit}
@@ -282,7 +288,7 @@ export default function LimitScreen() {
         </button>
 
         {result && (
-          <div className={`paybox-note ${result.variant}`.trim()} style={{ marginTop: 12 }}>
+          <div className={cx('paybox-note', result.variant)} style={{ marginTop: 12 }}>
             {result.node}
           </div>
         )}

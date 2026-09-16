@@ -16,6 +16,7 @@ import {
   type RefObject,
   type ReactNode,
 } from 'react';
+import { cx } from '../css';
 
 /** Sets the DOM `inert` property imperatively — not in @types/react 18's JSX
  * attribute set, but a real, well-supported DOM property (Chrome/Firefox/Safari)
@@ -118,7 +119,7 @@ export function useModalDialog<T extends HTMLElement>(
 // ---------------------------------------------------------------------------
 
 export function Spinner() {
-  return <span className="spin" aria-hidden="true" />;
+  return <span className={cx('spin')} aria-hidden="true" />;
 }
 
 export function LoadingRow({ label }: { label: string }) {
@@ -202,12 +203,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className={`toast${polite.open ? ' on' : ''}`} role="status" aria-live="polite">
-        <span className="ok">{CHECK_ICON}</span>
+      <div className={cx('toast', polite.open && 'on')} data-testid="app2-toast" role="status" aria-live="polite">
+        <span className={cx('ok')}>{CHECK_ICON}</span>
         <span>{polite.message}</span>
       </div>
-      <div className={`toast${assertive.open ? ' on' : ''}`} role="alert" aria-live="assertive">
-        <span className="ok err">{ERROR_ICON}</span>
+      <div
+        className={cx('toast', assertive.open && 'on')}
+        data-testid="app2-toast-alert"
+        role="alert"
+        aria-live="assertive"
+      >
+        <span className={cx('ok', 'err')}>{ERROR_ICON}</span>
         <span>{assertive.message}</span>
       </div>
     </ToastContext.Provider>
@@ -243,17 +249,17 @@ export function Sheet({ open, onClose, titleId, children, showGrab = true }: She
 
   return (
     <>
-      <div ref={scrimRef} className={`scrim${open ? ' on' : ''}`} onClick={onClose} aria-hidden="true" />
+      <div ref={scrimRef} className={cx('scrim', open && 'on')} onClick={onClose} aria-hidden="true" />
       <div
         ref={ref}
-        className={`sheet${open ? ' on' : ''}`}
+        className={cx('sheet', open && 'on')}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-hidden={!open}
         tabIndex={-1}
       >
-        {showGrab && <div className="grab" />}
+        {showGrab && <div className={cx('grab')} />}
         {children}
       </div>
     </>
@@ -263,10 +269,10 @@ export function Sheet({ open, onClose, titleId, children, showGrab = true }: She
 /** Standard `.shead` row for a Sheet: title + close button. */
 export function SheetHeader({ titleId, title, onClose }: { titleId: string; title: string; onClose: () => void }) {
   return (
-    <div className="shead">
-      <div className="r1">
+    <div className={cx('shead')}>
+      <div className={cx('r1')}>
         <h3 id={titleId}>{title}</h3>
-        <button className="rbtn" aria-label="Close" style={{ width: 44, height: 44 }} onClick={onClose}>
+        <button className={cx('rbtn')} aria-label="Close" style={{ width: 44, height: 44 }} onClick={onClose}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
           </svg>
@@ -295,11 +301,11 @@ export function onActivate(handler: () => void) {
 
 export function ScreenPlaceholder({ title, note }: { title: string; note: string }) {
   return (
-    <div className="account">
-      <div className="txhead">
+    <div className={cx('account')}>
+      <div className={cx('txhead')}>
         <h2>{title}</h2>
       </div>
-      <p className="tnote" style={{ padding: '0 4px 8px' }}>
+      <p className={cx('tnote')} style={{ padding: '0 4px 8px' }}>
         {note}
       </p>
     </div>

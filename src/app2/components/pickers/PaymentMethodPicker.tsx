@@ -16,6 +16,7 @@ import { FiatPaymentMethod } from '@dfx.swiss/react';
 import type { Asset, Fiat } from '@dfx.swiss/react';
 import { Sheet, SheetHeader, onActivate } from '../ui';
 import { useT, type TranslationKey } from '../../i18n';
+import { cx } from '../../css';
 
 export interface PaymentMethodOption {
   id: FiatPaymentMethod;
@@ -63,7 +64,7 @@ export function PaymentMethodPicker({ open, onClose, titleId, options, value, on
   return (
     <Sheet open={open} onClose={onClose} titleId={titleId}>
       <SheetHeader titleId={titleId} title={t('choosePay')} onClose={onClose} />
-      <div className="slist" style={{ paddingBottom: 24 }}>
+      <div className={cx('slist')} style={{ paddingBottom: 24 }}>
         {options.map((option) => {
           const selected = option.id === value;
           const pick = () => {
@@ -73,18 +74,18 @@ export function PaymentMethodPicker({ open, onClose, titleId, options, value, on
           return (
             <div
               key={option.id}
-              className={`optrow${selected ? ' sel' : ''}`}
+              className={cx('optrow', selected && 'sel')}
               role="button"
               tabIndex={0}
               onClick={pick}
               onKeyDown={onActivate(pick)}
             >
-              <span className="oic">{option.icon}</span>
-              <div className="oi">
+              <span className={cx('oic')}>{option.icon}</span>
+              <div className={cx('oi')}>
                 <b>{t(option.nameKey)}</b>
                 <small>{t(option.descKey)}</small>
               </div>
-              <svg className="ck" viewBox="0 0 24 24" fill="none">
+              <svg className={cx('ck')} viewBox="0 0 24 24" fill="none">
                 <path
                   d="M5 12l4 4 10-10"
                   stroke="currentColor"

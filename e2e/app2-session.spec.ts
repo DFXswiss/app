@@ -17,11 +17,7 @@ import { app2ScreenshotOpts as screenshotOpts } from './helpers/app2-screenshot'
  * The stack's mock providers do not serve quotes, so the buy picture shows
  * the no-quote state. The account is fresh, so the transaction list is empty.
  */
-async function openApp2Session(
-  page: import('@playwright/test').Page,
-  token: string,
-  hash: string,
-): Promise<void> {
+async function openApp2Session(page: import('@playwright/test').Page, token: string, hash: string): Promise<void> {
   const url = `/app2/?session=${encodeURIComponent(token)}${hash}`;
   const response = await page.goto(url, { waitUntil: 'domcontentloaded' });
   expect(response, `${url} must be served`).toBeTruthy();
@@ -37,27 +33,18 @@ async function openApp2Session(
  * we only click hub tiles (`go(sub)`). The activation probe must finish first:
  * an in-flight 403 would overwrite `enableDemo()`'s `active`/`config`.
  */
-async function openOcpDemoTile(
-  page: import('@playwright/test').Page,
-  token: string,
-  tileTitle: RegExp,
-): Promise<void> {
+async function openOcpDemoTile(page: import('@playwright/test').Page, token: string, tileTitle: RegExp): Promise<void> {
   await Promise.all([
     page.waitForResponse((res) => res.url().includes('paymentLink/config') && res.request().method() === 'GET'),
     openApp2Session(page, token, '#/ocp'),
   ]);
   await expect(page.getByRole('heading', { name: /opencryptopay/i }).first()).toBeVisible();
-  await page
-    .getByRole('button', { name: /try a live demo|live-demo|prova una demo|essayer une démo/i })
-    .click();
-  await expect(page.locator('.demobadge')).toBeVisible();
-  await expect(page.locator('button.octile').first()).toBeVisible();
-  await expect(page.locator('.toast.on')).toHaveCount(0);
-  await page
-    .locator('button.octile')
-    .filter({ has: page.locator('.tx > b', { hasText: tileTitle }) })
-    .click();
-  await expect(page.locator('.demobadge')).toBeVisible();
+  await page.getByRole('button', { name: /try a live demo|live-demo|prova una demo|essayer une démo/i }).click();
+  await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
+  await expect(page.getByTestId('ocp-tile').first()).toBeVisible();
+  await expect(page.getByTestId('app2-toast')).toBeHidden();
+  await page.getByTestId('ocp-tile').filter({ hasText: tileTitle }).click();
+  await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
 }
 
 test.describe('App2 session screens', () => {
@@ -110,7 +97,7 @@ test.describe('App2 session screens', () => {
 
   test('limit (logged in)', async ({ page }) => {
     await openApp2Session(page, token, '#/limit');
-    await expect(page.locator('.limit-now')).toBeVisible();
+    await expect(page.getByTestId('limit-card')).toBeVisible();
     await expect(page).toHaveScreenshot('app2-limit-in.png', screenshotOpts);
   });
 
@@ -133,51 +120,45 @@ test.describe('App2 session screens', () => {
         .getByRole('heading', { name: /payment routes|zahlungswege|metodi di pagamento|moyens de paiement/i })
         .first(),
     ).toBeVisible();
-    await expect(page.locator('.demobadge')).toBeVisible();
+    await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
     await expect(page).toHaveScreenshot('app2-ocp-routes.png', screenshotOpts);
   });
 
   test('OpenCryptoPay invoice (logged in)', async ({ page }) => {
     await openOcpDemoTile(page, token, /^(create invoice|rechnung erstellen|crea fattura|créer une facture)$/i);
     await expect(
-      page
-        .getByRole('heading', { name: /create invoice|rechnung erstellen|crea fattura|créer une facture/i })
-        .first(),
+      page.getByRole('heading', { name: /create invoice|rechnung erstellen|crea fattura|créer une facture/i }).first(),
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: /generate invoice|rechnung erstellen|genera fattura|générer la facture/i }),
     ).toBeVisible();
-    await expect(page.locator('.demobadge')).toBeVisible();
+    await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
     await expect(page).toHaveScreenshot('app2-ocp-invoice.png', screenshotOpts);
   });
 
   test('OpenCryptoPay point of sale (logged in)', async ({ page }) => {
     await openOcpDemoTile(page, token, /^(point of sale|kasse|cassa|caisse)$/i);
-    await expect(
-      page.getByRole('heading', { name: /point of sale|kasse|cassa|caisse/i }).first(),
-    ).toBeVisible();
-    await expect(page.locator('select.tinput')).toContainText('Front counter');
-    await expect(page.locator('.demobadge')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /point of sale|kasse|cassa|caisse/i }).first()).toBeVisible();
+    await expect(page.getByTestId('ocp-pos-register')).toContainText('Front counter');
+    await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
     await expect(page).toHaveScreenshot('app2-ocp-pos.png', screenshotOpts);
   });
 
   test('OpenCryptoPay links (logged in)', async ({ page }) => {
     await openOcpDemoTile(page, token, /^(payment links|zahlungslinks|link di pagamento|liens de paiement)$/i);
     await expect(
-      page
-        .getByRole('heading', { name: /payment links|zahlungslinks|link di pagamento|liens de paiement/i })
-        .first(),
+      page.getByRole('heading', { name: /payment links|zahlungslinks|link di pagamento|liens de paiement/i }).first(),
     ).toBeVisible();
     // LinkCard is a closed <details>; .qcap lives in the collapsed body and is not the open state.
-    await expect(page.locator('details.rcol[open]')).toHaveCount(0);
-    await expect(page.locator('details.rcol > summary b', { hasText: 'Front counter' })).toBeVisible();
-    await expect(page.locator('details.rcol > summary b', { hasText: 'Online shop' })).toBeVisible();
+    await expect(page.locator('[data-testid="ocp-link-card"][open]')).toHaveCount(0);
+    await expect(page.getByTestId('ocp-link-card').filter({ hasText: 'Front counter' })).toBeVisible();
+    await expect(page.getByTestId('ocp-link-card').filter({ hasText: 'Online shop' })).toBeVisible();
     await expect(
       page.getByRole('button', {
         name: /create payment link|zahlungslink erstellen|crea link di pagamento|créer un lien de paiement/i,
       }),
     ).toBeVisible();
-    await expect(page.locator('.demobadge')).toBeVisible();
+    await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
     await expect(page).toHaveScreenshot('app2-ocp-links.png', screenshotOpts);
   });
 
@@ -196,7 +177,7 @@ test.describe('App2 session screens', () => {
     ).toBeVisible();
     await expect(page.getByText('Coffee & croissant')).toBeVisible();
     await expect(page.getByText('Lunch menu')).toBeVisible();
-    await expect(page.locator('.demobadge')).toBeVisible();
+    await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
     await expect(page).toHaveScreenshot('app2-ocp-history.png', screenshotOpts);
   });
 
@@ -210,8 +191,8 @@ test.describe('App2 session screens', () => {
         /defaults applied to every new payment|standardwerte für jede neue zahlung|valori predefiniti per ogni nuovo pagamento|valeurs par défaut pour chaque paiement/i,
       ),
     ).toBeVisible();
-    await expect(page.locator('.tform .chk', { hasText: /^OpenCryptoPay$/ })).toBeVisible();
-    await expect(page.locator('.demobadge')).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: /^OpenCryptoPay$/ })).toBeVisible();
+    await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
     await expect(page).toHaveScreenshot('app2-ocp-config.png', screenshotOpts);
   });
 });

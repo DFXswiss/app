@@ -13,6 +13,7 @@ import itFlag from '../assets/flags/it.svg';
 import { LANGUAGES, useT, type Language } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { Sheet, SheetHeader, useToast } from './ui';
+import { cx } from '../css';
 
 const FLAGS: Record<string, string> = { gb: gbFlag, de: deFlag, it: itFlag, fr: frFlag };
 
@@ -48,11 +49,11 @@ export function LanguageSheet({ open, onClose }: LanguageSheetProps) {
   return (
     <Sheet open={open} onClose={onClose} titleId="langSheetTitle">
       <SheetHeader titleId="langSheetTitle" title={t('chooseLang')} onClose={onClose} />
-      <div className="slist" style={{ paddingBottom: 24 }}>
+      <div className={cx('slist')} style={{ paddingBottom: 24 }}>
         {LANGUAGES.map(({ code, label, flag }) => (
           <div
             key={code}
-            className={`lopt${language === code ? ' sel' : ''}`}
+            className={cx('lopt', language === code && 'sel')}
             role="button"
             tabIndex={0}
             onClick={() => pick(code, label)}
@@ -65,7 +66,7 @@ export function LanguageSheet({ open, onClose }: LanguageSheetProps) {
           >
             <img src={FLAGS[flag]} alt="" width={22} height={22} />
             <b>{label}</b>
-            <svg className="ck" viewBox="0 0 24 24" fill="none">
+            <svg className={cx('ck')} viewBox="0 0 24 24" fill="none">
               <path
                 d="M5 12l4 4 10-10"
                 stroke="currentColor"
@@ -148,7 +149,7 @@ export function LanguageMenu({ open, onClose, anchorRef }: LanguageMenuProps) {
 
   return (
     <div
-      className={`langmenu${open ? ' on' : ''}`}
+      className={cx('langmenu', open && 'on')}
       id="langMenu"
       role="menu"
       aria-label="Language"
@@ -158,7 +159,7 @@ export function LanguageMenu({ open, onClose, anchorRef }: LanguageMenuProps) {
       {LANGUAGES.map(({ code, label, flag }) => (
         <div
           key={code}
-          className={`lopt${language === code ? ' sel' : ''}`}
+          className={cx('lopt', language === code && 'sel')}
           role="menuitem"
           tabIndex={-1}
           aria-current={language === code || undefined}
@@ -172,7 +173,7 @@ export function LanguageMenu({ open, onClose, anchorRef }: LanguageMenuProps) {
         >
           <img src={FLAGS[flag]} alt="" width={22} height={22} />
           <b>{label}</b>
-          <svg className="ck" viewBox="0 0 24 24" fill="none">
+          <svg className={cx('ck')} viewBox="0 0 24 24" fill="none">
             <path
               d="M5 12l4 4 10-10"
               stroke="currentColor"

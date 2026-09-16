@@ -21,6 +21,7 @@ import SupportScreen from './screens/support';
 import TransactionsScreen from './screens/transactions';
 import { foldApp2PathIntoHash } from './utils/url';
 import { WalletSessionProvider } from './wallets/session';
+import { cx } from './css';
 
 // Checkout.com / e-mail returns hit real paths (/app2/buy/success?…). Fold into
 // the hash before the router mounts so ReturnRouteScreen sees the query.
@@ -70,15 +71,18 @@ class App2ErrorBoundary extends Component<{ children: ReactNode }, { failed: boo
 function App2ErrorFallback() {
   const { t } = useT();
   return (
-    <div className="app">
-      <div className="layer">
-        <div className="topbar" style={{ justifyContent: 'center' }}>
-          <img className="brand-logo" src={logoWhite} alt="DFX" />
+    <div className={cx('app')}>
+      <div className={cx('layer')}>
+        <div className={cx('topbar')} style={{ justifyContent: 'center' }}>
+          <img className={cx('brand-logo')} src={logoWhite} alt="DFX" />
         </div>
-        <div className="body">
-          <div className="account" style={{ display: 'grid', placeContent: 'center', textAlign: 'center', gap: 14 }}>
-            <div className="paybox-note warn">{t('genErr')}</div>
-            <button className="btn-primary" type="button" onClick={() => window.location.reload()}>
+        <div className={cx('body')}>
+          <div
+            className={cx('account')}
+            style={{ display: 'grid', placeContent: 'center', textAlign: 'center', gap: 14 }}
+          >
+            <div className={cx('paybox-note', 'warn')}>{t('genErr')}</div>
+            <button className={cx('btn-primary')} type="button" onClick={() => window.location.reload()}>
               {t('retry')}
             </button>
           </div>

@@ -47,6 +47,7 @@ import { useWalletSession } from '../wallets/session';
 import { formatAmount, formatDate, formatNumber, shortAddress } from './parts/format';
 import { LoggedOutState } from './parts/LoggedOutState';
 import { stateLabel } from './transaction-state-label';
+import { cx } from '../css';
 
 type LoadState = 'loading' | 'error' | 'loaded';
 
@@ -181,11 +182,11 @@ function copyToClipboard(value: string, showToast: (m: string) => void, t: (k: '
 function KvRow({ label, value, onCopy }: { label: string; value: string; onCopy?: () => void }) {
   if (!value) return null;
   return (
-    <div className="kv">
-      <span className="kk">{label}</span>
-      <span className="vv">{value}</span>
+    <div className={cx('kv')}>
+      <span className={cx('kk')}>{label}</span>
+      <span className={cx('vv')}>{value}</span>
       {onCopy && (
-        <button type="button" className="cpy" aria-label={label} onClick={onCopy}>
+        <button type="button" className={cx('cpy')} aria-label={label} onClick={onCopy}>
           {COPY_ICON}
         </button>
       )}
@@ -382,7 +383,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
 
   if (phase === 'loading') {
     return (
-      <div className="refundbox" style={{ padding: '18px 8px', textAlign: 'center' }}>
+      <div className={cx('refundbox')} style={{ padding: '18px 8px', textAlign: 'center' }}>
         <LoadingRow label={t('loading')} />
       </div>
     );
@@ -390,12 +391,12 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
 
   if (phase === 'error') {
     return (
-      <div className="refundbox">
-        <div className="paybox-note warn" style={{ marginBottom: 10 }}>
+      <div className={cx('refundbox')}>
+        <div className={cx('paybox-note', 'warn')} style={{ marginBottom: 10 }}>
           {t('refundUnavailable')}
         </div>
-        <div className="txactions">
-          <button type="button" className="btn-mini" onClick={load}>
+        <div className={cx('txactions')}>
+          <button type="button" className={cx('btn-mini')} onClick={load}>
             {t('retry')}
           </button>
         </div>
@@ -405,8 +406,8 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
 
   if (phase === 'done') {
     return (
-      <div className="refundbox">
-        <div className="paybox-note ok" style={{ padding: 16, textAlign: 'center' }}>
+      <div className={cx('refundbox')}>
+        <div className={cx('paybox-note', 'ok')} style={{ padding: 16, textAlign: 'center' }}>
           {t('refundDone')}
         </div>
       </div>
@@ -417,16 +418,16 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
   const sortedCountries = [...countries].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div className="refundbox">
+    <div className={cx('refundbox')}>
       <div
-        className="glass"
+        className={cx('glass')}
         style={{ padding: '14px 16px', borderRadius: 14, textAlign: 'center', margin: '2px 0 10px' }}
       >
         <div style={{ fontSize: 12, color: 'var(--t-muted)' }}>{t('refundYouGet')}</div>
         <div style={{ fontSize: 20, fontWeight: 700, marginTop: 2 }}>{amountLabel}</div>
       </div>
       {data?.fee && (
-        <div className="glass" style={{ borderRadius: 12, padding: '2px 14px', marginBottom: 10 }}>
+        <div className={cx('glass')} style={{ borderRadius: 12, padding: '2px 14px', marginBottom: 10 }}>
           <KvRow label={t('feeDfx')} value={formatNumber(data.fee.dfx, language, 8)} />
           <KvRow label={t('feeNetwork')} value={formatNumber(data.fee.network, language, 8)} />
           <KvRow label={t('feeBank')} value={formatNumber(data.fee.bank, language, 8)} />
@@ -435,19 +436,19 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
 
       {kind === 'crypto' && (
         <>
-          <label className="flabel" htmlFor={cryptoTarget ? undefined : 'refundCryptoAddr'}>
+          <label className={cx('flabel')} htmlFor={cryptoTarget ? undefined : 'refundCryptoAddr'}>
             {t('refundTo')}
           </label>
           {cryptoTarget ? (
-            <input className="tinput" value={cryptoTarget} readOnly aria-readonly="true" />
+            <input className={cx('tinput')} value={cryptoTarget} readOnly aria-readonly="true" />
           ) : allowedCryptoAddresses.length === 0 ? (
-            <div className="paybox-note warn" style={{ marginTop: 4 }}>
+            <div className={cx('paybox-note', 'warn')} style={{ marginTop: 4 }}>
               {t('refundNoTarget')}
             </div>
           ) : (
             <select
               id="refundCryptoAddr"
-              className="tinput"
+              className={cx('tinput')}
               value={selectedCryptoAddress}
               aria-label={t('refundTo')}
               onChange={(event) => setSelectedCryptoAddress(event.target.value)}
@@ -462,13 +463,13 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
           )}
         </>
       )}
-      {kind === 'card' && <p className="paybox-note">{t('refundCardNote')}</p>}
+      {kind === 'card' && <p className={cx('paybox-note')}>{t('refundCardNote')}</p>}
       {kind === 'bank' && (
         <>
-          <label className="flabel">{t('iban')}</label>
+          <label className={cx('flabel')}>{t('iban')}</label>
           <input
             ref={ibanRef}
-            className="tinput"
+            className={cx('tinput')}
             value={iban}
             readOnly={ibanFixed}
             aria-readonly={ibanFixed || undefined}
@@ -476,24 +477,33 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
             autoComplete="off"
             onChange={(event) => setIban(event.target.value)}
           />
-          <div className="sectionlabel tight">{t('refundHolder')}</div>
-          <label className="flabel">{t('refundName')}</label>
+          <div className={cx('sectionlabel', 'tight')}>{t('refundHolder')}</div>
+          <label className={cx('flabel')}>{t('refundName')}</label>
           <input
-            className="tinput"
+            className={cx('tinput')}
             value={holderName}
             autoComplete="name"
             onChange={(event) => setHolderName(event.target.value)}
           />
-          <label className="flabel">{t('kycStreet')}</label>
-          <input className="tinput" value={street} onChange={(event) => setStreet(event.target.value)} />
-          <label className="flabel">{t('kycHouseNr')}</label>
-          <input className="tinput" value={houseNumber} onChange={(event) => setHouseNumber(event.target.value)} />
-          <label className="flabel">{t('kycZip')}</label>
-          <input className="tinput" value={zip} inputMode="numeric" onChange={(event) => setZip(event.target.value)} />
-          <label className="flabel">{t('kycCity')}</label>
-          <input className="tinput" value={city} onChange={(event) => setCity(event.target.value)} />
-          <label className="flabel">{t('kycCountry')}</label>
-          <select className="tinput" value={country} onChange={(event) => setCountry(event.target.value)}>
+          <label className={cx('flabel')}>{t('kycStreet')}</label>
+          <input className={cx('tinput')} value={street} onChange={(event) => setStreet(event.target.value)} />
+          <label className={cx('flabel')}>{t('kycHouseNr')}</label>
+          <input
+            className={cx('tinput')}
+            value={houseNumber}
+            onChange={(event) => setHouseNumber(event.target.value)}
+          />
+          <label className={cx('flabel')}>{t('kycZip')}</label>
+          <input
+            className={cx('tinput')}
+            value={zip}
+            inputMode="numeric"
+            onChange={(event) => setZip(event.target.value)}
+          />
+          <label className={cx('flabel')}>{t('kycCity')}</label>
+          <input className={cx('tinput')} value={city} onChange={(event) => setCity(event.target.value)} />
+          <label className={cx('flabel')}>{t('kycCountry')}</label>
+          <select className={cx('tinput')} value={country} onChange={(event) => setCountry(event.target.value)}>
             {sortedCountries.map((option) => (
               <option key={option.id} value={option.symbol}>
                 {option.name}
@@ -504,26 +514,26 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
       )}
 
       {submitting ? (
-        <div className="paybox-note" style={{ marginTop: 10 }}>
+        <div className={cx('paybox-note')} style={{ marginTop: 10 }}>
           <LoadingRow label={t('tkSending')} />
         </div>
       ) : warn ? (
-        <div className="paybox-note warn" style={{ marginTop: 10 }}>
+        <div className={cx('paybox-note', 'warn')} style={{ marginTop: 10 }}>
           {warn}
         </div>
       ) : null}
 
-      <div className="txactions" style={{ marginTop: 12 }}>
+      <div className={cx('txactions')} style={{ marginTop: 12 }}>
         <button
           type="button"
-          className="btn-primary"
+          className={cx('btn-primary')}
           style={{ flex: 1 }}
           disabled={submitting || cryptoBlocked}
           onClick={submit}
         >
           {t('refundConfirm')}
         </button>
-        <button type="button" className="btn-mini" style={{ width: 'auto', flex: '0 0 auto' }} onClick={onClose}>
+        <button type="button" className={cx('btn-mini')} style={{ width: 'auto', flex: '0 0 auto' }} onClick={onClose}>
           {t('cancel')}
         </button>
       </div>
@@ -718,11 +728,11 @@ export default function TransactionsScreen() {
   const visible = transactions.slice(0, shown);
 
   return (
-    <div className="account">
-      <div className="txhead">
+    <div className={cx('account')}>
+      <div className={cx('txhead')}>
         <button
           type="button"
-          className="rbtn"
+          className={cx('rbtn')}
           aria-label="Back"
           style={{ width: 40, height: 40 }}
           onClick={() => navigate('/')}
@@ -736,12 +746,12 @@ export default function TransactionsScreen() {
           app's `openAssign`/`renderAssign`), headed by a back-to-list link. */}
       {assignOpen ? (
         <>
-          <div className="txtop">
-            <button type="button" className="txlink" onClick={() => setAssignOpen(false)}>
+          <div className={cx('txtop')}>
+            <button type="button" className={cx('txlink')} onClick={() => setAssignOpen(false)}>
               ‹ {t('txBackToList')}
             </button>
           </div>
-          <div className="sectionlabel">{t('txAssignTitle')}</div>
+          <div className={cx('sectionlabel')}>{t('txAssignTitle')}</div>
           {targetsState === 'loading' ? (
             <div style={{ padding: '18px 8px', textAlign: 'center' }}>
               <LoadingRow label={t('loading')} />
@@ -749,7 +759,7 @@ export default function TransactionsScreen() {
           ) : (
             <>
               {targets.length === 0 && (
-                <div className="paybox-note warn" style={{ padding: 12, marginBottom: 10 }}>
+                <div className={cx('paybox-note', 'warn')} style={{ padding: 12, marginBottom: 10 }}>
                   {t('txNoTargets')}
                 </div>
               )}
@@ -758,14 +768,14 @@ export default function TransactionsScreen() {
                 const label = amount || `#${payment.id ?? index}`;
                 const value = picked[index] ?? (targets[0]?.id != null ? String(targets[0].id) : '');
                 return (
-                  <div className="assignrow" key={payment.uid || payment.id || index}>
-                    <div className="ah">
+                  <div className={cx('assignrow')} key={payment.uid || payment.id || index}>
+                    <div className={cx('ah')}>
                       {label}
                       <small>{formatDate(payment.date, language)}</small>
                     </div>
-                    <div className="ac">
+                    <div className={cx('ac')}>
                       <select
-                        className="tinput"
+                        className={cx('tinput')}
                         aria-label={t('txAssignTo')}
                         value={value}
                         disabled={targets.length === 0}
@@ -778,7 +788,7 @@ export default function TransactionsScreen() {
                         ))}
                       </select>
                       <button
-                        className="btn-mini"
+                        className={cx('btn-mini')}
                         type="button"
                         disabled={targets.length === 0 || assigning === index}
                         onClick={() => doAssign(index)}
@@ -796,12 +806,12 @@ export default function TransactionsScreen() {
         <>
           {state === 'loaded' && (
             <>
-              <div className="txtop">
-                <button type="button" className="txlink" onClick={() => openReport()}>
+              <div className={cx('txtop')}>
+                <button type="button" className={cx('txlink')} onClick={() => openReport()}>
                   {t('txMissing')}
                 </button>
                 <button
-                  className="btn-mini"
+                  className={cx('btn-mini')}
                   type="button"
                   style={{ width: 'auto', height: 38, padding: '0 13px' }}
                   aria-expanded={menuOpen}
@@ -811,11 +821,11 @@ export default function TransactionsScreen() {
                 </button>
               </div>
               {menuOpen && (
-                <div className="txmenu">
-                  <button className="btn-mini" type="button" onClick={exportCompactCsv}>
+                <div className={cx('txmenu')}>
+                  <button className={cx('btn-mini')} type="button" onClick={exportCompactCsv}>
                     {t('csvCompact')}
                   </button>
-                  <button className="btn-mini" type="button" onClick={exportCoinTracking}>
+                  <button className={cx('btn-mini')} type="button" onClick={exportCoinTracking}>
                     {t('csvCoinTracking')}
                   </button>
                 </div>
@@ -826,45 +836,45 @@ export default function TransactionsScreen() {
           {unassigned.length > 0 && (
             <button
               type="button"
-              className="txnotice"
+              className={cx('txnotice')}
               style={{ font: 'inherit', textAlign: 'left' }}
               onClick={openAssign}
             >
-              <span className="ni">{ALERT_ICON}</span>
-              <span className="nt">
+              <span className={cx('ni')}>{ALERT_ICON}</span>
+              <span className={cx('nt')}>
                 {t('txUnassignedN', { n: unassigned.length })}
                 <small>{t('txUnassignedSub')}</small>
               </span>
-              <span className="caret">{CARET_ICON}</span>
+              <span className={cx('caret')}>{CARET_ICON}</span>
             </button>
           )}
 
           {state === 'loading' && (
-            <div className="sec" style={{ textAlign: 'center', padding: 24 }}>
+            <div className={cx('sec')} style={{ textAlign: 'center', padding: 24 }}>
               <LoadingRow label={t('loading')} />
             </div>
           )}
 
           {state === 'error' && (
             <div
-              className="ocp-empty"
+              className={cx('ocp-empty')}
               style={{ flexDirection: 'column', gap: 12, textAlign: 'center', padding: '30px 8px' }}
             >
               <span>{t('loadFail')}</span>
-              <button className="btn-mini" style={{ width: 'auto' }} onClick={load}>
+              <button className={cx('btn-mini')} style={{ width: 'auto' }} onClick={load}>
                 {t('retry')}
               </button>
             </div>
           )}
 
           {state === 'loaded' && transactions.length === 0 && (
-            <div className="sec" style={{ textAlign: 'center', padding: 30 }}>
+            <div className={cx('sec')} style={{ textAlign: 'center', padding: 30 }}>
               {t('noTx')}
             </div>
           )}
 
           {state === 'loaded' && transactions.length > 0 && (
-            <div className="glass rowlist" style={{ marginTop: 6 }}>
+            <div className={cx('glass', 'rowlist')} style={{ marginTop: 6 }}>
               {visible.map((tx, i) => {
                 // Unknown/unlisted types fall back to the Buy style and icon
                 // (mirrors the static app's `TXTYPES[type]||TXTYPES.Buy`).
@@ -902,21 +912,21 @@ export default function TransactionsScreen() {
                 const reference = raw.reference || raw.usage || raw.bankUsage || raw.txId || tx.inputTxId || '';
                 const refundKey = tx.uid || String(tx.id ?? i);
                 return (
-                  <details className="txitem" key={tx.uid || tx.id || i}>
-                    <summary className="txrow">
-                      <span className="txicon" style={{ background: style.bg }}>
+                  <details className={cx('txitem')} key={tx.uid || tx.id || i}>
+                    <summary className={cx('txrow')}>
+                      <span className={cx('txicon')} style={{ background: style.bg }}>
                         {style.icon}
                       </span>
-                      <div className="ti">
+                      <div className={cx('ti')}>
                         <b>{typeLabel}</b>
                         <small>{formatDate(tx.date, language)}</small>
                       </div>
-                      <div className="ta">
+                      <div className={cx('ta')}>
                         <b>{amount}</b>
                         <small>{stateLabel(t, tx.state)}</small>
                       </div>
                     </summary>
-                    <div className="txbody">
+                    <div className={cx('txbody')}>
                       {refundActiveId === refundKey ? (
                         <RefundPanel tx={tx} onClose={() => setRefundActiveId(null)} />
                       ) : (
@@ -934,13 +944,17 @@ export default function TransactionsScreen() {
                             value={reference}
                             onCopy={reference ? () => copyToClipboard(reference, showToast, t) : undefined}
                           />
-                          <div className="txactions">
+                          <div className={cx('txactions')}>
                             {isRefundable(tx) && (
-                              <button type="button" className="btn-mini" onClick={() => setRefundActiveId(refundKey)}>
+                              <button
+                                type="button"
+                                className={cx('btn-mini')}
+                                onClick={() => setRefundActiveId(refundKey)}
+                              >
                                 {t('txRefund')}
                               </button>
                             )}
-                            <button type="button" className="btn-mini" onClick={() => openReport(tx.uid)}>
+                            <button type="button" className={cx('btn-mini')} onClick={() => openReport(tx.uid)}>
                               {t('txReport')}
                             </button>
                           </div>
@@ -954,7 +968,7 @@ export default function TransactionsScreen() {
               {/* Reveal the next page of already-loaded rows — no network call,
                   hidden once every row is shown (mirrors `txMore`, orig 4456). */}
               {shown < transactions.length && (
-                <div className="txbar">
+                <div className={cx('txbar')}>
                   <button type="button" onClick={() => setShown((current) => current + TXPAGE)}>
                     {t('txLoadMore')}
                   </button>

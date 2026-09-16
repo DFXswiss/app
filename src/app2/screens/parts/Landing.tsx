@@ -11,6 +11,7 @@ import { firstQueryParam } from '../../utils/url';
 import { useWalletSession } from '../../wallets/session';
 import { classifyInviteCode, normalizeInviteCode, RECOMMENDATION_CODE_LENGTH } from '../../wallets/invite';
 import { WALLET_CATALOG } from '../../wallets/catalog';
+import { cx } from '../../css';
 
 // Mirrors the static app's STRIP_IDS (public/app2/index.html) — the wallets shown in the
 // "works with your wallet" strip below the auth buttons.
@@ -189,35 +190,35 @@ export function Landing() {
   };
 
   return (
-    <div className="login">
-      <div className="hero">
+    <div className={cx('login')}>
+      <div className={cx('hero')}>
         <h1>
           <span>{t('h1a')}</span>
           <br />
           <em>{t('h1b')}</em>
         </h1>
-        <p className="lead">{t('lead')}</p>
+        <p className={cx('lead')}>{t('lead')}</p>
 
-        <div className="auth">
-          <button className="btn-glass cta-wallet" onClick={() => openConnect(normalizedInvite || undefined)}>
-            <span className="ic">{WALLET_ICON}</span>
-            <span className="tx">
+        <div className={cx('auth')}>
+          <button className={cx('btn-glass', 'cta-wallet')} onClick={() => openConnect(normalizedInvite || undefined)}>
+            <span className={cx('ic')}>{WALLET_ICON}</span>
+            <span className={cx('tx')}>
               <b>{t('connect')}</b>
-              <span className="sub">{t('connectSub')}</span>
+              <span className={cx('sub')}>{t('connectSub')}</span>
             </span>
-            <span className="arr">{ARROW_ICON}</span>
+            <span className={cx('arr')}>{ARROW_ICON}</span>
           </button>
-          <button className="btn-glass" onClick={handleEmailButton}>
-            <span className="ic">{MAIL_ICON}</span>
-            <span className="tx">
+          <button className={cx('btn-glass')} onClick={handleEmailButton}>
+            <span className={cx('ic')}>{MAIL_ICON}</span>
+            <span className={cx('tx')}>
               <b>{t('email')}</b>
-              <span className="sub">{t('emailSub')}</span>
+              <span className={cx('sub')}>{t('emailSub')}</span>
             </span>
-            <span className="arr">{ARROW_ICON}</span>
+            <span className={cx('arr')}>{ARROW_ICON}</span>
           </button>
-          <div className={`emailwrap${emailOpen ? ' open' : ''}`}>
+          <div className={cx('emailwrap', emailOpen && 'open')}>
             <div>
-              <div className={`efield${emailInvalid ? ' invalid' : ''}`}>
+              <div className={cx('efield', emailInvalid && 'invalid')}>
                 <input
                   ref={emailInputRef}
                   type="email"
@@ -240,7 +241,7 @@ export function Landing() {
                 </button>
               </div>
               {emailInvalid && (
-                <p className="ferr" id="emailFieldErr" role="alert">
+                <p className={cx('ferr')} id="emailFieldErr" role="alert">
                   {t('emailInvalid')}
                 </p>
               )}
@@ -248,13 +249,13 @@ export function Landing() {
           </div>
         </div>
 
-        <button className={`invite-toggle${initialInvite ? ' applied' : ''}`} onClick={() => setInviteOpen((v) => !v)}>
+        <button className={cx('invite-toggle', initialInvite && 'applied')} onClick={() => setInviteOpen((v) => !v)}>
           {INVITE_ICON}
           <span>{initialInvite ? `${t('inviteApplied')} ${initialInvite}` : t('haveInvite')}</span>
         </button>
-        <div className={`emailwrap${inviteOpen ? ' open' : ''}`}>
+        <div className={cx('emailwrap', inviteOpen && 'open')}>
           <div>
-            <div className="efield" style={{ paddingTop: 10 }}>
+            <div className={cx('efield')} style={{ paddingTop: 10 }}>
               <input
                 ref={inviteInputRef}
                 type="text"
@@ -268,25 +269,25 @@ export function Landing() {
               />
             </div>
             {inviteUnrecognized && (
-              <p className="csub" style={{ color: 'var(--warning, #FBBF24)' }}>
+              <p className={cx('csub')} style={{ color: 'var(--warning, #FBBF24)' }}>
                 {t('inviteCodeUnrecognized')}
               </p>
             )}
             {inviteNeedsWalletLogin && (
-              <p className="csub" style={{ color: 'var(--warning, #FBBF24)' }}>
+              <p className={cx('csub')} style={{ color: 'var(--warning, #FBBF24)' }}>
                 {t('inviteCodeWalletOnly')}
               </p>
             )}
           </div>
         </div>
 
-        <div className="supported">
-          <div className="cap">{t('worksWith')}</div>
-          <div className="wstrip">
+        <div className={cx('supported')}>
+          <div className={cx('cap')}>{t('worksWith')}</div>
+          <div className={cx('wstrip')}>
             {STRIP_ENTRIES.map((entry) => (
               <button
                 key={entry.id}
-                className="wchip"
+                className={cx('wchip')}
                 type="button"
                 title={entry.id}
                 aria-label={entry.id}
@@ -308,16 +309,16 @@ export function Landing() {
             ))}
           </div>
         </div>
-        <div className="trust">
-          <div className="t">
+        <div className={cx('trust')}>
+          <div className={cx('t')}>
             {SHIELD_ICON}
             <span>{t('t1')}</span>
           </div>
-          <div className="t">
+          <div className={cx('t')}>
             {LOCK_ICON}
             <span>{t('t2')}</span>
           </div>
-          <div className="t">
+          <div className={cx('t')}>
             {CLOCK_ICON}
             <span>{t('t3')}</span>
           </div>

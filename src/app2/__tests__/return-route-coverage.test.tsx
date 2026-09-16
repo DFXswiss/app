@@ -32,7 +32,7 @@ jest.mock('react-router-dom', () => ({
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ApiException } from '@dfx.swiss/react';
-import { JobStatus } from 'src/util/job';
+import { JobStatus } from '../lib/job';
 import ReturnRouteScreen, { nextPollDelay, CKO_POLL } from '../screens/return-route';
 import { LanguageProvider } from '../i18n';
 
@@ -68,7 +68,9 @@ describe('ReturnRouteScreen extra paths', () => {
 
   it('rejects a merge link without otp and a 400 from the API', async () => {
     renderRoute();
-    expect(await screen.findByText(/invalid|ungültig|non valid|invalide|unvollständig|incomplete/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/invalid|ungültig|non valid|invalide|unvollständig|incomplete/i),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button'));
     expect(mockNavigate).toHaveBeenCalledWith('/');
   });
@@ -111,7 +113,9 @@ describe('ReturnRouteScreen extra paths', () => {
     });
     renderRoute();
     expect(await screen.findByText(/contact support if this persists/i)).toBeInTheDocument();
-    expect(screen.queryByText(/your accounts have been merged|deine konten wurden zusammengeführt/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/your accounts have been merged|deine konten wurden zusammengeführt/i),
+    ).not.toBeInTheDocument();
     expect(mockUpdateSession).not.toHaveBeenCalled();
   });
 
@@ -139,7 +143,9 @@ describe('ReturnRouteScreen extra paths', () => {
     mockSearch.value = 'otp=abc123';
     mockCall.mockResolvedValue({ ...MERGE_JOB, status: JobStatus.DEAD_LETTER });
     renderRoute();
-    expect(await screen.findByText(/account merge failed|kontozusammenführung ist fehlgeschlagen/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/account merge failed|kontozusammenführung ist fehlgeschlagen/i),
+    ).toBeInTheDocument();
     expect(mockUpdateSession).not.toHaveBeenCalled();
   });
 
@@ -149,7 +155,9 @@ describe('ReturnRouteScreen extra paths', () => {
       .mockResolvedValueOnce({ ...MERGE_JOB, status: JobStatus.COMPLETE })
       .mockResolvedValueOnce({ ...MERGE_JOB, status: JobStatus.COMPLETE });
     renderRoute();
-    expect(await screen.findByText(/account merge failed|kontozusammenführung ist fehlgeschlagen/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/account merge failed|kontozusammenführung ist fehlgeschlagen/i),
+    ).toBeInTheDocument();
     expect(mockUpdateSession).not.toHaveBeenCalled();
   });
 
@@ -198,13 +206,17 @@ describe('ReturnRouteScreen extra paths', () => {
 
     mockCall.mockRejectedValueOnce(new ApiException(500, 'down'));
     renderRoute();
-    expect(await screen.findByText(/couldn't complete|nicht geklappt|non è stato possibile|n'a pas abouti/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/couldn't complete|nicht geklappt|non è stato possibile|n'a pas abouti/i),
+    ).toBeInTheDocument();
   });
 
   it('shows the static card-payment failure panel', async () => {
     mockPath.value = '/buy/failure';
     renderRoute();
-    expect(await screen.findByText(/payment failed|zahlung fehlgeschlagen|pagamento non|paiement a échoué/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/payment failed|zahlung fehlgeschlagen|pagamento non|paiement a échoué/i),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
     expect(mockNavigate).toHaveBeenCalledWith('/');
   });
@@ -254,7 +266,9 @@ describe('ReturnRouteScreen extra paths', () => {
 
     mockCall.mockRejectedValueOnce(new ApiException(400, 'bad'));
     renderRoute();
-    expect(await screen.findByText(/invalid|ungültig|non valid|invalide|unvollständig|incomplete/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/invalid|ungültig|non valid|invalide|unvollständig|incomplete/i),
+    ).toBeInTheDocument();
   });
 
   it('shows the missing CKO id panel and resumes after 404', async () => {
