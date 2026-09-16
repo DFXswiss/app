@@ -117,6 +117,7 @@ test.describe('Staff ticket — KYC file transfer', () => {
     await page.goto(`/support/dashboard/issue/${ISSUE_ID}?session=${token}`);
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('button', { name: 'ausweis.pdf' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Transfer to KYC file' })).toBeVisible();
 
     const messagesPanel = page.locator('div.bg-white.rounded-lg.shadow-sm.p-4').filter({
       has: page.getByRole('heading', { name: /Messages/ }),
@@ -124,5 +125,9 @@ test.describe('Staff ticket — KYC file transfer', () => {
     await expect(messagesPanel).toHaveScreenshot('support-kyc-file-transfer-01-messages.png', {
       maxDiffPixels: 5000,
     });
+
+    await page.getByRole('button', { name: 'Transfer to KYC file' }).click();
+    await expect(page.getByPlaceholder('Document title')).toBeVisible();
+    await expect(page.getByText(/Stored as/)).toBeVisible();
   });
 });

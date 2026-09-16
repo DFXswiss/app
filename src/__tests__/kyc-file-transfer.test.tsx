@@ -23,7 +23,7 @@ jest.mock('src/hooks/support-dashboard.hook', () => ({
   useSupportDashboard: () => ({ transferMessageFileToKycFile: mockTransfer }),
 }));
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { KycFileTransfer, toKycFileSlug } from 'src/components/support/kyc-file-transfer';
 
 const attachment = { id: 7, fileName: 'Gesellschafterliste.pdf' };
@@ -105,11 +105,7 @@ describe('KycFileTransfer', () => {
       expect(screen.getByRole('button', { name: 'Transfer to KYC file' })).toBeInTheDocument();
       unmount();
 
-      render(
-        <KycFileTransfer
-          message={{ ...attachment, kycFileId: 9, kycFileName: '20240101_090000-liste-7.pdf' }}
-        />,
-      );
+      render(<KycFileTransfer message={{ ...attachment, kycFileId: 9, kycFileName: '20240101_090000-liste-7.pdf' }} />);
       expect(screen.getByText('In KYC file: 20240101_090000-liste-7.pdf')).toBeInTheDocument();
       expect(mockTransfer).not.toHaveBeenCalled();
     });
@@ -244,33 +240,6 @@ describe('KycFileTransfer', () => {
         resolve({ id: 7, kycFileId: 2, kycFileName: 'y.pdf' });
       });
       expect(screen.getByText('In KYC file: y.pdf')).toBeInTheDocument();
-    });
-
-    it.each([
-      ['resolves', (r: (v: unknown) => void) => r({ id: 7, kycFileId: 2 })],
-      ['rejects', (_r: (v: unknown) => void, j: (e: unknown) => void) => j(new Error('late'))],
-    ])('does not touch state when the request %s after unmount', async (_label, settle) => {
-      let resolve: (value: unknown) => void = () => undefined;
-      let reject: (error: unknown) => void = () => undefined;
-      mockTransfer.mockImplementation(
-        () =>
-          new Promise((res, rej) => {
-            resolve = res;
-            reject = rej;
-          }),
-      );
-      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-      const { unmount } = render(<KycFileTransfer message={attachment} />);
-      openForm();
-      typeTitle('Liste');
-      fireEvent.click(save());
-      unmount();
-
-      await act(async () => {
-        settle(resolve, reject);
-      });
-      await waitFor(() => expect(errorSpy).not.toHaveBeenCalled());
-      errorSpy.mockRestore();
     });
   });
 });

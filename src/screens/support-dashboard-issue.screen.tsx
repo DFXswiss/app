@@ -44,6 +44,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>();
+  const loadErrorTicketIdRef = useRef<string>();
   const [actionError, setActionError] = useState<string>();
   const [issueData, setIssueData] = useState<SupportIssueInternalData>();
   const [messages, setMessages] = useState<SupportMessageInfo[]>([]);
@@ -89,6 +90,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // (including A→B→A) without blocking onCreated for a same-ticket reload spinner.
   const [noteDraft, setNoteDraft] = useState<{ text: string }>();
   const noteGenRef = useRef(0);
+  // Same generation gate for in-flight issue/message/file/update/send work. idRef.current = id on
+  // every render cannot ignore a first-A request after A→B→A.
+  const requestGenRef = useRef(0);
   const noteGenAtRender = noteGenRef.current;
   const { containerRef, splitPercent, handleSplitDrag } = useSplitPane();
 
@@ -112,37 +116,40 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const loadIssue = useCallback((): void => {
     if (!id) return;
     const requestId = id;
+    const gen = requestGenRef.current;
     if (idRef.current !== requestId) return;
     setLoadError(undefined);
     setIsLoading(true);
-    getIssueData(+id)
+    getIssueData(+requestId)
       .then((data) => {
-        if (idRef.current !== requestId) return;
+        if (requestGenRef.current !== gen) return;
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
         setUpdateClerk(data.clerk ?? '');
       })
       .catch((e: Error) => {
-        if (idRef.current !== requestId) return;
+        if (requestGenRef.current !== gen) return;
+        loadErrorTicketIdRef.current = requestId;
         setLoadError(e.message ?? 'Unknown error');
       })
       .finally(() => {
-        if (idRef.current === requestId) setIsLoading(false);
+        if (requestGenRef.current === gen) setIsLoading(false);
       });
   }, [id, getIssueData]);
 
   const loadMessages = useCallback((): void => {
     if (!issueData?.uid || !id || issueData.id !== +id) return;
     const requestId = id;
+    const gen = requestGenRef.current;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
-        if (idRef.current !== requestId) return;
+        if (idRef.current !== requestId || requestGenRef.current !== gen) return;
         setMessages(fetched);
         setPendingCount(0);
       })
       .catch((e: Error) => {
-        if (idRef.current !== requestId) return;
+        if (idRef.current !== requestId || requestGenRef.current !== gen) return;
         setActionError(e.message ?? 'Failed to load messages');
       });
   }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
@@ -150,17 +157,40 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const pollForNewMessages = useCallback((): void => {
     if (!issueData?.uid || !id || issueData.id !== +id) return;
     const requestId = id;
+    const gen = requestGenRef.current;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
-        if (idRef.current !== requestId) return;
+        if (idRef.current !== requestId || requestGenRef.current !== gen) return;
         const newCount = fetched.filter((m) => !visibleIdsRef.current.has(m.id)).length;
         if (newCount > 0) setPendingCount(newCount);
       })
       .catch((e: Error) => {
-        if (idRef.current !== requestId) return;
+        if (idRef.current !== requestId || requestGenRef.current !== gen) return;
         setActionError(e.message ?? 'Failed to load messages');
       });
   }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
+
+  // Clear send UI, an in-progress note draft, and the previous ticket's messages when navigating
+  // to a different ticket. The screen does not remount on :id change; leaving `messages` in place
+  // would paint ticket A's thread on route B until loadMessages returns (or forever if it fails).
+  // Runs before loadIssue so the new generation is captured by the in-flight started for this id.
+  useEffect(() => {
+    sendInFlight.current = false;
+    setIsSending(false);
+    setIsUpdating(false);
+    setSelectedFiles([]);
+    setActionError(undefined);
+    setLoadError(undefined);
+    setNoteDraft(undefined);
+    noteGenRef.current += 1;
+    requestGenRef.current += 1;
+    setMessages([]);
+    setPendingCount(0);
+    setFilePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return undefined;
+    });
+  }, [id]);
 
   useEffect(() => {
     loadIssue();
@@ -169,25 +199,6 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
-
-  // Clear send UI, an in-progress note draft, and the previous ticket's messages when navigating
-  // to a different ticket. The screen does not remount on :id change; leaving `messages` in place
-  // would paint ticket A's thread on route B until loadMessages returns (or forever if it fails).
-  useEffect(() => {
-    sendInFlight.current = false;
-    setIsSending(false);
-    setIsUpdating(false);
-    setSelectedFiles([]);
-    setActionError(undefined);
-    setNoteDraft(undefined);
-    noteGenRef.current += 1;
-    setMessages([]);
-    setPendingCount(0);
-    setFilePreview((prev) => {
-      if (prev) URL.revokeObjectURL(prev.url);
-      return undefined;
-    });
-  }, [id]);
 
   // Reset cached UserData when the issue (and thus the account) changes
   useEffect(() => {
@@ -235,21 +246,22 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   async function handleUpdate(): Promise<void> {
     if (!id) return;
     const requestId = id;
+    const gen = requestGenRef.current;
     setIsUpdating(true);
     setActionError(undefined);
     try {
-      await updateIssue(+id, {
+      await updateIssue(+requestId, {
         state: updateState || undefined,
         department: updateDepartment || undefined,
         clerk: updateClerk || undefined,
       });
-      if (idRef.current !== requestId) return;
+      if (requestGenRef.current !== gen) return;
       loadIssue();
     } catch (e: unknown) {
-      if (idRef.current !== requestId) return;
+      if (requestGenRef.current !== gen) return;
       setActionError(e instanceof Error ? e.message : 'Update failed');
     } finally {
-      if (idRef.current === requestId) setIsUpdating(false);
+      if (requestGenRef.current === gen) setIsUpdating(false);
     }
   }
 
@@ -276,6 +288,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     // that is already on its way. On failure, storage is restored for the ticket that was sending;
     // the composer is only updated if the clerk is still on that same ticket.
     const sendIssueId = id;
+    const gen = requestGenRef.current;
     const draft = messageText;
     clearDraft();
     try {
@@ -297,20 +310,18 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         await sendMessage(+sendIssueId, { author, message: text });
       }
 
-      if (idRef.current === sendIssueId) {
-        setSelectedFiles([]);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        loadMessages();
-      }
+      if (requestGenRef.current !== gen) return;
+      setSelectedFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      loadMessages();
     } catch (e: unknown) {
       writeDraft(sendIssueId, draft);
-      if (idRef.current === sendIssueId) {
-        setMessageText(draft);
-        setActionError(e instanceof Error ? e.message : 'Send failed');
-      }
+      if (requestGenRef.current !== gen) return;
+      setMessageText(draft);
+      setActionError(e instanceof Error ? e.message : 'Send failed');
     } finally {
       sendInFlight.current = false;
-      if (idRef.current === sendIssueId) setIsSending(false);
+      if (requestGenRef.current === gen) setIsSending(false);
     }
   }
 
@@ -332,10 +343,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   async function openFile(msg: SupportMessageInfo): Promise<void> {
     if (!issueData?.uid || !msg.fileName || !id) return;
-    const requestId = id;
+    const gen = requestGenRef.current;
     try {
       const { data, contentType } = await getMessageFile(issueData.uid, msg.id, 'View');
-      if (idRef.current !== requestId) return;
+      if (requestGenRef.current !== gen) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
@@ -348,24 +359,24 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       const url = URL.createObjectURL(blob);
       setFilePreview({ url, contentType, name: msg.fileName, messageId: msg.id });
     } catch (e: unknown) {
-      if (idRef.current !== requestId) return;
+      if (requestGenRef.current !== gen) return;
       setActionError(e instanceof Error ? e.message : 'Error loading file');
     }
   }
 
   async function downloadPreview(): Promise<void> {
     if (!issueData?.uid || !filePreview || !id) return;
-    const requestId = id;
+    const gen = requestGenRef.current;
     try {
       const { data, contentType } = await getMessageFile(issueData.uid, filePreview.messageId, 'Download');
-      if (idRef.current !== requestId) return;
+      if (requestGenRef.current !== gen) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
       }
       saveBufferedFile(data, contentType, filePreview.name);
     } catch (e: unknown) {
-      if (idRef.current !== requestId) return;
+      if (requestGenRef.current !== gen) return;
       setActionError(e instanceof Error ? e.message : 'Error downloading file');
     }
   }
@@ -378,9 +389,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   const unresolvedInMessage = useMemo(() => detectPlaceholders(messageText), [messageText]);
 
-  if (loadError) return <ErrorHint message={loadError} />;
-  if (isLoading || !issueData || !id || issueData.id !== +id)
-    return <StyledLoadingSpinner size={SpinnerSize.LG} />;
+  if (id && issueData && issueData.id !== +id) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
+  if (loadError && loadErrorTicketIdRef.current === id) return <ErrorHint message={loadError} />;
+  if (isLoading || !issueData || !id) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
 
   return (
     <div ref={containerRef} className="w-full flex text-left">

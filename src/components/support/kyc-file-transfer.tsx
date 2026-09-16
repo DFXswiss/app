@@ -1,12 +1,12 @@
 import { useAuthContext, UserRole } from '@dfx.swiss/react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 
 // What the KYC file accepts (`KycDocumentService.isPermittedFileType`). Anything else
 // stays in the ticket; the customer has to resend it as PDF.
-export const TRANSFERABLE_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
+const TRANSFERABLE_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
 
 // Mirrors the API guard on PUT support/issue/:id/message/:messageId/kycFile (Compliance and above).
 const TRANSFER_ROLES: string[] = [UserRole.ADMIN, UserRole.COMPLIANCE];
@@ -26,7 +26,7 @@ export function toKycFileSlug(title: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-export interface KycFileTransferMessage {
+interface KycFileTransferMessage {
   id?: number;
   fileName?: string;
   kycFileId?: number;
@@ -48,7 +48,6 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
   const [error, setError] = useState<string>();
   const [kycFile, setKycFile] = useState<{ id?: number; name?: string }>();
 
-  const mountedRef = useRef(true);
   // Sync guard: isSubmitting only disables the button after re-render; a second click in the same
   // tick must not start another transfer (the API would answer 409, but the file would be uploaded twice).
   const submittingRef = useRef(false);
@@ -56,13 +55,6 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
   // show the previous ticket's messages while useParams().id already points at the new ticket.
   const boundIssueIdRef = useRef<string | undefined>(undefined);
   if (boundIssueIdRef.current === undefined) boundIssueIdRef.current = routeIssueId;
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   const { id: messageId, fileName } = message;
   const boundIssueId = boundIssueIdRef.current;
@@ -118,15 +110,13 @@ export function KycFileTransfer({ message }: { message: KycFileTransferMessage }
     setError(undefined);
     try {
       const result = await transferMessageFileToKycFile(transferIssueId, transferMessageId, title.trim());
-      if (!mountedRef.current) return;
       setKycFile({ id: result.kycFileId, name: result.kycFileName });
       setIsEditing(false);
     } catch (e: unknown) {
-      if (!mountedRef.current) return;
       setError(e instanceof Error ? e.message : translate('screens/support', 'Failed to transfer file'));
     } finally {
       submittingRef.current = false;
-      if (mountedRef.current) setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   }
 
