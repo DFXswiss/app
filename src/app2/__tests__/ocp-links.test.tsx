@@ -69,12 +69,33 @@ describe('OCP links view', () => {
 
     renderLinks({
       links: [],
+      linksError: false,
       routes: { sell: [], buy: [], swap: [] },
       lnSellRoutes: [],
       loadLinks: mockLoadLinks,
       loadRoutes: mockLoadRoutes,
     });
     expect(screen.getByText(/no payment links|keine|nessun|aucun/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry|erneut|riprova|réessayer/i })).not.toBeInTheDocument();
+  });
+
+  it('shows a load error instead of the empty list when the request failed', () => {
+    renderLinks({
+      links: [],
+      linksError: true,
+      routes: { sell: [], buy: [], swap: [] },
+      lnSellRoutes: [],
+      loadLinks: mockLoadLinks,
+      loadRoutes: mockLoadRoutes,
+    });
+    expect(
+      screen.getByText(/couldn't load|konnte nicht laden|impossibile caricare|chargement impossible/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/no payment links yet|noch keine zahlungslinks|ancora nessun link|aucun lien de paiement/i),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
+    expect(mockLoadLinks).toHaveBeenCalled();
   });
 
   it('lists a link, copies, toggles, opens POS and creates', async () => {

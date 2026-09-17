@@ -11,11 +11,11 @@ jest.mock('../screens/ocp/links', () => ({
   paymentStatusLabel: (_t: (key: string) => string, status: string) => status,
 }));
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import HistoryView from '../screens/ocp/history';
 import { LanguageProvider } from '../i18n';
 
-function renderHistory(ocp: { history: unknown; loadHistory: jest.Mock }) {
+function renderHistory(ocp: { history: unknown; loadHistory: jest.Mock; historyError?: boolean }) {
   return render(
     <LanguageProvider>
       <HistoryView ocp={ocp as never} />
@@ -36,6 +36,7 @@ describe('OCP history view', () => {
           ocp={
             {
               loadHistory,
+              historyError: false,
               history: { total: 12.345, items: [] },
             } as never
           }
@@ -43,6 +44,7 @@ describe('OCP history view', () => {
       </LanguageProvider>,
     );
     expect(screen.getByText(/no payments|keine|nessun|aucun/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry|erneut|riprova|réessayer/i })).not.toBeInTheDocument();
 
     rerender(
       <LanguageProvider>
@@ -67,5 +69,22 @@ describe('OCP history view', () => {
     expect(screen.getByText('Completed')).toBeInTheDocument();
     expect(screen.getByText('Pending')).toBeInTheDocument();
     expect(screen.getByText('Expired')).toBeInTheDocument();
+  });
+
+  it('shows a load error instead of the empty list when the request failed', () => {
+    const loadHistory = jest.fn();
+    renderHistory({
+      loadHistory,
+      historyError: true,
+      history: { total: 0, items: [] },
+    });
+    expect(
+      screen.getByText(/couldn't load|konnte nicht laden|impossibile caricare|chargement impossible/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/no payments yet|noch keine zahlungen|ancora nessun pagamento|aucun paiement/i),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
+    expect(loadHistory).toHaveBeenCalled();
   });
 });
