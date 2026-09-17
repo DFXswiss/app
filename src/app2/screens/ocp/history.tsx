@@ -53,7 +53,7 @@ function statusChipClass(status: string): string {
 
 export default function HistoryView({ ocp }: OcpSubViewProps) {
   const { t, language } = useT();
-  const { history, loadHistory } = ocp;
+  const { history, historyError, loadHistory } = ocp;
 
   useEffect(() => {
     if (history === null) void loadHistory();
@@ -76,7 +76,21 @@ export default function HistoryView({ ocp }: OcpSubViewProps) {
         <div className={cx('big')}>{formatNumber(total, language)} CHF</div>
       </div>
       {history.items.length === 0 ? (
-        <div className={cx('ocp-empty')}>{t('historyEmpty')}</div>
+        historyError ? (
+          <div className={cx('ocp-empty')} style={{ flexDirection: 'column', gap: 12, textAlign: 'center' }}>
+            <span>{t('loadFail')}</span>
+            <button
+              type="button"
+              className={cx('btn-mini')}
+              style={{ width: 'auto' }}
+              onClick={() => void loadHistory()}
+            >
+              {t('retry')}
+            </button>
+          </div>
+        ) : (
+          <div className={cx('ocp-empty')}>{t('historyEmpty')}</div>
+        )
       ) : (
         <div className={cx('glass')} style={{ borderRadius: 18, overflow: 'hidden' }}>
           {history.items.map((p: OcpHistoryItem) => (

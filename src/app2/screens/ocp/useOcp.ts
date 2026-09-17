@@ -100,7 +100,9 @@ export interface OcpApi {
   routes: PaymentRoutes | null;
   routesError: boolean;
   links: PaymentLink[] | null;
+  linksError: boolean;
   history: OcpHistory | null;
+  historyError: boolean;
 
   // --- loaders (fetch + set state) ----------------------------------------
   /** GET /paymentLink/config → activation + config (403 ⇒ not active; other errors ⇒ probeError). */
@@ -211,7 +213,9 @@ export function useOcp(): OcpApi {
   const [routes, setRoutes] = useState<PaymentRoutes | null>(null);
   const [routesError, setRoutesError] = useState(false);
   const [links, setLinks] = useState<PaymentLink[] | null>(null);
+  const [linksError, setLinksError] = useState(false);
   const [history, setHistory] = useState<OcpHistory | null>(null);
+  const [historyError, setHistoryError] = useState(false);
   // Bumped on every demo on/off and on every session-address change so a response
   // that started under the other mode or account cannot write after the switch.
   const demoEpochRef = useRef(0);
@@ -228,7 +232,9 @@ export function useOcp(): OcpApi {
     setRoutes(null);
     setRoutesError(false);
     setLinks(null);
+    setLinksError(false);
     setHistory(null);
+    setHistoryError(false);
   }, [address]);
 
   const demoLnurl = useCallback((id: string) => lnurlEncode(`${apiBaseUrl}/lnurlp/${id}`), [apiBaseUrl]);
@@ -399,6 +405,7 @@ export function useOcp(): OcpApi {
 
   const loadLinks = useCallback(async () => {
     if (demo) {
+      setLinksError(false);
       return;
     }
     const epoch = demoEpochRef.current;
@@ -407,14 +414,17 @@ export function useOcp(): OcpApi {
       if (epoch !== demoEpochRef.current) return;
       const list = (Array.isArray(data) ? data : [data]).filter(Boolean) as PaymentLink[];
       setLinks(list);
+      setLinksError(false);
     } catch {
       if (epoch !== demoEpochRef.current) return;
       setLinks([]);
+      setLinksError(true);
     }
   }, [demo, getPaymentLinks]);
 
   const loadHistory = useCallback(async () => {
     if (demo) {
+      setHistoryError(false);
       setHistory(buildDemoHistory());
       return;
     }
@@ -441,9 +451,11 @@ export function useOcp(): OcpApi {
       }
       items.sort((a, b) => Number(b.id) - Number(a.id));
       setHistory({ items, total });
+      setHistoryError(false);
     } catch {
       if (epoch !== demoEpochRef.current) return;
       setHistory({ items: [], total: 0 });
+      setHistoryError(true);
     }
   }, [demo, call, language, buildDemoHistory]);
 
@@ -676,7 +688,9 @@ export function useOcp(): OcpApi {
       routes,
       routesError,
       links,
+      linksError,
       history,
+      historyError,
       probe,
       loadRoutes,
       loadLinks,
@@ -706,7 +720,9 @@ export function useOcp(): OcpApi {
       routes,
       routesError,
       links,
+      linksError,
       history,
+      historyError,
       probe,
       loadRoutes,
       loadLinks,
