@@ -1,13 +1,11 @@
 # Full-stack E2E: real frontend + API + Postgres against mocked external providers.
 #
-# Draft skip lives on the caller in pr.yml (job `if:`). This file has no
-# pull_request trigger, so `labeled` and Ready do not start it. Ready dispatches
-# pr.yml (not this file); pr.yml then workflow_calls here after Build and test.
-# workflow_dispatch remains for manual runs. Never listen to ready_for_review
-# here. Scope (full vs none) still happens inside the job (the "Determine e2e
-# scope" step) instead of `on.paths` or a job `if:` that would skip a required
-# check. If you ever consider adding another skip anywhere in this file,
-# justify it in a comment right there.
+# This file has no pull_request trigger. pr.yml workflow_calls it after Build
+# and test. workflow_dispatch remains for manual runs. Never listen to
+# ready_for_review here. Scope (full vs none) still happens inside the job
+# (the "Determine e2e scope" step) instead of `on.paths` or a job `if:` that
+# would skip a required check. If you ever consider adding another skip
+# anywhere in this file, justify it in a comment right there.
 #
 # Relation to DFXswiss/backend: the corresponding workflow there checks this repository out to
 # find e2e-stack/, so it reads whatever is on develop at the time it runs. Until this pull
@@ -22,7 +20,7 @@
 # mode=none: they do not receive repository secrets, so E2E_API_CHECKOUT_KEY is
 # empty and Checkout API would fail as "repository not found". The probe is the
 # secret, not github.head_ref
-# (that name is fork-spoofable). Draft skip is the only job-level `if:`. API
+# (that name is fork-spoofable). There is no job-level draft skip. API
 # checkout, bootstrap resolution, and harness tsc run only when mode != none.
 # There is no selected/partial spec mapping in this repository.
 
@@ -68,28 +66,22 @@ on:
 permissions:
   contents: read
 
-# Draft-skip runs must not share the working group with a live call.
 # workflow_call (PR path) and workflow_dispatch (manual) must not share a
-# cancel group either. Include event_name so a dispatch cannot cancel the
-# nested required check.
+# cancel group. Include event_name so a dispatch cannot cancel the nested
+# required check.
 concurrency:
-  group: e2e-stack-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ github.event_name }}-${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'ci') || contains(github.event.pull_request.labels.*.name, 'ci:full')) && 'run' || 'skip' }}
+  group: e2e-stack-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
   e2e:
     name: Full-stack E2E
-    if: >
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.draft == false ||
-      contains(github.event.pull_request.labels.*.name, 'ci') ||
-      contains(github.event.pull_request.labels.*.name, 'ci:full')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       # Event-only: no checkout. Develop PRs without ci:full stop here.
-      # Draft skip is the job `if:` above (see header). Modes are only full
-      # and none; there is no selected/partial spec mapping in this repository.
+      # Modes are only full and none; there is no selected/partial spec
+      # mapping in this repository.
       - name: Determine e2e scope
         id: scope
         env:
@@ -275,8 +267,8 @@ jobs:
         # `if: always()` so artifact collection and teardown still run.
         # --env-file is not optional here: up.sh writes the values it resolved into that file, and
         # a compose run that resolves them differently recreates the API container mid-run.
-        # Draft skip is the job `if:` above. Inside a run, selection is this step
-        # rather than a `paths:` filter or a scope `if:` (see header comment).
+        # Inside a run, selection is this step rather than a `paths:` filter
+        # or a scope `if:` (see header comment).
         env:
           MODE: ${{ steps.scope.outputs.mode }}
           API_CRED: ${{ steps.api_cred.outputs.available }}

@@ -230,7 +230,7 @@ describe('GroupedIssueTable', () => {
           needsReply: [
             issue({ id: 1, name: 'Fresh', lastMessageAuthor: 'Customer', lastMessageDate: hoursAgo(0.5) }),
             issue({ id: 2, name: 'Half day', lastMessageAuthor: 'Customer', lastMessageDate: hoursAgo(13) }),
-            issue({ id: 3, name: 'Escalated', lastMessageAuthor: 'AutoResponder', lastMessageDate: hoursAgo(30) }),
+            issue({ id: 3, name: 'Escalated', lastMessageAuthor: 'Customer', lastMessageDate: hoursAgo(30) }),
             issue({ id: 4, name: 'No message yet', lastMessageAuthor: undefined, lastMessageDate: undefined }),
           ],
           answered: [],

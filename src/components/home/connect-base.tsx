@@ -1,6 +1,6 @@
 import { Blockchain, useAuthContext, useSessionContext } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { WalletSwitchError } from 'src/util/wallet-switch-error';
 import { BitcoinAddressType } from '../../config/key-path';
 import { WalletBlockchains, WalletType, supportsBlockchain, useWalletContext } from '../../contexts/wallet.context';
@@ -50,18 +50,33 @@ export function ConnectBase({
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string>();
 
+  const isMounted = useRef(true);
+
   useEffect(() => {
+    isMounted.current = true;
     init();
+
+    return () => {
+      isMounted.current = false;
+    };
   }, []);
 
   async function init() {
-    const supported = await isSupported();
+    let supported = false;
+    try {
+      supported = await isSupported();
+    } catch {
+      supported = false;
+    }
+
+    if (!isMounted.current) return;
+
     if (!supported && fallback) onSwitch(fallback);
 
     setShowInstallHint(!supported);
     setIsLoading(false);
 
-    if (autoConnect) connect();
+    if (autoConnect && supported) connect();
   }
 
   async function connect(chain?: Blockchain) {
@@ -74,9 +89,13 @@ export function ConnectBase({
     if (!usedChain) throw new Error('No blockchain');
 
     await getAccount(wallet, usedChain, activeWallet === wallet)
-      .then((a) => doLogin({ ...a, blockchain: usedChain }))
-      .then(onLogin)
+      .then((a) => (isMounted.current ? doLogin({ ...a, blockchain: usedChain }) : undefined))
+      .then(() => {
+        if (isMounted.current) onLogin();
+      })
       .catch((e) => {
+        if (!isMounted.current) return;
+
         setIsConnecting(false);
 
         if (e instanceof AbortError) {
@@ -129,10 +148,11 @@ export function ConnectBase({
     index?: number,
     addressType?: BitcoinAddressType,
   ): Promise<string> {
-    setShowSignHint(true);
-    return signMessage(message, address, blockchain, accountIndex, index, addressType).finally(() =>
-      setShowSignHint(false),
-    );
+    if (isMounted.current) setShowSignHint(true);
+
+    return signMessage(message, address, blockchain, accountIndex, index, addressType).finally(() => {
+      if (isMounted.current) setShowSignHint(false);
+    });
   }
 
   const contentOverride = isLoading ? (

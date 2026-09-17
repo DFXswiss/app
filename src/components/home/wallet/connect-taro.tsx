@@ -1,4 +1,4 @@
-import { Blockchain, LnurlAuth, useAuth, useAuthContext } from '@dfx.swiss/react';
+import { ApiException, Blockchain, LnurlAuth, useAuth, useAuthContext } from '@dfx.swiss/react';
 import {
   SpinnerSize,
   StyledButton,
@@ -14,6 +14,9 @@ import { useDeferredPromise } from '../../../hooks/deferred-promise.hook';
 import { QrCopy } from '../../payment/qr-code';
 import { ConnectBase } from '../connect-base';
 import { Account, ConnectContentProps, ConnectError, ConnectProps } from '../connect-shared';
+
+// the API's cleanup job removes LNURL challenges once they are older than 5 minutes; keep in sync with the API
+const LNURL_CHALLENGE_LIFETIME_MS = 5 * 60 * 1000;
 
 export default function ConnectTaro(props: ConnectProps): JSX.Element {
   const { session } = useAuthContext();
@@ -38,25 +41,51 @@ export default function ConnectTaro(props: ConnectProps): JSX.Element {
 
   useEffect(() => {
     if (auth?.k1) {
-      // start polling
-      const poller = setInterval(
-        () =>
-          getLnurlAuth(auth.k1)
-            .then((r) => {
-              if (r.isComplete) {
-                clearInterval(poller);
-                tokenPromise?.resolve(r.accessToken);
-              }
-            })
-            .catch(() => {
-              clearInterval(poller);
-              setAuth(undefined);
-              tokenPromise?.reject(new Error('Authentication failed'));
-            }),
-        1000,
-      );
+      const challengeCreated = Date.now();
 
-      return () => clearInterval(poller);
+      // a response arriving after polling stopped (settled, restarted or unmounted) must not touch a newer login
+      let isPolling = true;
+      let nextPoll: ReturnType<typeof setTimeout>;
+
+      // one request at a time: the API deletes the challenge on the first completed status read,
+      // so an overlapping request would fail with 404 although the login succeeded
+      const poll = (): void => {
+        nextPoll = setTimeout(
+          () =>
+            getLnurlAuth(auth.k1)
+              .then((r) => {
+                if (!isPolling) return;
+
+                if (r.isComplete) {
+                  isPolling = false;
+                  tokenPromise?.resolve(r.accessToken);
+                } else {
+                  poll();
+                }
+              })
+              .catch((error: unknown) => {
+                if (!isPolling) return;
+
+                isPolling = false;
+                setAuth(undefined);
+
+                // the API also answers 404 once it has refused the wallet callback, which can happen before expiry
+                const isExpiredChallenge =
+                  error instanceof ApiException &&
+                  error.statusCode === 404 &&
+                  Date.now() - challengeCreated >= LNURL_CHALLENGE_LIFETIME_MS;
+                tokenPromise?.reject(new Error(isExpiredChallenge ? 'LNURL login expired' : 'Authentication failed'));
+              }),
+          1000,
+        );
+      };
+
+      poll();
+
+      return () => {
+        isPolling = false;
+        clearTimeout(nextPoll);
+      };
     }
   }, [auth?.k1]);
 

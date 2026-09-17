@@ -14,7 +14,7 @@ export function useMergedAccount(): MergedAccountInterface {
   function handleMergedError(e: ApiError): boolean {
     if (e.statusCode !== 401 || !e.switchToCode) return false;
 
-    navigate({ pathname: '/kyc', search: `?code=${e.switchToCode}` });
+    navigate({ pathname: '/kyc', search: `?code=${e.switchToCode}` }, { clearParams: ['kyc-redirect'] });
     logout();
     return true;
   }

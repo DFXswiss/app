@@ -14,7 +14,7 @@ import { ConnectBase } from '../connect-base';
 import { Account, ConnectContentProps, ConnectError, ConnectProps } from '../connect-shared';
 
 export default function ConnectTrustTrx(props: Readonly<ConnectProps>): JSX.Element {
-  const { isInstalled, connect, signMessage } = useTrustTrx();
+  const { isAvailable, connect, signMessage } = useTrustTrx();
   const { session } = useAuthContext();
 
   async function getAccount(_w: WalletType, _b: Blockchain, isReconnect: boolean): Promise<Account> {
@@ -27,7 +27,7 @@ export default function ConnectTrustTrx(props: Readonly<ConnectProps>): JSX.Elem
 
   return (
     <ConnectBase
-      isSupported={isInstalled}
+      isSupported={isAvailable}
       fallback={isMobile ? WalletType.TRUST_TRX : undefined}
       getAccount={getAccount}
       signMessage={(msg, addr) => signMessage(addr, msg)}

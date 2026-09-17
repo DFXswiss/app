@@ -17,7 +17,10 @@ export function InfoBannerComponent({ bannerText, buttonLabel, onClick }: InfoBa
   };
 
   return infoBanner || bannerText ? (
-    <div className="flex flex-row justify-center items-center w-full p-3.5 bg-dfxBlue-800">
+    <div
+      data-testid="info-banner"
+      className="relative flex flex-row justify-center items-center w-full p-3.5 rounded-md bg-dfxBlue-800 text-white"
+    >
       <p className="font-semibold text-sm px-8">
         {bannerText ?? infoBanner?.[language?.symbol.toLowerCase() as keyof InfoBanner] ?? infoBanner?.en}
       </p>

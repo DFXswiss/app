@@ -35,12 +35,6 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
 
   return (
     <div id="app-root" className="h-full flex flex-col" ref={rootRef} onClick={onClick}>
-      {pathname.startsWith('/support') && (
-        <div className="relative">
-          <InfoBannerComponent />
-        </div>
-      )}
-
       <Navigation
         ref={navRef}
         title={title}
@@ -66,6 +60,7 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
               textStart ? 'text-start' : 'text-center'
             } ${!(noPadding || borderless) && 'p-5'} gap-2`}
           >
+            {pathname.startsWith('/support') && <InfoBannerComponent />}
             {children}
           </div>
         </div>

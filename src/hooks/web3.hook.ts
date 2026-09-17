@@ -4,8 +4,8 @@ import Web3 from 'web3';
 
 export interface Web3Interface {
   toBlockchain: (chainId: string | number) => Blockchain | undefined;
-  toChainHex: (blockchain: Blockchain) => string | number | undefined;
-  toChainId: (blockchain: Blockchain) => string | number | undefined;
+  toChainHex: (blockchain: Blockchain) => string | undefined;
+  toChainId: (blockchain: Blockchain) => string | undefined;
   toChainObject: (blockchain: Blockchain) => MetaMaskChainInterface | undefined;
 }
 
@@ -38,10 +38,8 @@ export function useWeb3(): Web3Interface {
   }
 
   function toChainHex(blockchain: Blockchain): string | undefined {
-    const web3 = new Web3(Web3.givenProvider);
-
     const id = toChainId(blockchain);
-    return id && web3.utils.toHex(id);
+    return id && Web3.utils.toHex(id);
   }
 
   function toChainId(blockchain: Blockchain): string | undefined {
@@ -195,9 +193,6 @@ export function useWeb3(): Web3Interface {
           rpcUrls: ['https://rpc.testnet.citreascan.com'],
           blockExplorerUrls: ['https://testnet.citreascan.com/'],
         };
-
-      default:
-        return undefined;
     }
   }
 

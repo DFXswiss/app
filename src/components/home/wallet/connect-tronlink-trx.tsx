@@ -14,7 +14,7 @@ import { ConnectBase } from '../connect-base';
 import { Account, ConnectContentProps, ConnectError, ConnectProps } from '../connect-shared';
 
 export default function ConnectTronLinkTrx(props: Readonly<ConnectProps>): JSX.Element {
-  const { isInstalled, connect, signMessage } = useTronLinkTrx();
+  const { isAvailable, connect, signMessage } = useTronLinkTrx();
   const { session } = useAuthContext();
 
   async function getAccount(_w: WalletType, _b: Blockchain, isReconnect: boolean): Promise<Account> {
@@ -27,7 +27,7 @@ export default function ConnectTronLinkTrx(props: Readonly<ConnectProps>): JSX.E
 
   return (
     <ConnectBase
-      isSupported={isInstalled}
+      isSupported={isAvailable}
       fallback={isMobile ? WalletType.TRONLINK_TRX : undefined}
       getAccount={getAccount}
       signMessage={(msg, addr) => signMessage(addr, msg)}

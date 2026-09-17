@@ -1,0 +1,108 @@
+{
+  "schema": "a38/v1",
+  "standard": "A38",
+  "documentation": "docs/a38.md",
+  "mode": "enforce",
+  "jobs": [
+    {
+      "id": "lint",
+      "name": "Lint and Markdown format",
+      "timeout_s": 600,
+      "workflow": ".github/workflows/pr.yml",
+      "job": "lint",
+      "executor": {
+        "adapter": "commands",
+        "config": {
+          "env": {
+            "CI": "true"
+          },
+          "npm": {
+            "node_major": 20,
+            "canaries": [
+              "react-app-rewired/package.json",
+              "react-scripts/package.json",
+              "typescript/lib/typescript.js",
+              "prettier/package.json"
+            ]
+          },
+          "steps": [
+            ["npm", "run", "lint"],
+            ["npm", "run", "format:md:check"]
+          ]
+        }
+      }
+    }
+  ],
+  "exclusions": [
+    {
+      "workflow": ".github/workflows/pr.yml",
+      "job": "build",
+      "reason": "GitHub-hosted PR suite on public runners (Jest, build:dev, widget:dev). This public repository does not measure that work locally."
+    },
+    {
+      "workflow": ".github/workflows/pr.yml",
+      "job": "e2e",
+      "reason": "Reusable-workflow caller of e2e-stack.yml. Classifying both would double-count one suite. The callee is GitHub-hosted (see e2e-stack.yml / e2e)."
+    },
+    {
+      "workflow": ".github/workflows/e2e-stack.yml",
+      "job": "e2e",
+      "reason": "GitHub-hosted full-stack E2E on public runners. Not a local author-measured job."
+    },
+    {
+      "workflow": ".github/workflows/e2e-images.yml",
+      "job": "publish",
+      "reason": "Publishes SHA-tagged E2E accelerator images to GHCR. The workflow is explicitly not a merge gate."
+    },
+    {
+      "workflow": ".github/workflows/codeql.yml",
+      "job": "analyze",
+      "reason": "GitHub-only CodeQL Advanced (actions + javascript-typescript matrix via github/codeql-action). A38 does not run CodeQL. A green A38 report is not a CodeQL pass."
+    },
+    {
+      "workflow": ".github/workflows/pr-review-bot.yml",
+      "job": "review",
+      "reason": "PR review bot (unverified commits, advisory comment). Not author-measured CI."
+    },
+    {
+      "workflow": ".github/workflows/ci-on-ready.yaml",
+      "job": "ensure-ci-label",
+      "reason": "Ready is not a CI switch. The job is a no-op notice. Not a code test."
+    },
+    {
+      "workflow": ".github/workflows/main-from-develop.yml",
+      "job": "only-develop",
+      "reason": "Main-branch ancestry policy (head must be this repo's develop). External/policy gate, not a code or test suite."
+    },
+    {
+      "workflow": ".github/workflows/auto-release-pr.yaml",
+      "job": "create-release-pr",
+      "reason": "Housekeeping bot that opens the develop→main release PR. Not author CI."
+    },
+    {
+      "workflow": ".github/workflows/dev.yml",
+      "job": "build",
+      "reason": "Deploy to DEV (Cloudflare Pages). Production/credentials path; not local author CI."
+    },
+    {
+      "workflow": ".github/workflows/prd.yml",
+      "job": "build",
+      "reason": "Deploy to PRD (Cloudflare Pages). Production/credentials path; not local author CI."
+    },
+    {
+      "workflow": ".github/workflows/handbook-check.yaml",
+      "job": "build-and-smoke",
+      "reason": "GitHub-hosted handbook image build and container smoke on public runners. Not a local author-measured job."
+    },
+    {
+      "workflow": ".github/workflows/handbook-deploy.yaml",
+      "job": "build-and-deploy",
+      "reason": "Handbook deploy. Deploy path; GitHub-hosted equivalent is handbook-check.yaml / build-and-smoke."
+    },
+    {
+      "workflow": ".github/workflows/a38-guard.yml",
+      "job": "guard",
+      "reason": "A38 report guard bot itself (trusted base audit of the author report). Not part of the measured local suite."
+    }
+  ]
+}

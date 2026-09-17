@@ -1023,7 +1023,7 @@
     "Hide deleted addresses": "Nascondi indirizzi eliminati",
     "delete": "Siete sicuri di voler eliminare l'indirizzo <1>{{address}}</1> dal vostro account DFX? Questa azione è irreversibile.",
     "delete_iban": "Siete sicuri di voler eliminare il conto bancario <1>{{address}}</1> dal vostro account DFX?",
-    "Your data will remain on our servers temporarily before permanent deletion. If you have any questions, please contact our support team.": "I tuoi dati rimarranno sui nostri server temporaneamente prima della cancellazione definitiva. Se hai domande, contatta il nostro team di supporto.",
+    "Deleting your account ends our business relationship. Under Swiss law we are required to retain all data for 10 years and then permanently delete it.": "Cancellando l'account terminiamo il rapporto commerciale. Secondo il diritto svizzero siamo obbligati a conservare tutti i dati per 10 anni e poi a cancellarli definitivamente.",
     "Verification Call": "Chiamata di verifica",
     "Preferred call time": "Orario di chiamata preferito",
     "Morning": "Mattina",

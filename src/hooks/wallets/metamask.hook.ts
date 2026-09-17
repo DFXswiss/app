@@ -73,7 +73,14 @@ interface MetaMaskError {
 }
 
 export function useMetaMask(): MetaMaskInterface {
-  const web3 = useMemo(() => new Web3(Web3.givenProvider), []);
+  const web3 = useMemo(() => {
+    try {
+      return new Web3(Web3.givenProvider);
+    } catch {
+      // conflicting wallet extensions may inject a provider proxy that throws on access
+      return new Web3();
+    }
+  }, []);
   const { toBlockchain, toChainHex, toChainObject } = useWeb3();
 
   function ethereum() {

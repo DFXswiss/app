@@ -1010,6 +1010,20 @@ export default function BuyScreen(): JSX.Element {
         ) {
           return;
         }
+        // Backend returns 409 when already confirmed (e.g. client missed the first response). The same status
+        // is used for deactivated quotes (`Transaction request is deactivated`) and must not look like success.
+        if (
+          error.statusCode === 409 &&
+          error.message === 'Transaction request is already confirmed'
+        ) {
+          setCompletedPaymentInfo({
+            info: confirmingPaymentInfo,
+            identity: confirmingCustomerIdentity,
+          });
+          setShowsCompletion(true);
+          scrollToTop();
+          return;
+        }
         setPersonalIbanProviderUnavailable(undefined);
         setErrorMessage(
           error.message !== undefined ? error.message : 'Unknown error',

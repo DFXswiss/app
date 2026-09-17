@@ -7,7 +7,7 @@
 
 import type { Locator, Page } from '@playwright/test';
 import { expect, gotoWithSession, loginAs, openScreen, queryOne, queryRows, test, waitForRow } from './fixtures';
-import { apiGet } from './fixtures/api-client';
+import { apiGet, apiPut } from './fixtures/api-client';
 import { cleanupCreatedData, createBuy, createTransaction, createUser } from './fixtures/factories';
 
 // ---------------------------------------------------------------------------
@@ -556,6 +556,59 @@ test.describe('Buy flow', () => {
     const confirmBtn = page.getByRole('button', { name: /Click here once you have issued the transfer/i });
     await expect(confirmBtn).toBeVisible();
     await confirmBtn.click();
+    await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
+  });
+
+  test('/buy: confirm after already confirmed shows completion, not error', async ({ page }) => {
+    test.setTimeout(90000);
+    const user = await openQuoteCapableBuy(page, 'buy-409-replay');
+
+    // Identify the exact-price PUT /buy/paymentInfos response by its own request payload
+    // (exactPrice: true AND amount === 100) rather than by counting or ordering responses.
+    // Pinning the amount too also rules out a still-settling default quote cycle from
+    // openQuoteCapableBuy's bare /buy navigation (that cycle quotes the default amount 300,
+    // not this test's 100 — see the sibling '/buy: default spend amount stays 300 after quote
+    // settlement' test, which needs its own extra wait for exactly this reason).
+    const exactPriceResponsePromise = page.waitForResponse(
+      (r) => {
+        if (r.request().method() !== 'PUT') return false;
+        if (!r.url().includes('/buy/paymentInfos')) return false;
+        if (r.url().includes('/confirm') || r.url().includes('/invoice')) return false;
+        if (!r.ok()) return false;
+        const body = r.request().postDataJSON();
+        return body?.exactPrice === true && Number(body?.amount) === 100;
+      },
+      { timeout: 45000 },
+    );
+
+    await page.goto('/buy?asset-in=CHF&asset-out=ETH&amount-in=100&blockchain=Ethereum');
+    await page.waitForLoadState('networkidle');
+    const state = await waitForQuoteUi(page, 45000);
+    expect(state, 'quote must reach Payment Information').toBe('payment');
+
+    const exactPriceResponse = await exactPriceResponsePromise;
+    const exactQuote = (await exactPriceResponse.json()) as PaymentInfoPayload;
+    expect(exactQuote?.id, 'exact-price PUT /buy/paymentInfos should have returned an id').toBeTruthy();
+
+    const confirmBtn = page.getByRole('button', { name: /Click here once you have issued the transfer/i });
+    await expect(confirmBtn).toBeEnabled();
+
+    // Confirm once directly against the API — moves the request server-side to WAITING_FOR_PAYMENT,
+    // simulating a client that already confirmed but is about to retry (e.g. it missed the first
+    // response).
+    await apiPut(`buy/paymentInfos/${exactQuote!.id}/confirm`, undefined, { jwt: user.jwt });
+
+    // The UI's own confirm click now hits the real, unmocked backend for the SAME id and must get a
+    // genuine 409 ("already confirmed") — assert the response itself, not just the rendered outcome,
+    // so this test cannot pass for a reason unrelated to the 409 branch under test.
+    const confirmResponsePromise = page.waitForResponse(
+      (r) => r.url().includes(`/buy/paymentInfos/${exactQuote!.id}/confirm`) && r.request().method() === 'PUT',
+      { timeout: 15000 },
+    );
+    await confirmBtn.click();
+    const confirmResponse = await confirmResponsePromise;
+    expect(confirmResponse.status(), 'the UI\'s own confirm call must receive the real 409').toBe(409);
+
     await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
   });
 
