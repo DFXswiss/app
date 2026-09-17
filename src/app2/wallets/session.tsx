@@ -43,6 +43,7 @@ import {
 import { connectChainWallet } from './chain-providers';
 import { isPlausibleCliAddress } from './cli';
 import { connectHardware, isWebHidAvailable, type HardwareChain, type HardwareId } from './hardware-providers';
+// Shared-origin storage with the main app — see docs/app2-origin-storage.md.
 import { BANK_TX_CACHE_PREFIX, SessionStoreKey, StoreKey } from '../lib/storage-keys';
 import { firstQueryParam } from '../utils/url';
 import { classifyInviteCode, normalizeInviteCode } from './invite';

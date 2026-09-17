@@ -37,10 +37,24 @@ import { BitcoinAddressType, BitcoinAddressPrefix } from '../lib/key-path';
 import { SumsubReviewAnswer, SumsubReviewRejectType, sumsubEnumValues } from '../lib/sumsub';
 import { RecommendationStatus } from '../lib/recommendation';
 
+/** Fails if either side has a member the other lacks, or if any mapped string differs. */
+function expectSameStringRecord(copy: object, original: object): void {
+  const copyMap = Object.fromEntries(Object.entries(copy));
+  const originalMap = Object.fromEntries(Object.entries(original));
+  expect(Object.keys(copyMap).sort()).toEqual(Object.keys(originalMap).sort());
+  expect(Object.values(copyMap).sort()).toEqual(Object.values(originalMap).sort());
+  for (const [key, value] of Object.entries(originalMap)) {
+    expect(copyMap[key]).toBe(value);
+  }
+  for (const [key, value] of Object.entries(copyMap)) {
+    expect(originalMap[key]).toBe(value);
+  }
+}
+
 describe('App 2.0 copies of main-app contracts', () => {
   it('shares the same storage keys as the main app', () => {
-    expect({ ...StoreKey }).toEqual({ ...MainStoreKey });
-    expect({ ...SessionStoreKey }).toEqual({ ...MainSessionStoreKey });
+    expectSameStringRecord({ ...StoreKey }, { ...MainStoreKey });
+    expectSameStringRecord({ ...SessionStoreKey }, { ...MainSessionStoreKey });
     expect(BANK_TX_CACHE_PREFIX).toBe(MainBankTxPrefix);
   });
 
