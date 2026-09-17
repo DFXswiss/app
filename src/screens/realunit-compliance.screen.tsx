@@ -72,7 +72,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
         .then((status) => {
           if (generation !== pollGenerationRef.current) return;
           settleBatch(status, true);
-          if (status.status === 'running') return;
+          if (status.status === 'Running') return;
           clearPoll();
         })
         .catch((e: Error) => {
@@ -91,7 +91,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
       setError(status.error ?? 'Unknown error');
       return;
     }
-    if (reload && status.status !== 'running') loadCustomers(lastSearchKeyRef.current);
+    if (reload && status.status !== 'Running') loadCustomers(lastSearchKeyRef.current);
   }
 
   // Load the complete customer list upfront; a search key narrows it down, an empty search returns to the
@@ -104,7 +104,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
       .then((status) => {
         if (generation !== pollGenerationRef.current) return;
         settleBatch(status, false);
-        if (status.status === 'running') startPolling();
+        if (status.status === 'Running') startPolling();
       })
       .catch((e: Error) => {
         if (generation !== pollGenerationRef.current) return;
@@ -118,7 +118,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
   }
 
   function handleConfirmScreen(): void {
-    if (!pendingConfirm || isConfirming || batch?.status === 'running') return;
+    if (!pendingConfirm || isConfirming || batch?.status === 'Running') return;
     const action = pendingConfirm;
     setIsConfirming(true);
     const done = (): void => {
@@ -135,7 +135,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
     startNameCheckBatch()
       .then((status) => {
         settleBatch(status, true);
-        if (status.status === 'running') startPolling();
+        if (status.status === 'Running') startPolling();
       })
       .catch((e: Error) => setError(e.message ?? 'Unknown error'))
       .finally(done);
@@ -168,7 +168,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
 
   const hiddenCount = results && displayedResults ? results.length - displayedResults.length : 0;
   const emptyCount = useMemo(() => (results ?? []).filter(isEmptyAccount).length, [results]);
-  const isBatchRunning = batch?.status === 'running';
+  const isBatchRunning = batch?.status === 'Running';
   const screeningLocked = batch == null || isBatchRunning || isConfirming;
 
   return (
@@ -196,7 +196,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
             onClick={() => setPendingConfirm({ type: 'all' })}
             disabled={isLoading || screeningLocked}
           >
-            {batch?.status === 'running'
+            {batch?.status === 'Running'
               ? translate('screens/compliance', 'Screening {{done}} / {{total}}', {
                   done: batch.done,
                   total: batch.total,

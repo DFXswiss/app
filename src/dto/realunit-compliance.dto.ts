@@ -116,7 +116,7 @@ export interface RealUnitCustomerListDto {
 }
 
 export interface RealUnitNameCheckBatchDto {
-  status: 'idle' | 'running' | 'completed' | 'failed';
+  status: 'Idle' | 'Running' | 'Completed' | 'Failed';
   total: number;
   done: number;
   failed: number;

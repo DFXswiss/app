@@ -70,7 +70,7 @@ import { RealUnitNameCheckBatchDto } from 'src/dto/realunit-compliance.dto';
 import RealunitComplianceScreen from 'src/screens/realunit-compliance.screen';
 import { formatDate } from 'src/util/compliance-helpers';
 
-const IDLE_BATCH = { status: 'idle' as const, total: 0, done: 0, failed: 0, skipped: 0 };
+const IDLE_BATCH = { status: 'Idle' as const, total: 0, done: 0, failed: 0, skipped: 0 };
 
 const FULL = {
   id: 1,
@@ -315,11 +315,11 @@ describe('RealunitComplianceScreen name-check', () => {
   it('confirms Screen all and polls while the batch is running', async () => {
     jest.useFakeTimers();
     mockSearchCustomers.mockResolvedValue([FULL]);
-    mockStartNameCheckBatch.mockResolvedValue({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 });
+    mockStartNameCheckBatch.mockResolvedValue({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 });
     mockGetNameCheckBatch
       .mockResolvedValueOnce(IDLE_BATCH)
-      .mockResolvedValueOnce({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 })
-      .mockResolvedValue({ status: 'completed', total: 1, done: 1, failed: 0, skipped: 0 });
+      .mockResolvedValueOnce({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 })
+      .mockResolvedValue({ status: 'Completed', total: 1, done: 1, failed: 0, skipped: 0 });
 
     render(<RealunitComplianceScreen />);
     await waitFor(() => {
@@ -403,8 +403,8 @@ describe('RealunitComplianceScreen name-check', () => {
     jest.useFakeTimers();
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockGetNameCheckBatch
-      .mockResolvedValueOnce({ status: 'running', total: 3, done: 1, failed: 0, skipped: 0 })
-      .mockResolvedValue({ status: 'completed', total: 3, done: 3, failed: 0, skipped: 0 });
+      .mockResolvedValueOnce({ status: 'Running', total: 3, done: 1, failed: 0, skipped: 0 })
+      .mockResolvedValue({ status: 'Completed', total: 3, done: 3, failed: 0, skipped: 0 });
 
     render(<RealunitComplianceScreen />);
     await waitFor(() => {
@@ -422,7 +422,7 @@ describe('RealunitComplianceScreen name-check', () => {
     jest.useFakeTimers();
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockGetNameCheckBatch
-      .mockResolvedValueOnce({ status: 'running', total: 3, done: 1, failed: 0, skipped: 0 })
+      .mockResolvedValueOnce({ status: 'Running', total: 3, done: 1, failed: 0, skipped: 0 })
       .mockRejectedValue(new Error('poll down'));
 
     render(<RealunitComplianceScreen />);
@@ -477,7 +477,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('reloads the list when Screen all finishes immediately', async () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockStartNameCheckBatch.mockResolvedValue({
-      status: 'completed',
+      status: 'Completed',
       total: 0,
       done: 0,
       failed: 0,
@@ -591,14 +591,14 @@ describe('RealunitComplianceScreen name-check', () => {
     let resolvePoll: (value: RealUnitNameCheckBatchDto) => void = () => undefined;
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockGetNameCheckBatch
-      .mockResolvedValueOnce({ status: 'running', total: 2, done: 0, failed: 0, skipped: 0 })
+      .mockResolvedValueOnce({ status: 'Running', total: 2, done: 0, failed: 0, skipped: 0 })
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
             resolvePoll = resolve;
           }),
       )
-      .mockResolvedValue({ status: 'completed', total: 2, done: 2, failed: 0, skipped: 0 });
+      .mockResolvedValue({ status: 'Completed', total: 2, done: 2, failed: 0, skipped: 0 });
 
     render(<RealunitComplianceScreen />);
     await waitFor(() => {
@@ -608,7 +608,7 @@ describe('RealunitComplianceScreen name-check', () => {
     jest.advanceTimersByTime(2000);
     jest.advanceTimersByTime(2000);
     expect(mockGetNameCheckBatch).toHaveBeenCalledTimes(2);
-    resolvePoll({ status: 'running', total: 2, done: 1, failed: 0, skipped: 0 });
+    resolvePoll({ status: 'Running', total: 2, done: 1, failed: 0, skipped: 0 });
     jest.advanceTimersByTime(2000);
     await waitFor(() => {
       expect(mockGetNameCheckBatch.mock.calls.length).toBeGreaterThan(2);
@@ -620,7 +620,7 @@ describe('RealunitComplianceScreen name-check', () => {
     let resolvePoll: (value: RealUnitNameCheckBatchDto) => void = () => undefined;
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockGetNameCheckBatch
-      .mockResolvedValueOnce({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 })
+      .mockResolvedValueOnce({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 })
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
@@ -635,7 +635,7 @@ describe('RealunitComplianceScreen name-check', () => {
     });
     jest.advanceTimersByTime(2000);
     unmount();
-    resolvePoll({ status: 'completed', total: 1, done: 1, failed: 0, skipped: 0 });
+    resolvePoll({ status: 'Completed', total: 1, done: 1, failed: 0, skipped: 0 });
     jest.useRealTimers();
   });
 
@@ -673,7 +673,7 @@ describe('RealunitComplianceScreen name-check', () => {
     jest.useFakeTimers();
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockGetNameCheckBatch
-      .mockResolvedValueOnce({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 })
+      .mockResolvedValueOnce({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 })
       .mockRejectedValue({});
     render(<RealunitComplianceScreen />);
     await waitFor(() => {
@@ -727,7 +727,7 @@ describe('RealunitComplianceScreen name-check', () => {
     let rejectPoll: (reason: Error) => void = () => undefined;
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockGetNameCheckBatch
-      .mockResolvedValueOnce({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 })
+      .mockResolvedValueOnce({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 })
       .mockImplementationOnce(
         () =>
           new Promise((_, reject) => {
@@ -759,7 +759,7 @@ describe('RealunitComplianceScreen name-check', () => {
       expect(screen.getByText('Alice Muster')).toBeInTheDocument();
     });
     unmount();
-    resolveBatch({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 });
+    resolveBatch({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 });
   });
 
   it('disables Screen until the mount batch status has loaded', async () => {
@@ -776,7 +776,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('shows a failed mount batch status without reloading the list', async () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockGetNameCheckBatch.mockResolvedValue({
-      status: 'failed',
+      status: 'Failed',
       total: 2,
       done: 0,
       failed: 2,
@@ -793,7 +793,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('shows a failed Screen-all response without treating it as success', async () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockStartNameCheckBatch.mockResolvedValue({
-      status: 'failed',
+      status: 'Failed',
       total: 1,
       done: 0,
       failed: 1,
@@ -816,8 +816,8 @@ describe('RealunitComplianceScreen name-check', () => {
     jest.useFakeTimers();
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockGetNameCheckBatch
-      .mockResolvedValueOnce({ status: 'running', total: 2, done: 0, failed: 0, skipped: 0 })
-      .mockResolvedValue({ status: 'failed', total: 2, done: 0, failed: 2, skipped: 0, error: 'quota' });
+      .mockResolvedValueOnce({ status: 'Running', total: 2, done: 0, failed: 0, skipped: 0 })
+      .mockResolvedValue({ status: 'Failed', total: 2, done: 0, failed: 2, skipped: 0, error: 'quota' });
     render(<RealunitComplianceScreen />);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
@@ -852,8 +852,8 @@ describe('RealunitComplianceScreen name-check', () => {
     jest.useFakeTimers();
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockGetNameCheckBatch
-      .mockResolvedValueOnce({ status: 'running', total: 1, done: 0, failed: 0, skipped: 0 })
-      .mockResolvedValue({ status: 'failed', total: 1, done: 0, failed: 1, skipped: 0 });
+      .mockResolvedValueOnce({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 })
+      .mockResolvedValue({ status: 'Failed', total: 1, done: 0, failed: 1, skipped: 0 });
     render(<RealunitComplianceScreen />);
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();

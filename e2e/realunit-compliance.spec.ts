@@ -358,8 +358,8 @@ const SEARCH_RE = /\/v1\/realunit\/compliance\/customers(?:\?|$)/;
 const NAME_CHECK_BATCH_RE = /\/v1\/realunit\/compliance\/name-check(?:\?|$)/;
 const NAME_CHECK_CUSTOMER_RE = /\/v1\/realunit\/compliance\/customers\/\d+\/name-check(?:\?|$)/;
 
-const IDLE_BATCH = { status: 'idle', total: 0, done: 0, failed: 0, skipped: 0 };
-const RUNNING_BATCH = { status: 'running', total: 3, done: 1, failed: 0, skipped: 1, startedBy: 1 };
+const IDLE_BATCH = { status: 'Idle', total: 0, done: 0, failed: 0, skipped: 0 };
+const RUNNING_BATCH = { status: 'Running', total: 3, done: 1, failed: 0, skipped: 1, startedBy: 1 };
 
 async function json(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
