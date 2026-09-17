@@ -213,14 +213,14 @@ export default function RealunitComplianceScreen(): JSX.Element {
             value={searchKey}
             onChange={(e) => setSearchKey(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !isLoading) handleSearch();
+              if (e.key === 'Enter' && !isLoading && !isConfirming) handleSearch();
             }}
             placeholder={translate('screens/compliance', 'Search by ID, email, phone or name...')}
           />
           <button
             className="px-4 py-1.5 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
             onClick={handleSearch}
-            disabled={isLoading}
+            disabled={isLoading || isConfirming}
           >
             {isLoading ? '…' : translate('general/actions', 'Search')}
           </button>

@@ -690,7 +690,7 @@ describe('RealunitComplianceScreen name-check', () => {
     });
   });
 
-  it('closes the confirm dialog even if a newer list load started while screening', async () => {
+  it('disables Search while a row screen is in flight and still closes the dialog', async () => {
     let resolveScreen: () => void = () => undefined;
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockScreenCustomer.mockImplementation(
@@ -706,7 +706,7 @@ describe('RealunitComplianceScreen name-check', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
     resolveScreen();
 
     await waitFor(() => {
