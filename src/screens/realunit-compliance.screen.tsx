@@ -123,7 +123,10 @@ export default function RealunitComplianceScreen(): JSX.Element {
         if (generation !== pollGenerationRef.current) return;
         setError(e.message ?? 'Unknown error');
       });
-    return () => clearPoll();
+    return () => {
+      listLoadGenerationRef.current++;
+      clearPoll();
+    };
   }, []);
 
   function handleSearch(): void {
@@ -139,10 +142,20 @@ export default function RealunitComplianceScreen(): JSX.Element {
       setPendingConfirm(undefined);
     };
     if (action.type === 'row') {
+      const listGeneration = listLoadGenerationRef.current;
       screenCustomer(action.id)
-        .then(() => loadCustomers(lastSearchKeyRef.current))
-        .catch((e: Error) => setError(e.message ?? 'Unknown error'))
-        .finally(done);
+        .then(() => {
+          if (listGeneration !== listLoadGenerationRef.current) return;
+          loadCustomers(lastSearchKeyRef.current);
+        })
+        .catch((e: Error) => {
+          if (listGeneration !== listLoadGenerationRef.current) return;
+          setError(e.message ?? 'Unknown error');
+        })
+        .finally(() => {
+          if (listGeneration !== listLoadGenerationRef.current) return;
+          done();
+        });
       return;
     }
     const generation = pollGenerationRef.current;
