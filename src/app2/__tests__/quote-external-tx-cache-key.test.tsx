@@ -16,6 +16,7 @@ jest.mock('@dfx.swiss/react', () => ({
   SellUrl: { quote: 'sell/quote', receive: 'sell/paymentInfos' },
   SwapUrl: { quote: 'swap/quote', receive: 'swap/paymentInfos' },
   FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
+  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
   useApi: () => ({ call: mockCall }),
   useBuy: () => ({ receiveFor: mockReceiveForBuy }),
   useSell: () => ({ receiveFor: mockReceiveForSell }),

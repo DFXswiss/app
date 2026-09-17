@@ -101,18 +101,32 @@ export function shownChainsFor(
   return chains.filter((c) => isReachable(c.blockchain, sessionBlockchains));
 }
 
-/** Parses the embed contract's `?balances=amount@asset,amount@asset,...` query param (top-level,
- * outside the hash route) into a `{ TICKER: amount }` map — same format/semantics as the static
- * app's `BAL` (public/app2/index.html). Used to show only held assets in the sell/swap-source
- * picker when a partner wallet passes its balances in. */
-export function parseBalances(search: string): Record<string, number> {
+type BalanceAsset = { id: number | string; name: string };
+
+function balanceTicker(
+  ident: string,
+  assets: readonly BalanceAsset[] | undefined,
+): string | undefined {
+  if (!ident) return undefined;
+  if (/^\d+$/.test(ident)) {
+    const match = assets?.find((asset) => String(asset.id) === ident);
+    return match ? match.name.toUpperCase() : undefined;
+  }
+  return ident.toUpperCase();
+}
+
+/** Parses the embed contract's `?balances=amount@asset,amount@asset,...` query param.
+ * The main-app contract is `amount@assetId` (README). Ticker form (`amount@BTC`) remains
+ * accepted so existing App 2.0 embeds keep working. Numeric IDs resolve against `assets`
+ * to a ticker; unmatched IDs are skipped. */
+export function parseBalances(search: string, assets?: readonly BalanceAsset[]): Record<string, number> {
   const raw = new URLSearchParams(search).get('balances');
   const out: Record<string, number> = {};
   if (!raw) return out;
   for (const entry of raw.split(',')) {
     const [amountStr, codeRaw] = entry.split('@');
     const amount = parseFloat(amountStr);
-    const code = (codeRaw || '').trim().toUpperCase();
+    const code = balanceTicker((codeRaw || '').trim(), assets);
     if (code && Number.isFinite(amount)) out[code] = (out[code] || 0) + amount;
   }
   return out;

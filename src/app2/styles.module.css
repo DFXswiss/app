@@ -3877,7 +3877,10 @@ select.tinput:disabled,
 }
 
 /* toast */
-body.headless #topbar {
+/* `headless` / `borderless` are local (hashed). Shell puts the hashed name on
+ * `document.body` via `cx()`. `#topbar` is an element id, so it is global. */
+body.headless :global(#topbar),
+body.headless .topbar {
   display: none;
 }
 body.borderless .app {

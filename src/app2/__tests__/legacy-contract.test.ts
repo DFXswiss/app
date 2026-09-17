@@ -31,7 +31,9 @@ import {
   SumsubReviewRejectType as MainSumsubReject,
 } from '../../dto/sumsub.dto';
 import { RecommendationStatus as MainRecStatus } from '../../dto/recommendation.dto';
+import { isSafeRedirectUri as MainSafeRedirect } from '../../util/utils';
 import { StoreKey, SessionStoreKey, BANK_TX_CACHE_PREFIX } from '../lib/storage-keys';
+import { isSafeRedirectUri as App2SafeRedirect } from '../utils/url';
 import { JobStatus } from '../lib/job';
 import { BitcoinAddressType, BitcoinAddressPrefix } from '../lib/key-path';
 import { SumsubReviewAnswer, SumsubReviewRejectType, sumsubEnumValues } from '../lib/sumsub';
@@ -79,5 +81,21 @@ describe('App 2.0 copies of main-app contracts', () => {
 
   it('shares the same recommendation statuses', () => {
     expect({ ...RecommendationStatus }).toEqual({ ...MainRecStatus });
+  });
+
+  it('copies isSafeRedirectUri from the main app', () => {
+    const samples = [
+      'https://example.com',
+      'http://localhost:3001/x',
+      'http://127.0.0.1/x',
+      'http://evil.com',
+      'javascript:alert(1)',
+      'mywallet://callback',
+      '',
+      'not a uri',
+    ];
+    for (const sample of samples) {
+      expect(App2SafeRedirect(sample)).toBe(MainSafeRedirect(sample));
+    }
   });
 });
