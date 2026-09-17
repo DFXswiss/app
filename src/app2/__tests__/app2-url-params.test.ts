@@ -1,4 +1,4 @@
-import { appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl, isSafeHttpsUrl, mailRedirectUri } from '../utils/url';
+import { appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl, isSafeHttpsUrl, mailRedirectUri, routeOrQueryParam } from '../utils/url';
 
 describe('foldApp2PathIntoHash', () => {
   it('folds real-path Checkout/email returns into hash routes and keeps the query', () => {
@@ -114,6 +114,31 @@ describe('firstQueryParam', () => {
     expect(isSafeHttpsUrl('https://app.dfx.swiss')).toBe(true);
     expect(isSafeHttpsUrl('http://app.dfx.swiss')).toBe(false);
     expect(isSafeHttpsUrl(':::')).toBe(false);
+  });
+});
+
+describe('routeOrQueryParam', () => {
+  const original = window.location;
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', { configurable: true, value: original });
+  });
+
+  it('prefers the hash-router search over the window query', () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, search: '?asset-out=BTC', hash: '' },
+    });
+    expect(routeOrQueryParam('?asset-out=USDT%20', 'asset-out')).toBe('USDT');
+  });
+
+  it('falls back to firstQueryParam when the router search is empty', () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, search: '', hash: '#/?asset-out=ETH' },
+    });
+    expect(routeOrQueryParam('', 'asset-out')).toBe('ETH');
+    expect(routeOrQueryParam('?asset-out=%20', 'missing')).toBeUndefined();
   });
 });
 

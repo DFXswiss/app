@@ -54,6 +54,20 @@ describe('trade quote fail-closed fetchers', () => {
     render(<Missing />);
     await expect(captureFetcher()).rejects.toThrow('buy quote: missing input');
 
+    function MissingAmounts() {
+      useBuyQuote({
+        enabled: true,
+        asset,
+        currency,
+        amount: null,
+        targetAmount: 0,
+        paymentMethod: FiatPaymentMethod.BANK,
+      });
+      return null;
+    }
+    render(<MissingAmounts />);
+    await expect(captureFetcher()).rejects.toThrow('buy quote: missing input');
+
     function Info() {
       useBuyQuote({
         enabled: true,

@@ -30,7 +30,7 @@ import { AnchorHTMLAttributes, FormEvent, ReactNode, useEffect, useRef, useState
 import QRCode from 'react-qr-code';
 import { LoadingRow, useToast } from '../components/ui';
 import { useT, type TranslationKey } from '../i18n';
-import { appUrl, isSafeAppUrl } from '../utils/url';
+import { appUrl, firstQueryParam, isSafeAppUrl } from '../utils/url';
 import { useWalletSession } from '../wallets/session';
 import { formatChf, isSafeHttpsUrl } from './parts/format';
 import { LoggedOutState } from './parts/LoggedOutState';
@@ -115,6 +115,7 @@ export default function KycScreen() {
   const [tfaToken, setTfaToken] = useState('');
   const [tfaError, setTfaError] = useState('');
   const reqRef = useRef(0);
+  const autoStartConsumedRef = useRef(false);
 
   const code = user?.kyc.hash;
 
@@ -152,12 +153,61 @@ export default function KycScreen() {
       });
   };
 
+  const runContinue = (info: KycInfo, hash: string) => {
+    const req = ++reqRef.current;
+    setBusy(true);
+    setTfaError('');
+    kyc
+      .continueKyc(hash, true)
+      .then((session) => {
+        if (req !== reqRef.current) return;
+        if (session.currentStep) setPhase({ kind: 'step', info: session, step: session.currentStep });
+        else setPhase({ kind: 'overview', info: session });
+      })
+      .catch((err: unknown) => {
+        if (req !== reqRef.current) return;
+        // KYC calls return the structured API error body directly. Branch only on its machine
+        // fields; never parse a localized human-readable message.
+        if (isTfaRequiredError(err)) {
+          setBusy(false);
+          beginTfaSetup(info, hash);
+          return;
+        }
+        const handoff = kycHandoffFromError(err);
+        if (handoff) {
+          setPhase({ kind: 'handoff', info, handoff });
+          return;
+        }
+        setPhase({ kind: 'error', message: apiErrorMessage(t, err) });
+      })
+      .finally(() => {
+        if (req !== reqRef.current) return;
+        setBusy(false);
+      });
+  };
+
   useEffect(() => {
     if (!isLoggedIn || !code) return;
     loadOverview(code);
     // `loadOverview` intentionally omitted — re-created every render; this
     // effect should only re-run when the session or KYC code changes.
   }, [isLoggedIn, code]);
+
+  // Partner `auto-start=true` starts KYC the same way the overview CTA does. The main app
+  // deletes `autoStart` from stored params (`removeNonStorageParams`) because it is one-shot:
+  // persisting it would re-trigger continue on every restore. App 2.0 has no param store, so
+  // the consumed-ref is that one-shot. We do not strip the URL (App 2.0 only scrubs credentials).
+  useEffect(() => {
+    if (firstQueryParam('auto-start') !== 'true') return;
+    if (!isLoggedIn || !code) return;
+    if (phase.kind !== 'overview') return;
+    if (autoStartConsumedRef.current) return;
+    const steps = phase.info.kycSteps ?? [];
+    const allDone = steps.length > 0 && steps.every((step) => isStepDone(step));
+    autoStartConsumedRef.current = true;
+    if (allDone) return;
+    runContinue(phase.info, code);
+  }, [isLoggedIn, code, phase]);
 
   if (!isLoggedIn) return <LoggedOutState title={t('mKyc')} />;
 
@@ -190,39 +240,6 @@ export default function KycScreen() {
     );
   }
 
-  const runContinue = (info: KycInfo) => {
-    const req = ++reqRef.current;
-    setBusy(true);
-    setTfaError('');
-    kyc
-      .continueKyc(code, true)
-      .then((session) => {
-        if (req !== reqRef.current) return;
-        if (session.currentStep) setPhase({ kind: 'step', info: session, step: session.currentStep });
-        else setPhase({ kind: 'overview', info: session });
-      })
-      .catch((err: unknown) => {
-        if (req !== reqRef.current) return;
-        // KYC calls return the structured API error body directly. Branch only on its machine
-        // fields; never parse a localized human-readable message.
-        if (isTfaRequiredError(err)) {
-          setBusy(false);
-          beginTfaSetup(info, code);
-          return;
-        }
-        const handoff = kycHandoffFromError(err);
-        if (handoff) {
-          setPhase({ kind: 'handoff', info, handoff });
-          return;
-        }
-        setPhase({ kind: 'error', message: apiErrorMessage(t, err) });
-      })
-      .finally(() => {
-        if (req !== reqRef.current) return;
-        setBusy(false);
-      });
-  };
-
   const verifyTfa = (info: KycInfo) => (e: FormEvent) => {
     e.preventDefault();
     if (busy || !/^\d{6}$/.test(tfaToken)) return;
@@ -234,7 +251,7 @@ export default function KycScreen() {
         if (req !== reqRef.current) return;
         setTfaToken('');
         setTfaError('');
-        runContinue(info);
+        runContinue(info, code);
       })
       .catch(() => {
         if (req !== reqRef.current) return;
@@ -459,7 +476,7 @@ export default function KycScreen() {
               {t('finishOnDfx')}
             </SafeExternalLink>
           ) : (
-            <button className={cx('btn-primary')} disabled={busy} onClick={() => runContinue(info)}>
+            <button className={cx('btn-primary')} disabled={busy} onClick={() => runContinue(info, code)}>
               {t('xmrContinue')}
             </button>
           )}
@@ -544,7 +561,7 @@ export default function KycScreen() {
           className={cx('btn-mini')}
           style={{ marginTop: 10, width: '100%' }}
           disabled={busy}
-          onClick={() => runContinue(info)}
+          onClick={() => runContinue(info, code)}
         >
           {t('kycIdentDone2')}
         </button>
@@ -598,7 +615,7 @@ export default function KycScreen() {
       {allDone ? (
         <div className={cx('paybox-note', 'ok')}>{t('kycAllDone')}</div>
       ) : (
-        <button className={cx('btn-primary')} disabled={busy} onClick={() => runContinue(info)}>
+        <button className={cx('btn-primary')} disabled={busy} onClick={() => runContinue(info, code)}>
           {t(started ? 'xmrContinue' : 'kycStart')}
         </button>
       )}

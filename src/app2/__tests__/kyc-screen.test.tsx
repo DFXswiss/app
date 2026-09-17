@@ -109,6 +109,7 @@ describe('KycScreen', () => {
       kycLevel: 0,
       kycSteps: [{ name: 'ContactData', status: 'NotStarted' }],
     });
+    window.history.replaceState({}, '', '/');
   });
 
   it('discards a late KYC overview when the hash has changed', async () => {
@@ -766,5 +767,54 @@ describe('KycScreen', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     handoff.unmount();
     process.env.REACT_APP_PUBLIC_URL = prev;
+  });
+
+  it('auto-starts KYC when auto-start=true, and does not when the param is absent or not true', async () => {
+    mockSession.isLoggedIn = true;
+    mockContinueKyc.mockResolvedValue({
+      currentStep: { name: 'ContactData', status: 'InProgress', sequenceNumber: 1 },
+    });
+    window.history.replaceState({}, '', '/?auto-start=true');
+    const started = renderKyc();
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('abc', true));
+    started.unmount();
+
+    mockContinueKyc.mockClear();
+    window.history.replaceState({}, '', '/?auto-start=yes');
+    const ignored = renderKyc();
+    expect(await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i })).toBeInTheDocument();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+    ignored.unmount();
+
+    window.history.replaceState({}, '', '/');
+    renderKyc();
+    expect(await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i })).toBeInTheDocument();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-start when every KYC step is already done', async () => {
+    mockSession.isLoggedIn = true;
+    mockGetKycInfo.mockResolvedValue({
+      kycLevel: 50,
+      kycSteps: [{ name: 'ContactData', status: 'Completed' }],
+    });
+    window.history.replaceState({}, '', '/?auto-start=true');
+    renderKyc();
+    expect(await screen.findByText(/all done|alles erledigt|tutto fatto|tout est fait/i)).toBeInTheDocument();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-start while logged out even if auto-start=true', () => {
+    window.history.replaceState({}, '', '/?auto-start=true');
+    renderKyc();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+  });
+
+  it('does not auto-start without a KYC hash', () => {
+    mockSession.isLoggedIn = true;
+    mockUser.user = { kyc: { level: 0 } };
+    window.history.replaceState({}, '', '/?auto-start=true');
+    renderKyc();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
   });
 });

@@ -39,12 +39,21 @@ const currency = { id: 2, name: 'EUR' } as Fiat;
 const asset = { id: 123, name: 'USDT' } as Asset;
 const otherAsset = { id: 113, name: 'USDC' } as Asset;
 
-function BuyHarness({ withPaymentInfo }: { withPaymentInfo?: boolean }) {
+function BuyHarness({
+  withPaymentInfo,
+  amount = 100,
+  targetAmount,
+}: {
+  withPaymentInfo?: boolean;
+  amount?: number | null;
+  targetAmount?: number | null;
+}) {
   useBuyQuote({
     enabled: true,
     asset,
     currency,
-    amount: 100,
+    amount,
+    targetAmount,
     paymentMethod: FiatPaymentMethod.BANK,
     externalTransactionId: 'tx-42',
     withPaymentInfo,
@@ -109,6 +118,29 @@ describe('App2 trade quote endpoints', () => {
     );
     expect(mockCall.mock.calls[0][0].data).not.toHaveProperty('externalTransactionId');
     expect(mockReceiveForBuy).not.toHaveBeenCalled();
+  });
+
+  it('quotes buy from targetAmount without sending a source amount', async () => {
+    render(<BuyHarness amount={null} targetAmount={0.01} />);
+
+    await waitFor(() => expect(mockCall).toHaveBeenCalledTimes(1));
+    expect(mockCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'buy/quote',
+        data: { currency, asset, targetAmount: 0.01, paymentMethod: 'Bank' },
+      }),
+    );
+    expect(mockCall.mock.calls[0][0].data).not.toHaveProperty('amount');
+  });
+
+  it('sends targetAmount on buy paymentInfos when quoting the destination', async () => {
+    render(<BuyHarness amount={null} targetAmount={0.01} withPaymentInfo />);
+
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalledTimes(1));
+    expect(mockReceiveForBuy).toHaveBeenCalledWith(
+      expect.objectContaining({ targetAmount: 0.01, externalTransactionId: 'tx-42' }),
+    );
+    expect(mockReceiveForBuy.mock.calls[0][0]).not.toHaveProperty('amount');
   });
 
   it('asks for buy payment details only with withPaymentInfo', async () => {

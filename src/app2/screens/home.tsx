@@ -28,7 +28,16 @@ import { FiatPicker } from '../components/pickers/FiatPicker';
 import { PaymentMethodPicker, paymentMethodsFor } from '../components/pickers/PaymentMethodPicker';
 import { Spinner, useToast } from '../components/ui';
 import { formatAmount, formatFiat, parseAmt, quickChipSymbol } from './trade/amount';
-import { assetFor, availableAssets, groupAssets, heldBalance, parseBalances, shownChainsFor } from './trade/asset-pool';
+import {
+  assetFor,
+  availableAssets,
+  findNamedTradeAsset,
+  groupAssets,
+  heldBalance,
+  includeInPartnerPool,
+  parseBalances,
+  shownChainsFor,
+} from './trade/asset-pool';
 import { chainName, isStableAsset } from './trade/blockchain-meta';
 import {
   currenciesForBuy,
@@ -44,7 +53,7 @@ import { Landing } from './parts/Landing';
 import { MODES, type Capability, type Mode, type TradeAsset } from './trade/types';
 import { useBuyQuote, useSellQuote, useSwapQuote } from './trade/useTradeQuote';
 import { useT, type TranslationKey } from '../i18n';
-import { firstQueryParam } from '../utils/url';
+import { firstQueryParam, routeOrQueryParam } from '../utils/url';
 import { useWalletSession } from '../wallets/session';
 import { cx } from '../css';
 
@@ -99,6 +108,11 @@ export default function HomeScreen() {
   const [buyChain, setBuyChain] = useState<Blockchain>();
   const [buyFiat, setBuyFiat] = useState<Fiat>();
   const [buyMethod, setBuyMethod] = useState<FiatPaymentMethod>(FiatPaymentMethod.BANK);
+  const amountOutParam = useMemo(() => routeOrQueryParam(location.search, 'amount-out'), [location.search]);
+  const assetInParam = useMemo(() => routeOrQueryParam(location.search, 'asset-in'), [location.search]);
+  const assetOutParam = useMemo(() => routeOrQueryParam(location.search, 'asset-out'), [location.search]);
+  const hideTargetSelection = Boolean(routeOrQueryParam(location.search, 'hide-target-selection'));
+
   const [buyRaw, setBuyRaw] = useState('100');
 
   const [sellAsset, setSellAsset] = useState<TradeAsset>();
@@ -130,6 +144,8 @@ export default function HomeScreen() {
   // request settles — armed by the CTA, or by picking the payout account the sell CTA asked for.
   const [needPaymentInfo, setNeedPaymentInfo] = useState(false);
   const [openAfterPaymentInfo, setOpenAfterPaymentInfo] = useState(false);
+  const [buyTargetRaw, setBuyTargetRaw] = useState(amountOutParam ? amountOutParam : '');
+  const targetClearedByUserRef = useRef(false);
 
   useEffect(() => {
     const requestedMode =
@@ -147,14 +163,22 @@ export default function HomeScreen() {
   );
 
   // ---- asset pool (real data — useAssetContext(), grouped per ticker; see asset-pool.ts) ---
+  // Buy and sell apply the PUBLIC filter separately: buy excepts `asset-out` (buy.screen.tsx:358),
+  // sell excepts `asset-in` (sell.screen.tsx:202). A shared OR would leak the other side's private
+  // asset into the picker. Swap has no PUBLIC filter in the main app; here it reuses these pools
+  // (from = sell / to = buy), so each crypto leg inherits that side's exception.
   const allAssets = useMemo<Asset[]>(() => getAssets(Object.values(Blockchain)), [getAssets]);
-  const pool = useMemo(() => groupAssets(allAssets), [allAssets]);
+  const buyPool = useMemo(() => {
+    const visible = allAssets.filter((asset) => includeInPartnerPool(asset, assetOutParam));
+    return availableAssets(groupAssets(visible), 'buy');
+  }, [allAssets, assetOutParam]);
+  const sellPoolAll = useMemo(() => {
+    const visible = allAssets.filter((asset) => includeInPartnerPool(asset, assetInParam));
+    return availableAssets(groupAssets(visible), 'sell');
+  }, [allAssets, assetInParam]);
   const balances = useMemo(() => parseBalances(window.location.search), []);
   const buyCurrencies = useMemo(() => currenciesForBuy(currencies), [currencies]);
   const sellCurrencies = useMemo(() => currenciesForSell(currencies), [currencies]);
-
-  const buyPool = useMemo(() => availableAssets(pool, 'buy'), [pool]);
-  const sellPoolAll = useMemo(() => availableAssets(pool, 'sell'), [pool]);
   const hasBalances = Object.keys(balances).length > 0;
   const sellPool = useMemo(
     () => (hasBalances ? sellPoolAll.filter((tk) => heldBalance(balances, tk.code) > 0) : sellPoolAll),
@@ -171,12 +195,12 @@ export default function HomeScreen() {
       return;
     }
     const reachable = buyPool.filter((asset) => shownChainsFor(asset, 'buy', session.blockchains).length > 0);
-    const def = reachable.find((tk) => tk.code === 'BTC') ?? reachable[0];
+    const def = findNamedTradeAsset(reachable, assetOutParam) ?? reachable.find((tk) => tk.code === 'BTC') ?? reachable[0];
     if (!def) return;
     const chains = shownChainsFor(def, 'buy', session.blockchains);
     setBuyAsset(def);
     setBuyChain(chains[0]?.blockchain);
-  }, [buyPool, buyAsset, buyChain, session.blockchains]);
+  }, [buyPool, buyAsset, buyChain, session.blockchains, assetOutParam]);
 
   useEffect(() => {
     if (!sellPool.length) return;
@@ -186,12 +210,12 @@ export default function HomeScreen() {
       return;
     }
     const reachable = sellPool.filter((asset) => shownChainsFor(asset, 'sell', session.blockchains).length > 0);
-    const def = reachable.find((tk) => tk.code === 'BTC') ?? reachable[0];
+    const def = findNamedTradeAsset(reachable, assetInParam) ?? reachable.find((tk) => tk.code === 'BTC') ?? reachable[0];
     if (!def) return;
     const chains = shownChainsFor(def, 'sell', session.blockchains);
     setSellAsset(def);
     setSellChain(chains[0]?.blockchain);
-  }, [sellPool, sellAsset, sellChain, session.blockchains]);
+  }, [sellPool, sellAsset, sellChain, session.blockchains, assetInParam]);
 
   useEffect(() => {
     if (!sellPool.length) return;
@@ -228,8 +252,16 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (buyFiat || !buyCurrencies.length) return;
-    setBuyFiat(buyCurrencies.find((c) => c.name === 'EUR') ?? buyCurrencies[0]);
-  }, [buyCurrencies, buyFiat]);
+    const wanted = assetInParam?.toLowerCase();
+    const fromParam = wanted
+      ? buyCurrencies.find((currency) => currency.name.toLowerCase() === wanted)
+      : undefined;
+    setBuyFiat(fromParam ?? buyCurrencies.find((c) => c.name === 'EUR') ?? buyCurrencies[0]);
+  }, [buyCurrencies, buyFiat, assetInParam]);
+
+  useEffect(() => {
+    if (amountOutParam && !targetClearedByUserRef.current) setBuyTargetRaw(amountOutParam);
+  }, [amountOutParam, buyAsset]);
 
   useEffect(() => {
     if (sellFiat || !sellCurrencies.length) return;
@@ -257,6 +289,9 @@ export default function HomeScreen() {
   }, [buyFiat, buyApiAsset]);
 
   const buyAmount = parseAmt(buyRaw, language);
+  const buyTargetAmount = parseAmt(buyTargetRaw, language);
+  const receiveDrivenByParam = Boolean(amountOutParam) && !targetClearedByUserRef.current;
+  const quoteFromTarget = receiveDrivenByParam && Boolean(buyTargetRaw.trim());
   const sellAmount = parseAmt(sellRaw, language);
   const swapAmount = parseAmt(swapRaw, language);
 
@@ -267,10 +302,12 @@ export default function HomeScreen() {
   // CTA. Sharing one engine would mean an account gate (no e-mail on file, KYC, …) blanking
   // the rate the moment the sheet is opened.
   const buyQuote = useBuyQuote({
-    enabled: session.isLoggedIn && mode === 'buy' && Boolean(buyRaw.trim()),
+    enabled:
+      session.isLoggedIn && mode === 'buy' && (quoteFromTarget ? Boolean(buyTargetRaw.trim()) : Boolean(buyRaw.trim())),
     asset: buyApiAsset,
     currency: buyFiat,
-    amount: buyAmount,
+    amount: quoteFromTarget ? null : buyAmount,
+    targetAmount: quoteFromTarget ? buyTargetAmount : null,
     paymentMethod: buyMethod,
     externalTransactionId,
     // Also paused between CTA tap and sheet opening, so the panel number behind the spinner
@@ -281,7 +318,8 @@ export default function HomeScreen() {
     enabled: session.isLoggedIn && mode === 'buy' && needPaymentInfo,
     asset: buyApiAsset,
     currency: buyFiat,
-    amount: buyAmount,
+    amount: quoteFromTarget ? null : buyAmount,
+    targetAmount: quoteFromTarget ? buyTargetAmount : null,
     paymentMethod: buyMethod,
     externalTransactionId,
     withPaymentInfo: true,
@@ -776,12 +814,30 @@ export default function HomeScreen() {
             </span>
           </div>
           <div className={cx('pinput')}>
-            <input className={cx('amt')} value={receiveValue} readOnly aria-label="Amount you receive" />
+            <input
+              className={cx('amt')}
+              value={
+                receiveDrivenByParam ? buyTargetRaw : targetClearedByUserRef.current ? '' : receiveValue
+              }
+              readOnly={!receiveDrivenByParam}
+              aria-label="Amount you receive"
+              onChange={
+                receiveDrivenByParam
+                  ? (e) => {
+                      const next = e.target.value;
+                      if (!next) targetClearedByUserRef.current = true;
+                      setBuyTargetRaw(next);
+                    }
+                  : undefined
+              }
+            />
             {isFiatReceive ? (
               <button
                 className={cx('pill')}
                 aria-label="Select receive currency"
-                onClick={() => setFiatPickerOpen('sellReceive')}
+                disabled={hideTargetSelection}
+                onClick={hideTargetSelection ? undefined : () => setFiatPickerOpen('sellReceive')}
+                style={hideTargetSelection ? { cursor: 'default' } : undefined}
               >
                 {sellFiat ? (
                   <span className={cx('glyph')}>
@@ -792,19 +848,23 @@ export default function HomeScreen() {
                   <b>{sellFiat?.name ?? ''}</b>
                   <s>{sellFiat ? fiatDescription(t, sellFiat.name) : ''}</s>
                 </span>
-                <span className={cx('caret')}>{CHEVRON_RIGHT}</span>
+                {!hideTargetSelection && <span className={cx('caret')}>{CHEVRON_RIGHT}</span>}
               </button>
             ) : (
               <button
                 className={cx('pill')}
                 aria-label="Select receive asset"
-                onClick={() => setAssetPickerOpen(mode === 'buy' ? 'buyReceive' : 'swapTo')}
+                disabled={hideTargetSelection}
+                onClick={
+                  hideTargetSelection ? undefined : () => setAssetPickerOpen(mode === 'buy' ? 'buyReceive' : 'swapTo')
+                }
+                style={hideTargetSelection ? { cursor: 'default' } : undefined}
               >
                 <PillAsset
                   asset={mode === 'buy' ? buyAsset : swapToAsset}
                   chain={mode === 'buy' ? buyChain : swapToChain}
                 />
-                <span className={cx('caret')}>{CHEVRON_RIGHT}</span>
+                {!hideTargetSelection && <span className={cx('caret')}>{CHEVRON_RIGHT}</span>}
               </button>
             )}
           </div>

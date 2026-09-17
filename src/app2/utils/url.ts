@@ -60,6 +60,16 @@ export function firstQueryParam(...keys: string[]): string | undefined {
 }
 
 /**
+ * Hash-router screens put params on `useLocation().search`; partner deep links
+ * put them on the real query or the hash query. Same union `external-transaction-id`
+ * already uses on Home, extracted so each param is not a new `||` branch.
+ */
+export function routeOrQueryParam(locationSearch: string, key: string): string | undefined {
+  const fromRoute = new URLSearchParams(locationSearch).get(key)?.trim();
+  return fromRoute || firstQueryParam(key);
+}
+
+/**
  * Real-path Checkout/email returns land on `/app2/buy/success` etc., which the
  * hash router never sees. Fold those paths into `/app2/#/...` (preserving the
  * query) so `ReturnRouteScreen` runs. Returns null when already on a hash route

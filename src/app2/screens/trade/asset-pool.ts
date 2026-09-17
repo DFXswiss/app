@@ -121,3 +121,39 @@ export function parseBalances(search: string): Record<string, number> {
 export function heldBalance(balances: Record<string, number>, code: string): number {
   return balances[code.toUpperCase()] || 0;
 }
+
+/** Same discriminator as `AssetCategory.PRIVATE`. Compared by value so tests that mock
+ * `@dfx.swiss/react` without the enum still exercise the partner-pool filter. */
+const PRIVATE_ASSET_CATEGORY = 'Private';
+
+/** Name / uniqueName match used by the main app's `getAsset(list, identifier)`. */
+export function matchesAssetParam(
+  asset: { name: string; uniqueName?: string },
+  named: string,
+): boolean {
+  const needle = named.toLowerCase();
+  return asset.name.toLowerCase() === needle || asset.uniqueName?.toLowerCase() === needle;
+}
+
+/**
+ * Public assets always, plus a private asset when `named` matches (`a.category === PUBLIC
+ * || a.name === named`). Callers pass buy's `asset-out` or sell's `asset-in` — not both —
+ * matching buy.screen.tsx:358 and sell.screen.tsx:202. Missing `category` is treated as
+ * public so existing fixtures without the field stay visible.
+ */
+export function includeInPartnerPool(
+  asset: { name: string; uniqueName?: string; category?: string },
+  named?: string,
+): boolean {
+  if (asset.category !== PRIVATE_ASSET_CATEGORY) return true;
+  return named != null && matchesAssetParam(asset, named);
+}
+
+/** First pool entry whose ticker or uniqueName matches the partner param. */
+export function findNamedTradeAsset(pool: TradeAsset[], named?: string): TradeAsset | undefined {
+  if (!named) return undefined;
+  const wanted = named.toLowerCase();
+  return pool.find(
+    (tk) => tk.code.toLowerCase() === wanted || tk.chains.some((chain) => matchesAssetParam(chain.asset, wanted)),
+  );
+}

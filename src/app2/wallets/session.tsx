@@ -562,7 +562,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const { defaultUrl: apiBaseUrl } = useApi();
   // Linked addresses on the active DFX account + seamless address switch (no re-signing). This is
   // the authoritative source of the user's own wallets for the switch-wallet sheet.
-  const { user, userAddresses, changeAddress, reloadUser } = useUserContext();
+  const { user, userAddresses, changeAddress, reloadUser, addSpecialCode } = useUserContext();
   const { t, language } = useT();
   const { showToast } = useToast();
 
@@ -611,7 +611,21 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   // embed-contract param, and ?recommendation-code= the main-app partner param (app-handling.context).
   const inviteCode = useMemo(() => firstQueryParam('refcode', 'recommendation-code', 'code', 'ref', 'usedRef'), []);
   const walletParam = useMemo(() => firstQueryParam('wallet'), []);
+  const specialCodeParam = useMemo(() => firstQueryParam('special-code'), []);
   const activeInviteRef = useRef(normalizeInviteCode(inviteCode));
+  const specialCodeAppliedRef = useRef<string>();
+
+  // Partner `special-code`: register on the account once a session exists. Invalid/already-used
+  // codes must not block login — same swallow as wallet.context (`addSpecialCode(...).catch(() => undefined)`).
+  useEffect(() => {
+    if (!isLoggedIn) {
+      specialCodeAppliedRef.current = undefined;
+      return;
+    }
+    if (!specialCodeParam || specialCodeAppliedRef.current === specialCodeParam) return;
+    specialCodeAppliedRef.current = specialCodeParam;
+    addSpecialCode(specialCodeParam).catch(() => undefined);
+  }, [isLoggedIn, specialCodeParam, addSpecialCode]);
 
   const openConnect = useCallback(
     (recommendationCode?: string, filterChain?: Blockchain) => {
@@ -678,7 +692,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           creds.address,
           creds.signature,
           creds.key,
-          undefined,
+          specialCodeParam,
           walletParam,
           usedRef,
           creds.walletType,
@@ -748,7 +762,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         return false;
       }
     },
-    [changeAddress, createSessionNew, language, libLogout, showToast, t, updateSession, walletParam],
+    [changeAddress, createSessionNew, language, libLogout, showToast, t, updateSession, walletParam, specialCodeParam],
   );
 
   const handleSelectWallet = useCallback(
