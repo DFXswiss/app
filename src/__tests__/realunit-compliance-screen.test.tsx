@@ -734,6 +734,8 @@ describe('RealunitComplianceScreen name-check', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '…' })).toBeDisabled();
     });
+    fireEvent.keyDown(screen.getByPlaceholderText('Search by ID, email, phone or name...'), { key: 'Enter' });
+    expect(mockSearchCustomers).toHaveBeenCalledTimes(1);
     resolveSearch([FULL]);
     await waitFor(() => {
       expect(screen.getByText('Alice Muster')).toBeInTheDocument();
