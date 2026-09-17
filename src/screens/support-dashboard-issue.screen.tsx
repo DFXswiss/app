@@ -165,14 +165,19 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     if (!issueData?.uid || !id || issueData.id !== +id) return;
     const requestId = id;
     const gen = requestGenRef.current;
+    const seq = messageLoadSeqRef.current;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
-        if (idRef.current !== requestId || requestGenRef.current !== gen) return;
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) {
+          return;
+        }
         const newCount = fetched.filter((m) => !visibleIdsRef.current.has(m.id)).length;
         if (newCount > 0) setPendingCount(newCount);
       })
       .catch((e: Error) => {
-        if (idRef.current !== requestId || requestGenRef.current !== gen) return;
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) {
+          return;
+        }
         setActionError(e.message ?? 'Failed to load messages');
       });
   }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
@@ -312,21 +317,24 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     // composer and error are restored only if the clerk is still on it.
     const sendIssueId = id;
     const draft = messageText;
+    const files = selectedFiles;
     clearDraft();
+    let sent = 0;
     try {
       const author = messageAuthor;
       const text = draft.trim() || undefined;
 
-      if (selectedFiles.length > 0) {
-        for (let i = 0; i < selectedFiles.length; i++) {
-          const fileData = await toBase64(selectedFiles[i]);
-          const isLast = i === selectedFiles.length - 1;
+      if (files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const fileData = await toBase64(files[i]);
+          const isLast = i === files.length - 1;
           await sendMessage(+sendIssueId, {
             author,
             message: isLast ? text : undefined,
             file: fileData,
-            fileName: selectedFiles[i].name,
+            fileName: files[i].name,
           });
+          sent += 1;
         }
       } else {
         await sendMessage(+sendIssueId, { author, message: text });
@@ -339,6 +347,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     } catch (e: unknown) {
       writeDraft(sendIssueId, draft);
       if (idRef.current !== sendIssueId) return;
+      if (files.length > 0) setSelectedFiles(files.slice(sent));
       setMessageText(draft);
       setActionError(e instanceof Error ? e.message : 'Send failed');
     } finally {
