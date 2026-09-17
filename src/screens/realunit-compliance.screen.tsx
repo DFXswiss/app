@@ -134,7 +134,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
   }
 
   function handleConfirmScreen(): void {
-    if (!pendingConfirm || isConfirming || batch?.status === 'Running') return;
+    if (!pendingConfirm || isConfirming) return;
     const action = pendingConfirm;
     setIsConfirming(true);
     const done = (): void => {

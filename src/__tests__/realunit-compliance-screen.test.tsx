@@ -688,6 +688,45 @@ describe('RealunitComplianceScreen name-check', () => {
     resolveScreen();
   });
 
+  it('ignores a late row-screen error after unmount', async () => {
+    let rejectScreen: (reason: Error) => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockScreenCustomer.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectScreen = reject;
+        }),
+    );
+    const { unmount } = render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    unmount();
+    rejectScreen(new Error('late'));
+  });
+
+  it('ignores a late Screen-all error after unmount', async () => {
+    let rejectBatch: (reason: Error) => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch.mockResolvedValue(IDLE_BATCH);
+    mockStartNameCheckBatch.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectBatch = reject;
+        }),
+    );
+    const { unmount } = render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    unmount();
+    rejectBatch(new Error('late'));
+  });
+
   it('skips overlapping poll ticks while a request is in flight', async () => {
     jest.useFakeTimers();
     let resolvePoll: (value: RealUnitNameCheckBatchDto) => void = () => undefined;
