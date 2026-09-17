@@ -45,8 +45,8 @@ const CUSTOMER_ID = 7101;
 
 // ---------------------------------------------------------------------------
 // Synthetic fixtures (mirror the RealUnit reduced-compliance DTOs from src/dto/realunit-compliance.dto.ts).
-// This is the REDUCED tenant view: NO DFX AML work products (no name-check, no amlCheck/amlReason, no notes,
-// no limitRequest, no recommendation graph).
+// This is the REDUCED tenant view: Dilisense last-check summary fields only — no DFX AML work products
+// (no amlCheck/amlReason, no notes, no limitRequest, no recommendation graph).
 // ---------------------------------------------------------------------------
 
 interface RealUnitCustomerListDto {

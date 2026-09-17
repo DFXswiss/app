@@ -353,6 +353,47 @@ describe('RealunitComplianceScreen name-check', () => {
     jest.useRealTimers();
   });
 
+  it('does not apply a stale list error after a newer loadCustomers', async () => {
+    jest.useFakeTimers();
+    let rejectSearch: (reason: Error) => void = () => undefined;
+    mockSearchCustomers
+      .mockResolvedValueOnce([FULL])
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectSearch = reject;
+          }),
+      )
+      .mockResolvedValue([
+        { ...FULL, lastNameCheckStatus: 'Sanctioned' as const, lastNameCheckEvaluation: 'Ignored' as const },
+      ]);
+    mockGetNameCheckBatch
+      .mockResolvedValueOnce({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 })
+      .mockResolvedValue({ status: 'Completed', total: 1, done: 1, failed: 0, skipped: 0 });
+
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Search by ID, email, phone or name...'), {
+      target: { value: 'Alice' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    jest.advanceTimersByTime(2000);
+
+    await waitFor(() => {
+      expect(screen.getByText('Match with Birthday')).toBeInTheDocument();
+    });
+
+    rejectSearch(new Error('stale search down'));
+    await waitFor(() => {
+      expect(screen.queryByText('stale search down')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Match with Birthday')).toBeInTheDocument();
+    jest.useRealTimers();
+  });
+
   it('confirms Screen all and polls while the batch is running', async () => {
     jest.useFakeTimers();
     mockSearchCustomers.mockResolvedValue([FULL]);
@@ -799,6 +840,26 @@ describe('RealunitComplianceScreen name-check', () => {
     await waitFor(() => {
       expect(screen.getByText('Alice Muster')).toBeInTheDocument();
     });
+    unmount();
+    resolveBatch({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 });
+  });
+
+  it('ignores a late Screen-all response after unmount', async () => {
+    let resolveBatch: (value: RealUnitNameCheckBatchDto) => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch.mockResolvedValue(IDLE_BATCH);
+    mockStartNameCheckBatch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveBatch = resolve;
+        }),
+    );
+    const { unmount } = render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     unmount();
     resolveBatch({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 });
   });

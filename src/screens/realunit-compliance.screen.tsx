@@ -143,13 +143,21 @@ export default function RealunitComplianceScreen(): JSX.Element {
         .finally(done);
       return;
     }
+    const generation = pollGenerationRef.current;
     startNameCheckBatch()
       .then((status) => {
+        if (generation !== pollGenerationRef.current) return;
         settleBatch(status, true);
         if (status.status === 'Running') startPolling();
       })
-      .catch((e: Error) => setError(e.message ?? 'Unknown error'))
-      .finally(done);
+      .catch((e: Error) => {
+        if (generation !== pollGenerationRef.current) return;
+        setError(e.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (generation !== pollGenerationRef.current) return;
+        done();
+      });
   }
 
   function formatNameCheckResult(customer: RealUnitCustomerListDto): string {
