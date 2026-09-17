@@ -420,10 +420,12 @@ export default function KycScreen() {
 
     // Apply a session returned by an in-app step (continueKyc auto-step): move to
     // the next current step, or back to the overview once nothing is pending.
-    const applySession = (session: KycSession) =>
-      session.currentStep
-        ? setPhase({ kind: 'step', info: session, step: session.currentStep })
-        : setPhase({ kind: 'overview', info: session });
+    const stepReq = reqRef.current;
+    const applySession = (session: KycSession) => {
+      if (stepReq !== reqRef.current) return;
+      if (session.currentStep) setPhase({ kind: 'step', info: session, step: session.currentStep });
+      else setPhase({ kind: 'overview', info: session });
+    };
 
     if (step.status === KycStepStatus.FAILED) {
       const handoff =
@@ -502,9 +504,18 @@ export default function KycScreen() {
             code={code}
             step={step}
             onAdvance={applySession}
-            onFailed={(result: KycStepBase) => setPhase({ kind: 'step', info, step: { ...step, ...result } })}
-            onTfaRequired={() => beginTfaSetup(info, code)}
-            onHandoff={(handoff) => setPhase({ kind: 'handoff', info, handoff })}
+            onFailed={(result: KycStepBase) => {
+              if (stepReq !== reqRef.current) return;
+              setPhase({ kind: 'step', info, step: { ...step, ...result } });
+            }}
+            onTfaRequired={() => {
+              if (stepReq !== reqRef.current) return;
+              beginTfaSetup(info, code);
+            }}
+            onHandoff={(handoff) => {
+              if (stepReq !== reqRef.current) return;
+              setPhase({ kind: 'handoff', info, handoff });
+            }}
             onBack={backToOverview}
           />
         </div>

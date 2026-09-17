@@ -575,6 +575,7 @@ export default function TransactionsScreen() {
   const [picked, setPicked] = useState<Record<number, string>>({});
   const [assigning, setAssigning] = useState<number | null>(null);
   const loadGenRef = useRef(0);
+  const assignGenRef = useRef(0);
 
   const load = () => {
     const gen = ++loadGenRef.current;
@@ -619,13 +620,24 @@ export default function TransactionsScreen() {
   };
 
   const openAssign = () => {
+    const gen = loadGenRef.current;
     setPicked({});
     setAssignOpen(true);
     setTargetsState('loading');
+    setTargets([]);
     getTransactionTargets()
-      .then((list) => setTargets(Array.isArray(list) ? list : []))
-      .catch(() => setTargets([]))
-      .finally(() => setTargetsState('loaded'));
+      .then((list) => {
+        if (gen !== loadGenRef.current) return;
+        setTargets(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (gen !== loadGenRef.current) return;
+        setTargets([]);
+      })
+      .finally(() => {
+        if (gen !== loadGenRef.current) return;
+        setTargetsState('loaded');
+      });
   };
 
   const doAssign = (index: number) => {
@@ -634,6 +646,7 @@ export default function TransactionsScreen() {
     const buyId = Number(raw);
     if (payment?.id == null || !raw || Number.isNaN(buyId)) return;
     const gen = loadGenRef.current;
+    const assignGen = ++assignGenRef.current;
     setAssigning(index);
     setTransactionTarget(payment.id, buyId)
       .then(() => {
@@ -647,7 +660,7 @@ export default function TransactionsScreen() {
         showToast(t('genErr'));
       })
       .finally(() => {
-        if (gen !== loadGenRef.current) return;
+        if (assignGen !== assignGenRef.current) return;
         setAssigning(null);
       });
   };
@@ -711,6 +724,8 @@ export default function TransactionsScreen() {
     setRefundActiveId(null);
     setTargets([]);
     setMenuOpen(false);
+    setAssigning(null);
+    assignGenRef.current += 1;
     if (!isLoggedIn) {
       loadGenRef.current += 1;
       setTransactions([]);

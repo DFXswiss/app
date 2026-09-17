@@ -659,6 +659,69 @@ describe('WalletSessionProvider flows', () => {
     expect(mockChangeAddress).toHaveBeenLastCalledWith(third);
   });
 
+  it('restores a completed address switch instead of logging out a stale sign-in', async () => {
+    let releaseLogin: (token: string) => void = () => undefined;
+    mockCreateSession.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          releaseLogin = resolve;
+        }),
+    );
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockUserAddresses.push(
+      { address, label: 'A', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: other, label: 'B', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+    );
+    renderSession();
+    fireEvent.click(screen.getByText('pick-mm'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText('switch-other'));
+    await waitFor(() => expect(mockChangeAddress).toHaveBeenCalledWith(other));
+    mockLogout.mockClear();
+    mockUpdateSession.mockClear();
+    mockChangeAddress.mockClear();
+    await act(async () => {
+      releaseLogin(jwt());
+      await Promise.resolve();
+    });
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(mockChangeAddress).toHaveBeenCalledWith(other);
+  });
+
+  it('restores a newer sign-in when a stale address switch finishes last', async () => {
+    const pending: Array<() => void> = [];
+    mockChangeAddress.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+    const loginToken = jwt(['Bitcoin']);
+    mockCreateSession.mockResolvedValue(loginToken);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    mockUserAddresses.push(
+      { address, label: 'A', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+      { address: other, label: 'B', wallet: 'MetaMask', blockchains: ['Ethereum'] },
+    );
+    renderSession();
+    fireEvent.click(screen.getByText('switch-other'));
+    await waitFor(() => expect(pending.length).toBe(1));
+    fireEvent.click(screen.getByText('pick-rabby'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    await waitFor(() => expect(mockRemember).toHaveBeenCalled());
+    mockUpdateSession.mockClear();
+    mockLogout.mockClear();
+    await act(async () => {
+      pending[0]();
+      await Promise.resolve();
+    });
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(mockUpdateSession).toHaveBeenCalledWith(loginToken);
+  });
+
   it('restores a newer sign-in instead of logging it out when a stale createSession finishes', async () => {
     let releaseFirst: (token: string) => void = () => undefined;
     const firstToken = jwt();

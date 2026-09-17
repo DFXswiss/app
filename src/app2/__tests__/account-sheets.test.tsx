@@ -321,6 +321,80 @@ describe('AccountSheets', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Saved');
   });
 
+  it('does not clear a newer remove’s busy state when a stale save finishes', async () => {
+    mockBank.bankAccounts = [
+      { id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true },
+      { id: 2, iban: 'DE89370400440532013000', label: 'Other', default: false },
+    ];
+    let resolveSave: () => void = () => undefined;
+    let resolveRemove: () => void = () => undefined;
+    mockUpdateAccount
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSave = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveRemove = resolve;
+          }),
+      );
+    renderSheet('bankaccts');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, remove' }));
+    await act(async () => {
+      resolveSave();
+    });
+    expect(screen.getByRole('button', { name: 'Yes, remove' })).toBeDisabled();
+    await act(async () => {
+      resolveRemove();
+    });
+    expect(screen.queryByRole('button', { name: 'Yes, remove' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Saved');
+  });
+
+  it('does not clear a newer save’s busy state when a stale remove finishes', async () => {
+    mockBank.bankAccounts = [
+      { id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true },
+      { id: 2, iban: 'DE89370400440532013000', label: 'Other', default: false },
+    ];
+    let resolveRemove: () => void = () => undefined;
+    let resolveSave: () => void = () => undefined;
+    mockUpdateAccount
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveRemove = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveSave = resolve;
+          }),
+      );
+    renderSheet('bankaccts');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, remove' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await act(async () => {
+      resolveRemove();
+    });
+    const busySave = screen.getByRole('dialog').querySelector('.tform .btn-primary');
+    expect(busySave).toBeInstanceOf(HTMLButtonElement);
+    expect(busySave).toBeDisabled();
+    await act(async () => {
+      resolveSave();
+    });
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Saved');
+  });
+
   it('does not toast a late save failure after the same bank account is reopened', async () => {
     mockBank.bankAccounts = [{ id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true }];
     let rejectSave: (error: Error) => void = () => undefined;

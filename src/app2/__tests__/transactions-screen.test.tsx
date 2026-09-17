@@ -280,6 +280,33 @@ describe('TransactionsScreen', () => {
     await waitFor(() => expect(mockSetTarget).toHaveBeenCalledWith(9, 44));
   });
 
+  it('re-enables the assign button after a successful assignment', async () => {
+    mockSession.isLoggedIn = true;
+    mockGetUnassigned.mockResolvedValue([
+      { id: 9, inputAmount: 250, inputAsset: 'CHF', date: '2026-01-03T10:00:00Z', uid: 'pay-9' },
+    ]);
+    mockGetTargets.mockResolvedValue([{ id: 44, asset: { name: 'BTC' }, address: 'bc1qassign' }]);
+    mockSetTarget.mockResolvedValue(undefined);
+    mockGetDetail.mockResolvedValue([]);
+    renderTx();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /assign|zuordnen|assegna|attribuer/i }));
+    await waitFor(() => expect(mockSetTarget).toHaveBeenCalledWith(9, 44));
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(/assigned|zugeordnet|assegnat|attribué/i),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    );
+    expect(await screen.findByRole('button', { name: /assign|zuordnen|assegna|attribuer/i })).toBeEnabled();
+  });
+
   it('reveals the next page of an already-loaded history', async () => {
     mockSession.isLoggedIn = true;
     mockGetDetail.mockResolvedValue(
@@ -1048,6 +1075,114 @@ describe('TransactionsScreen', () => {
       rejectAssign(new Error('late-assign'));
     });
     expect(screen.getByRole('alert')).not.toHaveTextContent(/something went wrong|schiefgelaufen|storto|produite/i);
+  });
+
+  it('does not apply late assign targets from a previous session', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    mockGetUnassigned.mockResolvedValue([
+      { id: 8, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z', uid: 'pay-8' },
+    ]);
+    mockGetDetail.mockResolvedValue([]);
+    let resolveOldTargets: (value: unknown) => void = () => undefined;
+    let resolveNewTargets: (value: unknown) => void = () => undefined;
+    mockGetTargets
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOldTargets = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveNewTargets = resolve;
+          }),
+      );
+    const view = renderTx();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    );
+    await waitFor(() => expect(mockGetTargets).toHaveBeenCalledTimes(1));
+    mockSession.address = '0xbbb';
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    );
+    await waitFor(() => expect(mockGetTargets).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      resolveOldTargets([{ id: 1, asset: { name: 'STALECOIN' }, address: 'bc1qstale' }]);
+    });
+    expect(screen.queryByText(/STALECOIN/)).not.toBeInTheDocument();
+    await act(async () => {
+      resolveNewTargets([{ id: 44, asset: { name: 'BTC' }, address: 'bc1qassign' }]);
+    });
+    expect(await screen.findByText(/BTC/)).toBeInTheDocument();
+  });
+
+  it('does not apply a late assign-target failure from a previous session', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    mockGetUnassigned.mockResolvedValue([
+      { id: 8, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z', uid: 'pay-8' },
+    ]);
+    mockGetDetail.mockResolvedValue([]);
+    let rejectOldTargets: (error: Error) => void = () => undefined;
+    let resolveNewTargets: (value: unknown) => void = () => undefined;
+    mockGetTargets
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectOldTargets = reject;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveNewTargets = resolve;
+          }),
+      );
+    const view = renderTx();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    );
+    await waitFor(() => expect(mockGetTargets).toHaveBeenCalledTimes(1));
+    mockSession.address = '0xbbb';
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    );
+    await waitFor(() => expect(mockGetTargets).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      rejectOldTargets(new Error('stale-targets'));
+    });
+    expect(
+      screen.queryByText(/no purchase to assign|kein kauf, dem du|nessun acquisto a cui|aucun achat auquel/i),
+    ).not.toBeInTheDocument();
+    await act(async () => {
+      resolveNewTargets([{ id: 44, asset: { name: 'BTC' }, address: 'bc1qassign' }]);
+    });
+    expect(await screen.findByText(/BTC/)).toBeInTheDocument();
   });
 
   it('revokes the CoinTracking blob after download', async () => {

@@ -531,7 +531,7 @@ function ApplyView() {
       variant: '',
       node: (
         <>
-          {APPLY_SPINNER} {t('tkSending')}
+          <Spinner /> {t('tkSending')}
         </>
       ),
     });

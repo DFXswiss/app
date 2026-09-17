@@ -625,6 +625,67 @@ describe('KycScreen', () => {
     expect(await screen.findByText(/emailed you a 6-digit code|per e-mail geschickt|inviato.*codice|envoyé.*code/i)).toBeInTheDocument();
   });
 
+  it('drops in-app step callbacks after the KYC hash has changed', async () => {
+    mockSession.isLoggedIn = true;
+    mockContinueKyc.mockResolvedValue({
+      currentStep: { name: 'ContactData', status: 'InProgress', sequenceNumber: 1 },
+    });
+    const view = renderKyc();
+    fireEvent.click(
+      await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i }),
+    );
+    await screen.findByTestId('kyc-step-form');
+    const stale = mockKycForm.props as {
+      onAdvance: (session: { currentStep?: unknown }) => void;
+      onFailed: (result: { status: string }) => void;
+      onTfaRequired: () => void;
+      onHandoff: (handoff: { kind: string }) => void;
+    };
+    mockUser.user = { kyc: { hash: 'other-hash', level: 50 } };
+    mockGetKycInfo.mockResolvedValue({
+      kycLevel: 50,
+      kycSteps: [{ name: 'ContactData', status: 'Completed' }],
+    });
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <KycScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(await screen.findByText(/all done|alles erledigt|tutto fatto|tout est fait/i)).toBeInTheDocument();
+    mockSetup2fa.mockClear();
+    stale.onFailed({ status: 'Failed' });
+    stale.onAdvance({ currentStep: { name: 'PersonalData', status: 'InProgress', sequenceNumber: 2 } });
+    stale.onHandoff({ kind: 'account-exists' });
+    stale.onTfaRequired();
+    expect(screen.getByText(/all done|alles erledigt|tutto fatto|tout est fait/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('kyc-step-form')).not.toBeInTheDocument();
+    expect(screen.queryByText(/this step has failed|fehlgeschlagen|non è riuscito|échoué/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/existing account|bestehendes konto|account esistente|compte existant/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/emailed you a 6-digit code|per e-mail geschickt|inviato.*codice|envoyé.*code/i),
+    ).not.toBeInTheDocument();
+    expect(mockSetup2fa).not.toHaveBeenCalled();
+  });
+
+  it('applies an in-app step session that still has a current step', async () => {
+    mockSession.isLoggedIn = true;
+    mockContinueKyc.mockResolvedValue({
+      currentStep: { name: 'ContactData', status: 'InProgress', sequenceNumber: 1 },
+    });
+    renderKyc();
+    fireEvent.click(await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i }));
+    await screen.findByTestId('kyc-step-form');
+    const onAdvance = (mockKycForm.props as { onAdvance: (session: { currentStep?: unknown }) => void }).onAdvance;
+    onAdvance({ currentStep: { name: 'ContactData', status: 'InProgress', sequenceNumber: 9 } });
+    await waitFor(() =>
+      expect((mockKycForm.props as { step: { sequenceNumber: number } }).step.sequenceNumber).toBe(9),
+    );
+  });
+
   it('returns to the overview from an in-app step', async () => {
     mockSession.isLoggedIn = true;
     mockContinueKyc.mockResolvedValue({
