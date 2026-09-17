@@ -137,6 +137,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
     if (!pendingConfirm || isConfirming) return;
     const action = pendingConfirm;
     setIsConfirming(true);
+    setError(undefined);
     const done = (): void => {
       setIsConfirming(false);
       setPendingConfirm(undefined);
@@ -146,7 +147,6 @@ export default function RealunitComplianceScreen(): JSX.Element {
       screenCustomer(action.id)
         .then(() => {
           if (listGeneration !== listLoadGenerationRef.current) return;
-          done();
           loadCustomers(lastSearchKeyRef.current);
         })
         .catch((e: Error) => {
@@ -154,7 +154,6 @@ export default function RealunitComplianceScreen(): JSX.Element {
           setError(e.message ?? 'Unknown error');
         })
         .finally(() => {
-          if (listGeneration !== listLoadGenerationRef.current) return;
           done();
         });
       return;

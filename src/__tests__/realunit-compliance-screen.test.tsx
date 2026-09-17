@@ -465,6 +465,27 @@ describe('RealunitComplianceScreen name-check', () => {
     });
   });
 
+  it('clears a previous row-screen error when confirm starts again', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockScreenCustomer.mockRejectedValueOnce(new Error('dilisense down')).mockResolvedValue(undefined);
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      expect(screen.getByText('dilisense down')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      expect(screen.queryByText('dilisense down')).not.toBeInTheDocument();
+    });
+  });
+
   it('closes the confirm dialog on Cancel', async () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     render(<RealunitComplianceScreen />);
@@ -662,6 +683,32 @@ describe('RealunitComplianceScreen name-check', () => {
     ).toBeInTheDocument();
 
     resolveScreen();
+    await waitFor(() => {
+      expect(
+        screen.queryByText('A Dilisense screening consumes provider quota and costs money – continue?'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('closes the confirm dialog even if a newer list load started while screening', async () => {
+    let resolveScreen: () => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockScreenCustomer.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveScreen = () => resolve(undefined);
+        }),
+    );
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    resolveScreen();
+
     await waitFor(() => {
       expect(
         screen.queryByText('A Dilisense screening consumes provider quota and costs money – continue?'),
@@ -1000,8 +1047,8 @@ describe('RealunitComplianceScreen name-check', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
       expect(screen.queryByText('quota')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
     });
-    expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
   });
 
   it('keeps a failed poll status error instead of reloading the list', async () => {
