@@ -707,6 +707,8 @@ describe('RealunitComplianceScreen name-check', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
+    fireEvent.keyDown(screen.getByPlaceholderText('Search by ID, email, phone or name...'), { key: 'Enter' });
+    expect(mockSearchCustomers).toHaveBeenCalledTimes(1);
     resolveScreen();
 
     await waitFor(() => {
