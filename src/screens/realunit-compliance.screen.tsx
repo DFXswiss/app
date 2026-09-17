@@ -87,7 +87,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
 
   function settleBatch(status: RealUnitNameCheckBatchDto, reload: boolean): void {
     setBatch(status);
-    if (status.status === 'failed') {
+    if (status.status === 'Failed') {
       setError(status.error ?? 'Unknown error');
       return;
     }
