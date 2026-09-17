@@ -36,7 +36,10 @@ import {
   chainsFor,
   groupAssets,
   heldBalance,
+  findNamedTradeAsset,
+  includeInPartnerPool,
   isReachable,
+  matchesAssetParam,
   parseBalances,
   shownChainsFor,
 } from '../screens/trade/asset-pool';
@@ -169,5 +172,34 @@ describe('parseBalances / heldBalance', () => {
   it('looks up a held amount case-insensitively', () => {
     expect(heldBalance({ BTC: 1.25 }, 'btc')).toBe(1.25);
     expect(heldBalance({ BTC: 1.25 }, 'ETH')).toBe(0);
+  });
+});
+
+describe('includeInPartnerPool / matchesAssetParam', () => {
+  it('keeps public and uncategorised assets, and matches name or uniqueName', () => {
+    expect(includeInPartnerPool({ name: 'BTC' })).toBe(true);
+    expect(includeInPartnerPool({ name: 'BTC', category: 'Public' })).toBe(true);
+    expect(matchesAssetParam({ name: 'BTC' }, 'btc')).toBe(true);
+    expect(matchesAssetParam({ name: 'BTC', uniqueName: 'Bitcoin/BTC' }, 'bitcoin/btc')).toBe(true);
+    expect(matchesAssetParam({ name: 'ETH' }, 'BTC')).toBe(false);
+  });
+
+  it('hides a private asset unless the named partner param matches', () => {
+    const deps = { name: 'DEPS', uniqueName: 'Ethereum/DEPS', category: 'Private' };
+    expect(includeInPartnerPool(deps)).toBe(false);
+    expect(includeInPartnerPool(deps, 'USDT')).toBe(false);
+    expect(includeInPartnerPool(deps, 'DEPS')).toBe(true);
+    expect(includeInPartnerPool(deps, 'ethereum/deps')).toBe(true);
+  });
+
+  it('finds a pool entry by ticker or uniqueName and skips a missing or unknown name', () => {
+    const pool = groupAssets([
+      asset({ name: 'USDT', uniqueName: 'Ethereum/USDT', blockchain: Blockchain.ETHEREUM }),
+      asset({ name: 'BTC', uniqueName: 'Bitcoin/BTC', blockchain: Blockchain.BITCOIN }),
+    ]);
+    expect(findNamedTradeAsset(pool)).toBeUndefined();
+    expect(findNamedTradeAsset(pool, 'USDT')?.code).toBe('USDT');
+    expect(findNamedTradeAsset(pool, 'ethereum/usdt')?.code).toBe('USDT');
+    expect(findNamedTradeAsset(pool, 'NOPE')).toBeUndefined();
   });
 });

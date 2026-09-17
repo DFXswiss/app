@@ -77,6 +77,8 @@ export interface BuyQuoteParams {
   asset?: Asset;
   currency?: Fiat;
   amount: number | null;
+  /** Partner `amount-out`: quote the destination amount instead of the source. */
+  targetAmount?: number | null;
   paymentMethod: FiatPaymentMethod;
   externalTransactionId?: string;
   /** Fetch the real payment details (authenticated `PUT /buy/paymentInfos`) instead of the
@@ -90,21 +92,28 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
   const { receiveFor } = useBuy();
   const { call } = useApi();
   const { address: sessionAddress } = useWalletSession();
-  const { asset, currency, amount, paymentMethod, externalTransactionId, withPaymentInfo } = params;
-  const ready = !!asset && !!currency && !!amount;
+  const { asset, currency, amount, targetAmount, paymentMethod, externalTransactionId, withPaymentInfo } = params;
+  const hasTarget = targetAmount != null && targetAmount > 0;
+  const hasSource = amount != null && amount > 0;
+  const ready = !!asset && !!currency && (hasTarget || hasSource);
   // `externalTransactionId` identifies a payment attempt — omit the segment when unset so an
   // undefined id keeps the same key as before (no needless cache invalidation). Leading `:`
   // when set avoids colliding with the trailing `quote`/`info` token.
   const extKey = externalTransactionId ? `:${externalTransactionId}` : '';
   const sessionKey = sessionAddress ?? '';
+  const amountKey = hasTarget ? `t${targetAmount}` : `a${amount}`;
   const key =
-    asset && currency && amount
-      ? `${sessionKey}:${asset.id}:${currency.id}:${amount}:${paymentMethod}:${withPaymentInfo ? 'info' : 'quote'}${extKey}`
+    asset && currency && ready
+      ? `${sessionKey}:${asset.id}:${currency.id}:${amountKey}:${paymentMethod}:${withPaymentInfo ? 'info' : 'quote'}${extKey}`
       : '';
 
   const fetcher = useCallback((): Promise<Buy> => {
-    if (!asset || !currency || !amount) return Promise.reject(new Error('buy quote: missing input'));
-    const info: BuyPaymentInfo = { currency, asset, amount, paymentMethod };
+    if (!asset || !currency || (!hasTarget && !hasSource)) {
+      return Promise.reject(new Error('buy quote: missing input'));
+    }
+    const info: BuyPaymentInfo = { currency, asset, paymentMethod };
+    if (hasTarget && targetAmount != null) info.targetAmount = targetAmount;
+    else if (amount != null) info.amount = amount;
     if (withPaymentInfo) {
       // The external transaction id identifies the payment being created — it belongs to the
       // paymentInfos call only, not to a display quote.
@@ -114,7 +123,19 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
     // Public quote: same `Buy` shape (rate/estimatedAmount/fees/feesTarget/priceSteps/isValid)
     // minus the payment details, and independent of the account's own state.
     return call<Buy>({ url: BuyUrl.quote, method: 'PUT', data: info, token: false });
-  }, [receiveFor, call, asset, currency, amount, paymentMethod, externalTransactionId, withPaymentInfo]);
+  }, [
+    receiveFor,
+    call,
+    asset,
+    currency,
+    amount,
+    targetAmount,
+    hasTarget,
+    hasSource,
+    paymentMethod,
+    externalTransactionId,
+    withPaymentInfo,
+  ]);
 
   return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError, {
     retryWouldDuplicateServerWork: Boolean(withPaymentInfo),

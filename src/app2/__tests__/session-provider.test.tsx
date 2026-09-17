@@ -3,6 +3,7 @@ const mockGetSignMessage = jest.fn();
 const mockLogout = jest.fn();
 const mockChangeAddress = jest.fn();
 const mockReloadUser = jest.fn();
+const mockAddSpecialCode = jest.fn();
 const mockConnectInjected = jest.fn();
 const mockSignInjected = jest.fn();
 const mockResolveInjected = jest.fn();
@@ -47,6 +48,7 @@ jest.mock('@dfx.swiss/react', () => ({
     userAddresses: [],
     changeAddress: mockChangeAddress,
     reloadUser: mockReloadUser,
+    addSpecialCode: mockAddSpecialCode,
   }),
 }));
 
@@ -275,6 +277,9 @@ describe('WalletSessionProvider', () => {
     mockConnectAlby.mockResolvedValue({ kind: 'session', session: { address } });
     mockConnectCardano.mockResolvedValue({ address, sign: jest.fn().mockResolvedValue({ signature: 's', key: 'k' }) });
     mockConnectChain.mockResolvedValue({ address, sign: jest.fn().mockResolvedValue('sig') });
+    mockAddSpecialCode.mockReset();
+    mockAddSpecialCode.mockResolvedValue(undefined);
+    window.history.replaceState({}, '', '/');
     jest.spyOn(window, 'open').mockImplementation(() => null);
   });
 
@@ -310,6 +315,41 @@ describe('WalletSessionProvider', () => {
     await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
     expect(mockConnectInjected).toHaveBeenCalled();
     expect(mockSignInjected).toHaveBeenCalled();
+    expect(mockCreateSession.mock.calls[0][3]).toBeUndefined();
+    expect(mockAddSpecialCode).not.toHaveBeenCalled();
+  });
+
+  it('passes special-code into sign-in and registers it after login, swallowing a rejected code', async () => {
+    window.history.replaceState({}, '', '/?special-code=VIP');
+    const view = renderSession();
+    fireEvent.click(screen.getByText('pick-mm'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    expect(mockCreateSession.mock.calls[0][3]).toBe('VIP');
+
+    mockAddSpecialCode.mockRejectedValueOnce(new Error('already used'));
+    mockSessionCtx.isLoggedIn = true;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <WalletSessionProvider>
+            <Probe />
+          </WalletSessionProvider>
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(mockAddSpecialCode).toHaveBeenCalledWith('VIP'));
+    mockAddSpecialCode.mockClear();
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <WalletSessionProvider>
+            <Probe />
+          </WalletSessionProvider>
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(mockAddSpecialCode).not.toHaveBeenCalled();
+    expect(screen.getByTestId('in')).toBeInTheDocument();
   });
 
   it('toasts when MetaMask is missing and opens the install page', async () => {
