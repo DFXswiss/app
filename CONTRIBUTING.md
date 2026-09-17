@@ -51,11 +51,11 @@ Compliance and lower. Prefer Fail or Reset so the automatic AML pipeline can re-
 ### A38
 
 This repository requires A38 according to the canonical A38 standard in
-[DFXswiss/agent](https://github.com/DFXswiss/agent/blob/c4a88edb023d1d837d9eaf31253f7282d9985204/docs/a38.md)
-at commit `c4a88edb023d1d837d9eaf31253f7282d9985204`. Repo job selection:
+[DFXswiss/agent](https://github.com/DFXswiss/agent/blob/8892859d78693a1a777a7f6d6253589ca4fd8d8f/docs/a38.md)
+at commit `8892859d78693a1a777a7f6d6253589ca4fd8d8f`. Repo job selection:
 `.github/a38.json`. Target-branch applicability and fork workflow approval:
 `.github/pr-guard.json`. `dfx pr guard` is
-[wired in](https://github.com/DFXswiss/agent/blob/c4a88edb023d1d837d9eaf31253f7282d9985204/docs/a38-guard.md#how-fork-github-actions-are-meant-to-work).
+[wired in](https://github.com/DFXswiss/agent/blob/8892859d78693a1a777a7f6d6253589ca4fd8d8f/docs/a38-guard.md#how-fork-github-actions-are-meant-to-work).
 
 This is a **public** repository. GitHub-hosted runners execute the heavy suite
 (Jest, `build:dev`, `widget:dev`, handbook smoke, full-stack E2E, CodeQL).
@@ -64,8 +64,12 @@ light local jobs in `.github/a38.json` (`npm run lint` and
 `npm run format:md:check`). Do not run Jest, production builds, widget
 builds, handbook Docker, or full-stack E2E locally for A38.
 
-Draft pull requests run the GitHub PR CI jobs (GitHub may hold fork runs as
-`action_required`). Ready does not start CI. After a fresh A38 enforce pass on
+Draft pull requests run the GitHub PR CI jobs. Lint, Build and test, the review
+bot, and handbook smoke wait on environment `pr-ci` until a required reviewer
+or `dfx pr guard` approves. CodeQL does not use that environment. GitHub also
+holds fork runs from external contributors as `action_required`. Ready does not
+start CI. After a
+fresh A38 enforce pass on
 the current head, `dfx pr guard` approves those waiting initial runs, then sets
 Ready when required GitHub jobs are green and the PR is mergeable. The merger
 does not click Approve and run workflows. Do not ask a maintainer to approve
@@ -104,8 +108,11 @@ Two obligations follow from it for every pull request:
 npm run test
 ```
 
-Draft pull requests run the PR CI jobs (GitHub may hold fork runs as
-`action_required`). Ready does not start CI. After a fresh A38 enforce pass on
+Draft pull requests run the PR CI jobs. Lint and Build and test wait on
+environment `pr-ci` until a required reviewer or `dfx pr guard` approves.
+GitHub also holds fork runs from external contributors as `action_required`.
+Ready does not start CI. After a fresh A38
+enforce pass on
 the current head, `dfx pr guard` approves those waiting initial runs. Do not
 ask a maintainer to approve workflow runs. When the job runs, develop PRs
 without `ci:full` run Jest `--findRelatedTests` on changed files under `src/`
@@ -238,8 +245,11 @@ The full-stack harness under `e2e-stack/` runs the real frontend, API, and
 Postgres together (external providers are mocked). Unlike the visual-regression
 suite under `e2e/` — see [Visual regression tests (Playwright)](#visual-regression-tests-playwright)
 above, which does not run in CI — this harness is called from PR CI after Build
-and test succeed. Draft pull requests run the job (GitHub may hold fork runs as
-`action_required`). Ready does not start CI. After a fresh A38 enforce pass on
+and test succeed. Draft pull requests run the job after Build and test; it
+starts only after `pr-ci` is approved on Build and test (the reusable-workflow
+caller cannot take `environment`). GitHub also holds fork runs from external
+contributors as `action_required`. Ready does not start CI. After a
+fresh A38 enforce pass on
 the current head, `dfx pr guard` approves those waiting initial runs. Do not
 ask a maintainer to approve workflow runs. A develop PR without `ci:full`
 records `mode=none` and does not bring the stack up (the job still runs). Apply

@@ -17,8 +17,9 @@ on:
         required: false
         type: string
 
-# Drafts run this job. GitHub may hold fork runs as action_required; dfx pr
-# guard approves them after an A38 enforce pass. Ready does not start CI.
+# Drafts run this job after environment `pr-ci` is approved. GitHub may also
+# hold fork runs as action_required; dfx pr guard approves them after an A38
+# enforce pass. Ready does not start CI.
 concurrency:
   group: review-pr-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: true
@@ -30,6 +31,7 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
+    environment: pr-ci
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
       BASE_REF: ${{ github.base_ref || inputs.base_ref }}
