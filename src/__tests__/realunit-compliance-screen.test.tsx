@@ -669,6 +669,25 @@ describe('RealunitComplianceScreen name-check', () => {
     });
   });
 
+  it('ignores a late row-screen result after unmount', async () => {
+    let resolveScreen: () => void = () => undefined;
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockScreenCustomer.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveScreen = () => resolve(undefined);
+        }),
+    );
+    const { unmount } = render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    unmount();
+    resolveScreen();
+  });
+
   it('skips overlapping poll ticks while a request is in flight', async () => {
     jest.useFakeTimers();
     let resolvePoll: (value: RealUnitNameCheckBatchDto) => void = () => undefined;

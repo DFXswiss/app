@@ -146,6 +146,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
       screenCustomer(action.id)
         .then(() => {
           if (listGeneration !== listLoadGenerationRef.current) return;
+          done();
           loadCustomers(lastSearchKeyRef.current);
         })
         .catch((e: Error) => {
