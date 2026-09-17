@@ -32,6 +32,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm>();
   const [isConfirming, setIsConfirming] = useState(false);
   const lastSearchKeyRef = useRef<string | undefined>();
+  const listLoadGenerationRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const pollInFlightRef = useRef(false);
   const pollGenerationRef = useRef(0);
@@ -51,15 +52,25 @@ export default function RealunitComplianceScreen(): JSX.Element {
   }
 
   function loadCustomers(key?: string): void {
+    const generation = ++listLoadGenerationRef.current;
     lastSearchKeyRef.current = key;
     setIsLoading(true);
     setError(undefined);
     setResults(undefined);
     setIsSearchActive(!!key);
     searchCustomers(key)
-      .then((res) => setResults(res))
-      .catch((e: Error) => setError(e.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
+      .then((res) => {
+        if (generation !== listLoadGenerationRef.current) return;
+        setResults(res);
+      })
+      .catch((e: Error) => {
+        if (generation !== listLoadGenerationRef.current) return;
+        setError(e.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (generation !== listLoadGenerationRef.current) return;
+        setIsLoading(false);
+      });
   }
 
   function startPolling(): void {

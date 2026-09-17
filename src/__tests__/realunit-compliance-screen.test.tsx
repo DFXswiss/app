@@ -312,6 +312,47 @@ describe('RealunitComplianceScreen name-check', () => {
     expect(mockSearchCustomers).toHaveBeenCalledTimes(2);
   });
 
+  it('does not apply a stale list after a newer loadCustomers', async () => {
+    jest.useFakeTimers();
+    let resolveSearch: (value: (typeof FULL)[]) => void = () => undefined;
+    mockSearchCustomers
+      .mockResolvedValueOnce([FULL])
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSearch = resolve;
+          }),
+      )
+      .mockResolvedValue([
+        { ...FULL, lastNameCheckStatus: 'Sanctioned' as const, lastNameCheckEvaluation: 'Ignored' as const },
+      ]);
+    mockGetNameCheckBatch
+      .mockResolvedValueOnce({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 })
+      .mockResolvedValue({ status: 'Completed', total: 1, done: 1, failed: 0, skipped: 0 });
+
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Search by ID, email, phone or name...'), {
+      target: { value: 'Alice' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    jest.advanceTimersByTime(2000);
+
+    await waitFor(() => {
+      expect(screen.getByText('Match with Birthday')).toBeInTheDocument();
+    });
+
+    resolveSearch([{ ...FULL, name: 'Stale Name' }]);
+    await waitFor(() => {
+      expect(screen.queryByText('Stale Name')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Match with Birthday')).toBeInTheDocument();
+    jest.useRealTimers();
+  });
+
   it('confirms Screen all and polls while the batch is running', async () => {
     jest.useFakeTimers();
     mockSearchCustomers.mockResolvedValue([FULL]);
