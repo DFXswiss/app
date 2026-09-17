@@ -148,6 +148,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
       .then((status) => {
         if (generation !== pollGenerationRef.current) return;
         settleBatch(status, true);
+        done();
         if (status.status === 'Running') startPolling();
       })
       .catch((e: Error) => {

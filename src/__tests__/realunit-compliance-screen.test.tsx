@@ -418,6 +418,7 @@ describe('RealunitComplianceScreen name-check', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
     });
+    expect(screen.queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument();
 
     jest.advanceTimersByTime(2000);
     await waitFor(() => {
