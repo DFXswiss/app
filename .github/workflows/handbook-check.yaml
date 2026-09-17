@@ -1,7 +1,7 @@
 # PR check: build handbook image (no push) and run container smoke tests.
-# Drafts run this job when the path filter matches, after environment `pr-ci`
-# is approved. GitHub may also hold fork runs as action_required; dfx pr
-# guard approves them after an A38 enforce pass. Ready does not start CI.
+# Drafts run this job when the path filter matches. GitHub may hold fork
+# runs as action_required; dfx pr guard approves them after an A38 enforce
+# pass. Ready does not start CI.
 
 name: Handbook Build Check
 
@@ -33,7 +33,6 @@ jobs:
   build-and-smoke:
     name: Build handbook image + container smoke
     runs-on: ubuntu-24.04-arm
-    environment: pr-ci
     timeout-minutes: 25
     steps:
       - name: Checkout
