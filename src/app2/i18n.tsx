@@ -743,6 +743,9 @@ export const en = {
   posEndCharge: 'End this payment',
   mergeJobSlow: 'Merging your accounts is taking longer than expected. Please try again later.',
   mergeJobFailed: 'The account merge failed.',
+  personalIbanUnknown: 'The requested personal IBAN provider is not recognized.',
+  personalIbanNeedBank: 'Personal IBANs require the bank transfer payment method.',
+  personalIbanNeedCurrency: 'Bank Frick personal IBANs are currently only available for EUR and CHF.',
 } as const satisfies Dict;
 export const de = {
   h1a: 'Krypto kaufen,',
@@ -1481,6 +1484,9 @@ export const de = {
   posEndCharge: 'Vorgang beenden',
   mergeJobSlow: 'Die Kontozusammenführung dauert länger als erwartet. Bitte versuche es später erneut.',
   mergeJobFailed: 'Die Kontozusammenführung ist fehlgeschlagen.',
+  personalIbanUnknown: 'Der angeforderte Personal-IBAN-Anbieter wird nicht erkannt.',
+  personalIbanNeedBank: 'Persönliche IBANs sind nur bei Banküberweisung verfügbar.',
+  personalIbanNeedCurrency: 'Bank-Frick-IBANs gibt es derzeit nur für EUR und CHF.',
 } satisfies Record<TranslationKey, string>;
 export const it = {
   h1a: 'Compra crypto,',
@@ -2214,6 +2220,9 @@ export const it = {
   posEndCharge: 'Termina questo pagamento',
   mergeJobSlow: "L'unione degli account sta richiedendo più tempo del previsto. Riprova più tardi.",
   mergeJobFailed: "L'unione degli account non è riuscita.",
+  personalIbanUnknown: 'Il fornitore di IBAN personale richiesto non è riconosciuto.',
+  personalIbanNeedBank: 'Gli IBAN personali richiedono il bonifico bancario.',
+  personalIbanNeedCurrency: 'Gli IBAN Bank Frick sono al momento disponibili solo per EUR e CHF.',
 } satisfies Record<TranslationKey, string>;
 export const fr = {
   h1a: 'Achète des cryptos,',
@@ -2948,6 +2957,9 @@ export const fr = {
   posEndCharge: 'Terminer ce paiement',
   mergeJobSlow: 'La fusion des comptes prend plus de temps que prévu. Réessaie plus tard.',
   mergeJobFailed: 'La fusion des comptes a échoué.',
+  personalIbanUnknown: "Le fournisseur d'IBAN personnel demandé n'est pas reconnu.",
+  personalIbanNeedBank: 'Les IBAN personnels nécessitent un virement bancaire.',
+  personalIbanNeedCurrency: "Les IBAN Bank Frick ne sont pour l'instant disponibles qu'en EUR et CHF.",
 } satisfies Record<TranslationKey, string>;
 
 export type Language = 'en' | 'de' | 'it' | 'fr';

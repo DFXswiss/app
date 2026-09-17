@@ -50,6 +50,7 @@ import {
   ApiException,
   BuyUrl,
   FiatPaymentMethod,
+  PersonalIbanProvider,
   SellUrl,
   SwapUrl,
   useApi,
@@ -84,6 +85,8 @@ export interface BuyQuoteParams {
   /** Fetch the real payment details (authenticated `PUT /buy/paymentInfos`) instead of the
    * public quote. Set only when the user moves to pay — see the file header. */
   withPaymentInfo?: boolean;
+  /** Partner `personal-iban` — only sent on paymentInfos, never on the public quote. */
+  personalIbanProvider?: PersonalIbanProvider;
   /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh. */
   paused?: boolean;
 }
@@ -92,7 +95,8 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
   const { receiveFor } = useBuy();
   const { call } = useApi();
   const { address: sessionAddress } = useWalletSession();
-  const { asset, currency, amount, targetAmount, paymentMethod, externalTransactionId, withPaymentInfo } = params;
+  const { asset, currency, amount, targetAmount, paymentMethod, externalTransactionId, withPaymentInfo, personalIbanProvider } =
+    params;
   const hasTarget = targetAmount != null && targetAmount > 0;
   const hasSource = amount != null && amount > 0;
   const ready = !!asset && !!currency && (hasTarget || hasSource);
@@ -102,9 +106,10 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
   const extKey = externalTransactionId ? `:${externalTransactionId}` : '';
   const sessionKey = sessionAddress ?? '';
   const amountKey = hasTarget ? `t${targetAmount}` : `a${amount}`;
+  const ibanKey = withPaymentInfo && personalIbanProvider ? `:${personalIbanProvider}` : '';
   const key =
     asset && currency && ready
-      ? `${sessionKey}:${asset.id}:${currency.id}:${amountKey}:${paymentMethod}:${withPaymentInfo ? 'info' : 'quote'}${extKey}`
+      ? `${sessionKey}:${asset.id}:${currency.id}:${amountKey}:${paymentMethod}:${withPaymentInfo ? 'info' : 'quote'}${extKey}${ibanKey}`
       : '';
 
   const fetcher = useCallback((): Promise<Buy> => {
@@ -118,6 +123,7 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
       // The external transaction id identifies the payment being created — it belongs to the
       // paymentInfos call only, not to a display quote.
       if (externalTransactionId) info.externalTransactionId = externalTransactionId;
+      if (personalIbanProvider) info.personalIbanProvider = personalIbanProvider;
       return receiveFor(info);
     }
     // Public quote: same `Buy` shape (rate/estimatedAmount/fees/feesTarget/priceSteps/isValid)
@@ -135,6 +141,7 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
     paymentMethod,
     externalTransactionId,
     withPaymentInfo,
+    personalIbanProvider,
   ]);
 
   return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError, {

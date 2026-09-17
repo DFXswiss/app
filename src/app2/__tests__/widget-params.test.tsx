@@ -1,8 +1,13 @@
 // Partner widget params: each test asserts the effect, not that the string appears.
 
 const mockCall = jest.fn();
+const mockReceiveForBuy = jest.fn();
+const mockReceiveForSell = jest.fn();
+const mockReceiveForSwap = jest.fn();
+const mockCreateAccount = jest.fn();
 const mockAssets: Array<Record<string, unknown>> = [];
 const mockCurrencies: Array<Record<string, unknown>> = [];
+const mockBankAccounts: Array<Record<string, unknown>> = [];
 const mockLocation = { search: '' };
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -36,19 +41,24 @@ jest.mock('@dfx.swiss/react', () => ({
   },
   AuthWalletType: { METAMASK: 'MetaMask', CLI: 'CLI', WALLET_CONNECT: 'WalletConnect' },
   FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
+  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
   TransactionError: { AMOUNT_TOO_LOW: 'AmountTooLow' },
   BuyUrl: { quote: 'buy/quote' },
   SellUrl: { quote: 'sell/quote' },
   SwapUrl: { quote: 'swap/quote' },
   useApi: () => ({ call: mockCall }),
-  useBuy: () => ({ receiveFor: jest.fn() }),
-  useSell: () => ({ receiveFor: jest.fn() }),
-  useSwap: () => ({ receiveFor: jest.fn() }),
+  useBuy: () => ({ receiveFor: mockReceiveForBuy }),
+  useSell: () => ({ receiveFor: mockReceiveForSell }),
+  useSwap: () => ({ receiveFor: mockReceiveForSwap }),
   useUser: () => ({ updateMail: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
   useAssetContext: () => ({ getAssets: () => mockAssets }),
   useFiatContext: () => ({ currencies: mockCurrencies }),
-  useBankAccountContext: () => ({ bankAccounts: [], isLoading: false, createAccount: jest.fn() }),
+  useBankAccountContext: () => ({
+    bankAccounts: mockBankAccounts,
+    isLoading: false,
+    createAccount: mockCreateAccount,
+  }),
 }));
 
 jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
@@ -65,7 +75,7 @@ jest.mock('../wallets/session', () => ({
   }),
 }));
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import HomeScreen from '../screens/home';
 import { LanguageProvider } from '../i18n';
 import { ToastProvider } from '../components/ui';
@@ -84,7 +94,7 @@ const validQuote = {
 
 function coin(name: string, blockchain: string, extra: Record<string, unknown> = {}) {
   return {
-    id: `${name}-${blockchain}`,
+    id: extra.id ?? `${name}-${blockchain}`,
     name,
     uniqueName: `${blockchain}/${name}`,
     description: name,
@@ -98,15 +108,19 @@ function coin(name: string, blockchain: string, extra: Record<string, unknown> =
 
 function seedMarket() {
   mockAssets.push(
-    coin('BTC', 'Bitcoin'),
-    coin('USDT', 'Ethereum', { instantBuyable: true }),
-    coin('ETH', 'Ethereum'),
-    coin('DEPS', 'Ethereum', { category: 'Private' }),
+    coin('BTC', 'Bitcoin', { id: 113 }),
+    coin('USDT', 'Ethereum', { id: 111, instantBuyable: true }),
+    coin('ETH', 'Ethereum', { id: 112 }),
+    coin('DEPS', 'Ethereum', { id: 114, category: 'Private' }),
   );
   mockCurrencies.push(
-    { id: 1, name: 'EUR', buyable: true, sellable: true },
+    { id: 1, name: 'EUR', buyable: true, sellable: true, instantSellable: true },
     { id: 2, name: 'CHF', buyable: true, sellable: true },
     { id: 3, name: 'USD', buyable: true, sellable: true },
+  );
+  mockBankAccounts.push(
+    { id: 1, iban: 'DE89370400440532013000', label: 'Default', default: true },
+    { id: 2, iban: 'CH9300762011623852957', label: 'Savings', default: false },
   );
 }
 
@@ -137,8 +151,26 @@ describe('Home partner widget params', () => {
     jest.clearAllMocks();
     mockAssets.length = 0;
     mockCurrencies.length = 0;
+    mockBankAccounts.length = 0;
     mockLocation.search = '';
     mockCall.mockResolvedValue(validQuote);
+    mockReceiveForBuy.mockResolvedValue({ ...validQuote, iban: 'CH93', remittanceInfo: 'ref' });
+    mockReceiveForSell.mockResolvedValue({
+      ...validQuote,
+      routeId: 9,
+      amount: 0.1,
+      asset: { name: 'BTC', blockchain: 'Bitcoin' },
+      depositAddress: '0xdeposit',
+    });
+    mockCreateAccount.mockResolvedValue({ id: 9, iban: 'LI21088100002324013AA' });
+    mockReceiveForSwap.mockResolvedValue({
+      ...validQuote,
+      routeId: 8,
+      amount: 0.1,
+      sourceAsset: { name: 'BTC', blockchain: 'Bitcoin' },
+      targetAsset: { name: 'USDT', blockchain: 'Ethereum' },
+      depositAddress: '0xswap',
+    });
     seedMarket();
     window.history.replaceState({}, '', '/');
   });
@@ -264,6 +296,13 @@ describe('Home partner widget params', () => {
     expect(receive).toHaveValue('0.01');
     expect(receive).not.toHaveAttribute('readOnly');
 
+    fireEvent.change(receive, { target: { value: '0.02' } });
+    await settleQuote();
+    await waitFor(() =>
+      expect(mockCall).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ targetAmount: 0.02 }) }),
+      ),
+    );
     fireEvent.change(receive, { target: { value: '' } });
     expect(receive).toHaveValue('');
     mockCall.mockClear();
@@ -288,5 +327,359 @@ describe('Home partner widget params', () => {
       mockCall.mock.calls.some((call) => Object.prototype.hasOwnProperty.call(call[0].data, 'targetAmount')),
     ).toBe(false);
     expect(screen.getByRole('textbox', { name: /amount you receive/i })).toHaveAttribute('readOnly');
+  });
+
+  it('quotes from amount-in and does not restore it after the user clears pay', async () => {
+    setParams('?amount-in=250');
+    renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    expect(mockCall).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 250 }) }),
+    );
+    const pay = screen.getByRole('textbox', { name: /amount you pay/i });
+    expect(pay).toHaveValue('250');
+
+    fireEvent.change(pay, { target: { value: '' } });
+    expect(pay).toHaveValue('');
+    mockCall.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /select receive asset/i }));
+    fireEvent.click(screen.getByText('USDT'));
+    await settleQuote();
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('');
+  });
+
+  it('quotes the source amount when amount-in is set even if amount-out is also present', async () => {
+    setParams('?amount-in=250&amount-out=0.01');
+    renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    expect(mockCall).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 250 }) }),
+    );
+    expect(
+      mockCall.mock.calls.some((call) => Object.prototype.hasOwnProperty.call(call[0].data, 'targetAmount')),
+    ).toBe(false);
+    const receive = screen.getByRole('textbox', { name: /amount you receive/i });
+    expect(receive).toHaveAttribute('readOnly');
+    expect(receive).not.toHaveValue('0.01');
+  });
+
+  it('quotes a default source amount when amount-in is absent', async () => {
+    renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    expect(mockCall).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 100 }) }),
+    );
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('100');
+  });
+
+  it('prefers Instant when payment-method asks for it, and stays on Bank when it is absent or unknown', async () => {
+    setParams('?asset-out=USDT&payment-method=instant');
+    const instant = renderHome();
+    await settleQuote();
+    expect(document.querySelector('.pmethod b')?.textContent).toMatch(/instant|sofort/i);
+    instant.unmount();
+
+    setParams('?asset-out=USDT&payment-method=paypal');
+    const unknown = renderHome();
+    await settleQuote();
+    expect(document.querySelector('.pmethod b')?.textContent).toMatch(/bank|sepa/i);
+    unknown.unmount();
+
+    setParams('?asset-out=USDT');
+    renderHome();
+    await settleQuote();
+    expect(document.querySelector('.pmethod b')?.textContent).toMatch(/bank|sepa/i);
+  });
+
+  it('keeps Bank when payment-method is in the enum but not offered for the pair', async () => {
+    // Card is a real FiatPaymentMethod; paymentMethodsFor never returns it (API rejects CARD).
+    // Default BTC is not instantBuyable, so the pair offers Bank only — unlike `paypal`, which
+    // parseEnumValue already drops.
+    setParams('?payment-method=card');
+    renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    expect(mockCall.mock.calls.every((call) => call[0].data.paymentMethod === 'Bank')).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
+    expect(mockReceiveForBuy.mock.calls.every((call) => call[0].paymentMethod === 'Bank')).toBe(true);
+  });
+
+  it('ignores an unknown blockchain and keeps the Bitcoin default', async () => {
+    setParams('?blockchain=Mars');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('BTC');
+  });
+
+  it('filters the buy chain to blockchain=Ethereum, and defaults to Bitcoin without it', async () => {
+    const absent = renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('BTC');
+    absent.unmount();
+
+    setParams('?blockchain=Ethereum');
+    renderHome();
+    await settleQuote();
+    const pill = screen.getByRole('button', { name: /select receive asset/i });
+    expect(pill).toHaveTextContent('USDT');
+    expect(pill.querySelector('s')?.textContent).toMatch(/ethereum/i);
+  });
+
+  it('starts sell when service=sell, and leaves buy when service is absent', async () => {
+    const absent = renderHome();
+    await settleQuote();
+    expect(screen.getByRole('tab', { name: /buy|kaufen/i })).toHaveAttribute('aria-selected', 'true');
+    absent.unmount();
+
+    setParams('?service=sell');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('tab', { name: /sell|verkaufen/i })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('lets mode win over service when both are set', async () => {
+    setParams('?service=sell&mode=swap');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('tab', { name: /swap|tausch/i })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('selects the named sell payout account, and the default when bank-account is absent', async () => {
+    // `?mode=sell` uses setMode, not changeMode, so sellRaw stays empty unless amount-in is set.
+    setParams('?mode=sell&amount-in=0.1&bank-account=CH9300762011623852957');
+    const named = renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
+    expect(mockReceiveForSell).toHaveBeenCalledWith(expect.objectContaining({ iban: 'CH9300762011623852957' }));
+    named.unmount();
+    mockReceiveForSell.mockClear();
+
+    setParams('?mode=sell&amount-in=0.1');
+    renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
+    expect(mockReceiveForSell).toHaveBeenCalledWith(expect.objectContaining({ iban: 'DE89370400440532013000' }));
+  });
+
+  it('does not apply a bank-account create that resolves after the param has changed', async () => {
+    let resolveCreate: ((account: { id: number; iban: string }) => void) | undefined;
+    mockCreateAccount.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        }),
+    );
+    setParams('?mode=sell&amount-in=0.1&bank-account=LI21088100002324013AA');
+    const view = renderHome();
+    await waitFor(() => expect(mockCreateAccount).toHaveBeenCalled());
+    // Drop the param so the effect cannot re-select a matching existing account (that path
+    // would overwrite a stale create and hide a missing live-ref guard).
+    setParams('?mode=sell&amount-in=0.1');
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <HomeScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    mockReceiveForSell.mockClear();
+    await act(async () => {
+      resolveCreate?.({ id: 9, iban: 'LI21088100002324013AA' });
+    });
+    await settleQuote();
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
+    expect(mockReceiveForSell).toHaveBeenCalledWith(expect.objectContaining({ iban: 'DE89370400440532013000' }));
+    expect(mockReceiveForSell).not.toHaveBeenCalledWith(expect.objectContaining({ iban: 'LI21088100002324013AA' }));
+  });
+
+  it('creates a payout account when bank-account is a new valid IBAN', async () => {
+    setParams('?mode=sell&bank-account=LI21088100002324013AA');
+    renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCreateAccount).toHaveBeenCalledWith({ iban: 'LI21088100002324013AA' }));
+  });
+
+  it('swallows a failed bank-account create and does not fall back to the default', async () => {
+    mockCreateAccount.mockRejectedValueOnce(new Error('dup'));
+    setParams('?mode=sell&amount-in=0.1&bank-account=LI21088100002324013AA');
+    renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCreateAccount).toHaveBeenCalled());
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    expect(
+      screen.getByRole('dialog', { name: /add bank account|bankkonto|conto bancario|compte bancaire/i }),
+    ).toBeInTheDocument();
+    expect(mockReceiveForSell).not.toHaveBeenCalled();
+    expect(mockReceiveForSell).not.toHaveBeenCalledWith(
+      expect.objectContaining({ iban: 'DE89370400440532013000' }),
+    );
+  });
+
+  it('sends personalIbanProvider on paymentInfos when personal-iban=frick, and omits it when absent', async () => {
+    setParams('?personal-iban=frick');
+    const withFrick = renderHome();
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
+    expect(mockReceiveForBuy).toHaveBeenCalledWith(expect.objectContaining({ personalIbanProvider: 'Frick' }));
+    withFrick.unmount();
+    mockReceiveForBuy.mockClear();
+
+    setParams('');
+    renderHome();
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
+    expect(mockReceiveForBuy.mock.calls[0][0]).not.toHaveProperty('personalIbanProvider');
+  });
+
+  it('blocks an unrecognized personal-iban instead of quoting as ordinary bank', async () => {
+    setParams('?personal-iban=nope');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByText(/not recognized|nicht erkannt|non è riconosciuto|n'est pas reconnu/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
+  });
+
+  it('blocks personal-iban when the offer is not EUR/CHF bank transfer', async () => {
+    setParams('?asset-out=USDT&payment-method=instant&personal-iban=frick');
+    const instant = renderHome();
+    await settleQuote();
+    const methodNote = document.querySelector('.paybox-note.warn');
+    expect(methodNote).toBeTruthy();
+    expect(methodNote).toHaveTextContent(/personal ibans require the bank transfer payment method/i);
+    instant.unmount();
+
+    setParams('?asset-in=USD&personal-iban=frick');
+    renderHome();
+    await settleQuote();
+    const currencyNote = document.querySelector('.paybox-note.warn');
+    expect(currencyNote).toBeTruthy();
+    expect(currencyNote).toHaveTextContent(/eur and chf/i);
+  });
+
+  it('filters sell assets by a main-app asset-id balances list, and shows all without it', async () => {
+    const absent = renderHome();
+    await settleQuote();
+    fireEvent.click(screen.getByRole('tab', { name: /sell|verkaufen/i }));
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /select pay asset/i }));
+    const allSheet = screen.getByRole('dialog');
+    expect(within(allSheet).getByText('BTC')).toBeInTheDocument();
+    expect(within(allSheet).getByText('USDT')).toBeInTheDocument();
+    absent.unmount();
+
+    setParams('?mode=sell&balances=1.5@111');
+    renderHome();
+    await settleQuote();
+    const pill = screen.getByRole('button', { name: /select pay asset/i });
+    expect(pill).toHaveTextContent('USDT');
+    fireEvent.click(pill);
+    const heldSheet = screen.getByRole('dialog');
+    expect(within(heldSheet).getByText('USDT')).toBeInTheDocument();
+    expect(within(heldSheet).queryByText('BTC')).not.toBeInTheDocument();
+  });
+
+  it('redirects to a safe redirect-uri on Done, and stays when the uri is unsafe or absent', async () => {
+    const assign = jest.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, assign, origin: original.origin, search: '', hash: '', pathname: '/' },
+    });
+
+    setParams('?redirect-uri=https://partner.example/done');
+    const withUri = renderHome();
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    expect(assign).toHaveBeenCalledWith('https://partner.example/done/buy');
+    withUri.unmount();
+    assign.mockClear();
+
+    setParams('?redirect-uri=javascript:alert(1)');
+    const unsafe = renderHome();
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    fireEvent.click(await screen.findByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    expect(assign).not.toHaveBeenCalled();
+    unsafe.unmount();
+
+    setParams('');
+    renderHome();
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    fireEvent.click(await screen.findByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    expect(assign).not.toHaveBeenCalled();
+
+    Object.defineProperty(window, 'location', { configurable: true, value: original });
+  });
+
+  it('appends sell details to a safe redirect-uri on Done', async () => {
+    const assign = jest.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, assign, origin: original.origin, search: '', hash: '', pathname: '/' },
+    });
+    setParams('?mode=sell&amount-in=0.1&redirect-uri=https://partner.example/done');
+    renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    expect(assign).toHaveBeenCalledWith(
+      expect.stringMatching(/^https:\/\/partner\.example\/done\/sell\?/),
+    );
+    Object.defineProperty(window, 'location', { configurable: true, value: original });
+  });
+
+  it('appends swap details to a safe redirect-uri on Done', async () => {
+    const assign = jest.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, assign, origin: original.origin, search: '', hash: '', pathname: '/' },
+    });
+    setParams('?mode=swap&amount-in=0.1&redirect-uri=https://partner.example/done');
+    renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForSwap).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    expect(assign).toHaveBeenCalledWith(
+      expect.stringMatching(/^https:\/\/partner\.example\/done\/swap\?/),
+    );
+    Object.defineProperty(window, 'location', { configurable: true, value: original });
   });
 });

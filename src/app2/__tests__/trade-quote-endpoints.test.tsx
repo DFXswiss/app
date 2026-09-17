@@ -25,6 +25,7 @@ jest.mock('@dfx.swiss/react', () => ({
   SellUrl: { quote: 'sell/quote', receive: 'sell/paymentInfos' },
   SwapUrl: { quote: 'swap/quote', receive: 'swap/paymentInfos' },
   FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
+  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
   useApi: () => ({ call: mockCall }),
   useBuy: () => ({ receiveFor: mockReceiveForBuy }),
   useSell: () => ({ receiveFor: mockReceiveForSell }),
@@ -32,7 +33,7 @@ jest.mock('@dfx.swiss/react', () => ({
 }));
 
 import { act, render, waitFor } from '@testing-library/react';
-import { ApiException, FiatPaymentMethod, type Asset, type Fiat } from '@dfx.swiss/react';
+import { ApiException, FiatPaymentMethod, PersonalIbanProvider, type Asset, type Fiat } from '@dfx.swiss/react';
 import { isTransientQuoteError, useBuyQuote, useSellQuote, useSwapQuote } from '../screens/trade/useTradeQuote';
 
 const currency = { id: 2, name: 'EUR' } as Fiat;
@@ -43,10 +44,12 @@ function BuyHarness({
   withPaymentInfo,
   amount = 100,
   targetAmount,
+  personalIbanProvider,
 }: {
   withPaymentInfo?: boolean;
   amount?: number | null;
   targetAmount?: number | null;
+  personalIbanProvider?: PersonalIbanProvider;
 }) {
   useBuyQuote({
     enabled: true,
@@ -57,6 +60,7 @@ function BuyHarness({
     paymentMethod: FiatPaymentMethod.BANK,
     externalTransactionId: 'tx-42',
     withPaymentInfo,
+    personalIbanProvider,
   });
   return null;
 }
@@ -141,6 +145,17 @@ describe('App2 trade quote endpoints', () => {
       expect.objectContaining({ targetAmount: 0.01, externalTransactionId: 'tx-42' }),
     );
     expect(mockReceiveForBuy.mock.calls[0][0]).not.toHaveProperty('amount');
+  });
+
+  it('sends personalIbanProvider only on paymentInfos, never on the public quote', async () => {
+    const { unmount } = render(<BuyHarness personalIbanProvider={PersonalIbanProvider.FRICK} />);
+    await waitFor(() => expect(mockCall).toHaveBeenCalledTimes(1));
+    expect(mockCall.mock.calls[0][0].data).not.toHaveProperty('personalIbanProvider');
+    unmount();
+
+    render(<BuyHarness withPaymentInfo personalIbanProvider={PersonalIbanProvider.FRICK} />);
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalledTimes(1));
+    expect(mockReceiveForBuy).toHaveBeenCalledWith(expect.objectContaining({ personalIbanProvider: 'Frick' }));
   });
 
   it('asks for buy payment details only with withPaymentInfo', async () => {

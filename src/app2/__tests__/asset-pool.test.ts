@@ -169,6 +169,16 @@ describe('parseBalances / heldBalance', () => {
     expect(parseBalances('?balances=1@,abc@ETH,2@USDC')).toEqual({ USDC: 2 });
   });
 
+  it('resolves main-app asset ids to tickers and skips unmatched ids', () => {
+    const assets = [
+      { id: 113, name: 'BTC' },
+      { id: 111, name: 'USDT' },
+    ];
+    expect(parseBalances('?balances=0.35@113,12.3@111', assets)).toEqual({ BTC: 0.35, USDT: 12.3 });
+    expect(parseBalances('?balances=0.35@113')).toEqual({});
+    expect(parseBalances('?balances=1@999,2@BTC', assets)).toEqual({ BTC: 2 });
+  });
+
   it('looks up a held amount case-insensitively', () => {
     expect(heldBalance({ BTC: 1.25 }, 'btc')).toBe(1.25);
     expect(heldBalance({ BTC: 1.25 }, 'ETH')).toBe(0);

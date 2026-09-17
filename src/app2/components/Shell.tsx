@@ -11,6 +11,8 @@ import { useWalletSession } from '../wallets/session';
 import { WalletSwitcher } from '../wallets/WalletSwitcher';
 import { Drawer } from './Drawer';
 import { LanguageMenu } from './LanguageSheet';
+import { routeOrQueryParam } from '../utils/url';
+import { isTrueFlag } from '../screens/trade/widget-params';
 import { cx } from '../css';
 
 /** Mirrors the static app's initials() for the address case: strip a `0x`
@@ -24,14 +26,27 @@ export function Shell() {
   const { language } = useT();
   const location = useLocation();
   const navigate = useNavigate();
-  const { isLoggedIn, address, closeConnect, connectSheet } = useWalletSession();
+  const { isLoggedIn, address, closeConnect, connectSheet, openConnect } = useWalletSession();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const langBtnRef = useRef<HTMLButtonElement>(null);
+  const openedConnectRef = useRef(false);
 
   useEffect(() => {
     document.title = 'DFX';
   }, []);
+
+  useEffect(() => {
+    const headlessClass = cx('headless');
+    const borderlessClass = cx('borderless');
+    const headlessOn = isTrueFlag(routeOrQueryParam(location.search, 'headless'));
+    const borderlessOn = isTrueFlag(routeOrQueryParam(location.search, 'borderless'));
+    document.body.classList.toggle(headlessClass, headlessOn);
+    document.body.classList.toggle(borderlessClass, borderlessOn);
+    return () => {
+      document.body.classList.remove(headlessClass, borderlessClass);
+    };
+  }, [location.search]);
 
   // Close any open overlay on navigation, same as the static app's go() — including the
   // connect sheet (it used to survive a route change since it was owned by an
@@ -41,6 +56,15 @@ export function Shell() {
     setLangOpen(false);
     closeConnect();
   }, [location.pathname, closeConnect]);
+
+  // After the mount close above, so `service=connect` is not opened and immediately dismissed.
+  useEffect(() => {
+    if (openedConnectRef.current) return;
+    const service = routeOrQueryParam(location.search, 'service');
+    if (service !== 'connect') return;
+    openedConnectRef.current = true;
+    openConnect();
+  }, [location.search, openConnect]);
 
   return (
     <div className={cx('app')} id="app">
