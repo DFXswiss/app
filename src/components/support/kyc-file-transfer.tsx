@@ -7,8 +7,8 @@ import { useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 // Survives unmount: ticket switch remounts this component (`key={id}` + spinner), and a PUT
 // started on A must still block a second transfer after A→B→A. Notify so a remount during the
 // PUT re-renders when the Sets change (disabled Transfer → "In KYC file", or enabled again).
-export const kycTransferInFlight = new Set<string>();
-export const kycTransferDone = new Set<string>();
+const kycTransferInFlight = new Set<string>();
+const kycTransferDone = new Set<string>();
 
 const kycTransferListeners = new Set<() => void>();
 
