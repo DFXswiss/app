@@ -77,6 +77,7 @@ jest.mock('../wallets/session', () => ({
 }));
 
 jest.mock('../components/ui', () => ({
+  Spinner: () => null,
   useToast: () => ({ showToast: mockShowToast }),
   Spinner: () => <span className="spin" />,
 }));

@@ -142,6 +142,7 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
   const openRemove = (account: BankAccount) => {
     setEditId(null);
     editGenRef.current += 1;
+    busyGenRef.current = editGenRef.current;
     setBusyId(null);
     setRemoveId(removeId === account.id ? null : account.id);
   };
@@ -183,15 +184,18 @@ function BankAccountsSheet({ open, onClose }: SheetProps) {
   };
 
   const remove = async (account: BankAccount) => {
-    setBusyId(account.id);
+    const targetId = account.id;
+    const gen = editGenRef.current;
+    busyGenRef.current = gen;
+    setBusyId(targetId);
     try {
-      await updateAccount(account.id, { active: false });
+      await updateAccount(targetId, { active: false });
       showToast(t('saved'));
       setRemoveId(null);
     } catch {
       showToast(t('genErr'), { assertive: true });
     } finally {
-      setBusyId(null);
+      if (busyGenRef.current === gen) setBusyId(null);
     }
   };
 
