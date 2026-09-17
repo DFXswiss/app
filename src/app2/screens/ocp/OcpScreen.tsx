@@ -477,8 +477,6 @@ interface ApplyResult {
   node: ReactNode;
 }
 
-const APPLY_SPINNER = <span className={cx('spin')} />;
-
 function ApplyView() {
   const { t } = useT();
   const { showToast } = useToast();
