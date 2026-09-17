@@ -251,6 +251,18 @@ export default function LinksView({ ocp, go }: OcpSubViewProps) {
             onPos={() => void openPos(link.id)}
           />
         ))
+      ) : ocp.linksError ? (
+        <div className={cx('ocp-empty')} style={{ flexDirection: 'column', gap: 12, textAlign: 'center' }}>
+          <span>{t('loadFail')}</span>
+          <button
+            type="button"
+            className={cx('btn-mini')}
+            style={{ width: 'auto' }}
+            onClick={() => void ocp.loadLinks()}
+          >
+            {t('retry')}
+          </button>
+        </div>
       ) : (
         <div className={cx('ocp-empty')}>{t('linksEmpty')}</div>
       )}

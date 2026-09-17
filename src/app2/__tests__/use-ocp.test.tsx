@@ -111,6 +111,8 @@ describe('useOcp', () => {
     });
     expect(result.current.routes).toEqual({ sell: [], buy: [], swap: [] });
     expect(result.current.links).toEqual([]);
+    expect(result.current.linksError).toBe(false);
+    expect(result.current.historyError).toBe(false);
 
     mockCall.mockResolvedValueOnce([
       {
@@ -190,12 +192,24 @@ describe('useOcp', () => {
       await result.current.loadLinks();
     });
     expect(result.current.links).toEqual([]);
+    expect(result.current.linksError).toBe(true);
+    mockGetPaymentLinks.mockResolvedValueOnce([]);
+    await act(async () => {
+      await result.current.loadLinks();
+    });
+    expect(result.current.linksError).toBe(false);
 
     mockCall.mockRejectedValueOnce(new Error('down'));
     await act(async () => {
       await result.current.loadHistory();
     });
     expect(result.current.history).toEqual({ items: [], total: 0 });
+    expect(result.current.historyError).toBe(true);
+    mockCall.mockResolvedValueOnce([]);
+    await act(async () => {
+      await result.current.loadHistory();
+    });
+    expect(result.current.historyError).toBe(false);
 
     await act(async () => {
       await result.current.probe();
@@ -284,6 +298,7 @@ describe('useOcp', () => {
       await result.current.loadHistory();
     });
     expect(result.current.history).toEqual({ items: [], total: 0 });
+    expect(result.current.historyError).toBe(false);
 
     mockCall.mockResolvedValueOnce([
       { payments: undefined, totalCompletedAmount: undefined },
@@ -387,6 +402,8 @@ describe('useOcp', () => {
     expect(result.current.links).toBe(demoLinks);
     expect(result.current.history).toBeNull();
     expect(result.current.routesError).toBe(false);
+    expect(result.current.linksError).toBe(false);
+    expect(result.current.historyError).toBe(false);
     expect(result.current.active).toBe(true);
     expect(result.current.probeError).toBe(false);
   });
@@ -446,6 +463,8 @@ describe('useOcp', () => {
     expect(result.current.history).toBeNull();
     expect(result.current.active).toBeNull();
     expect(result.current.routesError).toBe(false);
+    expect(result.current.linksError).toBe(false);
+    expect(result.current.historyError).toBe(false);
   });
 
   it('discards a failed probe after demo is turned on', async () => {
@@ -504,6 +523,7 @@ describe('useOcp', () => {
     expect(result.current.demo).toBe(true);
     expect(result.current.links).toBe(demoLinks);
     expect(result.current.links).not.toEqual([]);
+    expect(result.current.linksError).toBe(false);
   });
 
   it('deactivates a live route through the SDK and activates with PUT', async () => {
@@ -541,6 +561,8 @@ describe('useOcp', () => {
     expect(result.current.active).toBeNull();
     expect(result.current.config).toBeNull();
     expect(result.current.demo).toBe(false);
+    expect(result.current.linksError).toBe(false);
+    expect(result.current.historyError).toBe(false);
   });
 
   it('discards a late live write after demo is turned on', async () => {
