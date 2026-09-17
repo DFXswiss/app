@@ -1,4 +1,4 @@
-import { appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl, isSafeHttpsUrl, mailRedirectUri, routeOrQueryParam } from '../utils/url';
+import { appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl, isSafeHttpsUrl, isSafeRedirectUri, mailRedirectUri, routeOrQueryParam } from '../utils/url';
 
 describe('foldApp2PathIntoHash', () => {
   it('folds real-path Checkout/email returns into hash routes and keeps the query', () => {
@@ -180,6 +180,23 @@ describe('appUrl', () => {
     process.env.REACT_APP_PUBLIC_URL = 'https://app.dfx.swiss';
     expect(appUrl()).toBe('https://app.dfx.swiss/');
     expect(appUrl('http://[')).toBeUndefined();
+  });
+});
+
+describe('isSafeRedirectUri', () => {
+  it('allows https, local http and custom wallet schemes', () => {
+    expect(isSafeRedirectUri('https://example.com/path?x=1')).toBe(true);
+    expect(isSafeRedirectUri('http://localhost:3001/x')).toBe(true);
+    expect(isSafeRedirectUri('http://127.0.0.1:3001/x')).toBe(true);
+    expect(isSafeRedirectUri('mywallet://callback')).toBe(true);
+  });
+
+  it('rejects remote http, executable schemes and unparsable values', () => {
+    expect(isSafeRedirectUri('http://evil.com')).toBe(false);
+    expect(isSafeRedirectUri('javascript:alert(1)')).toBe(false);
+    expect(isSafeRedirectUri('')).toBe(false);
+    expect(isSafeRedirectUri('not a uri')).toBe(false);
+    expect(isSafeRedirectUri('http://localhost@evil.com')).toBe(false);
   });
 });
 

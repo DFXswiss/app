@@ -16,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Blockchain,
   FiatPaymentMethod,
+  PersonalIbanProvider,
   useAssetContext,
   useBankAccountContext,
   useFiatContext,
@@ -54,6 +55,14 @@ import { MODES, type Capability, type Mode, type TradeAsset } from './trade/type
 import { useBuyQuote, useSellQuote, useSwapQuote } from './trade/useTradeQuote';
 import { useT, type TranslationKey } from '../i18n';
 import { firstQueryParam, routeOrQueryParam } from '../utils/url';
+import { ibanCheck } from './trade/iban';
+import {
+  completionRedirectUrl,
+  matchBankAccount,
+  parseEnumValue,
+  personalIbanParamState,
+  restrictBlockchains,
+} from './trade/widget-params';
 import { useWalletSession } from '../wallets/session';
 import { cx } from '../css';
 
@@ -98,7 +107,7 @@ export default function HomeScreen() {
   const session = useWalletSession();
   const { getAssets } = useAssetContext();
   const { currencies } = useFiatContext();
-  const { bankAccounts } = useBankAccountContext();
+  const { bankAccounts, createAccount } = useBankAccountContext();
   const location = useLocation();
 
   const [mode, setMode] = useState<Mode>('buy');
@@ -109,9 +118,17 @@ export default function HomeScreen() {
   const [buyFiat, setBuyFiat] = useState<Fiat>();
   const [buyMethod, setBuyMethod] = useState<FiatPaymentMethod>(FiatPaymentMethod.BANK);
   const amountOutParam = useMemo(() => routeOrQueryParam(location.search, 'amount-out'), [location.search]);
+  const amountInParam = useMemo(() => routeOrQueryParam(location.search, 'amount-in'), [location.search]);
   const assetInParam = useMemo(() => routeOrQueryParam(location.search, 'asset-in'), [location.search]);
   const assetOutParam = useMemo(() => routeOrQueryParam(location.search, 'asset-out'), [location.search]);
+  const paymentMethodParam = useMemo(() => routeOrQueryParam(location.search, 'payment-method'), [location.search]);
+  const blockchainParam = useMemo(() => routeOrQueryParam(location.search, 'blockchain'), [location.search]);
+  const bankAccountParam = useMemo(() => routeOrQueryParam(location.search, 'bank-account'), [location.search]);
+  const personalIbanParam = useMemo(() => routeOrQueryParam(location.search, 'personal-iban'), [location.search]);
+  const redirectUriParam = useMemo(() => routeOrQueryParam(location.search, 'redirect-uri'), [location.search]);
   const hideTargetSelection = Boolean(routeOrQueryParam(location.search, 'hide-target-selection'));
+  const requestedChain = parseEnumValue(blockchainParam, Blockchain) as Blockchain | undefined;
+  const spendClearedByUserRef = useRef(false);
 
   const [buyRaw, setBuyRaw] = useState('100');
 
@@ -144,12 +161,17 @@ export default function HomeScreen() {
   // request settles — armed by the CTA, or by picking the payout account the sell CTA asked for.
   const [needPaymentInfo, setNeedPaymentInfo] = useState(false);
   const [openAfterPaymentInfo, setOpenAfterPaymentInfo] = useState(false);
-  const [buyTargetRaw, setBuyTargetRaw] = useState(amountOutParam ? amountOutParam : '');
+  const [buyTargetRaw, setBuyTargetRaw] = useState('');
   const targetClearedByUserRef = useRef(false);
+  const bankAccountCreateRef = useRef<string>();
+  const bankAccountParamLiveRef = useRef(bankAccountParam);
+  bankAccountParamLiveRef.current = bankAccountParam;
 
   useEffect(() => {
     const requestedMode =
-      new URLSearchParams(location.search).get('mode') ?? new URLSearchParams(window.location.search).get('mode');
+      new URLSearchParams(location.search).get('mode') ||
+      new URLSearchParams(window.location.search).get('mode') ||
+      routeOrQueryParam(location.search, 'service');
     if (requestedMode === 'buy' || requestedMode === 'sell' || requestedMode === 'swap') setMode(requestedMode);
   }, [location.search]);
 
@@ -176,7 +198,15 @@ export default function HomeScreen() {
     const visible = allAssets.filter((asset) => includeInPartnerPool(asset, assetInParam));
     return availableAssets(groupAssets(visible), 'sell');
   }, [allAssets, assetInParam]);
-  const balances = useMemo(() => parseBalances(window.location.search), []);
+  const balancesParam = useMemo(() => routeOrQueryParam(location.search, 'balances'), [location.search]);
+  const chainFilter = useMemo(
+    () => restrictBlockchains(session.blockchains, requestedChain),
+    [session.blockchains, requestedChain],
+  );
+  const balances = useMemo(
+    () => parseBalances(balancesParam ? `?balances=${encodeURIComponent(balancesParam)}` : '', allAssets),
+    [balancesParam, allAssets],
+  );
   const buyCurrencies = useMemo(() => currenciesForBuy(currencies), [currencies]);
   const sellCurrencies = useMemo(() => currenciesForSell(currencies), [currencies]);
   const hasBalances = Object.keys(balances).length > 0;
@@ -189,66 +219,86 @@ export default function HomeScreen() {
   // ---- defaults once the pool/currency list is loaded ---------------------------------------
   useEffect(() => {
     if (!buyPool.length) return;
-    const currentChains = buyAsset ? shownChainsFor(buyAsset, 'buy', session.blockchains) : [];
+    const currentChains = buyAsset ? shownChainsFor(buyAsset, 'buy', chainFilter) : [];
     if (buyAsset && currentChains.length) {
       if (!currentChains.some((chain) => chain.blockchain === buyChain)) setBuyChain(currentChains[0].blockchain);
       return;
     }
-    const reachable = buyPool.filter((asset) => shownChainsFor(asset, 'buy', session.blockchains).length > 0);
-    const def = findNamedTradeAsset(reachable, assetOutParam) ?? reachable.find((tk) => tk.code === 'BTC') ?? reachable[0];
+    const reachable = buyPool.filter((asset) => shownChainsFor(asset, 'buy', chainFilter).length > 0);
+    const named = findNamedTradeAsset(reachable, assetOutParam);
+    const btc = reachable.find((tk) => tk.code === 'BTC');
+    const def = named ? named : btc ? btc : reachable[0];
     if (!def) return;
-    const chains = shownChainsFor(def, 'buy', session.blockchains);
+    const chains = shownChainsFor(def, 'buy', chainFilter);
+    const preferred =
+      requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
+        ? requestedChain
+        : chains[0]?.blockchain;
     setBuyAsset(def);
-    setBuyChain(chains[0]?.blockchain);
-  }, [buyPool, buyAsset, buyChain, session.blockchains, assetOutParam]);
+    setBuyChain(preferred);
+  }, [buyPool, buyAsset, buyChain, chainFilter, assetOutParam, requestedChain]);
 
   useEffect(() => {
     if (!sellPool.length) return;
-    const currentChains = sellAsset ? shownChainsFor(sellAsset, 'sell', session.blockchains) : [];
+    const currentChains = sellAsset ? shownChainsFor(sellAsset, 'sell', chainFilter) : [];
     if (sellAsset && currentChains.length) {
       if (!currentChains.some((chain) => chain.blockchain === sellChain)) setSellChain(currentChains[0].blockchain);
       return;
     }
-    const reachable = sellPool.filter((asset) => shownChainsFor(asset, 'sell', session.blockchains).length > 0);
-    const def = findNamedTradeAsset(reachable, assetInParam) ?? reachable.find((tk) => tk.code === 'BTC') ?? reachable[0];
+    const reachable = sellPool.filter((asset) => shownChainsFor(asset, 'sell', chainFilter).length > 0);
+    const named = findNamedTradeAsset(reachable, assetInParam);
+    const btc = reachable.find((tk) => tk.code === 'BTC');
+    const def = named ? named : btc ? btc : reachable[0];
     if (!def) return;
-    const chains = shownChainsFor(def, 'sell', session.blockchains);
+    const chains = shownChainsFor(def, 'sell', chainFilter);
+    const preferred =
+      requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
+        ? requestedChain
+        : chains[0]?.blockchain;
     setSellAsset(def);
-    setSellChain(chains[0]?.blockchain);
-  }, [sellPool, sellAsset, sellChain, session.blockchains, assetInParam]);
+    setSellChain(preferred);
+  }, [sellPool, sellAsset, sellChain, chainFilter, assetInParam, requestedChain]);
 
   useEffect(() => {
     if (!sellPool.length) return;
-    const currentChains = swapFromAsset ? shownChainsFor(swapFromAsset, 'sell', session.blockchains) : [];
+    const currentChains = swapFromAsset ? shownChainsFor(swapFromAsset, 'sell', chainFilter) : [];
     if (swapFromAsset && currentChains.length) {
       if (!currentChains.some((chain) => chain.blockchain === swapFromChain)) {
         setSwapFromChain(currentChains[0].blockchain);
       }
       return;
     }
-    const def = sellPool.find((asset) => shownChainsFor(asset, 'sell', session.blockchains).length > 0);
+    const def = sellPool.find((asset) => shownChainsFor(asset, 'sell', chainFilter).length > 0);
     if (!def) return;
-    const chains = shownChainsFor(def, 'sell', session.blockchains);
+    const chains = shownChainsFor(def, 'sell', chainFilter);
+    const preferred =
+      requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
+        ? requestedChain
+        : chains[0]?.blockchain;
     setSwapFromAsset(def);
-    setSwapFromChain(chains[0]?.blockchain);
-  }, [sellPool, swapFromAsset, swapFromChain, session.blockchains]);
+    setSwapFromChain(preferred);
+  }, [sellPool, swapFromAsset, swapFromChain, chainFilter, requestedChain]);
 
   useEffect(() => {
     if (!buyPool.length) return;
-    const currentChains = swapToAsset ? shownChainsFor(swapToAsset, 'buy', session.blockchains) : [];
+    const currentChains = swapToAsset ? shownChainsFor(swapToAsset, 'buy', chainFilter) : [];
     if (swapToAsset && swapToAsset.code !== swapFromAsset?.code && currentChains.length) {
       if (!currentChains.some((chain) => chain.blockchain === swapToChain)) setSwapToChain(currentChains[0].blockchain);
       return;
     }
     const rest = buyPool.filter(
-      (tk) => tk.code !== swapFromAsset?.code && shownChainsFor(tk, 'buy', session.blockchains).length > 0,
+      (tk) => tk.code !== swapFromAsset?.code && shownChainsFor(tk, 'buy', chainFilter).length > 0,
     );
     const def = rest[0];
     if (!def) return;
-    const chains = shownChainsFor(def, 'buy', session.blockchains);
+    const chains = shownChainsFor(def, 'buy', chainFilter);
+    const preferred =
+      requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
+        ? requestedChain
+        : chains[0]?.blockchain;
     setSwapToAsset(def);
-    setSwapToChain(chains[0]?.blockchain);
-  }, [buyPool, swapToAsset, swapToChain, swapFromAsset, session.blockchains]);
+    setSwapToChain(preferred);
+  }, [buyPool, swapToAsset, swapToChain, swapFromAsset, chainFilter, requestedChain]);
 
   useEffect(() => {
     if (buyFiat || !buyCurrencies.length) return;
@@ -260,7 +310,15 @@ export default function HomeScreen() {
   }, [buyCurrencies, buyFiat, assetInParam]);
 
   useEffect(() => {
-    if (amountOutParam && !targetClearedByUserRef.current) setBuyTargetRaw(amountOutParam);
+    if (amountInParam && !spendClearedByUserRef.current) {
+      setBuyRaw(amountInParam);
+      setSellRaw(amountInParam);
+      setSwapRaw(amountInParam);
+    }
+  }, [amountInParam, buyAsset, sellAsset, swapFromAsset]);
+
+  useEffect(() => {
+    if (amountOutParam) setBuyTargetRaw(amountOutParam);
   }, [amountOutParam, buyAsset]);
 
   useEffect(() => {
@@ -269,10 +327,29 @@ export default function HomeScreen() {
   }, [sellCurrencies, sellFiat]);
 
   useEffect(() => {
-    if (!sellBankAccount && bankAccounts?.length) {
-      setSellBankAccount(bankAccounts.find((a) => a.default) ?? bankAccounts[0]);
+    if (!bankAccounts?.length) return;
+    if (bankAccountParam) {
+      const found = matchBankAccount(bankAccounts, bankAccountParam);
+      if (found) {
+        setSellBankAccount(found);
+        return;
+      }
+      if (ibanCheck(bankAccountParam).ok && bankAccountCreateRef.current !== bankAccountParam) {
+        const requested = bankAccountParam;
+        bankAccountCreateRef.current = requested;
+        createAccount({ iban: requested.replace(/\s+/g, '').toUpperCase() })
+          .then((account) => {
+            if (bankAccountParamLiveRef.current === requested) setSellBankAccount(account);
+          })
+          .catch(() => undefined);
+      }
+      return;
     }
-  }, [bankAccounts, sellBankAccount]);
+    if (!sellBankAccount) {
+      const fallback = bankAccounts.find((a) => a.default);
+      setSellBankAccount(fallback ? fallback : bankAccounts[0]);
+    }
+  }, [bankAccounts, bankAccountParam, sellBankAccount, createAccount]);
 
   // ---- resolved API assets + parsed amounts --------------------------------------------------
   const buyApiAsset = buyAsset && buyChain ? assetFor(buyAsset, buyChain, 'buy') : undefined;
@@ -281,17 +358,33 @@ export default function HomeScreen() {
   const swapToApiAsset = swapToAsset && swapToChain ? assetFor(swapToAsset, swapToChain, 'buy') : undefined;
 
   useEffect(() => {
+    const available = paymentMethodsFor(buyFiat, buyApiAsset);
+    const fromParam = parseEnumValue(paymentMethodParam, FiatPaymentMethod);
+    if (fromParam && available.some((m) => m.id === fromParam)) {
+      setBuyMethod(fromParam);
+      return;
+    }
     // only reset when the *fiat*/asset changes, not every time the user picks a method — reading
     // buyMethod here (without depending on it) is intentional, not a stale-closure bug
-    if (buyFiat && !paymentMethodsFor(buyFiat, buyApiAsset).some((m) => m.id === buyMethod)) {
+    if (buyFiat && !available.some((m) => m.id === buyMethod)) {
       setBuyMethod(FiatPaymentMethod.BANK);
     }
-  }, [buyFiat, buyApiAsset]);
+  }, [buyFiat, buyApiAsset, paymentMethodParam]);
 
   const buyAmount = parseAmt(buyRaw, language);
   const buyTargetAmount = parseAmt(buyTargetRaw, language);
-  const receiveDrivenByParam = Boolean(amountOutParam) && !targetClearedByUserRef.current;
+  const receiveDrivenByParam = Boolean(amountOutParam) && !amountInParam && !targetClearedByUserRef.current;
   const quoteFromTarget = receiveDrivenByParam && Boolean(buyTargetRaw.trim());
+  const personalIbanState = personalIbanParamState(
+    personalIbanParam,
+    PersonalIbanProvider,
+    buyFiat?.name,
+    buyMethod,
+    FiatPaymentMethod.BANK,
+  );
+  const personalIbanProvider =
+    personalIbanState.kind === 'ready' ? (personalIbanState.provider as PersonalIbanProvider) : undefined;
+  const personalIbanBlocked = personalIbanState.kind === 'unrecognized' || personalIbanState.kind === 'inapplicable';
   const sellAmount = parseAmt(sellRaw, language);
   const swapAmount = parseAmt(swapRaw, language);
 
@@ -315,7 +408,7 @@ export default function HomeScreen() {
     paused: paymentSheetOpen || openAfterPaymentInfo,
   });
   const buyPayment = useBuyQuote({
-    enabled: session.isLoggedIn && mode === 'buy' && needPaymentInfo,
+    enabled: session.isLoggedIn && mode === 'buy' && needPaymentInfo && !personalIbanBlocked,
     asset: buyApiAsset,
     currency: buyFiat,
     amount: quoteFromTarget ? null : buyAmount,
@@ -323,6 +416,7 @@ export default function HomeScreen() {
     paymentMethod: buyMethod,
     externalTransactionId,
     withPaymentInfo: true,
+    personalIbanProvider,
     paused: paymentSheetOpen,
   });
   const sellQuote = useSellQuote({
@@ -415,11 +509,13 @@ export default function HomeScreen() {
   // ---- CTA -------------------------------------------------------------------------------
   const ctaEnabled = !session.isLoggedIn
     ? true
-    : mode === 'buy'
-      ? buyReady || canOpenGate
-      : mode === 'swap'
-        ? swapReady || canOpenGate
-        : !!sellAmount && !!sellApiAsset && !!sellFiat && (sellReady || canOpenGate);
+    : personalIbanBlocked && mode === 'buy'
+      ? false
+      : mode === 'buy'
+        ? buyReady || canOpenGate
+        : mode === 'swap'
+          ? swapReady || canOpenGate
+          : !!sellAmount && !!sellApiAsset && !!sellFiat && (sellReady || canOpenGate);
 
   // ---- payment-sheet snapshot -------------------------------------------------------------
   // Everything the sheet renders is captured here on open (and re-captured whenever the live
@@ -745,7 +841,11 @@ export default function HomeScreen() {
               value={payRaw}
               placeholder="0"
               aria-label="Amount you pay"
-              onChange={(e) => setPayRaw(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (!next) spendClearedByUserRef.current = true;
+                setPayRaw(next);
+              }}
             />
             {isFiatPay ? (
               <button
@@ -892,6 +992,16 @@ export default function HomeScreen() {
         language={language}
       />
 
+      {mode === 'buy' && personalIbanBlocked && (
+        <div className={cx('paybox-note', 'warn')} style={{ margin: '0 0 12px' }}>
+          {personalIbanState.kind === 'unrecognized'
+            ? t('personalIbanUnknown')
+            : personalIbanState.reason === 'method'
+              ? t('personalIbanNeedBank')
+              : t('personalIbanNeedCurrency')}
+        </div>
+      )}
+
       {mode === 'buy' && (
         <div
           className={cx('pmethod')}
@@ -960,7 +1070,7 @@ export default function HomeScreen() {
         buyPool={buyPool}
         sellPool={sellPool}
         balances={balances}
-        sessionBlockchains={session.blockchains}
+        sessionBlockchains={chainFilter}
         swapFromCode={swapFromAsset?.code}
         swapToCode={swapToAsset?.code}
         selectedCode={
@@ -1042,7 +1152,33 @@ export default function HomeScreen() {
       <PaymentSheet
         open={paymentSheetOpen}
         onClose={() => setPaymentSheetOpen(false)}
-        onDone={() => setPaymentSheetOpen(false)}
+        onDone={() => {
+          setPaymentSheetOpen(false);
+          const extra =
+            sheetSnapshot?.mode === 'sell' && sheetSnapshot.sell
+              ? {
+                  routeId: String(sheetSnapshot.sell.routeId),
+                  amount: String(sheetSnapshot.sell.amount),
+                  asset: sheetSnapshot.sell.asset.name,
+                  blockchain: String(sheetSnapshot.sell.asset.blockchain),
+                  isComplete: 'false',
+                }
+              : sheetSnapshot?.mode === 'swap' && sheetSnapshot.swap
+                ? {
+                    routeId: String(sheetSnapshot.swap.routeId),
+                    amount: String(sheetSnapshot.swap.amount),
+                    asset: sheetSnapshot.swap.sourceAsset.name,
+                    blockchain: String(sheetSnapshot.swap.sourceAsset.blockchain),
+                    isComplete: 'false',
+                  }
+                : undefined;
+          const target = completionRedirectUrl(
+            redirectUriParam,
+            sheetSnapshot?.mode === 'sell' ? 'sell' : sheetSnapshot?.mode === 'swap' ? 'swap' : 'buy',
+            extra,
+          );
+          if (target) window.location.assign(target);
+        }}
         mode={sheetSnapshot?.mode ?? mode}
         loading={sheetSnapshot?.loading ?? sheetLoadingLive}
         rawError={sheetSnapshot?.rawError ?? null}

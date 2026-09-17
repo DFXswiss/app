@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Shell } from '../components/Shell';
@@ -5,10 +6,12 @@ import { LanguageProvider } from '../i18n';
 
 const mockNavigate = jest.fn();
 const mockCloseConnect = jest.fn();
+const mockOpenConnect = jest.fn();
 const mockSession = {
   isLoggedIn: false,
   address: undefined as string | undefined,
   closeConnect: mockCloseConnect,
+  openConnect: mockOpenConnect,
   connectSheet: {
     open: false,
     view: 'list',
@@ -75,8 +78,15 @@ describe('Shell', () => {
   beforeEach(() => {
     mockNavigate.mockReset();
     mockCloseConnect.mockReset();
+    mockOpenConnect.mockReset();
+    mockSession.openConnect = mockOpenConnect;
     mockSession.isLoggedIn = false;
     mockSession.address = undefined;
+    document.body.className = '';
+  });
+
+  afterEach(() => {
+    document.body.className = '';
   });
 
   it('hides the avatar while logged out and toggles the language menu', () => {
@@ -124,5 +134,64 @@ describe('Shell', () => {
     fireEvent.click(screen.getByRole('button', { name: /change language|sprache|lingua|langue/i }));
     fireEvent.click(screen.getByTestId('lang-menu'));
     expect(screen.queryByTestId('lang-menu')).not.toBeInTheDocument();
+  });
+
+  it('puts the hashed headless class on body when headless=true, and not when it is absent', () => {
+    const { unmount } = renderShell('/?headless=true');
+    expect(document.body.className.split(/\s+/)).toContain('headless');
+    unmount();
+    expect(document.body.className.split(/\s+/)).not.toContain('headless');
+
+    renderShell('/');
+    expect(document.body.className.split(/\s+/)).not.toContain('headless');
+  });
+
+  it('puts the hashed borderless class on body when borderless=true, and not when it is absent', () => {
+    const { unmount } = renderShell('/?borderless=true');
+    expect(document.body.className.split(/\s+/)).toContain('borderless');
+    unmount();
+    expect(document.body.className.split(/\s+/)).not.toContain('borderless');
+
+    renderShell('/');
+    expect(document.body.className.split(/\s+/)).not.toContain('borderless');
+  });
+
+  it('opens connect when service=connect, and not when the param is absent', () => {
+    const absent = renderShell('/');
+    expect(mockOpenConnect).not.toHaveBeenCalled();
+    absent.unmount();
+
+    renderShell('/?service=connect');
+    expect(mockOpenConnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens connect only once when the session callback identity changes', () => {
+    function Harness() {
+      const [, bump] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => bump((n) => n + 1)}>
+            bump
+          </button>
+          <MemoryRouter initialEntries={['/?service=connect']}>
+            <LanguageProvider>
+              <Routes>
+                <Route element={<Shell />}>
+                  <Route path="/" element={<div>home</div>} />
+                </Route>
+              </Routes>
+            </LanguageProvider>
+          </MemoryRouter>
+        </>
+      );
+    }
+
+    render(<Harness />);
+    expect(mockOpenConnect).toHaveBeenCalledTimes(1);
+    const nextOpen = jest.fn();
+    mockSession.openConnect = nextOpen;
+    fireEvent.click(screen.getByRole('button', { name: 'bump' }));
+    expect(nextOpen).not.toHaveBeenCalled();
+    expect(mockOpenConnect).toHaveBeenCalledTimes(1);
   });
 });

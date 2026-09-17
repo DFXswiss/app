@@ -8,6 +8,49 @@ export function isSafeHttpsUrl(value: string | undefined | null): value is strin
   }
 }
 
+// Copied from src/util/utils.ts `isSafeRedirectUri` — App 2.0 does not import
+// main-app private modules. Pinned by legacy-contract.test.ts against the original.
+const blockedRedirectSchemes = new Set([
+  'javascript:',
+  'data:',
+  'vbscript:',
+  'blob:',
+  'file:',
+  'about:',
+  'view-source:',
+  'filesystem:',
+  'intent:',
+  'ws:',
+  'wss:',
+  'ftp:',
+  'tel:',
+  'sms:',
+  'mailto:',
+  'chrome:',
+]);
+
+const validSchemePattern = /^[a-z][a-z0-9+.-]*:$/;
+
+/** Same allowlist the main app uses before honouring `redirect-uri`. */
+export function isSafeRedirectUri(uri: string): boolean {
+  let parsedUri: URL;
+  try {
+    parsedUri = new URL(uri);
+  } catch {
+    return false;
+  }
+
+  const protocol = parsedUri.protocol.toLowerCase();
+
+  if (protocol === 'https:') return true;
+
+  if (protocol === 'http:') return parsedUri.hostname === 'localhost' || parsedUri.hostname === '127.0.0.1';
+
+  if (blockedRedirectSchemes.has(protocol)) return false;
+
+  return validSchemePattern.test(protocol);
+}
+
 function isLocalHostname(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }

@@ -34,6 +34,7 @@ jest.mock('@dfx.swiss/react', () => ({
   },
   AuthWalletType: { METAMASK: 'MetaMask', CLI: 'CLI', WALLET_CONNECT: 'WalletConnect' },
   FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
+  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
   TransactionError: { AMOUNT_TOO_LOW: 'AmountTooLow' },
   BuyUrl: { quote: 'buy/quote' },
   SellUrl: { quote: 'sell/quote' },

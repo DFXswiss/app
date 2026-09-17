@@ -310,12 +310,33 @@ describe('WalletSessionProvider', () => {
   });
 
   it('connects an injected wallet and signs in', async () => {
+    window.history.replaceState({}, '', '/');
     renderSession();
     fireEvent.click(screen.getByText('pick-mm'));
     await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
     expect(mockConnectInjected).toHaveBeenCalled();
     expect(mockSignInjected).toHaveBeenCalled();
     expect(mockCreateSession.mock.calls[0][3]).toBeUndefined();
+    expect(mockAddSpecialCode).not.toHaveBeenCalled();
+  });
+
+  it('does not register a special-code when the param is absent', async () => {
+    window.history.replaceState({}, '', '/');
+    const view = renderSession();
+    fireEvent.click(screen.getByText('pick-mm'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    mockSessionCtx.isLoggedIn = true;
+    await act(async () => {
+      view.rerender(
+        <LanguageProvider>
+          <ToastProvider>
+            <WalletSessionProvider>
+              <Probe />
+            </WalletSessionProvider>
+          </ToastProvider>
+        </LanguageProvider>,
+      );
+    });
     expect(mockAddSpecialCode).not.toHaveBeenCalled();
   });
 
