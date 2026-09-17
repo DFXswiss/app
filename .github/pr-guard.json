@@ -16,15 +16,6 @@
       ".github/workflows/main-from-develop.yml"
     ]
   },
-  "environment_approval": {
-    "enabled": true,
-    "environment": "pr-ci",
-    "workflows": [
-      ".github/workflows/pr.yml",
-      ".github/workflows/pr-review-bot.yml",
-      ".github/workflows/handbook-check.yaml"
-    ]
-  },
   "lifecycle": {
     "enabled": true,
     "auto_ready": true,

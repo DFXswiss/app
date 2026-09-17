@@ -64,11 +64,8 @@ light local jobs in `.github/a38.json` (`npm run lint` and
 `npm run format:md:check`). Do not run Jest, production builds, widget
 builds, handbook Docker, or full-stack E2E locally for A38.
 
-Draft pull requests run the GitHub PR CI jobs. Lint, Build and test, the review
-bot, and handbook smoke wait on environment `pr-ci` until a required reviewer
-or `dfx pr guard` approves. CodeQL does not use that environment. GitHub also
-holds fork runs from external contributors as `action_required`. Ready does not
-start CI. After a
+Draft pull requests run the GitHub PR CI jobs. GitHub holds fork runs from
+external contributors as `action_required`. Ready does not start CI. After a
 fresh A38 enforce pass on
 the current head, `dfx pr guard` approves those waiting initial runs, then sets
 Ready when required GitHub jobs are green and the PR is mergeable. The merger
@@ -108,10 +105,8 @@ Two obligations follow from it for every pull request:
 npm run test
 ```
 
-Draft pull requests run the PR CI jobs. Lint and Build and test wait on
-environment `pr-ci` until a required reviewer or `dfx pr guard` approves.
-GitHub also holds fork runs from external contributors as `action_required`.
-Ready does not start CI. After a fresh A38
+Draft pull requests run the PR CI jobs. GitHub holds fork runs from external
+contributors as `action_required`. Ready does not start CI. After a fresh A38
 enforce pass on
 the current head, `dfx pr guard` approves those waiting initial runs. Do not
 ask a maintainer to approve workflow runs. When the job runs, develop PRs
@@ -245,10 +240,9 @@ The full-stack harness under `e2e-stack/` runs the real frontend, API, and
 Postgres together (external providers are mocked). Unlike the visual-regression
 suite under `e2e/` — see [Visual regression tests (Playwright)](#visual-regression-tests-playwright)
 above, which does not run in CI — this harness is called from PR CI after Build
-and test succeed. Draft pull requests run the job after Build and test; it
-starts only after `pr-ci` is approved on Build and test (the reusable-workflow
-caller cannot take `environment`). GitHub also holds fork runs from external
-contributors as `action_required`. Ready does not start CI. After a
+and test succeed. Draft pull requests run the job after Build and test. GitHub
+also holds fork runs from external contributors as `action_required`. Ready
+does not start CI. After a
 fresh A38 enforce pass on
 the current head, `dfx pr guard` approves those waiting initial runs. Do not
 ask a maintainer to approve workflow runs. A develop PR without `ci:full`
