@@ -1,30 +1,27 @@
-# App 2.0 imports from the original app tree
+# App 2.0 shares browser storage with the original app
 
-App 2.0 (`/app2/`) and the original app (`/`) run on the same origin. Some App 2.0
-modules import from the original app's private source, not from `@dfx.swiss/react`.
+App 2.0 (`/app2/`) and the original app (`/`) run on the same origin, so they share `localStorage`
+and `sessionStorage`. That is deliberate: a session survives the move between `/` and `/app2/`.
 
-## Shared browser storage
+## Copied keys, identical strings
 
-`StoreKey` (`src/hooks/store.hook.ts`) and `SessionStoreKey`
-(`src/hooks/session-store.hook.ts`) name the `localStorage` and `sessionStorage`
-entries both apps read and write. A key set under `/` is visible under `/app2/`,
-and the other way around. `BANK_TX_CACHE_PREFIX` (`src/util/bank-tx-cache.ts`) is
-the same for the bank-tx cache in `sessionStorage`.
+App 2.0 does not import the original app's private modules. It keeps its own definitions in
+`src/app2/lib/storage-keys.ts` (`StoreKey`, `SessionStoreKey`, `BANK_TX_CACHE_PREFIX`). The string
+values must still match the originals in `src/hooks/store.hook.ts`, `src/hooks/session-store.hook.ts`
+and `src/util/bank-tx-cache.ts`. `src/app2/__tests__/legacy-contract.test.ts` fails if a member or a
+value is missing or different on either side.
 
-Cleanup on session switch and on a credentialed load is owned by
-`src/app2/wallets/session.tsx`. A key that one app sets and the other does not
-drop will survive into the next session. Two cases that already did:
-`dfx.editMailReturn` (`SessionStoreKey.EDIT_MAIL_RETURN`) kept a return path
-across a credential change; `dfx.srv.queryParams` (`StoreKey.QUERY_PARAMS`)
-carried mail, name and address into the next session.
+A key that one app writes is visible to the other. Cleanup on session switch and on a credentialed
+load is owned by `src/app2/wallets/session.tsx`. A key that one app sets and the other does not drop
+will survive into the next session. Two cases that already did: `dfx.editMailReturn`
+(`SessionStoreKey.EDIT_MAIL_RETURN`) kept a return path across a credential change;
+`dfx.srv.queryParams` (`StoreKey.QUERY_PARAMS`) carried mail, name and address into the next
+session.
 
 A new key in either app belongs on that cleanup list.
 
-## Other private-tree imports
+## Other copied contracts
 
-These are code, not storage, but they are the same kind of coupling:
-
-- `src/util/job.ts` — account-merge job polling (`src/app2/screens/return-route.tsx`)
-- `src/util/api-error.ts` — KYC error mapping (`src/app2/screens/trade/errors.ts`)
-- `src/dto/sumsub.dto.ts` — Sumsub review enums (`src/app2/screens/kyc-steps.tsx`)
-- `src/config/key-path.ts` — hardware-wallet key paths (`src/app2/wallets/hardware-providers.ts`)
+Job tickets, KYC error mapping, Sumsub review enums and hardware-wallet key paths are also copied
+under `src/app2/lib/` and pinned by the same test. They are not storage, but they are the same kind
+of lockstep copy.
