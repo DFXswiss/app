@@ -51,11 +51,11 @@ Compliance and lower. Prefer Fail or Reset so the automatic AML pipeline can re-
 ### A38
 
 This repository requires A38 according to the canonical A38 standard in
-[DFXswiss/agent](https://github.com/DFXswiss/agent/blob/c4a88edb023d1d837d9eaf31253f7282d9985204/docs/a38.md)
-at commit `c4a88edb023d1d837d9eaf31253f7282d9985204`. Repo job selection:
+[DFXswiss/agent](https://github.com/DFXswiss/agent/blob/d0fc07c2d1477dd8864dd3661a7ed742b71246f3/docs/a38.md)
+at commit `d0fc07c2d1477dd8864dd3661a7ed742b71246f3`. Repo job selection:
 `.github/a38.json`. Target-branch applicability and fork workflow approval:
 `.github/pr-guard.json`. `dfx pr guard` is
-[wired in](https://github.com/DFXswiss/agent/blob/c4a88edb023d1d837d9eaf31253f7282d9985204/docs/a38-guard.md#how-fork-github-actions-are-meant-to-work).
+[wired in](https://github.com/DFXswiss/agent/blob/d0fc07c2d1477dd8864dd3661a7ed742b71246f3/docs/a38-guard.md#how-fork-github-actions-are-meant-to-work).
 
 This is a **public** repository. GitHub-hosted runners execute the heavy suite
 (Jest, `build:dev`, `widget:dev`, handbook smoke, full-stack E2E, CodeQL).
