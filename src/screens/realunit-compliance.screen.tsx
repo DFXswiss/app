@@ -97,13 +97,11 @@ export default function RealunitComplianceScreen(): JSX.Element {
   }
 
   function settleBatch(status: RealUnitNameCheckBatchDto, reload: boolean): void {
-    const previousStatus = batch?.status;
     setBatch(status);
     if (status.status === 'Failed') {
       setError(status.error ?? 'Unknown error');
       return;
     }
-    if (previousStatus === 'Failed') setError(undefined);
     if (reload && status.status !== 'Running') loadCustomers(lastSearchKeyRef.current);
   }
 
