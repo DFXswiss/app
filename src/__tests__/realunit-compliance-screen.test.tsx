@@ -915,6 +915,35 @@ describe('RealunitComplianceScreen name-check', () => {
     expect(mockSearchCustomers).toHaveBeenCalledTimes(1);
   });
 
+  it('clears a Failed batch error when a new run starts', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockStartNameCheckBatch
+      .mockResolvedValueOnce({
+        status: 'Failed',
+        total: 1,
+        done: 0,
+        failed: 1,
+        skipped: 0,
+        error: 'quota',
+      })
+      .mockResolvedValue({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 });
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      expect(screen.getByText('quota')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      expect(screen.queryByText('quota')).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+  });
+
   it('keeps a failed poll status error instead of reloading the list', async () => {
     jest.useFakeTimers();
     mockSearchCustomers.mockResolvedValue([FULL]);
