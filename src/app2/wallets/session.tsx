@@ -155,6 +155,37 @@ export function boundProviderFromSnapshot(snapshot: SessionProviderSnapshot): Ei
   return undefined;
 }
 
+/** Last session that should remain on the JWT: a completed sign-in token or a
+ * linked-address switch. Shared by login and switch so a stale round of one
+ * cannot overwrite the other. */
+export type SessionAuthority =
+  | { kind: 'token'; token: string }
+  | { kind: 'address'; address: string };
+
+/** Re-apply the session that won after a superseded `createSessionNew` /
+ * `changeAddress`. Those SDK calls cannot be aborted and have already written
+ * the JWT. */
+export async function restoreSupersededSession(
+  latest: SessionAuthority | undefined,
+  applied: { kind: 'token' } | { kind: 'address'; address: string },
+  api: {
+    updateSession: (token: string) => void;
+    changeAddress: (address: string) => Promise<unknown>;
+    logout: () => Promise<unknown>;
+  },
+): Promise<void> {
+  if (!latest) {
+    await api.logout();
+    return;
+  }
+  if (latest.kind === 'token') {
+    api.updateSession(latest.token);
+    return;
+  }
+  if (applied.kind === 'address' && applied.address === latest.address) return;
+  await api.changeAddress(latest.address);
+}
+
 /** Whether an EIP-1193 provider currently exposes `address` (case-insensitive).
  * A rejected or missing `eth_accounts` answer is treated as "does not hold". */
 export async function providerHoldsAddress(provider: Eip1193Provider | undefined, address: string): Promise<boolean> {
@@ -548,12 +579,10 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   // attempt's CancelToken (see providers.ts), used to stop connectWalletConnect() from waiting
   // on a pairing nobody is going to approve.
   const attemptIdRef = useRef(0);
-  // Latest linked-address switchTo target. A superseded changeAddress may still
-  // write the global JWT; the stale attempt re-applies this if it is no longer current.
-  const switchTargetRef = useRef<string | undefined>();
-  // Token of the last sign-in that passed stillCurrent. A superseded createSessionNew
-  // restores this instead of logging out a newer session.
-  const latestAuthRef = useRef<string | undefined>();
+  // Last login token or switch target that should remain on the JWT. A superseded
+  // createSessionNew / changeAddress re-applies this instead of restoring only its
+  // own path (which would overwrite a newer login or a newer address switch).
+  const sessionAuthorityRef = useRef<SessionAuthority | undefined>();
   const wcTokenRef = useRef<CancelToken | null>(null);
   const providerChangeRef = useRef(false);
   // The exact EIP-1193 provider instance an injected-wallet session authenticated with (resolved
@@ -656,18 +685,17 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           language.toUpperCase(),
         );
         // The auth request itself cannot be aborted by the SDK. createSessionNew already wrote
-        // this JWT. If the attempt was cancelled, restore a newer successful sign-in or discard
-        // this session — never log out a session a later attempt already owns.
+        // this JWT. If the attempt was cancelled, restore a newer successful sign-in *or*
+        // address switch — never log out / overwrite a session a later attempt already owns.
         if (!stillCurrent()) {
-          const latest = latestAuthRef.current;
-          if (latest) {
-            updateSession(latest);
-          } else {
-            await libLogout();
-          }
+          await restoreSupersededSession(sessionAuthorityRef.current, { kind: 'token' }, {
+            updateSession,
+            changeAddress,
+            logout: libLogout,
+          });
           return false;
         }
-        latestAuthRef.current = token;
+        sessionAuthorityRef.current = { kind: 'token', token };
         setActiveConnector(creds.connector);
         // Promote a pending WC provider only after a successful session — never while the
         // QR pairing or recommendation gate is still open.
@@ -719,7 +747,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         return false;
       }
     },
-    [createSessionNew, language, libLogout, showToast, t, updateSession, walletParam],
+    [changeAddress, createSessionNew, language, libLogout, showToast, t, updateSession, walletParam],
   );
 
   const handleSelectWallet = useCallback(
@@ -1112,7 +1140,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       // round so it cannot restore the previous wallet's bindings onto the new session.
       const myAttempt = ++attemptIdRef.current;
       const isCurrent = () => myAttempt === attemptIdRef.current;
-      switchTargetRef.current = entry.address;
+      sessionAuthorityRef.current = { kind: 'address', address: entry.address };
       busyRef.current = false;
       // Snapshot then drop provider bindings for the previous address before the JWT address
       // changes. On failure, restore so the old JWT does not stay active without its EIP-1193
@@ -1139,10 +1167,11 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         // Seamless re-issue for any address linked to the active account (no re-signing).
         await changeAddress(entry.address);
         if (!isCurrent()) {
-          const latest = switchTargetRef.current;
-          if (latest && latest !== entry.address) {
-            await changeAddress(latest);
-          }
+          await restoreSupersededSession(
+            sessionAuthorityRef.current,
+            { kind: 'address', address: entry.address },
+            { updateSession, changeAddress, logout: libLogout },
+          );
           return;
         }
         const bound = boundProviderFromSnapshot(previous);
@@ -1189,7 +1218,19 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         if (catalogEntry) void handleSelectWallet(catalogEntry);
       }
     },
-    [activeConnector, changeAddress, reloadUser, showToast, t, openConnect, handleSelectWallet, user, userAddresses],
+    [
+      activeConnector,
+      changeAddress,
+      libLogout,
+      reloadUser,
+      showToast,
+      t,
+      openConnect,
+      handleSelectWallet,
+      updateSession,
+      user,
+      userAddresses,
+    ],
   );
 
   // URL-param session bootstrap: ?session=/?token=/?accessToken= logs in
@@ -1212,6 +1253,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
 
     if (tokenParam) {
       if (isLikelyValidJwt(tokenParam)) {
+        sessionAuthorityRef.current = { kind: 'token', token: tokenParam };
         updateSession(tokenParam);
       } else {
         clearOwnedStorageOnCredentialedLoad();
@@ -1334,7 +1376,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         injectedProviderRef.current = undefined;
         wcProviderRef.current = undefined;
         pendingWcProviderRef.current = undefined;
-        latestAuthRef.current = undefined;
+        sessionAuthorityRef.current = undefined;
         await teardownWalletSession(disconnectWalletConnect, libLogout);
         showToast(t('signOut'));
       },

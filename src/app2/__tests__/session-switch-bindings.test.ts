@@ -98,6 +98,7 @@ import {
   clearSessionProviderBindings,
   providerHoldsAddress,
   restoreSessionProviderBindings,
+  restoreSupersededSession,
   snapshotSessionProviderBindings,
   teardownWalletSession,
 } from '../wallets/session';
@@ -182,6 +183,69 @@ describe('snapshot/restore session provider bindings', () => {
     expect(wcRef.current).toBe(wc);
     expect(pendingWcRef.current).toBe(pending);
     expect(setActiveConnector).toHaveBeenLastCalledWith('injected');
+  });
+});
+
+describe('restoreSupersededSession', () => {
+  const api = () => ({
+    updateSession: jest.fn(),
+    changeAddress: jest.fn().mockResolvedValue(undefined),
+    logout: jest.fn().mockResolvedValue(undefined),
+  });
+
+  it('logs out when no later session exists', async () => {
+    const next = api();
+    await restoreSupersededSession(undefined, { kind: 'token' }, next);
+    expect(next.logout).toHaveBeenCalledTimes(1);
+    expect(next.updateSession).not.toHaveBeenCalled();
+    expect(next.changeAddress).not.toHaveBeenCalled();
+  });
+
+  it('restores a later sign-in token over a stale address switch', async () => {
+    const next = api();
+    await restoreSupersededSession(
+      { kind: 'token', token: 'jwt-later' },
+      { kind: 'address', address: '0xaaa' },
+      next,
+    );
+    expect(next.updateSession).toHaveBeenCalledWith('jwt-later');
+    expect(next.changeAddress).not.toHaveBeenCalled();
+    expect(next.logout).not.toHaveBeenCalled();
+  });
+
+  it('skips a stale switch whose address is already the latest target', async () => {
+    const next = api();
+    await restoreSupersededSession(
+      { kind: 'address', address: '0xbbb' },
+      { kind: 'address', address: '0xbbb' },
+      next,
+    );
+    expect(next.changeAddress).not.toHaveBeenCalled();
+    expect(next.updateSession).not.toHaveBeenCalled();
+    expect(next.logout).not.toHaveBeenCalled();
+  });
+
+  it('re-applies a later switch address over a stale sign-in', async () => {
+    const next = api();
+    await restoreSupersededSession(
+      { kind: 'address', address: '0xbbb' },
+      { kind: 'token' },
+      next,
+    );
+    expect(next.changeAddress).toHaveBeenCalledWith('0xbbb');
+    expect(next.updateSession).not.toHaveBeenCalled();
+    expect(next.logout).not.toHaveBeenCalled();
+  });
+
+  it('re-applies a later switch address over a stale switch to a different address', async () => {
+    const next = api();
+    await restoreSupersededSession(
+      { kind: 'address', address: '0xccc' },
+      { kind: 'address', address: '0xbbb' },
+      next,
+    );
+    expect(next.changeAddress).toHaveBeenCalledWith('0xccc');
+    expect(next.updateSession).not.toHaveBeenCalled();
   });
 });
 
