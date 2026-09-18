@@ -104,8 +104,9 @@ async function selectStyledDropdown(page: Page, fieldLabel: string, optionLabel:
 
 /**
  * Drive the CLI tile on the wallets grid: Ethereum + real ethers v5 signature, no injected provider.
- * ConnectCli.getAccount returns the form signature, so ConnectBase.doLogin still runs the
- * `if (!isConnect) await logout()` branch before POST /auth.
+ * ConnectCli.getAccount returns the form signature, so ConnectBase.doLogin reaches its logout
+ * guard before POST /auth. On the mail-only path this helper drives, the session carries no
+ * address, so the guard skips the logout and the bearer token survives into POST /auth.
  *
  * Selecting Ethereum runs Content's [blockchain] effect (onSwitch + setParams). That re-render
  * can drop a fill that landed on the previous input node; the address poll re-applies until RHF
