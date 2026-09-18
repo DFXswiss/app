@@ -634,9 +634,15 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     expect(screen.getByText('short:2026-06-01T00:00:00.000Z')).toBeInTheDocument();
   });
 
-  it('marks a 12h wait as Awaiting reply and a 24h wait as Escalated', async () => {
+  it('colors the wait badge gray below 12h, yellow from 12h, and red from 24h', async () => {
     mockGetIssueList.mockResolvedValue({
       data: [
+        issue({
+          id: 1,
+          name: 'Five hour wait',
+          lastMessageAuthor: 'Customer',
+          lastMessageDate: hoursAgo(5),
+        }),
         issue({
           id: 2,
           name: 'Twelve hour wait',
@@ -650,14 +656,24 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
           lastMessageDate: hoursAgo(25),
         }),
       ],
-      total: 2,
+      total: 3,
     });
     await renderLoaded();
 
     expect(screen.getByTitle('Escalated')).toBeInTheDocument();
-    fireEvent.click(waitPills()[1]);
-    expect(screen.getByTitle('Awaiting reply')).toBeInTheDocument();
-    expect(screen.getByText('Twelve hour wait')).toBeInTheDocument();
+    fireEvent.click(waitPills()[0]);
+
+    const badgeOf = (name: string): HTMLElement => {
+      const row = screen.getByText(name).closest('li');
+      if (!row) throw new Error(`row "${name}" not found`);
+      const badge = row.querySelector('span.rounded-full.font-semibold');
+      if (!(badge instanceof HTMLElement)) throw new Error(`badge for "${name}" not found`);
+      return badge;
+    };
+
+    expect(badgeOf('Five hour wait').className).toContain('bg-dfxGray-300');
+    expect(badgeOf('Twelve hour wait').className).toContain('dfxYellow');
+    expect(badgeOf('Twenty-four hour wait').className).toContain('bg-dfxRed-100');
   });
 
   it('omits the clerk suffix when a waiting ticket has no clerk', async () => {
