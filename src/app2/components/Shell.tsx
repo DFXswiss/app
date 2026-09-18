@@ -12,7 +12,7 @@ import { WalletSwitcher } from '../wallets/WalletSwitcher';
 import { Drawer } from './Drawer';
 import { LanguageMenu } from './LanguageSheet';
 import { routeOrQueryParam } from '../utils/url';
-import { isTrueFlag } from '../screens/trade/widget-params';
+import { isPresentFlag, isTrueFlag } from '../screens/trade/widget-params';
 import { cx } from '../css';
 
 /** Mirrors the static app's initials() for the address case: strip a `0x`
@@ -40,7 +40,7 @@ export function Shell() {
     const headlessClass = cx('headless');
     const borderlessClass = cx('borderless');
     const headlessOn = isTrueFlag(routeOrQueryParam(location.search, 'headless'));
-    const borderlessOn = isTrueFlag(routeOrQueryParam(location.search, 'borderless'));
+    const borderlessOn = isPresentFlag(routeOrQueryParam(location.search, 'borderless'));
     document.body.classList.toggle(headlessClass, headlessOn);
     document.body.classList.toggle(borderlessClass, borderlessOn);
     return () => {

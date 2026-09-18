@@ -146,6 +146,12 @@ describe('Shell', () => {
     expect(document.body.className.split(/\s+/)).not.toContain('headless');
   });
 
+  it('does not put the hashed headless class on body for headless=1', () => {
+    const { unmount } = renderShell('/?headless=1');
+    expect(document.body.className.split(/\s+/)).not.toContain('headless');
+    unmount();
+  });
+
   it('puts the hashed borderless class on body when borderless=true, and not when it is absent', () => {
     const { unmount } = renderShell('/?borderless=true');
     expect(document.body.className.split(/\s+/)).toContain('borderless');
@@ -154,6 +160,12 @@ describe('Shell', () => {
 
     renderShell('/');
     expect(document.body.className.split(/\s+/)).not.toContain('borderless');
+  });
+
+  it('puts the hashed borderless class on body for borderless=1', () => {
+    const { unmount } = renderShell('/?borderless=1');
+    expect(document.body.className.split(/\s+/)).toContain('borderless');
+    unmount();
   });
 
   it('opens connect when service=connect, and not when the param is absent', () => {

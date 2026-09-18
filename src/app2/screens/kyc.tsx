@@ -33,6 +33,7 @@ import { useT, type TranslationKey } from '../i18n';
 import { appUrl, firstQueryParam, isSafeAppUrl } from '../utils/url';
 import { useWalletSession } from '../wallets/session';
 import { formatChf, isSafeHttpsUrl } from './parts/format';
+import { isTrueFlag } from './trade/widget-params';
 import { LoggedOutState } from './parts/LoggedOutState';
 import { isInAppStep, KycStepForm } from './kyc-steps';
 import {
@@ -198,7 +199,7 @@ export default function KycScreen() {
   // persisting it would re-trigger continue on every restore. App 2.0 has no param store, so
   // the consumed-ref is that one-shot. We do not strip the URL (App 2.0 only scrubs credentials).
   useEffect(() => {
-    if (firstQueryParam('auto-start') !== 'true') return;
+    if (!isTrueFlag(firstQueryParam('auto-start'))) return;
     if (!isLoggedIn || !code) return;
     if (phase.kind !== 'overview') return;
     if (autoStartConsumedRef.current) return;

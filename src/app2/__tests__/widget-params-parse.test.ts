@@ -9,6 +9,7 @@ import {
   appendCompletionPath,
   completionRedirectUrl,
   isPersonalIbanApplicable,
+  isPresentFlag,
   isTrueFlag,
   matchBankAccount,
   parseEnumValue,
@@ -20,7 +21,15 @@ describe('widget param parsers', () => {
   it('treats only the string true as an on-flag', () => {
     expect(isTrueFlag('true')).toBe(true);
     expect(isTrueFlag('TRUE')).toBe(false);
+    expect(isTrueFlag('1')).toBe(false);
     expect(isTrueFlag(undefined)).toBe(false);
+  });
+
+  it('treats any non-empty value as a present-flag', () => {
+    expect(isPresentFlag('1')).toBe(true);
+    expect(isPresentFlag('true')).toBe(true);
+    expect(isPresentFlag('')).toBe(false);
+    expect(isPresentFlag(undefined)).toBe(false);
   });
 
   it('matches enum members case-insensitively and skips unknown or empty values', () => {
