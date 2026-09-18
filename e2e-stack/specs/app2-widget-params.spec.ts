@@ -10,7 +10,7 @@
 
 import { ethers } from 'ethers';
 import type { Page } from '@playwright/test';
-import { expect, test, queryOne, withDb } from './fixtures';
+import { expect, test, queryOne, withDb, apiGet } from './fixtures';
 import { cleanupCreatedData, createBankAccount, createUser, TEST_IBAN } from './fixtures/factories';
 import { testWallet, type TestWallet } from './fixtures/auth';
 
@@ -22,6 +22,12 @@ interface BuyPaymentInfoBody {
 
 interface SellPaymentInfoBody {
   iban?: string;
+}
+
+interface AuthRequestBody {
+  address?: string;
+  signature?: string;
+  key?: string;
 }
 
 async function openApp2(page: Page, jwt: string, hash = '#/', query: Record<string, string> = {}): Promise<void> {
@@ -80,6 +86,32 @@ function attachSellPaymentInfoRequest(page: Page): { get: () => SellPaymentInfoB
     }
   });
   return { get: () => last };
+}
+
+function attachAuthRequest(page: Page): { get: () => AuthRequestBody | undefined } {
+  let last: AuthRequestBody | undefined;
+  page.on('request', (req) => {
+    try {
+      if (req.method() !== 'POST') return;
+      const path = new URL(req.url()).pathname.replace(/\/$/, '');
+      if (path !== '/v1/auth' && path !== '/auth') return;
+      last = req.postDataJSON() as AuthRequestBody;
+    } catch {
+      /* ignore parse errors */
+    }
+  });
+  return { get: () => last };
+}
+
+async function openOrganizationForm(page: Page, jwt: string, query: Record<string, string> = {}): Promise<void> {
+  await openApp2(page, jwt, '#/kyc', { 'auto-start': 'true', 'account-type': 'Organization', ...query });
+  const orgName = page.getByRole('textbox', { name: /^organization name$/i });
+  const mail = page.locator('input[type="email"]');
+  const form = await Promise.race([
+    orgName.waitFor({ state: 'visible', timeout: 25000 }).then(() => 'org' as const),
+    mail.waitFor({ state: 'visible', timeout: 25000 }).then(() => 'contact' as const),
+  ]).catch(() => 'none' as const);
+  expect(form, 'organization-* needs PersonalData, not ContactData or the overview').toBe('org');
 }
 
 async function reopenContactData(userDataId: number): Promise<void> {
@@ -567,5 +599,199 @@ test.describe('App 2.0 widget params', () => {
     const flat = page.locator('#app');
     await expect(flat).toBeVisible({ timeout: 20000 });
     await expect.poll(async () => flat.evaluate((el) => getComputedStyle(el).borderRadius)).toBe('0px');
+  });
+
+  test('assets: receive picker keeps only the named ticker, and lists others without the param', async ({ page }) => {
+    const user = await createUser({ tag: 'app2-wp-assets', kycLevel: 50, completePersonalData: true, language: 'EN' });
+
+    await openApp2(page, user.jwt, '#/');
+    await waitForBuyHome(page);
+    await waitForReceiveAsset(page);
+    await page.getByRole('button', { name: 'Select receive asset' }).click();
+    const search = page.getByRole('textbox', { name: /search assets/i });
+    await expect(search).toBeVisible({ timeout: 15000 });
+    await search.fill('USDT');
+    await expect(page.getByRole('button', { name: /^USDT\b/ }).first()).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Close' }).click();
+
+    await openApp2(page, user.jwt, '#/', { assets: 'ETH' });
+    await waitForBuyHome(page);
+    await waitForReceiveAsset(page);
+    await expect(page.getByRole('button', { name: 'Select receive asset' })).toContainText(/ETH/i, { timeout: 20000 });
+    await page.getByRole('button', { name: 'Select receive asset' }).click();
+    const heldSearch = page.getByRole('textbox', { name: /search assets/i });
+    await expect(heldSearch).toBeVisible({ timeout: 15000 });
+    await heldSearch.fill('USDT');
+    await expect(page.getByRole('button', { name: /^USDT\b/ })).toHaveCount(0);
+    await heldSearch.fill('ETH');
+    await expect(page.getByRole('button', { name: /^ETH\b/ }).first()).toBeVisible({ timeout: 15000 });
+  });
+
+  test('blockchains: receive chain follows the named chain, and is not that chain without it', async ({ page }) => {
+    const user = await createUser({ tag: 'app2-wp-chains', kycLevel: 50, completePersonalData: true, language: 'EN' });
+    const arb = await queryOne<{ name: string }>(
+      `SELECT name FROM asset
+       WHERE blockchain = 'Arbitrum' AND buyable = true AND category = 'Public' AND "comingSoon" = false
+       ORDER BY id ASC LIMIT 1`,
+    );
+    expect(arb?.name, 'seed must contain a buyable Public Arbitrum asset').toBeTruthy();
+    const chains = jwtBlockchains(user.jwt);
+    expect(chains, 'EVM JWT must include Arbitrum so the filter has a reachable chain').toContain('Arbitrum');
+
+    await openApp2(page, user.jwt, '#/');
+    await waitForBuyHome(page);
+    await waitForReceiveAsset(page);
+    await expect(page.getByRole('button', { name: 'Select receive asset' })).not.toContainText(/arbitrum/i);
+
+    await openApp2(page, user.jwt, '#/', { blockchains: 'Arbitrum' });
+    await waitForBuyHome(page);
+    await waitForReceiveAsset(page);
+    await expect(page.getByRole('button', { name: 'Select receive asset' })).toContainText(/arbitrum/i, {
+      timeout: 20000,
+    });
+  });
+
+  test('wallets: connect sheet keeps only the named wallet, and lists others without the param', async ({ page }) => {
+    await openLoggedOut(page, { service: 'connect' });
+    const openSheet = page.getByRole('dialog', { name: /connect wallet/i });
+    await expect(openSheet).toBeVisible({ timeout: 20000 });
+    await expect(openSheet.getByRole('button', { name: /metamask evm/i })).toBeVisible();
+    await expect(openSheet.getByRole('button', { name: /rabby/i })).toBeVisible();
+
+    await openLoggedOut(page, { service: 'connect', wallets: 'MetaMask' });
+    const filtered = page.getByRole('dialog', { name: /connect wallet/i });
+    await expect(filtered).toBeVisible({ timeout: 20000 });
+    await expect(filtered.getByRole('button', { name: /metamask evm/i })).toBeVisible();
+    await expect(filtered.getByRole('button', { name: /rabby/i })).toHaveCount(0);
+  });
+
+  test('flags: a named private buy proceeds only when flags includes private', async ({ page }) => {
+    test.setTimeout(120000);
+    const publicList = await apiGet<Array<{ name: string; category?: string }>>('asset');
+    expect(
+      publicList.find((a) => a.name === 'EDLC' && a.category === 'Private'),
+      'GET /v1/asset without includePrivate must omit Private EDLC',
+    ).toBeUndefined();
+    const withPrivate = await apiGet<Array<{ name: string; blockchain?: string; buyable?: boolean; category?: string }>>(
+      'asset?includePrivate=true',
+    );
+    const edlc = withPrivate.find(
+      (a) => a.name === 'EDLC' && a.blockchain === 'Ethereum' && a.buyable === true && a.category === 'Private',
+    );
+    expect(edlc, 'GET /v1/asset?includePrivate=true must return buyable Ethereum/EDLC').toBeTruthy();
+    const user = await createUser({ tag: 'app2-wp-flags', kycLevel: 50, completePersonalData: true, language: 'EN' });
+    const capture = attachBuyPaymentInfoRequest(page);
+    const hint = /does not offer to buy or sell this token/i;
+
+    await openApp2(page, user.jwt, '#/', { 'asset-out': 'EDLC' });
+    await waitForBuyHome(page);
+    await expect(page.getByRole('button', { name: 'Select receive asset' })).toContainText(/EDLC/i, { timeout: 20000 });
+    await expect(page.getByText(hint)).toBeVisible({ timeout: 20000 });
+    const blocked = page.getByTestId('trade-cta');
+    await expect(blocked).toBeEnabled({ timeout: 45000 });
+    await blocked.click();
+    await expect(page.getByText('IBAN', { exact: true })).toHaveCount(0);
+    expect(capture.get(), 'PUT /buy/paymentInfos must not fire without flags=private').toBeUndefined();
+
+    await openApp2(page, user.jwt, '#/', { 'asset-out': 'EDLC', flags: 'private' });
+    await waitForBuyHome(page);
+    await expect(page.getByRole('button', { name: 'Select receive asset' })).toContainText(/EDLC/i, { timeout: 20000 });
+    await expect(page.getByText(hint)).toHaveCount(0);
+    await submitBuyForPaymentInfo(page);
+    expect(capture.get(), 'PUT /buy/paymentInfos should have fired with flags=private').toBeTruthy();
+  });
+
+  test('pubkey: auth request carries key only when the param is set', async ({ page }) => {
+    test.setTimeout(90000);
+    const capture = attachAuthRequest(page);
+
+    const withoutWallet = await unusedWallet();
+    const withoutSig = await signatureFor(withoutWallet);
+    const withoutUrl =
+      `/app2/?address=${encodeURIComponent(withoutWallet.address)}` +
+      `&signature=${encodeURIComponent(withoutSig)}`;
+    const withoutRes = await page.goto(withoutUrl);
+    expect(withoutRes?.ok(), `${withoutUrl} status ${withoutRes?.status()}`).toBe(true);
+    await expect(page.getByRole('tab', { name: /^buy$/i })).toHaveAttribute('aria-selected', 'true', { timeout: 45000 });
+    const withoutBody = capture.get();
+    expect(withoutBody, 'POST /v1/auth should have fired without pubkey').toBeTruthy();
+    expect(withoutBody?.key ?? null, 'auth body must omit key when pubkey is absent').toBeNull();
+
+    const withWallet = await unusedWallet();
+    const withSig = await signatureFor(withWallet);
+    const withUrl =
+      `/app2/?address=${encodeURIComponent(withWallet.address)}` +
+      `&signature=${encodeURIComponent(withSig)}` +
+      `&pubkey=${encodeURIComponent('e2e-pubkey-1')}`;
+    const withRes = await page.goto(withUrl);
+    expect(withRes?.ok(), `${withUrl} status ${withRes?.status()}`).toBe(true);
+    await expect
+      .poll(() => capture.get()?.key, {
+        timeout: 45000,
+        message: 'POST /v1/auth should carry key=e2e-pubkey-1',
+      })
+      .toBe('e2e-pubkey-1');
+  });
+
+  test('organization-*: PersonalData prefills the address only when organization-name is set', async ({ page }) => {
+    test.setTimeout(90000);
+    const user = await createUser({ tag: 'app2-wp-org', kycLevel: 0, language: 'EN' });
+
+    await openOrganizationForm(page, user.jwt);
+    await expect(page.getByRole('textbox', { name: /^organization name$/i })).toHaveValue('');
+    await expect(page.getByRole('textbox', { name: /organization address street/i })).toHaveValue('');
+    await expect(page.getByRole('combobox', { name: /organization address country/i }).locator('option:checked')).toHaveText(
+      /switzerland|schweiz/i,
+    );
+
+    await openOrganizationForm(page, user.jwt, {
+      'organization-name': 'DFX AG',
+      'organization-street': 'Bahnhof',
+      'organization-house-number': '12',
+      'organization-zip': '8001',
+      'organization-city': 'Zurich',
+      'organization-country': 'DE',
+    });
+    await expect(page.getByRole('textbox', { name: /^organization name$/i })).toHaveValue('DFX AG');
+    await expect(page.getByRole('textbox', { name: /organization address street/i })).toHaveValue('Bahnhof');
+    await expect(page.getByRole('textbox', { name: /organization address no/i })).toHaveValue('12');
+    await expect(page.getByRole('textbox', { name: /organization address zip/i })).toHaveValue('8001');
+    await expect(page.getByRole('textbox', { name: /organization address city/i })).toHaveValue('Zurich');
+    await expect(page.getByRole('combobox', { name: /organization address country/i }).locator('option:checked')).toHaveText(
+      /germany|deutschland/i,
+    );
+  });
+
+  test('organization-name absent: other organization address params are ignored', async ({ page }) => {
+    test.setTimeout(90000);
+    const user = await createUser({ tag: 'app2-wp-org-noname', kycLevel: 0, language: 'EN' });
+
+    await openOrganizationForm(page, user.jwt, {
+      'organization-street': 'Secret',
+      'organization-house-number': '9',
+      'organization-zip': '0000',
+      'organization-city': 'Nowhere',
+      'organization-country': 'DE',
+    });
+    await expect(page.getByRole('textbox', { name: /^organization name$/i })).toHaveValue('');
+    await expect(page.getByRole('textbox', { name: /organization address street/i })).toHaveValue('');
+    await expect(page.getByRole('textbox', { name: /organization address no/i })).toHaveValue('');
+    await expect(page.getByRole('textbox', { name: /organization address zip/i })).toHaveValue('');
+    await expect(page.getByRole('textbox', { name: /organization address city/i })).toHaveValue('');
+    await expect(page.getByRole('combobox', { name: /organization address country/i }).locator('option:checked')).not.toHaveText(
+      /germany|deutschland/i,
+    );
+  });
+
+  test('organization-country: unknown value leaves the country empty', async ({ page }) => {
+    test.setTimeout(90000);
+    const user = await createUser({ tag: 'app2-wp-org-atlantis', kycLevel: 0, language: 'EN' });
+
+    await openOrganizationForm(page, user.jwt, {
+      'organization-name': 'DFX',
+      'organization-country': 'Atlantis',
+    });
+    await expect(page.getByRole('textbox', { name: /^organization name$/i })).toHaveValue('DFX');
+    await expect(page.getByRole('combobox', { name: /organization address country/i })).toHaveValue('');
   });
 });
