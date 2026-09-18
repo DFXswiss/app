@@ -11,10 +11,16 @@ import { app2ScreenshotOpts as screenshotOpts } from './helpers/app2-screenshot'
  * `/app2/#/buy/success`). `src/setupProxy.js` and
  * `e2e-stack/images/frontend/nginx.conf` mirror the six 302 rules.
  */
-async function openApp2(page: import('@playwright/test').Page, hash: string): Promise<void> {
-  const response = await page.goto(`/app2/${hash}`, { waitUntil: 'domcontentloaded' });
-  expect(response, `/app2/${hash} must be served`).toBeTruthy();
-  expect(response?.ok(), `/app2/${hash} status ${response?.status()}`).toBe(true);
+async function openApp2(
+  page: import('@playwright/test').Page,
+  hash: string,
+  query: Record<string, string> = {},
+): Promise<void> {
+  const qs = new URLSearchParams(query).toString();
+  const url = qs ? `/app2/?${qs}${hash}` : `/app2/${hash}`;
+  const response = await page.goto(url, { waitUntil: 'domcontentloaded' });
+  expect(response, `${url} must be served`).toBeTruthy();
+  expect(response?.ok(), `${url} status ${response?.status()}`).toBe(true);
   await page.waitForLoadState('networkidle');
   // Artifact-only marker from scripts/postprocess-app2.js — the main app's public/index.html
   // has no robots meta. Title + #root content prove the React shell mounted (Shell sets 'DFX').
@@ -79,6 +85,20 @@ test.describe('App2 preview screens', () => {
     await page.getByRole('button', { name: /connect wallet|wallet verbinden/i }).first().click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page).toHaveScreenshot('app2-connect-sheet.png', screenshotOpts);
+  });
+
+  test('home headless', async ({ page }) => {
+    await openApp2(page, '#/', { headless: 'true' });
+    await expect(page.getByRole('heading', { name: /buy crypto/i })).toBeVisible();
+    await expect(page.locator('#topbar')).toBeHidden();
+    await expect(page).toHaveScreenshot('app2-home-headless.png', screenshotOpts);
+  });
+
+  test('home borderless', async ({ page }) => {
+    await openApp2(page, '#/', { borderless: 'true' });
+    await expect(page.getByRole('heading', { name: /buy crypto/i })).toBeVisible();
+    await expect.poll(async () => page.locator('#app').evaluate((el) => getComputedStyle(el).borderRadius)).toBe('0px');
+    await expect(page).toHaveScreenshot('app2-home-borderless.png', screenshotOpts);
   });
 
   test('buy success return path lands on hash with cko query', async ({ page }) => {
