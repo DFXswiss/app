@@ -28,6 +28,8 @@ export default function ConnectMetaMask(props: ConnectProps): JSX.Element {
 
   return (
     <ConnectBase
+      // ConnectBase evaluates isSupported only on mount.
+      key={isInstalled() ? 'installed' : 'missing'}
       isSupported={isInstalled}
       fallback={isMobile ? WalletType.WALLET_CONNECT : undefined}
       getAccount={getAccount}
