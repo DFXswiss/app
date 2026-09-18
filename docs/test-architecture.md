@@ -75,7 +75,11 @@ The details — the factories and the states that are deliberately not achievabl
 
 The gate reads the route definitions out of `src/App.tsx`, resolves nested paths, and fails when a route
 has no registry claim or more than one — including two claims inside the same registry file — or when
-the spec file a claim names does not exist. When `E2E_FULL_RUN=1` is set, it additionally fails for a
+the spec file a claim names does not exist. App 2.0 is claimed separately as hosted `/app2/` paths
+(`e2e-stack/specs/registry/app2.ts`); those are not in `src/App.tsx`. `e2e-stack/specs/app2.spec.ts`
+opens every hash route and, for a logged-in user, submits a buy quote and a KYC contact step
+through the App 2.0 UI and checks the matching Postgres row. A green unit run does not prove
+the full-stack harness cloned `DFXswiss/api` or opened those hashes. When `E2E_FULL_RUN=1` is set, it additionally fails for a
 claimed route the browser never opened. That flag is declared by the run, not measured from it, so it may
 only be set when the run really covers every spec: `e2e-stack/scripts/run.sh` sets it when it was given
 no arguments and clears it otherwise — clearing matters because `e2e-stack/compose.tests.yml` forwards
@@ -84,6 +88,19 @@ Develop PRs without `ci:full` never set it; `ci:full`, PRs into `main`, and a ba
 (empty `base_ref`) force that full invocation.
 Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
 there.
+
+### App 2.0 talks to two layers, not one
+
+The HTTP API is reached only through `@dfx.swiss/react`. Same-origin storage keys, job tickets,
+hardware paths and a few DTOs are copied under `src/app2/lib/` so App 2.0 does not import the
+main app's private modules. `legacy-contract.test.ts` pins those copies to the main-app values.
+A leak through those keys is not an SDK bug — `/` and `/app2/` share this origin on purpose.
+
+### App 2.0 styles are CSS modules
+
+`src/app2/styles.module.css` hashes every local class at build time. Components apply them
+through `cx()` in `src/app2/css.ts`. html/body/:root stay global. The hashed names are the
+scoping mechanism; the pixels stay the ones in the committed visual baselines.
 
 That gate is the pattern the reality declaration follows: **measure the run, do not trust the
 declaration.** Anything its parser cannot resolve is a hard failure rather than a silent omission.
@@ -287,6 +304,27 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   merged account really produces a 401 with `switchToCode`.
   `src/__tests__/link.screen.test.tsx` pins that `handleMergedError` is tried first at every
   catch site instead.
+  The spec stays on the AML reset path and does not assert the Editor label.
+- **The nine App 2.0 session baselines are a logged-in walk through the harness, not a funded
+- **The 15 App 2.0 session baselines are a logged-in walk through the harness, not a funded
+  account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
+  fresh account. Buy, sell, swap, account, transactions, KYC, limit, the OpenCryptoPay hub and apply
+  form, plus the six merchant sub-pages (payment routes, invoice, POS, links, history, settings) are
+  captured that way. The OpenCryptoPay sub-pages are shown in the built-in demo mode. A green run does
+  not prove that the buy screen ever renders a real rate, nor that the transaction list ever shows rows.
+- **App 2.0 widget-param specs SQL-write `"user".ref`.**
+  `e2e-stack/specs/app2-widget-params.spec.ts` (`assignReferrerCode`) updates the referrer's own
+  code so sign-in can look it up. A green run does **not** prove that the API assigns `user.ref`
+  on sign-up or that a factory account already carries one.
+- **App 2.0 widget-param specs fulfil the partner redirect host.**
+  `e2e-stack/specs/app2-widget-params.spec.ts` answers `https://example.com/**` with a static 200
+  so Done can leave `/app2/`. A green run does **not** prove that a real partner origin answers
+  or that the browser follows that host outside the test.
+- **App 2.0 specs SQL-reset ContactData so auto-start opens the mail form.**
+  `e2e-stack/specs/app2.spec.ts` and `e2e-stack/specs/app2-widget-params.spec.ts`
+  (`reopenContactData`) null `user_data.mail` and set `kyc_step` ContactData to `NotStarted`.
+  Sign-up completes that step even at kycLevel 0. A green run does **not** prove that a new
+  account still has ContactData open, or that mail is cleared through the product path.
 
 ## Known gaps
 

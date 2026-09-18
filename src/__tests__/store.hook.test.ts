@@ -1,13 +1,13 @@
 jest.mock('../util/client-error', () => ({ reportClientError: jest.fn() }));
 
 import { renderHook, act } from '@testing-library/react';
-import { useStore } from '../hooks/store.hook';
+import { StoreKey, useStore } from '../hooks/store.hook';
 
 // Mock localStorage
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
-    getItem: (key: string) => store[key] || null,
+    getItem: (key: string) => store[key] ?? null,
     setItem: (key: string, value: string) => {
       store[key] = value;
     },
@@ -28,6 +28,14 @@ describe('useStore', () => {
     localStorageMock.clear();
   });
 
+  describe('StoreKey', () => {
+    it('exports the localStorage keys a credentialed load must drop', () => {
+      expect(StoreKey.AUTH_TOKEN).toBe('dfx.authenticationToken');
+      expect(StoreKey.ACTIVE_WALLET).toBe('dfx.srv.activeWallet');
+      expect(StoreKey.QUERY_PARAMS).toBe('dfx.srv.queryParams');
+    });
+  });
+
   describe('redirectUri', () => {
     it('should set and get redirectUri', () => {
       const { result } = renderHook(() => useStore());
@@ -42,6 +50,16 @@ describe('useStore', () => {
     it('should return undefined when not set', () => {
       const { result } = renderHook(() => useStore());
       expect(result.current.redirectUri.get()).toBeUndefined();
+    });
+
+    it('returns an empty string as stored, not as missing', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.redirectUri.set('');
+      });
+
+      expect(result.current.redirectUri.get()).toBe('');
     });
 
     it('should remove redirectUri', () => {
@@ -65,6 +83,12 @@ describe('useStore', () => {
       });
       
       expect(result.current.balances.get()).toBe('100.50');
+
+      act(() => {
+        result.current.balances.remove();
+      });
+
+      expect(result.current.balances.get()).toBeUndefined();
     });
 
     it('should remove balances', () => {
@@ -88,6 +112,12 @@ describe('useStore', () => {
       });
       
       expect(result.current.language.get()).toBe('de');
+
+      act(() => {
+        result.current.language.remove();
+      });
+
+      expect(result.current.language.get()).toBeUndefined();
     });
 
     it('should support different languages', () => {
@@ -124,6 +154,12 @@ describe('useStore', () => {
       });
       
       expect(result.current.activeWallet.get()).toBe('MetaMask');
+
+      act(() => {
+        result.current.activeWallet.remove();
+      });
+
+      expect(result.current.activeWallet.get()).toBeUndefined();
     });
 
     it('should remove activeWallet', () => {
@@ -196,6 +232,12 @@ describe('useStore', () => {
       });
       
       expect(result.current.queryParams.get()).toEqual(params);
+
+      act(() => {
+        result.current.queryParams.remove();
+      });
+
+      expect(result.current.queryParams.get()).toBeUndefined();
     });
 
     it('should remove queryParams', () => {

@@ -1,0 +1,12 @@
+<svg width="130" height="130" viewBox="0 20.51 129.01 129.01" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M86.1582 126.274C109.821 126.274 129.004 107.092 129.004 83.4287C129.004 59.7657 109.821 40.583 86.1582 40.583C62.4952 40.583 43.3126 59.7657 43.3126 83.4287C43.3126 107.092 62.4952 126.274 86.1582 126.274Z" fill="url(#dfxm_p0)"/>
+<path d="M47.1374 132.146C73.1707 132.146 94.2748 111.042 94.2748 85.009C94.2748 58.9757 73.1707 37.8716 47.1374 37.8716C21.1041 37.8716 0 58.9757 0 85.009C0 111.042 21.1041 132.146 47.1374 132.146Z" fill="url(#dfxm_p1)"/>
+<defs>
+<linearGradient id="dfxm_p0" x1="122.111" y1="64.6777" x2="45.9618" y2="103.949" gradientUnits="userSpaceOnUse">
+<stop offset="0.04" stop-color="#F5516C"/><stop offset="0.14" stop-color="#C74863"/><stop offset="0.31" stop-color="#853B57"/><stop offset="0.44" stop-color="#55324E"/><stop offset="0.55" stop-color="#382D49"/><stop offset="0.61" stop-color="#2D2B47"/>
+</linearGradient>
+<linearGradient id="dfxm_p1" x1="75.8868" y1="50.7468" x2="15.2815" y2="122.952" gradientUnits="userSpaceOnUse">
+<stop offset="0.2" stop-color="#F5516C"/><stop offset="1" stop-color="#6B3753"/>
+</linearGradient>
+</defs>
+</svg>
