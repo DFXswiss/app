@@ -408,7 +408,45 @@ describe('WalletSessionProvider flows', () => {
     const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
     renderSession();
     await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    expect(mockCreateSession.mock.calls[0][2]).toBeUndefined();
     replace.mockRestore();
+  });
+
+  it('passes pubkey as the session key and omits it when the param is empty', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        search: `?address=${address}&signature=0xsig&pubkey=pk-from-url`,
+        pathname: '/app2/',
+        hash: '',
+      },
+    });
+    const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    const withKey = renderSession();
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    const withArgs = mockCreateSession.mock.calls[0];
+    expect(withArgs[2]).toBe('pk-from-url');
+    withKey.unmount();
+    mockCreateSession.mockClear();
+    replace.mockRestore();
+
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        search: `?address=${address}&signature=0xsig&pubkey=`,
+        pathname: '/app2/',
+        hash: '',
+      },
+    });
+    const replaceEmpty = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    renderSession();
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    const emptyArgs = mockCreateSession.mock.calls[0];
+    expect(emptyArgs[2]).toBeUndefined();
+    expect(emptyArgs.filter((_, i) => i !== 2)).toEqual(withArgs.filter((_, i) => i !== 2));
+    replaceEmpty.mockRestore();
   });
 
   it('skips an expired JWT in the URL', async () => {
