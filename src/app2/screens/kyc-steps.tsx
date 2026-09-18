@@ -295,14 +295,22 @@ function CountrySelect({
   countries,
   value,
   onChange,
+  accessibleName,
 }: {
   countries: Country[];
   value: string;
   onChange: (value: string) => void;
+  accessibleName?: string;
 }) {
   const sorted = [...countries].sort((a, b) => a.name.localeCompare(b.name));
   return (
-    <select className={cx('tinput')} value={value} onChange={(e) => onChange(e.target.value)}>
+    <select
+      className={cx('tinput')}
+      value={value}
+      aria-label={accessibleName}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {value === '' ? <option value="" /> : null}
       {sorted.map((c) => (
         <option key={c.id} value={String(c.id)}>
           {c.name}
@@ -350,16 +358,23 @@ function toKycAddress(address: AddressState, countries: Country[]): KycAddress |
   };
 }
 
+function fieldLabel(prefix: string | undefined, label: string): string {
+  if (!prefix) return label;
+  return `${prefix} ${label}`;
+}
+
 function AddressFields({
   t,
   countries,
   value,
   onChange,
+  namePrefix,
 }: {
   t: TFn;
   countries: Country[];
   value: AddressState;
   onChange: (next: AddressState) => void;
+  namePrefix?: string;
 }) {
   const set = (patch: Partial<AddressState>) => onChange({ ...value, ...patch });
   return (
@@ -370,6 +385,7 @@ function AddressFields({
           className={cx('tinput')}
           style={{ flex: 2.2 }}
           autoComplete="street-address"
+          aria-label={fieldLabel(namePrefix, t('kycStreet'))}
           value={value.street}
           onChange={(e) => set({ street: e.target.value })}
         />
@@ -377,6 +393,7 @@ function AddressFields({
           className={cx('tinput')}
           style={{ flex: 1 }}
           placeholder={t('kycHouseNr')}
+          aria-label={fieldLabel(namePrefix, t('kycHouseNr'))}
           value={value.houseNumber}
           onChange={(e) => set({ houseNumber: e.target.value })}
         />
@@ -387,6 +404,7 @@ function AddressFields({
           style={{ flex: 1, marginTop: 8 }}
           placeholder={t('kycZip')}
           autoComplete="postal-code"
+          aria-label={fieldLabel(namePrefix, t('kycZip'))}
           value={value.zip}
           onChange={(e) => set({ zip: e.target.value })}
         />
@@ -395,12 +413,18 @@ function AddressFields({
           style={{ flex: 2.2, marginTop: 8 }}
           placeholder={t('kycCity')}
           autoComplete="address-level2"
+          aria-label={fieldLabel(namePrefix, t('kycCity'))}
           value={value.city}
           onChange={(e) => set({ city: e.target.value })}
         />
       </div>
       <label className={cx('flabel')}>{t('kycCountry')}</label>
-      <CountrySelect countries={countries} value={value.country} onChange={(country) => set({ country })} />
+      <CountrySelect
+        countries={countries}
+        value={value.country}
+        accessibleName={fieldLabel(namePrefix, t('kycCountry'))}
+        onChange={(country) => set({ country })}
+      />
     </>
   );
 }
@@ -471,6 +495,12 @@ interface PersonalPrefill {
   city: string;
   phone: string;
   country: string;
+  organizationName: string;
+  organizationStreet: string;
+  organizationHouseNumber: string;
+  organizationZip: string;
+  organizationCity: string;
+  organizationCountry: string;
 }
 
 function readPersonalPrefill(): PersonalPrefill {
@@ -486,6 +516,12 @@ function readPersonalPrefill(): PersonalPrefill {
     city: get('city'),
     phone: get('phone'),
     country: get('country'),
+    organizationName: get('organization-name'),
+    organizationStreet: get('organization-street'),
+    organizationHouseNumber: get('organization-house-number'),
+    organizationZip: get('organization-zip'),
+    organizationCity: get('organization-city'),
+    organizationCountry: get('organization-country'),
   };
 }
 
@@ -523,8 +559,19 @@ function PersonalFields({ ctx, countries }: { ctx: StepContext; countries: Count
     city: prefill.city,
     country: matchCountryId(countries, prefill.country) ?? defaultCountryId(countries),
   }));
-  const [orgName, setOrgName] = useState('');
-  const [orgAddress, setOrgAddress] = useState<AddressState>(() => emptyAddress(countries));
+  const [orgName, setOrgName] = useState(prefill.organizationName);
+  const [orgAddress, setOrgAddress] = useState<AddressState>(() => {
+    // settings.context.tsx: organizationAddress is only built when organizationName is set.
+    if (!prefill.organizationName) return emptyAddress(countries);
+    const countryId = matchCountryId(countries, prefill.organizationCountry);
+    return {
+      street: prefill.organizationStreet,
+      houseNumber: prefill.organizationHouseNumber,
+      zip: prefill.organizationZip,
+      city: prefill.organizationCity,
+      country: countryId ? countryId : '',
+    };
+  });
 
   const isOrg = accountType !== AccountType.PERSONAL;
   const phoneValid = /^\+?[0-9 ]{6,20}$/.test(phone.trim());
@@ -592,13 +639,20 @@ function PersonalFields({ ctx, countries }: { ctx: StepContext; countries: Count
           <input
             className={cx('tinput')}
             autoComplete="organization"
+            aria-label={t('kycOrgName')}
             value={orgName}
             onChange={(e) => setOrgName(e.target.value)}
           />
           <div className={cx('sectionlabel', 'tight')} style={{ marginTop: 10 }}>
             {t('kycOrgAddress')}
           </div>
-          <AddressFields t={t} countries={countries} value={orgAddress} onChange={setOrgAddress} />
+          <AddressFields
+            t={t}
+            countries={countries}
+            value={orgAddress}
+            onChange={setOrgAddress}
+            namePrefix={t('kycOrgAddress')}
+          />
         </div>
       )}
       <InlineError message={ctx.error} />
