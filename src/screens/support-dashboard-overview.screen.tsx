@@ -397,6 +397,11 @@ function WaitTierCard({
     { pill: 'bg-dfxYellow-500/20 text-dfxYellow-700', ring: 'ring-dfxYellow-500' },
     { pill: 'bg-dfxRed-100/15 text-dfxRed-100', ring: 'ring-dfxRed-100' },
   ];
+  const tiers = WAIT_TIER_HOURS.map((hours, i) => ({
+    hours,
+    label: waitTierLabel(hours),
+    ...(styles[i] ?? styles[0]),
+  }));
 
   return (
     <div className="bg-white rounded-lg shadow-sm px-4 py-3 flex flex-col gap-2 justify-center">
@@ -404,20 +409,18 @@ function WaitTierCard({
         {translate('screens/support', 'Waiting longer than')}
       </div>
       <div className="flex items-center gap-2">
-        {WAIT_TIER_HOURS.map((hours, i) => {
-          const label = waitTierLabel(hours);
-          const { pill, ring } = styles[i];
-          const active = selected === hours;
+        {tiers.map((t, i) => {
+          const active = selected === t.hours;
           return (
             <button
-              key={label}
-              onClick={() => onSelect(hours)}
-              className={`inline-flex items-baseline gap-1.5 rounded-full px-3 py-1 transition ${pill} ${
-                active ? `ring-2 ${ring}` : 'opacity-80 hover:opacity-100'
+              key={t.label}
+              onClick={() => onSelect(t.hours)}
+              className={`inline-flex items-baseline gap-1.5 rounded-full px-3 py-1 transition ${t.pill} ${
+                active ? `ring-2 ${t.ring}` : 'opacity-80 hover:opacity-100'
               }`}
             >
               <span className="text-xl font-bold leading-none">{counts[i] ?? 0}</span>
-              <span className="text-2xs font-medium opacity-70">{label}</span>
+              <span className="text-2xs font-medium opacity-70">{t.label}</span>
             </button>
           );
         })}

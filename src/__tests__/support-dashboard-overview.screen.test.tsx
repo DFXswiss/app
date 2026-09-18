@@ -232,8 +232,6 @@ describe('SupportDashboardOverviewScreen wait-tier card', () => {
     fireEvent.click(waitPills()[0]);
 
     const subtitle = screen.getByText(/Customer waiting longer than/);
-    expect(subtitle.textContent).toMatch(/1/);
-    expect(subtitle.textContent).toMatch(/min/);
-    expect(subtitle.textContent).not.toMatch(/0\.016/);
+    expect(subtitle.textContent).toBe('Customer waiting longer than 1 min for a reply');
   });
 });

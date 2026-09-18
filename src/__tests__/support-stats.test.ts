@@ -97,6 +97,7 @@ describe('support-helpers customer waiting', () => {
 
   it('maps waiting time to rising-severity tiers (1 min/12h/24h; 24h = escalated)', () => {
     expect(waitTier(30 / 3600)).toBe(0);
+    expect(waitTier(59 / 3600)).toBe(0);
     expect(waitTier(1 / 60)).toBe(1);
     expect(waitTier(0.5)).toBe(1);
     expect(waitTier(5)).toBe(1);
