@@ -119,6 +119,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import SupportDashboardOverviewScreen from 'src/screens/support-dashboard-overview.screen';
 import type { SupportIssueListItem } from 'src/hooks/support-dashboard.hook';
 import type { TicketStatistics } from 'src/util/support-helpers';
+import { WAIT_TIERS } from 'src/util/support-stats';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 const originalScrollIntoView = Element.prototype.scrollIntoView;
@@ -270,35 +271,72 @@ describe('SupportDashboardOverviewScreen wait-tier card', () => {
     jest.useRealTimers();
   });
 
-  it('labels the three waiting-longer-than pills 1h, 12h, 24h in that order', async () => {
+  it('labels the three waiting-longer-than pills New, 12h, 24h in that order', async () => {
     await renderLoaded();
 
-    expect(waitPills().map((pill) => pillParts(pill).label)).toEqual(['1h', '12h', '24h']);
+    expect(waitPills().map((pill) => pillParts(pill).label)).toEqual(['New', '12h', '24h']);
   });
 
-  it('counts waiting tickets cumulatively and includes the 5-hour ticket in the lowest tier', async () => {
+  it('counts New exclusively and 12h/24h cumulatively', async () => {
     await renderLoaded();
 
-    expect(waitPills().map((pill) => pillParts(pill).count)).toEqual(['3', '2', '1']);
+    expect(waitPills().map((pill) => pillParts(pill).count)).toEqual(['1', '2', '1']);
   });
 
-  it('shows the 5-hour ticket in the waiting list only after clicking the 1h pill', async () => {
+  it('lists the 5-hour ticket under New and hides it after clicking 12h', async () => {
     await renderLoaded();
+
+    fireEvent.click(waitPills()[0]);
+    expect(within(section('waiting')).getByText('Five hours waiting')).toBeInTheDocument();
+    expect(within(section('waiting')).queryByText('Thirteen hours waiting')).not.toBeInTheDocument();
+
+    fireEvent.click(waitPills()[1]);
 
     expect(within(section('waiting')).queryByText('Five hours waiting')).not.toBeInTheDocument();
-
-    fireEvent.click(waitPills()[0]);
-
-    expect(within(section('waiting')).getByText('Five hours waiting')).toBeInTheDocument();
+    expect(within(section('waiting')).getByText('Thirteen hours waiting')).toBeInTheDocument();
   });
 
-  it('uses an hours subtitle after clicking the 1h pill', async () => {
+  it('starts on Escalations with the 24h subtitle when nothing is stored', async () => {
+    await renderLoaded();
+
+    expect(waitPills()[2].className).toContain('ring-2');
+    expect(within(section('waiting')).getByRole('heading', { name: 'Escalations' })).toBeInTheDocument();
+    expect(within(section('waiting')).getByText('Customer waiting longer than 24h for a reply')).toBeInTheDocument();
+  });
+
+  it('uses the New title and less-than-12h subtitle after clicking New', async () => {
     await renderLoaded();
 
     fireEvent.click(waitPills()[0]);
+    expect(within(section('waiting')).getByRole('heading', { name: 'New' })).toBeInTheDocument();
+    expect(within(section('waiting')).getByText('Customer waiting less than 12 hours for a reply')).toBeInTheDocument();
+  });
 
-    const subtitle = within(section('waiting')).getByText(/Customer waiting longer than/);
-    expect(subtitle.textContent).toBe('Customer waiting longer than 1h for a reply');
+  it('uses the hours subtitle after clicking the 12h pill', async () => {
+    await renderLoaded();
+
+    fireEvent.click(waitPills()[1]);
+
+    expect(within(section('waiting')).getByRole('heading', { name: 'Waiting tickets' })).toBeInTheDocument();
+    expect(within(section('waiting')).getByText('Customer waiting longer than 12h for a reply')).toBeInTheDocument();
+  });
+
+  it('shows No new waiting tickets when the New range is empty', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 2,
+          name: 'Thirteen hours waiting',
+          lastMessageAuthor: 'Customer',
+          lastMessageDate: hoursAgo(13),
+        }),
+      ],
+      total: 1,
+    });
+    await renderLoaded();
+
+    fireEvent.click(waitPills()[0]);
+    expect(screen.getByText('No new waiting tickets')).toBeInTheDocument();
   });
 });
 
@@ -675,9 +713,6 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     });
     await renderLoaded();
 
-    expect(within(section('waiting')).getByTitle('Escalated')).toBeInTheDocument();
-    fireEvent.click(waitPills()[0]);
-
     const badgeOf = (name: string): HTMLElement => {
       const row = within(section('waiting')).getByText(name).closest('li');
       if (!row) throw new Error(`row "${name}" not found`);
@@ -686,7 +721,11 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
       return badge;
     };
 
+    fireEvent.click(waitPills()[0]);
     expect(badgeOf('Five hour wait').className).toContain('bg-dfxGray-300');
+
+    fireEvent.click(waitPills()[1]);
+    expect(within(section('waiting')).getByTitle('Escalated')).toBeInTheDocument();
     expect(badgeOf('Twelve hour wait').className).toContain('dfxYellow');
     expect(badgeOf('Twenty-four hour wait').className).toContain('bg-dfxRed-100');
   });
@@ -1019,99 +1058,6 @@ describe('SupportDashboardOverviewScreen statistics', () => {
   });
 });
 
-describe('SupportDashboardOverviewScreen newest section', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(NOW);
-    Element.prototype.scrollIntoView = jest.fn();
-    jest.clearAllMocks();
-    resetStaffName();
-    resetIssueListFn();
-    resetStorage();
-    mockGetIssueList.mockResolvedValue({ data: [], total: 0 });
-    mockGetIssueStatistics.mockResolvedValue(sampleStatistics());
-  });
-
-  afterEach(() => {
-    resetStaffName();
-    resetIssueListFn();
-    Element.prototype.scrollIntoView = originalScrollIntoView;
-    jest.clearAllTimers();
-    jest.useRealTimers();
-  });
-
-  it('lists open tickets newest first and opens a row on click', async () => {
-    mockGetIssueList.mockResolvedValue({
-      data: [
-        issue({ id: 1, name: 'Oldest opened', created: '2026-06-16T10:00:00.000Z' }),
-        issue({ id: 2, name: 'Newest opened', created: '2026-06-18T10:00:00.000Z' }),
-        issue({ id: 3, name: 'Middle opened', created: '2026-06-17T10:00:00.000Z' }),
-      ],
-      total: 3,
-    });
-    await renderLoaded();
-
-    const names = within(section('newest'))
-      .getAllByText(/opened$/)
-      .map((el) => el.textContent);
-    expect(names).toEqual(['Newest opened', 'Middle opened', 'Oldest opened']);
-
-    fireEvent.click(within(section('newest')).getByText('Newest opened'));
-    expect(mockNavigate).toHaveBeenCalledWith('/support/dashboard/issue/2');
-  });
-
-  it('includes a ticket we already answered, unlike the waiting section', async () => {
-    mockGetIssueList.mockResolvedValue({
-      data: [
-        issue({
-          id: 1,
-          name: 'We answered this',
-          created: '2026-06-18T11:00:00.000Z',
-          lastMessageAuthor: 'Jana',
-        }),
-        issue({
-          id: 2,
-          name: 'Still waiting',
-          created: '2026-06-18T10:00:00.000Z',
-          lastMessageAuthor: 'Customer',
-          lastMessageDate: hoursAgo(25),
-        }),
-      ],
-      total: 2,
-    });
-    await renderLoaded();
-
-    expect(within(section('newest')).getByText('We answered this')).toBeInTheDocument();
-    expect(within(section('waiting')).queryByText('We answered this')).not.toBeInTheDocument();
-    expect(within(section('waiting')).getByText('Still waiting')).toBeInTheDocument();
-  });
-
-  it('shows at most 10 tickets and drops the oldest beyond that', async () => {
-    const tickets = Array.from({ length: 11 }, (_, i) =>
-      issue({
-        id: i + 1,
-        name: `Ticket ${i + 1}`,
-        created: new Date(NOW.getTime() - i * 60_000).toISOString(),
-      }),
-    );
-    mockGetIssueList.mockResolvedValue({ data: tickets, total: 11 });
-    await renderLoaded();
-
-    const names = within(section('newest'))
-      .getAllByText(/^Ticket \d+$/)
-      .map((el) => el.textContent);
-    expect(names).toHaveLength(10);
-    expect(names[0]).toBe('Ticket 1');
-    expect(names[9]).toBe('Ticket 10');
-    expect(within(section('newest')).queryByText('Ticket 11')).not.toBeInTheDocument();
-  });
-
-  it('shows No open tickets when the list is empty', async () => {
-    await renderLoaded();
-    expect(screen.getByText('No open tickets')).toBeInTheDocument();
-  });
-});
-
 describe('SupportDashboardOverviewScreen wait-filter persistence', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -1150,7 +1096,11 @@ describe('SupportDashboardOverviewScreen wait-filter persistence', () => {
 
     fireEvent.click(waitPills()[1]);
 
-    expect(mockStorageSet).toHaveBeenCalledWith('localStorage', 'dfx.support.waitFilterHours', '12');
+    expect(mockStorageSet).toHaveBeenCalledWith(
+      'localStorage',
+      'dfx.support.waitFilterHours',
+      String(WAIT_TIERS[1].minHours),
+    );
     expect(waitPills()[1].className).toContain('ring-2');
   });
 
@@ -1184,7 +1134,7 @@ describe('SupportDashboardOverviewScreen wait-filter persistence', () => {
     await renderLoaded();
 
     expect(waitPills()[2].className).toContain('ring-2');
-    expect(screen.getByText('Newest')).toBeInTheDocument();
+    expect(screen.getByText('Your support overview')).toBeInTheDocument();
   });
 
   it('keeps the in-memory selection when writing storage throws', async () => {
@@ -1193,11 +1143,15 @@ describe('SupportDashboardOverviewScreen wait-filter persistence', () => {
     });
     await renderLoaded();
 
-    fireEvent.click(waitPills()[0]);
+    fireEvent.click(waitPills()[1]);
 
-    expect(mockStorageSet).toHaveBeenCalledWith('localStorage', 'dfx.support.waitFilterHours', '1');
-    expect(waitPills()[0].className).toContain('ring-2');
-    expect(within(section('waiting')).getByText('Five hours waiting')).toBeInTheDocument();
+    expect(mockStorageSet).toHaveBeenCalledWith(
+      'localStorage',
+      'dfx.support.waitFilterHours',
+      String(WAIT_TIERS[1].minHours),
+    );
+    expect(waitPills()[1].className).toContain('ring-2');
+    expect(within(section('waiting')).getByText('Thirteen hours waiting')).toBeInTheDocument();
   });
 });
 

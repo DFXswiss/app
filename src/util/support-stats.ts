@@ -12,21 +12,39 @@ export const AutoResponderAuthor = 'AutoResponder';
 // A ticket escalates once a customer has waited this long without a reply (= the top tier).
 export const ESCALATION_HOURS = 24;
 
-// Customer-waiting thresholds (hours waiting for a reply) with rising severity.
-// Lowest tier is 1 hour; the ≥24h tier equals the escalation threshold.
-export const WAIT_TIER_HOURS = [1, 12, 24] as const;
+// Customer-waiting ranges (hours waiting for a reply) with rising severity.
+// Lowest tier is exclusive (1s–12h); the two upper tiers stay cumulative (≥12h, ≥24h).
+export const WAIT_TIERS = [
+  { minHours: 1 / 3600, maxHours: 12, label: 'New' },
+  { minHours: 12, maxHours: null, label: '12h' },
+  { minHours: 24, maxHours: null, label: '24h' },
+] as const;
 
-// 0 = fresh (<1h), 1 = ≥1h, 2 = ≥12h, 3 = ≥24h (escalated)
+export type WaitTierRange = (typeof WAIT_TIERS)[number];
+
+export function waitInTier(hours: number, tier: WaitTierRange): boolean {
+  if (hours < tier.minHours) return false;
+  if (tier.maxHours == null) return true;
+  return hours < tier.maxHours;
+}
+
+export function waitTierForFilter(minHours: number): WaitTierRange {
+  for (const tier of WAIT_TIERS) {
+    if (tier.minHours === minHours) return tier;
+  }
+  return WAIT_TIERS[0];
+}
+
+// 0 = below 1s, 1 = New (<12h), 2 = ≥12h, 3 = ≥24h (escalated)
 export function waitTier(hoursWaiting: number): 0 | 1 | 2 | 3 {
-  if (hoursWaiting >= WAIT_TIER_HOURS[2]) return 3;
-  if (hoursWaiting >= WAIT_TIER_HOURS[1]) return 2;
-  if (hoursWaiting >= WAIT_TIER_HOURS[0]) return 1;
+  if (waitInTier(hoursWaiting, WAIT_TIERS[2])) return 3;
+  if (waitInTier(hoursWaiting, WAIT_TIERS[1])) return 2;
+  if (waitInTier(hoursWaiting, WAIT_TIERS[0])) return 1;
   return 0;
 }
 
-// Pill label for a wait-tier threshold.
-export function waitTierLabel(hours: number): string {
-  return `${hours}h`;
+export function waitTierLabel(tier: WaitTierRange): string {
+  return tier.label;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
