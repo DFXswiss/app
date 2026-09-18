@@ -2,7 +2,17 @@ import { render, screen } from '@testing-library/react';
 import MainApp2 from '../../Main.app2';
 
 jest.mock('@dfx.swiss/react', () => ({
-  DfxContextProvider: ({ children }: { children: React.ReactNode }) => <div data-testid="dfx">{children}</div>,
+  DfxContextProvider: ({
+    children,
+    includePrivateAssets,
+  }: {
+    children: React.ReactNode;
+    includePrivateAssets?: boolean;
+  }) => (
+    <div data-testid="dfx" data-include-private={String(includePrivateAssets)}>
+      {children}
+    </div>
+  ),
 }));
 
 jest.mock('../App', () => ({
@@ -13,7 +23,7 @@ jest.mock('../App', () => ({
 describe('App 2.0 entry', () => {
   it('wraps App2 in the DFX context provider', () => {
     render(<MainApp2 />);
-    expect(screen.getByTestId('dfx')).toBeInTheDocument();
+    expect(screen.getByTestId('dfx')).toHaveAttribute('data-include-private', 'true');
     expect(screen.getByTestId('app2-root')).toHaveTextContent('app2');
   });
 });

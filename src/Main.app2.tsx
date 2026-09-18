@@ -4,7 +4,7 @@ import './app2/styles.module.css';
 
 function MainApp2() {
   return (
-    <DfxContextProvider api={{}} data={{}}>
+    <DfxContextProvider api={{}} data={{}} includePrivateAssets={true}>
       <App2 />
     </DfxContextProvider>
   );
