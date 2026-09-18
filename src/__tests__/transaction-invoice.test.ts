@@ -3,6 +3,7 @@ jest.mock('@dfx.swiss/react', () => ({
     COMPLETED: 'Completed',
     FAILED: 'Failed',
     UNASSIGNED: 'Unassigned',
+    WAITING_FOR_PAYMENT: 'WaitingForPayment',
   },
   TransactionType: {
     BUY: 'Buy',
@@ -56,6 +57,46 @@ describe('canOpenInvoice', () => {
       canOpenInvoice({
         type: TransactionType.BUY,
         state: TransactionState.FAILED,
+        inputAsset: 'EUR',
+      }),
+    ).toBe(false);
+  });
+
+  it('returns true for WaitingForPayment Buy CHF', () => {
+    expect(
+      canOpenInvoice({
+        type: TransactionType.BUY,
+        state: TransactionState.WAITING_FOR_PAYMENT,
+        inputAsset: 'CHF',
+      }),
+    ).toBe(true);
+  });
+
+  it('returns true for WaitingForPayment Buy EUR', () => {
+    expect(
+      canOpenInvoice({
+        type: TransactionType.BUY,
+        state: TransactionState.WAITING_FOR_PAYMENT,
+        inputAsset: 'EUR',
+      }),
+    ).toBe(true);
+  });
+
+  it('returns false for WaitingForPayment Buy BTC', () => {
+    expect(
+      canOpenInvoice({
+        type: TransactionType.BUY,
+        state: TransactionState.WAITING_FOR_PAYMENT,
+        inputAsset: 'BTC',
+      }),
+    ).toBe(false);
+  });
+
+  it('returns false for WaitingForPayment Sell EUR', () => {
+    expect(
+      canOpenInvoice({
+        type: TransactionType.SELL,
+        state: TransactionState.WAITING_FOR_PAYMENT,
         inputAsset: 'EUR',
       }),
     ).toBe(false);

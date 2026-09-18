@@ -140,10 +140,10 @@ the "level 50 but no limit granted" case instead.
 
 |             |                                                                                                                                                                                                                   |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Path**    | **SQL only** for process rows (creates user/routes via other factories as needed)                                                                                                                                 |
-| **Returns** | `{ transactionId, uid, buyCryptoId?, buyFiatId?, bankTxId?, cryptoInputId?, buyId?, sellId?, userId?, userDataId? }`                                                                                              |
-| **Options** | `state`: `completed_buy` (default) \| `pending_buy` \| `completed_sell` \| `pending_sell` \| `bank_tx_only`; `userId` / `userDataId` / `jwt`; `buyId` / `sellId`; amounts / AML fields                            |
-| **Why SQL** | In production, `buy_crypto` / `buy_fiat` are created by crons reacting to bank txs / crypto deposits. Here `DISABLED_PROCESSES=*` disables those jobs. There is no customer API to force a completed process row. |
+| **Path**    | **SQL** for process rows (creates user/routes via other factories as needed). `waiting_for_payment_buy` is **API**: `PUT /buy/paymentInfos` + confirm.                                                             |
+| **Returns** | `{ transactionId?, uid, buyCryptoId?, buyFiatId?, bankTxId?, cryptoInputId?, buyId?, sellId?, userId?, userDataId? }` (`transactionId` absent for `waiting_for_payment_buy`)                                       |
+| **Options** | `state`: `completed_buy` (default) \| `pending_buy` \| `waiting_for_payment_buy` \| `completed_sell` \| `pending_sell` \| `bank_tx_only`; `userId` / `userDataId` / `jwt`; `buyId` / `sellId`; amounts / AML fields |
+| **Why SQL** | In production, `buy_crypto` / `buy_fiat` are created by crons reacting to bank txs / crypto deposits. Here `DISABLED_PROCESSES=*` disables those jobs. There is no customer API to force a completed process row. `waiting_for_payment_buy` is reachable through the public confirm path, so it does not use SQL. |
 
 **Tables involved (completed buy)**
 
@@ -255,6 +255,7 @@ The self-reference check is deliberately conservative for a key spanning several
 | ---------------------------------------- | ---------- | --------------------------------------------- |
 | `completed_buy`                          | Yes (SQL)  | `buy_crypto` Complete + bank_tx + transaction |
 | `pending_buy`                            | Yes (SQL)  | Created / Pending AML                         |
+| `waiting_for_payment_buy`                | Yes (API)  | `PUT /buy/paymentInfos` + confirm; TransactionRequest WaitingForPayment |
 | `completed_sell`                         | Yes (SQL)  | Needs sell route + crypto_input + buy_fiat    |
 | `pending_sell`                           | Yes (SQL)  | Same graph, incomplete flags                  |
 | `bank_tx_only`                           | Yes (SQL)  | Unmatched bank booking for compliance screens |
