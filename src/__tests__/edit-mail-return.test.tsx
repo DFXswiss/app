@@ -348,16 +348,15 @@ describe('EditMailScreen return path', () => {
     });
   });
 
-  it('does not show ErrorHint when updateMail returns 409 without a message', async () => {
+  it('shows Unknown error when updateMail returns 409 without a message', async () => {
     mockUpdateMail.mockRejectedValue({ statusCode: 409 });
 
     render(<EditMailScreen />);
     await clickSave();
 
     await waitFor(() => {
-      expect(mockUpdateMail).toHaveBeenCalled();
+      expect(screen.getByTestId('error-hint').textContent).toBe('Unknown error');
     });
-    expect(screen.queryByTestId('error-hint')).toBeNull();
     expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
   });
 

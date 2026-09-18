@@ -78,7 +78,7 @@ export default function EditMailScreen(): JSX.Element {
             setError(e.message);
           }
         } else {
-          setError(e.message);
+          setError(e.message ?? 'Unknown error');
         }
       });
   }
