@@ -25,8 +25,6 @@ function isInjectedWallet(): boolean {
 }
 
 function toWeb3Provider(provider: any): any {
-  if (!provider) return provider;
-
   try {
     void provider.on;
     return provider;
@@ -320,7 +318,9 @@ export function useMetaMask(): MetaMaskInterface {
 
     try {
       if (asset.type === AssetType.COIN) {
-        return web3.eth.getBalance(address).then((balance) => ({ asset, amount: toUsableNumber(balance).toNumber() }));
+        return await web3.eth
+          .getBalance(address)
+          .then((balance) => ({ asset, amount: toUsableNumber(balance).toNumber() }));
       }
 
       const tokenContract = createContract(asset.chainId);
