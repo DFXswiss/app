@@ -317,6 +317,11 @@ export function PaymentLinkProvider(props: PropsWithChildren): JSX.Element {
     });
 
     initWaitPolling(lnurlpUrl, (response) => {
+      // The wait endpoint caps how long it blocks and answers 408 while the payment is
+      // still pending. That is not a result — keep the poll running, otherwise the
+      // payment would never be picked up (init() ignores a repeat call for the same URL).
+      if (response.statusCode === 408) return;
+
       stopWaitPolling();
 
       if (response.status === PaymentLinkPaymentStatus.COMPLETED && redirectUri) {
