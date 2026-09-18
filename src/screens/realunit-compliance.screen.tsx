@@ -175,14 +175,12 @@ export default function RealunitComplianceScreen(): JSX.Element {
   }
 
   function formatNameCheckResult(customer: RealUnitCustomerListDto): string {
-    // Wire values still use the backend NameCheckRiskStatus names. A Dilisense list
-    // hit is a match, not a sanction — display only Match with/without Birthday.
     switch (customer.lastNameCheckStatus) {
-      case 'NotSanctioned':
+      case 'NoMatch':
         return translate('screens/compliance', 'No match');
       case 'MatchWithoutBirthday':
         return translate('screens/compliance', 'Match without Birthday');
-      case 'Sanctioned': {
+      case 'MatchWithBirthday': {
         const label = translate('screens/compliance', 'Match with Birthday');
         return customer.lastNameCheckEvaluation ? label : `${label} (${translate('screens/compliance', 'Open')})`;
       }

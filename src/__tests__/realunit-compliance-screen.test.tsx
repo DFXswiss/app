@@ -81,7 +81,7 @@ const FULL = {
   balance: 3,
   canScreen: true,
   lastNameCheckDate: '2024-06-15T12:00:00.000Z',
-  lastNameCheckStatus: 'NotSanctioned' as const,
+  lastNameCheckStatus: 'NoMatch' as const,
 };
 
 const EMPTY = {
@@ -273,7 +273,7 @@ describe('RealunitComplianceScreen name-check', () => {
     unmount();
 
     mockSearchCustomers.mockResolvedValue([
-      { ...FULL, lastNameCheckStatus: 'Sanctioned' as const, lastNameCheckEvaluation: undefined },
+      { ...FULL, lastNameCheckStatus: 'MatchWithBirthday' as const, lastNameCheckEvaluation: undefined },
     ]);
     const second = render(<RealunitComplianceScreen />);
     await waitFor(() => {
@@ -282,7 +282,7 @@ describe('RealunitComplianceScreen name-check', () => {
     second.unmount();
 
     mockSearchCustomers.mockResolvedValue([
-      { ...FULL, lastNameCheckStatus: 'Sanctioned' as const, lastNameCheckEvaluation: 'Ignored' as const },
+      { ...FULL, lastNameCheckStatus: 'MatchWithBirthday' as const, lastNameCheckEvaluation: 'Ignored' as const },
     ]);
     render(<RealunitComplianceScreen />);
     await waitFor(() => {
@@ -295,7 +295,7 @@ describe('RealunitComplianceScreen name-check', () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockScreenCustomer.mockResolvedValue({
       id: 1,
-      riskStatus: 'NotSanctioned',
+      riskStatus: 'NoMatch',
       date: '2024-06-16T12:00:00.000Z',
     });
     render(<RealunitComplianceScreen />);
@@ -324,7 +324,7 @@ describe('RealunitComplianceScreen name-check', () => {
           }),
       )
       .mockResolvedValue([
-        { ...FULL, lastNameCheckStatus: 'Sanctioned' as const, lastNameCheckEvaluation: 'Ignored' as const },
+        { ...FULL, lastNameCheckStatus: 'MatchWithBirthday' as const, lastNameCheckEvaluation: 'Ignored' as const },
       ]);
     mockGetNameCheckBatch
       .mockResolvedValueOnce({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 })
@@ -365,7 +365,7 @@ describe('RealunitComplianceScreen name-check', () => {
           }),
       )
       .mockResolvedValue([
-        { ...FULL, lastNameCheckStatus: 'Sanctioned' as const, lastNameCheckEvaluation: 'Ignored' as const },
+        { ...FULL, lastNameCheckStatus: 'MatchWithBirthday' as const, lastNameCheckEvaluation: 'Ignored' as const },
       ]);
     mockGetNameCheckBatch
       .mockResolvedValueOnce({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 })

@@ -59,7 +59,7 @@ interface RealUnitCustomerListDto {
   // mirrors the real DTO field since the Balance column was added
   balance?: number;
   lastNameCheckDate?: string;
-  lastNameCheckStatus?: 'Sanctioned' | 'MatchWithoutBirthday' | 'NotSanctioned';
+  lastNameCheckStatus?: 'NoMatch' | 'MatchWithoutBirthday' | 'MatchWithBirthday';
   lastNameCheckEvaluation?: 'Confirmed' | 'Ignored' | 'NotMatching' | 'Canceled';
   canScreen: boolean;
 }
@@ -76,7 +76,7 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     balance: 1250,
     canScreen: true,
     lastNameCheckDate: '2024-06-15T12:00:00.000Z',
-    lastNameCheckStatus: 'NotSanctioned',
+    lastNameCheckStatus: 'NoMatch',
   },
   {
     id: 7102,
@@ -88,7 +88,7 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     balance: 30.5,
     canScreen: true,
     lastNameCheckDate: '2024-03-01T12:00:00.000Z',
-    lastNameCheckStatus: 'Sanctioned',
+    lastNameCheckStatus: 'MatchWithBirthday',
   },
   // Bob stays visible despite balance 0 because name/mail are set — documents the filter semantics
   {
@@ -376,7 +376,7 @@ async function installComplianceRoutes(
     const path = new URL(url).pathname;
 
     if (NAME_CHECK_CUSTOMER_RE.test(url)) {
-      return json(route, { id: CUSTOMER_ID, riskStatus: 'NotSanctioned', date: '2024-06-15T12:00:00.000Z' });
+      return json(route, { id: CUSTOMER_ID, riskStatus: 'NoMatch', date: '2024-06-15T12:00:00.000Z' });
     }
     if (NAME_CHECK_BATCH_RE.test(url)) return json(route, batch);
     if (DETAIL_RE.test(url)) return json(route, DOSSIER);
