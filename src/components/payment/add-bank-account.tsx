@@ -68,6 +68,17 @@ export function AddBankAccount({ onSubmit, confirmationText }: AddBankAccountPro
               {` and attach the bank transaction confirmation as a PDF.`}
             </Trans>,
           );
+        } else if (e.statusCode === 400 && e.message?.includes('KYC only account')) {
+          setCustomError(
+            <Trans i18nKey="general/errors.no_wallet">
+              {`Before you can add a bank account, your DFX account needs a wallet. `}
+              <StyledLink
+                label={translate('general/actions', 'Connect a wallet')}
+                onClick={() => navigate('/connect')}
+                dark
+              />
+            </Trans>,
+          );
         } else {
           setError(e.message ?? 'Unknown error');
         }
