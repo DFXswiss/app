@@ -170,8 +170,7 @@ const CONFIRMATION_TEXT =
   'The bank account has been added, all transactions from this IBAN will now be associated with your account.';
 const ACCOUNT = { id: 9, iban: IBAN };
 
-async function submitIban(confirmationText?: string) {
-  render(<AddBankAccount onSubmit={mockOnSubmit} confirmationText={confirmationText} />);
+async function fillAndSubmit() {
   const ibanInput = screen.getByPlaceholderText('XX XXXX XXXX XXXX XXXX X');
   fireEvent.change(ibanInput, { target: { value: IBAN } });
   fireEvent.blur(ibanInput);
@@ -179,13 +178,19 @@ async function submitIban(confirmationText?: string) {
   // useForm({ mode: 'onTouched' }) keeps isValid false until _updateValid finishes (async).
   // The submit button is disabled={!isValid}; React 17+ / JSDOM does not deliver click to a
   // disabled button, so handleSubmit never runs unless we wait for the control to enable.
+  const submit = () => screen.getByRole('button', { name: 'Add bank account' });
   await waitFor(() => {
-    expect(screen.getByRole('button', { name: 'Add bank account' })).not.toBeDisabled();
+    expect(submit()).not.toBeDisabled();
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Add bank account' }));
+  const callsBefore = mockCreateAccount.mock.calls.length;
+  fireEvent.click(submit());
+  await waitFor(() => expect(mockCreateAccount.mock.calls.length).toBe(callsBefore + 1));
+  expect(mockCreateAccount.mock.calls[callsBefore][0]).toMatchObject({ iban: IBAN });
+}
 
-  await waitFor(() => expect(mockCreateAccount).toHaveBeenCalled());
-  expect(mockCreateAccount.mock.calls[0][0]).toMatchObject({ iban: IBAN });
+async function submitIban(confirmationText?: string) {
+  render(<AddBankAccount onSubmit={mockOnSubmit} confirmationText={confirmationText} />);
+  await fillAndSubmit();
 }
 
 describe('AddBankAccount', () => {
@@ -208,7 +213,7 @@ describe('AddBankAccount', () => {
 
     fireEvent.click(connectLink);
     expect(mockNavigate).toHaveBeenCalledTimes(1);
-    expect(mockNavigate).toHaveBeenCalledWith('/connect');
+    expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
   });
 
   it('falls through to the generic error box for a different 400', async () => {
@@ -225,7 +230,7 @@ describe('AddBankAccount', () => {
     expect(mockOnSubmit).not.toHaveBeenCalled();
   });
 
-  it('falls back to Unknown error when the rejection has no message', async () => {
+  it('falls back to Unknown error when a non-400 rejection has no message', async () => {
     mockCreateAccount.mockRejectedValue({ statusCode: 500 });
 
     await submitIban();
@@ -238,10 +243,71 @@ describe('AddBankAccount', () => {
     expect(mockOnSubmit).not.toHaveBeenCalled();
   });
 
+  it('shows the generic box when the KYC-only sentence arrives with status 500', async () => {
+    mockCreateAccount.mockRejectedValue({ statusCode: 500, message: KYC_ONLY_MESSAGE });
+
+    await submitIban();
+
+    await waitFor(() => expect(screen.getByText(GENERIC_ERROR)).toBeInTheDocument());
+    expect(screen.getByTestId('error-hint')).toBeInTheDocument();
+    expect(screen.getByText(KYC_ONLY_MESSAGE)).toBeInTheDocument();
+    expect(screen.queryByText(WALLET_HINT, { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Connect a wallet' })).not.toBeInTheDocument();
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+
+  it('shows the generic box when a 400 message contains account but not the KYC-only sentence', async () => {
+    mockCreateAccount.mockRejectedValue({ statusCode: 400, message: 'This account is not allowed' });
+
+    await submitIban();
+
+    await waitFor(() => expect(screen.getByText(GENERIC_ERROR)).toBeInTheDocument());
+    expect(screen.getByTestId('error-hint')).toBeInTheDocument();
+    expect(screen.getByText('This account is not allowed')).toBeInTheDocument();
+    expect(screen.queryByText(WALLET_HINT, { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Connect a wallet' })).not.toBeInTheDocument();
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Unknown error when a 400 rejection has no message', async () => {
+    mockCreateAccount.mockRejectedValue({ statusCode: 400 });
+
+    await submitIban();
+
+    await waitFor(() => expect(screen.getByText(GENERIC_ERROR)).toBeInTheDocument());
+    expect(screen.getByTestId('error-hint')).toBeInTheDocument();
+    expect(screen.getByText('Unknown error')).toBeInTheDocument();
+    expect(screen.queryByText(WALLET_HINT, { exact: false })).not.toBeInTheDocument();
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+
+  it('clears the wallet hint when a later submit succeeds', async () => {
+    mockCreateAccount.mockRejectedValueOnce({ statusCode: 400, message: KYC_ONLY_MESSAGE });
+
+    await submitIban();
+    await waitFor(() => expect(screen.getByText(WALLET_HINT, { exact: false })).toBeInTheDocument());
+
+    mockCreateAccount.mockResolvedValueOnce(ACCOUNT);
+    await fillAndSubmit();
+    await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledWith(ACCOUNT));
+    expect(screen.queryByText(WALLET_HINT, { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('custom-error')).not.toBeInTheDocument();
+  });
+
+  it('re-enables the submit button after a KYC-only rejection', async () => {
+    mockCreateAccount.mockRejectedValue({ statusCode: 400, message: KYC_ONLY_MESSAGE });
+
+    await submitIban();
+    await waitFor(() => expect(screen.getByText(WALLET_HINT, { exact: false })).toBeInTheDocument());
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Add bank account' })).not.toBeDisabled();
+    });
+  });
+
   it('shows the support hint for a multi-account IBAN and navigates to the support issue', async () => {
     mockCreateAccount.mockRejectedValue({
       statusCode: 400,
-      message: 'You cannot add a Multi-account IBAN as a personal account',
+      message: 'Multi-account IBANs not allowed',
     });
 
     await submitIban();

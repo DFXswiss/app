@@ -11,8 +11,19 @@
  */
 
 import type { Page } from '@playwright/test';
-import { expect, gotoWithSession, normPath, openScreen, queryOne, required, test, waitForRow } from './fixtures';
-import { cleanupCreatedData, createUser, e2eMail } from './fixtures/factories';
+import {
+  completeMailLogin,
+  expect,
+  gotoWithSession,
+  normPath,
+  openScreen,
+  queryOne,
+  requestMailLogin,
+  required,
+  test,
+  waitForRow,
+} from './fixtures';
+import { cleanupCreatedData, createUser, e2eMail, trackRow } from './fixtures/factories';
 
 function codeFromNotificationData(data: string): string {
   let parsed: { texts?: Array<{ params?: { code?: string } }> };
@@ -260,6 +271,44 @@ test.describe('Account area e2e', () => {
       })
       .not.toBe('/settings');
     expect(normPath(new URL(page.url()).pathname)).toMatch(/login/);
+  });
+
+  test('/settings KYC-only account shows wallet hint when adding a bank account', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const mail = e2eMail('acct-kyconly-iban');
+    await requestMailLogin(mail);
+    const jwt = await completeMailLogin(mail);
+
+    const row = await queryOne<{ id: number; status: string }>(`SELECT id, status FROM user_data WHERE mail = $1`, [
+      mail,
+    ]);
+    const userData = required(row, 'mail login must create user_data');
+    expect(userData.status, 'POST /v1/auth/mail must create user_data.status = KycOnly').toBe('KycOnly');
+    trackRow('user_data', userData.id);
+
+    // lang=en pins the copy this case asserts; mail-login does not set language the way createUser does.
+    await gotoWithSession(page, '/settings?lang=en', jwt);
+    await page.waitForLoadState('networkidle');
+
+    const heading = page.getByRole('heading', { name: 'Your Bank Accounts' });
+    await expect(heading).toBeVisible({ timeout: 15000 });
+    await heading.getByRole('button').click();
+
+    const iban = page.getByPlaceholder('XX XXXX XXXX XXXX XXXX X');
+    await expect(iban).toBeVisible({ timeout: 15000 });
+    await iban.fill('DE89370400440532013000');
+    await iban.blur();
+
+    const submit = page.getByRole('button', { name: /Add bank account/i });
+    await expect(submit).toBeEnabled({ timeout: 15000 });
+    await submit.click();
+
+    await expect(
+      page.getByText('Before you can add a bank account, your DFX account needs a wallet.'),
+    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Connect a wallet')).toBeVisible();
+    await expect(page.getByText(/Something went wrong/)).toHaveCount(0);
   });
 
   // ---------------------------------------------------------------------------

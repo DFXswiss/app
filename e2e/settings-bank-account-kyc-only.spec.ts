@@ -68,6 +68,11 @@ const SUBMIT = {
   en: /Add bank account/i,
 } as const;
 
+const CONNECT = {
+  de: 'Wallet verbinden',
+  en: 'Connect a wallet',
+} as const;
+
 /** Settings bootstrap mocks plus POST /v1/bankAccount 400 and a wallet-less /v2/user. */
 async function installSettingsRoutes(page: Page): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
@@ -193,6 +198,11 @@ test.describe('Settings Bank Account KycOnly - Visual Regression Tests', () => {
       fullPage: true,
       maxDiffPixels: 5000,
     });
+
+    const link = page.getByRole('link', { name: CONNECT.de });
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect(page).toHaveURL(/\/connect/);
   });
 
   test('English hint after KYC-only IBAN rejection', async ({ page }) => {
@@ -202,5 +212,10 @@ test.describe('Settings Bank Account KycOnly - Visual Regression Tests', () => {
       fullPage: true,
       maxDiffPixels: 5000,
     });
+
+    const link = page.getByRole('link', { name: CONNECT.en });
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect(page).toHaveURL(/\/connect/);
   });
 });

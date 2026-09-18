@@ -74,7 +74,7 @@ export function AddBankAccount({ onSubmit, confirmationText }: AddBankAccountPro
               {`Before you can add a bank account, your DFX account needs a wallet. `}
               <StyledLink
                 label={translate('general/actions', 'Connect a wallet')}
-                onClick={() => navigate('/connect')}
+                onClick={() => navigate('/connect', { setRedirect: true })}
                 dark
               />
             </Trans>,
