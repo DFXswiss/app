@@ -118,14 +118,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e/realunit-quotes.spec.ts` and `e2e/realunit-dashboard.spec.ts` fulfil
   `GET /v1/realunit/admin/quotes` (and, on the dashboard, holders, token info, price history,
   transactions, the three admin stats paths buy-volume, holders and registration,
-  `GET /v1/realunit/referral/admin/prize-wallet`, and
-  `GET /v1/realunit/referral/admin/payouts`) with synthetic fixtures that include
+  `GET /v1/realunit/referral/admin/prize-wallet`,
+  `GET /v1/realunit/referral/admin/payouts`, and
+  `GET/PUT /v1/realunit/admin/buy-limit`) with synthetic fixtures that include
   `userId`, `userName` and `deactivatedAt`.
   They also fulfil staff/bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`,
   `/v1/country`, `/v1/setting/infoBanner`, `/v2/user`) so a synthetic unsigned JWT does not 401.
-  A green run proves the quote list, pending-table, stats-chart and prize-wallet-card fixtures
-  render. It does not prove that the API returns those payloads, that login or token verification
-  works, or that those staff/settings, stats, prize-wallet or payouts endpoints return real data.
+  A green run proves the quote list, pending-table, stats-chart, prize-wallet-card and
+  max-tokens-per-buy-card fixtures render. It does not prove that the API returns those
+  payloads, that login or token verification works, or that those staff/settings, stats,
+  prize-wallet, payouts or buy-limit endpoints return real data.
 - **The RealUnit referral visual spec answers the relation list and promo list itself.**
   `e2e/realunit-referral.spec.ts` fulfils `GET /v1/realunit/referral/admin/relations` and
   `GET /v1/realunit/referral/promo` with synthetic fixtures: an empty promo list on the

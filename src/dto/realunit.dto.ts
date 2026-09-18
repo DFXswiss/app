@@ -112,6 +112,10 @@ export function quoteIsDeactivated(quote: Pick<RealUnitQuote, 'deactivatedAt'>):
   return quote.deactivatedAt != null && quote.deactivatedAt !== '';
 }
 
+export interface RealUnitBuyLimit {
+  maxTokensPerTx: number | null;
+}
+
 export interface RealUnitTransaction {
   id: number;
   uid: string;

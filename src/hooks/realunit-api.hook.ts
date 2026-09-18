@@ -6,6 +6,7 @@ import {
   HoldersResponse,
   PaginationDirection,
   PriceHistoryEntry,
+  RealUnitBuyLimit,
   RealUnitBuyVolumePoint,
   RealUnitHolderCountPoint,
   RealUnitQuote,
@@ -138,6 +139,21 @@ export function useRealunitApi() {
     });
   }
 
+  async function getBuyLimit(): Promise<RealUnitBuyLimit> {
+    return call<RealUnitBuyLimit>({
+      url: 'realunit/admin/buy-limit',
+      method: 'GET',
+    });
+  }
+
+  async function updateBuyLimit(maxTokensPerTx: number | null): Promise<RealUnitBuyLimit> {
+    return call<RealUnitBuyLimit>({
+      url: 'realunit/admin/buy-limit',
+      method: 'PUT',
+      data: { maxTokensPerTx },
+    });
+  }
+
   return useMemo(
     () => ({
       getAccountSummary,
@@ -153,6 +169,8 @@ export function useRealunitApi() {
       getBuyVolume,
       getRegistrationStats,
       getHolderCount,
+      getBuyLimit,
+      updateBuyLimit,
     }),
     [call],
   );
