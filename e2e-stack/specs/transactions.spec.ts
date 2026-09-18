@@ -260,6 +260,62 @@ test('Open invoice is shown on a completed CHF buy and hidden on pending buy and
   await expect(page.getByRole('button', { name: 'Open invoice' })).toHaveCount(0);
 });
 
+test('Open invoice is shown on a waiting-for-payment CHF buy and click issues a real invoice PUT', async ({
+  page,
+}) => {
+  const user = await createUser({
+    tag: 'tx-list-invoice-wfp',
+    kycLevel: 50,
+    completePersonalData: true,
+  });
+  await queryRows(`UPDATE user_data SET "depositLimit" = 1000000 WHERE id = $1`, [user.userDataId]);
+  const tx = await createTransaction({
+    state: 'waiting_for_payment_buy',
+    tag: 'tx-inv-wfp',
+    userId: user.userId,
+    userDataId: user.userDataId,
+    jwt: user.jwt,
+    amount: 761,
+    inputAsset: 'CHF',
+  });
+
+  await openScreen(page, '/tx', user.jwt);
+
+  const waitingRow = page
+    .locator('div.flex.flex-row.gap-2.items-center')
+    .filter({ hasText: '761' })
+    .filter({ hasText: 'CHF' })
+    .first();
+  await expect(waitingRow).toBeVisible();
+  await expect(waitingRow.getByText('Waiting for payment', { exact: true }).first()).toBeVisible();
+
+  await waitingRow.click();
+  const openInvoice = page.getByRole('button', { name: 'Open invoice' });
+  await expect(openInvoice).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open receipt' })).toHaveCount(0);
+
+  const invoicePath = `/v1/transaction/${tx.uid}/invoice`;
+  const invoiceResponsePromise = page.waitForResponse(
+    (r) => r.request().method() === 'PUT' && r.url().includes(invoicePath),
+  );
+  const popupPromise = page.waitForEvent('popup');
+  await openInvoice.click();
+  const popup = await popupPromise;
+
+  expect(popup.url()).toMatch(/about:blank|blob:/);
+
+  const invoiceResponse = await invoiceResponsePromise;
+  const invoiceBody = (await invoiceResponse.json().catch(() => undefined)) as { pdfData?: unknown } | undefined;
+  expect(
+    invoiceResponse.status(),
+    `PUT ${invoicePath} must succeed: HTTP ${invoiceResponse.status()} — ${JSON.stringify(invoiceBody)}`,
+  ).toBe(200);
+  expect(typeof invoiceBody?.pdfData).toBe('string');
+  const pdfData = invoiceBody?.pdfData as string;
+  expect(pdfData.length).toBeGreaterThan(0);
+  expect(Buffer.from(pdfData, 'base64').toString('latin1').startsWith('%PDF')).toBe(true);
+});
+
 test('Open invoice click opens a tab before the invoice PUT returns', async ({ page }) => {
   const user = await createUser({
     tag: 'tx-list-invoice-tab',
