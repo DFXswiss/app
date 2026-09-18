@@ -22,8 +22,8 @@ function jwt(): string {
 }
 
 const CLERKS = [
-  { userDataId: 101, name: 'Rita Clerk' },
-  { userDataId: 102, name: 'Tom Support' },
+  { clerkUserDataId: 101, clerk: 'Rita Clerk' },
+  { clerkUserDataId: 102, clerk: 'Tom Support' },
 ];
 
 const ISSUE_DATA = {

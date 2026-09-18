@@ -216,9 +216,9 @@ const COUNTS: Record<string, number> = {
   Completed: 9,
 };
 
-const CLERKS: { userDataId: number; name: string }[] = [
-  { userDataId: 101, name: 'Rita Clerk' },
-  { userDataId: 102, name: 'Tom Support' },
+const CLERKS: { clerkUserDataId: number; clerk: string }[] = [
+  { clerkUserDataId: 101, clerk: 'Rita Clerk' },
+  { clerkUserDataId: 102, clerk: 'Tom Support' },
 ];
 
 // Detail for ISSUE_ID (7001), matching the OPEN_ISSUES[0] header fields.

@@ -16,24 +16,24 @@ describe('useSupportDashboard', () => {
     mockCall.mockReset().mockResolvedValue(undefined);
   });
 
-  it('getClerks returns { userDataId, name }[] from GET support/issue/clerks', async () => {
-    mockCall.mockResolvedValue([{ userDataId: 3, name: 'Alex' }]);
+  it('getClerks returns { clerkUserDataId, clerk }[] from GET support/issue/clerks', async () => {
+    mockCall.mockResolvedValue([{ clerkUserDataId: 3, clerk: 'Alex' }]);
     const { result } = renderHook(() => useSupportDashboard());
 
     const clerks = await result.current.getClerks();
 
     expect(mockCall).toHaveBeenCalledWith({ url: 'support/issue/clerks', method: 'GET' });
-    expect(clerks).toEqual([{ userDataId: 3, name: 'Alex' }]);
+    expect(clerks).toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
   });
 
-  it('getClerks drops entries without a finite userDataId', async () => {
+  it('getClerks drops entries without a finite clerkUserDataId', async () => {
     mockCall.mockResolvedValue([
-      { userDataId: 3, name: 'Alex' },
-      { userDataId: Number.NaN, name: 'Broken' },
+      { clerkUserDataId: 3, clerk: 'Alex' },
+      { clerkUserDataId: Number.NaN, clerk: 'Broken' },
     ]);
     const { result } = renderHook(() => useSupportDashboard());
 
-    await expect(result.current.getClerks()).resolves.toEqual([{ userDataId: 3, name: 'Alex' }]);
+    await expect(result.current.getClerks()).resolves.toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
   });
 
   it('getMyClerk GETs support/issue/clerk and trims the clerk name', async () => {

@@ -103,25 +103,25 @@ describe('useRealunitSupport', () => {
     expect(messages).toEqual([{ id: 1, author: 'Alice', created: 'now' }]);
   });
 
-  it('getClerks returns { userDataId, name }[] from GET realunit/support/clerks', async () => {
-    mockCall.mockResolvedValue([{ userDataId: 3, name: 'Alex' }]);
+  it('getClerks returns { clerkUserDataId, clerk }[] from GET realunit/support/clerks', async () => {
+    mockCall.mockResolvedValue([{ clerkUserDataId: 3, clerk: 'Alex' }]);
     const { result } = renderHook(() => useRealunitSupport());
 
     const clerks = await result.current.getClerks();
 
     expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/clerks', method: 'GET' });
-    expect(clerks).toEqual([{ userDataId: 3, name: 'Alex' }]);
+    expect(clerks).toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
   });
 
-  it('getClerks drops entries without a finite userDataId', async () => {
+  it('getClerks drops entries without a finite clerkUserDataId', async () => {
     mockCall.mockResolvedValue([
-      { userDataId: 3, name: 'Alex' },
-      { userDataId: Number.NaN, name: 'Broken' },
-      { name: 'NoId' },
+      { clerkUserDataId: 3, clerk: 'Alex' },
+      { clerkUserDataId: Number.NaN, clerk: 'Broken' },
+      { clerk: 'NoId' },
     ]);
     const { result } = renderHook(() => useRealunitSupport());
 
-    await expect(result.current.getClerks()).resolves.toEqual([{ userDataId: 3, name: 'Alex' }]);
+    await expect(result.current.getClerks()).resolves.toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
   });
 
   it('getMyClerk GETs realunit/support/clerk and trims the clerk name', async () => {
@@ -197,14 +197,14 @@ describe('isAssignedToMe', () => {
 });
 
 describe('usableClerks', () => {
-  it('keeps only entries with a finite userDataId and a name', () => {
+  it('keeps only entries with a finite clerkUserDataId and a clerk', () => {
     expect(
       usableClerks([
-        { userDataId: 1, name: 'Ada' },
-        { userDataId: Number.NaN, name: 'Bad' },
-        { userDataId: 2, name: '' },
+        { clerkUserDataId: 1, clerk: 'Ada' },
+        { clerkUserDataId: Number.NaN, clerk: 'Bad' },
+        { clerkUserDataId: 2, clerk: '' },
       ]),
-    ).toEqual([{ userDataId: 1, name: 'Ada' }]);
+    ).toEqual([{ clerkUserDataId: 1, clerk: 'Ada' }]);
   });
 });
 

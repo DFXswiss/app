@@ -165,7 +165,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
         department: updateDepartment || undefined,
         ...clerkAssignmentPayload(updateClerk, issueData?.clerkUserDataId, {
           leftover: !!issueData?.clerk,
-          allowedIds: clerks.map((c) => c.userDataId),
+          allowedIds: clerks.map((c) => c.clerkUserDataId),
         }),
       });
       loadIssue();
@@ -363,14 +363,14 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
                 {updateClerk &&
                   Number.isFinite(Number(updateClerk)) &&
                   issueData?.clerk &&
-                  !clerks.some((c) => String(c.userDataId) === updateClerk) && (
+                  !clerks.some((c) => String(c.clerkUserDataId) === updateClerk) && (
                     <option key={updateClerk} value={updateClerk}>
                       {issueData.clerk}
                     </option>
                   )}
                 {clerks.map((c) => (
-                  <option key={c.userDataId} value={String(c.userDataId)}>
-                    {c.name}
+                  <option key={c.clerkUserDataId} value={String(c.clerkUserDataId)}>
+                    {c.clerk}
                   </option>
                 ))}
               </select>

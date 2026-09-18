@@ -126,8 +126,8 @@ export interface SupportStatisticsDto {
 }
 
 export interface SupportClerk {
-  userDataId: number;
-  name: string;
+  clerkUserDataId: number;
+  clerk: string;
 }
 
 /** Select value while a leftover name is still shown and the id is missing. Not a finite id, so PUT omits. */
@@ -151,7 +151,7 @@ export function clerkAssignmentPayload(
 }
 
 export function usableClerks(clerks: SupportClerk[]): SupportClerk[] {
-  return clerks.filter((c) => Number.isFinite(c.userDataId) && c.name);
+  return clerks.filter((c) => Number.isFinite(c.clerkUserDataId) && c.clerk);
 }
 
 /** Mine-filter: JWT account id wins; leftover clerk name only when the id is still missing. */
