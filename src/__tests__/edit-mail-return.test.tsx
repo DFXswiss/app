@@ -7,17 +7,22 @@ const mockRedirectPath = jest.fn();
 const mockSetRedirectPath = jest.fn();
 const mockNavigate = jest.fn();
 const mockHandleMergedError = jest.fn(() => false);
+const mockCheck2fa = jest.fn(() => Promise.resolve());
+
+let mockIsUserLoading = false;
+let mockUser: { mail?: string } | undefined = { mail: 'old@example.com' };
 
 jest.mock('@dfx.swiss/react', () => ({
   Utils: { createRules: () => ({}) },
   Validations: { Required: undefined, Mail: undefined },
   TfaLevel: { BASIC: 'Basic' },
   useUserContext: () => ({
-    user: { mail: 'old@example.com' },
+    user: mockUser,
+    isUserLoading: mockIsUserLoading,
     updateMail: mockUpdateMail,
     verifyMail: mockVerifyMail,
   }),
-  useKyc: () => ({ check2fa: () => Promise.resolve() }),
+  useKyc: () => ({ check2fa: mockCheck2fa }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -30,7 +35,7 @@ jest.mock('@dfx.swiss/react-components', () => ({
   StyledButtonWidth: { MIN: 'min' },
   StyledInput: () => null,
   StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
-  StyledLoadingSpinner: () => null,
+  StyledLoadingSpinner: () => <div data-testid="loading-spinner" />,
   SpinnerSize: { LG: 'lg' },
 }));
 
@@ -61,8 +66,9 @@ jest.mock('src/hooks/merged-account.hook', () => ({
 }));
 
 jest.mock('src/components/overlay/edit-overlay', () => ({
-  EditOverlay: ({ onCancel, onEdit }: any) => (
+  EditOverlay: ({ onCancel, onEdit, prefill }: any) => (
     <div>
+      <span data-testid="mail-prefill">{prefill}</span>
       <button type="button" onClick={onCancel}>
         Cancel
       </button>
@@ -87,6 +93,20 @@ import EditMailScreen from 'src/screens/edit-mail.screen';
 
 const STORE_KEY = 'dfx.editMailReturn';
 
+async function clickSave() {
+  const save = await screen.findByRole('button', { name: 'Save' });
+  await act(async () => {
+    save.click();
+  });
+}
+
+async function clickNext() {
+  const next = await screen.findByRole('button', { name: 'Next' });
+  await act(async () => {
+    next.click();
+  });
+}
+
 describe('EditMailScreen return path', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -95,6 +115,10 @@ describe('EditMailScreen return path', () => {
     mockUpdateMail.mockResolvedValue(undefined);
     mockVerifyMail.mockResolvedValue(undefined);
     mockHandleMergedError.mockReturnValue(false);
+    mockCheck2fa.mockReset();
+    mockCheck2fa.mockResolvedValue(undefined);
+    mockIsUserLoading = false;
+    mockUser = { mail: 'old@example.com' };
   });
 
   it('writes a valid redirectPath into the session store and consumes it', async () => {
@@ -239,5 +263,200 @@ describe('EditMailScreen return path', () => {
     expect(sessionStorage.getItem(STORE_KEY)).toBeNull();
     expect(mockSetRedirectPath).toHaveBeenCalledWith(undefined);
     expect(mockNavigate).toHaveBeenCalledWith('/account');
+  });
+
+  it('does not mount EditOverlay while isUserLoading after check2fa resolves', async () => {
+    mockIsUserLoading = true;
+
+    render(<EditMailScreen />);
+
+    await waitFor(() => {
+      expect(mockCheck2fa).toHaveBeenCalledWith('Basic');
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('loading-spinner')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+  });
+
+  it('mounts EditOverlay with the current mail once isUserLoading is false', async () => {
+    mockIsUserLoading = true;
+    const { rerender } = render(<EditMailScreen />);
+
+    await waitFor(() => {
+      expect(mockCheck2fa).toHaveBeenCalledWith('Basic');
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+
+    mockIsUserLoading = false;
+    rerender(<EditMailScreen />);
+
+    await screen.findByRole('button', { name: 'Cancel' });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+    expect(screen.getByTestId('mail-prefill').textContent).toBe('old@example.com');
+  });
+
+  it('mounts EditOverlay with empty prefill when the loaded user has no mail', async () => {
+    mockUser = undefined;
+
+    render(<EditMailScreen />);
+
+    await screen.findByRole('button', { name: 'Save' });
+    expect(screen.getByTestId('mail-prefill').textContent).toBe('');
+  });
+
+  it('navigates to /2fa when check2fa rejects', async () => {
+    mockCheck2fa.mockRejectedValue({ message: '2fa required' });
+
+    render(<EditMailScreen />);
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/2fa', { state: { level: 'Basic' }, setRedirect: true });
+    });
+  });
+
+  it('shows ErrorHint when updateMail returns 409 exists without merge', async () => {
+    mockUpdateMail.mockRejectedValue({ statusCode: 409, message: 'already exists' });
+
+    render(<EditMailScreen />);
+    await clickSave();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint').textContent).toBe('already exists');
+    });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'OK' })).toBeNull();
+  });
+
+  it('shows ErrorHint when updateMail returns 409 without exists', async () => {
+    mockUpdateMail.mockRejectedValue({ statusCode: 409, message: 'conflict' });
+
+    render(<EditMailScreen />);
+    await clickSave();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint').textContent).toBe('conflict');
+    });
+  });
+
+  it('does not show ErrorHint when updateMail returns 409 without a message', async () => {
+    mockUpdateMail.mockRejectedValue({ statusCode: 409 });
+
+    render(<EditMailScreen />);
+    await clickSave();
+
+    await waitFor(() => {
+      expect(mockUpdateMail).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId('error-hint')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+  });
+
+  it('shows ErrorHint when updateMail fails with a generic error', async () => {
+    mockUpdateMail.mockRejectedValue({ statusCode: 500, message: 'server error' });
+
+    render(<EditMailScreen />);
+    await clickSave();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint').textContent).toBe('server error');
+    });
+  });
+
+  it('keeps the Next button when verifyMail returns 403', async () => {
+    mockVerifyMail.mockRejectedValue({ statusCode: 403, message: 'forbidden' });
+
+    render(<EditMailScreen />);
+    await clickSave();
+    await clickNext();
+
+    await waitFor(() => {
+      expect(mockVerifyMail).toHaveBeenCalled();
+    });
+    expect(screen.getByRole('button', { name: 'Next' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'OK' })).toBeNull();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows the OK button when verifyMail returns 409 exists with merge', async () => {
+    mockVerifyMail.mockRejectedValue({ statusCode: 409, message: 'exists merge' });
+
+    render(<EditMailScreen />);
+    await clickSave();
+    await clickNext();
+
+    await screen.findByRole('button', { name: 'OK' });
+    expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+  });
+
+  it('shows ErrorHint when verifyMail returns 409 exists without merge', async () => {
+    mockVerifyMail.mockRejectedValue({ statusCode: 409, message: 'already exists' });
+
+    render(<EditMailScreen />);
+    await clickSave();
+    await clickNext();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint').textContent).toBe('already exists');
+    });
+    expect(screen.getByRole('button', { name: 'Next' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'OK' })).toBeNull();
+  });
+
+  it('shows ErrorHint when verifyMail returns 409 without exists', async () => {
+    mockVerifyMail.mockRejectedValue({ statusCode: 409, message: 'conflict' });
+
+    render(<EditMailScreen />);
+    await clickSave();
+    await clickNext();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint').textContent).toBe('conflict');
+    });
+  });
+
+  it('shows ErrorHint when verifyMail fails with a generic error', async () => {
+    mockVerifyMail.mockRejectedValue({ statusCode: 500, message: 'verify failed' });
+
+    render(<EditMailScreen />);
+    await clickSave();
+    await clickNext();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint').textContent).toBe('verify failed');
+    });
+  });
+
+  it('shows Unknown error when verifyMail fails without a message', async () => {
+    mockVerifyMail.mockRejectedValue({ statusCode: 500 });
+
+    render(<EditMailScreen />);
+    await clickSave();
+    await clickNext();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint').textContent).toBe('Unknown error');
+    });
+  });
+
+  it('shows Unknown error when verifyMail returns 409 without a message', async () => {
+    mockVerifyMail.mockRejectedValue({ statusCode: 409 });
+
+    render(<EditMailScreen />);
+    await clickSave();
+    await clickNext();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint').textContent).toBe('Unknown error');
+    });
   });
 });
