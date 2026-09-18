@@ -1,7 +1,7 @@
 import { Asset, AssetType, Blockchain, Eip5792Call } from '@dfx.swiss/react';
 import BigNumber from 'bignumber.js';
 import { Buffer } from 'buffer';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { isMobile } from 'react-device-detect';
 import Web3 from 'web3';
 import { TransactionConfig } from 'web3-core';
@@ -12,6 +12,43 @@ import { AbortError } from '../../util/abort-error';
 import { TranslatedError } from '../../util/translated-error';
 import { timeout } from '../../util/utils';
 import { useWeb3 } from '../web3.hook';
+
+const WEB3_RPC_METHODS = ['request', 'send', 'sendAsync', 'enable', 'isConnected'] as const;
+
+const PROVIDER_MISSING_MESSAGE = 'Provider not set or invalid';
+const PROVIDER_MISSING_HINT =
+  'No wallet found. Please check your wallet extension or set one up, then reload this page.';
+
+function isInjectedWallet(): boolean {
+  const eth = (window as any).ethereum;
+  return Boolean(eth && (eth.isMetaMask || eth.isRabby || eth.isCoinbaseWallet || eth.isTrust));
+}
+
+function toWeb3Provider(provider: any): any {
+  if (!provider) return provider;
+
+  try {
+    void provider.on;
+    return provider;
+  } catch {
+    // Brave's ethereum proxy throws on a mere read of `.on`. web3 setProvider
+    // does that read (`if (provider.on)`) before any RPC. Leaving `.on`
+    // undefined lets the check skip without throwing, so web3 polls immediately
+    // instead of waiting blockHeaderTimeout (10s) for a subscription that a
+    // no-op `on` would never deliver. request/send stay bound to the real
+    // provider (`this` preserved).
+    const wrapped: any = {};
+
+    for (const method of WEB3_RPC_METHODS) {
+      const fn = provider[method];
+      if (typeof fn === 'function') {
+        wrapped[method] = fn.bind(provider);
+      }
+    }
+
+    return wrapped;
+  }
+}
 
 export enum WalletType {
   RABBY = 'Rabby',
@@ -73,13 +110,20 @@ interface MetaMaskError {
 }
 
 export function useMetaMask(): MetaMaskInterface {
+  const boundProvider = useRef<unknown>();
+  const [installed, setInstalled] = useState(isInjectedWallet);
   const web3 = useMemo(() => {
-    try {
-      return new Web3(Web3.givenProvider);
-    } catch {
-      // conflicting wallet extensions may inject a provider proxy that throws on access
-      return new Web3();
+    const instance = new Web3();
+    const eth = (window as any).ethereum;
+    if (eth && typeof instance.setProvider === 'function') {
+      try {
+        instance.setProvider(toWeb3Provider(eth));
+        boundProvider.current = eth;
+      } catch {
+        // leave unbound; bindIfNeeded retries when a provider appears
+      }
     }
+    return instance;
   }, []);
   const { toBlockchain, toChainHex, toChainObject } = useWeb3();
 
@@ -87,9 +131,39 @@ export function useMetaMask(): MetaMaskInterface {
     return (window as any).ethereum;
   }
 
-  function isInstalled(): boolean {
+  function bindIfNeeded() {
     const eth = ethereum();
-    return Boolean(eth && (eth.isMetaMask || eth.isRabby || eth.isCoinbaseWallet || eth.isTrust));
+    if (!eth || boundProvider.current === eth) return;
+    if (typeof web3.setProvider !== 'function') return;
+
+    try {
+      web3.setProvider(toWeb3Provider(eth));
+      boundProvider.current = eth;
+    } catch {
+      // leave unbound; the next call or ethereum#initialized retries
+    }
+  }
+
+  useEffect(() => {
+    const sync = () => {
+      bindIfNeeded();
+      setInstalled(isInjectedWallet());
+    };
+
+    sync();
+
+    window.addEventListener('ethereum#initialized', sync);
+    // Brave injects ~5ms after load and may skip injection until a wallet exists.
+    const timeoutId = window.setTimeout(sync, 50);
+
+    return () => {
+      window.removeEventListener('ethereum#initialized', sync);
+      window.clearTimeout(timeoutId);
+    };
+  }, [web3]);
+
+  function isInstalled(): boolean {
+    return isInjectedWallet();
   }
 
   function getWalletType(): WalletType | undefined {
@@ -105,26 +179,42 @@ export function useMetaMask(): MetaMaskInterface {
     }
   }
 
+  function listen(event: string, handler: (...args: any[]) => void) {
+    try {
+      ethereum()?.on(event, handler);
+    } catch {
+      // Brave: a mere read of `.on` throws, so neither accountsChanged nor
+      // chainChanged is registered and account or network switches are not
+      // observed. Catching here lets the rest of register() continue.
+    }
+  }
+
   function register(
     onAccountChanged: (account?: string) => void,
     onBlockchainChanged: (blockchain?: Blockchain) => void,
   ) {
+    bindIfNeeded();
     web3.eth.getAccounts((_err, accounts) => {
       onAccountChanged(verifyAccount(accounts));
     });
     web3.eth.getChainId((_err, chainId) => {
       onBlockchainChanged(toBlockchain(chainId));
     });
-    ethereum()?.on('accountsChanged', (accounts: string[]) => {
+    listen('accountsChanged', (accounts: string[]) => {
       onAccountChanged(verifyAccount(accounts));
     });
-    ethereum()?.on('chainChanged', (chainId: string) => {
+    listen('chainChanged', (chainId: string) => {
       onBlockchainChanged(toBlockchain(chainId));
     });
   }
 
   async function getAccount(): Promise<string | undefined> {
-    return verifyAccount(await web3.eth.getAccounts());
+    bindIfNeeded();
+    try {
+      return verifyAccount(await web3.eth.getAccounts());
+    } catch (e) {
+      handleError(e as MetaMaskError);
+    }
   }
 
   async function checkConnection(): Promise<void> {
@@ -132,6 +222,7 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function requestAccount(): Promise<string | undefined> {
+    bindIfNeeded();
     await checkConnection();
 
     try {
@@ -143,6 +234,7 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function requestBlockchain(): Promise<Blockchain | undefined> {
+    bindIfNeeded();
     return toBlockchain(await web3.eth.getChainId());
   }
 
@@ -174,10 +266,12 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function requestBalance(account: string): Promise<string | undefined> {
+    bindIfNeeded();
     return web3.eth.getBalance(account);
   }
 
   async function sign(address: string, message: string): Promise<string> {
+    bindIfNeeded();
     return web3.eth.personal.sign(message, address, '').catch(handleError);
   }
 
@@ -217,6 +311,7 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function readBalance(asset: Asset, address?: string, throwExceptions?: boolean): Promise<AssetBalance> {
+    bindIfNeeded();
     if (!address || !asset) {
       if (throwExceptions) throw new Error('No address or asset provided');
 
@@ -248,6 +343,7 @@ export function useMetaMask(): MetaMaskInterface {
     to: string,
     config?: { isWeiAmount?: boolean; gasPrice?: number },
   ): Promise<string> {
+    bindIfNeeded();
     if (asset.type === AssetType.COIN) {
       const transactionData: TransactionConfig = {
         from,
@@ -276,6 +372,7 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   function createContract(chainId?: string): Contract {
+    bindIfNeeded();
     return new web3.eth.Contract(ERC20_ABI as any, chainId);
   }
 
@@ -404,6 +501,10 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   function handleError(e: MetaMaskError): never {
+    if (e?.message === PROVIDER_MISSING_MESSAGE) {
+      throw new TranslatedError(PROVIDER_MISSING_HINT);
+    }
+
     switch (e.code) {
       case 4001:
         throw new AbortError('User cancelled');
@@ -433,6 +534,6 @@ export function useMetaMask(): MetaMaskInterface {
       supportsEip5792Paymaster,
       signEip7702Authorization,
     }),
-    [web3, toBlockchain, toChainHex, toChainObject],
+    [web3, toBlockchain, toChainHex, toChainObject, installed],
   );
 }

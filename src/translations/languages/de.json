@@ -497,6 +497,7 @@
     "Please confirm the connection in your wallet.": "Bitte bestätige die Verbindung in Deiner Wallet.",
     "Please confirm the connection with your Ledger.": "Bitte bestätige die Verbindung mit Deinem Ledger.",
     "Connection failed!": "Verbindung fehlgeschlagen!",
+    "No wallet found. Please check your wallet extension or set one up, then reload this page.": "Keine Wallet gefunden. Bitte prüfe Deine Wallet-Erweiterung oder richte eine Wallet ein und lade die Seite neu.",
     "Please make sure that all other applications and browser extensions that are connected to the ledger are completely closed when you try to connect.\nThis includes third-party wallets (Ledger Live, Metamask, Daedalus, MyEtherWallet) or other applications that could interfere with the connection between DFX.swiss and your ledger device.": "Bitte stelle sicher, dass alle anderen Anwendungen und Browsererweiterungen, die mit dem Ledger verbunden sind, vollständig geschlossen sind, wenn Du versuchst, eine Verbindung herzustellen.\nDazu gehören Wallets von Drittanbietern (Ledger Live, Metamask, Daedalus, MyEtherWallet) oder andere Anwendungen, die die Verbindung zwischen DFX.swiss und Deinem Ledger-Gerät stören könnten.",
     "Connect your {{device}} with your computer": "Verbinde Deinen {{device}} mit Deinem Computer",
     "Click on \"Connect\"": "Klicke auf \"Verbinden\"",

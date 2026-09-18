@@ -4,7 +4,7 @@
  * Note: EIP-5792 flow logic is tested in src/__tests__/eip5792-flow.test.ts
  * with proper isolation. These tests focus on hook setup and wallet detection.
  */
-import { renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 // Mock @dfx.swiss/react
 jest.mock('@dfx.swiss/react', () => ({
@@ -31,30 +31,89 @@ jest.mock('../../web3.hook', () => ({
   }),
 }));
 
-// Mock Web3
+// Mock Web3 — mirrors web3-core-requestmanager setProvider: a mere read of `.on` can throw,
+// and currentProvider is only assigned if that read completes.
 jest.mock('web3', () => {
-  const MockWeb3: any = jest.fn().mockImplementation(() => ({
-    eth: {
-      getAccounts: jest.fn().mockResolvedValue([]),
-      getChainId: jest.fn().mockResolvedValue(1),
-      requestAccounts: jest.fn().mockResolvedValue([]),
-      getBalance: jest.fn().mockResolvedValue('0'),
-      personal: { sign: jest.fn() },
-      sendTransaction: jest.fn(),
-      Contract: jest.fn().mockReturnValue({ methods: {} }),
-    },
-    utils: {
-      toChecksumAddress: (addr: string) => addr,
-      toHex: (val: number) => `0x${val.toString(16)}`,
-      toWei: (val: string) => val,
-    },
-  }));
+  const instances: any[] = [];
+
+  function applyProvider(instance: any, provider: any) {
+    if (provider && provider.on && typeof provider.on === 'function') {
+      provider.on('message', () => undefined);
+    }
+    instance.currentProvider = provider || null;
+  }
+
+  function invoke(cb: any, promise: Promise<any>) {
+    if (typeof cb === 'function') {
+      promise.then(
+        (value) => cb(null, value),
+        (err) => cb(err),
+      );
+    }
+    return promise;
+  }
+
+  function MockWeb3(provider?: any) {
+    const instance: any = {
+      currentProvider: null,
+      setProvider: (next: any) => applyProvider(instance, next),
+      eth: {
+        getAccounts: (cb?: any) =>
+          invoke(
+            cb,
+            (async () => {
+              const p = instance.currentProvider;
+              if (!p) throw new Error('Provider not set or invalid');
+              if (typeof p.request === 'function') {
+                return (await p.request({ method: 'eth_accounts' })) ?? [];
+              }
+              return [];
+            })(),
+          ),
+        getChainId: (cb?: any) =>
+          invoke(
+            cb,
+            (async () => {
+              const p = instance.currentProvider;
+              if (!p) throw new Error('Provider not set or invalid');
+              if (typeof p.request === 'function') {
+                const result = await p.request({ method: 'eth_chainId' });
+                return typeof result === 'string' ? parseInt(result, 16) : (result ?? 1);
+              }
+              return 1;
+            })(),
+          ),
+        requestAccounts: async () => {
+          const p = instance.currentProvider;
+          if (!p) throw new Error('Provider not set or invalid');
+          if (typeof p.request === 'function') {
+            return (await p.request({ method: 'eth_requestAccounts' })) ?? [];
+          }
+          return [];
+        },
+        getBalance: jest.fn().mockResolvedValue('0'),
+        personal: { sign: jest.fn() },
+        sendTransaction: jest.fn(),
+        Contract: jest.fn().mockReturnValue({ methods: {} }),
+      },
+      utils: {
+        toChecksumAddress: (addr: string) => addr,
+        toHex: (val: number) => `0x${val.toString(16)}`,
+        toWei: (val: string) => val,
+      },
+    };
+    applyProvider(instance, provider);
+    instances.push(instance);
+    return instance;
+  }
+
   MockWeb3.givenProvider = {};
   MockWeb3.utils = {
     toChecksumAddress: (addr: string) => addr,
     toHex: (val: number) => `0x${val.toString(16)}`,
     toWei: (val: string) => val,
   };
+  MockWeb3.__instances = instances;
   return MockWeb3;
 });
 
@@ -64,7 +123,29 @@ jest.mock('react-device-detect', () => ({
 }));
 
 import Web3 from 'web3';
+import { TranslatedError } from '../../../util/translated-error';
 import { useMetaMask } from '../metamask.hook';
+
+const TEST_ACCOUNT = '0x1111111111111111111111111111111111111111';
+
+function lastWeb3Instance(): any {
+  const instances = (Web3 as any).__instances as any[];
+  return instances[instances.length - 1];
+}
+
+function createBraveLikeProvider(request: jest.Mock) {
+  const target: any = {};
+  Object.defineProperty(target, 'on', { value: jest.fn(), writable: false, configurable: false });
+  target.request = request;
+  target.isMetaMask = true;
+
+  return new Proxy(target, {
+    get(t, prop) {
+      if (prop === 'on') return jest.fn();
+      return t[prop];
+    },
+  });
+}
 
 describe('useMetaMask', () => {
   afterEach(() => {
@@ -122,19 +203,137 @@ describe('useMetaMask', () => {
   });
 
   describe('conflicting injected provider', () => {
-    it('should not throw when the injected provider breaks the Web3 constructor', () => {
-      (window as any).ethereum = { isMetaMask: true };
-      (Web3 as unknown as jest.Mock).mockImplementationOnce(() => {
-        throw new TypeError(
-          "'get' on proxy: property 'on' is a read-only and non-configurable data property on the proxy target but the proxy did not return its actual value",
-        );
+    it('binds a provider whose .on access throws and forwards RPC to it', async () => {
+      const request = jest.fn(async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [TEST_ACCOUNT];
+        return [];
       });
+      (window as any).ethereum = createBraveLikeProvider(request);
 
       const { result } = renderHook(() => useMetaMask());
+      const instance = lastWeb3Instance();
 
-      expect(result.current.isInstalled()).toBe(true);
-      expect(result.current.getWalletType()).toBe('MetaMask');
-      expect(Web3).toHaveBeenLastCalledWith();
+      expect(instance.currentProvider).not.toBeNull();
+      expect(instance.currentProvider).toBeDefined();
+
+      let account: string | undefined;
+      await act(async () => {
+        account = await result.current.getAccount();
+      });
+
+      expect(account).toBe(TEST_ACCOUNT);
+      expect(request).toHaveBeenCalledWith({ method: 'eth_accounts' });
+    });
+
+    it('leaves currentProvider.on undefined so web3 polls instead of subscribing', () => {
+      const request = jest.fn().mockResolvedValue([]);
+      (window as any).ethereum = createBraveLikeProvider(request);
+
+      renderHook(() => useMetaMask());
+      const instance = lastWeb3Instance();
+
+      expect(instance.currentProvider).not.toBeNull();
+      expect(instance.currentProvider.on).toBeUndefined();
+    });
+
+    it('keeps register() working when .on throws so getAccounts/getChainId still run', async () => {
+      const request = jest.fn(async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [TEST_ACCOUNT];
+        if (method === 'eth_chainId') return '0x1';
+        return [];
+      });
+      (window as any).ethereum = createBraveLikeProvider(request);
+
+      const { result } = renderHook(() => useMetaMask());
+      const onAccountChanged = jest.fn();
+      const onBlockchainChanged = jest.fn();
+
+      expect(() => result.current.register(onAccountChanged, onBlockchainChanged)).not.toThrow();
+
+      await waitFor(() => {
+        expect(onAccountChanged).toHaveBeenCalledWith(TEST_ACCOUNT);
+        expect(onBlockchainChanged).toHaveBeenCalledWith('Ethereum');
+      });
+      expect(request).toHaveBeenCalledWith({ method: 'eth_accounts' });
+      expect(request).toHaveBeenCalledWith({ method: 'eth_chainId' });
+    });
+
+    it('still registers accountsChanged and chainChanged listeners when .on works', () => {
+      const on = jest.fn();
+      (window as any).ethereum = {
+        isMetaMask: true,
+        request: jest.fn().mockResolvedValue([]),
+        on,
+      };
+
+      const { result } = renderHook(() => useMetaMask());
+      result.current.register(jest.fn(), jest.fn());
+
+      expect(on).toHaveBeenCalledWith('accountsChanged', expect.any(Function));
+      expect(on).toHaveBeenCalledWith('chainChanged', expect.any(Function));
+    });
+
+    it('picks up a provider that appears after the first render', async () => {
+      const { result } = renderHook(() => useMetaMask());
+      const instance = lastWeb3Instance();
+      expect(instance.currentProvider).toBeNull();
+
+      const request = jest.fn(async () => [TEST_ACCOUNT]);
+      (window as any).ethereum = { isMetaMask: true, request, on: jest.fn() };
+
+      let account: string | undefined;
+      await act(async () => {
+        account = await result.current.getAccount();
+      });
+
+      expect(instance.currentProvider).not.toBeNull();
+      expect(account).toBe(TEST_ACCOUNT);
+      expect(request).toHaveBeenCalledWith({ method: 'eth_accounts' });
+    });
+
+    it('re-renders when a provider appears after mount via ethereum#initialized', () => {
+      const seen: boolean[] = [];
+      renderHook(() => {
+        const mm = useMetaMask();
+        seen.push(mm.isInstalled());
+        return mm;
+      });
+
+      expect(seen).toEqual([false]);
+
+      act(() => {
+        (window as any).ethereum = { isMetaMask: true, request: jest.fn(), on: jest.fn() };
+        window.dispatchEvent(new Event('ethereum#initialized'));
+      });
+
+      expect(seen).toEqual([false, true]);
+    });
+
+    it('re-renders when a provider appears after mount within the bind timeout', async () => {
+      const seen: boolean[] = [];
+      renderHook(() => {
+        const mm = useMetaMask();
+        seen.push(mm.isInstalled());
+        return mm;
+      });
+
+      expect(seen).toEqual([false]);
+
+      await act(async () => {
+        (window as any).ethereum = { isMetaMask: true, request: jest.fn(), on: jest.fn() };
+        await new Promise((r) => setTimeout(r, 60));
+      });
+
+      expect(seen).toEqual([false, true]);
+    });
+
+    it('replaces the web3 provider-missing error with a readable message', async () => {
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.getAccount()).rejects.toBeInstanceOf(TranslatedError);
+      await expect(result.current.getAccount()).rejects.toThrow(
+        'No wallet found. Please check your wallet extension or set one up, then reload this page.',
+      );
     });
   });
 
