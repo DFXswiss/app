@@ -361,7 +361,7 @@ export function useWalletSession(): WalletSession {
 // earlier than even a useLayoutEffect in WalletSessionProvider could manage.
 // ---------------------------------------------------------------------------
 
-const CREDENTIAL_PARAM_KEYS = ['session', 'token', 'accessToken', 'address', 'signature'] as const;
+const CREDENTIAL_PARAM_KEYS = ['session', 'token', 'accessToken', 'address', 'signature', 'pubkey'] as const;
 
 function hasCredentialParams(params: URLSearchParams): boolean {
   const token = params.get('session') ?? params.get('token') ?? params.get('accessToken');
@@ -1279,9 +1279,11 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     }
 
     if (credentialsJustifyClearingSession(params)) {
+      const pubkey = params.get('pubkey')?.trim();
       signInWith({
         address: addressParam as string,
         signature: signatureParam as string,
+        key: pubkey ? pubkey : undefined,
       }).finally(scrubCredentialParams);
       return;
     }

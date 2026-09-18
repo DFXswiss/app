@@ -746,6 +746,7 @@ export const en = {
   personalIbanUnknown: 'The requested personal IBAN provider is not recognized.',
   personalIbanNeedBank: 'Personal IBANs require the bank transfer payment method.',
   personalIbanNeedCurrency: 'Bank Frick personal IBANs are currently only available for EUR and CHF.',
+  privateAssetHint: 'DFX does not offer to buy or sell this token.',
 } as const satisfies Dict;
 export const de = {
   h1a: 'Krypto kaufen,',
@@ -1487,6 +1488,7 @@ export const de = {
   personalIbanUnknown: 'Der angeforderte Personal-IBAN-Anbieter wird nicht erkannt.',
   personalIbanNeedBank: 'Persönliche IBANs sind nur bei Banküberweisung verfügbar.',
   personalIbanNeedCurrency: 'Bank-Frick-IBANs gibt es derzeit nur für EUR und CHF.',
+  privateAssetHint: 'DFX bietet Kauf und Verkauf dieses Tokens nicht an.',
 } satisfies Record<TranslationKey, string>;
 export const it = {
   h1a: 'Compra crypto,',
@@ -2223,6 +2225,7 @@ export const it = {
   personalIbanUnknown: 'Il fornitore di IBAN personale richiesto non è riconosciuto.',
   personalIbanNeedBank: 'Gli IBAN personali richiedono il bonifico bancario.',
   personalIbanNeedCurrency: 'Gli IBAN Bank Frick sono al momento disponibili solo per EUR e CHF.',
+  privateAssetHint: 'DFX non offre l\'acquisto o la vendita di questo token.',
 } satisfies Record<TranslationKey, string>;
 export const fr = {
   h1a: 'Achète des cryptos,',
@@ -2960,6 +2963,7 @@ export const fr = {
   personalIbanUnknown: "Le fournisseur d'IBAN personnel demandé n'est pas reconnu.",
   personalIbanNeedBank: 'Les IBAN personnels nécessitent un virement bancaire.',
   personalIbanNeedCurrency: "Les IBAN Bank Frick ne sont pour l'instant disponibles qu'en EUR et CHF.",
+  privateAssetHint: "DFX n'offre pas l'achat ni la vente de ce token.",
 } satisfies Record<TranslationKey, string>;
 
 export type Language = 'en' | 'de' | 'it' | 'fr';

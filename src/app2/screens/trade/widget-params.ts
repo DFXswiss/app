@@ -18,6 +18,23 @@ export function isPresentFlag(value: string | undefined): boolean {
   return Boolean(value);
 }
 
+/** Main-app `flags?.includes(token)` (buy.screen.tsx:961) — substring on the raw csv string. */
+export function flagsInclude(flags: string | undefined, token: string): boolean {
+  return Boolean(flags && flags.includes(token));
+}
+
+/**
+ * Checkout gate for a private asset (buy.screen.tsx:961, sell.screen.tsx:572, swap.screen.tsx:619).
+ * Visibility stays `includeInPartnerPool` + asset-out / asset-in; `flags=private` only unlocks confirm.
+ */
+export function privateTradeBlocked(
+  flags: string | undefined,
+  categories: readonly (string | undefined)[],
+): boolean {
+  if (flagsInclude(flags, 'private')) return false;
+  return categories.some((category) => category === 'Private');
+}
+
 export function parseEnumValue<T extends string>(
   value: string | undefined,
   members: Record<string, T>,

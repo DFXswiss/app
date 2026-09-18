@@ -12,11 +12,13 @@ import {
   completionRedirectUrl,
   filterAssetsByParam,
   isPersonalIbanApplicable,
+  flagsInclude,
   isPresentFlag,
   isTrueFlag,
   matchBankAccount,
   parseEnumValue,
   personalIbanParamState,
+  privateTradeBlocked,
   restrictBlockchains,
   splitCsvParam,
   walletAllowedByParam,
@@ -35,6 +37,23 @@ describe('widget param parsers', () => {
     expect(isPresentFlag('true')).toBe(true);
     expect(isPresentFlag('')).toBe(false);
     expect(isPresentFlag(undefined)).toBe(false);
+  });
+
+  it('matches a flags token as a substring of the raw csv, like the main app', () => {
+    expect(flagsInclude(undefined, 'private')).toBe(false);
+    expect(flagsInclude('', 'private')).toBe(false);
+    expect(flagsInclude('private', 'private')).toBe(true);
+    expect(flagsInclude('foo,private', 'private')).toBe(true);
+    expect(flagsInclude('foo', 'private')).toBe(false);
+  });
+
+  it('blocks a private-asset checkout unless flags names private', () => {
+    expect(privateTradeBlocked(undefined, ['Private'])).toBe(true);
+    expect(privateTradeBlocked('foo', ['Private'])).toBe(true);
+    expect(privateTradeBlocked('private', ['Private'])).toBe(false);
+    expect(privateTradeBlocked(undefined, ['Public'])).toBe(false);
+    expect(privateTradeBlocked(undefined, [undefined])).toBe(false);
+    expect(privateTradeBlocked('private', ['Public', 'Private'])).toBe(false);
   });
 
   it('matches enum members case-insensitively and skips unknown or empty values', () => {

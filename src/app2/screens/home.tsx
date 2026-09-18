@@ -63,6 +63,7 @@ import {
   matchBankAccount,
   parseEnumValue,
   personalIbanParamState,
+  privateTradeBlocked,
   restrictBlockchains,
 } from './trade/widget-params';
 import { useWalletSession } from '../wallets/session';
@@ -130,6 +131,7 @@ export default function HomeScreen() {
   const bankAccountParam = useMemo(() => routeOrQueryParam(location.search, 'bank-account'), [location.search]);
   const personalIbanParam = useMemo(() => routeOrQueryParam(location.search, 'personal-iban'), [location.search]);
   const redirectUriParam = useMemo(() => routeOrQueryParam(location.search, 'redirect-uri'), [location.search]);
+  const flagsParam = useMemo(() => routeOrQueryParam(location.search, 'flags'), [location.search]);
   const hideTargetSelection = isPresentFlag(routeOrQueryParam(location.search, 'hide-target-selection'));
   const requestedChain = parseEnumValue<Blockchain>(blockchainParam, Blockchain);
   const spendClearedByUserRef = useRef(false);
@@ -392,6 +394,14 @@ export default function HomeScreen() {
   );
   const personalIbanProvider = personalIbanState.kind === 'ready' ? personalIbanState.provider : undefined;
   const personalIbanBlocked = personalIbanState.kind === 'unrecognized' || personalIbanState.kind === 'inapplicable';
+  const privateBlocked = privateTradeBlocked(
+    flagsParam,
+    mode === 'buy'
+      ? [buyApiAsset?.category]
+      : mode === 'sell'
+        ? [sellApiAsset?.category]
+        : [swapFromApiAsset?.category, swapToApiAsset?.category],
+  );
   const sellAmount = parseAmt(sellRaw, language);
   const swapAmount = parseAmt(swapRaw, language);
 
@@ -629,6 +639,7 @@ export default function HomeScreen() {
   }, [paymentSheetOpen]);
 
   const handleCta = () => {
+    if (privateBlocked) return;
     if (mode === 'sell' && !sellBankAccount) {
       setBankAccountOpen(true);
       return;
@@ -1006,6 +1017,12 @@ export default function HomeScreen() {
             : personalIbanState.reason === 'method'
               ? t('personalIbanNeedBank')
               : t('personalIbanNeedCurrency')}
+        </div>
+      )}
+
+      {privateBlocked && (
+        <div className={cx('paybox-note', 'warn')} style={{ margin: '0 0 12px' }}>
+          {t('privateAssetHint')}
         </div>
       )}
 

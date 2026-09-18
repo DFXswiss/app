@@ -331,6 +331,42 @@ describe('Home partner widget params', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
+  it('lets a named private buy complete when flags includes private', async () => {
+    setParams('?asset-out=DEPS&flags=private');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('DEPS');
+    expect(screen.queryByText(/does not offer to buy or sell|bietet kauf und verkauf|non offre l'acquisto|n'offre pas l'achat/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('trade-cta')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
+  });
+
+  it('blocks a named private buy when flags is absent', async () => {
+    setParams('?asset-out=DEPS');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('DEPS');
+    expect(screen.getByText(/does not offer to buy or sell|bietet kauf und verkauf|non offre l'acquisto|n'offre pas l'achat/i)).toBeInTheDocument();
+    const cta = screen.getByTestId('trade-cta');
+    expect(cta).not.toBeDisabled();
+    fireEvent.click(cta);
+    await settleQuote();
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
+  });
+
+  it('ignores an unknown flags value and still blocks a private buy', async () => {
+    setParams('?asset-out=DEPS&flags=foo');
+    renderHome();
+    await settleQuote();
+    const cta = screen.getByTestId('trade-cta');
+    expect(cta).not.toBeDisabled();
+    fireEvent.click(cta);
+    await settleQuote();
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
+  });
+
   it('quotes from amount-out and does not restore it after the user clears receive', async () => {
     setParams('?amount-out=0.01');
     renderHome();
