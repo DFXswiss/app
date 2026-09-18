@@ -153,6 +153,11 @@ describe('wallet reachability', () => {
     expect(shownChainsFor(token, 'buy', [Blockchain.ARBITRUM]).map((c) => c.blockchain)).toEqual([Blockchain.ARBITRUM]);
     expect(shownChainsFor(token, 'buy', [Blockchain.SOLANA])).toEqual([]);
   });
+
+  it('intersects reachable chains with the partner blockchains param and stays empty when none match', () => {
+    expect(shownChainsFor(token, 'buy', undefined, 'ethereum').map((c) => c.blockchain)).toEqual([Blockchain.ETHEREUM]);
+    expect(shownChainsFor(token, 'buy', [Blockchain.ETHEREUM, Blockchain.ARBITRUM], 'Mars')).toEqual([]);
+  });
 });
 
 describe('parseBalances / heldBalance', () => {

@@ -13,6 +13,7 @@ import { LoadingRow, onActivate, Sheet, Spinner, useToast } from '../components/
 import { useT } from '../i18n';
 import { chainName } from '../screens/trade/blockchain-meta';
 import { EVM_NETWORK_COUNT, WALLET_CATALOG, type WalletCatalogEntry } from './catalog';
+import { walletAllowedByParam } from '../screens/trade/widget-params';
 import { isPlausibleCliAddress } from './cli';
 import { RECOMMENDATION_CODE_LENGTH } from './invite';
 import type { HardwareChain } from './hardware-providers';
@@ -22,6 +23,7 @@ import { cx } from '../css';
 interface ConnectSheetProps {
   open: boolean;
   view: ConnectView;
+  walletsFilter?: string;
   onClose: () => void;
   onSelectWallet: (entry: WalletCatalogEntry) => void;
   onSelectHwChain: (entry: WalletCatalogEntry, chain: HardwareChain) => void;
@@ -59,6 +61,7 @@ const COPY_ICON = (
 export function ConnectSheet({
   open,
   view,
+  walletsFilter,
   onClose,
   onSelectWallet,
   onSelectHwChain,
@@ -104,7 +107,9 @@ export function ConnectSheet({
           </p>
         )}
       </div>
-      {view.kind === 'list' && <WalletList onSelectWallet={onSelectWallet} filterChain={filterChain} />}
+      {view.kind === 'list' && (
+        <WalletList onSelectWallet={onSelectWallet} filterChain={filterChain} walletsFilter={walletsFilter} />
+      )}
       {view.kind === 'connecting' && (
         <div className={cx('slist')} style={{ display: 'grid', placeItems: 'center', minHeight: 160 }}>
           <LoadingRow label={view.label} />
@@ -197,9 +202,11 @@ function HwPairing({ code }: { code?: string }): JSX.Element {
 function WalletList({
   onSelectWallet,
   filterChain,
+  walletsFilter,
 }: {
   onSelectWallet: (entry: WalletCatalogEntry) => void;
   filterChain?: Blockchain;
+  walletsFilter?: string;
 }): JSX.Element {
   const { t } = useT();
   return (
@@ -207,7 +214,8 @@ function WalletList({
       {WALLET_CATALOG.map((group) => {
         // When opened for a specific chain, keep only wallets that can receive on it, and drop
         // groups that end up empty — mirrors the original buildWallets() filter (index.html:3106).
-        const items = filterChain ? group.items.filter((w) => w.chains?.includes(filterChain)) : group.items;
+        const byChain = filterChain ? group.items.filter((w) => w.chains?.includes(filterChain)) : group.items;
+        const items = byChain.filter((entry) => walletAllowedByParam(entry, walletsFilter));
         if (!items.length) return null;
         return (
           <div key={group.key}>

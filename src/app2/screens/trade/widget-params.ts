@@ -37,6 +37,99 @@ export function restrictBlockchains(
   return hit.length ? hit : sessionBlockchains;
 }
 
+/** Comma-split like the main app (`filter.split(',')`). Absent or empty → no filter. No trim. */
+export function splitCsvParam(value: string | undefined): string[] | undefined {
+  if (!value) return undefined;
+  return value.split(',');
+}
+
+/**
+ * Main-app `isSameAsset` (`@dfx.swiss/react` asset.hook): id, uniqueName, name, chainId.
+ * Name/uniqueName/chainId compare case-insensitively; id is `asset.id === +identifier`.
+ */
+export function assetMatchesFilterToken(
+  asset: { id?: number; name: string; uniqueName?: string; chainId?: string | null },
+  token: string,
+): boolean {
+  return (
+    asset.id === +token ||
+    asset.name.toLowerCase() === token.toLowerCase() ||
+    asset.uniqueName?.toLowerCase() === token.toLowerCase() ||
+    asset.chainId?.toLowerCase() === token.toLowerCase()
+  );
+}
+
+/** Main-app `filterAssets` (buy.screen.tsx:942). Unknown tokens drop out; an all-unknown filter is empty. */
+export function filterAssetsByParam<T extends { id?: number; name: string; uniqueName?: string; chainId?: string | null }>(
+  assets: T[],
+  filter: string | undefined,
+): T[] {
+  const tokens = splitCsvParam(filter);
+  if (!tokens) return assets;
+  return assets.filter((asset) => tokens.some((token) => assetMatchesFilterToken(asset, token)));
+}
+
+/** Main-app `params.blockchains` (`app-handling.context.tsx:512`). Case-insensitive; unknown names drop. */
+export function chainAllowedByParam(blockchain: string, filter: string | undefined): boolean {
+  const tokens = splitCsvParam(filter);
+  if (!tokens) return true;
+  const allowed = tokens.map((token) => token.toLowerCase());
+  return allowed.includes(blockchain.toLowerCase());
+}
+
+/**
+ * Main-app `WalletType` strings (`wallet.context.tsx:12-43`) whose catalog `id` differs from
+ * the token. Identity tokens (MetaMask, Alby, WalletConnect) hit `id` / `walletType` directly.
+ * DfxTaro, Cake, Monero, Mail, Address have no App 2.0 row and are omitted — a filter of only
+ * those stays empty rather than showing every wallet.
+ *
+ * CliAda → Cardano (`catalog.ts` Cardano row is the CLI_ADA / CIP-30 path, `cardano.ts:9`).
+ * Other `Cli*` → CLI (`WalletTypeMap` maps them to `AuthWalletType.CLI`; the CLI row is
+ * `connector: 'cli'`). CliIcp is CLI, not the coming-soon Internet Computer row (no walletType).
+ */
+const WALLET_PARAM_CATALOG_ID: { readonly [token: string]: string } = {
+  LedgerBtc: 'Ledger',
+  LedgerEth: 'Ledger',
+  BitBoxBtc: 'BitBox',
+  BitBoxEth: 'BitBox',
+  TrezorBtc: 'Trezor',
+  TrezorEth: 'Trezor',
+  PhantomSol: 'Phantom',
+  TrustSol: 'Trust Wallet',
+  TrustTrx: 'Trust Wallet',
+  TronLinkTrx: 'TronLink',
+  CliBtc: 'CLI',
+  CliSpark: 'CLI',
+  CliArk: 'CLI',
+  CliFiro: 'CLI',
+  CliXmr: 'CLI',
+  CliZano: 'CLI',
+  CliIcp: 'CLI',
+  CliEth: 'CLI',
+  CliAda: 'Cardano',
+  CliAr: 'CLI',
+  CliLn: 'CLI',
+  CliSol: 'CLI',
+  CliTrx: 'CLI',
+};
+
+/**
+ * Main-app `wallets` (`home.screen.tsx:246`): case-sensitive `split(',').includes(type)`.
+ * Also accepts catalog `id` / `walletType` so `wallets=Ledger` still matches.
+ */
+export function walletAllowedByParam(
+  entry: { id: string; walletType?: string },
+  filter: string | undefined,
+): boolean {
+  const tokens = splitCsvParam(filter);
+  if (!tokens) return true;
+  return tokens.some((token) => {
+    if (token === entry.walletType || token === entry.id) return true;
+    const catalogId = WALLET_PARAM_CATALOG_ID[token];
+    return Boolean(catalogId) && catalogId === entry.id;
+  });
+}
+
 export function matchBankAccount<T extends { id: number; iban: string; label?: string }>(
   accounts: T[],
   identifier: string,
