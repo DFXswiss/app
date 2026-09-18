@@ -921,6 +921,7 @@
     "Escalated": "Escaladé",
     "Escalations": "Escalades",
     "Customer waiting longer than {{hours}}h for a reply": "Client en attente d'une réponse depuis plus de {{hours}} h",
+    "Customer waiting longer than {{minutes}} min for a reply": "Client en attente d'une réponse depuis plus de {{minutes}} min",
     "No escalations — all customers replied to in time": "Aucune escalade – tous les clients ont reçu une réponse à temps",
     "Awaiting reply": "En attente de réponse",
     "Replied": "Répondu",

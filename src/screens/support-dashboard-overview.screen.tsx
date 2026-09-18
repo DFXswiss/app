@@ -24,6 +24,7 @@ import {
   typeLabel,
   WAIT_TIER_HOURS,
   waitTier,
+  waitTierLabel,
 } from 'src/util/support-helpers';
 
 type DashboardTab = 'overview' | 'statistics';
@@ -169,7 +170,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
       .filter((x) => x.hours >= 0)
       .sort((a, b) => b.hours - a.hours);
 
-    // cumulative counts per threshold (≥1h ⊇ ≥12h ⊇ ≥24h; the ≥24h bucket = escalated)
+    // cumulative counts per threshold (≥1 min ⊇ ≥12h ⊇ ≥24h; the ≥24h bucket = escalated)
     const waitingLongerThan = WAIT_TIER_HOURS.map((h) => waitingSorted.filter((x) => x.hours >= h).length);
 
     // open limit increase requests, oldest first
@@ -266,9 +267,15 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
                   ? translate('screens/support', 'Escalations')
                   : translate('screens/support', 'Waiting tickets')
               }
-              subtitle={translate('screens/support', 'Customer waiting longer than {{hours}}h for a reply', {
-                hours: waitFilter,
-              })}
+              subtitle={
+                waitFilter < 1
+                  ? translate('screens/support', 'Customer waiting longer than {{minutes}} min for a reply', {
+                      minutes: Math.round(waitFilter * 60),
+                    })
+                  : translate('screens/support', 'Customer waiting longer than {{hours}}h for a reply', {
+                      hours: waitFilter,
+                    })
+              }
               count={waitingList.length}
               accent={waitFilter >= ESCALATION_HOURS ? 'danger' : 'neutral'}
             >
@@ -373,7 +380,7 @@ function StatCard({ label, value, onClick }: { label: string; value: ReactNode; 
   );
 }
 
-// Customer-waiting card with rising-severity tiers (1h / 12h / 24h; ≥24h = escalated).
+// Customer-waiting card with rising-severity tiers (1 min / 12h / 24h; ≥24h = escalated).
 // Counts are cumulative ("waiting longer than X"); clicking a pill filters the list below.
 function WaitTierCard({
   counts,
@@ -385,10 +392,10 @@ function WaitTierCard({
   onSelect: (hours: number) => void;
 }): JSX.Element {
   const { translate } = useSettingsContext();
-  const tiers = [
-    { hours: 1, label: '1h', pill: 'bg-dfxGray-300 text-dfxBlue-800', ring: 'ring-dfxGray-600' },
-    { hours: 12, label: '12h', pill: 'bg-dfxYellow-500/20 text-dfxYellow-700', ring: 'ring-dfxYellow-500' },
-    { hours: 24, label: '24h', pill: 'bg-dfxRed-100/15 text-dfxRed-100', ring: 'ring-dfxRed-100' },
+  const styles = [
+    { pill: 'bg-dfxGray-300 text-dfxBlue-800', ring: 'ring-dfxGray-600' },
+    { pill: 'bg-dfxYellow-500/20 text-dfxYellow-700', ring: 'ring-dfxYellow-500' },
+    { pill: 'bg-dfxRed-100/15 text-dfxRed-100', ring: 'ring-dfxRed-100' },
   ];
 
   return (
@@ -397,18 +404,20 @@ function WaitTierCard({
         {translate('screens/support', 'Waiting longer than')}
       </div>
       <div className="flex items-center gap-2">
-        {tiers.map((t, i) => {
-          const active = selected === t.hours;
+        {WAIT_TIER_HOURS.map((hours, i) => {
+          const label = waitTierLabel(hours);
+          const { pill, ring } = styles[i];
+          const active = selected === hours;
           return (
             <button
-              key={t.label}
-              onClick={() => onSelect(t.hours)}
-              className={`inline-flex items-baseline gap-1.5 rounded-full px-3 py-1 transition ${t.pill} ${
-                active ? `ring-2 ${t.ring}` : 'opacity-80 hover:opacity-100'
+              key={label}
+              onClick={() => onSelect(hours)}
+              className={`inline-flex items-baseline gap-1.5 rounded-full px-3 py-1 transition ${pill} ${
+                active ? `ring-2 ${ring}` : 'opacity-80 hover:opacity-100'
               }`}
             >
               <span className="text-xl font-bold leading-none">{counts[i] ?? 0}</span>
-              <span className="text-2xs font-medium opacity-70">{t.label}</span>
+              <span className="text-2xs font-medium opacity-70">{label}</span>
             </button>
           );
         })}
