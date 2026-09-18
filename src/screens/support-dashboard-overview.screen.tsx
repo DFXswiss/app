@@ -10,6 +10,7 @@ import { STAFF_NAME_MISSING } from 'src/components/compliance/staff-identity';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { SupportIssueListItem, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 import { formatDateTimeShort } from 'src/util/compliance-helpers';
+import { storageGet, storageSet } from 'src/util/safe-storage';
 import {
   computeStatistics,
   customerWaitingHours,
@@ -40,6 +41,28 @@ const TERMINAL_STATES: SupportIssueInternalState[] = [
 ];
 const OPEN_STATES = Object.values(SupportIssueInternalState).filter((s) => !TERMINAL_STATES.includes(s));
 const REFRESH_MS = 60_000;
+const NEWEST_TICKET_LIMIT = 10;
+const WAIT_FILTER_STORAGE_KEY = 'dfx.support.waitFilterHours';
+
+function readStoredWaitFilter(): number {
+  try {
+    const raw = storageGet('localStorage', WAIT_FILTER_STORAGE_KEY);
+    if (raw == null || raw === '') return ESCALATION_HOURS;
+    const value = Number(raw);
+    if (!WAIT_TIER_HOURS.some((hours) => hours === value)) return ESCALATION_HOURS;
+    return value;
+  } catch {
+    return ESCALATION_HOURS;
+  }
+}
+
+function persistWaitFilter(hours: number): void {
+  try {
+    storageSet('localStorage', WAIT_FILTER_STORAGE_KEY, String(hours));
+  } catch {
+    // private mode / blocked storage — keep the in-memory selection
+  }
+}
 
 type WaitTierStyle = { pill: string; ring: string };
 type SameShape<T extends readonly unknown[], V> = { [K in keyof T]: V };
@@ -63,7 +86,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
   const [now, setNow] = useState(() => new Date());
 
   const [tab, setTab] = useState<DashboardTab>('overview');
-  const [waitFilter, setWaitFilter] = useState<number>(ESCALATION_HOURS);
+  const [waitFilter, setWaitFilter] = useState<number>(readStoredWaitFilter);
   const [statsPeriod, setStatsPeriod] = useState<number>(DEFAULT_STAT_PERIOD_DAYS);
   const [statistics, setStatistics] = useState<TicketStatistics>();
   const [statsLoading, setStatsLoading] = useState(false);
@@ -175,7 +198,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
       .filter((x) => x.hours >= 0)
       .sort((a, b) => b.hours - a.hours);
 
-    // cumulative counts per threshold (≥1 min ⊇ ≥12h ⊇ ≥24h; the ≥24h bucket = escalated)
+    // cumulative counts per threshold (≥1h ⊇ ≥12h ⊇ ≥24h; the ≥24h bucket = escalated)
     const waitingLongerThan: WaitTierCounts = [
       waitingSorted.filter((x) => x.hours >= WAIT_TIER_HOURS[0]).length,
       waitingSorted.filter((x) => x.hours >= WAIT_TIER_HOURS[1]).length,
@@ -193,6 +216,14 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
   const waitingList = useMemo(
     () => stats.waitingSorted.filter((x) => x.hours >= waitFilter).map((x) => x.issue),
     [stats.waitingSorted, waitFilter],
+  );
+
+  const newestList = useMemo(
+    () =>
+      [...issues]
+        .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
+        .slice(0, NEWEST_TICKET_LIMIT),
+    [issues],
   );
 
   useLayoutOptions({
@@ -263,6 +294,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
                 selected={waitFilter}
                 onSelect={(hours) => {
                   setWaitFilter(hours);
+                  persistWaitFilter(hours);
                   scrollToSection('waiting');
                 }}
               />
@@ -276,15 +308,9 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
                   ? translate('screens/support', 'Escalations')
                   : translate('screens/support', 'Waiting tickets')
               }
-              subtitle={
-                waitFilter < 1
-                  ? translate('screens/support', 'Customer waiting longer than {{minutes}} min for a reply', {
-                      minutes: Math.round(waitFilter * 60),
-                    })
-                  : translate('screens/support', 'Customer waiting longer than {{hours}}h for a reply', {
-                      hours: waitFilter,
-                    })
-              }
+              subtitle={translate('screens/support', 'Customer waiting longer than {{hours}}h for a reply', {
+                hours: waitFilter,
+              })}
               count={waitingList.length}
               accent={waitFilter >= ESCALATION_HOURS ? 'danger' : 'neutral'}
             >
@@ -318,6 +344,24 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
               ) : (
                 <IssueList
                   issues={stats.limitRequests}
+                  now={now}
+                  onClick={(i) => navigate(`/support/dashboard/issue/${i.id}`)}
+                />
+              )}
+            </Section>
+
+            <Section
+              anchorId="newest"
+              title={translate('screens/support', 'Newest')}
+              subtitle={translate('screens/support', 'Most recently opened tickets')}
+              count={newestList.length}
+              accent="neutral"
+            >
+              {newestList.length === 0 ? (
+                <EmptyState text={translate('screens/support', 'No open tickets')} />
+              ) : (
+                <IssueList
+                  issues={newestList}
                   now={now}
                   onClick={(i) => navigate(`/support/dashboard/issue/${i.id}`)}
                 />
@@ -389,7 +433,7 @@ function StatCard({ label, value, onClick }: { label: string; value: ReactNode; 
   );
 }
 
-// Customer-waiting card with rising-severity tiers (1 min / 12h / 24h; ≥24h = escalated).
+// Customer-waiting card with rising-severity tiers (1h / 12h / 24h; ≥24h = escalated).
 // Counts are cumulative ("waiting longer than X"); clicking a pill filters the list below.
 function WaitTierCard({
   counts,

@@ -13,10 +13,10 @@ export const AutoResponderAuthor = 'AutoResponder';
 export const ESCALATION_HOURS = 24;
 
 // Customer-waiting thresholds (hours waiting for a reply) with rising severity.
-// Lowest tier is 1 minute (1/60 h); the ≥24h tier equals the escalation threshold.
-export const WAIT_TIER_HOURS = [1 / 60, 12, 24] as const;
+// Lowest tier is 1 hour; the ≥24h tier equals the escalation threshold.
+export const WAIT_TIER_HOURS = [1, 12, 24] as const;
 
-// 0 = fresh (<1 min), 1 = ≥1 min, 2 = ≥12h, 3 = ≥24h (escalated)
+// 0 = fresh (<1h), 1 = ≥1h, 2 = ≥12h, 3 = ≥24h (escalated)
 export function waitTier(hoursWaiting: number): 0 | 1 | 2 | 3 {
   if (hoursWaiting >= WAIT_TIER_HOURS[2]) return 3;
   if (hoursWaiting >= WAIT_TIER_HOURS[1]) return 2;
@@ -24,9 +24,8 @@ export function waitTier(hoursWaiting: number): 0 | 1 | 2 | 3 {
   return 0;
 }
 
-// Pill label for a wait-tier threshold: minutes below 1 hour, hours otherwise.
+// Pill label for a wait-tier threshold.
 export function waitTierLabel(hours: number): string {
-  if (hours < 1) return `${Math.round(hours * 60)} min`;
   return `${hours}h`;
 }
 

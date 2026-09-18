@@ -1,11 +1,13 @@
-// Unit tests for SupportDashboardOverviewScreen: wait-tier card labels, cumulative counts,
-// list filter after clicking the lowest pill, and the minutes subtitle. Heavy deps are mocked
-// so the screen renders under @testing-library/react without the full app shell.
+// Unit tests for SupportDashboardOverviewScreen: wait-tier card, newest section, persisted
+// wait filter, and the rest of the overview. Heavy deps are mocked so the screen renders
+// under @testing-library/react without the full app shell.
 
 const mockUseSupportDashboardGuard = jest.fn();
 const mockNavigate = jest.fn();
 const mockGetIssueList = jest.fn();
 const mockGetIssueStatistics = jest.fn();
+const mockStorageGet = jest.fn();
+const mockStorageSet = jest.fn();
 let mockCurrentGetIssueList: typeof mockGetIssueList = mockGetIssueList;
 const mockStaffName: { name?: string; isLoading: boolean; error?: string } = {
   name: 'Josh',
@@ -108,6 +110,11 @@ jest.mock('src/util/compliance-helpers', () => ({
   formatDateTimeShort: (value: string) => `short:${value}`,
 }));
 
+jest.mock('src/util/safe-storage', () => ({
+  storageGet: (...args: unknown[]) => mockStorageGet(...args),
+  storageSet: (...args: unknown[]) => mockStorageSet(...args),
+}));
+
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import SupportDashboardOverviewScreen from 'src/screens/support-dashboard-overview.screen';
 import type { SupportIssueListItem } from 'src/hooks/support-dashboard.hook';
@@ -141,9 +148,9 @@ function issue(partial: Partial<SupportIssueListItem> = {}): SupportIssueListIte
 const WAITING_TICKETS: SupportIssueListItem[] = [
   issue({
     id: 1,
-    name: 'Five minutes waiting',
+    name: 'Five hours waiting',
     lastMessageAuthor: 'Customer',
-    lastMessageDate: minutesAgo(5),
+    lastMessageDate: hoursAgo(5),
     clerk: 'Jana',
   }),
   issue({
@@ -234,6 +241,12 @@ function waitPills(): HTMLElement[] {
   return within(waitTierCard()).getAllByRole('button');
 }
 
+function section(id: string): HTMLElement {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`#${id} missing`);
+  return el;
+}
+
 function pillParts(button: HTMLElement): { count: string; label: string } {
   const spans = Array.from(button.querySelectorAll('span'));
   return { count: spans[0]?.textContent ?? '', label: spans[1]?.textContent ?? '' };
@@ -245,6 +258,7 @@ describe('SupportDashboardOverviewScreen wait-tier card', () => {
     jest.setSystemTime(NOW);
     Element.prototype.scrollIntoView = jest.fn();
     jest.clearAllMocks();
+    resetStorage();
     mockGetIssueList.mockResolvedValue({ data: WAITING_TICKETS, total: WAITING_TICKETS.length });
     mockGetIssueStatistics.mockResolvedValue({ trend: [] });
   });
@@ -256,35 +270,35 @@ describe('SupportDashboardOverviewScreen wait-tier card', () => {
     jest.useRealTimers();
   });
 
-  it('labels the three waiting-longer-than pills 1 min, 12h, 24h in that order', async () => {
+  it('labels the three waiting-longer-than pills 1h, 12h, 24h in that order', async () => {
     await renderLoaded();
 
-    expect(waitPills().map((pill) => pillParts(pill).label)).toEqual(['1 min', '12h', '24h']);
+    expect(waitPills().map((pill) => pillParts(pill).label)).toEqual(['1h', '12h', '24h']);
   });
 
-  it('counts waiting tickets cumulatively and includes the 5-minute ticket in the lowest tier', async () => {
+  it('counts waiting tickets cumulatively and includes the 5-hour ticket in the lowest tier', async () => {
     await renderLoaded();
 
     expect(waitPills().map((pill) => pillParts(pill).count)).toEqual(['3', '2', '1']);
   });
 
-  it('shows the 5-minute ticket in the list only after clicking the 1 min pill', async () => {
+  it('shows the 5-hour ticket in the waiting list only after clicking the 1h pill', async () => {
     await renderLoaded();
 
-    expect(screen.queryByText('Five minutes waiting')).not.toBeInTheDocument();
+    expect(within(section('waiting')).queryByText('Five hours waiting')).not.toBeInTheDocument();
 
     fireEvent.click(waitPills()[0]);
 
-    expect(screen.getByText('Five minutes waiting')).toBeInTheDocument();
+    expect(within(section('waiting')).getByText('Five hours waiting')).toBeInTheDocument();
   });
 
-  it('uses a minutes subtitle after clicking the 1 min pill, not a fractional hour', async () => {
+  it('uses an hours subtitle after clicking the 1h pill', async () => {
     await renderLoaded();
 
     fireEvent.click(waitPills()[0]);
 
-    const subtitle = screen.getByText(/Customer waiting longer than/);
-    expect(subtitle.textContent).toBe('Customer waiting longer than 1 min for a reply');
+    const subtitle = within(section('waiting')).getByText(/Customer waiting longer than/);
+    expect(subtitle.textContent).toBe('Customer waiting longer than 1h for a reply');
   });
 });
 
@@ -298,6 +312,12 @@ function resetIssueListFn(): void {
   mockCurrentGetIssueList = mockGetIssueList;
 }
 
+function resetStorage(): void {
+  mockStorageGet.mockReset();
+  mockStorageSet.mockReset();
+  mockStorageGet.mockReturnValue(undefined);
+}
+
 describe('SupportDashboardOverviewScreen overview chrome', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -306,6 +326,7 @@ describe('SupportDashboardOverviewScreen overview chrome', () => {
     jest.clearAllMocks();
     resetStaffName();
     resetIssueListFn();
+    resetStorage();
     mockGetIssueList.mockResolvedValue({ data: [], total: 0 });
     mockGetIssueStatistics.mockResolvedValue(sampleStatistics());
   });
@@ -392,10 +413,9 @@ describe('SupportDashboardOverviewScreen overview chrome', () => {
 
   it('scrolls to the my-tickets section when the My tickets card is clicked', async () => {
     await renderLoaded();
-    const section = document.getElementById('my-tickets');
+    const myTickets = section('my-tickets');
     const scrollIntoView = jest.fn();
-    if (!section) throw new Error('my-tickets section missing');
-    section.scrollIntoView = scrollIntoView;
+    myTickets.scrollIntoView = scrollIntoView;
 
     fireEvent.click(screen.getAllByText('My tickets')[0]);
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
@@ -451,7 +471,7 @@ describe('SupportDashboardOverviewScreen overview chrome', () => {
     });
     await renderLoaded();
 
-    fireEvent.click(screen.getByText('Escalated row'));
+    fireEvent.click(within(section('waiting')).getByText('Escalated row'));
     expect(mockNavigate).toHaveBeenCalledWith('/support/dashboard/issue/42');
   });
 
@@ -477,7 +497,7 @@ describe('SupportDashboardOverviewScreen overview chrome', () => {
 
     expect(mockGetIssueList).toHaveBeenCalled();
     expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
-    expect(screen.getByText('After refresh')).toBeInTheDocument();
+    expect(within(section('waiting')).getByText('After refresh')).toBeInTheDocument();
   });
 });
 
@@ -489,6 +509,7 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     jest.clearAllMocks();
     resetStaffName();
     resetIssueListFn();
+    resetStorage();
     mockGetIssueList.mockResolvedValue({ data: [], total: 0 });
     mockGetIssueStatistics.mockResolvedValue(sampleStatistics());
   });
@@ -528,14 +549,12 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     });
     await renderLoaded();
 
-    const section = document.getElementById('limit-requests');
-    if (!section) throw new Error('limit-requests section missing');
-    const names = within(section)
+    const names = within(section('limit-requests'))
       .getAllByText(/limit$/i)
       .map((el) => el.textContent);
     expect(names).toEqual(['Older limit', 'Newer limit']);
 
-    fireEvent.click(screen.getByText('Older limit'));
+    fireEvent.click(within(section('limit-requests')).getByText('Older limit'));
     expect(mockNavigate).toHaveBeenCalledWith('/support/dashboard/issue/1');
   });
 
@@ -544,9 +563,7 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     mockStaffName.name = undefined;
     await renderLoaded();
 
-    const section = document.getElementById('my-tickets');
-    if (!section) throw new Error('my-tickets section missing');
-    expect(within(section).getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(within(section('my-tickets')).getByTestId('loading-spinner')).toBeInTheDocument();
   });
 
   it('shows the verified-name error when loading the clerk name failed', async () => {
@@ -577,7 +594,7 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     });
     await renderLoaded();
 
-    expect(screen.getByText('Still mine')).toBeInTheDocument();
+    expect(within(section('my-tickets')).getByText('Still mine')).toBeInTheDocument();
     expect(screen.queryByText(/Could not load your verified name/)).not.toBeInTheDocument();
   });
 
@@ -603,15 +620,13 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     });
     await renderLoaded();
 
-    const section = document.getElementById('my-tickets');
-    if (!section) throw new Error('my-tickets section missing');
-    const names = within(section)
+    const names = within(section('my-tickets'))
       .getAllByText(/mine$/)
       .map((el) => el.textContent);
     expect(names).toEqual(['Older mine', 'Newer mine']);
     expect(statCardValue('My tickets')).toContain('2');
 
-    fireEvent.click(screen.getByText('Older mine'));
+    fireEvent.click(within(section('my-tickets')).getByText('Older mine'));
     expect(mockNavigate).toHaveBeenCalledWith('/support/dashboard/issue/7');
   });
 
@@ -630,8 +645,8 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     });
     await renderLoaded();
 
-    expect(screen.getByTitle('Replied')).toBeInTheDocument();
-    expect(screen.getByText('short:2026-06-01T00:00:00.000Z')).toBeInTheDocument();
+    expect(within(section('limit-requests')).getByTitle('Replied')).toBeInTheDocument();
+    expect(within(section('limit-requests')).getByText('short:2026-06-01T00:00:00.000Z')).toBeInTheDocument();
   });
 
   it('colors the wait badge gray below 12h, yellow from 12h, and red from 24h', async () => {
@@ -660,11 +675,11 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     });
     await renderLoaded();
 
-    expect(screen.getByTitle('Escalated')).toBeInTheDocument();
+    expect(within(section('waiting')).getByTitle('Escalated')).toBeInTheDocument();
     fireEvent.click(waitPills()[0]);
 
     const badgeOf = (name: string): HTMLElement => {
-      const row = screen.getByText(name).closest('li');
+      const row = within(section('waiting')).getByText(name).closest('li');
       if (!row) throw new Error(`row "${name}" not found`);
       const badge = row.querySelector('span.rounded-full.font-semibold');
       if (!(badge instanceof HTMLElement)) throw new Error(`badge for "${name}" not found`);
@@ -691,7 +706,7 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     });
     await renderLoaded();
 
-    const row = screen.getByText('Unassigned wait').closest('li');
+    const row = within(section('waiting')).getByText('Unassigned wait').closest('li');
     if (!row) throw new Error('row missing');
     expect(row.textContent).toContain('GenericIssue · Other');
     expect(row.textContent).not.toContain('GenericIssue · Other ·');
@@ -706,6 +721,7 @@ describe('SupportDashboardOverviewScreen statistics', () => {
     jest.clearAllMocks();
     resetStaffName();
     resetIssueListFn();
+    resetStorage();
     mockGetIssueList.mockResolvedValue({ data: [], total: 0 });
     mockGetIssueStatistics.mockResolvedValue(sampleStatistics());
   });
@@ -1000,6 +1016,187 @@ describe('SupportDashboardOverviewScreen statistics', () => {
       await Promise.resolve();
     });
     expect(statCardValue('New tickets')).toBe('7');
+  });
+});
+
+describe('SupportDashboardOverviewScreen newest section', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    Element.prototype.scrollIntoView = jest.fn();
+    jest.clearAllMocks();
+    resetStaffName();
+    resetIssueListFn();
+    resetStorage();
+    mockGetIssueList.mockResolvedValue({ data: [], total: 0 });
+    mockGetIssueStatistics.mockResolvedValue(sampleStatistics());
+  });
+
+  afterEach(() => {
+    resetStaffName();
+    resetIssueListFn();
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it('lists open tickets newest first and opens a row on click', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({ id: 1, name: 'Oldest opened', created: '2026-06-16T10:00:00.000Z' }),
+        issue({ id: 2, name: 'Newest opened', created: '2026-06-18T10:00:00.000Z' }),
+        issue({ id: 3, name: 'Middle opened', created: '2026-06-17T10:00:00.000Z' }),
+      ],
+      total: 3,
+    });
+    await renderLoaded();
+
+    const names = within(section('newest'))
+      .getAllByText(/opened$/)
+      .map((el) => el.textContent);
+    expect(names).toEqual(['Newest opened', 'Middle opened', 'Oldest opened']);
+
+    fireEvent.click(within(section('newest')).getByText('Newest opened'));
+    expect(mockNavigate).toHaveBeenCalledWith('/support/dashboard/issue/2');
+  });
+
+  it('includes a ticket we already answered, unlike the waiting section', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 1,
+          name: 'We answered this',
+          created: '2026-06-18T11:00:00.000Z',
+          lastMessageAuthor: 'Jana',
+        }),
+        issue({
+          id: 2,
+          name: 'Still waiting',
+          created: '2026-06-18T10:00:00.000Z',
+          lastMessageAuthor: 'Customer',
+          lastMessageDate: hoursAgo(25),
+        }),
+      ],
+      total: 2,
+    });
+    await renderLoaded();
+
+    expect(within(section('newest')).getByText('We answered this')).toBeInTheDocument();
+    expect(within(section('waiting')).queryByText('We answered this')).not.toBeInTheDocument();
+    expect(within(section('waiting')).getByText('Still waiting')).toBeInTheDocument();
+  });
+
+  it('shows at most 10 tickets and drops the oldest beyond that', async () => {
+    const tickets = Array.from({ length: 11 }, (_, i) =>
+      issue({
+        id: i + 1,
+        name: `Ticket ${i + 1}`,
+        created: new Date(NOW.getTime() - i * 60_000).toISOString(),
+      }),
+    );
+    mockGetIssueList.mockResolvedValue({ data: tickets, total: 11 });
+    await renderLoaded();
+
+    const names = within(section('newest'))
+      .getAllByText(/^Ticket \d+$/)
+      .map((el) => el.textContent);
+    expect(names).toHaveLength(10);
+    expect(names[0]).toBe('Ticket 1');
+    expect(names[9]).toBe('Ticket 10');
+    expect(within(section('newest')).queryByText('Ticket 11')).not.toBeInTheDocument();
+  });
+
+  it('shows No open tickets when the list is empty', async () => {
+    await renderLoaded();
+    expect(screen.getByText('No open tickets')).toBeInTheDocument();
+  });
+});
+
+describe('SupportDashboardOverviewScreen wait-filter persistence', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    Element.prototype.scrollIntoView = jest.fn();
+    jest.clearAllMocks();
+    resetStaffName();
+    resetIssueListFn();
+    resetStorage();
+    mockGetIssueList.mockResolvedValue({ data: WAITING_TICKETS, total: WAITING_TICKETS.length });
+    mockGetIssueStatistics.mockResolvedValue(sampleStatistics());
+  });
+
+  afterEach(() => {
+    resetStaffName();
+    resetIssueListFn();
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it('restores a stored 12h filter so that pill is active and the list is filtered', async () => {
+    mockStorageGet.mockReturnValue('12');
+    await renderLoaded();
+
+    const pills = waitPills();
+    expect(pillParts(pills[1]).label).toBe('12h');
+    expect(pills[1].className).toContain('ring-2');
+    expect(pills[2].className).not.toContain('ring-2');
+    expect(within(section('waiting')).queryByText('Five hours waiting')).not.toBeInTheDocument();
+    expect(within(section('waiting')).getByText('Thirteen hours waiting')).toBeInTheDocument();
+  });
+
+  it('writes the selected wait tier to storage when a pill is clicked', async () => {
+    await renderLoaded();
+
+    fireEvent.click(waitPills()[1]);
+
+    expect(mockStorageSet).toHaveBeenCalledWith('localStorage', 'dfx.support.waitFilterHours', '12');
+    expect(waitPills()[1].className).toContain('ring-2');
+  });
+
+  it('discards a stored 1-minute leftover and starts at 24h', async () => {
+    mockStorageGet.mockReturnValue('0.016666666666666666');
+    await renderLoaded();
+
+    expect(waitPills()[2].className).toContain('ring-2');
+    expect(waitPills()[0].className).not.toContain('ring-2');
+    expect(within(section('waiting')).queryByText('Five hours waiting')).not.toBeInTheDocument();
+    expect(within(section('waiting')).getByText('Twenty-five hours waiting')).toBeInTheDocument();
+  });
+
+  it('starts at 24h when the stored value is empty or not a number', async () => {
+    mockStorageGet.mockReturnValue('');
+    const first = render(<SupportDashboardOverviewScreen />);
+    await flushPromises();
+    expect(waitPills()[2].className).toContain('ring-2');
+    first.unmount();
+
+    mockStorageGet.mockReturnValue('not-a-number');
+    render(<SupportDashboardOverviewScreen />);
+    await flushPromises();
+    expect(waitPills()[2].className).toContain('ring-2');
+  });
+
+  it('starts at 24h when reading storage throws', async () => {
+    mockStorageGet.mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    await renderLoaded();
+
+    expect(waitPills()[2].className).toContain('ring-2');
+    expect(screen.getByText('Newest')).toBeInTheDocument();
+  });
+
+  it('keeps the in-memory selection when writing storage throws', async () => {
+    mockStorageSet.mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    await renderLoaded();
+
+    fireEvent.click(waitPills()[0]);
+
+    expect(waitPills()[0].className).toContain('ring-2');
+    expect(within(section('waiting')).getByText('Five hours waiting')).toBeInTheDocument();
   });
 });
 

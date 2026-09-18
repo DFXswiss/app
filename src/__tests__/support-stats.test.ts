@@ -95,18 +95,16 @@ describe('support-helpers customer waiting', () => {
     );
   });
 
-  it('maps waiting time to rising-severity tiers (1 min/12h/24h; 24h = escalated)', () => {
-    expect(waitTier(30 / 3600)).toBe(0);
-    expect(waitTier(59 / 3600)).toBe(0);
-    expect(waitTier(1 / 60)).toBe(1);
-    expect(waitTier(0.5)).toBe(1);
+  it('maps waiting time to rising-severity tiers (1h/12h/24h; 24h = escalated)', () => {
+    expect(waitTier(0.5)).toBe(0);
+    expect(waitTier(1)).toBe(1);
     expect(waitTier(5)).toBe(1);
     expect(waitTier(13)).toBe(2);
     expect(waitTier(25)).toBe(3);
   });
 
-  it('renders a wait-tier threshold as a minute or hour label', () => {
-    expect(waitTierLabel(1 / 60)).toBe('1 min');
+  it('renders a wait-tier threshold as an hour label', () => {
+    expect(waitTierLabel(1)).toBe('1h');
     expect(waitTierLabel(12)).toBe('12h');
     expect(waitTierLabel(24)).toBe('24h');
   });

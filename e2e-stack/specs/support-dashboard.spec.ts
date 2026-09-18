@@ -93,11 +93,44 @@ test.describe('Support dashboard (staff)', () => {
     await expect(page.getByRole('button', { name: 'View all tickets' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Limit requests' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'My tickets' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Newest' })).toBeVisible();
     // Waiting / Escalations section title depends on the selected wait tier (default 24h → Escalations).
     await expect(page.getByRole('heading', { name: /^(Waiting tickets|Escalations)$/ })).toBeVisible();
 
     await page.getByRole('button', { name: 'View all tickets' }).click();
     await waitForPath(page, '/support/dashboard/all', 'View all tickets should go to /support/dashboard/all');
+  });
+
+  test('/support/dashboard wait-tier filter survives reload', async ({ page }) => {
+    const waitFilterKey = 'dfx.support.waitFilterHours';
+    const { jwt } = await loginAs('Support');
+
+    await openScreen(page, '/support/dashboard', jwt);
+    await page.evaluate((key) => window.localStorage.removeItem(key), waitFilterKey);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: 'Your support overview' })).toBeVisible();
+
+    try {
+      await expect(page.getByText('Customer waiting longer than 24h for a reply', { exact: true })).toBeVisible();
+
+      // Label lives in its own span (`1h` / `12h` / `24h`); matching that span exactly
+      // avoids treating `12h` as a hit for `2h` or a concatenated accessible name.
+      const oneHourPill = page
+        .getByText('Waiting longer than', { exact: true })
+        .locator('xpath=following-sibling::div[1]')
+        .getByRole('button')
+        .filter({ has: page.locator('span', { hasText: /^1h$/ }) });
+      await oneHourPill.click();
+      await expect(page.getByText('Customer waiting longer than 1h for a reply', { exact: true })).toBeVisible();
+
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('heading', { name: 'Your support overview' })).toBeVisible();
+      await expect(page.getByText('Customer waiting longer than 1h for a reply', { exact: true })).toBeVisible();
+    } finally {
+      await page.evaluate((key) => window.localStorage.removeItem(key), waitFilterKey);
+    }
   });
 
   test('/support/dashboard/all renders Open Issues, tabs, and action buttons', async ({ page }) => {
