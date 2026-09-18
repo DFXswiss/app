@@ -6,6 +6,11 @@ const mockUseSupportDashboardGuard = jest.fn();
 const mockNavigate = jest.fn();
 const mockGetIssueList = jest.fn();
 const mockGetIssueStatistics = jest.fn();
+let mockCurrentGetIssueList: typeof mockGetIssueList = mockGetIssueList;
+const mockStaffName: { name?: string; isLoading: boolean; error?: string } = {
+  name: 'Josh',
+  isLoading: false,
+};
 
 jest.mock('@dfx.swiss/react', () => ({
   SupportIssueInternalState: {
@@ -59,13 +64,17 @@ jest.mock('src/hooks/guard.hook', () => ({
 
 jest.mock('src/hooks/support-dashboard.hook', () => ({
   useSupportDashboard: () => ({
-    getIssueList: mockGetIssueList,
+    getIssueList: mockCurrentGetIssueList,
     getIssueStatistics: mockGetIssueStatistics,
   }),
 }));
 
 jest.mock('src/hooks/staff-verified-name.hook', () => ({
-  useStaffVerifiedName: () => ({ name: 'Josh', isLoading: false }),
+  useStaffVerifiedName: () => ({
+    name: mockStaffName.name,
+    isLoading: mockStaffName.isLoading,
+    error: mockStaffName.error,
+  }),
 }));
 
 jest.mock('src/components/compliance/staff-identity', () => ({
@@ -102,6 +111,7 @@ jest.mock('src/util/compliance-helpers', () => ({
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import SupportDashboardOverviewScreen from 'src/screens/support-dashboard-overview.screen';
 import type { SupportIssueListItem } from 'src/hooks/support-dashboard.hook';
+import type { TicketStatistics } from 'src/util/support-helpers';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 const originalScrollIntoView = Element.prototype.scrollIntoView;
@@ -172,6 +182,47 @@ async function renderLoaded(): Promise<void> {
   await flushPromises();
 }
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: unknown) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  const controls = {
+    resolve: (_value: T) => {
+      throw new Error('deferred not initialized');
+    },
+    reject: (_reason: unknown) => {
+      throw new Error('deferred not initialized');
+    },
+  };
+  const promise = new Promise<T>((resolve, reject) => {
+    controls.resolve = resolve;
+    controls.reject = reject;
+  });
+  return { promise, resolve: controls.resolve, reject: controls.reject };
+}
+
+function sampleStatistics(overrides: Partial<TicketStatistics> = {}): TicketStatistics {
+  return {
+    periodDays: 365,
+    total: 4,
+    avgMessages: 2.5,
+    perDay: 1.5,
+    granularity: 'month',
+    trend: [{ key: '2026-06', count: 4 }],
+    avgResolutionHours: 5,
+    resolutionByType: [{ key: 'KycIssue', avgHours: 5, count: 2 }],
+    ...overrides,
+  };
+}
+
+function statCardValue(label: string): string {
+  const labelEl = screen.getAllByText(label)[0];
+  return labelEl.parentElement?.querySelector('.text-3xl')?.textContent ?? '';
+}
+
 function waitTierCard(): HTMLElement {
   const label = screen.getByText('Waiting longer than');
   const card = label.parentElement;
@@ -199,6 +250,7 @@ describe('SupportDashboardOverviewScreen wait-tier card', () => {
   });
 
   afterEach(() => {
+    resetIssueListFn();
     Element.prototype.scrollIntoView = originalScrollIntoView;
     jest.clearAllTimers();
     jest.useRealTimers();
@@ -235,3 +287,703 @@ describe('SupportDashboardOverviewScreen wait-tier card', () => {
     expect(subtitle.textContent).toBe('Customer waiting longer than 1 min for a reply');
   });
 });
+
+function resetStaffName(): void {
+  mockStaffName.name = 'Josh';
+  mockStaffName.isLoading = false;
+  mockStaffName.error = undefined;
+}
+
+function resetIssueListFn(): void {
+  mockCurrentGetIssueList = mockGetIssueList;
+}
+
+describe('SupportDashboardOverviewScreen overview chrome', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    Element.prototype.scrollIntoView = jest.fn();
+    jest.clearAllMocks();
+    resetStaffName();
+    resetIssueListFn();
+    mockGetIssueList.mockResolvedValue({ data: [], total: 0 });
+    mockGetIssueStatistics.mockResolvedValue(sampleStatistics());
+  });
+
+  afterEach(() => {
+    resetStaffName();
+    resetIssueListFn();
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it('shows the loading spinner until the issue list resolves', async () => {
+    const deferred = createDeferred<{ data: SupportIssueListItem[]; total: number }>();
+    mockGetIssueList.mockReturnValue(deferred.promise);
+
+    render(<SupportDashboardOverviewScreen />);
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(mockUseSupportDashboardGuard).toHaveBeenCalledWith();
+
+    await act(async () => {
+      deferred.resolve({ data: [], total: 0 });
+      await Promise.resolve();
+    });
+    await flushPromises();
+
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Your support overview' })).toBeInTheDocument();
+  });
+
+  it('surfaces getIssueList Error.message in the overview', async () => {
+    mockGetIssueList.mockRejectedValue(new Error('List failed'));
+    await renderLoaded();
+
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('List failed');
+  });
+
+  it('falls back to Unknown error when getIssueList rejects without a message', async () => {
+    mockGetIssueList.mockRejectedValue({});
+    await renderLoaded();
+
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('navigates to the full ticket list from View all tickets', async () => {
+    await renderLoaded();
+
+    fireEvent.click(screen.getByRole('button', { name: 'View all tickets' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/support/dashboard/all');
+  });
+
+  it('switches to the Statistics tab and back to Overview', async () => {
+    await renderLoaded();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Statistics' }));
+    await flushPromises();
+    expect(screen.getByText('Period:')).toBeInTheDocument();
+    expect(screen.queryByText('Waiting longer than')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' }));
+    expect(screen.getByText('Waiting longer than')).toBeInTheDocument();
+    expect(screen.queryByText('Period:')).not.toBeInTheDocument();
+  });
+
+  it('does not reload the baseline issue list when getIssueList identity changes', async () => {
+    await renderLoaded();
+    mockGetIssueList.mockClear();
+
+    const altList = jest.fn().mockResolvedValue({ data: [], total: 0 });
+    mockCurrentGetIssueList = altList;
+    fireEvent.click(waitPills()[1]);
+    await flushPromises();
+
+    expect(altList).not.toHaveBeenCalled();
+    expect(mockGetIssueList).not.toHaveBeenCalled();
+  });
+
+  it('shows a dash for my-ticket count when the clerk name is missing', async () => {
+    mockStaffName.name = undefined;
+    await renderLoaded();
+
+    expect(statCardValue('My tickets')).toContain('–');
+  });
+
+  it('scrolls to the my-tickets section when the My tickets card is clicked', async () => {
+    await renderLoaded();
+    const section = document.getElementById('my-tickets');
+    const scrollIntoView = jest.fn();
+    if (!section) throw new Error('my-tickets section missing');
+    section.scrollIntoView = scrollIntoView;
+
+    fireEvent.click(screen.getAllByText('My tickets')[0]);
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+  });
+
+  it('shows No escalations when no customer has waited 24h', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 1,
+          name: 'Short wait',
+          lastMessageAuthor: 'Customer',
+          lastMessageDate: minutesAgo(5),
+        }),
+      ],
+      total: 1,
+    });
+    await renderLoaded();
+
+    expect(screen.getByText('No escalations — all customers replied to in time')).toBeInTheDocument();
+  });
+
+  it('shows No tickets waiting this long for a 12h filter with only a 5-minute wait', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 1,
+          name: 'Short wait',
+          lastMessageAuthor: 'Customer',
+          lastMessageDate: minutesAgo(5),
+        }),
+      ],
+      total: 1,
+    });
+    await renderLoaded();
+
+    fireEvent.click(waitPills()[1]);
+    expect(screen.getByText('No tickets waiting this long')).toBeInTheDocument();
+    expect(screen.getByText('Customer waiting longer than 12h for a reply')).toBeInTheDocument();
+  });
+
+  it('navigates to the issue detail when a waiting row is clicked', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 42,
+          name: 'Escalated row',
+          lastMessageAuthor: 'Customer',
+          lastMessageDate: hoursAgo(25),
+        }),
+      ],
+      total: 1,
+    });
+    await renderLoaded();
+
+    fireEvent.click(screen.getByText('Escalated row'));
+    expect(mockNavigate).toHaveBeenCalledWith('/support/dashboard/issue/42');
+  });
+
+  it('reloads the issue list on the 60s interval without showing the spinner again', async () => {
+    await renderLoaded();
+    mockGetIssueList.mockClear();
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 9,
+          name: 'After refresh',
+          lastMessageAuthor: 'Customer',
+          lastMessageDate: hoursAgo(25),
+        }),
+      ],
+      total: 1,
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+    await flushPromises();
+
+    expect(mockGetIssueList).toHaveBeenCalled();
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    expect(screen.getByText('After refresh')).toBeInTheDocument();
+  });
+});
+
+describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    Element.prototype.scrollIntoView = jest.fn();
+    jest.clearAllMocks();
+    resetStaffName();
+    resetIssueListFn();
+    mockGetIssueList.mockResolvedValue({ data: [], total: 0 });
+    mockGetIssueStatistics.mockResolvedValue(sampleStatistics());
+  });
+
+  afterEach(() => {
+    resetStaffName();
+    resetIssueListFn();
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it('shows No open limit requests when none are in the list', async () => {
+    await renderLoaded();
+    expect(screen.getByText('No open limit requests')).toBeInTheDocument();
+  });
+
+  it('lists limit requests oldest first and navigates on row click', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 2,
+          name: 'Newer limit',
+          type: 'LimitRequest',
+          created: '2026-06-18T11:00:00.000Z',
+          lastMessageAuthor: 'Jana',
+        }),
+        issue({
+          id: 1,
+          name: 'Older limit',
+          type: 'LimitRequest',
+          created: '2026-06-17T11:00:00.000Z',
+          lastMessageAuthor: 'Jana',
+        }),
+      ],
+      total: 2,
+    });
+    await renderLoaded();
+
+    const section = document.getElementById('limit-requests');
+    if (!section) throw new Error('limit-requests section missing');
+    const names = within(section)
+      .getAllByText(/limit$/i)
+      .map((el) => el.textContent);
+    expect(names).toEqual(['Older limit', 'Newer limit']);
+
+    fireEvent.click(screen.getByText('Older limit'));
+    expect(mockNavigate).toHaveBeenCalledWith('/support/dashboard/issue/1');
+  });
+
+  it('shows a spinner in My tickets while the clerk name is loading', async () => {
+    mockStaffName.isLoading = true;
+    mockStaffName.name = undefined;
+    await renderLoaded();
+
+    const section = document.getElementById('my-tickets');
+    if (!section) throw new Error('my-tickets section missing');
+    expect(within(section).getByTestId('loading-spinner')).toBeInTheDocument();
+  });
+
+  it('shows the verified-name error when loading the clerk name failed', async () => {
+    mockStaffName.name = undefined;
+    mockStaffName.error = 'ldap down';
+    await renderLoaded();
+
+    expect(screen.getByText('Could not load your verified name: ldap down')).toBeInTheDocument();
+  });
+
+  it('shows STAFF_NAME_MISSING when there is no clerk name', async () => {
+    mockStaffName.name = undefined;
+    await renderLoaded();
+
+    expect(screen.getByText('Staff identification requires a verified name on this account.')).toBeInTheDocument();
+  });
+
+  it('shows No tickets assigned to you when the clerk has a name but no tickets', async () => {
+    await renderLoaded();
+    expect(screen.getByText('No tickets assigned to you')).toBeInTheDocument();
+  });
+
+  it('still lists my tickets when a clerk-name error arrives together with a name', async () => {
+    mockStaffName.error = 'ignored';
+    mockGetIssueList.mockResolvedValue({
+      data: [issue({ id: 7, name: 'Still mine', clerk: 'Josh', lastMessageAuthor: 'Josh' })],
+      total: 1,
+    });
+    await renderLoaded();
+
+    expect(screen.getByText('Still mine')).toBeInTheDocument();
+    expect(screen.queryByText(/Could not load your verified name/)).not.toBeInTheDocument();
+  });
+
+  it('lists my tickets oldest first and navigates on row click', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 8,
+          name: 'Newer mine',
+          clerk: 'Josh',
+          created: '2026-06-18T10:00:00.000Z',
+          lastMessageAuthor: 'Josh',
+        }),
+        issue({
+          id: 7,
+          name: 'Older mine',
+          clerk: 'Josh',
+          created: '2026-06-17T10:00:00.000Z',
+          lastMessageAuthor: 'Josh',
+        }),
+      ],
+      total: 2,
+    });
+    await renderLoaded();
+
+    const section = document.getElementById('my-tickets');
+    if (!section) throw new Error('my-tickets section missing');
+    const names = within(section)
+      .getAllByText(/mine$/)
+      .map((el) => el.textContent);
+    expect(names).toEqual(['Older mine', 'Newer mine']);
+    expect(statCardValue('My tickets')).toContain('2');
+
+    fireEvent.click(screen.getByText('Older mine'));
+    expect(mockNavigate).toHaveBeenCalledWith('/support/dashboard/issue/7');
+  });
+
+  it('shows the last-activity date and Replied for a ticket we answered', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 3,
+          name: 'Limit we answered',
+          type: 'LimitRequest',
+          created: '2026-06-01T00:00:00.000Z',
+          lastMessageAuthor: 'Jana',
+        }),
+      ],
+      total: 1,
+    });
+    await renderLoaded();
+
+    expect(screen.getByTitle('Replied')).toBeInTheDocument();
+    expect(screen.getByText('short:2026-06-01T00:00:00.000Z')).toBeInTheDocument();
+  });
+
+  it('marks a 12h wait as Awaiting reply and a 24h wait as Escalated', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 2,
+          name: 'Twelve hour wait',
+          lastMessageAuthor: 'Customer',
+          lastMessageDate: hoursAgo(13),
+        }),
+        issue({
+          id: 3,
+          name: 'Twenty-four hour wait',
+          lastMessageAuthor: 'Customer',
+          lastMessageDate: hoursAgo(25),
+        }),
+      ],
+      total: 2,
+    });
+    await renderLoaded();
+
+    expect(screen.getByTitle('Escalated')).toBeInTheDocument();
+    fireEvent.click(waitPills()[1]);
+    expect(screen.getByTitle('Awaiting reply')).toBeInTheDocument();
+    expect(screen.getByText('Twelve hour wait')).toBeInTheDocument();
+  });
+
+  it('omits the clerk suffix when a waiting ticket has no clerk', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 5,
+          name: 'Unassigned wait',
+          clerk: undefined,
+          lastMessageAuthor: 'Customer',
+          lastMessageDate: hoursAgo(25),
+        }),
+      ],
+      total: 1,
+    });
+    await renderLoaded();
+
+    const row = screen.getByText('Unassigned wait').closest('li');
+    if (!row) throw new Error('row missing');
+    expect(row.textContent).toContain('GenericIssue · Other');
+    expect(row.textContent).not.toContain('GenericIssue · Other ·');
+  });
+});
+
+describe('SupportDashboardOverviewScreen statistics', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    Element.prototype.scrollIntoView = jest.fn();
+    jest.clearAllMocks();
+    resetStaffName();
+    resetIssueListFn();
+    mockGetIssueList.mockResolvedValue({ data: [], total: 0 });
+    mockGetIssueStatistics.mockResolvedValue(sampleStatistics());
+  });
+
+  afterEach(() => {
+    resetStaffName();
+    resetIssueListFn();
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  async function openStatistics(): Promise<void> {
+    await renderLoaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Statistics' }));
+    await flushPromises();
+  }
+
+  it('loads server statistics and shows the headline numbers', async () => {
+    await openStatistics();
+
+    expect(mockGetIssueStatistics).toHaveBeenCalledWith(365);
+    expect(statCardValue('New tickets')).toBe('4');
+    expect(statCardValue('Avg messages / ticket')).toBe('2.5');
+    expect(statCardValue('Tickets / day')).toBe('1.5');
+    expect(statCardValue('Avg resolution time')).toBe('5h');
+    expect(screen.getByText('KycIssue')).toBeInTheDocument();
+    expect(screen.getByText(/· 2/)).toBeInTheDocument();
+  });
+
+  it('shows a dash for zero average resolution time', async () => {
+    mockGetIssueStatistics.mockResolvedValue(sampleStatistics({ avgResolutionHours: 0 }));
+    await openStatistics();
+
+    expect(statCardValue('Avg resolution time')).toBe('–');
+  });
+
+  it('shows No resolved tickets yet when resolutionByType is empty', async () => {
+    mockGetIssueStatistics.mockResolvedValue(sampleStatistics({ resolutionByType: [], trend: [] }));
+    await openStatistics();
+
+    expect(screen.getByText('No resolved tickets yet')).toBeInTheDocument();
+  });
+
+  it('shows the statistics spinner while the request is in flight', async () => {
+    const deferred = createDeferred<TicketStatistics>();
+    mockGetIssueStatistics.mockReturnValue(deferred.promise);
+
+    await renderLoaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Statistics' }));
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    await act(async () => {
+      deferred.resolve(sampleStatistics());
+      await Promise.resolve();
+    });
+    await flushPromises();
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    expect(statCardValue('New tickets')).toBe('4');
+  });
+
+  it('falls back to computeStatistics when trend is not an array', async () => {
+    mockGetIssueStatistics.mockResolvedValue({ total: 99 } as unknown as TicketStatistics);
+    mockGetIssueList.mockImplementation(async (params?: { take?: number }) => {
+      if (params?.take === 1000) {
+        return {
+          data: [issue({ id: 1, created: NOW.toISOString(), messageCount: 3 })],
+          total: 1,
+        };
+      }
+      return { data: [], total: 0 };
+    });
+
+    await openStatistics();
+
+    expect(mockGetIssueList).toHaveBeenCalledWith({ take: 1000 });
+    expect(statCardValue('New tickets')).toBe('1');
+    expect(statCardValue('Avg messages / ticket')).toBe('3.0');
+  });
+
+  it('falls back to the recent-ticket list when getIssueStatistics rejects', async () => {
+    mockGetIssueStatistics.mockRejectedValue(new Error('stats down'));
+    mockGetIssueList.mockImplementation(async (params?: { take?: number }) => {
+      if (params?.take === 1000) {
+        return { data: [issue({ id: 1, created: NOW.toISOString() }), issue({ id: 2, created: NOW.toISOString() })], total: 2 };
+      }
+      return { data: [], total: 0 };
+    });
+
+    await openStatistics();
+
+    expect(mockGetIssueList).toHaveBeenCalledWith({ take: 1000 });
+    expect(statCardValue('New tickets')).toBe('2');
+  });
+
+  it('shows the fallback Error.message when the recent-ticket list also fails', async () => {
+    mockGetIssueStatistics.mockRejectedValue(new Error('stats down'));
+    mockGetIssueList.mockImplementation(async (params?: { take?: number }) => {
+      if (params?.take === 1000) throw new Error('list down');
+      return { data: [], total: 0 };
+    });
+
+    await openStatistics();
+
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('list down');
+  });
+
+  it('shows Unknown error when the fallback list fails without a message', async () => {
+    mockGetIssueStatistics.mockRejectedValue(new Error('stats down'));
+    mockGetIssueList.mockImplementation(async (params?: { take?: number }) => {
+      if (params?.take === 1000) return Promise.reject({});
+      return { data: [], total: 0 };
+    });
+
+    await openStatistics();
+
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('keeps newer statistics when an older success arrives last', async () => {
+    const older = createDeferred<TicketStatistics>();
+    const newer = createDeferred<TicketStatistics>();
+    mockGetIssueStatistics.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+
+    await renderLoaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Statistics' }));
+    fireEvent.click(screen.getByRole('button', { name: '7 days' }));
+
+    await act(async () => {
+      newer.resolve(sampleStatistics({ total: 7 }));
+      await Promise.resolve();
+    });
+    expect(statCardValue('New tickets')).toBe('7');
+
+    await act(async () => {
+      older.resolve(sampleStatistics({ total: 99 }));
+      await Promise.resolve();
+    });
+    expect(statCardValue('New tickets')).toBe('7');
+    expect(screen.queryByText('99')).not.toBeInTheDocument();
+  });
+
+  it('does not apply an older fallback after a newer request has started', async () => {
+    const olderStats = createDeferred<TicketStatistics>();
+    const olderList = createDeferred<{ data: SupportIssueListItem[]; total: number }>();
+    const newer = createDeferred<TicketStatistics>();
+    mockGetIssueStatistics.mockReturnValueOnce(olderStats.promise).mockReturnValueOnce(newer.promise);
+    mockGetIssueList.mockImplementation(async (params?: { take?: number }) => {
+      if (params?.take === 1000) return olderList.promise;
+      return { data: [], total: 0 };
+    });
+
+    await renderLoaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Statistics' }));
+
+    await act(async () => {
+      olderStats.reject(new Error('stale stats'));
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '7 days' }));
+
+    await act(async () => {
+      newer.resolve(sampleStatistics({ total: 7 }));
+      await Promise.resolve();
+    });
+    expect(statCardValue('New tickets')).toBe('7');
+
+    await act(async () => {
+      olderList.resolve({
+        data: [issue({ id: 1, created: NOW.toISOString() }), issue({ id: 2, created: NOW.toISOString() })],
+        total: 2,
+      });
+      await Promise.resolve();
+    });
+    expect(statCardValue('New tickets')).toBe('7');
+  });
+
+  it('does not show an older fallback error after a newer success', async () => {
+    const olderStats = createDeferred<TicketStatistics>();
+    const olderList = createDeferred<{ data: SupportIssueListItem[]; total: number }>();
+    const newer = createDeferred<TicketStatistics>();
+    mockGetIssueStatistics.mockReturnValueOnce(olderStats.promise).mockReturnValueOnce(newer.promise);
+    mockGetIssueList.mockImplementation(async (params?: { take?: number }) => {
+      if (params?.take === 1000) return olderList.promise;
+      return { data: [], total: 0 };
+    });
+
+    await renderLoaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Statistics' }));
+
+    await act(async () => {
+      olderStats.reject(new Error('stale stats'));
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '7 days' }));
+
+    await act(async () => {
+      newer.resolve(sampleStatistics({ total: 7 }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      olderList.reject(new Error('stale list'));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(statCardValue('New tickets')).toBe('7');
+  });
+
+  it('does not start the fallback list for a stale statistics failure', async () => {
+    const olderStats = createDeferred<TicketStatistics>();
+    const newer = createDeferred<TicketStatistics>();
+    mockGetIssueStatistics.mockReturnValueOnce(olderStats.promise).mockReturnValueOnce(newer.promise);
+
+    await renderLoaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Statistics' }));
+    fireEvent.click(screen.getByRole('button', { name: '7 days' }));
+
+    mockGetIssueList.mockClear();
+    await act(async () => {
+      olderStats.reject(new Error('stale stats'));
+      await Promise.resolve();
+    });
+    expect(mockGetIssueList).not.toHaveBeenCalled();
+
+    await act(async () => {
+      newer.resolve(sampleStatistics({ total: 7 }));
+      await Promise.resolve();
+    });
+    expect(statCardValue('New tickets')).toBe('7');
+  });
+
+  it('reloads statistics when the period changes', async () => {
+    await openStatistics();
+    mockGetIssueStatistics.mockClear();
+    mockGetIssueStatistics.mockResolvedValue(sampleStatistics({ total: 30 }));
+
+    fireEvent.click(screen.getByRole('button', { name: '30 days' }));
+    await flushPromises();
+
+    expect(mockGetIssueStatistics).toHaveBeenCalledWith(30);
+    expect(statCardValue('New tickets')).toBe('30');
+  });
+
+  it('shows per-bar counts when the trend is short', async () => {
+    await openStatistics();
+    const bar = screen.getByTitle('Jun: 4').parentElement;
+    if (!bar) throw new Error('trend bar missing');
+    expect(within(bar).getByText('4')).toBeInTheDocument();
+    expect(within(bar).getByText('Jun')).toBeInTheDocument();
+  });
+
+  it('thins bar labels when the trend has more than 16 buckets', async () => {
+    mockGetIssueStatistics.mockResolvedValue(
+      sampleStatistics({
+        granularity: 'day',
+        trend: Array.from({ length: 18 }, (_, i) => ({
+          key: `2026-06-${String(i + 1).padStart(2, '0')}`,
+          count: i === 0 ? 3 : 1,
+        })),
+      }),
+    );
+    await openStatistics();
+
+    expect(screen.getByTitle('01.06.: 3')).toBeInTheDocument();
+    expect(screen.getByTitle('02.06.: 1')).toBeInTheDocument();
+    expect(screen.getByText('01.06.')).toBeInTheDocument();
+    expect(screen.queryByText('02.06.')).not.toBeInTheDocument();
+  });
+
+  it('keeps showing the spinner while a newer period request is still in flight after an older one finishes', async () => {
+    const older = createDeferred<TicketStatistics>();
+    const newer = createDeferred<TicketStatistics>();
+    mockGetIssueStatistics.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+
+    await renderLoaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Statistics' }));
+    fireEvent.click(screen.getByRole('button', { name: '7 days' }));
+
+    await act(async () => {
+      older.resolve(sampleStatistics({ total: 99 }));
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(screen.queryByText('99')).not.toBeInTheDocument();
+
+    await act(async () => {
+      newer.resolve(sampleStatistics({ total: 7 }));
+      await Promise.resolve();
+    });
+    expect(statCardValue('New tickets')).toBe('7');
+  });
+});
+

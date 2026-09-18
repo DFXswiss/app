@@ -41,6 +41,11 @@ const TERMINAL_STATES: SupportIssueInternalState[] = [
 const OPEN_STATES = Object.values(SupportIssueInternalState).filter((s) => !TERMINAL_STATES.includes(s));
 const REFRESH_MS = 60_000;
 
+type WaitTierStyle = { pill: string; ring: string };
+type SameShape<T extends readonly unknown[], V> = { [K in keyof T]: V };
+type WaitTierCounts = SameShape<typeof WAIT_TIER_HOURS, number>;
+type WaitTierStyles = SameShape<typeof WAIT_TIER_HOURS, WaitTierStyle>;
+
 export default function SupportDashboardOverviewScreen(): JSX.Element {
   useSupportDashboardGuard();
 
@@ -171,7 +176,11 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
       .sort((a, b) => b.hours - a.hours);
 
     // cumulative counts per threshold (≥1 min ⊇ ≥12h ⊇ ≥24h; the ≥24h bucket = escalated)
-    const waitingLongerThan = WAIT_TIER_HOURS.map((h) => waitingSorted.filter((x) => x.hours >= h).length);
+    const waitingLongerThan: WaitTierCounts = [
+      waitingSorted.filter((x) => x.hours >= WAIT_TIER_HOURS[0]).length,
+      waitingSorted.filter((x) => x.hours >= WAIT_TIER_HOURS[1]).length,
+      waitingSorted.filter((x) => x.hours >= WAIT_TIER_HOURS[2]).length,
+    ];
 
     // open limit increase requests, oldest first
     const limitRequests = issues
@@ -387,12 +396,12 @@ function WaitTierCard({
   selected,
   onSelect,
 }: {
-  counts: number[];
+  counts: WaitTierCounts;
   selected: number;
   onSelect: (hours: number) => void;
 }): JSX.Element {
   const { translate } = useSettingsContext();
-  const styles = [
+  const styles: WaitTierStyles = [
     { pill: 'bg-dfxGray-300 text-dfxBlue-800', ring: 'ring-dfxGray-600' },
     { pill: 'bg-dfxYellow-500/20 text-dfxYellow-700', ring: 'ring-dfxYellow-500' },
     { pill: 'bg-dfxRed-100/15 text-dfxRed-100', ring: 'ring-dfxRed-100' },
@@ -400,7 +409,7 @@ function WaitTierCard({
   const tiers = WAIT_TIER_HOURS.map((hours, i) => ({
     hours,
     label: waitTierLabel(hours),
-    ...(styles[i] ?? styles[0]),
+    ...styles[i],
   }));
 
   return (
@@ -419,7 +428,7 @@ function WaitTierCard({
                 active ? `ring-2 ${t.ring}` : 'opacity-80 hover:opacity-100'
               }`}
             >
-              <span className="text-xl font-bold leading-none">{counts[i] ?? 0}</span>
+              <span className="text-xl font-bold leading-none">{counts[i]}</span>
               <span className="text-2xs font-medium opacity-70">{t.label}</span>
             </button>
           );
@@ -435,7 +444,6 @@ function Section({
   subtitle,
   count,
   accent,
-  action,
   children,
 }: {
   anchorId?: string;
@@ -443,7 +451,6 @@ function Section({
   subtitle: string;
   count?: number;
   accent: 'danger' | 'info' | 'neutral';
-  action?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   const bar = accent === 'danger' ? 'bg-dfxRed-100' : accent === 'info' ? 'bg-dfxBlue-400' : 'bg-dfxGray-500';
@@ -465,7 +472,6 @@ function Section({
           </div>
           <span className="text-xs text-dfxGray-700 mt-1">{subtitle}</span>
         </div>
-        {action && <div className="ml-auto shrink-0 self-center">{action}</div>}
       </div>
       <div>{children}</div>
     </div>
