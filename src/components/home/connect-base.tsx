@@ -120,7 +120,7 @@ export function ConnectBase({
       return switchBlockchain(account.blockchain);
     }
 
-    if (!isConnect) {
+    if (!isConnect && session?.address) {
       await logout();
     }
 

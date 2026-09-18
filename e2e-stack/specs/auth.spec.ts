@@ -11,6 +11,7 @@
  */
 
 import type { Page } from '@playwright/test';
+import { ethers } from 'ethers';
 import {
   completeMailLogin,
   expect,
@@ -25,8 +26,9 @@ import {
   testEmail,
   testWallet,
   waitForRow,
+  type TestWallet,
 } from './fixtures';
-import { cleanupCreatedData, createUser, e2eMail } from './fixtures/factories';
+import { cleanupCreatedData, createUser, e2eMail, trackRow } from './fixtures/factories';
 
 /** Parse a 6-digit verification code from a notification row (VerificationMail / EmailVerification). */
 function codeFromNotificationData(data: string): string {
@@ -60,6 +62,93 @@ async function waitForVerificationCode(
     timeoutMs,
   );
   return codeFromNotificationData(row.data);
+}
+
+async function userCountForUserData(userDataId: number): Promise<number> {
+  const row = await queryOne<{ c: string }>(
+    `SELECT COUNT(*)::text AS c FROM "user" WHERE "userDataId" = $1`,
+    [userDataId],
+  );
+  return Number(row?.c ?? -1);
+}
+
+/**
+ * HD indices 0–6 are loginAs/role wallets; 40 and 50 are used by other specs; factories start
+ * at 100. Walk upward from 60 and skip any address already in "user".
+ */
+let cliWalletCursor = 60;
+
+async function nextUnusedCliWallet(): Promise<TestWallet> {
+  for (let i = 0; i < 200; i++) {
+    const index = cliWalletCursor;
+    cliWalletCursor += 1;
+    const wallet = testWallet(index);
+    const existing = await queryOne<{ id: number }>(
+      `SELECT id FROM "user" WHERE LOWER(address) = LOWER($1) LIMIT 1`,
+      [wallet.address],
+    );
+    if (!existing) return wallet;
+  }
+  throw new Error('nextUnusedCliWallet: no free HD index in the 60–259 window');
+}
+
+/**
+ * Open a StyledDropdown by its field label, then pick an option by visible label text.
+ * Same locator constraint as account.spec.ts: the field label is a bare <label>, not ARIA-linked.
+ */
+async function selectStyledDropdown(page: Page, fieldLabel: string, optionLabel: string): Promise<void> {
+  const openBtn = page.getByText(fieldLabel, { exact: true }).first().locator('xpath=following::button[1]');
+  await openBtn.click();
+  await page.getByRole('button', { name: optionLabel, exact: true }).click();
+}
+
+/**
+ * Drive the CLI tile on the wallets grid: Ethereum + real ethers v5 signature, no injected provider.
+ * ConnectCli.getAccount returns the form signature, so ConnectBase.doLogin still runs the
+ * `if (!isConnect) await logout()` branch before POST /auth.
+ *
+ * Selecting Ethereum runs Content's [blockchain] effect (onSwitch + setParams). That re-render
+ * can drop a fill that landed on the previous input node; the address poll re-applies until RHF
+ * keeps the value. The sign message is read from the DOM, not GET /auth/signMessage.
+ */
+async function connectCliWithWallet(page: Page, wallet: TestWallet): Promise<void> {
+  await expect(page.locator('img[src*="command"]')).toBeVisible({ timeout: 15000 });
+  await page.locator('img[src*="command"]').click();
+
+  const addressInput = page.locator('input[name="address"]');
+  await expect(addressInput).toBeVisible({ timeout: 15000 });
+
+  await selectStyledDropdown(page, 'Blockchain', 'Ethereum');
+  await expect(page.getByRole('button', { name: 'Ethereum', exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(addressInput).toBeVisible();
+
+  await expect
+    .poll(
+      async () => {
+        if ((await addressInput.inputValue()) !== wallet.address) {
+          await addressInput.fill(wallet.address);
+        }
+        return addressInput.inputValue();
+      },
+      { timeout: 15000, message: 'CLI address field should keep the filled wallet address' },
+    )
+    .toBe(wallet.address);
+
+  const signHeading = page.getByText('Sign message', { exact: true });
+  await expect(signHeading).toBeVisible({ timeout: 20000 });
+  const message = (await signHeading.locator('xpath=following::p[1]').innerText()).trim();
+  if (!message) {
+    throw new Error('connectCliWithWallet: Sign message heading is visible but the message text is empty');
+  }
+
+  const signature = await new ethers.Wallet(wallet.privateKey).signMessage(message);
+  const signatureInput = page.locator('input[type="password"]');
+  await expect(signatureInput).toBeVisible({ timeout: 10000 });
+  await signatureInput.fill(signature);
+
+  const loginButton = page.getByRole('button', { name: 'Login', exact: true });
+  await expect(loginButton).toBeEnabled({ timeout: 10000 });
+  await loginButton.click();
 }
 
 /** Complete the mail-based /2fa screen for a customer account (same browser IP for later check2fa). */
@@ -399,5 +488,45 @@ test.describe('Auth area e2e', () => {
       20000,
     );
     expect(slave.status).toBe('Merged');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Mail-only account (no "user" row) connecting a wallet via /login/wallet
+  // ---------------------------------------------------------------------------
+
+  test('mail-only account: /login/wallet attaches the wallet to the existing user_data', async ({ page }) => {
+    test.setTimeout(120000);
+
+    const email = testEmail('kyc-only-home');
+    const wallet = await nextUnusedCliWallet();
+
+    await requestMailLogin(email);
+    const jwt = await completeMailLogin(email);
+    const mailAccount = await waitForRow<{ id: number }>(
+      `SELECT id FROM user_data WHERE mail = $1`,
+      [email],
+      20000,
+    );
+    trackRow('user_data', mailAccount.id);
+    expect(await userCountForUserData(mailAccount.id), 'mail account must have no wallet row yet').toBe(0);
+
+    await gotoWithSession(page, '/login/wallet', jwt);
+    await page.waitForLoadState('networkidle');
+    expect(normPath(new URL(page.url()).pathname)).toBe('/login/wallet');
+
+    await connectCliWithWallet(page, wallet);
+
+    const attached = await waitForRow<{ id: number; userDataId: number }>(
+      `SELECT id, "userDataId" AS "userDataId" FROM "user" WHERE LOWER(address) = LOWER($1)`,
+      [wallet.address],
+      20000,
+    );
+    if (attached.userDataId !== mailAccount.id) {
+      trackRow('user_data', attached.userDataId);
+    }
+    trackRow('user', attached.id);
+
+    expect(attached.userDataId, 'wallet must hang off the mail user_data').toBe(mailAccount.id);
+    expect(await userCountForUserData(mailAccount.id), 'mail user_data should now own exactly one wallet').toBe(1);
   });
 });
