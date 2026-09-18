@@ -241,6 +241,49 @@ describe('Home partner widget params', () => {
     expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('BTC');
   });
 
+  it('limits the buy pool to assets=ETH and leaves BTC when the param is absent', async () => {
+    const absent = renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('BTC');
+    absent.unmount();
+
+    setParams('?assets=ETH');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('ETH');
+    fireEvent.click(screen.getByRole('button', { name: /select receive asset/i }));
+    expect(screen.queryByRole('button', { name: /^BTC\b/ })).not.toBeInTheDocument();
+  });
+
+  it('empties the buy pool when assets names nothing in the market', async () => {
+    setParams('?assets=NOPE');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select receive asset/i })).not.toHaveTextContent('BTC');
+    expect(screen.getByRole('button', { name: /select receive asset/i })).not.toHaveTextContent('ETH');
+  });
+
+  it('limits buy chains to blockchains=Ethereum and keeps Bitcoin when the param is absent', async () => {
+    const absent = renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('BTC');
+    absent.unmount();
+
+    setParams('?blockchains=Ethereum');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('USDT');
+    expect(screen.getByRole('button', { name: /select receive asset/i })).not.toHaveTextContent('Bitcoin');
+  });
+
+  it('empties reachable buy chains when blockchains names nothing the wallet can reach', async () => {
+    setParams('?blockchains=Mars');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select receive asset/i })).not.toHaveTextContent('BTC');
+    expect(screen.getByRole('button', { name: /select receive asset/i })).not.toHaveTextContent('USDT');
+  });
+
   it('makes a private buy-target visible only when asset-out names it', async () => {
     const hidden = renderHome();
     await settleQuote();

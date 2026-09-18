@@ -7,6 +7,7 @@ import { Blockchain } from '@dfx.swiss/react';
 import type { Asset } from '@dfx.swiss/react';
 import { isTestnetChain } from './blockchain-meta';
 import type { AssetChain, Capability, TradeAsset } from './types';
+import { chainAllowedByParam } from './widget-params';
 
 /** Curated chains the pickers surface — the same whitelist the static app hardcoded as its `CH`
  * blockchain-metadata map (public/app2/index.html ~L1468). The static `loadAssets()` only ever
@@ -96,9 +97,12 @@ export function shownChainsFor(
   token: TradeAsset,
   cap: Capability,
   sessionBlockchains: readonly string[] | undefined,
+  partnerBlockchains?: string,
 ): AssetChain[] {
   const chains = chainsFor(token, cap).filter((c) => isCuratedChain(c.blockchain));
-  return chains.filter((c) => isReachable(c.blockchain, sessionBlockchains));
+  const reachable = chains.filter((c) => isReachable(c.blockchain, sessionBlockchains));
+  if (!partnerBlockchains) return reachable;
+  return reachable.filter((c) => chainAllowedByParam(c.blockchain, partnerBlockchains));
 }
 
 type BalanceAsset = { id: number | string; name: string };

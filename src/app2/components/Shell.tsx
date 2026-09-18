@@ -141,6 +141,7 @@ export function Shell() {
       <ConnectSheet
         open={connectSheet.open}
         view={connectSheet.view}
+        walletsFilter={routeOrQueryParam(location.search, 'wallets')}
         onClose={closeConnect}
         onSelectWallet={connectSheet.onSelectWallet}
         onSelectHwChain={connectSheet.onSelectHwChain}

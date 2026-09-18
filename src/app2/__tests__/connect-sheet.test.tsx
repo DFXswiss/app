@@ -52,11 +52,11 @@ const handlers = {
   onBackToList: jest.fn(),
 };
 
-function renderSheet(view: ConnectView) {
+function renderSheet(view: ConnectView, walletsFilter?: string) {
   return render(
     <LanguageProvider>
       <ToastProvider>
-        <ConnectSheet open view={view} {...handlers} />
+        <ConnectSheet open view={view} walletsFilter={walletsFilter} {...handlers} />
       </ToastProvider>
     </LanguageProvider>,
   );
@@ -71,6 +71,41 @@ describe('ConnectSheet', () => {
     renderSheet({ kind: 'list' });
     fireEvent.click(screen.getByRole('button', { name: /metamask/i }));
     expect(handlers.onSelectWallet).toHaveBeenCalled();
+  });
+
+  it('keeps only wallets named in the wallets param, and lists them all when it is absent', () => {
+    const all = renderSheet({ kind: 'list' });
+    expect(screen.getByRole('button', { name: /metamask/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /ledger/i })).toBeInTheDocument();
+    all.unmount();
+
+    renderSheet({ kind: 'list' }, 'MetaMask');
+    expect(screen.getByRole('button', { name: /metamask/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ledger/i })).not.toBeInTheDocument();
+  });
+
+  it('lists no connect wallets when the wallets param matches none', () => {
+    renderSheet({ kind: 'list' }, 'NoSuchWallet');
+    expect(screen.queryByRole('button', { name: /metamask/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ledger/i })).not.toBeInTheDocument();
+  });
+
+  it('shows Ledger for wallets=LedgerEth and not MetaMask', () => {
+    renderSheet({ kind: 'list' }, 'LedgerEth');
+    expect(screen.getByRole('button', { name: /ledger/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /metamask/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps MetaMask when wallets also names Cake, which App 2.0 does not offer', () => {
+    renderSheet({ kind: 'list' }, 'MetaMask,Cake');
+    expect(screen.getByRole('button', { name: /metamask/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ledger/i })).not.toBeInTheDocument();
+  });
+
+  it('lists no connect wallets for a real WalletType that has no catalog row', () => {
+    renderSheet({ kind: 'list' }, 'Mail');
+    expect(screen.queryByRole('button', { name: /metamask/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ledger/i })).not.toBeInTheDocument();
   });
 
   it('shows a WalletConnect QR and a CLI form', () => {

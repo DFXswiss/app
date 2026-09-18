@@ -7,7 +7,10 @@ jest.mock('@dfx.swiss/react', () => ({
 import { Blockchain, FiatPaymentMethod, PersonalIbanProvider } from '@dfx.swiss/react';
 import {
   appendCompletionPath,
+  assetMatchesFilterToken,
+  chainAllowedByParam,
   completionRedirectUrl,
+  filterAssetsByParam,
   isPersonalIbanApplicable,
   isPresentFlag,
   isTrueFlag,
@@ -15,6 +18,8 @@ import {
   parseEnumValue,
   personalIbanParamState,
   restrictBlockchains,
+  splitCsvParam,
+  walletAllowedByParam,
 } from '../screens/trade/widget-params';
 
 describe('widget param parsers', () => {
@@ -37,6 +42,92 @@ describe('widget param parsers', () => {
     expect(parseEnumValue('Ethereum', Blockchain)).toBe(Blockchain.ETHEREUM);
     expect(parseEnumValue('paypal', FiatPaymentMethod)).toBeUndefined();
     expect(parseEnumValue(undefined, FiatPaymentMethod)).toBeUndefined();
+  });
+
+  it('splits a csv param only when it is non-empty, without trimming tokens', () => {
+    expect(splitCsvParam(undefined)).toBeUndefined();
+    expect(splitCsvParam('')).toBeUndefined();
+    expect(splitCsvParam('BTC, ETH')).toEqual(['BTC', ' ETH']);
+  });
+
+  it('matches an assets token by id, uniqueName, name or chainId', () => {
+    const usdt = { id: 111, name: 'USDT', uniqueName: 'Ethereum/USDT', chainId: '0xdac17f958d2ee523a2206206994597c13d831ec7' };
+    expect(assetMatchesFilterToken(usdt, '111')).toBe(true);
+    expect(assetMatchesFilterToken(usdt, 'ethereum/usdt')).toBe(true);
+    expect(assetMatchesFilterToken(usdt, 'usdt')).toBe(true);
+    expect(assetMatchesFilterToken(usdt, '0xdAC17F958D2ee523a2206206994597C13D831ec7')).toBe(true);
+    expect(assetMatchesFilterToken(usdt, 'BTC')).toBe(false);
+  });
+
+  it('filters assets like the main app: absent keeps all, unknown tokens empty the list', () => {
+    const list = [
+      { id: 1, name: 'BTC', uniqueName: 'Bitcoin/BTC' },
+      { id: 2, name: 'ETH', uniqueName: 'Ethereum/ETH' },
+    ];
+    expect(filterAssetsByParam(list, undefined).map((a) => a.name)).toEqual(['BTC', 'ETH']);
+    expect(filterAssetsByParam(list, 'ETH,BTC').map((a) => a.name)).toEqual(['BTC', 'ETH']);
+    expect(filterAssetsByParam(list, 'eth').map((a) => a.name)).toEqual(['ETH']);
+    expect(filterAssetsByParam(list, 'NOPE').map((a) => a.name)).toEqual([]);
+  });
+
+  it('allows a chain when the blockchains param is absent, and drops unknown names', () => {
+    expect(chainAllowedByParam('Ethereum', undefined)).toBe(true);
+    expect(chainAllowedByParam('Ethereum', 'ethereum,bitcoin')).toBe(true);
+    expect(chainAllowedByParam('Ethereum', 'Bitcoin')).toBe(false);
+    expect(chainAllowedByParam('Ethereum', 'Mars')).toBe(false);
+  });
+
+  it('allows a wallet when the wallets param is absent, and matches type or id case-sensitively', () => {
+    const meta = { id: 'MetaMask', walletType: 'MetaMask' };
+    expect(walletAllowedByParam(meta, undefined)).toBe(true);
+    expect(walletAllowedByParam(meta, 'MetaMask')).toBe(true);
+    expect(walletAllowedByParam({ id: 'Ledger', walletType: 'Ledger' }, 'Ledger')).toBe(true);
+    expect(walletAllowedByParam(meta, 'metamask')).toBe(false);
+    expect(walletAllowedByParam(meta, 'NoSuchWallet')).toBe(false);
+    expect(walletAllowedByParam({ id: 'DFX Taro' }, 'DFX Taro')).toBe(true);
+    expect(walletAllowedByParam({ id: 'Coinbase Wallet', walletType: 'WalletBrowser' }, 'WalletBrowser')).toBe(true);
+  });
+
+  it('maps chain-specific WalletType tokens onto the catalog row for that vendor', () => {
+    const ledger = { id: 'Ledger', walletType: 'Ledger' };
+    const bitbox = { id: 'BitBox', walletType: 'BitBox' };
+    const trezor = { id: 'Trezor', walletType: 'Trezor' };
+    const phantom = { id: 'Phantom', walletType: 'Phantom' };
+    const trust = { id: 'Trust Wallet', walletType: 'Trust' };
+    const tronlink = { id: 'TronLink', walletType: 'TronLink' };
+    const meta = { id: 'MetaMask', walletType: 'MetaMask' };
+    expect(walletAllowedByParam(ledger, 'LedgerEth')).toBe(true);
+    expect(walletAllowedByParam(bitbox, 'BitBoxBtc')).toBe(true);
+    expect(walletAllowedByParam(trezor, 'TrezorEth')).toBe(true);
+    expect(walletAllowedByParam(phantom, 'PhantomSol')).toBe(true);
+    expect(walletAllowedByParam(trust, 'TrustTrx')).toBe(true);
+    expect(walletAllowedByParam(trust, 'TrustSol')).toBe(true);
+    expect(walletAllowedByParam(tronlink, 'TronLinkTrx')).toBe(true);
+    expect(walletAllowedByParam(meta, 'LedgerEth')).toBe(false);
+  });
+
+  it('maps CliAda to Cardano and other Cli* tokens to the CLI row', () => {
+    const cardano = { id: 'Cardano', walletType: 'CLI' };
+    const cli = { id: 'CLI', walletType: 'CLI' };
+    expect(walletAllowedByParam(cardano, 'CliAda')).toBe(true);
+    expect(walletAllowedByParam(cli, 'CliAda')).toBe(false);
+    expect(walletAllowedByParam(cli, 'CliEth')).toBe(true);
+    expect(walletAllowedByParam(cardano, 'CliEth')).toBe(false);
+    expect(walletAllowedByParam(cli, 'CliIcp')).toBe(true);
+    expect(walletAllowedByParam({ id: 'Internet Computer' }, 'CliIcp')).toBe(false);
+  });
+
+  it('keeps named wallets when the list also has a token App 2.0 does not offer', () => {
+    const meta = { id: 'MetaMask', walletType: 'MetaMask' };
+    const ledger = { id: 'Ledger', walletType: 'Ledger' };
+    expect(walletAllowedByParam(meta, 'MetaMask,Cake')).toBe(true);
+    expect(walletAllowedByParam(ledger, 'MetaMask,Cake')).toBe(false);
+  });
+
+  it('matches no catalog row for a WalletType App 2.0 does not offer', () => {
+    const meta = { id: 'MetaMask', walletType: 'MetaMask' };
+    expect(walletAllowedByParam(meta, 'Mail')).toBe(false);
+    expect(walletAllowedByParam(meta, 'DfxTaro')).toBe(false);
   });
 
   it('restricts the session chain list to a wanted chain, and ignores an unreachable one', () => {
