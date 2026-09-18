@@ -163,4 +163,31 @@ describe('useRealunitCompliance', () => {
       responseType: ResponseType.BLOB,
     });
   });
+
+  it('posts a per-customer Dilisense name-check', async () => {
+    const { result } = renderHook(() => useRealunitCompliance());
+
+    await result.current.screenCustomer(9);
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'realunit/compliance/customers/9/name-check',
+      method: 'POST',
+    });
+  });
+
+  it('posts the name-check batch', async () => {
+    const { result } = renderHook(() => useRealunitCompliance());
+
+    await result.current.startNameCheckBatch();
+
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/compliance/name-check', method: 'POST' });
+  });
+
+  it('gets the name-check batch status', async () => {
+    const { result } = renderHook(() => useRealunitCompliance());
+
+    await result.current.getNameCheckBatch();
+
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/compliance/name-check', method: 'GET' });
+  });
 });

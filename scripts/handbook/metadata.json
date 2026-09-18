@@ -89,7 +89,7 @@
   },
   "realunit-compliance": {
     "title": "RealUnit Compliance",
-    "description": "RealUnit-spezifische Compliance-Suche und Dossier."
+    "description": "RealUnit-Compliance: Kundensuche mit letztem Dilisense-Datum und -Ergebnis, Screen pro Zeile und Screen all (jeweils mit Kosten-Bestätigung), laufender Batch mit Fortschritt, und reduziertes Kundendossier."
   },
   "realunit-support": {
     "title": "RealUnit Support",

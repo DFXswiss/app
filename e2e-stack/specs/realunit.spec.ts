@@ -247,7 +247,7 @@ test.describe('RealUnit area', () => {
       `SELECT id FROM asset WHERE name = 'REALU' AND blockchain = 'Sepolia' AND type = 'Token' ORDER BY id ASC LIMIT 1`,
     );
     if (realu?.id == null) {
-      throw new Error("seedWaitingForPaymentBuyQuote: no loc REALU token on Sepolia in seed data");
+      throw new Error('seedWaitingForPaymentBuyQuote: no loc REALU token on Sepolia in seed data');
     }
 
     const uid = `RQ${Date.now().toString(36)}${customer.userId}`.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
@@ -290,9 +290,7 @@ test.describe('RealUnit area', () => {
       )
       .not.toBeNull();
 
-    await expect
-      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
-      .toBe('/realunit/quotes');
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 }).toBe('/realunit/quotes');
 
     assertNoErrors(pageErrors, consoleErrors);
   });
@@ -331,9 +329,7 @@ test.describe('RealUnit area', () => {
       )
       .not.toBeNull();
 
-    await expect
-      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
-      .toBe('/realunit/quotes');
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 }).toBe('/realunit/quotes');
 
     assertNoErrors(pageErrors, consoleErrors);
   });
@@ -475,18 +471,20 @@ test.describe('RealUnit area', () => {
 
     await expect(page.getByPlaceholder('Search by ID, email, phone or name...')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Search' })).toBeVisible();
+    // thead <th> cells map to ARIA role "cell" in this app, not "columnheader".
+    await expect(page.getByText('Last Dilisense check')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Screen all' })).toBeVisible();
+    await expect(
+      page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.'),
+    ).toHaveCount(0);
 
-    // Loading resolves to customers count, empty filter copy, or handled ErrorHint — not a crash.
-    // Empty result can show "Customers: 0" and "No entries found" at once; .first() avoids strict mode.
+    // Loading resolves to customers count or empty filter copy — not a crash. GET name-check on
+    // mount must succeed (ErrorHint is not an accepted happy-path settle). Empty result can show
+    // "Customers: 0" and "No entries found" at once; .first() avoids strict mode.
     const settled = page
       .getByText(/^Customers:/)
       .or(page.getByText('No entries found'))
-      .or(page.getByText('All accounts are hidden by the filter above'))
-      .or(
-        page.getByText(
-          'Something went wrong. Please try again. If the issue persists please reach out to our support.',
-        ),
-      );
+      .or(page.getByText('All accounts are hidden by the filter above'));
     await expect(settled.first()).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);
