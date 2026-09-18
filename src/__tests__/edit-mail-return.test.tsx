@@ -306,7 +306,7 @@ describe('EditMailScreen return path', () => {
   });
 
   it('mounts EditOverlay with empty prefill when the loaded user has no mail', async () => {
-    mockUser = undefined;
+    mockUser = {};
 
     render(<EditMailScreen />);
 
