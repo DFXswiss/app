@@ -3,9 +3,10 @@
 # This is a public repository. GitHub-hosted runners execute the heavy suite
 # (Jest, build:dev, widget:dev). A38 locally measures only Lint and Markdown
 # format. Drafts run these jobs. GitHub may hold fork runs as
-# `action_required`. Ready does not start CI. After a fresh A38 enforce pass,
-# `dfx pr guard` approves those waiting initial runs. The merger does not
-# click Approve and run workflows. Never listen to `ready_for_review` here.
+# `action_required`. Ready does not start CI. After a fresh A38 enforce
+# pass, `dfx pr guard` approves those waiting initial runs. The merger does
+# not click Approve and run workflows. Never listen to `ready_for_review`
+# here.
 #
 # When Build and test runs, develop PRs without the `ci:full` label run only
 # Jest `--findRelatedTests` on changed files under `src/**` and `functions/**`.
