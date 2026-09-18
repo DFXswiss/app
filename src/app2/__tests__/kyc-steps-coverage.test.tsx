@@ -131,6 +131,18 @@ function renderStep(name: KycStepName, extras?: Partial<KycStepSession>) {
   );
 }
 
+function orgNameBox() {
+  return screen.getByRole('textbox', { name: /^organization name$/i });
+}
+
+function orgAddressBox(part: RegExp) {
+  return screen.getByRole('textbox', { name: part });
+}
+
+function orgCountryBox() {
+  return screen.getByRole('combobox', { name: /organization address country/i });
+}
+
 function done(name: string) {
   return { name, status: 'Completed', sequenceNumber: 1 };
 }
@@ -244,6 +256,59 @@ describe('KycStepForm steps', () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
     await waitFor(() => expect(mockSetPersonal).toHaveBeenCalled());
     expect(mockSetPersonal.mock.calls[0][2].organizationName).toBe('DFX AG');
+    view.unmount();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('prefills organization name and address from URL when organization-name is set', async () => {
+    const search =
+      '?account-type=Organization&organization-name=DFX%20AG&organization-street=Bahnhof&organization-house-number=12&organization-zip=8001&organization-city=Zurich&organization-country=CH';
+    window.history.replaceState({}, '', `/${search}`);
+    const view = renderStep(KycStepName.PERSONAL_DATA);
+    await screen.findByText(/organization name/i);
+    expect(orgNameBox()).toHaveValue('DFX AG');
+    expect(orgAddressBox(/organization address street/i)).toHaveValue('Bahnhof');
+    expect(orgAddressBox(/organization address no/i)).toHaveValue('12');
+    expect(orgAddressBox(/organization address zip/i)).toHaveValue('8001');
+    expect(orgAddressBox(/organization address city/i)).toHaveValue('Zurich');
+    expect(orgCountryBox()).toHaveValue('1');
+    view.unmount();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('does not prefill organization address when organization-name is absent', async () => {
+    const search =
+      '?account-type=Organization&organization-street=Secret&organization-house-number=9&organization-zip=0000&organization-city=Nowhere&organization-country=DE';
+    window.history.replaceState({}, '', `/${search}`);
+    const view = renderStep(KycStepName.PERSONAL_DATA);
+    await screen.findByText(/organization name/i);
+    expect(orgNameBox()).toHaveValue('');
+    expect(orgAddressBox(/organization address street/i)).toHaveValue('');
+    expect(orgAddressBox(/organization address no/i)).toHaveValue('');
+    expect(orgAddressBox(/organization address zip/i)).toHaveValue('');
+    expect(orgAddressBox(/organization address city/i)).toHaveValue('');
+    expect(orgCountryBox()).not.toHaveValue('2');
+    view.unmount();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('leaves organization country empty when the param does not match the list', async () => {
+    window.history.replaceState({}, '', '/?account-type=Organization&organization-name=DFX&organization-country=Atlantis');
+    const view = renderStep(KycStepName.PERSONAL_DATA);
+    await screen.findByText(/organization name/i);
+    expect(orgCountryBox()).toHaveValue('');
+    view.unmount();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('does not overwrite a prefilled organization field after the user edits it', async () => {
+    window.history.replaceState({}, '', '/?account-type=Organization&organization-name=DFX%20AG');
+    const view = renderStep(KycStepName.PERSONAL_DATA);
+    await screen.findByText(/organization name/i);
+    const name = orgNameBox();
+    expect(name).toHaveValue('DFX AG');
+    fireEvent.change(name, { target: { value: 'Other GmbH' } });
+    expect(name).toHaveValue('Other GmbH');
     view.unmount();
     window.history.replaceState({}, '', '/');
   });
