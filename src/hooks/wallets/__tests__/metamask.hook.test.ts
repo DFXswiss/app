@@ -31,16 +31,17 @@ jest.mock('../../web3.hook', () => ({
   }),
 }));
 
-// Mock Web3 — mirrors web3-core-requestmanager setProvider: a mere read of `.on` can throw,
-// and currentProvider is only assigned if that read completes.
+// Mock Web3 — mirrors web3-core-requestmanager setProvider: currentProvider is
+// assigned first, then `.on` is read. A mere read of `.on` can throw; that throw
+// leaves the assigned provider in place (it does not roll the assignment back).
 jest.mock('web3', () => {
   const instances: any[] = [];
 
   function applyProvider(instance: any, provider: any) {
-    if (provider && provider.on && typeof provider.on === 'function') {
-      provider.on('message', () => undefined);
-    }
     instance.currentProvider = provider || null;
+    if (instance.currentProvider && instance.currentProvider.on && typeof instance.currentProvider.on === 'function') {
+      instance.currentProvider.on('message', () => undefined);
+    }
   }
 
   function invoke(cb: any, promise: Promise<any>) {
@@ -204,17 +205,21 @@ describe('useMetaMask', () => {
 
   describe('conflicting injected provider', () => {
     it('binds a provider whose .on access throws and forwards RPC to it', async () => {
-      const request = jest.fn(async ({ method }: { method: string }) => {
+      const request = jest.fn(async function (this: { isMetaMask?: boolean }, { method }: { method: string }) {
+        // Without fn.bind(provider) this is the empty wrapper, which has no isMetaMask.
+        expect(this.isMetaMask).toBe(true);
         if (method === 'eth_accounts') return [TEST_ACCOUNT];
         return [];
       });
-      (window as any).ethereum = createBraveLikeProvider(request);
+      const provider = createBraveLikeProvider(request);
+      (window as any).ethereum = provider;
 
       const { result } = renderHook(() => useMetaMask());
       const instance = lastWeb3Instance();
 
       expect(instance.currentProvider).not.toBeNull();
       expect(instance.currentProvider).toBeDefined();
+      expect(instance.currentProvider).not.toBe(provider);
 
       let account: string | undefined;
       await act(async () => {
