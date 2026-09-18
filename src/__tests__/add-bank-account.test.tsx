@@ -1,7 +1,6 @@
-// Component test for the KYC-only IBAN rejection on AddBankAccount
-// (src/components/payment/add-bank-account.tsx). A 400 with "KYC only account" must show the
-// wallet-connect hint, navigate to /connect on click, and must not fall through to the generic
-// ErrorHint box. A different 400 must still use ErrorHint.
+// Component tests for AddBankAccount (src/components/payment/add-bank-account.tsx).
+// Covers the KYC-only and multi-account IBAN rejections (custom hint + navigate, not ErrorHint),
+// generic 400 fall-through, and the success path with and without confirmationText.
 //
 // @dfx.swiss/react and @dfx.swiss/react-components are fully mocked here (object-literal factories,
 // no requireActual): loading the real packages under this repo's test command fails on their ESM
@@ -16,6 +15,11 @@ const GENERIC_ERROR =
   'Something went wrong. Please try again. If the issue persists please reach out to our support.';
 const WALLET_HINT = 'Before you can add a bank account, your DFX account needs a wallet.';
 const KYC_ONLY_MESSAGE = 'You cannot add an IBAN to a KYC only account';
+const MULTI_ACCOUNT_HINT =
+  'This is a multi-account IBAN and cannot be added as a personal account. Please open a support ticket at';
+const PUBLIC_URL = 'http://localhost:3001/';
+const SUPPORT_HREF = new URL('support', PUBLIC_URL).href;
+const SUPPORT_PATH = '/support/issue?issue-type=GenericIssue';
 
 jest.mock('@dfx.swiss/react', () => ({
   SupportIssueType: { GENERIC_ISSUE: 'GenericIssue' },
@@ -162,9 +166,12 @@ import { AddBankAccount } from 'src/components/payment/add-bank-account';
 
 const IBAN = 'DE89370400440532013000';
 const OTHER_400_MESSAGE = 'IBAN country is currently not supported';
+const CONFIRMATION_TEXT =
+  'The bank account has been added, all transactions from this IBAN will now be associated with your account.';
+const ACCOUNT = { id: 9, iban: IBAN };
 
-async function submitIban() {
-  render(<AddBankAccount onSubmit={mockOnSubmit} />);
+async function submitIban(confirmationText?: string) {
+  render(<AddBankAccount onSubmit={mockOnSubmit} confirmationText={confirmationText} />);
   const ibanInput = screen.getByPlaceholderText('XX XXXX XXXX XXXX XXXX X');
   fireEvent.change(ibanInput, { target: { value: IBAN } });
   fireEvent.blur(ibanInput);
@@ -181,9 +188,10 @@ async function submitIban() {
   expect(mockCreateAccount.mock.calls[0][0]).toMatchObject({ iban: IBAN });
 }
 
-describe('AddBankAccount KYC-only rejection', () => {
+describe('AddBankAccount', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.REACT_APP_PUBLIC_URL = PUBLIC_URL;
   });
 
   it('shows the wallet-connect hint and hides the generic error box', async () => {
@@ -215,5 +223,63 @@ describe('AddBankAccount KYC-only rejection', () => {
     expect(screen.queryByRole('link', { name: 'Connect a wallet' })).not.toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Unknown error when the rejection has no message', async () => {
+    mockCreateAccount.mockRejectedValue({ statusCode: 500 });
+
+    await submitIban();
+
+    await waitFor(() => expect(screen.getByText(GENERIC_ERROR)).toBeInTheDocument());
+    expect(screen.getByTestId('error-hint')).toBeInTheDocument();
+    expect(screen.getByText('Unknown error')).toBeInTheDocument();
+    expect(screen.queryByText(WALLET_HINT, { exact: false })).not.toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+
+  it('shows the support hint for a multi-account IBAN and navigates to the support issue', async () => {
+    mockCreateAccount.mockRejectedValue({
+      statusCode: 400,
+      message: 'You cannot add a Multi-account IBAN as a personal account',
+    });
+
+    await submitIban();
+
+    await waitFor(() => expect(screen.getByText(MULTI_ACCOUNT_HINT, { exact: false })).toBeInTheDocument());
+    const supportLink = screen.getByRole('link', { name: SUPPORT_HREF });
+    expect(supportLink).toBeInTheDocument();
+    expect(screen.queryByText(GENERIC_ERROR)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+
+    fireEvent.click(supportLink);
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith(SUPPORT_PATH);
+  });
+
+  it('calls onSubmit immediately when createAccount succeeds without confirmationText', async () => {
+    mockCreateAccount.mockResolvedValue(ACCOUNT);
+
+    await submitIban();
+
+    await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledTimes(1));
+    expect(mockOnSubmit).toHaveBeenCalledWith(ACCOUNT);
+    expect(screen.queryByRole('button', { name: 'OK' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add bank account' })).toBeInTheDocument();
+  });
+
+  it('shows the confirmation text and calls onSubmit only after OK', async () => {
+    mockCreateAccount.mockResolvedValue(ACCOUNT);
+
+    await submitIban(CONFIRMATION_TEXT);
+
+    await waitFor(() => expect(screen.getByText(CONFIRMATION_TEXT)).toBeInTheDocument());
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Add bank account' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+    expect(mockOnSubmit).toHaveBeenCalledTimes(1);
+    expect(mockOnSubmit).toHaveBeenCalledWith(ACCOUNT);
   });
 });
