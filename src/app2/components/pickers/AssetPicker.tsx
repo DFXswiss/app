@@ -60,6 +60,7 @@ interface AssetPickerProps {
   pool: TradeAsset[];
   cap: Capability;
   sessionBlockchains?: readonly string[];
+  partnerBlockchains?: string;
   /** Accepted for caller compatibility but intentionally unused — the static picker shows no
    * held-balance column and never sorts by balance (only favRank → chains → code). */
   balances?: Record<string, number>;
@@ -76,8 +77,9 @@ function matchesFilter(
   filter: Filter,
   cap: Capability,
   sessionBlockchains: readonly string[] | undefined,
+  partnerBlockchains?: string,
 ): boolean {
-  const available = shownChainsFor(token, cap, sessionBlockchains);
+  const available = shownChainsFor(token, cap, sessionBlockchains, partnerBlockchains);
   if (!available.length) return false;
   switch (filter) {
     case 'favorites':
@@ -103,6 +105,7 @@ export function AssetPicker({
   pool,
   cap,
   sessionBlockchains,
+  partnerBlockchains,
   excludeCode,
   selectedCode,
   selectedBlockchain,
@@ -123,18 +126,22 @@ export function AssetPicker({
   // chips). Mirrors `chainsOfChips()`.
   const availableChains = useMemo(() => {
     const seen = new Set<Blockchain>();
-    candidatePool.forEach((tk) => shownChainsFor(tk, cap, sessionBlockchains).forEach((c) => seen.add(c.blockchain)));
+    candidatePool.forEach((tk) =>
+      shownChainsFor(tk, cap, sessionBlockchains, partnerBlockchains).forEach((c) => seen.add(c.blockchain)),
+    );
     return CHAIN_CHIP_ORDER.filter((c) => seen.has(c));
-  }, [candidatePool, cap, sessionBlockchains]);
+  }, [candidatePool, cap, sessionBlockchains, partnerBlockchains]);
 
   // Logged-in wallets restrict the pool to reachable chains; a guest sees everything (see
   // isReachable). No token being receivable → the "no assets for this wallet" empty state.
   const loggedIn = !!sessionBlockchains?.length;
-  const walletCanReceive = candidatePool.some((tk) => shownChainsFor(tk, cap, sessionBlockchains).length > 0);
+  const walletCanReceive = candidatePool.some(
+    (tk) => shownChainsFor(tk, cap, sessionBlockchains, partnerBlockchains).length > 0,
+  );
 
   const query = search.trim().toLowerCase();
   const filtered = candidatePool
-    .filter((tk) => matchesFilter(tk, filter, cap, sessionBlockchains))
+    .filter((tk) => matchesFilter(tk, filter, cap, sessionBlockchains, partnerBlockchains))
     .filter((tk) => !query || tk.code.toLowerCase().includes(query) || tk.description.toLowerCase().includes(query));
 
   // Favorites first, then more-chains-first, then alphabetical — mirrors the static app's
@@ -151,7 +158,7 @@ export function AssetPicker({
   };
 
   const pick = (token: TradeAsset) => {
-    const chains = shownChainsFor(token, cap, sessionBlockchains);
+    const chains = shownChainsFor(token, cap, sessionBlockchains, partnerBlockchains);
     if (chains.length <= 1) {
       onSelect(token, chains[0].blockchain);
       close();
@@ -160,7 +167,7 @@ export function AssetPicker({
     setChainStepFor(token);
   };
 
-  const chains = chainStepFor ? shownChainsFor(chainStepFor, cap, sessionBlockchains) : [];
+  const chains = chainStepFor ? shownChainsFor(chainStepFor, cap, sessionBlockchains, partnerBlockchains) : [];
 
   // Horizontal scroll arrows + left-edge fade for the filter row (desktop). Mirrors the static
   // app's `updateFrowArrows()` / #frowLeft / #frowRight: hide the left arrow at the start, the
@@ -292,6 +299,7 @@ export function AssetPicker({
                 token={tk}
                 cap={cap}
                 sessionBlockchains={sessionBlockchains}
+                partnerBlockchains={partnerBlockchains}
                 onPick={() => pick(tk)}
               />
             ))}
@@ -399,15 +407,17 @@ function AssetRow({
   token,
   cap,
   sessionBlockchains,
+  partnerBlockchains,
   onPick,
 }: {
   token: TradeAsset;
   cap: Capability;
   sessionBlockchains: readonly string[] | undefined;
+  partnerBlockchains?: string;
   onPick: () => void;
 }) {
   const { t } = useT();
-  const chains = shownChainsFor(token, cap, sessionBlockchains);
+  const chains = shownChainsFor(token, cap, sessionBlockchains, partnerBlockchains);
   const single = chains.length === 1;
   const singleChainName = single ? chainName(chains[0].blockchain) : '';
   const netTxt = single

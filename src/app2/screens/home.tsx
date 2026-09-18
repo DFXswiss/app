@@ -58,6 +58,7 @@ import { firstQueryParam, routeOrQueryParam } from '../utils/url';
 import { ibanCheck } from './trade/iban';
 import {
   completionRedirectUrl,
+  filterAssetsByParam,
   isPresentFlag,
   matchBankAccount,
   parseEnumValue,
@@ -123,6 +124,8 @@ export default function HomeScreen() {
   const assetInParam = useMemo(() => routeOrQueryParam(location.search, 'asset-in'), [location.search]);
   const assetOutParam = useMemo(() => routeOrQueryParam(location.search, 'asset-out'), [location.search]);
   const paymentMethodParam = useMemo(() => routeOrQueryParam(location.search, 'payment-method'), [location.search]);
+  const assetsParam = useMemo(() => routeOrQueryParam(location.search, 'assets'), [location.search]);
+  const blockchainsParam = useMemo(() => routeOrQueryParam(location.search, 'blockchains'), [location.search]);
   const blockchainParam = useMemo(() => routeOrQueryParam(location.search, 'blockchain'), [location.search]);
   const bankAccountParam = useMemo(() => routeOrQueryParam(location.search, 'bank-account'), [location.search]);
   const personalIbanParam = useMemo(() => routeOrQueryParam(location.search, 'personal-iban'), [location.search]);
@@ -192,13 +195,17 @@ export default function HomeScreen() {
   // (from = sell / to = buy), so each crypto leg inherits that side's exception.
   const allAssets = useMemo<Asset[]>(() => getAssets(Object.values(Blockchain)), [getAssets]);
   const buyPool = useMemo(() => {
-    const visible = allAssets.filter((asset) => includeInPartnerPool(asset, assetOutParam));
+    const visible = filterAssetsByParam(allAssets, assetsParam).filter((asset) =>
+      includeInPartnerPool(asset, assetOutParam),
+    );
     return availableAssets(groupAssets(visible), 'buy');
-  }, [allAssets, assetOutParam]);
+  }, [allAssets, assetsParam, assetOutParam]);
   const sellPoolAll = useMemo(() => {
-    const visible = allAssets.filter((asset) => includeInPartnerPool(asset, assetInParam));
+    const visible = filterAssetsByParam(allAssets, assetsParam).filter((asset) =>
+      includeInPartnerPool(asset, assetInParam),
+    );
     return availableAssets(groupAssets(visible), 'sell');
-  }, [allAssets, assetInParam]);
+  }, [allAssets, assetsParam, assetInParam]);
   const balancesParam = useMemo(() => routeOrQueryParam(location.search, 'balances'), [location.search]);
   const chainFilter = useMemo(
     () => restrictBlockchains(session.blockchains, requestedChain),
@@ -220,86 +227,86 @@ export default function HomeScreen() {
   // ---- defaults once the pool/currency list is loaded ---------------------------------------
   useEffect(() => {
     if (!buyPool.length) return;
-    const currentChains = buyAsset ? shownChainsFor(buyAsset, 'buy', chainFilter) : [];
+    const currentChains = buyAsset ? shownChainsFor(buyAsset, 'buy', chainFilter, blockchainsParam) : [];
     if (buyAsset && currentChains.length) {
       if (!currentChains.some((chain) => chain.blockchain === buyChain)) setBuyChain(currentChains[0].blockchain);
       return;
     }
-    const reachable = buyPool.filter((asset) => shownChainsFor(asset, 'buy', chainFilter).length > 0);
+    const reachable = buyPool.filter((asset) => shownChainsFor(asset, 'buy', chainFilter, blockchainsParam).length > 0);
     const named = findNamedTradeAsset(reachable, assetOutParam);
     const btc = reachable.find((tk) => tk.code === 'BTC');
     const def = named ? named : btc ? btc : reachable[0];
     if (!def) return;
-    const chains = shownChainsFor(def, 'buy', chainFilter);
+    const chains = shownChainsFor(def, 'buy', chainFilter, blockchainsParam);
     const preferred =
       requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
         ? requestedChain
         : chains[0]?.blockchain;
     setBuyAsset(def);
     setBuyChain(preferred);
-  }, [buyPool, buyAsset, buyChain, chainFilter, assetOutParam, requestedChain]);
+  }, [buyPool, buyAsset, buyChain, chainFilter, blockchainsParam, assetOutParam, requestedChain]);
 
   useEffect(() => {
     if (!sellPool.length) return;
-    const currentChains = sellAsset ? shownChainsFor(sellAsset, 'sell', chainFilter) : [];
+    const currentChains = sellAsset ? shownChainsFor(sellAsset, 'sell', chainFilter, blockchainsParam) : [];
     if (sellAsset && currentChains.length) {
       if (!currentChains.some((chain) => chain.blockchain === sellChain)) setSellChain(currentChains[0].blockchain);
       return;
     }
-    const reachable = sellPool.filter((asset) => shownChainsFor(asset, 'sell', chainFilter).length > 0);
+    const reachable = sellPool.filter((asset) => shownChainsFor(asset, 'sell', chainFilter, blockchainsParam).length > 0);
     const named = findNamedTradeAsset(reachable, assetInParam);
     const btc = reachable.find((tk) => tk.code === 'BTC');
     const def = named ? named : btc ? btc : reachable[0];
     if (!def) return;
-    const chains = shownChainsFor(def, 'sell', chainFilter);
+    const chains = shownChainsFor(def, 'sell', chainFilter, blockchainsParam);
     const preferred =
       requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
         ? requestedChain
         : chains[0]?.blockchain;
     setSellAsset(def);
     setSellChain(preferred);
-  }, [sellPool, sellAsset, sellChain, chainFilter, assetInParam, requestedChain]);
+  }, [sellPool, sellAsset, sellChain, chainFilter, blockchainsParam, assetInParam, requestedChain]);
 
   useEffect(() => {
     if (!sellPool.length) return;
-    const currentChains = swapFromAsset ? shownChainsFor(swapFromAsset, 'sell', chainFilter) : [];
+    const currentChains = swapFromAsset ? shownChainsFor(swapFromAsset, 'sell', chainFilter, blockchainsParam) : [];
     if (swapFromAsset && currentChains.length) {
       if (!currentChains.some((chain) => chain.blockchain === swapFromChain)) {
         setSwapFromChain(currentChains[0].blockchain);
       }
       return;
     }
-    const def = sellPool.find((asset) => shownChainsFor(asset, 'sell', chainFilter).length > 0);
+    const def = sellPool.find((asset) => shownChainsFor(asset, 'sell', chainFilter, blockchainsParam).length > 0);
     if (!def) return;
-    const chains = shownChainsFor(def, 'sell', chainFilter);
+    const chains = shownChainsFor(def, 'sell', chainFilter, blockchainsParam);
     const preferred =
       requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
         ? requestedChain
         : chains[0]?.blockchain;
     setSwapFromAsset(def);
     setSwapFromChain(preferred);
-  }, [sellPool, swapFromAsset, swapFromChain, chainFilter, requestedChain]);
+  }, [sellPool, swapFromAsset, swapFromChain, chainFilter, blockchainsParam, requestedChain]);
 
   useEffect(() => {
     if (!buyPool.length) return;
-    const currentChains = swapToAsset ? shownChainsFor(swapToAsset, 'buy', chainFilter) : [];
+    const currentChains = swapToAsset ? shownChainsFor(swapToAsset, 'buy', chainFilter, blockchainsParam) : [];
     if (swapToAsset && swapToAsset.code !== swapFromAsset?.code && currentChains.length) {
       if (!currentChains.some((chain) => chain.blockchain === swapToChain)) setSwapToChain(currentChains[0].blockchain);
       return;
     }
     const rest = buyPool.filter(
-      (tk) => tk.code !== swapFromAsset?.code && shownChainsFor(tk, 'buy', chainFilter).length > 0,
+      (tk) => tk.code !== swapFromAsset?.code && shownChainsFor(tk, 'buy', chainFilter, blockchainsParam).length > 0,
     );
     const def = rest[0];
     if (!def) return;
-    const chains = shownChainsFor(def, 'buy', chainFilter);
+    const chains = shownChainsFor(def, 'buy', chainFilter, blockchainsParam);
     const preferred =
       requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
         ? requestedChain
         : chains[0]?.blockchain;
     setSwapToAsset(def);
     setSwapToChain(preferred);
-  }, [buyPool, swapToAsset, swapToChain, swapFromAsset, chainFilter, requestedChain]);
+  }, [buyPool, swapToAsset, swapToChain, swapFromAsset, chainFilter, blockchainsParam, requestedChain]);
 
   useEffect(() => {
     if (buyFiat || !buyCurrencies.length) return;
@@ -1071,6 +1078,7 @@ export default function HomeScreen() {
         sellPool={sellPool}
         balances={balances}
         sessionBlockchains={chainFilter}
+        partnerBlockchains={blockchainsParam}
         swapFromCode={swapFromAsset?.code}
         swapToCode={swapToAsset?.code}
         selectedCode={
@@ -1241,6 +1249,7 @@ interface AssetPickerSlotProps {
   sellPool: TradeAsset[];
   balances: Record<string, number>;
   sessionBlockchains?: readonly string[];
+  partnerBlockchains?: string;
   swapFromCode?: string;
   swapToCode?: string;
   selectedCode?: string;
@@ -1261,6 +1270,7 @@ function AssetPickerSlot({
   sellPool,
   balances,
   sessionBlockchains,
+  partnerBlockchains,
   swapFromCode,
   swapToCode,
   selectedCode,
@@ -1295,6 +1305,7 @@ function AssetPickerSlot({
       pool={config.pool}
       cap={config.cap}
       sessionBlockchains={sessionBlockchains}
+      partnerBlockchains={partnerBlockchains}
       balances={balances}
       sortByBalance={config.sortByBalance}
       excludeCode={config.excludeCode}
