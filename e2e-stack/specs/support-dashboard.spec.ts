@@ -315,6 +315,7 @@ test.describe('Support dashboard (staff)', () => {
       [wallet.address],
     );
     const staff = required(staffRow, 'Support account user_data row required');
+    const previousClerks = await queryOne<{ value: string }>(`SELECT value FROM setting WHERE key = 'supportClerks'`);
 
     try {
       await withDb(async (client) => {
@@ -354,15 +355,19 @@ test.describe('Support dashboard (staff)', () => {
       const assigned = await waitForRow<{ clerkUserDataId: number }>(
         `SELECT "clerkUserDataId" AS "clerkUserDataId"
          FROM support_issue
-         WHERE id = $1 AND "clerkUserDataId" = $2`,
-        [issueId, staff.id],
+         WHERE id = $1 AND "clerkUserDataId" IS NOT NULL`,
+        [issueId],
         15000,
       );
       expect(assigned.clerkUserDataId).toBe(staff.id);
     } finally {
       await withDb(async (client) => {
         await client.query(`UPDATE user_data SET "verifiedName" = $1 WHERE id = $2`, [staff.verifiedName, staff.id]);
-        await client.query(`DELETE FROM setting WHERE key = $1`, ['supportClerks']);
+        if (previousClerks) {
+          await client.query(`UPDATE setting SET value = $1 WHERE key = 'supportClerks'`, [previousClerks.value]);
+        } else {
+          await client.query(`DELETE FROM setting WHERE key = $1`, ['supportClerks']);
+        }
       });
     }
   });
