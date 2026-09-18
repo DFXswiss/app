@@ -141,7 +141,7 @@ export default function EditMailScreen(): JSX.Element {
             }}
           />
         </StyledVerticalStack>
-      ) : checking2fa || (isUserLoading && !user) ? (
+      ) : checking2fa || isUserLoading ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : user == null ? (
         <ErrorHint message={translate('screens/kyc', 'Unable to load user')} />
