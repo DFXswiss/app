@@ -431,7 +431,16 @@
     "Complete name": "Nome completo",
     "Creditor name": "Nome del creditore",
     "Requested chargeback amount": "Importo chargeback richiesto",
-    "Waiting for manual approval": "In attesa di approvazione manuale"
+    "Waiting for manual approval": "In attesa di approvazione manuale",
+    "Call Queue": "Call Queue",
+    "User": "Utente",
+    "Phone": "Telefono",
+    "Lang": "Lingua",
+    "Transaction": "Transazione",
+    "Country": "Paese",
+    "Status": "Stato",
+    "Date": "Data",
+    "Phone Call Times": "Orari di chiamata"
   },
   "screens/2fa": {
     "2FA": "2FA",

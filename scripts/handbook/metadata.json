@@ -83,6 +83,10 @@
     "title": "Compliance: Unzugeordnete Bankeingänge",
     "description": "Liste unzugeordneter Bankeingänge mit hervorgehobener Lastschrift-Zeile und das aufgeklappte Zuordnungsformular für die Admin-Rolle."
   },
+  "compliance-call-queue": {
+    "title": "Compliance: Call-Queue-Liste",
+    "description": "Eintragsliste einer Call-Queue: Telefon-Queue mit der Spalte Anrufzeiten (Rohwert und Strich bei Leerwert) und IP-Telefon-Queue ohne diese Spalte."
+  },
   "compliance-call-queue-outcome": {
     "title": "Compliance: Call-Queue-Outcome",
     "description": "Outcome-Formular mit der Signatur als verified name des eingeloggten Bearbeiters, ohne Clerks-Auswahlliste."
