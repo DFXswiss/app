@@ -500,17 +500,69 @@ test.describe('Auth area e2e', () => {
     const email = testEmail('kyc-only-home');
     const wallet = await nextUnusedCliWallet();
 
-    await requestMailLogin(email);
-    const jwt = await completeMailLogin(email);
+    // /login/mail with no stored redirectPath: ConnectMail omits redirectUri, so the mail POST
+    // does not send origin `http://frontend` (fails backend @IsUrl()).
+    await page.goto('/login/mail');
+    await page.waitForLoadState('networkidle');
+    expect(normPath(new URL(page.url()).pathname)).toBe('/login/mail');
+
+    await expect(page.getByPlaceholder('example@mail.com')).toBeVisible({ timeout: 15000 });
+    await page.getByPlaceholder('example@mail.com').fill(email);
+    await page.getByRole('button', { name: 'Next' }).click();
+
+    await expect(
+      page.getByText('We have sent an email with further instructions to the address provided.', { exact: true }),
+    ).toBeVisible({ timeout: 20000 });
+
     const mailAccount = await waitForRow<{ id: number }>(
       `SELECT id FROM user_data WHERE mail = $1`,
       [email],
       20000,
     );
     trackRow('user_data', mailAccount.id);
+
+    const row = await waitForRow<{ data: string }>(
+      `SELECT n.data
+       FROM notification n
+       JOIN user_data ud ON ud.id = n."userDataId"
+       WHERE ud.mail = $1 AND n.context = 'Login'
+       ORDER BY n.id DESC LIMIT 1`,
+      [email],
+      20000,
+    );
+
+    let otp: string | null = null;
+    const parsed = JSON.parse(row.data) as { texts?: Array<{ params?: { url?: string } }> };
+    for (const entry of parsed.texts ?? []) {
+      const url = entry?.params?.url;
+      if (typeof url === 'string') {
+        try {
+          otp = new URL(url, process.env.E2E_FRONTEND_URL ?? 'http://frontend').searchParams.get('otp');
+          if (otp) break;
+        } catch {
+          /* next */
+        }
+      }
+    }
+    expect(otp, 'OTP should be extractable from Login notification').toBeTruthy();
+
+    await page.goto(
+      `/mail-login?otp=${encodeURIComponent(required(otp, 'OTP must be extractable from the Login notification'))}`,
+    );
+    await page.waitForURL((url) => normPath(url.pathname) === '/account' || url.searchParams.has('session'), {
+      timeout: 30000,
+    });
+    await page.waitForLoadState('networkidle');
+
+    await expect
+      .poll(async () => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')), {
+        timeout: 20000,
+      })
+      .toBeTruthy();
+
     expect(await userCountForUserData(mailAccount.id), 'mail account must have no wallet row yet').toBe(0);
 
-    await gotoWithSession(page, '/login/wallet', jwt);
+    await page.goto('/login/wallet');
     await page.waitForLoadState('networkidle');
     expect(normPath(new URL(page.url()).pathname)).toBe('/login/wallet');
 
