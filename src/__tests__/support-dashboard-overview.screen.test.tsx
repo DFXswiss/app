@@ -624,7 +624,7 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
       .getAllByText(/mine$/)
       .map((el) => el.textContent);
     expect(names).toEqual(['Older mine', 'Newer mine']);
-    expect(statCardValue('My tickets')).toContain('2');
+    expect(statCardValue('My tickets')).toBe('2/ 2');
 
     fireEvent.click(within(section('my-tickets')).getByText('Older mine'));
     expect(mockNavigate).toHaveBeenCalledWith('/support/dashboard/issue/7');
@@ -1195,6 +1195,7 @@ describe('SupportDashboardOverviewScreen wait-filter persistence', () => {
 
     fireEvent.click(waitPills()[0]);
 
+    expect(mockStorageSet).toHaveBeenCalledWith('localStorage', 'dfx.support.waitFilterHours', '1');
     expect(waitPills()[0].className).toContain('ring-2');
     expect(within(section('waiting')).getByText('Five hours waiting')).toBeInTheDocument();
   });
