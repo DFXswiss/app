@@ -198,6 +198,13 @@ describe('Home partner widget params', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('hides the receive-asset picker when hide-target-selection is any non-empty value', async () => {
+    setParams('?hide-target-selection=1');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByLabelText(/select receive asset/i)).toBeDisabled();
+  });
+
   it('hides the sell receive-currency picker when hide-target-selection is set', async () => {
     setParams('?mode=sell&hide-target-selection=true');
     renderHome();

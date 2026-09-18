@@ -396,6 +396,19 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   form, plus the six merchant sub-pages (payment routes, invoice, POS, links, history, settings) are
   captured that way. The OpenCryptoPay sub-pages are shown in the built-in demo mode. A green run does
   not prove that the buy screen ever renders a real rate, nor that the transaction list ever shows rows.
+- **App 2.0 widget-param specs SQL-write `"user".ref`.**
+  `e2e-stack/specs/app2-widget-params.spec.ts` (`assignReferrerCode`) updates the referrer's own
+  code so sign-in can look it up. A green run does **not** prove that the API assigns `user.ref`
+  on sign-up or that a factory account already carries one.
+- **App 2.0 widget-param specs fulfil the partner redirect host.**
+  `e2e-stack/specs/app2-widget-params.spec.ts` answers `https://example.com/**` with a static 200
+  so Done can leave `/app2/`. A green run does **not** prove that a real partner origin answers
+  or that the browser follows that host outside the test.
+- **App 2.0 specs SQL-reset ContactData so auto-start opens the mail form.**
+  `e2e-stack/specs/app2.spec.ts` and `e2e-stack/specs/app2-widget-params.spec.ts`
+  (`reopenContactData`) null `user_data.mail` and set `kyc_step` ContactData to `NotStarted`.
+  Sign-up completes that step even at kycLevel 0. A green run does **not** prove that a new
+  account still has ContactData open, or that mail is cleared through the product path.
 
 ## Known gaps
 

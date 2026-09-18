@@ -58,6 +58,7 @@ import { firstQueryParam, routeOrQueryParam } from '../utils/url';
 import { ibanCheck } from './trade/iban';
 import {
   completionRedirectUrl,
+  isPresentFlag,
   matchBankAccount,
   parseEnumValue,
   personalIbanParamState,
@@ -126,8 +127,8 @@ export default function HomeScreen() {
   const bankAccountParam = useMemo(() => routeOrQueryParam(location.search, 'bank-account'), [location.search]);
   const personalIbanParam = useMemo(() => routeOrQueryParam(location.search, 'personal-iban'), [location.search]);
   const redirectUriParam = useMemo(() => routeOrQueryParam(location.search, 'redirect-uri'), [location.search]);
-  const hideTargetSelection = Boolean(routeOrQueryParam(location.search, 'hide-target-selection'));
-  const requestedChain = parseEnumValue(blockchainParam, Blockchain) as Blockchain | undefined;
+  const hideTargetSelection = isPresentFlag(routeOrQueryParam(location.search, 'hide-target-selection'));
+  const requestedChain = parseEnumValue<Blockchain>(blockchainParam, Blockchain);
   const spendClearedByUserRef = useRef(false);
 
   const [buyRaw, setBuyRaw] = useState('100');
@@ -382,8 +383,7 @@ export default function HomeScreen() {
     buyMethod,
     FiatPaymentMethod.BANK,
   );
-  const personalIbanProvider =
-    personalIbanState.kind === 'ready' ? (personalIbanState.provider as PersonalIbanProvider) : undefined;
+  const personalIbanProvider = personalIbanState.kind === 'ready' ? personalIbanState.provider : undefined;
   const personalIbanBlocked = personalIbanState.kind === 'unrecognized' || personalIbanState.kind === 'inapplicable';
   const sellAmount = parseAmt(sellRaw, language);
   const swapAmount = parseAmt(swapRaw, language);

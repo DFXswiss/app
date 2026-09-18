@@ -8,8 +8,14 @@ import { isSafeRedirectUri } from '../../utils/url';
  * `FRICK_COLLECTION_IBANS` in src/util/personal-iban.ts. */
 export const PERSONAL_IBAN_CURRENCIES: readonly string[] = ['EUR', 'CHF'];
 
+/** Strict: only the lowercase string `true` is on. Main-app `headless` / `auto-start`. */
 export function isTrueFlag(value: string | undefined): boolean {
   return value === 'true';
+}
+
+/** Present: any non-empty value is on. Main-app `borderless` / `hide-target-selection`. */
+export function isPresentFlag(value: string | undefined): boolean {
+  return Boolean(value);
 }
 
 export function parseEnumValue<T extends string>(
@@ -47,19 +53,19 @@ export function isPersonalIbanApplicable(currencyName: string | undefined, payme
   return Boolean(currencyName && PERSONAL_IBAN_CURRENCIES.includes(currencyName) && paymentMethod === bank);
 }
 
-export type PersonalIbanParamState =
+export type PersonalIbanParamState<T extends string = string> =
   | { kind: 'absent' }
   | { kind: 'unrecognized' }
   | { kind: 'inapplicable'; reason: 'method' | 'currency' }
-  | { kind: 'ready'; provider: string };
+  | { kind: 'ready'; provider: T };
 
-export function personalIbanParamState(
+export function personalIbanParamState<T extends string>(
   value: string | undefined,
-  providers: Record<string, string>,
+  providers: Record<string, T>,
   currencyName: string | undefined,
   paymentMethod: string,
   bank: string,
-): PersonalIbanParamState {
+): PersonalIbanParamState<T> {
   if (!value) return { kind: 'absent' };
   const provider = parseEnumValue(value, providers);
   if (!provider) return { kind: 'unrecognized' };
