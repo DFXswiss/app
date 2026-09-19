@@ -284,8 +284,10 @@ test.describe('Account area e2e', () => {
       mail,
     ]);
     const userData = required(row, 'mail login must create user_data');
-    expect(userData.status, 'POST /v1/auth/mail must create user_data.status = KycOnly').toBe('KycOnly');
+    // Register before the status assertion: the row exists from here, and cleanup must still
+    // see it if that expect fails — the case this test is for.
     trackRow('user_data', userData.id);
+    expect(userData.status, 'POST /v1/auth/mail must create user_data.status = KycOnly').toBe('KycOnly');
 
     // lang=en pins the copy this case asserts; mail-login does not set language the way createUser does.
     await gotoWithSession(page, '/settings?lang=en', jwt);

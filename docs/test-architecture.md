@@ -56,8 +56,12 @@ This layer arrived with #1288 and lives in `e2e-stack/`.
 
 Measured on the head of that pull request, `acb6814a`, in CI: 223 tests, of which 219 passed, 3 were
 skipped and 1 failed, in 9.6 minutes on a single worker. The failure was the route gate doing its job —
-the merge target had gained a route the registry did not claim yet. Re-measure after any change to the
-suite; the number of tests is not pinned anywhere.
+the merge target had gained a route the registry did not claim yet. Measured locally on a development
+machine after this suite gained a test (not in CI): 266 tests, of which 260 passed, 3 were skipped,
+2 did not run and 1 failed, in 8.4 minutes on a single worker. That failure was
+`/buyCrypto/update: Admin save updates buyId and shows Saved`, unrelated to the change that
+prompted this measurement. Re-measure
+after any change to the suite; the number of tests is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every
 external provider through two independent mechanisms: the API mocks its own outbound calls, and the
