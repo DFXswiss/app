@@ -24,6 +24,7 @@
     "Retry": "Riprovare",
     "Skip": "Salta",
     "Connect": "Collegare",
+    "Connect a wallet": "Collega un wallet",
     "Continue in Trezor Connect": "Continua in Trezor Connect",
     "Yes": "Sì",
     "No": "No",
@@ -75,7 +76,8 @@
     "No entries yet": "Nessuna voce ancora",
     "Something went wrong. Please try again. If the issue persists please reach out to our support.": "Qualcosa è andato storto. Riprovare. Se il problema persiste, contattate il nostro supporto.",
     "invoice": "DFX non riconosce un destinatario con il nome <strong>{{recipient}}</strong>. Questo servizio può essere utilizzato solo per i destinatari che hanno un account attivo con DFX e sono attivati per il servizio di fatturazione. Se desideri registrarti come destinatario presso DFX, contatta l’assistenza all’indirizzo <link>{{supportLink}}</link>.",
-    "iban": "Questo è un IBAN multi-account e non può essere aggiunto come conto personale. Aprire un ticket di supporto a <1></1> e allegare la conferma della transazione bancaria come PDF."
+    "iban": "Questo è un IBAN multi-account e non può essere aggiunto come conto personale. Aprire un ticket di supporto a <1></1> e allegare la conferma della transazione bancaria come PDF.",
+    "no_wallet": "Prima di poter aggiungere un conto bancario, il tuo account DFX ha bisogno di un wallet. <1></1>"
   },
   "screens/kyc": {
     "Identification required": "Identificazione necessaria",

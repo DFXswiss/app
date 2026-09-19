@@ -56,8 +56,13 @@ This layer arrived with #1288 and lives in `e2e-stack/`.
 
 Measured on the head of that pull request, `acb6814a`, in CI: 223 tests, of which 219 passed, 3 were
 skipped and 1 failed, in 9.6 minutes on a single worker. The failure was the route gate doing its job —
-the merge target had gained a route the registry did not claim yet. Re-measure after any change to the
-suite; the number of tests is not pinned anywhere.
+the merge target had gained a route the registry did not claim yet. Measured locally on a development
+machine after this suite gained a test (not in CI): 266 tests, of which 260 passed, 3 were skipped,
+2 did not run and 1 failed, in 8.4 minutes on a single worker. That failure was
+`/buyCrypto/update: Admin save updates buyId and shows Saved`; the same test was run in isolation
+on base `4a884fe5` (`npm run e2e:stack -- specs/buy.spec.ts -g "Admin save updates buyId"`) and
+fails there as well, so the failure predates this change. Re-measure
+after any change to the suite; the number of tests is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every
 external provider through two independent mechanisms: the API mocks its own outbound calls, and the
@@ -227,6 +232,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixtures render. It does not prove that those bootstrap endpoints return real data,
   that a live account has that kyc status, or that `deleteAccount` persists against
   the API.
+- **The settings KycOnly bank-account visual spec answers POST /v1/bankAccount itself.**
+  `e2e/settings-bank-account-kyc-only.spec.ts` fulfils that POST with a `400` and
+  `You cannot add an IBAN to a KYC only account`, fulfils GET `/v2/user` with empty
+  `addresses` and `disabledAddresses`, and fulfils the Settings bootstrap GETs
+  (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country` with
+  `kycAllowed: true`, `/v1/setting/infoBanner`) plus user PUT/PATCH. Unmatched
+  `/v1/**` and `/v2/**` calls get `501`. The session is a synthetic unsigned JWT,
+  so a green run does not prove login or token verification. A green run proves
+  the screen renders that rejection. It does not prove that the API emits it for
+  this account, or that an account without a wallet reaches this screen that way.
 - **The info-banner layout visual spec answers GET /v1/setting/infoBanner itself.**
   `e2e/info-banner-layout.spec.ts` fulfils `/v1/setting/infoBanner` with synthetic
   multilingual copy, fulfils `GET /v1/support/issue` with one fixture ticket, and
