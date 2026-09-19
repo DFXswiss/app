@@ -10,6 +10,7 @@ import { STAFF_NAME_MISSING } from 'src/components/compliance/staff-identity';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { SupportIssueListItem, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 import { formatDateTimeShort } from 'src/util/compliance-helpers';
+import { storageGet, storageSet } from 'src/util/safe-storage';
 import {
   computeStatistics,
   customerWaitingHours,
@@ -22,8 +23,11 @@ import {
   TicketStatistics,
   trendLabel,
   typeLabel,
-  WAIT_TIER_HOURS,
+  WAIT_TIERS,
+  waitInTier,
   waitTier,
+  waitTierForFilter,
+  waitTierLabel,
 } from 'src/util/support-helpers';
 
 type DashboardTab = 'overview' | 'statistics';
@@ -39,6 +43,37 @@ const TERMINAL_STATES: SupportIssueInternalState[] = [
 ];
 const OPEN_STATES = Object.values(SupportIssueInternalState).filter((s) => !TERMINAL_STATES.includes(s));
 const REFRESH_MS = 60_000;
+const WAIT_FILTER_STORAGE_KEY = 'dfx.support.waitFilterHours';
+
+// First open shows escalations (24h). A chosen wait-tier filter is remembered across visits.
+function defaultWaitFilter(): number {
+  return ESCALATION_HOURS;
+}
+
+function readStoredWaitFilter(): number {
+  try {
+    const raw = storageGet('localStorage', WAIT_FILTER_STORAGE_KEY);
+    if (raw == null || raw === '') return defaultWaitFilter();
+    const value = Number(raw);
+    if (!WAIT_TIERS.some((tier) => tier.minHours === value)) return defaultWaitFilter();
+    return value;
+  } catch {
+    return defaultWaitFilter();
+  }
+}
+
+function persistWaitFilter(hours: number): void {
+  try {
+    storageSet('localStorage', WAIT_FILTER_STORAGE_KEY, String(hours));
+  } catch {
+    // private mode / blocked storage — keep the in-memory selection
+  }
+}
+
+type WaitTierStyle = { pill: string; ring: string };
+type SameShape<T extends readonly unknown[], V> = { [K in keyof T]: V };
+type WaitTierCounts = SameShape<typeof WAIT_TIERS, number>;
+type WaitTierStyles = SameShape<typeof WAIT_TIERS, WaitTierStyle>;
 
 export default function SupportDashboardOverviewScreen(): JSX.Element {
   useSupportDashboardGuard();
@@ -57,7 +92,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
   const [now, setNow] = useState(() => new Date());
 
   const [tab, setTab] = useState<DashboardTab>('overview');
-  const [waitFilter, setWaitFilter] = useState<number>(ESCALATION_HOURS);
+  const [waitFilter, setWaitFilter] = useState<number>(readStoredWaitFilter);
   const [statsPeriod, setStatsPeriod] = useState<number>(DEFAULT_STAT_PERIOD_DAYS);
   const [statistics, setStatistics] = useState<TicketStatistics>();
   const [statsLoading, setStatsLoading] = useState(false);
@@ -169,8 +204,12 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
       .filter((x) => x.hours >= 0)
       .sort((a, b) => b.hours - a.hours);
 
-    // cumulative counts per threshold (≥1h ⊇ ≥12h ⊇ ≥24h; the ≥24h bucket = escalated)
-    const waitingLongerThan = WAIT_TIER_HOURS.map((h) => waitingSorted.filter((x) => x.hours >= h).length);
+    // New is exclusive (<12h); 12h and 24h stay cumulative.
+    const waitingLongerThan: WaitTierCounts = [
+      waitingSorted.filter((x) => waitInTier(x.hours, WAIT_TIERS[0])).length,
+      waitingSorted.filter((x) => waitInTier(x.hours, WAIT_TIERS[1])).length,
+      waitingSorted.filter((x) => waitInTier(x.hours, WAIT_TIERS[2])).length,
+    ];
 
     // open limit increase requests, oldest first
     const limitRequests = issues
@@ -180,9 +219,11 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
     return { mine, waitingSorted, waitingLongerThan, limitRequests };
   }, [issues, verifiedName, now]);
 
+  const selectedWaitTier = waitTierForFilter(waitFilter);
+
   const waitingList = useMemo(
-    () => stats.waitingSorted.filter((x) => x.hours >= waitFilter).map((x) => x.issue),
-    [stats.waitingSorted, waitFilter],
+    () => stats.waitingSorted.filter((x) => waitInTier(x.hours, selectedWaitTier)).map((x) => x.issue),
+    [stats.waitingSorted, selectedWaitTier],
   );
 
   useLayoutOptions({
@@ -253,6 +294,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
                 selected={waitFilter}
                 onSelect={(hours) => {
                   setWaitFilter(hours);
+                  persistWaitFilter(hours);
                   scrollToSection('waiting');
                 }}
               />
@@ -262,20 +304,30 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
             <Section
               anchorId="waiting"
               title={
-                waitFilter >= ESCALATION_HOURS
+                selectedWaitTier.maxHours != null
+                  ? translate('screens/support', 'New')
+                  : selectedWaitTier.minHours >= ESCALATION_HOURS
                   ? translate('screens/support', 'Escalations')
                   : translate('screens/support', 'Waiting tickets')
               }
-              subtitle={translate('screens/support', 'Customer waiting longer than {{hours}}h for a reply', {
-                hours: waitFilter,
-              })}
+              subtitle={
+                selectedWaitTier.maxHours != null
+                  ? translate('screens/support', 'Customer waiting less than {{hours}} hours for a reply', {
+                      hours: selectedWaitTier.maxHours,
+                    })
+                  : translate('screens/support', 'Customer waiting longer than {{hours}}h for a reply', {
+                      hours: selectedWaitTier.minHours,
+                    })
+              }
               count={waitingList.length}
-              accent={waitFilter >= ESCALATION_HOURS ? 'danger' : 'neutral'}
+              accent={selectedWaitTier.minHours >= ESCALATION_HOURS ? 'danger' : 'neutral'}
             >
               {waitingList.length === 0 ? (
                 <EmptyState
                   text={
-                    waitFilter >= ESCALATION_HOURS
+                    selectedWaitTier.maxHours != null
+                      ? translate('screens/support', 'No new waiting tickets')
+                      : selectedWaitTier.minHours >= ESCALATION_HOURS
                       ? translate('screens/support', 'No escalations — all customers replied to in time')
                       : translate('screens/support', 'No tickets waiting this long')
                   }
@@ -373,23 +425,28 @@ function StatCard({ label, value, onClick }: { label: string; value: ReactNode; 
   );
 }
 
-// Customer-waiting card with rising-severity tiers (1h / 12h / 24h; ≥24h = escalated).
-// Counts are cumulative ("waiting longer than X"); clicking a pill filters the list below.
+// Customer-waiting card (New / 12h / 24h; ≥24h = escalated).
+// New is exclusive (<12h); 12h and 24h stay cumulative.
 function WaitTierCard({
   counts,
   selected,
   onSelect,
 }: {
-  counts: number[];
+  counts: WaitTierCounts;
   selected: number;
   onSelect: (hours: number) => void;
 }): JSX.Element {
   const { translate } = useSettingsContext();
-  const tiers = [
-    { hours: 1, label: '1h', pill: 'bg-dfxGray-300 text-dfxBlue-800', ring: 'ring-dfxGray-600' },
-    { hours: 12, label: '12h', pill: 'bg-dfxYellow-500/20 text-dfxYellow-700', ring: 'ring-dfxYellow-500' },
-    { hours: 24, label: '24h', pill: 'bg-dfxRed-100/15 text-dfxRed-100', ring: 'ring-dfxRed-100' },
+  const styles: WaitTierStyles = [
+    { pill: 'bg-dfxGray-300 text-dfxBlue-800', ring: 'ring-dfxGray-600' },
+    { pill: 'bg-dfxYellow-500/20 text-dfxYellow-700', ring: 'ring-dfxYellow-500' },
+    { pill: 'bg-dfxRed-100/15 text-dfxRed-100', ring: 'ring-dfxRed-100' },
   ];
+  const tiers = WAIT_TIERS.map((tier, i) => ({
+    hours: tier.minHours,
+    label: waitTierLabel(tier),
+    ...styles[i],
+  }));
 
   return (
     <div className="bg-white rounded-lg shadow-sm px-4 py-3 flex flex-col gap-2 justify-center">
@@ -407,8 +464,8 @@ function WaitTierCard({
                 active ? `ring-2 ${t.ring}` : 'opacity-80 hover:opacity-100'
               }`}
             >
-              <span className="text-xl font-bold leading-none">{counts[i] ?? 0}</span>
-              <span className="text-2xs font-medium opacity-70">{t.label}</span>
+              <span className="text-xl font-bold leading-none">{counts[i]}</span>
+              <span className="text-2xs font-medium opacity-70">{translate('screens/support', t.label)}</span>
             </button>
           );
         })}
@@ -423,7 +480,6 @@ function Section({
   subtitle,
   count,
   accent,
-  action,
   children,
 }: {
   anchorId?: string;
@@ -431,7 +487,6 @@ function Section({
   subtitle: string;
   count?: number;
   accent: 'danger' | 'info' | 'neutral';
-  action?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   const bar = accent === 'danger' ? 'bg-dfxRed-100' : accent === 'info' ? 'bg-dfxBlue-400' : 'bg-dfxGray-500';
@@ -453,7 +508,6 @@ function Section({
           </div>
           <span className="text-xs text-dfxGray-700 mt-1">{subtitle}</span>
         </div>
-        {action && <div className="ml-auto shrink-0 self-center">{action}</div>}
       </div>
       <div>{children}</div>
     </div>
