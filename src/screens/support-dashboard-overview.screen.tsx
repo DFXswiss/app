@@ -6,7 +6,6 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { useSupportDashboardGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
-import { STAFF_NAME_MISSING } from 'src/components/compliance/staff-identity';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { isAssignedToMe, SupportIssueListItem, useSupportDashboard } from 'src/hooks/support-dashboard.hook';
 import { formatDateTimeShort } from 'src/util/compliance-helpers';
@@ -49,8 +48,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
   const { session } = useAuthContext();
   const { navigate } = useNavigation();
 
-  const canIdentifyMine = session?.account != null || Boolean(verifiedName);
-  const mineLoading = isLoadingName && session?.account == null;
+  const mineLoading = isLoadingName;
 
   const [issues, setIssues] = useState<SupportIssueListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -239,7 +237,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
                 label={translate('screens/support', 'My tickets')}
                 value={
                   <span title={translate('screens/support', '{{count}} open tickets total', { count: issues.length })}>
-                    {canIdentifyMine ? stats.mine.length : '–'}
+                    {stats.mine.length}
                     <span className="text-lg font-semibold text-dfxGray-700 ml-2">/ {issues.length}</span>
                   </span>
                 }
@@ -310,29 +308,40 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
               anchorId="my-tickets"
               title={translate('screens/support', 'My tickets')}
               subtitle={translate('screens/support', 'Tickets assigned to me')}
-              count={canIdentifyMine ? stats.mine.length : undefined}
+              count={stats.mine.length}
               accent="neutral"
             >
               {mineLoading ? (
                 <div className="flex justify-center py-6">
                   <StyledLoadingSpinner size={SpinnerSize.LG} />
                 </div>
-              ) : nameError && !canIdentifyMine ? (
-                <EmptyState
-                  text={translate('screens/support', 'Could not load your verified name: {{error}}', {
-                    error: nameError,
-                  })}
-                />
-              ) : !canIdentifyMine ? (
-                <EmptyState text={translate('screens/support', STAFF_NAME_MISSING)} />
-              ) : stats.mine.length === 0 ? (
-                <EmptyState text={translate('screens/support', 'No tickets assigned to you')} />
               ) : (
-                <IssueList
-                  issues={stats.mine}
-                  now={now}
-                  onClick={(i) => navigate(`/support/dashboard/issue/${i.id}`)}
-                />
+                <>
+                  {nameError && (
+                    <div className="px-4 pt-4">
+                      <ErrorHint
+                        message={[
+                          translate('screens/support', 'Could not load your verified name: {{error}}', {
+                            error: nameError,
+                          }),
+                          translate(
+                            'screens/support',
+                            'Tickets assigned only by name may be missing from this list.',
+                          ),
+                        ].join(' ')}
+                      />
+                    </div>
+                  )}
+                  {stats.mine.length === 0 ? (
+                    <EmptyState text={translate('screens/support', 'No tickets assigned to you')} />
+                  ) : (
+                    <IssueList
+                      issues={stats.mine}
+                      now={now}
+                      onClick={(i) => navigate(`/support/dashboard/issue/${i.id}`)}
+                    />
+                  )}
+                </>
               )}
             </Section>
           </>
