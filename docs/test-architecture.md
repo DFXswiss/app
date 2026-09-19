@@ -184,6 +184,23 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   clerks list, not that the API returns those records or the logged-in staff member's
   `verifiedName`. The session is a synthetic unsigned JWT, so a green run also does not
   prove login or token verification.
+- **The RealUnit support visual spec answers the support endpoints itself.**
+  `e2e/realunit-support.spec.ts` fulfils `GET /v1/realunit/support/list`, `/counts`, `/activity`,
+  `/clerks`, `/:id/data` and `/:id/messages` with synthetic `{ clerkUserDataId, clerk }[]` clerks and
+  `clerkUserDataId` on the issue fixture. A green run proves those fixtures render. It does not
+  prove that the API returns object clerks, that assignment writes `clerkUserDataId`, or that
+  login works — auth is a real admin token, feature data is not.
+- **The DFX support issue visual spec answers the issue endpoints itself.**
+  `e2e/support-dashboard-issue.spec.ts` uses a synthetic unsigned Admin JWT and fulfils
+  `GET /v1/support/issue/clerks`, `/v1/support/issue/:id/data`, `/v1/support/issue/:uid`
+  (message thread) and staff bootstrap GETs. A green run proves the issue screen renders
+  that fixture, not that the API returns it or that login works.
+- **The full-stack clerk-assignment spec SQL-writes `user_data.verifiedName` and `setting.supportClerks`.**
+  `e2e-stack/specs/support-dashboard.spec.ts` (`assigns a clerk from the resolved list`) gives the Support
+  account a unique `verifiedName` and configures the clerk list directly, because `loginAs` gives every role
+  the same name and the API refuses a name that resolves to more than one account. In production both come
+  from identity verification and the settings table. A green run does **not** prove that a real staff account
+  resolves to exactly one clerk entry, nor that the clerk list is configured in any environment.
 - **Full-stack guest assign/refund specs SQL-write `transaction.actionSecretHash`.**
   `e2e-stack/specs/transactions.spec.ts` (`seedActionSecret`) updates the hash directly. A green run
   does **not** prove that the mail/API path creates, hashes, or delivers the action secret.

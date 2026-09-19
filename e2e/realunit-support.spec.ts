@@ -119,6 +119,7 @@ interface SupportIssueInternalData {
   state: string;
   name: string;
   clerk?: string;
+  clerkUserDataId?: number;
   account: SupportIssueInternalAccountData;
 }
 
@@ -215,7 +216,10 @@ const COUNTS: Record<string, number> = {
   Completed: 9,
 };
 
-const CLERKS: string[] = ['Rita Clerk', 'Tom Support'];
+const CLERKS: { clerkUserDataId: number; clerk: string }[] = [
+  { clerkUserDataId: 101, clerk: 'Rita Clerk' },
+  { clerkUserDataId: 102, clerk: 'Tom Support' },
+];
 
 // Detail for ISSUE_ID (7001), matching the OPEN_ISSUES[0] header fields.
 const ISSUE_DATA: SupportIssueInternalData = {
@@ -228,6 +232,7 @@ const ISSUE_DATA: SupportIssueInternalData = {
   state: 'Pending',
   name: 'Alice Muster',
   clerk: 'Rita Clerk',
+  clerkUserDataId: 101,
   account: {
     id: 8001,
     status: 'Active',

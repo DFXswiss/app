@@ -19,6 +19,7 @@ import {
   required,
   test,
   waitForRow,
+  withDb,
 } from './fixtures';
 import { cleanupCreatedData, createLimitRequest, createSupportIssue, createUser } from './fixtures/factories';
 
@@ -301,6 +302,74 @@ test.describe('Support dashboard (staff)', () => {
     );
     expect(keyboardReplyRow.issueId).toBe(issueId);
     expect(keyboardReplyRow.message).toBe(staffReplyKeyboard);
+  });
+
+  test('/support/dashboard/issue/:id assigns a clerk from the resolved list', async ({ page }) => {
+    const uniqueClerkName = `E2E Clerk ${Date.now()}`;
+    const { jwt, wallet } = await loginAs('Support');
+
+    const staffRow = await queryOne<{ id: number; verifiedName: string | null }>(
+      `SELECT id, "verifiedName" AS "verifiedName"
+       FROM user_data
+       WHERE id = (SELECT "userDataId" FROM "user" WHERE address = $1)`,
+      [wallet.address],
+    );
+    const staff = required(staffRow, 'Support account user_data row required');
+    const previousClerks = await queryOne<{ value: string }>(`SELECT value FROM setting WHERE key = 'supportClerks'`);
+
+    try {
+      await withDb(async (client) => {
+        await client.query(`UPDATE user_data SET "verifiedName" = $1 WHERE id = $2`, [uniqueClerkName, staff.id]);
+        await client.query(
+          `INSERT INTO setting (key, value) VALUES ('supportClerks', $1)
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+          [JSON.stringify([uniqueClerkName])],
+        );
+      });
+
+      const customer = await createUser({ tag: 'supdash-clerk-cust', language: 'EN' });
+      const seeded = await createSupportIssue(customer.jwt, {
+        tag: 'supdash-clerk-seed',
+        type: 'GenericIssue',
+        name: 'Dashboard clerk assignment seed',
+        message: 'Initial customer message for clerk assignment',
+      });
+
+      const issueId =
+        seeded.supportIssueId ??
+        (await queryOne<{ id: number }>(`SELECT id FROM support_issue WHERE uid = $1`, [seeded.uid]))?.id;
+      expect(issueId, 'seeded issue id required').toBeTruthy();
+
+      await openScreen(page, `/support/dashboard/issue/${issueId}`, jwt);
+
+      const clerkSelect = page
+        .locator('label')
+        .filter({ hasText: /^Clerk$/ })
+        .locator('xpath=following-sibling::select');
+
+      await expect(clerkSelect.locator('option', { hasText: uniqueClerkName })).toHaveCount(1);
+
+      await clerkSelect.selectOption({ label: uniqueClerkName });
+      await page.getByRole('button', { name: 'Update', exact: true }).click();
+
+      const assigned = await waitForRow<{ clerkUserDataId: number }>(
+        `SELECT "clerkUserDataId" AS "clerkUserDataId"
+         FROM support_issue
+         WHERE id = $1 AND "clerkUserDataId" IS NOT NULL`,
+        [issueId],
+        15000,
+      );
+      expect(assigned.clerkUserDataId).toBe(staff.id);
+    } finally {
+      await withDb(async (client) => {
+        await client.query(`UPDATE user_data SET "verifiedName" = $1 WHERE id = $2`, [staff.verifiedName, staff.id]);
+        if (previousClerks) {
+          await client.query(`UPDATE setting SET value = $1 WHERE key = 'supportClerks'`, [previousClerks.value]);
+        } else {
+          await client.query(`DELETE FROM setting WHERE key = $1`, ['supportClerks']);
+        }
+      });
+    }
   });
 
   test('/support/user/:id loads the customer email for staff', async ({ page }) => {
