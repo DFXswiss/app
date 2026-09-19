@@ -106,6 +106,7 @@ describe('support-helpers customer waiting', () => {
     expect(waitTier(13)).toBe(2);
     expect(waitTier(24)).toBe(3);
     expect(waitTier(25)).toBe(3);
+    expect(waitTier(NaN)).toBe(0);
   });
 
   it('treats the lowest wait range as exclusive of 12h', () => {
@@ -116,6 +117,9 @@ describe('support-helpers customer waiting', () => {
     expect(waitInTier(12, WAIT_TIERS[1])).toBe(true);
     expect(waitInTier(25, WAIT_TIERS[1])).toBe(true);
     expect(waitInTier(25, WAIT_TIERS[2])).toBe(true);
+    expect(waitInTier(NaN, WAIT_TIERS[0])).toBe(false);
+    expect(waitInTier(NaN, WAIT_TIERS[1])).toBe(false);
+    expect(waitInTier(NaN, WAIT_TIERS[2])).toBe(false);
   });
 
   it('renders wait-tier labels from WAIT_TIERS', () => {

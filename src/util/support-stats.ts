@@ -23,7 +23,7 @@ export const WAIT_TIERS = [
 export type WaitTierRange = (typeof WAIT_TIERS)[number];
 
 export function waitInTier(hours: number, tier: WaitTierRange): boolean {
-  if (hours < tier.minHours) return false;
+  if (Number.isNaN(hours) || hours < tier.minHours) return false;
   if (tier.maxHours == null) return true;
   return hours < tier.maxHours;
 }

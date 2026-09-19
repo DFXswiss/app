@@ -1,6 +1,6 @@
-// Unit tests for SupportDashboardOverviewScreen: wait-tier card, newest section, persisted
-// wait filter, and the rest of the overview. Heavy deps are mocked so the screen renders
-// under @testing-library/react without the full app shell.
+// Unit tests for SupportDashboardOverviewScreen: wait-tier card, persisted wait filter,
+// and the rest of the overview. Heavy deps are mocked so the screen renders under
+// @testing-library/react without the full app shell.
 
 const mockUseSupportDashboardGuard = jest.fn();
 const mockNavigate = jest.fn();
@@ -155,10 +155,24 @@ const WAITING_TICKETS: SupportIssueListItem[] = [
     clerk: 'Jana',
   }),
   issue({
+    id: 5,
+    name: 'Six hours waiting',
+    lastMessageAuthor: 'Customer',
+    lastMessageDate: hoursAgo(6),
+    clerk: 'Jana',
+  }),
+  issue({
     id: 2,
     name: 'Thirteen hours waiting',
     lastMessageAuthor: 'Customer',
     lastMessageDate: hoursAgo(13),
+    clerk: 'Jana',
+  }),
+  issue({
+    id: 6,
+    name: 'Fourteen hours waiting',
+    lastMessageAuthor: 'Customer',
+    lastMessageDate: hoursAgo(14),
     clerk: 'Jana',
   }),
   issue({
@@ -280,7 +294,7 @@ describe('SupportDashboardOverviewScreen wait-tier card', () => {
   it('counts New exclusively and 12h/24h cumulatively', async () => {
     await renderLoaded();
 
-    expect(waitPills().map((pill) => pillParts(pill).count)).toEqual(['1', '2', '1']);
+    expect(waitPills().map((pill) => pillParts(pill).count)).toEqual(['2', '3', '1']);
   });
 
   it('lists the 5-hour ticket under New and hides it after clicking 12h', async () => {
@@ -687,6 +701,25 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     expect(within(section('limit-requests')).getByText('short:2026-06-01T00:00:00.000Z')).toBeInTheDocument();
   });
 
+  it('does not mark a ticket with an unreadable lastMessageDate as escalated', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({
+          id: 8,
+          name: 'Broken timestamp',
+          type: 'LimitRequest',
+          lastMessageAuthor: 'Customer',
+          lastMessageDate: 'not-a-date',
+        }),
+      ],
+      total: 1,
+    });
+    await renderLoaded();
+
+    expect(within(section('limit-requests')).getByText('Broken timestamp')).toBeInTheDocument();
+    expect(within(section('limit-requests')).queryByTitle('Escalated')).not.toBeInTheDocument();
+  });
+
   it('colors the wait badge gray below 12h, yellow from 12h, and red from 24h', async () => {
     mockGetIssueList.mockResolvedValue({
       data: [
@@ -700,13 +733,13 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
           id: 2,
           name: 'Twelve hour wait',
           lastMessageAuthor: 'Customer',
-          lastMessageDate: hoursAgo(13),
+          lastMessageDate: hoursAgo(12),
         }),
         issue({
           id: 3,
           name: 'Twenty-four hour wait',
           lastMessageAuthor: 'Customer',
-          lastMessageDate: hoursAgo(25),
+          lastMessageDate: hoursAgo(24),
         }),
       ],
       total: 3,
