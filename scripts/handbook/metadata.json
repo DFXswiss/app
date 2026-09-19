@@ -133,7 +133,7 @@
   },
   "settings-bank-account-kyc-only": {
     "title": "Bankverbindung ohne Wallet (Settings)",
-    "description": "Hinweis im Formular zum Hinterlegen einer Bankverbindung, wenn das Konto identifiziert ist, aber keine Wallet verknüpft hat. Der Text erklärt das und führt zur Wallet-Verbindung. Varianten Deutsch und Englisch."
+    "description": "Hinweis im Formular zum Hinterlegen einer Bankverbindung, wenn das Konto identifiziert ist, aber keine Wallet verknüpft hat. Der Text erklärt das und führt zur Wallet-Verbindung. Einstiege: Settings und Support-Ticket (Absender-IBAN). Varianten Deutsch und Englisch."
   },
   "settings-verification-call": {
     "title": "Verifizierungsanruf (Settings)",

@@ -216,6 +216,35 @@ describe('AddBankAccount', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
   });
 
+  it('shows the wallet-connect hint when the KYC-only sentence is followed by more text', async () => {
+    mockCreateAccount.mockRejectedValue({
+      statusCode: 400,
+      message: 'You cannot add an IBAN to a KYC only account. Please connect a wallet first.',
+    });
+
+    await submitIban();
+
+    await waitFor(() => expect(screen.getByText(WALLET_HINT, { exact: false })).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: 'Connect a wallet' })).toBeInTheDocument();
+    expect(screen.queryByText(GENERIC_ERROR)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+  });
+
+  it('shows the generic box when a 400 message contains KYC only but not the full sentence', async () => {
+    mockCreateAccount.mockRejectedValue({
+      statusCode: 400,
+      message: 'KYC only verification is currently unavailable',
+    });
+
+    await submitIban();
+
+    await waitFor(() => expect(screen.getByText(GENERIC_ERROR)).toBeInTheDocument());
+    expect(screen.getByTestId('error-hint')).toBeInTheDocument();
+    expect(screen.getByText('KYC only verification is currently unavailable')).toBeInTheDocument();
+    expect(screen.queryByText(WALLET_HINT, { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Connect a wallet' })).not.toBeInTheDocument();
+  });
+
   it('falls through to the generic error box for a different 400', async () => {
     mockCreateAccount.mockRejectedValue({ statusCode: 400, message: OTHER_400_MESSAGE });
 

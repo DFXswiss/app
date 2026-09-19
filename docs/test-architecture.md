@@ -59,8 +59,9 @@ skipped and 1 failed, in 9.6 minutes on a single worker. The failure was the rou
 the merge target had gained a route the registry did not claim yet. Measured locally on a development
 machine after this suite gained a test (not in CI): 266 tests, of which 260 passed, 3 were skipped,
 2 did not run and 1 failed, in 8.4 minutes on a single worker. That failure was
-`/buyCrypto/update: Admin save updates buyId and shows Saved`, unrelated to the change that
-prompted this measurement. Re-measure
+`/buyCrypto/update: Admin save updates buyId and shows Saved`; the same test was run in isolation
+on base `4a884fe5` (`npm run e2e:stack -- specs/buy.spec.ts -g "Admin save updates buyId"`) and
+fails there as well, so the failure predates this change. Re-measure
 after any change to the suite; the number of tests is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every

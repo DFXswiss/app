@@ -3,8 +3,9 @@ import { test, expect, Page, Route } from '@playwright/test';
 /**
  * E2E Visual Regression Tests: Settings add-bank-account KycOnly hint
  *
- * Route:
- *   - /settings  (Bank accounts list → add-bank-account overlay)
+ * Routes:
+ *   - /settings       (Bank accounts list → add-bank-account overlay)
+ *   - /support/issue  (Sender IBAN → Add bank account, with confirmationText)
  *
  * Auth is a synthetic unsigned JWT (`alg: none`, role User). Bootstrap GETs, user PUT/PATCH
  * and POST /v1/bankAccount are mocked via page.route(...), so the suite does not need a live
@@ -18,7 +19,8 @@ import { test, expect, Page, Route } from '@playwright/test';
  * `lang=de` / `lang=en`.
  *
  * Intercepted endpoints:
- *   - GET  /v1/language, /v1/fiat, /v1/asset, /v1/bankAccount, /v1/country, /v1/setting/infoBanner
+ *   - GET  /v1/language, /v1/fiat, /v1/asset, /v1/bankAccount, /v1/country, /v1/setting/infoBanner,
+ *     /v1/support/issue
  *   - POST /v1/bankAccount  (400 KycOnly)
  *   - GET  /v2/user
  *   - PUT/PATCH /v1/user, /v2/user
@@ -130,6 +132,10 @@ async function installSettingsRoutes(page: Page): Promise<void> {
       return json(route, null);
     }
 
+    if (method === 'GET' && path === '/v1/support/issue') {
+      return json(route, []);
+    }
+
     await route.fulfill({
       status: 501,
       contentType: 'application/json',
@@ -177,6 +183,10 @@ async function openHint(page: Page, lang: 'de' | 'en'): Promise<void> {
   await expect(heading).toBeVisible({ timeout: 15_000 });
   await heading.getByRole('button').click();
 
+  await submitIbanAndExpectHint(page, lang);
+}
+
+async function submitIbanAndExpectHint(page: Page, lang: 'de' | 'en'): Promise<void> {
   const iban = page.getByPlaceholder('XX XXXX XXXX XXXX XXXX X');
   await expect(iban).toBeVisible({ timeout: 15_000 });
   await iban.fill(EXAMPLE_IBAN);
@@ -217,5 +227,26 @@ test.describe('Settings Bank Account KycOnly - Visual Regression Tests', () => {
     await expect(link).toBeVisible();
     await link.click();
     await expect(page).toHaveURL(/\/connect/);
+  });
+
+  test('German hint after KYC-only IBAN rejection from the support-issue sender IBAN', async ({ page }) => {
+    const token = jwt();
+    await installSettingsRoutes(page);
+
+    await page.goto(
+      `/support/issue?session=${encodeURIComponent(token)}&lang=de&issue-type=TransactionIssue&reason=TransactionMissing`,
+    );
+
+    const senderLabel = page.getByText('Absender-IBAN', { exact: true }).first();
+    await expect(senderLabel).toBeVisible({ timeout: 15_000 });
+    await senderLabel.locator('xpath=following::button[1]').click();
+    await page.getByRole('button', { name: 'Bankverbindung hinzufügen' }).click();
+
+    await submitIbanAndExpectHint(page, 'de');
+
+    await expect(page).toHaveScreenshot('settings-bank-account-kyc-only-support-de.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
   });
 });
