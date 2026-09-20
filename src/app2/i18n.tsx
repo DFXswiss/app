@@ -746,6 +746,9 @@ export const en = {
   personalIbanUnknown: 'The requested personal IBAN provider is not recognized.',
   personalIbanNeedBank: 'Personal IBANs require the bank transfer payment method.',
   personalIbanNeedCurrency: 'Bank Frick personal IBANs are currently only available for EUR and CHF.',
+  personalIbanUnverified:
+    'The personal IBAN response could not be verified for this offer. You can continue with the standard payment details, or cancel.',
+  personalIbanContinue: 'Continue without personal IBAN',
   privateAssetHint: 'DFX does not offer to buy or sell this token.',
 } as const satisfies Dict;
 export const de = {
@@ -1488,6 +1491,9 @@ export const de = {
   personalIbanUnknown: 'Der angeforderte Personal-IBAN-Anbieter wird nicht erkannt.',
   personalIbanNeedBank: 'Persönliche IBANs sind nur bei Banküberweisung verfügbar.',
   personalIbanNeedCurrency: 'Bank-Frick-IBANs gibt es derzeit nur für EUR und CHF.',
+  personalIbanUnverified:
+    'Die persönliche IBAN-Antwort konnte für dieses Angebot nicht geprüft werden. Du kannst mit den normalen Zahlungsdaten fortfahren oder abbrechen.',
+  personalIbanContinue: 'Ohne persönliche IBAN fortfahren',
   privateAssetHint: 'DFX bietet Kauf und Verkauf dieses Tokens nicht an.',
 } satisfies Record<TranslationKey, string>;
 export const it = {
@@ -2225,6 +2231,9 @@ export const it = {
   personalIbanUnknown: 'Il fornitore di IBAN personale richiesto non è riconosciuto.',
   personalIbanNeedBank: 'Gli IBAN personali richiedono il bonifico bancario.',
   personalIbanNeedCurrency: 'Gli IBAN Bank Frick sono al momento disponibili solo per EUR e CHF.',
+  personalIbanUnverified:
+    'La risposta IBAN personale non ha potuto essere verificata per questa offerta. Puoi continuare con i dati di pagamento standard oppure annullare.',
+  personalIbanContinue: 'Continua senza IBAN personale',
   privateAssetHint: 'DFX non offre l\'acquisto o la vendita di questo token.',
 } satisfies Record<TranslationKey, string>;
 export const fr = {
@@ -2963,6 +2972,9 @@ export const fr = {
   personalIbanUnknown: "Le fournisseur d'IBAN personnel demandé n'est pas reconnu.",
   personalIbanNeedBank: 'Les IBAN personnels nécessitent un virement bancaire.',
   personalIbanNeedCurrency: "Les IBAN Bank Frick ne sont pour l'instant disponibles qu'en EUR et CHF.",
+  personalIbanUnverified:
+    "La réponse IBAN personnel n'a pas pu être vérifiée pour cette offre. Vous pouvez continuer avec les coordonnées de paiement standard, ou annuler.",
+  personalIbanContinue: 'Continuer sans IBAN personnel',
   privateAssetHint: "DFX n'offre pas l'achat ni la vente de ce token.",
 } satisfies Record<TranslationKey, string>;
 

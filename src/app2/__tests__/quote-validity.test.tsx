@@ -39,6 +39,9 @@ jest.mock('@dfx.swiss/react', () => ({
     LIMIT_EXCEEDED: 'LimitExceeded',
     EMAIL_REQUIRED: 'EmailRequired',
   },
+  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
+  FiatPaymentMethod: { BANK: 'Bank' },
+  VirtualIbanStatus: { ACTIVE: 'Active' },
   useUser: () => ({ updateMail: jest.fn() }),
 }));
 

@@ -107,6 +107,36 @@ describe('firstQueryParam', () => {
     expect(firstQueryParam('refcode', 'recommendation-code', 'code')).toBe('AB-CDEF-GHIJ-KL');
   });
 
+  it('returns an empty string when the key is present but empty, and does not skip to later keys', () => {
+    mockLocation(
+      '?headless=&borderless=&hide-target-selection=&flags=&service=&wallets=&auto-start=&blockchain=&blockchains=&balances=&amount-in=&amount-out=&assets=&asset-in=&asset-out=&payment-method=&bank-account=&personal-iban=&redirect-uri=&external-transaction-id=&wallet=&special-code=&refcode=&recommendation-code=KEEP',
+      '',
+    );
+    expect(firstQueryParam('headless')).toBe('');
+    expect(firstQueryParam('borderless')).toBe('');
+    expect(firstQueryParam('hide-target-selection')).toBe('');
+    expect(firstQueryParam('flags')).toBe('');
+    expect(firstQueryParam('service')).toBe('');
+    expect(firstQueryParam('wallets')).toBe('');
+    expect(firstQueryParam('auto-start')).toBe('');
+    expect(firstQueryParam('blockchain')).toBe('');
+    expect(firstQueryParam('blockchains')).toBe('');
+    expect(firstQueryParam('balances')).toBe('');
+    expect(firstQueryParam('amount-in')).toBe('');
+    expect(firstQueryParam('amount-out')).toBe('');
+    expect(firstQueryParam('assets')).toBe('');
+    expect(firstQueryParam('asset-in')).toBe('');
+    expect(firstQueryParam('asset-out')).toBe('');
+    expect(firstQueryParam('payment-method')).toBe('');
+    expect(firstQueryParam('bank-account')).toBe('');
+    expect(firstQueryParam('personal-iban')).toBe('');
+    expect(firstQueryParam('redirect-uri')).toBe('');
+    expect(firstQueryParam('external-transaction-id')).toBe('');
+    expect(firstQueryParam('wallet')).toBe('');
+    expect(firstQueryParam('special-code')).toBe('');
+    expect(firstQueryParam('refcode', 'recommendation-code')).toBe('');
+  });
+
   it('returns undefined when no matching key is present', () => {
     mockLocation('', '#/account');
     expect(firstQueryParam('missing')).toBeUndefined();
@@ -124,20 +154,27 @@ describe('routeOrQueryParam', () => {
     Object.defineProperty(window, 'location', { configurable: true, value: original });
   });
 
-  it('prefers the hash-router search over the window query', () => {
+  it('lets the outer query win over the hash-router search, including an empty value', () => {
     Object.defineProperty(window, 'location', {
       configurable: true,
       value: { ...original, search: '?asset-out=BTC', hash: '' },
     });
-    expect(routeOrQueryParam('?asset-out=USDT%20', 'asset-out')).toBe('USDT');
+    expect(routeOrQueryParam('?asset-out=USDT', 'asset-out')).toBe('BTC');
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, search: '?asset-out=', hash: '' },
+    });
+    expect(routeOrQueryParam('?asset-out=USDT', 'asset-out')).toBe('');
   });
 
-  it('falls back to firstQueryParam when the router search is empty', () => {
+  it('falls back to the hash-router search, then the hash query', () => {
     Object.defineProperty(window, 'location', {
       configurable: true,
       value: { ...original, search: '', hash: '#/?asset-out=ETH' },
     });
     expect(routeOrQueryParam('', 'asset-out')).toBe('ETH');
+    expect(routeOrQueryParam('?asset-out=USDT', 'asset-out')).toBe('USDT');
+    expect(routeOrQueryParam('?asset-out=', 'asset-out')).toBe('');
     expect(routeOrQueryParam('?asset-out=%20', 'missing')).toBeUndefined();
   });
 });

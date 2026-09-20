@@ -392,7 +392,12 @@ export default function HomeScreen() {
     buyMethod,
     FiatPaymentMethod.BANK,
   );
-  const personalIbanProvider = personalIbanState.kind === 'ready' ? personalIbanState.provider : undefined;
+  const [personalIbanSuppressed, setPersonalIbanSuppressed] = useState(false);
+  useEffect(() => {
+    setPersonalIbanSuppressed(false);
+  }, [personalIbanParam]);
+  const personalIbanProvider =
+    personalIbanSuppressed || personalIbanState.kind !== 'ready' ? undefined : personalIbanState.provider;
   const personalIbanBlocked = personalIbanState.kind === 'unrecognized' || personalIbanState.kind === 'inapplicable';
   const privateBlocked = privateTradeBlocked(
     flagsParam,
@@ -1228,6 +1233,13 @@ export default function HomeScreen() {
           activePayment.refresh();
         }}
         onReconnect={() => session.openConnect()}
+        personalIbanProvider={personalIbanProvider}
+        onContinueWithoutPersonalIban={() => {
+          setPersonalIbanSuppressed(true);
+          setSheetRetrying(true);
+          setSheetSnapshot((snapshot) => ({ ...(snapshot as PaymentSnapshot), buy: null, loading: true }));
+          setNeedPaymentInfo(true);
+        }}
       />
     </div>
   );

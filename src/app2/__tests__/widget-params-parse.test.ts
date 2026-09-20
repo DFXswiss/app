@@ -29,6 +29,7 @@ describe('widget param parsers', () => {
     expect(isTrueFlag('true')).toBe(true);
     expect(isTrueFlag('TRUE')).toBe(false);
     expect(isTrueFlag('1')).toBe(false);
+    expect(isTrueFlag('')).toBe(false);
     expect(isTrueFlag(undefined)).toBe(false);
   });
 
@@ -37,6 +38,12 @@ describe('widget param parsers', () => {
     expect(isPresentFlag('true')).toBe(true);
     expect(isPresentFlag('')).toBe(false);
     expect(isPresentFlag(undefined)).toBe(false);
+    expect(flagsInclude('', 'private')).toBe(false);
+    expect(splitCsvParam('')).toBeUndefined();
+    expect(parseEnumValue('', { Bank: 'Bank' as const })).toBeUndefined();
+    expect(filterAssetsByParam([{ name: 'ETH' }], '')).toEqual([{ name: 'ETH' }]);
+    expect(chainAllowedByParam('Ethereum', '')).toBe(true);
+    expect(walletAllowedByParam({ id: 'MetaMask', walletType: 'MetaMask' }, '')).toBe(true);
   });
 
   it('matches a flags token as a substring of the raw csv, like the main app', () => {
@@ -177,6 +184,9 @@ describe('widget param parsers', () => {
 
   it('classifies personal-iban as absent, unrecognized, inapplicable or ready', () => {
     expect(personalIbanParamState(undefined, PersonalIbanProvider, 'EUR', 'Bank', 'Bank')).toEqual({ kind: 'absent' });
+    expect(personalIbanParamState('', PersonalIbanProvider, 'EUR', 'Bank', 'Bank')).toEqual({
+      kind: 'unrecognized',
+    });
     expect(personalIbanParamState('nope', PersonalIbanProvider, 'EUR', 'Bank', 'Bank')).toEqual({
       kind: 'unrecognized',
     });

@@ -42,6 +42,7 @@ jest.mock('@dfx.swiss/react', () => ({
   AuthWalletType: { METAMASK: 'MetaMask', CLI: 'CLI', WALLET_CONNECT: 'WalletConnect' },
   FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
   PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
+  VirtualIbanStatus: { ACTIVE: 'Active' },
   TransactionError: { AMOUNT_TOO_LOW: 'AmountTooLow' },
   BuyUrl: { quote: 'buy/quote' },
   SellUrl: { quote: 'sell/quote' },
@@ -594,6 +595,14 @@ describe('Home partner widget params', () => {
     expect(mockReceiveForSell).not.toHaveBeenCalledWith(expect.objectContaining({ iban: 'LI21088100002324013AA' }));
   });
 
+  it('does not create a payout account for an invalid bank-account IBAN', async () => {
+    setParams('?mode=sell&amount-in=0.1&bank-account=NOTANIBAN');
+    renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    expect(mockCreateAccount).not.toHaveBeenCalled();
+  });
+
   it('creates a payout account when bank-account is a new valid IBAN', async () => {
     setParams('?mode=sell&bank-account=LI21088100002324013AA');
     renderHome();
@@ -619,6 +628,36 @@ describe('Home partner widget params', () => {
     );
   });
 
+  it('hides an unverified Frick IBAN and retries without the provider on continue', async () => {
+    mockReceiveForBuy.mockResolvedValue({
+      ...validQuote,
+      iban: 'LI75088110105923K000E',
+      name: 'Someone Else',
+      bank: 'Other Bank',
+      isPersonalIban: false,
+    });
+    setParams('?personal-iban=frick');
+    renderHome();
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
+    expect(document.body.textContent).not.toMatch(/LI75088110105923K000E/);
+    mockReceiveForBuy.mockClear();
+    mockReceiveForBuy.mockResolvedValue({ ...validQuote, iban: 'CH93', remittanceInfo: 'ref' });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /continue without personal iban|ohne persönliche iban|senza iban personale|sans iban personnel/i,
+      }),
+    );
+    await settleQuote();
+    await waitFor(() => {
+      const last = mockReceiveForBuy.mock.calls.at(-1);
+      expect(last).toBeTruthy();
+      expect(last?.[0]).not.toHaveProperty('personalIbanProvider');
+    });
+  });
+
   it('sends personalIbanProvider on paymentInfos when personal-iban=frick, and omits it when absent', async () => {
     setParams('?personal-iban=frick');
     const withFrick = renderHome();
@@ -637,6 +676,16 @@ describe('Home partner widget params', () => {
     await settleQuote();
     await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
     expect(mockReceiveForBuy.mock.calls[0][0]).not.toHaveProperty('personalIbanProvider');
+  });
+
+  it('blocks an empty personal-iban instead of quoting as ordinary bank', async () => {
+    setParams('?personal-iban=');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByText(/not recognized|nicht erkannt|non è riconosciuto|n'est pas reconnu/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
   });
 
   it('blocks an unrecognized personal-iban instead of quoting as ordinary bank', async () => {

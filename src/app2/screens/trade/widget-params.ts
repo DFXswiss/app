@@ -176,7 +176,7 @@ export function personalIbanParamState<T extends string>(
   paymentMethod: string,
   bank: string,
 ): PersonalIbanParamState<T> {
-  if (!value) return { kind: 'absent' };
+  if (value === undefined) return { kind: 'absent' };
   const provider = parseEnumValue(value, providers);
   if (!provider) return { kind: 'unrecognized' };
   if (paymentMethod !== bank) return { kind: 'inapplicable', reason: 'method' };

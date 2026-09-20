@@ -38,6 +38,9 @@ jest.mock('@dfx.swiss/react', () => ({
     LIMIT_EXCEEDED: 'LimitExceeded',
     EMAIL_REQUIRED: 'EmailRequired',
   },
+  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
+  FiatPaymentMethod: { BANK: 'Bank' },
+  VirtualIbanStatus: { ACTIVE: 'Active' },
   ApiException: class ApiException extends Error {
     statusCode: number;
     code?: string;
@@ -53,7 +56,7 @@ jest.mock('@dfx.swiss/react', () => ({
 const mockUpdateMail = jest.fn();
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { ApiException, TransactionError, type Buy, type Sell, type Swap } from '@dfx.swiss/react';
+import { ApiException, PersonalIbanProvider, TransactionError, type Buy, type Sell, type Swap } from '@dfx.swiss/react';
 import { PaymentSheet } from '../screens/trade/PaymentSheet';
 import { isEmailGateError, mapThrownError } from '../screens/trade/errors';
 import { ToastProvider } from '../components/ui';
@@ -252,6 +255,136 @@ describe('missing deposit details', () => {
     expect(queryByText('One more step')).not.toBeInTheDocument();
     expect(getByText(/Payment details are missing/i)).toBeInTheDocument();
     expect(document.querySelector('.paybox')).toBeNull();
+  });
+
+  it('hides the IBAN when a Frick personal-iban response fails verification', () => {
+    const onContinue = jest.fn();
+    const buy = {
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.002,
+      fees: { total: 1 },
+      currency: { name: 'EUR' },
+      iban: 'LI75088110105923K000E',
+      bic: 'BFRILI22',
+      name: 'Someone Else',
+      bank: 'Some Bank',
+      isPersonalIban: false,
+    } as unknown as Buy;
+
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={() => undefined}
+            onDone={() => undefined}
+            mode="buy"
+            loading={false}
+            rawError={null}
+            buy={buy}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={100}
+            onRetry={() => undefined}
+            onReconnect={() => undefined}
+            personalIbanProvider={PersonalIbanProvider.FRICK}
+            onContinueWithoutPersonalIban={onContinue}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(document.body.textContent).not.toMatch(/LI75088110105923K000E/);
+    expect(
+      screen.getByText(/could not be verified|nicht geprüft|non ha potuto|n'a pas pu/i),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /continue without personal iban|ohne persönliche iban|senza iban personale|sans iban personnel/i }));
+    expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides an unverified Frick IBAN even when continue is not wired', () => {
+    const buy = {
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.002,
+      fees: { total: 1 },
+      currency: { name: 'EUR' },
+      iban: 'LI75088110105923K000E',
+      name: 'Someone Else',
+      bank: 'Other Bank',
+      isPersonalIban: false,
+    } as unknown as Buy;
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={() => undefined}
+            onDone={() => undefined}
+            mode="buy"
+            loading={false}
+            rawError={null}
+            buy={buy}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={100}
+            onRetry={() => undefined}
+            onReconnect={() => undefined}
+            personalIbanProvider={PersonalIbanProvider.FRICK}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(document.body.textContent).not.toMatch(/LI75088110105923K000E/);
+    expect(
+      screen.queryByRole('button', {
+        name: /continue without personal iban|ohne persönliche iban|senza iban personale|sans iban personnel/i,
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the IBAN when a Frick personal-iban response is verified', () => {
+    const buy = {
+      isValid: true,
+      amount: 100,
+      estimatedAmount: 0.002,
+      fees: { total: 1 },
+      currency: { name: 'EUR' },
+      iban: 'LI75088110105923K000E',
+      bic: 'BFRILI22',
+      name: 'DFX AG',
+      bank: 'Bank Frick',
+      isPersonalIban: true,
+    } as unknown as Buy;
+
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={() => undefined}
+            onDone={() => undefined}
+            mode="buy"
+            loading={false}
+            rawError={null}
+            buy={buy}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={100}
+            onRetry={() => undefined}
+            onReconnect={() => undefined}
+            personalIbanProvider={PersonalIbanProvider.FRICK}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(document.body.textContent).toMatch(/LI75088110105923K000E/);
   });
 
   it('still shows buy details when only the IBAN is present', () => {

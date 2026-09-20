@@ -610,8 +610,14 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   // 'https://app.dfx.swiss/login?code='), with ?ref=/?usedRef= as legacy aliases, ?refcode= the
   // embed-contract param, and ?recommendation-code= the main-app partner param (app-handling.context).
   const inviteCode = useMemo(() => firstQueryParam('refcode', 'recommendation-code', 'code', 'ref', 'usedRef'), []);
-  const walletParam = useMemo(() => firstQueryParam('wallet'), []);
-  const specialCodeParam = useMemo(() => firstQueryParam('special-code'), []);
+  const walletParam = useMemo(() => {
+    const raw = firstQueryParam('wallet');
+    return raw ? raw : undefined;
+  }, []);
+  const specialCodeParam = useMemo(() => {
+    const raw = firstQueryParam('special-code');
+    return raw ? raw : undefined;
+  }, []);
   const activeInviteRef = useRef(normalizeInviteCode(inviteCode));
   const specialCodeAppliedRef = useRef<string>();
 
