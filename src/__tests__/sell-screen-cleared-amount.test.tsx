@@ -234,7 +234,7 @@ jest.mock('@dfx.swiss/react-components', () => {
 });
 
 jest.mock('src/components/order/bank-account-selector', () => ({
-  BankAccountSelector: ({ onChange, onModalToggle }: any) => {
+  BankAccountSelector: ({ onChange, onModalToggle, onError }: any) => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const React = require('react');
     React.useEffect(() => {
@@ -247,6 +247,9 @@ jest.mock('src/components/order/bank-account-selector', () => ({
         </button>
         <button type="button" data-testid="bank-account-alt" onClick={() => onChange(bankAccountAlt)}>
           alt
+        </button>
+        <button type="button" data-testid="bank-account-error" onClick={() => onError?.('create failed')}>
+          error
         </button>
       </div>
     );
@@ -1155,6 +1158,15 @@ describe('SellScreen', () => {
     });
     const afterBack = mockLayoutOptions.mock.calls[mockLayoutOptions.mock.calls.length - 1][0];
     expect(afterBack.title).toBe('Sell');
+  });
+
+  it('shows BankAccountSelector onError through the existing error hint', async () => {
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-error'));
+    });
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('create failed');
   });
 
   it('uses the exact You get heading when rate is 1', async () => {

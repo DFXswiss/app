@@ -747,6 +747,7 @@ export default function SellScreen(): JSX.Element {
                 <BankAccountSelector
                   value={selectedBankAccount}
                   onChange={(account) => setVal('bankAccount', account)}
+                  onError={setErrorMessage}
                   placeholder={translate('screens/sell', 'Add or select your IBAN')}
                   isModalOpen={bankAccountSelection}
                   onModalToggle={setBankAccountSelection}

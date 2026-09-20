@@ -113,7 +113,7 @@ export default function SellInfoScreen(): JSX.Element {
         setIsCreatingAccount(true);
         createAccount({ iban: bankAccountParam })
           .then(setBankAccount)
-          .catch((error) => setErrorMessage(`Failed to create bank account: ${error.message}`))
+          .catch(() => setErrorMessage(translate('screens/sell', 'The bank account could not be added.')))
           .finally(() => setIsCreatingAccount(false));
       }
     }

@@ -15,7 +15,7 @@ import {
   StyledDropdown,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { PaymentMethodDescriptions, PaymentMethodLabels } from 'src/config/labels';
 import { useAppHandlingContext } from 'src/contexts/app-handling.context';
@@ -107,6 +107,7 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
 
   const data = watch();
   const debouncedData = useDebounce(data, 500);
+  const [bankAccountError, setBankAccountError] = useState<string>();
 
   const availablePaymentMethods: FiatPaymentMethod[] = useMemo(
     () => getAvailablePaymentMethods(data.targetAsset as Asset),
@@ -244,6 +245,7 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
           <BankAccountSelector
             value={data.bankAccount}
             onChange={(account) => setValue('bankAccount', account)}
+            onError={setBankAccountError}
             placeholder={translate('screens/sell', 'Add or select your IBAN')}
             isModalOpen={bankAccountSelection}
             onModalToggle={setBankAccountSelection}
@@ -270,7 +272,7 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
           targetAsset={data?.targetAsset ?? pairMap?.(data?.sourceAsset?.name)}
           amountError={amountError}
           kycError={kycError}
-          errorMessage={paymentInfoError}
+          errorMessage={paymentInfoError ?? bankAccountError}
           confirmPayment={confirmPayment}
           confirmButtonLabel={confirmButtonLabel}
           retry={() => debouncedData && handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue)}
