@@ -12,6 +12,7 @@ import { Modal } from '../modal';
 interface BankAccountSelectorProps {
   value?: BankAccount;
   onChange: (account: BankAccount) => void;
+  onError?: (message: string) => void;
   placeholder: string;
   isModalOpen: boolean;
   onModalToggle: (isOpen: boolean) => void;
@@ -21,6 +22,7 @@ interface BankAccountSelectorProps {
 export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
   value,
   onChange,
+  onError,
   placeholder,
   isModalOpen = false,
   onModalToggle,
@@ -77,12 +79,15 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
           if (!mountedRef.current || bankAccountLiveRef.current !== requestedIban) return;
           onChange(b);
         })
-        .catch(() => undefined)
+        .catch((e: { message?: string }) => {
+          if (!mountedRef.current || bankAccountLiveRef.current !== requestedIban) return;
+          onError?.(e.message ?? 'Unknown error');
+        })
         .finally(() => {
           if (mountedRef.current) setIsCreatingAccount(false);
         });
     }
-  }, [bankAccount, getAccount, bankAccounts, allowedCountries, value, onChange, isCreatingAccount, createAccount]);
+  }, [bankAccount, getAccount, bankAccounts, allowedCountries, value, onChange, onError, isCreatingAccount, createAccount]);
 
   return (
     <>

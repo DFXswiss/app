@@ -321,6 +321,102 @@ describe('BankAccountSelector', () => {
     expect(mockOnChange).not.toHaveBeenCalled();
   });
 
+  it('calls onError when createAccount rejects and the request is still current', async () => {
+    const onError = jest.fn();
+    mockBankAccountParam = 'DE89370400440532013000';
+    mockGetAccount.mockReturnValue(undefined);
+    mockCreateAccount.mockRejectedValue({ message: 'You cannot add an IBAN to a KYC only account' });
+    await act(async () => {
+      render(
+        <BankAccountSelector
+          placeholder="IBAN"
+          isModalOpen={false}
+          onChange={mockOnChange}
+          onModalToggle={mockOnModalToggle}
+          onError={onError}
+        />,
+      );
+      await Promise.resolve();
+    });
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith('You cannot add an IBAN to a KYC only account');
+    expect(mockOnChange).not.toHaveBeenCalled();
+  });
+
+  it('does not call onError after the bank-account param has changed', async () => {
+    let rejectCreate: (reason?: unknown) => void = () => undefined;
+    const onError = jest.fn();
+    mockBankAccounts = [];
+    mockBankAccountParam = 'DE89370400440532013000';
+    mockGetAccount.mockReturnValue(undefined);
+    mockCreateAccount.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectCreate = reject;
+        }),
+    );
+    const { rerender } = render(
+      <BankAccountSelector
+        placeholder="IBAN"
+        isModalOpen={false}
+        onChange={mockOnChange}
+        onModalToggle={mockOnModalToggle}
+        onError={onError}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+    mockBankAccountParam = undefined;
+    rerender(
+      <BankAccountSelector
+        placeholder="IBAN"
+        isModalOpen={false}
+        onChange={mockOnChange}
+        onModalToggle={mockOnModalToggle}
+        onError={onError}
+      />,
+    );
+    await act(async () => {
+      rejectCreate({ message: 'stale' });
+      await Promise.resolve();
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('does not call onError after unmount', async () => {
+    let rejectCreate: (reason?: unknown) => void = () => undefined;
+    const onError = jest.fn();
+    mockBankAccounts = [];
+    mockBankAccountParam = 'DE89370400440532013000';
+    mockGetAccount.mockReturnValue(undefined);
+    mockCreateAccount.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectCreate = reject;
+        }),
+    );
+    const { unmount } = render(
+      <BankAccountSelector
+        placeholder="IBAN"
+        isModalOpen={false}
+        onChange={mockOnChange}
+        onModalToggle={mockOnModalToggle}
+        onError={onError}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    unmount();
+    await act(async () => {
+      rejectCreate({ message: 'unmounted' });
+      await Promise.resolve();
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it('picks an account from the modal and accepts AddBankAccount', () => {
     render(
       <BankAccountSelector
