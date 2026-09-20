@@ -57,6 +57,7 @@ jest.mock('@dfx.swiss/react', () => ({
   },
   FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
   PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
+  VirtualIbanStatus: { ACTIVE: 'Active' },
   TransactionError: { AMOUNT_TOO_LOW: 'AmountTooLow', AMOUNT_TOO_HIGH: 'AmountTooHigh' },
   BuyUrl: { quote: 'buy/quote' },
   SellUrl: { quote: 'sell/quote' },

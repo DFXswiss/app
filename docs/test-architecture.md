@@ -389,7 +389,6 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   results. It does not prove the exact `pl?lightning=…` link or the exact
   decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
   the real `url()` treats those arguments identically; no assertion pins the outer host.
-- **The nine App 2.0 session baselines are a logged-in walk through the harness, not a funded
 - **The 15 App 2.0 session baselines are a logged-in walk through the harness, not a funded
   account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
   fresh account. Buy, sell, swap, account, transactions, KYC, limit, the OpenCryptoPay hub and apply

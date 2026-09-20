@@ -9,7 +9,8 @@
 // re-runs that same request (never the panel's public display quote).
 
 import { useEffect, useState } from 'react';
-import { TransactionError, useUser } from '@dfx.swiss/react';
+import { PersonalIbanProvider, TransactionError, useUser } from '@dfx.swiss/react';
+import { isVerifiedFrickPersonalIbanResponse } from '../../../util/personal-iban';
 import type { Blockchain, Buy, Fiat, Sell, Swap } from '@dfx.swiss/react';
 import { formatAmount, formatFiat, shortAddress } from './amount';
 import { isEmailGateError, mapThrownError, mapTransactionError, fiatFormatter, assetFormatter } from './errors';
@@ -109,6 +110,8 @@ export interface PaymentSheetProps {
   sessionAddress?: string;
   onRetry: () => void;
   onReconnect: () => void;
+  personalIbanProvider?: PersonalIbanProvider;
+  onContinueWithoutPersonalIban?: () => void;
 }
 
 export function PaymentSheet({
@@ -129,6 +132,8 @@ export function PaymentSheet({
   sessionAddress,
   onRetry,
   onReconnect,
+  personalIbanProvider,
+  onContinueWithoutPersonalIban,
 }: PaymentSheetProps) {
   const { t, language } = useT();
   const setupUrl = appUrl('/');
@@ -233,6 +238,11 @@ export function PaymentSheet({
     }
   };
 
+  const frickUnverified =
+    mode === 'buy' &&
+    personalIbanProvider === PersonalIbanProvider.FRICK &&
+    !!buy &&
+    !isVerifiedFrickPersonalIbanResponse(buy);
   const showGate = !loading && (thrownError || validityMessage || isInvalidQuote || missingDepositDetails);
 
   return (
@@ -261,7 +271,20 @@ export function PaymentSheet({
           </div>
         )}
 
-        {!loading && !showGate && mode === 'buy' && buy && (
+        {!loading && !showGate && frickUnverified && (
+          <div className={cx('paybox')}>
+            <div className={cx('paybox-note', 'warn')} style={{ margin: '0 0 12px' }}>
+              {t('personalIbanUnverified')}
+            </div>
+            {onContinueWithoutPersonalIban && (
+              <button className={cx('btn-primary')} type="button" onClick={onContinueWithoutPersonalIban}>
+                {t('personalIbanContinue')}
+              </button>
+            )}
+          </div>
+        )}
+
+        {!loading && !showGate && !frickUnverified && mode === 'buy' && buy && (
           <BuyPaymentBox
             buy={buy}
             tab={tab}

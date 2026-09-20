@@ -769,6 +769,14 @@ describe('KycScreen', () => {
     process.env.REACT_APP_PUBLIC_URL = prev;
   });
 
+  it('does not auto-start when auto-start is present but empty', async () => {
+    mockSession.isLoggedIn = true;
+    window.history.replaceState({}, '', '/?auto-start=');
+    renderKyc();
+    expect(await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i })).toBeInTheDocument();
+    expect(mockContinueKyc).not.toHaveBeenCalled();
+  });
+
   it('auto-starts KYC when auto-start=true, and does not when the param is absent or not true', async () => {
     mockSession.isLoggedIn = true;
     mockContinueKyc.mockResolvedValue({
@@ -790,6 +798,40 @@ describe('KycScreen', () => {
     renderKyc();
     expect(await screen.findByRole('button', { name: /start verification|verifizierung starten|avvia|démarrer/i })).toBeInTheDocument();
     expect(mockContinueKyc).not.toHaveBeenCalled();
+  });
+
+  it('auto-starts when the KYC step list is empty', async () => {
+    mockSession.isLoggedIn = true;
+    mockGetKycInfo.mockResolvedValue({ kycLevel: 0, kycSteps: [] });
+    mockContinueKyc.mockResolvedValue({ kycLevel: 0, kycSteps: [] });
+    window.history.replaceState({}, '', '/?auto-start=true');
+    renderKyc();
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('abc', true));
+  });
+
+  it('auto-starts when the overview omits kycSteps', async () => {
+    mockSession.isLoggedIn = true;
+    mockGetKycInfo.mockResolvedValue({ kycLevel: 0 });
+    mockContinueKyc.mockResolvedValue({ kycLevel: 0 });
+    window.history.replaceState({}, '', '/?auto-start=true');
+    renderKyc();
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('abc', true));
+  });
+
+  it('does not auto-start a second time when the overview reappears', async () => {
+    mockSession.isLoggedIn = true;
+    mockContinueKyc.mockResolvedValue({
+      kycLevel: 0,
+      kycSteps: [{ name: 'ContactData', status: 'NotStarted' }],
+    });
+    window.history.replaceState({}, '', '/?auto-start=true');
+    renderKyc();
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockContinueKyc).toHaveBeenCalledTimes(1);
   });
 
   it('does not auto-start when every KYC step is already done', async () => {

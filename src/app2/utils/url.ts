@@ -84,9 +84,10 @@ export function mailRedirectUri(origin = window.location.origin, pathname = wind
 }
 
 /**
- * First non-empty query value across the real search string and the hash query
- * (`#/path?key=val`). Hash-router screens put params in the hash; partner deep
- * links often put them on the real query — both must work.
+ * First present query value (empty string counts as set), matching main-app
+ * `getParameter` (`app-handling.context.tsx:255`: `query.get(key) ?? undefined`).
+ * Outer `window.location.search` wins over the hash query — the main app only
+ * reads the outer search.
  */
 export function firstQueryParam(...keys: string[]): string | undefined {
   const sources: URLSearchParams[] = [new URLSearchParams(window.location.search)];
@@ -95,21 +96,24 @@ export function firstQueryParam(...keys: string[]): string | undefined {
   if (q >= 0) sources.push(new URLSearchParams(hash.slice(q + 1)));
   for (const key of keys) {
     for (const qp of sources) {
-      const value = qp.get(key)?.trim();
-      if (value) return value;
+      const raw = qp.get(key);
+      if (raw === null) continue;
+      return raw;
     }
   }
   return undefined;
 }
 
 /**
- * Hash-router screens put params on `useLocation().search`; partner deep links
- * put them on the real query or the hash query. Same union `external-transaction-id`
- * already uses on Home, extracted so each param is not a new `||` branch.
+ * Same presence semantics as `firstQueryParam`. Outer search wins over the
+ * hash-router `location.search`, then over the hash query.
  */
 export function routeOrQueryParam(locationSearch: string, key: string): string | undefined {
-  const fromRoute = new URLSearchParams(locationSearch).get(key)?.trim();
-  return fromRoute || firstQueryParam(key);
+  const fromOuter = new URLSearchParams(window.location.search).get(key);
+  if (fromOuter !== null) return fromOuter;
+  const fromRoute = new URLSearchParams(locationSearch).get(key);
+  if (fromRoute !== null) return fromRoute;
+  return firstQueryParam(key);
 }
 
 /**
