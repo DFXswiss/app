@@ -24,6 +24,15 @@ const mockSession = {
   },
 };
 
+jest.mock('@dfx.swiss/react', () => ({
+  AuthWalletType: {
+    METAMASK: 'MetaMask',
+    LEDGER: 'Ledger',
+    CLI: 'CLI',
+    WALLET_CONNECT: 'WalletConnect',
+  },
+}));
+
 jest.mock('react-router-dom', () => {
   const actual = jest.requireActual('react-router-dom');
   return { ...actual, useNavigate: () => mockNavigate };

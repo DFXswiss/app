@@ -13,7 +13,7 @@ import { LoadingRow, onActivate, Sheet, Spinner, useToast } from '../components/
 import { useT } from '../i18n';
 import { chainName } from '../screens/trade/blockchain-meta';
 import { EVM_NETWORK_COUNT, WALLET_CATALOG, type WalletCatalogEntry } from './catalog';
-import { walletAllowedByParam } from '../screens/trade/widget-params';
+import { hardwareChainsForWalletsFilter, walletAllowedByParam } from '../screens/trade/widget-params';
 import { isPlausibleCliAddress } from './cli';
 import { RECOMMENDATION_CODE_LENGTH } from './invite';
 import type { HardwareChain } from './hardware-providers';
@@ -115,7 +115,9 @@ export function ConnectSheet({
           <LoadingRow label={view.label} />
         </div>
       )}
-      {view.kind === 'hw-chain' && <HwChainChooser entry={view.entry} onSelect={onSelectHwChain} />}
+      {view.kind === 'hw-chain' && (
+        <HwChainChooser entry={view.entry} walletsFilter={walletsFilter} onSelect={onSelectHwChain} />
+      )}
       {view.kind === 'hw-pairing' && <HwPairing code={view.code} />}
       {view.kind === 'cli' && (
         <CliConnectForm
@@ -144,16 +146,19 @@ export function ConnectSheet({
 
 function HwChainChooser({
   entry,
+  walletsFilter,
   onSelect,
 }: {
   entry: WalletCatalogEntry;
+  walletsFilter?: string;
   onSelect: (entry: WalletCatalogEntry, chain: HardwareChain) => void;
 }): JSX.Element {
   const { t } = useT();
+  const allowed = hardwareChainsForWalletsFilter(walletsFilter);
   const chains: { chain: HardwareChain; label: string; hint: string }[] = [
     { chain: 'btc', label: t('bitcoin'), hint: 'Native SegWit' },
     { chain: 'eth', label: t('ethereum'), hint: 'EVM' },
-  ];
+  ].filter((row) => !allowed || allowed.includes(row.chain));
   return (
     <div className={cx('slist')}>
       <p className={cx('tnote')} style={{ padding: '0 2px 8px' }}>

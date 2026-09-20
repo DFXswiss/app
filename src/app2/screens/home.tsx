@@ -278,7 +278,9 @@ export default function HomeScreen() {
       }
       return;
     }
-    const def = sellPool.find((asset) => shownChainsFor(asset, 'sell', chainFilter, blockchainsParam).length > 0);
+    const reachable = sellPool.filter((asset) => shownChainsFor(asset, 'sell', chainFilter, blockchainsParam).length > 0);
+    const named = findNamedTradeAsset(reachable, assetInParam);
+    const def = named ? named : reachable[0];
     if (!def) return;
     const chains = shownChainsFor(def, 'sell', chainFilter, blockchainsParam);
     const preferred =
@@ -287,7 +289,7 @@ export default function HomeScreen() {
         : chains[0]?.blockchain;
     setSwapFromAsset(def);
     setSwapFromChain(preferred);
-  }, [sellPool, swapFromAsset, swapFromChain, chainFilter, blockchainsParam, requestedChain]);
+  }, [sellPool, swapFromAsset, swapFromChain, chainFilter, blockchainsParam, assetInParam, requestedChain]);
 
   useEffect(() => {
     if (!buyPool.length) return;
@@ -299,7 +301,8 @@ export default function HomeScreen() {
     const rest = buyPool.filter(
       (tk) => tk.code !== swapFromAsset?.code && shownChainsFor(tk, 'buy', chainFilter, blockchainsParam).length > 0,
     );
-    const def = rest[0];
+    const named = findNamedTradeAsset(rest, assetOutParam);
+    const def = named ? named : rest[0];
     if (!def) return;
     const chains = shownChainsFor(def, 'buy', chainFilter, blockchainsParam);
     const preferred =
@@ -308,7 +311,7 @@ export default function HomeScreen() {
         : chains[0]?.blockchain;
     setSwapToAsset(def);
     setSwapToChain(preferred);
-  }, [buyPool, swapToAsset, swapToChain, swapFromAsset, chainFilter, blockchainsParam, requestedChain]);
+  }, [buyPool, swapToAsset, swapToChain, swapFromAsset, chainFilter, blockchainsParam, assetOutParam, requestedChain]);
 
   useEffect(() => {
     if (buyFiat || !buyCurrencies.length) return;
@@ -333,8 +336,12 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (sellFiat || !sellCurrencies.length) return;
-    setSellFiat(sellCurrencies.find((c) => c.name === 'EUR') ?? sellCurrencies[0]);
-  }, [sellCurrencies, sellFiat]);
+    const wanted = assetOutParam?.toLowerCase();
+    const fromParam = wanted
+      ? sellCurrencies.find((currency) => currency.name.toLowerCase() === wanted)
+      : undefined;
+    setSellFiat(fromParam ?? sellCurrencies.find((c) => c.name === 'EUR') ?? sellCurrencies[0]);
+  }, [sellCurrencies, sellFiat, assetOutParam]);
 
   useEffect(() => {
     if (!bankAccounts?.length) return;

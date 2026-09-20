@@ -172,6 +172,8 @@ describe('parseBalances / heldBalance', () => {
 
   it('skips entries without a ticker or with a non-numeric amount', () => {
     expect(parseBalances('?balances=1@,abc@ETH,2@USDC')).toEqual({ USDC: 2 });
+    expect(parseBalances('?balances=1foo@BTC')).toEqual({});
+    expect(parseBalances('?balances=1@BTC@junk')).toEqual({});
   });
 
   it('resolves main-app asset ids to tickers and skips unmatched ids', () => {

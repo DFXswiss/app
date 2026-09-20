@@ -116,6 +116,28 @@ export function routeOrQueryParam(locationSearch: string, key: string): string |
   return firstQueryParam(key);
 }
 
+const APP2_REDIRECT_PATHS = new Set([
+  '/',
+  '/account',
+  '/tx',
+  '/kyc',
+  '/limit',
+  '/ocp',
+  '/support',
+  '/account-merge',
+]);
+
+const HOME_REDIRECT_PATHS = new Set(['/buy', '/sell', '/swap']);
+
+/** In-app path for the main-app `redirect` param. Unknown or off-app values are dropped. */
+export function app2PathForRedirectParam(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const path = raw.split('?')[0];
+  if (HOME_REDIRECT_PATHS.has(path)) return '/';
+  if (APP2_REDIRECT_PATHS.has(path)) return path;
+  return undefined;
+}
+
 /**
  * Real-path Checkout/email returns land on `/app2/buy/success` etc., which the
  * hash router never sees. Fold those paths into `/app2/#/...` (preserving the

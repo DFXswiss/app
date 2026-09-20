@@ -45,6 +45,16 @@ describe('i18n detectLanguage / useT', () => {
     expect(screen.getByTestId('lang')).toHaveTextContent('de');
   });
 
+  it('accepts an uppercase lang param the way the main app does', () => {
+    mockSearch('?lang=DE');
+    render(
+      <LanguageProvider>
+        <Probe />
+      </LanguageProvider>,
+    );
+    expect(screen.getByTestId('lang')).toHaveTextContent('de');
+  });
+
   it('falls back to stored language, then persists setLanguage', () => {
     mockSearch('?lang=zz');
     window.localStorage.setItem('dfx_lang', 'it');

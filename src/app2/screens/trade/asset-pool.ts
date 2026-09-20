@@ -128,9 +128,10 @@ export function parseBalances(search: string, assets?: readonly BalanceAsset[]):
   const out: Record<string, number> = {};
   if (!raw) return out;
   for (const entry of raw.split(',')) {
-    const [amountStr, codeRaw] = entry.split('@');
-    const amount = parseFloat(amountStr);
-    const code = balanceTicker((codeRaw || '').trim(), assets);
+    const parts = entry.split('@');
+    if (parts.length !== 2) continue;
+    const amount = Number(parts[0]);
+    const code = balanceTicker(parts[1].trim(), assets);
     if (code && Number.isFinite(amount)) out[code] = (out[code] || 0) + amount;
   }
   return out;
