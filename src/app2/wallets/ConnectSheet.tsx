@@ -155,10 +155,11 @@ function HwChainChooser({
 }): JSX.Element {
   const { t } = useT();
   const allowed = hardwareChainsForWalletsFilter(walletsFilter);
-  const chains: { chain: HardwareChain; label: string; hint: string }[] = [
+  const chainRows: { chain: HardwareChain; label: string; hint: string }[] = [
     { chain: 'btc', label: t('bitcoin'), hint: 'Native SegWit' },
     { chain: 'eth', label: t('ethereum'), hint: 'EVM' },
-  ].filter((row) => !allowed || allowed.includes(row.chain));
+  ];
+  const chains = chainRows.filter((row) => !allowed || allowed.includes(row.chain));
   return (
     <div className={cx('slist')}>
       <p className={cx('tnote')} style={{ padding: '0 2px 8px' }}>
