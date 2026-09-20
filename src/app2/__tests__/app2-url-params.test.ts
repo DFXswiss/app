@@ -1,4 +1,4 @@
-import { appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl, isSafeHttpsUrl, isSafeRedirectUri, mailRedirectUri, routeOrQueryParam } from '../utils/url';
+import { app2PathForRedirectParam, appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl, isSafeHttpsUrl, isSafeRedirectUri, mailRedirectUri, routeOrQueryParam } from '../utils/url';
 
 describe('foldApp2PathIntoHash', () => {
   it('folds real-path Checkout/email returns into hash routes and keeps the query', () => {
@@ -217,6 +217,19 @@ describe('appUrl', () => {
     process.env.REACT_APP_PUBLIC_URL = 'https://app.dfx.swiss';
     expect(appUrl()).toBe('https://app.dfx.swiss/');
     expect(appUrl('http://[')).toBeUndefined();
+  });
+});
+
+describe('app2PathForRedirectParam', () => {
+  it('maps main-app in-app paths onto App 2.0 hash routes and drops the rest', () => {
+    expect(app2PathForRedirectParam('/account')).toBe('/account');
+    expect(app2PathForRedirectParam('/buy')).toBe('/');
+    expect(app2PathForRedirectParam('/sell')).toBe('/');
+    expect(app2PathForRedirectParam('/kyc?x=1')).toBe('/kyc');
+    expect(app2PathForRedirectParam('https://evil.example')).toBeUndefined();
+    expect(app2PathForRedirectParam('/unknown')).toBeUndefined();
+    expect(app2PathForRedirectParam(undefined)).toBeUndefined();
+    expect(app2PathForRedirectParam('')).toBeUndefined();
   });
 });
 

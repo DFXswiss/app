@@ -518,6 +518,21 @@ describe('Home partner widget params', () => {
     expect(pill.querySelector('s')?.textContent).toMatch(/ethereum/i);
   });
 
+  it('selects swap assets from asset-in and asset-out', async () => {
+    setParams('?mode=swap&asset-in=ETH&asset-out=USDT');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select pay asset/i })).toHaveTextContent('ETH');
+    expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('USDT');
+  });
+
+  it('selects the sell receive currency from asset-out', async () => {
+    setParams('?mode=sell&asset-out=CHF');
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('button', { name: /select receive currency/i })).toHaveTextContent('CHF');
+  });
+
   it('starts sell when service=sell, and leaves buy when service is absent', async () => {
     const absent = renderHome();
     await settleQuote();

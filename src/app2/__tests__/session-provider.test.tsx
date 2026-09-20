@@ -4,6 +4,7 @@ const mockLogout = jest.fn();
 const mockChangeAddress = jest.fn();
 const mockReloadUser = jest.fn();
 const mockAddSpecialCode = jest.fn();
+const mockUpdateMail = jest.fn();
 const mockConnectInjected = jest.fn();
 const mockSignInjected = jest.fn();
 const mockResolveInjected = jest.fn();
@@ -49,6 +50,7 @@ jest.mock('@dfx.swiss/react', () => ({
     changeAddress: mockChangeAddress,
     reloadUser: mockReloadUser,
     addSpecialCode: mockAddSpecialCode,
+    updateMail: mockUpdateMail,
   }),
 }));
 

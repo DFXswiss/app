@@ -3006,7 +3006,8 @@ function isLanguage(value: string): value is Language {
 function detectLanguage(): Language {
   try {
     const fromQuery = new URLSearchParams(window.location.search).get('lang');
-    if (fromQuery && isLanguage(fromQuery)) return fromQuery;
+    const normalized = fromQuery ? fromQuery.toLowerCase() : fromQuery;
+    if (normalized && isLanguage(normalized)) return normalized;
   } catch {
     // malformed query string — ignore and fall through
   }

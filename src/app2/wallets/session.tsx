@@ -45,7 +45,8 @@ import { isPlausibleCliAddress } from './cli';
 import { connectHardware, isWebHidAvailable, type HardwareChain, type HardwareId } from './hardware-providers';
 // Shared-origin storage with the main app — see docs/app2-origin-storage.md.
 import { BANK_TX_CACHE_PREFIX, SessionStoreKey, StoreKey } from '../lib/storage-keys';
-import { firstQueryParam } from '../utils/url';
+import { app2PathForRedirectParam, firstQueryParam } from '../utils/url';
+import { authWalletTypeFromParam } from '../screens/trade/widget-params';
 import { classifyInviteCode, normalizeInviteCode } from './invite';
 import { rememberWallet, seenWallets, type SeenWallet } from './seen';
 import { mainnetOnly } from '../screens/trade/blockchain-meta';
@@ -562,7 +563,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const { defaultUrl: apiBaseUrl } = useApi();
   // Linked addresses on the active DFX account + seamless address switch (no re-signing). This is
   // the authoritative source of the user's own wallets for the switch-wallet sheet.
-  const { user, userAddresses, changeAddress, reloadUser, addSpecialCode } = useUserContext();
+  const { user, userAddresses, changeAddress, reloadUser, addSpecialCode, updateMail } = useUserContext();
   const { t, language } = useT();
   const { showToast } = useToast();
 
@@ -632,6 +633,23 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     specialCodeAppliedRef.current = specialCodeParam;
     addSpecialCode(specialCodeParam).catch(() => undefined);
   }, [isLoggedIn, specialCodeParam, addSpecialCode]);
+
+  const mailAppliedRef = useRef<string>();
+  useEffect(() => {
+    if (!isLoggedIn) {
+      mailAppliedRef.current = undefined;
+      return;
+    }
+    const raw = firstQueryParam('mail');
+    const paramMail = raw ? raw.trim().toLowerCase() : undefined;
+    if (!paramMail) return;
+    if (user?.mail?.trim().toLowerCase() === paramMail || mailAppliedRef.current === paramMail) return;
+    mailAppliedRef.current = paramMail;
+    updateMail(paramMail).catch((error: { statusCode?: number }) => {
+      const retryable = !error.statusCode || error.statusCode === 429 || error.statusCode >= 500;
+      if (retryable) mailAppliedRef.current = undefined;
+    });
+  }, [isLoggedIn, user, updateMail]);
 
   const openConnect = useCallback(
     (recommendationCode?: string, filterChain?: Blockchain) => {
@@ -1276,6 +1294,9 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       if (isLikelyValidJwt(tokenParam)) {
         sessionAuthorityRef.current = { kind: 'token', token: tokenParam };
         updateSession(tokenParam);
+        const jwtRedirect = params.get('redirect');
+        const path = app2PathForRedirectParam(jwtRedirect === null ? undefined : jwtRedirect);
+        if (path) window.location.hash = `#${path}`;
       } else {
         clearOwnedStorageOnCredentialedLoad();
         void libLogout();
@@ -1286,11 +1307,19 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
 
     if (credentialsJustifyClearingSession(params)) {
       const pubkey = params.get('pubkey')?.trim();
-      signInWith({
+      const typeParam = params.get('type');
+      void signInWith({
         address: addressParam as string,
         signature: signatureParam as string,
         key: pubkey ? pubkey : undefined,
-      }).finally(scrubCredentialParams);
+        walletType: authWalletTypeFromParam(typeParam ? typeParam : undefined),
+      })
+        .then(() => {
+          const credRedirect = params.get('redirect');
+          const path = app2PathForRedirectParam(credRedirect === null ? undefined : credRedirect);
+          if (path) window.location.hash = `#${path}`;
+        })
+        .finally(scrubCredentialParams);
       return;
     }
     scrubCredentialParams();

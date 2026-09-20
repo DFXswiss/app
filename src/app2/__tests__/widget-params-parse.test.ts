@@ -2,6 +2,7 @@ jest.mock('@dfx.swiss/react', () => ({
   Blockchain: { BITCOIN: 'Bitcoin', ETHEREUM: 'Ethereum' },
   FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
   PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
+  AuthWalletType: { METAMASK: 'MetaMask', LEDGER: 'Ledger', CLI: 'CLI', WALLET_CONNECT: 'WalletConnect' },
 }));
 
 import { Blockchain, FiatPaymentMethod, PersonalIbanProvider } from '@dfx.swiss/react';
@@ -12,7 +13,9 @@ import {
   completionRedirectUrl,
   filterAssetsByParam,
   isPersonalIbanApplicable,
+  authWalletTypeFromParam,
   flagsInclude,
+  hardwareChainsForWalletsFilter,
   isPresentFlag,
   isTrueFlag,
   matchBankAccount,
@@ -154,6 +157,22 @@ describe('widget param parsers', () => {
     const meta = { id: 'MetaMask', walletType: 'MetaMask' };
     expect(walletAllowedByParam(meta, 'Mail')).toBe(false);
     expect(walletAllowedByParam(meta, 'DfxTaro')).toBe(false);
+  });
+
+  it('maps a type param to the auth wallet type, including LedgerEth', () => {
+    expect(authWalletTypeFromParam(undefined)).toBeUndefined();
+    expect(authWalletTypeFromParam('')).toBeUndefined();
+    expect(authWalletTypeFromParam('MetaMask')).toBe('MetaMask');
+    expect(authWalletTypeFromParam('LedgerEth')).toBe('Ledger');
+    expect(authWalletTypeFromParam('NoSuchWallet')).toBeUndefined();
+  });
+
+  it('limits hardware chains to the WalletType the wallets param names', () => {
+    expect(hardwareChainsForWalletsFilter(undefined)).toBeUndefined();
+    expect(hardwareChainsForWalletsFilter('Ledger')).toBeUndefined();
+    expect(hardwareChainsForWalletsFilter('LedgerEth')).toEqual(['eth']);
+    expect(hardwareChainsForWalletsFilter('LedgerBtc')).toEqual(['btc']);
+    expect(hardwareChainsForWalletsFilter('LedgerEth,LedgerBtc')).toEqual(['eth', 'btc']);
   });
 
   it('restricts the session chain list to a wanted chain, and ignores an unreachable one', () => {

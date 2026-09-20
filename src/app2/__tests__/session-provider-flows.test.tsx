@@ -4,6 +4,7 @@ const mockGetSignMessage = jest.fn();
 const mockLogout = jest.fn();
 const mockChangeAddress = jest.fn();
 const mockReloadUser = jest.fn();
+const mockUpdateMail = jest.fn();
 const mockConnectInjected = jest.fn();
 const mockSignInjected = jest.fn();
 const mockResolveInjected = jest.fn();
@@ -23,7 +24,7 @@ const mockAuth: { session?: { address?: string; blockchains?: string[] } } = {};
 const mockSessionCtx = { isLoggedIn: false, logout: mockLogout };
 const mockUserAddresses: Array<Record<string, unknown>> = [];
 const mockUserAddr: { list: Array<Record<string, unknown>> | undefined } = { list: mockUserAddresses };
-const mockUserState: { user?: { id: number } } = { user: { id: 1 } };
+const mockUserState: { user?: { id: number; mail?: string } } = { user: { id: 1 } };
 const mockCancel = { cancel: jest.fn(), promise: new Promise(() => undefined) };
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -54,6 +55,8 @@ jest.mock('@dfx.swiss/react', () => ({
     userAddresses: mockUserAddr.list,
     changeAddress: mockChangeAddress,
     reloadUser: mockReloadUser,
+    addSpecialCode: jest.fn(),
+    updateMail: mockUpdateMail,
   }),
 }));
 
@@ -343,16 +346,20 @@ function Probe() {
   );
 }
 
-function renderSession() {
-  return render(
+function sessionTree() {
+  return (
     <LanguageProvider>
       <ToastProvider>
         <WalletSessionProvider>
           <Probe />
         </WalletSessionProvider>
       </ToastProvider>
-    </LanguageProvider>,
+    </LanguageProvider>
   );
+}
+
+function renderSession() {
+  return render(sessionTree());
 }
 
 describe('WalletSessionProvider flows', () => {
@@ -409,6 +416,7 @@ describe('WalletSessionProvider flows', () => {
     renderSession();
     await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
     expect(mockCreateSession.mock.calls[0][2]).toBeUndefined();
+    expect(mockCreateSession.mock.calls[0][6]).toBeUndefined();
     replace.mockRestore();
   });
 
@@ -447,6 +455,289 @@ describe('WalletSessionProvider flows', () => {
     expect(emptyArgs[2]).toBeUndefined();
     expect(emptyArgs.filter((_, i) => i !== 2)).toEqual(withArgs.filter((_, i) => i !== 2));
     replaceEmpty.mockRestore();
+  });
+
+  it('passes type as the session wallet type', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        search: `?address=${address}&signature=0xsig&type=LedgerEth`,
+        pathname: '/app2/',
+        hash: '',
+      },
+    });
+    const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    renderSession();
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    expect(mockCreateSession.mock.calls[0][6]).toBe('Ledger');
+    replace.mockRestore();
+  });
+
+  it('passes a catalog-identity type through unchanged', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        search: `?address=${address}&signature=0xsig&type=MetaMask`,
+        pathname: '/app2/',
+        hash: '',
+      },
+    });
+    const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    renderSession();
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    expect(mockCreateSession.mock.calls[0][6]).toBe('MetaMask');
+    replace.mockRestore();
+  });
+
+  it('omits type when the param is unknown', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        search: `?address=${address}&signature=0xsig&type=NoSuchWallet`,
+        pathname: '/app2/',
+        hash: '',
+      },
+    });
+    const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    renderSession();
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    expect(mockCreateSession.mock.calls[0][6]).toBeUndefined();
+    replace.mockRestore();
+  });
+
+  it('passes wallet as the partner wallet id', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        search: `?address=${address}&signature=0xsig&wallet=acme`,
+        pathname: '/app2/',
+        hash: '',
+      },
+    });
+    const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    renderSession();
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalled());
+    expect(mockCreateSession.mock.calls[0][4]).toBe('acme');
+    replace.mockRestore();
+  });
+
+  it('applies mail once the session becomes logged in', async () => {
+    mockUpdateMail.mockResolvedValue(undefined);
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, search: '?mail=Partner%40Example.COM', pathname: '/app2/', hash: '' },
+    });
+    const view = renderSession();
+    expect(mockUpdateMail).not.toHaveBeenCalled();
+    mockSessionCtx.isLoggedIn = true;
+    view.rerender(sessionTree());
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledWith('partner@example.com'));
+  });
+
+  it('applies mail when the user profile has not loaded', async () => {
+    mockSessionCtx.isLoggedIn = true;
+    mockUserState.user = undefined;
+    mockUpdateMail.mockResolvedValue(undefined);
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, search: '?mail=a@b.co', pathname: '/app2/', hash: '' },
+    });
+    renderSession();
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledWith('a@b.co'));
+  });
+
+  it('does not re-apply mail the user already has', async () => {
+    mockSessionCtx.isLoggedIn = true;
+    mockUserState.user = { id: 1, mail: 'partner@example.com' };
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, search: '?mail=Partner%40Example.COM', pathname: '/app2/', hash: '' },
+    });
+    renderSession();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockUpdateMail).not.toHaveBeenCalled();
+  });
+
+  it('does not re-apply mail after a successful update in the same session', async () => {
+    mockSessionCtx.isLoggedIn = true;
+    mockUpdateMail.mockResolvedValue(undefined);
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, search: '?mail=a@b.co', pathname: '/app2/', hash: '' },
+    });
+    const view = renderSession();
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledTimes(1));
+    mockUserState.user = { id: 1 };
+    view.rerender(sessionTree());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockUpdateMail).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not apply a whitespace-only mail param', async () => {
+    mockSessionCtx.isLoggedIn = true;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, search: '?mail=%20%20', pathname: '/app2/', hash: '' },
+    });
+    renderSession();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockUpdateMail).not.toHaveBeenCalled();
+  });
+
+  it('retries mail on a transient failure and keeps a permanent rejection', async () => {
+    mockSessionCtx.isLoggedIn = true;
+    mockUpdateMail.mockRejectedValueOnce({ statusCode: 500 });
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, search: '?mail=a@b.co', pathname: '/app2/', hash: '' },
+    });
+    const view = renderSession();
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    mockUpdateMail.mockClear();
+    mockUpdateMail.mockRejectedValueOnce({ statusCode: 400 });
+    mockUserState.user = { id: 1 };
+    view.rerender(sessionTree());
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    mockUpdateMail.mockClear();
+    mockUserState.user = { id: 1 };
+    view.rerender(sessionTree());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockUpdateMail).not.toHaveBeenCalled();
+  });
+
+  it('retries mail when the failure has no status or is 429', async () => {
+    mockSessionCtx.isLoggedIn = true;
+    mockUpdateMail.mockRejectedValueOnce({});
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, search: '?mail=a@b.co', pathname: '/app2/', hash: '' },
+    });
+    const view = renderSession();
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    mockUpdateMail.mockClear();
+    mockUpdateMail.mockRejectedValueOnce({ statusCode: 429 });
+    mockUserState.user = { id: 1 };
+    view.rerender(sessionTree());
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    mockUpdateMail.mockClear();
+    mockUpdateMail.mockResolvedValueOnce(undefined);
+    mockUserState.user = { id: 1 };
+    view.rerender(sessionTree());
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledTimes(1));
+  });
+
+  it('navigates to an in-app path from redirect after JWT bootstrap', async () => {
+    let hash = '';
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        search: `?session=${jwt()}&redirect=/account`,
+        pathname: '/app2/',
+        get hash() {
+          return hash;
+        },
+        set hash(value: string) {
+          hash = value;
+        },
+      },
+    });
+    const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    renderSession();
+    await waitFor(() => expect(mockUpdateSession).toHaveBeenCalled());
+    expect(hash).toBe('#/account');
+    replace.mockRestore();
+  });
+
+  it('does not change the hash when JWT redirect is not an app path', async () => {
+    let hash = '';
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        search: `?session=${jwt()}&redirect=/not-a-route`,
+        pathname: '/app2/',
+        get hash() {
+          return hash;
+        },
+        set hash(value: string) {
+          hash = value;
+        },
+      },
+    });
+    const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    renderSession();
+    await waitFor(() => expect(mockUpdateSession).toHaveBeenCalled());
+    expect(hash).toBe('');
+    replace.mockRestore();
+  });
+
+  it('navigates to an in-app path from redirect after address+signature bootstrap', async () => {
+    let hash = '';
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        search: `?address=${address}&signature=0xsig&redirect=/account`,
+        pathname: '/app2/',
+        get hash() {
+          return hash;
+        },
+        set hash(value: string) {
+          hash = value;
+        },
+      },
+    });
+    const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    renderSession();
+    await waitFor(() => expect(hash).toBe('#/account'));
+    replace.mockRestore();
+  });
+
+  it('lands credential redirect=/buy on the home hash route', async () => {
+    let hash = '';
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        search: `?address=${address}&signature=0xsig&redirect=/buy`,
+        pathname: '/app2/',
+        get hash() {
+          return hash;
+        },
+        set hash(value: string) {
+          hash = value;
+        },
+      },
+    });
+    const replace = jest.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+    renderSession();
+    await waitFor(() => expect(hash).toBe('#/'));
+    replace.mockRestore();
   });
 
   it('skips an expired JWT in the URL', async () => {

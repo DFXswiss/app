@@ -132,6 +132,11 @@ describe('ConnectSheet', () => {
     expect(handlers.onSelectHwChain).toHaveBeenCalled();
     unmount();
 
+    const ethOnly = renderSheet({ kind: 'hw-chain', entry: entry as never }, 'LedgerEth');
+    expect(screen.queryByText(/bitcoin/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/ethereum/i)).toBeInTheDocument();
+    ethOnly.unmount();
+
     renderSheet({ kind: 'hw-pairing', code: 'ABCD', label: 'Ledger' });
     expect(screen.getByText('ABCD')).toBeInTheDocument();
 

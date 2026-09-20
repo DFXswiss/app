@@ -2,6 +2,7 @@
 // main-app query reader (app-handling.context / buy.screen / sell.screen).
 // Unknown values fail closed to "not set" so callers keep their existing default.
 
+import { AuthWalletType } from '@dfx.swiss/react';
 import { isSafeRedirectUri } from '../../utils/url';
 
 /** Currencies Bank Frick personal IBANs are issued for — same keys as
@@ -104,6 +105,15 @@ export function chainAllowedByParam(blockchain: string, filter: string | undefin
  * Other `Cli*` → CLI (`WalletTypeMap` maps them to `AuthWalletType.CLI`; the CLI row is
  * `connector: 'cli'`). CliIcp is CLI, not the coming-soon Internet Computer row (no walletType).
  */
+const HW_CHAIN_BY_WALLET_TYPE: { readonly [token: string]: 'btc' | 'eth' } = {
+  LedgerBtc: 'btc',
+  LedgerEth: 'eth',
+  BitBoxBtc: 'btc',
+  BitBoxEth: 'eth',
+  TrezorBtc: 'btc',
+  TrezorEth: 'eth',
+};
+
 const WALLET_PARAM_CATALOG_ID: { readonly [token: string]: string } = {
   LedgerBtc: 'Ledger',
   LedgerEth: 'Ledger',
@@ -130,10 +140,30 @@ const WALLET_PARAM_CATALOG_ID: { readonly [token: string]: string } = {
   CliTrx: 'CLI',
 };
 
-/**
- * Main-app `wallets` (`home.screen.tsx:246`): case-sensitive `split(',').includes(type)`.
- * Also accepts catalog `id` / `walletType` so `wallets=Ledger` still matches.
- */
+/** Hardware chain named by a WalletType token (`LedgerEth` → eth). Undefined = do not restrict. */
+export function hardwareChainsForWalletsFilter(filter: string | undefined): readonly ('btc' | 'eth')[] | undefined {
+  const tokens = splitCsvParam(filter);
+  if (!tokens) return undefined;
+  const chains: ('btc' | 'eth')[] = [];
+  for (const token of tokens) {
+    const chain = HW_CHAIN_BY_WALLET_TYPE[token];
+    if (chain && !chains.includes(chain)) chains.push(chain);
+  }
+  return chains.length ? chains : undefined;
+}
+
+/** Maps a main-app `type` WalletType token to the App 2.0 auth wallet type. */
+export function authWalletTypeFromParam(type: string | undefined): AuthWalletType | undefined {
+  if (!type) return undefined;
+  const catalogId = WALLET_PARAM_CATALOG_ID[type] ? WALLET_PARAM_CATALOG_ID[type] : type;
+  const members = Object.values(AuthWalletType);
+  const byCatalog = members.find((member) => member === catalogId);
+  if (byCatalog) return byCatalog;
+  return members.find((member) => member === type);
+}
+
+/** Main-app `wallets` (`home.screen.tsx:246`): case-sensitive `split(',').includes(type)`.
+ * Also accepts catalog `id` / `walletType` so `wallets=Ledger` still matches. */
 export function walletAllowedByParam(
   entry: { id: string; walletType?: string },
   filter: string | undefined,
