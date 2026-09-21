@@ -112,7 +112,7 @@ describe('AddBankAccount', () => {
     expect(reportedMessages()).toEqual([]);
   });
 
-  it('navigates to /connect and returns afterwards when the KYC-only hint link is clicked', async () => {
+  it('navigates to /connect with a redirect back when the KYC-only hint link is clicked', async () => {
     mockCreateAccount.mockRejectedValue({
       statusCode: 400,
       message: 'You cannot add an IBAN to a KYC only account',
