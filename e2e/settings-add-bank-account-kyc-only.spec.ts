@@ -17,13 +17,18 @@ import { TEST_IBAN } from '../e2e-stack/specs/fixtures/test-data';
  * Required environment (in addition to REACT_APP_API_URL for the frontend):
  *   E2E_API_URL        API base URL, e.g. http://localhost:3000
  *   E2E_FRONTEND_URL   Frontend base URL, e.g. http://localhost:3001
- *   E2E_PG_HOST / E2E_PG_PORT / E2E_PG_USER / E2E_PG_PASSWORD / E2E_PG_DATABASE
- *                      the local API database
- * and the harness dependencies installed (`npm ci --prefix e2e-stack`).
+ *   E2E_PG_HOST        host of the local API database, e.g. localhost
+ *   E2E_PG_PASSWORD    password of the local API database
+ * Optional: E2E_PG_PORT / E2E_PG_USER / E2E_PG_DATABASE (harness defaults 5432 / sa / dfx).
+ * The harness dependencies must be installed (`npm ci --prefix e2e-stack`). Without the required
+ * variables the harness fixtures would fall back to the Docker-network hosts of the full-stack
+ * stack, so the suite fails before any request instead.
  *
  * Synthetic data only: a random example.com address (not shown on this screen) and the public
  * Swiss sample IBAN.
  */
+
+const REQUIRED_ENV = ['E2E_API_URL', 'E2E_FRONTEND_URL', 'E2E_PG_HOST', 'E2E_PG_PASSWORD'];
 
 async function openAddBankAccountAsMailOnlyUser(page: Page, lang: string): Promise<void> {
   const email = `kyc-only-${randomBytes(4).toString('hex')}@example.com`;
@@ -40,6 +45,11 @@ async function openAddBankAccountAsMailOnlyUser(page: Page, lang: string): Promi
 }
 
 test.describe('Settings add bank account on a mail-only account - Visual Regression Tests', () => {
+  test.beforeAll(() => {
+    const missing = REQUIRED_ENV.filter((name) => !process.env[name]);
+    if (missing.length) throw new Error(`Set ${missing.join(', ')} to point this spec at the local API`);
+  });
+
   test('shows the wallet hint with a connect link (EN)', async ({ page }) => {
     await openAddBankAccountAsMailOnlyUser(page, 'en');
 
