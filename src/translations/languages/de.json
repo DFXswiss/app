@@ -685,6 +685,7 @@
     "Transaction refund": "Rückerstattung der Transaktion",
     "{{from}} to {{to}} at {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})": "{{from}} zu {{to}} bei {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})",
     "No transactions yet": "Noch keine Transaktionen",
+    "No wallet found. Please check your wallet extension or set one up, then reload this page.": "Keine Wallet gefunden. Bitte prüfe Deine Wallet-Erweiterung oder richte eine Wallet ein und lade die Seite neu.",
     "ID": "ID",
     "External ID": "Externe ID",
     "Date": "Datum",

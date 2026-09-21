@@ -1,8 +1,7 @@
-// Component-level coverage for ConnectMetaMask: isInstalled gate, auto-connect, blockchain
-// switch, permission-denied, signMessage forwarding, Content error / spinner, mobile fallback,
-// and the key remount when isInstalled flips (ConnectBase only evaluates isSupported on mount).
+// Component-level coverage for ConnectMetaMask: isAvailable gate, auto-connect, blockchain
+// switch, permission-denied, signMessage forwarding, Content error / spinner, and mobile fallback.
 
-const mockIsInstalled = jest.fn();
+const mockIsAvailable = jest.fn();
 const mockRequestAccount = jest.fn();
 const mockRequestBlockchain = jest.fn();
 const mockRequestChangeToBlockchain = jest.fn();
@@ -85,7 +84,7 @@ jest.mock('../contexts/wallet.context', () => {
 
 jest.mock('../hooks/wallets/metamask.hook', () => ({
   useMetaMask: () => ({
-    isInstalled: (...args: unknown[]) => mockIsInstalled(...args),
+    isAvailable: (...args: unknown[]) => mockIsAvailable(...args),
     requestAccount: (...args: unknown[]) => mockRequestAccount(...args),
     requestBlockchain: (...args: unknown[]) => mockRequestBlockchain(...args),
     requestChangeToBlockchain: (...args: unknown[]) => mockRequestChangeToBlockchain(...args),
@@ -121,7 +120,7 @@ describe('ConnectMetaMask', () => {
     mockIsMobile = false;
     mockActiveWallet = undefined;
     mockSession = undefined;
-    mockIsInstalled.mockReturnValue(true);
+    mockIsAvailable.mockResolvedValue(true);
     mockRequestAccount.mockResolvedValue(TEST_ACCOUNT);
     mockRequestBlockchain.mockResolvedValue(Blockchain.ETHEREUM);
     mockRequestChangeToBlockchain.mockResolvedValue(undefined);
@@ -132,7 +131,7 @@ describe('ConnectMetaMask', () => {
   });
 
   it('shows the install hint and does not request an account when MetaMask is missing', async () => {
-    mockIsInstalled.mockReturnValue(false);
+    mockIsAvailable.mockResolvedValue(false);
 
     await act(async () => {
       renderComponent();
@@ -145,7 +144,7 @@ describe('ConnectMetaMask', () => {
 
   it('switches to WalletConnect when MetaMask is missing on mobile', async () => {
     mockIsMobile = true;
-    mockIsInstalled.mockReturnValue(false);
+    mockIsAvailable.mockResolvedValue(false);
 
     await act(async () => {
       renderComponent();
@@ -241,31 +240,5 @@ describe('ConnectMetaMask', () => {
     });
 
     await waitFor(() => expect(mockSign).toHaveBeenCalledWith('some-address', 'some-message'));
-  });
-
-  it('remounts ConnectBase when isInstalled flips so auto-connect runs on the new instance', async () => {
-    mockIsInstalled.mockReturnValue(false);
-
-    const view = renderComponent();
-
-    await waitFor(() => expect(screen.getByText('Please install MetaMask or Rabby!')).toBeInTheDocument());
-    expect(mockRequestAccount).not.toHaveBeenCalled();
-
-    mockIsInstalled.mockReturnValue(true);
-    view.rerender(
-      <ConnectMetaMask
-        rootRef={createRef<HTMLDivElement>()}
-        wallet={WalletType.META_MASK}
-        blockchain={Blockchain.ETHEREUM}
-        isConnect={false}
-        onLogin={mockOnLogin}
-        onCancel={mockOnCancel}
-        onSwitch={mockOnSwitch}
-      />,
-    );
-
-    await waitFor(() => expect(mockRequestAccount).toHaveBeenCalled());
-    await waitFor(() => expect(mockLogin).toHaveBeenCalled());
-    expect(screen.queryByText('Please install MetaMask or Rabby!')).not.toBeInTheDocument();
   });
 });

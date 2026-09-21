@@ -685,6 +685,7 @@
     "Transaction refund": "Remboursement de la transaction",
     "{{from}} to {{to}} at {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})": "{{from}} vers {{to}} à {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})",
     "No transactions yet": "Aucune transaction",
+    "No wallet found. Please check your wallet extension or set one up, then reload this page.": "Aucun portefeuille trouvé. Veuillez vérifier votre extension de portefeuille ou en créer un, puis recharger la page.",
     "ID": "ID",
     "External ID": "ID externe",
     "Date": "Date",

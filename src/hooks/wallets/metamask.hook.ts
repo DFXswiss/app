@@ -1,7 +1,7 @@
 import { Asset, AssetType, Blockchain, Eip5792Call } from '@dfx.swiss/react';
 import BigNumber from 'bignumber.js';
 import { Buffer } from 'buffer';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { isMobile } from 'react-device-detect';
 import Web3 from 'web3';
 import { TransactionConfig } from 'web3-core';
@@ -10,7 +10,7 @@ import { AssetBalance } from '../../contexts/balance.context';
 import ERC20_ABI from '../../static/erc20.abi.json';
 import { AbortError } from '../../util/abort-error';
 import { TranslatedError } from '../../util/translated-error';
-import { timeout } from '../../util/utils';
+import { delay, timeout } from '../../util/utils';
 import { useWeb3 } from '../web3.hook';
 
 const WEB3_RPC_METHODS = ['request', 'send', 'sendAsync', 'enable', 'isConnected'] as const;
@@ -19,9 +19,23 @@ const PROVIDER_MISSING_MESSAGE = 'Provider not set or invalid';
 const PROVIDER_MISSING_HINT =
   'No wallet found. Please check your wallet extension or set one up, then reload this page.';
 
+function readProviderFlag(eth: any, flag: string): boolean {
+  try {
+    return Boolean(eth[flag]);
+  } catch {
+    return false;
+  }
+}
+
 function isInjectedWallet(): boolean {
   const eth = (window as any).ethereum;
-  return Boolean(eth && (eth.isMetaMask || eth.isRabby || eth.isCoinbaseWallet || eth.isTrust));
+  if (!eth) return false;
+  return (
+    readProviderFlag(eth, 'isMetaMask') ||
+    readProviderFlag(eth, 'isRabby') ||
+    readProviderFlag(eth, 'isCoinbaseWallet') ||
+    readProviderFlag(eth, 'isTrust')
+  );
 }
 
 function toWeb3Provider(provider: any): any {
@@ -38,9 +52,13 @@ function toWeb3Provider(provider: any): any {
     const wrapped: any = {};
 
     for (const method of WEB3_RPC_METHODS) {
-      const fn = provider[method];
-      if (typeof fn === 'function') {
-        wrapped[method] = fn.bind(provider);
+      try {
+        const fn = provider[method];
+        if (typeof fn === 'function') {
+          wrapped[method] = fn.bind(provider);
+        }
+      } catch {
+        // skip methods whose property read throws
       }
     }
 
@@ -77,6 +95,7 @@ export interface SignedEip7702Authorization {
 
 export interface MetaMaskInterface {
   isInstalled: () => boolean;
+  isAvailable: () => Promise<boolean>;
   getWalletType: () => WalletType | undefined;
   register: (
     onAccountChanged: (account?: string) => void,
@@ -109,7 +128,6 @@ interface MetaMaskError {
 
 export function useMetaMask(): MetaMaskInterface {
   const boundProvider = useRef<unknown>();
-  const [installed, setInstalled] = useState(isInjectedWallet);
   const web3 = useMemo(() => {
     const instance = new Web3();
     const eth = (window as any).ethereum;
@@ -138,42 +156,35 @@ export function useMetaMask(): MetaMaskInterface {
       web3.setProvider(toWeb3Provider(eth));
       boundProvider.current = eth;
     } catch {
-      // leave unbound; the next call or ethereum#initialized retries
+      // leave unbound; the next call retries
     }
   }
 
-  useEffect(() => {
-    const sync = () => {
-      bindIfNeeded();
-      setInstalled(isInjectedWallet());
-    };
-
-    sync();
-
-    window.addEventListener('ethereum#initialized', sync);
-    // Brave injects ~5ms after load and may skip injection until a wallet exists.
-    const timeoutId = window.setTimeout(sync, 50);
-
-    return () => {
-      window.removeEventListener('ethereum#initialized', sync);
-      window.clearTimeout(timeoutId);
-    };
-  }, [web3]);
-
   function isInstalled(): boolean {
     return isInjectedWallet();
+  }
+
+  // the extension may inject the wallet shortly after the page loaded
+  async function isAvailable(): Promise<boolean> {
+    for (let i = 0; i < 20; i++) {
+      if (isInstalled()) return true;
+
+      await delay(0.1);
+    }
+
+    return isInstalled();
   }
 
   function getWalletType(): WalletType | undefined {
     const eth = ethereum();
     if (eth) {
       const hasInAppWalletAgent = /MetaMask|CoinbaseWallet|Trust|Rainbow|Zerion/i.test(window.navigator.userAgent);
-      const isInApp = (eth.isTrust || eth.isCoinbaseWallet) && isMobile;
+      const isInApp = (readProviderFlag(eth, 'isTrust') || readProviderFlag(eth, 'isCoinbaseWallet')) && isMobile;
 
       if (hasInAppWalletAgent || isInApp) return WalletType.IN_APP_BROWSER;
 
-      if (eth.isRabby) return WalletType.RABBY;
-      if (eth.isMetaMask) return WalletType.META_MASK;
+      if (readProviderFlag(eth, 'isRabby')) return WalletType.RABBY;
+      if (readProviderFlag(eth, 'isMetaMask')) return WalletType.META_MASK;
     }
   }
 
@@ -519,6 +530,7 @@ export function useMetaMask(): MetaMaskInterface {
   return useMemo(
     () => ({
       isInstalled,
+      isAvailable,
       getWalletType,
       register,
       getAccount,
@@ -534,6 +546,6 @@ export function useMetaMask(): MetaMaskInterface {
       supportsEip5792Paymaster,
       signEip7702Authorization,
     }),
-    [web3, toBlockchain, toChainHex, toChainObject, installed],
+    [web3, toBlockchain, toChainHex, toChainObject],
   );
 }
