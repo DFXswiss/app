@@ -126,6 +126,15 @@ jest.mock('react-device-detect', () => ({
   },
 }));
 
+const mockDelay = jest.fn();
+jest.mock('../../../util/utils', () => {
+  const actual = jest.requireActual('../../../util/utils');
+  return {
+    ...actual,
+    delay: (...args: unknown[]) => mockDelay(...args),
+  };
+});
+
 import { Asset, AssetType, Blockchain } from '@dfx.swiss/react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import BigNumber from 'bignumber.js';
@@ -184,6 +193,8 @@ describe('useMetaMask', () => {
     mockToBlockchain.mockImplementation(() => 'Ethereum');
     mockToChainHex.mockImplementation(() => '0x1');
     mockToChainObject.mockImplementation(() => ETH_CHAIN);
+    mockDelay.mockReset();
+    mockDelay.mockImplementation(() => Promise.resolve());
   });
 
   afterEach(() => {
@@ -227,6 +238,93 @@ describe('useMetaMask', () => {
       (window as any).ethereum = {};
       const { result } = renderHook(() => useMetaMask());
       expect(result.current.isInstalled()).toBe(false);
+    });
+
+    it('returns false without throwing when wallet flag reads throw', () => {
+      (window as any).ethereum = new Proxy(
+        {},
+        {
+          get() {
+            throw new TypeError(
+              "'get' on proxy: property 'on' is a read-only and non-configurable data property on the proxy target but the proxy did not return its actual value",
+            );
+          },
+        },
+      );
+
+      const { result } = renderHook(() => useMetaMask());
+
+      expect(() => result.current.isInstalled()).not.toThrow();
+      expect(result.current.isInstalled()).toBe(false);
+    });
+
+    it('treats a throwing flag as absent and still detects other wallet flags', () => {
+      (window as any).ethereum = new Proxy(
+        { isRabby: true },
+        {
+          get(t, prop) {
+            if (prop === 'isMetaMask') throw new TypeError('hostile isMetaMask');
+            return t[prop as string];
+          },
+        },
+      );
+
+      const { result } = renderHook(() => useMetaMask());
+
+      expect(result.current.isInstalled()).toBe(true);
+      expect(result.current.getWalletType()).toBe('Rabby');
+    });
+  });
+
+  describe('isAvailable', () => {
+    it('resolves true immediately when a wallet is already injected', async () => {
+      (window as any).ethereum = { isMetaMask: true };
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.isAvailable()).resolves.toBe(true);
+      expect(mockDelay).not.toHaveBeenCalled();
+    });
+
+    it('resolves true when window.ethereum appears after the first poll tick', async () => {
+      jest.useFakeTimers();
+      mockDelay.mockImplementation((s: number) => new Promise((resolve) => setTimeout(resolve, s * 1000)));
+
+      const { result } = renderHook(() => useMetaMask());
+
+      let resolved: boolean | undefined;
+      await act(async () => {
+        const pending = result.current.isAvailable();
+        (window as any).ethereum = { isMetaMask: true };
+        jest.advanceTimersByTime(100);
+        resolved = await pending;
+      });
+
+      expect(resolved).toBe(true);
+      expect(mockDelay).toHaveBeenCalledTimes(1);
+      expect(mockDelay).toHaveBeenCalledWith(0.1);
+    });
+
+    it('resolves false after 20 attempts when no wallet appears', async () => {
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.isAvailable()).resolves.toBe(false);
+      expect(mockDelay).toHaveBeenCalledTimes(20);
+      expect(mockDelay.mock.calls.every((call) => call[0] === 0.1)).toBe(true);
+    });
+
+    it('resolves true when the wallet appears during the last delay', async () => {
+      let calls = 0;
+      mockDelay.mockImplementation(async () => {
+        calls += 1;
+        if (calls === 20) {
+          (window as any).ethereum = { isMetaMask: true };
+        }
+      });
+
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.isAvailable()).resolves.toBe(true);
+      expect(mockDelay).toHaveBeenCalledTimes(20);
     });
   });
 
@@ -342,40 +440,52 @@ describe('useMetaMask', () => {
       expect(request).toHaveBeenCalledWith({ method: 'eth_accounts' });
     });
 
-    it('re-renders when a provider appears after mount via ethereum#initialized', () => {
-      const seen: boolean[] = [];
-      renderHook(() => {
-        const mm = useMetaMask();
-        seen.push(mm.isInstalled());
-        return mm;
+    it('does not throw when the injected provider breaks property reads and still binds the wallet', async () => {
+      const request = jest.fn(async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [TEST_ACCOUNT];
+        return [];
       });
+      const provider = createBraveLikeProvider(request);
+      (window as any).ethereum = provider;
 
-      expect(seen).toEqual([false]);
+      const { result } = renderHook(() => useMetaMask());
+      const instance = lastWeb3Instance();
 
-      act(() => {
-        (window as any).ethereum = { isMetaMask: true, request: jest.fn(), on: jest.fn() };
-        window.dispatchEvent(new Event('ethereum#initialized'));
-      });
+      expect(() => result.current.isInstalled()).not.toThrow();
+      expect(result.current.isInstalled()).toBe(true);
+      expect(result.current.getWalletType()).toBe('MetaMask');
+      expect(instance.currentProvider).not.toBeNull();
+      expect(instance.currentProvider).not.toBe(provider);
+      expect(typeof instance.currentProvider.request).toBe('function');
 
-      expect(seen).toEqual([false, true]);
+      await expect(result.current.getAccount()).resolves.toBe(TEST_ACCOUNT);
     });
 
-    it('re-renders when a provider appears after mount within the bind timeout', async () => {
-      const seen: boolean[] = [];
-      renderHook(() => {
-        const mm = useMetaMask();
-        seen.push(mm.isInstalled());
-        return mm;
+    it('skips RPC methods whose property read throws when wrapping a hostile provider', async () => {
+      const request = jest.fn(async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts') return [TEST_ACCOUNT];
+        return [];
+      });
+      const target: any = { request, isMetaMask: true };
+      Object.defineProperty(target, 'on', { value: jest.fn(), writable: false, configurable: false });
+      Object.defineProperty(target, 'send', {
+        get() {
+          throw new Error('send is not readable');
+        },
+      });
+      (window as any).ethereum = new Proxy(target, {
+        get(t, prop) {
+          if (prop === 'on') return jest.fn();
+          return t[prop];
+        },
       });
 
-      expect(seen).toEqual([false]);
+      const { result } = renderHook(() => useMetaMask());
+      const instance = lastWeb3Instance();
 
-      await act(async () => {
-        (window as any).ethereum = { isMetaMask: true, request: jest.fn(), on: jest.fn() };
-        await new Promise((r) => setTimeout(r, 60));
-      });
-
-      expect(seen).toEqual([false, true]);
+      expect(instance.currentProvider.send).toBeUndefined();
+      expect(typeof instance.currentProvider.request).toBe('function');
+      await expect(result.current.getAccount()).resolves.toBe(TEST_ACCOUNT);
     });
 
     it('replaces the web3 provider-missing error with a readable message', async () => {
@@ -394,6 +504,7 @@ describe('useMetaMask', () => {
       const { result } = renderHook(() => useMetaMask());
 
       expect(typeof result.current.isInstalled).toBe('function');
+      expect(typeof result.current.isAvailable).toBe('function');
       expect(typeof result.current.getWalletType).toBe('function');
       expect(typeof result.current.register).toBe('function');
       expect(typeof result.current.getAccount).toBe('function');
@@ -455,6 +566,26 @@ describe('useMetaMask', () => {
 
       expect(result.current.isInstalled()).toBe(true);
       expect(result.current.getWalletType()).toBeUndefined();
+    });
+
+    it('does not throw and skips in-app detection when isTrust and isCoinbaseWallet reads throw', () => {
+      mockIsMobile = true;
+      (window as any).ethereum = new Proxy(
+        { isMetaMask: true },
+        {
+          get(t, prop) {
+            if (prop === 'isTrust' || prop === 'isCoinbaseWallet') {
+              throw new TypeError('hostile in-app flag');
+            }
+            return t[prop as string];
+          },
+        },
+      );
+
+      const { result } = renderHook(() => useMetaMask());
+
+      expect(() => result.current.getWalletType()).not.toThrow();
+      expect(result.current.getWalletType()).toBe('MetaMask');
     });
   });
 
