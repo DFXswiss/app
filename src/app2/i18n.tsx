@@ -750,6 +750,12 @@ export const en = {
     'The personal IBAN response could not be verified for this offer. You can continue with the standard payment details, or cancel.',
   personalIbanContinue: 'Continue without personal IBAN',
   privateAssetHint: 'DFX does not offer to buy or sell this token.',
+  bankAccountConfirmTitle: 'Add payout account?',
+  bankAccountConfirmBody: 'Check the full IBAN before adding it as the payout account for this sale.',
+  bankAccountConfirmAction: 'Add account',
+  redirectConfirmTitle: 'Leave DFX?',
+  redirectConfirmBody: 'The trade is complete. Continue to this external host?',
+  redirectConfirmAction: 'Continue to host',
 } as const satisfies Dict;
 export const de = {
   h1a: 'Krypto kaufen,',
@@ -1495,6 +1501,12 @@ export const de = {
     'Die persönliche IBAN-Antwort konnte für dieses Angebot nicht geprüft werden. Du kannst mit den normalen Zahlungsdaten fortfahren oder abbrechen.',
   personalIbanContinue: 'Ohne persönliche IBAN fortfahren',
   privateAssetHint: 'DFX bietet Kauf und Verkauf dieses Tokens nicht an.',
+  bankAccountConfirmTitle: 'Auszahlungskonto hinzufügen?',
+  bankAccountConfirmBody: 'Prüfe die vollständige IBAN, bevor du sie als Auszahlungskonto für diesen Verkauf hinzufügst.',
+  bankAccountConfirmAction: 'Konto hinzufügen',
+  redirectConfirmTitle: 'DFX verlassen?',
+  redirectConfirmBody: 'Der Trade ist abgeschlossen. Möchtest du zu diesem externen Host wechseln?',
+  redirectConfirmAction: 'Zum Host wechseln',
 } satisfies Record<TranslationKey, string>;
 export const it = {
   h1a: 'Compra crypto,',
@@ -2235,6 +2247,12 @@ export const it = {
     'La risposta IBAN personale non ha potuto essere verificata per questa offerta. Puoi continuare con i dati di pagamento standard oppure annullare.',
   personalIbanContinue: 'Continua senza IBAN personale',
   privateAssetHint: 'DFX non offre l\'acquisto o la vendita di questo token.',
+  bankAccountConfirmTitle: 'Aggiungere il conto di accredito?',
+  bankAccountConfirmBody: "Controlla l'IBAN completo prima di aggiungerlo come conto di accredito per questa vendita.",
+  bankAccountConfirmAction: 'Aggiungi conto',
+  redirectConfirmTitle: 'Uscire da DFX?',
+  redirectConfirmBody: 'La transazione è conclusa. Vuoi continuare verso questo host esterno?',
+  redirectConfirmAction: "Continua verso l'host",
 } satisfies Record<TranslationKey, string>;
 export const fr = {
   h1a: 'Achète des cryptos,',
@@ -2976,6 +2994,12 @@ export const fr = {
     "La réponse IBAN personnel n'a pas pu être vérifiée pour cette offre. Vous pouvez continuer avec les coordonnées de paiement standard, ou annuler.",
   personalIbanContinue: 'Continuer sans IBAN personnel',
   privateAssetHint: "DFX n'offre pas l'achat ni la vente de ce token.",
+  bankAccountConfirmTitle: 'Ajouter le compte de versement ?',
+  bankAccountConfirmBody: "Vérifie l'IBAN complet avant de l'ajouter comme compte de versement pour cette vente.",
+  bankAccountConfirmAction: 'Ajouter le compte',
+  redirectConfirmTitle: 'Quitter DFX ?',
+  redirectConfirmBody: 'La transaction est terminée. Veux-tu continuer vers cet hôte externe ?',
+  redirectConfirmAction: "Continuer vers l'hôte",
 } satisfies Record<TranslationKey, string>;
 
 export type Language = 'en' | 'de' | 'it' | 'fr';

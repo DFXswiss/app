@@ -8,6 +8,7 @@ const mockCreateAccount = jest.fn();
 const mockAssets: Array<Record<string, unknown>> = [];
 const mockCurrencies: Array<Record<string, unknown>> = [];
 const mockBankAccounts: Array<Record<string, unknown>> = [];
+let mockBankAccountsLoaded = true;
 const mockLocation = { search: '' };
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -56,7 +57,7 @@ jest.mock('@dfx.swiss/react', () => ({
   useAssetContext: () => ({ getAssets: () => mockAssets }),
   useFiatContext: () => ({ currencies: mockCurrencies }),
   useBankAccountContext: () => ({
-    bankAccounts: mockBankAccounts,
+    bankAccounts: mockBankAccountsLoaded ? mockBankAccounts : undefined,
     isLoading: false,
     createAccount: mockCreateAccount,
   }),
@@ -153,6 +154,7 @@ describe('Home partner widget params', () => {
     mockAssets.length = 0;
     mockCurrencies.length = 0;
     mockBankAccounts.length = 0;
+    mockBankAccountsLoaded = true;
     mockLocation.search = '';
     mockCall.mockResolvedValue(validQuote);
     mockReceiveForBuy.mockResolvedValue({ ...validQuote, iban: 'CH93', remittanceInfo: 'ref' });
@@ -562,6 +564,12 @@ describe('Home partner widget params', () => {
     await settleQuote();
     await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
     expect(mockReceiveForSell).toHaveBeenCalledWith(expect.objectContaining({ iban: 'CH9300762011623852957' }));
+    expect(
+      screen.queryByRole('dialog', {
+        name: /add payout account|auszahlungskonto|conto di accredito|compte de versement/i,
+      }),
+    ).not.toBeInTheDocument();
+    expect(mockCreateAccount).not.toHaveBeenCalled();
     named.unmount();
     mockReceiveForSell.mockClear();
 
@@ -569,10 +577,50 @@ describe('Home partner widget params', () => {
     renderHome();
     await settleQuote();
     await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    expect(
+      screen.queryByRole('dialog', {
+        name: /add payout account|auszahlungskonto|conto di accredito|compte de versement/i,
+      }),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('trade-cta'));
     await settleQuote();
     await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
     expect(mockReceiveForSell).toHaveBeenCalledWith(expect.objectContaining({ iban: 'DE89370400440532013000' }));
+  });
+
+  it('waits for bank accounts to load before applying bank-account', async () => {
+    mockBankAccountsLoaded = false;
+    setParams('?mode=sell&amount-in=0.1&bank-account=CH9300762011623852957');
+    const view = renderHome();
+    await settleQuote();
+    expect(
+      screen.queryByRole('dialog', {
+        name: /add payout account|auszahlungskonto|conto di accredito|compte de versement/i,
+      }),
+    ).not.toBeInTheDocument();
+    expect(mockCreateAccount).not.toHaveBeenCalled();
+
+    mockBankAccountsLoaded = true;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <HomeScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
+    expect(mockReceiveForSell).toHaveBeenCalledWith(expect.objectContaining({ iban: 'CH9300762011623852957' }));
+  });
+
+  it('ignores confirmation callbacks when no confirmation is pending', () => {
+    renderHome();
+    fireEvent.click(screen.getByText('Add account'));
+    fireEvent.click(screen.getByText('Continue to host'));
+    expect(mockCreateAccount).not.toHaveBeenCalled();
   });
 
   it('does not apply a bank-account create that resolves after the param has changed', async () => {
@@ -585,6 +633,11 @@ describe('Home partner widget params', () => {
     );
     setParams('?mode=sell&amount-in=0.1&bank-account=LI21088100002324013AA');
     const view = renderHome();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /add account|konto hinzufügen|aggiungi conto|ajouter le compte/i,
+      }),
+    );
     await waitFor(() => expect(mockCreateAccount).toHaveBeenCalled());
     // Drop the param so the effect cannot re-select a matching existing account (that path
     // would overwrite a stale create and hide a missing live-ref guard).
@@ -616,31 +669,115 @@ describe('Home partner widget params', () => {
     await settleQuote();
     await waitFor(() => expect(mockCall).toHaveBeenCalled());
     expect(mockCreateAccount).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('dialog', {
+        name: /add payout account|auszahlungskonto|conto di accredito|compte de versement/i,
+      }),
+    ).not.toBeInTheDocument();
   });
 
-  it('creates a payout account when bank-account is a new valid IBAN', async () => {
-    setParams('?mode=sell&bank-account=LI21088100002324013AA');
+  it('shows the full new bank-account IBAN and creates it only after confirmation', async () => {
+    setParams('?mode=sell&amount-in=0.1&bank-account=LI21088100002324013AA');
     renderHome();
     await settleQuote();
+    const confirmation = await screen.findByRole('dialog', {
+      name: /add payout account|auszahlungskonto|conto di accredito|compte de versement/i,
+    });
+    expect(
+      within(confirmation).getByText('Check the full IBAN before adding it as the payout account for this sale.'),
+    ).toBeInTheDocument();
+    expect(within(confirmation).getByText('LI21088100002324013AA')).toBeInTheDocument();
+    expect(mockCreateAccount).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(confirmation).getByRole('button', {
+        name: /add account|konto hinzufügen|aggiungi conto|ajouter le compte/i,
+      }),
+    );
     await waitFor(() => expect(mockCreateAccount).toHaveBeenCalledWith({ iban: 'LI21088100002324013AA' }));
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
+    expect(mockReceiveForSell).toHaveBeenCalledWith(expect.objectContaining({ iban: 'LI21088100002324013AA' }));
   });
 
-  it('swallows a failed bank-account create and does not fall back to the default', async () => {
+  it('offers to create the first payout account and waits for confirmation', async () => {
+    mockBankAccounts.length = 0;
+    setParams('?mode=sell&amount-in=0.1&bank-account=LI21088100002324013AA');
+    renderHome();
+    await settleQuote();
+    const confirmation = await screen.findByRole('dialog', {
+      name: /add payout account|auszahlungskonto|conto di accredito|compte de versement/i,
+    });
+    expect(within(confirmation).getByText('LI21088100002324013AA')).toBeInTheDocument();
+    expect(mockCreateAccount).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      within(confirmation).getByRole('button', {
+        name: /add account|konto hinzufügen|aggiungi conto|ajouter le compte/i,
+      }),
+    );
+
+    await waitFor(() => expect(mockCreateAccount).toHaveBeenCalledTimes(1));
+    expect(mockCreateAccount).toHaveBeenCalledWith({ iban: 'LI21088100002324013AA' });
+  });
+
+  it('keeps the default payout account when the new bank-account confirmation is rejected', async () => {
+    setParams('?mode=sell&amount-in=0.1&bank-account=LI21088100002324013AA');
+    renderHome();
+    const confirmation = await screen.findByRole('dialog', {
+      name: /add payout account|auszahlungskonto|conto di accredito|compte de versement/i,
+    });
+    fireEvent.click(within(confirmation).getByRole('button', { name: /cancel|abbrechen|annulla|annuler/i }));
+    expect(mockCreateAccount).not.toHaveBeenCalled();
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    expect(
+      screen.queryByRole('dialog', {
+        name: /add payout account|auszahlungskonto|conto di accredito|compte de versement/i,
+      }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
+    expect(mockReceiveForSell).toHaveBeenCalledWith(expect.objectContaining({ iban: 'DE89370400440532013000' }));
+  });
+
+  it('keeps the first payout account when no account is marked as default', async () => {
+    mockBankAccounts.forEach((account) => {
+      account.default = false;
+    });
+    setParams('?mode=sell&amount-in=0.1&bank-account=LI21088100002324013AA');
+    renderHome();
+    const confirmation = await screen.findByRole('dialog', {
+      name: /add payout account|auszahlungskonto|conto di accredito|compte de versement/i,
+    });
+    fireEvent.click(within(confirmation).getByRole('button', { name: /cancel|abbrechen|annulla|annuler/i }));
+    await settleQuote();
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
+    expect(mockReceiveForSell).toHaveBeenCalledWith(expect.objectContaining({ iban: 'DE89370400440532013000' }));
+  });
+
+  it('reports a failed confirmed bank-account create and keeps the default payout account', async () => {
     mockCreateAccount.mockRejectedValueOnce(new Error('dup'));
     setParams('?mode=sell&amount-in=0.1&bank-account=LI21088100002324013AA');
     renderHome();
     await settleQuote();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /add account|konto hinzufügen|aggiungi conto|ajouter le compte/i,
+      }),
+    );
     await waitFor(() => expect(mockCreateAccount).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong'));
     await settleQuote();
     await waitFor(() => expect(mockCall).toHaveBeenCalled());
     fireEvent.click(screen.getByTestId('trade-cta'));
-    expect(
-      screen.getByRole('dialog', { name: /add bank account|bankkonto|conto bancario|compte bancaire/i }),
-    ).toBeInTheDocument();
-    expect(mockReceiveForSell).not.toHaveBeenCalled();
-    expect(mockReceiveForSell).not.toHaveBeenCalledWith(
-      expect.objectContaining({ iban: 'DE89370400440532013000' }),
-    );
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
+    expect(mockReceiveForSell).toHaveBeenCalledWith(expect.objectContaining({ iban: 'DE89370400440532013000' }));
   });
 
   it('hides an unverified Frick IBAN and retries without the provider on continue', async () => {
@@ -752,7 +889,7 @@ describe('Home partner widget params', () => {
     expect(within(heldSheet).queryByText('BTC')).not.toBeInTheDocument();
   });
 
-  it('redirects to a safe redirect-uri on Done, and stays when the uri is unsafe or absent', async () => {
+  it('shows the external redirect host and redirects only after confirmation', async () => {
     const assign = jest.fn();
     const original = window.location;
     Object.defineProperty(window, 'location', {
@@ -767,9 +904,60 @@ describe('Home partner widget params', () => {
     await settleQuote();
     await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    const confirmation = screen.getByRole('dialog', {
+      name: /leave dfx|dfx verlassen|uscire da dfx|quitter dfx/i,
+    });
+    expect(
+      within(confirmation).getByText('The trade is complete. Continue to this external host?'),
+    ).toBeInTheDocument();
+    expect(within(confirmation).getByText('partner.example')).toBeInTheDocument();
+    expect(assign).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(confirmation).getByRole('button', {
+        name: /continue to host|zum host|continua verso|continuer vers/i,
+      }),
+    );
     expect(assign).toHaveBeenCalledWith('https://partner.example/done/buy');
+
     withUri.unmount();
-    assign.mockClear();
+    Object.defineProperty(window, 'location', { configurable: true, value: original });
+  });
+
+  it('stays on the trade screen when an external redirect is rejected', async () => {
+    const assign = jest.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, assign, origin: original.origin, search: '', hash: '', pathname: '/' },
+    });
+
+    setParams('?redirect-uri=https://partner.example/done');
+    renderHome();
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    fireEvent.click(await screen.findByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    const confirmation = screen.getByRole('dialog', {
+      name: /leave dfx|dfx verlassen|uscire da dfx|quitter dfx/i,
+    });
+    fireEvent.click(within(confirmation).getByRole('button', { name: /cancel|abbrechen|annulla|annuler/i }));
+    expect(assign).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('dialog', {
+        name: /leave dfx|dfx verlassen|uscire da dfx|quitter dfx/i,
+      }),
+    ).not.toBeInTheDocument();
+
+    Object.defineProperty(window, 'location', { configurable: true, value: original });
+  });
+
+  it('stays when redirect-uri is unsafe or absent', async () => {
+    const assign = jest.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, assign, origin: original.origin, search: '', hash: '', pathname: '/' },
+    });
 
     setParams('?redirect-uri=javascript:alert(1)');
     const unsafe = renderHome();
@@ -791,6 +979,31 @@ describe('Home partner widget params', () => {
     Object.defineProperty(window, 'location', { configurable: true, value: original });
   });
 
+  it('redirects to the runtime origin without confirmation', async () => {
+    const assign = jest.fn();
+    const original = window.location;
+    const runtimeOrigin = 'https://runtime.example';
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...original, assign, origin: runtimeOrigin, search: '', hash: '', pathname: '/' },
+    });
+
+    setParams(`?redirect-uri=${encodeURIComponent(`${runtimeOrigin}/done`)}`);
+    renderHome();
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    fireEvent.click(await screen.findByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    expect(assign).toHaveBeenCalledWith(`${runtimeOrigin}/done/buy`);
+    expect(
+      screen.queryByRole('dialog', {
+        name: /leave dfx|dfx verlassen|uscire da dfx|quitter dfx/i,
+      }),
+    ).not.toBeInTheDocument();
+
+    Object.defineProperty(window, 'location', { configurable: true, value: original });
+  });
+
   it('appends sell details to a safe redirect-uri on Done', async () => {
     const assign = jest.fn();
     const original = window.location;
@@ -806,6 +1019,7 @@ describe('Home partner widget params', () => {
     await settleQuote();
     await waitFor(() => expect(mockReceiveForSell).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continue to host|zum host|continua verso|continuer vers/i }));
     expect(assign).toHaveBeenCalledWith(
       expect.stringMatching(/^https:\/\/partner\.example\/done\/sell\?/),
     );
@@ -827,6 +1041,7 @@ describe('Home partner widget params', () => {
     await settleQuote();
     await waitFor(() => expect(mockReceiveForSwap).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    fireEvent.click(screen.getByRole('button', { name: /continue to host|zum host|continua verso|continuer vers/i }));
     expect(assign).toHaveBeenCalledWith(
       expect.stringMatching(/^https:\/\/partner\.example\/done\/swap\?/),
     );

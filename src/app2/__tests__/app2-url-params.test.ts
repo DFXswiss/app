@@ -1,4 +1,15 @@
-import { app2PathForRedirectParam, appUrl, firstQueryParam, foldApp2PathIntoHash, isSafeAppUrl, isSafeHttpsUrl, isSafeRedirectUri, mailRedirectUri, routeOrQueryParam } from '../utils/url';
+import {
+  app2PathForRedirectParam,
+  appUrl,
+  firstQueryParam,
+  foldApp2PathIntoHash,
+  isSafeAppUrl,
+  isSafeHttpsUrl,
+  isSafeRedirectUri,
+  mailRedirectUri,
+  requiresRedirectConfirmation,
+  routeOrQueryParam,
+} from '../utils/url';
 
 describe('foldApp2PathIntoHash', () => {
   it('folds real-path Checkout/email returns into hash routes and keeps the query', () => {
@@ -234,19 +245,58 @@ describe('app2PathForRedirectParam', () => {
 });
 
 describe('isSafeRedirectUri', () => {
-  it('allows https, local http and custom wallet schemes', () => {
+  it('allows https and custom wallet schemes', () => {
     expect(isSafeRedirectUri('https://example.com/path?x=1')).toBe(true);
-    expect(isSafeRedirectUri('http://localhost:3001/x')).toBe(true);
-    expect(isSafeRedirectUri('http://127.0.0.1:3001/x')).toBe(true);
     expect(isSafeRedirectUri('mywallet://callback')).toBe(true);
   });
 
-  it('rejects remote http, executable schemes and unparsable values', () => {
+  it('allows HTTP redirects only to the two supported loopback hostnames', () => {
+    expect(isSafeRedirectUri('http://localhost:3001/x')).toBe(true);
+    expect(isSafeRedirectUri('http://127.0.0.1:3001/x')).toBe(true);
     expect(isSafeRedirectUri('http://evil.com')).toBe(false);
+  });
+
+  it('rejects remote http, executable schemes and unparsable values', () => {
     expect(isSafeRedirectUri('javascript:alert(1)')).toBe(false);
     expect(isSafeRedirectUri('')).toBe(false);
     expect(isSafeRedirectUri('not a uri')).toBe(false);
     expect(isSafeRedirectUri('http://localhost@evil.com')).toBe(false);
+  });
+});
+
+describe('requiresRedirectConfirmation', () => {
+  const originalEnv = process.env.REACT_APP_PUBLIC_URL;
+  const originalLocation = window.location;
+
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.REACT_APP_PUBLIC_URL;
+    else process.env.REACT_APP_PUBLIC_URL = originalEnv;
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation });
+  });
+
+  it('requires confirmation for an external HTTPS origin', () => {
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.dfx.swiss';
+    expect(requiresRedirectConfirmation('https://partner.example/done')).toBe(true);
+  });
+
+  it('trusts the runtime origin and the configured DFX app origin', () => {
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.dfx.swiss';
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, origin: 'https://runtime.example' },
+    });
+    expect(requiresRedirectConfirmation('https://runtime.example/done')).toBe(false);
+    expect(requiresRedirectConfirmation('https://app.dfx.swiss/done')).toBe(false);
+  });
+
+  it('does not add confirmation to rejected or non-HTTPS redirect schemes', () => {
+    expect(requiresRedirectConfirmation('javascript:alert(1)')).toBe(false);
+    expect(requiresRedirectConfirmation('mywallet://callback')).toBe(false);
+  });
+
+  it('fails external HTTPS closed into confirmation when the configured app origin is invalid', () => {
+    process.env.REACT_APP_PUBLIC_URL = 'https://[';
+    expect(requiresRedirectConfirmation('https://partner.example/done')).toBe(true);
   });
 });
 
