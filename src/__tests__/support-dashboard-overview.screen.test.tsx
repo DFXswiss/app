@@ -90,7 +90,7 @@ jest.mock('src/util/compliance-helpers', () => ({
 }));
 
 import { render, screen, waitFor, within } from '@testing-library/react';
-import { staffNameLoadError } from 'src/components/compliance/staff-identity';
+import { STAFF_NAME_MISSING, staffNameLoadError } from 'src/components/compliance/staff-identity';
 import type { SupportIssueListItem } from 'src/hooks/support-dashboard.hook';
 import SupportDashboardOverviewScreen from 'src/screens/support-dashboard-overview.screen';
 
@@ -137,6 +137,29 @@ describe('SupportDashboardOverviewScreen', () => {
     const hint = within(mine as HTMLElement).getByTestId('error-hint');
     expect(hint).toHaveTextContent(staffNameLoadError('Network down'));
     expect(hint).toHaveTextContent('Tickets assigned only by name may be missing from this list.');
+    expect(within(mine as HTMLElement).queryByText('Assigned by name only')).not.toBeInTheDocument();
+    expect(within(mine as HTMLElement).queryByText('Someone else')).not.toBeInTheDocument();
+  });
+
+  it('shows the missing-name hint and keeps id-assigned tickets visible', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [
+        issue({ id: 1, name: 'Assigned by id', clerkUserDataId: 7, clerk: 'Ada' }),
+        issue({ id: 2, name: 'Assigned by name only', clerk: 'Ada' }),
+        issue({ id: 3, name: 'Someone else', clerkUserDataId: 99 }),
+      ],
+    });
+
+    render(<SupportDashboardOverviewScreen />);
+
+    await waitFor(() => expect(screen.getByText('Assigned by id')).toBeInTheDocument());
+
+    const mine = document.getElementById('my-tickets');
+    expect(mine).not.toBeNull();
+    const hint = within(mine as HTMLElement).getByTestId('error-hint');
+    expect(hint).toHaveTextContent(STAFF_NAME_MISSING);
+    expect(hint).toHaveTextContent('Tickets assigned only by name may be missing from this list.');
+    expect(hint).not.toHaveTextContent('Could not load your verified name');
     expect(within(mine as HTMLElement).queryByText('Assigned by name only')).not.toBeInTheDocument();
     expect(within(mine as HTMLElement).queryByText('Someone else')).not.toBeInTheDocument();
   });

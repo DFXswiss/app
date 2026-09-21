@@ -215,6 +215,10 @@
     "title": "Financial-Log-Gültigkeit",
     "description": "Admin-Screen: Gültigkeit einzelner Logs per ID oder von Financial-Logs per Zeitraum/Schwelle setzen, mit Pflicht-Begründung und Info-Punkt für den Treasury-Chart; Bestätigung vor dem Info-Punkt und Erfolgsmeldung danach."
   },
+  "support-dashboard-issue": {
+    "title": "Support-Ticket Detailansicht",
+    "description": "Staff-Issue: Detailpanels, Clerk-Auswahl und Nachrichtenverlauf."
+  },
   "support-ticket-note": {
     "title": "Support-Ticket Kundennotiz",
     "description": "Staff-Issue: interne Kundennotiz mit Ticket-Betreff und Entwurf, nicht in den Kunden-Thread."
