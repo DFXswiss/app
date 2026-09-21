@@ -36,6 +36,11 @@ async function openAddBankAccountAsMailOnlyUser(page: Page, lang: string): Promi
   const session = await completeMailLogin(email);
 
   await page.goto(`/settings?session=${encodeURIComponent(session)}&lang=${lang}`);
+  await page.waitForFunction(
+    (expected) => window.localStorage.getItem('dfx.authenticationToken') === expected,
+    session,
+    { timeout: 15_000 },
+  );
   const addButton = page.getByRole('heading', { name: /Bank/ }).getByRole('button');
   await expect(addButton).toBeVisible({ timeout: 15_000 });
   await addButton.click();
