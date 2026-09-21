@@ -34,7 +34,7 @@ import {
   StyledLoadingSpinner,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PaymentInformationContent } from 'src/components/payment/payment-info-sell';
 import { useWalletContext } from 'src/contexts/wallet.context';
 import { useCountdown } from 'src/hooks/countdown.hook';
@@ -79,12 +79,28 @@ export default function SellInfoScreen(): JSX.Element {
   const [asset, setAsset] = useState<Asset>();
   const [currency, setCurrency] = useState<Fiat>();
   const [bankAccount, setBankAccount] = useState<BankAccount>();
-  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [customAmountError, setCustomAmountError] = useState<string>();
   const [errorMessage, setErrorMessage] = useState<string>();
   const [kycError, setKycError] = useState<TransactionError>();
   const [isProcessing, setIsProcessing] = useState(false);
   const [sellTxId, setSellTxId] = useState<string>();
+  const [bankAccountRetryGeneration, setBankAccountRetryGeneration] = useState(0);
+  const mountedRef = useRef(true);
+  const isCreatingAccountRef = useRef(false);
+  const bankAccountRequestGenerationRef = useRef(0);
+  const requestedCreateIbanRef = useRef<string>();
+  const latestBankAccountParamRef = useRef(bankAccountParam);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    latestBankAccountParamRef.current = bankAccountParam;
+  }, [bankAccountParam]);
 
   // default params
   useEffect(() => {
@@ -102,22 +118,66 @@ export default function SellInfoScreen(): JSX.Element {
     if (bankAccountParam && bankAccounts !== undefined) {
       const account = getAccount(bankAccounts, bankAccountParam);
       if (account) {
+        bankAccountRequestGenerationRef.current += 1;
+        isCreatingAccountRef.current = false;
+        requestedCreateIbanRef.current = undefined;
+        setErrorMessage(undefined);
         setBankAccount(account);
-      } else if (!isCreatingAccount) {
+      } else if (!isCreatingAccountRef.current && requestedCreateIbanRef.current !== bankAccountParam) {
         const ibanIsValid = Validations.Iban(allowedCountries).validate(bankAccountParam);
         if (ibanIsValid !== true) {
           setErrorMessage(`Invalid IBAN: ${ibanIsValid}`);
           return;
         }
 
-        setIsCreatingAccount(true);
+        const requestGeneration = ++bankAccountRequestGenerationRef.current;
+        isCreatingAccountRef.current = true;
+        requestedCreateIbanRef.current = bankAccountParam;
+        setErrorMessage(undefined);
         createAccount({ iban: bankAccountParam })
-          .then(setBankAccount)
-          .catch(() => setErrorMessage(translate('screens/sell', 'The bank account could not be added.')))
-          .finally(() => setIsCreatingAccount(false));
+          .then((account) => {
+            if (
+              !mountedRef.current ||
+              bankAccountRequestGenerationRef.current !== requestGeneration ||
+              latestBankAccountParamRef.current !== bankAccountParam
+            )
+              return;
+            setErrorMessage(undefined);
+            setBankAccount(account);
+          })
+          .catch((error: ApiError) => {
+            if (
+              !mountedRef.current ||
+              bankAccountRequestGenerationRef.current !== requestGeneration ||
+              latestBankAccountParamRef.current !== bankAccountParam
+            )
+              return;
+
+            let errorKey = 'The bank account could not be added.';
+            if (error.message?.includes('KYC only account')) {
+              errorKey = 'Before you can add a bank account, your DFX account needs a wallet.';
+            } else if (error.message?.includes('Multi-account IBAN')) {
+              errorKey = 'This is a multi-account IBAN and cannot be added as a personal account.';
+            }
+            setErrorMessage(translate('screens/sell', errorKey));
+          })
+          .finally(() => {
+            if (mountedRef.current && bankAccountRequestGenerationRef.current === requestGeneration) {
+              isCreatingAccountRef.current = false;
+              setBankAccountRetryGeneration((generation) => generation + 1);
+            }
+          });
       }
     }
-  }, [bankAccountParam, getAccount, bankAccounts, allowedCountries]);
+  }, [
+    bankAccountParam,
+    getAccount,
+    bankAccounts,
+    allowedCountries,
+    createAccount,
+    translate,
+    bankAccountRetryGeneration,
+  ]);
 
   useEffect(() => {
     if (!paymentInfo || isLoading) return;
@@ -179,6 +239,17 @@ export default function SellInfoScreen(): JSX.Element {
         setErrorMessage(error.message ?? 'Unknown error');
       })
       .finally(() => setIsLoading(false));
+  }
+
+  function handleRetry() {
+    if (bankAccountParam && !bankAccount) {
+      requestedCreateIbanRef.current = undefined;
+      setErrorMessage(undefined);
+      setBankAccountRetryGeneration((generation) => generation + 1);
+      return;
+    }
+
+    fetchData();
   }
 
   function validateSell(sell: Sell): Sell | undefined {
@@ -261,7 +332,7 @@ export default function SellInfoScreen(): JSX.Element {
           <StyledButton
             width={StyledButtonWidth.MIN}
             label={translate('general/actions', 'Retry')}
-            onClick={fetchData}
+            onClick={handleRetry}
             className="mt-4"
             color={StyledButtonColor.STURDY_WHITE}
           />

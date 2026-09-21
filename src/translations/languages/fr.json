@@ -620,6 +620,8 @@
   "screens/sell": {
     "Add or select your IBAN": "Ajouter ou sélectionner votre IBAN",
     "The bank account could not be added.": "Le compte bancaire n'a pas pu être ajouté.",
+    "Before you can add a bank account, your DFX account needs a wallet.": "Avant de pouvoir ajouter un compte bancaire, votre compte DFX a besoin d'un portefeuille.",
+    "This is a multi-account IBAN and cannot be added as a personal account.": "Il s'agit d'un IBAN multi-comptes qui ne peut pas être ajouté en tant que compte personnel.",
     "Select payment account": "Sélectionner le compte de paiement",
     "Send the selected amount to the address below. This address can be used multiple times, it is always the same for payouts from {{chain}} to your IBAN {{iban}} in {{currency}}.": "Envoyez le montant sélectionné à l'adresse ci-dessous. Cette adresse peut être utilisée plusieurs fois, elle est toujours la même pour les paiements de {{chain}} à votre IBAN {{iban}} en {{currency}}.",
     "Address": "Adresse",

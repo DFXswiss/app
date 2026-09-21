@@ -13,6 +13,8 @@ interface BankAccountSelectorProps {
   value?: BankAccount;
   onChange: (account: BankAccount) => void;
   onError?: (message: string) => void;
+  onCreateStart?: () => void;
+  retryToken?: number;
   placeholder: string;
   isModalOpen: boolean;
   onModalToggle: (isOpen: boolean) => void;
@@ -23,6 +25,8 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
   value,
   onChange,
   onError,
+  onCreateStart,
+  retryToken,
   placeholder,
   isModalOpen = false,
   onModalToggle,
@@ -35,11 +39,12 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
   const { bankAccount } = useAppParams();
   const { width } = useWindowContext();
 
-  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
+  const [manualRetryToken, setManualRetryToken] = useState(0);
   const requestedCreateIbanRef = useRef<string>();
-  const bankAccountLiveRef = useRef(bankAccount);
+  const failedCreateIbanRef = useRef<string>();
+  const requestGenerationRef = useRef(0);
+  const previousRetryTokenRef = useRef(retryToken);
   const mountedRef = useRef(true);
-  bankAccountLiveRef.current = bankAccount;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -47,6 +52,20 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    requestGenerationRef.current += 1;
+    requestedCreateIbanRef.current = undefined;
+    failedCreateIbanRef.current = undefined;
+  }, [bankAccount]);
+
+  useEffect(() => {
+    if (previousRetryTokenRef.current === retryToken) return;
+
+    previousRetryTokenRef.current = retryToken;
+    requestedCreateIbanRef.current = undefined;
+    failedCreateIbanRef.current = undefined;
+  }, [retryToken]);
 
   useEffect(() => {
     if (!bankAccounts) return;
@@ -67,32 +86,58 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
 
     if (
       bankAccount &&
-      !isCreatingAccount &&
       requestedCreateIbanRef.current !== bankAccount &&
+      failedCreateIbanRef.current !== bankAccount &&
       Validations.Iban(allowedCountries).validate(bankAccount) === true
     ) {
       const requestedIban = bankAccount;
+      const requestGeneration = ++requestGenerationRef.current;
       requestedCreateIbanRef.current = requestedIban;
-      setIsCreatingAccount(true);
+      onCreateStart?.();
       createAccount({ iban: requestedIban })
         .then((b) => {
-          if (!mountedRef.current || bankAccountLiveRef.current !== requestedIban) return;
+          if (!mountedRef.current || requestGenerationRef.current !== requestGeneration) return;
           onChange(b);
         })
         .catch((e: { message?: string }) => {
-          if (!mountedRef.current || bankAccountLiveRef.current !== requestedIban) return;
+          if (!mountedRef.current || requestGenerationRef.current !== requestGeneration) return;
+          requestedCreateIbanRef.current = undefined;
+          failedCreateIbanRef.current = requestedIban;
           onError?.(e.message ?? 'Unknown error');
-        })
-        .finally(() => {
-          if (mountedRef.current) setIsCreatingAccount(false);
         });
     }
-  }, [bankAccount, getAccount, bankAccounts, allowedCountries, value, onChange, onError, isCreatingAccount, createAccount]);
+  }, [
+    bankAccount,
+    getAccount,
+    bankAccounts,
+    allowedCountries,
+    value,
+    onChange,
+    onError,
+    onCreateStart,
+    retryToken,
+    manualRetryToken,
+    createAccount,
+  ]);
+
+  const handleManualChange = (account: BankAccount) => {
+    requestGenerationRef.current += 1;
+    onChange(account);
+  };
+
+  const handleOpen = () => {
+    if (bankAccount && failedCreateIbanRef.current === bankAccount) {
+      requestedCreateIbanRef.current = undefined;
+      failedCreateIbanRef.current = undefined;
+      setManualRetryToken((token) => token + 1);
+    }
+    onModalToggle(true);
+  };
 
   return (
     <>
       <StyledModalButton
-        onClick={() => onModalToggle(true)}
+        onClick={handleOpen}
         onBlur={() => undefined}
         placeholder={translate('screens/sell', placeholder)}
         value={Utils.formatIban(value?.iban) ?? undefined}
@@ -109,7 +154,7 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
                 subLabel: blankedAddress(Utils.formatIban(account.iban) ?? account.iban, { width }),
                 tag: account.default ? translate('screens/settings', 'Default').toUpperCase() : undefined,
                 onClick: () => {
-                  onChange(account);
+                  handleManualChange(account);
                   onModalToggle(false);
                 },
               };
@@ -118,7 +163,7 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
 
           <AddBankAccount
             onSubmit={(account) => {
-              onChange(account);
+              handleManualChange(account);
               onModalToggle(false);
             }}
           />
