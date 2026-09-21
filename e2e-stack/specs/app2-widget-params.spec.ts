@@ -555,7 +555,29 @@ test.describe('App 2.0 widget params', () => {
     await waitForBuyHome(page);
     await submitBuyForPaymentInfo(page);
     await page.getByRole('button', { name: /^done$/i }).click();
+    const confirmation = page.getByRole('dialog', { name: /leave dfx\?/i });
+    await expect(confirmation).toBeVisible({ timeout: 20000 });
+    await expect(confirmation.getByText('example.com', { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/app2\//);
+    await confirmation.getByRole('button', { name: 'Continue to host' }).click();
     await expect(page).toHaveURL(/https:\/\/example\.com\/done\/buy/, { timeout: 20000 });
+
+    await openApp2(page, user.jwt, '#/', { 'redirect-uri': 'https://example.com/done' });
+    await waitForBuyHome(page);
+    await submitBuyForPaymentInfo(page);
+    await page.getByRole('button', { name: /^done$/i }).click();
+    const cancelledConfirmation = page.getByRole('dialog', { name: /leave dfx\?/i });
+    await expect(cancelledConfirmation).toBeVisible({ timeout: 20000 });
+    await cancelledConfirmation.getByRole('button', { name: 'Cancel' }).click();
+    await expect(cancelledConfirmation).toHaveCount(0);
+    await expect(page).toHaveURL(/\/app2\//);
+
+    await openApp2(page, user.jwt, '#/', { 'redirect-uri': 'javascript:alert(1)' });
+    await waitForBuyHome(page);
+    await submitBuyForPaymentInfo(page);
+    await page.getByRole('button', { name: /^done$/i }).click();
+    await expect(page.getByRole('dialog', { name: /leave dfx\?/i })).toHaveCount(0);
+    await expect(page).toHaveURL(/\/app2\//);
   });
 
   test('service: sell tab is selected only when service=sell', async ({ page }) => {
