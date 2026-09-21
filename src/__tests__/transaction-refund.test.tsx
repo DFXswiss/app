@@ -995,6 +995,45 @@ describe('TransactionRefund onSubmit', () => {
     });
   });
 
+  it('reports a repeated blocked bank once and again after another error was shown', async () => {
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockSetGuestRefund
+      .mockRejectedValueOnce({ message: 'BIC not allowed' })
+      .mockRejectedValueOnce({ message: 'BIC not allowed' })
+      .mockRejectedValueOnce({ message: 'MultiAccountIban is not allowed here' })
+      .mockRejectedValueOnce({ message: 'BIC not allowed' });
+    const bankHint = 'This bank is not supported by DFX. Please use an account at a different bank.';
+    const multiAccountHint = 'This IBAN cannot be used for refunds. Please select a personal bank account.';
+
+    renderRefund();
+    await waitForRefundFormLoaded();
+    await fillBankRefundForm();
+    await waitForSubmitEnabled('Confirm refund');
+
+    async function submit(expectedText: string) {
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }));
+      });
+      await waitFor(() => expect(screen.getByText(expectedText)).toBeInTheDocument());
+    }
+
+    await submit(bankHint);
+    await submit(bankHint);
+    expect(mockReportClientError).toHaveBeenCalledTimes(1);
+
+    await submit(multiAccountHint);
+    expect(screen.queryByText(bankHint)).not.toBeInTheDocument();
+    expect(mockReportClientError).toHaveBeenCalledTimes(1);
+
+    await submit(bankHint);
+    expect(mockReportClientError).toHaveBeenCalledTimes(2);
+    expect(mockReportClientError.mock.calls[1][0]).toMatchObject({
+      message: 'BIC not allowed',
+      name: 'KnownRejection',
+    });
+  });
+
   it('propagates non-MultiAccountIban submit errors via setError', async () => {
     mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
     mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));

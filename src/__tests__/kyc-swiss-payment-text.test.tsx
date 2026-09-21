@@ -290,6 +290,15 @@ describe('KycScreen personal data', () => {
     expect(await screen.findByText(CHARSET_ERROR)).toBeInTheDocument();
   });
 
+  it.each(['address.zip', 'organizationAddress.zip'])('keeps the length cap on %s', async (name) => {
+    await renderOrganization();
+
+    await type(name, '12345678901');
+
+    expect(await screen.findByText('error:pattern')).toBeInTheDocument();
+    expect(screen.queryByText(CHARSET_ERROR)).not.toBeInTheDocument();
+  });
+
   it('accepts typographic apostrophes and sends them normalized', async () => {
     await renderOrganization();
 

@@ -412,7 +412,6 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   async function onSubmit(data: FormData) {
     setIsLoading(true);
     setLocalError(undefined);
-    setRejectionMessage(undefined);
 
     try {
       const formTarget = isBuy ? (data.iban ?? '') : data.refundAddress;
@@ -447,14 +446,16 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
       navigate(`/tx/${id}`);
     } catch (e) {
       const error = e as ApiError;
+      const isBlockedBank = error.message?.includes(BlockedBankRejection.apiMessage);
+      setRejectionMessage(isBlockedBank ? error.message : undefined);
+
       if (error.message?.includes('MultiAccountIban')) {
         // Use local error to keep the form visible (setError would replace the entire form)
         setLocalError(
           translate('screens/payment', 'This IBAN cannot be used for refunds. Please select a personal bank account.'),
         );
-      } else if (error.message?.includes(BlockedBankRejection.apiMessage)) {
+      } else if (isBlockedBank) {
         setLocalError(translate('general/errors', BlockedBankRejection.hint));
-        setRejectionMessage(error.message);
       } else {
         setError(error.message ?? 'Unknown error');
       }
