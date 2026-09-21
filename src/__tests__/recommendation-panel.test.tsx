@@ -45,6 +45,27 @@ jest.mock('src/hooks/staff-verified-name.hook', () => ({
 
 jest.mock('src/components/error-hint', () => ({ ErrorHint: () => null }));
 
+// The reset form has its own tests; here only the hand-over matters: which step it gets and what the
+// panel does with the outcome it reports.
+jest.mock('src/components/compliance/recommendation-reset', () => ({
+  RecommendationReset: ({
+    step,
+    onClose,
+    onReset,
+  }: {
+    step: { id: number };
+    onClose: () => void;
+    onReset: (stepId: number, logWarning?: string) => void;
+  }) => (
+    <div data-testid="reset-form">
+      <span>reset step {step.id}</span>
+      <button onClick={onClose}>stub-close</button>
+      <button onClick={() => onReset(step.id)}>stub-reset</button>
+      <button onClick={() => onReset(step.id, 'log down')}>stub-reset-warn</button>
+    </div>
+  ),
+}));
+
 jest.mock('src/util/compliance-helpers', () => ({
   DEFAULT_REF: '000-000',
   formatDate: (value: string) => `d:${value}`,
@@ -401,5 +422,108 @@ describe('RecommendationPanel', () => {
     await waitFor(() => expect(screen.getByText('Referrer (Ref-Code)')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Account B #1 (204-824)' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Samuel Kullmann #328304 (172-134)' })).not.toBeInTheDocument();
+  });
+
+  describe('pending request', () => {
+    const pending = {
+      id: 838917,
+      name: 'Recommendation',
+      status: 'InternalReview',
+      created: '2026-09-17',
+      recommender: { id: 302951, firstname: 'Manfred', surname: 'Patzwahl' },
+    } as KycStepInfo;
+    const referrerWallet = wallet({ id: 1, usedRef: '176-769', refUserName: 'Gerd Dolling', refUserDataId: 359666 });
+
+    it('shows the recipient of the request and opens their account without opening the step', async () => {
+      renderPanel({ kycSteps: [pending], users: [referrerWallet] });
+      await waitFor(() => expect(screen.getByText('Referrer (Ref-Code)')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Manfred Patzwahl #302951' }));
+      expect(mockNavigate).toHaveBeenCalledTimes(1);
+      expect(mockNavigate).toHaveBeenCalledWith('/compliance/user/302951');
+    });
+
+    it('shows a dash for a step without recipient and no reset for a step that is not pending', async () => {
+      renderPanel({
+        kycSteps: [{ id: 5, name: 'Recommendation', status: 'Completed', created: '2026-02-02' } as KycStepInfo],
+        users: [referrerWallet],
+      });
+      await waitFor(() => expect(screen.getByText('Referrer (Ref-Code)')).toBeInTheDocument());
+
+      expect(screen.getByText('-')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
+      expect(screen.queryByText('not the referrer')).not.toBeInTheDocument();
+    });
+
+    it('flags a request that went to somebody other than the referrer', async () => {
+      renderPanel({ kycSteps: [pending], users: [referrerWallet] });
+      await waitFor(() => expect(screen.getByText('not the referrer')).toBeInTheDocument());
+    });
+
+    it('does not flag a request to the referrer, nor one for an account without Ref-Code', async () => {
+      const toReferrer = { ...pending, recommender: { id: 359666, firstname: 'Gerd', surname: 'Dolling' } };
+      const { rerender } = renderPanel({ kycSteps: [toReferrer], users: [referrerWallet] });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Gerd Dolling #359666' })).toBeInTheDocument());
+      expect(screen.queryByText('not the referrer')).not.toBeInTheDocument();
+
+      mockGetUserData.mockResolvedValue({ users: [wallet({ id: 1 })] });
+      rerender(
+        <RecommendationPanel
+          kycSteps={[pending]}
+          users={[]}
+          userDataId="425053"
+          navigate={mockNavigate as unknown as NavigateFunction}
+        />,
+      );
+      await waitFor(() => expect(screen.getByText('No Ref-Code')).toBeInTheDocument());
+      expect(screen.queryByText('not the referrer')).not.toBeInTheDocument();
+    });
+
+    it('offers the reset only to a session that may reset', async () => {
+      mockSession.role = 'Marketing';
+      renderPanel({ kycSteps: [pending], users: [referrerWallet] });
+      await waitFor(() => expect(screen.getByText('Referrer (Ref-Code)')).toBeInTheDocument());
+      expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
+    });
+
+    it('opens the reset form for the step without opening the step, and closes it on cancel', async () => {
+      renderPanel({ kycSteps: [pending], users: [referrerWallet] });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Reset' })).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(screen.getByText('reset step 838917')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'stub-close' }));
+      expect(screen.queryByTestId('reset-form')).not.toBeInTheDocument();
+      expect(screen.getByText('InternalReview')).toBeInTheDocument();
+    });
+
+    it('shows the step as Canceled with a hint once the reset is done, and drops the reset offer', async () => {
+      renderPanel({ kycSteps: [pending], users: [referrerWallet] });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Reset' })).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      fireEvent.click(screen.getByRole('button', { name: 'stub-reset' }));
+
+      expect(screen.queryByTestId('reset-form')).not.toBeInTheDocument();
+      expect(screen.getByText('Canceled')).toBeInTheDocument();
+      expect(screen.queryByText('InternalReview')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
+      expect(screen.queryByText('not the referrer')).not.toBeInTheDocument();
+      expect(screen.getByText(/The request was reset/)).toBeInTheDocument();
+      expect(screen.queryByText(/KYC log entry could not be written/)).not.toBeInTheDocument();
+    });
+
+    it('shows the log warning the form reports next to the hint', async () => {
+      renderPanel({ kycSteps: [pending], users: [referrerWallet] });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Reset' })).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      fireEvent.click(screen.getByRole('button', { name: 'stub-reset-warn' }));
+
+      expect(screen.getByText('The KYC log entry could not be written: log down')).toBeInTheDocument();
+      expect(screen.getByText('Canceled')).toBeInTheDocument();
+    });
   });
 });
