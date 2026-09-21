@@ -301,7 +301,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   exactly the characters the form rejects, or that a real bank is blocked; the message sentences
   and the character set (every code point up to U+024F) are pinned in unit tests instead. Nor does it
   prove that the external geolocation service is reachable, still answers in that shape, or maps
-  a real client IP to the expected country.
+  a real client IP to the expected country. It also does not prove that the KYC step, transaction,
+  refund and bootstrap endpoints return these payloads for a real account, or that client-error
+  reports reach the real endpoint.
 
 ## Known gaps
 
