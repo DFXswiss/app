@@ -217,7 +217,7 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
               label={targetInputLabel}
               placeholder="0.00"
               isColoredBackground
-              availableItems={targetAssets ?? []}
+              availableItems={targetAssets}
               selectedItem={data.targetAsset}
               assetRules={rules.targetAsset}
               amountRules={rules.targetAmount}
