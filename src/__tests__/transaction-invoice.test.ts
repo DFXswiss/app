@@ -64,7 +64,7 @@ describe('canOpenInvoice', () => {
     ).toBe(false);
   });
 
-  it('returns false for non-completed Buy', () => {
+  it('returns false for Failed Buy EUR', () => {
     expect(
       canOpenInvoice({
         type: TransactionType.BUY,
@@ -114,20 +114,16 @@ describe('canOpenInvoice', () => {
     ).toBe(false);
   });
 
-  it('returns false for Created, KycRequired, LimitExceeded and CheckPending Buy CHF', () => {
-    for (const state of [
-      TransactionState.CREATED,
-      TransactionState.KYC_REQUIRED,
-      TransactionState.LIMIT_EXCEEDED,
-      TransactionState.CHECK_PENDING,
-    ]) {
+  it('returns true only for Completed and WaitingForPayment Buy CHF', () => {
+    const allowed = [TransactionState.COMPLETED, TransactionState.WAITING_FOR_PAYMENT];
+    for (const state of Object.values(TransactionState)) {
       expect(
         canOpenInvoice({
           type: TransactionType.BUY,
           state,
           inputAsset: 'CHF',
         }),
-      ).toBe(false);
+      ).toBe(allowed.includes(state));
     }
   });
 

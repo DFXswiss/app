@@ -309,9 +309,11 @@ export interface CreateBuyResult {
   assetId?: number;
   /** TransactionRequest id from PUT /buy/paymentInfos. Only set when withPaymentInfo is true. */
   requestId?: number;
-  /** Deposit IBAN from PUT /buy/paymentInfos. Only set when withPaymentInfo is true. */
-  iban?: string;
-  /** Payment reference from PUT /buy/paymentInfos. Only set when withPaymentInfo is true. */
+  /**
+   * Payment reference from PUT /buy/paymentInfos. Set when withPaymentInfo is true and the quote
+   * returned one; absent otherwise. This harness does not persist bank selection on collection
+   * quotes, so no IBAN is returned.
+   */
   remittanceInfo?: string;
 }
 
@@ -375,9 +377,11 @@ export interface CreateTransactionResult {
   sellId?: number;
   userId?: number;
   userDataId?: number;
-  /** Quote deposit IBAN from PUT /buy/paymentInfos. Only set for `waiting_for_payment_buy`. */
-  iban?: string;
-  /** Quote payment reference from PUT /buy/paymentInfos. Only set for `waiting_for_payment_buy`. */
+  /**
+   * Quote payment reference from PUT /buy/paymentInfos. Set for `waiting_for_payment_buy` when
+   * the quote returned one; absent on SQL-seeded states. This harness uses the collection
+   * account and does not persist bankId/virtualIbanId, so no IBAN is returned.
+   */
   remittanceInfo?: string;
 }
 
@@ -832,7 +836,7 @@ export async function createBuy(jwt: string, options: CreateBuyOptions = {}): Pr
     // Frontend path: PUT /buy/paymentInfos (createBuyWithPaymentInfo). Needs currency + amount
     // and a live price path; may fail when HttpService mocks break pricing.
     const currencyId = await resolveFiatId(options.currencyId ?? 'CHF');
-    const res = await apiPut<{ id: number; routeId: number; iban?: string; remittanceInfo?: string }>(
+    const res = await apiPut<{ id: number; routeId: number; remittanceInfo?: string }>(
       'buy/paymentInfos',
       {
         currency: { id: currencyId },
@@ -853,7 +857,6 @@ export async function createBuy(jwt: string, options: CreateBuyOptions = {}): Pr
       routeId,
       assetId: asset.id,
       requestId,
-      iban: res.iban,
       remittanceInfo: res.remittanceInfo,
     };
   }
@@ -1037,7 +1040,6 @@ export async function createTransaction(options: CreateTransactionOptions = {}):
       buyId: buy.buyId,
       userId,
       userDataId,
-      iban: buy.iban,
       remittanceInfo: buy.remittanceInfo,
     };
   }
