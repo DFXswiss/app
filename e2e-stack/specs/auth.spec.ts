@@ -147,9 +147,9 @@ test.describe('Auth area e2e', () => {
     });
   });
 
-  // The mock provider does not implement personal_sign, so this test does not claim a completed
-  // wallet login. After isAvailable() settles, only the negatives below are asserted: no
-  // InstallHint, and no provider-missing error.
+  // The injected provider is bound even though reading `.on` throws. Otherwise the error
+  // area would show the provider-missing error instead of the backend signature validation.
+  // The mock does not answer personal_sign, so login deliberately does not complete.
   test('/login/wallet MetaMask tile with a Brave-like provider does not show the install hint', async ({ page }) => {
     await page.addInitScript((address: string) => {
       const target: Record<string, unknown> = {};
@@ -183,22 +183,15 @@ test.describe('Auth area e2e', () => {
     await expect(metamaskTile).toBeVisible({ timeout: 15000 });
     await metamaskTile.click();
 
-    const installHint = page.getByText('Please install MetaMask or Rabby!', { exact: true });
-    // Wait until ConnectBase leaves the isAvailable poll; a count-0 on the hint during the
-    // loading spinner would pass before detection has finished.
-    await expect(
-      installHint
-        .or(page.getByText('Please confirm the connection in your MetaMask.', { exact: true }))
-        .or(page.getByText('Connection failed!', { exact: true }))
-        .or(
-          page.getByText(
-            'Log in to your DFX account by verifying with your signature that you are the sole owner of the provided blockchain address.',
-            { exact: true },
-          ),
-        ),
-    ).toBeVisible({ timeout: 15000 });
+    // ConnectError is the end state for this mock. Its heading and the signature
+    // validation land in one commit; the confirm copy and the install hint are earlier frames.
+    const errorHeading = page.getByRole('heading', { name: 'Connection failed!', exact: true, level: 2 });
+    await expect(errorHeading).toBeVisible({ timeout: 15000 });
+    await expect(errorHeading.locator('xpath=following-sibling::p[1]')).toContainText('signature', {
+      timeout: 15000,
+    });
 
-    await expect(installHint).toHaveCount(0);
+    await expect(page.getByText('Please install MetaMask or Rabby!', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Provider not set or invalid')).toHaveCount(0);
     await expect(
       page.getByText('No wallet found. Please check your wallet extension or set one up, then reload this page.', {
