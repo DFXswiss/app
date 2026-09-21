@@ -68,6 +68,17 @@ export function AddBankAccount({ onSubmit, confirmationText }: AddBankAccountPro
               {` and attach the bank transaction confirmation as a PDF.`}
             </Trans>,
           );
+        } else if (e.statusCode === 400 && e.message?.includes('KYC only account')) {
+          setCustomError(
+            <Trans i18nKey="general/errors.ibanKycOnly">
+              {`A bank account can only be added once a wallet is linked to this account. `}
+              <StyledLink
+                label={translate('screens/home', 'Connect your wallet')}
+                onClick={() => navigate('/connect', { setRedirect: true })}
+                dark
+              />
+            </Trans>,
+          );
         } else {
           setError(e.message ?? 'Unknown error');
         }
