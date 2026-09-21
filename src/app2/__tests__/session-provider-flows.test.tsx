@@ -99,7 +99,7 @@ jest.mock('../assets/wallets/realunit.svg', () => 'realunit.svg');
 jest.mock('../assets/wallets/urble.webp', () => 'urble.webp');
 
 import { StrictMode } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AuthWalletType } from '@dfx.swiss/react';
 import { LanguageProvider } from '../i18n';
 import { ToastProvider } from '../components/ui';
@@ -395,7 +395,11 @@ describe('WalletSessionProvider flows', () => {
     Object.defineProperty(window, 'location', { configurable: true, value: originalLocation });
   });
 
-  it('bootstraps a valid JWT from the URL and ignores a junk token', async () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('bootstraps a valid JWT from the URL', async () => {
     Object.defineProperty(window, 'location', {
       configurable: true,
       value: { ...originalLocation, search: `?session=${jwt()}`, pathname: '/app2/', hash: '' },
@@ -418,6 +422,260 @@ describe('WalletSessionProvider flows', () => {
     expect(mockCreateSession.mock.calls[0][2]).toBeUndefined();
     expect(mockCreateSession.mock.calls[0][6]).toBeUndefined();
     replace.mockRestore();
+  });
+
+  it('logs out for an invalid token and scrubs it without creating a session', async () => {
+    window.history.replaceState({}, '', '/app2/?session=garbage');
+    renderSession();
+
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(window.location.search).toBe(''));
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(mockCreateSession).not.toHaveBeenCalled();
+  });
+
+  it('only scrubs unusable signed credentials', async () => {
+    window.history.replaceState({}, '', '/app2/?address=undefined&signature=null&pubkey=unused');
+    renderSession();
+
+    await waitFor(() => expect(window.location.search).toBe(''));
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(mockCreateSession).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('applies each changed signed-credential field at runtime and deduplicates the same combination', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      `/app2/?address=${address}&signature=first&pubkey=key-1&type=MetaMask`,
+    );
+    renderSession();
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(window.location.search).toBe('?type=MetaMask'));
+
+    await act(async () => {
+      window.history.pushState(
+        {},
+        '',
+        `/app2/?address=${other}&signature=first&pubkey=key-1&type=MetaMask`,
+      );
+    });
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(window.location.search).toBe('?type=MetaMask'));
+
+    await act(async () => {
+      window.history.pushState(
+        {},
+        '',
+        `/app2/?address=${other}&signature=second&pubkey=key-1&type=MetaMask`,
+      );
+    });
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(window.location.search).toBe('?type=MetaMask'));
+
+    await act(async () => {
+      window.history.pushState(
+        {},
+        '',
+        `/app2/?address=${other}&signature=second&pubkey=key-2&type=MetaMask`,
+      );
+    });
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(window.location.search).toBe('?type=MetaMask'));
+
+    await act(async () => {
+      window.history.pushState(
+        {},
+        '',
+        `/app2/?address=${other}&signature=second&pubkey=key-2&type=LedgerEth`,
+      );
+    });
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(5));
+    await waitFor(() => expect(window.location.search).toBe('?type=LedgerEth'));
+    expect(mockCreateSession.mock.calls[4].slice(0, 3)).toEqual([other, 'second', 'key-2']);
+    expect(mockCreateSession.mock.calls[4][6]).toBe('Ledger');
+
+    await act(async () => {
+      window.history.pushState(
+        {},
+        '',
+        `/app2/?address=${other}&signature=second&pubkey=key-2&type=LedgerEth`,
+      );
+    });
+    await waitFor(() => expect(window.location.search).toBe('?type=LedgerEth'));
+    expect(mockCreateSession).toHaveBeenCalledTimes(5);
+  });
+
+  it('applies a changed live token and scrubs only credential keys without changing path or hash', async () => {
+    const firstToken = jwt(['Ethereum']);
+    const secondToken = jwt(['Bitcoin']);
+    window.history.replaceState(
+      {},
+      '',
+      `/app2/?session=${firstToken}&token=alias&accessToken=alias-2&address=${address}` +
+        '&signature=sig&pubkey=key&type=MetaMask&redirect=outside&keep=1#/support',
+    );
+    renderSession();
+    await waitFor(() => expect(mockUpdateSession).toHaveBeenCalledWith(firstToken));
+    await waitFor(() => expect(window.location.search).toBe('?type=MetaMask&redirect=outside&keep=1'));
+
+    const scrubbed = new URLSearchParams(window.location.search);
+    expect(Array.from(scrubbed.entries())).toEqual([
+      ['type', 'MetaMask'],
+      ['redirect', 'outside'],
+      ['keep', '1'],
+    ]);
+    expect(window.location.pathname).toBe('/app2/');
+    expect(window.location.hash).toBe('#/support');
+
+    await act(async () => {
+      window.history.replaceState({}, '', `/app2/?accessToken=${secondToken}&keep=1#/support`);
+    });
+    await waitFor(() => expect(mockUpdateSession).toHaveBeenCalledTimes(2));
+    expect(mockUpdateSession.mock.calls[1]).toEqual([secondToken]);
+  });
+
+  it('deduplicates the same token until logout resets the applied credentials', async () => {
+    const token = jwt(['Ethereum']);
+    window.history.replaceState({}, '', `/app2/?session=${token}`);
+    renderSession();
+    await waitFor(() => expect(mockUpdateSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(window.location.search).toBe(''));
+
+    await act(async () => {
+      window.history.pushState({}, '', `/app2/?token=${token}`);
+    });
+    await waitFor(() => expect(window.location.search).toBe(''));
+    expect(mockUpdateSession).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText('logout'));
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      window.history.pushState({}, '', `/app2/?accessToken=${token}`);
+    });
+    await waitFor(() => expect(mockUpdateSession).toHaveBeenCalledTimes(2));
+  });
+
+  it('sets signed credentials before the async login so StrictMode cannot apply them twice', async () => {
+    let resolveSession: (token: string) => void = () => undefined;
+    mockCreateSession.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSession = resolve;
+        }),
+    );
+    window.history.replaceState({}, '', `/app2/?address=${address}&signature=0xsig`);
+
+    const view = render(
+      <StrictMode>
+        <LanguageProvider>
+          <ToastProvider>
+            <WalletSessionProvider>
+              <Probe />
+            </WalletSessionProvider>
+          </ToastProvider>
+        </LanguageProvider>
+      </StrictMode>,
+    );
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      resolveSession(jwt());
+      await Promise.resolve();
+    });
+    view.unmount();
+  });
+
+  it('clears a failed signed-credential guard so the same credentials can retry', async () => {
+    mockCreateSession.mockRejectedValueOnce(new Error('rejected'));
+    window.history.replaceState({}, '', `/app2/?address=${address}&signature=0xsig`);
+    renderSession();
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(window.location.search).toBe(''));
+
+    await act(async () => {
+      window.history.pushState({}, '', `/app2/?address=${address}&signature=0xsig`);
+    });
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(window.location.search).toBe(''));
+  });
+
+  it('keeps the newest signed-credential session when an older request resolves last', async () => {
+    let resolveFirst: (token: string) => void = () => undefined;
+    let resolveSecond: (token: string) => void = () => undefined;
+    mockCreateSession
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveSecond = resolve;
+          }),
+      );
+    window.history.replaceState({}, '', `/app2/?address=${address}&signature=first`);
+    renderSession();
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      window.history.pushState({}, '', `/app2/?address=${other}&signature=second`);
+    });
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(2));
+
+    const newestToken = jwt(['Bitcoin']);
+    await act(async () => {
+      resolveSecond(newestToken);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      resolveFirst(jwt(['Ethereum']));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(mockUpdateSession).toHaveBeenCalledWith(newestToken));
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('shares one history patch across mounts and restores it after the last unmount', () => {
+    const pushState = window.history.pushState;
+    const replaceState = window.history.replaceState;
+    const first = renderSession();
+    const patchedPushState = window.history.pushState;
+    const patchedReplaceState = window.history.replaceState;
+    const second = renderSession();
+
+    expect(patchedPushState).not.toBe(pushState);
+    expect(patchedReplaceState).not.toBe(replaceState);
+    expect(window.history.pushState).toBe(patchedPushState);
+    expect(window.history.replaceState).toBe(patchedReplaceState);
+    first.unmount();
+    expect(window.history.pushState).toBe(patchedPushState);
+    expect(window.history.replaceState).toBe(patchedReplaceState);
+    second.unmount();
+    expect(window.history.pushState).toBe(pushState);
+    expect(window.history.replaceState).toBe(replaceState);
+
+    const third = renderSession();
+    window.history.pushState = pushState;
+    window.history.replaceState = replaceState;
+    third.unmount();
+    expect(window.history.pushState).toBe(pushState);
+    expect(window.history.replaceState).toBe(replaceState);
+  });
+
+  it('observes browser history navigation through popstate', async () => {
+    const token = jwt(['Bitcoin']);
+    const nativePushState = window.history.pushState;
+    renderSession();
+
+    await act(async () => {
+      nativePushState.call(window.history, {}, '', `/app2/?session=${token}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    await waitFor(() => expect(mockUpdateSession).toHaveBeenCalledWith(token));
   });
 
   it('passes pubkey as the session key and omits it when the param is empty', async () => {
