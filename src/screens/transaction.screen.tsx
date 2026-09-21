@@ -60,7 +60,9 @@ import { useBlockchain } from '../hooks/blockchain.hook';
 import { useUserGuard } from '../hooks/guard.hook';
 import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useNavigation } from '../hooks/navigation.hook';
+import { useReportDisplayedError } from '../hooks/report-displayed-error.hook';
 import { useTransactionGuest } from '../hooks/transaction-guest.hook';
+import { BlockedBankRejection, KnownRejectionType } from '../util/known-rejections';
 import { getStoredPaymentDetailErrorMessage } from '../util/personal-iban';
 import { canOpenInvoice, revealInvoicePdf } from '../util/transaction-invoice';
 import { blankedAddress, formatSwissDateTimeWithSeconds } from '../util/utils';
@@ -333,6 +335,9 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   const [refundDetails, setRefundDetails] = useState<RefundDetails>();
   const [transaction, setTransaction] = useState<Transaction>();
   const [localError, setLocalError] = useState<string>();
+  const [rejectionMessage, setRejectionMessage] = useState<string>();
+
+  useReportDisplayedError(rejectionMessage, KnownRejectionType);
 
   const isBuy = transaction?.type === TransactionType.BUY;
   const hasActionSecret = !!secret && /^[0-9a-f]{64}$/.test(secret);
@@ -407,6 +412,7 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
   async function onSubmit(data: FormData) {
     setIsLoading(true);
     setLocalError(undefined);
+    setRejectionMessage(undefined);
 
     try {
       const formTarget = isBuy ? (data.iban ?? '') : data.refundAddress;
@@ -446,6 +452,9 @@ function TransactionRefund({ setError }: TransactionRefundProps): JSX.Element {
         setLocalError(
           translate('screens/payment', 'This IBAN cannot be used for refunds. Please select a personal bank account.'),
         );
+      } else if (error.message?.includes(BlockedBankRejection.apiMessage)) {
+        setLocalError(translate('general/errors', BlockedBankRejection.hint));
+        setRejectionMessage(error.message);
       } else {
         setError(error.message ?? 'Unknown error');
       }

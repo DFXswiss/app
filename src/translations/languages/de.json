@@ -64,6 +64,9 @@
   "general/errors": {
     "Mandatory field": "Pflichtfeld",
     "Invalid pattern": "Ungültiges Format",
+    "Contains unsupported characters. Use simple letters, e.g. l instead of ł.": "Enthält nicht unterstützte Zeichen. Bitte einfache Buchstaben verwenden, z. B. l statt ł.",
+    "Your name or address contains characters that our bank payments do not support. Please replace them with simple letters (e.g. l instead of ł) and try again.": "Dein Name oder deine Adresse enthält Zeichen, die unsere Bankzahlungen nicht unterstützen. Bitte ersetze sie durch einfache Buchstaben (z. B. l statt ł) und versuche es erneut.",
+    "This bank is not supported by DFX. Please use an account at a different bank.": "Diese Bank wird von DFX nicht unterstützt. Bitte verwende ein Konto bei einer anderen Bank.",
     "Area code and number required": "Vorwahl und Nummer erforderlich",
     "IBAN not allowed": "IBAN nicht erlaubt",
     "IBAN country not allowed": "IBAN Land nicht erlaubt",
