@@ -27,6 +27,7 @@ import { AssetPicker } from '../components/pickers/AssetPicker';
 import { BankAccountPicker } from '../components/pickers/BankAccountPicker';
 import { FiatPicker } from '../components/pickers/FiatPicker';
 import { PaymentMethodPicker, paymentMethodsFor } from '../components/pickers/PaymentMethodPicker';
+import { ConfirmationSheet } from '../components/ConfirmationSheet';
 import { Spinner, useToast } from '../components/ui';
 import { formatAmount, formatFiat, parseAmt, quickChipSymbol } from './trade/amount';
 import {
@@ -54,7 +55,7 @@ import { Landing } from './parts/Landing';
 import { MODES, type Capability, type Mode, type TradeAsset } from './trade/types';
 import { useBuyQuote, useSellQuote, useSwapQuote } from './trade/useTradeQuote';
 import { useT, type TranslationKey } from '../i18n';
-import { firstQueryParam, routeOrQueryParam } from '../utils/url';
+import { firstQueryParam, requiresRedirectConfirmation, routeOrQueryParam } from '../utils/url';
 import { ibanCheck } from './trade/iban';
 import {
   completionRedirectUrl,
@@ -155,6 +156,8 @@ export default function HomeScreen() {
   const [fiatPickerOpen, setFiatPickerOpen] = useState<FiatSlot | null>(null);
   const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
   const [bankAccountOpen, setBankAccountOpen] = useState(false);
+  const [pendingBankAccount, setPendingBankAccount] = useState<{ param: string; iban: string }>();
+  const [pendingRedirect, setPendingRedirect] = useState<{ target: string; host: string }>();
   const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
   // Frozen quote snapshot the payment sheet renders from — see PaymentSnapshot.
   const [sheetSnapshot, setSheetSnapshot] = useState<PaymentSnapshot | null>(null);
@@ -169,7 +172,7 @@ export default function HomeScreen() {
   const [openAfterPaymentInfo, setOpenAfterPaymentInfo] = useState(false);
   const [buyTargetRaw, setBuyTargetRaw] = useState('');
   const targetClearedByUserRef = useRef(false);
-  const bankAccountCreateRef = useRef<string>();
+  const bankAccountPromptRef = useRef<string>();
   const bankAccountParamLiveRef = useRef(bankAccountParam);
   bankAccountParamLiveRef.current = bankAccountParam;
 
@@ -344,29 +347,38 @@ export default function HomeScreen() {
   }, [sellCurrencies, sellFiat, assetOutParam]);
 
   useEffect(() => {
-    if (!bankAccounts?.length) return;
+    if (!bankAccounts) return;
     if (bankAccountParam) {
       const found = matchBankAccount(bankAccounts, bankAccountParam);
       if (found) {
+        bankAccountPromptRef.current = bankAccountParam;
+        setPendingBankAccount(undefined);
         setSellBankAccount(found);
         return;
       }
-      if (ibanCheck(bankAccountParam).ok && bankAccountCreateRef.current !== bankAccountParam) {
-        const requested = bankAccountParam;
-        bankAccountCreateRef.current = requested;
-        createAccount({ iban: requested.replace(/\s+/g, '').toUpperCase() })
-          .then((account) => {
-            if (bankAccountParamLiveRef.current === requested) setSellBankAccount(account);
-          })
-          .catch(() => undefined);
+      if (ibanCheck(bankAccountParam).ok) {
+        if (bankAccountPromptRef.current !== bankAccountParam) {
+          const fallback = bankAccounts.find((account) => account.default);
+          setSellBankAccount(fallback ? fallback : bankAccounts[0]);
+          bankAccountPromptRef.current = bankAccountParam;
+          setPendingBankAccount({
+            param: bankAccountParam,
+            iban: bankAccountParam.replace(/\s+/g, '').toUpperCase(),
+          });
+        }
+      } else {
+        bankAccountPromptRef.current = bankAccountParam;
+        setPendingBankAccount(undefined);
       }
       return;
     }
+    bankAccountPromptRef.current = undefined;
+    setPendingBankAccount(undefined);
     if (!sellBankAccount) {
       const fallback = bankAccounts.find((a) => a.default);
       setSellBankAccount(fallback ? fallback : bankAccounts[0]);
     }
-  }, [bankAccounts, bankAccountParam, sellBankAccount, createAccount]);
+  }, [bankAccounts, bankAccountParam, sellBankAccount]);
 
   // ---- resolved API assets + parsed amounts --------------------------------------------------
   const buyApiAsset = buyAsset && buyChain ? assetFor(buyAsset, buyChain, 'buy') : undefined;
@@ -1186,6 +1198,42 @@ export default function HomeScreen() {
         }}
       />
 
+      <ConfirmationSheet
+        open={!!pendingBankAccount}
+        titleId="bankAccountConfirmTitle"
+        title={t('bankAccountConfirmTitle')}
+        description={t('bankAccountConfirmBody')}
+        detail={pendingBankAccount?.iban}
+        confirmLabel={t('bankAccountConfirmAction')}
+        onClose={() => setPendingBankAccount(undefined)}
+        onConfirm={() => {
+          const requested = pendingBankAccount;
+          if (!requested) return;
+          setPendingBankAccount(undefined);
+          createAccount({ iban: requested.iban })
+            .then((account) => {
+              if (bankAccountParamLiveRef.current === requested.param) setSellBankAccount(account);
+            })
+            .catch(() => showToast(t('genErr'), { assertive: true }));
+        }}
+      />
+
+      <ConfirmationSheet
+        open={!!pendingRedirect}
+        titleId="redirectConfirmTitle"
+        title={t('redirectConfirmTitle')}
+        description={t('redirectConfirmBody')}
+        detail={pendingRedirect?.host}
+        confirmLabel={t('redirectConfirmAction')}
+        onClose={() => setPendingRedirect(undefined)}
+        onConfirm={() => {
+          const target = pendingRedirect;
+          if (!target) return;
+          setPendingRedirect(undefined);
+          window.location.assign(target.target);
+        }}
+      />
+
       <PaymentSheet
         open={paymentSheetOpen}
         onClose={() => setPaymentSheetOpen(false)}
@@ -1214,7 +1262,12 @@ export default function HomeScreen() {
             sheetSnapshot?.mode === 'sell' ? 'sell' : sheetSnapshot?.mode === 'swap' ? 'swap' : 'buy',
             extra,
           );
-          if (target) window.location.assign(target);
+          if (!target) return;
+          if (requiresRedirectConfirmation(target)) {
+            setPendingRedirect({ target, host: new URL(target).host });
+            return;
+          }
+          window.location.assign(target);
         }}
         mode={sheetSnapshot?.mode ?? mode}
         loading={sheetSnapshot?.loading ?? sheetLoadingLive}

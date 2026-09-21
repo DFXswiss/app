@@ -51,6 +51,17 @@ export function isSafeRedirectUri(uri: string): boolean {
   return validSchemePattern.test(protocol);
 }
 
+/** External HTTPS completion redirects require confirmation unless they use an app-owned origin. */
+export function requiresRedirectConfirmation(uri: string): boolean {
+  if (!isSafeRedirectUri(uri)) return false;
+
+  const target = new URL(uri);
+  if (target.protocol !== 'https:' || target.origin === window.location.origin) return false;
+
+  const configuredAppUrl = appUrl('/');
+  return !configuredAppUrl || target.origin !== new URL(configuredAppUrl).origin;
+}
+
 function isLocalHostname(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }
