@@ -1,6 +1,7 @@
 import { SupportIssueInternalState, SupportIssueType, useAuthContext } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { STAFF_NAME_MISSING } from 'src/components/compliance/staff-identity';
 import { ErrorHint } from 'src/components/error-hint';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useSupportDashboardGuard } from 'src/hooks/guard.hook';
@@ -317,13 +318,15 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
                 </div>
               ) : (
                 <>
-                  {nameError && (
+                  {(nameError || !verifiedName) && (
                     <div className="px-4 pt-4">
                       <ErrorHint
                         message={[
-                          translate('screens/support', 'Could not load your verified name: {{error}}', {
-                            error: nameError,
-                          }),
+                          nameError
+                            ? translate('screens/support', 'Could not load your verified name: {{error}}', {
+                                error: nameError,
+                              })
+                            : translate('screens/support', STAFF_NAME_MISSING),
                           translate(
                             'screens/support',
                             'Tickets assigned only by name may be missing from this list.',

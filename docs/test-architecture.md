@@ -153,9 +153,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   mapping pins the token contract instead.
 - **The staff ticket customer-note visual spec answers the issue payload itself.**
   `e2e/support-ticket-note.spec.ts` fulfils `GET /v1/support/issue/:id/data`, the message thread
-  for that uid, clerks, clerk mapping and activity with synthetic fixtures. A green run proves
-  that the Kundennotiz composer renders those fixtures. It does not prove that the API returns
-  that issue or that `createSupportNote` persists a note.
+  for that uid, clerks, clerk mapping and activity with synthetic fixtures; the clerk fixtures carry
+  the `{ clerkUserDataId, clerk }` shape. A green run proves that the Kundennotiz composer renders
+  those fixtures. It does not prove that the API returns that issue, that it answers the clerk
+  endpoints in that shape, or that `createSupportNote` persists a note.
 - **The support-issue receiver-IBAN spec pins KYC level and account mail on GET /v2/user.**
   `e2e/support-issue-receiver-iban.spec.ts` rewrites that response so `kyc.level` is high enough for
   the screen guard and `mail` is present if the cached wallet session has none. A green visual run
@@ -192,15 +193,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   login works — auth is a real admin token, feature data is not.
 - **The DFX support issue visual spec answers the issue endpoints itself.**
   `e2e/support-dashboard-issue.spec.ts` uses a synthetic unsigned Admin JWT and fulfils
-  `GET /v1/support/issue/clerks`, `/v1/support/issue/:id/data`, `/v1/support/issue/:uid`
-  (message thread) and staff bootstrap GETs. A green run proves the issue screen renders
-  that fixture, not that the API returns it or that login works.
+  `GET /v1/support/issue/clerks`, `GET /v1/support/issue/clerk` (the acting staff identity),
+  `/v1/support/issue/:id/data`, `/v1/support/issue/:uid` (message thread) and staff bootstrap GETs.
+  A green run proves the issue screen renders that fixture, not that the API returns it, not that
+  the logged-in account really resolves to that clerk identity, and not that login works.
 - **The full-stack clerk-assignment spec SQL-writes `user_data.verifiedName` and `setting.supportClerks`.**
   `e2e-stack/specs/support-dashboard.spec.ts` (`assigns a clerk from the resolved list`) gives the Support
   account a unique `verifiedName` and configures the clerk list directly, because `loginAs` gives every role
   the same name and the API refuses a name that resolves to more than one account. In production both come
-  from identity verification and the settings table. A green run does **not** prove that a real staff account
-  resolves to exactly one clerk entry, nor that the clerk list is configured in any environment.
+  from identity verification and the settings table. A green run does **not** prove that a real staff
+  account resolves to exactly one clerk entry, nor that the clerk list is configured in any
+  environment, nor that the overview read path lists the ticket under My tickets — the test asserts
+  the database column, not the list.
 - **Full-stack guest assign/refund specs SQL-write `transaction.actionSecretHash`.**
   `e2e-stack/specs/transactions.spec.ts` (`seedActionSecret`) updates the hash directly. A green run
   does **not** prove that the mail/API path creates, hashes, or delivers the action secret.
