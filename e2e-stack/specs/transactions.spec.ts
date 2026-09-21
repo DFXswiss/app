@@ -260,7 +260,7 @@ test('Open invoice is shown on a completed CHF buy and hidden on pending buy and
   await expect(page.getByRole('button', { name: 'Open invoice' })).toHaveCount(0);
 });
 
-test('Open invoice is shown on a waiting-for-payment CHF buy and click issues a real invoice PUT', async ({
+test('Open invoice on a waiting-for-payment CHF buy uses the same bank selection as the quote', async ({
   page,
 }) => {
   const user = await createUser({
@@ -268,7 +268,6 @@ test('Open invoice is shown on a waiting-for-payment CHF buy and click issues a 
     kycLevel: 50,
     completePersonalData: true,
   });
-  await queryRows(`UPDATE user_data SET "depositLimit" = 1000000 WHERE id = $1`, [user.userDataId]);
   const tx = await createTransaction({
     state: 'waiting_for_payment_buy',
     tag: 'tx-inv-wfp',
@@ -278,6 +277,46 @@ test('Open invoice is shown on a waiting-for-payment CHF buy and click issues a 
     amount: 761,
     inputAsset: 'CHF',
   });
+
+  const quoteIban = required(tx.iban, 'quote must return an IBAN');
+  const quoteRemittance = required(tx.remittanceInfo, 'quote must return remittanceInfo');
+  const buyId = required(tx.buyId, 'waiting-for-payment buy must return buyId');
+
+  const request = required(
+    await queryOne<{ bankId: number | null; virtualIbanId: number | null }>(
+      `SELECT "bankId" AS "bankId", "virtualIbanId" AS "virtualIbanId" FROM transaction_request WHERE uid = $1`,
+      [tx.uid],
+    ),
+    'confirmed transaction_request must exist',
+  );
+  const buyRow = required(
+    await queryOne<{ bankUsage: string }>(`SELECT "bankUsage" AS "bankUsage" FROM buy WHERE id = $1`, [buyId]),
+    'buy route must exist for the quote',
+  );
+  expect(buyRow.bankUsage).toBe(quoteRemittance);
+
+  const stripIban = (value: string) => value.replace(/\s+/g, '').toUpperCase();
+  let storedIban: string | undefined;
+  if (request.virtualIbanId != null) {
+    storedIban = required(
+      await queryOne<{ iban: string }>(`SELECT iban FROM virtual_iban WHERE id = $1`, [request.virtualIbanId]),
+      'stored virtualIbanId must resolve',
+    ).iban;
+  } else if (request.bankId != null) {
+    storedIban = required(
+      await queryOne<{ iban: string }>(`SELECT iban FROM bank WHERE id = $1`, [request.bankId]),
+      'stored bankId must resolve',
+    ).iban;
+  }
+  if (storedIban) {
+    expect(stripIban(storedIban)).toBe(stripIban(quoteIban));
+  } else {
+    const receiveBank = await queryOne<{ id: number }>(
+      `SELECT id FROM bank WHERE receive = true AND REPLACE(iban, ' ', '') = $1`,
+      [stripIban(quoteIban)],
+    );
+    expect(receiveBank, 'quote IBAN must match a receive bank the invoice path can resolve').toBeTruthy();
+  }
 
   await openScreen(page, '/tx', user.jwt);
 

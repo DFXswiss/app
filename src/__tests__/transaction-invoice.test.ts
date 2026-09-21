@@ -1,9 +1,21 @@
 jest.mock('@dfx.swiss/react', () => ({
   TransactionState: {
+    CREATED: 'Created',
+    PROCESSING: 'Processing',
+    LIQUIDITY_PENDING: 'LiquidityPending',
+    CHECK_PENDING: 'CheckPending',
+    KYC_REQUIRED: 'KycRequired',
+    LIMIT_EXCEEDED: 'LimitExceeded',
+    FEE_TOO_HIGH: 'FeeTooHigh',
+    PRICE_UNDETERMINABLE: 'PriceUndeterminable',
+    PAYOUT_IN_PROGRESS: 'PayoutInProgress',
     COMPLETED: 'Completed',
     FAILED: 'Failed',
+    RETURN_PENDING: 'ReturnPending',
+    RETURNED: 'Returned',
     UNASSIGNED: 'Unassigned',
     WAITING_FOR_PAYMENT: 'WaitingForPayment',
+    STOPPED: 'Stopped',
   },
   TransactionType: {
     BUY: 'Buy',
@@ -100,6 +112,23 @@ describe('canOpenInvoice', () => {
         inputAsset: 'EUR',
       }),
     ).toBe(false);
+  });
+
+  it('returns false for Created, KycRequired, LimitExceeded and CheckPending Buy CHF', () => {
+    for (const state of [
+      TransactionState.CREATED,
+      TransactionState.KYC_REQUIRED,
+      TransactionState.LIMIT_EXCEEDED,
+      TransactionState.CHECK_PENDING,
+    ]) {
+      expect(
+        canOpenInvoice({
+          type: TransactionType.BUY,
+          state,
+          inputAsset: 'CHF',
+        }),
+      ).toBe(false);
+    }
   });
 
   it('returns false when inputAsset is missing', () => {

@@ -309,6 +309,10 @@ export interface CreateBuyResult {
   assetId?: number;
   /** TransactionRequest id from PUT /buy/paymentInfos. Only set when withPaymentInfo is true. */
   requestId?: number;
+  /** Deposit IBAN from PUT /buy/paymentInfos. Only set when withPaymentInfo is true. */
+  iban?: string;
+  /** Payment reference from PUT /buy/paymentInfos. Only set when withPaymentInfo is true. */
+  remittanceInfo?: string;
 }
 
 export interface CreateSellOptions {
@@ -371,6 +375,10 @@ export interface CreateTransactionResult {
   sellId?: number;
   userId?: number;
   userDataId?: number;
+  /** Quote deposit IBAN from PUT /buy/paymentInfos. Only set for `waiting_for_payment_buy`. */
+  iban?: string;
+  /** Quote payment reference from PUT /buy/paymentInfos. Only set for `waiting_for_payment_buy`. */
+  remittanceInfo?: string;
 }
 
 export interface CreateBankTxOptions {
@@ -824,7 +832,7 @@ export async function createBuy(jwt: string, options: CreateBuyOptions = {}): Pr
     // Frontend path: PUT /buy/paymentInfos (createBuyWithPaymentInfo). Needs currency + amount
     // and a live price path; may fail when HttpService mocks break pricing.
     const currencyId = await resolveFiatId(options.currencyId ?? 'CHF');
-    const res = await apiPut<{ id: number; routeId: number }>(
+    const res = await apiPut<{ id: number; routeId: number; iban?: string; remittanceInfo?: string }>(
       'buy/paymentInfos',
       {
         currency: { id: currencyId },
@@ -840,7 +848,14 @@ export async function createBuy(jwt: string, options: CreateBuyOptions = {}): Pr
     const requestId = requireId(res.id, 'createBuy', 'id');
     track('buy', routeId);
     track('transaction_request', requestId);
-    return { buyId: routeId, routeId, assetId: asset.id, requestId };
+    return {
+      buyId: routeId,
+      routeId,
+      assetId: asset.id,
+      requestId,
+      iban: res.iban,
+      remittanceInfo: res.remittanceInfo,
+    };
   }
 
   // Default: POST /buy with CreateBuyDto { asset } — creates the buy route without pricing.
@@ -961,8 +976,7 @@ export async function createTransaction(options: CreateTransactionOptions = {}):
   let sellId = options.sellId;
 
   if (!userId || !userDataId) {
-    // waiting_for_payment_buy creates its own quote-capable user below (KYC 50 + depositLimit).
-    // A caller-supplied user is not raised here.
+    // waiting_for_payment_buy creates its own KYC-50 user below. A caller-supplied user is not raised.
     if (state !== 'waiting_for_payment_buy') {
       const user = await createUser({
         tag: `tx-${tag}`,
@@ -983,10 +997,8 @@ export async function createTransaction(options: CreateTransactionOptions = {}):
     // this quote after the price_rule backfill in global.setup.ts, and buy.spec.ts already
     // confirms this confirm endpoint in the same environment.
     //
-    // BANK CHF quotes need KYC 50 (buy.spec.ts openQuoteCapableBuy). A null depositLimit at
-    // that level yields availableTradingLimit 0 → LIMIT_EXCEEDED, so the quote is not isValid
-    // and PUT /v1/transaction/:uid/invoice rejects it. Factory-created users get both; a
-    // caller-supplied user is not raised — paymentInfos fails loud (HTTP 400 KycRequired /
+    // BANK CHF quotes need KYC 50. createUser applies DEFAULT_TEST_DEPOSIT_LIMIT at that level.
+    // A caller-supplied user is not raised — paymentInfos fails loud (HTTP 400 KycRequired /
     // LIMIT_EXCEEDED) if those prerequisites are missing.
     if (!userId || !userDataId) {
       const user = await createUser({
@@ -997,7 +1009,6 @@ export async function createTransaction(options: CreateTransactionOptions = {}):
       userId = user.userId;
       userDataId = user.userDataId;
       jwt = user.jwt;
-      await queryRows(`UPDATE user_data SET "depositLimit" = 1000000 WHERE id = $1`, [userDataId]);
     }
     if (!jwt) {
       throw new Error('createTransaction: jwt required to create a waiting-for-payment buy');
@@ -1026,6 +1037,8 @@ export async function createTransaction(options: CreateTransactionOptions = {}):
       buyId: buy.buyId,
       userId,
       userDataId,
+      iban: buy.iban,
+      remittanceInfo: buy.remittanceInfo,
     };
   }
 
