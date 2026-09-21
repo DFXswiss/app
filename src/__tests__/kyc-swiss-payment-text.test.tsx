@@ -358,10 +358,19 @@ describe('KycScreen beneficial owner', () => {
     await screen.findByTestId(`${ownerCount === 0 ? 'director' : 'owners.0'}.street`);
   }
 
-  it.each(['street', 'houseNumber', 'zip', 'city'])('shows the character-set error on the %s', async (name) => {
-    await toContactData(0);
+  it.each([
+    [0, 'director.street'],
+    [0, 'director.houseNumber'],
+    [0, 'director.zip'],
+    [0, 'director.city'],
+    [1, 'owners.0.street'],
+    [1, 'owners.0.houseNumber'],
+    [1, 'owners.0.zip'],
+    [1, 'owners.0.city'],
+  ])('shows the character-set error with %i owners on %s', async (ownerCount, name) => {
+    await toContactData(ownerCount);
 
-    await type(`director.${name}`, 'Søren');
+    await type(name, 'Søren');
 
     expect(await screen.findByText(CHARSET_ERROR)).toBeInTheDocument();
   });

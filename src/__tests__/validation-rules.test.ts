@@ -87,6 +87,19 @@ describe('isSwissPaymentText (same character set as the API)', () => {
   it.each(['Łukasz', 'Søren', 'João', 'Rue de l’Église', 'Tab\tseparated'])('rejects %s', (value) => {
     expect(isSwissPaymentText(value)).toBe(false);
   });
+
+  it('accepts exactly printable ASCII, newline and the listed accented letters up to U+024F', () => {
+    const accented = 'ÀÁÂÄÇÈÉÊËÌÍÎÏÑÒÓÔÖÙÚÛÜÝàáâäçèéêëìíîïñòóôöùúûüýß';
+    const mismatches: string[] = [];
+
+    for (let code = 0; code <= 0x24f; code++) {
+      const char = String.fromCharCode(code);
+      const expected = (code >= 0x20 && code <= 0x7e) || char === '\n' || accented.includes(char);
+      if (isSwissPaymentText(char) !== expected) mismatches.push(`U+${code.toString(16).padStart(4, '0')}`);
+    }
+
+    expect(mismatches).toEqual([]);
+  });
 });
 
 describe('SwissPaymentTextValidation', () => {

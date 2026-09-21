@@ -64,6 +64,11 @@ async function fulfillJson(route: Route, body: unknown, status = 200): Promise<v
 }
 
 async function installSyntheticApi(page: Page, rejection: { personalData?: string; refund?: string }): Promise<void> {
+  // The KYC form prefills the country from the IP geolocation and resets the address when it arrives.
+  await page.route('https://geolocation-db.com/**', (route) =>
+    fulfillJson(route, { IPv4: '192.0.2.1', country_code: 'CH', country_name: 'Switzerland' }),
+  );
+
   await page.route('**/v1/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
