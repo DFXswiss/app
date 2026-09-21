@@ -299,7 +299,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   that the field error, the character-set hint and the blocked-bank hint render for those
   messages. It does not prove that the API still words its rejections that way, that it rejects
   exactly the characters the form rejects, or that a real bank is blocked; the message sentences
-  and the character set (every code point up to U+024F) are pinned in unit tests instead.
+  and the character set (every code point up to U+024F) are pinned in unit tests instead. Nor does it
+  prove that the external geolocation service is reachable, still answers in that shape, or maps
+  a real client IP to the expected country.
 
 ## Known gaps
 
