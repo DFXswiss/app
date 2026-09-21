@@ -491,6 +491,91 @@ function scrubCredentialParams(): void {
   window.history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : '') + window.location.hash);
 }
 
+type OuterSearchListener = () => void;
+
+interface HistorySearchPatch {
+  originalPushState: History['pushState'];
+  originalReplaceState: History['replaceState'];
+  pushState: History['pushState'];
+  replaceState: History['replaceState'];
+}
+
+const outerSearchListeners = new Set<OuterSearchListener>();
+let historySearchPatch: HistorySearchPatch | undefined;
+
+function notifyOuterSearchListeners(): void {
+  outerSearchListeners.forEach((listener) => listener());
+}
+
+function installHistorySearchPatch(): HistorySearchPatch {
+  const originalPushState = window.history.pushState;
+  const originalReplaceState = window.history.replaceState;
+  const pushState: History['pushState'] = function (
+    this: History,
+    data: unknown,
+    unused: string,
+    url?: string | URL | null,
+  ): void {
+    originalPushState.call(this, data, unused, url);
+    notifyOuterSearchListeners();
+  };
+  const replaceState: History['replaceState'] = function (
+    this: History,
+    data: unknown,
+    unused: string,
+    url?: string | URL | null,
+  ): void {
+    originalReplaceState.call(this, data, unused, url);
+    notifyOuterSearchListeners();
+  };
+
+  window.history.pushState = pushState;
+  window.history.replaceState = replaceState;
+  window.addEventListener('popstate', notifyOuterSearchListeners);
+  return { originalPushState, originalReplaceState, pushState, replaceState };
+}
+
+function subscribeToOuterSearch(listener: OuterSearchListener): () => void {
+  if (outerSearchListeners.size === 0) historySearchPatch = installHistorySearchPatch();
+  outerSearchListeners.add(listener);
+  listener();
+
+  return () => {
+    outerSearchListeners.delete(listener);
+    if (outerSearchListeners.size !== 0) return;
+
+    const patch = historySearchPatch as HistorySearchPatch;
+    historySearchPatch = undefined;
+    window.removeEventListener('popstate', notifyOuterSearchListeners);
+    if (window.history.pushState === patch.pushState) window.history.pushState = patch.originalPushState;
+    if (window.history.replaceState === patch.replaceState) window.history.replaceState = patch.originalReplaceState;
+  };
+}
+
+function useOuterSearch(): string {
+  const [search, setSearch] = useState(() => window.location.search);
+  useEffect(() => subscribeToOuterSearch(() => setSearch(window.location.search)), []);
+  return search;
+}
+
+interface AppliedUrlCredentials {
+  token?: string;
+  address?: string;
+  signature?: string;
+  pubkey?: string;
+  type?: string;
+}
+
+function credentialsMatch(left: AppliedUrlCredentials, right: AppliedUrlCredentials): boolean {
+  return (
+    left.token === right.token &&
+    left.address === right.address &&
+    left.signature === right.signature &&
+    left.pubkey === right.pubkey &&
+    left.type === right.type
+  );
+}
+
 function apiErrorText(error: unknown): string {
   const withFields = error as { message?: unknown; code?: unknown } | undefined;
   return `${withFields?.message ?? ''} ${withFields?.code ?? ''}`;
@@ -574,7 +659,12 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const [view, setView] = useState<ConnectView>({ kind: 'list' });
   const [activeConnector, setActiveConnector] = useState<SessionConnector | undefined>();
   const busyRef = useRef(false); // guards against double-sign on rapid repeat clicks
-  const bootstrappedRef = useRef(false);
+  const lastAppliedCredentialsRef = useRef<AppliedUrlCredentials>({});
+  const outerSearch = useOuterSearch();
+  const logoutSession = useCallback(async () => {
+    lastAppliedCredentialsRef.current = {};
+    await libLogout();
+  }, [libLogout]);
   // Per-attempt cancellation: `attemptIdRef` invalidates whatever
   // handleSelectWallet() call is in flight so a late resolution after Cancel is discarded
   // instead of signing in behind the user's back; `wcTokenRef` is the live WalletConnect
@@ -696,8 +786,8 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const signInWith = useCallback(
     async (
       creds: PendingCredentials,
-      recommendationCode?: string,
-      stillCurrent: () => boolean = () => true,
+      recommendationCode: string | undefined,
+      stillCurrent: () => boolean,
       // Where to return the view on a non-recommendation failure. The CLI paste form passes its
       // own view so a bad signature drops back to the (still-filled-in) form, not the wallet list.
       fallbackView: ConnectView = { kind: 'list' },
@@ -1209,7 +1299,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           await restoreSupersededSession(
             sessionAuthorityRef.current,
             { kind: 'address', address: entry.address },
-            { updateSession, changeAddress, logout: libLogout },
+            { updateSession, changeAddress, logout: logoutSession },
           );
           return;
         }
@@ -1260,7 +1350,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     [
       activeConnector,
       changeAddress,
-      libLogout,
+      logoutSession,
       reloadUser,
       showToast,
       t,
@@ -1274,16 +1364,13 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
 
   // URL-param session bootstrap: ?session=/?token=/?accessToken= logs in
   // directly; ?address=&signature= performs the same sign-in the connect
-  // sheet uses. Runs once. The module-eval clear only drops storage when
+  // sheet uses. The module-eval clear only drops storage when
   // incoming credentials are usable (valid JWT / plausible address+signature),
   // so a present-but-unusable token parameter can still leave a previous
   // `dfx.authenticationToken` in storage — and already in AuthContext, which
   // mounted on it. Those cases logout here; placeholders are only scrubbed.
   useEffect(() => {
-    if (bootstrappedRef.current) return;
-    bootstrappedRef.current = true;
-
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(outerSearch);
     if (!hasCredentialParams(params)) return;
 
     const tokenParam = params.get('session') ?? params.get('token') ?? params.get('accessToken');
@@ -1291,15 +1378,23 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     const signatureParam = params.get('signature');
 
     if (tokenParam) {
-      if (isLikelyValidJwt(tokenParam)) {
+      const credentials = { token: tokenParam };
+      if (credentialsMatch(lastAppliedCredentialsRef.current, credentials)) {
+        scrubCredentialParams();
+        return;
+      }
+      lastAppliedCredentialsRef.current = credentials;
+      try {
+        if (!isLikelyValidJwt(tokenParam)) throw new Error('Invalid session');
         sessionAuthorityRef.current = { kind: 'token', token: tokenParam };
         updateSession(tokenParam);
         const jwtRedirect = params.get('redirect');
         const path = app2PathForRedirectParam(jwtRedirect === null ? undefined : jwtRedirect);
         if (path) window.location.hash = `#${path}`;
-      } else {
+      } catch {
+        lastAppliedCredentialsRef.current = {};
         clearOwnedStorageOnCredentialedLoad();
-        void libLogout();
+        void logoutSession();
       }
       scrubCredentialParams();
       return;
@@ -1308,13 +1403,30 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     if (credentialsJustifyClearingSession(params)) {
       const pubkey = params.get('pubkey')?.trim();
       const typeParam = params.get('type');
-      void signInWith({
+      const credentials: AppliedUrlCredentials = {
         address: addressParam as string,
         signature: signatureParam as string,
-        key: pubkey ? pubkey : undefined,
-        walletType: authWalletTypeFromParam(typeParam ? typeParam : undefined),
-      })
-        .then(() => {
+        pubkey: pubkey ? pubkey : undefined,
+        type: typeParam ? typeParam : undefined,
+      };
+      if (credentialsMatch(lastAppliedCredentialsRef.current, credentials)) {
+        scrubCredentialParams();
+        return;
+      }
+      lastAppliedCredentialsRef.current = credentials;
+      const isCurrent = () => credentialsMatch(lastAppliedCredentialsRef.current, credentials);
+      void signInWith(
+        {
+          address: credentials.address as string,
+          signature: credentials.signature as string,
+          key: credentials.pubkey,
+          walletType: authWalletTypeFromParam(typeParam ? typeParam : undefined),
+        },
+        undefined,
+        isCurrent,
+      )
+        .then((signedIn) => {
+          if (!signedIn && isCurrent()) lastAppliedCredentialsRef.current = {};
           const credRedirect = params.get('redirect');
           const path = app2PathForRedirectParam(credRedirect === null ? undefined : credRedirect);
           if (path) window.location.hash = `#${path}`;
@@ -1323,11 +1435,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       return;
     }
     scrubCredentialParams();
-    // Intentionally run once on mount (empty deps): bootstrappedRef makes
-    // re-runs a no-op, and re-reading `signInWith`/`updateSession` identities
-    // here would only ever re-guard against the same already-consumed URL
-    // params.
-  }, []);
+  }, [logoutSession, outerSearch, signInWith, updateSession]);
 
   // An authenticated wallet session must never remain pinned to an address after the
   // extension/remote wallet changes accounts or chains. Re-authentication is required because
@@ -1368,7 +1476,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       wcProviderRef.current = undefined;
       pendingWcProviderRef.current = undefined;
       // Same teardown as explicit logout: drop WC persistence/provider before JWT clear.
-      void teardownWalletSession(disconnectWalletConnect, libLogout)
+      void teardownWalletSession(disconnectWalletConnect, logoutSession)
         .then(() => showToast(t('sessionExpired'), { assertive: true }))
         .finally(() => {
           providerChangeRef.current = false;
@@ -1410,7 +1518,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       provider.removeListener?.('accountsChanged', onAccountsChanged);
       provider.removeListener?.('chainChanged', onChainChanged);
     };
-  }, [activeConnector, address, cancelConnectAttempt, isLoggedIn, libLogout, showToast, t, userAddresses]);
+  }, [activeConnector, address, cancelConnectAttempt, isLoggedIn, logoutSession, showToast, t, userAddresses]);
 
   const session = useMemo<WalletSession>(
     () => ({
@@ -1429,7 +1537,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         wcProviderRef.current = undefined;
         pendingWcProviderRef.current = undefined;
         sessionAuthorityRef.current = undefined;
-        await teardownWalletSession(disconnectWalletConnect, libLogout);
+        await teardownWalletSession(disconnectWalletConnect, logoutSession);
         showToast(t('signOut'));
       },
       connectSheet: {
@@ -1465,7 +1573,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
       handleSelectWallet,
       handleSelectHwChain,
       isLoggedIn,
-      libLogout,
+      logoutSession,
       openConnect,
       openSwitcher,
       requestSignMessage,
