@@ -1,212 +1,892 @@
 const mockCreateAccount = jest.fn();
 const mockReceiveFor = jest.fn();
 const mockGetAccount = jest.fn();
-const mockTranslate = jest.fn((_ns: string, key: string) => key);
-const mockEmptyList: never[] = [];
+const mockTranslate = jest.fn();
+const mockValidateIban = jest.fn();
+const mockGetAsset = jest.fn();
+const mockGetAssets = jest.fn();
+const mockGetCurrency = jest.fn();
+const mockGetTransactionByRequestId = jest.fn();
+const mockStartTimer = jest.fn();
+const mockSendTransaction = jest.fn();
+const mockCanSendTransaction = jest.fn();
+const mockCloseServices = jest.fn();
 
+const mockUseAsset = jest.fn();
+const mockUseAssetContext = jest.fn();
+const mockUseBankAccount = jest.fn();
+const mockUseBankAccountContext = jest.fn();
+const mockUseFiat = jest.fn();
+const mockUseSell = jest.fn();
+const mockUseTransaction = jest.fn();
+const mockUseWalletContext = jest.fn();
+const mockUseCountdown = jest.fn();
+const mockUseTxHelper = jest.fn();
+const mockUseAppHandlingContext = jest.fn();
+const mockUseSettingsContext = jest.fn();
+const mockUseAppParams = jest.fn();
+
+const mockTransactionError = {
+  AMOUNT_TOO_LOW: 'AmountTooLow',
+  AMOUNT_TOO_HIGH: 'AmountTooHigh',
+  BANK_TRANSACTION_MISSING: 'BankTransactionMissing',
+  BANK_TRANSACTION_OR_VIDEO_MISSING: 'BankTransactionOrVideoMissing',
+  KYC_REQUIRED: 'KycRequired',
+  KYC_DATA_REQUIRED: 'KycDataRequired',
+  NAME_REQUIRED: 'NameRequired',
+  KYC_REQUIRED_INSTANT: 'KycRequiredInstant',
+  LIMIT_EXCEEDED: 'LimitExceeded',
+  NATIONALITY_NOT_ALLOWED: 'NationalityNotAllowed',
+  PAYMENT_METHOD_NOT_ALLOWED: 'PaymentMethodNotAllowed',
+  VIDEO_IDENT_REQUIRED: 'VideoIdentRequired',
+  IBAN_CURRENCY_MISMATCH: 'IbanCurrencyMismatch',
+  TRADING_NOT_ALLOWED: 'TradingNotAllowed',
+  RECOMMENDATION_REQUIRED: 'RecommendationRequired',
+  EMAIL_REQUIRED: 'EmailRequired',
+};
+
+const mockEmptyList: never[] = [];
 const chf = { name: 'CHF', sellable: true };
 const eth = { name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum' };
 const mockAssets = [eth];
 const mockCurrencies = [chf];
 const mockAvailableBlockchains = ['Ethereum'];
-const mockGetAsset = (_list: any[], name?: string) => (name ? eth : undefined);
-const mockGetAssets = () => mockAssets;
-const mockGetCurrency = () => chf;
+const mockBankAccount = {
+  id: 1,
+  iban: 'DE89370400440532013000',
+  active: true,
+  default: true,
+  preferredCurrency: chf,
+};
+const mockWallet = { id: 7 };
 const mockAppParams = {
-  assetIn: 'ETH',
-  assetOut: 'CHF',
-  amountIn: '0.1',
-  amountOut: undefined,
-  bankAccount: 'DE89370400440532013000',
-  externalTransactionId: undefined,
-  availableBlockchains: mockAvailableBlockchains,
+  assetIn: 'ETH' as string | undefined,
+  assetOut: 'CHF' as string | undefined,
+  amountIn: '0.1' as string | undefined,
+  amountOut: undefined as string | undefined,
+  bankAccount: mockBankAccount.iban as string | undefined,
+  externalTransactionId: undefined as string | undefined,
+  availableBlockchains: mockAvailableBlockchains as string[] | undefined,
 };
 
+let mockBankAccounts: typeof mockBankAccount[] | undefined = [mockBankAccount];
+let mockActiveWallet: typeof mockWallet | undefined;
+let mockCountdownState = {
+  timer: { minutes: 10, seconds: 0 },
+  remainingSeconds: 600,
+  startTimer: mockStartTimer,
+};
+let mockLastButtonAction: Promise<void> | undefined;
+
+function makeSell(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 42,
+    timestamp: new Date('2026-09-21T10:00:00.000Z'),
+    estimatedAmount: 123.45,
+    currency: chf,
+    beneficiary: { iban: 'CH9300762011623852957', name: 'DFX AG' },
+    rate: 0.0005,
+    asset: eth,
+    minVolume: 0.02,
+    maxVolume: 3,
+    ...overrides,
+  };
+}
+
 jest.mock('@dfx.swiss/react', () => ({
-  TransactionError: {},
-  TransactionType: { SELL: 'Sell' },
-  Utils: { formatAmountCrypto: (n: number) => String(n) },
-  Validations: { Iban: () => ({ validate: () => true }) },
-  useAsset: () => ({ getAsset: mockGetAsset }),
-  useAssetContext: () => ({ getAssets: mockGetAssets }),
-  useBankAccount: () => ({ getAccount: mockGetAccount }),
-  useBankAccountContext: () => ({
-    bankAccounts: mockEmptyList,
-    createAccount: mockCreateAccount,
-  }),
-  useFiat: () => ({ getCurrency: mockGetCurrency }),
-  useSell: () => ({ currencies: mockCurrencies, receiveFor: mockReceiveFor }),
-  useTransaction: () => ({ getTransactionByRequestId: jest.fn() }),
+  TransactionError: {
+    AMOUNT_TOO_LOW: 'AmountTooLow',
+    AMOUNT_TOO_HIGH: 'AmountTooHigh',
+    BANK_TRANSACTION_MISSING: 'BankTransactionMissing',
+    BANK_TRANSACTION_OR_VIDEO_MISSING: 'BankTransactionOrVideoMissing',
+    KYC_REQUIRED: 'KycRequired',
+    KYC_DATA_REQUIRED: 'KycDataRequired',
+    NAME_REQUIRED: 'NameRequired',
+    KYC_REQUIRED_INSTANT: 'KycRequiredInstant',
+    LIMIT_EXCEEDED: 'LimitExceeded',
+    NATIONALITY_NOT_ALLOWED: 'NationalityNotAllowed',
+    PAYMENT_METHOD_NOT_ALLOWED: 'PaymentMethodNotAllowed',
+    VIDEO_IDENT_REQUIRED: 'VideoIdentRequired',
+    IBAN_CURRENCY_MISMATCH: 'IbanCurrencyMismatch',
+    TRADING_NOT_ALLOWED: 'TradingNotAllowed',
+    RECOMMENDATION_REQUIRED: 'RecommendationRequired',
+    EMAIL_REQUIRED: 'EmailRequired',
+  },
+  TransactionType: { BUY: 'Buy', SELL: 'Sell', SWAP: 'Swap', REFERRAL: 'Referral' },
+  Utils: {
+    formatAmountCrypto: (value: number) => String(value),
+    formatIban: (iban: string) => iban,
+    formatAmount: (value: number) => String(value),
+  },
+  Validations: { Iban: () => ({ validate: mockValidateIban }) },
+  get useAsset() {
+    return mockUseAsset;
+  },
+  get useAssetContext() {
+    return mockUseAssetContext;
+  },
+  get useBankAccount() {
+    return mockUseBankAccount;
+  },
+  get useBankAccountContext() {
+    return mockUseBankAccountContext;
+  },
+  get useFiat() {
+    return mockUseFiat;
+  },
+  get useSell() {
+    return mockUseSell;
+  },
+  get useTransaction() {
+    return mockUseTransaction;
+  },
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
-  IconColor: {},
+  AlignContent: { RIGHT: 'right' },
+  IconColor: { GRAY: 'gray' },
   SpinnerSize: { LG: 'lg' },
-  SpinnerVariant: {},
-  StyledButton: ({ label, onClick }: any) => (
-    <button type="button" onClick={onClick}>
+  SpinnerVariant: { LIGHT_MODE: 'light-mode' },
+  StyledButton: ({ label, onClick, isLoading }: any) => (
+    <button
+      type="button"
+      data-loading={String(Boolean(isLoading))}
+      onClick={() => {
+        mockLastButtonAction = onClick();
+      }}
+    >
       {label}
     </button>
   ),
   StyledButtonColor: { STURDY_WHITE: 'sturdy-white' },
   StyledButtonWidth: { MIN: 'min', FULL: 'full' },
-  StyledDataTable: ({ children }: any) => <div>{children}</div>,
-  StyledDataTableRow: ({ children }: any) => <div>{children}</div>,
-  StyledInfoText: ({ children }: any) => <div>{children}</div>,
-  StyledInfoTextSize: {},
+  StyledDataTable: ({ children, label }: any) => (
+    <section aria-label={label}>
+      <h2>{label}</h2>
+      {children}
+    </section>
+  ),
+  StyledDataTableRow: ({ children, label, isLoading }: any) => (
+    <div data-loading={String(Boolean(isLoading))}>
+      <span>{label}</span>
+      <span>{children}</span>
+    </div>
+  ),
+  StyledInfoText: ({ children, isLoading }: any) => (
+    <div data-testid="info-text" data-loading={String(Boolean(isLoading))}>
+      {children}
+    </div>
+  ),
+  StyledInfoTextSize: { XS: 'xs' },
   StyledLink: ({ label }: any) => <div>{label}</div>,
-  StyledLoadingSpinner: () => <div data-testid="spinner" />,
+  StyledLoadingSpinner: ({ variant }: any) => (
+    <div data-testid={variant === 'light-mode' ? 'inline-spinner' : 'spinner'} data-variant={variant} />
+  ),
   StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
-  AlignContent: {},
 }));
 
-jest.mock('src/config/urls', () => ({ Urls: {} }));
+jest.mock('src/config/urls', () => ({ Urls: { termsAndConditions: 'https://dfx.swiss/terms' } }));
 jest.mock('src/components/payment/payment-info-sell', () => ({
-  PaymentInformationContent: () => <div data-testid="payment-info" />,
+  PaymentInformationContent: ({ infoText }: any) => <div data-testid="payment-info">{infoText}</div>,
 }));
 jest.mock('src/contexts/wallet.context', () => ({
-  useWalletContext: () => ({ activeWallet: undefined }),
+  get useWalletContext() {
+    return mockUseWalletContext;
+  },
 }));
 jest.mock('src/hooks/countdown.hook', () => ({
-  useCountdown: () => ({ timer: 0, remainingSeconds: 0, startTimer: jest.fn() }),
+  get useCountdown() {
+    return mockUseCountdown;
+  },
 }));
 jest.mock('src/hooks/tx-helper.hook', () => ({
-  useTxHelper: () => ({ sendTransaction: jest.fn(), canSendTransaction: () => false }),
+  get useTxHelper() {
+    return mockUseTxHelper;
+  },
 }));
 jest.mock('../components/error-hint', () => ({
   ErrorHint: ({ message }: any) => <div data-testid="error-hint">{message}</div>,
 }));
 jest.mock('../components/payment/sell-completion', () => ({
-  SellCompletion: () => null,
+  SellCompletion: ({ txId }: any) => <div data-testid="sell-completion">{txId}</div>,
 }));
 jest.mock('../components/quote-error-hint', () => ({
-  QuoteErrorHint: () => null,
+  QuoteErrorHint: ({ error }: any) => <div data-testid="quote-error">{error}</div>,
 }));
 jest.mock('../contexts/app-handling.context', () => ({
   CloseType: { SELL: 'Sell', CANCEL: 'Cancel' },
-  useAppHandlingContext: () => ({ closeServices: jest.fn() }),
+  get useAppHandlingContext() {
+    return mockUseAppHandlingContext;
+  },
 }));
 jest.mock('../contexts/settings.context', () => ({
-  useSettingsContext: () => ({ allowedCountries: mockEmptyList, translate: mockTranslate }),
+  get useSettingsContext() {
+    return mockUseSettingsContext;
+  },
 }));
 jest.mock('../hooks/app-params.hook', () => ({
-  useAppParams: () => mockAppParams,
+  get useAppParams() {
+    return mockUseAppParams;
+  },
 }));
-jest.mock('../hooks/guard.hook', () => ({
-  useAddressGuard: () => undefined,
-}));
-jest.mock('../hooks/layout-config.hook', () => ({
-  useLayoutOptions: () => undefined,
-}));
+jest.mock('../hooks/guard.hook', () => ({ useAddressGuard: () => undefined }));
+jest.mock('../hooks/layout-config.hook', () => ({ useLayoutOptions: () => undefined }));
 
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { CloseType } from '../contexts/app-handling.context';
 import SellInfoScreen from 'src/screens/sell-info.screen';
 
-describe('SellInfoScreen bank-account create error', () => {
+async function settle(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function renderHappyPath() {
+  const result = render(<SellInfoScreen />);
+  expect(await screen.findByTestId('payment-info')).toBeInTheDocument();
+  return result;
+}
+
+describe('SellInfoScreen', () => {
   beforeEach(() => {
+    jest.useRealTimers();
     jest.clearAllMocks();
-    // react-scripts sets resetMocks: true, which strips the implementation from every
-    // jest.fn before each test. Without this line translate() returns undefined and the
-    // screen stores an empty error message.
-    mockTranslate.mockImplementation((_ns: string, key: string) => key);
-    mockAppParams.bankAccount = 'DE89370400440532013000';
-    mockGetAccount.mockReturnValue(undefined);
-    mockReceiveFor.mockResolvedValue({});
+    mockBankAccounts = [mockBankAccount];
+    mockActiveWallet = undefined;
+    mockCountdownState = {
+      timer: { minutes: 10, seconds: 0 },
+      remainingSeconds: 600,
+      startTimer: mockStartTimer,
+    };
+    mockLastButtonAction = undefined;
+    Object.assign(mockAppParams, {
+      assetIn: 'ETH',
+      assetOut: 'CHF',
+      amountIn: '0.1',
+      amountOut: undefined,
+      bankAccount: mockBankAccount.iban,
+      externalTransactionId: undefined,
+      availableBlockchains: mockAvailableBlockchains,
+    });
+
+    mockTranslate.mockImplementation((_namespace: string, key: string, values?: Record<string, unknown>) =>
+      key.replace(/\{\{(\w+)\}\}/g, (_match, name: string) => String(values?.[name] ?? `{{${name}}}`)),
+    );
+    mockValidateIban.mockReturnValue(true);
+    mockGetAsset.mockReturnValue(eth);
+    mockGetAssets.mockReturnValue(mockAssets);
+    mockGetCurrency.mockReturnValue(chf);
+    mockGetAccount.mockImplementation((accounts: typeof mockBankAccount[] | undefined, iban: string) =>
+      accounts?.find((account) => account.iban === iban),
+    );
+    mockCreateAccount.mockResolvedValue(mockBankAccount);
+    mockReceiveFor.mockResolvedValue(makeSell());
+    mockGetTransactionByRequestId.mockRejectedValue({ status: 404 });
+    mockSendTransaction.mockResolvedValue('wallet-tx-id');
+    mockCanSendTransaction.mockReturnValue(false);
+
+    mockUseAsset.mockImplementation(() => ({ getAsset: mockGetAsset }));
+    mockUseAssetContext.mockImplementation(() => ({ getAssets: mockGetAssets }));
+    mockUseBankAccount.mockImplementation(() => ({ getAccount: mockGetAccount }));
+    mockUseBankAccountContext.mockImplementation(() => ({
+      bankAccounts: mockBankAccounts,
+      createAccount: mockCreateAccount,
+    }));
+    mockUseFiat.mockImplementation(() => ({ getCurrency: mockGetCurrency }));
+    mockUseSell.mockImplementation(() => ({ currencies: mockCurrencies, receiveFor: mockReceiveFor }));
+    mockUseTransaction.mockImplementation(() => ({ getTransactionByRequestId: mockGetTransactionByRequestId }));
+    mockUseWalletContext.mockImplementation(() => ({ activeWallet: mockActiveWallet }));
+    mockUseCountdown.mockImplementation(() => mockCountdownState);
+    mockUseTxHelper.mockImplementation(() => ({
+      sendTransaction: mockSendTransaction,
+      canSendTransaction: mockCanSendTransaction,
+    }));
+    mockUseAppHandlingContext.mockImplementation(() => ({ closeServices: mockCloseServices }));
+    mockUseSettingsContext.mockImplementation(() => ({ allowedCountries: mockEmptyList, translate: mockTranslate }));
+    mockUseAppParams.mockImplementation(() => mockAppParams);
   });
 
-  it.each([
-    {
-      apiMessage: 'You cannot add an IBAN to a KYC only account',
-      expected: 'Before you can add a bank account, your DFX account needs a wallet.',
-    },
-    {
-      apiMessage: 'Multi-account IBANs cannot be added here',
-      expected: 'This is a multi-account IBAN and cannot be added as a personal account.',
-    },
-    {
-      apiMessage: 'Service unavailable',
-      expected: 'The bank account could not be added.',
-    },
-  ])('shows the translated $expected message for $apiMessage', async ({ apiMessage, expected }) => {
-    mockCreateAccount.mockRejectedValue({ message: apiMessage });
-
-    render(<SellInfoScreen />);
-
-    expect(await screen.findByTestId('error-hint')).toHaveTextContent(expected);
-    expect(mockCreateAccount).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(apiMessage)).not.toBeInTheDocument();
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
-  it('retries account creation after a rejection and clears the bank-account error after success', async () => {
-    mockCreateAccount
-      .mockRejectedValueOnce({ message: 'Service unavailable' })
-      .mockResolvedValueOnce({ id: 1, iban: mockAppParams.bankAccount });
-    mockReceiveFor.mockImplementation(() => new Promise(() => undefined));
+  describe('bank-account resolution', () => {
+    it('uses an existing account, clears a prior validation error, and never creates a duplicate', async () => {
+      mockBankAccounts = [];
+      mockValidateIban.mockReturnValue('checksum failed');
+      const { rerender } = render(<SellInfoScreen />);
+      expect(await screen.findByTestId('error-hint')).toHaveTextContent('Invalid IBAN: checksum failed');
+      expect(mockCreateAccount).not.toHaveBeenCalled();
 
-    render(<SellInfoScreen />);
-    expect(await screen.findByTestId('error-hint')).toHaveTextContent('The bank account could not be added.');
+      mockBankAccounts = [mockBankAccount];
+      rerender(<SellInfoScreen />);
 
-    await act(async () => {
+      expect(await screen.findByTestId('payment-info')).toBeInTheDocument();
+      expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+      expect(mockGetAccount).toHaveBeenCalledWith([mockBankAccount], mockBankAccount.iban);
+      expect(mockCreateAccount).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid IBAN before attempting account creation', async () => {
+      mockBankAccounts = [];
+      mockValidateIban.mockReturnValue('country not allowed');
+      render(<SellInfoScreen />);
+
+      expect(await screen.findByTestId('error-hint')).toHaveTextContent('Invalid IBAN: country not allowed');
+      expect(mockCreateAccount).not.toHaveBeenCalled();
+      expect(mockReceiveFor).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        { message: 'You cannot add an IBAN to a KYC only account' },
+        'Before you can add a bank account, your DFX account needs a wallet.',
+      ],
+      [
+        { message: 'Multi-account IBANs cannot be added here' },
+        'This is a multi-account IBAN and cannot be added as a personal account.',
+      ],
+      [{ message: 'Service unavailable' }, 'The bank account could not be added.'],
+      [{}, 'The bank account could not be added.'],
+    ])('maps account-creation failure %p to %s', async (apiError, expected) => {
+      mockBankAccounts = [];
+      mockCreateAccount.mockRejectedValue(apiError);
+      render(<SellInfoScreen />);
+
+      expect(await screen.findByTestId('error-hint')).toHaveTextContent(expected);
+      expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries account creation after a rejection and clears the error after success', async () => {
+      mockBankAccounts = [];
+      mockCreateAccount
+        .mockRejectedValueOnce({ message: 'Service unavailable' })
+        .mockResolvedValueOnce(mockBankAccount);
+      render(<SellInfoScreen />);
+      expect(await screen.findByTestId('error-hint')).toHaveTextContent('The bank account could not be added.');
+
       screen.getByRole('button', { name: 'Retry' }).click();
-      await Promise.resolve();
-      await Promise.resolve();
+
+      expect(await screen.findByTestId('payment-info')).toBeInTheDocument();
+      expect(mockCreateAccount).toHaveBeenCalledTimes(2);
+      expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
     });
 
-    expect(mockCreateAccount).toHaveBeenCalledTimes(2);
-    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
-  });
+    it.each(['resolve', 'reject'])('ignores a create %s after unmount', async (outcome) => {
+      let finishCreate: (value?: unknown) => void = () => undefined;
+      mockBankAccounts = [];
+      mockCreateAccount.mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            finishCreate = outcome === 'resolve' ? resolve : reject;
+          }),
+      );
+      const { unmount } = render(<SellInfoScreen />);
+      await settle();
+      expect(mockCreateAccount).toHaveBeenCalledTimes(1);
 
-  it('does not handle a create rejection after unmount', async () => {
-    let rejectCreate: (reason?: unknown) => void = () => undefined;
-    mockCreateAccount.mockImplementation(
-      () =>
-        new Promise((_, reject) => {
-          rejectCreate = reject;
-        }),
+      unmount();
+      await act(async () => {
+        finishCreate(outcome === 'resolve' ? mockBankAccount : { message: 'Service unavailable' });
+        await Promise.resolve();
+      });
+
+      expect(mockReceiveFor).not.toHaveBeenCalled();
+      expect(mockTranslate).not.toHaveBeenCalledWith('screens/sell', 'The bank account could not be added.');
+    });
+
+    it.each(['resolve', 'reject'])(
+      'ignores a stale create %s after an existing account supersedes it',
+      async (outcome) => {
+        let finishCreate: (value?: unknown) => void = () => undefined;
+        mockBankAccounts = [];
+        mockCreateAccount.mockImplementation(
+          () =>
+            new Promise((resolve, reject) => {
+              finishCreate = outcome === 'resolve' ? resolve : reject;
+            }),
+        );
+        const { rerender } = render(<SellInfoScreen />);
+        await settle();
+
+        mockBankAccounts = [mockBankAccount];
+        rerender(<SellInfoScreen />);
+        expect(await screen.findByTestId('payment-info')).toBeInTheDocument();
+
+        await act(async () => {
+          finishCreate(
+            outcome === 'resolve'
+              ? { ...mockBankAccount, id: 2, iban: 'CH5604835012345678009' }
+              : { message: 'Service unavailable' },
+          );
+          await Promise.resolve();
+        });
+
+        expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+        expect(mockReceiveFor).not.toHaveBeenCalledWith(
+          expect.objectContaining({ iban: 'CH5604835012345678009' }),
+        );
+      },
     );
 
-    const { unmount } = render(<SellInfoScreen />);
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+    it.each(['resolve', 'reject'])(
+      'ignores a create %s for an obsolete IBAN and processes the new one',
+      async (outcome) => {
+        let finishFirstCreate: (value?: unknown) => void = () => undefined;
+        mockBankAccounts = [];
+        mockCreateAccount.mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              finishFirstCreate = outcome === 'resolve' ? resolve : reject;
+            }),
+        );
+        const frenchAccount = { ...mockBankAccount, id: 2, iban: 'FR1420041010050500013M02606' };
+        mockCreateAccount.mockResolvedValueOnce(frenchAccount);
 
-    unmount();
-    await act(async () => {
-      rejectCreate({ message: 'Service unavailable' });
-      await Promise.resolve();
-    });
+        const { rerender } = render(<SellInfoScreen />);
+        await settle();
+        expect(mockCreateAccount).toHaveBeenCalledWith({ iban: mockBankAccount.iban });
 
-    expect(mockTranslate).not.toHaveBeenCalledWith('screens/sell', 'The bank account could not be added.');
+        mockAppParams.bankAccount = frenchAccount.iban;
+        rerender(<SellInfoScreen />);
+        expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          finishFirstCreate(outcome === 'resolve' ? mockBankAccount : { message: 'Service unavailable' });
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+
+        expect(mockCreateAccount).toHaveBeenCalledTimes(2);
+        expect(mockCreateAccount).toHaveBeenLastCalledWith({ iban: frenchAccount.iban });
+        expect(await screen.findByTestId('payment-info')).toBeInTheDocument();
+        expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+      },
+    );
   });
 
-  it('processes a bank-account parameter that changes during account creation', async () => {
-    let resolveFirstCreate: (value: unknown) => void = () => undefined;
-    mockCreateAccount.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveFirstCreate = resolve;
-        }),
-    );
-    mockCreateAccount.mockImplementationOnce(() => new Promise(() => undefined));
-
-    const { rerender } = render(<SellInfoScreen />);
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(mockCreateAccount).toHaveBeenCalledWith({ iban: 'DE89370400440532013000' });
-
-    mockAppParams.bankAccount = 'FR1420041010050500013M02606';
-    rerender(<SellInfoScreen />);
-    expect(mockCreateAccount).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      resolveFirstCreate({ id: 1, iban: 'DE89370400440532013000' });
-      await Promise.resolve();
-      await Promise.resolve();
+  describe('required inputs and quote requests', () => {
+    it('uses an empty blockchain filter when no available-blockchain parameter is provided', async () => {
+      mockAppParams.availableBlockchains = undefined;
+      await renderHappyPath();
+      expect(mockGetAssets).toHaveBeenCalledWith([], { sellable: true, comingSoon: false });
     });
 
-    expect(mockCreateAccount).toHaveBeenCalledTimes(2);
-    expect(mockCreateAccount).toHaveBeenLastCalledWith({ iban: 'FR1420041010050500013M02606' });
+    it('shows a missing-information error when the external input is incomplete', async () => {
+      mockAppParams.amountIn = undefined;
+      mockAppParams.bankAccount = undefined;
+      render(<SellInfoScreen />);
+
+      expect(await screen.findByTestId('error-hint')).toHaveTextContent('Missing required information');
+      expect(mockReceiveFor).not.toHaveBeenCalled();
+    });
+
+    it('waits without an error when the input is complete but accounts have not loaded', async () => {
+      mockBankAccounts = undefined;
+      render(<SellInfoScreen />);
+      await settle();
+
+      expect(screen.getByTestId('spinner')).toBeInTheDocument();
+      expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+      expect(mockGetAccount).not.toHaveBeenCalled();
+      expect(mockCreateAccount).not.toHaveBeenCalled();
+    });
+
+    it('sends amountIn as an exact source amount', async () => {
+      await renderHappyPath();
+      const request = mockReceiveFor.mock.calls[mockReceiveFor.mock.calls.length - 1][0];
+      expect(request).toEqual(
+        expect.objectContaining({ amount: 0.1, exactPrice: true, iban: mockBankAccount.iban, asset: eth, currency: chf }),
+      );
+      expect(request).not.toHaveProperty('targetAmount');
+    });
+
+    it('sends amountOut as an exact target amount', async () => {
+      mockAppParams.amountIn = undefined;
+      mockAppParams.amountOut = '250.75';
+      await renderHappyPath();
+
+      const request = mockReceiveFor.mock.calls[mockReceiveFor.mock.calls.length - 1][0];
+      expect(request).toEqual(expect.objectContaining({ targetAmount: 250.75, exactPrice: true }));
+      expect(request).not.toHaveProperty('amount');
+    });
+
+    it.each([
+      [{ message: 'Quote service unavailable' }, 'Quote service unavailable'],
+      [{}, 'Unknown error'],
+    ])('shows the appropriate receiveFor rejection for %p', async (rejection, expected) => {
+      mockReceiveFor.mockRejectedValue(rejection);
+      render(<SellInfoScreen />);
+
+      expect(await screen.findByTestId('error-hint')).toHaveTextContent(expected);
+      expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    });
+
+    it('retries quote loading directly once the bank account already exists', async () => {
+      mockReceiveFor
+        .mockRejectedValueOnce({ message: 'Quote service unavailable' })
+        .mockResolvedValueOnce(makeSell());
+      render(<SellInfoScreen />);
+      expect(await screen.findByTestId('error-hint')).toHaveTextContent('Quote service unavailable');
+
+      screen.getByRole('button', { name: 'Retry' }).click();
+
+      expect(await screen.findByTestId('payment-info')).toBeInTheDocument();
+      expect(mockReceiveFor).toHaveBeenCalledTimes(2);
+      expect(mockCreateAccount).not.toHaveBeenCalled();
+    });
+
+    it('refreshes the quote when the countdown expires', async () => {
+      const { rerender } = await renderHappyPath();
+      mockCountdownState = {
+        timer: { minutes: 0, seconds: 1 },
+        remainingSeconds: 1,
+        startTimer: mockStartTimer,
+      };
+      rerender(<SellInfoScreen />);
+
+      await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(2));
+    });
+
+    it('keeps the resolved asset and currency when only their external parameters change', async () => {
+      const { rerender } = await renderHappyPath();
+      expect(mockGetAsset).toHaveBeenCalledTimes(1);
+      expect(mockGetCurrency).toHaveBeenCalledTimes(1);
+
+      mockAppParams.assetIn = 'BTC';
+      mockAppParams.assetOut = 'EUR';
+      rerender(<SellInfoScreen />);
+
+      await waitFor(() => expect(mockGetAssets).toHaveBeenCalledTimes(2));
+      expect(mockGetAsset).toHaveBeenCalledTimes(1);
+      expect(mockGetCurrency).toHaveBeenCalledTimes(1);
+      expect(mockReceiveFor).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('quote validation', () => {
+    it.each([
+      [mockTransactionError.AMOUNT_TOO_LOW, 0.02, 'below minimum'],
+      [mockTransactionError.AMOUNT_TOO_HIGH, 3, 'above maximum'],
+    ])('formats the %s boundary with the configured volume and asset', async (error, volume, wording) => {
+      mockReceiveFor.mockResolvedValue(makeSell({ error }));
+      render(<SellInfoScreen />);
+
+      await waitFor(() => {
+        expect(mockTranslate).toHaveBeenCalledWith(
+          'screens/payment',
+          expect.stringContaining(wording),
+          expect.objectContaining({ amount: String(volume), currency: 'ETH' }),
+        );
+      });
+      expect(screen.getByTestId('spinner')).toBeInTheDocument();
+      expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      mockTransactionError.LIMIT_EXCEEDED,
+      mockTransactionError.KYC_REQUIRED,
+      mockTransactionError.KYC_DATA_REQUIRED,
+      mockTransactionError.KYC_REQUIRED_INSTANT,
+      mockTransactionError.BANK_TRANSACTION_MISSING,
+      mockTransactionError.BANK_TRANSACTION_OR_VIDEO_MISSING,
+      mockTransactionError.VIDEO_IDENT_REQUIRED,
+      mockTransactionError.NATIONALITY_NOT_ALLOWED,
+      mockTransactionError.IBAN_CURRENCY_MISMATCH,
+      mockTransactionError.PAYMENT_METHOD_NOT_ALLOWED,
+      mockTransactionError.TRADING_NOT_ALLOWED,
+      mockTransactionError.RECOMMENDATION_REQUIRED,
+      mockTransactionError.EMAIL_REQUIRED,
+    ])('does not expose payment instructions for validation error %s', async (error) => {
+      mockReceiveFor.mockResolvedValue(makeSell({ error }));
+      render(<SellInfoScreen />);
+      await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
+      await settle();
+
+      expect(screen.getByTestId('spinner')).toBeInTheDocument();
+      expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    });
+
+    it('clears a prior amount validation state when a later quote is valid', async () => {
+      mockReceiveFor
+        .mockResolvedValueOnce(makeSell({ error: mockTransactionError.AMOUNT_TOO_LOW }))
+        .mockResolvedValueOnce(makeSell());
+      const { rerender } = render(<SellInfoScreen />);
+      await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+      await settle();
+
+      mockAppParams.amountIn = '0.2';
+      rerender(<SellInfoScreen />);
+
+      expect(await screen.findByTestId('payment-info')).toBeInTheDocument();
+      expect(screen.queryByText(/below minimum/)).not.toBeInTheDocument();
+    });
+
+    it('clears a prior KYC validation state when a later quote is valid', async () => {
+      mockReceiveFor
+        .mockResolvedValueOnce(makeSell({ error: mockTransactionError.KYC_REQUIRED }))
+        .mockResolvedValueOnce(makeSell());
+      const { rerender } = render(<SellInfoScreen />);
+      await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+      await settle();
+
+      mockAppParams.amountIn = '0.2';
+      rerender(<SellInfoScreen />);
+
+      expect(await screen.findByTestId('payment-info')).toBeInTheDocument();
+      expect(screen.queryByTestId('quote-error')).not.toBeInTheDocument();
+    });
+
+    it('closes a custom amount error with the cancel result', async () => {
+      mockReceiveFor
+        .mockResolvedValueOnce(makeSell())
+        .mockImplementationOnce(() => ({
+          then: (validate: (sell: ReturnType<typeof makeSell>) => void) => {
+            validate(makeSell({ error: mockTransactionError.AMOUNT_TOO_LOW }));
+            return new Promise(() => undefined);
+          },
+        }));
+      const { rerender } = await renderHappyPath();
+
+      mockAppParams.amountIn = '0.2';
+      rerender(<SellInfoScreen />);
+
+      expect(screen.getByTestId('info-text')).toHaveTextContent(
+        'Entered amount is below minimum deposit of 0.02 ETH',
+      );
+      screen.getByRole('button', { name: 'Close' }).click();
+
+      expect(mockCloseServices).toHaveBeenCalledTimes(1);
+      expect(mockCloseServices).toHaveBeenCalledWith({ type: CloseType.CANCEL }, false);
+    });
+
+    it('shows the quote error while a refreshed KYC-invalid quote is being processed', async () => {
+      mockReceiveFor
+        .mockResolvedValueOnce(makeSell())
+        .mockImplementationOnce(() => ({
+          then: (validate: (sell: ReturnType<typeof makeSell>) => void) => {
+            validate(makeSell({ error: mockTransactionError.KYC_REQUIRED }));
+            return new Promise(() => undefined);
+          },
+        }));
+      const { rerender } = await renderHappyPath();
+
+      mockAppParams.amountIn = '0.2';
+      rerender(<SellInfoScreen />);
+
+      expect(screen.getByTestId('quote-error')).toHaveTextContent(mockTransactionError.KYC_REQUIRED);
+      expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('transaction polling', () => {
+    it('starts the expiry timer and shows completion when polling finds a transaction', async () => {
+      jest.useFakeTimers();
+      const clearIntervalSpy = jest.spyOn(window, 'clearInterval');
+      mockGetTransactionByRequestId.mockResolvedValue({ inputTxId: 'polled-tx-id' });
+      render(<SellInfoScreen />);
+      await settle();
+
+      expect(screen.getByTestId('payment-info')).toBeInTheDocument();
+      expect(mockStartTimer).toHaveBeenCalledWith(new Date('2026-09-21T10:15:00.000Z'));
+
+      act(() => {
+        jest.advanceTimersByTime(5000);
+      });
+      await settle();
+
+      expect(mockGetTransactionByRequestId).toHaveBeenCalledWith(42);
+      expect(screen.getByTestId('sell-completion')).toHaveTextContent('polled-tx-id');
+      expect(clearIntervalSpy).toHaveBeenCalled();
+    });
+
+    it('ignores a polling rejection and keeps showing the payment instructions', async () => {
+      jest.useFakeTimers();
+      mockGetTransactionByRequestId.mockRejectedValue({ status: 404 });
+      render(<SellInfoScreen />);
+      await settle();
+
+      act(() => {
+        jest.advanceTimersByTime(5000);
+      });
+      await settle();
+
+      expect(mockGetTransactionByRequestId).toHaveBeenCalledWith(42);
+      expect(screen.getByTestId('payment-info')).toBeInTheDocument();
+      expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
+    });
+
+    it('clears an active polling interval when the screen unmounts', async () => {
+      jest.useFakeTimers();
+      const clearIntervalSpy = jest.spyOn(window, 'clearInterval');
+      const { unmount } = render(<SellInfoScreen />);
+      await settle();
+      expect(screen.getByTestId('payment-info')).toBeInTheDocument();
+
+      clearIntervalSpy.mockClear();
+      unmount();
+
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('payment details and wallet completion', () => {
+    it('renders all complete quote details and hides wallet completion when sending is unavailable', async () => {
+      await renderHappyPath();
+
+      expect(screen.getByRole('heading', { name: 'Transaction Details' })).toBeInTheDocument();
+      expect(screen.getByText('123.45 CHF')).toBeInTheDocument();
+      expect(screen.getByText('CH9300762011623852957')).toBeInTheDocument();
+      expect(screen.getByText('DFX AG')).toBeInTheDocument();
+      expect(screen.getByTestId('payment-info')).toHaveTextContent(
+        'Please send the specified amount to the address below.',
+      );
+      expect(screen.getByText(/The exchange rate of 2000 CHF\/ETH is fixed for 10m 0s/)).toBeInTheDocument();
+      expect(screen.getByText(/automatically accept our terms and conditions/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Complete transaction in your wallet' })).not.toBeInTheDocument();
+    });
+
+    it('omits the beneficiary-name row when the quote has no beneficiary name', async () => {
+      mockReceiveFor.mockResolvedValue(makeSell({ beneficiary: { iban: 'CH9300762011623852957', name: '' } }));
+      await renderHappyPath();
+
+      expect(screen.queryByText('Beneficiary name')).not.toBeInTheDocument();
+      expect(screen.getByText('CH9300762011623852957')).toBeInTheDocument();
+    });
+
+    it('marks the rate as loading when the countdown has reached zero', async () => {
+      mockCountdownState = {
+        timer: { minutes: 0, seconds: 0 },
+        remainingSeconds: 600,
+        startTimer: mockStartTimer,
+      };
+      await renderHappyPath();
+      expect(screen.getByTestId('info-text')).toHaveAttribute('data-loading', 'true');
+    });
+
+    it('uses the seconds component when less than one minute remains', async () => {
+      mockCountdownState = {
+        timer: { minutes: 0, seconds: 30 },
+        remainingSeconds: 30,
+        startTimer: mockStartTimer,
+      };
+      await renderHappyPath();
+
+      expect(screen.getByTestId('info-text')).toHaveAttribute('data-loading', 'false');
+      expect(screen.getByText(/fixed for 0m 30s/)).toBeInTheDocument();
+    });
+
+    it('shows the inline light-mode spinner while refreshing an existing quote', async () => {
+      let resolveRefresh: (value: unknown) => void = () => undefined;
+      mockReceiveFor
+        .mockResolvedValueOnce(makeSell())
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveRefresh = resolve;
+            }),
+        );
+      const { rerender } = await renderHappyPath();
+
+      mockAppParams.amountIn = '0.2';
+      rerender(<SellInfoScreen />);
+
+      expect(await screen.findByTestId('inline-spinner')).toHaveAttribute('data-variant', 'light-mode');
+      expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+
+      await act(async () => {
+        resolveRefresh(makeSell({ estimatedAmount: 246.9 }));
+        await Promise.resolve();
+      });
+    });
+
+    it('closes with an incomplete sell when sending is possible but no active wallet exists', async () => {
+      mockCanSendTransaction.mockReturnValue(true);
+      await renderHappyPath();
+
+      const completeButton = screen.getByRole('button', { name: 'Complete transaction in your wallet' });
+      completeButton.click();
+      await settle();
+
+      expect(mockCloseServices).toHaveBeenCalledWith(
+        { type: 'Sell', isComplete: false, sell: expect.objectContaining({ id: 42 }) },
+        false,
+      );
+      expect(mockSendTransaction).not.toHaveBeenCalled();
+      expect(completeButton).toHaveAttribute('data-loading', 'true');
+    });
+
+    it('sends through the active wallet, waits for its transaction id, and shows completion', async () => {
+      let resolveSend: (txId: string) => void = () => undefined;
+      mockActiveWallet = mockWallet;
+      mockCanSendTransaction.mockReturnValue(true);
+      mockSendTransaction.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveSend = resolve;
+          }),
+      );
+      await renderHappyPath();
+
+      const completeButton = screen.getByRole('button', { name: 'Complete transaction in your wallet' });
+      act(() => completeButton.click());
+      expect(mockSendTransaction).toHaveBeenCalledWith(expect.objectContaining({ id: 42 }));
+      expect(completeButton).toHaveAttribute('data-loading', 'true');
+
+      await act(async () => {
+        resolveSend('wallet-tx-id');
+        await Promise.resolve();
+      });
+
+      expect(screen.getByTestId('sell-completion')).toHaveTextContent('wallet-tx-id');
+      expect(mockCloseServices).not.toHaveBeenCalled();
+    });
+
+    it('clears processing in finally when wallet sending rejects', async () => {
+      let rejectSend: (error: Error) => void = () => undefined;
+      mockActiveWallet = mockWallet;
+      mockCanSendTransaction.mockReturnValue(true);
+      mockSendTransaction.mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectSend = reject;
+          }),
+      );
+      await renderHappyPath();
+
+      const completeButton = screen.getByRole('button', { name: 'Complete transaction in your wallet' });
+      act(() => completeButton.click());
+      expect(completeButton).toHaveAttribute('data-loading', 'true');
+
+      const action = mockLastButtonAction;
+      if (!action) throw new Error('Expected the button to retain the async click action');
+      const rejection = expect(action).rejects.toThrow('Wallet rejected');
+      await act(async () => {
+        rejectSend(new Error('Wallet rejected'));
+        await rejection;
+      });
+
+      expect(completeButton).toHaveAttribute('data-loading', 'false');
+      expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
+    });
+
+    it('completes without sending when wallet sending becomes unavailable after render', async () => {
+      mockActiveWallet = mockWallet;
+      mockCanSendTransaction.mockReturnValue(true);
+      await renderHappyPath();
+
+      const completeButton = screen.getByRole('button', { name: 'Complete transaction in your wallet' });
+      mockCanSendTransaction.mockReturnValue(false);
+      completeButton.click();
+      await settle();
+
+      expect(mockSendTransaction).not.toHaveBeenCalled();
+      expect(mockCloseServices).not.toHaveBeenCalled();
+      expect(screen.getByTestId('sell-completion')).toBeEmptyDOMElement();
+    });
   });
 });

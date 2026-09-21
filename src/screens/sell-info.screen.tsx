@@ -226,8 +226,9 @@ export default function SellInfoScreen(): JSX.Element {
     };
     if (amountIn) {
       request.amount = +amountIn;
-    } else if (amountOut) {
-      request.targetAmount = +amountOut;
+    } else {
+      // The guard above returns unless amountIn or amountOut is set, so amountOut holds here.
+      request.targetAmount = +(amountOut as string);
     }
 
     setIsLoading(true);
