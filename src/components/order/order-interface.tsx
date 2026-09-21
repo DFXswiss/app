@@ -108,6 +108,7 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
   const data = watch();
   const debouncedData = useDebounce(data, 500);
   const [bankAccountError, setBankAccountError] = useState<string>();
+  const [bankAccountRetryToken, setBankAccountRetryToken] = useState(0);
 
   const availablePaymentMethods: FiatPaymentMethod[] = useMemo(
     () => getAvailablePaymentMethods(data.targetAsset as Asset),
@@ -244,8 +245,13 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
         {isSell && (
           <BankAccountSelector
             value={data.bankAccount}
-            onChange={(account) => setValue('bankAccount', account)}
+            onChange={(account) => {
+              setBankAccountError(undefined);
+              setValue('bankAccount', account);
+            }}
             onError={setBankAccountError}
+            onCreateStart={() => setBankAccountError(undefined)}
+            retryToken={bankAccountRetryToken}
             placeholder={translate('screens/sell', 'Add or select your IBAN')}
             isModalOpen={bankAccountSelection}
             onModalToggle={setBankAccountSelection}
@@ -272,10 +278,17 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
           targetAsset={data?.targetAsset ?? pairMap?.(data?.sourceAsset?.name)}
           amountError={amountError}
           kycError={kycError}
-          errorMessage={paymentInfoError ?? bankAccountError}
+          errorMessage={bankAccountError ?? paymentInfoError}
           confirmPayment={confirmPayment}
           confirmButtonLabel={confirmButtonLabel}
-          retry={() => debouncedData && handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue)}
+          retry={() => {
+            if (bankAccountError) {
+              setBankAccountError(undefined);
+              setBankAccountRetryToken((token) => token + 1);
+            } else if (debouncedData) {
+              handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue);
+            }
+          }}
         />
       </StyledVerticalStack>
     </Form>

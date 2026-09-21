@@ -272,6 +272,42 @@ describe('BankAccountSelector', () => {
     expect(mockOnChange).not.toHaveBeenCalled();
   });
 
+  it('does not overwrite a manual selection when an account creation resolves later', async () => {
+    let resolveCreate: (value: unknown) => void = () => undefined;
+    const createdAccount = { id: 2, iban: 'DE89370400440532013000' };
+    mockBankAccounts = [existing];
+    mockBankAccountParam = createdAccount.iban;
+    mockGetAccount.mockReturnValue(undefined);
+    mockCreateAccount.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        }),
+    );
+
+    render(
+      <BankAccountSelector
+        placeholder="IBAN"
+        isModalOpen
+        onChange={mockOnChange}
+        onModalToggle={mockOnModalToggle}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByTestId('pick-1'));
+    await act(async () => {
+      resolveCreate(createdAccount);
+      await Promise.resolve();
+    });
+
+    expect(mockOnChange).toHaveBeenCalledTimes(1);
+    expect(mockOnChange).toHaveBeenCalledWith(existing);
+    expect(mockOnChange).not.toHaveBeenCalledWith(createdAccount);
+  });
+
   it('does not apply a create result after unmount', async () => {
     let resolveCreate: (value: unknown) => void = () => undefined;
     mockBankAccounts = [];
@@ -319,6 +355,80 @@ describe('BankAccountSelector', () => {
     });
     expect(mockCreateAccount).toHaveBeenCalledTimes(1);
     expect(mockOnChange).not.toHaveBeenCalled();
+  });
+
+  it('retries the same IBAN only after the retry token changes', async () => {
+    const onError = jest.fn();
+    const createdAccount = { id: 2, iban: 'DE89370400440532013000' };
+    mockBankAccountParam = createdAccount.iban;
+    mockGetAccount.mockReturnValue(undefined);
+    mockCreateAccount
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(createdAccount);
+
+    const { rerender } = render(
+      <BankAccountSelector
+        placeholder="IBAN"
+        isModalOpen={false}
+        onChange={mockOnChange}
+        onModalToggle={mockOnModalToggle}
+        onError={onError}
+        retryToken={0}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith('temporary failure');
+
+    rerender(
+      <BankAccountSelector
+        placeholder="IBAN"
+        isModalOpen={false}
+        onChange={mockOnChange}
+        onModalToggle={mockOnModalToggle}
+        onError={onError}
+        retryToken={1}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockCreateAccount).toHaveBeenCalledTimes(2);
+    expect(mockOnChange).toHaveBeenCalledWith(createdAccount);
+  });
+
+  it('retries the same IBAN when the user reopens the selector after a failure', async () => {
+    const createdAccount = { id: 2, iban: 'DE89370400440532013000' };
+    mockBankAccountParam = createdAccount.iban;
+    mockGetAccount.mockReturnValue(undefined);
+    mockCreateAccount
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(createdAccount);
+
+    render(
+      <BankAccountSelector
+        placeholder="IBAN"
+        isModalOpen={false}
+        onChange={mockOnChange}
+        onModalToggle={mockOnModalToggle}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId('open-selector'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockCreateAccount).toHaveBeenCalledTimes(2);
+    expect(mockOnChange).toHaveBeenCalledWith(createdAccount);
   });
 
   it('calls onError when createAccount rejects and the request is still current', async () => {

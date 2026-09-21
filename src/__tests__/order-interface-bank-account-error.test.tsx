@@ -8,6 +8,7 @@ const mockGetDefaultCurrency = (list: any[]) => list?.[0];
 const mockGetAvailableCurrencies = () => mockEmptyList;
 const mockGetAvailablePaymentMethods = () => mockEmptyList;
 const mockHandlePaymentInfoFetchWrapper = (...args: unknown[]) => mockHandlePaymentInfoFetch(...args);
+let mockPaymentInfoError: string | undefined;
 
 jest.mock('@dfx.swiss/react', () => ({
   Utils: { formatAmountCrypto: (n: number) => String(n), createRules: () => ({}) },
@@ -61,7 +62,7 @@ jest.mock('src/hooks/order.hook', () => ({
     paymentInfo: undefined,
     isFetchingPaymentInfo: false,
     lastEditedFieldRef: mockLastEditedFieldRef,
-    paymentInfoError: undefined,
+    paymentInfoError: mockPaymentInfoError,
     amountError: undefined,
     kycError: undefined,
     setSelectedAddress: jest.fn(),
@@ -75,14 +76,34 @@ jest.mock('src/components/order/asset-input', () => ({
   AssetInput: () => <div data-testid="asset-input" />,
 }));
 jest.mock('src/components/order/bank-account-selector', () => ({
-  BankAccountSelector: ({ onError }: any) => (
-    <button type="button" data-testid="bank-account-error" onClick={() => onError?.('create failed')}>
-      error
-    </button>
+  BankAccountSelector: ({ onChange, onError, onCreateStart, retryToken }: any) => (
+    <div>
+      <div data-testid="bank-account-retry-token">{retryToken}</div>
+      <button type="button" data-testid="bank-account-error" onClick={() => onError?.('create failed')}>
+        error
+      </button>
+      <button type="button" data-testid="bank-account-create-start" onClick={() => onCreateStart?.()}>
+        start
+      </button>
+      <button
+        type="button"
+        data-testid="bank-account-success"
+        onClick={() => onChange?.({ id: 1, iban: 'CH9300762011623852957' })}
+      >
+        success
+      </button>
+    </div>
   ),
 }));
 jest.mock('src/components/order/payment-info', () => ({
-  PaymentInfo: ({ errorMessage }: any) => <div data-testid="payment-error">{errorMessage}</div>,
+  PaymentInfo: ({ errorMessage, retry }: any) => (
+    <div>
+      <div data-testid="payment-error">{errorMessage}</div>
+      <button type="button" data-testid="payment-retry" onClick={retry}>
+        retry
+      </button>
+    </div>
+  ),
 }));
 
 import { fireEvent, render, screen } from '@testing-library/react';
@@ -90,6 +111,10 @@ import { OrderInterface } from 'src/components/order/order-interface';
 import { OrderType } from 'src/hooks/order.hook';
 
 describe('OrderInterface bank-account error channel', () => {
+  beforeEach(() => {
+    mockPaymentInfoError = undefined;
+  });
+
   it('shows BankAccountSelector onError through PaymentInfo errorMessage', () => {
     render(
       <OrderInterface
@@ -100,6 +125,57 @@ describe('OrderInterface bank-account error channel', () => {
     );
 
     expect(screen.getByTestId('payment-error')).toHaveTextContent('');
+    fireEvent.click(screen.getByTestId('bank-account-error'));
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('create failed');
+  });
+
+  it('clears a bank-account error when a new attempt starts and after a successful selection', () => {
+    render(
+      <OrderInterface
+        orderType={OrderType.SELL}
+        onFetchPaymentInfo={mockOnFetch}
+        confirmPayment={mockConfirm}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('bank-account-error'));
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('create failed');
+
+    fireEvent.click(screen.getByTestId('bank-account-create-start'));
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('');
+
+    fireEvent.click(screen.getByTestId('bank-account-error'));
+    fireEvent.click(screen.getByTestId('bank-account-success'));
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('');
+  });
+
+  it('uses the visible retry action to start another bank-account attempt', () => {
+    render(
+      <OrderInterface
+        orderType={OrderType.SELL}
+        onFetchPaymentInfo={mockOnFetch}
+        confirmPayment={mockConfirm}
+      />,
+    );
+
+    expect(screen.getByTestId('bank-account-retry-token')).toHaveTextContent('0');
+    fireEvent.click(screen.getByTestId('bank-account-error'));
+    fireEvent.click(screen.getByTestId('payment-retry'));
+    expect(screen.getByTestId('bank-account-retry-token')).toHaveTextContent('1');
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('');
+  });
+
+  it('shows the blocking bank-account error before an older payment-info error', () => {
+    mockPaymentInfoError = 'quote failed';
+    render(
+      <OrderInterface
+        orderType={OrderType.SELL}
+        onFetchPaymentInfo={mockOnFetch}
+        confirmPayment={mockConfirm}
+      />,
+    );
+
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('quote failed');
     fireEvent.click(screen.getByTestId('bank-account-error'));
     expect(screen.getByTestId('payment-error')).toHaveTextContent('create failed');
   });

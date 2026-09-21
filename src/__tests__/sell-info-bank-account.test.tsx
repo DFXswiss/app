@@ -1,26 +1,41 @@
 const mockCreateAccount = jest.fn();
 const mockReceiveFor = jest.fn();
 const mockGetAccount = jest.fn();
-const mockTranslate = (_ns: string, key: string) => key;
+const mockTranslate = jest.fn((_ns: string, key: string) => key);
 const mockEmptyList: never[] = [];
 
 const chf = { name: 'CHF', sellable: true };
 const eth = { name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum' };
+const mockAssets = [eth];
+const mockCurrencies = [chf];
+const mockAvailableBlockchains = ['Ethereum'];
+const mockGetAsset = (_list: any[], name?: string) => (name ? eth : undefined);
+const mockGetAssets = () => mockAssets;
+const mockGetCurrency = () => chf;
+const mockAppParams = {
+  assetIn: 'ETH',
+  assetOut: 'CHF',
+  amountIn: '0.1',
+  amountOut: undefined,
+  bankAccount: 'DE89370400440532013000',
+  externalTransactionId: undefined,
+  availableBlockchains: mockAvailableBlockchains,
+};
 
 jest.mock('@dfx.swiss/react', () => ({
   TransactionError: {},
   TransactionType: { SELL: 'Sell' },
   Utils: { formatAmountCrypto: (n: number) => String(n) },
   Validations: { Iban: () => ({ validate: () => true }) },
-  useAsset: () => ({ getAsset: (_list: any[], name?: string) => (name ? eth : undefined) }),
-  useAssetContext: () => ({ getAssets: () => [eth] }),
+  useAsset: () => ({ getAsset: mockGetAsset }),
+  useAssetContext: () => ({ getAssets: mockGetAssets }),
   useBankAccount: () => ({ getAccount: mockGetAccount }),
   useBankAccountContext: () => ({
     bankAccounts: mockEmptyList,
-    createAccount: (...args: unknown[]) => mockCreateAccount(...args),
+    createAccount: mockCreateAccount,
   }),
-  useFiat: () => ({ getCurrency: () => chf }),
-  useSell: () => ({ currencies: [chf], receiveFor: (...args: unknown[]) => mockReceiveFor(...args) }),
+  useFiat: () => ({ getCurrency: mockGetCurrency }),
+  useSell: () => ({ currencies: mockCurrencies, receiveFor: mockReceiveFor }),
   useTransaction: () => ({ getTransactionByRequestId: jest.fn() }),
 }));
 
@@ -75,15 +90,7 @@ jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({ allowedCountries: mockEmptyList, translate: mockTranslate }),
 }));
 jest.mock('../hooks/app-params.hook', () => ({
-  useAppParams: () => ({
-    assetIn: 'ETH',
-    assetOut: 'CHF',
-    amountIn: '0.1',
-    amountOut: undefined,
-    bankAccount: 'DE89370400440532013000',
-    externalTransactionId: undefined,
-    availableBlockchains: ['Ethereum'],
-  }),
+  useAppParams: () => mockAppParams,
 }));
 jest.mock('../hooks/guard.hook', () => ({
   useAddressGuard: () => undefined,
@@ -98,20 +105,108 @@ import SellInfoScreen from 'src/screens/sell-info.screen';
 describe('SellInfoScreen bank-account create error', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // react-scripts sets resetMocks: true, which strips the implementation from every
+    // jest.fn before each test. Without this line translate() returns undefined and the
+    // screen stores an empty error message.
+    mockTranslate.mockImplementation((_ns: string, key: string) => key);
+    mockAppParams.bankAccount = 'DE89370400440532013000';
     mockGetAccount.mockReturnValue(undefined);
     mockReceiveFor.mockResolvedValue({});
-    mockCreateAccount.mockRejectedValue({ message: 'You cannot add an IBAN to a KYC only account' });
   });
 
-  it('shows the translated add-bank-account failure and not the raw API message', async () => {
+  it.each([
+    {
+      apiMessage: 'You cannot add an IBAN to a KYC only account',
+      expected: 'Before you can add a bank account, your DFX account needs a wallet.',
+    },
+    {
+      apiMessage: 'Multi-account IBANs cannot be added here',
+      expected: 'This is a multi-account IBAN and cannot be added as a personal account.',
+    },
+    {
+      apiMessage: 'Service unavailable',
+      expected: 'The bank account could not be added.',
+    },
+  ])('shows the translated $expected message for $apiMessage', async ({ apiMessage, expected }) => {
+    mockCreateAccount.mockRejectedValue({ message: apiMessage });
+
+    render(<SellInfoScreen />);
+
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent(expected);
+    expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(apiMessage)).not.toBeInTheDocument();
+  });
+
+  it('retries account creation after a rejection and clears the bank-account error after success', async () => {
+    mockCreateAccount
+      .mockRejectedValueOnce({ message: 'Service unavailable' })
+      .mockResolvedValueOnce({ id: 1, iban: mockAppParams.bankAccount });
+    mockReceiveFor.mockImplementation(() => new Promise(() => undefined));
+
+    render(<SellInfoScreen />);
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('The bank account could not be added.');
+
     await act(async () => {
-      render(<SellInfoScreen />);
+      screen.getByRole('button', { name: 'Retry' }).click();
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(screen.getByTestId('error-hint')).toHaveTextContent('The bank account could not be added.');
-    expect(screen.queryByText(/Failed to create bank account/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/You cannot add an IBAN to a KYC only account/)).not.toBeInTheDocument();
+    expect(mockCreateAccount).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+  });
+
+  it('does not handle a create rejection after unmount', async () => {
+    let rejectCreate: (reason?: unknown) => void = () => undefined;
+    mockCreateAccount.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectCreate = reject;
+        }),
+    );
+
+    const { unmount } = render(<SellInfoScreen />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+
+    unmount();
+    await act(async () => {
+      rejectCreate({ message: 'Service unavailable' });
+      await Promise.resolve();
+    });
+
+    expect(mockTranslate).not.toHaveBeenCalledWith('screens/sell', 'The bank account could not be added.');
+  });
+
+  it('processes a bank-account parameter that changes during account creation', async () => {
+    let resolveFirstCreate: (value: unknown) => void = () => undefined;
+    mockCreateAccount.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirstCreate = resolve;
+        }),
+    );
+    mockCreateAccount.mockImplementationOnce(() => new Promise(() => undefined));
+
+    const { rerender } = render(<SellInfoScreen />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockCreateAccount).toHaveBeenCalledWith({ iban: 'DE89370400440532013000' });
+
+    mockAppParams.bankAccount = 'FR1420041010050500013M02606';
+    rerender(<SellInfoScreen />);
+    expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFirstCreate({ id: 1, iban: 'DE89370400440532013000' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockCreateAccount).toHaveBeenCalledTimes(2);
+    expect(mockCreateAccount).toHaveBeenLastCalledWith({ iban: 'FR1420041010050500013M02606' });
   });
 });
