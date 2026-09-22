@@ -195,6 +195,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   clerks list, not that the API returns those records or the logged-in staff member's
   `verifiedName`. The session is a synthetic unsigned JWT, so a green run also does not
   prove login or token verification.
+- **Full-stack compliance specs SQL-seed a call-queue case.**
+  `e2e-stack/specs/fixtures/factories.ts` (`createCallQueueEntry`) inserts a pending `buy_crypto`
+  with AML reason `ManualCheckPhone` and SQL-writes `user_data.phoneCallStatus`,
+  `phoneCallStatusDate` (where the column exists) and `phoneCallCheckDate`. A green run does
+  **not** prove that the AML pipeline parks a transaction in the Callback queue or that a clerk's
+  Unavailable outcome stamps the mark date through the product path.
 - **Full-stack guest assign/refund specs SQL-write `transaction.actionSecretHash`.**
   `e2e-stack/specs/transactions.spec.ts` (`seedActionSecret`) updates the hash directly. A green run
   does **not** prove that the mail/API path creates, hashes, or delivers the action secret.

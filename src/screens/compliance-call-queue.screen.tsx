@@ -9,6 +9,12 @@ import { useCompliance } from 'src/hooks/compliance.hook';
 import { useComplianceGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import {
+  callbackDeadline,
+  callQueueLabel,
+  CallQueueItemWithStatusDate,
+  isPastDeadline,
+} from 'src/util/call-queue.util';
 import { formatSwissDate } from 'src/util/utils';
 
 function isCallQueue(value: string | undefined): value is CallQueue {
@@ -27,26 +33,42 @@ export default function ComplianceCallQueueScreen(): JSX.Element {
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const [items, setItems] = useState<CallQueueItem[]>([]);
+  const [items, setItems] = useState<CallQueueItemWithStatusDate[]>([]);
 
-  const isTxQueue = queue !== undefined && queue !== CallQueue.UNAVAILABLE_SUSPICIOUS;
+  // Every queue lists transactions. The Callback queue adds the account status, when the clerk marked
+  // it and how long the customer still has to call back; the IP queues add the IP.
+  const isCallback = queue === CallQueue.UNAVAILABLE_SUSPICIOUS;
   const showIp = queue === CallQueue.MANUAL_CHECK_IP_PHONE || queue === CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE;
-  const showCountry = queue === CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE || queue === CallQueue.UNAVAILABLE_SUSPICIOUS;
-  const showStatus = queue === CallQueue.UNAVAILABLE_SUSPICIOUS;
+  const showCountry = queue === CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE || isCallback;
 
-  const columnCount = 5 + [isTxQueue, showIp, showCountry, showStatus].filter(Boolean).length;
+  // User, Phone, Lang, KYC, Transaction, Date, plus the optional columns (Status, Marked, Deadline for Callback)
+  const columnCount = 6 + (showIp ? 1 : 0) + (showCountry ? 1 : 0) + (isCallback ? 3 : 0);
 
   useEffect(() => {
     if (!isLoggedIn || !queue) return;
+    // The route can move to another queue while a load is in flight (same screen instance); a response
+    // for the queue shown before must not land on the one shown now.
+    let current = true;
     setIsLoading(true);
+    setError(undefined);
+    setItems([]);
     getCallQueueItems(queue)
-      .then(setItems)
-      .catch((e) => setError(e.message))
-      .finally(() => setIsLoading(false));
+      .then((loaded) => {
+        if (current) setItems(loaded);
+      })
+      .catch((e) => {
+        if (current) setError(e.message);
+      })
+      .finally(() => {
+        if (current) setIsLoading(false);
+      });
+    return () => {
+      current = false;
+    };
   }, [isLoggedIn, queue]);
 
+  // Rows exist only for a known queue (see the guard on render), so `queue` is set here.
   function openDetail(item: CallQueueItem) {
-    if (!queue) return;
     const search = item.txId != null ? `?txId=${item.txId}` : '';
     navigate(
       { pathname: `/compliance/call-queues/${queue}/${item.userDataId}`, search },
@@ -55,7 +77,7 @@ export default function ComplianceCallQueueScreen(): JSX.Element {
   }
 
   useLayoutOptions({
-    title: queue ?? translate('screens/compliance', 'Call Queue'),
+    title: queue ? callQueueLabel(queue) : translate('screens/compliance', 'Call Queue'),
     noMaxWidth: true,
     backButton: true,
     onBack: () => navigate(-1),
@@ -81,20 +103,28 @@ export default function ComplianceCallQueueScreen(): JSX.Element {
                 {translate('screens/compliance', 'Lang')}
               </th>
               <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">KYC</th>
-              {isTxQueue && (
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
-                  {translate('screens/compliance', 'Transaction')}
-                </th>
-              )}
+              <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                {translate('screens/compliance', 'Transaction')}
+              </th>
               {showIp && <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">IP</th>}
               {showCountry && (
                 <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
                   {translate('screens/compliance', 'Country')}
                 </th>
               )}
-              {showStatus && (
+              {isCallback && (
                 <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
                   {translate('screens/compliance', 'Status')}
+                </th>
+              )}
+              {isCallback && (
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                  {translate('screens/compliance', 'Marked')}
+                </th>
+              )}
+              {isCallback && (
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                  {translate('screens/compliance', 'Deadline')}
                 </th>
               )}
               <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
@@ -104,37 +134,53 @@ export default function ComplianceCallQueueScreen(): JSX.Element {
           </thead>
           <tbody>
             {items.length > 0 ? (
-              items.map((item) => (
-                <tr
-                  key={itemKey(item)}
-                  className="border-b border-dfxGray-300 transition-colors hover:bg-dfxGray-300 cursor-pointer"
-                  onClick={() => openDetail(item)}
-                >
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
-                    {item.userDataId} {item.userName ?? ''}
-                  </td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.phone ?? '-'}</td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.language ?? '-'}</td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.kycLevel ?? '-'}</td>
-                  {isTxQueue && (
+              items.map((item) => {
+                const deadline = isCallback ? callbackDeadline(item) : undefined;
+                return (
+                  <tr
+                    key={itemKey(item)}
+                    className="border-b border-dfxGray-300 transition-colors hover:bg-dfxGray-300 cursor-pointer"
+                    onClick={() => openDetail(item)}
+                  >
+                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                      {item.userDataId} {item.userName ?? ''}
+                    </td>
+                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.phone ?? '-'}</td>
+                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.language ?? '-'}</td>
+                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.kycLevel ?? '-'}</td>
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
                       {item.txId ? `${item.sourceType} #${item.txId}` : '-'}
                       {item.inputAmount != null && ` (${item.inputAmount} ${item.inputAsset ?? ''})`}
+                      {isCallback && item.amlCheck && ` · ${item.amlCheck}`}
                     </td>
-                  )}
-                  {showIp && <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.ip ?? '-'}</td>}
-                  {showCountry && (
-                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
-                      {item.country ?? '-'}
-                      {item.ipCountry && item.ipCountry !== item.country ? ` / IP: ${item.ipCountry}` : ''}
-                    </td>
-                  )}
-                  {showStatus && (
-                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.phoneCallStatus ?? '-'}</td>
-                  )}
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{formatSwissDate(item.date)}</td>
-                </tr>
-              ))
+                    {showIp && <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.ip ?? '-'}</td>}
+                    {showCountry && (
+                      <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                        {item.country ?? '-'}
+                        {item.ipCountry && item.ipCountry !== item.country ? ` / IP: ${item.ipCountry}` : ''}
+                      </td>
+                    )}
+                    {isCallback && (
+                      <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.phoneCallStatus ?? '-'}</td>
+                    )}
+                    {isCallback && (
+                      <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                        {item.phoneCallStatusDate ? formatSwissDate(item.phoneCallStatusDate) : '-'}
+                      </td>
+                    )}
+                    {isCallback && (
+                      <td
+                        className={`px-4 py-3 text-left text-sm ${
+                          isPastDeadline(deadline) ? 'text-dfxRed-100 font-semibold' : 'text-dfxBlue-800'
+                        }`}
+                      >
+                        {deadline ? formatSwissDate(deadline) : '-'}
+                      </td>
+                    )}
+                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{formatSwissDate(item.date)}</td>
+                  </tr>
+                );
+              })
             ) : (
               <tr>
                 <td colSpan={columnCount} className="px-4 py-3 text-center text-dfxGray-700">

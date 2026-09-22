@@ -7,6 +7,21 @@ const mockAuth = { session: { role: 'Compliance' as string } };
 jest.mock('@dfx.swiss/react', () => ({
   useAuthContext: () => mockAuth,
   UserRole: { ADMIN: 'Admin', COMPLIANCE: 'Compliance' },
+  AmlReason: {
+    MANUAL_CHECK_PHONE: 'ManualCheckPhone',
+    MANUAL_CHECK_PHONE_FAILED: 'ManualCheckPhoneFailed',
+    MANUAL_CHECK_IP_PHONE: 'ManualCheckIpPhone',
+    MANUAL_CHECK_IP_COUNTRY_PHONE: 'ManualCheckIpCountryPhone',
+    MANUAL_CHECK_EXTERNAL_ACCOUNT_PHONE: 'ManualCheckExternalAccountPhone',
+  },
+  CheckStatus: { PENDING: 'Pending', FAIL: 'Fail', PASS: 'Pass' },
+  CallQueue: {
+    MANUAL_CHECK_PHONE: 'ManualCheckPhone',
+    MANUAL_CHECK_IP_PHONE: 'ManualCheckIpPhone',
+    MANUAL_CHECK_IP_COUNTRY_PHONE: 'ManualCheckIpCountryPhone',
+    MANUAL_CHECK_EXTERNAL_ACCOUNT_PHONE: 'ManualCheckExternalAccountPhone',
+    UNAVAILABLE_SUSPICIOUS: 'UnavailableSuspicious',
+  },
 }));
 jest.mock('@dfx.swiss/react-components', () => ({
   StyledButton: ({ label, onClick, disabled }: any) => (
@@ -41,7 +56,6 @@ jest.mock('src/hooks/compliance.hook', () => ({
   CallOutcome: {
     COMPLETED: 'Completed',
     UNAVAILABLE: 'Unavailable',
-    SUSPICIOUS: 'Suspicious',
     FAILED: 'Failed',
     REPEAT: 'Repeat',
   },
@@ -49,17 +63,11 @@ jest.mock('src/hooks/compliance.hook', () => ({
   useCompliance: () => ({ saveCallOutcome: mockSaveCallOutcome }),
 }));
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CallQueueOutcomeForm } from 'src/components/compliance/call-queue/call-queue-outcome-form';
 import { CallOutcome } from 'src/hooks/compliance.hook';
 
-const OUTCOMES = [
-  CallOutcome.COMPLETED,
-  CallOutcome.UNAVAILABLE,
-  CallOutcome.SUSPICIOUS,
-  CallOutcome.FAILED,
-  CallOutcome.REPEAT,
-];
+const OUTCOMES = [CallOutcome.COMPLETED, CallOutcome.UNAVAILABLE, CallOutcome.FAILED, CallOutcome.REPEAT];
 
 // ManualCheckIpCountryPhone is the queue whose AML reason the cron skips — the one that needs the
 // automatic reset. ManualCheckPhone is re-evaluated by the cron, so nothing must be sent there.
@@ -277,7 +285,7 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
   it('defaults an open-ended outcome to no change', async () => {
     renderForm(TX_CONTEXT);
 
-    fillAndSubmit(CallOutcome.SUSPICIOUS);
+    fillAndSubmit(CallOutcome.UNAVAILABLE);
 
     await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
     expect(submittedAmlAction()).toBeUndefined();
@@ -331,6 +339,51 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
     expect(submittedAmlAction()).toBeUndefined();
   });
 
+  // A Callback item is decided as the reason queue it was parked from: with a recheck-blocked reason the
+  // save carries the automatic Reset, with a plain phone reason it sends nothing.
+  it('sends the automatic Reset for a Callback item parked from the recheck-blocked queue', async () => {
+    renderForm({ ...TX_CONTEXT, queue: 'UnavailableSuspicious', amlReason: 'ManualCheckIpCountryPhone' });
+
+    fillAndSubmit(CallOutcome.COMPLETED);
+
+    await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
+    expect(submittedAmlAction()).toBe('Reset');
+  });
+
+  it('sends no action for a Callback item parked from the plain phone queue', async () => {
+    renderForm({ ...TX_CONTEXT, queue: 'UnavailableSuspicious', amlReason: 'ManualCheckPhone' });
+
+    fillAndSubmit(CallOutcome.COMPLETED);
+
+    await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
+    expect(submittedAmlAction()).toBeUndefined();
+  });
+
+  // A transaction failed by the 14-day aging keeps its recheck-blocked reason. The API resets every failed
+  // phone transaction itself once the call is completed, so the tool must not race it with its own Reset.
+  it('sends no Reset for a failed Callback transaction, even with the recheck-blocked reason', async () => {
+    renderForm({
+      ...TX_CONTEXT,
+      queue: 'UnavailableSuspicious',
+      amlCheck: 'Fail',
+      amlReason: 'ManualCheckIpCountryPhone',
+    });
+
+    fillAndSubmit(CallOutcome.COMPLETED);
+
+    await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
+    expect(submittedAmlAction()).toBeUndefined();
+  });
+
+  it('keeps the save enabled for a failed transaction of an ineligible BuyCrypto', async () => {
+    renderForm({ ...INELIGIBLE_TX_CONTEXT, queue: 'UnavailableSuspicious', amlCheck: 'Fail' });
+
+    fillAndSubmit(CallOutcome.COMPLETED);
+
+    await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
+    expect(submittedAmlAction()).toBeUndefined();
+  });
+
   it('does not offer an AmlCheck action for user-based queue items', async () => {
     renderForm(USER_CONTEXT);
     expect(screen.getAllByRole('combobox')).toHaveLength(1);
@@ -379,5 +432,59 @@ describe('CallQueueOutcomeForm AmlCheck action', () => {
     renderForm(TX_CONTEXT);
 
     expect(screen.getByRole('option', { name: 'Reset' })).toBeInTheDocument();
+  });
+});
+
+describe('CallQueueOutcomeForm in-flight guards', () => {
+  beforeEach(() => {
+    mockStaffName.name = 'JR';
+    mockStaffName.isLoading = false;
+    mockStaffName.error = undefined;
+    jest.clearAllMocks();
+  });
+
+  // Two clicks in the same tick arrive before React re-renders the disabled button; only the ref stops
+  // the second save.
+  it('saves once for two clicks in the same tick', async () => {
+    let resolveSave: (value: unknown) => void = () => undefined;
+    mockSaveCallOutcome.mockReturnValue(new Promise((resolve) => (resolveSave = resolve)));
+    renderForm(PLAIN_PHONE_TX_CONTEXT);
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: CallOutcome.UNAVAILABLE } });
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'called' } });
+    const button = screen.getByRole('button', { name: 'Save Outcome' });
+
+    act(() => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1);
+    expect(button).toBeDisabled();
+    await act(async () => resolveSave({ success: true, completedSteps: ['userData', 'log'] }));
+    await waitFor(() => expect(button).toBeEnabled());
+  });
+
+  it('tells the owner about a save that finishes after the form was unmounted, without touching its state', async () => {
+    let resolveSave: (value: unknown) => void = () => undefined;
+    mockSaveCallOutcome.mockReturnValue(new Promise((resolve) => (resolveSave = resolve)));
+    const onSaved = jest.fn();
+    const { unmount } = render(
+      <CallQueueOutcomeForm
+        context={PLAIN_PHONE_TX_CONTEXT}
+        availableOutcomes={OUTCOMES}
+        onSaved={onSaved}
+        title="Save Outcome"
+      />,
+    );
+    fillAndSubmit(CallOutcome.UNAVAILABLE);
+    await waitFor(() => expect(mockSaveCallOutcome).toHaveBeenCalledTimes(1));
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    unmount();
+    await act(async () => resolveSave({ success: true, completedSteps: ['userData', 'log'] }));
+
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });
