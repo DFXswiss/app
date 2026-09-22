@@ -54,9 +54,17 @@ const ETH = {
   comingSoon: false,
 };
 
+const KYC_REJECTION = 'You cannot add an IBAN to a KYC only account';
+const MULTI_REJECTION = 'Multi-account IBAN cannot be added';
+
 const HINT = {
   de: 'Bevor Du eine Bankverbindung hinterlegen kannst, braucht Dein DFX-Konto eine Wallet.',
   en: 'Before you can add a bank account, your DFX account needs a wallet.',
+} as const;
+
+const MULTI = {
+  de: 'Dies ist eine Multi-Account-IBAN und kann nicht als persönliches Konto hinzugefügt werden.',
+  en: 'This is a multi-account IBAN and cannot be added as a personal account.',
 } as const;
 
 const CONNECT = {
@@ -64,7 +72,7 @@ const CONNECT = {
   en: 'Connect a wallet',
 } as const;
 
-async function installRoutes(page: Page): Promise<void> {
+async function installRoutes(page: Page, rejectionMessage: string): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -76,7 +84,7 @@ async function installRoutes(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({
           statusCode: 400,
-          message: 'You cannot add an IBAN to a KYC only account',
+          message: rejectionMessage,
           error: 'Bad Request',
         }),
       });
@@ -187,7 +195,7 @@ function sellInfoUrl(lang: 'de' | 'en'): string {
 
 test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
   test('German hint on sell after a KYC-only IBAN rejection', async ({ page }) => {
-    await installRoutes(page);
+    await installRoutes(page, KYC_REJECTION);
     await page.goto(sellUrl('de'));
 
     await expect(page.getByText(HINT.de)).toBeVisible({ timeout: 20_000 });
@@ -201,7 +209,7 @@ test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
   });
 
   test('English hint on sell after a KYC-only IBAN rejection', async ({ page }) => {
-    await installRoutes(page);
+    await installRoutes(page, KYC_REJECTION);
     await page.goto(sellUrl('en'));
 
     await expect(page.getByText(HINT.en)).toBeVisible({ timeout: 20_000 });
@@ -215,7 +223,7 @@ test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
   });
 
   test('German hint on sell confirmation after a KYC-only IBAN rejection', async ({ page }) => {
-    await installRoutes(page);
+    await installRoutes(page, KYC_REJECTION);
     await page.goto(sellInfoUrl('de'));
 
     await expect(page.getByText(HINT.de)).toBeVisible({ timeout: 20_000 });
@@ -223,5 +231,23 @@ test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
     await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot('sell-info-kyc-only-de.png', { fullPage: true, maxDiffPixels: 5000 });
+  });
+
+  test('German multi-account hint on sell', async ({ page }) => {
+    await installRoutes(page, MULTI_REJECTION);
+    await page.goto(sellUrl('de'));
+
+    await expect(page.getByText(MULTI.de)).toBeVisible({ timeout: 20_000 });
+    await page.waitForTimeout(1000);
+    await expect(page).toHaveScreenshot('sell-multi-account-de.png', { fullPage: true, maxDiffPixels: 5000 });
+  });
+
+  test('German multi-account hint on sell confirmation', async ({ page }) => {
+    await installRoutes(page, MULTI_REJECTION);
+    await page.goto(sellInfoUrl('de'));
+
+    await expect(page.getByText(MULTI.de)).toBeVisible({ timeout: 20_000 });
+    await page.waitForTimeout(1000);
+    await expect(page).toHaveScreenshot('sell-info-multi-account-de.png', { fullPage: true, maxDiffPixels: 5000 });
   });
 });
