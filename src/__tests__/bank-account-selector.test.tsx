@@ -414,6 +414,28 @@ describe('BankAccountSelector', () => {
     expect(mockOnChange).toHaveBeenCalledWith(createdAccount);
   });
 
+  it('notifies onCreateStart when the param IBAN is created', async () => {
+    const onCreateStart = jest.fn();
+    mockBankAccountParam = 'DE89370400440532013000';
+    mockGetAccount.mockReturnValue(undefined);
+
+    render(
+      <BankAccountSelector
+        placeholder="IBAN"
+        isModalOpen={false}
+        onChange={mockOnChange}
+        onModalToggle={mockOnModalToggle}
+        onCreateStart={onCreateStart}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onCreateStart).toHaveBeenCalledTimes(1);
+    expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+  });
+
   it('calls onError when createAccount rejects and the request is still current', async () => {
     const onError = jest.fn();
     mockBankAccountParam = 'DE89370400440532013000';

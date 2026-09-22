@@ -143,6 +143,7 @@ describe('OrderInterface bank-account error channel', () => {
   beforeEach(() => {
     mockPaymentInfoError = undefined;
     mockOrderPaymentInfo = undefined;
+    mockHandlePaymentInfoFetch.mockReset();
   });
 
   it('shows BankAccountSelector onError through PaymentInfo errorMessage', () => {
@@ -198,6 +199,20 @@ describe('OrderInterface bank-account error channel', () => {
 
     mockHandlePaymentInfoFetch.mockClear();
     fireEvent.click(screen.getByTestId('payment-retry'));
+    expect(mockHandlePaymentInfoFetch).not.toHaveBeenCalled();
+  });
+
+  it('cancels a quote that was already requested when the connect hint appears', () => {
+    const cancel = jest.fn();
+    mockHandlePaymentInfoFetch.mockReturnValue(cancel);
+    render(<OrderInterface orderType={OrderType.SELL} onFetchPaymentInfo={mockOnFetch} confirmPayment={mockConfirm} />);
+
+    expect(mockHandlePaymentInfoFetch).toHaveBeenCalled();
+    cancel.mockClear();
+    mockHandlePaymentInfoFetch.mockClear();
+    fireEvent.click(screen.getByTestId('bank-account-kyc'));
+
+    expect(cancel).toHaveBeenCalledTimes(1);
     expect(mockHandlePaymentInfoFetch).not.toHaveBeenCalled();
   });
 
