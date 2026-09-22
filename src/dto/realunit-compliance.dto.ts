@@ -107,6 +107,29 @@ export interface RealUnitCustomerListDto {
   accountType?: string;
   mail?: string;
   name?: string;
+  lastNameCheckDate?: string;
+  lastNameCheckStatus?: 'NoMatch' | 'MatchWithoutBirthday' | 'MatchWithBirthday';
+  lastNameCheckEvaluation?: 'Confirmed' | 'Ignored' | 'NotMatching' | 'Canceled';
+  canScreen: boolean;
+}
+
+export interface RealUnitNameCheckBatchDto {
+  status: 'Idle' | 'Running' | 'Completed' | 'Failed';
+  total: number;
+  done: number;
+  failed: number;
+  skipped: number;
+  startedAt?: string;
+  finishedAt?: string;
+  startedBy?: string;
+  currentId?: number;
+  error?: string;
+}
+
+export interface RealUnitNameCheckResultDto {
+  id: number;
+  riskStatus: string;
+  date: string;
 }
 
 export interface RealUnitKycFileDto {
