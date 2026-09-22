@@ -471,9 +471,14 @@ test.describe('RealUnit area', () => {
 
     await expect(page.getByPlaceholder('Search by ID, email, phone or name...')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Search' })).toBeVisible();
-    // thead <th> cells map to ARIA role "cell" in this app, not "columnheader".
-    await expect(page.getByText('Last Dilisense check')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Screen all' })).toBeVisible();
+    // The Dilisense column is inside the table, which mounts only when a row is displayed.
+    // An empty or fully filtered list shows copy instead of the thead.
+    const columnOrEmpty = page
+      .getByText('Last Dilisense check')
+      .or(page.getByText('No entries found'))
+      .or(page.getByText('All accounts are hidden by the filter above'));
+    await expect(columnOrEmpty.first()).toBeVisible();
     await expect(
       page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.'),
     ).toHaveCount(0);
