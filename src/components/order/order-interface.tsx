@@ -311,7 +311,7 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
           amountError={amountError}
           kycError={kycError}
           errorMessage={
-            bankAccountFailure ? undefined : data.bankAccount ? paymentInfoError : bankAccountError ?? paymentInfoError
+            bankAccountBlocksQuote ? undefined : data.bankAccount ? paymentInfoError : bankAccountError ?? paymentInfoError
           }
           confirmPayment={confirmPayment}
           confirmButtonLabel={confirmButtonLabel}
