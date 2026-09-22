@@ -220,6 +220,22 @@ describe('OrderInterface bank-account error channel', () => {
     expect(mockHandlePaymentInfoFetch).not.toHaveBeenCalled();
   });
 
+  it('shows a quote error beside the hint when an account is already selected', () => {
+    mockPaymentInfoError = 'quote failed';
+    render(
+      <OrderInterface
+        orderType={OrderType.SELL}
+        onFetchPaymentInfo={mockOnFetch}
+        confirmPayment={mockConfirm}
+        defaultValues={{ bankAccount: { id: 7, iban: 'CH9300762011623852957' } }}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    expect(screen.getByTestId('bank-account-hint')).toBeInTheDocument();
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('quote failed');
+  });
+
   it('keeps the quote when a selected account gets a generic create error', () => {
     mockOrderPaymentInfo = { paymentInfo: { id: 1 } };
     render(
