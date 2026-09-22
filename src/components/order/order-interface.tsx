@@ -151,10 +151,12 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
     }
   }, [sourceAssets, targetAssets, availableCurrencies, orderType, setValue, getDefaultCurrency]);
 
+  const bankAccountBlocksQuote = Boolean(bankAccountFailure) && !data.bankAccount;
+
   useEffect(() => {
-    if (bankAccountFailure || !debouncedData) return;
+    if (bankAccountBlocksQuote || !debouncedData) return;
     return handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue);
-  }, [debouncedData, onFetchPaymentInfo, setValue, handlePaymentInfoFetch, bankAccountFailure]);
+  }, [debouncedData, onFetchPaymentInfo, setValue, handlePaymentInfoFetch, bankAccountBlocksQuote]);
 
   useEffect(() => {
     if (!isSell && data.sourceAsset) {
@@ -288,7 +290,7 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
           className="pt-4"
           isLoading={false}
           orderType={orderType}
-          paymentInfo={bankAccountFailure ? undefined : paymentInfo?.paymentInfo}
+          paymentInfo={bankAccountBlocksQuote ? undefined : paymentInfo?.paymentInfo}
           paymentMethod={data?.paymentMethod}
           sourceAsset={data?.sourceAsset ?? pairMap?.(data?.targetAsset?.name)}
           targetAsset={data?.targetAsset ?? pairMap?.(data?.sourceAsset?.name)}
@@ -298,7 +300,7 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
           confirmPayment={confirmPayment}
           confirmButtonLabel={confirmButtonLabel}
           retry={() => {
-            if (bankAccountFailure) return;
+            if (bankAccountBlocksQuote) return;
             if (bankAccountError) {
               setBankAccountError(undefined);
               setBankAccountRetryToken((token) => token + 1);

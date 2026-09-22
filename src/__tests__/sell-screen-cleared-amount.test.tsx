@@ -1261,6 +1261,23 @@ describe('SellScreen', () => {
     expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
   });
 
+  it('clears the connect hint when a bank account is selected', async () => {
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    });
+    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-alt'));
+    });
+    await flushQuote();
+
+    expect(screen.queryByText('Connect a wallet')).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
+  });
+
   it('keeps the connect hint when a quote that was already running fails', async () => {
     let rejectRunning: (reason?: unknown) => void = () => undefined;
     render(<SellScreen />);
