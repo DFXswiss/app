@@ -1407,7 +1407,6 @@ describe('SellScreen', () => {
     let resolveExact: (value?: unknown) => void = () => undefined;
     render(<SellScreen />);
     await flushQuote();
-    const targetBefore = (screen.getByTestId('input-targetAmount') as HTMLInputElement).value;
     mockReceiveFor.mockImplementation((req: { exactPrice?: boolean }) => {
       if (req.exactPrice) {
         return new Promise((resolve) => {
