@@ -3,12 +3,13 @@ import { test, expect, Page, Route } from '@playwright/test';
 /**
  * Visual regression: RealUnit dashboard home (`/realunit`) pending-quotes table
  * and monitoring charts (buy volume, holders over time, registration), plus the
- * Bonus and Referral prize-wallet card and Prize payouts table.
+ * Bonus and Referral prize-wallet card, Prize payouts table, and the
+ * max-tokens-per-buy card (empty = no limit).
  *
  * Auth is a synthetic Admin JWT. Holders, token info, price history, quotes,
- * transactions, admin stats, GET /v1/realunit/referral/admin/prize-wallet and
- * GET /v1/realunit/referral/admin/payouts are mocked. A green run does not prove
- * the live API returns these fields.
+ * transactions, admin stats, GET /v1/realunit/referral/admin/prize-wallet,
+ * GET /v1/realunit/referral/admin/payouts, and GET/PUT /v1/realunit/admin/buy-limit
+ * are mocked. A green run does not prove the live API returns these fields.
  */
 
 function jwt(): string {
@@ -104,6 +105,9 @@ async function installDashboardRoutes(page: Page): Promise<void> {
         { timestamp: '2026-02-02T00:00:00.000Z', holders: 12 },
       ]);
     }
+    if (path === '/v1/realunit/admin/buy-limit') {
+      return json(route, { maxTokensPerTx: null });
+    }
     if (path === '/v1/realunit/referral/admin/prize-wallet') {
       return json(route, {
         address: '0xabc0000000000000000000000000000000008001',
@@ -195,12 +199,17 @@ test.describe('RealUnit dashboard - Visual Regression Tests', () => {
     await expect(page.getByRole('heading', { name: 'Buy Volume' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Holders over time' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Registration' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Active Buyer' }).first()).toBeVisible();
     await expect(page.getByText('Deactivated Buyer')).toHaveCount(0);
     await expect(page.locator('.apexcharts-canvas').first()).toBeVisible();
 
     const screenshotOpts = { maxDiffPixels: 5000 };
     const section = (heading: string) => page.getByRole('heading', { name: heading }).locator('xpath=..');
+
+    const buyLimitSection = section('Max tokens per buy');
+    await buyLimitSection.scrollIntoViewIfNeeded();
+    await expect(buyLimitSection).toHaveScreenshot('realunit-dashboard-08-buy-limit.png', screenshotOpts);
 
     const bonusSection = section('Bonus and Referral');
     await bonusSection.scrollIntoViewIfNeeded();

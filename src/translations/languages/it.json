@@ -1151,7 +1151,13 @@
     "Registered": "Registrati",
     "Failed to load buy volume.": "Impossibile caricare il volume di acquisto.",
     "Failed to load holder count.": "Impossibile caricare il numero di holder.",
-    "Failed to load registration stats.": "Impossibile caricare le registrazioni."
+    "Failed to load registration stats.": "Impossibile caricare le registrazioni.",
+    "Max tokens per buy": "Token max. per acquisto",
+    "Leave empty for no limit. Applies to each bank buy.": "Lasciare vuoto per nessun limite. Vale per ogni acquisto bancario.",
+    "Save": "Salva",
+    "Loading": "Caricamento",
+    "Failed to load buy limit.": "Impossibile caricare il limite di acquisto.",
+    "Unknown error": "Errore sconosciuto"
   },
   "screens/blockchain": {
     "Transaction signing": "Firma della transazione",
