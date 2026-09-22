@@ -13,6 +13,7 @@
 
 import type { Page, Response } from '@playwright/test';
 import { expect, gotoWithSession, normPath, openScreen, test, waitForRow } from './fixtures';
+import { queryRows } from './fixtures/db';
 import {
   cleanupCreatedData,
   createBankAccount,
@@ -967,5 +968,31 @@ test.describe('Sell + Swap e2e', () => {
 
     expect(bankAccountPosts, 'an existing bank account must not be created again').toBe(0);
     expect(paymentInfos.last, 'the screen must get as far as requesting payment information').toBeTruthy();
+  });
+
+  test('/sell and /sell/info show the wallet hint for a KYC-only account', async ({ page }) => {
+    test.setTimeout(90000);
+    const user = await createUser({
+      walletIndex: nextWalletIndex(),
+      tag: 'sell-kyconly-hint',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    await queryRows(`UPDATE user_data SET status = 'KycOnly' WHERE id = $1`, [user.userDataId]);
+
+    const hint = 'Before you can add a bank account, your DFX account needs a wallet.';
+    const sellUrl = `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1&lang=en&bank-account=${encodeURIComponent(TEST_IBAN)}`;
+    await gotoWithSession(page, sellUrl, user.jwt);
+    await expect(page.getByText(hint)).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('Connect a wallet')).toBeVisible();
+    await expect(page.getByText(/Something went wrong/)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /issued the transaction/i })).toHaveCount(0);
+
+    const infoUrl = `/sell/info?asset-in=ETH&asset-out=CHF&amount-in=0.1&lang=en&bank-account=${encodeURIComponent(TEST_IBAN)}`;
+    await gotoWithSession(page, infoUrl, user.jwt);
+    await expect(page.getByText(hint)).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText(/Something went wrong/)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Complete transaction in your wallet/i })).toHaveCount(0);
   });
 });
