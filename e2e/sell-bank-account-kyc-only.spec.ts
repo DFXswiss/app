@@ -231,6 +231,9 @@ test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
     await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot('sell-info-kyc-only-de.png', { fullPage: true, maxDiffPixels: 5000 });
+
+    await page.getByRole('link', { name: CONNECT.de }).click();
+    await expect(page).toHaveURL(/\/connect/);
   });
 
   test('German multi-account hint on sell', async ({ page }) => {
