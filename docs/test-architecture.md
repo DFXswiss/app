@@ -238,6 +238,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixtures render. It does not prove that those bootstrap endpoints return real data,
   that a live account has that kyc status, or that `deleteAccount` persists against
   the API.
+- **The sell KycOnly bank-account visual spec answers POST /v1/bankAccount itself.**
+  `e2e/sell-bank-account-kyc-only.spec.ts` fulfils that POST with a `400` and
+  `You cannot add an IBAN to a KYC only account`, and fulfils the sell bootstrap
+  GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner`, `/v2/user`). Unmatched `/v1/**` and `/v2/**` calls get
+  `501`. The session is a synthetic unsigned JWT that carries an address, so the
+  address guard stays on `/sell` and `/sell/info`. A green run proves those two
+  screens render the rejection and the link to `/connect`. It does not prove that
+  the API emits the rejection, or that a live account reaches the screen this way.
+  The same hint inside the Safe withdraw form is the component already pictured
+  here; that form needs a custody portfolio this spec does not stand up.
 - **The info-banner layout visual spec answers GET /v1/setting/infoBanner itself.**
   `e2e/info-banner-layout.spec.ts` fulfils `/v1/setting/infoBanner` with synthetic
   multilingual copy, fulfils `GET /v1/support/issue` with one fixture ticket, and
