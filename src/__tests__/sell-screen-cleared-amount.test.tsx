@@ -1237,9 +1237,22 @@ describe('SellScreen', () => {
     });
 
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Connect a wallet'));
     expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
+
+    mockReceiveFor.mockRejectedValue({ statusCode: 500, message: 'later boom' });
+    fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '0.2' } });
+    await flushQuote();
+    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.queryByText('later boom')).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
   });
 
   it('shows the support hint instead of the generic error box for a multi-account create', async () => {
@@ -1251,6 +1264,7 @@ describe('SellScreen', () => {
     });
 
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     expect(screen.getByText(/cannot be added as a personal account/)).toBeInTheDocument();
   });
 

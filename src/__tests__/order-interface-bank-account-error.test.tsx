@@ -9,6 +9,7 @@ const mockGetAvailableCurrencies = () => mockEmptyList;
 const mockGetAvailablePaymentMethods = () => mockEmptyList;
 const mockHandlePaymentInfoFetchWrapper = (...args: unknown[]) => mockHandlePaymentInfoFetch(...args);
 let mockPaymentInfoError: string | undefined;
+let mockOrderPaymentInfo: { paymentInfo?: { id: number } } | undefined;
 
 jest.mock('@dfx.swiss/react', () => ({
   Utils: { formatAmountCrypto: (n: number) => String(n), createRules: () => ({}) },
@@ -72,7 +73,7 @@ jest.mock('src/hooks/order.hook', () => ({
     isSell: true,
     addressItems: mockEmptyList,
     cryptoBalances: mockEmptyList,
-    paymentInfo: undefined,
+    paymentInfo: mockOrderPaymentInfo,
     isFetchingPaymentInfo: false,
     lastEditedFieldRef: mockLastEditedFieldRef,
     paymentInfoError: mockPaymentInfoError,
@@ -123,9 +124,10 @@ jest.mock('src/components/order/bank-account-selector', () => ({
   ),
 }));
 jest.mock('src/components/order/payment-info', () => ({
-  PaymentInfo: ({ errorMessage, retry }: any) => (
+  PaymentInfo: ({ errorMessage, retry, paymentInfo }: any) => (
     <div>
       <div data-testid="payment-error">{errorMessage}</div>
+      {paymentInfo && <div data-testid="payment-body" />}
       <button type="button" data-testid="payment-retry" onClick={retry}>
         retry
       </button>
@@ -140,6 +142,7 @@ import { OrderType } from 'src/hooks/order.hook';
 describe('OrderInterface bank-account error channel', () => {
   beforeEach(() => {
     mockPaymentInfoError = undefined;
+    mockOrderPaymentInfo = undefined;
   });
 
   it('shows BankAccountSelector onError through PaymentInfo errorMessage', () => {
@@ -174,6 +177,24 @@ describe('OrderInterface bank-account error channel', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Connect a wallet' }));
     expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
+  });
+
+  it('hides an existing quote and its raw error while the connect hint is showing', () => {
+    mockOrderPaymentInfo = { paymentInfo: { id: 1 } };
+    mockPaymentInfoError = 'quote failed';
+    render(<OrderInterface orderType={OrderType.SELL} onFetchPaymentInfo={mockOnFetch} confirmPayment={mockConfirm} />);
+
+    expect(screen.getByTestId('payment-body')).toBeInTheDocument();
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('quote failed');
+
+    fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    expect(screen.queryByTestId('payment-body')).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('');
+    expect(screen.getByTestId('bank-account-hint')).toBeInTheDocument();
+
+    mockHandlePaymentInfoFetch.mockClear();
+    fireEvent.click(screen.getByTestId('payment-retry'));
+    expect(mockHandlePaymentInfoFetch).not.toHaveBeenCalled();
   });
 
   it('shows the support hint instead of the raw API sentence for a multi-account create', () => {

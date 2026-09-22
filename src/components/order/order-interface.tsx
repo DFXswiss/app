@@ -288,16 +288,17 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
           className="pt-4"
           isLoading={false}
           orderType={orderType}
-          paymentInfo={paymentInfo?.paymentInfo}
+          paymentInfo={bankAccountFailure ? undefined : paymentInfo?.paymentInfo}
           paymentMethod={data?.paymentMethod}
           sourceAsset={data?.sourceAsset ?? pairMap?.(data?.targetAsset?.name)}
           targetAsset={data?.targetAsset ?? pairMap?.(data?.sourceAsset?.name)}
           amountError={amountError}
           kycError={kycError}
-          errorMessage={bankAccountError ?? paymentInfoError}
+          errorMessage={bankAccountFailure ? undefined : bankAccountError ?? paymentInfoError}
           confirmPayment={confirmPayment}
           confirmButtonLabel={confirmButtonLabel}
           retry={() => {
+            if (bankAccountFailure) return;
             if (bankAccountError) {
               setBankAccountError(undefined);
               setBankAccountRetryToken((token) => token + 1);

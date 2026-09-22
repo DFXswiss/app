@@ -134,6 +134,8 @@ export default function SellScreen(): JSX.Element {
   const [errorMessage, setErrorMessage] = useState<string>();
   const [errorSource, setErrorSource] = useState<'bank' | 'quote'>();
   const [bankAccountFailure, setBankAccountFailure] = useState<Exclude<BankAccountFailureKind, 'other'>>();
+  const bankAccountFailureRef = useRef(bankAccountFailure);
+  bankAccountFailureRef.current = bankAccountFailure;
   const [bankAccountRetryToken, setBankAccountRetryToken] = useState(0);
   const [kycError, setKycError] = useState<TransactionError>();
   const [isLoading, setIsLoading] = useState<Side>();
@@ -438,8 +440,7 @@ export default function SellScreen(): JSX.Element {
           const kycErrorFromMessage = getKycErrorFromMessage(error.message);
           if (kycErrorFromMessage) {
             setKycError(kycErrorFromMessage);
-          } else {
-            setBankAccountFailure(undefined);
+          } else if (!bankAccountFailureRef.current) {
             setErrorSource('quote');
             setErrorMessage(error.message ?? 'Unknown error');
           }
@@ -574,7 +575,15 @@ export default function SellScreen(): JSX.Element {
 
   function onSubmit(_data?: FormData) {
     if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
-    if (!paymentInfo || !isQuoteFinal || kycError || errorMessage || customAmountError?.hideInfos || isProcessing)
+    if (
+      !paymentInfo ||
+      !isQuoteFinal ||
+      kycError ||
+      errorMessage ||
+      bankAccountFailure ||
+      customAmountError?.hideInfos ||
+      isProcessing
+    )
       return;
     if (selectedAsset?.category === AssetCategory.PRIVATE && !flags?.includes('private')) return;
     void handleNext(paymentInfo);
@@ -614,7 +623,9 @@ export default function SellScreen(): JSX.Element {
       // Other errors - show message, user can click Retry to see deposit address for manual transfer
       setBankAccountFailure(undefined);
       setErrorSource('quote');
-      setErrorMessage(translate('screens/sell', 'Transaction failed. Click Retry to see the deposit address for manual transfer.'));
+      setErrorMessage(
+        translate('screens/sell', 'Transaction failed. Click Retry to see the deposit address for manual transfer.'),
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -815,6 +826,7 @@ export default function SellScreen(): JSX.Element {
                   {paymentInfo &&
                     !kycError &&
                     !errorMessage &&
+                    !bankAccountFailure &&
                     !customAmountError?.hideInfos &&
                     (selectedAsset?.category === AssetCategory.PRIVATE && !flags?.includes('private') ? (
                       <PrivateAssetHint asset={selectedAsset} />
