@@ -1239,6 +1239,12 @@ describe('SellScreen', () => {
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
     expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-create-start'));
+    });
+    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Connect a wallet'));
     expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
 
@@ -1253,6 +1259,33 @@ describe('SellScreen', () => {
       await Promise.resolve();
     });
     expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
+  });
+
+  it('keeps the connect hint when a quote that was already running fails', async () => {
+    let rejectRunning: (reason?: unknown) => void = () => undefined;
+    render(<SellScreen />);
+    await flushQuote();
+    mockReceiveFor.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRunning = reject;
+        }),
+    );
+    fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '0.2' } });
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    });
+    await act(async () => {
+      rejectRunning({ statusCode: 500, message: 'later boom' });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.queryByText('later boom')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
   });
 
   it('shows the support hint instead of the generic error box for a multi-account create', async () => {

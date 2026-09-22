@@ -139,7 +139,6 @@ export default function SellInfoScreen(): JSX.Element {
         isCreatingAccountRef.current = true;
         requestedCreateIbanRef.current = bankAccountParam;
         setErrorMessage(undefined);
-        setBankAccountFailure(undefined);
         createAccount({ iban: bankAccountParam })
           .then((account) => {
             if (
