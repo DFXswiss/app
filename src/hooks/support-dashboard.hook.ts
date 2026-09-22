@@ -91,6 +91,9 @@ export interface SupportMessageInfo {
   message?: string;
   fileName?: string;
   created: string;
+  // Set once a clerk transferred the attachment into the customer's KYC file.
+  kycFileId?: number;
+  kycFileName?: string;
 }
 
 export interface UserSearchResult {
@@ -262,6 +265,20 @@ export function useSupportDashboard() {
     });
   }
 
+  // Copies a message attachment server-side into the customer's KYC file (Compliance role). The
+  // title becomes the descriptive part of the stored file name; the API answers with the updated message.
+  async function transferMessageFileToKycFile(
+    issueId: string,
+    messageId: number,
+    title: string,
+  ): Promise<SupportMessageInfo> {
+    return guardedCall<SupportMessageInfo>({
+      url: `support/issue/${issueId}/message/${messageId}/kycFile`,
+      method: 'PUT',
+      data: { title },
+    });
+  }
+
   return useMemo(
     () => ({
       getIssueList,
@@ -276,6 +293,7 @@ export function useSupportDashboard() {
       createIssue,
       getIssueMessages,
       getMessageFile,
+      transferMessageFileToKycFile,
       searchUsers,
     }),
     [guardedCall],

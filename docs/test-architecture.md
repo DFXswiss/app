@@ -161,6 +161,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   for that uid, clerks, clerk mapping and activity with synthetic fixtures. A green run proves
   that the Kundennotiz composer renders those fixtures. It does not prove that the API returns
   that issue or that `createSupportNote` persists a note.
+- **The staff ticket KYC-file-transfer visual spec answers the issue payload itself.**
+  `e2e/support-kyc-file-transfer.spec.ts` answers the issue payload, messages, clerks, clerk mapping
+  and activity with fixtures. A green run proves those fixtures render. It does not prove that the
+  API returns them or that PUT kycFile persists.
 - **The support-issue receiver-IBAN spec pins KYC level and account mail on GET /v2/user.**
   `e2e/support-issue-receiver-iban.spec.ts` rewrites that response so `kyc.level` is high enough for
   the screen guard and `mail` is present if the cached wallet session has none. A green visual run

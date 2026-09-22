@@ -195,6 +195,10 @@
     "title": "Support-Ticket Kundennotiz",
     "description": "Staff-Issue: interne Kundennotiz mit Ticket-Betreff und Entwurf, nicht in den Kunden-Thread."
   },
+  "support-kyc-file-transfer": {
+    "title": "Support-Ticket KYC-File-Übernahme",
+    "description": "Staff-Ticket: Anhang aus dem Nachrichten-Thread ins KYC-File des Kunden übernehmen."
+  },
   "subpage": {
     "title": "Unterseiten",
     "description": "Buy-, Sell-, Swap- und Transaktions-Unterseiten."
