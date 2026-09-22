@@ -39,6 +39,7 @@ const usdtPrivate = {
   description: 'Tether',
 };
 const bankAccount = { id: 1, iban: 'CH9300762011623852957', preferredCurrency: { name: 'CHF', sellable: true } };
+let mockSelectAccountOnMount = true;
 const bankAccountAlt = { id: 2, iban: 'DE89370400440532013000', preferredCurrency: { name: 'CHF', sellable: true } };
 let mockAssets = [eth];
 let mockSession: { address: string } | undefined;
@@ -258,7 +259,7 @@ jest.mock('src/components/order/bank-account-selector', () => ({
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const React = require('react');
     React.useEffect(() => {
-      onChange(bankAccount);
+      if (mockSelectAccountOnMount) onChange(bankAccount);
     }, []);
     return (
       <div data-testid="bank-account-selector">
@@ -432,6 +433,7 @@ describe('SellScreen', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    mockSelectAccountOnMount = true;
     mockAssets = [eth];
     mockSession = undefined;
     mockActiveWallet = undefined;
@@ -1237,14 +1239,14 @@ describe('SellScreen', () => {
     });
 
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
     expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('bank-account-create-start'));
     });
     expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Connect a wallet'));
     expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
 
@@ -1254,6 +1256,62 @@ describe('SellScreen', () => {
     expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
     expect(screen.queryByText('later boom')).not.toBeInTheDocument();
 
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
+  });
+
+  it('completes the selected account while the connect hint is showing', async () => {
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: 'Click here once you have issued the transaction' }).click();
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('sell-completion')).toBeInTheDocument();
+  });
+
+  it('does not complete the connect hint when no account is selected', async () => {
+    mockSelectAccountOnMount = false;
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    });
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
+  });
+
+  it('completes when the selected account has a generic create error', async () => {
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-error'));
+    });
+    expect(screen.getByTestId('error-hint')).toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Click here once you have issued the transaction' }).click();
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('sell-completion')).toBeInTheDocument();
+  });
+
+  it('does not complete a generic create error when no account is selected', async () => {
+    mockSelectAccountOnMount = false;
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-error'));
+    });
     await act(async () => {
       fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
       await Promise.resolve();
@@ -1373,7 +1431,7 @@ describe('SellScreen', () => {
     });
 
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toBeInTheDocument();
     expect(screen.getByText(/cannot be added as a personal account/)).toBeInTheDocument();
   });
 

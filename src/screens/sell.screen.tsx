@@ -580,16 +580,9 @@ export default function SellScreen(): JSX.Element {
 
   function onSubmit(_data?: FormData) {
     if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
-    if (
-      !paymentInfo ||
-      !isQuoteFinal ||
-      kycError ||
-      errorMessage ||
-      bankAccountFailure ||
-      customAmountError?.hideInfos ||
-      isProcessing
-    )
-      return;
+    if (bankAccountFailure && !selectedBankAccount) return;
+    if (errorMessage && !(errorSource === 'bank' && selectedBankAccount)) return;
+    if (!paymentInfo || !isQuoteFinal || kycError || customAmountError?.hideInfos || isProcessing) return;
     if (selectedAsset?.category === AssetCategory.PRIVATE && !flags?.includes('private')) return;
     void handleNext(paymentInfo);
   }
@@ -832,8 +825,8 @@ export default function SellScreen(): JSX.Element {
 
                   {paymentInfo &&
                     !kycError &&
-                    !errorMessage &&
-                    !bankAccountFailure &&
+                    !(errorMessage && !(errorSource === 'bank' && selectedBankAccount)) &&
+                    !(bankAccountFailure && !selectedBankAccount) &&
                     !customAmountError?.hideInfos &&
                     (selectedAsset?.category === AssetCategory.PRIVATE && !flags?.includes('private') ? (
                       <PrivateAssetHint asset={selectedAsset} />
