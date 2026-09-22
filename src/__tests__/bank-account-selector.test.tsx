@@ -6,7 +6,7 @@ const mockValidateIban = jest.fn(() => true as boolean | string);
 const mockFormatIban = jest.fn(() => undefined as string | undefined);
 
 const existing = { id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true };
-let mockBankAccounts: typeof existing[] | undefined = [existing];
+let mockBankAccounts: (typeof existing)[] | undefined = [existing];
 let mockBankAccountParam: string | undefined;
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -79,7 +79,7 @@ describe('BankAccountSelector', () => {
     jest.clearAllMocks();
     mockBankAccounts = [existing];
     mockBankAccountParam = undefined;
-    mockGetAccount.mockImplementation((list: typeof existing[], iban?: string) =>
+    mockGetAccount.mockImplementation((list: (typeof existing)[], iban?: string) =>
       iban ? list.find((a) => a.iban === iban) : undefined,
     );
     mockCreateAccount.mockResolvedValue({ id: 2, iban: 'DE89370400440532013000' });
@@ -89,9 +89,7 @@ describe('BankAccountSelector', () => {
 
   it('does nothing while bank accounts have not loaded', () => {
     mockBankAccounts = undefined;
-    render(
-      <BankAccountSelector placeholder="IBAN" onChange={mockOnChange} onModalToggle={mockOnModalToggle} />,
-    );
+    render(<BankAccountSelector placeholder="IBAN" onChange={mockOnChange} onModalToggle={mockOnModalToggle} />);
     expect(mockOnChange).not.toHaveBeenCalled();
     expect(mockCreateAccount).not.toHaveBeenCalled();
   });
@@ -102,9 +100,7 @@ describe('BankAccountSelector', () => {
       { id: 6, iban: 'CH3908307000001001002' },
     ];
     mockGetAccount.mockReturnValue(undefined);
-    render(
-      <BankAccountSelector placeholder="IBAN" onChange={mockOnChange} onModalToggle={mockOnModalToggle} />,
-    );
+    render(<BankAccountSelector placeholder="IBAN" onChange={mockOnChange} onModalToggle={mockOnModalToggle} />);
     expect(mockOnChange).not.toHaveBeenCalled();
     expect(mockCreateAccount).not.toHaveBeenCalled();
   });
@@ -113,16 +109,12 @@ describe('BankAccountSelector', () => {
     const only = { id: 4, iban: 'CH3180869000123456789', label: 'Only' };
     mockBankAccounts = [only];
     mockGetAccount.mockReturnValue(undefined);
-    render(
-      <BankAccountSelector placeholder="IBAN" onChange={mockOnChange} onModalToggle={mockOnModalToggle} />,
-    );
+    render(<BankAccountSelector placeholder="IBAN" onChange={mockOnChange} onModalToggle={mockOnModalToggle} />);
     expect(mockOnChange).toHaveBeenCalledWith(only);
   });
 
   it('selects the default account when no bank-account param is set', () => {
-    render(
-      <BankAccountSelector placeholder="IBAN" onChange={mockOnChange} onModalToggle={mockOnModalToggle} />,
-    );
+    render(<BankAccountSelector placeholder="IBAN" onChange={mockOnChange} onModalToggle={mockOnModalToggle} />);
     expect(mockOnChange).toHaveBeenCalledWith(existing);
     expect(mockCreateAccount).not.toHaveBeenCalled();
   });
@@ -286,12 +278,7 @@ describe('BankAccountSelector', () => {
     );
 
     render(
-      <BankAccountSelector
-        placeholder="IBAN"
-        isModalOpen
-        onChange={mockOnChange}
-        onModalToggle={mockOnModalToggle}
-      />,
+      <BankAccountSelector placeholder="IBAN" isModalOpen onChange={mockOnChange} onModalToggle={mockOnModalToggle} />,
     );
     await act(async () => {
       await Promise.resolve();
@@ -362,9 +349,7 @@ describe('BankAccountSelector', () => {
     const createdAccount = { id: 2, iban: 'DE89370400440532013000' };
     mockBankAccountParam = createdAccount.iban;
     mockGetAccount.mockReturnValue(undefined);
-    mockCreateAccount
-      .mockRejectedValueOnce(new Error('temporary failure'))
-      .mockResolvedValueOnce(createdAccount);
+    mockCreateAccount.mockRejectedValueOnce(new Error('temporary failure')).mockResolvedValueOnce(createdAccount);
 
     const { rerender } = render(
       <BankAccountSelector
@@ -381,7 +366,7 @@ describe('BankAccountSelector', () => {
     });
 
     expect(mockCreateAccount).toHaveBeenCalledTimes(1);
-    expect(onError).toHaveBeenCalledWith('temporary failure');
+    expect(onError).toHaveBeenCalledWith('temporary failure', 'other');
 
     rerender(
       <BankAccountSelector
@@ -405,9 +390,7 @@ describe('BankAccountSelector', () => {
     const createdAccount = { id: 2, iban: 'DE89370400440532013000' };
     mockBankAccountParam = createdAccount.iban;
     mockGetAccount.mockReturnValue(undefined);
-    mockCreateAccount
-      .mockRejectedValueOnce(new Error('temporary failure'))
-      .mockResolvedValueOnce(createdAccount);
+    mockCreateAccount.mockRejectedValueOnce(new Error('temporary failure')).mockResolvedValueOnce(createdAccount);
 
     render(
       <BankAccountSelector
@@ -435,7 +418,10 @@ describe('BankAccountSelector', () => {
     const onError = jest.fn();
     mockBankAccountParam = 'DE89370400440532013000';
     mockGetAccount.mockReturnValue(undefined);
-    mockCreateAccount.mockRejectedValue({ message: 'You cannot add an IBAN to a KYC only account' });
+    mockCreateAccount.mockRejectedValue({
+      statusCode: 400,
+      message: 'You cannot add an IBAN to a KYC only account',
+    });
     await act(async () => {
       render(
         <BankAccountSelector
@@ -449,8 +435,71 @@ describe('BankAccountSelector', () => {
       await Promise.resolve();
     });
     expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError).toHaveBeenCalledWith('You cannot add an IBAN to a KYC only account');
+    expect(onError).toHaveBeenCalledWith('You cannot add an IBAN to a KYC only account', 'kyc-only');
     expect(mockOnChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps a KYC-only sentence generic when the status is not 400', async () => {
+    const onError = jest.fn();
+    mockBankAccountParam = 'DE89370400440532013000';
+    mockGetAccount.mockReturnValue(undefined);
+    mockCreateAccount.mockRejectedValue({
+      statusCode: 500,
+      message: 'You cannot add an IBAN to a KYC only account',
+    });
+    await act(async () => {
+      render(
+        <BankAccountSelector
+          placeholder="IBAN"
+          isModalOpen={false}
+          onChange={mockOnChange}
+          onModalToggle={mockOnModalToggle}
+          onError={onError}
+        />,
+      );
+      await Promise.resolve();
+    });
+    expect(onError).toHaveBeenCalledWith('You cannot add an IBAN to a KYC only account', 'other');
+  });
+
+  it('reports a multi-account rejection as its own kind', async () => {
+    const onError = jest.fn();
+    mockBankAccountParam = 'DE89370400440532013000';
+    mockGetAccount.mockReturnValue(undefined);
+    mockCreateAccount.mockRejectedValue({ statusCode: 400, message: 'Multi-account IBAN' });
+    await act(async () => {
+      render(
+        <BankAccountSelector
+          placeholder="IBAN"
+          isModalOpen={false}
+          onChange={mockOnChange}
+          onModalToggle={mockOnModalToggle}
+          onError={onError}
+        />,
+      );
+      await Promise.resolve();
+    });
+    expect(onError).toHaveBeenCalledWith('Multi-account IBAN', 'multi-account');
+  });
+
+  it('reports a rejection without a message as an unknown error', async () => {
+    const onError = jest.fn();
+    mockBankAccountParam = 'DE89370400440532013000';
+    mockGetAccount.mockReturnValue(undefined);
+    mockCreateAccount.mockRejectedValue({ statusCode: 400 });
+    await act(async () => {
+      render(
+        <BankAccountSelector
+          placeholder="IBAN"
+          isModalOpen={false}
+          onChange={mockOnChange}
+          onModalToggle={mockOnModalToggle}
+          onError={onError}
+        />,
+      );
+      await Promise.resolve();
+    });
+    expect(onError).toHaveBeenCalledWith('Unknown error', 'other');
   });
 
   it('does not call onError after the bank-account param has changed', async () => {
@@ -529,12 +578,7 @@ describe('BankAccountSelector', () => {
 
   it('picks an account from the modal and accepts AddBankAccount', () => {
     render(
-      <BankAccountSelector
-        placeholder="IBAN"
-        isModalOpen
-        onChange={mockOnChange}
-        onModalToggle={mockOnModalToggle}
-      />,
+      <BankAccountSelector placeholder="IBAN" isModalOpen onChange={mockOnChange} onModalToggle={mockOnModalToggle} />,
     );
     fireEvent.click(screen.getByTestId('pick-1'));
     expect(mockOnChange).toHaveBeenCalledWith(existing);

@@ -37,6 +37,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FieldPath, FieldPathValue, useForm, useWatch } from 'react-hook-form';
 import { BankAccountSelector } from 'src/components/order/bank-account-selector';
+import { BankAccountFailureKind } from 'src/components/payment/bank-account-create-failure';
+import { BankAccountCreateHint } from 'src/components/payment/bank-account-create-hint';
 import { AddressSwitch } from 'src/components/payment/address-switch';
 import { PaymentInformationContent } from 'src/components/payment/payment-info-sell';
 import { PrivateAssetHint } from 'src/components/private-asset-hint';
@@ -130,6 +132,9 @@ export default function SellScreen(): JSX.Element {
   const [availableAssets, setAvailableAssets] = useState<Asset[]>();
   const [customAmountError, setCustomAmountError] = useState<CustomAmountError>();
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [errorSource, setErrorSource] = useState<'bank' | 'quote'>();
+  const [bankAccountFailure, setBankAccountFailure] = useState<Exclude<BankAccountFailureKind, 'other'>>();
+  const [bankAccountRetryToken, setBankAccountRetryToken] = useState(0);
   const [kycError, setKycError] = useState<TransactionError>();
   const [isLoading, setIsLoading] = useState<Side>();
   const [paymentInfo, setPaymentInfo] = useState<Sell>();
@@ -434,6 +439,8 @@ export default function SellScreen(): JSX.Element {
           if (kycErrorFromMessage) {
             setKycError(kycErrorFromMessage);
           } else {
+            setBankAccountFailure(undefined);
+            setErrorSource('quote');
             setErrorMessage(error.message ?? 'Unknown error');
           }
         }
@@ -605,6 +612,8 @@ export default function SellScreen(): JSX.Element {
       // User rejected in wallet - silently return, user stays on form
       if (error.code === 4001) return;
       // Other errors - show message, user can click Retry to see deposit address for manual transfer
+      setBankAccountFailure(undefined);
+      setErrorSource('quote');
       setErrorMessage(translate('screens/sell', 'Transaction failed. Click Retry to see the deposit address for manual transfer.'));
     } finally {
       setIsProcessing(false);
@@ -746,8 +755,29 @@ export default function SellScreen(): JSX.Element {
                 </StyledHorizontalStack>
                 <BankAccountSelector
                   value={selectedBankAccount}
-                  onChange={(account) => setVal('bankAccount', account)}
-                  onError={setErrorMessage}
+                  onChange={(account) => {
+                    setBankAccountFailure(undefined);
+                    setErrorSource(undefined);
+                    setErrorMessage(undefined);
+                    setVal('bankAccount', account);
+                  }}
+                  onError={(message, kind) => {
+                    if (kind === 'kyc-only' || kind === 'multi-account') {
+                      setErrorMessage(undefined);
+                      setErrorSource(undefined);
+                      setBankAccountFailure(kind);
+                      return;
+                    }
+                    setBankAccountFailure(undefined);
+                    setErrorSource('bank');
+                    setErrorMessage(message);
+                  }}
+                  onCreateStart={() => {
+                    setBankAccountFailure(undefined);
+                    setErrorSource(undefined);
+                    setErrorMessage(undefined);
+                  }}
+                  retryToken={bankAccountRetryToken}
                   placeholder={translate('screens/sell', 'Add or select your IBAN')}
                   isModalOpen={bankAccountSelection}
                   onModalToggle={setBankAccountSelection}
@@ -762,6 +792,8 @@ export default function SellScreen(): JSX.Element {
                 <>
                   {kycError && !customAmountError && <QuoteErrorHint type={TransactionType.SELL} error={kycError} />}
 
+                  {bankAccountFailure && <BankAccountCreateHint kind={bankAccountFailure} />}
+
                   {errorMessage && (
                     <StyledVerticalStack center className="text-center">
                       <ErrorHint message={errorMessage} />
@@ -769,7 +801,11 @@ export default function SellScreen(): JSX.Element {
                       <StyledButton
                         width={StyledButtonWidth.MIN}
                         label={translate('general/actions', 'Retry')}
-                        onClick={() => setRetryToken((token) => token + 1)}
+                        onClick={() =>
+                          errorSource === 'bank'
+                            ? setBankAccountRetryToken((token) => token + 1)
+                            : setRetryToken((token) => token + 1)
+                        }
                         className="mt-4"
                         color={StyledButtonColor.STURDY_WHITE}
                       />

@@ -143,7 +143,13 @@ jest.mock('@dfx.swiss/react-components', () => {
         <button
           type="button"
           data-testid="form-submit"
-          onClick={() => onSubmit?.({ preventDefault() { return undefined; } })}
+          onClick={() =>
+            onSubmit?.({
+              preventDefault() {
+                return undefined;
+              },
+            })
+          }
         >
           submit
         </button>
@@ -202,9 +208,23 @@ jest.mock('@dfx.swiss/react-components', () => {
           )}
         />
       ) : null,
-    StyledLink: ({ children, label }: any) => <div>{label ?? children}</div>,
+    StyledLink: ({ children, label, onClick }: any) => (
+      <button type="button" onClick={onClick}>
+        {label ?? children}
+      </button>
+    ),
+    StyledInfoText: ({ children }: any) => <div>{children}</div>,
     StyledLoadingSpinner: () => <div data-testid="loading-spinner" />,
-    StyledSearchDropdown: ({ name, items, labelFunc, control, filterFunc, balanceFunc, descriptionFunc, assetIconFunc }: any) => (
+    StyledSearchDropdown: ({
+      name,
+      items,
+      labelFunc,
+      control,
+      filterFunc,
+      balanceFunc,
+      descriptionFunc,
+      assetIconFunc,
+    }: any) => (
       <Controller
         name={name}
         control={control}
@@ -234,7 +254,7 @@ jest.mock('@dfx.swiss/react-components', () => {
 });
 
 jest.mock('src/components/order/bank-account-selector', () => ({
-  BankAccountSelector: ({ onChange, onModalToggle, onError }: any) => {
+  BankAccountSelector: ({ onChange, onModalToggle, onError, onCreateStart, retryToken }: any) => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const React = require('react');
     React.useEffect(() => {
@@ -242,14 +262,25 @@ jest.mock('src/components/order/bank-account-selector', () => ({
     }, []);
     return (
       <div data-testid="bank-account-selector">
+        <div data-testid="bank-account-retry-token">{retryToken}</div>
         <button type="button" data-testid="bank-account-toggle" onClick={() => onModalToggle(true)}>
           toggle
         </button>
         <button type="button" data-testid="bank-account-alt" onClick={() => onChange(bankAccountAlt)}>
           alt
         </button>
-        <button type="button" data-testid="bank-account-error" onClick={() => onError?.('create failed')}>
+        <button type="button" data-testid="bank-account-error" onClick={() => onError?.('create failed', 'other')}>
           error
+        </button>
+        <button
+          type="button"
+          data-testid="bank-account-kyc"
+          onClick={() => onError?.('You cannot add an IBAN to a KYC only account', 'kyc-only')}
+        >
+          kyc
+        </button>
+        <button type="button" data-testid="bank-account-create-start" onClick={() => onCreateStart?.()}>
+          start
         </button>
       </div>
     );
@@ -263,7 +294,9 @@ jest.mock('src/components/payment/payment-info-sell', () => ({
     </div>
   ),
 }));
-jest.mock('../components/error-hint', () => ({ ErrorHint: ({ message }: any) => <div data-testid="error-hint">{message}</div> }));
+jest.mock('../components/error-hint', () => ({
+  ErrorHint: ({ message }: any) => <div data-testid="error-hint">{message}</div>,
+}));
 jest.mock('../components/exchange-rate', () => ({ ExchangeRate: () => <div data-testid="exchange-rate" /> }));
 jest.mock('../components/payment/address-switch', () => ({
   AddressSwitch: ({ onClose }: any) => (
@@ -323,6 +356,9 @@ jest.mock('../hooks/guard.hook', () => ({
 }));
 jest.mock('../hooks/layout-config.hook', () => ({
   useLayoutOptions: (opts: unknown) => mockLayoutOptions(opts),
+}));
+jest.mock('react-i18next', () => ({
+  Trans: ({ children }: any) => children,
 }));
 jest.mock('../hooks/navigation.hook', () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
@@ -772,9 +808,7 @@ describe('SellScreen', () => {
   });
 
   it('routes KYC quote errors through QuoteErrorHint', async () => {
-    mockReceiveFor.mockImplementation((req: any) =>
-      Promise.resolve({ ...quoteFor(req), error: 'KycRequired' }),
-    );
+    mockReceiveFor.mockImplementation((req: any) => Promise.resolve({ ...quoteFor(req), error: 'KycRequired' }));
     render(<SellScreen />);
     await flushQuote();
     expect(screen.getByTestId('quote-error')).toHaveTextContent('KycRequired');
@@ -805,9 +839,9 @@ describe('SellScreen', () => {
   });
 
   it('shows a generic error and retries', async () => {
-    mockReceiveFor.mockRejectedValueOnce({ statusCode: 500, message: 'boom' }).mockImplementation((req: any) =>
-      Promise.resolve(quoteFor(req)),
-    );
+    mockReceiveFor
+      .mockRejectedValueOnce({ statusCode: 500, message: 'boom' })
+      .mockImplementation((req: any) => Promise.resolve(quoteFor(req)));
     render(<SellScreen />);
     await flushQuote();
     expect(screen.getByTestId('error-hint')).toHaveTextContent('boom');
@@ -1169,6 +1203,38 @@ describe('SellScreen', () => {
     expect(screen.getByTestId('error-hint')).toHaveTextContent('create failed');
   });
 
+  it('retries a bank-account create through the selector, not the quote', async () => {
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-error'));
+    });
+    expect(screen.getByTestId('bank-account-retry-token')).toHaveTextContent('0');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+    expect(screen.getByTestId('bank-account-retry-token')).toHaveTextContent('1');
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-create-start'));
+    });
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+  });
+
+  it('shows a connect link instead of the generic error box for a KYC-only create', async () => {
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    });
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Connect a wallet'));
+    expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
+  });
+
   it('uses the exact You get heading when rate is 1', async () => {
     mockReceiveFor.mockImplementation((req: any) => Promise.resolve({ ...quoteFor(req), rate: 1, exchangeRate: 1 }));
     render(<SellScreen />);
@@ -1318,9 +1384,7 @@ describe('SellScreen', () => {
 
   it('uses available blockchains when wallet and URL chain are unset', async () => {
     mockWalletBlockchain = undefined;
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({ blockchain: undefined, availableBlockchains: ['Ethereum'] }),
-    );
+    mockUseAppParams.mockReturnValue(baseAppParams({ blockchain: undefined, availableBlockchains: ['Ethereum'] }));
     render(<SellScreen />);
     await flushQuote();
     expect(screen.getByTestId('select-asset-ETH')).toBeInTheDocument();
@@ -1328,9 +1392,7 @@ describe('SellScreen', () => {
 
   it('uses an empty blockchain list when none are provided', async () => {
     mockWalletBlockchain = undefined;
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({ blockchain: undefined, availableBlockchains: undefined }),
-    );
+    mockUseAppParams.mockReturnValue(baseAppParams({ blockchain: undefined, availableBlockchains: undefined }));
     render(<SellScreen />);
     await act(async () => {
       jest.advanceTimersByTime(500);
@@ -1429,9 +1491,7 @@ describe('SellScreen', () => {
     mockIsInitialized = false;
     mockSession = { address: '0xabc' };
     mockHideTarget = false;
-    mockUseAppParams.mockReturnValue(
-      baseAppParams({ hideTargetSelection: false, blockchain: 'Ethereum' }),
-    );
+    mockUseAppParams.mockReturnValue(baseAppParams({ hideTargetSelection: false, blockchain: 'Ethereum' }));
     render(<SellScreen />);
     await act(async () => {
       jest.advanceTimersByTime(500);

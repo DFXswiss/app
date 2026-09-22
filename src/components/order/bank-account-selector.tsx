@@ -2,6 +2,7 @@ import { BankAccount, useBankAccount, useBankAccountContext, Utils, Validations 
 import { StyledModalButton, StyledVerticalStack } from '@dfx.swiss/react-components';
 import React, { useEffect, useRef, useState } from 'react';
 import { AddBankAccount } from 'src/components/payment/add-bank-account';
+import { BankAccountFailureKind, bankAccountFailureKind } from 'src/components/payment/bank-account-create-failure';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import { useAppParams } from 'src/hooks/app-params.hook';
@@ -12,7 +13,7 @@ import { Modal } from '../modal';
 interface BankAccountSelectorProps {
   value?: BankAccount;
   onChange: (account: BankAccount) => void;
-  onError?: (message: string) => void;
+  onError?: (message: string, kind: BankAccountFailureKind) => void;
   onCreateStart?: () => void;
   retryToken?: number;
   placeholder: string;
@@ -71,8 +72,7 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
     if (!bankAccounts) return;
 
     const fromParam = bankAccount ? getAccount(bankAccounts, bankAccount) : undefined;
-    const fallback =
-      bankAccounts.find((a) => a.default) ?? (bankAccounts.length === 1 ? bankAccounts[0] : undefined);
+    const fallback = bankAccounts.find((a) => a.default) ?? (bankAccounts.length === 1 ? bankAccounts[0] : undefined);
     const account = fromParam ?? (bankAccount ? undefined : fallback);
 
     if (account) {
@@ -99,11 +99,11 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
           if (!mountedRef.current || requestGenerationRef.current !== requestGeneration) return;
           onChange(b);
         })
-        .catch((e: { message?: string }) => {
+        .catch((e: { statusCode?: number; message?: string }) => {
           if (!mountedRef.current || requestGenerationRef.current !== requestGeneration) return;
           requestedCreateIbanRef.current = undefined;
           failedCreateIbanRef.current = requestedIban;
-          onError?.(e.message ?? 'Unknown error');
+          onError?.(e.message ?? 'Unknown error', bankAccountFailureKind(e));
         });
     }
   }, [

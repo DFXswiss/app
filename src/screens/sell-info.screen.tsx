@@ -35,6 +35,8 @@ import {
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
 import { useEffect, useRef, useState } from 'react';
+import { BankAccountFailureKind, bankAccountFailureKind } from 'src/components/payment/bank-account-create-failure';
+import { BankAccountCreateHint } from 'src/components/payment/bank-account-create-hint';
 import { PaymentInformationContent } from 'src/components/payment/payment-info-sell';
 import { useWalletContext } from 'src/contexts/wallet.context';
 import { useCountdown } from 'src/hooks/countdown.hook';
@@ -81,6 +83,7 @@ export default function SellInfoScreen(): JSX.Element {
   const [bankAccount, setBankAccount] = useState<BankAccount>();
   const [customAmountError, setCustomAmountError] = useState<string>();
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [bankAccountFailure, setBankAccountFailure] = useState<Exclude<BankAccountFailureKind, 'other'>>();
   const [kycError, setKycError] = useState<TransactionError>();
   const [isProcessing, setIsProcessing] = useState(false);
   const [sellTxId, setSellTxId] = useState<string>();
@@ -122,10 +125,12 @@ export default function SellInfoScreen(): JSX.Element {
         isCreatingAccountRef.current = false;
         requestedCreateIbanRef.current = undefined;
         setErrorMessage(undefined);
+        setBankAccountFailure(undefined);
         setBankAccount(account);
       } else if (!isCreatingAccountRef.current && requestedCreateIbanRef.current !== bankAccountParam) {
         const ibanIsValid = Validations.Iban(allowedCountries).validate(bankAccountParam);
         if (ibanIsValid !== true) {
+          setBankAccountFailure(undefined);
           setErrorMessage(`Invalid IBAN: ${ibanIsValid}`);
           return;
         }
@@ -134,6 +139,7 @@ export default function SellInfoScreen(): JSX.Element {
         isCreatingAccountRef.current = true;
         requestedCreateIbanRef.current = bankAccountParam;
         setErrorMessage(undefined);
+        setBankAccountFailure(undefined);
         createAccount({ iban: bankAccountParam })
           .then((account) => {
             if (
@@ -143,6 +149,7 @@ export default function SellInfoScreen(): JSX.Element {
             )
               return;
             setErrorMessage(undefined);
+            setBankAccountFailure(undefined);
             setBankAccount(account);
           })
           .catch((error: ApiError) => {
@@ -153,13 +160,14 @@ export default function SellInfoScreen(): JSX.Element {
             )
               return;
 
-            let errorKey = 'The bank account could not be added.';
-            if (error.message?.includes('KYC only account')) {
-              errorKey = 'Before you can add a bank account, your DFX account needs a wallet.';
-            } else if (error.message?.includes('Multi-account IBAN')) {
-              errorKey = 'This is a multi-account IBAN and cannot be added as a personal account.';
+            const kind = bankAccountFailureKind(error);
+            if (kind === 'other') {
+              setBankAccountFailure(undefined);
+              setErrorMessage(translate('screens/sell', 'The bank account could not be added.'));
+              return;
             }
-            setErrorMessage(translate('screens/sell', errorKey));
+            setErrorMessage(undefined);
+            setBankAccountFailure(kind);
           })
           .finally(() => {
             if (mountedRef.current && bankAccountRequestGenerationRef.current === requestGeneration) {
@@ -326,6 +334,8 @@ export default function SellInfoScreen(): JSX.Element {
     <>
       {showsCompletion && paymentInfo ? (
         <SellCompletion paymentInfo={paymentInfo} navigateOnClose={false} txId={sellTxId} />
+      ) : bankAccountFailure ? (
+        <BankAccountCreateHint kind={bankAccountFailure} />
       ) : errorMessage ? (
         <StyledVerticalStack center className="text-center">
           <ErrorHint message={errorMessage} />
