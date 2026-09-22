@@ -216,6 +216,26 @@ describe('OrderInterface bank-account error channel', () => {
     expect(mockHandlePaymentInfoFetch).not.toHaveBeenCalled();
   });
 
+  it('keeps a quote for an account that is already selected and clears the hint when another is chosen', () => {
+    mockOrderPaymentInfo = { paymentInfo: { id: 1 } };
+    render(
+      <OrderInterface
+        orderType={OrderType.SELL}
+        onFetchPaymentInfo={mockOnFetch}
+        confirmPayment={mockConfirm}
+        defaultValues={{ bankAccount: { id: 7, iban: 'CH9300762011623852957' } }}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    expect(screen.getByTestId('bank-account-hint')).toBeInTheDocument();
+    expect(screen.getByTestId('payment-body')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('bank-account-success'));
+    expect(screen.queryByTestId('bank-account-hint')).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-body')).toBeInTheDocument();
+  });
+
   it('shows the support hint instead of the raw API sentence for a multi-account create', () => {
     process.env.REACT_APP_PUBLIC_URL = 'http://localhost:3001/';
     render(
