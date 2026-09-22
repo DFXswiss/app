@@ -40,7 +40,7 @@ describe('useStaffVerifiedName', () => {
   });
 
   it('loads the trimmed clerk name from the support endpoint', async () => {
-    mockGetSupportClerk.mockResolvedValue('  Ada Lovelace  ');
+    mockGetSupportClerk.mockResolvedValue({ clerkUserDataId: 42, clerk: '  Ada Lovelace  ' });
 
     const { result } = renderHook(() => useStaffVerifiedName());
 
@@ -58,7 +58,7 @@ describe('useStaffVerifiedName', () => {
 
   it('uses the RealUnit clerk endpoint and does not call getUserData when clerk is present', async () => {
     mockAuth.session = { account: 42, role: 'RealUnit' };
-    mockGetRealunitClerk.mockResolvedValue('Real Unit Clerk');
+    mockGetRealunitClerk.mockResolvedValue({ clerkUserDataId: 42, clerk: 'Real Unit Clerk' });
 
     const { result } = renderHook(() => useStaffVerifiedName());
 
@@ -85,7 +85,7 @@ describe('useStaffVerifiedName', () => {
   });
 
   it('falls back to getUserData when clerk is blank', async () => {
-    mockGetSupportClerk.mockResolvedValue('   ');
+    mockGetSupportClerk.mockResolvedValue({ clerkUserDataId: 42, clerk: '   ' });
     mockGetUserData.mockResolvedValue({ userData: { verifiedName: 'Ada Lovelace' } });
 
     const { result } = renderHook(() => useStaffVerifiedName());
@@ -181,8 +181,8 @@ describe('useStaffVerifiedName', () => {
   });
 
   it('reloads from the RealUnit endpoint when the same account changes role', async () => {
-    mockGetSupportClerk.mockResolvedValue('Ada Lovelace');
-    mockGetRealunitClerk.mockResolvedValue('Real Unit Clerk');
+    mockGetSupportClerk.mockResolvedValue({ clerkUserDataId: 42, clerk: 'Ada Lovelace' });
+    mockGetRealunitClerk.mockResolvedValue({ clerkUserDataId: 42, clerk: 'Real Unit Clerk' });
 
     const { result, rerender } = renderHook(() => useStaffVerifiedName());
     await waitFor(() => expect(result.current.name).toBe('Ada Lovelace'));
@@ -201,8 +201,8 @@ describe('useStaffVerifiedName', () => {
   });
 
   it('reuses the in-flight request for the same account', async () => {
-    let resolveRequest!: (value: string | undefined) => void;
-    const request = new Promise<string | undefined>((resolve) => {
+    let resolveRequest!: (value: { clerkUserDataId: number; clerk: string } | undefined) => void;
+    const request = new Promise<{ clerkUserDataId: number; clerk: string } | undefined>((resolve) => {
       resolveRequest = resolve;
     });
     mockGetSupportClerk.mockReturnValue(request);
@@ -213,7 +213,7 @@ describe('useStaffVerifiedName', () => {
     expect(mockGetSupportClerk).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveRequest('Ada Lovelace');
+      resolveRequest({ clerkUserDataId: 42, clerk: 'Ada Lovelace' });
       await request;
     });
 
@@ -224,7 +224,8 @@ describe('useStaffVerifiedName', () => {
   it('does not keep the previous name while another account is loading', async () => {
     mockGetSupportClerk.mockImplementation(() => {
       const account = mockAuth.session?.account;
-      return Promise.resolve(account === 42 ? 'Ada Lovelace' : 'Grace Hopper');
+      const clerk = account === 42 ? 'Ada Lovelace' : 'Grace Hopper';
+      return Promise.resolve({ clerkUserDataId: account ?? 0, clerk });
     });
 
     const { result, rerender } = renderHook(() => useStaffVerifiedName());
@@ -241,8 +242,8 @@ describe('useStaffVerifiedName', () => {
   });
 
   it('ignores a resolved request after unmounting', async () => {
-    let resolveRequest!: (value: string | undefined) => void;
-    const request = new Promise<string | undefined>((resolve) => {
+    let resolveRequest!: (value: { clerkUserDataId: number; clerk: string } | undefined) => void;
+    const request = new Promise<{ clerkUserDataId: number; clerk: string } | undefined>((resolve) => {
       resolveRequest = resolve;
     });
     mockGetSupportClerk.mockReturnValue(request);
@@ -251,7 +252,7 @@ describe('useStaffVerifiedName', () => {
     unmount();
 
     await act(async () => {
-      resolveRequest('Ada Lovelace');
+      resolveRequest({ clerkUserDataId: 42, clerk: 'Ada Lovelace' });
       await Promise.resolve();
     });
   });

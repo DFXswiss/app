@@ -191,6 +191,10 @@
     "title": "Support-Dashboard Übersicht",
     "description": "Support-Dashboard-Übersicht und Statistiken."
   },
+  "support-dashboard-issue": {
+    "title": "Support-Ticket Detailansicht",
+    "description": "Staff-Issue: Detailpanels, Clerk-Auswahl und Nachrichtenverlauf."
+  },
   "support-ticket-note": {
     "title": "Support-Ticket Kundennotiz",
     "description": "Staff-Issue: interne Kundennotiz mit Ticket-Betreff und Entwurf, nicht in den Kunden-Thread."
