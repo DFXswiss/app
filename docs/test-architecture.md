@@ -249,6 +249,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the API emits the rejection, or that a live account reaches the screen this way.
   The same hint inside the Safe withdraw form is the component already pictured
   here; that form needs a custody portfolio this spec does not stand up.
+  Two further cases fulfil the same POST with `Multi-account IBAN cannot be added`
+  and prove the support-ticket hint renders. A green run does not prove the API
+  emits that sentence either.
+- **The sell KYC-only full-stack case writes `user_data.status` with SQL.**
+  `e2e-stack/specs/sell-swap.spec.ts` creates a wallet-backed user and then sets
+  `user_data.status` to `KycOnly`. A green run proves `/sell` and `/sell/info`
+  render the wallet hint for that row. It does not prove the product path that
+  leaves an account in `KycOnly`, and it does not prove the rejection for an
+  account that never had a wallet.
 - **The info-banner layout visual spec answers GET /v1/setting/infoBanner itself.**
   `e2e/info-banner-layout.spec.ts` fulfils `/v1/setting/infoBanner` with synthetic
   multilingual copy, fulfils `GET /v1/support/issue` with one fixture ticket, and
