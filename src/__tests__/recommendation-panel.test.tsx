@@ -79,6 +79,13 @@ function wallet(overrides: Partial<UserInfo> = {}): UserInfo {
   };
 }
 
+async function fillOpenedRefForm(code: string, reason: string): Promise<void> {
+  fireEvent.click(screen.getByRole('button', { name: /^Set$/ }));
+  const codeField = await screen.findByRole('textbox', { name: 'Ref-Code' });
+  fireEvent.change(codeField, { target: { value: code } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Reason' }), { target: { value: reason } });
+}
+
 function renderPanel(props: Partial<{ kycSteps: KycStepInfo[]; users: UserInfo[]; userDataId: string }> = {}) {
   if (props.users !== undefined) {
     mockGetUserData.mockResolvedValue({ users: props.users });
@@ -213,9 +220,7 @@ describe('RecommendationPanel', () => {
       wallet({ id: 1, usedRef: '194-687' }),
       wallet({ id: 2, address: '0xdef', usedRef: '194-687' }),
     ]);
-    fireEvent.click(screen.getByRole('button', { name: 'Set' }));
-    fireEvent.change(screen.getByLabelText('Ref-Code'), { target: { value: '194-687' } });
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'confirmed' } });
+    await fillOpenedRefForm('194-687', 'confirmed');
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(screen.getByRole('button', { name: '- (194-687)' })).toBeInTheDocument());
@@ -239,9 +244,7 @@ describe('RecommendationPanel', () => {
       wallet({ id: 1, usedRef: '194-687' }),
       wallet({ id: 2, address: '0xdef', usedRef: '194-687' }),
     ]);
-    fireEvent.click(screen.getByRole('button', { name: 'Set' }));
-    fireEvent.change(screen.getByLabelText('Ref-Code'), { target: { value: '194-687' } });
-    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'confirmed' } });
+    await fillOpenedRefForm('194-687', 'confirmed');
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByRole('button', { name: '- (194-687)' })).toBeInTheDocument());
 
