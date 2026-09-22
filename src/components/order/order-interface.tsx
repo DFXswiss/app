@@ -18,6 +18,8 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { PaymentMethodDescriptions, PaymentMethodLabels } from 'src/config/labels';
+import { BankAccountFailureKind } from 'src/components/payment/bank-account-create-failure';
+import { BankAccountCreateHint } from 'src/components/payment/bank-account-create-hint';
 import { useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useOrderUIContext } from 'src/contexts/order-ui.context';
@@ -108,6 +110,7 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
   const data = watch();
   const debouncedData = useDebounce(data, 500);
   const [bankAccountError, setBankAccountError] = useState<string>();
+  const [bankAccountFailure, setBankAccountFailure] = useState<Exclude<BankAccountFailureKind, 'other'>>();
   const [bankAccountRetryToken, setBankAccountRetryToken] = useState(0);
 
   const availablePaymentMethods: FiatPaymentMethod[] = useMemo(
@@ -247,10 +250,22 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
             value={data.bankAccount}
             onChange={(account) => {
               setBankAccountError(undefined);
+              setBankAccountFailure(undefined);
               setValue('bankAccount', account);
             }}
-            onError={setBankAccountError}
-            onCreateStart={() => setBankAccountError(undefined)}
+            onError={(message, kind) => {
+              if (kind === 'kyc-only' || kind === 'multi-account') {
+                setBankAccountError(undefined);
+                setBankAccountFailure(kind);
+                return;
+              }
+              setBankAccountFailure(undefined);
+              setBankAccountError(message);
+            }}
+            onCreateStart={() => {
+              setBankAccountError(undefined);
+              setBankAccountFailure(undefined);
+            }}
             retryToken={bankAccountRetryToken}
             placeholder={translate('screens/sell', 'Add or select your IBAN')}
             isModalOpen={bankAccountSelection}
@@ -268,6 +283,7 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
             onClick={() => debouncedData && handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue)}
           />
         </div>
+        {bankAccountFailure && <BankAccountCreateHint kind={bankAccountFailure} />}
         <PaymentInfo
           className="pt-4"
           isLoading={false}

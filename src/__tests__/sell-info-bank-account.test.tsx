@@ -69,7 +69,7 @@ const mockAppParams = {
   availableBlockchains: mockAvailableBlockchains as string[] | undefined,
 };
 
-let mockBankAccounts: typeof mockBankAccount[] | undefined = [mockBankAccount];
+let mockBankAccounts: (typeof mockBankAccount)[] | undefined = [mockBankAccount];
 let mockActiveWallet: typeof mockWallet | undefined;
 let mockCountdownState = {
   timer: { minutes: 10, seconds: 0 },
@@ -178,7 +178,11 @@ jest.mock('@dfx.swiss/react-components', () => ({
     </div>
   ),
   StyledInfoTextSize: { XS: 'xs' },
-  StyledLink: ({ label }: any) => <div>{label}</div>,
+  StyledLink: ({ label, onClick }: any) => (
+    <button type="button" onClick={onClick}>
+      {label}
+    </button>
+  ),
   StyledLoadingSpinner: ({ variant }: any) => (
     <div data-testid={variant === 'light-mode' ? 'inline-spinner' : 'spinner'} data-variant={variant} />
   ),
@@ -203,6 +207,13 @@ jest.mock('src/hooks/tx-helper.hook', () => ({
   get useTxHelper() {
     return mockUseTxHelper;
   },
+}));
+const mockNavigate = jest.fn();
+jest.mock('src/hooks/navigation.hook', () => ({
+  useNavigation: () => ({ navigate: mockNavigate }),
+}));
+jest.mock('react-i18next', () => ({
+  Trans: ({ children }: any) => children,
 }));
 jest.mock('../components/error-hint', () => ({
   ErrorHint: ({ message }: any) => <div data-testid="error-hint">{message}</div>,
@@ -279,7 +290,7 @@ describe('SellInfoScreen', () => {
     mockGetAsset.mockReturnValue(eth);
     mockGetAssets.mockReturnValue(mockAssets);
     mockGetCurrency.mockReturnValue(chf);
-    mockGetAccount.mockImplementation((accounts: typeof mockBankAccount[] | undefined, iban: string) =>
+    mockGetAccount.mockImplementation((accounts: (typeof mockBankAccount)[] | undefined, iban: string) =>
       accounts?.find((account) => account.iban === iban),
     );
     mockCreateAccount.mockResolvedValue(mockBankAccount);
@@ -343,12 +354,8 @@ describe('SellInfoScreen', () => {
 
     it.each([
       [
-        { message: 'You cannot add an IBAN to a KYC only account' },
-        'Before you can add a bank account, your DFX account needs a wallet.',
-      ],
-      [
-        { message: 'Multi-account IBANs cannot be added here' },
-        'This is a multi-account IBAN and cannot be added as a personal account.',
+        { statusCode: 500, message: 'You cannot add an IBAN to a KYC only account' },
+        'The bank account could not be added.',
       ],
       [{ message: 'Service unavailable' }, 'The bank account could not be added.'],
       [{}, 'The bank account could not be added.'],
@@ -358,7 +365,38 @@ describe('SellInfoScreen', () => {
       render(<SellInfoScreen />);
 
       expect(await screen.findByTestId('error-hint')).toHaveTextContent(expected);
+      expect(screen.queryByTestId('info-text')).not.toBeInTheDocument();
       expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends a KYC-only account to connect a wallet instead of the generic error box', async () => {
+      mockBankAccounts = [];
+      mockCreateAccount.mockRejectedValue({
+        statusCode: 400,
+        message: 'You cannot add an IBAN to a KYC only account',
+      });
+      render(<SellInfoScreen />);
+
+      expect(await screen.findByTestId('info-text')).toHaveTextContent(
+        'Before you can add a bank account, your DFX account needs a wallet.',
+      );
+      expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+
+      screen.getByRole('button', { name: 'Connect a wallet' }).click();
+      expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
+    });
+
+    it('points a multi-account IBAN at a support ticket', async () => {
+      process.env.REACT_APP_PUBLIC_URL = 'http://localhost:3001/';
+      mockBankAccounts = [];
+      mockCreateAccount.mockRejectedValue({ statusCode: 400, message: 'Multi-account IBAN' });
+      render(<SellInfoScreen />);
+
+      expect(await screen.findByTestId('info-text')).toHaveTextContent(
+        'This is a multi-account IBAN and cannot be added as a personal account.',
+      );
+      expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
     });
 
     it('retries account creation after a rejection and clears the error after success', async () => {
@@ -427,9 +465,7 @@ describe('SellInfoScreen', () => {
         });
 
         expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
-        expect(mockReceiveFor).not.toHaveBeenCalledWith(
-          expect.objectContaining({ iban: 'CH5604835012345678009' }),
-        );
+        expect(mockReceiveFor).not.toHaveBeenCalledWith(expect.objectContaining({ iban: 'CH5604835012345678009' }));
       },
     );
 
@@ -500,7 +536,13 @@ describe('SellInfoScreen', () => {
       await renderHappyPath();
       const request = mockReceiveFor.mock.calls[mockReceiveFor.mock.calls.length - 1][0];
       expect(request).toEqual(
-        expect.objectContaining({ amount: 0.1, exactPrice: true, iban: mockBankAccount.iban, asset: eth, currency: chf }),
+        expect.objectContaining({
+          amount: 0.1,
+          exactPrice: true,
+          iban: mockBankAccount.iban,
+          asset: eth,
+          currency: chf,
+        }),
       );
       expect(request).not.toHaveProperty('targetAmount');
     });
@@ -527,9 +569,7 @@ describe('SellInfoScreen', () => {
     });
 
     it('retries quote loading directly once the bank account already exists', async () => {
-      mockReceiveFor
-        .mockRejectedValueOnce({ message: 'Quote service unavailable' })
-        .mockResolvedValueOnce(makeSell());
+      mockReceiveFor.mockRejectedValueOnce({ message: 'Quote service unavailable' }).mockResolvedValueOnce(makeSell());
       render(<SellInfoScreen />);
       expect(await screen.findByTestId('error-hint')).toHaveTextContent('Quote service unavailable');
 
@@ -642,22 +682,18 @@ describe('SellInfoScreen', () => {
     });
 
     it('closes a custom amount error with the cancel result', async () => {
-      mockReceiveFor
-        .mockResolvedValueOnce(makeSell())
-        .mockImplementationOnce(() => ({
-          then: (validate: (sell: ReturnType<typeof makeSell>) => void) => {
-            validate(makeSell({ error: mockTransactionError.AMOUNT_TOO_LOW }));
-            return new Promise(() => undefined);
-          },
-        }));
+      mockReceiveFor.mockResolvedValueOnce(makeSell()).mockImplementationOnce(() => ({
+        then: (validate: (sell: ReturnType<typeof makeSell>) => void) => {
+          validate(makeSell({ error: mockTransactionError.AMOUNT_TOO_LOW }));
+          return new Promise(() => undefined);
+        },
+      }));
       const { rerender } = await renderHappyPath();
 
       mockAppParams.amountIn = '0.2';
       rerender(<SellInfoScreen />);
 
-      expect(screen.getByTestId('info-text')).toHaveTextContent(
-        'Entered amount is below minimum deposit of 0.02 ETH',
-      );
+      expect(screen.getByTestId('info-text')).toHaveTextContent('Entered amount is below minimum deposit of 0.02 ETH');
       screen.getByRole('button', { name: 'Close' }).click();
 
       expect(mockCloseServices).toHaveBeenCalledTimes(1);
@@ -665,14 +701,12 @@ describe('SellInfoScreen', () => {
     });
 
     it('shows the quote error while a refreshed KYC-invalid quote is being processed', async () => {
-      mockReceiveFor
-        .mockResolvedValueOnce(makeSell())
-        .mockImplementationOnce(() => ({
-          then: (validate: (sell: ReturnType<typeof makeSell>) => void) => {
-            validate(makeSell({ error: mockTransactionError.KYC_REQUIRED }));
-            return new Promise(() => undefined);
-          },
-        }));
+      mockReceiveFor.mockResolvedValueOnce(makeSell()).mockImplementationOnce(() => ({
+        then: (validate: (sell: ReturnType<typeof makeSell>) => void) => {
+          validate(makeSell({ error: mockTransactionError.KYC_REQUIRED }));
+          return new Promise(() => undefined);
+        },
+      }));
       const { rerender } = await renderHappyPath();
 
       mockAppParams.amountIn = '0.2';
@@ -782,14 +816,12 @@ describe('SellInfoScreen', () => {
 
     it('shows the inline light-mode spinner while refreshing an existing quote', async () => {
       let resolveRefresh: (value: unknown) => void = () => undefined;
-      mockReceiveFor
-        .mockResolvedValueOnce(makeSell())
-        .mockImplementationOnce(
-          () =>
-            new Promise((resolve) => {
-              resolveRefresh = resolve;
-            }),
-        );
+      mockReceiveFor.mockResolvedValueOnce(makeSell()).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRefresh = resolve;
+          }),
+      );
       const { rerender } = await renderHappyPath();
 
       mockAppParams.amountIn = '0.2';

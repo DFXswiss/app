@@ -23,6 +23,12 @@ jest.mock('@dfx.swiss/react-components', () => ({
   StyledButtonWidth: { FULL: 'full' },
   StyledDropdown: () => null,
   StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
+  StyledInfoText: ({ children }: any) => <div data-testid="bank-account-hint">{children}</div>,
+  StyledLink: ({ label, onClick }: any) => (
+    <button type="button" onClick={onClick}>
+      {label}
+    </button>
+  ),
 }));
 
 jest.mock('src/config/labels', () => ({
@@ -37,6 +43,13 @@ jest.mock('src/contexts/layout.context', () => ({
 }));
 jest.mock('src/contexts/order-ui.context', () => ({
   useOrderUIContext: () => ({ bankAccountSelection: false, setBankAccountSelection: jest.fn() }),
+}));
+const mockNavigate = jest.fn();
+jest.mock('react-i18next', () => ({
+  Trans: ({ children }: any) => children,
+}));
+jest.mock('src/hooks/navigation.hook', () => ({
+  useNavigation: () => ({ navigate: mockNavigate }),
 }));
 jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_ns: string, key: string) => key }),
@@ -79,8 +92,15 @@ jest.mock('src/components/order/bank-account-selector', () => ({
   BankAccountSelector: ({ onChange, onError, onCreateStart, retryToken }: any) => (
     <div>
       <div data-testid="bank-account-retry-token">{retryToken}</div>
-      <button type="button" data-testid="bank-account-error" onClick={() => onError?.('create failed')}>
+      <button type="button" data-testid="bank-account-error" onClick={() => onError?.('create failed', 'other')}>
         error
+      </button>
+      <button
+        type="button"
+        data-testid="bank-account-kyc"
+        onClick={() => onError?.('You cannot add an IBAN to a KYC only account', 'kyc-only')}
+      >
+        kyc
       </button>
       <button type="button" data-testid="bank-account-create-start" onClick={() => onCreateStart?.()}>
         start
@@ -116,13 +136,7 @@ describe('OrderInterface bank-account error channel', () => {
   });
 
   it('shows BankAccountSelector onError through PaymentInfo errorMessage', () => {
-    render(
-      <OrderInterface
-        orderType={OrderType.SELL}
-        onFetchPaymentInfo={mockOnFetch}
-        confirmPayment={mockConfirm}
-      />,
-    );
+    render(<OrderInterface orderType={OrderType.SELL} onFetchPaymentInfo={mockOnFetch} confirmPayment={mockConfirm} />);
 
     expect(screen.getByTestId('payment-error')).toHaveTextContent('');
     fireEvent.click(screen.getByTestId('bank-account-error'));
@@ -130,13 +144,7 @@ describe('OrderInterface bank-account error channel', () => {
   });
 
   it('clears a bank-account error when a new attempt starts and after a successful selection', () => {
-    render(
-      <OrderInterface
-        orderType={OrderType.SELL}
-        onFetchPaymentInfo={mockOnFetch}
-        confirmPayment={mockConfirm}
-      />,
-    );
+    render(<OrderInterface orderType={OrderType.SELL} onFetchPaymentInfo={mockOnFetch} confirmPayment={mockConfirm} />);
 
     fireEvent.click(screen.getByTestId('bank-account-error'));
     expect(screen.getByTestId('payment-error')).toHaveTextContent('create failed');
@@ -149,14 +157,20 @@ describe('OrderInterface bank-account error channel', () => {
     expect(screen.getByTestId('payment-error')).toHaveTextContent('');
   });
 
-  it('uses the visible retry action to start another bank-account attempt', () => {
-    render(
-      <OrderInterface
-        orderType={OrderType.SELL}
-        onFetchPaymentInfo={mockOnFetch}
-        confirmPayment={mockConfirm}
-      />,
+  it('shows a connect link instead of the raw API sentence for a KYC-only create', () => {
+    render(<OrderInterface orderType={OrderType.SELL} onFetchPaymentInfo={mockOnFetch} confirmPayment={mockConfirm} />);
+
+    fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('');
+    expect(screen.getByTestId('bank-account-hint')).toHaveTextContent(
+      'Before you can add a bank account, your DFX account needs a wallet.',
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Connect a wallet' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
+  });
+
+  it('uses the visible retry action to start another bank-account attempt', () => {
+    render(<OrderInterface orderType={OrderType.SELL} onFetchPaymentInfo={mockOnFetch} confirmPayment={mockConfirm} />);
 
     expect(screen.getByTestId('bank-account-retry-token')).toHaveTextContent('0');
     fireEvent.click(screen.getByTestId('bank-account-error'));
@@ -167,13 +181,7 @@ describe('OrderInterface bank-account error channel', () => {
 
   it('shows the blocking bank-account error before an older payment-info error', () => {
     mockPaymentInfoError = 'quote failed';
-    render(
-      <OrderInterface
-        orderType={OrderType.SELL}
-        onFetchPaymentInfo={mockOnFetch}
-        confirmPayment={mockConfirm}
-      />,
-    );
+    render(<OrderInterface orderType={OrderType.SELL} onFetchPaymentInfo={mockOnFetch} confirmPayment={mockConfirm} />);
 
     expect(screen.getByTestId('payment-error')).toHaveTextContent('quote failed');
     fireEvent.click(screen.getByTestId('bank-account-error'));
