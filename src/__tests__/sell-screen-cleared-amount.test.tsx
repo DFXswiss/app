@@ -279,6 +279,13 @@ jest.mock('src/components/order/bank-account-selector', () => ({
         >
           kyc
         </button>
+        <button
+          type="button"
+          data-testid="bank-account-multi"
+          onClick={() => onError?.('Multi-account IBAN', 'multi-account')}
+        >
+          multi
+        </button>
         <button type="button" data-testid="bank-account-create-start" onClick={() => onCreateStart?.()}>
           start
         </button>
@@ -1233,6 +1240,18 @@ describe('SellScreen', () => {
     expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Connect a wallet'));
     expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
+  });
+
+  it('shows the support hint instead of the generic error box for a multi-account create', async () => {
+    process.env.REACT_APP_PUBLIC_URL = 'http://localhost:3001/';
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-multi'));
+    });
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByText(/cannot be added as a personal account/)).toBeInTheDocument();
   });
 
   it('uses the exact You get heading when rate is 1', async () => {

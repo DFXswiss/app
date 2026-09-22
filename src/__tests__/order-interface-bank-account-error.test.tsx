@@ -102,6 +102,13 @@ jest.mock('src/components/order/bank-account-selector', () => ({
       >
         kyc
       </button>
+      <button
+        type="button"
+        data-testid="bank-account-multi"
+        onClick={() => onError?.('Multi-account IBAN', 'multi-account')}
+      >
+        multi
+      </button>
       <button type="button" data-testid="bank-account-create-start" onClick={() => onCreateStart?.()}>
         start
       </button>
@@ -167,6 +174,19 @@ describe('OrderInterface bank-account error channel', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Connect a wallet' }));
     expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
+  });
+
+  it('shows the support hint instead of the raw API sentence for a multi-account create', () => {
+    process.env.REACT_APP_PUBLIC_URL = 'http://localhost:3001/';
+    render(
+      <OrderInterface orderType={OrderType.SELL} onFetchPaymentInfo={mockOnFetch} confirmPayment={mockConfirm} />,
+    );
+
+    fireEvent.click(screen.getByTestId('bank-account-multi'));
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('');
+    expect(screen.getByTestId('bank-account-hint')).toHaveTextContent(
+      'This is a multi-account IBAN and cannot be added as a personal account.',
+    );
   });
 
   it('uses the visible retry action to start another bank-account attempt', () => {
