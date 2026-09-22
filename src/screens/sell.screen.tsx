@@ -404,12 +404,14 @@ export default function SellScreen(): JSX.Element {
     receiveFor(data)
       .then((sell) => {
         if (!isRunning || !sell || generation !== quoteGeneration.current) return;
+        if (bankAccountFailureRef.current) return;
         validateSell(sell);
         setPaymentInfo(sell);
         return receiveFor({ ...data, exactPrice: true });
       })
       .then((info) => {
         if (!isRunning || !info) return;
+        if (bankAccountFailureRef.current) return;
         if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
         if (generation !== quoteGeneration.current) return;
         if (validatedData.sideToUpdate === Side.SPEND) {

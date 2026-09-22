@@ -512,6 +512,36 @@ describe('SellInfoScreen', () => {
       expect(mockGetAssets).toHaveBeenCalledWith([], { sellable: true, comingSoon: false });
     });
 
+    it('does not let a finished create start another one after retry', async () => {
+      let finishFirst: (value?: unknown) => void = () => undefined;
+      mockAppParams.amountIn = undefined;
+      mockAppParams.amountOut = undefined;
+      mockBankAccounts = [];
+      mockCreateAccount.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishFirst = resolve;
+          }),
+      );
+
+      render(<SellInfoScreen />);
+      await settle();
+      expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+      expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument();
+
+      await act(async () => {
+        screen.getByRole('button', { name: 'Retry' }).click();
+      });
+      await settle();
+      expect(mockCreateAccount).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        finishFirst(mockBankAccount);
+      });
+      await settle();
+      expect(mockCreateAccount).toHaveBeenCalledTimes(2);
+    });
+
     it('shows a missing-information error when the external input is incomplete', async () => {
       mockAppParams.amountIn = undefined;
       mockAppParams.bankAccount = undefined;

@@ -152,8 +152,9 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
   }, [sourceAssets, targetAssets, availableCurrencies, orderType, setValue, getDefaultCurrency]);
 
   useEffect(() => {
-    if (debouncedData) handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue);
-  }, [debouncedData, onFetchPaymentInfo, setValue, handlePaymentInfoFetch]);
+    if (bankAccountFailure || !debouncedData) return;
+    return handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue);
+  }, [debouncedData, onFetchPaymentInfo, setValue, handlePaymentInfoFetch, bankAccountFailure]);
 
   useEffect(() => {
     if (!isSell && data.sourceAsset) {

@@ -251,6 +251,8 @@ export default function SellInfoScreen(): JSX.Element {
 
   function handleRetry() {
     if (bankAccountParam && !bankAccount) {
+      bankAccountRequestGenerationRef.current += 1;
+      isCreatingAccountRef.current = false;
       requestedCreateIbanRef.current = undefined;
       setErrorMessage(undefined);
       setBankAccountRetryGeneration((generation) => generation + 1);

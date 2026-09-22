@@ -1288,6 +1288,65 @@ describe('SellScreen', () => {
     expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
   });
 
+  it('does not apply a quote that resolves after the connect hint', async () => {
+    let resolveRunning: (value?: unknown) => void = () => undefined;
+    render(<SellScreen />);
+    await flushQuote();
+    mockReceiveFor.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRunning = resolve;
+        }),
+    );
+    fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '0.2' } });
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    });
+    await act(async () => {
+      resolveRunning({ ...quoteFor({ amount: 0.2 }), error: 'AmountTooLow' });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.queryByTestId('input-amount-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+  });
+
+  it('does not write the exact price after the connect hint', async () => {
+    let resolveExact: (value?: unknown) => void = () => undefined;
+    render(<SellScreen />);
+    await flushQuote();
+    const targetBefore = (screen.getByTestId('input-targetAmount') as HTMLInputElement).value;
+    mockReceiveFor.mockImplementation((req: { exactPrice?: boolean }) => {
+      if (req.exactPrice) {
+        return new Promise((resolve) => {
+          resolveExact = resolve;
+        });
+      }
+      return Promise.resolve(quoteFor(req));
+    });
+    fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '0.2' } });
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    });
+    await act(async () => {
+      resolveExact({ ...quoteFor({ amount: 0.2 }), estimatedAmount: 777 });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue(targetBefore);
+    expect(screen.getByTestId('input-targetAmount')).not.toHaveValue('777');
+  });
+
   it('shows the support hint instead of the generic error box for a multi-account create', async () => {
     process.env.REACT_APP_PUBLIC_URL = 'http://localhost:3001/';
     render(<SellScreen />);
