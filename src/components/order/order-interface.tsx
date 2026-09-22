@@ -286,6 +286,20 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
           />
         </div>
         {bankAccountFailure && <BankAccountCreateHint kind={bankAccountFailure} />}
+        {data.bankAccount && bankAccountError && (
+          <StyledVerticalStack center className="text-center">
+            <p className="text-dfxGray-800 text-sm">{bankAccountError}</p>
+            <StyledButton
+              type="button"
+              width={StyledButtonWidth.MIN}
+              label={translate('general/actions', 'Retry')}
+              onClick={() => {
+                setBankAccountError(undefined);
+                setBankAccountRetryToken((token) => token + 1);
+              }}
+            />
+          </StyledVerticalStack>
+        )}
         <PaymentInfo
           className="pt-4"
           isLoading={false}
@@ -296,7 +310,9 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
           targetAsset={data?.targetAsset ?? pairMap?.(data?.sourceAsset?.name)}
           amountError={amountError}
           kycError={kycError}
-          errorMessage={bankAccountFailure ? undefined : bankAccountError ?? paymentInfoError}
+          errorMessage={
+            bankAccountFailure ? undefined : data.bankAccount ? paymentInfoError : bankAccountError ?? paymentInfoError
+          }
           confirmPayment={confirmPayment}
           confirmButtonLabel={confirmButtonLabel}
           retry={() => {

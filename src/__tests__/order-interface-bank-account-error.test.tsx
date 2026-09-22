@@ -20,7 +20,11 @@ jest.mock('@dfx.swiss/react', () => ({
 
 jest.mock('@dfx.swiss/react-components', () => ({
   Form: ({ children }: any) => <div>{children}</div>,
-  StyledButton: ({ label }: any) => <button type="button">{label}</button>,
+  StyledButton: ({ label, onClick }: any) => (
+    <button type="button" onClick={onClick}>
+      {label}
+    </button>
+  ),
   StyledButtonWidth: { FULL: 'full' },
   StyledDropdown: () => null,
   StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
@@ -214,6 +218,27 @@ describe('OrderInterface bank-account error channel', () => {
 
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(mockHandlePaymentInfoFetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps the quote when a selected account gets a generic create error', () => {
+    mockOrderPaymentInfo = { paymentInfo: { id: 1 } };
+    render(
+      <OrderInterface
+        orderType={OrderType.SELL}
+        onFetchPaymentInfo={mockOnFetch}
+        confirmPayment={mockConfirm}
+        defaultValues={{ bankAccount: { id: 7, iban: 'CH9300762011623852957' } }}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('bank-account-error'));
+    expect(screen.getByText('create failed')).toBeInTheDocument();
+    expect(screen.getByTestId('payment-error')).toHaveTextContent('');
+    expect(screen.getByTestId('payment-body')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(screen.queryByText('create failed')).not.toBeInTheDocument();
+    expect(screen.getByTestId('bank-account-retry-token')).toHaveTextContent('1');
   });
 
   it('keeps a quote for an account that is already selected and clears the hint when another is chosen', () => {
