@@ -317,12 +317,12 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
           confirmButtonLabel={confirmButtonLabel}
           retry={() => {
             if (bankAccountBlocksQuote) return;
-            if (bankAccountError) {
+            if (!data.bankAccount && bankAccountError) {
               setBankAccountError(undefined);
               setBankAccountRetryToken((token) => token + 1);
-            } else if (debouncedData) {
-              handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue);
+              return;
             }
+            if (debouncedData) handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue);
           }}
         />
       </StyledVerticalStack>

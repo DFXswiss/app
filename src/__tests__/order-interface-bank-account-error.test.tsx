@@ -220,6 +220,23 @@ describe('OrderInterface bank-account error channel', () => {
     expect(mockHandlePaymentInfoFetch).not.toHaveBeenCalled();
   });
 
+  it('retries the quote when an account is selected and the quote failed', () => {
+    mockPaymentInfoError = 'quote failed';
+    render(
+      <OrderInterface
+        orderType={OrderType.SELL}
+        onFetchPaymentInfo={mockOnFetch}
+        confirmPayment={mockConfirm}
+        defaultValues={{ bankAccount: { id: 7, iban: 'CH9300762011623852957' } }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('bank-account-error'));
+    mockHandlePaymentInfoFetch.mockClear();
+    fireEvent.click(screen.getByTestId('payment-retry'));
+    expect(mockHandlePaymentInfoFetch).toHaveBeenCalled();
+    expect(screen.getByTestId('bank-account-retry-token')).toHaveTextContent('0');
+  });
+
   it('shows a quote error beside the hint when an account is already selected', () => {
     mockPaymentInfoError = 'quote failed';
     render(
