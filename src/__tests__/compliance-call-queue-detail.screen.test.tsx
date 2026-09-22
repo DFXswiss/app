@@ -7,7 +7,7 @@ let mockSearch = '';
 
 const mockGetUserData = jest.fn();
 const mockNavigate = jest.fn();
-let capturedLayoutOptions: { onBack?: () => void } | undefined;
+let capturedLayoutOptions: { title?: string; onBack?: () => void } | undefined;
 const mockUseComplianceGuard = jest.fn();
 const mockCanReset = jest.fn((..._args: unknown[]) => true);
 
@@ -20,6 +20,14 @@ jest.mock('@dfx.swiss/react', () => ({
     MANUAL_CHECK_EXTERNAL_ACCOUNT_PHONE: 'ManualCheckExternalAccountPhone',
     UNAVAILABLE_SUSPICIOUS: 'UnavailableSuspicious',
   },
+  AmlReason: {
+    MANUAL_CHECK_PHONE: 'ManualCheckPhone',
+    MANUAL_CHECK_PHONE_FAILED: 'ManualCheckPhoneFailed',
+    MANUAL_CHECK_IP_PHONE: 'ManualCheckIpPhone',
+    MANUAL_CHECK_IP_COUNTRY_PHONE: 'ManualCheckIpCountryPhone',
+    MANUAL_CHECK_EXTERNAL_ACCOUNT_PHONE: 'ManualCheckExternalAccountPhone',
+  },
+  CheckStatus: { PENDING: 'Pending', FAIL: 'Fail', PASS: 'Pass' },
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -41,14 +49,11 @@ jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_ns: string, key: string) => key }),
 }));
 
-
-
 jest.mock('src/hooks/compliance.hook', () => ({
   useCompliance: () => ({ getUserData: mockGetUserData }),
   CallOutcome: {
     COMPLETED: 'Completed',
     UNAVAILABLE: 'Unavailable',
-    SUSPICIOUS: 'Suspicious',
     FAILED: 'Failed',
     REPEAT: 'Repeat',
   },
@@ -59,7 +64,7 @@ jest.mock('src/hooks/guard.hook', () => ({
 }));
 
 jest.mock('src/hooks/layout-config.hook', () => ({
-  useLayoutOptions: (options: { onBack?: () => void }) => {
+  useLayoutOptions: (options: { title?: string; onBack?: () => void }) => {
     capturedLayoutOptions = options;
   },
 }));
@@ -73,7 +78,7 @@ jest.mock('src/util/buy-crypto-reset.util', () => ({
 }));
 
 jest.mock('src/components/compliance/call-queue/call-queue-user-info', () => ({
-  CallQueueUserInfo: () => <div data-testid="user-info" />,
+  CallQueueUserInfo: (props: any) => <div data-testid="user-info" data-check-date={props.highlightCheckDateField} />,
 }));
 
 jest.mock('src/components/compliance/call-queue/call-queue-tx-info', () => ({
@@ -116,7 +121,7 @@ jest.mock('src/components/compliance/call-queue/call-queue-outcome-form', () => 
   ),
 }));
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ComplianceCallQueueDetailScreen from 'src/screens/compliance-call-queue-detail.screen';
 
 interface Deferred<T> {
@@ -193,7 +198,7 @@ function outcomeContext(): Record<string, unknown> {
   return JSON.parse(screen.getByTestId('outcome-form').getAttribute('data-context') ?? '{}');
 }
 
-const OUTCOMES = ['Completed', 'Unavailable', 'Suspicious', 'Failed', 'Repeat'];
+const OUTCOMES = ['Completed', 'Unavailable', 'Failed', 'Repeat'];
 const INVALID_QUEUES: Array<[string | undefined, string]> = [
   ['NotARealQueue', 'Unknown call queue: NotARealQueue'],
   [undefined, 'Unknown call queue: undefined'],
@@ -333,12 +338,52 @@ describe('ComplianceCallQueueDetailScreen', () => {
     expect(screen.queryByTestId('address-info')).not.toBeInTheDocument();
   });
 
-  it('uses the user outcomes for the unavailable-suspicious queue', async () => {
-    mockParams.queue = 'UnavailableSuspicious';
-
+  it('offers every outcome on a reason queue and names the queue in the title', async () => {
     const form = await renderLoaded();
 
     expect(JSON.parse(form.getAttribute('data-outcomes') ?? '[]')).toEqual(OUTCOMES);
+    expect(capturedLayoutOptions?.title).toBe('ManualCheckPhone – 2001');
+  });
+
+  describe('Callback queue', () => {
+    beforeEach(() => {
+      mockParams.queue = 'UnavailableSuspicious';
+    });
+
+    it('is titled Callback and decides an item without a transaction on the plain phone check date', async () => {
+      const form = await renderLoaded();
+
+      expect(capturedLayoutOptions?.title).toBe('Callback – 2001');
+      expect(JSON.parse(form.getAttribute('data-outcomes') ?? '[]')).toEqual(OUTCOMES);
+      expect(screen.getByTestId('user-info')).toHaveAttribute('data-check-date', 'phoneCallCheckDate');
+      expect(screen.queryByTestId('address-info')).not.toBeInTheDocument();
+    });
+
+    it('decides a parked transaction as the reason queue it came from, keeping the Callback queue in the context', async () => {
+      mockSearch = '?txId=101';
+      const tx = transaction({ buyCryptoId: 7001, amlCheck: 'Pending', amlReason: 'ManualCheckIpCountryPhone' });
+
+      const form = await renderLoaded(baseData({ transactions: [tx], ipLogs: [], kycLogs: [] }));
+
+      expect(screen.getByTestId('user-info')).toHaveAttribute('data-check-date', 'phoneCallIpCountryCheckDate');
+      expect(screen.getByTestId('address-info')).toBeInTheDocument();
+      expect(JSON.parse(form.getAttribute('data-outcomes') ?? '[]')).toEqual(OUTCOMES);
+      expect(outcomeContext()).toMatchObject({
+        queue: 'UnavailableSuspicious',
+        txId: 7001,
+        amlReason: 'ManualCheckIpCountryPhone',
+      });
+    });
+
+    it('does not offer Repeat for a failed transaction', async () => {
+      mockSearch = '?txId=101';
+      const tx = transaction({ buyCryptoId: 7001, amlCheck: 'Fail', amlReason: 'ManualCheckPhoneFailed' });
+
+      const form = await renderLoaded(baseData({ transactions: [tx] }));
+
+      expect(JSON.parse(form.getAttribute('data-outcomes') ?? '[]')).toEqual(['Completed', 'Unavailable', 'Failed']);
+      expect(screen.getByTestId('user-info')).toHaveAttribute('data-check-date', 'phoneCallCheckDate');
+    });
   });
 
   it('builds a BuyCrypto context with reset eligibility and no bank data', async () => {
@@ -413,5 +458,90 @@ describe('ComplianceCallQueueDetailScreen', () => {
     expect(screen.getByTestId('tx-info')).toBeInTheDocument();
     expect(mockCanReset).toHaveBeenCalledWith(tx);
     expect(outcomeContext()).toEqual({ queue: 'ManualCheckPhone', userDataId: 2001 });
+  });
+});
+
+// The same screen instance serves list → item → next item, so the route can move to another account
+// while a load is still in flight, and the outcome form must not carry one item's draft to the next.
+describe('ComplianceCallQueueDetailScreen route changes', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockIsLoggedIn = true;
+    mockParams = { queue: 'ManualCheckPhone', userDataId: '2001' };
+    mockSearch = '';
+    mockCanReset.mockReturnValue(true);
+  });
+
+  it('ignores a load that finishes for the account shown before and shows the current one', async () => {
+    const first = createDeferred<any>();
+    const second = createDeferred<any>();
+    mockGetUserData.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { rerender } = render(<ComplianceCallQueueDetailScreen />);
+
+    mockParams = { queue: 'ManualCheckPhone', userDataId: '2002' };
+    rerender(<ComplianceCallQueueDetailScreen />);
+    await act(async () => first.resolve(baseData({ userData: { id: 2001 } })));
+
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(screen.queryByTestId('outcome-form')).not.toBeInTheDocument();
+
+    await act(async () => second.resolve(baseData({ userData: { id: 2002 } })));
+
+    await screen.findByTestId('outcome-form');
+    expect(mockGetUserData).toHaveBeenNthCalledWith(2, 2002);
+    expect(outcomeContext()).toMatchObject({ userDataId: 2002 });
+  });
+
+  it('ignores a load that fails for the account shown before', async () => {
+    const first = createDeferred<any>();
+    const second = createDeferred<any>();
+    mockGetUserData.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { rerender } = render(<ComplianceCallQueueDetailScreen />);
+
+    mockParams = { queue: 'ManualCheckPhone', userDataId: '2002' };
+    rerender(<ComplianceCallQueueDetailScreen />);
+    await act(async () => first.reject(new Error('gone')));
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    await act(async () => second.resolve(baseData({ userData: { id: 2002 } })));
+
+    await screen.findByTestId('outcome-form');
+    expect(outcomeContext()).toMatchObject({ userDataId: 2002 });
+  });
+
+  it('clears a previous error when the route moves to another account', async () => {
+    mockGetUserData
+      .mockRejectedValueOnce(new Error('gone'))
+      .mockResolvedValueOnce(baseData({ userData: { id: 2002 } }));
+    const { rerender } = render(<ComplianceCallQueueDetailScreen />);
+    await screen.findByTestId('error-hint');
+
+    mockParams = { queue: 'ManualCheckPhone', userDataId: '2002' };
+    rerender(<ComplianceCallQueueDetailScreen />);
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    await screen.findByTestId('outcome-form');
+    expect(outcomeContext()).toMatchObject({ userDataId: 2002 });
+  });
+
+  it('remounts the outcome form when the route moves to another transaction of the same account', async () => {
+    mockSearch = '?txId=101';
+    mockGetUserData.mockResolvedValue(
+      baseData({
+        transactions: [transaction({ id: 101, buyCryptoId: 501 }), transaction({ id: 102, buyCryptoId: 502 })],
+      }),
+    );
+    const { rerender } = render(<ComplianceCallQueueDetailScreen />);
+    const before = await screen.findByTestId('outcome-form');
+
+    mockSearch = '?txId=102';
+    rerender(<ComplianceCallQueueDetailScreen />);
+
+    const after = await screen.findByTestId('outcome-form');
+    expect(after).not.toBe(before);
+    expect(outcomeContext()).toMatchObject({ txId: 502, sourceType: 'BuyCrypto' });
+    expect(mockGetUserData).toHaveBeenCalledTimes(1);
   });
 });

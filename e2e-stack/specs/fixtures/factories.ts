@@ -478,9 +478,13 @@ export interface CreateMrosCaseResult {
 }
 
 export interface CreateCallQueueEntryOptions {
-  /** Unavailable/Suspicious phone-call queue entry on user_data. */
-  phoneCallStatus?: 'Unavailable' | 'Suspicious' | 'ManualCheck' | 'Failed' | 'Completed' | 'Repeat' | 'UserRejected';
-  /** When set, also create a pending buy_crypto with this amlReason for the tx-based queues. */
+  /**
+   * Phone-call status on user_data. `Unavailable` (the default) seeds a Callback-queue case: the status,
+   * its mark date, and — unless `amlReason` is given — a pending buy_crypto with amlReason ManualCheckPhone
+   * created before the mark, which is what the API lists in the Callback queue.
+   */
+  phoneCallStatus?: 'Unavailable' | 'ManualCheck' | 'Failed' | 'Completed' | 'Repeat' | 'UserRejected';
+  /** When set, create a pending buy_crypto with this amlReason for the tx-based queues. */
   amlReason?: string;
   userDataId?: number;
   userId?: number;
@@ -530,6 +534,17 @@ function needsQuote(col: string): boolean {
 function tableSql(table: string): string {
   if (table === 'user') return '"user"';
   return table;
+}
+
+async function hasColumn(table: string, column: string): Promise<boolean> {
+  const row = await queryOne<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2
+     ) AS "exists"`,
+    [table, column],
+  );
+  return row?.exists === true;
 }
 
 async function updateById(table: string, id: number, sets: Record<string, unknown>): Promise<void> {
@@ -1660,8 +1675,10 @@ export async function createMrosCase(options: CreateMrosCaseOptions = {}): Promi
 
 /**
  * CallQueue is a derived in-memory view (support.service.ts getCallQueuesSummary / getCallQueueItems).
- * There is no call_queue table. We set user_data."phoneCallStatus" (Unavailable/Suspicious queue)
- * and optionally create a pending buy_crypto with a phone-related amlReason for tx queues.
+ * There is no call_queue table. Every queue lists transactions: the reason queues the pending
+ * buy_crypto rows of their amlReason, the Callback queue (key UnavailableSuspicious) the phone
+ * transactions that were open when the account was marked Unavailable (user_data."phoneCallStatus"
+ * + "phoneCallStatusDate", transaction created on or before the mark).
  */
 export async function createCallQueueEntry(
   options: CreateCallQueueEntryOptions = {},
@@ -1682,28 +1699,39 @@ export async function createCallQueueEntry(
   }
 
   const phoneCallStatus = options.phoneCallStatus ?? 'Unavailable';
-  await updateById('user_data', userDataId, {
-    phoneCallStatus,
-    phoneCallCheckDate: new Date(),
-    phone: '+41791112233',
-  });
+  const amlReason = options.amlReason ?? (phoneCallStatus === 'Unavailable' ? 'ManualCheckPhone' : undefined);
 
   let transactionId: number | undefined;
   let buyCryptoId: number | undefined;
 
-  if (options.amlReason) {
+  // The transaction first: the Callback queue only lists transactions created on or before the mark.
+  if (amlReason) {
     const tx = await createTransaction({
       state: 'pending_buy',
       userId,
       userDataId,
       jwt,
-      amlReason: options.amlReason,
+      amlReason,
       amlCheck: 'Pending',
       tag: options.tag ?? 'callq',
     });
     transactionId = tx.transactionId;
     buyCryptoId = tx.buyCryptoId;
   }
+
+  // The mark date column arrives with DFXswiss/backend#5614; against an API without it the seed falls
+  // back to the status alone, which is what that API's account-based queue listed. The mark is dated a
+  // minute ahead so the inserted transaction (created by the DB clock) is on or before it whatever the
+  // clock skew between harness and database.
+  const marked = (await hasColumn('user_data', 'phoneCallStatusDate'))
+    ? { phoneCallStatusDate: new Date(Date.now() + 60_000) }
+    : {};
+  await updateById('user_data', userDataId, {
+    phoneCallStatus,
+    ...marked,
+    phoneCallCheckDate: new Date(),
+    phone: '+41791112233',
+  });
 
   return { userDataId, phoneCallStatus, transactionId, buyCryptoId };
 }
@@ -1859,9 +1887,7 @@ async function hasSelfReferencedRows(
   candidateValue: number,
   selfFks: ForeignKeyRef[],
 ): Promise<boolean> {
-  const candidateColumnSql = needsQuote(candidateColumn)
-    ? `"${candidateColumn}"`
-    : candidateColumn;
+  const candidateColumnSql = needsQuote(candidateColumn) ? `"${candidateColumn}"` : candidateColumn;
 
   for (const selfFk of selfFks) {
     const selfColumnSql = needsQuote(selfFk.column) ? `"${selfFk.column}"` : selfFk.column;
@@ -1988,9 +2014,7 @@ async function deleteRowAndDescendants(
     const referencedByOthers = (childrenByReferencedTable.get(fk.table) ?? []).some(
       (child) => child.table !== fk.table,
     );
-    const selfFks = (childrenByReferencedTable.get(fk.table) ?? []).filter(
-      (child) => child.table === fk.table,
-    );
+    const selfFks = (childrenByReferencedTable.get(fk.table) ?? []).filter((child) => child.table === fk.table);
 
     if (!tableKeyInfo.idAddressable.has(fk.table) && (referencedByOthers || selfFks.length > 0)) {
       let hasRows: boolean;
@@ -2050,15 +2074,10 @@ async function deleteRowAndDescendants(
     if (!tableKeyInfo.idAddressable.has(fk.table) && !referencedByOthers) {
       try {
         await withDb(async (client) => {
-          await client.query(
-            `DELETE FROM ${tableSql(fk.table)} WHERE ${col} = $1`,
-            [id],
-          );
+          await client.query(`DELETE FROM ${tableSql(fk.table)} WHERE ${col} = $1`, [id]);
         });
       } catch (e) {
-        errors.push(
-          `${fk.table}.${fk.column}=${id}: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        errors.push(`${fk.table}.${fk.column}=${id}: ${e instanceof Error ? e.message : String(e)}`);
         failed = true;
       }
       continue;
@@ -2066,14 +2085,9 @@ async function deleteRowAndDescendants(
 
     let childRows: { id: unknown }[];
     try {
-      childRows = await queryRows<{ id: unknown }>(
-        `SELECT id FROM ${tableSql(fk.table)} WHERE ${col} = $1`,
-        [id],
-      );
+      childRows = await queryRows<{ id: unknown }>(`SELECT id FROM ${tableSql(fk.table)} WHERE ${col} = $1`, [id]);
     } catch (e) {
-      errors.push(
-        `${fk.table}.${fk.column}=${id}: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      errors.push(`${fk.table}.${fk.column}=${id}: ${e instanceof Error ? e.message : String(e)}`);
       failed = true;
       continue;
     }
@@ -2082,8 +2096,7 @@ async function deleteRowAndDescendants(
       const childId = Number(childRow.id);
       if (!Number.isFinite(childId) || childId <= 0) {
         errors.push(
-          `${fk.table}.${fk.column}=${id}: expected a finite positive id, got ` +
-            `${JSON.stringify(childRow.id)}`,
+          `${fk.table}.${fk.column}=${id}: expected a finite positive id, got ` + `${JSON.stringify(childRow.id)}`,
         );
         failed = true;
         continue;

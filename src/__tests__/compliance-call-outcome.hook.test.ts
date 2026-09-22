@@ -7,8 +7,14 @@ const mockCalls: { method: string; url: string; data?: any }[] = [];
 const mockCall = jest.fn();
 jest.mock('src/hooks/guarded-api.hook', () => ({ useGuardedApi: () => ({ call: mockCall }) }));
 jest.mock('@dfx.swiss/react', () => ({
-  AmlReason: { MANUAL_CHECK_PHONE_FAILED: 'ManualCheckPhoneFailed' },
-  CheckStatus: { PASS: 'Pass', FAIL: 'Fail' },
+  AmlReason: {
+    MANUAL_CHECK_PHONE: 'ManualCheckPhone',
+    MANUAL_CHECK_PHONE_FAILED: 'ManualCheckPhoneFailed',
+    MANUAL_CHECK_IP_PHONE: 'ManualCheckIpPhone',
+    MANUAL_CHECK_IP_COUNTRY_PHONE: 'ManualCheckIpCountryPhone',
+    MANUAL_CHECK_EXTERNAL_ACCOUNT_PHONE: 'ManualCheckExternalAccountPhone',
+  },
+  CheckStatus: { PASS: 'Pass', FAIL: 'Fail', PENDING: 'Pending' },
   PhoneCallStatus: {
     COMPLETED: 'Completed',
     UNAVAILABLE: 'Unavailable',
@@ -72,6 +78,22 @@ describe('saveCallOutcome write order', () => {
     const userDataCall = mockCalls[0];
     expect(userDataCall.data.phoneCallStatus).toBe('Completed');
     expect(userDataCall.data.phoneCallIpCountryCheckDate).toBeDefined();
+  });
+
+  // A Callback item is a transaction parked from a reason queue; a completed call writes that queue's
+  // check date, not the plain phone one, or the transaction would stay stuck on its own reason.
+  it('writes the check date of the reason queue a Callback item was parked from', async () => {
+    const { result } = renderHook(() => useCompliance());
+
+    await result.current.saveCallOutcome(
+      { ...TX_CONTEXT, queue: 'UnavailableSuspicious', amlReason: 'ManualCheckIpPhone' },
+      CallOutcome.COMPLETED,
+      { signature: 'JR', comment: 'called back' },
+    );
+
+    expect(mockCalls[0].url).toBe('userData/7');
+    expect(mockCalls[0].data.phoneCallIpCheckDate).toBeDefined();
+    expect(mockCalls[0].data.phoneCallCheckDate).toBeUndefined();
   });
 
   it('does not touch the transaction without an AmlCheck action', async () => {

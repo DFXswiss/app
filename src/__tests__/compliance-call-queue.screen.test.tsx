@@ -15,12 +15,20 @@ jest.mock('@dfx.swiss/react', () => ({
     MANUAL_CHECK_EXTERNAL_ACCOUNT_PHONE: 'ManualCheckExternalAccountPhone',
     UNAVAILABLE_SUSPICIOUS: 'UnavailableSuspicious',
   },
+  AmlReason: {
+    MANUAL_CHECK_PHONE: 'ManualCheckPhone',
+    MANUAL_CHECK_PHONE_FAILED: 'ManualCheckPhoneFailed',
+    MANUAL_CHECK_IP_PHONE: 'ManualCheckIpPhone',
+    MANUAL_CHECK_IP_COUNTRY_PHONE: 'ManualCheckIpCountryPhone',
+    MANUAL_CHECK_EXTERNAL_ACCOUNT_PHONE: 'ManualCheckExternalAccountPhone',
+  },
+  CheckStatus: { PENDING: 'Pending', FAIL: 'Fail', PASS: 'Pass' },
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { LG: 'lg' },
-  StyledLoadingSpinner: ({ size }: any) => <div data-testid="loading-spinner" data-size={size} />,
-  StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
+  StyledLoadingSpinner: ({ size }: { size?: string }) => <div data-testid="loading-spinner" data-size={size} />,
+  StyledVerticalStack: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 
 jest.mock('react-router-dom', () => ({
@@ -53,12 +61,38 @@ jest.mock('src/hooks/navigation.hook', () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
 }));
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { type ReactNode } from 'react';
 import ComplianceCallQueueScreen from 'src/screens/compliance-call-queue.screen';
+
+// Screen tests for the per-queue list: every queue lists transactions; the Callback queue adds the
+// account status, the mark date and the deadline (red once past), the IP queues add the IP.
 
 const DATE = '2026-07-31T08:30:00.000Z';
 const PHONE_CALL_TIMES = 'H9To10;H10To11';
 const CLEAR_PARAMS = { clearParams: ['status', 'search'] };
+
+interface CallQueueItemFixture {
+  userDataId?: number;
+  userName?: string;
+  phone?: string;
+  language?: string;
+  kycLevel?: number;
+  txId?: number;
+  sourceType?: string;
+  amlCheck?: string;
+  amlReason?: string;
+  inputAmount?: number;
+  inputAsset?: string;
+  ip?: string;
+  country?: string;
+  ipCountry?: string;
+  phoneCallStatus?: string;
+  phoneCallStatusDate?: string;
+  phoneCallTimes?: string;
+  date?: string;
+  queue?: string;
+}
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -82,7 +116,26 @@ function createDeferred<T>(): Deferred<T> {
   return { promise, resolve: controls.resolve, reject: controls.reject };
 }
 
-function headerTexts(): string[] {
+function item(overrides: Partial<CallQueueItemFixture> = {}): CallQueueItemFixture {
+  return {
+    queue: 'ManualCheckPhone',
+    userDataId: 2001,
+    userName: 'Fixture User',
+    phone: '+41790000000',
+    language: 'DE',
+    kycLevel: 50,
+    txId: 101,
+    sourceType: 'BuyCrypto',
+    amlCheck: 'Pending',
+    amlReason: 'ManualCheckPhone',
+    inputAmount: 100,
+    inputAsset: 'CHF',
+    date: '2026-09-01T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function headers(): string[] {
   return screen.getAllByRole('columnheader').map((header) => header.textContent ?? '');
 }
 
@@ -96,8 +149,8 @@ function cellTexts(row: HTMLElement): string[] {
     .map((cell) => cell.textContent ?? '');
 }
 
-async function renderLoaded(items: unknown[], queue = 'ManualCheckPhone'): Promise<void> {
-  mockParams = { queue };
+async function renderLoaded(items: CallQueueItemFixture[], queue?: string): Promise<void> {
+  if (queue != null) mockParams = { queue };
   mockGetCallQueueItems.mockResolvedValue(items);
   render(<ComplianceCallQueueScreen />);
   await waitFor(() => {
@@ -113,6 +166,8 @@ describe('ComplianceCallQueueScreen', () => {
     mockParams = { queue: 'ManualCheckPhone' };
     mockGetCallQueueItems.mockReturnValue(new Promise(() => undefined));
   });
+
+  afterEach(() => jest.useRealTimers());
 
   it('calls the compliance guard without arguments', () => {
     render(<ComplianceCallQueueScreen />);
@@ -139,12 +194,12 @@ describe('ComplianceCallQueueScreen', () => {
 
     render(<ComplianceCallQueueScreen />);
 
-    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toHaveAttribute('data-size', 'lg');
     expect(mockGetCallQueueItems).not.toHaveBeenCalled();
   });
 
   it('shows the spinner while loading and then renders the table', async () => {
-    const deferred = createDeferred<any[]>();
+    const deferred = createDeferred<CallQueueItemFixture[]>();
     mockGetCallQueueItems.mockReturnValue(deferred.promise);
 
     render(<ComplianceCallQueueScreen />);
@@ -198,10 +253,10 @@ describe('ComplianceCallQueueScreen', () => {
     async (queue) => {
       await renderLoaded([{ userDataId: 2001, date: DATE, phoneCallTimes: PHONE_CALL_TIMES }], queue);
 
-      const headers = headerTexts();
-      expect(headers[headers.length - 2]).toBe('Phone Call Times');
-      expect(headers[headers.length - 1]).toBe('Date');
-      expect(cellTexts(bodyRows()[0])[headers.indexOf('Phone Call Times')]).toBe(PHONE_CALL_TIMES);
+      const cols = headers();
+      expect(cols[cols.length - 2]).toBe('Phone Call Times');
+      expect(cols[cols.length - 1]).toBe('Date');
+      expect(cellTexts(bodyRows()[0])[cols.indexOf('Phone Call Times')]).toBe(PHONE_CALL_TIMES);
     },
   );
 
@@ -221,7 +276,7 @@ describe('ComplianceCallQueueScreen', () => {
       { userDataId: 2002, date: DATE },
     ]);
 
-    const phoneTimesIndex = headerTexts().indexOf('Phone Call Times');
+    const phoneTimesIndex = headers().indexOf('Phone Call Times');
     expect(cellTexts(bodyRows()[0])[phoneTimesIndex]).toBe('-');
     expect(cellTexts(bodyRows()[1])[phoneTimesIndex]).toBe('-');
   });
@@ -233,11 +288,14 @@ describe('ComplianceCallQueueScreen', () => {
       'ManualCheckIpCountryPhone',
       ['User', 'Phone', 'Lang', 'KYC', 'Transaction', 'IP', 'Country', 'Phone Call Times', 'Date'],
     ],
-    ['UnavailableSuspicious', ['User', 'Phone', 'Lang', 'KYC', 'Country', 'Status', 'Date']],
+    [
+      'UnavailableSuspicious',
+      ['User', 'Phone', 'Lang', 'KYC', 'Transaction', 'Country', 'Status', 'Marked', 'Deadline', 'Date'],
+    ],
   ])('renders the %s headers in order', async (queue, expected) => {
     await renderLoaded([{ userDataId: 2001, date: DATE }], queue);
 
-    expect(headerTexts()).toEqual(expected);
+    expect(headers()).toEqual(expected);
   });
 
   it('renders a filled ManualCheckIpCountryPhone row', async () => {
@@ -285,7 +343,7 @@ describe('ComplianceCallQueueScreen', () => {
   it('keeps a trailing space when inputAsset is missing', async () => {
     await renderLoaded([{ userDataId: 2001, date: DATE, sourceType: 'BuyCrypto', txId: 101, inputAmount: 500 }]);
 
-    expect(cellTexts(bodyRows()[0])[headerTexts().indexOf('Transaction')]).toBe('BuyCrypto #101 (500 )');
+    expect(cellTexts(bodyRows()[0])[headers().indexOf('Transaction')]).toBe('BuyCrypto #101 (500 )');
   });
 
   it('omits the IP country suffix when it matches country', async () => {
@@ -294,23 +352,34 @@ describe('ComplianceCallQueueScreen', () => {
       'ManualCheckIpCountryPhone',
     );
 
-    expect(cellTexts(bodyRows()[0])[headerTexts().indexOf('Country')]).toBe('Switzerland');
+    expect(cellTexts(bodyRows()[0])[headers().indexOf('Country')]).toBe('Switzerland');
     expect(screen.queryByText(/IP:/)).not.toBeInTheDocument();
   });
 
   it('shows the phone call status on UnavailableSuspicious', async () => {
     await renderLoaded([{ userDataId: 2001, date: DATE, phoneCallStatus: 'Suspicious' }], 'UnavailableSuspicious');
 
-    expect(cellTexts(bodyRows()[0])[headerTexts().indexOf('Status')]).toBe('Suspicious');
+    expect(cellTexts(bodyRows()[0])[headers().indexOf('Status')]).toBe('Suspicious');
   });
 
   it.each([
+    ['7', 'ManualCheckPhone'],
+    ['7', 'ManualCheckIpPhone'],
     ['9', 'ManualCheckIpCountryPhone'],
-    ['7', 'UnavailableSuspicious'],
+    ['10', 'UnavailableSuspicious'],
+    ['6', 'ManualCheckExternalAccountPhone'],
   ])('sets the empty-state colspan to %s on %s', async (colspan, queue) => {
     await renderLoaded([], queue);
 
-    expect(screen.getByText('No entries found').getAttribute('colspan')).toBe(colspan);
+    expect(screen.getByText('No entries found')).toHaveAttribute('colspan', colspan);
+  });
+
+  it('shows the empty state spanning every column', async () => {
+    mockParams = { queue: 'UnavailableSuspicious' };
+
+    await renderLoaded([]);
+
+    expect(screen.getByText('No entries found')).toHaveAttribute('colspan', '10');
   });
 
   it('navigates to the detail view with a txId search', async () => {
@@ -348,5 +417,222 @@ describe('ComplianceCallQueueScreen', () => {
     expect(screen.getAllByRole('row')).toHaveLength(5);
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+
+  it('lists a reason queue with the transaction column and opens the detail with the transaction', async () => {
+    await renderLoaded([
+      item(),
+      item({ userDataId: 2002, userName: undefined, txId: undefined, inputAmount: undefined }),
+    ]);
+
+    expect(capturedLayoutOptions?.title).toBe('ManualCheckPhone');
+    expect(headers()).toEqual(['User', 'Phone', 'Lang', 'KYC', 'Transaction', 'Phone Call Times', 'Date']);
+    expect(screen.getByText('BuyCrypto #101 (100 CHF)')).toBeInTheDocument();
+    expect(screen.getByText('2002')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('BuyCrypto #101 (100 CHF)'));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      { pathname: '/compliance/call-queues/ManualCheckPhone/2001', search: '?txId=101' },
+      { clearParams: ['status', 'search'] },
+    );
+
+    fireEvent.click(screen.getByText('2002'));
+    expect(mockNavigate).toHaveBeenLastCalledWith(
+      { pathname: '/compliance/call-queues/ManualCheckPhone/2002', search: '' },
+      { clearParams: ['status', 'search'] },
+    );
+
+    capturedLayoutOptions?.onBack?.();
+    expect(mockNavigate).toHaveBeenLastCalledWith(-1);
+  });
+
+  it('adds IP and country columns for the IP-country queue', async () => {
+    mockParams = { queue: 'ManualCheckIpCountryPhone' };
+
+    await renderLoaded([item({ ip: '1.1.1.1', country: 'Switzerland', ipCountry: 'Germany' })]);
+
+    expect(headers()).toEqual([
+      'User',
+      'Phone',
+      'Lang',
+      'KYC',
+      'Transaction',
+      'IP',
+      'Country',
+      'Phone Call Times',
+      'Date',
+    ]);
+    expect(screen.getByText('1.1.1.1')).toBeInTheDocument();
+    expect(screen.getByText('Switzerland / IP: Germany')).toBeInTheDocument();
+  });
+
+  it('shows dashes for missing optional values', async () => {
+    mockParams = { queue: 'ManualCheckIpPhone' };
+
+    await renderLoaded([item({ phone: undefined, language: undefined, kycLevel: undefined, ip: undefined })]);
+
+    expect(headers()).toEqual(['User', 'Phone', 'Lang', 'KYC', 'Transaction', 'IP', 'Date']);
+    expect(screen.getAllByText('-')).toHaveLength(4);
+  });
+
+  describe('Callback queue', () => {
+    beforeEach(() => {
+      mockParams = { queue: 'UnavailableSuspicious' };
+    });
+
+    it('is titled Callback and shows status, mark date and deadline of a pending transaction', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-09-10T12:00:00.000Z'));
+
+      await renderLoaded([
+        item({
+          queue: 'UnavailableSuspicious',
+          country: 'Switzerland',
+          phoneCallStatus: 'Unavailable',
+          phoneCallStatusDate: '2026-09-03T08:00:00.000Z',
+        }),
+      ]);
+
+      expect(capturedLayoutOptions?.title).toBe('Callback');
+      expect(headers()).toEqual([
+        'User',
+        'Phone',
+        'Lang',
+        'KYC',
+        'Transaction',
+        'Country',
+        'Status',
+        'Marked',
+        'Deadline',
+        'Date',
+      ]);
+      expect(screen.getByText('BuyCrypto #101 (100 CHF) · Pending')).toBeInTheDocument();
+      expect(screen.getByText('Unavailable')).toBeInTheDocument();
+      expect(screen.getByText('03.09.2026')).toBeInTheDocument();
+      const deadline = screen.getByText('15.09.2026');
+      expect(deadline).not.toHaveClass('text-dfxRed-100');
+      expect(screen.getByText('Switzerland')).toBeInTheDocument();
+    });
+
+    it('marks a passed deadline red', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-09-20T12:00:00.000Z'));
+
+      await renderLoaded([item({ phoneCallStatus: 'Unavailable', phoneCallStatusDate: '2026-09-03T08:00:00.000Z' })]);
+
+      expect(screen.getByText('15.09.2026')).toHaveClass('text-dfxRed-100');
+    });
+
+    it('shows no deadline and no mark date for a failed transaction of a customer who allowed calls again', async () => {
+      await renderLoaded([
+        item({
+          amlCheck: 'Fail',
+          amlReason: 'ManualCheckPhoneFailed',
+          phoneCallStatus: 'UserRevokeDecision',
+          phoneCallStatusDate: undefined,
+          country: undefined,
+        }),
+      ]);
+
+      expect(screen.getByText('BuyCrypto #101 (100 CHF) · Fail')).toBeInTheDocument();
+      expect(screen.getByText('UserRevokeDecision')).toBeInTheDocument();
+      // country, mark date and deadline
+      expect(screen.getAllByText('-')).toHaveLength(3);
+    });
+
+    it('shows a dash for a missing status', async () => {
+      await renderLoaded([item({ amlCheck: undefined, phoneCallStatus: undefined, country: 'CH' })]);
+
+      expect(screen.getByText('BuyCrypto #101 (100 CHF)')).toBeInTheDocument();
+      // status, mark date and deadline
+      expect(screen.getAllByText('-')).toHaveLength(3);
+    });
+
+    // The API before DFXswiss/backend#5614 lists accounts here, without transaction, mark date or status
+    // date; the row still renders and opens the detail on the account.
+    it('renders an account row of the current API with dashes for transaction, mark date and deadline', async () => {
+      await renderLoaded([
+        item({
+          txId: undefined,
+          sourceType: undefined,
+          amlCheck: undefined,
+          amlReason: undefined,
+          inputAmount: undefined,
+          inputAsset: undefined,
+          country: 'Switzerland',
+          phoneCallStatus: 'Unavailable',
+          phoneCallStatusDate: undefined,
+        }),
+      ]);
+
+      expect(screen.getByText('Unavailable')).toBeInTheDocument();
+      // transaction, mark date and deadline
+      expect(screen.getAllByText('-')).toHaveLength(3);
+
+      fireEvent.click(screen.getByText('Unavailable'));
+      expect(mockNavigate).toHaveBeenCalledWith(
+        { pathname: '/compliance/call-queues/UnavailableSuspicious/2001', search: '' },
+        { clearParams: ['status', 'search'] },
+      );
+    });
+  });
+});
+
+// The same screen instance serves one queue after another, so the route can move to another queue
+// while a load is still in flight.
+describe('ComplianceCallQueueScreen route changes', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockIsLoggedIn = true;
+    mockParams = { queue: 'ManualCheckPhone' };
+  });
+
+  it('ignores a load that finishes for the queue shown before and shows the current one', async () => {
+    const first = createDeferred<CallQueueItemFixture[]>();
+    const second = createDeferred<CallQueueItemFixture[]>();
+    mockGetCallQueueItems.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { rerender } = render(<ComplianceCallQueueScreen />);
+
+    mockParams = { queue: 'ManualCheckIpPhone' };
+    rerender(<ComplianceCallQueueScreen />);
+    await act(async () => first.resolve([item({ phone: '+41790000001' })]));
+
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(screen.queryByText('+41790000001')).not.toBeInTheDocument();
+
+    await act(async () => second.resolve([item({ queue: 'ManualCheckIpPhone', phone: '+41790000002' })]));
+
+    expect(await screen.findByText('+41790000002')).toBeInTheDocument();
+    expect(mockGetCallQueueItems).toHaveBeenNthCalledWith(2, 'ManualCheckIpPhone');
+  });
+
+  it('ignores a load that fails for the queue shown before', async () => {
+    const first = createDeferred<CallQueueItemFixture[]>();
+    const second = createDeferred<CallQueueItemFixture[]>();
+    mockGetCallQueueItems.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { rerender } = render(<ComplianceCallQueueScreen />);
+
+    mockParams = { queue: 'ManualCheckIpPhone' };
+    rerender(<ComplianceCallQueueScreen />);
+    await act(async () => first.reject(new Error('gone')));
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+
+    await act(async () => second.resolve([item({ queue: 'ManualCheckIpPhone', phone: '+41790000002' })]));
+
+    expect(await screen.findByText('+41790000002')).toBeInTheDocument();
+  });
+
+  it('clears the previous error and rows when the route moves to another queue', async () => {
+    mockGetCallQueueItems
+      .mockRejectedValueOnce(new Error('gone'))
+      .mockResolvedValueOnce([item({ queue: 'ManualCheckIpPhone' })]);
+    const { rerender } = render(<ComplianceCallQueueScreen />);
+    await screen.findByTestId('error-hint');
+
+    mockParams = { queue: 'ManualCheckIpPhone' };
+    rerender(<ComplianceCallQueueScreen />);
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(await screen.findByText('+41790000000')).toBeInTheDocument();
   });
 });
