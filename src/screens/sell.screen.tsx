@@ -386,6 +386,8 @@ export default function SellScreen(): JSX.Element {
   useEffect(() => {
     let isRunning = true;
 
+    if (bankAccountFailureRef.current) return;
+
     setErrorMessage(undefined);
     setKycError(undefined);
     setPaymentInfo(undefined);
@@ -431,6 +433,7 @@ export default function SellScreen(): JSX.Element {
       })
       .catch((error: ApiError) => {
         if (!isRunning || generation !== quoteGeneration.current) return;
+        if (bankAccountFailureRef.current) return;
         if (error.statusCode === 400 && error.message === 'Ident data incomplete') {
           navigate('/profile');
         } else {
@@ -442,7 +445,7 @@ export default function SellScreen(): JSX.Element {
             setErrorMessage(SESSION_EXPIRED_ERROR);
           } else if (kycErrorFromMessage) {
             setKycError(kycErrorFromMessage);
-          } else if (!bankAccountFailureRef.current) {
+          } else {
             setErrorSource('quote');
             setErrorMessage(error.message ?? 'Unknown error');
           }
@@ -769,6 +772,7 @@ export default function SellScreen(): JSX.Element {
                 <BankAccountSelector
                   value={selectedBankAccount}
                   onChange={(account) => {
+                    bankAccountFailureRef.current = undefined;
                     setBankAccountFailure(undefined);
                     setErrorSource(undefined);
                     setErrorMessage(undefined);
@@ -776,17 +780,18 @@ export default function SellScreen(): JSX.Element {
                   }}
                   onError={(message, kind) => {
                     if (kind === 'kyc-only' || kind === 'multi-account') {
+                      bankAccountFailureRef.current = kind;
                       setErrorMessage(undefined);
                       setErrorSource(undefined);
                       setBankAccountFailure(kind);
                       return;
                     }
+                    bankAccountFailureRef.current = undefined;
                     setBankAccountFailure(undefined);
                     setErrorSource('bank');
                     setErrorMessage(message);
                   }}
                   onCreateStart={() => {
-                    setBankAccountFailure(undefined);
                     setErrorSource(undefined);
                     setErrorMessage(undefined);
                   }}
@@ -797,6 +802,8 @@ export default function SellScreen(): JSX.Element {
                 />
               </StyledVerticalStack>
 
+              {bankAccountFailure && <BankAccountCreateHint kind={bankAccountFailure} />}
+
               {isLoading && !paymentInfo ? (
                 <StyledVerticalStack center>
                   <StyledLoadingSpinner size={SpinnerSize.LG} />
@@ -804,8 +811,6 @@ export default function SellScreen(): JSX.Element {
               ) : (
                 <>
                   {kycError && !customAmountError && <QuoteErrorHint type={TransactionType.SELL} error={kycError} />}
-
-                  {bankAccountFailure && <BankAccountCreateHint kind={bankAccountFailure} />}
 
                   {errorMessage && (
                     <QuoteRequestError

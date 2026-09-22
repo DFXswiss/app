@@ -177,6 +177,10 @@ describe('OrderInterface bank-account error channel', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Connect a wallet' }));
     expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
+
+    fireEvent.click(screen.getByTestId('bank-account-create-start'));
+    expect(screen.getByTestId('bank-account-hint')).toBeInTheDocument();
+    expect(screen.queryByTestId('payment-body')).not.toBeInTheDocument();
   });
 
   it('hides an existing quote and its raw error while the connect hint is showing', () => {

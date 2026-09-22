@@ -264,7 +264,6 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
             }}
             onCreateStart={() => {
               setBankAccountError(undefined);
-              setBankAccountFailure(undefined);
             }}
             retryToken={bankAccountRetryToken}
             placeholder={translate('screens/sell', 'Add or select your IBAN')}
