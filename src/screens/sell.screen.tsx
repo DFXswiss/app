@@ -387,7 +387,7 @@ export default function SellScreen(): JSX.Element {
   useEffect(() => {
     let isRunning = true;
 
-    if (bankAccountFailureRef.current) return;
+    if (bankAccountFailureRef.current && !validatedData?.iban) return;
 
     setErrorMessage(undefined);
     setKycError(undefined);
@@ -404,14 +404,12 @@ export default function SellScreen(): JSX.Element {
     receiveFor(data)
       .then((sell) => {
         if (!isRunning || !sell || generation !== quoteGeneration.current) return;
-        if (bankAccountFailureRef.current) return;
         validateSell(sell);
         setPaymentInfo(sell);
         return receiveFor({ ...data, exactPrice: true });
       })
       .then((info) => {
         if (!isRunning || !info) return;
-        if (bankAccountFailureRef.current) return;
         if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
         if (generation !== quoteGeneration.current) return;
         if (validatedData.sideToUpdate === Side.SPEND) {
@@ -436,7 +434,6 @@ export default function SellScreen(): JSX.Element {
       })
       .catch((error: ApiError) => {
         if (!isRunning || generation !== quoteGeneration.current) return;
-        if (bankAccountFailureRef.current) return;
         if (error.statusCode === 400 && error.message === 'Ident data incomplete') {
           navigate('/profile');
         } else {

@@ -1254,13 +1254,28 @@ describe('SellScreen', () => {
     fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '0.2' } });
     await flushQuote();
     expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
-    expect(screen.queryByText('later boom')).not.toBeInTheDocument();
+    expect(screen.getByText('later boom')).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.submit(screen.getByTestId('form-submit').closest('form') as HTMLFormElement);
       await Promise.resolve();
     });
     expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
+  });
+
+  it('does not quote an empty amount while the connect hint is showing', async () => {
+    render(<SellScreen />);
+    await flushQuote();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('bank-account-kyc'));
+    });
+    const callsBefore = mockReceiveFor.mock.calls.length;
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '' } });
+    });
+    await flushQuote();
+    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(mockReceiveFor.mock.calls.length).toBe(callsBefore);
   });
 
   it('completes the selected account while the connect hint is showing', async () => {
@@ -1336,7 +1351,7 @@ describe('SellScreen', () => {
     expect(screen.getByTestId('payment-info')).toBeInTheDocument();
   });
 
-  it('keeps the connect hint when a quote that was already running fails', async () => {
+  it('shows a quote error that resolves after the connect hint', async () => {
     let rejectRunning: (reason?: unknown) => void = () => undefined;
     render(<SellScreen />);
     await flushQuote();
@@ -1359,11 +1374,10 @@ describe('SellScreen', () => {
     });
 
     expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
-    expect(screen.queryByText('later boom')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    expect(screen.getByText('later boom')).toBeInTheDocument();
   });
 
-  it('does not apply a quote that resolves after the connect hint', async () => {
+  it('applies a quote that resolves after the connect hint', async () => {
     let resolveRunning: (value?: unknown) => void = () => undefined;
     render(<SellScreen />);
     await flushQuote();
@@ -1386,11 +1400,10 @@ describe('SellScreen', () => {
     });
 
     expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
-    expect(screen.queryByTestId('input-amount-error')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    expect(screen.getByTestId('input-amount-error')).toBeInTheDocument();
   });
 
-  it('does not write the exact price after the connect hint', async () => {
+  it('writes the exact price after the connect hint', async () => {
     let resolveExact: (value?: unknown) => void = () => undefined;
     render(<SellScreen />);
     await flushQuote();
@@ -1418,8 +1431,7 @@ describe('SellScreen', () => {
     });
 
     expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
-    expect(screen.getByTestId('input-targetAmount')).toHaveValue(targetBefore);
-    expect(screen.getByTestId('input-targetAmount')).not.toHaveValue('777');
+    expect(screen.getByTestId('input-targetAmount')).toHaveValue('777');
   });
 
   it('shows the support hint instead of the generic error box for a multi-account create', async () => {
