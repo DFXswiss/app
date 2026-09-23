@@ -319,10 +319,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/open-crypto-pay.test.ts` mocks `Api` as `https://api.dfx.swiss` / `v1` and
   swaps `url` from `src/util/utils` for a copy whose `base` falls back to the placeholder
   `https://app.dfx.swiss` instead of `REACT_APP_PUBLIC_URL`, without the real function's
-  absolute-path branch. A green run proves that `getOcpUrlByUniqueId` encodes the
-  `lnurlp/<id>` API URL as an LNURL and wraps it in a `pl?lightning=…` link. It does not prove
-  which host the real `url()` or `Api` resolve to in any deployment, nor that the real `url()`
-  treats those arguments identically; no assertion pins the outer host.
+  absolute-path branch. A green run proves only substrings, each in a separate test: the result
+  contains `lightning=LNURL` and `pl`, and the decoded LNURL contains `lnurlp/<id>` and
+  `https://api.dfx.swiss/v1`. It does not prove the exact `pl?lightning=…` link or the exact
+  decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
+  the real `url()` treats those arguments identically; no assertion pins the outer host.
 
 ## Known gaps
 
