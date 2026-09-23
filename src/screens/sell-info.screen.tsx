@@ -99,7 +99,8 @@ export default function SellInfoScreen(): JSX.Element {
   latestBankAccountParamRef.current = bankAccountParam;
   const activeBankAccount =
     bankAccount && getAccount([bankAccount], bankAccountParam)?.id === bankAccount.id ? bankAccount : undefined;
-  const activePaymentInfo = activeBankAccount && quotedBankAccountId === activeBankAccount.id ? paymentInfo : undefined;
+  const quoteMatchesCurrentAccount = activeBankAccount && quotedBankAccountId === activeBankAccount.id;
+  const activePaymentInfo = quoteMatchesCurrentAccount ? paymentInfo : undefined;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -119,6 +120,8 @@ export default function SellInfoScreen(): JSX.Element {
     setPaymentInfo(undefined);
     setQuotedBankAccountId(undefined);
     setShowsCompletion(false);
+    setSellTxId(undefined);
+    setIsProcessing(false);
     setErrorMessage(undefined);
     setBankAccountFailure(undefined);
     setCustomAmountError(undefined);
@@ -208,13 +211,23 @@ export default function SellInfoScreen(): JSX.Element {
 
   useEffect(() => {
     if (!activePaymentInfo || isLoading) return;
+    const polledQuoteId = activePaymentInfo.id;
+    const polledParam = bankAccountParam;
+    const polledGeneration = quoteRequestGenerationRef.current;
+    let cancelled = false;
+    const isCurrent = () =>
+      !cancelled &&
+      mountedRef.current &&
+      quoteRequestGenerationRef.current === polledGeneration &&
+      latestBankAccountParamRef.current === polledParam;
     const priceTimestamp = new Date(activePaymentInfo.timestamp);
     const expiration = priceTimestamp.setMinutes(priceTimestamp.getMinutes() + 15);
     startTimer(new Date(expiration));
 
     const checkTransactionInterval = setInterval(() => {
-      getTransactionByRequestId(activePaymentInfo.id)
+      getTransactionByRequestId(polledQuoteId)
         .then((tx) => {
+          if (!isCurrent()) return;
           setSellTxId(tx.inputTxId);
           setShowsCompletion(true);
           clearInterval(checkTransactionInterval);
@@ -225,9 +238,10 @@ export default function SellInfoScreen(): JSX.Element {
     }, 5000);
 
     return () => {
+      cancelled = true;
       clearInterval(checkTransactionInterval);
     };
-  }, [activePaymentInfo, isLoading]);
+  }, [activePaymentInfo, isLoading, bankAccountParam]);
 
   useEffect(() => {
     if (remainingSeconds <= 1) fetchData();
@@ -261,6 +275,7 @@ export default function SellInfoScreen(): JSX.Element {
     const requestGeneration = ++quoteRequestGenerationRef.current;
     const requestedParam = bankAccountParam;
     setIsLoading(true);
+    setIsProcessing(false);
     receiveFor(request)
       .then((sell) =>
         quoteRequestGenerationRef.current === requestGeneration && latestBankAccountParamRef.current === requestedParam
@@ -354,6 +369,12 @@ export default function SellInfoScreen(): JSX.Element {
       latestBankAccountParamRef.current !== bankAccountParam
     )
       return;
+    const actionGeneration = quoteRequestGenerationRef.current;
+    const actionParam = bankAccountParam;
+    const isCurrent = () =>
+      mountedRef.current &&
+      quoteRequestGenerationRef.current === actionGeneration &&
+      latestBankAccountParamRef.current === actionParam;
     setIsProcessing(true);
 
     if (canSendTransaction() && !activeWallet) {
@@ -362,10 +383,14 @@ export default function SellInfoScreen(): JSX.Element {
     }
 
     try {
-      if (canSendTransaction()) await sendTransaction(paymentInfo).then(setSellTxId);
+      if (canSendTransaction()) {
+        const txId = await sendTransaction(paymentInfo);
+        if (!isCurrent()) return;
+        setSellTxId(txId);
+      }
       setShowsCompletion(true);
     } finally {
-      setIsProcessing(false);
+      if (isCurrent()) setIsProcessing(false);
     }
   }
 
@@ -397,9 +422,7 @@ export default function SellInfoScreen(): JSX.Element {
             color={StyledButtonColor.STURDY_WHITE}
           />
         </StyledVerticalStack>
-      ) : !activePaymentInfo ? (
-        <StyledLoadingSpinner size={SpinnerSize.LG} />
-      ) : customAmountError ? (
+      ) : quoteMatchesCurrentAccount && customAmountError ? (
         <>
           <StyledInfoText invertedIcon>{customAmountError}</StyledInfoText>
           <StyledButton
@@ -408,8 +431,10 @@ export default function SellInfoScreen(): JSX.Element {
             onClick={() => closeServices({ type: CloseType.CANCEL }, false)}
           />
         </>
-      ) : kycError ? (
+      ) : quoteMatchesCurrentAccount && kycError ? (
         <QuoteErrorHint type={TransactionType.SELL} error={kycError} />
+      ) : !activePaymentInfo ? (
+        <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : (
         activeBankAccount &&
         activePaymentInfo && (

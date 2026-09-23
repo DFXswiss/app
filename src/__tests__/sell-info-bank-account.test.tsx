@@ -734,7 +734,8 @@ describe('SellInfoScreen', () => {
           expect.objectContaining({ amount: String(volume), currency: 'ETH' }),
         );
       });
-      expect(screen.getByTestId('spinner')).toBeInTheDocument();
+      expect(screen.getByTestId('info-text')).toHaveTextContent(wording);
+      expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
       expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     });
 
@@ -758,7 +759,8 @@ describe('SellInfoScreen', () => {
       await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
       await settle();
 
-      expect(screen.getByTestId('spinner')).toBeInTheDocument();
+      expect(screen.getByTestId('quote-error')).toHaveTextContent(error);
+      expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
       expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     });
 
@@ -829,6 +831,38 @@ describe('SellInfoScreen', () => {
   });
 
   describe('transaction polling', () => {
+    it('ignores an old account poll that resolves after a new IBAN quote loads', async () => {
+      jest.useFakeTimers();
+      let finishOldPoll: (value: unknown) => void = () => undefined;
+      mockGetTransactionByRequestId.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOldPoll = resolve;
+          }),
+      );
+      mockReceiveFor
+        .mockResolvedValueOnce(makeSell())
+        .mockResolvedValueOnce(makeSell({ id: 43, estimatedAmount: 246.9 }));
+      const nextAccount = { ...mockBankAccount, id: 2, iban: 'FR1420041010050500013M02606' };
+      mockCreateAccount.mockResolvedValue(nextAccount);
+
+      const { rerender } = render(<SellInfoScreen />);
+      await settle();
+      act(() => jest.advanceTimersByTime(5000));
+      expect(mockGetTransactionByRequestId).toHaveBeenCalledWith(42);
+
+      mockAppParams.bankAccount = nextAccount.iban;
+      rerender(<SellInfoScreen />);
+      await settle();
+      expect(screen.getByText('246.90 CHF')).toBeInTheDocument();
+
+      await act(async () => {
+        finishOldPoll({ inputTxId: 'old-account-tx' });
+        await Promise.resolve();
+      });
+      expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
+    });
+
     it('starts the expiry timer and shows completion when polling finds a transaction', async () => {
       jest.useFakeTimers();
       const clearIntervalSpy = jest.spyOn(window, 'clearInterval');
@@ -880,6 +914,36 @@ describe('SellInfoScreen', () => {
   });
 
   describe('payment details and wallet completion', () => {
+    it('ignores an old wallet send that resolves after a new IBAN quote loads', async () => {
+      let finishOldSend: (txId: string) => void = () => undefined;
+      mockActiveWallet = mockWallet;
+      mockCanSendTransaction.mockReturnValue(true);
+      mockSendTransaction.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOldSend = resolve;
+          }),
+      );
+      mockReceiveFor
+        .mockResolvedValueOnce(makeSell())
+        .mockResolvedValueOnce(makeSell({ id: 43, estimatedAmount: 246.9 }));
+      const nextAccount = { ...mockBankAccount, id: 2, iban: 'FR1420041010050500013M02606' };
+      mockCreateAccount.mockResolvedValue(nextAccount);
+
+      const { rerender } = await renderHappyPath();
+      act(() => screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click());
+      expect(mockSendTransaction).toHaveBeenCalledWith(expect.objectContaining({ id: 42 }));
+
+      mockAppParams.bankAccount = nextAccount.iban;
+      rerender(<SellInfoScreen />);
+      expect(await screen.findByText('246.90 CHF')).toBeInTheDocument();
+      await act(async () => {
+        finishOldSend('old-account-tx');
+        await mockLastButtonAction;
+      });
+      expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
+    });
+
     it('renders all complete quote details and hides wallet completion when sending is unavailable', async () => {
       await renderHappyPath();
 
