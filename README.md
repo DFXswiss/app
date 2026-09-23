@@ -244,7 +244,7 @@ Documentation on `BuyPaymentInfoDto`, `SellPaymentInfoDto` and `SwapPaymentInfoD
 <script>
   window.addEventListener('message', (event) => {
     const iframe = document.getElementById('dfx-services');
-    if (event.origin !== 'https://app.dfx.swiss' || event.source !== iframe.contentWindow) return;
+    if (event.origin !== 'https://app.dfx.swiss' || event.source !== iframe?.contentWindow) return;
 
     handleClose(event.data);
   });
