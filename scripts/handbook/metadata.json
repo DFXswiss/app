@@ -133,7 +133,7 @@
   },
   "sell-bank-account-kyc-only": {
     "title": "Bankverbindung ohne Wallet (Verkauf)",
-    "description": "Hinweis auf Verkauf und Verkaufsbestätigung, wenn eine IBAN im Link abgelehnt wird. Varianten: Konto ohne Wallet (Deutsch und Englisch auf Verkauf, Deutsch auf der Bestätigung) und Multi-Account-IBAN (Deutsch auf Verkauf und Bestätigung). Der Safe-Auszahlungsdialog nutzt dieselbe Hinweisbox und ist hier nicht noch einmal abgebildet."
+    "description": "Hinweise bei abgelehnter IBAN aus einem Link auf Verkauf, Verkaufsbestätigung und Safe-Auszahlung. Varianten: Konto ohne Wallet (Deutsch und Englisch auf Verkauf, Deutsch auf Bestätigung und Safe-Auszahlung) sowie Multi-Account-IBAN (Deutsch auf allen drei Ansichten)."
   },
   "settings-verification-call": {
     "title": "Verifizierungsanruf (Settings)",

@@ -77,6 +77,7 @@ let mockCountdownState = {
   startTimer: mockStartTimer,
 };
 let mockLastButtonAction: Promise<void> | undefined;
+let mockCompleteAction: (() => Promise<void>) | undefined;
 
 function makeSell(overrides: Record<string, unknown> = {}) {
   return {
@@ -147,17 +148,20 @@ jest.mock('@dfx.swiss/react-components', () => ({
   IconColor: { GRAY: 'gray' },
   SpinnerSize: { LG: 'lg' },
   SpinnerVariant: { LIGHT_MODE: 'light-mode' },
-  StyledButton: ({ label, onClick, isLoading }: any) => (
-    <button
-      type="button"
-      data-loading={String(Boolean(isLoading))}
-      onClick={() => {
-        mockLastButtonAction = onClick();
-      }}
-    >
-      {label}
-    </button>
-  ),
+  StyledButton: ({ label, onClick, isLoading }: any) => {
+    if (label === 'Complete transaction in your wallet') mockCompleteAction = onClick;
+    return (
+      <button
+        type="button"
+        data-loading={String(Boolean(isLoading))}
+        onClick={() => {
+          mockLastButtonAction = onClick();
+        }}
+      >
+        {label}
+      </button>
+    );
+  },
   StyledButtonColor: { STURDY_WHITE: 'sturdy-white' },
   StyledButtonWidth: { MIN: 'min', FULL: 'full' },
   StyledDataTable: ({ children, label }: any) => (
@@ -273,6 +277,7 @@ describe('SellInfoScreen', () => {
       startTimer: mockStartTimer,
     };
     mockLastButtonAction = undefined;
+    mockCompleteAction = undefined;
     Object.assign(mockAppParams, {
       assetIn: 'ETH',
       assetOut: 'CHF',
@@ -489,7 +494,8 @@ describe('SellInfoScreen', () => {
 
         mockAppParams.bankAccount = frenchAccount.iban;
         rerender(<SellInfoScreen />);
-        expect(mockCreateAccount).toHaveBeenCalledTimes(1);
+        expect(mockCreateAccount).toHaveBeenCalledTimes(2);
+        expect(mockCreateAccount).toHaveBeenLastCalledWith({ iban: frenchAccount.iban });
 
         await act(async () => {
           finishFirstCreate(outcome === 'resolve' ? mockBankAccount : { message: 'Service unavailable' });
@@ -506,6 +512,81 @@ describe('SellInfoScreen', () => {
   });
 
   describe('required inputs and quote requests', () => {
+    it('hides the old account quote as soon as the link requests a different IBAN', async () => {
+      const { rerender } = await renderHappyPath();
+      const previousQuoteCount = mockReceiveFor.mock.calls.length;
+      mockAppParams.bankAccount = 'FR1420041010050500013M02606';
+      mockCreateAccount.mockImplementation(() => new Promise(() => undefined));
+
+      rerender(<SellInfoScreen />);
+
+      expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+      expect(mockReceiveFor).toHaveBeenCalledTimes(previousQuoteCount);
+    });
+
+    it('refuses an old completion action after the link requests a different IBAN', async () => {
+      mockCanSendTransaction.mockReturnValue(true);
+      const { rerender } = await renderHappyPath();
+      const previousCompleteAction = mockCompleteAction;
+      expect(previousCompleteAction).toBeDefined();
+
+      mockAppParams.bankAccount = 'FR1420041010050500013M02606';
+      mockCreateAccount.mockImplementation(() => new Promise(() => undefined));
+      rerender(<SellInfoScreen />);
+      await act(async () => {
+        await previousCompleteAction?.();
+      });
+
+      expect(mockCloseServices).not.toHaveBeenCalled();
+      expect(mockSendTransaction).not.toHaveBeenCalled();
+    });
+
+    it('ignores a quote for the previous IBAN when it resolves after the link changes', async () => {
+      let finishOldQuote: (value: unknown) => void = () => undefined;
+      mockReceiveFor.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishOldQuote = resolve;
+          }),
+      );
+      const { rerender } = render(<SellInfoScreen />);
+      await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+
+      mockAppParams.bankAccount = 'FR1420041010050500013M02606';
+      mockCreateAccount.mockImplementation(() => new Promise(() => undefined));
+      rerender(<SellInfoScreen />);
+      await act(async () => {
+        finishOldQuote(makeSell());
+        await Promise.resolve();
+      });
+
+      expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+      expect(mockReceiveFor).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a failed quote for the previous IBAN after the link changes', async () => {
+      let failOldQuote: (error: unknown) => void = () => undefined;
+      mockReceiveFor.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            failOldQuote = reject;
+          }),
+      );
+      const { rerender } = render(<SellInfoScreen />);
+      await waitFor(() => expect(mockReceiveFor).toHaveBeenCalledTimes(1));
+
+      mockAppParams.bankAccount = 'FR1420041010050500013M02606';
+      mockCreateAccount.mockImplementation(() => new Promise(() => undefined));
+      rerender(<SellInfoScreen />);
+      await act(async () => {
+        failOldQuote({ message: 'Old quote failed' });
+        await Promise.resolve();
+      });
+
+      expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    });
+
     it('uses an empty blockchain filter when no available-blockchain parameter is provided', async () => {
       mockAppParams.availableBlockchains = undefined;
       await renderHappyPath();

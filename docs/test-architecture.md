@@ -250,13 +250,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
   `/v1/setting/infoBanner`, `/v2/user`). Unmatched `/v1/**` and `/v2/**` calls get
   `501`. The session is a synthetic unsigned JWT that carries an address, so the
-  address guard stays on `/sell` and `/sell/info`. A green run proves those two
-  screens render the rejection and the link to `/connect`. It does not prove that
-  the API emits the rejection, or that a live account reaches the screen this way.
-  The same hint inside the Safe withdraw form is the component already pictured
-  here; that form needs a custody portfolio this spec does not stand up.
+  address guard stays on `/sell` and `/sell/info`. The `/safe` cases additionally
+  mock a writable legacy custody account, an empty portfolio and order history.
+  A green run proves all three screens render the rejection and the wallet link
+  where applicable. It does not prove that the API emits the rejection, or that
+  a live account reaches the screen this way.
   Two further cases fulfil the same POST with `Multi-account IBAN cannot be added`
-  and prove the support-ticket hint renders. A green run does not prove the API
+  and prove the support-ticket hint renders on all three screens. A green run does not prove the API
   emits that sentence either.
 - **The sell KYC-only full-stack case writes `user_data.status` with SQL.**
   `e2e-stack/specs/sell-swap.spec.ts` creates a wallet-backed user and then sets

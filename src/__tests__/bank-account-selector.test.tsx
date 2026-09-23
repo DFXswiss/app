@@ -8,6 +8,7 @@ const mockFormatIban = jest.fn(() => undefined as string | undefined);
 const existing = { id: 1, iban: 'CH9300762011623852957', label: 'Main', default: true };
 let mockBankAccounts: (typeof existing)[] | undefined = [existing];
 let mockBankAccountParam: string | undefined;
+let mockBeforeModalButtonRender: (() => void) | undefined;
 
 jest.mock('@dfx.swiss/react', () => ({
   Utils: { formatIban: (...args: unknown[]) => mockFormatIban(...args) },
@@ -20,11 +21,14 @@ jest.mock('@dfx.swiss/react', () => ({
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
-  StyledModalButton: ({ value, onClick, onBlur, placeholder }: any) => (
-    <button type="button" data-testid="open-selector" onClick={onClick} onBlur={onBlur}>
-      {placeholder}:{value}
-    </button>
-  ),
+  StyledModalButton: ({ value, onClick, onBlur, placeholder }: any) => {
+    mockBeforeModalButtonRender?.();
+    return (
+      <button type="button" data-testid="open-selector" onClick={onClick} onBlur={onBlur}>
+        {placeholder}:{value}
+      </button>
+    );
+  },
   StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
 }));
 
@@ -79,6 +83,7 @@ describe('BankAccountSelector', () => {
     jest.clearAllMocks();
     mockBankAccounts = [existing];
     mockBankAccountParam = undefined;
+    mockBeforeModalButtonRender = undefined;
     mockGetAccount.mockImplementation((list: (typeof existing)[], iban?: string) =>
       iban ? list.find((a) => a.iban === iban) : undefined,
     );
@@ -264,12 +269,38 @@ describe('BankAccountSelector', () => {
     expect(mockOnChange).not.toHaveBeenCalled();
   });
 
+  it('ignores an old create result between rendering a new IBAN and running its effects', () => {
+    const oldIban = 'DE89370400440532013000';
+    let completeOldCreate: ((account: typeof existing) => void) | undefined;
+    mockBankAccounts = [];
+    mockBankAccountParam = oldIban;
+    mockCreateAccount.mockImplementation(() => ({
+      then: (onSuccess: (account: typeof existing) => void) => {
+        completeOldCreate = onSuccess;
+        return { catch: () => undefined };
+      },
+    }));
+
+    const { rerender } = render(
+      <BankAccountSelector placeholder="IBAN" onChange={mockOnChange} onModalToggle={mockOnModalToggle} />,
+    );
+    expect(completeOldCreate).toBeDefined();
+
+    mockBankAccountParam = 'FR1420041010050500013M02606';
+    mockBeforeModalButtonRender = () => {
+      mockBeforeModalButtonRender = undefined;
+      completeOldCreate?.({ id: 2, iban: oldIban, label: 'Old', default: false });
+    };
+    rerender(<BankAccountSelector placeholder="IBAN" onChange={mockOnChange} onModalToggle={mockOnModalToggle} />);
+
+    expect(mockOnChange).not.toHaveBeenCalled();
+  });
+
   it('does not overwrite a manual selection when an account creation resolves later', async () => {
     let resolveCreate: (value: unknown) => void = () => undefined;
     const createdAccount = { id: 2, iban: 'DE89370400440532013000' };
     mockBankAccounts = [existing];
     mockBankAccountParam = createdAccount.iban;
-    mockGetAccount.mockReturnValue(undefined);
     mockCreateAccount.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -277,7 +308,7 @@ describe('BankAccountSelector', () => {
         }),
     );
 
-    render(
+    const { rerender } = render(
       <BankAccountSelector placeholder="IBAN" isModalOpen onChange={mockOnChange} onModalToggle={mockOnModalToggle} />,
     );
     await act(async () => {
@@ -286,6 +317,16 @@ describe('BankAccountSelector', () => {
 
     fireEvent.click(screen.getByTestId('pick-1'));
     await act(async () => {
+      // The SDK adds the created account to context before its create promise settles.
+      mockBankAccounts = [existing, createdAccount];
+      rerender(
+        <BankAccountSelector
+          placeholder="IBAN"
+          isModalOpen
+          onChange={mockOnChange}
+          onModalToggle={mockOnModalToggle}
+        />,
+      );
       resolveCreate(createdAccount);
       await Promise.resolve();
     });
