@@ -253,7 +253,7 @@ Documentation on `BuyPaymentInfoDto`, `SellPaymentInfoDto` and `SwapPaymentInfoD
   }
 </script>
 
-<iframe src="https://app.dfx.swiss" height="600" width="450" frameborder="0" allow="clipboard-write"></iframe>
+<iframe src="https://app.dfx.swiss" height="600" width="450" style="border: 0" allow="clipboard-write"></iframe>
 ```
 
 #### Web Component Example
