@@ -154,6 +154,7 @@ jest.mock('@dfx.swiss/react-components', () => ({
       <button
         type="button"
         data-loading={String(Boolean(isLoading))}
+        disabled={Boolean(isLoading)}
         onClick={() => {
           mockLastButtonAction = onClick();
         }}
@@ -914,6 +915,91 @@ describe('SellInfoScreen', () => {
   });
 
   describe('payment details and wallet completion', () => {
+    it('keeps a pending wallet send locked when the quote expires', async () => {
+      let finishSend: (txId: string) => void = () => undefined;
+      mockActiveWallet = mockWallet;
+      mockCanSendTransaction.mockReturnValue(true);
+      mockSendTransaction.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishSend = resolve;
+          }),
+      );
+      const { rerender } = await renderHappyPath();
+      act(() => screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click());
+      expect(mockSendTransaction).toHaveBeenCalledTimes(1);
+
+      mockCountdownState = { ...mockCountdownState, remainingSeconds: 1 };
+      rerender(<SellInfoScreen />);
+      await settle();
+      expect(mockReceiveFor).toHaveBeenCalledTimes(1);
+      const completeButton = screen.getByRole('button', { name: 'Complete transaction in your wallet' });
+      expect(completeButton).toBeDisabled();
+      completeButton.click();
+      await mockCompleteAction?.();
+      expect(mockSendTransaction).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        finishSend('wallet-tx-id');
+        await mockLastButtonAction;
+      });
+      expect(screen.getByTestId('sell-completion')).toHaveTextContent('wallet-tx-id');
+    });
+
+    it('refreshes an expired quote after a pending wallet send fails', async () => {
+      let rejectSend: (error: Error) => void = () => undefined;
+      mockActiveWallet = mockWallet;
+      mockCanSendTransaction.mockReturnValue(true);
+      mockSendTransaction.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectSend = reject;
+          }),
+      );
+      mockReceiveFor
+        .mockResolvedValueOnce(makeSell())
+        .mockResolvedValueOnce(makeSell({ id: 43, estimatedAmount: 246.9 }));
+
+      const { rerender } = await renderHappyPath();
+      act(() => screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click());
+      const action = mockLastButtonAction;
+      if (!action) throw new Error('Expected a pending wallet send');
+      const rejection = expect(action).rejects.toThrow('Wallet rejected');
+
+      mockCountdownState = { ...mockCountdownState, remainingSeconds: 1 };
+      rerender(<SellInfoScreen />);
+      await settle();
+      expect(mockReceiveFor).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        rejectSend(new Error('Wallet rejected'));
+        await rejection;
+      });
+      expect(await screen.findByText('246.90 CHF')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Complete transaction in your wallet' })).not.toBeDisabled();
+    });
+
+    it('ignores wallet completion after the screen unmounts', async () => {
+      let finishSend: (txId: string) => void = () => undefined;
+      mockActiveWallet = mockWallet;
+      mockCanSendTransaction.mockReturnValue(true);
+      mockSendTransaction.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishSend = resolve;
+          }),
+      );
+
+      const { unmount } = await renderHappyPath();
+      act(() => screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click());
+      unmount();
+      await act(async () => {
+        finishSend('old-wallet-tx');
+        await mockLastButtonAction;
+      });
+      expect(mockCloseServices).not.toHaveBeenCalled();
+    });
+
     it('ignores an old wallet send that resolves after a new IBAN quote loads', async () => {
       let finishOldSend: (txId: string) => void = () => undefined;
       mockActiveWallet = mockWallet;
@@ -937,6 +1023,7 @@ describe('SellInfoScreen', () => {
       mockAppParams.bankAccount = nextAccount.iban;
       rerender(<SellInfoScreen />);
       expect(await screen.findByText('246.90 CHF')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Complete transaction in your wallet' })).toBeDisabled();
       await act(async () => {
         finishOldSend('old-account-tx');
         await mockLastButtonAction;

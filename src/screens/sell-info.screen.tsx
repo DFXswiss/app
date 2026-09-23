@@ -96,6 +96,9 @@ export default function SellInfoScreen(): JSX.Element {
   const latestBankAccountParamRef = useRef(bankAccountParam);
   const previousBankAccountParamRef = useRef(bankAccountParam);
   const quoteRequestGenerationRef = useRef(0);
+  const pendingSendRef = useRef(false);
+  const pendingSendAccountIdRef = useRef<number>();
+  const refreshAfterSendAccountIdRef = useRef<number>();
   latestBankAccountParamRef.current = bankAccountParam;
   const activeBankAccount =
     bankAccount && getAccount([bankAccount], bankAccountParam)?.id === bankAccount.id ? bankAccount : undefined;
@@ -121,7 +124,7 @@ export default function SellInfoScreen(): JSX.Element {
     setQuotedBankAccountId(undefined);
     setShowsCompletion(false);
     setSellTxId(undefined);
-    setIsProcessing(false);
+    setIsProcessing(pendingSendRef.current);
     setErrorMessage(undefined);
     setBankAccountFailure(undefined);
     setCustomAmountError(undefined);
@@ -247,9 +250,20 @@ export default function SellInfoScreen(): JSX.Element {
     if (remainingSeconds <= 1) fetchData();
   }, [remainingSeconds]);
 
+  useEffect(() => {
+    if (isProcessing || refreshAfterSendAccountIdRef.current === undefined || !activeBankAccount) return;
+    const shouldRefresh = refreshAfterSendAccountIdRef.current === activeBankAccount.id && !showsCompletion;
+    refreshAfterSendAccountIdRef.current = undefined;
+    if (shouldRefresh) fetchData();
+  }, [isProcessing, activeBankAccount, showsCompletion]);
+
   useEffect(() => fetchData(), [asset, currency, activeBankAccount, amountIn, amountOut]);
 
   function fetchData() {
+    if (activeBankAccount && pendingSendRef.current && activeBankAccount.id === pendingSendAccountIdRef.current) {
+      refreshAfterSendAccountIdRef.current = activeBankAccount.id;
+      return;
+    }
     if (!(asset && currency && activeBankAccount && (amountIn || amountOut))) {
       const inputIsComplete = (amountIn || amountOut) && assetIn && assetOut && bankAccountParam;
       !inputIsComplete && setErrorMessage('Missing required information');
@@ -275,7 +289,7 @@ export default function SellInfoScreen(): JSX.Element {
     const requestGeneration = ++quoteRequestGenerationRef.current;
     const requestedParam = bankAccountParam;
     setIsLoading(true);
-    setIsProcessing(false);
+    setIsProcessing(pendingSendRef.current);
     receiveFor(request)
       .then((sell) =>
         quoteRequestGenerationRef.current === requestGeneration && latestBankAccountParamRef.current === requestedParam
@@ -364,6 +378,7 @@ export default function SellInfoScreen(): JSX.Element {
 
   async function handleNext(paymentInfo: Sell): Promise<void> {
     if (
+      pendingSendRef.current ||
       !activeBankAccount ||
       activePaymentInfo !== paymentInfo ||
       latestBankAccountParamRef.current !== bankAccountParam
@@ -384,13 +399,17 @@ export default function SellInfoScreen(): JSX.Element {
 
     try {
       if (canSendTransaction()) {
+        pendingSendRef.current = true;
+        pendingSendAccountIdRef.current = activeBankAccount.id;
         const txId = await sendTransaction(paymentInfo);
         if (!isCurrent()) return;
         setSellTxId(txId);
       }
       setShowsCompletion(true);
     } finally {
-      if (isCurrent()) setIsProcessing(false);
+      pendingSendRef.current = false;
+      pendingSendAccountIdRef.current = undefined;
+      if (mountedRef.current) setIsProcessing(false);
     }
   }
 
