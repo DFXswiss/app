@@ -182,8 +182,14 @@ test.describe('RealUnit area', () => {
     async ({ page }) => {
       const { jwt } = await loginAs('RealUnit');
       const { pageErrors, consoleErrors } = attachErrorListeners(page);
+      // openScreen may finish before this effect-driven GET settles.
+      const holdersResponse = page.waitForResponse((response) =>
+        new URL(response.url()).pathname.endsWith('/realunit/holders'),
+      );
 
       await openScreen(page, '/realunit/holders', jwt);
+      await (await holdersResponse).finished();
+      await page.waitForLoadState('networkidle');
 
       await expect(page.getByRole('heading', { name: /All Holders/ })).toBeVisible();
       await expect(tableHeader(page, 'Address')).toBeVisible();
@@ -247,7 +253,7 @@ test.describe('RealUnit area', () => {
       `SELECT id FROM asset WHERE name = 'REALU' AND blockchain = 'Sepolia' AND type = 'Token' ORDER BY id ASC LIMIT 1`,
     );
     if (realu?.id == null) {
-      throw new Error("seedWaitingForPaymentBuyQuote: no loc REALU token on Sepolia in seed data");
+      throw new Error('seedWaitingForPaymentBuyQuote: no loc REALU token on Sepolia in seed data');
     }
 
     const uid = `RQ${Date.now().toString(36)}${customer.userId}`.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
@@ -290,9 +296,7 @@ test.describe('RealUnit area', () => {
       )
       .not.toBeNull();
 
-    await expect
-      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
-      .toBe('/realunit/quotes');
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 }).toBe('/realunit/quotes');
 
     assertNoErrors(pageErrors, consoleErrors);
   });
@@ -331,9 +335,7 @@ test.describe('RealUnit area', () => {
       )
       .not.toBeNull();
 
-    await expect
-      .poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 })
-      .toBe('/realunit/quotes');
+    await expect.poll(() => normPath(new URL(page.url()).pathname), { timeout: 15000 }).toBe('/realunit/quotes');
 
     assertNoErrors(pageErrors, consoleErrors);
   });
