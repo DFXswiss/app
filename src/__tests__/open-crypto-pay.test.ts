@@ -38,7 +38,7 @@ import { Lnurl } from '../util/lnurl';
 
 describe('OpenCryptoPayUtils', () => {
   describe('getOcpUrlByUniqueId', () => {
-    it('should generate valid LNURL for unique ID', () => {
+    it('should contain lightning=LNURL in the result', () => {
       const uniqueId = 'abc123';
       const result = OpenCryptoPayUtils.getOcpUrlByUniqueId(uniqueId);
 
@@ -85,7 +85,7 @@ describe('OpenCryptoPayUtils', () => {
       expect(result1).not.toBe(result2);
     });
 
-    it('should return URL containing pl path', () => {
+    it('should contain pl in the result', () => {
       const result = OpenCryptoPayUtils.getOcpUrlByUniqueId('test');
       expect(result).toContain('pl');
     });
