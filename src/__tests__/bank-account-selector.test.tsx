@@ -442,7 +442,7 @@ describe('BankAccountSelector', () => {
     mockGetAccount.mockReturnValue(undefined);
     mockCreateAccount.mockRejectedValue({
       statusCode: 400,
-      message: 'You cannot add an IBAN to a KYC only account',
+      message: 'You cannot add an IBAN to a KYC only account; connect a wallet first',
     });
     await act(async () => {
       render(
@@ -457,8 +457,31 @@ describe('BankAccountSelector', () => {
       await Promise.resolve();
     });
     expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError).toHaveBeenCalledWith('You cannot add an IBAN to a KYC only account', 'kyc-only');
+    expect(onError).toHaveBeenCalledWith(
+      'You cannot add an IBAN to a KYC only account; connect a wallet first',
+      'kyc-only',
+    );
     expect(mockOnChange).not.toHaveBeenCalled();
+  });
+
+  it('does not classify an unrelated KYC-only 400 as a missing-wallet rejection', async () => {
+    const onError = jest.fn();
+    mockBankAccountParam = 'DE89370400440532013000';
+    mockGetAccount.mockReturnValue(undefined);
+    mockCreateAccount.mockRejectedValue({ statusCode: 400, message: 'KYC only review pending' });
+    await act(async () => {
+      render(
+        <BankAccountSelector
+          placeholder="IBAN"
+          isModalOpen={false}
+          onChange={mockOnChange}
+          onModalToggle={mockOnModalToggle}
+          onError={onError}
+        />,
+      );
+      await Promise.resolve();
+    });
+    expect(onError).toHaveBeenCalledWith('KYC only review pending', 'other');
   });
 
   it('keeps a KYC-only sentence generic when the status is not 400', async () => {

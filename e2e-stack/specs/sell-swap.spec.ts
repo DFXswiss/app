@@ -981,11 +981,11 @@ test.describe('Sell + Swap e2e', () => {
     });
     await queryRows(`UPDATE user_data SET status = 'KycOnly' WHERE id = $1`, [user.userDataId]);
 
-    const hint = 'Before you can add a bank account, your DFX account needs a wallet.';
+    const hint = 'A bank account can only be added once a wallet is linked to this account.';
     const sellUrl = `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1&lang=en&bank-account=${encodeURIComponent(TEST_IBAN)}`;
     await gotoWithSession(page, sellUrl, user.jwt);
     await expect(page.getByText(hint)).toBeVisible({ timeout: 20000 });
-    await expect(page.getByText('Connect a wallet')).toBeVisible();
+    await expect(page.getByText('Connect your wallet')).toBeVisible();
     await expect(page.getByText(/Something went wrong/)).toHaveCount(0);
     await expect(page.getByRole('button', { name: /issued the transaction/i })).toHaveCount(0);
 

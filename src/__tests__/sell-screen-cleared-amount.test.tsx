@@ -1256,20 +1256,20 @@ describe('SellScreen', () => {
 
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
     expect(screen.getByTestId('payment-info')).toBeInTheDocument();
-    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.getByText('Connect your wallet')).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('bank-account-create-start'));
     });
-    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.getByText('Connect your wallet')).toBeInTheDocument();
     expect(screen.getByTestId('payment-info')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Connect a wallet'));
+    fireEvent.click(screen.getByText('Connect your wallet'));
     expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
 
     mockReceiveFor.mockRejectedValue({ statusCode: 500, message: 'later boom' });
     fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '0.2' } });
     await flushQuote();
-    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.getByText('Connect your wallet')).toBeInTheDocument();
     expect(screen.getByText('later boom')).toBeInTheDocument();
 
     await act(async () => {
@@ -1290,7 +1290,7 @@ describe('SellScreen', () => {
       fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '' } });
     });
     await flushQuote();
-    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.getByText('Connect your wallet')).toBeInTheDocument();
     expect(mockReceiveFor.mock.calls.length).toBe(callsBefore);
   });
 
@@ -1356,14 +1356,14 @@ describe('SellScreen', () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId('bank-account-kyc'));
     });
-    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.getByText('Connect your wallet')).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('bank-account-alt'));
     });
     await flushQuote();
 
-    expect(screen.queryByText('Connect a wallet')).not.toBeInTheDocument();
+    expect(screen.queryByText('Connect your wallet')).not.toBeInTheDocument();
     expect(screen.getByTestId('payment-info')).toBeInTheDocument();
   });
 
@@ -1389,7 +1389,7 @@ describe('SellScreen', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.getByText('Connect your wallet')).toBeInTheDocument();
     expect(screen.getByText('later boom')).toBeInTheDocument();
   });
 
@@ -1415,7 +1415,7 @@ describe('SellScreen', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.getByText('Connect your wallet')).toBeInTheDocument();
     expect(screen.getByTestId('input-amount-error')).toBeInTheDocument();
   });
 
@@ -1445,7 +1445,7 @@ describe('SellScreen', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText('Connect a wallet')).toBeInTheDocument();
+    expect(screen.getByText('Connect your wallet')).toBeInTheDocument();
     expect(screen.getByTestId('input-targetAmount')).toHaveValue('777');
   });
 

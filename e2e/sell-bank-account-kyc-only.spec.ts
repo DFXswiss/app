@@ -58,8 +58,8 @@ const KYC_REJECTION = 'You cannot add an IBAN to a KYC only account';
 const MULTI_REJECTION = 'Multi-account IBAN cannot be added';
 
 const HINT = {
-  de: 'Bevor Du eine Bankverbindung hinterlegen kannst, braucht Dein DFX-Konto eine Wallet.',
-  en: 'Before you can add a bank account, your DFX account needs a wallet.',
+  de: 'Ein Bankkonto kann erst hinzugefügt werden, wenn eine Wallet mit diesem Konto verknüpft ist.',
+  en: 'A bank account can only be added once a wallet is linked to this account.',
 } as const;
 
 const MULTI = {
@@ -68,8 +68,8 @@ const MULTI = {
 } as const;
 
 const CONNECT = {
-  de: 'Wallet verbinden',
-  en: 'Connect a wallet',
+  de: 'Verbinde Deine Wallet',
+  en: 'Connect your wallet',
 } as const;
 
 async function installRoutes(page: Page, rejectionMessage: string): Promise<void> {

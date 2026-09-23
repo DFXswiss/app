@@ -178,9 +178,9 @@ describe('OrderInterface bank-account error channel', () => {
     fireEvent.click(screen.getByTestId('bank-account-kyc'));
     expect(screen.getByTestId('payment-error')).toHaveTextContent('');
     expect(screen.getByTestId('bank-account-hint')).toHaveTextContent(
-      'Before you can add a bank account, your DFX account needs a wallet.',
+      'A bank account can only be added once a wallet is linked to this account.',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Connect a wallet' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect your wallet' }));
     expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
 
     fireEvent.click(screen.getByTestId('bank-account-create-start'));
