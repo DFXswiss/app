@@ -357,6 +357,7 @@ describe('useMetaMask', () => {
       });
       const provider = createBraveLikeProvider(request);
       (window as any).ethereum = provider;
+      expect(() => provider.on).toThrow(TypeError);
 
       const { result } = renderHook(() => useMetaMask());
       const instance = lastWeb3Instance();
@@ -374,7 +375,7 @@ describe('useMetaMask', () => {
       expect(request).toHaveBeenCalledWith({ method: 'eth_accounts' });
     });
 
-    it('leaves currentProvider.on undefined so web3 polls instead of subscribing', () => {
+    it('leaves currentProvider.on undefined for the fallback facade', () => {
       const request = jest.fn().mockResolvedValue([]);
       (window as any).ethereum = createBraveLikeProvider(request);
 
@@ -383,6 +384,28 @@ describe('useMetaMask', () => {
 
       expect(instance.currentProvider).not.toBeNull();
       expect(instance.currentProvider.on).toBeUndefined();
+    });
+
+    it('passes the fallback facade through the real Web3 request manager', async () => {
+      const request = jest.fn(async function (this: { isMetaMask?: boolean }, { method }: { method: string }) {
+        expect(this.isMetaMask).toBe(true);
+        if (method === 'eth_chainId') return '0x1';
+        throw new Error(`Unexpected RPC: ${method}`);
+      });
+      const provider = createBraveLikeProvider(request);
+      (window as any).ethereum = provider;
+      expect(() => provider.on).toThrow(TypeError);
+
+      renderHook(() => useMetaMask());
+      const facade = lastWeb3Instance().currentProvider;
+      expect(facade).not.toBe(provider);
+      expect(facade.on).toBeUndefined();
+
+      const RealWeb3 = jest.requireActual('web3') as typeof Web3;
+      const realWeb3 = new RealWeb3(facade);
+      await expect(realWeb3.eth.getChainId()).resolves.toBe(1);
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledWith({ method: 'eth_chainId', params: [] });
     });
 
     it('keeps register() working when .on throws so getAccounts/getChainId still run', async () => {
@@ -409,13 +432,15 @@ describe('useMetaMask', () => {
 
     it('still registers accountsChanged and chainChanged listeners when .on works', () => {
       const on = jest.fn();
-      (window as any).ethereum = {
+      const provider = {
         isMetaMask: true,
         request: jest.fn().mockResolvedValue([]),
         on,
       };
+      (window as any).ethereum = provider;
 
       const { result } = renderHook(() => useMetaMask());
+      expect(lastWeb3Instance().currentProvider).toBe(provider);
       result.current.register(jest.fn(), jest.fn());
 
       expect(on).toHaveBeenCalledWith('accountsChanged', expect.any(Function));

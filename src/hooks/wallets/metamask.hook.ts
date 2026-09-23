@@ -43,7 +43,7 @@ function toWeb3Provider(provider: any): any {
     void provider.on;
     return provider;
   } catch {
-    // Brave's ethereum proxy throws on a mere read of `.on`. web3 setProvider
+    // The observed injected proxy throws on a mere read of `.on`. web3 setProvider
     // does that read (`if (provider.on)`) before any RPC. Leaving `.on`
     // undefined lets the check skip without throwing, so web3 polls immediately
     // instead of waiting blockHeaderTimeout (10s) for a subscription that a
@@ -192,7 +192,7 @@ export function useMetaMask(): MetaMaskInterface {
     try {
       ethereum()?.on(event, handler);
     } catch {
-      // Brave: a mere read of `.on` throws, so neither accountsChanged nor
+      // With the observed proxy, a mere read of `.on` throws, so neither accountsChanged nor
       // chainChanged is registered and account or network switches are not
       // observed. Catching here lets the rest of register() continue.
     }
