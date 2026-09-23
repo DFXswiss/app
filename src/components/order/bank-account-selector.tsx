@@ -46,6 +46,9 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
   const requestGenerationRef = useRef(0);
   const previousRetryTokenRef = useRef(retryToken);
   const mountedRef = useRef(true);
+  const liveBankAccountParamRef = useRef(bankAccount);
+  const manuallySelectedParamRef = useRef<string>();
+  liveBankAccountParamRef.current = bankAccount;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -58,6 +61,7 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
     requestGenerationRef.current += 1;
     requestedCreateIbanRef.current = undefined;
     failedCreateIbanRef.current = undefined;
+    manuallySelectedParamRef.current = undefined;
   }, [bankAccount]);
 
   useEffect(() => {
@@ -66,6 +70,7 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
     previousRetryTokenRef.current = retryToken;
     requestedCreateIbanRef.current = undefined;
     failedCreateIbanRef.current = undefined;
+    manuallySelectedParamRef.current = undefined;
   }, [retryToken]);
 
   useEffect(() => {
@@ -77,7 +82,7 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
 
     if (account) {
       if (bankAccount) {
-        if (value?.id !== account.id) onChange(account);
+        if (manuallySelectedParamRef.current !== bankAccount && value?.id !== account.id) onChange(account);
       } else if (!value) {
         onChange(account);
       }
@@ -96,11 +101,21 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
       onCreateStart?.();
       createAccount({ iban: requestedIban })
         .then((b) => {
-          if (!mountedRef.current || requestGenerationRef.current !== requestGeneration) return;
+          if (
+            !mountedRef.current ||
+            requestGenerationRef.current !== requestGeneration ||
+            liveBankAccountParamRef.current !== requestedIban
+          )
+            return;
           onChange(b);
         })
         .catch((e: { statusCode?: number; message?: string }) => {
-          if (!mountedRef.current || requestGenerationRef.current !== requestGeneration) return;
+          if (
+            !mountedRef.current ||
+            requestGenerationRef.current !== requestGeneration ||
+            liveBankAccountParamRef.current !== requestedIban
+          )
+            return;
           requestedCreateIbanRef.current = undefined;
           failedCreateIbanRef.current = requestedIban;
           onError?.(e.message ?? 'Unknown error', bankAccountFailureKind(e));
@@ -122,6 +137,7 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
 
   const handleManualChange = (account: BankAccount) => {
     requestGenerationRef.current += 1;
+    manuallySelectedParamRef.current = bankAccount;
     onChange(account);
   };
 
@@ -129,6 +145,7 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
     if (bankAccount && failedCreateIbanRef.current === bankAccount) {
       requestedCreateIbanRef.current = undefined;
       failedCreateIbanRef.current = undefined;
+      manuallySelectedParamRef.current = undefined;
       setManualRetryToken((token) => token + 1);
     }
     onModalToggle(true);

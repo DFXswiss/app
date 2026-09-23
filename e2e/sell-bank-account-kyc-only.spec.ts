@@ -1,15 +1,16 @@
 import { test, expect, Page, Route } from '@playwright/test';
 
 /**
- * E2E Visual Regression Tests: sell and sell-info KYC-only bank-account hint.
+ * E2E Visual Regression Tests: sell, sell-info and Safe withdrawal bank-account hints.
  *
  * Routes:
  *   - /sell?bank-account=…       (auto-create from the link)
  *   - /sell/info?bank-account=…  (auto-create from the link)
+ *   - /safe?bank-account=…       (fiat withdrawal from a synthetic Safe account)
  *
  * Auth is a synthetic unsigned JWT with an address, so the address guard stays on the
- * screen. Bootstrap GETs and POST /v1/bankAccount are mocked. A green run does not prove
- * that the API emits this rejection. It proves the screen renders it.
+ * screen. Bootstrap GETs, Safe data and POST /v1/bankAccount are mocked. A green
+ * run proves the screens render the hint, not that a live API emits the rejection.
  */
 
 async function json(route: Route, body: unknown): Promise<void> {
@@ -72,7 +73,7 @@ const CONNECT = {
   en: 'Connect your wallet',
 } as const;
 
-async function installRoutes(page: Page, rejectionMessage: string): Promise<void> {
+async function installRoutes(page: Page, rejectionMessage: string, safe = false): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -123,6 +124,18 @@ async function installRoutes(page: Page, rejectionMessage: string): Promise<void
 
     if (method === 'GET' && path === '/v1/bankAccount') return json(route, []);
 
+    if (safe && method === 'GET' && path === '/v1/custody/account') {
+      return json(route, [{ id: null, title: 'My Safe', isLegacy: true, accessLevel: 'Write', owner: { id: 1 } }]);
+    }
+
+    if (safe && method === 'GET' && path === '/v1/custody') {
+      return json(route, { totalValue: { chf: 0, eur: 0, usd: 0 }, balances: [] });
+    }
+
+    if (safe && method === 'GET' && path === '/v1/custody/history') return json(route, { totalValue: [] });
+
+    if (safe && method === 'GET' && path === '/v1/custody/order') return json(route, []);
+
     if (method === 'GET' && path === '/v1/setting/infoBanner') return json(route, null);
 
     if (method === 'GET' && (path === '/v1/blockchain' || path === '/v1/price')) return json(route, []);
@@ -152,7 +165,7 @@ async function installRoutes(page: Page, rejectionMessage: string): Promise<void
         language: { id: 2, name: 'English', symbol: 'EN' },
         kyc: { level: 50, status: 'Completed' },
         address: ADDRESS,
-        addresses: [{ address: ADDRESS, blockchains: ['Ethereum'] }],
+        addresses: [{ address: ADDRESS, blockchains: ['Ethereum'], isCustody: safe }],
         disabledAddresses: [],
       });
     }
@@ -193,7 +206,33 @@ function sellInfoUrl(lang: 'de' | 'en'): string {
   return `/sell/info?${params.toString()}`;
 }
 
+function safeUrl(): string {
+  return `/safe?${new URLSearchParams({ session: jwt(), lang: 'de', 'bank-account': EXAMPLE_IBAN })}`;
+}
+
 test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
+  test('German hint on Safe fiat withdrawal after a KYC-only IBAN rejection', async ({ page }) => {
+    await installRoutes(page, KYC_REJECTION, true);
+    await page.setViewportSize({ width: 1280, height: 1800 });
+    await page.goto(safeUrl());
+    await page.getByRole('button', { name: 'Auszahlung', exact: true }).click();
+    await page.getByRole('button', { name: 'Fiat', exact: true }).click();
+
+    await expect(page.getByText(HINT.de)).toBeVisible({ timeout: 20_000 });
+    await expect(page).toHaveScreenshot('safe-withdraw-kyc-only-de.png', { fullPage: true, maxDiffPixels: 5000 });
+  });
+
+  test('German hint on Safe fiat withdrawal after a multi-account IBAN rejection', async ({ page }) => {
+    await installRoutes(page, MULTI_REJECTION, true);
+    await page.setViewportSize({ width: 1280, height: 1800 });
+    await page.goto(safeUrl());
+    await page.getByRole('button', { name: 'Auszahlung', exact: true }).click();
+    await page.getByRole('button', { name: 'Fiat', exact: true }).click();
+
+    await expect(page.getByText(MULTI.de)).toBeVisible({ timeout: 20_000 });
+    await expect(page).toHaveScreenshot('safe-withdraw-multi-account-de.png', { fullPage: true, maxDiffPixels: 5000 });
+  });
+
   test('German hint on sell after a KYC-only IBAN rejection', async ({ page }) => {
     await installRoutes(page, KYC_REJECTION);
     await page.goto(sellUrl('de'));
