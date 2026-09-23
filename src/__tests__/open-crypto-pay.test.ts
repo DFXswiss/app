@@ -66,6 +66,8 @@ describe('OpenCryptoPayUtils', () => {
       const result = OpenCryptoPayUtils.getOcpUrlByUniqueId(uniqueId);
 
       const lnurlMatch = result.match(/lightning=(LNURL[A-Z0-9]+)/i);
+      expect(lnurlMatch).toBeTruthy();
+
       if (lnurlMatch) {
         const decoded = Lnurl.decode(lnurlMatch[1]);
         expect(decoded).toContain('https://api.dfx.swiss/v1');
