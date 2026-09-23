@@ -114,9 +114,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/hooks/wallets/__tests__/metamask.hook.test.ts` and `e2e-stack/specs/auth.spec.ts`
   use a JavaScript proxy that throws when `on` is read; the full-stack fake returns fixed
   accounts and chain data and does not produce a valid signature. The visual spec
-  `e2e/wallet-missing-provider.spec.ts` supplies a detectable wallet whose RPC rejects with the
-  exact Web3 `Provider not set or invalid` message and mocks the login bootstrap API responses.
-  A green visual run proves the translated error renders for that synthetic rejection, not that
+  `e2e/wallet-missing-provider.spec.ts` supplies a detectable wallet that disappears after its
+  first account RPC and mocks the login bootstrap API responses. A green visual run proves the
+  translated missing-provider error renders for that synthetic disappearance, not that
   Web3 failed to bind a real provider, the live API returns the mocked data, every Brave version
   has the same failure, or a real wallet login completes.
 - **The buy-process specs answer the quote endpoint themselves.** `e2e/buy-process.spec.ts` fulfils
