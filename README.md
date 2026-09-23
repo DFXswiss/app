@@ -83,9 +83,9 @@ DFX services can be integrated using a browser redirect to [app.dfx.swiss](https
 
 #### Iframe
 
-DFX services can be integrated by opening [app.dfx.swiss](https://app.dfx.swiss/) with the desired parameters (see [below](#query-parameters)) in an Iframe. See the [code example](#iframe-example) below. The `allow="clipboard-write"` attribute should be set on the Iframe, as Chromium-based browsers do not grant the asynchronous Clipboard API (`navigator.clipboard`) to cross-origin Iframes without it.
+DFX services can be integrated by opening [app.dfx.swiss](https://app.dfx.swiss/) with the desired parameters (see [below](#query-parameters)) in an Iframe. See the [code example](#iframe-example) below. The `allow="clipboard-write"` attribute should be set on the Iframe, as Chromium-based browsers reject `navigator.clipboard.writeText` in cross-origin Iframes without it.
 
-On cancel or completion, a message will be sent on the window object of the browser. See [below](#close-message) for details on the message format. If a redirect URI is specified, the user will be redirected to this URI (see [redirect](#redirect)).
+On cancel or completion, a message will be sent on the window object of the browser. See [below](#close-message) for details on the message format. Only accept messages whose `event.origin` is `https://app.dfx.swiss` and whose `event.source` is the Iframe's `contentWindow` (see the [code example](#iframe-example)). If a redirect URI is specified, the user will be redirected to this URI (see [redirect](#redirect)).
 
 #### Web Component
 
