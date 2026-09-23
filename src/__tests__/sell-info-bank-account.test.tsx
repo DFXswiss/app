@@ -378,12 +378,12 @@ describe('SellInfoScreen', () => {
       render(<SellInfoScreen />);
 
       expect(await screen.findByTestId('info-text')).toHaveTextContent(
-        'Before you can add a bank account, your DFX account needs a wallet.',
+        'A bank account can only be added once a wallet is linked to this account.',
       );
       expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
 
-      screen.getByRole('button', { name: 'Connect a wallet' }).click();
+      screen.getByRole('button', { name: 'Connect your wallet' }).click();
       expect(mockNavigate).toHaveBeenCalledWith('/connect', { setRedirect: true });
     });
 
