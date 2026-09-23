@@ -236,8 +236,14 @@ test.describe('RealUnit area', () => {
     async ({ page }) => {
       const { jwt } = await loginAs('RealUnit');
       const { pageErrors, consoleErrors } = attachErrorListeners(page);
+      // openScreen may finish before this effect-driven GET settles.
+      const holdersResponse = page.waitForResponse((response) =>
+        new URL(response.url()).pathname.endsWith('/realunit/holders'),
+      );
 
       await openScreen(page, '/realunit/holders', jwt);
+      await (await holdersResponse).finished();
+      await page.waitForLoadState('networkidle');
 
       await expect(page.getByRole('heading', { name: /All Holders/ })).toBeVisible();
       await expect(tableHeader(page, 'Address')).toBeVisible();
