@@ -321,7 +321,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `https://app.dfx.swiss` instead of `REACT_APP_PUBLIC_URL`, without the real function's
   absolute-path branch. A green run proves only substrings, each in a separate test: the result
   contains `lightning=LNURL` and `pl`, and the decoded LNURL contains `lnurlp/<id>` and
-  `https://api.dfx.swiss/v1`. It does not prove the exact `pl?lightning=…` link or the exact
+  `https://api.dfx.swiss/v1`; one more test proves that two different ids give different
+  results. It does not prove the exact `pl?lightning=…` link or the exact
   decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
   the real `url()` treats those arguments identically; no assertion pins the outer host.
 
