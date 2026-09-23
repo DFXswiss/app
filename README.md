@@ -55,7 +55,7 @@ cp .env.sample .env
 
 ## Usage
 
-DFX Services can be integrated in three different ways,
+DFX Services can be integrated in four different ways,
 
 - as a [standalone page](#standalone) (with browser redirect)
 - in an [Iframe](#iframe) (not recommended)
@@ -242,9 +242,9 @@ Documentation on `BuyPaymentInfoDto`, `SellPaymentInfoDto` and `SwapPaymentInfoD
 
 ```html
 <script>
-  window.addEventListener('message', (event: MessageEvent<CloseMessage>) => handleClose(event.data));
+  window.addEventListener('message', (event) => handleClose(event.data));
 
-  function handleClose(message: CloseMessage) {
+  function handleClose(message) {
     try {
       /* ADD YOUR CODE HERE */
     } catch (e) {
@@ -261,7 +261,7 @@ Documentation on `BuyPaymentInfoDto`, `SellPaymentInfoDto` and `SwapPaymentInfoD
 ```html
 <script defer="defer" src="https://app.dfx.swiss/widget/v1.0"></script>
 <script>
-  function handleClose(data: CloseMessage) {
+  function handleClose(data) {
     /* ADD YOUR CODE HERE */
   }
 </script>
