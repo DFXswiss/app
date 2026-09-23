@@ -35,17 +35,18 @@ async function installLoginApi(page: Page): Promise<string[]> {
   return unexpectedRequests;
 }
 
-test('shows the missing-wallet error when an injected wallet rejects RPC', async ({ page }) => {
-  // The synthetic provider rejects RPC with Web3's invalid-provider message.
-  // This exercises the translated error view, not a real extension failure.
+test('shows the missing-wallet error when an injected wallet disappears during connection', async ({ page }) => {
+  // The wallet is detectable when clicked, then disappears before the account
+  // request. This exercises the adapter's actual missing-provider branch.
   const unexpectedRequests = await installLoginApi(page);
   await page.addInitScript(() => {
     (window as any).ethereum = {
       isMetaMask: true,
       on: () => undefined,
       request: async ({ method }: { method: string }) => {
-        if (method === 'eth_accounts' || method === 'eth_requestAccounts') {
-          throw new Error('Provider not set or invalid');
+        if (method === 'eth_accounts') {
+          delete (window as any).ethereum;
+          return [];
         }
         throw new Error(`Unexpected wallet RPC: ${method}`);
       },

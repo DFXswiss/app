@@ -1,7 +1,7 @@
 import { Asset, AssetType, Blockchain, Eip5792Call } from '@dfx.swiss/react';
 import BigNumber from 'bignumber.js';
 import { Buffer } from 'buffer';
-import { useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { isMobile } from 'react-device-detect';
 import Web3 from 'web3';
 import { TransactionConfig } from 'web3-core';
@@ -13,9 +13,6 @@ import { TranslatedError } from '../../util/translated-error';
 import { delay, timeout } from '../../util/utils';
 import { useWeb3 } from '../web3.hook';
 
-const WEB3_RPC_METHODS = ['request', 'send', 'sendAsync', 'enable', 'isConnected'] as const;
-
-const PROVIDER_MISSING_MESSAGE = 'Provider not set or invalid';
 const PROVIDER_MISSING_HINT =
   'No wallet found. Please check your wallet extension or set one up, then reload this page.';
 
@@ -36,34 +33,6 @@ function isInjectedWallet(): boolean {
     readProviderFlag(eth, 'isCoinbaseWallet') ||
     readProviderFlag(eth, 'isTrust')
   );
-}
-
-function toWeb3Provider(provider: any): any {
-  try {
-    void provider.on;
-    return provider;
-  } catch {
-    // The observed injected proxy throws on a mere read of `.on`. web3 setProvider
-    // does that read (`if (provider.on)`) before any RPC. Leaving `.on`
-    // undefined lets the check skip without throwing, so web3 polls immediately
-    // instead of waiting blockHeaderTimeout (10s) for a subscription that a
-    // no-op `on` would never deliver. request/send stay bound to the real
-    // provider (`this` preserved).
-    const wrapped: any = {};
-
-    for (const method of WEB3_RPC_METHODS) {
-      try {
-        const fn = provider[method];
-        if (typeof fn === 'function') {
-          wrapped[method] = fn.bind(provider);
-        }
-      } catch {
-        // skip methods whose property read throws
-      }
-    }
-
-    return wrapped;
-  }
 }
 
 export enum WalletType {
@@ -127,37 +96,23 @@ interface MetaMaskError {
 }
 
 export function useMetaMask(): MetaMaskInterface {
-  const boundProvider = useRef<unknown>();
-  const web3 = useMemo(() => {
-    const instance = new Web3();
-    const eth = (window as any).ethereum;
-    if (eth && typeof instance.setProvider === 'function') {
-      try {
-        instance.setProvider(toWeb3Provider(eth));
-        boundProvider.current = eth;
-      } catch {
-        // leave unbound; bindIfNeeded retries when a provider appears
-      }
-    }
-    return instance;
-  }, []);
+  // Web3 only sees this stable EIP-1193 adapter. Reading the injected provider
+  // when an RPC is sent also handles wallets injected or replaced after render.
+  const web3 = useMemo(
+    () =>
+      new Web3({
+        request: async ({ method, params }: { method: string; params?: unknown[] }) => {
+          const provider = (window as any).ethereum;
+          if (!provider) throw new TranslatedError(PROVIDER_MISSING_HINT);
+          return provider.request({ method, params });
+        },
+      } as any),
+    [],
+  );
   const { toBlockchain, toChainHex, toChainObject } = useWeb3();
 
   function ethereum() {
     return (window as any).ethereum;
-  }
-
-  function bindIfNeeded() {
-    const eth = ethereum();
-    if (!eth || boundProvider.current === eth) return;
-    if (typeof web3.setProvider !== 'function') return;
-
-    try {
-      web3.setProvider(toWeb3Provider(eth));
-      boundProvider.current = eth;
-    } catch {
-      // leave unbound; the next call retries
-    }
   }
 
   function isInstalled(): boolean {
@@ -202,7 +157,6 @@ export function useMetaMask(): MetaMaskInterface {
     onAccountChanged: (account?: string) => void,
     onBlockchainChanged: (blockchain?: Blockchain) => void,
   ) {
-    bindIfNeeded();
     web3.eth.getAccounts((_err, accounts) => {
       onAccountChanged(verifyAccount(accounts));
     });
@@ -218,7 +172,6 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function getAccount(): Promise<string | undefined> {
-    bindIfNeeded();
     try {
       return verifyAccount(await web3.eth.getAccounts());
     } catch (e) {
@@ -231,7 +184,6 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function requestAccount(): Promise<string | undefined> {
-    bindIfNeeded();
     await checkConnection();
 
     try {
@@ -243,7 +195,6 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function requestBlockchain(): Promise<Blockchain | undefined> {
-    bindIfNeeded();
     return toBlockchain(await web3.eth.getChainId());
   }
 
@@ -275,12 +226,10 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function requestBalance(account: string): Promise<string | undefined> {
-    bindIfNeeded();
     return web3.eth.getBalance(account);
   }
 
   async function sign(address: string, message: string): Promise<string> {
-    bindIfNeeded();
     return web3.eth.personal.sign(message, address, '').catch(handleError);
   }
 
@@ -320,7 +269,6 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   async function readBalance(asset: Asset, address?: string, throwExceptions?: boolean): Promise<AssetBalance> {
-    bindIfNeeded();
     if (!address || !asset) {
       if (throwExceptions) throw new Error('No address or asset provided');
 
@@ -354,7 +302,6 @@ export function useMetaMask(): MetaMaskInterface {
     to: string,
     config?: { isWeiAmount?: boolean; gasPrice?: number },
   ): Promise<string> {
-    bindIfNeeded();
     if (asset.type === AssetType.COIN) {
       const transactionData: TransactionConfig = {
         from,
@@ -383,7 +330,6 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   function createContract(chainId?: string): Contract {
-    bindIfNeeded();
     return new web3.eth.Contract(ERC20_ABI as any, chainId);
   }
 
@@ -512,10 +458,6 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   function handleError(e: MetaMaskError): never {
-    if (e?.message === PROVIDER_MISSING_MESSAGE) {
-      throw new TranslatedError(PROVIDER_MISSING_HINT);
-    }
-
     switch (e.code) {
       case 4001:
         throw new AbortError('User cancelled');

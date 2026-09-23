@@ -33,17 +33,13 @@ jest.mock('../../web3.hook', () => ({
   }),
 }));
 
-// Mock Web3 — mirrors web3-core-requestmanager setProvider: currentProvider is
-// assigned first, then `.on` is read. A mere read of `.on` can throw; that throw
-// leaves the assigned provider in place (it does not roll the assignment back).
+// Mock Web3's provider setup and the RPCs exercised by the hook. A real Web3
+// request-manager test below verifies the adapter against the installed version.
 jest.mock('web3', () => {
   const instances: any[] = [];
 
   function applyProvider(instance: any, provider: any) {
     instance.currentProvider = provider || null;
-    if (instance.currentProvider && instance.currentProvider.on && typeof instance.currentProvider.on === 'function') {
-      instance.currentProvider.on('message', () => undefined);
-    }
   }
 
   function invoke(cb: any, promise: Promise<any>) {
@@ -348,9 +344,8 @@ describe('useMetaMask', () => {
   });
 
   describe('conflicting injected provider', () => {
-    it('binds a provider whose .on access throws and forwards RPC to it', async () => {
+    it('forwards RPC to a provider whose .on access throws', async () => {
       const request = jest.fn(async function (this: { isMetaMask?: boolean }, { method }: { method: string }) {
-        // Without fn.bind(provider) this is the empty wrapper, which has no isMetaMask.
         expect(this.isMetaMask).toBe(true);
         if (method === 'eth_accounts') return [TEST_ACCOUNT];
         return [];
@@ -375,7 +370,7 @@ describe('useMetaMask', () => {
       expect(request).toHaveBeenCalledWith({ method: 'eth_accounts' });
     });
 
-    it('leaves currentProvider.on undefined for the fallback facade', () => {
+    it('never exposes the injected provider .on to Web3', () => {
       const request = jest.fn().mockResolvedValue([]);
       (window as any).ethereum = createBraveLikeProvider(request);
 
@@ -386,7 +381,7 @@ describe('useMetaMask', () => {
       expect(instance.currentProvider.on).toBeUndefined();
     });
 
-    it('passes the fallback facade through the real Web3 request manager', async () => {
+    it('passes the lazy adapter through the real Web3 request manager', async () => {
       const request = jest.fn(async function (this: { isMetaMask?: boolean }, { method }: { method: string }) {
         expect(this.isMetaMask).toBe(true);
         if (method === 'eth_chainId') return '0x1';
@@ -397,15 +392,28 @@ describe('useMetaMask', () => {
       expect(() => provider.on).toThrow(TypeError);
 
       renderHook(() => useMetaMask());
-      const facade = lastWeb3Instance().currentProvider;
-      expect(facade).not.toBe(provider);
-      expect(facade.on).toBeUndefined();
+      const adapter = lastWeb3Instance().currentProvider;
+      expect(adapter).not.toBe(provider);
+      expect(adapter.on).toBeUndefined();
 
       const RealWeb3 = jest.requireActual('web3') as typeof Web3;
-      const realWeb3 = new RealWeb3(facade);
+      const realWeb3 = new RealWeb3(adapter);
       await expect(realWeb3.eth.getChainId()).resolves.toBe(1);
       expect(request).toHaveBeenCalledTimes(1);
       expect(request).toHaveBeenCalledWith({ method: 'eth_chainId', params: [] });
+    });
+
+    it('forwards RPC parameters through real Web3 after a late injection', async () => {
+      renderHook(() => useMetaMask());
+      const adapter = lastWeb3Instance().currentProvider;
+      const RealWeb3 = jest.requireActual('web3') as typeof Web3;
+      const realWeb3 = new RealWeb3(adapter);
+      const request = jest.fn().mockResolvedValue('0x0');
+
+      (window as any).ethereum = { isMetaMask: true, request };
+
+      await expect(realWeb3.eth.getBalance(TEST_ACCOUNT)).resolves.toBe('0');
+      expect(request).toHaveBeenCalledWith({ method: 'eth_getBalance', params: [TEST_ACCOUNT, 'latest'] });
     });
 
     it('keeps register() working when .on throws so getAccounts/getChainId still run', async () => {
@@ -440,7 +448,7 @@ describe('useMetaMask', () => {
       (window as any).ethereum = provider;
 
       const { result } = renderHook(() => useMetaMask());
-      expect(lastWeb3Instance().currentProvider).toBe(provider);
+      expect(lastWeb3Instance().currentProvider).not.toBe(provider);
       result.current.register(jest.fn(), jest.fn());
 
       expect(on).toHaveBeenCalledWith('accountsChanged', expect.any(Function));
@@ -450,7 +458,8 @@ describe('useMetaMask', () => {
     it('picks up a provider that appears after the first render', async () => {
       const { result } = renderHook(() => useMetaMask());
       const instance = lastWeb3Instance();
-      expect(instance.currentProvider).toBeNull();
+      const adapter = instance.currentProvider;
+      expect(adapter).not.toBeNull();
 
       const request = jest.fn(async () => [TEST_ACCOUNT]);
       (window as any).ethereum = { isMetaMask: true, request, on: jest.fn() };
@@ -460,12 +469,12 @@ describe('useMetaMask', () => {
         account = await result.current.getAccount();
       });
 
-      expect(instance.currentProvider).not.toBeNull();
+      expect(instance.currentProvider).toBe(adapter);
       expect(account).toBe(TEST_ACCOUNT);
       expect(request).toHaveBeenCalledWith({ method: 'eth_accounts' });
     });
 
-    it('does not throw when the injected provider breaks property reads and still binds the wallet', async () => {
+    it('does not throw when the injected provider breaks property reads and still uses the wallet', async () => {
       const request = jest.fn(async ({ method }: { method: string }) => {
         if (method === 'eth_accounts') return [TEST_ACCOUNT];
         return [];
@@ -486,7 +495,7 @@ describe('useMetaMask', () => {
       await expect(result.current.getAccount()).resolves.toBe(TEST_ACCOUNT);
     });
 
-    it('skips RPC methods whose property read throws when wrapping a hostile provider', async () => {
+    it('does not read unrelated RPC methods on a hostile provider', async () => {
       const request = jest.fn(async ({ method }: { method: string }) => {
         if (method === 'eth_accounts') return [TEST_ACCOUNT];
         return [];
@@ -513,13 +522,42 @@ describe('useMetaMask', () => {
       await expect(result.current.getAccount()).resolves.toBe(TEST_ACCOUNT);
     });
 
-    it('replaces the web3 provider-missing error with a readable message', async () => {
+    it('uses a replacement provider for later RPCs without rebinding Web3', async () => {
+      const first = mockRequest(async () => [TEST_ACCOUNT]);
+      installedProvider(first);
+      const { result } = renderHook(() => useMetaMask());
+      const adapter = lastWeb3Instance().currentProvider;
+
+      await expect(result.current.getAccount()).resolves.toBe(TEST_ACCOUNT);
+      const secondAccount = '0x2222222222222222222222222222222222222222';
+      const second = mockRequest(async () => [secondAccount]);
+      installedProvider(second);
+
+      await expect(result.current.getAccount()).resolves.toBe(secondAccount);
+      expect(lastWeb3Instance().currentProvider).toBe(adapter);
+      expect(first).toHaveBeenCalledTimes(1);
+      expect(second).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports a missing injected provider with a readable message', async () => {
       const { result } = renderHook(() => useMetaMask());
 
       await expect(result.current.getAccount()).rejects.toBeInstanceOf(TranslatedError);
       await expect(result.current.getAccount()).rejects.toThrow(
         'No wallet found. Please check your wallet extension or set one up, then reload this page.',
       );
+    });
+
+    it('keeps an injected wallet RPC error even when it matches Web3 provider wording', async () => {
+      const rpcError = new Error('Provider not set or invalid');
+      installedProvider(
+        mockRequest(async () => {
+          throw rpcError;
+        }),
+      );
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.getAccount()).rejects.toBe(rpcError);
     });
   });
 
@@ -1120,14 +1158,14 @@ describe('useMetaMask', () => {
     });
   });
 
-  describe('bindIfNeeded without setProvider', () => {
-    it('leaves a late provider unbound when web3 has no setProvider', async () => {
+  describe('late provider without setProvider', () => {
+    it('uses a late provider without rebinding Web3', async () => {
       const { result } = renderHook(() => useMetaMask());
       delete lastWeb3Instance().setProvider;
 
       installedProvider(mockRequest(async () => [TEST_ACCOUNT]));
 
-      await expect(result.current.getAccount()).rejects.toBeInstanceOf(TranslatedError);
+      await expect(result.current.getAccount()).resolves.toBe(TEST_ACCOUNT);
     });
 
     it('still answers getAccount when provider.on throws on subscribe', async () => {
