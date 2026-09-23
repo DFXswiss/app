@@ -61,7 +61,7 @@ describe('OpenCryptoPayUtils', () => {
       }
     });
 
-    it('should use correct API URL from environment', () => {
+    it('should include the mocked API base URL in the encoded URL', () => {
       const uniqueId = 'env-test';
       const result = OpenCryptoPayUtils.getOcpUrlByUniqueId(uniqueId);
 
