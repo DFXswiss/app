@@ -2,7 +2,8 @@
  * Account / profile area e2e — owns:
  *   /account, /account/mail, /settings, /safe, /recommendation
  *
- * Browser drives the real frontend; Postgres proves language and mail writes.
+ * Browser drives the real frontend; Postgres proves language and mail writes, and that a
+ * mail-only (KycOnly) account gets no bank account row when it tries to add an IBAN.
  *
  * Not covered (by design / environment limits):
  * - Custody account portfolio data on /safe: no factory or seed for custody accounts
@@ -11,7 +12,20 @@
  */
 
 import type { Page } from '@playwright/test';
-import { expect, gotoWithSession, normPath, openScreen, queryOne, required, test, waitForRow } from './fixtures';
+import {
+  completeMailLogin,
+  expect,
+  gotoWithSession,
+  normPath,
+  openScreen,
+  queryOne,
+  required,
+  requestMailLogin,
+  TEST_IBAN,
+  test,
+  testEmail,
+  waitForRow,
+} from './fixtures';
 import { cleanupCreatedData, createUser, e2eMail } from './fixtures/factories';
 
 function codeFromNotificationData(data: string): string {
@@ -260,6 +274,43 @@ test.describe('Account area e2e', () => {
       })
       .not.toBe('/settings');
     expect(normPath(new URL(page.url()).pathname)).toMatch(/login/);
+  });
+
+  test('/settings add bank account on a mail-only account shows the wallet hint and links to /connect', async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+
+    // Mail login without a wallet address creates the account as KycOnly.
+    const email = testEmail('acct-kyc-only-iban');
+    await requestMailLogin(email);
+    const jwt = await completeMailLogin(email);
+    const userData = await waitForRow<{ id: number; status: string }>(
+      `SELECT id, status FROM user_data WHERE mail = $1`,
+      [email],
+      20000,
+    );
+    expect(userData.status).toBe('KycOnly');
+
+    await openScreen(page, '/settings', jwt);
+    await page.getByRole('heading', { name: 'Your Bank Accounts' }).getByRole('button').click();
+    await page.getByPlaceholder('XX XXXX XXXX XXXX XXXX X').fill(TEST_IBAN);
+    await page.getByRole('button', { name: 'Add bank account' }).click();
+
+    await expect(
+      page.getByText('A bank account can only be added once a wallet is linked to this account.'),
+    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Something went wrong')).toHaveCount(0);
+    const bankData = await queryOne<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM bank_data WHERE "userDataId" = $1`,
+      [userData.id],
+    );
+    expect(Number(required(bankData, 'bank_data count').count)).toBe(0);
+
+    await page.getByText('Connect your wallet', { exact: true }).click();
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), { message: 'hint link should open /connect', timeout: 15000 })
+      .toBe('/connect');
   });
 
   // ---------------------------------------------------------------------------

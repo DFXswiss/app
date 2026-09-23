@@ -44,6 +44,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>();
+  const loadErrorTicketIdRef = useRef<string>();
   const [actionError, setActionError] = useState<string>();
   const [issueData, setIssueData] = useState<SupportIssueInternalData>();
   const [messages, setMessages] = useState<SupportMessageInfo[]>([]);
@@ -56,6 +57,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const [updateDepartment, setUpdateDepartment] = useState('');
   const [updateClerk, setUpdateClerk] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const updatingIssueIdsRef = useRef(new Set<string>());
+  const messageLoadSeqRef = useRef(0);
+  const issueLoadSeqRef = useRef(0);
+  const filePreviewSeqRef = useRef(0);
 
   // Message form state
   // Draft persisted per ticket, so a detour to the customer profile does not lose the text.
@@ -66,7 +71,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const { name: messageAuthor, isLoading: isLoadingAuthor, error: authorError } = useStaffVerifiedName();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
-  const sendInFlight = useRef(false);
+  const sendingIssueIdsRef = useRef(new Set<string>());
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -89,6 +94,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   // (including A→B→A) without blocking onCreated for a same-ticket reload spinner.
   const [noteDraft, setNoteDraft] = useState<{ text: string }>();
   const noteGenRef = useRef(0);
+  // Same generation gate for in-flight issue/message/file/update/send work. idRef.current = id on
+  // every render cannot ignore a first-A request after A→B→A.
+  const requestGenRef = useRef(0);
   const noteGenAtRender = noteGenRef.current;
   const { containerRef, splitPercent, handleSplitDrag } = useSplitPane();
 
@@ -110,38 +118,103 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }, [getClerks]);
 
   const loadIssue = useCallback((): void => {
-    if (!id) return;
+    if (!id || idRef.current !== id) return;
+    const requestId = id;
+    const gen = requestGenRef.current;
+    const seq = ++issueLoadSeqRef.current;
+    setLoadError(undefined);
     setIsLoading(true);
-    getIssueData(+id)
+    getIssueData(+requestId)
       .then((data) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
         setUpdateClerk(data.clerk ?? '');
       })
-      .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
+      .catch((e: Error) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
+        loadErrorTicketIdRef.current = requestId;
+        setLoadError(e.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (idRef.current === requestId && requestGenRef.current === gen && issueLoadSeqRef.current === seq) {
+          setIsLoading(false);
+        }
+      });
   }, [id, getIssueData]);
 
   const loadMessages = useCallback((): void => {
-    if (!issueData?.uid) return;
+    if (!issueData?.uid || !id || issueData.id !== +id) return;
+    const requestId = id;
+    const gen = requestGenRef.current;
+    const seq = ++messageLoadSeqRef.current;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
         setMessages(fetched);
         setPendingCount(0);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
-  }, [issueData?.uid, getIssueMessages]);
+      .catch((e: Error) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
+        setActionError(e.message ?? 'Failed to load messages');
+      });
+  }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
 
   const pollForNewMessages = useCallback((): void => {
-    if (!issueData?.uid) return;
+    if (!issueData?.uid || !id || issueData.id !== +id) return;
+    const requestId = id;
+    const gen = requestGenRef.current;
+    const seq = messageLoadSeqRef.current;
     getIssueMessages(issueData.uid)
       .then((fetched) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) {
+          return;
+        }
         const newCount = fetched.filter((m) => !visibleIdsRef.current.has(m.id)).length;
         if (newCount > 0) setPendingCount(newCount);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
-  }, [issueData?.uid, getIssueMessages]);
+      .catch((e: Error) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) {
+          return;
+        }
+        setActionError(e.message ?? 'Failed to load messages');
+      });
+  }, [issueData?.uid, issueData?.id, id, getIssueMessages]);
+
+  // Clear send UI, an in-progress note draft, the previous ticket's messages, issueData, and
+  // template-picker state when navigating to a different ticket. The screen does not remount on
+  // :id change; leaving `messages` in place would paint ticket A's thread on route B until
+  // loadMessages returns (or forever if it fails). Leaving `issueData` would keep
+  // `issueData.id !== +id` true, so the mismatch spinner outranks ErrorHint if B's load fails.
+  // Leaving the picker open (or its in-flight user-data load) would reopen it on B with A's
+  // customer data after B's spinner. Runs before loadIssue so the new generation is captured by
+  // the in-flight started for this id.
+  useEffect(() => {
+    setIsSending(id != null && sendingIssueIdsRef.current.has(id));
+    setIsUpdating(id != null && updatingIssueIdsRef.current.has(id));
+    messageLoadSeqRef.current += 1;
+    issueLoadSeqRef.current += 1;
+    filePreviewSeqRef.current += 1;
+    setSelectedFiles([]);
+    setActionError(undefined);
+    setLoadError(undefined);
+    setIssueData(undefined);
+    setNoteDraft(undefined);
+    noteGenRef.current += 1;
+    requestGenRef.current += 1;
+    setMessages([]);
+    setPendingCount(0);
+    setTemplatePickerOpen(false);
+    setPendingTemplateContent(undefined);
+    setIsUserDataLoading(false);
+    setUserDataDetail(undefined);
+    setUserTransactions([]);
+    setFilePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return undefined;
+    });
+  }, [id]);
 
   useEffect(() => {
     loadIssue();
@@ -151,16 +224,6 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     loadMessages();
   }, [loadMessages]);
 
-  // Clear send UI and an in-progress note draft when navigating to a different ticket.
-  useEffect(() => {
-    sendInFlight.current = false;
-    setIsSending(false);
-    setSelectedFiles([]);
-    setActionError(undefined);
-    setNoteDraft(undefined);
-    noteGenRef.current += 1;
-  }, [id]);
-
   // Reset cached UserData when the issue (and thus the account) changes
   useEffect(() => {
     setUserDataDetail(undefined);
@@ -168,6 +231,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }, [issueData?.account.id]);
 
   async function openTemplatePicker(): Promise<void> {
+    const gen = requestGenRef.current;
     const accountId = issueData?.account.id;
     if (accountId == null || isUserDataLoading) return;
     if (userDataDetail) {
@@ -177,13 +241,15 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
     setIsUserDataLoading(true);
     try {
       const data = await getUserData(accountId);
+      if (requestGenRef.current !== gen) return;
       setUserDataDetail(data.userData);
       setUserTransactions(data.transactions ?? []);
       setTemplatePickerOpen(true);
     } catch (e: unknown) {
+      if (requestGenRef.current !== gen) return;
       setActionError(e instanceof Error ? e.message : 'Failed to load user data for templates');
     } finally {
-      setIsUserDataLoading(false);
+      if (requestGenRef.current === gen) setIsUserDataLoading(false);
     }
   }
 
@@ -205,26 +271,31 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }, [messages]);
 
   async function handleUpdate(): Promise<void> {
-    if (!id) return;
+    if (!id || updatingIssueIdsRef.current.has(id)) return;
+    const requestId = id;
+    updatingIssueIdsRef.current.add(requestId);
     setIsUpdating(true);
     setActionError(undefined);
     try {
-      await updateIssue(+id, {
+      await updateIssue(+requestId, {
         state: updateState || undefined,
         department: updateDepartment || undefined,
         clerk: updateClerk || undefined,
       });
+      if (idRef.current !== requestId) return;
       loadIssue();
     } catch (e: unknown) {
+      if (idRef.current !== requestId) return;
       setActionError(e instanceof Error ? e.message : 'Update failed');
     } finally {
-      setIsUpdating(false);
+      updatingIssueIdsRef.current.delete(requestId);
+      if (idRef.current === requestId) setIsUpdating(false);
     }
   }
 
   async function handleSendMessage(): Promise<void> {
-    if (isSending || sendInFlight.current) return;
-    if (!id || (!messageText.trim() && selectedFiles.length === 0)) return;
+    if (!id || sendingIssueIdsRef.current.has(id)) return;
+    if (!messageText.trim() && selectedFiles.length === 0) return;
     const remainingPlaceholders = detectPlaceholders(messageText);
     if (remainingPlaceholders.length > 0) {
       const keys = remainingPlaceholders.map((t) => `$${t.fullKey}`).join(', ');
@@ -238,47 +309,49 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       setActionError(authorError ? staffNameLoadError(authorError) : STAFF_NAME_MISSING);
       return;
     }
-    sendInFlight.current = true;
+    sendingIssueIdsRef.current.add(id);
     setIsSending(true);
     setActionError(undefined);
     // The draft is dropped before the request, so a detour during the send cannot bring back text
-    // that is already on its way. On failure, storage is restored for the ticket that was sending;
-    // the composer is only updated if the clerk is still on that same ticket.
+    // that is already on its way. On failure, storage is always restored for this ticket; the
+    // composer and error are restored only if the clerk is still on it.
     const sendIssueId = id;
     const draft = messageText;
+    const files = selectedFiles;
     clearDraft();
+    let sent = 0;
     try {
       const author = messageAuthor;
       const text = draft.trim() || undefined;
 
-      if (selectedFiles.length > 0) {
-        for (let i = 0; i < selectedFiles.length; i++) {
-          const fileData = await toBase64(selectedFiles[i]);
-          const isLast = i === selectedFiles.length - 1;
+      if (files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const fileData = await toBase64(files[i]);
+          const isLast = i === files.length - 1;
           await sendMessage(+sendIssueId, {
             author,
             message: isLast ? text : undefined,
             file: fileData,
-            fileName: selectedFiles[i].name,
+            fileName: files[i].name,
           });
+          sent += 1;
         }
       } else {
         await sendMessage(+sendIssueId, { author, message: text });
       }
 
-      if (idRef.current === sendIssueId) {
-        setSelectedFiles([]);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        loadMessages();
-      }
+      if (idRef.current !== sendIssueId) return;
+      setSelectedFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      loadMessages();
     } catch (e: unknown) {
       writeDraft(sendIssueId, draft);
-      if (idRef.current === sendIssueId) {
-        setMessageText(draft);
-        setActionError(e instanceof Error ? e.message : 'Send failed');
-      }
+      if (idRef.current !== sendIssueId) return;
+      if (files.length > 0) setSelectedFiles(files.slice(sent));
+      setMessageText(draft);
+      setActionError(e instanceof Error ? e.message : 'Send failed');
     } finally {
-      sendInFlight.current = false;
+      sendingIssueIdsRef.current.delete(sendIssueId);
       if (idRef.current === sendIssueId) setIsSending(false);
     }
   }
@@ -300,32 +373,42 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   }
 
   async function openFile(msg: SupportMessageInfo): Promise<void> {
-    if (!issueData?.uid || !msg.fileName) return;
+    if (!issueData?.uid || !msg.fileName || !id) return;
+    const gen = requestGenRef.current;
+    const seq = ++filePreviewSeqRef.current;
     try {
       const { data, contentType } = await getMessageFile(issueData.uid, msg.id, 'View');
+      if (requestGenRef.current !== gen || filePreviewSeqRef.current !== seq) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
       }
-      if (filePreview) URL.revokeObjectURL(filePreview.url);
+      setFilePreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return undefined;
+      });
       const blob = new Blob([new Uint8Array(data.data)], { type: contentType });
       const url = URL.createObjectURL(blob);
       setFilePreview({ url, contentType, name: msg.fileName, messageId: msg.id });
     } catch (e: unknown) {
+      if (requestGenRef.current !== gen || filePreviewSeqRef.current !== seq) return;
       setActionError(e instanceof Error ? e.message : 'Error loading file');
     }
   }
 
   async function downloadPreview(): Promise<void> {
-    if (!issueData?.uid || !filePreview) return;
+    if (!issueData?.uid || !filePreview || !id) return;
+    const gen = requestGenRef.current;
     try {
       const { data, contentType } = await getMessageFile(issueData.uid, filePreview.messageId, 'Download');
+      if (requestGenRef.current !== gen) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
       }
       saveBufferedFile(data, contentType, filePreview.name);
     } catch (e: unknown) {
+      if (requestGenRef.current !== gen) return;
       setActionError(e instanceof Error ? e.message : 'Error downloading file');
     }
   }
@@ -338,8 +421,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   const unresolvedInMessage = useMemo(() => detectPlaceholders(messageText), [messageText]);
 
-  if (loadError) return <ErrorHint message={loadError} />;
-  if (isLoading || !issueData) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
+  if (id && issueData && issueData.id !== +id) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
+  if (loadError && loadErrorTicketIdRef.current === id) return <ErrorHint message={loadError} />;
+  if (isLoading || !issueData || !id) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
 
   return (
     <div ref={containerRef} className="w-full flex text-left">
@@ -591,7 +675,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
             ref={messagesContainerRef}
             className="flex flex-col gap-2 max-h-[40vh] overflow-auto mb-4 p-2 scroll-shadow"
           >
-            <SupportMessageList messages={messages} onOpenFile={(msg) => openFile(msg as SupportMessageInfo)} />
+            <SupportMessageList
+              key={id}
+              messages={messages}
+              onOpenFile={(msg) => openFile(msg as SupportMessageInfo)}
+            />
           </div>
 
           {/* Message Input */}

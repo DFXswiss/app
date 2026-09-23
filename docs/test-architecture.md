@@ -118,14 +118,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e/realunit-quotes.spec.ts` and `e2e/realunit-dashboard.spec.ts` fulfil
   `GET /v1/realunit/admin/quotes` (and, on the dashboard, holders, token info, price history,
   transactions, the three admin stats paths buy-volume, holders and registration,
-  `GET /v1/realunit/referral/admin/prize-wallet`, and
-  `GET /v1/realunit/referral/admin/payouts`) with synthetic fixtures that include
+  `GET /v1/realunit/referral/admin/prize-wallet`,
+  `GET /v1/realunit/referral/admin/payouts`, and
+  `GET/PUT /v1/realunit/admin/buy-limit`) with synthetic fixtures that include
   `userId`, `userName` and `deactivatedAt`.
   They also fulfil staff/bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`,
   `/v1/country`, `/v1/setting/infoBanner`, `/v2/user`) so a synthetic unsigned JWT does not 401.
-  A green run proves the quote list, pending-table, stats-chart and prize-wallet-card fixtures
-  render. It does not prove that the API returns those payloads, that login or token verification
-  works, or that those staff/settings, stats, prize-wallet or payouts endpoints return real data.
+  A green run proves the quote list, pending-table, stats-chart, prize-wallet-card and
+  max-tokens-per-buy-card fixtures render. It does not prove that the API returns those
+  payloads, that login or token verification works, or that those staff/settings, stats,
+  prize-wallet, payouts or buy-limit endpoints return real data.
 - **The RealUnit referral visual spec answers the relation list and promo list itself.**
   `e2e/realunit-referral.spec.ts` fulfils `GET /v1/realunit/referral/admin/relations` and
   `GET /v1/realunit/referral/promo` with synthetic fixtures: an empty promo list on the
@@ -137,11 +139,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixtures render. It does not prove that the live promo or relations API returns those
   payloads, that login or token verification works, or that create/deactivate succeed against
   the server.
-- **The RealUnit compliance visual spec answers the customer list and dossier itself.**
-  `e2e/realunit-compliance.spec.ts` fulfils `GET /v1/realunit/compliance/customers` and
-  `GET /v1/realunit/compliance/customers/:id` with synthetic fixtures (including `addresses`).
-  A green run proves those fixtures render. It does not prove that the API returns that payload
-  or that the server filters to RealUnit wallets.
+- **The RealUnit compliance visual spec answers the customer list, Dilisense actions, and dossier itself.**
+  `e2e/realunit-compliance.spec.ts` fulfils `GET /v1/realunit/compliance/customers`,
+  `GET /v1/realunit/compliance/customers/:id`, `GET /v1/realunit/compliance/name-check`,
+  `POST /v1/realunit/compliance/name-check` and `POST /v1/realunit/compliance/customers/:id/name-check`
+  with synthetic fixtures (including `addresses` and name-check results). Auth is a synthetic Admin
+  JWT plus staff bootstrap GETs. Unmatched `GET /v1/**` calls return `[]` and other unmatched
+  `/v1/**` methods return `{}`, so a green visual run does not prove which other staff endpoints the
+  screen calls. A green run proves those fixtures render, including the Screen / Screen-all confirm
+  dialogs and a running-batch state. It does not prove that the API returns that payload, that login
+  works, or that the server filters to RealUnit wallets.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for
@@ -156,6 +163,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   for that uid, clerks, clerk mapping and activity with synthetic fixtures. A green run proves
   that the Kundennotiz composer renders those fixtures. It does not prove that the API returns
   that issue or that `createSupportNote` persists a note.
+- **The staff ticket KYC-file-transfer visual spec answers the issue payload itself.**
+  `e2e/support-kyc-file-transfer.spec.ts` answers the issue payload, messages, clerks, clerk mapping
+  and activity with fixtures. A green run proves those fixtures render. It does not prove that the
+  API returns them or that PUT kycFile persists.
 - **The support-issue receiver-IBAN spec pins KYC level and account mail on GET /v2/user.**
   `e2e/support-issue-receiver-iban.spec.ts` rewrites that response so `kyc.level` is high enough for
   the screen guard and `mail` is present if the cached wallet session has none. A green visual run
@@ -287,6 +298,23 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   merged account really produces a 401 with `switchToCode`.
   `src/__tests__/link.screen.test.tsx` pins that `handleMergedError` is tried first at every
   catch site instead.
+- **The known-rejections visual spec answers the rejections itself.**
+  `e2e/known-rejections.spec.ts` fulfils `GET /v2/kyc/PersonalData` and `GET /v2/kyc` with a
+  synthetic step session, `PUT` on that session with a synthetic 400 character-set message,
+  `GET /v1/transaction/single` with a synthetic failed buy, the guest refund `GET`/`PUT` under
+  `/v1/transaction/uid/:uid/:secret/refund` with synthetic refund details and a synthetic 400
+  `iban BIC not allowed`, the external IP geolocation lookup with a synthetic Swiss answer (the KYC
+  form prefills its country from it), plus the bootstrap GETs (`/v1/language`,
+  `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`, `/v1/setting/infoBanner`) and
+  `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get `501`. A green run proves
+  that the field error, the character-set hint and the blocked-bank hint render for those
+  messages. It does not prove that the API still words its rejections that way, that it rejects
+  exactly the characters the form rejects, or that a real bank is blocked; the message sentences
+  and the character set (every code point up to U+024F) are pinned in unit tests instead. Nor does it
+  prove that the external geolocation service is reachable, still answers in that shape, or maps
+  a real client IP to the expected country. It also does not prove that the KYC step, transaction,
+  refund and bootstrap endpoints return these payloads for a real account, or that client-error
+  reports reach the real endpoint.
 
 ## Known gaps
 

@@ -10,6 +10,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { QrCopy } from 'src/components/payment/qr-code';
+import { RealunitBuyLimitPanel } from 'src/components/realunit/buy-limit-panel';
 import { BuyVolumeChart } from 'src/components/realunit/buy-volume-chart';
 import { CopyableAddress } from 'src/components/realunit/copyable-address';
 import { HolderCountChart } from 'src/components/realunit/holder-count-chart';
@@ -158,6 +159,9 @@ export default function RealunitScreen(): JSX.Element {
               width={StyledButtonWidth.MIN}
               color={StyledButtonColor.STURDY_WHITE}
             />
+          </div>
+          <div className="mb-6">
+            <RealunitBuyLimitPanel translate={translate} />
           </div>
           <div className="mb-6">
             <h2 className="text-dfxGray-700 mb-2">{translate('screens/referral', 'Bonus and Referral')}</h2>

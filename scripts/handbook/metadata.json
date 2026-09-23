@@ -89,7 +89,7 @@
   },
   "realunit-compliance": {
     "title": "RealUnit Compliance",
-    "description": "RealUnit-spezifische Compliance-Suche und Dossier."
+    "description": "RealUnit-Compliance: Kundensuche mit letztem Dilisense-Datum und -Ergebnis, Screen pro Zeile und Screen all (jeweils mit Kosten-Bestätigung), laufender Batch mit Fortschritt, und reduziertes Kundendossier."
   },
   "realunit-support": {
     "title": "RealUnit Support",
@@ -105,7 +105,7 @@
   },
   "realunit-dashboard": {
     "title": "RealUnit Dashboard",
-    "description": "RealUnit-Startseite: Sektion Bonus und Empfehlungen mit Prize-Wallet-Adresse, QR-Code, ETH- und REALU-Guthaben; Prize-payouts-Tabelle (Rechtsgrund, Kunde, Anzahl, CHF, Tx, Code, qualifizierender Kauf) mit CSV-Export-Button; Pending-Tabelle mit Address und Kundenname ohne deaktivierte Quotes, Kaufvolumen (CHF und Shares), Holder im Zeitverlauf und Registrierungs-Funnel (Registered → Completed, Drop-off Manual review)."
+    "description": "RealUnit-Startseite: Karte Max-tokens-per-buy (leer = keine Limite); Sektion Bonus und Empfehlungen mit Prize-Wallet-Adresse, QR-Code, ETH- und REALU-Guthaben; Prize-payouts-Tabelle (Rechtsgrund, Kunde, Anzahl, CHF, Tx, Code, qualifizierender Kauf) mit CSV-Export-Button; Pending-Tabelle mit Address und Kundenname ohne deaktivierte Quotes, Kaufvolumen (CHF und Shares), Holder im Zeitverlauf und Registrierungs-Funnel (Registered → Completed, Drop-off Manual review)."
   },
   "responsive": {
     "title": "Responsive Layout",
@@ -139,6 +139,10 @@
     "title": "Gefahrenzone (Settings)",
     "description": "Settings-Sektion Gefahrenzone: zugeklappt bleibt Konto löschen verborgen; aufgeklappt erscheinen der Hinweis zur zehnjährigen Aufbewahrung nach Schweizer Recht und der Lösch-Button; die Bestätigung zeigt denselben Hinweis."
   },
+  "settings-add-bank-account-kyc-only": {
+    "title": "Bankkonto hinzufügen ohne Wallet (Settings)",
+    "description": "Ein Konto ohne verknüpfte Wallet (Mail-Login) versucht in den Settings eine IBAN hinzuzufügen. Statt des generischen Fehlers erscheint der Hinweis, dass zuerst eine Wallet verknüpft werden muss, mit Link in den Connect-Flow. Varianten: Englisch und Deutsch."
+  },
   "swap-process": {
     "title": "Swap-Prozess",
     "description": "Swap-Flow der Services-App."
@@ -167,6 +171,10 @@
     "title": "Link-Screen: Weiterleitung bei zusammengeführtem Account",
     "description": "/link-Screen für einen Account, der zu einem anderen zusammengeführt wurde: statt des rohen Backend-Fehlertexts landet die Nutzerin auf dem KYC-Screen des Hauptaccounts."
   },
+  "known-rejections": {
+    "title": "Bekannte API-Ablehnungen",
+    "description": "Nicht unterstützte Zeichen im KYC-Formular als Feldfehler; lehnt die API Name oder Adresse trotzdem ab, erscheint ein übersetzter Hinweis statt «Something went wrong»; eine gesperrte Bank im Rückerstattungsformular zeigt einen Hinweis, das Formular bleibt sichtbar."
+  },
   "tfa-merged-redirect": {
     "title": "2FA-Screen: Weiterleitung bei zusammengeführtem Account",
     "description": "/2fa-Screen für einen Account, der zu einem anderen zusammengeführt wurde: statt des rohen Backend-Fehlertexts landet die Nutzerin auf dem KYC-Screen des Hauptaccounts."
@@ -194,6 +202,10 @@
   "support-ticket-note": {
     "title": "Support-Ticket Kundennotiz",
     "description": "Staff-Issue: interne Kundennotiz mit Ticket-Betreff und Entwurf, nicht in den Kunden-Thread."
+  },
+  "support-kyc-file-transfer": {
+    "title": "Support-Ticket KYC-File-Übernahme",
+    "description": "Staff-Ticket: Anhang aus dem Nachrichten-Thread ins KYC-File des Kunden übernehmen."
   },
   "subpage": {
     "title": "Unterseiten",

@@ -21,10 +21,9 @@ import { useSessionStore } from 'src/hooks/session-store.hook';
 
 export default function EditMailScreen(): JSX.Element {
   const { translate, translateError } = useSettingsContext();
-  const { updateMail, verifyMail } = useUserContext();
+  const { user, isUserLoading, updateMail, verifyMail } = useUserContext();
   const { navigate } = useNavigation();
   const { handleMergedError } = useMergedAccount();
-  const { user } = useUserContext();
   const { check2fa } = useKyc();
   const { redirectPath, setRedirectPath } = useAppHandlingContext();
   const { editMailReturn } = useSessionStore();
@@ -79,7 +78,7 @@ export default function EditMailScreen(): JSX.Element {
             setError(e.message);
           }
         } else {
-          setError(e.message);
+          setError(e.message ?? 'Unknown error');
         }
       });
   }
@@ -107,7 +106,7 @@ export default function EditMailScreen(): JSX.Element {
           if (e.message.includes('merge')) {
             setShowLinkHint(true);
           } else {
-            setError(e.message ?? 'Unknown error');
+            setError(e.message);
           }
         } else {
           setError(e.message ?? 'Unknown error');
@@ -142,7 +141,7 @@ export default function EditMailScreen(): JSX.Element {
             }}
           />
         </StyledVerticalStack>
-      ) : checking2fa ? (
+      ) : checking2fa || isUserLoading ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : !mailVerificationStep ? (
         <EditOverlay

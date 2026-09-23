@@ -84,4 +84,41 @@ describe('ErrorHint reporting', () => {
     await waitFor(() => expect(mockReportClientError).toHaveBeenCalledTimes(1));
     expect(mockReportClientError.mock.calls[0][2]).toBe(123456);
   });
+
+  describe('known API rejections', () => {
+    const genericSentence =
+      'Something went wrong. Please try again. If the issue persists please reach out to our support.';
+    const charsetHint =
+      'Your name or address contains characters that our bank payments do not support. Please replace them with simple letters (e.g. l instead of ł) and try again.';
+    const bankHint = 'This bank is not supported by DFX. Please use an account at a different bank.';
+
+    it.each([
+      ['a single field', 'address.street must only contain characters permitted in Swiss payment systems', charsetHint],
+      [
+        'several comma-joined fields',
+        'address.street must only contain characters permitted in Swiss payment systems,address.city must only contain characters permitted in Swiss payment systems',
+        charsetHint,
+      ],
+      ['the IBAN variant of a blocked bank', 'iban BIC not allowed', bankHint],
+      ['a blocked bank', 'BIC not allowed', bankHint],
+    ])('shows only the hint for %s and reports it as KnownRejection', async (_case, message, hint) => {
+      renderHint(<ErrorHint message={message} />);
+
+      expect(screen.getByText(hint)).toBeInTheDocument();
+      expect(screen.queryByText(genericSentence)).not.toBeInTheDocument();
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+
+      await waitFor(() => expect(mockReportClientError).toHaveBeenCalledTimes(1));
+      expect(mockReportClientError.mock.calls[0][0]).toMatchObject({ message, name: 'KnownRejection' });
+      expect(mockReportClientError.mock.calls[0][1]).toBe('/buy');
+    });
+
+    it('keeps the Back button for a known rejection', async () => {
+      const onBack = jest.fn();
+      renderHint(<ErrorHint message="BIC not allowed" onBack={onBack} />);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+      expect(onBack).toHaveBeenCalledTimes(1);
+    });
+  });
 });

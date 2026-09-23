@@ -171,4 +171,30 @@ describe('useRealunitApi', () => {
       method: 'PUT',
     });
   });
+
+  it('getBuyLimit GETs realunit/admin/buy-limit', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.getBuyLimit();
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/admin/buy-limit', method: 'GET' });
+  });
+
+  it('updateBuyLimit(null) PUTs { maxTokensPerTx: null }', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.updateBuyLimit(null);
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'realunit/admin/buy-limit',
+      method: 'PUT',
+      data: { maxTokensPerTx: null },
+    });
+  });
+
+  it('updateBuyLimit(20000) PUTs { maxTokensPerTx: 20000 }', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.updateBuyLimit(20000);
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'realunit/admin/buy-limit',
+      method: 'PUT',
+      data: { maxTokensPerTx: 20000 },
+    });
+  });
 });

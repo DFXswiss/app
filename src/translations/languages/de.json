@@ -1,5 +1,6 @@
 {
   "general/actions": {
+    "Loading": "Laden",
     "Select": "Auswählen",
     "Search": "Suchen",
     "Start": "Starten",
@@ -64,6 +65,9 @@
   "general/errors": {
     "Mandatory field": "Pflichtfeld",
     "Invalid pattern": "Ungültiges Format",
+    "Contains unsupported characters. Use simple letters, e.g. l instead of ł.": "Enthält nicht unterstützte Zeichen. Bitte einfache Buchstaben verwenden, z. B. l statt ł.",
+    "Your name or address contains characters that our bank payments do not support. Please replace them with simple letters (e.g. l instead of ł) and try again.": "Dein Name oder deine Adresse enthält Zeichen, die unsere Bankzahlungen nicht unterstützen. Bitte ersetze sie durch einfache Buchstaben (z. B. l statt ł) und versuche es erneut.",
+    "This bank is not supported by DFX. Please use an account at a different bank.": "Diese Bank wird von DFX nicht unterstützt. Bitte verwende ein Konto bei einer anderen Bank.",
     "Area code and number required": "Vorwahl und Nummer erforderlich",
     "IBAN not allowed": "IBAN nicht erlaubt",
     "IBAN country not allowed": "IBAN Land nicht erlaubt",
@@ -75,7 +79,8 @@
     "No entries yet": "Noch keine Einträge vorhanden",
     "Something went wrong. Please try again. If the issue persists please reach out to our support.": "Irgendwas hat nicht funktioniert, bitte versuche es noch einmal. Wenn das Problem weiterhin besteht, wende Dich bitte an unseren Support.",
     "invoice": "DFX kennt keinen Empfänger mit dem Namen <strong>{{recipient}}</strong>. Dieser Service kann nur für Empfänger verwendet werden, die ein aktives Konto bei DFX haben und für den Rechnungsservice aktiviert sind. Solltest Du Dich als Empfänger bei DFX registrieren wollen, dann melde Dich beim Support unter <link>{{supportLink}}</link>.",
-    "iban": "Dies ist eine Multi-Account-IBAN und kann nicht als persönliches Konto hinzugefügt werden. Bitte öffne ein Support-Ticket auf <1></1> und füge die Bestätigung der Banktransaktion als PDF bei."
+    "iban": "Dies ist eine Multi-Account-IBAN und kann nicht als persönliches Konto hinzugefügt werden. Bitte öffne ein Support-Ticket auf <1></1> und füge die Bestätigung der Banktransaktion als PDF bei.",
+    "ibanKycOnly": "Ein Bankkonto kann erst hinzugefügt werden, wenn eine Wallet mit diesem Konto verknüpft ist. <1></1>"
   },
   "screens/kyc": {
     "Identification required": "Identifikation erforderlich",
@@ -376,6 +381,18 @@
     "blocked": "gesperrt",
     "Pass only allowed when all errors are phone-related": "Pass nur erlaubt, wenn alle Errors Phone-bezogen sind",
     "Hide empty accounts": "Leere Accounts ausblenden",
+    "Last Dilisense check": "Letzter Dilisense-Check",
+    "Result": "Ergebnis",
+    "Screen": "Screenen",
+    "Screen all": "Alle screenen",
+    "Screening {{done}} / {{total}}": "Screening {{done}} / {{total}}",
+    "A Dilisense screening consumes provider quota and costs money – continue?": "Ein Dilisense-Screening verbraucht Provider-Kontingent und kostet Geld – fortfahren?",
+    "Screening all named shareholders consumes Dilisense quota – continue?": "Alle namentlich bekannten Aktionäre screenen verbraucht Dilisense-Kontingent – fortfahren?",
+    "Cannot screen without a name": "Ohne Namen nicht screenbar",
+    "No match": "Kein Treffer",
+    "Match without Birthday": "Treffer ohne Geburtsdatum",
+    "Match with Birthday": "Treffer mit Geburtsdatum",
+    "Open": "offen",
     "All accounts are hidden by the filter above": "Alle Accounts sind durch den Filter oben ausgeblendet",
     "Addresses": "Adressen",
     "No addresses": "Keine Adressen",
@@ -995,7 +1012,14 @@
     "Document": "Dokument",
     "Created on": "Erstellt am",
     "Hide completed tickets": "Abgeschlossene Tickets ausblenden",
-    "Show completed tickets": "Abgeschlossene Tickets anzeigen"
+    "Show completed tickets": "Abgeschlossene Tickets anzeigen",
+    "Transfer to KYC file": "Ins KYC-File übernehmen",
+    "In KYC file": "Im KYC-File",
+    "Document title": "Dokumenttitel",
+    "Stored as": "Abgelegt als",
+    "Date and customer number are added automatically": "Datum und Kundennummer werden automatisch ergänzt",
+    "Only PDF, JPG or PNG files can be transferred to the KYC file": "Nur PDF-, JPG- oder PNG-Dateien können ins KYC-File übernommen werden",
+    "Failed to transfer file": "Übernahme fehlgeschlagen"
   },
   "screens/recommendation": {
     "Recommendations": "Empfehlungen",
@@ -1132,7 +1156,13 @@
     "Registered": "Registriert",
     "Failed to load buy volume.": "Kaufvolumen konnte nicht geladen werden.",
     "Failed to load holder count.": "Holder-Anzahl konnte nicht geladen werden.",
-    "Failed to load registration stats.": "Registrierungsdaten konnten nicht geladen werden."
+    "Failed to load registration stats.": "Registrierungsdaten konnten nicht geladen werden.",
+    "Max tokens per buy": "Max. Tokens pro Kauf",
+    "Leave empty for no limit. Applies to each bank buy.": "Leer lassen für keine Limite. Gilt für jeden Bankkauf.",
+    "Save": "Speichern",
+    "Loading": "Laden",
+    "Failed to load buy limit.": "Kauf-Limite konnte nicht geladen werden.",
+    "Unknown error": "Unbekannter Fehler"
   },
   "screens/blockchain": {
     "Transaction signing": "Transaktionssignierung",
