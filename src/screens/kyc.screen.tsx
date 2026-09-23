@@ -92,7 +92,13 @@ import { useLayoutOptions } from '../hooks/layout-config.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import { createKeyedSerial } from '../util/single-flight';
 import { delay, toBase64, url } from '../util/utils';
-import { AddressZipValidation } from '../util/validation-rules';
+import {
+  AddressZipValidation,
+  RequiredSwissPaymentTextValidation,
+  SwissPaymentTextValidation,
+  normalizeAddressApostrophes,
+  normalizeApostrophes,
+} from '../util/validation-rules';
 import { IframeMessageType } from './kyc-redirect.screen';
 
 enum Mode {
@@ -732,7 +738,14 @@ function PersonalData({ rootRef, mode, code, isLoading, step, onDone, onBack }: 
 
     setIsUpdating(true);
     setError(undefined);
-    setPersonalData(code, step.session.url, data)
+    setPersonalData(code, step.session.url, {
+      ...data,
+      firstName: normalizeApostrophes(data.firstName),
+      lastName: normalizeApostrophes(data.lastName),
+      address: normalizeAddressApostrophes(data.address),
+      organizationName: normalizeApostrophes(data.organizationName),
+      organizationAddress: normalizeAddressApostrophes(data.organizationAddress),
+    })
       .then(() => (mode === Mode.KYC ? onDone() : onBack()))
       .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
       .finally(() => setIsUpdating(false));
@@ -741,18 +754,20 @@ function PersonalData({ rootRef, mode, code, isLoading, step, onDone, onBack }: 
   const rules = Utils.createRules({
     accountType: Validations.Required,
 
-    firstName: Validations.Required,
-    lastName: Validations.Required,
+    firstName: RequiredSwissPaymentTextValidation,
+    lastName: RequiredSwissPaymentTextValidation,
     phone: [Validations.Required, Validations.Phone],
 
-    ['address.street']: Validations.Required,
+    ['address.street']: RequiredSwissPaymentTextValidation,
+    ['address.houseNumber']: SwissPaymentTextValidation,
     ['address.zip']: AddressZipValidation,
-    ['address.city']: Validations.Required,
+    ['address.city']: RequiredSwissPaymentTextValidation,
     ['address.country']: Validations.Required,
 
-    organizationName: Validations.Required,
-    ['organizationAddress.street']: Validations.Required,
-    ['organizationAddress.city']: Validations.Required,
+    organizationName: RequiredSwissPaymentTextValidation,
+    ['organizationAddress.street']: RequiredSwissPaymentTextValidation,
+    ['organizationAddress.houseNumber']: SwissPaymentTextValidation,
+    ['organizationAddress.city']: RequiredSwissPaymentTextValidation,
     ['organizationAddress.zip']: AddressZipValidation,
     ['organizationAddress.country']: Validations.Required,
   });
@@ -1490,8 +1505,8 @@ function BeneficialOwner({ rootRef, code, isLoading, step, onDone }: EditProps):
     const data: KycBeneficialData = {
       hasBeneficialOwners: ownerCount > 0,
       isAccountHolderInvolved: formData.isAccountHolderInvolved,
-      beneficialOwners: formData.owners,
-      managingDirector: formData.director,
+      beneficialOwners: formData.owners?.map((owner) => normalizeAddressApostrophes(owner)),
+      managingDirector: normalizeAddressApostrophes(formData.director),
     };
 
     setIsUpdating(true);
@@ -1534,18 +1549,20 @@ function BeneficialOwner({ rootRef, code, isLoading, step, onDone }: EditProps):
       .map((c) => ({
         [`owners.${c}.firstName`]: Validations.Required,
         [`owners.${c}.lastName`]: Validations.Required,
-        [`owners.${c}.street`]: Validations.Required,
-        [`owners.${c}.zip`]: Validations.Required,
-        [`owners.${c}.city`]: Validations.Required,
+        [`owners.${c}.street`]: RequiredSwissPaymentTextValidation,
+        [`owners.${c}.houseNumber`]: SwissPaymentTextValidation,
+        [`owners.${c}.zip`]: RequiredSwissPaymentTextValidation,
+        [`owners.${c}.city`]: RequiredSwissPaymentTextValidation,
         [`owners.${c}.country`]: Validations.Required,
       }))
       .reduce((prev, curr) => ({ ...prev, ...curr })),
 
     [`director.firstName`]: Validations.Required,
     [`director.lastName`]: Validations.Required,
-    [`director.street`]: Validations.Required,
-    [`director.zip`]: Validations.Required,
-    [`director.city`]: Validations.Required,
+    [`director.street`]: RequiredSwissPaymentTextValidation,
+    [`director.houseNumber`]: SwissPaymentTextValidation,
+    [`director.zip`]: RequiredSwissPaymentTextValidation,
+    [`director.city`]: RequiredSwissPaymentTextValidation,
     [`director.country`]: Validations.Required,
   });
 
@@ -2406,7 +2423,7 @@ function AddressChangeData({ rootRef, code, isLoading, step, onDone, onCancel, i
     setAddressChangeData(code, step.session.url, {
       file,
       fileName: data.file.name,
-      address: data.address,
+      address: normalizeAddressApostrophes(data.address),
     })
       .then(onDone)
       .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
@@ -2414,9 +2431,10 @@ function AddressChangeData({ rootRef, code, isLoading, step, onDone, onCancel, i
   }
 
   const rules = Utils.createRules({
-    ['address.street']: Validations.Required,
+    ['address.street']: RequiredSwissPaymentTextValidation,
+    ['address.houseNumber']: SwissPaymentTextValidation,
     ['address.zip']: AddressZipValidation,
-    ['address.city']: Validations.Required,
+    ['address.city']: RequiredSwissPaymentTextValidation,
     ['address.country']: Validations.Required,
     file: [
       Validations.Required,
@@ -2557,8 +2575,8 @@ function NameChangeData({ code, isLoading, step, onDone, onCancel, isCanceling }
     setNameChangeData(code, step.session.url, {
       file,
       fileName: data.file.name,
-      firstName: data.firstName,
-      lastName: data.lastName,
+      firstName: normalizeApostrophes(data.firstName),
+      lastName: normalizeApostrophes(data.lastName),
     })
       .then(onDone)
       .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
@@ -2566,8 +2584,8 @@ function NameChangeData({ code, isLoading, step, onDone, onCancel, isCanceling }
   }
 
   const rules = Utils.createRules({
-    firstName: Validations.Required,
-    lastName: Validations.Required,
+    firstName: RequiredSwissPaymentTextValidation,
+    lastName: RequiredSwissPaymentTextValidation,
     file: [
       Validations.Required,
       Validations.Custom((file) => (!file || DefaultFileTypes.includes(file.type) ? true : 'file_type')),

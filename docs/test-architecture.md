@@ -298,6 +298,23 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   merged account really produces a 401 with `switchToCode`.
   `src/__tests__/link.screen.test.tsx` pins that `handleMergedError` is tried first at every
   catch site instead.
+- **The known-rejections visual spec answers the rejections itself.**
+  `e2e/known-rejections.spec.ts` fulfils `GET /v2/kyc/PersonalData` and `GET /v2/kyc` with a
+  synthetic step session, `PUT` on that session with a synthetic 400 character-set message,
+  `GET /v1/transaction/single` with a synthetic failed buy, the guest refund `GET`/`PUT` under
+  `/v1/transaction/uid/:uid/:secret/refund` with synthetic refund details and a synthetic 400
+  `iban BIC not allowed`, the external IP geolocation lookup with a synthetic Swiss answer (the KYC
+  form prefills its country from it), plus the bootstrap GETs (`/v1/language`,
+  `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`, `/v1/setting/infoBanner`) and
+  `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get `501`. A green run proves
+  that the field error, the character-set hint and the blocked-bank hint render for those
+  messages. It does not prove that the API still words its rejections that way, that it rejects
+  exactly the characters the form rejects, or that a real bank is blocked; the message sentences
+  and the character set (every code point up to U+024F) are pinned in unit tests instead. Nor does it
+  prove that the external geolocation service is reachable, still answers in that shape, or maps
+  a real client IP to the expected country. It also does not prove that the KYC step, transaction,
+  refund and bootstrap endpoints return these payloads for a real account, or that client-error
+  reports reach the real endpoint.
 
 ## Known gaps
 

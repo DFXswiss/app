@@ -32,6 +32,7 @@ const ValidationErrors: Record<string, string> = {
   json_file: 'Only JSON files are allowed',
   file_type: 'Allowed formats: PDF, JPG, JPEG, PNG',
   date_format: 'Invalid date format',
+  unsupported_characters: 'Contains unsupported characters. Use simple letters, e.g. l instead of ł.',
 };
 
 const languageToLocale: { [language: string]: string } = {

@@ -171,6 +171,10 @@
     "title": "Link-Screen: Weiterleitung bei zusammengeführtem Account",
     "description": "/link-Screen für einen Account, der zu einem anderen zusammengeführt wurde: statt des rohen Backend-Fehlertexts landet die Nutzerin auf dem KYC-Screen des Hauptaccounts."
   },
+  "known-rejections": {
+    "title": "Bekannte API-Ablehnungen",
+    "description": "Nicht unterstützte Zeichen im KYC-Formular als Feldfehler; lehnt die API Name oder Adresse trotzdem ab, erscheint ein übersetzter Hinweis statt «Something went wrong»; eine gesperrte Bank im Rückerstattungsformular zeigt einen Hinweis, das Formular bleibt sichtbar."
+  },
   "tfa-merged-redirect": {
     "title": "2FA-Screen: Weiterleitung bei zusammengeführtem Account",
     "description": "/2fa-Screen für einen Account, der zu einem anderen zusammengeführt wurde: statt des rohen Backend-Fehlertexts landet die Nutzerin auf dem KYC-Screen des Hauptaccounts."

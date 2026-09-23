@@ -412,6 +412,11 @@ jest.mock('../util/utils', () => ({
 
 jest.mock('copy-to-clipboard', () => jest.fn());
 
+const mockReportClientError = jest.fn();
+jest.mock('src/util/client-error', () => ({
+  reportClientError: (...args: unknown[]) => mockReportClientError(...args),
+}));
+
 import { Utils } from '@dfx.swiss/react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
@@ -956,6 +961,77 @@ describe('TransactionRefund onSubmit', () => {
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
     expect(screen.getByText('Transaction amount')).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalledWith('/tx');
+  });
+
+  it('keeps the form, shows the bank hint and reports once when the bank is blocked', async () => {
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockSetGuestRefund.mockRejectedValue({ message: 'iban BIC not allowed' });
+
+    renderRefund();
+    await waitForRefundFormLoaded();
+    await fillBankRefundForm();
+    await waitForSubmitEnabled('Confirm refund');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }));
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('This bank is not supported by DFX. Please use an account at a different bank.'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByTestId('creditorStreet')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalledWith('/tx');
+
+    fireEvent.change(screen.getByTestId('creditorCity'), { target: { value: 'Bern' } });
+
+    expect(mockReportClientError).toHaveBeenCalledTimes(1);
+    expect(mockReportClientError.mock.calls[0][0]).toMatchObject({
+      message: 'iban BIC not allowed',
+      name: 'KnownRejection',
+    });
+  });
+
+  it('reports a repeated blocked bank once and again after another error was shown', async () => {
+    mockGetTransactionByUid.mockResolvedValue(makeTx({ type: 'Buy', inputPaymentMethod: 'Bank', state: 'Failed' }));
+    mockGetGuestRefund.mockResolvedValue(makeRefund({ refundTarget: undefined }));
+    mockSetGuestRefund
+      .mockRejectedValueOnce({ message: 'BIC not allowed' })
+      .mockRejectedValueOnce({ message: 'BIC not allowed' })
+      .mockRejectedValueOnce({ message: 'MultiAccountIban is not allowed here' })
+      .mockRejectedValueOnce({ message: 'BIC not allowed' });
+    const bankHint = 'This bank is not supported by DFX. Please use an account at a different bank.';
+    const multiAccountHint = 'This IBAN cannot be used for refunds. Please select a personal bank account.';
+
+    renderRefund();
+    await waitForRefundFormLoaded();
+    await fillBankRefundForm();
+    await waitForSubmitEnabled('Confirm refund');
+
+    async function submit(expectedText: string) {
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm refund' }));
+      });
+      await waitFor(() => expect(screen.getByText(expectedText)).toBeInTheDocument());
+    }
+
+    await submit(bankHint);
+    await submit(bankHint);
+    expect(mockReportClientError).toHaveBeenCalledTimes(1);
+
+    await submit(multiAccountHint);
+    expect(screen.queryByText(bankHint)).not.toBeInTheDocument();
+    expect(mockReportClientError).toHaveBeenCalledTimes(1);
+
+    await submit(bankHint);
+    expect(mockReportClientError).toHaveBeenCalledTimes(2);
+    expect(mockReportClientError.mock.calls[1][0]).toMatchObject({
+      message: 'BIC not allowed',
+      name: 'KnownRejection',
+    });
   });
 
   it('propagates non-MultiAccountIban submit errors via setError', async () => {
