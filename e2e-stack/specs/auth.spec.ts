@@ -147,8 +147,9 @@ test.describe('Auth area e2e', () => {
     });
   });
 
-  // The injected provider is bound even though reading `.on` throws. Otherwise the error
-  // area would show the provider-missing error instead of the backend signature validation.
+  // The hook gives Web3 a facade without `.on` when that property throws on the
+  // injected provider. Otherwise the error area would show the missing-wallet
+  // hint instead of the later signature validation.
   // The mock does not answer personal_sign, so login deliberately does not complete.
   test('/login/wallet MetaMask tile with a Brave-like provider does not show the install hint', async ({ page }) => {
     await page.addInitScript((address: string) => {
@@ -168,7 +169,8 @@ test.describe('Auth area e2e', () => {
       (window as any).ethereum = new Proxy(target, {
         get(t, prop) {
           // Return a different function than the target's non-configurable `on` so the
-          // engine throws on read — the Brave window.ethereum invariant violation.
+          // engine throws on read, matching the proxy invariant error observed in
+          // one clean Brave profile. This fake does not identify the throwing layer.
           if (prop === 'on') return () => undefined;
           return t[prop as string];
         },
@@ -179,6 +181,16 @@ test.describe('Auth area e2e', () => {
     await page.waitForLoadState('networkidle');
 
     expect(normPath(new URL(page.url()).pathname)).toBe('/login/wallet');
+    expect(
+      await page.evaluate(() => {
+        try {
+          void (window as any).ethereum.on;
+          return false;
+        } catch (error) {
+          return error instanceof TypeError;
+        }
+      }),
+    ).toBe(true);
     const metamaskTile = page.locator('img[src*="metamask"]');
     await expect(metamaskTile).toBeVisible({ timeout: 15000 });
     await metamaskTile.click();

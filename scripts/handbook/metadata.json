@@ -159,6 +159,10 @@
     "title": "Login-Prozess",
     "description": "Login und Home-Seite nach Authentifizierung."
   },
+  "wallet-missing-provider": {
+    "title": "Wallet-Verbindung: Provider-Fehler",
+    "description": "Fehleransicht beim MetaMask-Login, wenn ein synthetischer Wallet-Provider RPCs mit der Web3-Meldung „Provider not set or invalid“ ablehnt. Der Screenshot prüft die Anzeige des übersetzten Fehlers; er beweist weder eine fehlgeschlagene Web3-Bindung noch das Verhalten einer echten Wallet-Erweiterung."
+  },
   "signature-login": {
     "title": "Signatur-Login",
     "description": "Wallet-Signatur-Login: Home, Buy, Sell, Settings, Transaktionen und Fehlerfall."
