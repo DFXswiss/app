@@ -139,6 +139,10 @@
     "title": "Gefahrenzone (Settings)",
     "description": "Settings-Sektion Gefahrenzone: zugeklappt bleibt Konto löschen verborgen; aufgeklappt erscheinen der Hinweis zur zehnjährigen Aufbewahrung nach Schweizer Recht und der Lösch-Button; die Bestätigung zeigt denselben Hinweis."
   },
+  "settings-add-bank-account-kyc-only": {
+    "title": "Bankkonto hinzufügen ohne Wallet (Settings)",
+    "description": "Ein Konto ohne verknüpfte Wallet (Mail-Login) versucht in den Settings eine IBAN hinzuzufügen. Statt des generischen Fehlers erscheint der Hinweis, dass zuerst eine Wallet verknüpft werden muss, mit Link in den Connect-Flow. Varianten: Englisch und Deutsch."
+  },
   "swap-process": {
     "title": "Swap-Prozess",
     "description": "Swap-Flow der Services-App."

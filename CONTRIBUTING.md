@@ -170,6 +170,9 @@ platform-, font- and data-dependent — needlessly blocking PRs.
    ```
    REACT_APP_API_URL=http://localhost:3000 npx playwright test <spec> --project=chromium
    ```
+   Specs that log in by mail against the local API reuse the full-stack harness
+   fixtures: install their dependencies with `npm ci --prefix e2e-stack` and set
+   the `E2E_*` variables the spec lists in its header.
 3. When your change affects the UI, regenerate the affected screenshots and commit
    them with the change:
    ```
