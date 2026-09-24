@@ -81,10 +81,10 @@ import { cx } from '../css';
 const QUICK_FIAT_AMOUNTS = [50, 100, 250, 500];
 const PENDING_PAYMENT_KEY_PREFIX = 'app2:pending-payment-request:';
 
-function createPaymentRequestId(): string {
+function createPaymentRequestId(): string | undefined {
   const cryptoApi = globalThis.crypto;
   if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
-  if (!cryptoApi?.getRandomValues) throw new Error('Secure random generation is unavailable');
+  if (!cryptoApi?.getRandomValues) return undefined;
   const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
@@ -255,10 +255,12 @@ export default function HomeScreen() {
   const rotatedPreClaimRetryIdentitiesRef = useRef(new Set<string>());
 
   const checkExistingPaymentStatus = useCallback(async () => {
-    if (!activePaymentRequestId) return;
-    const expectedIdentity = paymentRequestIdentity;
+    // PaymentSheet only exposes this callback for an open, same-owner payment request.
+    // Keep the required values local after that UI invariant has narrowed their runtime state.
+    const requestId = activePaymentRequestId as string;
+    const expectedIdentity = paymentRequestIdentity as string;
     try {
-      const status = await transactionApi.getPaymentInfoRequestStatus(activePaymentRequestId, requestType);
+      const status = await transactionApi.getPaymentInfoRequestStatus(requestId, requestType);
       if (paymentRequestIdentityRef.current !== expectedIdentity) return;
       setExistingRequestUid(status.existingUid);
       setExistingRequestStatus(status.requestStatus);
@@ -562,12 +564,8 @@ export default function HomeScreen() {
     PersonalIbanProvider,
     buyFiat?.name,
   );
-  const [personalIbanSuppressed, setPersonalIbanSuppressed] = useState(false);
-  useEffect(() => {
-    setPersonalIbanSuppressed(false);
-  }, [personalIbanParam]);
   const personalIbanProvider =
-    personalIbanSuppressed || personalIbanState.kind !== 'ready' ? undefined : personalIbanState.provider;
+    personalIbanState.kind !== 'ready' ? undefined : personalIbanState.provider;
   const personalIbanBlocked = personalIbanState.kind === 'unrecognized' || personalIbanState.kind === 'inapplicable';
   const privateBlocked = privateTradeBlocked(
     flagsParam,
@@ -818,10 +816,6 @@ export default function HomeScreen() {
 
   const handleCta = () => {
     if (privateBlocked) return;
-    if (!paymentAccountId) {
-      showToast(t('paymentRecoveryUnavailable'), { assertive: true });
-      return;
-    }
     if (mode === 'sell' && !sellBankAccount) {
       setBankAccountOpen(true);
       return;
@@ -830,13 +824,16 @@ export default function HomeScreen() {
     // payment-details request; the effect above opens the sheet on that exact response, which
     // is also what guards against showing numbers that have gone stale in the meantime.
     const requestId = activePaymentRequestId ?? createPaymentRequestId();
-    if (pendingPaymentStorageKey) {
-      try {
-        sessionStorage.setItem(pendingPaymentStorageKey, JSON.stringify({ requestId, mode }));
-      } catch {
-        showToast(t('paymentRecoveryUnavailable'), { assertive: true });
-        return;
-      }
+    if (!requestId) {
+      showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+      return;
+    }
+    try {
+      // The CTA is disabled without an API account, so this key is present on this path.
+      sessionStorage.setItem(pendingPaymentStorageKey as string, JSON.stringify({ requestId, mode }));
+    } catch {
+      showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+      return;
     }
     setPaymentRequestId(requestId);
     setPaymentRequestOwner(paymentAccountId);
@@ -1383,13 +1380,16 @@ export default function HomeScreen() {
             return;
           }
           const requestId = activePaymentRequestId ?? createPaymentRequestId();
-          if (pendingPaymentStorageKey) {
-            try {
-              sessionStorage.setItem(pendingPaymentStorageKey, JSON.stringify({ requestId, mode }));
-            } catch {
-              showToast(t('paymentRecoveryUnavailable'), { assertive: true });
-              return;
-            }
+          if (!requestId) {
+            showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+            return;
+          }
+          const storageKey = `${PENDING_PAYMENT_KEY_PREFIX}${paymentAccountId}`;
+          try {
+            sessionStorage.setItem(storageKey, JSON.stringify({ requestId, mode }));
+          } catch {
+            showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+            return;
           }
           setPaymentRequestId(requestId);
           setPaymentRequestOwner(paymentAccountId);
@@ -1447,11 +1447,11 @@ export default function HomeScreen() {
         onClose={() => setPendingNewPayment(false)}
         onConfirm={() => {
           if (!canStartSeparatePayment) return;
-          if (pendingPaymentStorageKey) sessionStorage.removeItem(pendingPaymentStorageKey);
+          sessionStorage.removeItem(pendingPaymentStorageKey as string);
           setPendingNewPayment(false);
           setPaymentRequestId(undefined);
           setPaymentRequestOwner(undefined);
-          if (restoredPaymentModeOwnerRef.current === paymentAccountId) restoredPaymentModeOwnerRef.current = undefined;
+          restoredPaymentModeOwnerRef.current = undefined;
           setExistingRequestUid(undefined);
           setExistingRequestStatus(undefined);
           setRecoveringPaymentRequest(false);
@@ -1468,7 +1468,7 @@ export default function HomeScreen() {
           setSheetSnapshot(null);
           setRecoveringPaymentRequest(false);
         }}
-        onDone={(existingRequest = false) => {
+        onDone={(existingRequest) => {
           setPaymentSheetOpen(false);
           setRecoveringPaymentRequest(false);
           if (existingRequest || visibleExistingRequestUid) return;
@@ -1515,102 +1515,96 @@ export default function HomeScreen() {
         amount={sheetSnapshot?.amount ?? sheetAmount}
         sessionAddress={session.address}
         onRetry={async () => {
-          const paymentError = sheetSnapshot?.rawError ?? activePayment.error;
-          if (isKnownPreClaimGateError(paymentError) && paymentAccountId && pendingPaymentStorageKey) {
-            const currentRequestId = activePaymentRequestId;
-            const expectedIdentity = paymentRequestIdentity;
-            if (!currentRequestId || !expectedIdentity) return;
-            if (
-              preClaimRetryIdentityRef.current === expectedIdentity ||
-              rotatedPreClaimRetryIdentitiesRef.current.has(expectedIdentity)
-            ) return;
-            preClaimRetryIdentityRef.current = expectedIdentity;
-            const releasePreClaimRetry = () => {
-              if (preClaimRetryIdentityRef.current === expectedIdentity) preClaimRetryIdentityRef.current = undefined;
-            };
-            setSheetSnapshot((snapshot) => ({ ...(snapshot as PaymentSnapshot), loading: true }));
-            let confirmedMissingClaim = false;
-            try {
-              const status = await transactionApi.getPaymentInfoRequestStatus(currentRequestId, requestType);
-              if (paymentRequestIdentityRef.current !== expectedIdentity) {
-                releasePreClaimRetry();
-                return;
-              }
-              setExistingRequestUid(status.existingUid);
-              setExistingRequestStatus(status.requestStatus);
-            } catch (error) {
-              if (paymentRequestIdentityRef.current !== expectedIdentity) {
-                releasePreClaimRetry();
-                return;
-              }
-              if (isApiExceptionLike(error) && error.statusCode === 404) {
-                confirmedMissingClaim = true;
-              } else {
-                setExistingRequestUid(undefined);
-                setExistingRequestStatus('Unknown');
-              }
-            }
-            if (!confirmedMissingClaim) {
-              setSheetSnapshot((snapshot) => ({
-                ...(snapshot as PaymentSnapshot),
-                loading: false,
-                rawError: paymentError,
-              }));
+          const paymentError = sheetSnapshot?.rawError;
+          // PaymentSheet dispatches this callback only for a locked pre-claim retry.
+          // An open sheet is owned by this account and has a persisted request ID.
+          const currentRequestId = activePaymentRequestId as string;
+          const expectedIdentity = paymentRequestIdentity as string;
+          const storageKey = pendingPaymentStorageKey as string;
+          if (
+            preClaimRetryIdentityRef.current === expectedIdentity ||
+            rotatedPreClaimRetryIdentitiesRef.current.has(expectedIdentity)
+          ) return;
+          preClaimRetryIdentityRef.current = expectedIdentity;
+          const releasePreClaimRetry = () => {
+            if (preClaimRetryIdentityRef.current === expectedIdentity) preClaimRetryIdentityRef.current = undefined;
+          };
+          setSheetSnapshot((snapshot) => ({ ...(snapshot as PaymentSnapshot), loading: true }));
+          let confirmedMissingClaim = false;
+          try {
+            const status = await transactionApi.getPaymentInfoRequestStatus(currentRequestId, requestType);
+            if (paymentRequestIdentityRef.current !== expectedIdentity) {
               releasePreClaimRetry();
               return;
             }
-            const requestId = createPaymentRequestId();
-            try {
-              sessionStorage.setItem(pendingPaymentStorageKey, JSON.stringify({ requestId, mode }));
-            } catch {
-              setSheetSnapshot((snapshot) => ({
-                ...(snapshot as PaymentSnapshot),
-                loading: false,
-                rawError: paymentError,
-              }));
+            setExistingRequestUid(status.existingUid);
+            setExistingRequestStatus(status.requestStatus);
+          } catch (error) {
+            if (paymentRequestIdentityRef.current !== expectedIdentity) {
               releasePreClaimRetry();
-              showToast(t('paymentRecoveryUnavailable'), { assertive: true });
               return;
             }
-            rotatedPreClaimRetryIdentitiesRef.current.add(expectedIdentity);
-            releasePreClaimRetry();
-            setPaymentRequestId(requestId);
-            setPaymentRequestOwner(paymentAccountId);
-            setExistingRequestUid(undefined);
-            setExistingRequestStatus(undefined);
+            if (isApiExceptionLike(error) && error.statusCode === 404) {
+              confirmedMissingClaim = true;
+            } else {
+              setExistingRequestUid(undefined);
+              setExistingRequestStatus('Unknown');
+            }
+          }
+          if (!confirmedMissingClaim) {
             setSheetSnapshot((snapshot) => ({
               ...(snapshot as PaymentSnapshot),
-              rawError: null,
-              loading: true,
+              loading: false,
+              rawError: paymentError,
             }));
-            setSheetRetrying(true);
-            setNeedPaymentInfo(true);
+            releasePreClaimRetry();
             return;
           }
-          setSheetSnapshot((snapshot) => ({ ...(snapshot as PaymentSnapshot), loading: true }));
+          const requestId = createPaymentRequestId();
+          if (!requestId) {
+            setSheetSnapshot((snapshot) => ({
+              ...(snapshot as PaymentSnapshot),
+              loading: false,
+              rawError: paymentError,
+            }));
+            releasePreClaimRetry();
+            showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+            return;
+          }
+          try {
+            sessionStorage.setItem(storageKey, JSON.stringify({ requestId, mode }));
+          } catch {
+            setSheetSnapshot((snapshot) => ({
+              ...(snapshot as PaymentSnapshot),
+              loading: false,
+              rawError: paymentError,
+            }));
+            releasePreClaimRetry();
+            showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+            return;
+          }
+          rotatedPreClaimRetryIdentitiesRef.current.add(expectedIdentity);
+          releasePreClaimRetry();
+          setPaymentRequestId(requestId);
+          setPaymentRequestOwner(paymentAccountId);
+          setExistingRequestUid(undefined);
+          setExistingRequestStatus(undefined);
+          setSheetSnapshot((snapshot) => ({
+            ...(snapshot as PaymentSnapshot),
+            rawError: null,
+            loading: true,
+          }));
           setSheetRetrying(true);
-          // Must be the engine the sheet renders from: refreshing the panel's public quote would
-          // never re-run paymentInfos, so a gate the user just cleared (e-mail confirmed, KYC
-          // done) could never be re-checked from inside the sheet. Re-arming the flag keeps that
-          // engine enabled — `refresh()` is a no-op on a disabled engine — and applies to all
-          // three modes now that sell asks for its payment details the same way.
           setNeedPaymentInfo(true);
-          activePayment.refresh();
         }}
-        onReconnect={() => session.openConnect()}
+        onReconnect={session.openConnect}
         personalIbanProvider={personalIbanProvider}
         requestLocked={paymentRequestLocked}
         loadExistingRequest={loadExistingRequest}
         existingRequestUid={visibleExistingRequestUid}
         existingRequestStatus={visibleExistingRequestStatus}
-        onCheckExistingRequest={checkExistingPaymentStatus}
-        retryPreClaimGateError={isKnownPreClaimGateError(sheetSnapshot?.rawError ?? activePayment.error)}
-        onContinueWithoutPersonalIban={() => {
-          setPersonalIbanSuppressed(true);
-          setSheetRetrying(true);
-          setSheetSnapshot((snapshot) => ({ ...(snapshot as PaymentSnapshot), buy: null, loading: true }));
-          setNeedPaymentInfo(true);
-        }}
+        onCheckExistingRequest={paymentRequestIdentity ? checkExistingPaymentStatus : undefined}
+        retryPreClaimGateError={isKnownPreClaimGateError(sheetSnapshot?.rawError)}
       />
     </div>
   );

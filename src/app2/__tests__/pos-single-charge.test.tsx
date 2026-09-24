@@ -23,7 +23,7 @@ jest.mock('react-qr-code', () => () => null);
 
 import { createElement } from 'react';
 import { TextEncoder } from 'util';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ApiException } from '@dfx.swiss/react';
 import { LanguageProvider } from '../i18n';
 import { lnurlEncode } from '../screens/ocp/lnurl';
@@ -31,6 +31,27 @@ import PosView, { currencyForPosLink } from '../screens/ocp/pos';
 import type { OcpApi } from '../screens/ocp/useOcp';
 
 (global as { TextEncoder: typeof TextEncoder }).TextEncoder = TextEncoder;
+const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+let mockUuidCounter = 0;
+
+beforeEach(() => {
+  mockUuidCounter = 0;
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: {
+      randomUUID: () => `00000000-0000-4000-8000-${(++mockUuidCounter).toString(16).padStart(12, '0')}`,
+    },
+  });
+});
+
+afterAll(() => {
+  if (originalCryptoDescriptor) Object.defineProperty(globalThis, 'crypto', originalCryptoDescriptor);
+  else Reflect.deleteProperty(globalThis, 'crypto');
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 function buildOcp(overrides: Partial<OcpApi> = {}): OcpApi {
   return {
@@ -53,7 +74,7 @@ function buildOcp(overrides: Partial<OcpApi> = {}): OcpApi {
     loadLinks: jest.fn().mockResolvedValue([]),
     loadHistory: jest.fn(),
     lightningReady: true,
-    sellRoutes: [{ id: 10, currency: { name: 'EUR' } }] as OcpApi['sellRoutes'],
+    sellRoutes: [{ id: 10, active: true, currency: { name: 'EUR' } }] as OcpApi['sellRoutes'],
     lnSellRoutes: [],
     createRoute: jest.fn(),
     toggleRoute: jest.fn(),
@@ -82,7 +103,16 @@ function chargeButton() {
   return screen.getByRole('button', { name: /^(charge|kassieren)$/i });
 }
 
+async function readyRecoveryRefreshButton() {
+  const button = await screen.findByRole('button', { name: /refresh payment status/i });
+  await waitFor(() => expect(button).toBeEnabled());
+  return button;
+}
+
 describe('POS charges exactly once until the payment is terminal', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
   it('ignores double Enter and click while the charge request is in flight', async () => {
     let resolveCharge!: (v: { lnurl: string; externalId: string }) => void;
     const chargePromise = new Promise<{ lnurl: string; externalId: string }>((resolve) => {
@@ -98,7 +128,7 @@ describe('POS charges exactly once until the payment is terminal', () => {
     fireEvent.click(chargeButton());
 
     await waitFor(() => expect(ocp.charge).toHaveBeenCalledTimes(1));
-    expect(ocp.charge).toHaveBeenCalledWith('1', 12);
+    expect(ocp.charge).toHaveBeenCalledWith('1', 12, expect.any(String));
 
     await act(async () => {
       resolveCharge({ lnurl: 'LNURL1ONCE', externalId: 'charge-once' });
@@ -128,27 +158,49 @@ describe('POS charges exactly once until the payment is terminal', () => {
     view.unmount();
   });
 
-  it('unlocks after a failed charge so retry can post exactly one new payment', async () => {
+  it('keeps a failed charge locked after an empty list refresh until its exact status is terminal', async () => {
+    const pollPayment = jest.fn().mockResolvedValue('Pending');
+    const loadLinks = jest.fn().mockResolvedValue([]);
     const ocp = buildOcp({
       charge: jest
         .fn()
         .mockRejectedValueOnce(new ApiException(500, 'busy'))
         .mockResolvedValueOnce({ lnurl: 'LNURL1RETRY', externalId: 'charge-retry' }),
+      pollPayment,
+      loadLinks,
     });
     const view = renderPos(ocp);
 
     fireEvent.change(amountField(), { target: { value: '8' } });
     fireEvent.click(chargeButton());
     await waitFor(() => expect(ocp.charge).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(document.querySelector('.paybox-note')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument());
+    await waitFor(() => expect(loadLinks).toHaveBeenCalledTimes(1));
 
-    expect(chargeButton()).not.toBeDisabled();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument();
+    expect(ocp.charge).toHaveBeenCalledWith('1', 8, expect.any(String));
+    fireEvent.click(await readyRecoveryRefreshButton());
+    await waitFor(() => expect(pollPayment).toHaveBeenCalledWith('1', (ocp.charge as jest.Mock).mock.calls[0][2]));
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    expect(ocp.charge).toHaveBeenCalledTimes(1);
+
+    pollPayment.mockResolvedValueOnce(undefined);
+    const pollCountBeforeUnknown = pollPayment.mock.calls.length;
+    fireEvent.click(await readyRecoveryRefreshButton());
+    await waitFor(() => expect(pollPayment.mock.calls.length).toBeGreaterThan(pollCountBeforeUnknown));
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    expect(ocp.charge).toHaveBeenCalledTimes(1);
+
+    pollPayment.mockResolvedValueOnce('Completed');
+    fireEvent.click(await readyRecoveryRefreshButton());
+    await waitFor(() => expect(chargeButton()).not.toBeDisabled());
+    fireEvent.change(amountField(), { target: { value: '9' } });
     fireEvent.click(chargeButton());
     await waitFor(() => expect(ocp.charge).toHaveBeenCalledTimes(2));
     await waitFor(() => {
-      expect(document.querySelector('.qcap')?.textContent?.trim()).toBe('EUR 8');
+      expect(document.querySelector('.qcap')?.textContent?.trim()).toBe('EUR 9');
     });
-    expect(ocp.charge).toHaveBeenCalledTimes(2);
 
     view.unmount();
   });
@@ -163,19 +215,1373 @@ describe('POS charges exactly once until the payment is terminal', () => {
     fireEvent.click(chargeButton());
     await waitFor(() => expect(ocp.charge).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByText(/paid|bezahlt/i)).toBeTruthy());
-    expect(ocp.pollPayment).toHaveBeenCalledWith('1', 'charge-1');
+    expect(ocp.pollPayment).toHaveBeenCalledWith('1', (ocp.charge as jest.Mock).mock.calls[0][2]);
     expect(chargeButton()).not.toBeDisabled();
 
     fireEvent.change(amountField(), { target: { value: '7' } });
     fireEvent.click(chargeButton());
     await waitFor(() => expect(ocp.charge).toHaveBeenCalledTimes(2));
-    expect(ocp.charge).toHaveBeenNthCalledWith(2, '1', 7);
+    expect(ocp.charge).toHaveBeenNthCalledWith(2, '1', 7, expect.any(String));
 
     view.unmount();
   });
 });
 
 describe('POS extra paths', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('restores the failed POST attempt after POS remount and does not unlock on empty list data', async () => {
+    const firstPoll = jest.fn().mockResolvedValue('Pending');
+    const first = renderPos(buildOcp({
+      charge: jest.fn().mockRejectedValue(new ApiException(500, 'lost response')),
+      pollPayment: firstPoll,
+      loadLinks: jest.fn().mockResolvedValue([]),
+    }));
+    fireEvent.change(amountField(), { target: { value: '13' } });
+    fireEvent.click(chargeButton());
+    await waitFor(() => expect(screen.getByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument());
+    const attemptedExternalId = JSON.parse(
+      sessionStorage.getItem('ocp-pos-ambiguous-charge:["account-A","wallet-A"]') ?? '{}',
+    ).externalId as string;
+    expect(attemptedExternalId).toBeTruthy();
+    first.unmount();
+
+    const secondPoll = jest.fn().mockResolvedValue('Pending');
+    renderPos(buildOcp({ links: [], pollPayment: secondPoll, loadLinks: jest.fn().mockResolvedValue([]) }));
+    expect(screen.getByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('ocp-pos-ambiguous-charge-amount')).toHaveTextContent('EUR 13');
+    fireEvent.click(await readyRecoveryRefreshButton());
+    await waitFor(() => expect(secondPoll).toHaveBeenCalledWith('1', attemptedExternalId));
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+  });
+
+  it('reconciles a saved attempt with its exact pending server payment after remount', async () => {
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    const externalId = 'saved-committed-payment';
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({ ownerIdentity: identity, linkId: '1', externalId, amount: 12, currency: 'EUR' }),
+    );
+    const links = [{
+      id: 1,
+      label: 'EUR Till',
+      status: 'Inactive',
+      routeId: 10,
+      payment: {
+        id: 21,
+        externalId,
+        status: 'Pending',
+        amount: 12,
+        // Currency is optional in older payment-list responses; when omitted,
+        // the selected sell route remains the display source.
+        lnurl: lnurlEncode('https://api.example/lnurlp/saved'),
+      },
+    }];
+    const ocp = buildOcp({ links: null });
+    const view = renderPos(ocp);
+    view.rerender(createElement(LanguageProvider, null, createElement(PosView, {
+      ocp: buildOcp({ links: links as OcpApi['links'] }),
+      go: jest.fn(),
+    })));
+
+    expect(await screen.findByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 12');
+    expect(screen.queryByTestId('ocp-pos-ambiguous-charge')).not.toBeInTheDocument();
+    expect(chargeButton()).toBeDisabled();
+    expect(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${identity}`)).toBeNull();
+    expect(ocp.charge).not.toHaveBeenCalled();
+  });
+
+  it('reconciles a saved attempt when the payment-list DTO reports currency as a string', async () => {
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    const externalId = 'saved-string-currency';
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({ ownerIdentity: identity, linkId: '1', externalId, amount: 12, currency: 'EUR' }),
+    );
+    const paymentLink = {
+      id: 1,
+      label: 'EUR Till',
+      status: 'Inactive',
+      routeId: 10,
+      payment: {
+        id: 26,
+        externalId,
+        status: 'Pending',
+        amount: 12,
+        currency: 'EUR',
+        lnurl: lnurlEncode('https://api.example/lnurlp/string-currency'),
+      },
+    };
+    renderPos(buildOcp({ links: [paymentLink] as OcpApi['links'] }));
+
+    expect(await screen.findByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 12');
+    expect(chargeButton()).toBeDisabled();
+    expect(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${identity}`)).toBeNull();
+  });
+
+  it.each([
+    ['a matching ID with a different amount', { externalId: 'saved-id', amount: 13, currency: 'EUR' }],
+    ['a matching ID with a different currency', { externalId: 'saved-id', amount: 12, currency: 'CHF' }],
+    ['a link with no payment record', undefined],
+  ])('keeps a saved attempt locked for %s', async (_reason, payment) => {
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    const externalId = 'saved-reconciliation-case';
+    const matchingPayment = payment && payment.externalId === 'saved-id'
+      ? { ...payment, externalId }
+      : payment;
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({ ownerIdentity: identity, linkId: '1', externalId, amount: 12, currency: 'EUR' }),
+    );
+    const paymentLink = {
+      id: 1,
+      label: 'EUR Till',
+      status: 'Inactive',
+      routeId: 10,
+      payment: matchingPayment ? {
+        id: 27,
+        status: 'Pending',
+        lnurl: lnurlEncode('https://api.example/lnurlp/mismatch'),
+        ...matchingPayment,
+      } : undefined,
+    };
+    renderPos(buildOcp({ links: [paymentLink] as OcpApi['links'] }));
+
+    expect(await screen.findByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument();
+    expect(screen.queryByTestId('ocp-pos-charge-amount')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    expect(JSON.parse(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${identity}`) ?? '{}').externalId).toBe(externalId);
+  });
+
+  it('recovers the exact server payment when a committed POST response is lost', async () => {
+    const lnurl = lnurlEncode('https://api.example/lnurlp/lost-response');
+    const charge = jest.fn().mockRejectedValue(new ApiException(500, 'response lost'));
+    let refreshedLinks: NonNullable<OcpApi['links']> = [];
+    const loadLinks = jest.fn().mockImplementation(async () => {
+      refreshedLinks = [{
+        id: 1,
+        label: 'EUR Till',
+        status: 'Active',
+        routeId: 10,
+        payment: {
+          id: 22,
+          externalId: charge.mock.calls[0][2],
+          status: 'Pending',
+          amount: 12,
+          currency: { name: 'EUR' },
+          lnurl,
+        },
+      }] as NonNullable<OcpApi['links']>;
+      return refreshedLinks;
+    });
+    const ocp = buildOcp({ charge, loadLinks });
+    const identity = ocp.sessionIdentity;
+    const view = renderPos(ocp);
+
+    fireEvent.change(amountField(), { target: { value: '12' } });
+    fireEvent.click(chargeButton());
+
+    expect(await screen.findByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 12');
+    expect(screen.queryByTestId('ocp-pos-ambiguous-charge')).not.toBeInTheDocument();
+    expect(loadLinks).toHaveBeenCalledTimes(1);
+    expect(chargeButton()).toBeDisabled();
+    expect(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${identity}`)).toBeNull();
+    expect(charge).toHaveBeenCalledTimes(1);
+
+    view.rerender(createElement(LanguageProvider, null, createElement(PosView, {
+      ocp: buildOcp({ links: refreshedLinks }),
+      go: jest.fn(),
+    })));
+    expect(await screen.findByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 12');
+    expect(chargeButton()).toBeDisabled();
+  });
+
+  it('keeps the adopted QR when the refreshed list prop arrives before loadLinks resolves', async () => {
+    let resolveLoadLinks!: (links: NonNullable<OcpApi['links']>) => void;
+    let refreshedLinks: NonNullable<OcpApi['links']> = [];
+    const loadLinks = jest.fn(() => new Promise<NonNullable<OcpApi['links']>>((resolve) => {
+      resolveLoadLinks = resolve;
+    }));
+    const charge = jest.fn().mockRejectedValue(new ApiException(500, 'response lost'));
+    const initialOcp = buildOcp({ charge, loadLinks });
+    const view = renderPos(initialOcp);
+
+    fireEvent.change(amountField(), { target: { value: '12' } });
+    fireEvent.click(chargeButton());
+    await waitFor(() => expect(loadLinks).toHaveBeenCalledTimes(1));
+    const externalId = charge.mock.calls[0][2] as string;
+    refreshedLinks = [{
+      id: 1,
+      label: 'EUR Till',
+      status: 'Active',
+      routeId: 10,
+      payment: {
+        id: 28,
+        externalId,
+        status: 'Pending',
+        amount: 12,
+        currency: 'EUR',
+        lnurl: lnurlEncode('https://api.example/lnurlp/prop-race'),
+      },
+    }] as NonNullable<OcpApi['links']>;
+
+    view.rerender(createElement(LanguageProvider, null, createElement(PosView, {
+      ocp: buildOcp({ charge, loadLinks, links: refreshedLinks }),
+      go: jest.fn(),
+    })));
+    expect(await screen.findByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 12');
+    await act(async () => {
+      resolveLoadLinks(refreshedLinks);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 12');
+    expect(screen.queryByText(/response lost/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/existing payment is still open/i)).not.toBeInTheDocument();
+    expect(chargeButton()).toBeDisabled();
+  });
+
+  it('recovers a pending payment on an inactive Sell route without offering that till for a new charge', async () => {
+    jest.useFakeTimers();
+    const inactivePending = {
+      id: 20,
+      label: 'Inactive till',
+      status: 'Active',
+      routeId: 10,
+      payment: {
+        id: 30,
+        externalId: 'inactive-route-payment',
+        status: 'Pending',
+        amount: 19,
+        currency: { name: 'EUR' },
+        lnurl: lnurlEncode('https://api.example/lnurlp/inactive-route'),
+      },
+    };
+    const ocp = buildOcp({
+      links: [
+        inactivePending,
+        { id: 21, label: 'Active till', status: 'Active', routeId: 11 },
+      ] as never,
+      sellRoutes: [
+        { id: 11, active: true, currency: { name: 'CHF' } },
+      ] as never,
+      pollPayment: jest.fn().mockResolvedValue('Pending'),
+    });
+    renderPos(ocp);
+
+    expect(screen.getByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 19');
+    expect(chargeButton()).toBeDisabled();
+    fireEvent.change(amountField(), { target: { value: '25' } });
+    fireEvent.keyDown(amountField(), { key: 'Enter' });
+    expect(ocp.charge).not.toHaveBeenCalled();
+    const register = screen.getByTestId('ocp-pos-register');
+    expect(within(register).getByRole('option', { name: 'Active till' })).toBeInTheDocument();
+    expect(within(register).queryByRole('option', { name: 'Inactive till' })).not.toBeInTheDocument();
+    expect(ocp.charge).not.toHaveBeenCalled();
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(ocp.pollPayment).toHaveBeenCalledWith('20', 'inactive-route-payment');
+    jest.useRealTimers();
+  });
+
+  it('shows route loading and then exposes a valid till when Sell routes arrive', async () => {
+    const loadingOcp = buildOcp({ routes: null, sellRoutes: [] });
+    const view = renderPos(loadingOcp);
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.queryByText(/create an active payment link first/i)).not.toBeInTheDocument();
+
+    view.rerender(createElement(LanguageProvider, null, createElement(PosView, {
+      ocp: buildOcp({
+        sellRoutes: [{ id: 10, active: true, currency: { name: 'EUR' } }],
+      }),
+      go: jest.fn(),
+    })));
+    expect(screen.getByTestId('ocp-pos-register')).toBeInTheDocument();
+    expect(chargeButton()).toBeEnabled();
+  });
+
+  it('offers route retry instead of presenting a false empty till state after route loading fails', () => {
+    const loadRoutes = jest.fn();
+    renderPos(buildOcp({ routesError: true, loadRoutes }));
+
+    expect(screen.getByText(/couldn.t load|laden/i)).toBeInTheDocument();
+    expect(screen.queryByText(/create an active payment link first/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut/i }));
+    expect(loadRoutes).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a pending QR and charge lock visible while Sell routes are still loading', () => {
+    const pending = {
+      id: 31,
+      label: 'Waiting till',
+      status: 'Active',
+      routeId: 10,
+      payment: {
+        id: 41,
+        externalId: 'route-load-pending',
+        status: 'Pending',
+        amount: 9,
+        currency: { name: 'EUR' },
+        lnurl: lnurlEncode('https://api.example/lnurlp/routes-loading'),
+      },
+    };
+    const ocp = buildOcp({ routes: null, sellRoutes: [], links: [pending] as never });
+    renderPos(ocp);
+
+    expect(screen.getByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 9');
+    expect(screen.getByTestId('ocp-pos-routes-unavailable')).toHaveTextContent(/loading/i);
+    expect(chargeButton()).toBeDisabled();
+    fireEvent.keyDown(amountField(), { key: 'Enter' });
+    expect(ocp.charge).not.toHaveBeenCalled();
+  });
+
+  it('keeps a pending QR and charge lock while route loading fails and can be retried', () => {
+    const loadRoutes = jest.fn();
+    const pending = {
+      id: 32,
+      label: 'Waiting till',
+      status: 'Active',
+      routeId: 10,
+      payment: {
+        id: 42,
+        externalId: 'route-error-pending',
+        status: 'Pending',
+        amount: 11,
+        currency: { name: 'EUR' },
+        lnurl: lnurlEncode('https://api.example/lnurlp/routes-error'),
+      },
+    };
+    const ocp = buildOcp({
+      routesError: true,
+      loadRoutes,
+      sellRoutes: [],
+      links: [pending] as never,
+    });
+    renderPos(ocp);
+
+    expect(screen.getByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 11');
+    expect(screen.getByTestId('ocp-pos-routes-unavailable')).toHaveTextContent(/couldn.t load|laden/i);
+    expect(chargeButton()).toBeDisabled();
+    fireEvent.click(within(screen.getByTestId('ocp-pos-routes-unavailable')).getByRole('button', { name: /retry/i }));
+    expect(loadRoutes).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 11');
+    expect(chargeButton()).toBeDisabled();
+  });
+
+  it('keeps the ambiguous attempt locked and omits an absent API error message when refresh fails', async () => {
+    const charge = jest.fn().mockRejectedValue(new Error('transport reset'));
+    const ocp = buildOcp({ charge, loadLinks: jest.fn().mockResolvedValue(null) });
+    renderPos(ocp);
+
+    fireEvent.change(amountField(), { target: { value: '12' } });
+    fireEvent.click(chargeButton());
+
+    const warning = await screen.findByTestId('ocp-pos-ambiguous-charge');
+    expect(warning).not.toHaveTextContent('transport reset');
+    expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    expect(JSON.parse(
+      sessionStorage.getItem(`ocp-pos-ambiguous-charge:${ocp.sessionIdentity}`) ?? '{}',
+    ).externalId).toBe(charge.mock.calls[0][2]);
+  });
+
+  it('adopts a different pending payment only for the exact same-link 409 conflict', async () => {
+    const lnurl = lnurlEncode('https://api.example/lnurlp/other-tab');
+    const charge = jest.fn().mockRejectedValue(new ApiException(
+      409,
+      'There is already a pending payment for the specified payment link',
+    ));
+    const refreshedLinks: NonNullable<OcpApi['links']> = [{
+      id: 1,
+      label: 'EUR Till',
+      status: 'Active',
+      routeId: 10,
+      payment: {
+        id: 23,
+        externalId: 'payment-created-in-another-tab',
+        status: 'Pending',
+        amount: 17,
+        currency: { name: 'CHF' },
+        lnurl,
+      },
+    }] as NonNullable<OcpApi['links']>;
+    const loadLinks = jest.fn().mockResolvedValue(refreshedLinks);
+    const ocp = buildOcp({ charge, loadLinks });
+    const view = renderPos(ocp);
+
+    fireEvent.change(amountField(), { target: { value: '12' } });
+    fireEvent.click(chargeButton());
+
+    expect(await screen.findByTestId('ocp-pos-charge-amount')).toHaveTextContent('CHF 17');
+    expect(screen.getByText(/existing payment is still open.*entered amount was not changed/i)).toBeInTheDocument();
+    expect(amountField()).toHaveValue('12');
+    expect(screen.queryByTestId('ocp-pos-ambiguous-charge')).not.toBeInTheDocument();
+    expect(chargeButton()).toBeDisabled();
+    expect(loadLinks).toHaveBeenCalledTimes(1);
+    expect(charge).toHaveBeenCalledTimes(1);
+
+    view.rerender(createElement(LanguageProvider, null, createElement(PosView, {
+      ocp: buildOcp({ links: refreshedLinks }),
+      go: jest.fn(),
+    })));
+    expect(await screen.findByTestId('ocp-pos-charge-amount')).toHaveTextContent('CHF 17');
+    expect(screen.getByText(/existing payment is still open.*entered amount was not changed/i)).toBeInTheDocument();
+    expect(chargeButton()).toBeDisabled();
+  });
+
+  it('does not adopt another payment for an unrelated 409 response', async () => {
+    const charge = jest.fn().mockRejectedValue(new ApiException(409, 'Payment already exists'));
+    const ocp = buildOcp({
+      charge,
+      loadLinks: jest.fn().mockResolvedValue([{
+        id: 1,
+        label: 'EUR Till',
+        status: 'Active',
+        routeId: 10,
+        payment: {
+          id: 25,
+          externalId: 'other-tab-payment',
+          status: 'Pending',
+          amount: 19,
+          currency: { name: 'CHF' },
+          lnurl: lnurlEncode('https://api.example/lnurlp/unrelated-409'),
+        },
+      }]),
+    });
+    renderPos(ocp);
+
+    fireEvent.change(amountField(), { target: { value: '12' } });
+    fireEvent.click(chargeButton());
+
+    expect(await screen.findByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument();
+    expect(screen.queryByTestId('ocp-pos-charge-amount')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    expect(charge).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the ambiguous lock when the specific 409 has no valid same-link payment to recover', async () => {
+    const charge = jest.fn().mockRejectedValue(new ApiException(
+      409,
+      'There is already a pending payment for the specified payment link',
+    ));
+    const ocp = buildOcp({ charge, loadLinks: jest.fn().mockResolvedValue([]) });
+    renderPos(ocp);
+
+    fireEvent.change(amountField(), { target: { value: '12' } });
+    fireEvent.click(chargeButton());
+
+    expect(await screen.findByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument();
+    expect(screen.queryByTestId('ocp-pos-charge-amount')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    const stored = JSON.parse(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${ocp.sessionIdentity}`) ?? '{}');
+    expect(stored.externalId).toBe(charge.mock.calls[0][2]);
+    expect(charge).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['no list', null],
+    ['an empty list', []],
+    ['a different external ID after a lost response', [{
+      id: 1, status: 'Active', routeId: 10,
+      payment: { externalId: 'different-payment', status: 'Pending', amount: 12, currency: 'EUR', lnurl: lnurlEncode('https://api.example/lnurlp/different') },
+    }]],
+    ['an amount mismatch', [{
+      id: 1, status: 'Active', routeId: 10,
+      payment: { externalId: 'saved-id', status: 'Pending', amount: 13, currency: 'EUR', lnurl: lnurlEncode('https://api.example/lnurlp/wrong-amount') },
+    }]],
+    ['a currency mismatch', [{
+      id: 1, status: 'Active', routeId: 10,
+      payment: { externalId: 'saved-id', status: 'Pending', amount: 12, currency: 'CHF', lnurl: lnurlEncode('https://api.example/lnurlp/wrong-currency') },
+    }]],
+    ['a malformed pending payment', [{
+      id: 1, status: 'Active', routeId: 10,
+      payment: { externalId: 'saved-id', status: 'Pending', amount: 12, currency: 'EUR', lnurl: 'not-an-lnurl' },
+    }]],
+  ])('keeps the ambiguous lock for %s', async (_description, refreshedLinks) => {
+    const charge = jest.fn().mockRejectedValue(new ApiException(500, 'response lost'));
+    const loadLinks = jest.fn().mockImplementation(async () => {
+      if (!refreshedLinks) return refreshedLinks;
+      return (refreshedLinks as Array<Record<string, unknown>>).map((link) => {
+        const payment = link.payment as Record<string, unknown> | undefined;
+        return payment?.externalId === 'saved-id'
+          ? { ...link, payment: { ...payment, externalId: charge.mock.calls[0][2] } }
+          : link;
+      });
+    });
+    const ocp = buildOcp({
+      charge,
+      loadLinks,
+    });
+    renderPos(ocp);
+
+    fireEvent.change(amountField(), { target: { value: '12' } });
+    fireEvent.click(chargeButton());
+
+    expect(await screen.findByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ocp-pos-charge-amount')).not.toBeInTheDocument();
+    const saved = JSON.parse(
+      sessionStorage.getItem(`ocp-pos-ambiguous-charge:${ocp.sessionIdentity}`) ?? '{}',
+    );
+    expect(saved.externalId).toBe(charge.mock.calls[0][2]);
+    expect(charge).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not adopt an old-account list response after switching accounts', async () => {
+    let resolveLinks!: (links: NonNullable<OcpApi['links']>) => void;
+    const loadLinks = jest.fn(() => new Promise<NonNullable<OcpApi['links']>>((resolve) => {
+      resolveLinks = resolve;
+    }));
+    const charge = jest.fn().mockRejectedValue(new ApiException(500, 'response lost'));
+    const ocpA = buildOcp({ charge, loadLinks });
+    const identityA = ocpA.sessionIdentity;
+    const view = renderPos(ocpA);
+
+    fireEvent.change(amountField(), { target: { value: '12' } });
+    fireEvent.click(chargeButton());
+    await waitFor(() => expect(loadLinks).toHaveBeenCalledTimes(1));
+    const oldExternalId = charge.mock.calls[0][2] as string;
+
+    const identityB = JSON.stringify(['account-B', 'wallet-B']);
+    view.rerender(createElement(LanguageProvider, null, createElement(PosView, {
+      ocp: buildOcp({
+        sessionAddress: 'wallet-B',
+        sessionIdentity: identityB,
+        linksIdentity: identityB,
+        links: [{ id: 2, label: 'B Till', status: 'Active', routeId: 10 }] as OcpApi['links'],
+      }),
+      go: jest.fn(),
+    })));
+
+    await act(async () => {
+      resolveLinks([{
+        id: 1,
+        label: 'A Till',
+        status: 'Active',
+        routeId: 10,
+        payment: {
+          id: 24,
+          externalId: oldExternalId,
+          status: 'Pending',
+          amount: 12,
+          currency: { name: 'EUR' },
+          lnurl: lnurlEncode('https://api.example/lnurlp/old-account'),
+        },
+      }] as NonNullable<OcpApi['links']>);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId('ocp-pos-charge-amount')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ocp-pos-ambiguous-charge')).not.toBeInTheDocument();
+    expect(chargeButton()).not.toBeDisabled();
+    expect(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${identityA}`)).not.toBeNull();
+  });
+
+  it('does not restore or poll an ambiguous attempt into another account using the same wallet', async () => {
+    jest.useFakeTimers();
+    const identityA = JSON.stringify(['account-A', 'wallet-shared']);
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identityA}`,
+      JSON.stringify({
+        ownerIdentity: identityA,
+        linkId: '1',
+        externalId: 'account-a-charge',
+        amount: 4,
+        currency: 'EUR',
+      }),
+    );
+    const pollA = jest.fn().mockResolvedValue('Pending');
+    const view = renderPos(buildOcp({
+      sessionAddress: 'wallet-shared',
+      sessionIdentity: identityA,
+      linksIdentity: identityA,
+      pollPayment: pollA,
+    }));
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+
+    const identityB = JSON.stringify(['account-B', 'wallet-shared']);
+    const pollB = jest.fn().mockResolvedValue('Pending');
+    view.rerender(
+      createElement(
+        LanguageProvider,
+        null,
+        createElement(PosView, {
+          ocp: buildOcp({
+            sessionAddress: 'wallet-shared',
+            sessionIdentity: identityB,
+            linksIdentity: identityB,
+            links: [{ id: 2, label: 'Other till', status: 'Active', routeId: 10 }] as OcpApi['links'],
+            pollPayment: pollB,
+          }),
+          go: jest.fn(),
+        }),
+      ),
+    );
+    expect(chargeButton()).not.toBeDisabled();
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('ocp-pos-ambiguous-charge')).not.toBeInTheDocument();
+    expect(pollB).not.toHaveBeenCalled();
+    expect(pollA).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${identityA}`)).not.toBeNull();
+    view.unmount();
+    jest.useRealTimers();
+  });
+
+  it('ignores a late terminal response from the previous account after switching POS identity', async () => {
+    const identityA = JSON.stringify(['account-A', 'wallet-shared']);
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identityA}`,
+      JSON.stringify({ ownerIdentity: identityA, linkId: '1', externalId: 'late-a', amount: 4, currency: 'EUR' }),
+    );
+    let resolvePollA!: (status: string) => void;
+    const pollA = jest.fn(
+      () => new Promise<string>((resolve) => {
+        resolvePollA = resolve;
+      }),
+    );
+    const view = renderPos(buildOcp({
+      sessionAddress: 'wallet-shared',
+      sessionIdentity: identityA,
+      linksIdentity: identityA,
+      pollPayment: pollA,
+    }));
+    await act(async () => {
+      fireEvent.click(await readyRecoveryRefreshButton());
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollA).toHaveBeenCalledTimes(1);
+
+    const identityB = JSON.stringify(['account-B', 'wallet-shared']);
+    view.rerender(
+      createElement(
+        LanguageProvider,
+        null,
+        createElement(PosView, {
+          ocp: buildOcp({
+            sessionAddress: 'wallet-shared',
+            sessionIdentity: identityB,
+            linksIdentity: identityB,
+            links: [{ id: 2, label: 'B till', status: 'Active', routeId: 10 }] as OcpApi['links'],
+          }),
+          go: jest.fn(),
+        }),
+      ),
+    );
+    await waitFor(() => expect(chargeButton()).not.toBeDisabled());
+
+    await act(async () => {
+      resolvePollA('Completed');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(chargeButton()).not.toBeDisabled();
+    expect(screen.queryByTestId('ocp-pos-terminal-receipt')).not.toBeInTheDocument();
+    expect(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${identityA}`)).not.toBeNull();
+  });
+
+  it.each(['Cancelled', 'Expired'])('unlocks an ambiguous attempt only after server status %s', async (terminalStatus) => {
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({
+        ownerIdentity: identity,
+        linkId: '1',
+        externalId: `charge-${terminalStatus}`,
+        amount: 6,
+        currency: 'EUR',
+      }),
+    );
+    const pollPayment = jest.fn().mockResolvedValue(terminalStatus);
+    const ocp = buildOcp({ pollPayment });
+    renderPos(ocp);
+
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    fireEvent.click(await readyRecoveryRefreshButton());
+    await waitFor(() => expect(chargeButton()).not.toBeDisabled());
+    expect(pollPayment).toHaveBeenCalledWith('1', `charge-${terminalStatus}`);
+    expect(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${identity}`)).toBeNull();
+    expect(ocp.charge).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['Completed', /paid|bezahlt/i],
+    ['Cancelled', /not completed|nicht abgeschlossen/i],
+  ])('shows the %s receipt after its link is no longer active', async (terminalStatus, receiptText) => {
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({
+        ownerIdentity: identity,
+        linkId: 'inactive-till',
+        externalId: `charge-${terminalStatus}`,
+        amount: 6,
+        currency: 'EUR',
+      }),
+    );
+    const pollPayment = jest.fn().mockResolvedValue(terminalStatus);
+    const ocp = buildOcp({ links: [], pollPayment });
+    const go = jest.fn();
+    render(createElement(LanguageProvider, null, createElement(PosView, { ocp, go })));
+
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    fireEvent.click(await readyRecoveryRefreshButton());
+    expect(await screen.findByTestId('ocp-pos-terminal-receipt')).toHaveTextContent(receiptText);
+    expect(screen.getByTestId('ocp-pos-terminal-receipt')).toHaveTextContent('EUR 6');
+    expect(screen.getByTestId('ocp-pos-terminal-receipt')).toHaveTextContent('inactive-till');
+    expect(screen.getByTestId('ocp-pos-terminal-external-id')).toHaveTextContent(`charge-${terminalStatus}`);
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /create payment link/i }));
+    expect(go).toHaveBeenCalledWith('links');
+  });
+
+  it('shows an identifying terminal receipt while its till remains active and permits the next charge', async () => {
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({
+        ownerIdentity: identity,
+        linkId: '1',
+        externalId: 'completed-active-charge',
+        amount: 6,
+        currency: 'EUR',
+      }),
+    );
+    const pollPayment = jest.fn().mockResolvedValueOnce('Completed').mockResolvedValue('Pending');
+    const charge = jest.fn().mockResolvedValue({ lnurl: 'LNURL1NEXTCHARGE', externalId: 'next-charge' });
+    const ocp = buildOcp({ pollPayment, charge });
+    renderPos(ocp);
+
+    fireEvent.click(await readyRecoveryRefreshButton());
+    const receipt = await screen.findByTestId('ocp-pos-terminal-receipt');
+    expect(receipt).toHaveTextContent(/paid|bezahlt/i);
+    expect(receipt).toHaveTextContent('EUR 6');
+    expect(receipt).toHaveTextContent('1');
+    expect(screen.getByTestId('ocp-pos-terminal-external-id')).toHaveTextContent('completed-active-charge');
+    expect(chargeButton()).not.toBeDisabled();
+
+    fireEvent.change(amountField(), { target: { value: '10' } });
+    fireEvent.click(chargeButton());
+    await waitFor(() => expect(charge).toHaveBeenCalledWith('1', 10, expect.any(String)));
+    expect(screen.queryByTestId('ocp-pos-terminal-receipt')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 10');
+  });
+
+  it.each([
+    ['invalid JSON', '{'],
+    ['a non-object JSON value', 'null'],
+    ['an attempt owned by a different session', JSON.stringify({ ownerIdentity: 'another-session', linkId: '1', externalId: 'x', amount: 2, currency: 'EUR' })],
+    ['an invalid amount', JSON.stringify({ ownerIdentity: JSON.stringify(['account-A', 'wallet-A']), linkId: '1', externalId: 'x', amount: '2', currency: 'EUR' })],
+  ])('ignores %s in saved ambiguous-attempt state without locking the till', (_label, serialized) => {
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    sessionStorage.setItem(`ocp-pos-ambiguous-charge:${identity}`, serialized);
+    const pollPayment = jest.fn();
+    renderPos(buildOcp({ pollPayment }));
+    expect(chargeButton()).not.toBeDisabled();
+    expect(screen.queryByTestId('ocp-pos-ambiguous-charge')).not.toBeInTheDocument();
+    expect(pollPayment).not.toHaveBeenCalled();
+  });
+
+  it('fails closed with a clear error when secure UUID generation is unavailable', () => {
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined });
+    const ocp = buildOcp();
+    renderPos(ocp);
+    fireEvent.change(amountField(), { target: { value: '5' } });
+    fireEvent.click(chargeButton());
+    expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
+    expect(ocp.charge).not.toHaveBeenCalled();
+    expect(chargeButton()).not.toBeDisabled();
+    expect(sessionStorage.getItem('ocp-pos-ambiguous-charge:["account-A","wallet-A"]')).toBeNull();
+  });
+
+  it('uses secure getRandomValues to create a UUIDv4 when randomUUID is unavailable', async () => {
+    const getRandomValues = jest.fn((bytes: Uint8Array) => {
+      bytes.set(Array.from({ length: 16 }, (_, index) => index + 1));
+      return bytes;
+    });
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: { randomUUID: undefined, getRandomValues },
+    });
+    const ocp = buildOcp();
+    renderPos(ocp);
+    fireEvent.change(amountField(), { target: { value: '5' } });
+    fireEvent.click(chargeButton());
+    await waitFor(() =>
+      expect(ocp.charge).toHaveBeenCalledWith('1', 5, '01020304-0506-4708-890a-0b0c0d0e0f10'),
+    );
+    expect(getRandomValues).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when neither secure UUID API is available', () => {
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: { randomUUID: undefined, getRandomValues: undefined },
+    });
+    const ocp = buildOcp();
+    renderPos(ocp);
+    fireEvent.change(amountField(), { target: { value: '5' } });
+    fireEvent.click(chargeButton());
+    expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
+    expect(ocp.charge).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('ocp-pos-ambiguous-charge:["account-A","wallet-A"]')).toBeNull();
+  });
+
+  it('unlocks without creating a charge when session storage cannot persist an attempt', () => {
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new Error('storage unavailable');
+    });
+    const ocp = buildOcp();
+    renderPos(ocp);
+    fireEvent.change(amountField(), { target: { value: '5' } });
+    fireEvent.click(chargeButton());
+    expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
+    expect(ocp.charge).not.toHaveBeenCalled();
+    expect(chargeButton()).not.toBeDisabled();
+    setItem.mockRestore();
+  });
+
+  it('continues without a restored attempt when session storage read throws', () => {
+    const getItem = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    const ocp = buildOcp();
+    renderPos(ocp);
+    expect(chargeButton()).not.toBeDisabled();
+    expect(screen.queryByTestId('ocp-pos-ambiguous-charge')).not.toBeInTheDocument();
+    getItem.mockRestore();
+  });
+
+  it('keeps the recovery warning and exposes load failure while refreshing unavailable links', async () => {
+    const links = [{
+      id: 'unavailable-till',
+      label: 'Unavailable till',
+      status: 'Inactive',
+      routeId: 10,
+      payment: { id: 'payment-id', status: 'Pending', amount: 5 },
+    }];
+    const view = renderPos(buildOcp({ links: links as never }));
+    expect(await screen.findByTestId('ocp-pos-recovery-error')).toBeInTheDocument();
+    view.rerender(
+      createElement(
+        LanguageProvider,
+        null,
+        createElement(PosView, {
+          ocp: buildOcp({ links: links as never, linksError: true }),
+          go: jest.fn(),
+        }),
+      ),
+    );
+    expect(await screen.findByTestId('ocp-pos-recovery-error')).toHaveTextContent(/couldn't load|laden/i);
+    expect(chargeButton()).toBeDisabled();
+  });
+
+  it('keeps malformed pending invoices locked until the API provides complete recovery data', async () => {
+    const linkFor = (payment: Record<string, unknown>) => ({
+      id: 'recoverable-till',
+      label: 'Recoverable till',
+      status: 'Inactive',
+      routeId: 10,
+      payment: { id: 'pending-id', status: 'Pending', ...payment },
+    });
+    const initialLinks = [linkFor({ externalId: '', lnurl: 'bad', amount: 0 })];
+    const view = renderPos(buildOcp({ links: initialLinks as never }));
+    expect(await screen.findByTestId('ocp-pos-recovery-error')).toBeInTheDocument();
+    expect(chargeButton()).toBeDisabled();
+
+    const incompleteInvoices = [
+      linkFor({ externalId: 'charge-id', lnurl: 'not-a-lnurl', amount: 4 }),
+      linkFor({ externalId: 'charge-id', lnurl: lnurlEncode('https://api.example/lnurlp/till'), amount: '4' }),
+      linkFor({ externalId: 'charge-id', lnurl: lnurlEncode('https://api.example/lnurlp/till'), amount: Infinity }),
+      linkFor({ externalId: 'charge-id', lnurl: lnurlEncode('https://api.example/lnurlp/till'), amount: 0 }),
+    ];
+    for (const paymentLink of incompleteInvoices) {
+      const links = [paymentLink];
+      view.rerender(
+        createElement(
+          LanguageProvider,
+          null,
+          createElement(PosView, { ocp: buildOcp({ links: links as never }), go: jest.fn() }),
+        ),
+      );
+      expect(await screen.findByTestId('ocp-pos-recovery-error')).toBeInTheDocument();
+      expect(chargeButton()).toBeDisabled();
+      expect(screen.queryByTestId('ocp-pos-pending-charge')).not.toBeInTheDocument();
+    }
+
+    const recoveredLinks = [
+      linkFor({
+        externalId: 'charge-id',
+        lnurl: lnurlEncode('https://api.example/lnurlp/till'),
+        amount: 4,
+        currency: { name: 'EUR' },
+      }),
+    ];
+    view.rerender(
+      createElement(
+        LanguageProvider,
+        null,
+        createElement(PosView, {
+          ocp: buildOcp({ links: recoveredLinks as never, pollPayment: jest.fn().mockResolvedValue('Pending') }),
+          go: jest.fn(),
+        }),
+      ),
+    );
+    expect(screen.getByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 4');
+    expect(screen.queryByTestId('ocp-pos-recovery-error')).not.toBeInTheDocument();
+    expect(chargeButton()).toBeDisabled();
+  });
+
+  it('releases an unrecoverable pending lock when the API later confirms a terminal status', async () => {
+    const link = {
+      id: 'terminal-till',
+      label: 'Terminal till',
+      status: 'Inactive',
+      routeId: 10,
+      payment: { id: 'payment-id', status: 'Pending', amount: 5 },
+    };
+    const view = renderPos(buildOcp({ links: [link] as never }));
+    expect(await screen.findByTestId('ocp-pos-recovery-error')).toBeInTheDocument();
+    expect(chargeButton()).toBeDisabled();
+
+    const terminalLink = { ...link, payment: { ...link.payment, status: 'Completed' } };
+    view.rerender(
+      createElement(
+        LanguageProvider,
+        null,
+        createElement(PosView, { ocp: buildOcp({ links: [terminalLink] as never }), go: jest.fn() }),
+      ),
+    );
+    expect(await screen.findByText(/create an active payment link first/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('ocp-pos-recovery-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ocp-pos-pending-charge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ocp-pos-ambiguous-charge')).not.toBeInTheDocument();
+
+    const activeTerminalLink = { ...terminalLink, status: 'Active' };
+    view.rerender(
+      createElement(
+        LanguageProvider,
+        null,
+        createElement(PosView, { ocp: buildOcp({ links: [activeTerminalLink] as never }), go: jest.fn() }),
+      ),
+    );
+    await waitFor(() => expect(chargeButton()).not.toBeDisabled());
+  });
+
+  it('allows manual retry after stalled polls and unlocks only after Completed without auto-polling', async () => {
+    jest.useFakeTimers();
+    let resolveFirst!: (status: string) => void;
+    const firstNeverSettles = new Promise<string>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let resolveSecond!: (status: string) => void;
+    const secondNeverSettles = new Promise<string>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const pollPayment = jest
+      .fn()
+      .mockReturnValueOnce(firstNeverSettles)
+      .mockReturnValueOnce(secondNeverSettles)
+      .mockResolvedValueOnce('Completed');
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    sessionStorage.clear();
+    const ocp = buildOcp({
+      charge: jest.fn().mockRejectedValue(new ApiException(500, 'lost response')),
+      pollPayment,
+    });
+    const view = renderPos(ocp);
+    fireEvent.change(amountField(), { target: { value: '11' } });
+    fireEvent.click(chargeButton());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const externalId = sessionStorage.getItem(`ocp-pos-ambiguous-charge:${identity}`)
+      ? JSON.parse(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${identity}`) as string).externalId as string
+      : '';
+    expect(externalId).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(1);
+    expect(pollPayment).toHaveBeenCalledWith('1', externalId);
+
+    await act(async () => {
+      jest.advanceTimersByTime(19999);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    let refresh = screen.getByRole('button', { name: /refresh payment status/i });
+    expect(refresh).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    // A timed-out first request does not restart automatic polling or pile up
+    // requests in the background. Only an explicit cashier refresh does so.
+    await act(async () => {
+      jest.advanceTimersByTime(60000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.click(refresh);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+
+    await act(async () => {
+      jest.advanceTimersByTime(20000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    expect(pollPayment).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('ocp-pos-status-check-limit')).toBeInTheDocument();
+    expect(screen.getByTestId('ocp-pos-ambiguous-charge-reference')).toHaveTextContent(externalId);
+    expect(screen.getByTestId('ocp-pos-ambiguous-charge-amount')).toHaveTextContent('EUR 11');
+    expect(screen.getByTestId('ocp-pos-ambiguous-charge-link')).toHaveTextContent('1');
+    expect(screen.getAllByTestId('ocp-pos-ambiguous-charge')).toHaveLength(1);
+    expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument();
+    expect(screen.queryByText(/response lost/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /refresh payment status/i })).not.toBeInTheDocument();
+
+    // A late response releases one real in-flight slot; the next explicit
+    // status check becomes available, but this late Pending response cannot
+    // unlock the till because its 20s UI race already ended.
+    await act(async () => {
+      resolveFirst('Pending');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    refresh = await readyRecoveryRefreshButton();
+    await act(async () => {
+      fireEvent.click(refresh);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(3);
+    expect(await screen.findByTestId('ocp-pos-terminal-receipt')).toHaveTextContent('EUR 11');
+    await waitFor(() => expect(chargeButton()).toBeEnabled());
+    expect(ocp.charge).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSecond('Pending');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    view.unmount();
+    jest.useRealTimers();
+  });
+
+  it('keeps the two-request safety cap across POS remounts and restores refresh after a late response', async () => {
+    jest.useFakeTimers();
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({ ownerIdentity: identity, linkId: '1', externalId: 'remount-id', amount: 4, currency: 'EUR' }),
+    );
+    let resolveFirst!: (status: string) => void;
+    const firstNeverSettles = new Promise<string>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let resolveSecond!: (status: string) => void;
+    const secondNeverSettles = new Promise<string>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const pollPayment = jest.fn().mockReturnValueOnce(firstNeverSettles).mockReturnValueOnce(secondNeverSettles);
+    const firstView = renderPos(buildOcp({ pollPayment }));
+    await act(async () => {
+      fireEvent.click(await readyRecoveryRefreshButton());
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(1);
+    firstView.unmount();
+
+    renderPos(buildOcp({ pollPayment }));
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      jest.advanceTimersByTime(20000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('ocp-pos-status-check-limit')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /refresh payment status/i })).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveFirst('Pending');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(await readyRecoveryRefreshButton()).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    await act(async () => {
+      resolveSecond('Pending');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    jest.useRealTimers();
+  });
+
+  it('caps simultaneous status checks across three cashier views for one charge', async () => {
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({ ownerIdentity: identity, linkId: '1', externalId: 'shared-charge', amount: 4, currency: 'EUR' }),
+    );
+    const settle: Array<(status: string) => void> = [];
+    const pollPayment = jest.fn(
+      () => new Promise<string>((resolve) => settle.push(resolve)),
+    );
+    const views = Array.from({ length: 3 }, () => renderPos(buildOcp({ pollPayment })));
+    const refreshButtons = views.map((view) =>
+      within(view.container).getByRole('button', { name: /refresh payment status/i }),
+    );
+
+    await act(async () => {
+      refreshButtons.forEach((button) => fireEvent.click(button));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(pollPayment).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByTestId('ocp-pos-status-check-limit')).toHaveLength(3);
+    expect(screen.queryAllByRole('button', { name: /^(charge|kassieren)$/i })).toHaveLength(0);
+    expect(screen.queryAllByPlaceholderText('0.00')).toHaveLength(0);
+
+    await act(async () => {
+      settle.forEach((resolve) => resolve('Pending'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    views.forEach((view) => view.unmount());
+  });
+
+  it('does not start recovered polling while two status requests for that payment remain in flight', async () => {
+    jest.useFakeTimers();
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    const externalId = 'shared-recovery-charge';
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({ ownerIdentity: identity, linkId: '1', externalId, amount: 4, currency: 'EUR' }),
+    );
+    const settlements: Array<(status: string) => void> = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const pollPayment = jest.fn(() => new Promise<string>((resolve) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      settlements.push((status) => {
+        inFlight -= 1;
+        resolve(status);
+      });
+    }));
+    const linksWithoutPayment = [{ id: 1, label: 'EUR Till', status: 'Active', routeId: 10 }] as OcpApi['links'];
+    const views = Array.from({ length: 3 }, () => renderPos(buildOcp({
+      links: linksWithoutPayment,
+      pollPayment,
+    })));
+    const refreshers = views.slice(1).map((view) =>
+      within(view.container).getByRole('button', { name: /refresh payment status/i }),
+    );
+    await act(async () => {
+      refreshers.forEach((button) => fireEvent.click(button));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(2);
+
+    views[1].unmount();
+    views[2].unmount();
+    const pendingLink = {
+      id: 1,
+      label: 'EUR Till',
+      status: 'Active',
+      routeId: 10,
+      payment: {
+        id: 29,
+        externalId,
+        status: 'Pending',
+        amount: 4,
+        currency: { name: 'EUR' },
+        lnurl: lnurlEncode('https://api.example/lnurlp/shared-recovery'),
+      },
+    };
+    views[0].rerender(createElement(LanguageProvider, null, createElement(PosView, {
+      ocp: buildOcp({ links: [pendingLink] as OcpApi['links'], pollPayment }),
+      go: jest.fn(),
+    })));
+    expect(await screen.findByTestId('ocp-pos-charge-amount')).toHaveTextContent('EUR 4');
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(2);
+    expect(chargeButton()).toBeDisabled();
+
+    await act(async () => {
+      settlements[0]('Pending');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(maxInFlight).toBeLessThanOrEqual(2);
+    expect(chargeButton()).toBeDisabled();
+
+    views[0].unmount();
+    settlements.slice(1).forEach((settle) => settle('Pending'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    jest.useRealTimers();
+  });
+
+  it('does not overlap a scheduled poll with a manual check or restart after its timeout', async () => {
+    jest.useFakeTimers();
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({ ownerIdentity: identity, linkId: '1', externalId: 'overlap-id', amount: 4, currency: 'EUR' }),
+    );
+    let resolvePoll!: (status: string) => void;
+    const pollPayment = jest.fn(
+      () => new Promise<string>((resolve) => {
+        resolvePoll = resolve;
+      }),
+    );
+    renderPos(buildOcp({ pollPayment }));
+    fireEvent.click(await readyRecoveryRefreshButton());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(25000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /refresh payment status/i })).toBeEnabled();
+
+    await act(async () => {
+      resolvePoll('Pending');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    jest.useRealTimers();
+  });
+
+  it('keeps the charge locked and makes status refresh available after a rejected GET', async () => {
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({ ownerIdentity: identity, linkId: '1', externalId: 'rejected-id', amount: 4, currency: 'EUR' }),
+    );
+    const pollPayment = jest.fn().mockRejectedValue(new Error('status service unavailable'));
+    renderPos(buildOcp({ pollPayment }));
+    fireEvent.click(await readyRecoveryRefreshButton());
+    await waitFor(() => expect(pollPayment).toHaveBeenCalledTimes(1));
+    expect(await readyRecoveryRefreshButton()).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps the automatic status backoff across renders and increases its interval', async () => {
+    jest.useFakeTimers();
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({ ownerIdentity: identity, linkId: '1', externalId: 'backoff-id', amount: 4, currency: 'EUR' }),
+    );
+    const pollPayment = jest.fn().mockResolvedValue('Pending');
+    const view = renderPos(buildOcp({ pollPayment }));
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(1999);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      jest.advanceTimersByTime(2699);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledTimes(3);
+
+    view.unmount();
+    jest.useRealTimers();
+  });
+
+
   it('keeps an ambiguous charge locked when the reconciliation refresh fails', async () => {
     const loadLinks = jest.fn().mockResolvedValue(null);
     const charge = jest.fn().mockRejectedValue(new ApiException(500, 'busy'));
@@ -185,11 +1591,25 @@ describe('POS extra paths', () => {
     fireEvent.change(amountField(), { target: { value: '8' } });
     fireEvent.click(chargeButton());
     await waitFor(() => expect(loadLinks).toHaveBeenCalledTimes(1));
-    expect(chargeButton()).toBeDisabled();
+    expect(await screen.findByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument();
     expect(charge).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(chargeButton());
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
     expect(charge).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers payment-link review while an ambiguous charge is locked', () => {
+    const identity = JSON.stringify(['account-A', 'wallet-A']);
+    sessionStorage.setItem(
+      `ocp-pos-ambiguous-charge:${identity}`,
+      JSON.stringify({ ownerIdentity: identity, linkId: '1', externalId: 'review-id', amount: 4, currency: 'EUR' }),
+    );
+    const go = jest.fn();
+    render(createElement(LanguageProvider, null, createElement(PosView, { ocp: buildOcp(), go })));
+    fireEvent.click(screen.getByRole('button', { name: /review payment links/i }));
+    expect(go).toHaveBeenCalledWith('links');
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
   });
 
   it('keeps the till locked when the reconciliation refresh finds a pending payment', async () => {
@@ -206,8 +1626,8 @@ describe('POS extra paths', () => {
     fireEvent.change(amountField(), { target: { value: '8' } });
     fireEvent.click(chargeButton());
     await waitFor(() => expect(loadLinks).toHaveBeenCalledTimes(1));
-    expect(chargeButton()).toBeDisabled();
-    fireEvent.click(chargeButton());
+    expect(screen.getByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
     expect(charge).toHaveBeenCalledTimes(1);
   });
 
@@ -292,8 +1712,8 @@ describe('POS extra paths', () => {
           { id: 2, label: 'USD Till', status: 'Active', routeId: 11 },
         ] as never,
         sellRoutes: [
-          { id: 10, currency: { name: 'EUR' } },
-          { id: 11, currency: { name: 'USD' } },
+          { id: 10, active: true, currency: { name: 'EUR' } },
+          { id: 11, active: true, currency: { name: 'USD' } },
         ] as never,
       }),
     );
@@ -312,7 +1732,7 @@ describe('POS extra paths', () => {
     expect(screen.getByRole('combobox').textContent).toMatch(/#1/);
     fireEvent.change(amountField(), { target: { value: '2' } });
     fireEvent.click(chargeButton());
-    expect(await screen.findByText(/something went wrong|schiefgelaufen|storto|produite/i)).toBeInTheDocument();
+    expect(await screen.findByText(/payment is still open|zahlung ist noch offen|un pagamento è ancora aperto|paiement est toujours ouvert/i)).toBeInTheDocument();
   });
 
   it('marks an expired poll and retries from the fail state', async () => {
@@ -511,11 +1931,17 @@ describe('POS extra paths', () => {
         lnurl: lnurlEncode('https://api.example/lnurlp/till-1'),
       },
     };
+    const activeTill = { id: 22, label: 'Active till', status: 'Active', routeId: 11 };
     const completedLink = { ...link, payment: { ...link.payment, status: 'Completed' } };
+    const sellRoutes = [
+      { id: 10, active: false, currency: { name: 'EUR' } },
+      { id: 11, active: true, currency: { name: 'CHF' } },
+    ];
     const ocp = buildOcp({
-      links: [link] as never,
+      links: [link, activeTill] as never,
+      sellRoutes: sellRoutes as never,
       pollPayment: jest.fn().mockResolvedValue('Completed'),
-      loadLinks: jest.fn().mockResolvedValue([completedLink]),
+      loadLinks: jest.fn().mockResolvedValue([completedLink, activeTill]),
     });
     const view = renderPos(ocp);
 
@@ -526,7 +1952,7 @@ describe('POS extra paths', () => {
     });
     expect(ocp.loadLinks).toHaveBeenCalledTimes(1);
 
-    view.rerender(createElement(LanguageProvider, null, createElement(PosView, { ocp: { ...ocp, links: [completedLink] as never }, go: jest.fn() })));
+    view.rerender(createElement(LanguageProvider, null, createElement(PosView, { ocp: { ...ocp, links: [completedLink, activeTill] as never }, go: jest.fn() })));
     expect(screen.getByText(/paid|bezahlt|pagato|payé/i)).toBeInTheDocument();
     expect(document.querySelector('.qcap')?.textContent?.trim()).toBe('EUR 12');
     expect(chargeButton()).not.toBeDisabled();
@@ -600,11 +2026,16 @@ describe('POS extra paths', () => {
         lnurl: lnurlEncode('https://api.example/lnurlp/till-expired'),
       },
     };
+    const activeTill = { id: 23, label: 'Active till', status: 'Active', routeId: 11 };
     const expiredLink = { ...link, payment: { ...link.payment, status: 'Expired' } };
     const ocp = buildOcp({
-      links: [link] as never,
+      links: [link, activeTill] as never,
+      sellRoutes: [
+        { id: 10, active: false, currency: { name: 'EUR' } },
+        { id: 11, active: true, currency: { name: 'CHF' } },
+      ] as never,
       pollPayment: jest.fn().mockResolvedValue('Expired'),
-      loadLinks: jest.fn().mockResolvedValue([expiredLink]),
+      loadLinks: jest.fn().mockResolvedValue([expiredLink, activeTill]),
     });
     const view = renderPos(ocp);
 
@@ -613,7 +2044,7 @@ describe('POS extra paths', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    view.rerender(createElement(LanguageProvider, null, createElement(PosView, { ocp: { ...ocp, links: [expiredLink] as never }, go: jest.fn() })));
+    view.rerender(createElement(LanguageProvider, null, createElement(PosView, { ocp: { ...ocp, links: [expiredLink, activeTill] as never }, go: jest.fn() })));
     expect(screen.getByText(/not completed|nicht abgeschlossen|non completato|non abouti/i)).toBeInTheDocument();
     expect(document.querySelector('.qcap')?.textContent?.trim()).toBe('EUR 7');
     expect(chargeButton()).not.toBeDisabled();
@@ -782,6 +2213,40 @@ describe('POS extra paths', () => {
     expect(otherAccount.loadLinks).not.toHaveBeenCalled();
   });
 
+  it('ignores a prior-account charge success after switching account with the same wallet', async () => {
+    let resolveCharge!: (result: { lnurl: string; externalId: string }) => void;
+    const charge = jest.fn(
+      () => new Promise<{ lnurl: string; externalId: string }>((resolve) => {
+        resolveCharge = resolve;
+      }),
+    );
+    const ocp = buildOcp({ charge });
+    const view = renderPos(ocp);
+    fireEvent.change(amountField(), { target: { value: '15' } });
+    fireEvent.click(chargeButton());
+    expect(charge).toHaveBeenCalledTimes(1);
+
+    const otherAccount = {
+      ...ocp,
+      sessionIdentity: JSON.stringify(['account-B', 'wallet-A']),
+      linksIdentity: JSON.stringify(['account-B', 'wallet-A']),
+      links: [{ id: 2, label: 'B till', status: 'Active', routeId: 10 }],
+    };
+    view.rerender(createElement(LanguageProvider, null, createElement(PosView, { ocp: otherAccount, go: jest.fn() })));
+    await waitFor(() => expect(chargeButton()).not.toBeDisabled());
+
+    await act(async () => {
+      resolveCharge({ lnurl: 'LNURL1PRIORACCOUNT', externalId: 'prior-account-charge' });
+      await Promise.resolve();
+    });
+
+    expect(document.querySelector('.qrcard')).not.toBeTruthy();
+    expect(screen.queryByText(/prior account/i)).not.toBeInTheDocument();
+    expect(chargeButton()).not.toBeDisabled();
+    expect(otherAccount.pollPayment).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('ocp-pos-ambiguous-charge:["account-A","wallet-A"]')).not.toBeNull();
+  });
+
   it('keeps the POS loading until the new account link list arrives', () => {
     const ocp = buildOcp();
     const view = renderPos(ocp);
@@ -937,7 +2402,7 @@ describe('POS extra paths', () => {
       jest.advanceTimersByTime(2000);
       await Promise.resolve();
     });
-    expect(pollPayment).toHaveBeenCalledWith('1', 'charge-1');
+    expect(pollPayment).toHaveBeenCalledWith('1', (ocp.charge as jest.Mock).mock.calls[0][2]);
 
     await act(async () => {
       jest.advanceTimersByTime(300_000);

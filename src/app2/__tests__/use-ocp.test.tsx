@@ -275,7 +275,7 @@ describe('useOcp', () => {
     mockCreatePayment.mockResolvedValueOnce({
       payment: {
         id: 'payment-1',
-        externalId: 'charge-1',
+        externalId: 'attempted-charge',
         status: 'Pending',
         amount: 12,
         currency: { name: 'CHF' },
@@ -287,12 +287,16 @@ describe('useOcp', () => {
       await result.current.loadLinks();
     });
     await act(async () => {
-      await result.current.charge('till-1', 12);
+      await result.current.charge('till-1', 12, 'attempted-charge');
     });
 
+    expect(mockCreatePayment).toHaveBeenCalledWith(
+      { amount: 12, externalId: 'attempted-charge' },
+      'till-1',
+    );
     expect(result.current.linksIdentity).toBe(JSON.stringify(['7', '0xaaa']));
     expect(result.current.links?.[0].payment).toMatchObject({
-      externalId: 'charge-1',
+      externalId: 'attempted-charge',
       status: 'Pending',
       amount: 12,
       lnurl: 'LNURL1POSCHARGE',

@@ -169,6 +169,44 @@ export function resolveCryptoRefundTarget(refundTarget: string | null | undefine
   return trimmed ? trimmed : undefined;
 }
 
+/** Returns only a refund destination authorized by the current account and chain. */
+export function resolveCryptoRefundSubmission(
+  accountMatches: boolean,
+  serverTarget: string | undefined,
+  allowedAddresses: Array<{ address: string }>,
+  selectedAddress: string,
+): string | undefined {
+  if (!accountMatches) return undefined;
+  if (serverTarget) return serverTarget;
+  return allowedAddresses.some((address) => address.address === selectedAddress) ? selectedAddress : undefined;
+}
+
+export function resolveScopedAssignmentData(
+  accountScope: string | undefined,
+  unassignedOwner: string | undefined,
+  unassigned: UnassignedTransaction[],
+  targetsOwner: string | undefined,
+  targets: TransactionTarget[],
+  index: number,
+): { payment: UnassignedTransaction | undefined; activeTargets: TransactionTarget[] } {
+  return {
+    payment: accountScope !== undefined && unassignedOwner === accountScope ? unassigned[index] : undefined,
+    activeTargets: accountScope !== undefined && targetsOwner === accountScope ? targets : [],
+  };
+}
+
+export function submitCryptoRefundIfAuthorized(
+  accountMatches: boolean,
+  serverTarget: string | undefined,
+  allowedAddresses: Array<{ address: string }>,
+  selectedAddress: string,
+  submit: (body: { refundTarget: string }) => void,
+): void {
+  const refundTarget = resolveCryptoRefundSubmission(accountMatches, serverTarget, allowedAddresses, selectedAddress);
+  if (!refundTarget) return;
+  submit({ refundTarget });
+}
+
 function copyToClipboard(value: string, showToast: (m: string) => void, t: (k: 'copied' | 'copyFail') => string) {
   if (!navigator.clipboard) {
     showToast(t('copyFail'));
@@ -370,10 +408,38 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
         setCountriesOwner(expectedAccount);
       });
     return () => {
-      if (countryGenerationRef.current === generation) countryGenerationRef.current += 1;
+      countryGenerationRef.current += 1;
     };
     // `getCountries` is re-created each render; fetch once per refund kind.
   }, [accountId, kind, refundAccountScope]);
+
+  const sendRefund = (body: TransactionRefundTarget, isCurrent: () => boolean) => {
+    submittingRef.current = true;
+    setSubmitting(true);
+    setWarn('');
+    setTransactionRefundTarget(tx.id as number, body)
+      .then(() => {
+        if (!isCurrent()) return;
+        setPhase('done');
+        showToast(t('refundDone'));
+      })
+      .catch((err: unknown) => {
+        if (!isCurrent()) return;
+        const message = err instanceof ApiException ? String(err.message ?? '') : '';
+        // Surface the server-supplied error detail alongside the generic
+        // message (mirrors the static app's `genErr + ": " + em`); the
+        // MultiAccountIban case has its own dedicated hint.
+        setWarn(
+          /MultiAccountIban/i.test(message)
+            ? t('refundMultiIban')
+            : message
+              ? `${t('genErr')}: ${message}`
+              : t('genErr'),
+        );
+        submittingRef.current = false;
+        setSubmitting(false);
+      });
+  };
 
   const submit = () => {
     if (submittingRef.current || tx.id == null || accountId === undefined || !ownsRefundState) return;
@@ -381,19 +447,21 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
     const generation = requestGenerationRef.current;
     const isCurrent = () =>
       generation === requestGenerationRef.current && currentAccountRef.current === expectedAccount;
-    let body: TransactionRefundTarget;
     if (kind === 'crypto') {
-      if (!accountMatches) return;
       // Server-supplied target is authoritative. Otherwise only an address from
       // the account's filtered `userAddresses` list may be sent — never the
       // currently connected session wallet.
-      if (cryptoTarget) {
-        body = { refundTarget: cryptoTarget };
-      } else {
-        if (!allowedCryptoAddresses.some((a) => a.address === selectedCryptoAddress)) return;
-        body = { refundTarget: selectedCryptoAddress };
-      }
-    } else if (kind === 'bank') {
+      submitCryptoRefundIfAuthorized(
+        accountMatches,
+        cryptoTarget,
+        allowedCryptoAddresses,
+        selectedCryptoAddress,
+        (body) => sendRefund(body, isCurrent),
+      );
+      return;
+    }
+    let body: TransactionRefundTarget;
+    if (kind === 'bank') {
       const cleanIban = iban.replace(/\s+/g, '').trim();
       if (!cleanIban) {
         ibanRef.current?.focus();
@@ -420,31 +488,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
     } else {
       body = {}; // card → refund goes back to the card automatically (empty body)
     }
-    submittingRef.current = true;
-    setSubmitting(true);
-    setWarn('');
-    setTransactionRefundTarget(tx.id, body)
-      .then(() => {
-        if (!isCurrent()) return;
-        setPhase('done');
-        showToast(t('refundDone'));
-      })
-      .catch((err: unknown) => {
-        if (!isCurrent()) return;
-        const message = err instanceof ApiException ? String(err.message ?? '') : '';
-        // Surface the server-supplied error detail alongside the generic
-        // message (mirrors the static app's `genErr + ": " + em`); the
-        // MultiAccountIban case has its own dedicated hint.
-        setWarn(
-          /MultiAccountIban/i.test(message)
-            ? t('refundMultiIban')
-            : message
-              ? `${t('genErr')}: ${message}`
-              : t('genErr'),
-        );
-        submittingRef.current = false;
-        setSubmitting(false);
-      });
+    sendRefund(body, isCurrent);
   };
 
   if (visiblePhase === 'loading') {
@@ -663,7 +707,7 @@ export default function TransactionsScreen() {
 
   const loadUnassigned = (gen: number, expectedScope: string | undefined, retry = false) => {
     const unassignedGen = ++unassignedGenRef.current;
-    if (!expectedScope || accountScopeRef.current !== expectedScope) return;
+    // Reached only through the account-scoped load path or its account-scoped retry control.
     if (retry) setRetryingUnassigned(true);
     else setUnassignedState('loading');
     getUnassignedTransactions()
@@ -685,7 +729,6 @@ export default function TransactionsScreen() {
 
   const load = () => {
     const expectedScope = accountScopeRef.current;
-    if (!expectedScope) return;
     const gen = ++loadGenRef.current;
     const isCurrent = () => gen === loadGenRef.current && accountScopeRef.current === expectedScope;
     const sortByDate = (list: DetailTransaction[]) =>
@@ -726,7 +769,6 @@ export default function TransactionsScreen() {
   const loadTargets = () => {
     const gen = loadGenRef.current;
     const expectedScope = accountScopeRef.current;
-    if (!expectedScope) return;
     const targetsGen = ++targetsGenRef.current;
     setTargetsState('loading');
     setTargetsOwner(undefined);
@@ -752,8 +794,14 @@ export default function TransactionsScreen() {
   };
 
   const doAssign = (index: number) => {
-    const payment = accountScope !== undefined && unassignedOwner === accountScope ? unassigned[index] : undefined;
-    const activeTargets = accountScope !== undefined && targetsOwner === accountScope ? targets : [];
+    const { payment, activeTargets } = resolveScopedAssignmentData(
+      accountScope,
+      unassignedOwner,
+      unassigned,
+      targetsOwner,
+      targets,
+      index,
+    );
     const raw = picked[index] ?? (activeTargets[0]?.id != null ? String(activeTargets[0].id) : '');
     const buyId = Number(raw);
     if (payment?.id == null || !raw || Number.isNaN(buyId)) return;

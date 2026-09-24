@@ -1008,4 +1008,255 @@ describe('payment sheet actions', () => {
     fireEvent.click(screen.getByRole('button', { name: /done|fertig|fatto|terminé/i }));
     expect(onDone).toHaveBeenCalledWith(true);
   });
+
+  it('retries the authenticated detail lookup after status check keeps the same UID', async () => {
+    let resolveRetry!: (detail: never) => void;
+    const loadExistingRequest = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('temporary detail read failure'))
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((resolve) => {
+            resolveRetry = resolve;
+          }),
+      );
+    const onCheckExistingRequest = jest.fn();
+    const onDone = jest.fn();
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={onDone}
+            mode="buy"
+            loading={false}
+            rawError={
+              new ApiException(409, 'existing request', 'PAYMENT_INFO_ALREADY_EXISTS', undefined, {
+                existingUid: 'request-123',
+                requestStatus: 'Completed',
+              })
+            }
+            buy={null}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={0}
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+            requestLocked
+            loadExistingRequest={loadExistingRequest}
+            onCheckExistingRequest={onCheckExistingRequest}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => expect(loadExistingRequest).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/details could not be loaded/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /done|fertig|fatto|terminé/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /check request status/i }));
+    expect(onCheckExistingRequest).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(loadExistingRequest).toHaveBeenCalledTimes(2));
+    expect(loadExistingRequest).toHaveBeenNthCalledWith(2, 'request-123');
+    expect(screen.queryByRole('button', { name: /done|fertig|fatto|terminé/i })).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveRetry({ state: 'Completed' } as never);
+    });
+    expect(await screen.findByRole('button', { name: /done|fertig|fatto|terminé/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    expect(onDone).toHaveBeenCalledWith(true);
+  });
+
+  it('ignores detail results from an earlier UID and shows only the current request', async () => {
+    let resolveFirst!: (detail: never) => void;
+    let rejectSecond!: (reason?: Error) => void;
+    let resolveCurrent!: (detail: never) => void;
+    const first = new Promise<never>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const second = new Promise<never>((_resolve, reject) => {
+      rejectSecond = reject;
+    });
+    const current = new Promise<never>((resolve) => {
+      resolveCurrent = resolve;
+    });
+    const loadExistingRequest = jest
+      .fn()
+      .mockReturnValueOnce(first)
+      .mockReturnValueOnce(second)
+      .mockReturnValueOnce(current);
+    const onDone = jest.fn();
+    const sheet = (uid: string) => (
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={onDone}
+            mode="buy"
+            loading={false}
+            rawError={null}
+            buy={null}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={0}
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+            requestLocked
+            existingRequestUid={uid}
+            loadExistingRequest={loadExistingRequest}
+            onCheckExistingRequest={jest.fn()}
+          />
+        </ToastProvider>
+      </LanguageProvider>
+    );
+    const { rerender } = render(sheet('request-old-success'));
+    await waitFor(() => expect(loadExistingRequest).toHaveBeenCalledTimes(1));
+
+    rerender(sheet('request-old-failure'));
+    await waitFor(() => expect(loadExistingRequest).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      resolveFirst({ state: 'Completed' } as never);
+    });
+    expect(screen.getByText('request-old-failure')).toBeInTheDocument();
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /done|fertig|fatto|terminé/i })).not.toBeInTheDocument();
+
+    rerender(sheet('request-current'));
+    await waitFor(() => expect(loadExistingRequest).toHaveBeenCalledTimes(3));
+    await act(async () => {
+      rejectSecond(new Error('stale detail read failed'));
+    });
+    expect(screen.getByText('request-current')).toBeInTheDocument();
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.queryByText(/details could not be loaded/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /done|fertig|fatto|terminé/i })).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveCurrent({
+        state: 'Completed',
+        inputAmount: 12,
+        inputAsset: 'CHF',
+        outputAmount: 0.001,
+        outputAsset: 'BTC',
+      } as never);
+    });
+    expect(await screen.findByRole('button', { name: /done|fertig|fatto|terminé/i })).toBeInTheDocument();
+    expect(screen.getByText(/CHF/)).toBeInTheDocument();
+    expect(screen.getByText(/BTC/)).toBeInTheDocument();
+  });
+
+  it('omits partial amount rows when the detail response lacks its asset code', async () => {
+    const loadExistingRequest = jest.fn().mockResolvedValue({
+      state: 'Completed',
+      inputAmount: 12,
+      outputAmount: 0.001,
+    });
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={jest.fn()}
+            mode="buy"
+            loading={false}
+            rawError={null}
+            buy={null}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={0}
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+            requestLocked
+            existingRequestUid="request-123"
+            loadExistingRequest={loadExistingRequest}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => expect(loadExistingRequest).toHaveBeenCalledWith('request-123'));
+    const details = screen.getByTestId('payment-existing-request');
+    expect(within(details).queryByText(/CHF|BTC/)).not.toBeInTheDocument();
+  });
+
+  it('keeps a locked recommendation gate on the pre-claim retry action', () => {
+    const onRetry = jest.fn();
+    const onCheckExistingRequest = jest.fn();
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={jest.fn()}
+            mode="buy"
+            loading={false}
+            rawError={new ApiException(400, 'RecommendationRequired')}
+            buy={null}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={0}
+            onRetry={onRetry}
+            onReconnect={jest.fn()}
+            requestLocked
+            onCheckExistingRequest={onCheckExistingRequest}
+            retryPreClaimGateError
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onCheckExistingRequest).not.toHaveBeenCalled();
+  });
+
+  it('closes a restored completed request as resolved from the sheet Escape handler', async () => {
+    const onClose = jest.fn();
+    const loadExistingRequest = jest.fn().mockResolvedValue({ state: 'Completed' });
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={onClose}
+            onDone={jest.fn()}
+            mode="buy"
+            loading={false}
+            rawError={null}
+            buy={null}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={0}
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+            requestLocked
+            existingRequestUid="request-123"
+            loadExistingRequest={loadExistingRequest}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => expect(loadExistingRequest).toHaveBeenCalledWith('request-123'));
+    await screen.findByRole('button', { name: /done|fertig|fatto|terminé/i });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledWith(true);
+  });
 });

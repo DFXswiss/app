@@ -393,16 +393,26 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   results. It does not prove the exact `pl?lightning=…` link or the exact
   decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
   the real `url()` treats those arguments identically; no assertion pins the outer host.
-- **The 19 App 2.0 session baselines are a logged-in walk through the harness, not a funded
-  account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
+- **The 27 App 2.0 session baselines per viewport are a logged-in walk through the harness, not a
+  funded account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
   fresh account. Buy, sell, swap, account, transactions, KYC, limit, the OpenCryptoPay hub and apply
   form, plus the six merchant sub-pages (payment routes, invoice, POS, links, history, settings) are
-  captured that way. The OpenCryptoPay sub-pages are shown in the built-in demo mode. A green run does
-  not prove that the buy screen ever renders a real rate, nor that the transaction list ever shows rows.
+  captured that way. This is 27 screenshot names per viewport: 23 direct assertions and four
+  terminal-receipt helper cases. The OpenCryptoPay sub-pages are shown in the built-in demo mode. A
+  green run does not prove that the buy screen ever renders a real rate, nor that the transaction
+  list ever shows rows.
 - **The recovered POS baseline uses mocked payment-link records.** `e2e/app2-session.spec.ts`
   verifies that pending QR details survive a fresh screen mount, that more than one pending till can
-  be selected, and that a deactivated link's pending charge remains visible. It does not prove that
-  production `/paymentLink` responses retain those fields or that a real Lightning payment settles.
+  be selected, and that a deactivated link's pending charge remains visible. The POS screenshots
+  also show recovery when a committed POST response is lost and when a concurrent till payment
+  produces the API's specific pending-link conflict. These mocked records do not prove that a live
+  API commits before a dropped response, or that two browser tabs race this way in production. They
+  also cover four terminal receipt states: paid and failed, each with an active and an inactive till;
+  receipts identify the amount, currency, till and external payment ID, and an active till can accept
+  the next charge. After two status checks remain unsettled, the cashier sees the support state with
+  no further Refresh action; the till stays locked. These records and statuses are mocked. They do
+  not prove that production `/paymentLink` responses retain those fields or that a real Lightning
+  payment settles.
 - **The App 2.0 retry screenshots synthesize service failures.** `e2e/app2-session.spec.ts` installs
   the KYC country 503 after app bootstrap and uses separate Wallet 4 / Wallet 5 accounts for desktop
   and mobile. It starts or continues verification and answers `PUT /v2/kyc?autoStep=true` with a

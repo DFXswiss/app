@@ -28,6 +28,9 @@ import { LanguageProvider } from '../i18n';
 import PosView, { currencyForPosLink } from '../screens/ocp/pos';
 import type { OcpApi } from '../screens/ocp/useOcp';
 
+const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+let mockUuidCounter = 0;
+
 describe('currencyForPosLink (POS currency from route)', () => {
   const sellRoutes = [
     { id: 10, currency: { name: 'EUR' } },
@@ -57,6 +60,21 @@ describe('currencyForPosLink (POS currency from route)', () => {
 });
 
 describe('POS charge freezes currency at charge time', () => {
+  beforeEach(() => {
+    mockUuidCounter = 0;
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: {
+        randomUUID: () => `00000000-0000-4000-8000-${(++mockUuidCounter).toString(16).padStart(12, '0')}`,
+      },
+    });
+  });
+
+  afterAll(() => {
+    if (originalCryptoDescriptor) Object.defineProperty(globalThis, 'crypto', originalCryptoDescriptor);
+    else Reflect.deleteProperty(globalThis, 'crypto');
+  });
+
   function buildOcp(overrides: Partial<OcpApi> = {}): OcpApi {
     return {
       demo: true,
@@ -82,8 +100,8 @@ describe('POS charge freezes currency at charge time', () => {
       loadHistory: jest.fn(),
       lightningReady: true,
       sellRoutes: [
-        { id: 10, currency: { name: 'EUR' } },
-        { id: 20, currency: { name: 'USD' } },
+        { id: 10, active: true, currency: { name: 'EUR' } },
+        { id: 20, active: true, currency: { name: 'USD' } },
       ] as OcpApi['sellRoutes'],
       lnSellRoutes: [],
       createRoute: jest.fn(),
@@ -119,7 +137,7 @@ describe('POS charge freezes currency at charge time', () => {
     fireEvent.click(screen.getByRole('button', { name: /charge|kassieren/i }));
 
     await waitFor(() => {
-      expect(ocp.charge).toHaveBeenCalledWith('1', 25);
+      expect(ocp.charge).toHaveBeenCalledWith('1', 25, expect.any(String));
     });
     await waitFor(() => {
       expect(document.querySelector('.qcap')?.textContent?.trim()).toBe('EUR 25');
@@ -159,7 +177,7 @@ describe('POS charge freezes currency at charge time', () => {
     fireEvent.change(amountInput, { target: { value: '10' } });
     fireEvent.click(screen.getByRole('button', { name: /charge|kassieren/i }));
 
-    await waitFor(() => expect(ocp.charge).toHaveBeenCalledWith('1', 10));
+    await waitFor(() => expect(ocp.charge).toHaveBeenCalledWith('1', 10, expect.any(String)));
 
     // Mid-flight: cashier switches to USD till.
     fireEvent.change(screen.getByRole('combobox'), { target: { value: '2' } });

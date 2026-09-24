@@ -78,7 +78,13 @@ jest.mock('../wallets/session', () => ({
 }));
 
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import TransactionsScreen, { RefundPanel, resolveCryptoRefundTarget } from '../screens/transactions';
+import TransactionsScreen, {
+  RefundPanel,
+  resolveCryptoRefundSubmission,
+  resolveCryptoRefundTarget,
+  resolveScopedAssignmentData,
+  submitCryptoRefundIfAuthorized,
+} from '../screens/transactions';
 import { LanguageProvider } from '../i18n';
 import { ToastProvider } from '../components/ui';
 
@@ -123,6 +129,52 @@ describe('resolveCryptoRefundTarget', () => {
     expect(resolveCryptoRefundTarget(null)).toBeUndefined();
     expect(resolveCryptoRefundTarget('   ')).toBeUndefined();
     expect(resolveCryptoRefundTarget('bc1qabc')).toBe('bc1qabc');
+  });
+
+  it('allows only an account-owned server target or a selected chain address', () => {
+    const allowed = [{ address: 'bc1q-account-address' }];
+    expect(resolveCryptoRefundSubmission(false, 'bc1q-server-target', allowed, '')).toBeUndefined();
+    expect(resolveCryptoRefundSubmission(true, 'bc1q-server-target', allowed, '')).toBe('bc1q-server-target');
+    expect(resolveCryptoRefundSubmission(true, undefined, allowed, 'bc1q-account-address')).toBe('bc1q-account-address');
+    expect(resolveCryptoRefundSubmission(true, undefined, allowed, 'bc1q-session-only')).toBeUndefined();
+  });
+});
+
+describe('resolveScopedAssignmentData', () => {
+  const payments = [{ id: 9, inputAmount: 250, inputAsset: 'CHF' }] as never[];
+  const targets = [{ id: 44, asset: { name: 'BTC' }, address: 'bc1qassign' }] as never[];
+
+  it('uses both lists only when both are owned by the current account', () => {
+    expect(resolveScopedAssignmentData('account-A', 'account-A', payments, 'account-A', targets, 0)).toEqual({
+      payment: payments[0],
+      activeTargets: targets,
+    });
+  });
+
+  it('fails closed when either list belongs to another or no account', () => {
+    expect(resolveScopedAssignmentData('account-B', 'account-A', payments, 'account-B', targets, 0)).toEqual({
+      payment: undefined,
+      activeTargets: targets,
+    });
+    expect(resolveScopedAssignmentData('account-B', 'account-B', payments, 'account-A', targets, 0)).toEqual({
+      payment: payments[0],
+      activeTargets: [],
+    });
+    expect(resolveScopedAssignmentData(undefined, undefined, payments, undefined, targets, 0)).toEqual({
+      payment: undefined,
+      activeTargets: [],
+    });
+  });
+});
+
+describe('submitCryptoRefundIfAuthorized', () => {
+  it('does not submit a target unless it is allowed by the current account', () => {
+    const submit = jest.fn();
+    submitCryptoRefundIfAuthorized(false, 'bc1q-old-account', [], '', submit);
+    expect(submit).not.toHaveBeenCalled();
+
+    submitCryptoRefundIfAuthorized(true, undefined, [{ address: 'bc1q-current-account' }], 'bc1q-current-account', submit);
+    expect(submit).toHaveBeenCalledWith({ refundTarget: 'bc1q-current-account' });
   });
 });
 
@@ -1386,6 +1438,15 @@ describe('RefundPanel', () => {
     expect(screen.getByText(/you'll get back|du erhältst zurück|riceverai|récupéreras/i)).toBeInTheDocument();
   });
 
+  it('does not fetch or expose refund details without an authenticated API account', async () => {
+    mockSession.account = undefined as never;
+    mockGetRefund.mockResolvedValue({ refundTarget: 'A-IBAN-SECRET', refundAmount: 2 });
+    renderPanel({ id: 309, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Bank' });
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(mockGetRefund).not.toHaveBeenCalled();
+    expect(screen.queryByDisplayValue('A-IBAN-SECRET')).not.toBeInTheDocument();
+  });
+
   it('masks old bank details and ignores late refund/profile responses after an account switch', async () => {
     mockSession.account = 101;
     const oldRefund = deferred<unknown>();
@@ -1444,6 +1505,60 @@ describe('RefundPanel', () => {
     expect(screen.queryByRole('option', { name: 'A Country' })).not.toBeInTheDocument();
   });
 
+  it('ignores a late refund result or failure after the same transaction is reloaded for another account', async () => {
+    mockSession.account = 111;
+    const firstRefund = deferred<unknown>();
+    const secondRefund = deferred<unknown>();
+    mockGetRefund.mockReturnValueOnce(firstRefund.promise).mockReturnValueOnce(secondRefund.promise);
+    const view = renderPanel({ id: 307, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Bank' });
+    await waitFor(() => expect(mockGetRefund).toHaveBeenCalledTimes(1));
+
+    mockSession.account = 222;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <RefundPanel tx={tx({ id: 307, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Bank' }) as never} onClose={() => undefined} />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(mockGetRefund).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      secondRefund.resolve({ refundTarget: 'B-IBAN', refundAmount: 1, refundAsset: { name: 'EUR' } });
+    });
+    expect(await screen.findByDisplayValue('B-IBAN')).toBeInTheDocument();
+    await act(async () => {
+      firstRefund.reject(new Error('late-account-A-failure'));
+    });
+    expect(screen.getByDisplayValue('B-IBAN')).toBeInTheDocument();
+    expect(screen.queryByText(/refund unavailable|rückerstattung nicht verfügbar/i)).not.toBeInTheDocument();
+  });
+
+  it('does not briefly render an old account refund if its request resolves after the switch', async () => {
+    mockSession.account = 311;
+    const oldRefund = deferred<unknown>();
+    const currentRefund = deferred<unknown>();
+    mockGetRefund.mockReturnValueOnce(oldRefund.promise).mockReturnValueOnce(currentRefund.promise);
+    const view = renderPanel({ id: 308, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Bank' });
+    await waitFor(() => expect(mockGetRefund).toHaveBeenCalledTimes(1));
+    mockSession.account = 322;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <RefundPanel tx={tx({ id: 308, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Bank' }) as never} onClose={() => undefined} />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(mockGetRefund).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      oldRefund.resolve({ refundTarget: 'A-IBAN-SECRET', refundAmount: 1, refundAsset: { name: 'EUR' } });
+    });
+    expect(screen.queryByDisplayValue('A-IBAN-SECRET')).not.toBeInTheDocument();
+    await act(async () => {
+      currentRefund.resolve({ refundTarget: 'B-IBAN', refundAmount: 2, refundAsset: { name: 'EUR' } });
+    });
+    expect(await screen.findByDisplayValue('B-IBAN')).toBeInTheDocument();
+  });
+
   it('does not show an old account refund completion after the session changes', async () => {
     mockSession.account = 101;
     const oldSubmit = deferred<void>();
@@ -1465,6 +1580,27 @@ describe('RefundPanel', () => {
     await act(async () => oldSubmit.resolve(undefined));
     expect(screen.getByRole('button', { name: /confirm refund|rückerstattung bestätigen/i })).toBeInTheDocument();
     expect(screen.queryByText(/refund complete|rückerstattung abgeschlossen|rimborso completato/i)).not.toBeInTheDocument();
+  });
+
+  it('does not show an old account refund failure after switching accounts mid-submit', async () => {
+    mockSession.account = 411;
+    const oldSubmit = deferred<void>();
+    mockSetRefund.mockReturnValueOnce(oldSubmit.promise);
+    mockGetRefund.mockResolvedValue({ refundTarget: '', refundAmount: 1, refundAsset: { name: 'EUR' } });
+    const view = renderPanel({ id: 310, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Card' });
+    fireEvent.click(await screen.findByRole('button', { name: /confirm refund|rückerstattung bestätigen/i }));
+    mockSession.account = 422;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <RefundPanel tx={tx({ id: 310, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Card' }) as never} onClose={() => undefined} />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await screen.findByRole('button', { name: /confirm refund|rückerstattung bestätigen/i });
+    await act(async () => oldSubmit.reject(new Error('account-A-refund-failed')));
+    expect(screen.queryByText(/something went wrong|etwas ist schief/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /confirm refund|rückerstattung bestätigen/i })).toBeEnabled();
   });
 
   it('lists no crypto addresses when the account address list is missing', async () => {

@@ -314,6 +314,56 @@
 .posstat.fail {
   color: var(--accent, #f5516c);
 }
+.posstat.posreceipt {
+  box-sizing: border-box;
+  width: min(100%, 420px);
+  margin: 12px auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 1px solid var(--hair-strong);
+  border-radius: 14px;
+  background: var(--card-overlay);
+  text-align: left;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.posstat.posreceipt > div:first-child {
+  max-width: 100%;
+  font-size: 16px;
+  line-height: 1.35;
+  font-weight: 700;
+}
+.posstat.posreceipt > div:nth-child(2) {
+  color: var(--t-high);
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.posstat.posreceipt > div:nth-child(3) {
+  color: var(--t-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.posstat.posreceipt > div[data-testid='ocp-pos-terminal-external-id'] {
+  max-width: 100%;
+  color: var(--t-dim);
+  font-size: 12px;
+  font-weight: 500;
+}
+.posstat.posreceipt > div[data-testid='ocp-pos-terminal-external-id'] code {
+  display: block;
+  max-width: 100%;
+  color: var(--t-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
 .posstat .okbubble {
   width: 26px;
   height: 26px;

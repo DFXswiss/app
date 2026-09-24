@@ -143,7 +143,11 @@ export interface OcpApi {
   /** GET /paymentLink/payment → { lnurl } for the invoice QR. Throws on failure. */
   createInvoice: (input: CreateInvoiceInput) => Promise<{ lnurl: string }>;
   /** POST /paymentLink/payment?linkId { amount, externalId } → LNURL + poll identifier. */
-  charge: (linkId: string | number, amount: number) => Promise<{ lnurl: string; externalId: string }>;
+  charge: (
+    linkId: string | number,
+    amount: number,
+    externalId?: string,
+  ) => Promise<{ lnurl: string; externalId: string }>;
   /** GET /paymentLink filtered by linkId + externalPaymentId → that POS charge's status. */
   pollPayment: (linkId: string | number, externalPaymentId: string) => Promise<PaymentLinkPaymentStatus | undefined>;
 
@@ -607,12 +611,17 @@ export function useOcp(): OcpApi {
   );
 
   const charge = useCallback(
-    async (linkId: string | number, amount: number): Promise<{ lnurl: string; externalId: string }> => {
+    async (
+      linkId: string | number,
+      amount: number,
+      requestedExternalId?: string,
+    ): Promise<{ lnurl: string; externalId: string }> => {
       const link = (links ?? []).find((l) => String(l.id) === String(linkId));
-      const externalId =
+      const externalId = requestedExternalId ?? (
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
-          : `pos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+          : `pos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+      );
       if (demo) {
         const lnurl = link?.lnurl || demoLnurl(`pos_${linkId}_${Math.round(amount * 100)}`);
         return { lnurl, externalId };
