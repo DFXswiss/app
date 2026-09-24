@@ -43,10 +43,12 @@ export default function RealunitTreasuryScreen(): JSX.Element {
     <div className="flex flex-col gap-6">
       <RealunitBuyLimitPanel translate={translate} />
       <div>
-        <h2 className="text-dfxGray-700 mb-2">{translate('screens/referral', 'Bonus and Referral')}</h2>
+        <h2 className="text-base font-semibold text-dfxBlue-800 mb-3">
+          {translate('screens/referral', 'Bonus and Referral')}
+        </h2>
         {prizeWalletLoading ? null : prizeWallet ? (
-          <div className="flex flex-col md:flex-row gap-4 items-start">
-            <div className="bg-white rounded-lg shadow-sm p-4 flex flex-col md:flex-row gap-4 items-start">
+          <div className="flex flex-col xl:flex-row gap-4 items-start">
+            <div className="bg-white rounded-lg shadow-sm p-4 flex flex-row gap-4 items-start shrink-0">
               <QrCopy data={prizeWallet.address} />
               <div className="flex flex-col gap-2 text-left text-sm text-dfxBlue-800">
                 <div>

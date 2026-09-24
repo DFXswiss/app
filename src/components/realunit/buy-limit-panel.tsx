@@ -1,4 +1,4 @@
-import { StyledButton, StyledButtonWidth } from '@dfx.swiss/react-components';
+import { StyledButton, StyledButtonColor, StyledButtonSize, StyledButtonWidth } from '@dfx.swiss/react-components';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { useRealunitApi } from 'src/hooks/realunit-api.hook';
@@ -78,31 +78,35 @@ export function RealunitBuyLimitPanel({ translate }: BuyLimitPanelProps): JSX.El
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4 flex flex-col gap-4 text-left w-full">
-      <h2 className="text-dfxBlue-800 font-semibold">{translate('screens/realunit', 'Max tokens per buy')}</h2>
-      <p className="text-sm text-dfxGray-700">
+    <div className="bg-white rounded-lg shadow-sm p-4 flex flex-col gap-3 text-left w-full">
+      <h2 className="text-base font-semibold text-dfxBlue-800">{translate('screens/realunit', 'Max tokens per buy')}</h2>
+      <p className="text-sm text-dfxGray-700 -mt-1">
         {translate('screens/realunit', 'Leave empty for no limit. Applies to each bank buy.')}
       </p>
 
       {isLoading && <div data-testid="buy-limit-loading">{translate('screens/realunit', 'Loading')}</div>}
       {loadError && !isLoading && (
-        <>
+        <div className="flex flex-wrap items-center gap-3">
           <ErrorHint message={loadError} />
           <StyledButton
             label={translate('general/actions', 'Retry')}
             onClick={loadLimit}
+            size={StyledButtonSize.SMALL}
             width={StyledButtonWidth.MIN}
+            color={StyledButtonColor.BLUE}
+            deactivateMargin
+            caps={false}
             disabled={isSubmitting}
           />
-        </>
+        </div>
       )}
       {saveError && <ErrorHint message={saveError} />}
 
-      <form className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end" onSubmit={onSubmit}>
-        <label className="flex flex-col gap-1 text-sm text-dfxBlue-800">
+      <form className="flex flex-wrap items-end gap-3" onSubmit={onSubmit}>
+        <label className="flex flex-col gap-1 text-sm text-dfxBlue-800 w-full max-w-xs">
           {translate('screens/realunit', 'Max tokens per buy')}
           <input
-            className="border border-dfxGray-400 rounded px-2 py-1"
+            className="h-10 border border-dfxGray-400 rounded-md px-3 bg-white disabled:opacity-60"
             type="number"
             min={1}
             step={1}
@@ -114,7 +118,12 @@ export function RealunitBuyLimitPanel({ translate }: BuyLimitPanelProps): JSX.El
         <StyledButton
           label={translate('screens/realunit', 'Save')}
           onClick={() => onSubmit()}
+          size={StyledButtonSize.SMALL}
           width={StyledButtonWidth.MIN}
+          color={StyledButtonColor.BLUE}
+          deactivateMargin
+          caps={false}
+          className="h-10"
           disabled={!canSave}
           isLoading={isSubmitting}
         />

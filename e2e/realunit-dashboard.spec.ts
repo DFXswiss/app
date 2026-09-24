@@ -340,6 +340,21 @@ async function installDashboardRoutes(page: Page): Promise<void> {
 const shot = { maxDiffPixels: 8000, animations: 'disabled' as const };
 const query = () => `?session=${encodeURIComponent(jwt())}&lang=en`;
 
+async function shootPage(page: Page, name: string): Promise<void> {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const height = await page.evaluate(() => {
+    const nodes = document.querySelectorAll('#app-root h2, #app-root table, #app-root nav');
+    let bottom = 640;
+    nodes.forEach((node) => {
+      bottom = Math.max(bottom, node.getBoundingClientRect().bottom);
+    });
+    return Math.min(1500, Math.ceil(bottom + 28));
+  });
+  await page.setViewportSize({ width: 1440, height });
+  await page.waitForTimeout(200);
+  await expect(page).toHaveScreenshot(name, { ...shot, fullPage: true });
+}
+
 async function open(page: Page, path: string): Promise<void> {
   await installDashboardRoutes(page);
   await page.goto(path + query());
@@ -353,7 +368,11 @@ function section(page: Page, heading: string) {
 
 test.describe('RealUnit workspace - Visual Regression Tests', () => {
   test.describe.configure({ timeout: 180_000 });
-  test.beforeEach(() => resetWorld());
+  test.beforeEach(async ({ page }) => {
+    resetWorld();
+    // Tall viewport so the app bar and the section nav are both in frame.
+    await page.setViewportSize({ width: 1440, height: 1700 });
+  });
 
   test('populated overview, treasury and insights', async ({ page }) => {
     await open(page, '/realunit');
@@ -367,7 +386,7 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
     await expect(pending.getByRole('columnheader', { name: 'Address' })).toBeVisible();
     await expect(pending.getByRole('columnheader', { name: 'User' })).toHaveCount(0);
     await expect(pending).toHaveScreenshot('realunit-dashboard-01-pending.png', shot);
-    await expect(page).toHaveScreenshot('realunit-dashboard-09-overview.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-09-overview.png');
 
     await page.goto('/realunit/treasury' + query());
     await page.waitForLoadState('networkidle');
@@ -380,12 +399,12 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
     await expect(bonus.locator('svg').first()).toBeVisible();
     await expect(bonus).toHaveScreenshot('realunit-dashboard-06-bonus-referral.png', shot);
     await expect(page.getByTestId('payouts-panel')).toHaveScreenshot('realunit-dashboard-07-prize-payouts.png', shot);
-    await expect(page).toHaveScreenshot('realunit-dashboard-12-treasury.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-12-treasury.png');
 
     await page.goto('/realunit/insights' + query());
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(800);
-    await expect(page).toHaveScreenshot('realunit-dashboard-20-insights.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-20-insights.png');
     const buyVolume = section(page, 'Buy Volume');
     await expect(buyVolume).toHaveScreenshot('realunit-dashboard-02-buy-volume-chf.png', shot);
     await buyVolume.getByRole('button', { name: 'Shares' }).click();
@@ -405,7 +424,7 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
     await open(page, '/realunit');
     await expect(page.getByText('No pending transactions found')).toBeVisible();
     await expect(page.getByText('No received transactions found')).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-10-overview-empty.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-10-overview-empty.png');
 
     resetWorld();
     world.quotes = 'many';
@@ -413,7 +432,7 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
     world.holders = 'many';
     await open(page, '/realunit');
     await expect(page.getByRole('button', { name: 'More' })).toHaveCount(3);
-    await expect(page).toHaveScreenshot('realunit-dashboard-11-overview-more.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-11-overview-more.png');
   });
 
   test('treasury buy limit, wallet and payout scenarios', async ({ page }) => {
@@ -491,60 +510,60 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
     await open(page, '/realunit/holders');
     await expect(page.getByRole('heading', { name: /All Holders/ })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
-    await expect(page).toHaveScreenshot('realunit-dashboard-25-holders-list.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-25-holders-list.png');
 
     world.holders = 'empty';
     await open(page, '/realunit/holders');
     await expect(page.getByRole('heading', { name: 'All Holders (0)' })).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-26-holders-empty.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-26-holders-empty.png');
 
     world.holders = 'paged';
     await open(page, '/realunit/holders');
     await expect(page.getByRole('heading', { name: 'All Holders (8)' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Next' })).toBeEnabled();
-    await expect(page).toHaveScreenshot('realunit-dashboard-27-holders-next-enabled.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-27-holders-next-enabled.png');
     await page.getByRole('button', { name: 'Next' }).click();
     await expect(page.getByText('19', { exact: true })).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-38-holders-page-two.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-38-holders-page-two.png');
   });
 
   test('received transactions, detail, empty, error and missing', async ({ page }) => {
     await open(page, '/realunit/transactions');
     await expect(page.getByRole('cell', { name: 'Buy' })).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-28-transactions.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-28-transactions.png');
 
     await open(page, '/realunit/transactions/9001');
     await expect(page.getByRole('heading', { name: 'Transaction Detail' })).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-31-transaction-detail.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-31-transaction-detail.png');
 
     world.transactions = 'empty';
     await open(page, '/realunit/transactions');
     await expect(page.getByText('No received transactions found')).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-29-transactions-empty.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-29-transactions-empty.png');
 
     world.transactions = 'error';
     await open(page, '/realunit/transactions');
     await expect(page.getByText('Failed to load received transactions.')).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-30-transactions-error.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-30-transactions-error.png');
 
     world.transactions = 'one';
     await open(page, '/realunit/transactions/1');
     await expect(page.getByText('Transaction not found')).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-32-transaction-missing.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-32-transaction-missing.png');
   });
 
   test('holder account in CHF, REALU and missing', async ({ page }) => {
     await open(page, `/realunit/user/${encodeURIComponent(ADDRESS)}`);
     await expect(page.getByRole('heading', { name: 'Account Details' })).toBeVisible();
     await expect(page.getByRole('heading', { name: /Transaction History/ })).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-33-account-realu.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-33-account-realu.png');
     await page.getByRole('button', { name: 'CHF' }).click();
     await expect(page.getByText(/1.000\.00/)).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-34-account-chf.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-34-account-chf.png');
 
     world.account = 'missing';
     await open(page, `/realunit/user/${encodeURIComponent(ADDRESS)}`);
     await expect(page.getByText('No data available')).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-35-account-missing.png', { ...shot, fullPage: true });
+    await shootPage(page, 'realunit-dashboard-35-account-missing.png');
   });
 });

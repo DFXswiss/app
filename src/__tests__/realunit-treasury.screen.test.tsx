@@ -10,6 +10,8 @@ jest.mock('@dfx.swiss/react-components', () => ({
   StyledLoadingSpinner: ({ size }: { size?: string }) => <div data-testid="loading-spinner" data-size={size} />,
   StyledButton: ({ label }: { label: string }) => <button type="button">{label}</button>,
   StyledButtonWidth: { MIN: 'min', FULL: 'full' },
+  StyledButtonSize: { SMALL: 'small', BIG: 'big' },
+  StyledButtonColor: { BLUE: 'blue', STURDY_WHITE: 'sturdy-white', RED: 'red' },
   CopyButton: ({ onCopy }: { onCopy?: () => void }) => (
     <button type="button" data-testid="copy-button" onClick={onCopy}>
       copy

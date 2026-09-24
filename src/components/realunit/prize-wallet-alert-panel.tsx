@@ -1,4 +1,4 @@
-import { StyledButton, StyledButtonWidth } from '@dfx.swiss/react-components';
+import { StyledButton, StyledButtonColor, StyledButtonSize, StyledButtonWidth } from '@dfx.swiss/react-components';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { RealUnitPrizeWalletAlert, RealUnitPrizeWalletAlertAsset } from 'src/dto/realunit-referral.dto';
@@ -121,20 +121,25 @@ export function RealunitPrizeWalletAlertPanel({ translate }: PrizeWalletAlertPan
   const isRealu = asset === RealUnitPrizeWalletAlertAsset.REALU;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4 flex flex-col gap-4 text-left w-full">
+    <div className="bg-white rounded-lg shadow-sm p-4 flex flex-col gap-4 text-left w-full min-w-0">
       <StyledButton
         label={translate('screens/referral', 'Notify on low balance')}
         onClick={() => setShowForm((open) => !open)}
+        size={StyledButtonSize.SMALL}
         width={StyledButtonWidth.MIN}
+        color={StyledButtonColor.BLUE}
+        deactivateMargin
+        caps={false}
+        className="self-start"
         disabled={isLoading}
       />
 
       {showForm && (
-        <form className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end" onSubmit={onSubmit}>
+        <form className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end" onSubmit={onSubmit}>
           <label className="flex flex-col gap-1 text-sm text-dfxBlue-800">
             {translate('screens/referral', 'Asset')}
             <select
-              className="border border-dfxGray-400 rounded px-2 py-1"
+              className="h-10 border border-dfxGray-400 rounded-md px-3 bg-white"
               value={asset}
               onChange={(e) => setAsset(e.target.value as RealUnitPrizeWalletAlertAsset)}
             >
@@ -145,7 +150,7 @@ export function RealunitPrizeWalletAlertPanel({ translate }: PrizeWalletAlertPan
           <label className="flex flex-col gap-1 text-sm text-dfxBlue-800">
             {translate('screens/referral', 'Threshold')}
             <input
-              className="border border-dfxGray-400 rounded px-2 py-1"
+              className="h-10 border border-dfxGray-400 rounded-md px-3 bg-white"
               type="number"
               step={isRealu ? 1 : 'any'}
               min={isRealu ? 1 : undefined}
@@ -156,7 +161,7 @@ export function RealunitPrizeWalletAlertPanel({ translate }: PrizeWalletAlertPan
           <label className="flex flex-col gap-1 text-sm text-dfxBlue-800">
             {translate('screens/referral', 'Mail')}
             <input
-              className="border border-dfxGray-400 rounded px-2 py-1"
+              className="h-10 border border-dfxGray-400 rounded-md px-3 bg-white"
               type="email"
               value={mail}
               onChange={(e) => setMail(e.target.value)}
@@ -166,7 +171,12 @@ export function RealunitPrizeWalletAlertPanel({ translate }: PrizeWalletAlertPan
           <StyledButton
             label={translate('screens/referral', 'Submit')}
             onClick={() => onSubmit()}
+            size={StyledButtonSize.SMALL}
             width={StyledButtonWidth.MIN}
+            color={StyledButtonColor.BLUE}
+            deactivateMargin
+            caps={false}
+            className="justify-self-start h-10"
             disabled={!canSubmit}
             isLoading={isSubmitting}
           />
@@ -181,7 +191,12 @@ export function RealunitPrizeWalletAlertPanel({ translate }: PrizeWalletAlertPan
           <StyledButton
             label={translate('general/actions', 'Retry')}
             onClick={loadAlerts}
+            size={StyledButtonSize.SMALL}
             width={StyledButtonWidth.MIN}
+            color={StyledButtonColor.BLUE}
+            deactivateMargin
+            caps={false}
+            className="self-start"
             disabled={isSubmitting}
           />
         </>

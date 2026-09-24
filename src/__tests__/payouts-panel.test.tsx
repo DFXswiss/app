@@ -11,7 +11,8 @@ jest.mock('@dfx.swiss/react-components', () => ({
     </button>
   ),
   StyledButtonWidth: { MIN: 'min', FULL: 'full' },
-  StyledButtonColor: { STURDY_WHITE: 'sturdy-white' },
+  StyledButtonSize: { SMALL: 'small', BIG: 'big' },
+  StyledButtonColor: { STURDY_WHITE: 'sturdy-white', BLUE: 'blue' },
 }));
 
 jest.mock('src/components/error-hint', () => ({
@@ -85,8 +86,9 @@ describe('PayoutsPanel', () => {
     expect(screen.getByText('Referral premium')).toBeInTheDocument();
     expect(screen.getByText(RealUnitPrizePayoutStatus.COMPLETE)).toBeInTheDocument();
     expect(screen.getByText('42')).toBeInTheDocument();
-    expect(screen.getByTestId('copyable-address')).toHaveTextContent('0xcustomer');
-    expect(screen.getByText('0xabc')).toBeInTheDocument();
+    const addresses = screen.getAllByTestId('copyable-address').map((el) => el.textContent);
+    expect(addresses).toContain('0xcustomer');
+    expect(addresses).toContain('0xabc');
     expect(screen.getByText('AB-CD')).toBeInTheDocument();
     expect(screen.getByText('100 (50)')).toBeInTheDocument();
     expect(mockGetAdminPayouts).toHaveBeenCalledTimes(1);

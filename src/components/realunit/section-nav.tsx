@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { useSettingsContext } from 'src/contexts/settings.context';
 
 function navClass({ isActive }: { isActive: boolean }): string {
-  return `px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${
+  return `shrink-0 px-3 py-2.5 text-sm whitespace-nowrap border-b-2 ${
     isActive
       ? 'border-dfxBlue-800 text-dfxBlue-800 font-semibold'
       : 'border-transparent text-dfxGray-700 hover:text-dfxBlue-800'
