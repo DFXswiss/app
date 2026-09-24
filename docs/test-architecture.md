@@ -246,6 +246,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/kyc-continue-race.spec.ts` upserts ContactData, PersonalData, NationalityData
   and Ident (`SumsubAuto`) to `Completed`. A green run does **not** prove those steps complete
   through the product path, including live ident.
+- **The full-stack RealUnit section-nav test discounts the holders-statistics 503.**
+  `e2e-stack/specs/realunit.spec.ts` ("RealUnit opens treasury and insights from the section nav")
+  removes as many `Failed to load resource … status of 503` console lines as it saw 503 responses
+  on `GET /v1/realunit/admin/stats/holders`, because the stack sets no `REALUNIT_GRAPH_URL`. For a
+  503 response, the test verifies that the Insights page shows `Failed to load holder count.` A
+  green run does **not** prove that the holders statistics ever return data or that the Insights
+  holder chart renders them.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs

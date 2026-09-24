@@ -217,13 +217,27 @@ test.describe('RealUnit area', () => {
     await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Treasury' })).toHaveAttribute('aria-current', 'page');
 
-    // This stack sets no REALUNIT_GRAPH_URL, so the API answers the holders statistics
-    // (GET /v1/realunit/admin/stats/holders) with 503 by design.
-    // Remove this exception once the stack provides a RealUnit graph.
+    // Wait for the holders request so its error UI and console output settle before assertions.
+    // This stack sets no REALUNIT_GRAPH_URL, so the API answers 503 by design; remove the
+    // exception once the stack provides a RealUnit graph.
+    const holdersResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname === '/v1/realunit/admin/stats/holders',
+      { timeout: 15_000 },
+    );
     await page.getByRole('link', { name: 'Insights' }).click();
+    const holdersResponse = await holdersResponsePromise;
+    await holdersResponse.finished();
+
+    if (holdersResponse.status() === 503) {
+      await expect(page.getByText('Failed to load holder count.')).toBeVisible();
+    } else if (holdersResponse.ok()) {
+      await expect(page.getByText('Failed to load holder count.')).not.toBeVisible();
+    }
+
     await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Insights' })).toHaveAttribute('aria-current', 'page');
-    await expect(page.getByText('Failed to load holder count.')).toBeVisible();
 
     assertNoErrorsExceptHoldersUnavailable(pageErrors, consoleErrors, unavailableHoldersResponses);
   });
