@@ -143,7 +143,6 @@ export default function RealunitSupportScreen(): JSX.Element {
     title: translate('screens/support', 'RealUnit Support'),
     backButton: true,
     noMaxWidth: true,
-    noPadding: true,
   });
 
   const openIssueGroups = useMemo(() => groupOpenIssues(openIssues, stateFilter), [openIssues, stateFilter]);
@@ -156,7 +155,7 @@ export default function RealunitSupportScreen(): JSX.Element {
   const hasMore = currentTab != null && displayedIssues.length < displayedTotal;
 
   return (
-    <div className="w-full max-w-screen-xl mx-auto flex flex-col gap-3 flex-1 min-h-0 p-4 md:p-6 text-left">
+    <div className="w-full flex flex-col gap-3 flex-1 min-h-0 text-left">
       {/* Stats */}
       <div className="flex items-center gap-4 flex-wrap">
         <div className="bg-white rounded-lg shadow-sm p-3 flex-1 min-w-[150px]">

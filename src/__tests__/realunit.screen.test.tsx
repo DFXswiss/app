@@ -16,13 +16,6 @@ jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', MD: 'md', LG: 'lg' },
   IconColor: { GRAY: 'gray' },
   StyledLoadingSpinner: ({ size }: { size?: string }) => <div data-testid="loading-spinner" data-size={size} />,
-  StyledButton: ({ label, onClick, disabled }: { label: string; onClick?: () => void; disabled?: boolean }) => (
-    <button type="button" onClick={onClick} disabled={disabled}>
-      {label}
-    </button>
-  ),
-  StyledButtonWidth: { MIN: 'min', FULL: 'full' },
-  StyledButtonColor: { STURDY_WHITE: 'sturdy-white' },
   CopyButton: ({ onCopy }: { onCopy?: () => void }) => (
     <button type="button" data-testid="copy-button" onClick={onCopy}>
       copy
@@ -30,53 +23,8 @@ jest.mock('@dfx.swiss/react-components', () => ({
   ),
 }));
 
-jest.mock('src/components/error-hint', () => ({
-  ErrorHint: ({ message }: { message: string }) => <div data-testid="error-hint">{message}</div>,
-}));
-
-jest.mock('src/components/realunit/price-history-chart', () => ({
-  PriceHistoryChart: ({ onTimeframeChange }: { onTimeframeChange?: () => void }) => (
-    <button type="button" data-testid="price-history-chart" onClick={onTimeframeChange}>
-      chart
-    </button>
-  ),
-}));
-jest.mock('src/components/realunit/buy-volume-chart', () => ({
-  BuyVolumeChart: () => <div data-testid="buy-volume-chart" />,
-}));
-jest.mock('src/components/realunit/holder-count-chart', () => ({
-  HolderCountChart: () => <div data-testid="holder-count-chart" />,
-}));
-jest.mock('src/components/realunit/registration-funnel', () => ({
-  RegistrationFunnel: () => <div data-testid="registration-funnel" />,
-}));
-
-jest.mock('src/components/realunit/buy-limit-panel', () => ({
-  RealunitBuyLimitPanel: () => <div data-testid="buy-limit-panel" />,
-}));
-jest.mock('src/components/realunit/payouts-panel', () => ({
-  PayoutsPanel: () => <div data-testid="payouts-panel" />,
-}));
-
 jest.mock('src/hooks/guard.hook', () => ({
   useRealunitGuard: (...args: unknown[]) => mockUseRealunitGuard(...args),
-}));
-
-const mockGetPrizeWallet = jest.fn();
-const mockListPrizeWalletAlerts = jest.fn();
-const mockCreatePrizeWalletAlert = jest.fn();
-const mockDeletePrizeWalletAlert = jest.fn();
-jest.mock('src/hooks/realunit-referral.hook', () => ({
-  useRealunitReferral: () => ({
-    getPrizeWallet: (...args: unknown[]) => mockGetPrizeWallet(...args),
-    listPrizeWalletAlerts: (...args: unknown[]) => mockListPrizeWalletAlerts(...args),
-    createPrizeWalletAlert: (...args: unknown[]) => mockCreatePrizeWalletAlert(...args),
-    deletePrizeWalletAlert: (...args: unknown[]) => mockDeletePrizeWalletAlert(...args),
-  }),
-}));
-
-jest.mock('src/components/payment/qr-code', () => ({
-  QrCopy: ({ data }: { data: string }) => <div data-testid="prize-qr">{data}</div>,
 }));
 
 jest.mock('src/contexts/settings.context', () => ({
@@ -143,28 +91,8 @@ const TX = {
   userAddress: '0x1234567890abcdef1234567890abcdef12345678',
 };
 
-async function renderScreen() {
-  const view = render(<RealunitScreen />);
-  await waitFor(() => expect(mockGetPrizeWallet).toHaveBeenCalled());
-  let wallet: unknown;
-  try {
-    wallet = await mockGetPrizeWallet.mock.results[0].value;
-  } catch {
-    wallet = undefined;
-  }
-  if (wallet) {
-    // Alert panel mounts only on the main dashboard branch once the wallet card is shown.
-    await waitFor(() => {
-      if (!screen.queryByText('Bonus and Referral')) return;
-      expect(mockListPrizeWalletAlerts).toHaveBeenCalled();
-    });
-  } else {
-    await waitFor(() => {
-      if (!screen.queryByText('Bonus and Referral')) return;
-      expect(screen.queryByText('Prize wallet is not configured') || screen.queryByTestId('error-hint')).toBeTruthy();
-    });
-  }
-  return view;
+function renderScreen() {
+  return render(<RealunitScreen />);
 }
 
 function setContext(overrides: Record<string, unknown> = {}) {
@@ -207,27 +135,17 @@ function setContext(overrides: Record<string, unknown> = {}) {
 describe('RealunitScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetPrizeWallet.mockResolvedValue({ address: '0xprizewallet', eth: 0.5, realu: 80 });
-    mockListPrizeWalletAlerts.mockResolvedValue([]);
-    mockCreatePrizeWalletAlert.mockResolvedValue({
-      id: 1,
-      asset: 'ETH',
-      threshold: 0.1,
-      mail: 'ops@example.com',
-      created: '2026-09-10T00:00:00.000Z',
-    });
-    mockDeletePrizeWalletAlert.mockResolvedValue(undefined);
     setContext();
   });
 
-  it('calls the realunit guard on render', async () => {
-    await renderScreen();
+  it('calls the realunit guard on render', () => {
+    renderScreen();
     expect(mockUseRealunitGuard).toHaveBeenCalledWith();
   });
 
-  it('shows a large spinner when holders and tokenInfo are empty', async () => {
+  it('shows a large spinner when holders and tokenInfo are empty', () => {
     setContext({ holders: [], tokenInfo: undefined });
-    await renderScreen();
+    renderScreen();
     expect(screen.getByTestId('loading-spinner')).toHaveAttribute('data-size', 'lg');
   });
 
@@ -239,31 +157,31 @@ describe('RealunitScreen', () => {
       quotes: [],
       transactions: [],
     });
-    const { unmount } = await renderScreen();
-    expect(mockFetchHolders).toHaveBeenCalled();
+    const { unmount } = renderScreen();
+    await waitFor(() => expect(mockFetchHolders).toHaveBeenCalled());
     expect(mockFetchTokenInfo).not.toHaveBeenCalled();
-    expect(mockFetchPriceHistory).toHaveBeenCalled();
+    expect(mockFetchPriceHistory).not.toHaveBeenCalled();
     expect(mockFetchQuotes).toHaveBeenCalled();
     expect(mockFetchTransactions).toHaveBeenCalled();
-    expect(mockFetchBuyVolume).toHaveBeenCalledWith('All');
-    expect(mockFetchHolderCount).toHaveBeenCalledWith('All');
-    expect(mockFetchRegistrationStats).toHaveBeenCalledWith('All');
+    expect(mockFetchBuyVolume).not.toHaveBeenCalled();
+    expect(mockFetchHolderCount).not.toHaveBeenCalled();
+    expect(mockFetchRegistrationStats).not.toHaveBeenCalled();
     unmount();
 
     jest.clearAllMocks();
-    mockGetPrizeWallet.mockResolvedValue({ address: '0xprizewallet', eth: 0.5, realu: 80 });
     setContext();
-    await renderScreen();
+    renderScreen();
     expect(mockFetchHolders).not.toHaveBeenCalled();
     expect(mockFetchTokenInfo).not.toHaveBeenCalled();
     expect(mockFetchQuotes).not.toHaveBeenCalled();
     expect(mockFetchTransactions).not.toHaveBeenCalled();
-    expect(mockFetchBuyVolume).toHaveBeenCalledWith('All');
-    expect(mockFetchHolderCount).toHaveBeenCalledWith('All');
-    expect(mockFetchRegistrationStats).toHaveBeenCalledWith('All');
+    expect(mockFetchPriceHistory).not.toHaveBeenCalled();
+    expect(mockFetchBuyVolume).not.toHaveBeenCalled();
+    expect(mockFetchHolderCount).not.toHaveBeenCalled();
+    expect(mockFetchRegistrationStats).not.toHaveBeenCalled();
   });
 
-  it('bootstraps lists and stats only once when StrictMode re-invokes effects', async () => {
+  it('bootstraps lists only once when StrictMode re-invokes effects', async () => {
     setContext({
       holders: [],
       tokenInfo: undefined,
@@ -276,109 +194,34 @@ describe('RealunitScreen', () => {
         <RealunitScreen />
       </StrictMode>,
     );
-    await waitFor(() => expect(mockGetPrizeWallet).toHaveBeenCalledTimes(1));
-    expect(mockFetchHolders).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockFetchHolders).toHaveBeenCalledTimes(1));
     expect(mockFetchTokenInfo).toHaveBeenCalledTimes(1);
-    expect(mockFetchPriceHistory).toHaveBeenCalledTimes(1);
     expect(mockFetchQuotes).toHaveBeenCalledTimes(1);
     expect(mockFetchTransactions).toHaveBeenCalledTimes(1);
-    expect(mockFetchBuyVolume).toHaveBeenCalledTimes(1);
-    expect(mockFetchHolderCount).toHaveBeenCalledTimes(1);
-    expect(mockFetchRegistrationStats).toHaveBeenCalledTimes(1);
+    expect(mockFetchPriceHistory).not.toHaveBeenCalled();
+    expect(mockFetchBuyVolume).not.toHaveBeenCalled();
+    expect(mockFetchHolderCount).not.toHaveBeenCalled();
+    expect(mockFetchRegistrationStats).not.toHaveBeenCalled();
   });
 
-  it('shows stats error hints and loading spinners', async () => {
-    setContext({
-      buyVolumeError: true,
-      holderCountError: true,
-      registrationError: true,
-    });
-    await renderScreen();
-    expect(screen.getByText('Failed to load buy volume.')).toBeInTheDocument();
-    expect(screen.getByText('Failed to load holder count.')).toBeInTheDocument();
-    expect(screen.getByText('Failed to load registration stats.')).toBeInTheDocument();
-  });
-
-  it('shows medium spinners while stats are loading without data', async () => {
-    setContext({
-      buyVolumeLoading: true,
-      buyVolume: [],
-      holderCountLoading: true,
-      holderCount: [],
-      registrationLoading: true,
-      registrationStats: undefined,
-    });
-    await renderScreen();
-    expect(screen.getAllByTestId('loading-spinner').some((el) => el.getAttribute('data-size') === 'md')).toBe(true);
-    expect(screen.queryByTestId('buy-volume-chart')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('holder-count-chart')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('registration-funnel')).not.toBeInTheDocument();
-  });
-
-  it('keeps stats charts visible while a timeframe refetch is loading', async () => {
-    setContext({
-      buyVolumeLoading: true,
-      buyVolume: [{ timestamp: '2026-08-01T00:00:00.000Z', chf: 10, shares: 5, priceChf: 2 }],
-      holderCountLoading: true,
-      holderCount: [{ timestamp: '2026-08-01T00:00:00.000Z', holders: 3 }],
-      registrationLoading: true,
-      registrationStats: {
-        snapshot: {
-          completed: 1,
-          manualReview: 0,
-          confirmed: 1,
-          usersActive: 1,
-          usersNa: 0,
-          usersBlocked: 0,
-          usersDeleted: 0,
-        },
-        series: [{ timestamp: '2026-08-01T00:00:00.000Z', registered: 1, confirmed: 1 }],
-      },
-    });
-    await renderScreen();
-    expect(screen.getByTestId('buy-volume-chart')).toBeInTheDocument();
-    expect(screen.getByTestId('holder-count-chart')).toBeInTheDocument();
-    expect(screen.getByTestId('registration-funnel')).toBeInTheDocument();
-    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
-  });
-
-  it('does not render the registration funnel when stats failed without a snapshot', async () => {
-    setContext({
-      registrationError: true,
-      registrationStats: undefined,
-      registrationLoading: false,
-    });
-    await renderScreen();
-    expect(screen.queryByTestId('registration-funnel')).not.toBeInTheDocument();
-    expect(screen.getByText('Failed to load registration stats.')).toBeInTheDocument();
-  });
-
-  it('shows token overview, totalCount fallback, price-history error, and support/compliance links', async () => {
-    setContext({ totalCount: undefined, priceHistoryError: true });
-    await renderScreen();
-    fireEvent.click(screen.getByRole('button', { name: 'RealUnit Referral' }));
-    expect(mockNavigate).toHaveBeenCalledWith('/realunit/referral');
+  it('shows token overview, totalCount fallback and timestamp', () => {
+    setContext({ totalCount: undefined });
+    renderScreen();
     expect(screen.getByText('Holders')).toBeInTheDocument();
     expect(screen.getByText('0')).toBeInTheDocument();
     expect(screen.getByText('1,000')).toBeInTheDocument();
     expect(screen.getByText(/2,000 REALU/)).toBeInTheDocument();
-    expect(screen.getByTestId('error-hint')).toHaveTextContent('Failed to load price history.');
-    fireEvent.click(screen.getByRole('button', { name: 'RealUnit Support' }));
-    expect(mockNavigate).toHaveBeenCalledWith('/realunit/support');
-    fireEvent.click(screen.getByRole('button', { name: 'RealUnit Compliance' }));
-    expect(mockNavigate).toHaveBeenCalledWith('/realunit/compliance');
-    fireEvent.click(screen.getByTestId('price-history-chart'));
-    expect(mockFetchPriceHistory).toHaveBeenCalled();
+    expect(screen.getByText('2026-01-02T00:00:00.000Z')).toBeInTheDocument();
   });
 
-  it('shows the medium spinner while token info is loading', async () => {
+  it('shows the medium spinner while token info is loading', () => {
     setContext({ isLoading: true, tokenInfo: undefined, holders: [HOLDER] });
-    await renderScreen();
+    renderScreen();
     expect(screen.getByTestId('loading-spinner')).toHaveAttribute('data-size', 'md');
     expect(screen.queryByText('Overview')).not.toBeInTheDocument();
   });
 
-  it('navigates from a holder address and copies it, and shows More holders', async () => {
+  it('navigates from a holder address and copies it, and shows More holders', () => {
     setContext({
       holders: [
         HOLDER,
@@ -387,7 +230,7 @@ describe('RealunitScreen', () => {
         { address: '0xdddddddddddddddddddddddddddddddddddddddd', balance: '4', percentage: 0.4 },
       ],
     });
-    await renderScreen();
+    renderScreen();
     const holderButton = screen.getAllByRole('button').find((b) => b.textContent?.includes('0xabcd'));
     if (!holderButton) {
       throw new Error('holder address button missing');
@@ -404,7 +247,7 @@ describe('RealunitScreen', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/holders');
   });
 
-  it('shows address and userName on pending quotes and hides deactivated ones', async () => {
+  it('shows address and userName on pending quotes and hides deactivated ones', () => {
     setContext({
       quotes: [
         QUOTE,
@@ -418,7 +261,7 @@ describe('RealunitScreen', () => {
         },
       ],
     });
-    await renderScreen();
+    renderScreen();
     expect(screen.getAllByText('Address').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('User')).not.toBeInTheDocument();
     expect(screen.getByText('Name')).toBeInTheDocument();
@@ -434,28 +277,28 @@ describe('RealunitScreen', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/quotes/42');
   });
 
-  it('shows dashes when pending quote userAddress and userName are missing', async () => {
+  it('shows dashes when pending quote userAddress and userName are missing', () => {
     setContext({ quotes: [{ ...QUOTE, userAddress: undefined, userName: undefined, amount: undefined }] });
-    await renderScreen();
+    renderScreen();
     expect(screen.getAllByText('-').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('shows empty pending copy and a small spinner while quotes load', async () => {
+  it('shows empty pending copy and a small spinner while quotes load', () => {
     setContext({ quotes: [], quotesLoading: true });
-    await renderScreen();
+    renderScreen();
     expect(screen.getByTestId('loading-spinner')).toHaveAttribute('data-size', 'sm');
   });
 
-  it('shows empty pending copy when only deactivated quotes exist', async () => {
+  it('shows empty pending copy when only deactivated quotes exist', () => {
     setContext({
       quotes: [{ ...QUOTE, deactivatedAt: '2026-02-02T12:00:00.000Z' }],
       quotesLoading: false,
     });
-    await renderScreen();
+    renderScreen();
     expect(screen.getByText('No pending transactions found')).toBeInTheDocument();
   });
 
-  it('navigates to the full quotes list when more than three pending quotes exist', async () => {
+  it('navigates to the full quotes list when more than three pending quotes exist', () => {
     setContext({
       quotes: [
         { ...QUOTE, id: 1, userId: 1, userName: 'A' },
@@ -464,12 +307,12 @@ describe('RealunitScreen', () => {
         { ...QUOTE, id: 4, userId: 4, userName: 'D' },
       ],
     });
-    await renderScreen();
+    renderScreen();
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/quotes');
   });
 
-  it('maps received transaction types, falls back to created date, and navigates to detail', async () => {
+  it('maps received transaction types, falls back to created date, and navigates to detail', () => {
     setContext({
       quotes: [],
       transactions: [
@@ -477,7 +320,7 @@ describe('RealunitScreen', () => {
         { ...TX, id: 2, type: 'Other' },
       ],
     });
-    await renderScreen();
+    renderScreen();
     expect(screen.getByText('Sell')).toBeInTheDocument();
     expect(screen.getByText('Other')).toBeInTheDocument();
     expect(screen.getByText('-')).toBeInTheDocument();
@@ -485,19 +328,19 @@ describe('RealunitScreen', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/transactions/2');
   });
 
-  it('shows empty received copy and a small spinner while transactions load', async () => {
+  it('shows empty received copy and a small spinner while transactions load', () => {
     setContext({ transactions: [], transactionsLoading: true, quotes: [QUOTE] });
-    await renderScreen();
+    renderScreen();
     expect(screen.getByTestId('loading-spinner')).toHaveAttribute('data-size', 'sm');
   });
 
-  it('shows empty received copy when there are no transactions', async () => {
+  it('shows empty received copy when there are no transactions', () => {
     setContext({ transactions: [], transactionsLoading: false });
-    await renderScreen();
+    renderScreen();
     expect(screen.getByText('No received transactions found')).toBeInTheDocument();
   });
 
-  it('navigates to the full transactions list when more than three exist', async () => {
+  it('navigates to the full transactions list when more than three exist', () => {
     setContext({
       quotes: [],
       transactions: [
@@ -507,12 +350,12 @@ describe('RealunitScreen', () => {
         { ...TX, id: 4 },
       ],
     });
-    await renderScreen();
+    renderScreen();
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/transactions');
   });
 
-  it('maps pending quote displayType BuyCrypto, BuyFiat and passthrough', async () => {
+  it('maps pending quote displayType BuyCrypto, BuyFiat and passthrough', () => {
     setContext({
       quotes: [
         { ...QUOTE, id: 1, type: 'BuyCrypto', userId: 1, userName: 'One' },
@@ -521,7 +364,7 @@ describe('RealunitScreen', () => {
       ],
       transactions: [],
     });
-    await renderScreen();
+    renderScreen();
     expect(screen.getByText('Buy')).toBeInTheDocument();
     expect(screen.getByText('Sell')).toBeInTheDocument();
     expect(screen.getByText('Swap')).toBeInTheDocument();
@@ -529,58 +372,7 @@ describe('RealunitScreen', () => {
 
   it('fetches tokenInfo on mount when it is missing and holders already exist', async () => {
     setContext({ tokenInfo: undefined, holders: [HOLDER], isLoading: false });
-    await renderScreen();
-    expect(mockFetchTokenInfo).toHaveBeenCalled();
-  });
-
-  it('shows the prize wallet address, QR, ETH and REALU', async () => {
-    await renderScreen();
-    await waitFor(() => expect(screen.getByTestId('prize-qr')).toHaveTextContent('0xprizewallet'));
-    expect(screen.getByText('Bonus and Referral')).toBeInTheDocument();
-    expect(screen.getAllByText('0xprizewallet').length).toBeGreaterThan(0);
-    expect(screen.getByText(/ETH:/)).toBeInTheDocument();
-    expect(screen.getByText(/REALU:/)).toBeInTheDocument();
-  });
-
-  it('shows the payouts panel with dashboard content', async () => {
-    await renderScreen();
-    expect(screen.getByTestId('payouts-panel')).toBeInTheDocument();
-  });
-
-  it('shows the buy limit panel with dashboard content', async () => {
-    await renderScreen();
-    expect(screen.getByTestId('buy-limit-panel')).toBeInTheDocument();
-  });
-
-  it('shows the low-balance notify button when the prize wallet loaded', async () => {
-    await renderScreen();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Notify on low balance' })).toBeInTheDocument());
-    expect(mockListPrizeWalletAlerts).toHaveBeenCalled();
-  });
-
-  it('shows a not-configured hint when the prize wallet is missing', async () => {
-    mockGetPrizeWallet.mockRejectedValue(new Error('Prize wallet is not configured'));
-    await renderScreen();
-    await waitFor(() => expect(screen.getByText('Prize wallet is not configured')).toBeInTheDocument());
-    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
-    expect(screen.getByTestId('buy-limit-panel')).toBeInTheDocument();
-  });
-
-  it('shows an error hint when the prize wallet resolve is empty', async () => {
-    mockGetPrizeWallet.mockResolvedValue(undefined);
-    await renderScreen();
-    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error'));
-  });
-
-  it('shows an error hint when the prize wallet request fails', async () => {
-    mockGetPrizeWallet.mockRejectedValue(new Error('boom'));
-    await renderScreen();
-    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('boom'));
-  });
-
-  it('falls back to Unknown error when the rejection has no message', async () => {
-    mockGetPrizeWallet.mockRejectedValue({ message: undefined });
-    await renderScreen();
-    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error'));
+    renderScreen();
+    await waitFor(() => expect(mockFetchTokenInfo).toHaveBeenCalled());
   });
 });

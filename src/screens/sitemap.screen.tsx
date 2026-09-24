@@ -115,6 +115,8 @@ const sections: PageSection[] = [
     title: 'RealUnit',
     pages: [
       { path: '/realunit', label: 'RealUnit' },
+      { path: '/realunit/treasury', label: 'Treasury' },
+      { path: '/realunit/insights', label: 'Insights' },
       { path: '/realunit/holders', label: 'Holders' },
       { path: '/realunit/quotes', label: 'Quotes' },
       { path: '/realunit/transactions', label: 'Transactions' },

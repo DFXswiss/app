@@ -273,4 +273,25 @@ describe('Layout', () => {
     expect(modalRootRef.current).not.toBeNull();
     expect(scrollRef.current).not.toBeNull();
   });
+
+  it('uses a wide left-aligned padded column on /realunit routes', () => {
+    const { unmount } = renderLayout({ path: '/realunit' });
+    let classes = contentColumn().className.split(/\s+/);
+    expect(classes).toContain('text-start');
+    expect(classes).toContain('p-5');
+    expect(classes).not.toContain('max-w-screen-md');
+    expect(classes).not.toContain('text-center');
+    unmount();
+
+    const { unmount: unmountNested } = renderLayout({ path: '/realunit/quotes/7' });
+    classes = contentColumn().className.split(/\s+/);
+    expect(classes).toContain('text-start');
+    expect(classes).toContain('p-5');
+    expect(classes).not.toContain('max-w-screen-md');
+    expect(classes).not.toContain('text-center');
+    unmountNested();
+
+    renderLayout({ path: '/account' });
+    expect(contentColumn().className.split(/\s+/)).toContain('max-w-screen-md');
+  });
 });

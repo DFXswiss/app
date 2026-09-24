@@ -16,9 +16,11 @@ import type { Locator, Page } from '@playwright/test';
 import { apiGet, expect, gotoWithSession, loginAs, normPath, openScreen, queryOne, required, test } from './fixtures';
 import { cleanupCreatedData, createSupportIssue, createUser, trackRow } from './fixtures/factories';
 
-/** Routes owned by this lane's RealUnit half (13 paths). */
+/** Routes owned by this lane's RealUnit half (15 paths). */
 const REALUNIT_ROUTES = [
   '/realunit',
+  '/realunit/treasury',
+  '/realunit/insights',
   '/realunit/holders',
   '/realunit/quotes',
   '/realunit/quotes/:id',
@@ -147,24 +149,21 @@ test.describe('RealUnit area', () => {
     expect(status, 'GET /v1/realunit/compliance/customers must reject a plain User role').toBe(403);
   });
 
-  // CONFIRMED product bug: screen stuck on loading spinner forever. realunit.screen.tsx gates on
-  // `!holders.length && !tokenInfo ? <Spinner/> : (...)`. fetchHolders()/fetchTokenInfo() in
-  // realunit.context.tsx have no .catch(), so a rejected subgraph request leaves holders empty and
-  // tokenInfo undefined — the spinner never clears; "RealUnit Support" and the rest never mount.
-  // Observed: expect(getByRole('button', { name: 'RealUnit Support' })).toBeVisible() timeout 15s.
+  // The section nav lives outside the overview body, so its links mount even while the body
+  // is still a spinner. The body bug is unchanged: fetchHolders()/fetchTokenInfo() have no
+  // .catch(), so a rejected subgraph request leaves holders empty and tokenInfo undefined and
+  // the overview headings never replace the spinner.
   test.fail(
-    '/realunit empty state — stuck on spinner forever (fetchHolders/fetchTokenInfo no .catch; RealUnit Support never mounts)',
+    '/realunit empty state — overview body stuck on spinner (fetchHolders/fetchTokenInfo no .catch)',
     async ({ page }) => {
       const { jwt } = await loginAs('RealUnit');
       const { pageErrors, consoleErrors } = attachErrorListeners(page);
 
       await openScreen(page, '/realunit', jwt);
 
-      await expect(page.getByRole('button', { name: 'RealUnit Support' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'RealUnit Compliance' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'RealUnit Referral' })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Bonus and Referral' })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'RealUnit Support' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'RealUnit Compliance' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'RealUnit Referral' })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Top Holders' })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Received Transactions' })).toBeVisible();
@@ -174,6 +173,21 @@ test.describe('RealUnit area', () => {
       assertNoErrors(pageErrors, consoleErrors);
     },
   );
+
+  test('RealUnit opens treasury and insights from the section nav', async ({ page }) => {
+    const { jwt } = await loginAs('RealUnit');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+
+    await openScreen(page, '/realunit/treasury', jwt);
+    await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Treasury' })).toHaveAttribute('aria-current', 'page');
+
+    await page.getByRole('link', { name: 'Insights' }).click();
+    await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Insights' })).toHaveAttribute('aria-current', 'page');
+
+    assertNoErrors(pageErrors, consoleErrors);
+  });
 
   // CONFIRMED product bug (live uncaught pageerror): fetchHolders() has no .catch() in
   // realunit.context.tsx. Observed: ApiException: Cannot read properties of undefined (reading 'document').

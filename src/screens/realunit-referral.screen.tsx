@@ -53,7 +53,7 @@ export default function RealunitReferralScreen(): JSX.Element {
   );
 
   return (
-    <div className="w-full max-w-screen-xl mx-auto flex flex-col gap-3 p-4 md:p-6 text-left">
+    <div className="w-full flex flex-col gap-3 text-left">
       <RealunitPromoPanel translate={translate} />
       <div className="bg-white rounded-lg shadow-sm p-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-dfxBlue-800">
         <span className="font-semibold">

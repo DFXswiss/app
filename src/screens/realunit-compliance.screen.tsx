@@ -203,7 +203,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
   const screeningLocked = batch == null || isBatchRunning || isConfirming;
 
   return (
-    <div className="w-full max-w-screen-xl mx-auto flex flex-col gap-3 p-4 md:p-6 text-left">
+    <div className="w-full flex flex-col gap-3 text-left">
       <div className="bg-white rounded-lg shadow-sm p-3 flex flex-col gap-2">
         <div className="flex gap-2">
           <input

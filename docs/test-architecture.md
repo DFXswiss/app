@@ -124,10 +124,21 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `userId`, `userName` and `deactivatedAt`.
   They also fulfil staff/bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`,
   `/v1/country`, `/v1/setting/infoBanner`, `/v2/user`) so a synthetic unsigned JWT does not 401.
-  A green run proves the quote list, pending-table, stats-chart, prize-wallet-card and
-  max-tokens-per-buy-card fixtures render. It does not prove that the API returns those
-  payloads, that login or token verification works, or that those staff/settings, stats,
-  prize-wallet, payouts or buy-limit endpoints return real data.
+  The dashboard spec also fulfils `GET /v1/realunit/referral/admin/prize-wallet/alerts`,
+  `GET /v1/realunit/account/:address` and `GET /v1/realunit/account/:address/history`,
+  and it answers price history, buy volume, holder count, registration, the prize wallet
+  and the buy limit with HTTP errors when a scenario asks for the error state.
+  A green run proves the overview, treasury, insights, holder, transaction and account
+  fixtures render, including those error states. It does not prove that the API returns
+  those payloads, that login or token verification works, or that the staff, stats,
+  prize-wallet, alert, payout, buy-limit or account endpoints return real data.
+- **The RealUnit support visual spec answers the issue list and thread itself.**
+  `e2e/realunit-support.spec.ts` fulfils the RealUnit support list, counts, activity, clerks,
+  issue data and messages with synthetic fixtures. Auth is a synthetic unsigned Admin JWT.
+  Staff bootstrap GETs and `GET /v2/user` are fulfilled, unmatched `GET /v1/**` returns `[]`,
+  and other unmatched `/v1/**` methods return `{}`. A green run proves those list and issue
+  fixtures render. It does not prove production auth, that the API returns those issues, or
+  that sending a message reaches the server.
 - **The RealUnit referral visual spec answers the relation list and promo list itself.**
   `e2e/realunit-referral.spec.ts` fulfils `GET /v1/realunit/referral/admin/relations` and
   `GET /v1/realunit/referral/promo` with synthetic fixtures: an empty promo list on the

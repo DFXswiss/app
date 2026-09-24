@@ -17,6 +17,13 @@ jest.mock('@dfx.swiss/react', () => ({
   DfxContextProvider: ({ children }: any) => children,
   PaymentRoutesContextProvider: ({ children }: any) => children,
   SupportChatContextProvider: ({ children }: any) => children,
+  // App statically imports the RealUnit workspace, whose nav reads these at load time.
+  UserRole: {
+    ADMIN: 'Admin',
+    REALUNIT: 'RealUnit',
+    COMPLIANCE: 'Compliance',
+    SUPPORT: 'Support',
+  },
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({

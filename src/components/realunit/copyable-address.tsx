@@ -30,7 +30,7 @@ export const CopyableAddress = ({ address, displayLength = 12 }: CopyableAddress
     <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
       <button
         type="button"
-        className="text-left text-sm text-dfxBlue-800 cursor-pointer hover:text-dfxBlue-600 hover:underline break-all bg-transparent border-0 p-0"
+        className="text-left text-sm text-dfxBlue-800 cursor-pointer hover:text-dfxBlue-600 hover:underline whitespace-nowrap bg-transparent border-0 p-0"
         onClick={copyNow}
       >
         {blankedAddress(address, { displayLength })}
