@@ -174,20 +174,12 @@ test.describe('RealUnit area', () => {
     },
   );
 
+  // The E2E API has no RealUnit graph URL, so GET /v1/realunit/admin/stats/holders returns 503
+  // "RealUnit graph URL is not configured". The screen shows the hint; the browser line names
+  // no URL. pageerror stays strict. Only that one console line is ignored.
   test('RealUnit opens treasury and insights from the section nav', async ({ page }) => {
     const { jwt } = await loginAs('RealUnit');
     const { pageErrors, consoleErrors } = attachErrorListeners(page);
-
-    // The harness does not configure a RealUnit graph URL. Holder stats then answer 503 by
-    // contract and the browser logs that line. This test checks navigation, so that one request
-    // is answered with an empty series. Any other 5xx still fails assertNoErrors.
-    await page.route('**/v1/realunit/admin/stats/holders**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: '[]',
-      });
-    });
 
     await openScreen(page, '/realunit/treasury', jwt);
     await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toBeVisible();
@@ -196,8 +188,15 @@ test.describe('RealUnit area', () => {
     await page.getByRole('link', { name: 'Insights' }).click();
     await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Insights' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByText('Failed to load holder count.')).toBeVisible();
 
-    assertNoErrors(pageErrors, consoleErrors);
+    const holderStatsConsoleLine =
+      'Failed to load resource: the server responded with a status of 503 (Service Unavailable)';
+    const holderStatsLine = consoleErrors.indexOf(holderStatsConsoleLine);
+    assertNoErrors(
+      pageErrors,
+      holderStatsLine === -1 ? consoleErrors : consoleErrors.filter((_, index) => index !== holderStatsLine),
+    );
   });
 
   // CONFIRMED product bug (live uncaught pageerror): fetchHolders() has no .catch() in

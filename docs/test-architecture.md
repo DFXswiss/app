@@ -190,13 +190,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   those routes with a static PDF body or a `400` with a fixed message. A green run proves that
   the click reserves a tab and surfaces the error, not that the API can build an invoice or
   receipt from SQL-seeded `buy_crypto`.
-- **The RealUnit section-nav test answers holder stats itself.**
-  `e2e-stack/specs/realunit.spec.ts` fulfils `**/v1/realunit/admin/stats/holders**` with HTTP 200 and
-  `[]`, because the harness has no RealUnit graph URL and that route then returns 503. A green run
-  proves the treasury and insights headings and the section nav. It does not prove that the API
-  returns holder stats, or that Insights tolerates the harness 503.
 - **The waiting-for-payment Open-invoice case hits the real invoice route.**
-  `e2e-stack/specs/transactions.spec.ts` lets `PUT /v1/transaction/:uid/invoice` run against the API for a CHF
+  The same spec file lets `PUT /v1/transaction/:uid/invoice` run against the API for a CHF
   `WaitingForPayment` buy and asserts HTTP 200 plus a `%PDF` prefix, and that the quote
   remittance matches the buy route reference. A green run does not prove the PDF content
   (streams are compressed and unread), live prices (the quote uses the `price_rule` backfill
