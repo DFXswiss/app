@@ -749,6 +749,76 @@ test.describe('Buy Process - UI Flow', () => {
     });
   });
 
+  // USD is eligible on the client, so the request carries Frick. The quote then rejects the
+  // currency. The live fiat list hides USD until the display flag is on. This fixture injects it.
+  test('shows the currency-not-supported sentence when USD is displayed', async ({ page, request }) => {
+    const token = await getToken(request);
+
+    await page.route('**/v1/fiat', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 1,
+            name: 'CHF',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 2,
+            name: 'EUR',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 3,
+            name: 'USD',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+        ],
+      });
+    });
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        json: {
+          statusCode: 400,
+          message: 'PersonalIbanCurrencyNotSupported',
+          error: 'Bad Request',
+        },
+      });
+    });
+
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
+    );
+
+    await expect(
+      page.getByText('Bank Frick personal IBANs are currently only available for EUR, CHF, USD.'),
+    ).toBeVisible({ timeout: 15000 });
+
+    await expect(page).toHaveScreenshot('buy-usd-list-currency-error-page.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+  });
+
   // Same GBP scenario as the mismatch-hint test above, but with no requested selector at all
   // (no `personal-iban` URL param): the mismatch hint and the promo banner are mutually exclusive
   // render branches (the promo requires no selector), so this test proves the promo positively

@@ -127,6 +127,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e/buy-info.spec.ts` fulfil `**/v1/fiat` with buyable CHF, EUR, USD and GBP, and fulfil the
   quote as GBP. A green run proves the mismatch sentence then names EUR, CHF and USD. It does
   not prove that the API offers USD or GBP.
+- **The USD-list currency error injects USD and a rejected quote.** The same two specs fulfil
+  `**/v1/fiat` with buyable CHF, EUR and USD, and fulfil `**/v1/buy/paymentInfos` with HTTP 400
+  and message `PersonalIbanCurrencyNotSupported`. A green run proves the error sentence then
+  names EUR, CHF and USD. It does not prove that the API rejects USD or returns that message.
 - **The RealUnit quotes and dashboard visual specs answer the admin list themselves.**
   `e2e/realunit-quotes.spec.ts` and `e2e/realunit-dashboard.spec.ts` fulfil
   `GET /v1/realunit/admin/quotes` (and, on the dashboard, holders, token info, price history,

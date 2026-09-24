@@ -246,6 +246,76 @@ test.describe('Buy Info - UI Flow', () => {
     });
   });
 
+  // USD is eligible on the client, so the request carries Frick. The quote then rejects the
+  // currency. The live fiat list hides USD until the display flag is on. This fixture injects it.
+  test('shows the currency-not-supported sentence when USD is displayed', async ({ page, request }) => {
+    const token = await getToken(request);
+
+    await page.route('**/v1/fiat', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 1,
+            name: 'CHF',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 2,
+            name: 'EUR',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 3,
+            name: 'USD',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+        ],
+      });
+    });
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        json: {
+          statusCode: 400,
+          message: 'PersonalIbanCurrencyNotSupported',
+          error: 'Bad Request',
+        },
+      });
+    });
+
+    await page.goto(
+      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
+    );
+
+    await expect(
+      page.getByText('Bank Frick personal IBANs are currently only available for EUR, CHF, USD.'),
+    ).toBeVisible({ timeout: 15000 });
+
+    await expect(page).toHaveScreenshot('buy-info-usd-list-currency-error.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+  });
+
   test('legacy Yapeal holder switches provider', async ({ page, request }) => {
     const token = await getToken(request);
     let receivedProvider: unknown;
