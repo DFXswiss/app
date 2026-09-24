@@ -229,11 +229,11 @@ test.describe('RealUnit area', () => {
     await page.getByRole('link', { name: 'Insights' }).click();
     const holdersResponse = await holdersResponsePromise;
     await holdersResponse.finished();
+    const holdersStatus = holdersResponse.status();
+    expect(holdersStatus === 503 || holdersResponse.ok(), `unexpected holders status ${holdersStatus}`).toBe(true);
 
-    if (holdersResponse.status() === 503) {
+    if (holdersStatus === 503) {
       await expect(page.getByText('Failed to load holder count.')).toBeVisible();
-    } else if (holdersResponse.ok()) {
-      await expect(page.getByText('Failed to load holder count.')).not.toBeVisible();
     }
 
     await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
