@@ -13,6 +13,8 @@
 import type { Page } from '@playwright/test';
 import {
   apiGet,
+  apiPost,
+  apiPut,
   cleanupCreatedData,
   createBuy,
   createPaymentLink,
@@ -24,6 +26,7 @@ import {
   queryOne,
   queryRows,
   test,
+  trackRow,
   waitForRow,
 } from './fixtures';
 
@@ -37,6 +40,7 @@ interface PaymentLinkPaymentDto {
   amount: number;
   currency?: string | { name?: string };
   externalId?: string;
+  lnurl?: string;
 }
 
 interface PaymentLinkDto {
@@ -215,6 +219,87 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByText('You have no payment routes yet', { exact: true })).toBeVisible();
     // Title is layout-level copy for this screen.
     await expect(page.getByText('Payment routes', { exact: true }).first()).toBeVisible();
+  });
+
+  test('pending POS payment remains owner-visible after its Sell route is deactivated and through terminal status', async () => {
+    const owner = await createUser({ tag: 'pl-pos-inactive-owner', language: 'EN', kycLevel: 30, completePersonalData: true });
+    const other = await createUser({ tag: 'pl-pos-inactive-other', language: 'EN', kycLevel: 30, completePersonalData: true });
+    const link = await createPaymentLink(owner.jwt, { tag: 'pl-pos-inactive', amount: 3, label: 'inactive-pos-till' });
+    if (!link.paymentId || !link.routeId) throw new Error('payment-link factory did not create a payment and Sell route');
+
+    // Clear the factory's fixture payment, then create the payable invoice through the real POS API.
+    await queryRows(`UPDATE payment_link_payment SET status = 'Completed' WHERE id = $1`, [link.paymentId]);
+    const externalId = `e2e-pos-inactive-${link.paymentLinkId}`;
+    const created = await apiPost<PaymentLinkDto>(
+      `paymentLink/payment?linkId=${link.paymentLinkId}`,
+      { amount: 19, currency: 'CHF', externalId },
+      { jwt: owner.jwt },
+    );
+    expect(created.payment?.status).toBe('Pending');
+    await waitForRow(
+      `SELECT id FROM payment_link_payment WHERE "linkId" = $1 AND "externalId" = $2 AND status = 'Pending'`,
+      [link.paymentLinkId, externalId],
+    );
+
+    // A historical terminal row with a larger id must not hide the still-payable pending row
+    // when the inactive-route owner list is assembled. The partial unique index permits this
+    // legacy-shaped state because only one row is Pending.
+    const currency = await queryOne<{ currencyId: number }>(
+      `SELECT "currencyId" FROM payment_link_payment WHERE "linkId" = $1 AND "externalId" = $2`,
+      [link.paymentLinkId, externalId],
+    );
+    if (!currency) throw new Error('Could not resolve payment currency for terminal shadow row');
+    const shadowRows = await queryRows<{ id: number }>(
+      `INSERT INTO payment_link_payment ("linkId", "uniqueId", status, amount, "currencyId", mode, "expiryDate", "txCount", "isConfirmed")
+       VALUES ($1, $2, 'Completed', 1, $3, 'Single', NOW() + INTERVAL '1 day', 0, false)
+       RETURNING id`,
+      [link.paymentLinkId, `plp-shadow-${link.paymentLinkId}`, currency.currencyId],
+    );
+    if (!shadowRows[0]) throw new Error('Could not create terminal shadow payment row');
+    trackRow('payment_link_payment', shadowRows[0].id);
+
+    // This is the existing merchant route update; it does not cancel an issued payment.
+    await apiPut<unknown>(`sell/${link.routeId}`, { active: false }, { jwt: owner.jwt });
+    const route = await waitForRow<{ active: boolean }>(`SELECT active FROM deposit_route WHERE id = $1`, [link.routeId]);
+    expect(route.active).toBe(false);
+
+    const listedRaw = await apiGet<PaymentLinkDto[] | PaymentLinkDto>('paymentLink', { jwt: owner.jwt });
+    const listed = Array.isArray(listedRaw) ? listedRaw : [listedRaw];
+    expect(
+      listed.some(
+        (item) =>
+          String(item.id) === String(link.paymentLinkId) &&
+          item.payment?.externalId === externalId &&
+          item.payment.status === 'Pending',
+      ),
+    ).toBe(true);
+
+    const exactPath = `paymentLink?linkId=${link.paymentLinkId}&externalPaymentId=${encodeURIComponent(externalId)}`;
+    const pending = await apiGet<PaymentLinkDto>(exactPath, { jwt: owner.jwt });
+    expect(pending.payment?.status).toBe('Pending');
+
+    let foreignStatus = 0;
+    await apiGet<unknown>(exactPath, { jwt: other.jwt, expectOk: false, onStatus: (status) => { foreignStatus = status; } });
+    expect(foreignStatus).toBe(404);
+
+    await queryRows(
+      `UPDATE payment_link_payment SET status = 'Completed' WHERE "linkId" = $1 AND "externalId" = $2`,
+      [link.paymentLinkId, externalId],
+    );
+    const completed = await apiGet<PaymentLinkDto>(exactPath, { jwt: owner.jwt });
+    expect(completed.payment?.status).toBe('Completed');
+
+    const terminalListRaw = await apiGet<PaymentLinkDto[] | PaymentLinkDto>('paymentLink', { jwt: owner.jwt });
+    const terminalList = Array.isArray(terminalListRaw) ? terminalListRaw : [terminalListRaw];
+    expect(terminalList.some((item) => String(item.id) === String(link.paymentLinkId))).toBe(false);
+
+    let inactiveChargeStatus = 0;
+    await apiPost<unknown>(
+      `paymentLink/payment?linkId=${link.paymentLinkId}`,
+      { amount: 20, currency: 'CHF', externalId: `${externalId}-retry` },
+      { jwt: owner.jwt, expectOk: false, onStatus: (status) => { inactiveChargeStatus = status; } },
+    );
+    expect(inactiveChargeStatus).toBe(404);
   });
 
   test('/routes: buy, sell, payment link and pending payment appear; Create Payment Link stays hidden', async ({

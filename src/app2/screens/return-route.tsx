@@ -189,7 +189,6 @@ export default function ReturnRouteScreen() {
       };
 
       const scheduleNext = () => {
-        if (!isCurrentPoll()) return;
         if (Date.now() >= deadline) {
           // Visible stop + retry — never silent, never indefinite.
           failWithRetry('waitTimedOut');

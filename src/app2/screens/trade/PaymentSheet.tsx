@@ -2,11 +2,11 @@
 //
 // Ported from the static app's `#confirmSheet` (public/app2/index.html: `showConfirm()`,
 // `loadPaymentInfo()`/`loadCardInfo()`/`loadSellInfo()`/`loadSwapInfo()`, `renderGate()`).
-// This sheet fetches nothing itself: the trade screen runs the authenticated payment-details
-// request (`receiveFor(...)` → PUT .../paymentInfos, see useTradeQuote.ts) when the user taps
-// the CTA and hands the settled response — or its account-gate error — in as a frozen
-// snapshot. The bank/deposit/card boxes below read straight off that object, and `onRetry`
-// re-runs that same request (never the panel's public display quote).
+// The trade screen runs the authenticated payment-details request (`receiveFor(...)` → PUT
+// .../paymentInfos, see useTradeQuote.ts) when the user taps the CTA and hands the settled
+// response — or its account-gate error — in as a frozen snapshot. This sheet only re-reads
+// authenticated transaction detail when recovering an existing request; `onRetry` re-runs the
+// payment-details request (never the panel's public display quote).
 
 import { useEffect, useState } from 'react';
 import { PersonalIbanProvider, TransactionError, useUser } from '@dfx.swiss/react';
@@ -165,6 +165,7 @@ export function PaymentSheet({
   const [existingRequest, setExistingRequest] = useState<DetailTransaction | null>(null);
   const [existingRequestLoading, setExistingRequestLoading] = useState(false);
   const [existingRequestLookupFailed, setExistingRequestLookupFailed] = useState(false);
+  const [existingRequestLookupRetry, setExistingRequestLookupRetry] = useState(0);
 
   useEffect(() => {
     if (open) {
@@ -207,7 +208,7 @@ export function PaymentSheet({
     return () => {
       current = false;
     };
-  }, [open, requestUid, loadExistingRequest]);
+  }, [open, requestUid, loadExistingRequest, existingRequestLookupRetry]);
 
   const title = mode === 'buy' ? t('confBuyTitle') : mode === 'swap' ? t('confSwapTitle') : t('confSellTitle');
   const sub = mode === 'buy' ? t('confBuySub') : mode === 'swap' ? t('confSwapSub') : t('confSellSub');
@@ -224,7 +225,13 @@ export function PaymentSheet({
   const requestResolved = hasExistingRequest
     ? existingRequest?.state === 'Completed'
     : Boolean(buy || sell || swap);
-  const retryAction = requestLocked && !retryPreClaimGateError && onCheckExistingRequest ? onCheckExistingRequest : onRetry;
+  const checkExistingRequest = () => {
+    onCheckExistingRequest?.();
+    if (requestUid && loadExistingRequest && !existingRequestLoading) {
+      setExistingRequestLookupRetry((retry) => retry + 1);
+    }
+  };
+  const retryAction = requestLocked && !retryPreClaimGateError && onCheckExistingRequest ? checkExistingRequest : onRetry;
 
   const rows: { label: string; value: string; cls?: string }[] = [];
   if (mode === 'buy' && buy) {
@@ -377,12 +384,17 @@ export function PaymentSheet({
               />
             )}
             {!requestUid && onCheckExistingRequest && (
-              <button className={cx('btn-glass')} type="button" onClick={onCheckExistingRequest}>
+              <button className={cx('btn-glass')} type="button" onClick={checkExistingRequest}>
                 {t('checkRequestStatus')}
               </button>
             )}
             {requestUid && !existingRequest && onCheckExistingRequest && (
-              <button className={cx('btn-glass')} type="button" onClick={onCheckExistingRequest}>
+              <button
+                className={cx('btn-glass')}
+                type="button"
+                disabled={existingRequestLoading}
+                onClick={checkExistingRequest}
+              >
                 {t('checkRequestStatus')}
               </button>
             )}
@@ -400,7 +412,7 @@ export function PaymentSheet({
               </button>
             )}
             {requestLocked && onCheckExistingRequest && (
-              <button className={cx('btn-glass')} type="button" onClick={onCheckExistingRequest}>
+              <button className={cx('btn-glass')} type="button" onClick={checkExistingRequest}>
                 {t('checkRequestStatus')}
               </button>
             )}

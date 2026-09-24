@@ -65,6 +65,11 @@ describe('ReturnRouteScreen extra paths', () => {
     mockSearch.value = '';
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
   it('grows the CKO poll delay and caps it', () => {
     expect(nextPollDelay(CKO_POLL.initialDelayMs)).toBe(2700);
     expect(nextPollDelay(CKO_POLL.maxDelayMs)).toBe(CKO_POLL.maxDelayMs);
@@ -236,16 +241,101 @@ describe('ReturnRouteScreen extra paths', () => {
     expect(await screen.findByText('3')).toBeInTheDocument();
   });
 
+  it('shows a bounded retry state when CKO remains unsettled until the polling deadline', async () => {
+    jest.useFakeTimers();
+    mockPath.value = '/buy/success';
+    mockSearch.value = 'cko-payment-id=cko_pending';
+    mockSession.isLoggedIn = true;
+    mockGetCko.mockResolvedValue({});
+    renderRoute();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(CKO_POLL.deadlineMs);
+    });
+    expect(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i })).toBeInTheDocument();
+    expect(screen.getByText(/longer than expected|länger als erwartet|più tempo|plus de temps/i)).toBeInTheDocument();
+    jest.useRealTimers();
+  });
+
+  it('shows the timeout immediately when a poll result arrives after its deadline', async () => {
+    jest.useFakeTimers();
+    mockPath.value = '/buy/success';
+    mockSearch.value = 'cko-payment-id=cko_deadline';
+    mockSession.isLoggedIn = true;
+    const startedAt = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValueOnce(startedAt).mockReturnValue(startedAt + CKO_POLL.deadlineMs);
+    mockGetCko.mockResolvedValueOnce({});
+    renderRoute();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/longer than expected|länger als erwartet|più tempo|plus de temps/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i })).toBeInTheDocument();
+  });
+
+  it('ignores an already-queued deadline callback from a prior CKO poll generation', async () => {
+    jest.useFakeTimers();
+    const setTimeoutSpy = jest.spyOn(window, 'setTimeout');
+    mockPath.value = '/buy/success';
+    mockSearch.value = 'cko-payment-id=cko_retry_generation';
+    mockSession.isLoggedIn = true;
+    mockGetCko
+      .mockRejectedValueOnce(new ApiException(500, 'first poll failed'))
+      .mockImplementationOnce(() => new Promise(() => undefined));
+    renderRoute();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const retry = screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i });
+    const oldDeadline = setTimeoutSpy.mock.calls.find(([, timeout]) => timeout === CKO_POLL.deadlineMs)?.[0];
+    expect(oldDeadline).toBeDefined();
+
+    fireEvent.click(retry);
+    expect(mockGetCko).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/waiting for payment confirmation|warten auf die zahlungsbestätigung|attesa della conferma|attente de la confirmation/i)).toBeInTheDocument();
+    act(() => (oldDeadline as () => void)());
+    expect(screen.getByText(/waiting for payment confirmation|warten auf die zahlungsbestätigung|attesa della conferma|attente de la confirmation/i)).toBeInTheDocument();
+    expect(screen.queryByText(/longer than expected|länger als erwartet|più tempo|plus de temps/i)).not.toBeInTheDocument();
+  });
+
+  it('drops both successful and failed CKO responses after the route unmounts', async () => {
+    mockPath.value = '/buy/success';
+    mockSearch.value = 'cko-payment-id=cko_late';
+    mockSession.isLoggedIn = true;
+    let resolveLookup!: (value: { uid: string }) => void;
+    mockGetCko.mockReturnValueOnce(new Promise((resolve) => { resolveLookup = resolve; }));
+    const success = renderRoute();
+    await waitFor(() => expect(mockGetCko).toHaveBeenCalledWith('cko_late'));
+    success.unmount();
+    await act(async () => resolveLookup({ uid: 'stale-success' }));
+
+    let rejectLookup!: (error: unknown) => void;
+    mockGetCko.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectLookup = reject; }));
+    const failure = renderRoute();
+    await waitFor(() => expect(mockGetCko).toHaveBeenCalledTimes(2));
+    failure.unmount();
+    await act(async () => rejectLookup(new Error('stale-failure')));
+    expect(mockNavigate).not.toHaveBeenCalledWith('/tx');
+  });
+
   it('rejects an expired or malformed merge token and maps a 400', async () => {
     mockSearch.value = 'otp=abc123';
-    mockCall.mockResolvedValueOnce({ accessToken: jwt(-120) });
+    mockCall.mockResolvedValueOnce({ kycHash: 'merged-kyc-hash', accessToken: jwt(-120) });
     const expired = renderRoute();
-    expect(await screen.findByText(/merged|zusammengeführt|unito|fusionné|merge/i)).toBeInTheDocument();
+    expect(await screen.findByText(/couldn.t complete|nicht geklappt|non è stato possibile|n.a pas abouti/i)).toBeInTheDocument();
+    expect(mockUpdateSession).not.toHaveBeenCalled();
     expired.unmount();
 
-    mockCall.mockResolvedValueOnce({ accessToken: 'aaa.%%% .ccc' });
+    // Valid Base64 with invalid JSON exercises the JWT payload parse failure.
+    mockCall.mockResolvedValueOnce({ kycHash: 'merged-kyc-hash', accessToken: 'aaa.bm90LWpzb24=.ccc' });
     const bad = renderRoute();
-    expect(await screen.findByText(/merged|zusammengeführt|unito|fusionné|merge/i)).toBeInTheDocument();
+    expect(await screen.findByText(/couldn.t complete|nicht geklappt|non è stato possibile|n.a pas abouti/i)).toBeInTheDocument();
+    expect(mockUpdateSession).not.toHaveBeenCalled();
     bad.unmount();
 
     mockCall.mockRejectedValueOnce(new ApiException(400, 'bad'));

@@ -34,6 +34,7 @@ import {
   assetFormatter,
   fiatFormatter,
   isEmailGateError,
+  isKnownPreClaimGateError,
   mapThrownError,
   mapTransactionError,
 } from '../screens/trade/errors';
@@ -49,6 +50,12 @@ describe('isEmailGateError', () => {
     expect(isEmailGateError(TransactionError.LIMIT_EXCEEDED)).toBe(false);
     expect(isEmailGateError('e-mail-required')).toBe(true);
     expect(isEmailGateError('PRIMARY-EMAIL-NOT-CONFIRMED')).toBe(true);
+  });
+});
+
+describe('isKnownPreClaimGateError', () => {
+  it('recognizes a known gate in the message when a legacy 400 has no code', () => {
+    expect(isKnownPreClaimGateError(new ApiException(400, 'Recommendation Required'))).toBe(true);
   });
 });
 

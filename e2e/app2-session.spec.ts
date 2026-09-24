@@ -245,7 +245,7 @@ test.describe('App2 session screens', () => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ buy: [], sell: [{ id: 10, currency: { name: 'CHF' } }], swap: [] }),
+        body: JSON.stringify({ buy: [], sell: [{ id: 10, active: true, currency: { name: 'CHF' } }], swap: [] }),
       }),
     );
     await page.route(/\/paymentLink(?:\/|\?|$)/, async (route) => {
@@ -341,7 +341,7 @@ test.describe('App2 session screens', () => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ buy: [], sell: [{ id: 10, currency: { name: 'CHF' } }], swap: [] }),
+        body: JSON.stringify({ buy: [], sell: [{ id: 10, active: true, currency: { name: 'CHF' } }], swap: [] }),
       }),
     );
     await page.route(/\/paymentLink(?:\/|\?|$)/, async (route) => {
@@ -421,6 +421,383 @@ test.describe('App2 session screens', () => {
     await expect(page).toHaveURL(/sub=links/);
   });
 
+  test('OpenCryptoPay POS recovers its committed payment after a lost POST response', async ({ page }) => {
+    let externalId = '';
+    let charges = 0;
+    if (test.info().project.name === 'chromium') {
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
+    await page.route('**/route', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ buy: [], sell: [{ id: 10, active: true, currency: { name: 'EUR' } }], swap: [] }),
+      }),
+    );
+    await page.route(/\/paymentLink(?:\/|\?|$)/, async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink/config')) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ accessKey: 'visual-fixture' }) });
+        return;
+      }
+      if (request.method() === 'POST' && url.pathname.endsWith('/payment')) {
+        charges += 1;
+        externalId = (request.postDataJSON() as { externalId: string }).externalId;
+        await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'response lost' }) });
+        return;
+      }
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink')) {
+        if (url.searchParams.has('externalPaymentId')) {
+          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'committed-till', payment: { externalId, status: 'Pending', amount: 12, currency: { name: 'EUR' } } }) });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([{
+            id: 'committed-till',
+            label: 'Committed till',
+            status: 'Active',
+            routeId: 10,
+            ...(charges > 0 ? { payment: {
+              id: 81,
+              externalId,
+              status: 'Pending',
+              amount: 12,
+              currency: { name: 'EUR' },
+              lnurl: lnurlEncode('https://api.example/lnurlp/committed'),
+            } } : {}),
+          }]),
+        });
+        return;
+      }
+      await route.continue();
+    });
+    await page.addInitScript(() => {
+      Object.defineProperty(crypto, 'randomUUID', {
+        configurable: true,
+        value: () => '00000000-0000-4000-8000-000000000001',
+      });
+    });
+
+    await openApp2Session(page, token, '#/ocp?sub=pos');
+    await page.getByPlaceholder('0.00').fill('12');
+    await page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i }).click();
+    const amount = page.getByTestId('ocp-pos-charge-amount');
+    await expect(amount).toHaveText('EUR 12');
+    await expect(page.getByTestId('ocp-pos-ambiguous-charge')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i })).toBeDisabled();
+    expect(charges).toBe(1);
+    expect(externalId).toBe('00000000-0000-4000-8000-000000000001');
+    await amount.scrollIntoViewIfNeeded();
+    await expect(page).toHaveScreenshot('app2-ocp-pos-committed-response-recovered.png', screenshotOpts);
+  });
+
+  test('OpenCryptoPay POS recovers the existing payment after the specific pending-link conflict', async ({ page }) => {
+    let charges = 0;
+    if (test.info().project.name === 'chromium') {
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
+    await page.route('**/route', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ buy: [], sell: [{ id: 10, active: true, currency: { name: 'EUR' } }], swap: [] }),
+      }),
+    );
+    await page.route(/\/paymentLink(?:\/|\?|$)/, async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink/config')) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ accessKey: 'visual-fixture' }) });
+        return;
+      }
+      if (request.method() === 'POST' && url.pathname.endsWith('/payment')) {
+        charges += 1;
+        await route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'There is already a pending payment for the specified payment link' }),
+        });
+        return;
+      }
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink')) {
+        if (url.searchParams.has('externalPaymentId')) {
+          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: 'other-tab-till', payment: { externalId: 'other-tab-payment', status: 'Pending', amount: 19, currency: { name: 'EUR' } } }) });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([{
+            id: 'other-tab-till',
+            label: 'Other tab till',
+            status: 'Active',
+            routeId: 10,
+            ...(charges > 0 ? { payment: {
+              id: 82,
+              externalId: 'other-tab-payment',
+              status: 'Pending',
+              amount: 19,
+              currency: { name: 'EUR' },
+              lnurl: lnurlEncode('https://api.example/lnurlp/other-tab'),
+            } } : {}),
+          }]),
+        });
+        return;
+      }
+      await route.continue();
+    });
+    await page.addInitScript(() => {
+      Object.defineProperty(crypto, 'randomUUID', {
+        configurable: true,
+        value: () => '00000000-0000-4000-8000-000000000002',
+      });
+    });
+
+    await openApp2Session(page, token, '#/ocp?sub=pos');
+    await page.getByPlaceholder('0.00').fill('12');
+    await page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i }).click();
+    const amount = page.getByTestId('ocp-pos-charge-amount');
+    await expect(amount).toHaveText('EUR 19');
+    await expect(page.getByText(/existing payment is still open.*entered amount was not changed/i)).toBeVisible();
+    await expect(page.getByPlaceholder('0.00')).toHaveValue('12');
+    await expect(page.getByTestId('ocp-pos-ambiguous-charge')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i })).toBeDisabled();
+    expect(charges).toBe(1);
+    await amount.scrollIntoViewIfNeeded();
+    await expect(page).toHaveScreenshot('app2-ocp-pos-existing-pending-conflict.png', screenshotOpts);
+  });
+
+  const showTerminalReceipt = async (
+    page: import('@playwright/test').Page,
+    status: string,
+    receiptText: RegExp,
+    screenshot: string,
+    keepActiveTill = false,
+  ) => {
+    let externalId: string | undefined;
+    let charges = 0;
+    if (test.info().project.name === 'chromium') {
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
+    await page.route('**/route', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ buy: [], sell: [{ id: 10, active: true, currency: { name: 'EUR' } }], swap: [] }),
+      }),
+    );
+    await page.route(/\/paymentLink(?:\/|\?|$)/, async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink/config')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ accessKey: 'visual-fixture' }),
+        });
+        return;
+      }
+      if (request.method() === 'POST' && url.pathname.endsWith('/payment')) {
+        charges += 1;
+        externalId = (request.postDataJSON() as { externalId: string }).externalId;
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'response lost' }),
+        });
+        return;
+      }
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink')) {
+        if (url.searchParams.has('externalPaymentId')) {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              id: url.searchParams.get('linkId'),
+              payment: { externalId, status, amount: 12, currency: { name: 'EUR' } },
+            }),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(
+            charges === 0 || keepActiveTill
+              ? [{ id: 'terminal-fixture-link', label: 'Receipt till', status: 'Active', routeId: 10 }]
+              : [],
+          ),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.addInitScript(() => {
+      Object.defineProperty(crypto, 'randomUUID', {
+        configurable: true,
+        value: () => '00000000-0000-4000-8000-000000000001',
+      });
+    });
+    await page.clock.install({ time: new Date('2026-09-22T10:00:00.000Z') });
+    await openApp2Session(page, token, '#/ocp?sub=pos');
+    await page.getByPlaceholder('0.00').fill('12');
+    await page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i }).click();
+    await expect.poll(() => charges).toBe(1);
+    await page.clock.runFor(2_000);
+    const receipt = page.getByTestId('ocp-pos-terminal-receipt');
+    await expect(receipt).toContainText(receiptText);
+    await expect(receipt).toContainText('EUR 12');
+    await expect(receipt).toContainText('terminal-fixture-link');
+    await expect(page.getByTestId('ocp-pos-terminal-external-id')).toContainText(externalId ?? '');
+    if (keepActiveTill) {
+      await expect(page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i })).toBeEnabled();
+    } else {
+      await expect(page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i })).toHaveCount(0);
+    }
+    await expect(page).toHaveScreenshot(screenshot, screenshotOpts);
+  };
+
+  test('OpenCryptoPay POS shows an identifying no-link paid receipt', async ({ page }) => {
+    await showTerminalReceipt(page, 'Completed', /paid|bezahlt|pagato|payé/i, 'app2-ocp-pos-terminal-paid.png');
+  });
+
+  test('OpenCryptoPay POS shows an identifying no-link failed receipt', async ({ page }) => {
+    await showTerminalReceipt(
+      page,
+      'Cancelled',
+      /not completed|nicht abgeschlossen|non completato|non abouti/i,
+      'app2-ocp-pos-terminal-failed.png',
+    );
+  });
+
+  test('OpenCryptoPay POS shows a paid receipt while the till remains active', async ({ page }) => {
+    await showTerminalReceipt(
+      page,
+      'Completed',
+      /paid|bezahlt|pagato|payé/i,
+      'app2-ocp-pos-terminal-active-paid.png',
+      true,
+    );
+  });
+
+  test('OpenCryptoPay POS shows a failed receipt while the till remains active', async ({ page }) => {
+    await showTerminalReceipt(
+      page,
+      'Cancelled',
+      /not completed|nicht abgeschlossen|non completato|non abouti/i,
+      'app2-ocp-pos-terminal-active-failed.png',
+      true,
+    );
+  });
+
+  test('OpenCryptoPay POS requires support after two status checks stop responding', async ({ page }) => {
+    let charges = 0;
+    let externalId = '';
+    let polls = 0;
+    const releasePolls: Array<() => Promise<void>> = [];
+    if (test.info().project.name === 'chromium') {
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
+    await page.route('**/route', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ buy: [], sell: [{ id: 10, active: true, currency: { name: 'EUR' } }], swap: [] }),
+      }),
+    );
+    await page.route(/\/paymentLink(?:\/|\?|$)/, async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink/config')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ accessKey: 'visual-fixture' }),
+        });
+        return;
+      }
+      if (request.method() === 'POST' && url.pathname.endsWith('/payment')) {
+        charges += 1;
+        externalId = (request.postDataJSON() as { externalId: string }).externalId;
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'response lost' }),
+        });
+        return;
+      }
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink')) {
+        if (url.searchParams.has('externalPaymentId')) {
+          polls += 1;
+          await new Promise<void>((resolve) => {
+            releasePolls.push(async () => {
+              await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                  id: url.searchParams.get('linkId'),
+                  payment: { externalId, status: 'Pending', amount: 12, currency: { name: 'EUR' } },
+                }),
+              });
+              resolve();
+            });
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(
+            charges === 0
+              ? [{ id: 'stalled-status-link', label: 'Stalled till', status: 'Active', routeId: 10 }]
+              : [],
+          ),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.addInitScript(() => {
+      Object.defineProperty(crypto, 'randomUUID', {
+        configurable: true,
+        value: () => '00000000-0000-4000-8000-000000000002',
+      });
+    });
+    await page.clock.install({ time: new Date('2026-09-22T10:00:00.000Z') });
+    await openApp2Session(page, token, '#/ocp?sub=pos');
+    await page.getByPlaceholder('0.00').fill('12');
+    await page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i }).click();
+    await expect.poll(() => charges).toBe(1);
+    await page.clock.runFor(2_000);
+    await expect.poll(() => polls).toBe(1);
+    await page.clock.runFor(20_000);
+    await page
+      .getByRole('button', {
+        name: /refresh payment status|zahlungsstatus aktualisieren|aggiorna stato pagamento|actualiser le statut du paiement/i,
+      })
+      .click();
+    await expect.poll(() => polls).toBe(2);
+    await page.clock.runFor(20_000);
+    await expect(page.getByTestId('ocp-pos-status-check-limit')).toBeVisible();
+    await expect(page.getByTestId('ocp-pos-ambiguous-charge')).toContainText(externalId);
+    await expect(page.getByTestId('ocp-pos-ambiguous-charge-amount')).toContainText(/(?:Amount|Betrag|Importo|Montant): EUR 12/);
+    await expect(page.getByTestId('ocp-pos-ambiguous-charge-link')).toContainText('stalled-status-link');
+    await expect(page.getByPlaceholder('0.00')).toHaveCount(0);
+    await expect(page.getByTestId('ocp-pos-ambiguous-charge')).not.toContainText('response lost');
+    await expect(
+      page.getByRole('button', {
+        name: /refresh payment status|zahlungsstatus aktualisieren|aggiorna stato pagamento|actualiser le statut du paiement/i,
+      }),
+    ).toHaveCount(0);
+    await expect(page).toHaveScreenshot('app2-ocp-pos-status-check-limit.png', screenshotOpts);
+    await Promise.all(releasePolls.map((release) => release()));
+  });
+
   test('OpenCryptoPay POS restores and lets the cashier choose between pending payments', async ({
     page,
   }, testInfo) => {
@@ -432,7 +809,7 @@ test.describe('App2 session screens', () => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ buy: [], sell: [{ id: 10, currency: { name: 'CHF' } }], swap: [] }),
+        body: JSON.stringify({ buy: [], sell: [{ id: 10, active: true, currency: { name: 'CHF' } }], swap: [] }),
       }),
     );
     await page.route(/\/paymentLink(?:\/|\?|$)/, async (route) => {

@@ -1302,13 +1302,13 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
     if (!session) return undefined;
     setPollTimedOut(false);
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timer: ReturnType<typeof setTimeout>;
     const deadline = Date.now() + IDENT_POLL.deadlineMs;
     let delay: number = IDENT_POLL.initialDelayMs;
 
     const deadlineTimer = setTimeout(() => {
       cancelled = true;
-      if (timer !== undefined) clearTimeout(timer);
+      clearTimeout(timer);
       setPollTimedOut(true);
     }, IDENT_POLL.deadlineMs);
 
@@ -1341,7 +1341,7 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
     timer = setTimeout(tick, IDENT_POLL.initialDelayMs);
     return () => {
       cancelled = true;
-      if (timer !== undefined) clearTimeout(timer);
+      clearTimeout(timer);
       clearTimeout(deadlineTimer);
     };
   }, [ctx.code, session?.type, session?.url, pollGen]);
