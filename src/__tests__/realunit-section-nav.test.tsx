@@ -1,7 +1,7 @@
-const mockAuth = { role: 'Admin' };
+const mockAuth: { role: string | null; signedIn: boolean } = { role: 'Admin', signedIn: true };
 
 jest.mock('@dfx.swiss/react', () => ({
-  useAuthContext: () => ({ session: { role: mockAuth.role } }),
+  useAuthContext: () => ({ session: mockAuth.signedIn ? { role: mockAuth.role } : null }),
   UserRole: {
     ADMIN: 'Admin',
     REALUNIT: 'RealUnit',
@@ -34,6 +34,7 @@ function renderAt(path: string) {
 describe('RealunitSectionNav', () => {
   beforeEach(() => {
     mockAuth.role = 'Admin';
+    mockAuth.signedIn = true;
   });
 
   it('renders nine section links and marks Overview current on /realunit', () => {
@@ -59,6 +60,20 @@ describe('RealunitSectionNav', () => {
     expect(screen.queryByRole('link', { name: 'Treasury' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'RealUnit Support' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'RealUnit Referral' })).not.toBeInTheDocument();
+  });
+
+  it('hides every link when there is no session', () => {
+    mockAuth.signedIn = false;
+    renderAt('/realunit');
+    expect(screen.queryByRole('link', { name: 'Pending Transactions' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Overview' })).not.toBeInTheDocument();
+  });
+
+  it('hides every link for a role that cannot open RealUnit', () => {
+    mockAuth.role = 'User';
+    renderAt('/realunit');
+    expect(screen.queryByRole('link', { name: 'Pending Transactions' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Overview' })).not.toBeInTheDocument();
   });
 
   it('marks Pending Transactions current on a nested quotes route', () => {
