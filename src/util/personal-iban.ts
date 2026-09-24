@@ -49,12 +49,15 @@ const PERSONAL_IBAN_MISMATCH_TEMPLATE =
  * Bank Frick currencies that are present in the active fiat list, in FRICK_CURRENCIES order.
  * Exact string match; names missing from the active list are omitted.
  */
-export function displayedFrickCurrencies(activeNames: readonly string[]): string[] {
-  return FRICK_CURRENCIES.filter((name) => activeNames.includes(name));
+export function displayedFrickCurrencies(activeNames?: readonly string[]): string[] {
+  // Omitted means the list has not loaded yet. An empty list is a loaded list with no
+  // currencies, and must not fall back to EUR and CHF.
+  const names = activeNames === undefined ? LEGACY_FRICK_CURRENCIES : activeNames;
+  return FRICK_CURRENCIES.filter((name) => names.includes(name));
 }
 
 function displayedFrickSet(activeNames?: readonly string[]): string[] {
-  return displayedFrickCurrencies(activeNames ?? LEGACY_FRICK_CURRENCIES);
+  return displayedFrickCurrencies(activeNames);
 }
 
 function usesLegacyFrickCopy(activeNames?: readonly string[]): boolean {

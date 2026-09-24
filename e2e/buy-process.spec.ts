@@ -327,6 +327,116 @@ test.describe('Buy Process - UI Flow', () => {
     });
   });
 
+  // USD is hidden on the live fiat list until its display flag is on. This fixture injects a
+  // buyable USD row so the toggle can be shown. A green run does not prove the API returns it.
+  test('shows the USD collection IBAN toggle when USD is in the fiat list', async ({ page, request }) => {
+    const token = await getToken(request);
+    let receivedProvider: unknown;
+
+    await page.route('**/v1/fiat', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 1,
+            name: 'CHF',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 2,
+            name: 'EUR',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 3,
+            name: 'USD',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+        ],
+      });
+    });
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      const requestData = route.request().postDataJSON() as Record<string, unknown>;
+      receivedProvider = requestData.personalIbanProvider;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          id: 1,
+          isValid: true,
+          amount: 100,
+          estimatedAmount: 0.0251,
+          rate: 3862.5,
+          exchangeRate: 3984.06,
+          priceSteps: [],
+          minVolume: 10,
+          maxVolume: 990000,
+          minVolumeTarget: 0.0026,
+          maxVolumeTarget: 248.5,
+          fees: {
+            rate: 0.0099,
+            fixed: 0,
+            min: 0,
+            dfx: 0.99,
+            network: 0,
+            bank: 0,
+            bankFixed: 1,
+            bankVariable: 0,
+            platform: 0,
+            total: 1.99,
+          },
+          currency: { id: 3, name: 'USD' },
+          asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
+          bank: 'Bank Frick',
+          bic: 'BFRILI22XXX',
+          iban: 'LI91088100002324013AB',
+          name: 'DFX AG',
+          street: 'Bahnhofstrasse',
+          number: '7',
+          zip: '6300',
+          city: 'Zug',
+          country: 'Schweiz',
+          remittanceInfo: 'A1B2-C3D4-E5F6',
+          sepaInstant: false,
+          isPersonalIban: true,
+        },
+      });
+    });
+
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick`,
+    );
+
+    const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
+    const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
+    await expect(toggle).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => receivedProvider).toBe('Frick');
+    await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible();
+    await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-toggle-personal-usd.png');
+
+    await toggle.click();
+    await expect(paymentDetails.getByText('LI31 0881 1010 5923 K000 U')).toBeVisible();
+    await expect(paymentDetails.getByRole('button', { name: 'Show personal IBAN' })).toBeVisible();
+    await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-toggle-collection-usd.png');
+  });
+
   // CHF quotes carry Swiss QR-Bill SVG payloads, which must fail closed when the user switches
   // to the collection account: no GiroCode is synthesized, while manual entry and PDF remain.
   test('shows the fail-closed QR hint for a CHF quote', async ({ page, request }) => {

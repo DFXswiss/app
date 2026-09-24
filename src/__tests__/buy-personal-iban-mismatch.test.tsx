@@ -33,7 +33,7 @@ const mockCurrencies = [
   { name: 'USD', sellable: true },
   { name: 'GBP', sellable: true },
 ];
-let mockFiatCurrencies = [{ name: 'EUR' }, { name: 'CHF' }];
+let mockFiatCurrencies: { name: string }[] | undefined = [{ name: 'EUR' }, { name: 'CHF' }];
 // Stable reference: buy.screen currency-selection effect depends on prefCurrency by identity.
 const mockPrefCurrency = { name: 'CHF' };
 
@@ -578,6 +578,21 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
 
     expect(screen.queryByText(MISMATCH_HINT)).not.toBeInTheDocument();
     expect(screen.getByTestId('payment-info')).toHaveAttribute('data-show-bank', 'true');
+  });
+
+  it('keeps CHF as a Frick currency while the fiat list has not loaded', async () => {
+    mockFiatCurrencies = undefined;
+    mockPersonalIban.mockReturnValue('Frick');
+    mockRequestedPersonalIban.mockReturnValue('Frick');
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor.mockResolvedValue(frickOffer({ currency: { name: 'CHF' } }));
+
+    render(<BuyScreen />);
+
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
+    await settle();
+    expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
+    expect(screen.queryByText(MISMATCH_HINT)).not.toBeInTheDocument();
   });
 
   it('requests a Frick personal IBAN directly for USD when the active fiat list includes USD', async () => {

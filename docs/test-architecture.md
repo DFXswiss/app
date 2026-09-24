@@ -119,6 +119,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the quote with `currency.name` GBP. GBP stands in for a currency outside the Bank Frick set.
   A green run proves those screens render that injected list and quote. It does not prove that
   the API offers GBP or returns those payloads.
+- **The USD collection toggle injects a buyable USD row.** `e2e/buy-process.spec.ts` fulfils
+  `**/v1/fiat` with USD marked buyable so the screen treats USD as a displayed Bank Frick
+  currency, and fulfils the quote with a static personal IBAN. A green run proves that toggle
+  renders. It does not prove that the API currently offers USD.
 - **The RealUnit quotes and dashboard visual specs answer the admin list themselves.**
   `e2e/realunit-quotes.spec.ts` and `e2e/realunit-dashboard.spec.ts` fulfil
   `GET /v1/realunit/admin/quotes` (and, on the dashboard, holders, token info, price history,

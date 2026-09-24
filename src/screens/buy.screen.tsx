@@ -314,7 +314,8 @@ export default function BuyScreen(): JSX.Element {
   const personalIbanSelector = activeSuppressPersonalIban
     ? undefined
     : requestedPersonalIban;
-  const activeFiatNames = (fiatCurrencies ?? []).map((currency) => currency.name);
+  const activeFiatNames =
+    fiatCurrencies == null ? undefined : fiatCurrencies.map((currency) => currency.name);
   const displayedFrickCurrencyList = displayedFrickCurrencies(activeFiatNames).join(', ');
 
   // form

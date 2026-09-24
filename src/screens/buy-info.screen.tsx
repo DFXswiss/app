@@ -199,7 +199,8 @@ export default function BuyInfoScreen(): JSX.Element {
   const personalIbanSelector = activeSuppressPersonalIban
     ? undefined
     : requestedPersonalIban;
-  const activeFiatNames = (fiatCurrencies ?? []).map((fiatCurrency) => fiatCurrency.name);
+  const activeFiatNames =
+    fiatCurrencies == null ? undefined : fiatCurrencies.map((fiatCurrency) => fiatCurrency.name);
   const displayedFrickCurrencyList = displayedFrickCurrencies(activeFiatNames).join(', ');
   const isPersonalIbanEligible = isPersonalIbanApplicable(
     currency?.name,
