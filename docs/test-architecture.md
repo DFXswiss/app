@@ -112,13 +112,27 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 
 - **The injected-wallet tests fabricate providers with broken or missing methods.**
   `src/hooks/wallets/__tests__/metamask.hook.test.ts` and `e2e-stack/specs/auth.spec.ts`
-  use a JavaScript proxy that throws when `on` is read; the full-stack fake returns fixed
-  accounts and chain data and does not produce a valid signature. The visual spec
+  use a JavaScript proxy that throws when `on` is read; the unit tests also fabricate legacy
+  `send`/`sendAsync` callbacks and a provider replacement after a synthetic transaction hash.
+  The real-Web3 token-routing case stubs address checksumming and hashing in Jest's browser realm,
+  so it exercises provider routing and receipt polling, not cryptographic encoding.
+  The full-stack fake returns fixed accounts and chain data and does not produce a valid signature.
+  The visual spec
   `e2e/wallet-missing-provider.spec.ts` supplies a detectable wallet that disappears after its
   first account RPC and mocks the login bootstrap API responses. A green visual run proves the
   translated missing-provider error renders for that synthetic disappearance, not that
   Web3 failed to bind a real provider, the live API returns the mocked data, every Brave version
-  has the same failure, or a real wallet login completes.
+  has the same failure, a real wallet login completes, or a payment settles after a real provider switch.
+- **The payment-link wallet-change visuals use a fabricated payment and wallet.**
+  `e2e/payment-link-wallet-change.spec.ts` supplies fixed asset, quote, callback, balance,
+  account and chain responses, then changes the wallet response before the Pay click. Green
+  screenshots prove that both pre-send errors render, not that a live quote or wallet pays.
+- **The transaction-helper unit tests replace downstream hooks and confirmations.**
+  `src/hooks/__tests__/tx-helper.hook.test.ts` checks that the current session address reaches
+  both gasless wallet methods and that the Sell/Swap confirmations receive their respective
+  results. Its wallet, balance and backend confirmation functions are Jest fakes; a green run
+  does not prove an injected wallet signed, a paymaster accepted calls or the backend confirmed
+  a real transaction.
 - **The buy-process specs answer the quote endpoint themselves.** `e2e/buy-process.spec.ts` fulfils
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
   payloads, not that the API produces them. Unit tests against the utility pin the payload shapes

@@ -16,6 +16,35 @@ import { useWeb3 } from '../web3.hook';
 const PROVIDER_MISSING_HINT =
   'No wallet found. Please check your wallet extension or set one up, then reload this page.';
 
+let rpcRequestId = 0;
+
+function web3Provider(getProvider: () => any) {
+  return {
+    request: async ({ method, params }: { method: string; params?: unknown[] }) => {
+      const provider = getProvider();
+      if (!provider) throw new TranslatedError(PROVIDER_MISSING_HINT);
+
+      if (typeof provider.request === 'function') return provider.request({ method, params });
+
+      const send = provider.sendAsync ?? provider.send;
+      if (typeof send !== 'function') throw new Error('Wallet provider does not support RPC requests');
+
+      return new Promise((resolve, reject) => {
+        const id = ++rpcRequestId;
+        send.call(provider, { jsonrpc: '2.0', id, method, params: params ?? [] }, (error: Error, response: any) => {
+          if (error) return reject(error);
+          if (!response || response.id !== id) return reject(new Error('Invalid wallet RPC response'));
+          if (response.error) {
+            const rpcError = Object.assign(new Error(response.error.message), response.error);
+            return reject(rpcError);
+          }
+          resolve(response.result);
+        });
+      });
+    },
+  };
+}
+
 function readProviderFlag(eth: any, flag: string): boolean {
   try {
     return Boolean(eth[flag]);
@@ -85,9 +114,14 @@ export interface MetaMaskInterface {
     to: string,
     config?: { isWeiAmount?: boolean; gasPrice?: number },
   ) => Promise<string>;
-  sendCallsWithPaymaster: (calls: Eip5792Call[], paymasterUrl: string, chainId: number) => Promise<string>;
+  sendCallsWithPaymaster: (
+    calls: Eip5792Call[],
+    paymasterUrl: string,
+    chainId: number,
+    from: string,
+  ) => Promise<string>;
   supportsEip5792Paymaster: (chainId: number) => Promise<boolean>;
-  signEip7702Authorization: (authData: Eip7702AuthorizationData) => Promise<SignedEip7702Authorization>;
+  signEip7702Authorization: (authData: Eip7702AuthorizationData, from: string) => Promise<SignedEip7702Authorization>;
 }
 
 interface MetaMaskError {
@@ -98,17 +132,7 @@ interface MetaMaskError {
 export function useMetaMask(): MetaMaskInterface {
   // Web3 only sees this stable EIP-1193 adapter. Reading the injected provider
   // when an RPC is sent also handles wallets injected or replaced after render.
-  const web3 = useMemo(
-    () =>
-      new Web3({
-        request: async ({ method, params }: { method: string; params?: unknown[] }) => {
-          const provider = (window as any).ethereum;
-          if (!provider) throw new TranslatedError(PROVIDER_MISSING_HINT);
-          return provider.request({ method, params });
-        },
-      } as any),
-    [],
-  );
+  const web3 = useMemo(() => new Web3(web3Provider(() => (window as any).ethereum) as any), []);
   const { toBlockchain, toChainHex, toChainObject } = useWeb3();
 
   function ethereum() {
@@ -302,25 +326,34 @@ export function useMetaMask(): MetaMaskInterface {
     to: string,
     config?: { isWeiAmount?: boolean; gasPrice?: number },
   ): Promise<string> {
+    // Keep the wallet that accepts a payment for its receipt polling. A later
+    // injection may serve the next operation, but must not move this one.
+    const provider = ethereum();
+    if (!provider) throw new TranslatedError(PROVIDER_MISSING_HINT);
+    const transactionWeb3 = new Web3(web3Provider(() => provider) as any);
+    await assertWalletSelection(transactionWeb3, from, asset.blockchain);
+
     if (asset.type === AssetType.COIN) {
       const transactionData: TransactionConfig = {
         from,
         to,
-        value: config?.isWeiAmount ? amount.toString() : web3.utils.toWei(amount.toString(), 'ether'),
+        value: config?.isWeiAmount ? amount.toString() : transactionWeb3.utils.toWei(amount.toString(), 'ether'),
         maxPriorityFeePerGas: null as any,
         maxFeePerGas: null as any,
         gasPrice: config?.gasPrice,
       };
 
-      return web3.eth.sendTransaction(transactionData).then((value) => value.transactionHash);
+      return transactionWeb3.eth.sendTransaction(transactionData).then((value) => value.transactionHash);
     } else {
-      const tokenContract = createContract(asset.chainId);
+      const tokenContract = createContract(asset.chainId, transactionWeb3);
 
       let adjustedAmount = amount.toString();
       if (!config?.isWeiAmount) {
         const decimals = await tokenContract.methods.decimals().call();
         adjustedAmount = amount.multipliedBy(Math.pow(10, decimals)).toFixed();
       }
+
+      await assertWalletSelection(transactionWeb3, from, asset.blockchain);
 
       return tokenContract.methods
         .transfer(to, adjustedAmount)
@@ -329,8 +362,16 @@ export function useMetaMask(): MetaMaskInterface {
     }
   }
 
-  function createContract(chainId?: string): Contract {
-    return new web3.eth.Contract(ERC20_ABI as any, chainId);
+  function createContract(chainId?: string, client = web3): Contract {
+    return new client.eth.Contract(ERC20_ABI as any, chainId);
+  }
+
+  async function assertWalletSelection(client: Web3, from: string, blockchain: Blockchain): Promise<void> {
+    const [accounts, chainId] = await Promise.all([client.eth.getAccounts(), client.eth.getChainId()]);
+    if (verifyAccount(accounts)?.toLowerCase() !== from.toLowerCase())
+      throw new TranslatedError('Wallet account changed. Please reload this page and retry.');
+    if (toBlockchain(chainId) !== blockchain)
+      throw new TranslatedError('Wallet network changed. Please reload this page and retry.');
   }
 
   /**
@@ -356,10 +397,10 @@ export function useMetaMask(): MetaMaskInterface {
   /**
    * Wait for wallet_sendCalls transaction to be confirmed
    */
-  async function waitForCallsStatus(callsId: string): Promise<string> {
+  async function waitForCallsStatus(callsId: string, provider: ReturnType<typeof web3Provider>): Promise<string> {
     const maxAttempts = 120; // 2 minutes
     for (let i = 0; i < maxAttempts; i++) {
-      const status = await ethereum().request({
+      const status = await provider.request({
         method: 'wallet_getCallsStatus',
         params: [callsId],
       });
@@ -380,13 +421,24 @@ export function useMetaMask(): MetaMaskInterface {
    * Sign EIP-7702 authorization for gasless transactions
    * This allows the user's EOA to temporarily delegate to a smart contract
    */
-  async function signEip7702Authorization(authData: Eip7702AuthorizationData): Promise<SignedEip7702Authorization> {
+  async function signEip7702Authorization(
+    authData: Eip7702AuthorizationData,
+    from: string,
+  ): Promise<SignedEip7702Authorization> {
     try {
-      const account = await getAccount();
+      const injectedProvider = ethereum();
+      if (!injectedProvider) throw new TranslatedError(PROVIDER_MISSING_HINT);
+      const provider = web3Provider(() => injectedProvider);
+      const client = new Web3(provider as any);
+      const account = verifyAccount(await client.eth.getAccounts());
       if (!account) throw new Error('No account connected');
+      if (account.toLowerCase() !== from.toLowerCase())
+        throw new TranslatedError('Wallet account changed. Please reload this page and retry.');
+      if ((await client.eth.getChainId()) !== authData.chainId)
+        throw new TranslatedError('Wallet network changed. Please reload this page and retry.');
 
       // Sign the typed data using eth_signTypedData_v4
-      const signature = await ethereum().request({
+      const signature = await provider.request({
         method: 'eth_signTypedData_v4',
         params: [account, JSON.stringify(authData.typedData)],
       });
@@ -415,23 +467,41 @@ export function useMetaMask(): MetaMaskInterface {
   /**
    * Send transaction via EIP-5792 wallet_sendCalls with paymaster sponsorship
    */
-  async function sendCallsWithPaymaster(calls: Eip5792Call[], paymasterUrl: string, chainId: number): Promise<string> {
+  async function sendCallsWithPaymaster(
+    calls: Eip5792Call[],
+    paymasterUrl: string,
+    chainId: number,
+    from: string,
+  ): Promise<string> {
     try {
-      const account = await getAccount();
+      const injectedProvider = ethereum();
+      if (!injectedProvider) throw new TranslatedError(PROVIDER_MISSING_HINT);
+      const provider = web3Provider(() => injectedProvider);
+      const client = new Web3(provider as any);
+      const account = verifyAccount(await client.eth.getAccounts());
       if (!account) throw new Error('No account connected');
+      if (account.toLowerCase() !== from.toLowerCase())
+        throw new TranslatedError('Wallet account changed. Please reload this page and retry.');
 
       const chainHex = `0x${chainId.toString(16)}`;
+      if ((await client.eth.getChainId()) !== chainId)
+        throw new TranslatedError('Wallet network changed. Please reload this page and retry.');
 
       // Check if wallet supports paymaster
-      const supported = await supportsEip5792Paymaster(chainId);
-      if (!supported) {
+      const capabilities = await provider.request({ method: 'wallet_getCapabilities', params: [account] });
+      if (capabilities?.[chainHex]?.paymasterService?.supported !== true) {
         throw new TranslatedError(
           'Your wallet does not support gasless transactions. Please update MetaMask to v12.20+ and enable Smart Account.',
         );
       }
 
+      if (verifyAccount(await client.eth.getAccounts())?.toLowerCase() !== account.toLowerCase())
+        throw new TranslatedError('Wallet account changed. Please reload this page and retry.');
+      if ((await client.eth.getChainId()) !== chainId)
+        throw new TranslatedError('Wallet network changed. Please reload this page and retry.');
+
       // Send calls with paymaster capability
-      const result = await ethereum().request({
+      const result = await provider.request({
         method: 'wallet_sendCalls',
         params: [
           {
@@ -451,7 +521,7 @@ export function useMetaMask(): MetaMaskInterface {
       });
 
       // Wait for transaction confirmation
-      return await waitForCallsStatus(result.id ?? result);
+      return await waitForCallsStatus(result.id ?? result, provider);
     } catch (e) {
       return handleError(e as MetaMaskError);
     }
