@@ -1,7 +1,4 @@
-import { test, expect, APIRequestContext, Page, Route } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
-import { createTestCredentials } from './test-wallet';
+import { test, expect, Page, Route } from '@playwright/test';
 
 /**
  * E2E Visual Regression Tests: RealUnit staff Support dashboards
@@ -10,13 +7,11 @@ import { createTestCredentials } from './test-wallet';
  *   - /realunit/support              (issue list, grouped by open/paged state)
  *   - /realunit/support/issue/:id    (issue detail + message thread)
  *
- * Auth is REAL (same admin-token flow as compliance.spec.ts / compliance-recommendation-graph.spec.ts): the api must
- * be reachable for `/v1/auth` and the frontend's own user/role fetch. The admin user has the ADMIN role, which
- * `useRealunitGuard` accepts (ADMIN | REALUNIT).
+ * Auth is a synthetic Admin JWT. Feature data and staff bootstrap GETs are mocked, so the suite
+ * does not need a live API. A green run does not prove production auth.
  *
  * Feature data is MOCKED with synthetic fixtures via page.route(...), so the baselines are deterministic AND contain
- * NO real production data. Only the RealUnit-scoped support endpoints (incl. the scoped message-thread endpoint)
- * are intercepted; everything else (auth/role/user/settings) is passed through via route.continue().
+ * NO real production data.
  *
  * Intercepted endpoints (base `/v1/` is prepended by useApi):
  *   - GET realunit/support/list?...     (issue list; the list screen calls it with states=Created,Pending for Open)
@@ -29,49 +24,21 @@ import { createTestCredentials } from './test-wallet';
  * Synthetic fixtures: fake ids (7000+), fixed ISO dates, fake names — no production data.
  */
 
-const API_URL = process.env.REACT_APP_API_URL! + '/v1';
+function jwt(): string {
+  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+    account: 1,
+    user: 1,
+    role: 'Admin',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })}.synthetic`;
+}
 
 // Author marker the backend stamps on customer messages (mirrors CustomerAuthor in src/util/support-stats.ts).
 const CUSTOMER_AUTHOR = 'Customer';
 
 // Numeric id of the issue whose detail page is screenshotted.
 const ISSUE_ID = 7001;
-
-/**
- * Read ADMIN_SEED from the API .env file
- */
-function getAdminSeed(): string {
-  const apiEnvPath = path.join(__dirname, '../../api/.env');
-  if (!fs.existsSync(apiEnvPath)) {
-    throw new Error(`API .env file not found at ${apiEnvPath}. Run 'npm run setup' in the API directory first.`);
-  }
-  const content = fs.readFileSync(apiEnvPath, 'utf8');
-  const match = content.match(/^ADMIN_SEED=(.*)$/m);
-  if (!match || !match[1]) {
-    throw new Error('ADMIN_SEED not found in API .env file. Run "npm run setup" in the API directory first.');
-  }
-  return match[1];
-}
-
-/**
- * Authenticate with admin credentials
- */
-async function getAdminAuth(request: APIRequestContext): Promise<string> {
-  const adminSeed = getAdminSeed();
-  const credentials = await createTestCredentials(adminSeed);
-
-  const response = await request.post(`${API_URL}/auth`, {
-    data: credentials,
-  });
-
-  if (!response.ok()) {
-    const body = await response.text().catch(() => 'unknown');
-    throw new Error(`Admin auth failed: ${response.status()} - ${body}`);
-  }
-
-  const data = await response.json();
-  return data.accessToken;
-}
 
 // ---------------------------------------------------------------------------
 // Synthetic fixtures (mirror SupportIssueListItem / SupportIssueInternalData / SupportMessageInfo from
@@ -282,7 +249,9 @@ async function json(route: Route, body: unknown): Promise<void> {
 
 async function installSupportRoutes(page: Page): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
-    const url = route.request().url();
+    const request = route.request();
+    const url = request.url();
+    const path = new URL(url).pathname;
 
     if (LIST_RE.test(url)) return json(route, { data: OPEN_ISSUES, total: OPEN_ISSUES.length });
     if (COUNTS_RE.test(url)) return json(route, COUNTS);
@@ -290,23 +259,42 @@ async function installSupportRoutes(page: Page): Promise<void> {
     if (CLERKS_RE.test(url)) return json(route, CLERKS);
     if (DATA_RE.test(url)) return json(route, ISSUE_DATA);
     if (MESSAGES_RE.test(url)) return json(route, MESSAGES);
+    if (request.method() === 'GET' && path === '/v1/support/issue/clerk') return json(route, { clerk: 'Ada Clerk' });
 
-    // everything else (auth, role, user, settings) hits the real api
+    if (
+      request.method() === 'GET' &&
+      ['/v1/language', '/v1/fiat', '/v1/asset', '/v1/bankAccount', '/v1/country'].includes(path)
+    ) {
+      return json(route, []);
+    }
+    if (request.method() === 'GET' && path === '/v1/setting/infoBanner') return json(route, null);
+    if (request.method() === 'GET') return json(route, []);
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+
+  await page.route('**/v2/**', async (route: Route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET' && path === '/v2/user') {
+      return json(route, {
+        id: 1,
+        activeAddress: { address: '0x0000000000000000000000000000000000000001', wallet: 'DFX' },
+        addresses: [],
+        kyc: { level: 50, status: 'Completed' },
+        language: { id: 1, name: 'English', symbol: 'EN' },
+      });
+    }
     await route.continue();
   });
 }
 
 test.describe('RealUnit Support dashboards - Visual Regression Tests', () => {
-  let token: string;
-
-  test.beforeAll(async ({ request }) => {
-    token = await getAdminAuth(request);
-  });
+  const token = jwt();
 
   test('list screen groups open issues (awaiting reply / answered)', async ({ page }) => {
     await installSupportRoutes(page);
 
-    await page.goto(`/realunit/support?session=${token}`);
+    await page.goto(`/realunit/support?session=${encodeURIComponent(token)}&lang=en`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
 
@@ -324,7 +312,7 @@ test.describe('RealUnit Support dashboards - Visual Regression Tests', () => {
   test('issue screen shows detail panels + message thread', async ({ page }) => {
     await installSupportRoutes(page);
 
-    await page.goto(`/realunit/support/issue/${ISSUE_ID}?session=${token}`);
+    await page.goto(`/realunit/support/issue/${ISSUE_ID}?session=${encodeURIComponent(token)}&lang=en`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
 

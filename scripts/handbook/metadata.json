@@ -105,7 +105,7 @@
   },
   "realunit-dashboard": {
     "title": "RealUnit Dashboard",
-    "description": "Die RealUnit-Startseite ist die Übersicht: Kennzahlen, Zeitstempel, Top Holders, pendente und erhaltene Transaktionen. Die Kasse enthält das Kauflimit, Bonus- und Prize-Wallet sowie Prize-payouts. Die Kennzahlen zeigen Preisverlauf, Kaufvolumen, Holder im Zeitverlauf und die Registrierung. Eine Abschnittsnavigation verbindet die Bereiche."
+    "description": "RealUnit-Arbeitsbereich mit Abschnittsnavigation. Übersicht: gefüllte Kennzahlen und Tabellen, leere Listen, sowie More bei mehr als drei Zeilen. Kasse: Kauflimit leer, gesetzt, ungültig und Ladefehler; Prize-Wallet mit QR, fehlend und Fehler; Prize-payouts gefüllt und leer; Bestandswarnung als Liste und Formular. Kennzahlen: Preisverlauf, Kaufvolumen in CHF und Shares, Holder, Registrierung, Zeitrahmen 1M und die vier Fehlerzustände. Dazu Holder-Liste, leere Liste und nächste Seite, erhaltene Transaktionen, Detail, leer, Fehler und nicht gefunden, sowie Konto in CHF, REALU und ohne Daten."
   },
   "responsive": {
     "title": "Responsive Layout",
