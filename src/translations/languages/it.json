@@ -686,6 +686,8 @@
     "{{from}} to {{to}} at {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})": "{{from}} a {{to}} a {{price}} {{from}}/{{to}} ({{source}}, {{timestamp}})",
     "No transactions yet": "Nessuna transazione",
     "No wallet found. Please check your wallet extension or set one up, then reload this page.": "Nessun portafoglio trovato. Controlla l'estensione del portafoglio oppure creane uno, poi ricarica la pagina.",
+    "Wallet account changed. Please reload this page and retry.": "L'account del portafoglio è cambiato. Ricarica questa pagina e riprova.",
+    "Wallet network changed. Please reload this page and retry.": "La rete del portafoglio è cambiata. Ricarica questa pagina e riprova.",
     "ID": "ID",
     "External ID": "ID esterno",
     "Date": "Data",
