@@ -15,6 +15,7 @@ const mockUpdateLink = jest.fn();
 const mockUpdateConfig = jest.fn();
 const mockCreatePos = jest.fn();
 const mockDeleteRoute = jest.fn();
+let mockApiAccount = 7;
 
 jest.mock('@dfx.swiss/react', () => ({
   ApiException: class ApiException extends Error {
@@ -27,6 +28,7 @@ jest.mock('@dfx.swiss/react', () => ({
   Blockchain: { LIGHTNING: 'Lightning', BITCOIN: 'Bitcoin' },
   PaymentLinkStatus: { ACTIVE: 'Active', INACTIVE: 'Inactive' },
   useApi: () => ({ defaultUrl: 'https://api.dfx.swiss/v1' }),
+  useApiSession: () => ({ session: { account: mockApiAccount } }),
   usePaymentRoutes: () => ({
     getPaymentLinks: mockGetPaymentLinks,
     getPaymentRoutes: mockGetPaymentRoutes,
@@ -82,6 +84,7 @@ describe('useOcp', () => {
     jest.clearAllMocks();
     mockOcpSession.blockchains = ['Lightning'];
     mockOcpSession.address = '0xaaa';
+    mockApiAccount = 7;
     mockDeleteRoute.mockResolvedValue({});
     mockGetConfig.mockResolvedValue({ accessKey: 'k' });
     mockGetPaymentRoutes.mockResolvedValue({ sell: [], buy: [], swap: [] });
@@ -265,6 +268,52 @@ describe('useOcp', () => {
     result.current.copy('no-clip');
   });
 
+  it('keeps the authenticated payment-link cache current after creating a POS charge', async () => {
+    mockGetPaymentLinks.mockResolvedValueOnce([
+      { id: 'till-1', status: 'Active', routeId: 'route-1' },
+    ]);
+    mockCreatePayment.mockResolvedValueOnce({
+      payment: {
+        id: 'payment-1',
+        externalId: 'charge-1',
+        status: 'Pending',
+        amount: 12,
+        currency: { name: 'CHF' },
+        lnurl: 'LNURL1POSCHARGE',
+      },
+    });
+    const { result } = renderHook(() => useOcp(), { wrapper });
+    await act(async () => {
+      await result.current.loadLinks();
+    });
+    await act(async () => {
+      await result.current.charge('till-1', 12);
+    });
+
+    expect(result.current.linksIdentity).toBe(JSON.stringify(['7', '0xaaa']));
+    expect(result.current.links?.[0].payment).toMatchObject({
+      externalId: 'charge-1',
+      status: 'Pending',
+      amount: 12,
+      lnurl: 'LNURL1POSCHARGE',
+    });
+  });
+
+  it('does not attach a new POS payment to a different cached till', async () => {
+    const originalLinks = [{ id: 'other-till', status: 'Active', routeId: 'route-1' }];
+    mockGetPaymentLinks.mockResolvedValueOnce(originalLinks);
+    mockCreatePayment.mockResolvedValueOnce({ payment: { lnurl: 'LNURL1POSCHARGE' } });
+    const { result } = renderHook(() => useOcp(), { wrapper });
+
+    await act(async () => {
+      await result.current.loadLinks();
+      await result.current.charge('new-till', 12);
+    });
+
+    expect(result.current.links).toEqual(originalLinks);
+    expect(result.current.links?.[0].payment).toBeUndefined();
+  });
+
   it('accepts only https DFX POS URLs and falls back when charge has no LNURL', async () => {
     const { result } = renderHook(() => useOcp(), { wrapper });
     mockCreatePos.mockResolvedValueOnce({ url: 'http://dfx.swiss/pos' });
@@ -314,6 +363,16 @@ describe('useOcp', () => {
       result.current.copy('abc');
     });
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('abc'));
+  });
+
+  it.each([
+    ['missing nested payment', { lnurl: 'LNURL1REUSABLE' }],
+    ['missing charge LNURL', { payment: { lnurl: '  ' }, lnurl: 'LNURL1REUSABLE' }],
+  ])('rejects a charge response with %s instead of accepting the reusable link LNURL', async (_case, response) => {
+    const { result } = renderHook(() => useOcp(), { wrapper });
+    mockCreatePayment.mockResolvedValueOnce(response as never);
+
+    await expect(result.current.charge('link-7', 10)).rejects.toBeInstanceOf(ApiException);
   });
 
   it('normalizes odd history and route payloads', async () => {
@@ -586,12 +645,16 @@ describe('useOcp', () => {
 
   it('resets merchant state when the session address changes', async () => {
     mockGetConfig.mockResolvedValueOnce({ accessKey: 'from-a' });
+    mockGetPaymentLinks.mockResolvedValueOnce([{ id: 'from-a-link' }]);
     const { result, rerender } = renderHook(() => useOcp(), { wrapper });
     await act(async () => {
       await result.current.probe();
+      await result.current.loadLinks();
     });
     expect(result.current.config).toEqual({ accessKey: 'from-a' });
     expect(result.current.active).toBe(true);
+    expect(result.current.links).toEqual([{ id: 'from-a-link' }]);
+    expect(result.current.linksIdentity).toBe(JSON.stringify(['7', '0xaaa']));
 
     mockOcpSession.address = '0xbbb';
     rerender();
@@ -599,7 +662,53 @@ describe('useOcp', () => {
     expect(result.current.config).toBeNull();
     expect(result.current.demo).toBe(false);
     expect(result.current.linksError).toBe(false);
+    expect(result.current.links).toBeNull();
+    expect(result.current.linksIdentity).toBeUndefined();
     expect(result.current.historyError).toBe(false);
+  });
+
+  it('isolates OCP links across API account changes that retain the same wallet address', async () => {
+    const firstAccountLinks = deferred<Array<{ id: string }>>();
+    mockGetPaymentLinks.mockReturnValueOnce(firstAccountLinks.promise).mockResolvedValueOnce([{ id: 'account-B-link' }]);
+    mockGetConfig.mockResolvedValueOnce({ accessKey: 'account-A-key' });
+    mockGetPaymentRoutes.mockResolvedValueOnce({ sell: [{ id: 'account-A-route' }], buy: [], swap: [] });
+    mockGetPaymentLinkHistory.mockResolvedValueOnce([{ id: 1, totalCompletedAmount: 5, payments: [] }]);
+    const { result, rerender } = renderHook(() => useOcp(), { wrapper });
+    let firstLoad!: Promise<unknown>;
+    act(() => {
+      firstLoad = result.current.loadLinks();
+    });
+    await waitFor(() => expect(mockGetPaymentLinks).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await result.current.probe();
+      await result.current.loadRoutes();
+      await result.current.loadHistory();
+    });
+    expect(result.current.config).toEqual({ accessKey: 'account-A-key' });
+    expect(result.current.routes?.sell).toEqual([{ id: 'account-A-route' }]);
+    expect(result.current.history?.total).toBe(5);
+
+    mockApiAccount = 8;
+    rerender();
+    expect(mockOcpSession.address).toBe('0xaaa');
+    expect(result.current.links).toBeNull();
+    expect(result.current.linksIdentity).toBeUndefined();
+    expect(result.current.active).toBeNull();
+    expect(result.current.config).toBeNull();
+    expect(result.current.routes).toBeNull();
+    expect(result.current.history).toBeNull();
+
+    await act(async () => {
+      firstAccountLinks.resolve([{ id: 'account-A-link' }]);
+      await firstLoad;
+    });
+    expect(result.current.links).toBeNull();
+
+    await act(async () => {
+      await result.current.loadLinks();
+    });
+    expect(result.current.links).toEqual([{ id: 'account-B-link' }]);
+    expect(result.current.linksIdentity).toBe(JSON.stringify(['8', '0xaaa']));
   });
 
   it('discards a late live write after demo is turned on', async () => {

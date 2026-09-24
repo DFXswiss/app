@@ -612,6 +612,60 @@ test.describe('Buy flow', () => {
     await expect(page.getByText(/Nice! You are all set!/i)).toBeVisible({ timeout: 15000 });
   });
 
+  test('/buy: payment-info request UUID rejects duplicate effects and exposes owner status', async () => {
+    const user = await createUser({ tag: 'buy-payment-info-idempotency', kycLevel: 50, completePersonalData: true });
+    const currency = await queryOne<{ id: number }>(`SELECT id FROM fiat WHERE name = 'CHF' LIMIT 1`);
+    const asset = await queryOne<{ id: number }>(
+      `SELECT id FROM asset WHERE buyable = true AND blockchain = 'Ethereum' ORDER BY id ASC LIMIT 1`,
+    );
+    if (!currency) throw new Error('CHF must exist in seeded fiat');
+    if (!asset) throw new Error('an Ethereum buyable asset must exist in seed data');
+    const clientRequestId = 'cdab92dc-8f3f-4a90-bb37-a7026e12a9fa';
+    const externalTransactionId = 'e2e-payment-info-idempotency';
+    const request = {
+      currency: { id: currency.id },
+      asset: { id: asset.id },
+      amount: 100,
+      paymentMethod: 'Bank',
+      exactPrice: false,
+      externalTransactionId,
+      clientRequestId,
+    };
+
+    const original = await apiPut<{ id: number; routeId: number }>('buy/paymentInfos', request, { jwt: user.jwt });
+    expect(original.id).toBeTruthy();
+
+    let retryStatus: number | undefined;
+    const conflict = await apiPut<Record<string, unknown>>('buy/paymentInfos', request, {
+      jwt: user.jwt,
+      expectOk: false,
+      onStatus: (status) => (retryStatus = status),
+    });
+    expect(retryStatus, 'same account/type/key retry must be rejected').toBe(409);
+    expect(conflict).toMatchObject({ code: 'PAYMENT_INFO_ALREADY_EXISTS' });
+
+    const status = await apiGet<{ existingUid?: string; requestStatus: string }>(
+      `transaction/payment-info-request?type=Buy&clientRequestId=${clientRequestId}`,
+      { jwt: user.jwt },
+    );
+    expect(status).toMatchObject({ existingUid: expect.any(String) });
+    expect(status.requestStatus).not.toBe('Unknown');
+
+    const otherUser = await createUser({ tag: 'buy-payment-info-idempotency-other' });
+    let otherOwnerStatus: number | undefined;
+    await apiGet(
+      `transaction/payment-info-request?type=Buy&clientRequestId=${clientRequestId}`,
+      { jwt: otherUser.jwt, expectOk: false, onStatus: (code) => (otherOwnerStatus = code) },
+    );
+    expect(otherOwnerStatus, 'the lookup must not disclose another account\'s request').toBe(404);
+
+    const persisted = await queryOne<{ count: number }>(
+      `SELECT count(*)::int AS count FROM transaction_request WHERE "userId" = $1 AND "externalTransactionId" = $2`,
+      [user.userId, externalTransactionId],
+    );
+    expect(persisted?.count, 'duplicate retry must not create a second request row').toBe(1);
+  });
+
   async function submitBuyForm(page: Page): Promise<void> {
     const form = page.locator('form').first();
     await expect(form).toBeVisible();

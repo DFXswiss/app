@@ -37,6 +37,25 @@ export function b32Sum(hrp: string, data: number[]): number[] {
   return r;
 }
 
+/** Check the bech32 envelope used by LNURL before rendering a recovered QR. */
+export function isValidLnurl(value: string): boolean {
+  if (!value || (/[a-z]/.test(value) && /[A-Z]/.test(value))) return false;
+  const normalized = value.toUpperCase();
+  const separator = normalized.lastIndexOf('1');
+  if (separator !== 5 || normalized.slice(0, separator).toLowerCase() !== 'lnurl') return false;
+
+  const encoded = normalized.slice(separator + 1);
+  if (encoded.length < 7) return false; // at least one payload symbol plus checksum
+
+  const data: number[] = [];
+  for (const char of encoded) {
+    const digit = B32.indexOf(char.toLowerCase());
+    if (digit < 0) return false;
+    data.push(digit);
+  }
+  return b32Polymod(b32Hrp('lnurl').concat(data)) === 1;
+}
+
 /** Encode 5-bit `data` under `hrp` into a bech32 string (`hrp1…`). */
 export function b32Enc(hrp: string, data: number[]): string {
   const combined = data.concat(b32Sum(hrp, data));

@@ -376,7 +376,13 @@ test.describe('App 2.0 widget params', () => {
     expect(without, 'PUT /buy/paymentInfos should have fired without the param').toBeTruthy();
     expect(without?.externalTransactionId ?? null).toBeNull();
 
-    await openApp2(page, user.jwt, '#/', { 'external-transaction-id': 'e2e-app2-ext-1' });
+    const withParamUser = await createUser({
+      tag: 'app2-wp-ext-param',
+      kycLevel: 50,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    await openApp2(page, withParamUser.jwt, '#/', { 'external-transaction-id': 'e2e-app2-ext-1' });
     await waitForBuyHome(page);
     await submitBuyForPaymentInfo(page);
     await expect
@@ -469,7 +475,15 @@ test.describe('App 2.0 widget params', () => {
       })
       .toBe(TEST_IBAN);
 
-    await openApp2(page, user.jwt, '#/?mode=sell', { 'amount-in': '0.1', 'bank-account': otherIban });
+    const namedAccountUser = await createUser({
+      tag: 'app2-wp-ba-param',
+      kycLevel: 50,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    await createBankAccount(namedAccountUser.jwt, { iban: TEST_IBAN, label: 'Default' });
+    await createBankAccount(namedAccountUser.jwt, { iban: otherIban, label: 'Other' });
+    await openApp2(page, namedAccountUser.jwt, '#/?mode=sell', { 'amount-in': '0.1', 'bank-account': otherIban });
     await expect(page.getByRole('tab', { name: /^sell$/i })).toHaveAttribute('aria-selected', 'true', { timeout: 20000 });
     await expect(page.getByTestId('trade-cta')).toBeEnabled({ timeout: 45000 });
     await page.getByTestId('trade-cta').click();
@@ -493,7 +507,8 @@ test.describe('App 2.0 widget params', () => {
     expect(without, 'PUT /buy/paymentInfos should have fired without the param').toBeTruthy();
     expect(without?.personalIbanProvider ?? null).toBeNull();
 
-    await openApp2(page, user.jwt, '#/', { 'personal-iban': 'frick' });
+    const frickUser = await createUser({ tag: 'app2-wp-piban-param', kycLevel: 50, completePersonalData: true, language: 'EN' });
+    await openApp2(page, frickUser.jwt, '#/', { 'personal-iban': 'frick' });
     await waitForBuyHome(page);
     const amount = page.getByRole('textbox', { name: 'Amount you pay' });
     await expect(amount).toBeVisible({ timeout: 20000 });
@@ -540,18 +555,21 @@ test.describe('App 2.0 widget params', () => {
 
   test('redirect-uri: Done navigates only when the param is a safe URI', async ({ page }) => {
     test.setTimeout(120000);
-    const user = await createUser({ tag: 'app2-wp-redir', kycLevel: 50, completePersonalData: true, language: 'EN' });
+    const createRedirectUser = (tag: string) =>
+      createUser({ tag, kycLevel: 50, completePersonalData: true, language: 'EN' });
     await page.route('https://example.com/**', (route) =>
       route.fulfill({ status: 200, body: 'ok', contentType: 'text/plain' }),
     );
 
-    await openApp2(page, user.jwt, '#/');
+    const noRedirectUser = await createRedirectUser('app2-wp-redir-none');
+    await openApp2(page, noRedirectUser.jwt, '#/');
     await waitForBuyHome(page);
     await submitBuyForPaymentInfo(page);
     await page.getByRole('button', { name: /^done$/i }).click();
     await expect(page).toHaveURL(/\/app2\//);
 
-    await openApp2(page, user.jwt, '#/', { 'redirect-uri': 'https://example.com/done' });
+    const redirectUser = await createRedirectUser('app2-wp-redir-valid');
+    await openApp2(page, redirectUser.jwt, '#/', { 'redirect-uri': 'https://example.com/done' });
     await waitForBuyHome(page);
     await submitBuyForPaymentInfo(page);
     await page.getByRole('button', { name: /^done$/i }).click();
@@ -562,7 +580,8 @@ test.describe('App 2.0 widget params', () => {
     await confirmation.getByRole('button', { name: 'Continue to host' }).click();
     await expect(page).toHaveURL(/https:\/\/example\.com\/done\/buy/, { timeout: 20000 });
 
-    await openApp2(page, user.jwt, '#/', { 'redirect-uri': 'https://example.com/done' });
+    const cancelRedirectUser = await createRedirectUser('app2-wp-redir-cancel');
+    await openApp2(page, cancelRedirectUser.jwt, '#/', { 'redirect-uri': 'https://example.com/done' });
     await waitForBuyHome(page);
     await submitBuyForPaymentInfo(page);
     await page.getByRole('button', { name: /^done$/i }).click();
@@ -572,7 +591,8 @@ test.describe('App 2.0 widget params', () => {
     await expect(cancelledConfirmation).toHaveCount(0);
     await expect(page).toHaveURL(/\/app2\//);
 
-    await openApp2(page, user.jwt, '#/', { 'redirect-uri': 'javascript:alert(1)' });
+    const unsafeRedirectUser = await createRedirectUser('app2-wp-redir-unsafe');
+    await openApp2(page, unsafeRedirectUser.jwt, '#/', { 'redirect-uri': 'javascript:alert(1)' });
     await waitForBuyHome(page);
     await submitBuyForPaymentInfo(page);
     await page.getByRole('button', { name: /^done$/i }).click();

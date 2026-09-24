@@ -13,7 +13,6 @@ jest.mock('@dfx.swiss/react', () => ({
         method: 'GET',
         ...(authenticated ? {} : { token: false }),
       }),
-    getAnonymousJob: (uid: string) => mockCall({ url: `job/${encodeURIComponent(uid)}`, method: 'GET', token: false }),
   }),
   ApiException: class ApiException extends Error {
     statusCode: number;

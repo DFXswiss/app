@@ -44,10 +44,22 @@ jest.mock('@dfx.swiss/react', () => ({
   ApiException: class ApiException extends Error {
     statusCode: number;
     code?: string;
-    constructor(httpStatus: number, errorMessage: string, errorCode?: string) {
+    paymentInfoConflict?: { existingUid?: string; requestStatus: string };
+    constructor(httpStatus: number, errorMessage: string, errorCode?: string, _switchToCode?: string, details?: unknown) {
       super(errorMessage);
       this.statusCode = httpStatus;
       this.code = errorCode;
+      if (
+        httpStatus === 409 &&
+        errorCode === 'PAYMENT_INFO_ALREADY_EXISTS' &&
+        details !== null &&
+        typeof details === 'object' &&
+        ['Processing', 'Created', 'WaitingForPayment', 'Completed', 'Unknown'].includes(
+          String((details as { requestStatus?: unknown }).requestStatus),
+        )
+      ) {
+        this.paymentInfoConflict = details as { existingUid?: string; requestStatus: string };
+      }
     }
   },
   useUser: () => ({ updateMail: mockUpdateMail }),
@@ -55,7 +67,7 @@ jest.mock('@dfx.swiss/react', () => ({
 
 const mockUpdateMail = jest.fn();
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ApiException, PersonalIbanProvider, TransactionError, type Buy, type Sell, type Swap } from '@dfx.swiss/react';
 import { PaymentSheet } from '../screens/trade/PaymentSheet';
 import { isEmailGateError, mapThrownError } from '../screens/trade/errors';
@@ -123,6 +135,27 @@ function renderBuySheet(buy: Buy | null) {
     </LanguageProvider>,
   );
 }
+
+describe('target-driven buy payment amount', () => {
+  it('uses the settled Buy amount in the pay summary and bank instruction when the panel amount is empty', () => {
+    const buy = {
+      isValid: true,
+      amount: 125,
+      estimatedAmount: 0.01,
+      fees: { total: 1 },
+      currency: { name: 'EUR' },
+      iban: 'DE89',
+      remittanceInfo: 'REF-OUT',
+      paymentRequest: '',
+    } as unknown as Buy;
+    const view = renderBuySheet(buy);
+    const paySummaryRow = view.container.querySelector('.rowlist .pbrow');
+    const paybox = view.container.querySelector('.paybox');
+    expect(paySummaryRow?.textContent).toMatch(/125/);
+    expect(paybox?.textContent).toMatch(/125/);
+    expect(paySummaryRow?.textContent).not.toMatch(/(?:^|\D)0(?:[.,]00)?(?:\D|$)/);
+  });
+});
 
 function renderSellSheet(sell: Sell | null) {
   return render(
@@ -885,5 +918,94 @@ describe('payment sheet actions', () => {
         </ToastProvider>
       </LanguageProvider>,
     );
+  });
+
+  it('status-checks a locked Processing request and lets the user close without unlocking it', () => {
+    const onCheckExistingRequest = jest.fn();
+    const onRetry = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={onClose}
+            onDone={jest.fn()}
+            mode="buy"
+            loading={false}
+            rawError={new ApiException(500, 'uncertain')}
+            buy={null}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={0}
+            onRetry={onRetry}
+            onReconnect={jest.fn()}
+            requestLocked
+            existingRequestStatus="Processing"
+            onCheckExistingRequest={onCheckExistingRequest}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
+    expect(onCheckExistingRequest).toHaveBeenCalledTimes(1);
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /done|fertig|fatto|terminé/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    expect(onClose).toHaveBeenCalledWith(false);
+  });
+
+  it('does not expose Done for a 409 existing UID while authoritative detail is pending', async () => {
+    let resolveDetail!: (detail: never) => void;
+    const loadExistingRequest = jest.fn(
+      () => new Promise<never>((resolve) => {
+        resolveDetail = resolve;
+      }),
+    );
+    const onDone = jest.fn();
+    render(
+      <LanguageProvider>
+        <ToastProvider>
+          <PaymentSheet
+            open
+            onClose={jest.fn()}
+            onDone={onDone}
+            mode="buy"
+            loading={false}
+            rawError={
+              new ApiException(409, 'existing request', 'PAYMENT_INFO_ALREADY_EXISTS', undefined, {
+                existingUid: 'request-123',
+                requestStatus: 'Completed',
+              })
+            }
+            buy={null}
+            sell={null}
+            swap={null}
+            payAssetCode=""
+            receiveAssetCode="BTC"
+            amount={0}
+            onRetry={jest.fn()}
+            onReconnect={jest.fn()}
+            requestLocked
+            loadExistingRequest={loadExistingRequest}
+          />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => expect(loadExistingRequest).toHaveBeenCalledWith('request-123'));
+    expect(screen.getByTestId('payment-existing-request')).toHaveTextContent('request-123');
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /done|fertig|fatto|terminé/i })).not.toBeInTheDocument();
+    expect(onDone).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveDetail({ state: 'Completed' } as never);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    expect(onDone).toHaveBeenCalledWith(true);
   });
 });

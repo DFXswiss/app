@@ -1,4 +1,4 @@
-const mockSession = { isLoggedIn: false, address: undefined as string | undefined };
+const mockSession = { isLoggedIn: false, address: undefined as string | undefined, account: 42 };
 const mockGetDetail = jest.fn();
 const mockGetTx = jest.fn();
 const mockGetUnassigned = jest.fn();
@@ -11,6 +11,11 @@ const mockSetRefund = jest.fn();
 const mockNavigate = jest.fn();
 const mockGetProfile = jest.fn();
 const mockGetCountries = jest.fn();
+const mockCsvPopup: { opener: Window | null; location: { replace: jest.Mock }; close: jest.Mock } = {
+  opener: null,
+  location: { replace: jest.fn() },
+  close: jest.fn(),
+};
 const mockUserAddresses: Array<{ address: string; blockchains: string[]; label?: string }> = [];
 const mockUserCtx = { userAddresses: mockUserAddresses };
 
@@ -40,7 +45,8 @@ jest.mock('@dfx.swiss/react', () => ({
     DEFICHAIN: 'DeFiChain',
     LIGHTNING: 'Lightning',
   },
-  useUserContext: () => ({ user: undefined, userAddresses: mockUserCtx.userAddresses }),
+  useApiSession: () => ({ session: { account: mockSession.account } }),
+  useUserContext: () => ({ user: { accountId: mockSession.account }, userAddresses: mockUserCtx.userAddresses }),
   useAuthContext: () => ({ session: undefined }),
   useCountry: () => ({
     getCountries: mockGetCountries,
@@ -101,6 +107,16 @@ function tx(partial: Record<string, unknown>) {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('resolveCryptoRefundTarget', () => {
   it('treats null, blank and real targets distinctly', () => {
     expect(resolveCryptoRefundTarget(undefined)).toBeUndefined();
@@ -114,6 +130,7 @@ describe('TransactionsScreen', () => {
   beforeEach(() => {
     mockSession.isLoggedIn = false;
     mockSession.address = undefined;
+    mockSession.account = 42;
     mockUserAddresses.length = 0;
     mockUserCtx.userAddresses = mockUserAddresses;
     mockNavigate.mockReset();
@@ -142,7 +159,10 @@ describe('TransactionsScreen', () => {
       { id: 2, name: 'Germany', symbol: 'DE' },
       { id: 1, name: 'Switzerland', symbol: 'CH' },
     ]);
-    jest.spyOn(window, 'open').mockImplementation(() => null);
+    mockCsvPopup.opener = window;
+    mockCsvPopup.location.replace.mockReset();
+    mockCsvPopup.close.mockReset();
+    jest.spyOn(window, 'open').mockImplementation(() => mockCsvPopup as unknown as Window);
     global.URL.createObjectURL = jest.fn(() => 'blob:csv');
     global.URL.revokeObjectURL = jest.fn();
   });
@@ -169,6 +189,46 @@ describe('TransactionsScreen', () => {
     mockGetTx.mockResolvedValueOnce([tx({ id: 9, type: 'Buy', outputAsset: 'ETH', outputAmount: 1 })]);
     renderTx();
     expect(await screen.findAllByText(/ETH/)).not.toHaveLength(0);
+  });
+
+  it('masks transaction rows synchronously across accounts sharing a wallet address and drops the old response', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = 'shared-address';
+    mockSession.account = 101;
+    const oldAccount = deferred<ReturnType<typeof tx>[]>();
+    const newAccount = deferred<ReturnType<typeof tx>[]>();
+    mockGetDetail.mockReturnValueOnce(oldAccount.promise).mockReturnValueOnce(newAccount.promise);
+    const view = renderTx();
+    await act(async () => {
+      oldAccount.resolve([tx({ id: 101, inputAsset: 'A-ONLY', uid: 'a-row' })]);
+    });
+    expect(await screen.findAllByText(/A-ONLY/)).not.toHaveLength(0);
+
+    mockSession.account = 202;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(screen.queryByText('A-ONLY')).not.toBeInTheDocument();
+
+    mockSession.account = 303;
+    mockGetDetail.mockResolvedValueOnce([tx({ id: 303, inputAsset: 'C-ONLY', uid: 'c-row' })]);
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <TransactionsScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(await screen.findAllByText(/C-ONLY/)).not.toHaveLength(0);
+    await act(async () => {
+      newAccount.resolve([tx({ id: 202, inputAsset: 'B-ONLY', uid: 'b-row' })]);
+    });
+    expect(screen.queryByText(/A-ONLY|B-ONLY/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/C-ONLY/)).not.toHaveLength(0);
   });
 
   it('shows a retryable error when both history endpoints fail', async () => {
@@ -259,11 +319,42 @@ describe('TransactionsScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /export csv|csv exportieren|esporta csv|exporter csv/i }));
     fireEvent.click(screen.getByRole('button', { name: /compact csv|kompakt-csv|csv compatto|csv compact/i }));
-    await waitFor(() => expect(window.open).toHaveBeenCalledWith('https://api.example/csv', '_blank', 'noopener,noreferrer'));
+    expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(mockCsvPopup.opener).toBeNull();
+    await waitFor(() => expect(mockCsvPopup.location.replace).toHaveBeenCalledWith('https://api.example/csv'));
 
     fireEvent.click(screen.getByRole('button', { name: /export csv|csv exportieren|esporta csv|exporter csv/i }));
     fireEvent.click(screen.getByRole('button', { name: /cointracking/i }));
     await waitFor(() => expect(mockGetHistory).toHaveBeenCalled());
+  });
+
+  it('reserves the compact CSV tab before waiting for the download URL', async () => {
+    mockSession.isLoggedIn = true;
+    let resolveCsv!: (url: string) => void;
+    mockGetCsv.mockReturnValueOnce(new Promise<string>((resolve) => { resolveCsv = resolve; }));
+    renderTx();
+    await screen.findByText(/no transactions yet/i);
+    fireEvent.click(screen.getByRole('button', { name: /export csv|csv exportieren|esporta csv|exporter csv/i }));
+    fireEvent.click(screen.getByRole('button', { name: /compact csv|kompakt-csv|csv compatto|csv compact/i }));
+
+    expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(mockGetCsv).toHaveBeenCalled();
+    expect(mockCsvPopup.location.replace).not.toHaveBeenCalled();
+    resolveCsv('https://api.example/csv');
+    await waitFor(() => expect(mockCsvPopup.location.replace).toHaveBeenCalledWith('https://api.example/csv'));
+  });
+
+  it('reports a blocked compact CSV popup without requesting the download', async () => {
+    mockSession.isLoggedIn = true;
+    const open = jest.spyOn(window, 'open').mockReturnValueOnce(null);
+    renderTx();
+    await screen.findByText(/no transactions yet/i);
+    fireEvent.click(screen.getByRole('button', { name: /export csv|csv exportieren|esporta csv|exporter csv/i }));
+    fireEvent.click(screen.getByRole('button', { name: /compact csv|kompakt-csv|csv compatto|csv compact/i }));
+
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(mockGetCsv).not.toHaveBeenCalled();
+    expect(await screen.findByRole('status')).toHaveTextContent(/something went wrong/i);
   });
 
   it('assigns an unmatched bank payment', async () => {
@@ -405,6 +496,7 @@ describe('TransactionsScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: /export csv|csv exportieren|esporta csv|exporter csv/i }));
     fireEvent.click(screen.getByRole('button', { name: /compact csv|kompakt-csv|csv compatto|csv compact/i }));
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(mockCsvPopup.close).toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: /export csv|csv exportieren|esporta csv|exporter csv/i }));
     fireEvent.click(screen.getByRole('button', { name: /cointracking/i }));
@@ -424,15 +516,36 @@ describe('TransactionsScreen', () => {
     await waitFor(() => expect(mockGetHistory).toHaveBeenCalled());
   });
 
-  it('swallows an unassigned-list failure and a non-array payload', async () => {
+  it('keeps a genuinely empty unassigned list distinct from a load error', async () => {
     mockSession.isLoggedIn = true;
-    mockGetUnassigned.mockRejectedValueOnce(new Error('ua-down'));
+    mockGetUnassigned.mockResolvedValueOnce([]);
     renderTx();
     expect(await screen.findByText(/no transactions yet/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/couldn't load unmatched bank payments|nicht zugeordnete bankzahlungen konnten nicht geladen werden|impossibile caricare i pagamenti bancari|impossible de charger les paiements bancaires/i)).not.toBeInTheDocument();
   });
 
-  it('assigns, shows empty targets and swallows a failed assign', async () => {
+  it('shows and retries an unassigned-payment load error without hiding transaction history', async () => {
+    mockSession.isLoggedIn = true;
+    mockGetDetail.mockResolvedValueOnce([tx({ id: 81, uid: 'visible-history' })]);
+    mockGetUnassigned.mockRejectedValueOnce(new Error('ua-down'));
+    renderTx();
+    expect(await screen.findByText(/couldn't load unmatched bank payments/i)).toBeInTheDocument();
+    expect(screen.getByText(/100 CHF.*0\.002 BTC/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i })).not.toBeInTheDocument();
+
+    mockGetUnassigned.mockResolvedValueOnce([]);
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut versuchen|riprova|réessayer/i }));
+    await waitFor(() => {
+      expect(mockGetUnassigned).toHaveBeenCalledTimes(2);
+      expect(
+        screen.queryByText(/couldn't load unmatched bank payments|nicht zugeordnete bankzahlungen konnten nicht geladen werden|impossibile caricare i pagamenti bancari|impossible de charger les paiements bancaires/i),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByText(/100 CHF.*0\.002 BTC/i)).toBeInTheDocument();
+  });
+
+  it('surfaces a target-load failure, retries it, and then assigns', async () => {
     mockSession.isLoggedIn = true;
     mockGetUnassigned.mockResolvedValue([
       { id: 8, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z', uid: 'pay-8' },
@@ -441,13 +554,17 @@ describe('TransactionsScreen', () => {
     mockGetTargets.mockRejectedValueOnce(new Error('targets-down'));
     renderTx();
     fireEvent.click(await screen.findByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i }));
-    expect(await screen.findByText(/no purchase to assign|kein kauf, dem du|nessun acquisto a cui|aucun achat auquel/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByText(/back to transactions|zurück zu den transaktionen|torna alle transazioni|retour aux transactions/i));
-
+    expect(
+      await screen.findByText(/couldn't load|konnte nicht laden|impossibile caricare|chargement impossible/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/no purchase to assign|kein kauf, dem du|nessun acquisto a cui|aucun achat auquel/i),
+    ).not.toBeInTheDocument();
     mockGetTargets.mockResolvedValue([{ id: 44, asset: { name: 'BTC' }, address: 'bc1qassign' }]);
-    mockSetTarget.mockRejectedValueOnce(new Error('assign-down'));
-    fireEvent.click(screen.getByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i }));
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut versuchen|riprova|réessayer/i }));
     await screen.findAllByRole('combobox');
+
+    mockSetTarget.mockRejectedValueOnce(new Error('assign-down'));
     const selects = screen.getAllByRole('combobox');
     fireEvent.change(selects[0], { target: { value: 'not-a-number' } });
     fireEvent.click(screen.getAllByRole('button', { name: /assign|zuordnen|assegna|attribuer/i })[0]);
@@ -455,6 +572,48 @@ describe('TransactionsScreen', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /assign|zuordnen|assegna|attribuer/i })[0]);
     await waitFor(() => expect(mockSetTarget).toHaveBeenCalled());
     fireEvent.click(screen.getAllByRole('button', { name: /assign|zuordnen|assegna|attribuer/i })[1]);
+  });
+
+  it('shows the no-purchases message only after a successful empty target response', async () => {
+    mockSession.isLoggedIn = true;
+    mockGetUnassigned.mockResolvedValue([
+      { id: 8, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z', uid: 'pay-8' },
+    ]);
+    mockGetTargets.mockResolvedValueOnce([]);
+    renderTx();
+    fireEvent.click(await screen.findByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i }));
+    expect(
+      await screen.findByText(/no purchase to assign|kein kauf, dem du|nessun acquisto a cui|aucun achat auquel/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/couldn't load|konnte nicht laden|impossibile caricare|chargement impossible/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /retry|erneut versuchen|riprova|réessayer/i })).not.toBeInTheDocument();
+  });
+
+  it('returns from unmatched-payment assignment to the transaction list', async () => {
+    mockSession.isLoggedIn = true;
+    mockGetUnassigned.mockResolvedValue([
+      { id: 8, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z', uid: 'pay-8' },
+    ]);
+    renderTx();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    );
+    expect(
+      await screen.findByText(/assign your payments|zahlungen zuordnen|assegna i tuoi pagamenti|attribue tes paiements/i),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /back to transactions|zurück zu den transaktionen|torna alle transazioni|retour aux transactions/i,
+      }),
+    );
+    expect(
+      await screen.findByRole('button', {
+        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+      }),
+    ).toBeInTheDocument();
   });
 
   it('assigns a sparse unmatched payment when the target list is not an array', async () => {
@@ -1202,6 +1361,7 @@ describe('TransactionsScreen', () => {
 
 describe('RefundPanel', () => {
   beforeEach(() => {
+    mockSession.account = 42;
     mockUserAddresses.length = 0;
     mockUserCtx.userAddresses = mockUserAddresses;
     mockGetRefund.mockReset();
@@ -1224,6 +1384,87 @@ describe('RefundPanel', () => {
     renderPanel({ id: 102, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Bank' });
     expect(await screen.findByText('—')).toBeInTheDocument();
     expect(screen.getByText(/you'll get back|du erhältst zurück|riceverai|récupéreras/i)).toBeInTheDocument();
+  });
+
+  it('masks old bank details and ignores late refund/profile responses after an account switch', async () => {
+    mockSession.account = 101;
+    const oldRefund = deferred<unknown>();
+    const newRefund = deferred<unknown>();
+    const oldProfile = deferred<unknown>();
+    const newProfile = deferred<unknown>();
+    const oldCountries = deferred<unknown>();
+    const newCountries = deferred<unknown>();
+    mockGetRefund.mockReturnValueOnce(oldRefund.promise).mockReturnValueOnce(newRefund.promise);
+    mockGetProfile.mockReturnValueOnce(oldProfile.promise).mockReturnValueOnce(newProfile.promise);
+    mockGetCountries.mockReturnValueOnce(oldCountries.promise).mockReturnValueOnce(newCountries.promise);
+    const view = renderPanel({ id: 301, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Bank' });
+
+    await act(async () => {
+      oldRefund.resolve({
+        refundTarget: 'A-IBAN-SECRET', refundAmount: 1, refundAsset: { name: 'EUR' },
+        bankDetails: { iban: 'A-IBAN-SECRET', name: '', address: 'A-STREET-SECRET', zip: '1000', city: 'A-CITY', country: 'CH' },
+      });
+    });
+    expect(await screen.findByDisplayValue('A-IBAN-SECRET')).toBeInTheDocument();
+
+    mockSession.account = 202;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <RefundPanel tx={tx({ id: 301, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Bank' }) as never} onClose={() => undefined} />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(screen.queryByDisplayValue('A-IBAN-SECRET')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue('A-STREET-SECRET')).not.toBeInTheDocument();
+
+    await act(async () => {
+      newRefund.resolve({
+        refundTarget: 'B-IBAN', refundAmount: 2, refundAsset: { name: 'EUR' },
+        bankDetails: { iban: 'B-IBAN', name: '', address: 'B-STREET', zip: '2000', city: 'B-CITY', country: 'CH' },
+      });
+    });
+    await act(async () => {
+      newCountries.resolve([{ id: 2, name: 'B Country', symbol: 'BC' }]);
+    });
+    expect(await screen.findByDisplayValue('B-IBAN')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'B Country' })).toBeInTheDocument();
+    await act(async () => {
+      oldProfile.resolve({ firstName: 'Adele', lastName: 'Account' });
+    });
+    await act(async () => {
+      oldCountries.resolve([{ id: 1, name: 'A Country', symbol: 'AC' }]);
+    });
+    await act(async () => {
+      newProfile.resolve({ firstName: 'Berta', lastName: 'Account' });
+    });
+    expect(screen.getByDisplayValue('Berta Account')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Adele Account')).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'B Country' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'A Country' })).not.toBeInTheDocument();
+  });
+
+  it('does not show an old account refund completion after the session changes', async () => {
+    mockSession.account = 101;
+    const oldSubmit = deferred<void>();
+    mockSetRefund.mockReturnValueOnce(oldSubmit.promise);
+    const view = renderPanel({ id: 302, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Card' });
+    const confirm = await screen.findByRole('button', { name: /confirm refund|rückerstattung bestätigen/i });
+    fireEvent.click(confirm);
+    expect(mockSetRefund).toHaveBeenCalledWith(302, {});
+
+    mockSession.account = 202;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <RefundPanel tx={tx({ id: 302, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Card' }) as never} onClose={() => undefined} />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await screen.findByRole('button', { name: /confirm refund|rückerstattung bestätigen/i });
+    await act(async () => oldSubmit.resolve(undefined));
+    expect(screen.getByRole('button', { name: /confirm refund|rückerstattung bestätigen/i })).toBeInTheDocument();
+    expect(screen.queryByText(/refund complete|rückerstattung abgeschlossen|rimborso completato/i)).not.toBeInTheDocument();
   });
 
   it('lists no crypto addresses when the account address list is missing', async () => {

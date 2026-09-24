@@ -5,6 +5,8 @@
 const mockGetTransactionRefund = jest.fn();
 const mockSetTransactionRefundTarget = jest.fn();
 const mockUserAddresses: Array<{ address: string; blockchains: string[]; label?: string }> = [];
+let mockSessionAccount = 42;
+let mockUserAccountId = 42;
 
 jest.mock('@dfx.swiss/react', () => ({
   ApiException: class ApiException extends Error {
@@ -39,7 +41,8 @@ jest.mock('@dfx.swiss/react', () => ({
   }),
   useCountry: () => ({ getCountries: jest.fn().mockResolvedValue([]) }),
   useUser: () => ({ getProfile: jest.fn().mockResolvedValue({}) }),
-  useUserContext: () => ({ userAddresses: mockUserAddresses }),
+  useApiSession: () => ({ session: { account: mockSessionAccount } }),
+  useUserContext: () => ({ user: { accountId: mockUserAccountId }, userAddresses: mockUserAddresses }),
 }));
 
 jest.mock('../wallets/session', () => ({
@@ -92,6 +95,8 @@ describe('RefundPanel crypto target (no session-address fallback)', () => {
     mockSetTransactionRefundTarget.mockReset();
     mockSetTransactionRefundTarget.mockResolvedValue(undefined);
     mockUserAddresses.length = 0;
+    mockSessionAccount = 42;
+    mockUserAccountId = 42;
   });
 
   it('locks and submits the server-supplied refundTarget without offering a picker', async () => {
@@ -228,6 +233,36 @@ describe('RefundPanel crypto target (no session-address fallback)', () => {
     const confirm = screen.getByRole('button', { name: /confirm refund|rückerstattung bestätigen/i });
     expect(confirm).toBeDisabled();
     fireEvent.click(confirm);
+    expect(mockSetTransactionRefundTarget).not.toHaveBeenCalled();
+  });
+
+  it('hides and refuses an A address when the active session belongs to account B', async () => {
+    mockGetTransactionRefund.mockResolvedValue({
+      refundTarget: undefined,
+      refundAmount: 0.0009,
+      refundAsset: { name: 'BTC' },
+    });
+    mockUserAddresses.push({ address: 'bc1q-account-a', blockchains: ['Bitcoin'] });
+
+    const view = renderPanel();
+    const select = await screen.findByRole('combobox', { name: /refund to|rückerstattung an/i });
+    expect(Array.from(select.querySelectorAll('option')).map((o) => (o as HTMLOptionElement).value)).toContain(
+      'bc1q-account-a',
+    );
+
+    // Simulate an account switch before the cached user context has refreshed.
+    mockSessionAccount = 43;
+    view.rerender(
+      <LanguageProvider>
+        <RefundPanel tx={sellTx()} onClose={() => undefined} />
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText(/couldn't be determined|konnte nicht automatisch/i)).toBeInTheDocument());
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue('bc1q-account-a')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /confirm refund|rückerstattung bestätigen/i })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /confirm refund|rückerstattung bestätigen/i }));
     expect(mockSetTransactionRefundTarget).not.toHaveBeenCalled();
   });
 });

@@ -393,12 +393,26 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   results. It does not prove the exact `pl?lightning=…` link or the exact
   decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
   the real `url()` treats those arguments identically; no assertion pins the outer host.
-- **The 15 App 2.0 session baselines are a logged-in walk through the harness, not a funded
+- **The 19 App 2.0 session baselines are a logged-in walk through the harness, not a funded
   account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
   fresh account. Buy, sell, swap, account, transactions, KYC, limit, the OpenCryptoPay hub and apply
   form, plus the six merchant sub-pages (payment routes, invoice, POS, links, history, settings) are
   captured that way. The OpenCryptoPay sub-pages are shown in the built-in demo mode. A green run does
   not prove that the buy screen ever renders a real rate, nor that the transaction list ever shows rows.
+- **The recovered POS baseline uses mocked payment-link records.** `e2e/app2-session.spec.ts`
+  verifies that pending QR details survive a fresh screen mount, that more than one pending till can
+  be selected, and that a deactivated link's pending charge remains visible. It does not prove that
+  production `/paymentLink` responses retain those fields or that a real Lightning payment settles.
+- **The App 2.0 retry screenshots synthesize service failures.** `e2e/app2-session.spec.ts` installs
+  the KYC country 503 after app bootstrap and uses separate Wallet 4 / Wallet 5 accounts for desktop
+  and mobile. It starts or continues verification and answers `PUT /v2/kyc?autoStep=true` with a
+  synthetic `PersonalData` step to isolate the form from the real contact-email OTP flow. The first
+  `/country` request then receives a synthetic 503 and retry continues to the live route. The
+  unassigned-transaction case also answers its first request with a synthetic 503 before continuing.
+  A green run proves that the country and
+  unmatched-payment error/retry UI works for those responses; it does not prove that the KYC workflow
+  advances to PersonalData, contact-email verification works, or either live endpoint returns 503
+  and recovers on retry.
 - **App 2.0 widget-param specs SQL-write `"user".ref`.**
   `e2e-stack/specs/app2-widget-params.spec.ts` (`assignReferrerCode`) updates the referrer's own
   code so sign-in can look it up. A green run does **not** prove that the API assigns `user.ref`

@@ -9,7 +9,7 @@
 //     This replaces the static app's regex-on-message heuristics (`/kyc/i.test(m)`, ...) with a
 //     real enum, which is strictly more reliable.
 
-import { ApiException, TransactionError } from '@dfx.swiss/react';
+import { TransactionError } from '@dfx.swiss/react';
 import { getKycErrorFromMessage } from '../../lib/api-error';
 import type { Language, TranslationKey } from '../../i18n';
 import { formatAmount, formatFiat } from './amount';
@@ -22,6 +22,17 @@ export interface TradeErrorInfo {
 }
 
 type T = (key: TranslationKey, vars?: Record<string, string | number>) => string;
+
+interface ApiExceptionLike extends Error {
+  statusCode: number;
+  code?: string;
+}
+
+/** The SDK exception extends Error and carries its HTTP status/code. Check that public shape
+ * instead of relying on constructor identity, which can differ across bundled SDK copies. */
+export function isApiExceptionLike(error: unknown): error is ApiExceptionLike {
+  return error instanceof Error && typeof (error as Partial<ApiExceptionLike>).statusCode === 'number';
+}
 
 /** Raw `QuoteError` values for the email gate that predate the SDK's `TransactionError` enum. */
 const PRIMARY_EMAIL_ERRORS = new Set(['PrimaryEmailRequired', 'PrimaryEmailNotConfirmed']);
@@ -38,9 +49,22 @@ export function isEmailGateError(error: TransactionError | string | undefined): 
   return code === 'emailrequired' || code === 'primaryemailrequired' || code === 'primaryemailnotconfirmed';
 }
 
+/** Only these exact HTTP 400 account gates are known to run before the server reserves a
+ * payment-info request. Retrying after the user clears one may use a fresh idempotency key;
+ * network failures, conflicts, missing claims and all other errors must keep the original key. */
+export function isKnownPreClaimGateError(error: unknown): boolean {
+  if (!isApiExceptionLike(error) || error.statusCode !== 400) return false;
+  const knownGates = new Set([
+    'emailrequired',
+    'recommendationrequired',
+  ]);
+  const normalize = (value: unknown) => String(value ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return knownGates.has(normalize(error.code)) || knownGates.has(normalize(error.message));
+}
+
 /** Maps a thrown error from `receiveFor(...)` to a friendly, already-translated message. */
 export function mapThrownError(t: T, err: unknown): TradeErrorInfo {
-  if (err instanceof ApiException) {
+  if (isApiExceptionLike(err)) {
     if (err.statusCode === 401) return { kind: 'session', message: t('sessionExpired') };
     const code = String(err.code ?? '')
       .replace(/[^a-z0-9]/gi, '')

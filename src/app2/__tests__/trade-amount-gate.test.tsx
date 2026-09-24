@@ -68,6 +68,8 @@ jest.mock('@dfx.swiss/react', () => ({
   useSwap: () => ({ receiveFor: jest.fn(), quote: mockPublicSwapQuote }),
   useUser: () => ({ updateMail: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
+  useApiSession: () => ({ session: { account: 7 } }),
+  useTransaction: () => ({ getPaymentInfoRequestStatus: jest.fn(), getTransactionDetailByUid: jest.fn() }),
   useAssetContext: () => ({
     getAssets: () => [
       {

@@ -9,6 +9,11 @@ const mockPos = jest.fn();
 const mockLoadLinks = jest.fn();
 const mockLoadRoutes = jest.fn();
 const mockGo = jest.fn();
+const mockPopup: { opener: Window | null; location: { replace: jest.Mock }; close: jest.Mock } = {
+  opener: window,
+  location: { replace: jest.fn() },
+  close: jest.fn(),
+};
 
 jest.mock('@dfx.swiss/react', () => ({
   ApiException: class ApiException extends Error {
@@ -49,7 +54,10 @@ describe('OCP links view', () => {
     mockCreate.mockResolvedValue(undefined);
     mockToggle.mockResolvedValue(undefined);
     mockPos.mockResolvedValue('https://app.dfx.swiss/pos/1');
-    jest.spyOn(window, 'open').mockImplementation(() => null);
+    mockPopup.opener = window;
+    mockPopup.location.replace.mockReset();
+    mockPopup.close.mockReset();
+    jest.spyOn(window, 'open').mockImplementation(() => mockPopup as unknown as Window);
   });
 
   afterEach(() => {
@@ -136,7 +144,9 @@ describe('OCP links view', () => {
     await waitFor(() => expect(mockToggle).toHaveBeenCalledTimes(2));
 
     fireEvent.click(screen.getAllByRole('button', { name: /open pos/i })[0]);
-    await waitFor(() => expect(window.open).toHaveBeenCalled());
+    await waitFor(() => expect(mockPopup.location.replace).toHaveBeenCalledWith('https://app.dfx.swiss/pos/1'));
+    expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(mockPopup.opener).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Create payment link' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Create payment link' })).not.toBeDisabled());
@@ -166,7 +176,29 @@ describe('OCP links view', () => {
     expect(mockGo).toHaveBeenCalledWith('pos');
   });
 
-  it('falls back to the in-app POS when createPosLink returns no URL', async () => {
+  it('reserves the POS tab before waiting for link creation', async () => {
+    let resolveLink!: (url: string) => void;
+    mockPos.mockReturnValueOnce(new Promise<string>((resolve) => { resolveLink = resolve; }));
+    renderLinks({
+      links: [{ id: 1, status: 'Active', routeId: 1, lnurl: 'LNURL1X' }],
+      routes: { sell: [{ id: 1 }], buy: [], swap: [] },
+      lnSellRoutes: [{ id: 1 }],
+      loadLinks: mockLoadLinks,
+      loadRoutes: mockLoadRoutes,
+      createPosLink: mockPos,
+      copy: mockCopy,
+      demo: false,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /open pos/i }));
+
+    expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(mockPos).toHaveBeenCalledWith(1);
+    expect(mockPopup.location.replace).not.toHaveBeenCalled();
+    resolveLink('https://app.dfx.swiss/pos/1');
+    await waitFor(() => expect(mockPopup.location.replace).toHaveBeenCalledWith('https://app.dfx.swiss/pos/1'));
+  });
+
+  it('closes the reserved tab and falls back to the in-app POS when link creation returns no URL', async () => {
     mockPos.mockResolvedValueOnce(undefined);
     renderLinks({
       links: [{ id: 1, status: 'Active', routeId: 1, lnurl: 'LNURL1X' }],
@@ -180,7 +212,46 @@ describe('OCP links view', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /open pos/i }));
     await waitFor(() => expect(mockGo).toHaveBeenCalledWith('pos'));
-    expect(window.open).not.toHaveBeenCalled();
+    expect(window.open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(mockPopup.close).toHaveBeenCalled();
+    expect(mockPopup.location.replace).not.toHaveBeenCalled();
+  });
+
+  it('closes the reserved tab and reports a POS-link creation failure', async () => {
+    mockPos.mockRejectedValueOnce(new Error('create-pos-down'));
+    renderLinks({
+      links: [{ id: 1, status: 'Active', routeId: 1, lnurl: 'LNURL1X' }],
+      routes: { sell: [{ id: 1 }], buy: [], swap: [] },
+      lnSellRoutes: [{ id: 1 }],
+      loadLinks: mockLoadLinks,
+      loadRoutes: mockLoadRoutes,
+      createPosLink: mockPos,
+      copy: mockCopy,
+      demo: false,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /open pos/i }));
+
+    await waitFor(() => expect(mockPopup.close).toHaveBeenCalled());
+    expect(mockPopup.location.replace).not.toHaveBeenCalled();
+    expect(screen.getByTestId('app2-toast')).toHaveTextContent(/something went wrong/i);
+  });
+
+  it('falls back to in-app POS without creating an external link when the popup is blocked', () => {
+    (window.open as jest.Mock).mockReturnValueOnce(null);
+    renderLinks({
+      links: [{ id: 1, status: 'Active', routeId: 1, lnurl: 'LNURL1X' }],
+      routes: { sell: [{ id: 1 }], buy: [], swap: [] },
+      lnSellRoutes: [{ id: 1 }],
+      loadLinks: mockLoadLinks,
+      loadRoutes: mockLoadRoutes,
+      createPosLink: mockPos,
+      copy: mockCopy,
+      demo: false,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /open pos/i }));
+    expect(mockGo).toHaveBeenCalledWith('pos');
+    expect(mockPos).not.toHaveBeenCalled();
   });
 
   it('renders a nameless link and an object-shaped payment currency', () => {

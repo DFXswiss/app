@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { getCachedAuth } from './helpers/auth-cache';
 import { app2ScreenshotOpts as screenshotOpts } from './helpers/app2-screenshot';
+import { lnurlEncode } from '../src/app2/screens/ocp/lnurl';
 
 /**
  * App 2.0 handbook baselines for every screen that needs a wallet.
@@ -89,6 +90,92 @@ test.describe('App2 session screens', () => {
     await openApp2Session(page, token, '#/tx');
     await expect(page.getByRole('heading', { name: /transactions|transaktionen|transazioni/i })).toBeVisible();
     await expect(page).toHaveScreenshot('app2-tx-in.png', screenshotOpts);
+  });
+
+  test('KYC country lookup error can be retried', async ({ page, request }, testInfo) => {
+    const kycAuth = await getCachedAuth(
+      request,
+      testInfo.project.name === 'chromium-mobile' ? 'evm-wallet5' : 'evm-wallet4',
+    );
+    await page.addInitScript(() => window.localStorage.setItem('dfx_lang', 'en'));
+    await openApp2Session(page, kycAuth.token, '#/kyc');
+
+    let countryRequests = 0;
+    await page.route(/\/country(?:\?.*)?$/, async (route) => {
+      countryRequests += 1;
+      if (countryRequests === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'offline' }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+    await page.route(/\/v2\/kyc(?:\?.*)?$/, async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() === 'PUT' && url.searchParams.get('autoStep') === 'true') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            currentStep: {
+              name: 'PersonalData',
+              status: 'InProgress',
+              sequenceNumber: 1,
+              isCurrent: true,
+              session: { url: `${url.origin}/v2/kyc/data/personal/1`, type: 'API' },
+            },
+          }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    // A synthetic continue response isolates the PersonalData form from the
+    // real contact-email OTP workflow. The country request itself remains real
+    // after the one injected 503.
+    await page.getByRole('button', { name: /^(start verification|continue)$/i }).click();
+    await expect.poll(() => countryRequests).toBe(1);
+    await expect(page.getByText(/couldn't load — check your connection/i)).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-kyc-country-error.png', {
+      ...screenshotOpts,
+      mask: [page.locator('#leftBtn > span')],
+      maskColor: '#154573',
+    });
+
+    await page.getByRole('button', { name: 'Retry' }).click();
+    await expect(page.getByRole('combobox').last()).toBeVisible();
+    expect(countryRequests).toBe(2);
+    await expect(page.getByText(/couldn't load — check your connection/i)).toHaveCount(0);
+  });
+
+  test('unassigned bank payment lookup error can be retried', async ({ page }) => {
+    let unassignedRequests = 0;
+    await page.addInitScript(() => window.localStorage.setItem('dfx_lang', 'en'));
+    await page.route(/\/transaction\/unassigned(?:\?.*)?$/, async (route) => {
+      unassignedRequests += 1;
+      if (unassignedRequests === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'offline' }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await openApp2Session(page, token, '#/tx');
+    await expect(page.getByText(/couldn't load unmatched bank payments/i)).toBeVisible();
+    await expect(page).toHaveScreenshot('app2-tx-unassigned-error.png', screenshotOpts);
+
+    await page.getByRole('button', { name: 'Retry' }).click();
+    await expect(page.getByText(/couldn't load unmatched bank payments/i)).toHaveCount(0);
+    expect(unassignedRequests).toBe(2);
   });
 
   test('kyc steps (logged in)', async ({ page }) => {
@@ -245,6 +332,190 @@ test.describe('App2 session screens', () => {
     expect(polls).toBeGreaterThan(1);
     await timeoutWarning.scrollIntoViewIfNeeded();
     await expect(page).toHaveScreenshot('app2-ocp-pos-timeout.png', screenshotOpts);
+  });
+
+  test('OpenCryptoPay POS keeps an unrecoverable pending payment locked with recovery actions', async ({ page }) => {
+    let linkLoads = 0;
+    let charges = 0;
+    await page.route('**/route', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ buy: [], sell: [{ id: 10, currency: { name: 'CHF' } }], swap: [] }),
+      }),
+    );
+    await page.route(/\/paymentLink(?:\/|\?|$)/, async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink/config')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ accessKey: 'visual-fixture' }),
+        });
+        return;
+      }
+      if (request.method() === 'POST' && url.pathname.endsWith('/payment')) {
+        charges += 1;
+        await route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'locked' }),
+        });
+        return;
+      }
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink')) {
+        linkLoads += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([
+            {
+              id: 'unknown-pending-link',
+              label: 'Pending till',
+              status: 'Active',
+              routeId: 10,
+              payment: { id: 'pending-1', externalId: 'pending-charge', status: 'Pending', amount: 12 },
+            },
+          ]),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await openApp2Session(page, token, '#/ocp?sub=pos');
+    await expect(page.getByTestId('ocp-pos-recovery-error')).toContainText(
+      /payment is still open|zahlung ist noch offen|pagamento è ancora aperto|paiement est toujours ouvert/i,
+    );
+    const chargeButton = page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i });
+    await expect(chargeButton).toBeDisabled();
+    await expect(
+      page.getByRole('button', {
+        name: /refresh payment status|zahlungsstatus aktualisieren|aggiorna stato pagamento|actualiser le statut du paiement/i,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', {
+        name: /review payment links|zahlungslinks prüfen|controlla link di pagamento|vérifier les liens de paiement/i,
+      }),
+    ).toBeVisible();
+
+    const initialLoads = linkLoads;
+    await page
+      .getByRole('button', {
+        name: /refresh payment status|zahlungsstatus aktualisieren|aggiorna stato pagamento|actualiser le statut du paiement/i,
+      })
+      .click();
+    await expect.poll(() => linkLoads).toBeGreaterThan(initialLoads);
+    await expect(chargeButton).toBeDisabled();
+    expect(charges).toBe(0);
+    await page.getByTestId('ocp-pos-recovery-error').scrollIntoViewIfNeeded();
+    await expect(page).toHaveScreenshot('app2-ocp-pos-pending-status-unknown.png', screenshotOpts);
+
+    await page
+      .getByRole('button', {
+        name: /review payment links|zahlungslinks prüfen|controlla link di pagamento|vérifier les liens de paiement/i,
+      })
+      .click();
+    await expect(page).toHaveURL(/sub=links/);
+  });
+
+  test('OpenCryptoPay POS restores and lets the cashier choose between pending payments', async ({
+    page,
+  }, testInfo) => {
+    let polls = 0;
+    if (testInfo.project.name === 'chromium') {
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
+    await page.route('**/route', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ buy: [], sell: [{ id: 10, currency: { name: 'CHF' } }], swap: [] }),
+      }),
+    );
+    await page.route(/\/paymentLink(?:\/|\?|$)/, async (route) => {
+      const requestUrl = new URL(route.request().url());
+      if (route.request().method() === 'GET' && requestUrl.pathname.endsWith('/paymentLink/config')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ accessKey: 'visual-fixture' }),
+        });
+        return;
+      }
+      if (route.request().method() === 'GET' && requestUrl.pathname.endsWith('/paymentLink')) {
+        if (requestUrl.searchParams.has('externalPaymentId')) {
+          polls += 1;
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              id: requestUrl.searchParams.get('linkId'),
+              payment: {
+                externalId: requestUrl.searchParams.get('externalPaymentId'),
+                status: 'Pending',
+              },
+            }),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([
+            {
+              id: 'inactive-till',
+              label: 'Inactive till',
+              status: 'Inactive',
+              routeId: 10,
+              payment: {
+                id: '901',
+                externalId: 'charge-inactive',
+                status: 'Pending',
+                amount: 14,
+                currency: { name: 'CHF' },
+                lnurl: lnurlEncode('https://api.example/lnurlp/inactive-till'),
+              },
+            },
+            {
+              id: 'front-till',
+              label: 'Front till',
+              status: 'Active',
+              routeId: 10,
+              payment: {
+                id: '902',
+                externalId: 'charge-front',
+                status: 'Pending',
+                amount: 21,
+                currency: { name: 'CHF' },
+                lnurl: lnurlEncode('https://api.example/lnurlp/front-till'),
+              },
+            },
+          ]),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.clock.install({ time: new Date('2026-09-22T10:00:00.000Z') });
+    await openApp2Session(page, token, '#/ocp?sub=pos');
+    const pendingSelector = page.getByTestId('ocp-pos-pending-charge');
+    await expect(pendingSelector).toBeVisible();
+    await expect(pendingSelector).toHaveValue('front-till:charge-front');
+    const chargeAmount = page.getByTestId('ocp-pos-charge-amount');
+    await expect(chargeAmount).toHaveText('CHF 21');
+    await expect(page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i })).toBeDisabled();
+
+    await pendingSelector.selectOption('inactive-till:charge-inactive');
+    await expect(chargeAmount).toHaveText('CHF 14');
+    await page.clock.runFor(2_000);
+    await expect.poll(() => polls).toBeGreaterThan(0);
+    // The full-page screenshot starts at the top; don't scroll away the sticky
+    // header or the pending-charge selector on desktop.
+    await expect(page).toHaveScreenshot('app2-ocp-pos-recovered.png', screenshotOpts);
   });
 
   test('OpenCryptoPay links (logged in)', async ({ page }) => {

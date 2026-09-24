@@ -3,6 +3,7 @@ const mockLogout = jest.fn();
 const mockDeleteAccount = jest.fn();
 const mockGetRef = jest.fn();
 const mockGetProfile = jest.fn();
+let mockFreshUserMethods = false;
 const mockOpenSwitcher = jest.fn();
 const mockOpenConnect = jest.fn();
 const mockSession: {
@@ -26,7 +27,10 @@ const i18nOverride: { language?: string } = {};
 jest.mock('@dfx.swiss/react', () => ({
   KycLevel: { Completed: 50, Sell: 20 },
   Blockchain: { ETHEREUM: 'Ethereum', BITCOIN: 'Bitcoin', SEPOLIA: 'Sepolia' },
-  useUser: () => ({ getRef: mockGetRef, getProfile: mockGetProfile }),
+  useUser: () =>
+    mockFreshUserMethods
+      ? { getRef: (...args: unknown[]) => mockGetRef(...args), getProfile: (...args: unknown[]) => mockGetProfile(...args) }
+      : { getRef: mockGetRef, getProfile: mockGetProfile },
   useUserContext: () => ({
     user: mockUserState.user,
     isUserLoading: mockUserState.isUserLoading,
@@ -87,6 +91,7 @@ describe('AccountScreen', () => {
     mockSession.isLoggedIn = false;
     mockSession.address = '0xabc1234567890';
     mockSession.activeWallet = { walletId: 'MetaMask' };
+    mockFreshUserMethods = false;
     mockUserState.user = undefined;
     mockUserState.isUserLoading = false;
     delete i18nOverride.language;
@@ -336,6 +341,60 @@ describe('AccountScreen', () => {
       rejectProfile(new Error('late-profile'));
     });
 
+  });
+
+  it('loads once per wallet address despite fresh SDK method references and ignores stale results', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xaaa';
+    mockUserState.user = { mail: 'ada@example.com', kyc: { level: 50 } };
+    mockFreshUserMethods = true;
+
+    const refResolvers: Array<(value: { code: string }) => void> = [];
+    const profileResolvers: Array<(value: { firstName: string }) => void> = [];
+    mockGetRef.mockImplementation(
+      () => new Promise((resolve) => refResolvers.push(resolve)),
+    );
+    mockGetProfile.mockImplementation(
+      () => new Promise((resolve) => profileResolvers.push(resolve)),
+    );
+
+    const view = renderAccount();
+    await waitFor(() => {
+      expect(mockGetRef).toHaveBeenCalledTimes(1);
+      expect(mockGetProfile).toHaveBeenCalledTimes(1);
+    });
+
+    // Opening a sheet rerenders AccountScreen and gives it new SDK function references.
+    fireEvent.click(screen.getByText(/language/i));
+    expect(mockGetRef).toHaveBeenCalledTimes(1);
+    expect(mockGetProfile).toHaveBeenCalledTimes(1);
+
+    mockSession.address = '0xbbb';
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <AccountScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await waitFor(() => {
+      expect(mockGetRef).toHaveBeenCalledTimes(2);
+      expect(mockGetProfile).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      refResolvers[1]({ code: 'CURRENT-ADDRESS' });
+      profileResolvers[1]({ firstName: 'Current' });
+    });
+    expect(await screen.findByText('Current')).toBeInTheDocument();
+    expect(screen.getByText('CURRENT-ADDRESS')).toBeInTheDocument();
+
+    await act(async () => {
+      refResolvers[0]({ code: 'STALE-ADDRESS' });
+      profileResolvers[0]({ firstName: 'Stale' });
+    });
+    expect(screen.queryByText('Stale')).not.toBeInTheDocument();
+    expect(screen.queryByText('STALE-ADDRESS')).not.toBeInTheDocument();
   });
 
   it('falls back to the raw language code when it is missing from LANGUAGES', async () => {

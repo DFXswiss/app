@@ -34,6 +34,7 @@ import {
   TransactionTarget,
   TransactionType,
   UnassignedTransaction,
+  useApiSession,
   useCountry,
   useTransaction,
   useUser,
@@ -208,7 +209,21 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
   const { getTransactionRefund, setTransactionRefundTarget } = useTransaction();
   const { getCountries } = useCountry();
   const { getProfile } = useUser();
-  const { userAddresses } = useUserContext();
+  const { user, userAddresses } = useUserContext();
+  const { session } = useApiSession();
+  const accountId = session?.account;
+  const priorRefundAccountRef = useRef(accountId);
+  const refundAccountGenerationRef = useRef(0);
+  if (priorRefundAccountRef.current !== accountId) {
+    priorRefundAccountRef.current = accountId;
+    refundAccountGenerationRef.current += 1;
+  }
+  const refundAccountScope = accountId === undefined ? undefined : `${accountId}:${refundAccountGenerationRef.current}`;
+  const currentAccountRef = useRef(refundAccountScope);
+  currentAccountRef.current = refundAccountScope;
+  const requestGenerationRef = useRef(0);
+  const countryGenerationRef = useRef(0);
+  const accountMatches = user?.accountId !== undefined && user.accountId === session?.account;
 
   const kind = refundKind(tx);
   const [phase, setPhase] = useState<'loading' | 'error' | 'form' | 'done'>('loading');
@@ -227,18 +242,33 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
   const [selectedCryptoAddress, setSelectedCryptoAddress] = useState('');
   const ibanRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
+  const [refundOwner, setRefundOwner] = useState<string>();
+  const ownsRefundState = refundAccountScope !== undefined && refundOwner === refundAccountScope;
+  const visiblePhase = ownsRefundState ? phase : 'loading';
+  const visibleData = ownsRefundState ? data : undefined;
+  const visibleIban = ownsRefundState ? iban : '';
+  const visibleHolderName = ownsRefundState ? holderName : '';
+  const visibleStreet = ownsRefundState ? street : '';
+  const visibleHouseNumber = ownsRefundState ? houseNumber : '';
+  const visibleZip = ownsRefundState ? zip : '';
+  const visibleCity = ownsRefundState ? city : '';
+  const visibleCountry = ownsRefundState ? country : 'CH';
+  const visibleWarn = ownsRefundState ? warn : '';
+  const visibleSubmitting = ownsRefundState && submitting;
+  const [countriesOwner, setCountriesOwner] = useState<string>();
+  const visibleCountries = refundAccountScope !== undefined && countriesOwner === refundAccountScope ? countries : [];
 
   // A server-supplied IBAN is locked (the refund must go back to the account that
   // paid); a missing one is editable so the user can enter the payout account.
-  const ibanFixed = (data?.refundTarget ?? '').trim() !== '';
+  const ibanFixed = (visibleData?.refundTarget ?? '').trim() !== '';
   // Crypto: server target wins; else pick from account addresses on the input chain.
-  const cryptoTarget = resolveCryptoRefundTarget(data?.refundTarget);
+  const cryptoTarget = accountMatches ? resolveCryptoRefundTarget(visibleData?.refundTarget) : undefined;
   const allowedCryptoAddresses = useMemo(() => {
-    if (kind !== 'crypto') return [];
+    if (kind !== 'crypto' || !accountMatches) return [];
     const chain = tx.inputBlockchain;
     if (!chain) return [];
     return (userAddresses ?? []).filter((a) => a.blockchains.includes(chain));
-  }, [kind, tx.inputBlockchain, userAddresses]);
+  }, [accountMatches, kind, tx.inputBlockchain, userAddresses]);
 
   // Pre-select when exactly one address matches (main-app behaviour). Keep a still-
   // valid multi-choice selection; clear when the filtered list becomes empty.
@@ -257,9 +287,21 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
   // Fail-closed only when there is neither a server target nor any account address
   // on the input chain (or the user hasn't picked one yet among several).
   const cryptoBlocked =
-    kind === 'crypto' && !cryptoTarget && (allowedCryptoAddresses.length === 0 || !selectedCryptoAddress);
+    kind === 'crypto' &&
+    (!accountMatches ||
+      (!cryptoTarget &&
+        (allowedCryptoAddresses.length === 0 ||
+          !allowedCryptoAddresses.some((a) => a.address === selectedCryptoAddress))));
 
   const load = useCallback(() => {
+    const expectedAccount = refundAccountScope;
+    const generation = ++requestGenerationRef.current;
+    const isCurrent = () =>
+      generation === requestGenerationRef.current && currentAccountRef.current === expectedAccount;
+    if (expectedAccount === undefined) return;
+    setRefundOwner(expectedAccount);
+    setSubmitting(false);
+    submittingRef.current = false;
     if (tx.id == null) {
       setPhase('error');
       return;
@@ -268,6 +310,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
     setPhase('loading');
     getTransactionRefund(tx.id)
       .then((refund) => {
+        if (!isCurrent()) return;
         const bank = refund.bankDetails ?? {};
         setData(refund);
         setIban((refund.refundTarget ?? '').trim() || bank.iban || '');
@@ -284,17 +327,20 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
         if (kind === 'bank' && !(bank.name ?? '')) {
           getProfile()
             .then((profile) => {
+              if (!isCurrent()) return;
               const realName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ');
               if (realName) setHolderName((current) => current || realName);
             })
             .catch(() => undefined);
         }
       })
-      .catch(() => setPhase('error'));
+      .catch(() => {
+        if (isCurrent()) setPhase('error');
+      });
     // `getTransactionRefund` is re-created on every render (the hook doesn't
     // memoise it); keying on it would re-run the fetch and wipe the form on each
     // parent render, so the load is pinned to the transaction id.
-  }, [tx.id]);
+  }, [accountId, refundAccountScope, tx.id]);
 
   useEffect(() => {
     load();
@@ -302,31 +348,49 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
 
   useEffect(() => {
     // Only a bank refund needs the country list (for the creditor's address).
-    if (kind !== 'bank') return undefined;
-    let cancelled = false;
+    const generation = ++countryGenerationRef.current;
+    const expectedAccount = refundAccountScope;
+    const isCurrent = () =>
+      generation === countryGenerationRef.current && currentAccountRef.current === expectedAccount;
+    if (kind !== 'bank' || expectedAccount === undefined) {
+      setCountriesOwner(undefined);
+      setCountries([]);
+      return undefined;
+    }
+    setCountriesOwner(undefined);
     getCountries()
       .then((list) => {
-        if (!cancelled) setCountries(Array.isArray(list) ? list : []);
+        if (!isCurrent()) return;
+        setCountries(Array.isArray(list) ? list : []);
+        setCountriesOwner(expectedAccount);
       })
       .catch(() => {
-        if (!cancelled) setCountries([]);
+        if (!isCurrent()) return;
+        setCountries([]);
+        setCountriesOwner(expectedAccount);
       });
     return () => {
-      cancelled = true;
+      if (countryGenerationRef.current === generation) countryGenerationRef.current += 1;
     };
     // `getCountries` is re-created each render; fetch once per refund kind.
-  }, [kind]);
+  }, [accountId, kind, refundAccountScope]);
 
   const submit = () => {
-    if (submittingRef.current || tx.id == null) return;
+    if (submittingRef.current || tx.id == null || accountId === undefined || !ownsRefundState) return;
+    const expectedAccount = refundAccountScope;
+    const generation = requestGenerationRef.current;
+    const isCurrent = () =>
+      generation === requestGenerationRef.current && currentAccountRef.current === expectedAccount;
     let body: TransactionRefundTarget;
     if (kind === 'crypto') {
+      if (!accountMatches) return;
       // Server-supplied target is authoritative. Otherwise only an address from
       // the account's filtered `userAddresses` list may be sent — never the
       // currently connected session wallet.
       if (cryptoTarget) {
         body = { refundTarget: cryptoTarget };
       } else {
+        if (!allowedCryptoAddresses.some((a) => a.address === selectedCryptoAddress)) return;
         body = { refundTarget: selectedCryptoAddress };
       }
     } else if (kind === 'bank') {
@@ -361,10 +425,12 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
     setWarn('');
     setTransactionRefundTarget(tx.id, body)
       .then(() => {
+        if (!isCurrent()) return;
         setPhase('done');
         showToast(t('refundDone'));
       })
       .catch((err: unknown) => {
+        if (!isCurrent()) return;
         const message = err instanceof ApiException ? String(err.message ?? '') : '';
         // Surface the server-supplied error detail alongside the generic
         // message (mirrors the static app's `genErr + ": " + em`); the
@@ -381,7 +447,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
       });
   };
 
-  if (phase === 'loading') {
+  if (visiblePhase === 'loading') {
     return (
       <div className={cx('refundbox')} style={{ padding: '18px 8px', textAlign: 'center' }}>
         <LoadingRow label={t('loading')} />
@@ -389,7 +455,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
     );
   }
 
-  if (phase === 'error') {
+  if (visiblePhase === 'error') {
     return (
       <div className={cx('refundbox')}>
         <div className={cx('paybox-note', 'warn')} style={{ marginBottom: 10 }}>
@@ -404,7 +470,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
     );
   }
 
-  if (phase === 'done') {
+  if (visiblePhase === 'done') {
     return (
       <div className={cx('refundbox')}>
         <div className={cx('paybox-note', 'ok')} style={{ padding: 16, textAlign: 'center' }}>
@@ -414,8 +480,8 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
     );
   }
 
-  const amountLabel = formatAmount(data?.refundAmount, data?.refundAsset?.name, language, 8) || '—';
-  const sortedCountries = [...countries].sort((a, b) => a.name.localeCompare(b.name));
+  const amountLabel = formatAmount(visibleData?.refundAmount, visibleData?.refundAsset?.name, language, 8) || '—';
+  const sortedCountries = [...visibleCountries].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className={cx('refundbox')}>
@@ -426,11 +492,11 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
         <div style={{ fontSize: 12, color: 'var(--t-muted)' }}>{t('refundYouGet')}</div>
         <div style={{ fontSize: 20, fontWeight: 700, marginTop: 2 }}>{amountLabel}</div>
       </div>
-      {data?.fee && (
+      {visibleData?.fee && (
         <div className={cx('glass')} style={{ borderRadius: 12, padding: '2px 14px', marginBottom: 10 }}>
-          <KvRow label={t('feeDfx')} value={formatNumber(data.fee.dfx, language, 8)} />
-          <KvRow label={t('feeNetwork')} value={formatNumber(data.fee.network, language, 8)} />
-          <KvRow label={t('feeBank')} value={formatNumber(data.fee.bank, language, 8)} />
+          <KvRow label={t('feeDfx')} value={formatNumber(visibleData.fee.dfx, language, 8)} />
+          <KvRow label={t('feeNetwork')} value={formatNumber(visibleData.fee.network, language, 8)} />
+          <KvRow label={t('feeBank')} value={formatNumber(visibleData.fee.bank, language, 8)} />
         </div>
       )}
 
@@ -470,7 +536,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
           <input
             ref={ibanRef}
             className={cx('tinput')}
-            value={iban}
+            value={visibleIban}
             readOnly={ibanFixed}
             aria-readonly={ibanFixed || undefined}
             placeholder="DE.."
@@ -481,29 +547,29 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
           <label className={cx('flabel')}>{t('refundName')}</label>
           <input
             className={cx('tinput')}
-            value={holderName}
+            value={visibleHolderName}
             autoComplete="name"
             onChange={(event) => setHolderName(event.target.value)}
           />
           <label className={cx('flabel')}>{t('kycStreet')}</label>
-          <input className={cx('tinput')} value={street} onChange={(event) => setStreet(event.target.value)} />
+          <input className={cx('tinput')} value={visibleStreet} onChange={(event) => setStreet(event.target.value)} />
           <label className={cx('flabel')}>{t('kycHouseNr')}</label>
           <input
             className={cx('tinput')}
-            value={houseNumber}
+            value={visibleHouseNumber}
             onChange={(event) => setHouseNumber(event.target.value)}
           />
           <label className={cx('flabel')}>{t('kycZip')}</label>
           <input
             className={cx('tinput')}
-            value={zip}
+            value={visibleZip}
             inputMode="numeric"
             onChange={(event) => setZip(event.target.value)}
           />
           <label className={cx('flabel')}>{t('kycCity')}</label>
-          <input className={cx('tinput')} value={city} onChange={(event) => setCity(event.target.value)} />
+          <input className={cx('tinput')} value={visibleCity} onChange={(event) => setCity(event.target.value)} />
           <label className={cx('flabel')}>{t('kycCountry')}</label>
-          <select className={cx('tinput')} value={country} onChange={(event) => setCountry(event.target.value)}>
+          <select className={cx('tinput')} value={visibleCountry} onChange={(event) => setCountry(event.target.value)}>
             {sortedCountries.map((option) => (
               <option key={option.id} value={option.symbol}>
                 {option.name}
@@ -513,13 +579,13 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
         </>
       )}
 
-      {submitting ? (
+      {visibleSubmitting ? (
         <div className={cx('paybox-note')} style={{ marginTop: 10 }}>
           <LoadingRow label={t('tkSending')} />
         </div>
-      ) : warn ? (
+      ) : visibleWarn ? (
         <div className={cx('paybox-note', 'warn')} style={{ marginTop: 10 }}>
-          {warn}
+          {visibleWarn}
         </div>
       ) : null}
 
@@ -528,7 +594,7 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
           type="button"
           className={cx('btn-primary')}
           style={{ flex: 1 }}
-          disabled={submitting || cryptoBlocked}
+          disabled={visibleSubmitting || cryptoBlocked || !ownsRefundState}
           onClick={submit}
         >
           {t('refundConfirm')}
@@ -544,6 +610,17 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
 export default function TransactionsScreen() {
   const { t, language } = useT();
   const { isLoggedIn, address } = useWalletSession();
+  const { session } = useApiSession();
+  const sessionAccount = isLoggedIn ? session?.account : undefined;
+  const priorAccountRef = useRef(sessionAccount);
+  const accountGenerationRef = useRef(0);
+  if (priorAccountRef.current !== sessionAccount) {
+    priorAccountRef.current = sessionAccount;
+    accountGenerationRef.current += 1;
+  }
+  const accountScope = sessionAccount === undefined ? undefined : `${sessionAccount}:${accountGenerationRef.current}`;
+  const accountScopeRef = useRef(accountScope);
+  accountScopeRef.current = accountScope;
   const {
     getTransactions,
     getDetailTransactions,
@@ -560,6 +637,7 @@ export default function TransactionsScreen() {
   // Which transaction's inline refund form is open (keyed by uid, else id).
   const [refundActiveId, setRefundActiveId] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<DetailTransaction[]>([]);
+  const [transactionsOwner, setTransactionsOwner] = useState<string>();
   // How many rows are revealed — grows by TXPAGE on each "load more" (client-side
   // reveal of the already-loaded history, matching the static app's `TX.shown`).
   const [shown, setShown] = useState(TXPAGE);
@@ -569,16 +647,47 @@ export default function TransactionsScreen() {
 
   // Unmatched bank payments + the in-place assign view (txNoticeHtml/openAssign/renderAssign).
   const [unassigned, setUnassigned] = useState<UnassignedTransaction[]>([]);
+  const [unassignedOwner, setUnassignedOwner] = useState<string>();
+  const [unassignedState, setUnassignedState] = useState<LoadState>('loading');
+  const [retryingUnassigned, setRetryingUnassigned] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [targets, setTargets] = useState<TransactionTarget[]>([]);
+  const [targetsOwner, setTargetsOwner] = useState<string>();
   const [targetsState, setTargetsState] = useState<LoadState>('loading');
   const [picked, setPicked] = useState<Record<number, string>>({});
   const [assigning, setAssigning] = useState<number | null>(null);
   const loadGenRef = useRef(0);
   const assignGenRef = useRef(0);
+  const targetsGenRef = useRef(0);
+  const unassignedGenRef = useRef(0);
+
+  const loadUnassigned = (gen: number, expectedScope: string | undefined, retry = false) => {
+    const unassignedGen = ++unassignedGenRef.current;
+    if (!expectedScope || accountScopeRef.current !== expectedScope) return;
+    if (retry) setRetryingUnassigned(true);
+    else setUnassignedState('loading');
+    getUnassignedTransactions()
+      .then((list) => {
+        if (gen !== loadGenRef.current || unassignedGen !== unassignedGenRef.current || accountScopeRef.current !== expectedScope) return;
+        setUnassigned(Array.isArray(list) ? list : []);
+        setUnassignedOwner(expectedScope);
+        setRetryingUnassigned(false);
+        setUnassignedState('loaded');
+      })
+      .catch(() => {
+        if (gen !== loadGenRef.current || unassignedGen !== unassignedGenRef.current || accountScopeRef.current !== expectedScope) return;
+        setUnassigned([]);
+        setUnassignedOwner(expectedScope);
+        setRetryingUnassigned(false);
+        setUnassignedState('error');
+      });
+  };
 
   const load = () => {
+    const expectedScope = accountScopeRef.current;
+    if (!expectedScope) return;
     const gen = ++loadGenRef.current;
+    const isCurrent = () => gen === loadGenRef.current && accountScopeRef.current === expectedScope;
     const sortByDate = (list: DetailTransaction[]) =>
       [...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     setState('loading');
@@ -589,78 +698,82 @@ export default function TransactionsScreen() {
     // /transaction?userAddress=…) before giving up, mirroring `buildTx`.
     getDetailTransactions()
       .then((list) => {
-        if (gen !== loadGenRef.current) return;
+        if (!isCurrent()) return;
         setTransactions(sortByDate(list));
+        setTransactionsOwner(expectedScope);
         setState('loaded');
       })
       .catch(() => {
-        if (gen !== loadGenRef.current) return;
+        if (!isCurrent()) return;
         getTransactions()
           .then((list) => {
-            if (gen !== loadGenRef.current) return;
+            if (!isCurrent()) return;
             setTransactions(sortByDate(list as DetailTransaction[]));
+            setTransactionsOwner(expectedScope);
             setState('loaded');
           })
           .catch(() => {
-            if (gen !== loadGenRef.current) return;
+            if (!isCurrent()) return;
             setState('error');
+            setTransactionsOwner(expectedScope);
           });
       });
-    // Bank payments DFX couldn't match to a buy route — best-effort, a failure
-    // here must not blow up the main history (mirrors buildTx's separate catch).
-    getUnassignedTransactions()
+    // A failure here must not hide the main history, but it must remain visible
+    // because unmatched bank payments can represent money the account has sent.
+    loadUnassigned(gen, expectedScope);
+  };
+
+  const loadTargets = () => {
+    const gen = loadGenRef.current;
+    const expectedScope = accountScopeRef.current;
+    if (!expectedScope) return;
+    const targetsGen = ++targetsGenRef.current;
+    setTargetsState('loading');
+    setTargetsOwner(undefined);
+    getTransactionTargets()
       .then((list) => {
-        if (gen !== loadGenRef.current) return;
-        setUnassigned(Array.isArray(list) ? list : []);
+        if (gen !== loadGenRef.current || targetsGen !== targetsGenRef.current || accountScopeRef.current !== expectedScope) return;
+        setTargets(Array.isArray(list) ? list : []);
+        setTargetsOwner(expectedScope);
+        setTargetsState('loaded');
       })
       .catch(() => {
-        if (gen !== loadGenRef.current) return;
-        setUnassigned([]);
+        if (gen !== loadGenRef.current || targetsGen !== targetsGenRef.current || accountScopeRef.current !== expectedScope) return;
+        setTargets([]);
+        setTargetsOwner(expectedScope);
+        setTargetsState('error');
       });
   };
 
   const openAssign = () => {
-    const gen = loadGenRef.current;
     setPicked({});
     setAssignOpen(true);
-    setTargetsState('loading');
-    setTargets([]);
-    getTransactionTargets()
-      .then((list) => {
-        if (gen !== loadGenRef.current) return;
-        setTargets(Array.isArray(list) ? list : []);
-      })
-      .catch(() => {
-        if (gen !== loadGenRef.current) return;
-        setTargets([]);
-      })
-      .finally(() => {
-        if (gen !== loadGenRef.current) return;
-        setTargetsState('loaded');
-      });
+    loadTargets();
   };
 
   const doAssign = (index: number) => {
-    const payment = unassigned[index];
-    const raw = picked[index] ?? (targets[0]?.id != null ? String(targets[0].id) : '');
+    const payment = accountScope !== undefined && unassignedOwner === accountScope ? unassigned[index] : undefined;
+    const activeTargets = accountScope !== undefined && targetsOwner === accountScope ? targets : [];
+    const raw = picked[index] ?? (activeTargets[0]?.id != null ? String(activeTargets[0].id) : '');
     const buyId = Number(raw);
     if (payment?.id == null || !raw || Number.isNaN(buyId)) return;
     const gen = loadGenRef.current;
+    const expectedScope = accountScopeRef.current;
     const assignGen = ++assignGenRef.current;
     setAssigning(index);
     setTransactionTarget(payment.id, buyId)
       .then(() => {
-        if (gen !== loadGenRef.current) return;
+        if (gen !== loadGenRef.current || accountScopeRef.current !== expectedScope) return;
         showToast(t('txAssignOk'));
         setAssignOpen(false);
         load(); // refresh reloads the (now shorter) unassigned list
       })
       .catch(() => {
-        if (gen !== loadGenRef.current) return;
+        if (gen !== loadGenRef.current || accountScopeRef.current !== expectedScope) return;
         showToast(t('genErr'));
       })
       .finally(() => {
-        if (assignGen !== assignGenRef.current) return;
+        if (assignGen !== assignGenRef.current || accountScopeRef.current !== expectedScope) return;
         setAssigning(null);
       });
   };
@@ -669,12 +782,23 @@ export default function TransactionsScreen() {
     setMenuOpen(false);
     // The hook does PUT /transaction/detail/csv, then resolves a short-lived
     // /transaction/csv?key=… download URL served by the API as an attachment.
+    // Reserve the tab during the click gesture; opening after the request is
+    // commonly rejected by browser popup blockers.
+    const popup = window.open('about:blank', '_blank');
+    if (!popup) {
+      showToast(t('genErr'));
+      return;
+    }
+    popup.opener = null;
     getTransactionCsv()
       .then((url) => {
-        window.open(url, '_blank', 'noopener,noreferrer');
+        popup.location.replace(url);
         showToast(t('txExport'));
       })
-      .catch(() => showToast(t('genErr')));
+      .catch(() => {
+        popup.close();
+        showToast(t('genErr'));
+      });
   };
 
   const exportCoinTracking = () => {
@@ -723,24 +847,38 @@ export default function TransactionsScreen() {
     setPicked({});
     setRefundActiveId(null);
     setTargets([]);
+    targetsGenRef.current += 1;
+    setUnassigned([]);
     setMenuOpen(false);
     setAssigning(null);
     assignGenRef.current += 1;
-    if (!isLoggedIn) {
+    if (!isLoggedIn || accountScope === undefined) {
       loadGenRef.current += 1;
+      unassignedGenRef.current += 1;
       setTransactions([]);
+      setTransactionsOwner(undefined);
       setUnassigned([]);
+      setRetryingUnassigned(false);
+      setUnassignedState('loaded');
       return;
     }
     load();
     // `load` intentionally omitted — it closes over `getDetailTransactions`,
     // which is re-created every render (no memoization in the hook), and
     // re-running this effect should only be driven by the session state.
-  }, [isLoggedIn, address]);
+  }, [isLoggedIn, address, accountScope]);
 
   if (!isLoggedIn) return <LoggedOutState title={t('mTx')} />;
 
-  const visible = transactions.slice(0, shown);
+  const scopeMatches = accountScope !== undefined && transactionsOwner === accountScope;
+  const currentState: LoadState = scopeMatches ? state : 'loading';
+  const currentTransactions = scopeMatches ? transactions : [];
+  const currentUnassigned = accountScope !== undefined && unassignedOwner === accountScope ? unassigned : [];
+  const currentUnassignedState: LoadState = accountScope !== undefined && unassignedOwner === accountScope ? unassignedState : 'loading';
+  const currentTargets = accountScope !== undefined && targetsOwner === accountScope ? targets : [];
+  const currentTargetsState: LoadState = accountScope !== undefined && targetsOwner === accountScope ? targetsState : 'loading';
+  const currentAssignOpen = assignOpen && accountScope !== undefined && unassignedOwner === accountScope;
+  const visible = currentTransactions.slice(0, shown);
 
   return (
     <div className={cx('account')}>
@@ -759,7 +897,7 @@ export default function TransactionsScreen() {
 
       {/* The assign view replaces the whole list in place (mirrors the static
           app's `openAssign`/`renderAssign`), headed by a back-to-list link. */}
-      {assignOpen ? (
+      {currentAssignOpen ? (
         <>
           <div className={cx('txtop')}>
             <button type="button" className={cx('txlink')} onClick={() => setAssignOpen(false)}>
@@ -767,21 +905,28 @@ export default function TransactionsScreen() {
             </button>
           </div>
           <div className={cx('sectionlabel')}>{t('txAssignTitle')}</div>
-          {targetsState === 'loading' ? (
+          {currentTargetsState === 'loading' ? (
             <div style={{ padding: '18px 8px', textAlign: 'center' }}>
               <LoadingRow label={t('loading')} />
             </div>
+          ) : currentTargetsState === 'error' ? (
+            <div className={cx('paybox-note', 'warn')} style={{ padding: 12, marginBottom: 10 }}>
+              <div>{t('loadFail')}</div>
+              <button className={cx('btn-mini')} type="button" style={{ marginTop: 10 }} onClick={loadTargets}>
+                {t('retry')}
+              </button>
+            </div>
           ) : (
             <>
-              {targets.length === 0 && (
+              {currentTargets.length === 0 && (
                 <div className={cx('paybox-note', 'warn')} style={{ padding: 12, marginBottom: 10 }}>
                   {t('txNoTargets')}
                 </div>
               )}
-              {unassigned.map((payment, index) => {
+              {currentUnassigned.map((payment, index) => {
                 const amount = formatAmount(payment.inputAmount, payment.inputAsset, language);
                 const label = amount || `#${payment.id ?? index}`;
-                const value = picked[index] ?? (targets[0]?.id != null ? String(targets[0].id) : '');
+                const value = picked[index] ?? (currentTargets[0]?.id != null ? String(currentTargets[0].id) : '');
                 return (
                   <div className={cx('assignrow')} key={payment.uid || payment.id || index}>
                     <div className={cx('ah')}>
@@ -793,10 +938,10 @@ export default function TransactionsScreen() {
                         className={cx('tinput')}
                         aria-label={t('txAssignTo')}
                         value={value}
-                        disabled={targets.length === 0}
+                        disabled={currentTargets.length === 0}
                         onChange={(event) => setPicked((current) => ({ ...current, [index]: event.target.value }))}
                       >
-                        {targets.map((target) => (
+                        {currentTargets.map((target) => (
                           <option key={target.id} value={target.id}>
                             {`${target.asset.name} · ${shortAddress(target.address)}`}
                           </option>
@@ -805,7 +950,7 @@ export default function TransactionsScreen() {
                       <button
                         className={cx('btn-mini')}
                         type="button"
-                        disabled={targets.length === 0 || assigning === index}
+                        disabled={currentTargets.length === 0 || assigning === index}
                         onClick={() => doAssign(index)}
                       >
                         {t('txAssignDo')}
@@ -819,7 +964,7 @@ export default function TransactionsScreen() {
         </>
       ) : (
         <>
-          {state === 'loaded' && (
+          {currentState === 'loaded' && (
             <>
               <div className={cx('txtop')}>
                 <button type="button" className={cx('txlink')} onClick={() => openReport()}>
@@ -848,7 +993,25 @@ export default function TransactionsScreen() {
             </>
           )}
 
-          {unassigned.length > 0 && (
+          {currentUnassignedState === 'error' ? (
+            <div className={cx('paybox-note', 'warn')} style={{ marginBottom: 10 }}>
+              <div>{t('txUnassignedLoadFail')}</div>
+              {retryingUnassigned ? (
+                <div style={{ marginTop: 10 }}>
+                  <LoadingRow label={t('loading')} />
+                </div>
+              ) : (
+                <button
+                  className={cx('btn-mini')}
+                  type="button"
+                  style={{ marginTop: 10 }}
+                  onClick={() => loadUnassigned(loadGenRef.current, accountScope, true)}
+                >
+                  {t('retry')}
+                </button>
+              )}
+            </div>
+          ) : currentUnassignedState === 'loaded' && currentUnassigned.length > 0 ? (
             <button
               type="button"
               className={cx('txnotice')}
@@ -857,20 +1020,20 @@ export default function TransactionsScreen() {
             >
               <span className={cx('ni')}>{ALERT_ICON}</span>
               <span className={cx('nt')}>
-                {t('txUnassignedN', { n: unassigned.length })}
+                {t('txUnassignedN', { n: currentUnassigned.length })}
                 <small>{t('txUnassignedSub')}</small>
               </span>
               <span className={cx('caret')}>{CARET_ICON}</span>
             </button>
-          )}
+          ) : null}
 
-          {state === 'loading' && (
+          {currentState === 'loading' && (
             <div className={cx('sec')} style={{ textAlign: 'center', padding: 24 }}>
               <LoadingRow label={t('loading')} />
             </div>
           )}
 
-          {state === 'error' && (
+          {currentState === 'error' && (
             <div
               className={cx('ocp-empty')}
               style={{ flexDirection: 'column', gap: 12, textAlign: 'center', padding: '30px 8px' }}
@@ -882,13 +1045,13 @@ export default function TransactionsScreen() {
             </div>
           )}
 
-          {state === 'loaded' && transactions.length === 0 && (
+          {currentState === 'loaded' && currentTransactions.length === 0 && (
             <div className={cx('sec')} style={{ textAlign: 'center', padding: 30 }}>
               {t('noTx')}
             </div>
           )}
 
-          {state === 'loaded' && transactions.length > 0 && (
+          {currentState === 'loaded' && currentTransactions.length > 0 && (
             <div className={cx('glass', 'rowlist')} style={{ marginTop: 6 }}>
               {visible.map((tx, i) => {
                 // Unknown/unlisted types fall back to the Buy style and icon
@@ -982,7 +1145,7 @@ export default function TransactionsScreen() {
 
               {/* Reveal the next page of already-loaded rows — no network call,
                   hidden once every row is shown (mirrors `txMore`, orig 4456). */}
-              {shown < transactions.length && (
+              {shown < currentTransactions.length && (
                 <div className={cx('txbar')}>
                   <button type="button" onClick={() => setShown((current) => current + TXPAGE)}>
                     {t('txLoadMore')}

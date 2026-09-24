@@ -250,6 +250,7 @@ export default function AccountScreen() {
       setReferral(undefined);
       return undefined;
     }
+    setReferral(undefined);
     let cancelled = false;
     getRef()
       .then((r) => {
@@ -261,7 +262,7 @@ export default function AccountScreen() {
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn, getRef]);
+  }, [isLoggedIn, address]);
 
   // Name lives on the profile, not the reactive user context — fetch it so the header
   // can prefer the real first/last name (matches renderAccount()'s /user/profile lookup).
@@ -270,6 +271,7 @@ export default function AccountScreen() {
       setProfile(undefined);
       return undefined;
     }
+    setProfile(undefined);
     let cancelled = false;
     getProfile()
       .then((p) => {
@@ -281,7 +283,7 @@ export default function AccountScreen() {
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn, getProfile]);
+  }, [isLoggedIn, address]);
 
   if (!isLoggedIn) return <LoggedOutState title={t('mAcct')} />;
 

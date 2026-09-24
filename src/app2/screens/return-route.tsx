@@ -22,14 +22,9 @@ import type { AccountMergeResponse } from '@dfx.swiss/react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Spinner } from '../components/ui';
-import { JobResponse, JobStatus, isJobResponse, isJobTerminal, pollJobUntilTerminal } from '../lib/job';
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { cx } from '../css';
-
-// The merge ran as a job and did not end in a usable result. Carries an already user-facing message,
-// which is what tells it apart from an ApiException in the catch below.
-class MergeJobError extends Error {}
 
 /**
  * CKO payment poll schedule — same shape as ocp/pos.tsx (`pollPos`):
@@ -62,6 +57,19 @@ function isValidJwt(token: string): boolean {
 
 function statusOf(error: unknown): number | undefined {
   return error instanceof ApiException ? error.statusCode : undefined;
+}
+
+function isAccountMergeResponse(value: unknown): value is AccountMergeResponse {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !('kycHash' in value) ||
+    typeof value.kycHash !== 'string' ||
+    !value.kycHash.trim()
+  ) {
+    return false;
+  }
+  return !('accessToken' in value) || typeof value.accessToken === 'string';
 }
 
 interface ResultButton {
@@ -121,7 +129,7 @@ export default function ReturnRouteScreen() {
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const { isLoggedIn, openConnect } = useWalletSession();
-  const { confirmAccountMerge, getAnonymousJob } = useAuth();
+  const { confirmAccountMerge } = useAuth();
   const { getTransactionByCkoId } = useTransaction();
   const { updateSession } = useApiSession();
 
@@ -135,6 +143,8 @@ export default function ReturnRouteScreen() {
   );
 
   const timerRef = useRef<number>();
+  const deadlineTimerRef = useRef<number>();
+  const pollGenerationRef = useRef(0);
   const cancelledRef = useRef(false);
   const mergeStartedRef = useRef(false);
   const ckoStartedRef = useRef(false);
@@ -143,21 +153,30 @@ export default function ReturnRouteScreen() {
 
   // One place to tear down the poll loop — called on unmount and before a retry.
   const stopPoll = useCallback(() => {
+    pollGenerationRef.current += 1;
     if (timerRef.current) {
       window.clearTimeout(timerRef.current);
       timerRef.current = undefined;
+    }
+    if (deadlineTimerRef.current) {
+      window.clearTimeout(deadlineTimerRef.current);
+      deadlineTimerRef.current = undefined;
     }
   }, []);
 
   const startCkoPoll = useCallback(
     (ckoId: string) => {
       stopPoll();
+      const pollGeneration = ++pollGenerationRef.current;
+      const isCurrentPoll = () => !cancelledRef.current && pollGeneration === pollGenerationRef.current;
       setPanel({ kind: 'spinner', msgKey: 'ckoWait' });
       // Same deadline + backoff as ocp/pos.tsx — never poll a parked tab forever.
       const deadline = Date.now() + CKO_POLL.deadlineMs;
       let delay: number = CKO_POLL.initialDelayMs;
 
       const failWithRetry = (titleKey: TranslationKey) => {
+        if (!isCurrentPoll()) return;
+        stopPoll();
         setPanel({
           kind: 'result',
           variant: 'warn',
@@ -170,6 +189,7 @@ export default function ReturnRouteScreen() {
       };
 
       const scheduleNext = () => {
+        if (!isCurrentPoll()) return;
         if (Date.now() >= deadline) {
           // Visible stop + retry — never silent, never indefinite.
           failWithRetry('waitTimedOut');
@@ -182,8 +202,9 @@ export default function ReturnRouteScreen() {
       const tick = async () => {
         try {
           const tx = await getTransactionByCkoId(encodeURIComponent(ckoId));
-          if (cancelledRef.current) return;
+          if (!isCurrentPoll()) return;
           if (tx && (tx.uid || tx.id != null)) {
+            stopPoll();
             const uid = tx.uid ?? String(tx.id);
             setPanel({
               kind: 'result',
@@ -209,7 +230,7 @@ export default function ReturnRouteScreen() {
           // No tx id yet — keep polling with backoff until the deadline.
           scheduleNext();
         } catch (error) {
-          if (cancelledRef.current) return;
+          if (!isCurrentPoll()) return;
           if (statusOf(error) === 404) {
             // Not settled yet — keep polling with backoff until the deadline.
             scheduleNext();
@@ -219,6 +240,7 @@ export default function ReturnRouteScreen() {
           failWithRetry('ckoErr');
         }
       };
+      deadlineTimerRef.current = window.setTimeout(() => failWithRetry('waitTimedOut'), CKO_POLL.deadlineMs);
       void tick();
     },
     [getTransactionByCkoId, goContinue, navigate, stopPoll, t],
@@ -232,10 +254,8 @@ export default function ReturnRouteScreen() {
     };
   }, [stopPoll]);
 
-  // /account-merge?otp= — confirm the merge link once (Bearer when a session
-  // exists, else anonymous). A returned access token re-authenticates the app as
-  // the merged account via updateSession() (App 2.0's equivalent of the static
-  // app's SESSION=…/persistSession/onConnected re-auth).
+  // /account-merge?otp= — the current API confirms the merge synchronously. A
+  // returned access token re-authenticates the app as the merged account.
   useEffect(() => {
     if (pathname !== '/account-merge' || mergeStartedRef.current) return;
     mergeStartedRef.current = true;
@@ -253,34 +273,14 @@ export default function ReturnRouteScreen() {
 
     setPanel({ kind: 'spinner', msgKey: 'mergeVerifying' });
     void (async () => {
-      const confirmMerge = () =>
-        confirmAccountMerge(otp, isLoggedIn);
-
-      const mergeJobError = (job: JobResponse): MergeJobError => {
-        if (!isJobTerminal(job.status)) return new MergeJobError(t('mergeJobSlow'));
-        return new MergeJobError(job.error ?? t('mergeJobFailed'));
-      };
-
       try {
-        const response = await confirmMerge();
-        let data = response as AccountMergeResponse;
-        if (isJobResponse(response)) {
-          const job = await pollJobUntilTerminal(
-            response,
-            async (uid) => {
-              const result = await getAnonymousJob(uid);
-              return { ...result, status: result.status as unknown as JobStatus };
-            },
-            { isCancelled: () => cancelledRef.current },
-          );
-          if (job.status !== JobStatus.COMPLETE) throw mergeJobError(job);
-          const result = await confirmMerge();
-          if (isJobResponse(result)) throw mergeJobError(result);
-          data = result as AccountMergeResponse;
-        }
+        const response: unknown = await confirmAccountMerge(otp, isLoggedIn);
         if (cancelledRef.current) return;
+        if (!isAccountMergeResponse(response)) throw new Error('Unexpected account merge response');
+        const data = response;
         const token = data?.accessToken;
-        if (token && isValidJwt(token)) {
+        if (token) {
+          if (!isValidJwt(token)) throw new Error('Unexpected account merge token');
           updateSession(token); // adopt the merged account's token, then land on /account
           navigate('/account');
           return;
@@ -293,15 +293,6 @@ export default function ReturnRouteScreen() {
         });
       } catch (error) {
         if (cancelledRef.current) return;
-        if (error instanceof MergeJobError) {
-          setPanel({
-            kind: 'result',
-            variant: 'warn',
-            title: error.message,
-            buttons: [{ label: t('routeContinue'), onClick: goContinue, primary: true }],
-          });
-          return;
-        }
         const status = statusOf(error);
         const key: TranslationKey = status === 400 ? 'mergeBad' : status === 409 ? 'mergeDone' : 'mergeErr';
         setPanel({

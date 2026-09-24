@@ -12,7 +12,7 @@
 // simpler to reason about, and it means switching tabs never loses what you were doing on the
 // other one.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Blockchain,
   FiatPaymentMethod,
@@ -20,8 +20,10 @@ import {
   useAssetContext,
   useBankAccountContext,
   useFiatContext,
+  useApiSession,
+  useTransaction,
 } from '@dfx.swiss/react';
-import type { Asset, BankAccount, Buy, Fiat, Sell, Swap } from '@dfx.swiss/react';
+import type { Asset, BankAccount, Buy, DetailTransaction, Fiat, Sell, Swap } from '@dfx.swiss/react';
 import { useLocation } from 'react-router-dom';
 import { AssetPicker } from '../components/pickers/AssetPicker';
 import { BankAccountPicker } from '../components/pickers/BankAccountPicker';
@@ -46,7 +48,14 @@ import {
   hasNoDisplayableEstimate,
   isAmountValidityError,
 } from './trade/capabilities';
-import { assetFormatter, fiatFormatter, mapThrownError, mapTransactionError } from './trade/errors';
+import {
+  assetFormatter,
+  fiatFormatter,
+  isApiExceptionLike,
+  isKnownPreClaimGateError,
+  mapThrownError,
+  mapTransactionError,
+} from './trade/errors';
 import { AssetChainGlyph, FiatGlyph } from './trade/glyphs';
 import { FeesPanel } from './trade/FeesPanel';
 import { PaymentSheet } from './trade/PaymentSheet';
@@ -70,6 +79,18 @@ import { useWalletSession } from '../wallets/session';
 import { cx } from '../css';
 
 const QUICK_FIAT_AMOUNTS = [50, 100, 250, 500];
+const PENDING_PAYMENT_KEY_PREFIX = 'app2:pending-payment-request:';
+
+function createPaymentRequestId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
+  if (!cryptoApi?.getRandomValues) throw new Error('Secure random generation is unavailable');
+  const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 const CHEVRON_RIGHT = (
   <svg width={18} height={18} viewBox="0 0 24 24" fill="none">
@@ -108,9 +129,11 @@ export default function HomeScreen() {
   const { t, language } = useT();
   const { showToast } = useToast();
   const session = useWalletSession();
+  const { session: apiSession } = useApiSession();
   const { getAssets } = useAssetContext();
   const { currencies } = useFiatContext();
   const { bankAccounts, createAccount } = useBankAccountContext();
+  const transactionApi = useTransaction();
   const location = useLocation();
 
   const [mode, setMode] = useState<Mode>('buy');
@@ -167,19 +190,157 @@ export default function HomeScreen() {
   // request settles — armed by the CTA, or by picking the payout account the sell CTA asked for.
   const [needPaymentInfo, setNeedPaymentInfo] = useState(false);
   const [openAfterPaymentInfo, setOpenAfterPaymentInfo] = useState(false);
+  const [paymentRequestId, setPaymentRequestId] = useState<string>();
+  const [paymentRequestOwner, setPaymentRequestOwner] = useState<string>();
+  const [recoveringPaymentRequest, setRecoveringPaymentRequest] = useState(false);
+  const restoredPaymentModeOwnerRef = useRef<string>();
+  const [existingRequestUid, setExistingRequestUid] = useState<string>();
+  const [existingRequestStatus, setExistingRequestStatus] = useState<string>();
+  const [pendingNewPayment, setPendingNewPayment] = useState(false);
   const [buyTargetRaw, setBuyTargetRaw] = useState('');
-  const targetClearedByUserRef = useRef(false);
+  const targetEditedByUserRef = useRef(false);
+  const [buyAmountDirection, setBuyAmountDirection] = useState<'source' | 'target'>('target');
   const bankAccountPromptRef = useRef<string>();
   const bankAccountParamLiveRef = useRef(bankAccountParam);
   bankAccountParamLiveRef.current = bankAccountParam;
 
+  const paymentAccountId = apiSession?.account === undefined ? undefined : String(apiSession.account);
+  const pendingPaymentStorageKey = paymentAccountId
+    ? `${PENDING_PAYMENT_KEY_PREFIX}${paymentAccountId}`
+    : undefined;
+
   useEffect(() => {
+    if (!pendingPaymentStorageKey || paymentRequestId) return;
+    try {
+      const stored = sessionStorage.getItem(pendingPaymentStorageKey);
+      if (!stored) return;
+      const pending = JSON.parse(stored) as { requestId?: unknown; mode?: unknown };
+      if (
+        typeof pending.requestId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(pending.requestId) ||
+        (pending.mode !== 'buy' && pending.mode !== 'sell' && pending.mode !== 'swap')
+      ) {
+        sessionStorage.removeItem(pendingPaymentStorageKey);
+        return;
+      }
+      setMode(pending.mode);
+      setPaymentRequestId(pending.requestId);
+      setPaymentRequestOwner(paymentAccountId);
+      restoredPaymentModeOwnerRef.current = paymentAccountId;
+      setRecoveringPaymentRequest(true);
+    } catch {
+      showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+    }
+  }, [pendingPaymentStorageKey, paymentRequestId, showToast, t]);
+
+  const paymentRequestSameOwner = paymentAccountId !== undefined && paymentRequestOwner === paymentAccountId;
+  const activePaymentRequestId = paymentRequestSameOwner ? paymentRequestId : undefined;
+  const paymentRequestLocked = activePaymentRequestId !== undefined;
+  const paymentRecoveryReady = paymentAccountId !== undefined && (paymentRequestId === undefined || paymentRequestSameOwner);
+  const loadExistingRequest = useCallback(
+    (uid: string): Promise<DetailTransaction> => transactionApi.getTransactionDetailByUid(uid),
+    [transactionApi.getTransactionDetailByUid],
+  );
+  const requestType = mode === 'buy' ? 'Buy' : mode === 'sell' ? 'Sell' : 'Swap';
+  const visibleExistingRequestUid = paymentRequestSameOwner ? existingRequestUid : undefined;
+  const visibleExistingRequestStatus = paymentRequestSameOwner ? existingRequestStatus : undefined;
+  const visiblePaymentSheetOpen = paymentSheetOpen && paymentRequestSameOwner;
+  const canStartSeparatePayment = visibleExistingRequestUid !== undefined && visibleExistingRequestStatus === 'Completed';
+  const paymentRequestIdentity = paymentRequestSameOwner && activePaymentRequestId
+    ? `${paymentAccountId}:${activePaymentRequestId}:${requestType}`
+    : undefined;
+  const paymentRequestIdentityRef = useRef<string>();
+  paymentRequestIdentityRef.current = paymentRequestIdentity;
+  const preClaimRetryIdentityRef = useRef<string>();
+  const rotatedPreClaimRetryIdentitiesRef = useRef(new Set<string>());
+
+  const checkExistingPaymentStatus = useCallback(async () => {
+    if (!activePaymentRequestId) return;
+    const expectedIdentity = paymentRequestIdentity;
+    try {
+      const status = await transactionApi.getPaymentInfoRequestStatus(activePaymentRequestId, requestType);
+      if (paymentRequestIdentityRef.current !== expectedIdentity) return;
+      setExistingRequestUid(status.existingUid);
+      setExistingRequestStatus(status.requestStatus);
+    } catch {
+      if (paymentRequestIdentityRef.current !== expectedIdentity) return;
+      // A missing claim is not proof that the original request is no longer in flight.
+      setExistingRequestUid(undefined);
+      setExistingRequestStatus('Unknown');
+    }
+  }, [activePaymentRequestId, paymentRequestIdentity, requestType, transactionApi.getPaymentInfoRequestStatus]);
+
+  useEffect(() => {
+    if (paymentRequestId && paymentRequestOwner !== paymentAccountId) {
+      setPaymentRequestId(undefined);
+      setPaymentRequestOwner(undefined);
+      setNeedPaymentInfo(false);
+      setOpenAfterPaymentInfo(false);
+      setPaymentSheetOpen(false);
+      setSheetSnapshot(null);
+      setRecoveringPaymentRequest(false);
+      setExistingRequestUid(undefined);
+      setExistingRequestStatus(undefined);
+    }
+  }, [paymentAccountId, paymentRequestId, paymentRequestOwner]);
+
+  useEffect(() => {
+    if (!recoveringPaymentRequest || !activePaymentRequestId) return undefined;
+    let current = true;
+    const expectedIdentity = paymentRequestIdentity;
+    void transactionApi
+      .getPaymentInfoRequestStatus(activePaymentRequestId, requestType)
+      .then((status) => {
+        if (!current || paymentRequestIdentityRef.current !== expectedIdentity) return;
+        setExistingRequestUid(status.existingUid);
+        setExistingRequestStatus(status.requestStatus);
+        setRecoveringPaymentRequest(false);
+        setSheetSnapshot({
+          mode,
+          buy: null,
+          sell: null,
+          swap: null,
+          rawError: null,
+          loading: false,
+          payAssetCode: '',
+          receiveAssetCode: '',
+          currency: undefined,
+          amount: 0,
+        });
+        setPaymentSheetOpen(true);
+      })
+      .catch(() => {
+        if (!current || paymentRequestIdentityRef.current !== expectedIdentity) return;
+        setExistingRequestUid(undefined);
+        setExistingRequestStatus('Unknown');
+        setRecoveringPaymentRequest(false);
+        setSheetSnapshot({
+          mode,
+          buy: null,
+          sell: null,
+          swap: null,
+          rawError: null,
+          loading: false,
+          payAssetCode: '',
+          receiveAssetCode: '',
+          currency: undefined,
+          amount: 0,
+        });
+        setPaymentSheetOpen(true);
+      });
+    return () => {
+      current = false;
+    };
+  }, [recoveringPaymentRequest, activePaymentRequestId, paymentRequestIdentity, transactionApi.getPaymentInfoRequestStatus, requestType, mode]);
+
+  useEffect(() => {
+    if (paymentRequestId || recoveringPaymentRequest || restoredPaymentModeOwnerRef.current === paymentAccountId) return;
     const requestedMode =
       new URLSearchParams(location.search).get('mode') ||
       new URLSearchParams(window.location.search).get('mode') ||
       routeOrQueryParam(location.search, 'service');
     if (requestedMode === 'buy' || requestedMode === 'sell' || requestedMode === 'swap') setMode(requestedMode);
-  }, [location.search]);
+  }, [location.search, paymentRequestId, recoveringPaymentRequest, paymentAccountId]);
 
   // Partner embed contract (main-app app-handling.context): external-transaction-id tags the
   // payment attempt. Read from hash and real query so both deep-link styles work.
@@ -331,7 +492,12 @@ export default function HomeScreen() {
   }, [amountInParam, buyAsset, sellAsset, swapFromAsset]);
 
   useEffect(() => {
-    if (amountOutParam) setBuyTargetRaw(amountOutParam);
+    targetEditedByUserRef.current = false;
+    setBuyAmountDirection('target');
+  }, [amountOutParam, amountInParam]);
+
+  useEffect(() => {
+    if (amountOutParam && !targetEditedByUserRef.current) setBuyTargetRaw(amountOutParam);
   }, [amountOutParam, buyAsset]);
 
   useEffect(() => {
@@ -385,9 +551,10 @@ export default function HomeScreen() {
 
   const buyAmount = parseAmt(buyRaw, language);
   const buyTargetAmount = parseAmt(buyTargetRaw, language);
-  const receiveDrivenByParam = Boolean(amountOutParam) && !amountInParam && !targetClearedByUserRef.current;
-  const quoteFromTarget = receiveDrivenByParam && Boolean(buyTargetRaw.trim());
-  const hasValidBuyQuoteAmount = quoteFromTarget
+  const targetInputAvailable = Boolean(amountOutParam) && !amountInParam;
+  const targetMode = targetInputAvailable && buyAmountDirection === 'target';
+  const quoteFromTarget = targetMode && Boolean(buyTargetRaw.trim());
+  const hasValidBuyQuoteAmount = targetMode
     ? buyTargetAmount !== null && buyTargetAmount > 0
     : buyAmount !== null && buyAmount > 0;
   const personalIbanState = personalIbanParamState(
@@ -432,7 +599,7 @@ export default function HomeScreen() {
     paused: paymentSheetOpen || openAfterPaymentInfo,
   });
   const buyPayment = useBuyQuote({
-    enabled: session.isLoggedIn && mode === 'buy' && needPaymentInfo && hasValidBuyQuoteAmount && !personalIbanBlocked,
+    enabled: paymentRecoveryReady && session.isLoggedIn && mode === 'buy' && needPaymentInfo && hasValidBuyQuoteAmount && !personalIbanBlocked,
     asset: buyApiAsset,
     currency: buyFiat,
     amount: quoteFromTarget ? null : buyAmount,
@@ -441,6 +608,7 @@ export default function HomeScreen() {
     externalTransactionId,
     withPaymentInfo: true,
     personalIbanProvider,
+    clientRequestId: activePaymentRequestId,
     paused: paymentSheetOpen,
   });
   const sellQuote = useSellQuote({
@@ -455,12 +623,13 @@ export default function HomeScreen() {
     paused: paymentSheetOpen || openAfterPaymentInfo,
   });
   const sellPayment = useSellQuote({
-    enabled: session.isLoggedIn && mode === 'sell' && needPaymentInfo && Boolean(sellBankAccount?.iban),
+    enabled: paymentRecoveryReady && session.isLoggedIn && mode === 'sell' && needPaymentInfo && Boolean(sellBankAccount?.iban),
     asset: sellApiAsset,
     currency: sellFiat,
     amount: sellAmount,
     iban: sellBankAccount?.iban,
     externalTransactionId,
+    clientRequestId: activePaymentRequestId,
     paused: paymentSheetOpen,
   });
   const swapQuote = useSwapQuote({
@@ -472,16 +641,17 @@ export default function HomeScreen() {
     paused: paymentSheetOpen || openAfterPaymentInfo,
   });
   const swapPayment = useSwapQuote({
-    enabled: session.isLoggedIn && mode === 'swap' && needPaymentInfo,
+    enabled: paymentRecoveryReady && session.isLoggedIn && mode === 'swap' && needPaymentInfo,
     sourceAsset: swapFromApiAsset,
     targetAsset: swapToApiAsset,
     amount: swapAmount,
     externalTransactionId,
     withPaymentInfo: true,
+    clientRequestId: activePaymentRequestId,
     paused: paymentSheetOpen,
   });
 
-  const buyReady = !!buyQuote.data && buyQuote.isFresh && buyQuote.data.isValid !== false;
+  const buyReady = hasValidBuyQuoteAmount && !!buyQuote.data && buyQuote.isFresh && buyQuote.data.isValid !== false;
   const sellReady = !!sellQuote.data && sellQuote.isFresh && sellQuote.data.isValid !== false;
   const swapReady = !!swapQuote.data && swapQuote.isFresh && swapQuote.data.isValid !== false;
 
@@ -489,6 +659,8 @@ export default function HomeScreen() {
   /** The engine that produces what the payment sheet shows — the authenticated payment-details
    * request of the active mode (for sell, the IBAN-bound one). */
   const activePayment = mode === 'buy' ? buyPayment : mode === 'sell' ? sellPayment : swapPayment;
+  // Declared above the trade engines as well; this is an owner-scoped lock so a switched
+  // account never inherits another account's request ID or existing-request display.
   const activeThrownError = activeQuote.errorIsCurrent ? mapThrownError(t, activeQuote.error) : null;
   const activeValidityMessage =
     mode === 'buy' && buyQuote.data?.isValid === false && buyQuote.isFresh
@@ -536,7 +708,7 @@ export default function HomeScreen() {
     : personalIbanBlocked && mode === 'buy'
       ? false
       : mode === 'buy'
-        ? buyReady || canOpenGate
+        ? hasValidBuyQuoteAmount && (buyReady || canOpenGate)
         : mode === 'swap'
           ? swapReady || canOpenGate
           : !!sellAmount && !!sellApiAsset && !!sellFiat && (sellReady || canOpenGate);
@@ -583,18 +755,16 @@ export default function HomeScreen() {
     setPaymentSheetOpen(true);
   }, [openAfterPaymentInfo, needPaymentInfo, activePayment.settled]);
 
-  // A payment-details request that never settles (stalled mobile connection — the engine has no
-  // request timeout) would otherwise leave the CTA disabled with a spinner forever, with no way
-  // out but editing an input. Give up after 20s, release the CTA and say so.
+  // Keep the same key after a local timeout. The server may already have created a payable
+  // request, so retrying must recover its claim instead of creating another one.
   useEffect(() => {
     if (!awaitingPaymentInfo) return undefined;
     const timer = setTimeout(() => {
-      setOpenAfterPaymentInfo(false);
-      setNeedPaymentInfo(false);
-      showToast(t('requestTimeout'), { assertive: true });
+      showToast(t('requestStillChecking'), { assertive: true });
+      activePayment.refresh();
     }, 20_000);
     return () => clearTimeout(timer);
-  }, [awaitingPaymentInfo, showToast, t]);
+  }, [awaitingPaymentInfo, showToast, t, activePayment.refresh]);
 
   // The armed intent belongs to the exact inputs that armed it: editing anything (or switching
   // modes) drops back to the public quote instead of opening a sheet the user no longer asked for.
@@ -606,6 +776,8 @@ export default function HomeScreen() {
   }, [
     mode,
     buyRaw,
+    buyTargetRaw,
+    buyAmountDirection,
     buyAsset,
     buyChain,
     buyFiat,
@@ -646,6 +818,10 @@ export default function HomeScreen() {
 
   const handleCta = () => {
     if (privateBlocked) return;
+    if (!paymentAccountId) {
+      showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+      return;
+    }
     if (mode === 'sell' && !sellBankAccount) {
       setBankAccountOpen(true);
       return;
@@ -653,6 +829,18 @@ export default function HomeScreen() {
     // The panel runs on the public quote, so no payment details exist yet. Start the
     // payment-details request; the effect above opens the sheet on that exact response, which
     // is also what guards against showing numbers that have gone stale in the meantime.
+    const requestId = activePaymentRequestId ?? createPaymentRequestId();
+    if (pendingPaymentStorageKey) {
+      try {
+        sessionStorage.setItem(pendingPaymentStorageKey, JSON.stringify({ requestId, mode }));
+      } catch {
+        showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+        return;
+      }
+    }
+    setPaymentRequestId(requestId);
+    setPaymentRequestOwner(paymentAccountId);
+    setRecoveringPaymentRequest(false);
     setNeedPaymentInfo(true);
     setOpenAfterPaymentInfo(true);
   };
@@ -746,6 +934,10 @@ export default function HomeScreen() {
 
   const payRaw = mode === 'buy' ? buyRaw : mode === 'sell' ? sellRaw : swapRaw;
   const setPayRaw = mode === 'buy' ? setBuyRaw : mode === 'sell' ? setSellRaw : setSwapRaw;
+  const setBuySourceAmount = (next: string) => {
+    if (targetInputAvailable) setBuyAmountDirection('source');
+    setBuyRaw(next);
+  };
 
   // Switching modes pre-fills sell/swap as before. Buy starts empty and only quotes after an
   // explicit amount entry/quick chip or a valid partner amount-in/amount-out parameter.
@@ -805,13 +997,38 @@ export default function HomeScreen() {
             aria-selected={mode === m}
             style={m === 'swap' && !swapAvailable ? { opacity: 0.38, pointerEvents: 'none' } : undefined}
             onClick={() => changeMode(m)}
+            disabled={paymentRequestLocked}
           >
             {t(m)}
           </button>
         ))}
       </div>
 
-      <button className={cx('walletbar')} type="button" onClick={() => session.openSwitcher()}>
+      {activePaymentRequestId && !visiblePaymentSheetOpen && (
+        <div className={cx('paybox-note', 'warn')} data-testid="pending-payment-recovery" style={{ margin: '12px 0' }}>
+          <div>{t('paymentRecoveryPrompt')}</div>
+          <div style={{ overflowWrap: 'anywhere', marginTop: 6 }}>
+            {visibleExistingRequestUid ?? activePaymentRequestId}
+            {visibleExistingRequestStatus ? ` · ${visibleExistingRequestStatus}` : ''}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button type="button" className={cx('btn-glass')} onClick={() => {
+              setSheetSnapshot(null);
+              void checkExistingPaymentStatus();
+              setPaymentSheetOpen(true);
+            }}>
+              {t('checkRequestStatus')}
+            </button>
+            {canStartSeparatePayment ? (
+              <button type="button" className={cx('btn-glass')} onClick={() => setPendingNewPayment(true)}>
+                {t('startNewPayment')}
+              </button>
+            ) : <span>{t('paymentManualClarification')}</span>}
+          </div>
+        </div>
+      )}
+
+      <button className={cx('walletbar')} type="button" onClick={() => session.openSwitcher()} disabled={paymentRequestLocked}>
         <span className={cx('wbLogo')}>
           {/* Sizing/fit belongs to `.walletbar .wbLogo img` (23px, object-fit: contain) — an
               inline 100%/cover here used to crop brand marks to the edges of the white tile. */}
@@ -854,19 +1071,28 @@ export default function HomeScreen() {
             <input
               className={cx('amt')}
               inputMode="decimal"
-              value={payRaw}
+              value={
+                mode === 'buy' && targetMode
+                  ? hasValidBuyQuoteAmount && buyQuote.data && buyQuote.isFresh
+                    ? formatAmount(buyQuote.data.amount, 2, language)
+                    : ''
+                  : payRaw
+              }
               placeholder="0"
               aria-label="Amount you pay"
+              disabled={paymentRequestLocked}
               onChange={(e) => {
                 const next = e.target.value;
                 if (!next) spendClearedByUserRef.current = true;
-                setPayRaw(next);
+                if (mode === 'buy') setBuySourceAmount(next);
+                else setPayRaw(next);
               }}
             />
             {isFiatPay ? (
               <button
                 className={cx('pill')}
                 aria-label="Select pay currency"
+                disabled={paymentRequestLocked}
                 onClick={() => setFiatPickerOpen('buyPay')}
               >
                 {buyFiat ? (
@@ -884,6 +1110,7 @@ export default function HomeScreen() {
               <button
                 className={cx('pill')}
                 aria-label="Select pay asset"
+                disabled={paymentRequestLocked}
                 onClick={() => setAssetPickerOpen(mode === 'sell' ? 'sellPay' : 'swapFrom')}
               >
                 <PillAsset
@@ -900,7 +1127,7 @@ export default function HomeScreen() {
           className={cx('fab')}
           aria-label="Flip direction"
           onClick={flip}
-          disabled={mode === 'swap' && !canFlipSwap}
+          disabled={paymentRequestLocked || (mode === 'swap' && !canFlipSwap)}
           style={mode === 'swap' && !canFlipSwap ? { opacity: 0.38 } : undefined}
         >
           <svg viewBox="0 0 24 24" fill="none">
@@ -922,7 +1149,7 @@ export default function HomeScreen() {
               {receiveShowRetry && (
                 <>
                   {' · '}
-                  <button className={cx('msg-retry')} type="button" onClick={() => activeQuote.refresh()}>
+                  <button className={cx('msg-retry')} type="button" onClick={() => activeQuote.refresh()} disabled={paymentRequestLocked}>
                     {t('retry')}
                   </button>
                 </>
@@ -933,15 +1160,21 @@ export default function HomeScreen() {
             <input
               className={cx('amt')}
               value={
-                receiveDrivenByParam ? buyTargetRaw : targetClearedByUserRef.current ? '' : receiveValue
+                quoteFromTarget
+                  ? buyTargetRaw
+                  : targetInputAvailable && !hasValidBuyQuoteAmount
+                    ? ''
+                    : receiveValue
               }
-              readOnly={!receiveDrivenByParam}
+              readOnly={!targetInputAvailable}
               aria-label="Amount you receive"
+              disabled={paymentRequestLocked}
               onChange={
-                receiveDrivenByParam
+                targetInputAvailable
                   ? (e) => {
                       const next = e.target.value;
-                      if (!next) targetClearedByUserRef.current = true;
+                      targetEditedByUserRef.current = true;
+                      setBuyAmountDirection('target');
                       setBuyTargetRaw(next);
                     }
                   : undefined
@@ -951,7 +1184,7 @@ export default function HomeScreen() {
               <button
                 className={cx('pill')}
                 aria-label="Select receive currency"
-                disabled={hideTargetSelection}
+                disabled={hideTargetSelection || paymentRequestLocked}
                 onClick={hideTargetSelection ? undefined : () => setFiatPickerOpen('sellReceive')}
                 style={hideTargetSelection ? { cursor: 'default' } : undefined}
               >
@@ -970,7 +1203,7 @@ export default function HomeScreen() {
               <button
                 className={cx('pill')}
                 aria-label="Select receive asset"
-                disabled={hideTargetSelection}
+                disabled={hideTargetSelection || paymentRequestLocked}
                 onClick={
                   hideTargetSelection ? undefined : () => setAssetPickerOpen(mode === 'buy' ? 'buyReceive' : 'swapTo')
                 }
@@ -990,7 +1223,7 @@ export default function HomeScreen() {
       {mode === 'buy' && buyFiat && (
         <div className={cx('quick')}>
           {QUICK_FIAT_AMOUNTS.map((v) => (
-            <button key={v} onClick={() => setBuyRaw(String(v))}>
+            <button key={v} onClick={() => setBuySourceAmount(String(v))} disabled={paymentRequestLocked}>
               {quickChipSymbol(buyFiat.name)}
               {v}
             </button>
@@ -1041,7 +1274,7 @@ export default function HomeScreen() {
         style={mode === 'buy' ? undefined : { marginTop: 'auto' }}
         // The payment-details request between tap and sheet is short but not instant — without
         // this the CTA looked dead for a moment and invited a second tap.
-        disabled={!ctaEnabled || awaitingPaymentInfo}
+        disabled={!ctaEnabled || !paymentAccountId || awaitingPaymentInfo || paymentRequestLocked}
         aria-busy={awaitingPaymentInfo || undefined}
         onClick={handleCta}
       >
@@ -1145,6 +1378,22 @@ export default function HomeScreen() {
         value={sellBankAccount}
         onSelect={(account) => {
           setSellBankAccount(account);
+          if (!paymentAccountId) {
+            showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+            return;
+          }
+          const requestId = activePaymentRequestId ?? createPaymentRequestId();
+          if (pendingPaymentStorageKey) {
+            try {
+              sessionStorage.setItem(pendingPaymentStorageKey, JSON.stringify({ requestId, mode }));
+            } catch {
+              showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+              return;
+            }
+          }
+          setPaymentRequestId(requestId);
+          setPaymentRequestOwner(paymentAccountId);
+          setRecoveringPaymentRequest(false);
           // The user only reached this picker by tapping the sell CTA, so selecting an account
           // continues that intent: fetch the payment details for it and open the sheet.
           setNeedPaymentInfo(true);
@@ -1188,11 +1437,41 @@ export default function HomeScreen() {
         }}
       />
 
-      <PaymentSheet
-        open={paymentSheetOpen}
-        onClose={() => setPaymentSheetOpen(false)}
-        onDone={() => {
+      <ConfirmationSheet
+        open={pendingNewPayment}
+        titleId="newPaymentConfirmTitle"
+        title={t('startNewPayment')}
+        description={t('newPaymentWarning')}
+        detail={visibleExistingRequestUid ?? activePaymentRequestId}
+        confirmLabel={t('startNewPayment')}
+        onClose={() => setPendingNewPayment(false)}
+        onConfirm={() => {
+          if (!canStartSeparatePayment) return;
+          if (pendingPaymentStorageKey) sessionStorage.removeItem(pendingPaymentStorageKey);
+          setPendingNewPayment(false);
+          setPaymentRequestId(undefined);
+          setPaymentRequestOwner(undefined);
+          if (restoredPaymentModeOwnerRef.current === paymentAccountId) restoredPaymentModeOwnerRef.current = undefined;
+          setExistingRequestUid(undefined);
+          setExistingRequestStatus(undefined);
+          setRecoveringPaymentRequest(false);
+          setNeedPaymentInfo(false);
           setPaymentSheetOpen(false);
+          setSheetSnapshot(null);
+        }}
+      />
+
+      <PaymentSheet
+        open={visiblePaymentSheetOpen}
+        onClose={() => {
+          setPaymentSheetOpen(false);
+          setSheetSnapshot(null);
+          setRecoveringPaymentRequest(false);
+        }}
+        onDone={(existingRequest = false) => {
+          setPaymentSheetOpen(false);
+          setRecoveringPaymentRequest(false);
+          if (existingRequest || visibleExistingRequestUid) return;
           const extra =
             sheetSnapshot?.mode === 'sell' && sheetSnapshot.sell
               ? {
@@ -1235,7 +1514,79 @@ export default function HomeScreen() {
         currency={sheetSnapshot?.currency ?? sheetCurrency}
         amount={sheetSnapshot?.amount ?? sheetAmount}
         sessionAddress={session.address}
-        onRetry={() => {
+        onRetry={async () => {
+          const paymentError = sheetSnapshot?.rawError ?? activePayment.error;
+          if (isKnownPreClaimGateError(paymentError) && paymentAccountId && pendingPaymentStorageKey) {
+            const currentRequestId = activePaymentRequestId;
+            const expectedIdentity = paymentRequestIdentity;
+            if (!currentRequestId || !expectedIdentity) return;
+            if (
+              preClaimRetryIdentityRef.current === expectedIdentity ||
+              rotatedPreClaimRetryIdentitiesRef.current.has(expectedIdentity)
+            ) return;
+            preClaimRetryIdentityRef.current = expectedIdentity;
+            const releasePreClaimRetry = () => {
+              if (preClaimRetryIdentityRef.current === expectedIdentity) preClaimRetryIdentityRef.current = undefined;
+            };
+            setSheetSnapshot((snapshot) => ({ ...(snapshot as PaymentSnapshot), loading: true }));
+            let confirmedMissingClaim = false;
+            try {
+              const status = await transactionApi.getPaymentInfoRequestStatus(currentRequestId, requestType);
+              if (paymentRequestIdentityRef.current !== expectedIdentity) {
+                releasePreClaimRetry();
+                return;
+              }
+              setExistingRequestUid(status.existingUid);
+              setExistingRequestStatus(status.requestStatus);
+            } catch (error) {
+              if (paymentRequestIdentityRef.current !== expectedIdentity) {
+                releasePreClaimRetry();
+                return;
+              }
+              if (isApiExceptionLike(error) && error.statusCode === 404) {
+                confirmedMissingClaim = true;
+              } else {
+                setExistingRequestUid(undefined);
+                setExistingRequestStatus('Unknown');
+              }
+            }
+            if (!confirmedMissingClaim) {
+              setSheetSnapshot((snapshot) => ({
+                ...(snapshot as PaymentSnapshot),
+                loading: false,
+                rawError: paymentError,
+              }));
+              releasePreClaimRetry();
+              return;
+            }
+            const requestId = createPaymentRequestId();
+            try {
+              sessionStorage.setItem(pendingPaymentStorageKey, JSON.stringify({ requestId, mode }));
+            } catch {
+              setSheetSnapshot((snapshot) => ({
+                ...(snapshot as PaymentSnapshot),
+                loading: false,
+                rawError: paymentError,
+              }));
+              releasePreClaimRetry();
+              showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+              return;
+            }
+            rotatedPreClaimRetryIdentitiesRef.current.add(expectedIdentity);
+            releasePreClaimRetry();
+            setPaymentRequestId(requestId);
+            setPaymentRequestOwner(paymentAccountId);
+            setExistingRequestUid(undefined);
+            setExistingRequestStatus(undefined);
+            setSheetSnapshot((snapshot) => ({
+              ...(snapshot as PaymentSnapshot),
+              rawError: null,
+              loading: true,
+            }));
+            setSheetRetrying(true);
+            setNeedPaymentInfo(true);
+            return;
+          }
           setSheetSnapshot((snapshot) => ({ ...(snapshot as PaymentSnapshot), loading: true }));
           setSheetRetrying(true);
           // Must be the engine the sheet renders from: refreshing the panel's public quote would
@@ -1248,6 +1599,12 @@ export default function HomeScreen() {
         }}
         onReconnect={() => session.openConnect()}
         personalIbanProvider={personalIbanProvider}
+        requestLocked={paymentRequestLocked}
+        loadExistingRequest={loadExistingRequest}
+        existingRequestUid={visibleExistingRequestUid}
+        existingRequestStatus={visibleExistingRequestStatus}
+        onCheckExistingRequest={checkExistingPaymentStatus}
+        retryPreClaimGateError={isKnownPreClaimGateError(sheetSnapshot?.rawError ?? activePayment.error)}
         onContinueWithoutPersonalIban={() => {
           setPersonalIbanSuppressed(true);
           setSheetRetrying(true);

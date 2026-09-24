@@ -11,9 +11,16 @@
 import { useEffect, useState } from 'react';
 import { PersonalIbanProvider, TransactionError, useUser } from '@dfx.swiss/react';
 import { isVerifiedFrickPersonalIbanResponse } from '../../../util/personal-iban';
-import type { Blockchain, Buy, Fiat, Sell, Swap } from '@dfx.swiss/react';
+import type { ApiException, Blockchain, Buy, DetailTransaction, Fiat, Sell, Swap } from '@dfx.swiss/react';
 import { formatAmount, formatFiat, shortAddress } from './amount';
-import { isEmailGateError, mapThrownError, mapTransactionError, fiatFormatter, assetFormatter } from './errors';
+import {
+  isApiExceptionLike,
+  isEmailGateError,
+  mapThrownError,
+  mapTransactionError,
+  fiatFormatter,
+  assetFormatter,
+} from './errors';
 import { chainName } from './blockchain-meta';
 import { QrBill } from './QrBill';
 import type { Mode } from './types';
@@ -94,8 +101,8 @@ function invalidityMessage(
 
 export interface PaymentSheetProps {
   open: boolean;
-  onClose: () => void;
-  onDone: () => void;
+  onClose: (resolved?: boolean) => void;
+  onDone: (existingRequest?: boolean) => void;
   mode: Mode;
   loading: boolean;
   rawError: unknown;
@@ -112,6 +119,12 @@ export interface PaymentSheetProps {
   onReconnect: () => void;
   personalIbanProvider?: PersonalIbanProvider;
   onContinueWithoutPersonalIban?: () => void;
+  requestLocked?: boolean;
+  loadExistingRequest?: (uid: string) => Promise<DetailTransaction>;
+  existingRequestUid?: string;
+  existingRequestStatus?: string;
+  onCheckExistingRequest?: () => void;
+  retryPreClaimGateError?: boolean;
 }
 
 export function PaymentSheet({
@@ -134,6 +147,12 @@ export function PaymentSheet({
   onReconnect,
   personalIbanProvider,
   onContinueWithoutPersonalIban,
+  requestLocked = false,
+  loadExistingRequest,
+  existingRequestUid,
+  existingRequestStatus,
+  onCheckExistingRequest,
+  retryPreClaimGateError = false,
 }: PaymentSheetProps) {
   const { t, language } = useT();
   const setupUrl = appUrl('/');
@@ -143,6 +162,9 @@ export function PaymentSheet({
   const [mailInput, setMailInput] = useState('');
   const [mailSending, setMailSending] = useState(false);
   const [mailSent, setMailSent] = useState(false);
+  const [existingRequest, setExistingRequest] = useState<DetailTransaction | null>(null);
+  const [existingRequestLoading, setExistingRequestLoading] = useState(false);
+  const [existingRequestLookupFailed, setExistingRequestLookupFailed] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -155,14 +177,58 @@ export function PaymentSheet({
   const titleId = 'confirmTitle';
   const currencyCode = currency?.name ?? '';
 
+  const paymentInfoConflict =
+    isApiExceptionLike(rawError) && rawError.statusCode === 409 && 'paymentInfoConflict' in rawError
+      ? (rawError as ApiException).paymentInfoConflict
+      : undefined;
+  const requestUid = paymentInfoConflict?.existingUid ?? existingRequestUid;
+  useEffect(() => {
+    let current = true;
+    setExistingRequest(null);
+    setExistingRequestLookupFailed(false);
+    if (!open || !requestUid || !loadExistingRequest) {
+      setExistingRequestLoading(false);
+      return () => {
+        current = false;
+      };
+    }
+
+    setExistingRequestLoading(true);
+    void loadExistingRequest(requestUid)
+      .then((detail) => {
+        if (current) setExistingRequest(detail);
+      })
+      .catch(() => {
+        if (current) setExistingRequestLookupFailed(true);
+      })
+      .finally(() => {
+        if (current) setExistingRequestLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [open, requestUid, loadExistingRequest]);
+
   const title = mode === 'buy' ? t('confBuyTitle') : mode === 'swap' ? t('confSwapTitle') : t('confSellTitle');
   const sub = mode === 'buy' ? t('confBuySub') : mode === 'swap' ? t('confSwapSub') : t('confSellSub');
 
-  const thrownError = rawError ? mapThrownError(t, rawError) : null;
+  const thrownError = rawError
+    ? paymentInfoConflict
+      ? { kind: 'generic' as const, message: t('existingPaymentRetry') }
+      : mapThrownError(t, rawError)
+    : null;
+  const hasExistingRequest = Boolean(paymentInfoConflict || existingRequestUid || existingRequestStatus);
+  // A claim UID/status is only evidence that a request exists. Do not present
+  // it as a completed payment until the authenticated detail read confirms a
+  // terminal completed transaction.
+  const requestResolved = hasExistingRequest
+    ? existingRequest?.state === 'Completed'
+    : Boolean(buy || sell || swap);
+  const retryAction = requestLocked && !retryPreClaimGateError && onCheckExistingRequest ? onCheckExistingRequest : onRetry;
 
   const rows: { label: string; value: string; cls?: string }[] = [];
   if (mode === 'buy' && buy) {
-    rows.push({ label: t('fPay'), value: formatFiat(amount, currencyCode, language) });
+    rows.push({ label: t('fPay'), value: formatFiat(buy.amount ?? amount, currencyCode, language) });
     rows.push({
       label: t('fRecv'),
       value: `${formatAmount(buy.estimatedAmount, 8, language)} ${receiveAssetCode}`,
@@ -246,13 +312,28 @@ export function PaymentSheet({
   const showGate = !loading && (thrownError || validityMessage || isInvalidQuote || missingDepositDetails);
 
   return (
-    <Sheet open={open} onClose={onClose} titleId={titleId}>
+    <Sheet
+      open={open}
+      onClose={() => onClose(requestResolved)}
+      titleId={titleId}
+    >
       <div className={cx('confirm')}>
+        <button
+          className={cx('rbtn')}
+          type="button"
+          aria-label="Close"
+          style={{ position: 'absolute', top: 12, right: 16, zIndex: 1 }}
+          onClick={() => onClose(requestResolved)}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+          </svg>
+        </button>
         {/* The header must not promise a payment the sheet isn't showing: with a gate up
             (e-mail/KYC/amount) there is no "amount below" to transfer, and the green tick reads
             as confirmation. The gate box carries its own title + instruction. */}
         <div className={cx('confirm-ic', showGate && 'gate')}>{showGate ? ALERT_ICON : CHECK_ICON}</div>
-        <h3 id={titleId}>{title}</h3>
+        <h3 id={titleId}>{hasExistingRequest ? t('existingPaymentTitle') : title}</h3>
         {!showGate && <p className={cx('csub')}>{sub}</p>}
 
         {rows.length > 0 && (
@@ -271,14 +352,56 @@ export function PaymentSheet({
           </div>
         )}
 
+        {hasExistingRequest && (
+          <div className={cx('glass')} data-testid="payment-existing-request" style={{ marginTop: 16, padding: 14 }}>
+            <div className={cx('paybox-title')}>{t('existingPaymentTitle')}</div>
+            {requestUid && (
+              <Row label={t('existingPaymentUid')} value={requestUid} />
+            )}
+            <Row
+              label={t('existingPaymentStatus')}
+              value={existingRequest?.state ?? existingRequestStatus ?? paymentInfoConflict?.requestStatus ?? 'Unknown'}
+            />
+            {existingRequestLoading && <p className={cx('paybox-note')}>{t('loading')}</p>}
+            {existingRequestLookupFailed && <p className={cx('paybox-note')}>{t('existingPaymentLookupFailed')}</p>}
+            {existingRequest?.inputAmount != null && existingRequest.inputAsset && (
+              <Row
+                label={t('existingPaymentAmount')}
+                value={`${formatAmount(existingRequest.inputAmount, 8, language)} ${existingRequest.inputAsset}`}
+              />
+            )}
+            {existingRequest?.outputAmount != null && existingRequest.outputAsset && (
+              <Row
+                label={t('existingPaymentOutput')}
+                value={`${formatAmount(existingRequest.outputAmount, 8, language)} ${existingRequest.outputAsset}`}
+              />
+            )}
+            {!requestUid && onCheckExistingRequest && (
+              <button className={cx('btn-glass')} type="button" onClick={onCheckExistingRequest}>
+                {t('checkRequestStatus')}
+              </button>
+            )}
+            {requestUid && !existingRequest && onCheckExistingRequest && (
+              <button className={cx('btn-glass')} type="button" onClick={onCheckExistingRequest}>
+                {t('checkRequestStatus')}
+              </button>
+            )}
+          </div>
+        )}
+
         {!loading && !showGate && frickUnverified && (
           <div className={cx('paybox')}>
             <div className={cx('paybox-note', 'warn')} style={{ margin: '0 0 12px' }}>
               {t('personalIbanUnverified')}
             </div>
-            {onContinueWithoutPersonalIban && (
+            {onContinueWithoutPersonalIban && !requestLocked && (
               <button className={cx('btn-primary')} type="button" onClick={onContinueWithoutPersonalIban}>
                 {t('personalIbanContinue')}
+              </button>
+            )}
+            {requestLocked && onCheckExistingRequest && (
+              <button className={cx('btn-glass')} type="button" onClick={onCheckExistingRequest}>
+                {t('checkRequestStatus')}
               </button>
             )}
           </div>
@@ -358,7 +481,7 @@ export function PaymentSheet({
                   fontWeight: 650,
                   marginTop: 10,
                 }}
-                onClick={onRetry}
+                onClick={retryAction}
               >
                 <span>{t('iConfirmed')}</span>
               </button>
@@ -376,7 +499,7 @@ export function PaymentSheet({
               </button>
             )}
             {gateKind === 'generic' && (
-              <button className={cx('btn-glass')} style={{ marginTop: 10 }} type="button" onClick={onRetry}>
+              <button className={cx('btn-glass')} style={{ marginTop: 10 }} type="button" onClick={retryAction}>
                 <span>{t('retry')}</span>
               </button>
             )}
@@ -404,12 +527,24 @@ export function PaymentSheet({
                 </span>
               </a>
             )}
+            {gateKind === 'setup' && requestLocked && retryPreClaimGateError && (
+              <button className={cx('btn-glass')} style={{ marginTop: 10 }} type="button" onClick={retryAction}>
+                <span>{t('retry')}</span>
+              </button>
+            )}
+            {gateKind === 'setup' && requestLocked && !retryPreClaimGateError && !hasExistingRequest && onCheckExistingRequest && (
+              <button className={cx('btn-glass')} style={{ marginTop: 10 }} type="button" onClick={onCheckExistingRequest}>
+                <span>{t('checkRequestStatus')}</span>
+              </button>
+            )}
           </div>
         )}
 
-        <button className={cx('btn-primary')} style={{ marginTop: 16 }} onClick={onDone}>
-          <span>{t('done')}</span>
-        </button>
+        {((!requestLocked && !hasExistingRequest) || requestResolved) && (
+          <button className={cx('btn-primary')} style={{ marginTop: 16 }} onClick={() => onDone(hasExistingRequest)}>
+            <span>{t('done')}</span>
+          </button>
+        )}
       </div>
     </Sheet>
   );

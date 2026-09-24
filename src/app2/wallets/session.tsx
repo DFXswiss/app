@@ -1454,21 +1454,32 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
     if (!isLoggedIn || !address) return undefined;
     // `'other'` has no EVM provider binding — skip monitoring entirely.
     if (activeConnector === 'other') return undefined;
+    // On reload there is no exact provider binding. Only associate window.ethereum with this
+    // JWT when the remembered/linked wallet identifies it as an injected EVM session; otherwise
+    // an unrelated extension must not log out a hardware, non-EVM, or unknown connector.
+    const reloadInjectedEvm =
+      activeConnector === undefined && isInjectedEvmSession(address, seenWallets(), userAddresses ?? []);
     const provider: Eip1193Provider | undefined =
       activeConnector === 'injected'
         ? injectedProviderRef.current
         : activeConnector === 'wallet-connect'
           ? wcProviderRef.current
-          : getInjectedProvider();
+          : reloadInjectedEvm
+            ? getInjectedProvider()
+            : undefined;
     if (!provider?.on || !provider.removeListener) return undefined;
 
     let mounted = true;
     // Trust the remembered instance immediately; on reload (no activeConnector) confirm via
     // eth_accounts that the extension still sits on the JWT address before arming the monitor.
     let monitorsThisSession = activeConnector === 'injected' || activeConnector === 'wallet-connect';
+    let reloadProbePending = reloadInjectedEvm;
+    let reloadProbeId = 0;
+    let invalidated = false;
 
     const invalidate = () => {
-      if (!monitorsThisSession || providerChangeRef.current) return;
+      if (!monitorsThisSession || invalidated || providerChangeRef.current) return;
+      invalidated = true;
       providerChangeRef.current = true;
       cancelConnectAttempt();
       setActiveConnector(undefined);
@@ -1483,18 +1494,19 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
         });
     };
 
-    if (!monitorsThisSession) {
-      // Without a live connector binding we only force logout when the JWT address is known to
-      // belong to an injected EVM wallet. Non-EVM / unknown sessions keep monitoring off.
-      const injectedEvm = isInjectedEvmSession(address, seenWallets(), userAddresses ?? []);
+    if (reloadProbePending) {
+      const probeId = ++reloadProbeId;
       provider
         .request<string[]>({ method: 'eth_accounts' })
         .then((accounts) => {
-          if (!mounted) return;
+          // A provider event is newer evidence than this snapshot. In particular, never let a
+          // stale matching probe re-arm monitoring after accountsChanged/chainChanged.
+          if (!mounted || !reloadProbePending || probeId !== reloadProbeId) return;
+          reloadProbePending = false;
           const list = (accounts ?? []).map(String);
           // Empty list (locked / permission revoked): not a mismatch — leave monitoring off.
           // Present but different account on an injected-EVM session: force logout.
-          if (shouldInvalidateOnAccountProbe(address, list, injectedEvm)) {
+          if (shouldInvalidateOnAccountProbe(address, list, reloadInjectedEvm)) {
             monitorsThisSession = true;
             invalidate();
             return;
@@ -1502,14 +1514,31 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
           // Arm only when the probe account matches the JWT (same wallet still selected).
           if (list[0] && !shouldInvalidateSession(address, list)) monitorsThisSession = true;
         })
-        .catch(() => undefined); // request failure stays a non-event
+        .catch(() => {
+          if (mounted && probeId === reloadProbeId) reloadProbePending = false;
+          // Request failure stays a non-event; a later provider event is still authoritative.
+        });
     }
 
     const onAccountsChanged = (accountsValue: unknown) => {
       const accounts = (Array.isArray(accountsValue) ? accountsValue : []).map(String);
+      if (reloadInjectedEvm) {
+        // The event is the current provider state. Invalidate the outstanding probe so its older
+        // result cannot overwrite this evidence; a matching event safely arms the monitor too.
+        reloadProbePending = false;
+        reloadProbeId += 1;
+        monitorsThisSession = true;
+      }
       if (shouldInvalidateSession(address, accounts)) invalidate();
     };
-    const onChainChanged = () => invalidate();
+    const onChainChanged = () => {
+      if (reloadInjectedEvm) {
+        reloadProbePending = false;
+        reloadProbeId += 1;
+        monitorsThisSession = true;
+      }
+      invalidate();
+    };
 
     provider.on('accountsChanged', onAccountsChanged);
     provider.on('chainChanged', onChainChanged);
