@@ -176,6 +176,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   from `global.setup.ts`), or EUR. It also does not prove that the IBAN in the document is the
   one the quote showed: every quote in this environment uses the collection account and stores
   no bank selection.
+- **The transaction-invoice visual spec answers the waiting buy row itself.**
+  `e2e/transaction-invoice.spec.ts` fulfils `GET /v1/transaction/detail` with a synthetic CHF
+  `WaitingForPayment` buy, signs in with an unsigned client-side session token, and answers
+  `/v2/user`, `/v1/transaction/unassigned` and the startup lookups itself. A green run proves that
+  this row shows Open invoice and hides Open receipt. It does not prove login or session handling,
+  that the API returns the row, or that it can build its invoice; the full-stack case covers the
+  real invoice route.
 - **The compliance-review KYC-status spec answers staff identity itself.**
   `e2e/compliance-review-kyc-status.spec.ts` fulfils `GET /v1/support/issue/clerk` with
   `{ clerk }` and, as fallback, `GET /v1/support/{id}` for any account other than the customer
