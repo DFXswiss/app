@@ -186,9 +186,9 @@ test.describe('RealUnit area', () => {
     await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Insights' })).toHaveAttribute('aria-current', 'page');
 
-    // Insights requests holder history. This stack leaves REALUNIT_GRAPH_URL unset so the API
-    // answers 503; the page catches it, and this test proves navigation. Other console errors
-    // stay failures.
+    // Insights requests holder history. This stack leaves REALUNIT_GRAPH_URL unset, so the API
+    // answers 503 and the browser logs it. The page catches that error. assertNoErrors still
+    // ignores 4xx resource lines. Any other console error, and any page error, fails this test.
     assertNoErrors(
       pageErrors,
       consoleErrors.filter((msg) => !/^Failed to load resource: the server responded with a status of 503\b/.test(msg)),
