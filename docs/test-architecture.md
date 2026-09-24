@@ -123,6 +123,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `**/v1/fiat` with USD marked buyable so the screen treats USD as a displayed Bank Frick
   currency, and fulfils the quote with a static personal IBAN. A green run proves that toggle
   renders. It does not prove that the API currently offers USD.
+- **The USD-list mismatch sentence injects USD and GBP.** `e2e/buy-process.spec.ts` and
+  `e2e/buy-info.spec.ts` fulfil `**/v1/fiat` with buyable CHF, EUR, USD and GBP, and fulfil the
+  quote as GBP. A green run proves the mismatch sentence then names EUR, CHF and USD. It does
+  not prove that the API offers USD or GBP.
 - **The RealUnit quotes and dashboard visual specs answer the admin list themselves.**
   `e2e/realunit-quotes.spec.ts` and `e2e/realunit-dashboard.spec.ts` fulfil
   `GET /v1/realunit/admin/quotes` (and, on the dashboard, holders, token info, price history,

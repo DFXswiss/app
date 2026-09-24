@@ -624,7 +624,126 @@ test.describe('Buy Process - UI Flow', () => {
     ).toBeVisible({ timeout: 15000 });
     await expect.poll(() => receivedProvider).toBeUndefined();
 
-    await expect(page).toHaveScreenshot('buy-usd-mismatch-page.png', {
+    await expect(page).toHaveScreenshot('buy-gbp-mismatch-page.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+  });
+
+  // The displayed Frick set includes USD, so the same GBP offer uses the currency template.
+  // The live fiat list hides USD until the display flag is on. This fixture injects it.
+  test('shows the mismatch sentence naming USD when USD is displayed', async ({ page, request }) => {
+    const token = await getToken(request);
+    let receivedProvider: unknown;
+
+    await page.route('**/v1/fiat', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 1,
+            name: 'CHF',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 2,
+            name: 'EUR',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 3,
+            name: 'USD',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 4,
+            name: 'GBP',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+        ],
+      });
+    });
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      const requestData = route.request().postDataJSON() as Record<string, unknown>;
+      receivedProvider = requestData.personalIbanProvider;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          id: 8,
+          isValid: true,
+          amount: 100,
+          estimatedAmount: 0.0251,
+          rate: 3862.5,
+          exchangeRate: 3984.06,
+          priceSteps: [],
+          minVolume: 10,
+          maxVolume: 990000,
+          minVolumeTarget: 0.0026,
+          maxVolumeTarget: 248.5,
+          fees: {
+            rate: 0.0099,
+            fixed: 0,
+            min: 0,
+            dfx: 0.99,
+            network: 0,
+            bank: 0,
+            bankFixed: 2,
+            bankVariable: 0,
+            platform: 0,
+            total: 2.99,
+          },
+          currency: { id: 4, name: 'GBP' },
+          asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
+          bic: 'UBSWCHZH80A',
+          iban: 'CH9300762011623852957',
+          name: 'DFX AG',
+          street: 'Bahnhofstrasse',
+          number: '7',
+          zip: '6300',
+          city: 'Zug',
+          country: 'Schweiz',
+          remittanceInfo: 'DFX-BUY-8',
+          sepaInstant: false,
+          isPersonalIban: false,
+        },
+      });
+    });
+
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick`,
+    );
+
+    await expect(
+      page.getByText(
+        'Your requested personal IBAN is only available for EUR, CHF, USD bank transfers, so it was not used for this offer.',
+      ),
+    ).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => receivedProvider).toBeUndefined();
+
+    await expect(page).toHaveScreenshot('buy-usd-list-mismatch-page.png', {
       fullPage: true,
       maxDiffPixels: 10000,
     });
@@ -739,7 +858,7 @@ test.describe('Buy Process - UI Flow', () => {
       ),
     ).not.toBeVisible();
 
-    await expect(promoBlock).toHaveScreenshot('buy-usd-promo-block.png');
+    await expect(promoBlock).toHaveScreenshot('buy-gbp-promo-block.png');
   });
 
   // Existing Yapeal holder gets the new Bank Frick IBAN by default (KYC pinned to 50 via the
