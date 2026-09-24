@@ -2,6 +2,12 @@
 // clear the typed amount (units of the previous source) on a successful flip.
 
 const mockCall = jest.fn();
+const mockPublicBuyQuote = (info: unknown) =>
+  mockCall({ url: 'buy/quote', method: 'PUT', data: info, token: false });
+const mockPublicSellQuote = (info: unknown) =>
+  mockCall({ url: 'sell/quote', method: 'PUT', data: info, token: false });
+const mockPublicSwapQuote = (info: unknown) =>
+  mockCall({ url: 'swap/quote', method: 'PUT', data: info, token: false });
 const mockAssets: Array<{
   id: number;
   name: string;
@@ -63,9 +69,9 @@ jest.mock('@dfx.swiss/react', () => ({
   SellUrl: { quote: 'sell/quote' },
   SwapUrl: { quote: 'swap/quote' },
   useApi: () => ({ call: mockCall }),
-  useBuy: () => ({ receiveFor: jest.fn() }),
-  useSell: () => ({ receiveFor: jest.fn() }),
-  useSwap: () => ({ receiveFor: jest.fn() }),
+  useBuy: () => ({ receiveFor: jest.fn(), quote: mockPublicBuyQuote }),
+  useSell: () => ({ receiveFor: jest.fn(), quote: mockPublicSellQuote }),
+  useSwap: () => ({ receiveFor: jest.fn(), quote: mockPublicSwapQuote }),
   useUser: () => ({ updateMail: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
   useAssetContext: () => ({ getAssets: () => mockAssets }),

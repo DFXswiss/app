@@ -195,33 +195,29 @@ describe('widget param parsers', () => {
   });
 
   it('applies a personal-iban selector only for EUR/CHF bank transfer', () => {
-    expect(isPersonalIbanApplicable('EUR', FiatPaymentMethod.BANK, FiatPaymentMethod.BANK)).toBe(true);
-    expect(isPersonalIbanApplicable('USD', FiatPaymentMethod.BANK, FiatPaymentMethod.BANK)).toBe(false);
-    expect(isPersonalIbanApplicable('EUR', FiatPaymentMethod.INSTANT, FiatPaymentMethod.BANK)).toBe(false);
-    expect(isPersonalIbanApplicable(undefined, FiatPaymentMethod.BANK, FiatPaymentMethod.BANK)).toBe(false);
+    expect(isPersonalIbanApplicable('EUR')).toBe(true);
+    expect(isPersonalIbanApplicable('CHF')).toBe(true);
+    expect(isPersonalIbanApplicable('USD')).toBe(false);
+    expect(isPersonalIbanApplicable(undefined)).toBe(false);
   });
 
-  it('classifies personal-iban as absent, unrecognized, inapplicable or ready', () => {
-    expect(personalIbanParamState(undefined, PersonalIbanProvider, 'EUR', 'Bank', 'Bank')).toEqual({ kind: 'absent' });
-    expect(personalIbanParamState('', PersonalIbanProvider, 'EUR', 'Bank', 'Bank')).toEqual({
+  it('classifies personal-iban as absent, unrecognized, currency-inapplicable or ready', () => {
+    expect(personalIbanParamState(undefined, PersonalIbanProvider, 'EUR')).toEqual({ kind: 'absent' });
+    expect(personalIbanParamState('', PersonalIbanProvider, 'EUR')).toEqual({
       kind: 'unrecognized',
     });
-    expect(personalIbanParamState('nope', PersonalIbanProvider, 'EUR', 'Bank', 'Bank')).toEqual({
+    expect(personalIbanParamState('nope', PersonalIbanProvider, 'EUR')).toEqual({
       kind: 'unrecognized',
     });
-    expect(personalIbanParamState('frick', PersonalIbanProvider, 'EUR', 'Instant', 'Bank')).toEqual({
-      kind: 'inapplicable',
-      reason: 'method',
-    });
-    expect(personalIbanParamState('frick', PersonalIbanProvider, 'USD', 'Bank', 'Bank')).toEqual({
+    expect(personalIbanParamState('frick', PersonalIbanProvider, 'USD')).toEqual({
       kind: 'inapplicable',
       reason: 'currency',
     });
-    expect(personalIbanParamState('frick', PersonalIbanProvider, undefined, 'Bank', 'Bank')).toEqual({
+    expect(personalIbanParamState('frick', PersonalIbanProvider, undefined)).toEqual({
       kind: 'inapplicable',
       reason: 'currency',
     });
-    expect(personalIbanParamState('Frick', PersonalIbanProvider, 'EUR', 'Bank', 'Bank')).toEqual({
+    expect(personalIbanParamState('Frick', PersonalIbanProvider, 'EUR')).toEqual({
       kind: 'ready',
       provider: 'Frick',
     });

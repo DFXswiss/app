@@ -1,16 +1,6 @@
-// DFX App 2.0 — buy payment-method picker (bank transfer / instant).
-//
-// Ported from the static app's `payMethods()`/`#paySheet` (public/app2/index.html), corrected
-// against what the API actually accepts for a buy (payment-info.service.ts `buyCheck`): Bank
-// (SEPA) is always offered; Instant SEPA needs *both* the fiat's `instantSellable` (DFX sells the
-// fiat leg to the user, same buy/sell-is-DFX's-side convention as trade/capabilities.ts) and the
-// chosen asset's `instantBuyable` — checking only the fiat's `instantBuyable` (as the ported code
-// originally did) is the wrong flag *and* the wrong direction, and ignores the asset entirely, so
-// it could offer Instant for combinations the API rejects with a 400.
-//
-// Card is never offered: the API hard-disables it (fiat-dto.mapper.ts sets cardBuyable/
-// cardSellable to `false` unconditionally, and payment-info.service.ts rejects
-// FiatPaymentMethod.CARD outright) — there is no live combination that would make it succeed.
+// DFX App 2.0 — buy payment-method picker.
+// Instant is intentionally unavailable in App2 until product approval. Bank remains the only
+// offered buy method even when the API currently advertises Instant capability.
 
 import { FiatPaymentMethod } from '@dfx.swiss/react';
 import type { Asset, Fiat } from '@dfx.swiss/react';
@@ -31,22 +21,9 @@ const BANK_ICON = (
     <path d="M3 10h18" stroke="currentColor" strokeWidth={1.7} />
   </svg>
 );
-const INSTANT_ICON = (
-  <svg viewBox="0 0 24 24" fill="none">
-    <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" stroke="currentColor" strokeWidth={1.6} strokeLinejoin="round" />
-  </svg>
-);
-
-/** Payment methods a buy of `asset` with `fiat` can actually settle with. Bank (SEPA) is always
- * offered; Instant SEPA only when both the fiat and the selected asset allow it. */
-export function paymentMethodsFor(fiat: Fiat | undefined, asset: Asset | undefined): PaymentMethodOption[] {
-  const out: PaymentMethodOption[] = [
-    { id: FiatPaymentMethod.BANK, nameKey: 'payBankN', descKey: 'payBankD', icon: BANK_ICON },
-  ];
-  if (fiat?.instantSellable && asset?.instantBuyable) {
-    out.push({ id: FiatPaymentMethod.INSTANT, nameKey: 'payInstN', descKey: 'payInstD', icon: INSTANT_ICON });
-  }
-  return out;
+/** Available buy methods. Fiat/asset capabilities do not enable Instant before product approval. */
+export function paymentMethodsFor(_fiat: Fiat | undefined, _asset: Asset | undefined): PaymentMethodOption[] {
+  return [{ id: FiatPaymentMethod.BANK, nameKey: 'payBankN', descKey: 'payBankD', icon: BANK_ICON }];
 }
 
 interface PaymentMethodPickerProps {

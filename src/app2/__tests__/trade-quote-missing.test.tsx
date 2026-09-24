@@ -2,6 +2,12 @@ const mockReceiveForBuy = jest.fn();
 const mockReceiveForSwap = jest.fn();
 const mockReceiveForSell = jest.fn();
 const mockCall = jest.fn();
+const mockPublicBuyQuote = (info: unknown) =>
+  mockCall({ url: 'buy/quote', method: 'PUT', data: info, token: false });
+const mockPublicSellQuote = (info: unknown) =>
+  mockCall({ url: 'sell/quote', method: 'PUT', data: info, token: false });
+const mockPublicSwapQuote = (info: unknown) =>
+  mockCall({ url: 'swap/quote', method: 'PUT', data: info, token: false });
 const mockEngine = jest.fn();
 const mockQuoteSession = { address: undefined as string | undefined };
 
@@ -16,9 +22,9 @@ jest.mock('@dfx.swiss/react', () => ({
   FiatPaymentMethod: { BANK: 'Bank' },
   PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
   useApi: () => ({ call: mockCall }),
-  useBuy: () => ({ receiveFor: mockReceiveForBuy }),
-  useSell: () => ({ receiveFor: mockReceiveForSell }),
-  useSwap: () => ({ receiveFor: mockReceiveForSwap }),
+  useBuy: () => ({ receiveFor: mockReceiveForBuy, quote: mockPublicBuyQuote }),
+  useSell: () => ({ receiveFor: mockReceiveForSell, quote: mockPublicSellQuote }),
+  useSwap: () => ({ receiveFor: mockReceiveForSwap, quote: mockPublicSwapQuote }),
 }));
 
 jest.mock('../screens/trade/useQuoteEngine', () => ({
@@ -84,6 +90,44 @@ describe('trade quote fail-closed fetchers', () => {
     await captureFetcher()();
     expect(mockReceiveForBuy).toHaveBeenCalled();
     expect(mockReceiveForBuy.mock.calls[0][0]).not.toHaveProperty('externalTransactionId');
+  });
+
+  it('rejects invalid buy amounts and falls back to a valid source amount when target is invalid', async () => {
+    function InvalidAmounts() {
+      useBuyQuote({
+        enabled: true,
+        asset,
+        currency,
+        amount: 0,
+        targetAmount: -1,
+        paymentMethod: FiatPaymentMethod.BANK,
+      });
+      return null;
+    }
+    render(<InvalidAmounts />);
+    await expect(captureFetcher()()).rejects.toThrow('buy quote: missing input');
+
+    function InvalidTargetWithValidSource() {
+      useBuyQuote({
+        enabled: true,
+        asset,
+        currency,
+        amount: 25,
+        targetAmount: 0,
+        paymentMethod: FiatPaymentMethod.BANK,
+      });
+      return null;
+    }
+    render(<InvalidTargetWithValidSource />);
+    await captureFetcher()();
+
+    expect(mockCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'buy/quote',
+        data: expect.objectContaining({ amount: 25 }),
+      }),
+    );
+    expect(mockCall.mock.calls[0][0].data).not.toHaveProperty('targetAmount');
   });
 
   it('rejects a sell quote that lost its inputs and a swap quote that lost its inputs', async () => {

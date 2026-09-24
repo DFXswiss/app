@@ -90,7 +90,7 @@ describe('POS charge freezes currency at charge time', () => {
       toggleLink: jest.fn(),
       createPosLink: jest.fn(),
       createInvoice: jest.fn(),
-      charge: jest.fn().mockResolvedValue({ lnurl: 'LNURL1TESTCHARGE' }),
+      charge: jest.fn().mockResolvedValue({ lnurl: 'LNURL1TESTCHARGE', externalId: 'charge-currency' }),
       pollPayment: jest.fn(),
       saveConfig: jest.fn(),
       copy: jest.fn(),
@@ -142,8 +142,8 @@ describe('POS charge freezes currency at charge time', () => {
     // A same-closure read of `currency` after await would still be EUR (the
     // invoking render's binding). The property this pins is the *display*
     // snapshot: charge.currency on the QR, not the free render-scope currency.
-    let resolveCharge!: (v: { lnurl: string }) => void;
-    const chargePromise = new Promise<{ lnurl: string }>((resolve) => {
+    let resolveCharge!: (v: { lnurl: string; externalId: string }) => void;
+    const chargePromise = new Promise<{ lnurl: string; externalId: string }>((resolve) => {
       resolveCharge = resolve;
     });
     const ocp = buildOcp({
@@ -164,7 +164,7 @@ describe('POS charge freezes currency at charge time', () => {
     expect(screen.getByText(/\(USD\)/)).toBeInTheDocument();
 
     await act(async () => {
-      resolveCharge({ lnurl: 'LNURL1MIDFLIGHT' });
+      resolveCharge({ lnurl: 'LNURL1MIDFLIGHT', externalId: 'charge-midflight' });
     });
 
     await waitFor(() => {

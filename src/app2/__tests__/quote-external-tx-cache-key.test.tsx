@@ -5,6 +5,12 @@ const mockReceiveForBuy = jest.fn();
 const mockReceiveForSwap = jest.fn();
 const mockReceiveForSell = jest.fn();
 const mockCall = jest.fn();
+const mockPublicBuyQuote = (info: unknown) =>
+  mockCall({ url: 'buy/quote', method: 'PUT', data: info, token: false });
+const mockPublicSellQuote = (info: unknown) =>
+  mockCall({ url: 'sell/quote', method: 'PUT', data: info, token: false });
+const mockPublicSwapQuote = (info: unknown) =>
+  mockCall({ url: 'swap/quote', method: 'PUT', data: info, token: false });
 const mockQuoteSession = { address: undefined as string | undefined };
 
 jest.mock('../wallets/session', () => ({
@@ -18,9 +24,9 @@ jest.mock('@dfx.swiss/react', () => ({
   FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
   PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
   useApi: () => ({ call: mockCall }),
-  useBuy: () => ({ receiveFor: mockReceiveForBuy }),
-  useSell: () => ({ receiveFor: mockReceiveForSell }),
-  useSwap: () => ({ receiveFor: mockReceiveForSwap }),
+  useBuy: () => ({ receiveFor: mockReceiveForBuy, quote: mockPublicBuyQuote }),
+  useSell: () => ({ receiveFor: mockReceiveForSell, quote: mockPublicSellQuote }),
+  useSwap: () => ({ receiveFor: mockReceiveForSwap, quote: mockPublicSwapQuote }),
 }));
 
 import { render, waitFor } from '@testing-library/react';

@@ -1108,9 +1108,9 @@ function InviteSheet({ open, onClose, referral }: SheetProps & { referral?: Refe
     setBusyId(id);
     try {
       if (accept) {
-        await confirmRecommendation(rec);
+        await confirmRecommendation(rec.id);
       } else {
-        await rejectRecommendation(rec);
+        await rejectRecommendation(rec.id);
       }
       showToast(accept ? t('inviteConfirmed') : t('inviteRejected'));
       await load();

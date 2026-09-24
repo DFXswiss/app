@@ -1,0 +1,413 @@
+/* DFX App 2.0 design system — ported 1:1 from the standalone preview
+   (public/app2/index.html, the inline <style> block). Same class names,
+   same custom properties, same navy/gradient theme. Font + background
+   assets are copied into src/app2/assets/ so webpack bundles them. This
+   stylesheet lives under styles/, so its asset URLs go up one directory.
+
+   Locals are hashed at build time (CSS modules) so they cannot collide
+   with the main app. html, body and :root stay global. Shared markup
+   (spinner, sheet, toast) lives in components/ui.tsx. */
+
+/* ============================================================
+   DFX redesign — built on the DFX Design Pod (dark theme canon)
+   bg navy #0A3055 · primary blue #5FA8FF · accent red #F5516C
+   alpine backdrop + navy scrims · glass cards · Inter
+   ============================================================ */
+@font-face {
+  font-family: 'Inter';
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/Inter-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 500;
+  font-display: swap;
+  src: url('../assets/fonts/Inter-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 600;
+  font-display: swap;
+  src: url('../assets/fonts/Inter-SemiBold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/Inter-Bold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 800;
+  font-display: swap;
+  src: url('../assets/fonts/Inter-ExtraBold.woff2') format('woff2');
+}
+:root {
+  --navy-900: #081e3a;
+  --navy-800: #0a3055;
+  --navy-700: #0b3560;
+  --navy-600: #0d4070;
+  --app-surface: #0e3a63;
+  --app-surface-l: #154573;
+  --app-surface-r: #1c5187;
+  --card-overlay: rgba(17, 57, 98, 0.92);
+  --primary: #5fa8ff;
+  --primary-600: #3b82f6;
+  --primary-soft: rgba(95, 168, 255, 0.14);
+  --accent: #f5516c;
+  --accent-600: #e73955;
+  --accent-glow: rgba(245, 81, 108, 0.3);
+  --t-high: #f9fafb;
+  --t-muted: #a8b5c8;
+  --t-dim: #9cabc6;
+  --t-faint: #9bb0c9;
+  --t-faint-dim: #5a6d85;
+  --placeholder: #8fa0bc;
+  --hair: rgba(255, 255, 255, 0.1);
+  --hair-soft: rgba(255, 255, 255, 0.06);
+  --hair-strong: rgba(255, 255, 255, 0.12);
+  --success: #34d399;
+  --error: #f87171;
+  --warning: #fbbf24;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+button:focus-visible,
+[role='button']:focus-visible,
+a:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Arial,
+    sans-serif;
+  color: var(--t-high);
+  font-size: 15px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 38px 20px;
+  position: relative;
+  overflow-x: hidden;
+  background:
+    radial-gradient(900px 620px at 50% 6%, rgba(95, 168, 255, 0.07), transparent 60%),
+    linear-gradient(168deg, #07203a 0%, #0a2a48 58%, #07203a 100%);
+}
+/* soft ambient glow behind the floating app (calm, no photo) */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(130% 80% at 50% 28%, transparent 45%, rgba(5, 16, 30, 0.55) 100%);
+}
+
+/* ---------- app device (calm vector background) ---------- */
+.app {
+  position: relative;
+  z-index: 1;
+  width: 420px;
+  max-width: 100%;
+  height: 846px;
+  max-height: calc(100vh - 76px);
+  max-height: calc(100dvh - 76px);
+  border-radius: 40px;
+  overflow: hidden;
+  box-shadow:
+    0 50px 110px -30px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  background: var(--navy-800) url('../assets/brand/bg.svg') center top/cover no-repeat;
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+}
+@media (max-width: 460px) {
+  body {
+    padding: 0;
+  }
+  body::after {
+    display: none;
+  }
+  .app {
+    border-radius: 0;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    width: 100%;
+  }
+}
+
+.layer {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ---------- topbar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 18px 12px;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+.rbtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background: var(--card-overlay);
+  border: 1px solid var(--hair-soft);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--primary);
+  flex: 0 0 auto;
+  backdrop-filter: blur(8px);
+  transition:
+    transform 0.15s var(--ease),
+    border-color 0.2s,
+    background 0.2s;
+}
+.rbtn:hover {
+  border-color: var(--hair-strong);
+  background: rgba(21, 69, 115, 0.95);
+}
+.rbtn:active {
+  transform: scale(0.94);
+}
+.rbtn svg {
+  width: 23px;
+  height: 23px;
+}
+.brand-logo {
+  height: 30px;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 2px 8px rgba(4, 16, 32, 0.4));
+}
+.langpill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 13px;
+  border-radius: 22px;
+  background: var(--card-overlay);
+  border: 1px solid var(--hair-soft);
+  color: var(--t-high);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 13.5px;
+  backdrop-filter: blur(8px);
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+.langpill:hover {
+  border-color: var(--hair-strong);
+}
+.langpill svg {
+  width: 17px;
+  height: 17px;
+  color: var(--primary);
+}
+.langpill .car {
+  width: 13px;
+  height: 13px;
+  color: var(--t-dim);
+}
+
+/* scroll body */
+.body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.body::-webkit-scrollbar {
+  display: none;
+}
+
+/* views */
+.view {
+  display: none;
+}
+.view.on {
+  display: block;
+  animation: rise 0.5s var(--ease);
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* glass primitives */
+.glass {
+  background: var(--card-overlay);
+  border: 1px solid var(--hair);
+  border-radius: 22px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+}
+.btn-primary {
+  height: 56px;
+  border-radius: 15px;
+  border: 1px solid transparent;
+  background: linear-gradient(180deg, #5fa8ff, #3b82f6);
+  color: #fff;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 12px 26px -8px rgba(59, 130, 246, 0.5);
+  transition:
+    transform 0.14s var(--ease),
+    box-shadow 0.2s,
+    filter 0.2s;
+  width: 100%;
+}
+.btn-primary:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 16px 30px -8px rgba(59, 130, 246, 0.6);
+}
+.btn-primary:active {
+  transform: translateY(1px) scale(0.995);
+}
+.btn-primary svg {
+  width: 18px;
+  height: 18px;
+}
+.btn-primary:disabled,
+.btn-primary[disabled] {
+  opacity: 0.45;
+  box-shadow: none;
+  filter: none;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.btn-primary.accent {
+  background: linear-gradient(180deg, #f5516c, #e73955);
+  box-shadow: 0 12px 26px -8px var(--accent-glow);
+}
+.paybox-note.warn {
+  color: #ffc8d2;
+}
+.paybox-note.ok {
+  color: var(--success);
+}
+#depositQr {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 6px;
+}
+#depositQr svg {
+  width: 158px;
+  height: 158px;
+  background: #fff;
+  padding: 9px;
+  border-radius: 12px;
+}
+#wcQr {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 6px;
+  min-height: 200px;
+}
+#wcQr svg {
+  width: 200px;
+  height: 200px;
+  background: #fff;
+  padding: 11px;
+  border-radius: 14px;
+}
+.depwarn {
+  font-size: 11.5px;
+  color: #ffd9a8;
+  text-align: left;
+  margin-top: 10px;
+  line-height: 1.45;
+}
+.qcount {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+}
+.btn-glass {
+  height: 56px;
+  border-radius: 15px;
+  background: var(--card-overlay);
+  border: 1px solid var(--hair-strong);
+  color: var(--primary);
+  font-family: inherit;
+  font-size: 15.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 0 16px;
+  width: 100%;
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    transform 0.14s var(--ease);
+}
+.btn-glass:hover {
+  border-color: var(--hair-strong);
+  background: rgba(21, 69, 115, 0.6);
+}
+.btn-glass:active {
+  transform: translateY(1px);
+}

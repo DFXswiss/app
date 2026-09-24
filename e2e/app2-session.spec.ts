@@ -42,8 +42,11 @@ async function openOcpDemoTile(page: import('@playwright/test').Page, token: str
   await page.getByRole('button', { name: /try a live demo|live-demo|prova una demo|essayer une démo/i }).click();
   await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
   await expect(page.getByTestId('ocp-tile').first()).toBeVisible();
-  await expect(page.getByTestId('app2-toast')).toBeHidden();
-  await page.getByTestId('ocp-tile').filter({ hasText: tileTitle }).click();
+  // The toast remains mounted at opacity 0, which Playwright still considers
+  // visible. Wait for its open class to clear and its fade-out to finish.
+  await expect(page.getByTestId('app2-toast')).not.toHaveClass(/toast_on__/, { timeout: 10000 });
+  await expect(page.getByTestId('app2-toast')).toHaveCSS('opacity', '0', { timeout: 10000 });
+  await page.getByTestId('ocp-tile').getByText(tileTitle).click();
   await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
 }
 
@@ -142,6 +145,106 @@ test.describe('App2 session screens', () => {
     await expect(page.getByTestId('ocp-pos-register')).toContainText('Front counter');
     await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
     await expect(page).toHaveScreenshot('app2-ocp-pos.png', screenshotOpts);
+  });
+
+  test('OpenCryptoPay POS keeps a payable charge locked after local timeout', async ({ page }) => {
+    let externalId: string | undefined;
+    let polls = 0;
+    let charges = 0;
+
+    // Keep the real POS screen and its five-minute timeout. Only the OCP API is
+    // local-mocked so this handbook baseline cannot create a real payment.
+    await page.route('**/route', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ buy: [], sell: [{ id: 10, currency: { name: 'CHF' } }], swap: [] }),
+      }),
+    );
+    await page.route(/\/paymentLink(?:\/|\?|$)/, async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink/config')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ accessKey: 'visual-fixture' }),
+        });
+        return;
+      }
+      if (request.method() === 'POST' && url.pathname.endsWith('/payment')) {
+        charges += 1;
+        const body = request.postDataJSON() as { externalId?: string };
+        externalId = body.externalId;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ payment: { lnurl: 'LNURL1POSVISUALFIXTURE' } }),
+        });
+        return;
+      }
+      if (request.method() === 'GET' && url.pathname.endsWith('/paymentLink')) {
+        if (url.searchParams.has('externalPaymentId')) {
+          polls += 1;
+          expect(url.searchParams.get('externalPaymentId')).toBe(externalId);
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              id: 'pos-fixture-link',
+              payment: { externalId, status: 'Pending', amount: 12, currency: { name: 'CHF' } },
+            }),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([
+            { id: 'pos-fixture-link', label: 'Visual fixture till', status: 'Active', routeId: 10 },
+          ]),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.clock.install({ time: new Date('2026-09-22T10:00:00.000Z') });
+    await openApp2Session(page, token, '#/ocp?sub=pos');
+    await expect(page.getByRole('heading', { name: /point of sale|kasse|cassa|caisse/i }).first()).toBeVisible();
+    await expect(page.getByTestId('ocp-pos-register')).toHaveValue('pos-fixture-link');
+    await page.getByPlaceholder('0.00').fill('12');
+    await page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i }).click();
+    await expect(
+      page.getByText(/waiting for payment|warte auf zahlung|in attesa di pagamento|en attente de paiement/i),
+    ).toBeVisible();
+    await expect(page.locator('svg[width="212"][height="212"]')).toBeVisible();
+
+    // Let each mocked network response settle before advancing to the next
+    // timer. This exercises repeated polls and then the real local deadline.
+    await page.clock.runFor(2_000);
+    await expect.poll(() => polls).toBeGreaterThan(0);
+    await page.clock.runFor(3_000);
+    await expect.poll(() => polls).toBeGreaterThan(1);
+    await page.clock.runFor(305_000);
+    const timeoutWarning = page.getByText(
+      /no confirmation yet|keine rückmeldung|nessuna conferma|pas encore de confirmation/i,
+    );
+    await expect(timeoutWarning).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /keep waiting|weiter warten|continua ad aspettare|continuer d'attendre/i }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /^(charge|kassieren|incassa|encaisser)$/i })).toBeDisabled();
+    await expect(
+      page.getByRole('button', {
+        name: /end this payment|zahlung beenden|vorgang beenden|termina pagamento|termina questo|terminer le paiement|terminer ce paiement|posEndCharge/i,
+      }),
+    ).toHaveCount(0);
+    await page.getByPlaceholder('0.00').press('Enter');
+    expect(charges).toBe(1);
+    expect(polls).toBeGreaterThan(1);
+    await timeoutWarning.scrollIntoViewIfNeeded();
+    await expect(page).toHaveScreenshot('app2-ocp-pos-timeout.png', screenshotOpts);
   });
 
   test('OpenCryptoPay links (logged in)', async ({ page }) => {

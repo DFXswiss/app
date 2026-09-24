@@ -65,7 +65,7 @@ describe('FiatPicker and PaymentMethodPicker', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
-  it('selects a payment method on click and via the keyboard activator', () => {
+  it('keeps buy payment bank-only pending product approval', () => {
     const onSelect = jest.fn();
     const onClose = jest.fn();
     const options = paymentMethodsFor(
@@ -85,8 +85,9 @@ describe('FiatPicker and PaymentMethodPicker', () => {
       </LanguageProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /instant|sofort|istantaneo|instantané/i }));
-    expect(onSelect).toHaveBeenCalledWith(FiatPaymentMethod.INSTANT);
+    expect(screen.queryByText(/instant|sofort|istantaneo|instantané/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /bank|überweisung|bonifico|virement/i }));
+    expect(onSelect).toHaveBeenCalledWith(FiatPaymentMethod.BANK);
     expect(onClose).toHaveBeenCalledTimes(1);
 
     fireEvent.keyDown(screen.getByRole('button', { name: /bank|überweisung|bonifico|virement/i }), { key: ' ' });

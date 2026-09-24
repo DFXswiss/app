@@ -1,0 +1,434 @@
+/* ============ ASSET SHEET ============ */
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  background: linear-gradient(180deg, #0e3a63, #0a3055);
+  border-radius: 26px 26px 40px 40px;
+  box-shadow: 0 -24px 60px -20px rgba(0, 0, 0, 0.6);
+  border-top: 1px solid var(--hair);
+  transform: translateY(103%);
+  transition: transform 0.44s var(--ease);
+  max-height: 90%;
+  display: flex;
+  flex-direction: column;
+}
+.sheet.on {
+  transform: translateY(0);
+}
+#stepTokens,
+#stepChains {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+} /* let the inner .slist scroll */
+.grab {
+  width: 38px;
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.22);
+  margin: 9px auto 2px;
+  flex: 0 0 auto;
+}
+.shead {
+  padding: 8px 18px 10px;
+}
+.shead .r1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.shead h3 {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+.search {
+  position: relative;
+  margin-top: 12px;
+}
+.search > svg {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: var(--t-dim);
+}
+.search input {
+  width: 100%;
+  height: 46px;
+  border: 1px solid var(--hair);
+  border-radius: 13px;
+  padding: 0 14px 0 40px;
+  font-size: 14.5px;
+  font-family: inherit;
+  outline: none;
+  background: rgba(8, 30, 58, 0.5);
+  color: #fff;
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s;
+}
+.search input::placeholder {
+  color: var(--t-dim);
+}
+.search input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-soft);
+}
+.frow-wrap {
+  position: relative;
+  border-bottom: 1px solid var(--hair-soft);
+}
+.frow {
+  display: flex;
+  gap: 7px;
+  padding: 11px 40px 11px 18px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+.frow-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--hair);
+  background: linear-gradient(180deg, #13406e, #0e3257);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+  transition:
+    opacity 0.2s,
+    transform 0.15s;
+}
+.frow-arrow svg {
+  width: 17px;
+  height: 17px;
+}
+.frow-arrow.right {
+  right: 8px;
+}
+.frow-arrow.left {
+  left: 8px;
+}
+.frow-arrow:active {
+  transform: translateY(-50%) scale(0.9);
+}
+.frow-arrow.hide {
+  opacity: 0;
+  pointer-events: none;
+}
+.frow-wrap::before,
+.frow-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 1px;
+  width: 30px;
+  pointer-events: none;
+  z-index: 1;
+}
+.frow-wrap::after {
+  right: 0;
+  background: linear-gradient(90deg, transparent, #0c3052);
+}
+.frow-wrap::before {
+  left: 0;
+  background: linear-gradient(270deg, transparent, #0c3052);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.frow-wrap.scrolled::before {
+  opacity: 1;
+}
+.frow::-webkit-scrollbar {
+  display: none;
+}
+.fchip {
+  flex: 0 0 auto;
+  min-height: 40px;
+  border: 1px solid var(--hair);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 99px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--t-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.16s var(--ease);
+}
+.fchip:hover {
+  border-color: var(--hair-strong);
+}
+.fchip.on {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #06182e;
+}
+.fchip img {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+}
+.slist {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 10px 20px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.slist::-webkit-scrollbar {
+  display: none;
+}
+.shead,
+.frow-wrap {
+  flex: 0 0 auto;
+}
+#stepChains .backrow,
+#stepChains .thead,
+#stepChains > .tnote {
+  flex: 0 0 auto;
+}
+#stepChains .netgrid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: flex-start;
+  scrollbar-width: none;
+}
+#stepChains .netgrid::-webkit-scrollbar {
+  display: none;
+}
+.sec {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--t-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 12px 12px 5px;
+}
+.crow {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.14s var(--ease);
+}
+.crow.soon {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.crow:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.crow + .crow {
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.04);
+}
+.crow .ci {
+  flex: 1;
+  min-width: 0;
+}
+.crow .ci b {
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+}
+.crow .ci .net {
+  font-size: 12px;
+  color: var(--t-muted);
+  font-weight: 500;
+  margin-top: 1px;
+}
+.crow .pr {
+  text-align: right;
+  flex: 0 0 auto;
+}
+.crow .pr b {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+.crow .pr small {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  margin-top: 1px;
+}
+.up {
+  color: var(--success);
+}
+.dn {
+  color: #f98a9c;
+}
+.tag {
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 6px;
+  letter-spacing: 0.03em;
+}
+.tag.swiss {
+  color: #fff;
+  background: #d8232a;
+}
+.backrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px 2px;
+  cursor: pointer;
+  color: var(--t-muted);
+  font-weight: 600;
+  font-size: 13px;
+}
+.backrow:hover {
+  color: #fff;
+}
+.thead {
+  padding: 10px 18px 4px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.thead b {
+  font-size: 17px;
+  font-weight: 800;
+  color: #fff;
+}
+.tnote {
+  padding: 2px 18px 6px;
+  font-size: 12.5px;
+  color: var(--t-muted);
+  line-height: 1.45;
+}
+.netgrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 8px 18px 4px;
+}
+.netcard {
+  flex: 0 1 calc(50% - 4.5px);
+  min-width: 0;
+  min-height: 64px;
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.04);
+  transition:
+    border-color 0.16s var(--ease),
+    background 0.16s var(--ease);
+}
+.netcard:hover {
+  border-color: var(--hair-strong);
+  background: rgba(255, 255, 255, 0.07);
+}
+.netcard.sel {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: 0 0 0 3px rgba(95, 168, 255, 0.12);
+}
+.netcard img {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  flex: 0 0 auto;
+}
+.netcard .ni b {
+  font-size: 13.5px;
+  font-weight: 700;
+  display: block;
+  color: #fff;
+}
+.netcard .ni small {
+  font-size: 11px;
+  color: var(--t-muted);
+  font-weight: 500;
+}
+.netcard .ni small.best {
+  color: var(--success);
+  font-weight: 700;
+}
+
+/* language menu */
+.langmenu {
+  position: absolute;
+  z-index: 55;
+  top: 70px;
+  right: 18px;
+  width: 190px;
+  background: linear-gradient(180deg, #0e3a63, #0a3055);
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  box-shadow: 0 20px 50px -16px rgba(0, 0, 0, 0.6);
+  padding: 6px;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+  transform-origin: top right;
+  pointer-events: none;
+  transition:
+    opacity 0.2s var(--ease),
+    transform 0.2s var(--ease);
+}
+.langmenu.on {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.lopt {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 12px;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background 0.14s;
+}
+.lopt:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.lopt img {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+}
+.lopt b {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+.lopt .ck {
+  width: 16px;
+  height: 16px;
+  color: var(--primary);
+  opacity: 0;
+}
+.lopt.sel .ck {
+  opacity: 1;
+}

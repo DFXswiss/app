@@ -407,13 +407,13 @@ test.describe('App 2.0 widget params', () => {
     expect(token, 'address+signature must store a DFX JWT').toBeTruthy();
   });
 
-  test('amount-in: pay field follows the param and defaults to 100 without it', async ({ page }) => {
+  test('amount-in: pay field follows the param and stays empty without it', async ({ page }) => {
     const user = await createUser({ tag: 'app2-wp-amtin', kycLevel: 50, completePersonalData: true, language: 'EN' });
 
     await openApp2(page, user.jwt, '#/');
     await waitForBuyHome(page);
     const pay = page.getByRole('textbox', { name: 'Amount you pay' });
-    await expect(pay).toHaveValue('100', { timeout: 20000 });
+    await expect(pay).toHaveValue('');
 
     await openApp2(page, user.jwt, '#/', { 'amount-in': '250' });
     await waitForBuyHome(page);
@@ -709,6 +709,9 @@ test.describe('App 2.0 widget params', () => {
     await waitForBuyHome(page);
     await expect(page.getByRole('button', { name: 'Select receive asset' })).toContainText(/EDLC/i, { timeout: 20000 });
     await expect(page.getByText(hint)).toBeVisible({ timeout: 20000 });
+    const amount = page.getByRole('textbox', { name: 'Amount you pay' });
+    await expect(amount).toBeVisible({ timeout: 20000 });
+    await amount.fill('100');
     const blocked = page.getByTestId('trade-cta');
     await expect(blocked).toBeEnabled({ timeout: 45000 });
     await blocked.click();

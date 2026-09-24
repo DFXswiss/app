@@ -4,6 +4,12 @@
 
 const mockReceiveForBuy = jest.fn();
 const mockCall = jest.fn();
+const mockPublicBuyQuote = (info: unknown) =>
+  mockCall({ url: 'buy/quote', method: 'PUT', data: info, token: false });
+const mockPublicSellQuote = (info: unknown) =>
+  mockCall({ url: 'sell/quote', method: 'PUT', data: info, token: false });
+const mockPublicSwapQuote = (info: unknown) =>
+  mockCall({ url: 'swap/quote', method: 'PUT', data: info, token: false });
 
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: {
@@ -57,9 +63,9 @@ jest.mock('@dfx.swiss/react', () => ({
   SellUrl: { quote: 'sell/quote' },
   SwapUrl: { quote: 'swap/quote' },
   useApi: () => ({ call: mockCall }),
-  useBuy: () => ({ receiveFor: mockReceiveForBuy }),
-  useSell: () => ({ receiveFor: jest.fn() }),
-  useSwap: () => ({ receiveFor: jest.fn() }),
+  useBuy: () => ({ receiveFor: mockReceiveForBuy, quote: mockPublicBuyQuote }),
+  useSell: () => ({ receiveFor: jest.fn(), quote: mockPublicSellQuote }),
+  useSwap: () => ({ receiveFor: jest.fn(), quote: mockPublicSwapQuote }),
   useUser: () => ({ updateMail: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
   useAssetContext: () => ({
@@ -135,6 +141,7 @@ describe('amount CTA gate', () => {
     });
 
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await act(async () => {
       jest.advanceTimersByTime(600);
     });
@@ -162,6 +169,7 @@ describe('amount CTA gate', () => {
     });
 
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await act(async () => {
       jest.advanceTimersByTime(600);
     });

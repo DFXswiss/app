@@ -2,9 +2,12 @@ import { TextEncoder } from 'util';
 
 (global as { TextEncoder: typeof TextEncoder }).TextEncoder = TextEncoder;
 
-const mockCall = jest.fn();
 const mockGetPaymentLinks = jest.fn();
 const mockGetPaymentRoutes = jest.fn();
+const mockGetPaymentLinkHistory = jest.fn();
+const mockCreatePaymentLinkInvoice = jest.fn();
+const mockCreateSellPaymentRoute = jest.fn();
+const mockActivatePaymentRoute = jest.fn();
 const mockGetConfig = jest.fn();
 const mockCreatePaymentLink = jest.fn();
 const mockCreatePayment = jest.fn();
@@ -23,10 +26,14 @@ jest.mock('@dfx.swiss/react', () => ({
   },
   Blockchain: { LIGHTNING: 'Lightning', BITCOIN: 'Bitcoin' },
   PaymentLinkStatus: { ACTIVE: 'Active', INACTIVE: 'Inactive' },
-  useApi: () => ({ call: mockCall, defaultUrl: 'https://api.dfx.swiss/v1' }),
+  useApi: () => ({ defaultUrl: 'https://api.dfx.swiss/v1' }),
   usePaymentRoutes: () => ({
     getPaymentLinks: mockGetPaymentLinks,
     getPaymentRoutes: mockGetPaymentRoutes,
+    getPaymentLinkHistory: mockGetPaymentLinkHistory,
+    createPaymentLinkInvoice: mockCreatePaymentLinkInvoice,
+    createSellPaymentRoute: mockCreateSellPaymentRoute,
+    activatePaymentRoute: mockActivatePaymentRoute,
     getUserPaymentLinksConfig: mockGetConfig,
     createPaymentLink: mockCreatePaymentLink,
     createPaymentLinkPayment: mockCreatePayment,
@@ -79,7 +86,10 @@ describe('useOcp', () => {
     mockGetConfig.mockResolvedValue({ accessKey: 'k' });
     mockGetPaymentRoutes.mockResolvedValue({ sell: [], buy: [], swap: [] });
     mockGetPaymentLinks.mockResolvedValue([]);
-    mockCall.mockResolvedValue([]);
+    mockGetPaymentLinkHistory.mockResolvedValue([]);
+    mockCreatePaymentLinkInvoice.mockResolvedValue({ id: 'pay1' });
+    mockCreateSellPaymentRoute.mockResolvedValue({});
+    mockActivatePaymentRoute.mockResolvedValue({});
     mockCreatePayment.mockResolvedValue({ lnurl: 'LNURL1DEMO' });
     mockCreatePos.mockResolvedValue({ url: 'https://app.dfx.swiss/pos/x' });
     Object.assign(navigator, { clipboard: { writeText: jest.fn().mockResolvedValue(undefined) } });
@@ -109,12 +119,13 @@ describe('useOcp', () => {
       await result.current.loadLinks();
       await result.current.loadHistory();
     });
+    expect(mockGetPaymentLinkHistory).toHaveBeenCalled();
     expect(result.current.routes).toEqual({ sell: [], buy: [], swap: [] });
     expect(result.current.links).toEqual([]);
     expect(result.current.linksError).toBe(false);
     expect(result.current.historyError).toBe(false);
 
-    mockCall.mockResolvedValueOnce([
+    mockGetPaymentLinkHistory.mockResolvedValueOnce([
       {
         payments: [{ id: 2, amount: 5, currency: 'CHF', status: 'Completed', date: '2026-01-01' }],
         totalCompletedAmount: 5,
@@ -170,16 +181,20 @@ describe('useOcp', () => {
 
   it('creates live invoices, charges and polls', async () => {
     const { result } = renderHook(() => useOcp(), { wrapper });
-    mockCall.mockResolvedValueOnce({ id: 'pay1' });
+    mockCreatePaymentLinkInvoice.mockResolvedValueOnce({ id: 'pay1' });
     await act(async () => {
       const inv = await result.current.createInvoice({ routeId: 1, amount: 3, currency: 'CHF', message: 'x' });
       expect(inv.lnurl).toMatch(/^LNURL/i);
     });
+    expect(mockCreatePaymentLinkInvoice).toHaveBeenCalledWith(
+      expect.objectContaining({ routeId: 1, amount: 3, currency: 'CHF', message: 'x' }),
+    );
 
-    mockCall.mockResolvedValueOnce({ payment: { status: 'Completed' } });
-    await expect(result.current.pollPayment(1)).resolves.toBe('Completed');
-    mockCall.mockRejectedValueOnce(new Error('down'));
-    await expect(result.current.pollPayment(1)).resolves.toBeUndefined();
+    mockGetPaymentLinks.mockResolvedValueOnce({ payment: { externalId: 'ext-1', status: 'Completed' } });
+    await expect(result.current.pollPayment(1, 'ext-1')).resolves.toBe('Completed');
+    expect(mockGetPaymentLinks).toHaveBeenLastCalledWith('1', undefined, 'ext-1');
+    mockGetPaymentLinks.mockRejectedValueOnce(new Error('down'));
+    await expect(result.current.pollPayment(1, 'ext-1')).resolves.toBeUndefined();
 
     mockGetPaymentRoutes.mockRejectedValueOnce(new Error('down'));
     await act(async () => {
@@ -199,13 +214,13 @@ describe('useOcp', () => {
     });
     expect(result.current.linksError).toBe(false);
 
-    mockCall.mockRejectedValueOnce(new Error('down'));
+    mockGetPaymentLinkHistory.mockRejectedValueOnce(new Error('down'));
     await act(async () => {
       await result.current.loadHistory();
     });
     expect(result.current.history).toEqual({ items: [], total: 0 });
     expect(result.current.historyError).toBe(true);
-    mockCall.mockResolvedValueOnce([]);
+    mockGetPaymentLinkHistory.mockResolvedValueOnce([]);
     await act(async () => {
       await result.current.loadHistory();
     });
@@ -223,6 +238,11 @@ describe('useOcp', () => {
       await result.current.saveConfig({ displayQr: true } as never);
       expect(await result.current.createPosLink(1)).toBe('https://app.dfx.swiss/pos/x');
     });
+    expect(mockCreateSellPaymentRoute).toHaveBeenCalledWith({
+      iban: 'CH93',
+      currency: { id: 1 },
+      blockchain: 'Bitcoin',
+    });
 
     Object.defineProperty(global, 'crypto', {
       configurable: true,
@@ -232,9 +252,10 @@ describe('useOcp', () => {
     await act(async () => {
       const charged = await result.current.charge(1, 4);
       expect(charged.lnurl).toBe('LNURL1LIVE');
+      expect(charged.externalId).toBe('uuid-live');
     });
 
-    mockCall.mockResolvedValueOnce({});
+    mockCreatePaymentLinkInvoice.mockResolvedValueOnce({});
     await expect(
       result.current.createInvoice({ routeId: '1', amount: 1, currency: 'CHF', message: 'x' }),
     ).rejects.toBeTruthy();
@@ -261,6 +282,21 @@ describe('useOcp', () => {
     await expect(result.current.charge(1, 2)).rejects.toBeTruthy();
   });
 
+  it('polls only the payment matching the POS charge external id', async () => {
+    const { result } = renderHook(() => useOcp(), { wrapper });
+    mockGetPaymentLinks.mockResolvedValueOnce([
+      { payment: { externalId: 'another-charge', status: 'Completed' } },
+      { payment: { externalId: 'this-charge', status: 'Pending' } },
+    ]);
+
+    await expect(result.current.pollPayment('link-7', 'this-charge')).resolves.toBe('Pending');
+    expect(mockGetPaymentLinks).toHaveBeenCalledWith('link-7', undefined, 'this-charge');
+    expect(mockGetPaymentLinks).toHaveBeenCalled();
+
+    mockGetPaymentLinks.mockResolvedValueOnce({ payment: { externalId: 'another-charge', status: 'Completed' } });
+    await expect(result.current.pollPayment('link-7', 'this-charge')).resolves.toBeUndefined();
+  });
+
   it('builds a charge external id without randomUUID and copies with a failing clipboard', async () => {
     const { result } = renderHook(() => useOcp(), { wrapper });
     const originalCrypto = global.crypto;
@@ -269,6 +305,7 @@ describe('useOcp', () => {
     await act(async () => {
       const charged = await result.current.charge(1, 3);
       expect(charged.lnurl).toBe('LNURL1FALLBACK');
+      expect(charged.externalId).toBeTruthy();
     });
     Object.defineProperty(global, 'crypto', { configurable: true, value: originalCrypto });
 
@@ -293,14 +330,14 @@ describe('useOcp', () => {
     });
     expect(result.current.links).toEqual([{ id: 7 }]);
 
-    mockCall.mockResolvedValueOnce('nope');
+    mockGetPaymentLinkHistory.mockResolvedValueOnce('nope');
     await act(async () => {
       await result.current.loadHistory();
     });
     expect(result.current.history).toEqual({ items: [], total: 0 });
     expect(result.current.historyError).toBe(false);
 
-    mockCall.mockResolvedValueOnce([
+    mockGetPaymentLinkHistory.mockResolvedValueOnce([
       { payments: undefined, totalCompletedAmount: undefined },
       {
         payments: [
@@ -364,7 +401,7 @@ describe('useOcp', () => {
     mockGetConfig.mockReturnValueOnce(config.promise);
     mockGetPaymentRoutes.mockReturnValueOnce(routes.promise);
     mockGetPaymentLinks.mockReturnValueOnce(links.promise);
-    mockCall.mockReturnValueOnce(history.promise);
+    mockGetPaymentLinkHistory.mockReturnValueOnce(history.promise);
 
     const { result } = renderHook(() => useOcp(), { wrapper });
 
@@ -416,7 +453,7 @@ describe('useOcp', () => {
     mockGetConfig.mockReturnValueOnce(config.promise);
     mockGetPaymentRoutes.mockReturnValueOnce(routes.promise);
     mockGetPaymentLinks.mockReturnValueOnce(links.promise);
-    mockCall.mockReturnValueOnce(history.promise);
+    mockGetPaymentLinkHistory.mockReturnValueOnce(history.promise);
 
     const { result } = renderHook(() => useOcp(), { wrapper });
 
@@ -537,13 +574,13 @@ describe('useOcp', () => {
       await result.current.toggleRoute('sell', 1, false);
     });
     expect(mockDeleteRoute).toHaveBeenCalledWith(1, 'sell');
-    expect(mockCall).not.toHaveBeenCalledWith(expect.objectContaining({ url: '/sell/1' }));
+    expect(mockActivatePaymentRoute).not.toHaveBeenCalledWith(1, 'sell');
 
-    mockCall.mockClear();
+    mockActivatePaymentRoute.mockClear();
     await act(async () => {
       await result.current.toggleRoute('sell', 1, true);
     });
-    expect(mockCall).toHaveBeenCalledWith({ url: '/sell/1', method: 'PUT', data: { active: true } });
+    expect(mockActivatePaymentRoute).toHaveBeenCalledWith(1, 'sell');
     rerender();
   });
 
@@ -569,7 +606,7 @@ describe('useOcp', () => {
     const save = deferred<void>();
     const sell = deferred<void>();
     mockUpdateConfig.mockReturnValueOnce(save.promise);
-    mockCall.mockReturnValueOnce(sell.promise);
+    mockCreateSellPaymentRoute.mockReturnValueOnce(sell.promise);
 
     const { result } = renderHook(() => useOcp(), { wrapper });
     let saveP!: Promise<void>;
@@ -612,7 +649,7 @@ describe('useOcp', () => {
 
   it('discards a late live route activation after demo is turned on', async () => {
     const put = deferred<void>();
-    mockCall.mockReturnValueOnce(put.promise);
+    mockActivatePaymentRoute.mockReturnValueOnce(put.promise);
     const { result } = renderHook(() => useOcp(), { wrapper });
     let toggleP!: Promise<void>;
     act(() => {
@@ -633,20 +670,20 @@ describe('useOcp', () => {
     const link = deferred<unknown>();
     const invoice = deferred<{ id: string }>();
     const charged = deferred<{ payment: { lnurl: string } }>();
-    const polled = deferred<{ payment: { status: string } }>();
+    const polled = deferred<{ payment: { externalId: string; status: string } }>();
     const pos = deferred<{ url: string }>();
     const updated = deferred<unknown>();
     mockCreatePaymentLink.mockReturnValueOnce(link.promise);
-    mockCall.mockReturnValueOnce(invoice.promise);
+    mockCreatePaymentLinkInvoice.mockReturnValueOnce(invoice.promise);
     mockCreatePayment.mockReturnValueOnce(charged.promise);
-    mockCall.mockReturnValueOnce(polled.promise);
+    mockGetPaymentLinks.mockReturnValueOnce(polled.promise);
     mockCreatePos.mockReturnValueOnce(pos.promise);
     mockUpdateLink.mockReturnValueOnce(updated.promise);
 
     const { result } = renderHook(() => useOcp(), { wrapper });
     let linkP!: Promise<void>;
     let invoiceP!: Promise<{ lnurl: string }>;
-    let chargeP!: Promise<{ lnurl: string }>;
+    let chargeP!: Promise<{ lnurl: string; externalId: string }>;
     let pollP!: Promise<string | undefined>;
     let posP!: Promise<string | undefined>;
     let toggleP!: Promise<void>;
@@ -654,7 +691,7 @@ describe('useOcp', () => {
       linkP = result.current.createLink(1);
       invoiceP = result.current.createInvoice({ routeId: 1, amount: 1, currency: 'CHF', message: 'x' });
       chargeP = result.current.charge(1, 2);
-      pollP = result.current.pollPayment(1);
+      pollP = result.current.pollPayment(1, 'external-1');
       posP = result.current.createPosLink(1);
       toggleP = result.current.toggleLink(1, false);
     });
@@ -666,7 +703,7 @@ describe('useOcp', () => {
       link.resolve({});
       invoice.resolve({ id: 'stale' });
       charged.resolve({ payment: { lnurl: 'LNURL1STALE' } });
-      polled.resolve({ payment: { status: 'Completed' } });
+      polled.resolve({ payment: { externalId: 'external-1', status: 'Completed' } });
       pos.resolve({ url: 'https://app.dfx.swiss/pos/stale' });
       updated.resolve({});
       await Promise.allSettled([linkP, invoiceP, chargeP, pollP, posP, toggleP]);
