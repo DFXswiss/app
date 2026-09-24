@@ -326,6 +326,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   a real client IP to the expected country. It also does not prove that the KYC step, transaction,
   refund and bootstrap endpoints return these payloads for a real account, or that client-error
   reports reach the real endpoint.
+- **The Open CryptoPay unit test replaces `url()` and the API config with fixed hosts.**
+  `src/__tests__/open-crypto-pay.test.ts` mocks `Api` as `https://api.dfx.swiss` / `v1` and
+  swaps `url` from `src/util/utils` for a copy whose `base` falls back to the placeholder
+  `https://app.dfx.swiss` instead of `REACT_APP_PUBLIC_URL`, without the real function's
+  absolute-path branch. A green run proves only substrings, each in a separate test: the result
+  contains `lightning=LNURL` and `pl`, and the decoded LNURL contains `lnurlp/<id>` and
+  `https://api.dfx.swiss/v1`; one more test proves that two different ids give different
+  results. It does not prove the exact `pl?lightning=…` link or the exact
+  decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
+  the real `url()` treats those arguments identically; no assertion pins the outer host.
 
 ## Known gaps
 
