@@ -2,6 +2,8 @@ jest.mock('@dfx.swiss/react', () => ({}));
 jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', LG: 'lg' },
   StyledButtonWidth: { MIN: 'min' },
+  StyledButtonSize: { SMALL: 'small', BIG: 'big' },
+  StyledButtonColor: { BLUE: 'blue', RED: 'red' },
   StyledLoadingSpinner: () => <div data-testid="loading-spinner" />,
   StyledButton: ({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) => (
     <button type="button" disabled={disabled} onClick={onClick}>

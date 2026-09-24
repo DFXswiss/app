@@ -10,7 +10,11 @@ import {
   hoursSince,
   isUnassigned,
   trendLabel,
+  WAIT_TIERS,
+  waitInTier,
   waitTier,
+  waitTierForFilter,
+  waitTierLabel,
 } from '../util/support-stats';
 
 const NOW = new Date('2026-06-18T12:00:00Z');
@@ -94,11 +98,39 @@ describe('support-helpers customer waiting', () => {
     );
   });
 
-  it('maps waiting time to rising-severity tiers (1h/12h/24h; 24h = escalated)', () => {
-    expect(waitTier(0.5)).toBe(0);
-    expect(waitTier(5)).toBe(1);
+  it('maps waiting time to New (<12h), 12h and 24h tiers', () => {
+    expect(waitTier(0)).toBe(0);
+    expect(waitTier(1 / 3600)).toBe(1);
+    expect(waitTier(11 + 59 / 60)).toBe(1);
+    expect(waitTier(12)).toBe(2);
     expect(waitTier(13)).toBe(2);
+    expect(waitTier(24)).toBe(3);
     expect(waitTier(25)).toBe(3);
+    expect(waitTier(NaN)).toBe(0);
+  });
+
+  it('treats the lowest wait range as exclusive of 12h', () => {
+    expect(waitInTier(1 / 3600, WAIT_TIERS[0])).toBe(true);
+    expect(waitInTier(11 + 59 / 60, WAIT_TIERS[0])).toBe(true);
+    expect(waitInTier(12, WAIT_TIERS[0])).toBe(false);
+    expect(waitInTier(5, WAIT_TIERS[1])).toBe(false);
+    expect(waitInTier(12, WAIT_TIERS[1])).toBe(true);
+    expect(waitInTier(25, WAIT_TIERS[1])).toBe(true);
+    expect(waitInTier(25, WAIT_TIERS[2])).toBe(true);
+    expect(waitInTier(NaN, WAIT_TIERS[0])).toBe(false);
+    expect(waitInTier(NaN, WAIT_TIERS[1])).toBe(false);
+    expect(waitInTier(NaN, WAIT_TIERS[2])).toBe(false);
+  });
+
+  it('renders wait-tier labels from WAIT_TIERS', () => {
+    expect(waitTierLabel(WAIT_TIERS[0])).toBe('New');
+    expect(waitTierLabel(WAIT_TIERS[1])).toBe('12h');
+    expect(waitTierLabel(WAIT_TIERS[2])).toBe('24h');
+  });
+
+  it('falls back to the New range for an unknown stored filter', () => {
+    expect(waitTierForFilter(1)).toBe(WAIT_TIERS[0]);
+    expect(waitTierForFilter(12)).toBe(WAIT_TIERS[1]);
   });
 });
 

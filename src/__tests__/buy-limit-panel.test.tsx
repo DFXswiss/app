@@ -1,6 +1,8 @@
 jest.mock('@dfx.swiss/react', () => ({}));
 jest.mock('@dfx.swiss/react-components', () => ({
   StyledButtonWidth: { MIN: 'min' },
+  StyledButtonSize: { SMALL: 'small', BIG: 'big' },
+  StyledButtonColor: { BLUE: 'blue', RED: 'red' },
   StyledButton: ({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) => (
     <button type="button" disabled={disabled} onClick={onClick}>
       {label}
