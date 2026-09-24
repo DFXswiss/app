@@ -178,6 +178,17 @@ test.describe('RealUnit area', () => {
     const { jwt } = await loginAs('RealUnit');
     const { pageErrors, consoleErrors } = attachErrorListeners(page);
 
+    // The harness does not configure a RealUnit graph URL. Holder stats then answer 503 by
+    // contract and the browser logs that line. This test checks navigation, so that one request
+    // is answered with an empty series. Any other 5xx still fails assertNoErrors.
+    await page.route('**/v1/realunit/admin/stats/holders**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '[]',
+      });
+    });
+
     await openScreen(page, '/realunit/treasury', jwt);
     await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Treasury' })).toHaveAttribute('aria-current', 'page');
