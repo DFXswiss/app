@@ -175,11 +175,18 @@ test.describe('RealUnit area', () => {
   );
 
   // The E2E API has no RealUnit graph URL, so GET /v1/realunit/admin/stats/holders returns 503
-  // "RealUnit graph URL is not configured". The screen shows the hint; the browser line names
-  // no URL. pageerror stays strict.
+  // "RealUnit graph URL is not configured". The screen shows the hint. The browser line names
+  // no URL, so only one such line is dropped per counted holder-stats 503. pageerror stays strict.
   test('RealUnit opens treasury and insights from the section nav', async ({ page }) => {
     const { jwt } = await loginAs('RealUnit');
     const { pageErrors, consoleErrors } = attachErrorListeners(page);
+
+    let holderStats503 = 0;
+    page.on('response', (response) => {
+      if (response.status() === 503 && response.url().includes('/v1/realunit/admin/stats/holders')) {
+        holderStats503 += 1;
+      }
+    });
 
     await openScreen(page, '/realunit/treasury', jwt);
     await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toBeVisible();
@@ -190,11 +197,18 @@ test.describe('RealUnit area', () => {
     await expect(page.getByRole('link', { name: 'Insights' })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByText('Failed to load holder count.')).toBeVisible();
 
+    const holderStats503Line =
+      'Failed to load resource: the server responded with a status of 503 (Service Unavailable)';
+    let remainingHolderStats503 = holderStats503;
     assertNoErrors(
       pageErrors,
-      consoleErrors.filter(
-        (msg) => msg !== 'Failed to load resource: the server responded with a status of 503 (Service Unavailable)',
-      ),
+      consoleErrors.filter((msg) => {
+        if (msg === holderStats503Line && remainingHolderStats503 > 0) {
+          remainingHolderStats503 -= 1;
+          return false;
+        }
+        return true;
+      }),
     );
   });
 
