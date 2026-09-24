@@ -15,7 +15,7 @@ const mockGetPersonalIbans = jest.fn();
 const mockWalletInitialized = jest.fn();
 const mockCloseServices = jest.fn();
 const mockCurrencies = [{ name: 'CHF' }, { name: 'EUR' }, { name: 'USD' }, { name: 'GBP' }];
-let mockFiatCurrencies = [{ name: 'EUR' }, { name: 'CHF' }];
+let mockFiatCurrencies: { name: string }[] | undefined = [{ name: 'EUR' }, { name: 'CHF' }];
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -427,6 +427,19 @@ describe('BuyInfoScreen personal IBAN mismatch hint', () => {
     expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
     expect(screen.queryByText(MISMATCH_HINT)).not.toBeInTheDocument();
     expect(screen.getByTestId('payment-info')).toHaveAttribute('data-show-bank', 'true');
+  });
+
+  it('keeps CHF as a Frick currency while the fiat list has not loaded', async () => {
+    mockFiatCurrencies = undefined;
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor.mockResolvedValue(frickOffer({ currency: { name: 'CHF' } }));
+
+    render(<BuyInfoScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+    await settle();
+    expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
+    expect(screen.queryByText(MISMATCH_HINT)).not.toBeInTheDocument();
   });
 
   it('requests a Frick personal IBAN directly for USD when the active fiat list includes USD', async () => {

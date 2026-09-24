@@ -6,7 +6,7 @@ const mockReceiveFor = jest.fn();
 const mockUseAppParams = jest.fn();
 const mockPersonalIban = jest.fn();
 const mockCurrencies = [{ name: 'EUR' }];
-const mockFiatCurrencies = [{ name: 'EUR' }, { name: 'CHF' }];
+const mockFiatCurrencies: { name: string }[] | undefined = [{ name: 'EUR' }, { name: 'CHF' }];
 const mockEmptyPersonalIbans: never[] = [];
 
 jest.mock('@dfx.swiss/react', () => {
