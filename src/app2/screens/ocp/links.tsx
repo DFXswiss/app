@@ -220,10 +220,26 @@ export default function LinksView({ ocp, go }: OcpSubViewProps) {
       go('pos');
       return;
     }
+    // Reserve the tab during the click gesture. Browsers block window.open
+    // after the API promise below has yielded.
+    const popup = window.open('about:blank', '_blank');
+    if (!popup) {
+      go('pos');
+      return;
+    }
+    popup.opener = null;
     showToast(`${t('openPos')}…`);
-    const url = await ocp.createPosLink(id);
-    if (url) window.open(url, '_blank', 'noopener');
-    else go('pos');
+    try {
+      const url = await ocp.createPosLink(id);
+      if (url) popup.location.replace(url);
+      else {
+        popup.close();
+        go('pos');
+      }
+    } catch {
+      popup.close();
+      showToast(t('genErr'));
+    }
   };
 
   if (ocp.links === null) {

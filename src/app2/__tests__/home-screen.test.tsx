@@ -9,10 +9,16 @@ const mockPublicSellQuote = (info: unknown) =>
 const mockPublicSwapQuote = (info: unknown) =>
   mockCall({ url: 'swap/quote', method: 'PUT', data: info, token: false });
 const mockCreateAccount = jest.fn();
+const mockUpdateMail = jest.fn();
+const mockGetPaymentInfoRequestStatus = jest.fn();
+const mockGetTransactionDetailByUid = jest.fn();
+let mockApiAccount = 7;
 const mockAssets: Array<Record<string, unknown>> = [];
 const mockCurrencies: Array<Record<string, unknown>> = [];
 const mockBankAccounts: Array<Record<string, unknown>> = [];
 const mockLocation = { search: '' };
+const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+let mockUuidCounter = 0;
 const mockSession = {
   isLoggedIn: true,
   address: '0x7099797000000000000000000000000000000000' as string | undefined,
@@ -94,8 +100,13 @@ jest.mock('@dfx.swiss/react', () => ({
   useSell: () => ({ receiveFor: mockReceiveForSell, quote: mockPublicSellQuote }),
   useSwap: () => ({ receiveFor: mockReceiveForSwap, quote: mockPublicSwapQuote }),
   useAuth: () => ({ signInWithMail: jest.fn() }),
-  useUser: () => ({ updateMail: jest.fn() }),
+  useUser: () => ({ updateMail: mockUpdateMail }),
   useUserContext: () => ({ user: undefined }),
+  useApiSession: () => ({ session: { account: mockApiAccount } }),
+  useTransaction: () => ({
+    getPaymentInfoRequestStatus: mockGetPaymentInfoRequestStatus,
+    getTransactionDetailByUid: mockGetTransactionDetailByUid,
+  }),
   useAssetContext: () => ({ getAssets: () => mockAssets }),
   useFiatContext: () => ({ currencies: mockCurrencies }),
   useBankAccountContext: () => ({ bankAccounts: mockBankAccounts, isLoading: false, createAccount: mockCreateAccount }),
@@ -173,6 +184,13 @@ describe('HomeScreen', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    mockUuidCounter = 0;
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: {
+        randomUUID: () => `00000000-0000-4000-8000-${(++mockUuidCounter).toString(16).padStart(12, '0')}`,
+      },
+    });
     mockAssets.length = 0;
     mockCurrencies.length = 0;
     mockBankAccounts.length = 0;
@@ -192,11 +210,21 @@ describe('HomeScreen', () => {
       targetAsset: { name: 'USDT', blockchain: 'Ethereum' },
     });
     mockCreateAccount.mockResolvedValue({ id: 9, iban: 'CH9300762011623852957' });
+    mockUpdateMail.mockResolvedValue(undefined);
+    mockGetPaymentInfoRequestStatus.mockResolvedValue({ requestStatus: 'Processing' });
+    mockGetTransactionDetailByUid.mockResolvedValue({ uid: 'request-uid', state: 'WaitingForPayment' });
+    mockApiAccount = 7;
+    sessionStorage.clear();
     window.history.replaceState({}, '', '/');
   });
 
   afterEach(() => {
     jest.useRealTimers();
+    if (originalCryptoDescriptor) {
+      Object.defineProperty(globalThis, 'crypto', originalCryptoDescriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, 'crypto');
+    }
   });
 
   it('renders the landing hero while logged out', () => {
@@ -331,6 +359,35 @@ describe('HomeScreen', () => {
     );
   });
 
+  it('does not partner-redirect when Done closes a completed request loaded from a 409 conflict', async () => {
+    seedDefaultMarket();
+    mockLocation.search = '?redirect-uri=https://partner.example/done';
+    const conflict = new ApiException(409, 'Payment info already exists', 'PAYMENT_INFO_ALREADY_EXISTS');
+    Object.assign(conflict, {
+      paymentInfoConflict: { existingUid: 'existing-request', requestStatus: 'Completed' },
+    });
+    mockReceiveForBuy.mockRejectedValueOnce(conflict);
+    mockGetTransactionDetailByUid.mockResolvedValueOnce({ uid: 'existing-request', state: 'Completed' });
+    renderHome();
+
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+
+    const dialog = await screen.findByRole('dialog', {
+      name: /existing payment request|bestehende zahlungsanfrage/i,
+    });
+    await waitFor(() => expect(mockGetTransactionDetailByUid).toHaveBeenCalledWith('existing-request'));
+    await waitFor(() => expect(within(dialog).getByText('Completed')).toBeInTheDocument());
+    fireEvent.click(await within(dialog).findByRole('button', { name: /done|fertig|fatto|terminé/i }));
+
+    expect(
+      screen.queryByRole('dialog', { name: /leave dfx|dfx verlassen|uscire da dfx|quitter dfx/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: /existing payment request|bestehende zahlungsanfrage/i })).not.toBeInTheDocument();
+  });
+
   it('pauses buy quote refresh while the sell tab is active', async () => {
     seedDefaultMarket();
     renderHome();
@@ -359,12 +416,75 @@ describe('HomeScreen', () => {
     await act(async () => {
       jest.advanceTimersByTime(20_000);
     });
-    expect(screen.getByRole('alert')).toHaveTextContent(/too long|zu lange|troppo tempo|trop de temps/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/still being checked|wird noch geprüft|ancora in verifica|toujours en cours/i);
+    const calls = mockReceiveForBuy.mock.calls;
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    expect(calls[0][0].clientRequestId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(calls[calls.length - 1][0].clientRequestId).toBe(calls[0][0].clientRequestId);
+    expect(sessionStorage.getItem('app2:pending-payment-request:7')).toContain(calls[0][0].clientRequestId);
+    expect(screen.getByTestId('trade-cta')).toBeDisabled();
   });
 
-  it('retries a generic payment error and reconnects after a 401', async () => {
+  it('restores an existing payment by account and never starts another payment after reload', async () => {
+    seedDefaultMarket();
+    const requestId = 'cdab92dc-8f3f-4a90-bb37-a7026e12a9fa';
+    mockLocation.search = '?mode=sell';
+    sessionStorage.setItem('app2:pending-payment-request:7', JSON.stringify({ requestId, mode: 'buy' }));
+    mockGetPaymentInfoRequestStatus.mockResolvedValueOnce({ existingUid: 'request-uid', requestStatus: 'WaitingForPayment' });
+    const view = renderHome();
+
+    const dialog = await screen.findByRole('dialog', { name: /existing payment request|bestehende zahlungsanfrage/i });
+    await waitFor(() => expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalledWith(requestId, 'Buy'));
+    await waitFor(() => expect(within(dialog).getByText('request-uid')).toBeInTheDocument());
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
+    expect(screen.getByTestId('trade-cta')).toBeDisabled();
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <HomeScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    await settleQuote();
+    expect(mockGetTransactionDetailByUid).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a delayed status response from one account overwrite another account request', async () => {
+    seedDefaultMarket();
+    const firstId = 'cdab92dc-8f3f-4a90-bb37-a7026e12a9fa';
+    const secondId = 'cdab92dc-8f3f-4a90-bb37-a7026e12a9fb';
+    sessionStorage.setItem('app2:pending-payment-request:7', JSON.stringify({ requestId: firstId, mode: 'buy' }));
+    sessionStorage.setItem('app2:pending-payment-request:8', JSON.stringify({ requestId: secondId, mode: 'buy' }));
+    let resolveFirst!: (value: { existingUid: string; requestStatus: string }) => void;
+    mockGetPaymentInfoRequestStatus
+      .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce({ existingUid: 'request-B', requestStatus: 'WaitingForPayment' });
+    const view = renderHome();
+
+    await waitFor(() => expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalledWith(firstId, 'Buy'));
+    mockApiAccount = 8;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <HomeScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    const dialog = await screen.findByRole('dialog', { name: /existing payment request|bestehende zahlungsanfrage/i });
+    await waitFor(() => expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalledWith(secondId, 'Buy'));
+    await waitFor(() => expect(within(dialog).getByText('request-B')).toBeInTheDocument());
+
+    await act(async () => {
+      resolveFirst({ existingUid: 'request-A', requestStatus: 'Completed' });
+    });
+    expect(within(dialog).getByText('request-B')).toBeInTheDocument();
+    expect(within(dialog).queryByText('request-A')).not.toBeInTheDocument();
+  });
+
+  it('keeps an unresolved request locked and provides no new-payment escape hatch', async () => {
     seedDefaultMarket();
     mockReceiveForBuy.mockRejectedValueOnce(new Error('pay-down'));
+    mockGetPaymentInfoRequestStatus.mockRejectedValueOnce(new ApiException(404, 'ClaimNotFound', 'NotFound'));
     renderHome();
     fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
@@ -375,14 +495,137 @@ describe('HomeScreen', () => {
     });
     fireEvent.click(within(dialog).getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
     await settleQuote();
-    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalledTimes(2));
-    fireEvent.click(screen.getByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    await waitFor(() => expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalled());
+    expect(mockReceiveForBuy).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(dialog).getByRole('button', { name: /close/i }));
+    expect(screen.getByText(/state is not confirmed|status ist nicht bestätigt/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /start a separate payment|separate zahlung starten/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('trade-cta')).toBeDisabled();
+    expect(sessionStorage.getItem('app2:pending-payment-request:7')).toContain('requestId');
+  });
 
-    mockReceiveForBuy.mockRejectedValueOnce(new ApiException(401, 'gone'));
+  it('rotates the request id only after the explicit EmailRequired gate is cleared', async () => {
+    seedDefaultMarket();
+    mockReceiveForBuy.mockRejectedValueOnce(new ApiException(400, 'EmailRequired', 'EmailRequired'));
+    mockGetPaymentInfoRequestStatus.mockRejectedValueOnce(new ApiException(404, 'ClaimNotFound', 'NotFound'));
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     await settleQuote();
-    fireEvent.click(await screen.findByRole('button', { name: /connect/i }));
-    expect(mockSession.openConnect).toHaveBeenCalled();
+
+    const dialog = await screen.findByRole('dialog', {
+      name: /complete your purchase|kauf abschliessen|completa l.acquisto|finalise ton achat/i,
+    });
+    const firstRequestId = mockReceiveForBuy.mock.calls[0][0].clientRequestId;
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /email address/i }), {
+      target: { value: 'trader@example.com' },
+    });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: /send link/i }));
+    });
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledWith('trader@example.com'));
+    fireEvent.click(await within(dialog).findByRole('button', { name: /i have confirmed/i }));
+    await settleQuote();
+
+    await waitFor(() =>
+      expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalledWith(firstRequestId, 'Buy'),
+    );
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalledTimes(2));
+    expect(mockReceiveForBuy).toHaveBeenCalledTimes(2);
+    expect(mockReceiveForBuy.mock.calls[1][0].clientRequestId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(mockReceiveForBuy.mock.calls[1][0].clientRequestId).not.toBe(firstRequestId);
+    expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/aaaa-bbbb-cccc/i)).toBeInTheDocument();
+  });
+
+  it('keeps the same request id when a KYC error has an existing server claim', async () => {
+    seedDefaultMarket();
+    mockReceiveForBuy.mockRejectedValueOnce(new ApiException(400, 'KycRequired', 'KycRequired'));
+    mockGetPaymentInfoRequestStatus.mockResolvedValueOnce({ requestStatus: 'Processing' });
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+
+    const dialog = await screen.findByRole('dialog', {
+      name: /complete your purchase|kauf abschliessen|completa l.acquisto|finalise ton achat/i,
+    });
+    const requestId = mockReceiveForBuy.mock.calls[0][0].clientRequestId;
+    fireEvent.click(within(dialog).getByRole('button', { name: /check request status|anfrage-status prüfen/i }));
+    await waitFor(() => expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalledWith(requestId, 'Buy'));
+
+    expect(mockReceiveForBuy).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem('app2:pending-payment-request:7')).toContain(requestId);
+    expect(screen.getByTestId('trade-cta')).toBeDisabled();
+  });
+
+  it('allows only one UUID rotation when the same pre-claim retry is clicked twice', async () => {
+    seedDefaultMarket();
+    mockReceiveForBuy.mockRejectedValueOnce(new ApiException(400, 'EmailRequired', 'EmailRequired'));
+    let rejectLookup!: (error: ApiException) => void;
+    mockGetPaymentInfoRequestStatus.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectLookup = reject;
+      }),
+    );
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+
+    const dialog = await screen.findByRole('dialog', {
+      name: /complete your purchase|kauf abschliessen|completa l.acquisto|finalise ton achat/i,
+    });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /email address/i }), {
+      target: { value: 'trader@example.com' },
+    });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: /send link/i }));
+    });
+    await waitFor(() => expect(mockUpdateMail).toHaveBeenCalledWith('trader@example.com'));
+    const confirmButton = await within(dialog).findByRole('button', { name: /i have confirmed/i });
+    act(() => {
+      fireEvent.click(confirmButton);
+      fireEvent.click(confirmButton);
+    });
+    await waitFor(() => expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      rejectLookup(new ApiException(404, 'ClaimNotFound', 'NotFound'));
+    });
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalledTimes(2));
+
+    expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalledTimes(1);
+    expect(mockReceiveForBuy.mock.calls[1][0].clientRequestId).not.toBe(
+      mockReceiveForBuy.mock.calls[0][0].clientRequestId,
+    );
+  });
+
+  it('allows a separate payment only after a completed request is found and confirmed', async () => {
+    seedDefaultMarket();
+    const requestId = 'cdab92dc-8f3f-4a90-bb37-a7026e12a9fa';
+    sessionStorage.setItem('app2:pending-payment-request:7', JSON.stringify({ requestId, mode: 'buy' }));
+    mockGetPaymentInfoRequestStatus.mockResolvedValue({ existingUid: 'completed-request', requestStatus: 'Completed' });
+    mockGetTransactionDetailByUid.mockResolvedValue({ uid: 'completed-request', state: 'Completed' });
+    renderHome();
+
+    const dialog = await screen.findByRole('dialog', { name: /existing payment request|bestehende zahlungsanfrage/i });
+    await waitFor(() => expect(within(dialog).getByText('completed-request')).toBeInTheDocument());
+    fireEvent.click(await within(dialog).findByRole('button', { name: /done|fertig|fatto|terminé/i }));
+    fireEvent.click(screen.getByRole('button', { name: /start a separate payment|separate zahlung starten/i }));
+    const confirmation = screen.getByRole('dialog', { name: /start a separate payment|separate zahlung starten/i });
+    fireEvent.click(within(confirmation).getByRole('button', { name: /start a separate payment|separate zahlung starten/i }));
+    expect(sessionStorage.getItem('app2:pending-payment-request:7')).toBeNull();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await settleQuote();
+    expect(screen.getByTestId('trade-cta')).toBeEnabled();
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    const newAttemptId = mockReceiveForBuy.mock.calls[0][0].clientRequestId;
+    expect(newAttemptId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(newAttemptId).not.toBe(requestId);
   });
 
   it('asks for a payout account on sell and continues once one is added', async () => {

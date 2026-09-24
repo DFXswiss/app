@@ -13,7 +13,6 @@ jest.mock('@dfx.swiss/react', () => ({
         method: 'GET',
         ...(authenticated ? {} : { token: false }),
       }),
-    getAnonymousJob: (uid: string) => mockCall({ url: `job/${encodeURIComponent(uid)}`, method: 'GET', token: false }),
   }),
   ApiException: class ApiException extends Error {
     statusCode: number;
@@ -74,7 +73,7 @@ jest.mock('../components/ui', () => ({
   useToast: () => ({ showToast: jest.fn() }),
 }));
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ReturnRouteScreen, { CKO_POLL, nextPollDelay } from '../screens/return-route';
 import { IDENT_POLL, nextIdentPollDelay } from '../screens/kyc-steps';
 import { LanguageProvider } from '../i18n';
@@ -148,5 +147,69 @@ describe('poll deadline + backoff (mirrors ocp/pos.tsx)', () => {
     });
     // Retry is offered — not a silent hang.
     expect(screen.getByRole('button', { name: /retry|erneut/i })).toBeInTheDocument();
+  });
+
+  it('times out a pending CKO request, ignores its late result, and lets the user retry', async () => {
+    let resolveCko!: (value: { uid: string }) => void;
+    mockCall.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCko = resolve;
+        }),
+    );
+
+    const view = render(
+      <LanguageProvider>
+        <ReturnRouteScreen />
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockCall).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(CKO_POLL.deadlineMs);
+    });
+    expect(screen.getByText(/taking longer than expected|dauert länger als erwartet/i)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveCko({ uid: 'late-transaction' });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText('late-transaction')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut/i }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockCall).toHaveBeenCalledTimes(2);
+    view.unmount();
+  });
+
+  it('ignores a pending CKO request rejected after the screen unmounts', async () => {
+    let rejectCko!: (error: Error) => void;
+    mockCall.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectCko = reject;
+        }),
+    );
+
+    const view = render(
+      <LanguageProvider>
+        <ReturnRouteScreen />
+      </LanguageProvider>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    view.unmount();
+
+    await act(async () => {
+      rejectCko(new Error('late network failure'));
+      await Promise.resolve();
+    });
+    expect(mockCall).toHaveBeenCalledTimes(1);
   });
 });

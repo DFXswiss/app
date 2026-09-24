@@ -8,6 +8,8 @@ const mockPublicSellQuote = (info: unknown) =>
   mockCall({ url: 'sell/quote', method: 'PUT', data: info, token: false });
 const mockPublicSwapQuote = (info: unknown) =>
   mockCall({ url: 'swap/quote', method: 'PUT', data: info, token: false });
+const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+let mockUuidCounter = 0;
 
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: {
@@ -52,6 +54,8 @@ jest.mock('@dfx.swiss/react', () => ({
   useSwap: () => ({ receiveFor: jest.fn(), quote: mockPublicSwapQuote }),
   useUser: () => ({ updateMail: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
+  useApiSession: () => ({ session: { account: 7 } }),
+  useTransaction: () => ({ getPaymentInfoRequestStatus: jest.fn(), getTransactionDetailByUid: jest.fn() }),
   useAssetContext: () => ({
     getAssets: () => [
       {
@@ -93,6 +97,11 @@ describe('Home external-transaction-id wiring', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    mockUuidCounter = 0;
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: { randomUUID: () => `00000000-0000-4000-8000-${(++mockUuidCounter).toString(16).padStart(12, '0')}` },
+    });
     mockCall.mockResolvedValue({
       estimatedAmount: 1,
       amount: 100,
@@ -119,6 +128,8 @@ describe('Home external-transaction-id wiring', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+    if (originalCryptoDescriptor) Object.defineProperty(globalThis, 'crypto', originalCryptoDescriptor);
+    else Reflect.deleteProperty(globalThis, 'crypto');
   });
 
   it('forwards external-transaction-id into the buy paymentInfos request', async () => {

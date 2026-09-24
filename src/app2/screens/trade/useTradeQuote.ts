@@ -83,6 +83,8 @@ export interface BuyQuoteParams {
   withPaymentInfo?: boolean;
   /** Partner `personal-iban` — only sent on paymentInfos, never on the public quote. */
   personalIbanProvider?: PersonalIbanProvider;
+  /** Stable UUID for one authenticated payment-info attempt; omitted from public quotes. */
+  clientRequestId?: string;
   /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh. */
   paused?: boolean;
 }
@@ -90,8 +92,17 @@ export interface BuyQuoteParams {
 export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
   const { quote, receiveFor } = useBuy();
   const { address: sessionAddress } = useWalletSession();
-  const { asset, currency, amount, targetAmount, paymentMethod, externalTransactionId, withPaymentInfo, personalIbanProvider } =
-    params;
+  const {
+    asset,
+    currency,
+    amount,
+    targetAmount,
+    paymentMethod,
+    externalTransactionId,
+    withPaymentInfo,
+    personalIbanProvider,
+    clientRequestId,
+  } = params;
   const hasTarget = targetAmount != null && targetAmount > 0;
   const hasSource = amount != null && amount > 0;
   const ready = !!asset && !!currency && (hasTarget || hasSource);
@@ -104,7 +115,7 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
   const ibanKey = withPaymentInfo && personalIbanProvider ? `:${personalIbanProvider}` : '';
   const key =
     asset && currency && ready
-      ? `${sessionKey}:${asset.id}:${currency.id}:${amountKey}:${paymentMethod}:${withPaymentInfo ? 'info' : 'quote'}${extKey}${ibanKey}`
+      ? `${sessionKey}:${asset.id}:${currency.id}:${amountKey}:${paymentMethod}:${withPaymentInfo ? 'info' : 'quote'}${extKey}${ibanKey}${withPaymentInfo && clientRequestId ? `:${clientRequestId}` : ''}`
       : '';
 
   const fetcher = useCallback((): Promise<Buy> => {
@@ -120,6 +131,7 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
       // paymentInfos call only, not to a display quote.
       if (externalTransactionId) info.externalTransactionId = externalTransactionId;
       if (personalIbanProvider) info.personalIbanProvider = personalIbanProvider;
+      if (clientRequestId) info.clientRequestId = clientRequestId;
       return receiveFor(info);
     }
     // Public quote: same `Buy` shape (rate/estimatedAmount/fees/feesTarget/priceSteps/isValid)
@@ -136,6 +148,7 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
     externalTransactionId,
     withPaymentInfo,
     personalIbanProvider,
+    clientRequestId,
   ]);
 
   return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError, {
@@ -150,6 +163,8 @@ export interface SellQuoteParams {
   amount: number | null;
   iban?: string;
   externalTransactionId?: string;
+  /** Stable UUID for one authenticated payment-info attempt. */
+  clientRequestId?: string;
   /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh. */
   paused?: boolean;
 }
@@ -157,7 +172,7 @@ export interface SellQuoteParams {
 export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
   const { quote, receiveFor } = useSell();
   const { address: sessionAddress } = useWalletSession();
-  const { asset, currency, amount, iban, externalTransactionId } = params;
+  const { asset, currency, amount, iban, externalTransactionId, clientRequestId } = params;
   // Match the static app (`updateQuote()` → token-less `PUT /sell/quote {asset,currency,amount}`):
   // the sell rate + full fee breakdown are shown as soon as asset+currency+amount are set, with
   // NO payout IBAN. The IBAN is what selects the endpoint — the caller passes it only on the
@@ -168,7 +183,7 @@ export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
   const sessionKey = sessionAddress ?? '';
   const key =
     ready && asset && currency && amount
-      ? `${sessionKey}:${asset.id}:${currency.id}:${amount}:${iban ?? 'quote'}${extKey}`
+      ? `${sessionKey}:${asset.id}:${currency.id}:${amount}:${iban ?? 'quote'}${extKey}${iban && clientRequestId ? `:${clientRequestId}` : ''}`
       : '';
 
   const fetcher = useCallback((): Promise<Sell> => {
@@ -178,13 +193,14 @@ export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
       // sheet needs) via the authenticated `PUT /sell/paymentInfos`.
       const info: SellPaymentInfo = { asset, currency, amount, iban };
       if (externalTransactionId) info.externalTransactionId = externalTransactionId;
+      if (clientRequestId) info.clientRequestId = clientRequestId;
       return receiveFor(info);
     }
     // No payout account yet: the public quote endpoint returns the same `Sell` shape
     // (estimatedAmount/fees/feesTarget/isValid/minVolume) minus the deposit details.
     const info: SellPaymentInfo = { asset, currency, amount };
     return quote(info);
-  }, [receiveFor, quote, asset, currency, amount, iban, externalTransactionId]);
+  }, [receiveFor, quote, asset, currency, amount, iban, externalTransactionId, clientRequestId]);
 
   return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError, {
     retryWouldDuplicateServerWork: Boolean(iban),
@@ -200,6 +216,8 @@ export interface SwapQuoteParams {
   /** See BuyQuoteParams.withPaymentInfo — authenticated `PUT /swap/paymentInfos` (carries the
    * deposit address) instead of the public quote. */
   withPaymentInfo?: boolean;
+  /** Stable UUID for one authenticated payment-info attempt. */
+  clientRequestId?: string;
   /** See useQuoteEngine's `paused` — suspends the 30s auto-refresh. */
   paused?: boolean;
 }
@@ -207,13 +225,13 @@ export interface SwapQuoteParams {
 export function useSwapQuote(params: SwapQuoteParams): QuoteEngineState<Swap> {
   const { quote, receiveFor } = useSwap();
   const { address: sessionAddress } = useWalletSession();
-  const { sourceAsset, targetAsset, amount, externalTransactionId, withPaymentInfo } = params;
+  const { sourceAsset, targetAsset, amount, externalTransactionId, withPaymentInfo, clientRequestId } = params;
   const ready = !!sourceAsset && !!targetAsset && !!amount && sourceAsset.id !== targetAsset.id;
   const extKey = externalTransactionId ? `:${externalTransactionId}` : '';
   const sessionKey = sessionAddress ?? '';
   const key =
     sourceAsset && targetAsset && amount && ready
-      ? `${sessionKey}:${sourceAsset.id}:${targetAsset.id}:${amount}:${withPaymentInfo ? 'info' : 'quote'}${extKey}`
+      ? `${sessionKey}:${sourceAsset.id}:${targetAsset.id}:${amount}:${withPaymentInfo ? 'info' : 'quote'}${extKey}${withPaymentInfo && clientRequestId ? `:${clientRequestId}` : ''}`
       : '';
 
   const fetcher = useCallback((): Promise<Swap> => {
@@ -221,10 +239,11 @@ export function useSwapQuote(params: SwapQuoteParams): QuoteEngineState<Swap> {
     const info: SwapPaymentInfo = { sourceAsset, targetAsset, amount };
     if (withPaymentInfo) {
       if (externalTransactionId) info.externalTransactionId = externalTransactionId;
+      if (clientRequestId) info.clientRequestId = clientRequestId;
       return receiveFor(info);
     }
     return quote(info);
-  }, [receiveFor, quote, sourceAsset, targetAsset, amount, externalTransactionId, withPaymentInfo]);
+  }, [receiveFor, quote, sourceAsset, targetAsset, amount, externalTransactionId, withPaymentInfo, clientRequestId]);
 
   return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError, {
     retryWouldDuplicateServerWork: Boolean(withPaymentInfo),

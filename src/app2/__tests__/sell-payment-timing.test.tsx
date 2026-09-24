@@ -12,6 +12,8 @@ const mockPublicSellQuote = (info: unknown) =>
 const mockPublicSwapQuote = (info: unknown) =>
   mockCall({ url: 'swap/quote', method: 'PUT', data: info, token: false });
 const mockBankAccounts: unknown[] = [];
+const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+let mockUuidCounter = 0;
 
 jest.mock('@dfx.swiss/react', () => ({
   // Enum values verbatim from @dfx.swiss/core (definitions/{blockchain,transaction}.js).
@@ -71,6 +73,8 @@ jest.mock('@dfx.swiss/react', () => ({
   useSwap: () => ({ receiveFor: jest.fn(), quote: mockPublicSwapQuote }),
   useUser: () => ({ updateMail: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
+  useApiSession: () => ({ session: { account: 7 } }),
+  useTransaction: () => ({ getPaymentInfoRequestStatus: jest.fn(), getTransactionDetailByUid: jest.fn() }),
   // Fixtures live inside the factory: jest hoists this call above every other statement, so it
   // may not reference module-scope consts declared below.
   useAssetContext: () => ({
@@ -139,6 +143,11 @@ describe('App2 sell timing', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    mockUuidCounter = 0;
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: { randomUUID: () => `00000000-0000-4000-8000-${(++mockUuidCounter).toString(16).padStart(12, '0')}` },
+    });
     mockBankAccounts.length = 0;
     mockCall.mockResolvedValue(quote);
     mockReceiveForSell.mockResolvedValue(paymentInfo);
@@ -146,6 +155,8 @@ describe('App2 sell timing', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+    if (originalCryptoDescriptor) Object.defineProperty(globalThis, 'crypto', originalCryptoDescriptor);
+    else Reflect.deleteProperty(globalThis, 'crypto');
   });
 
   it('prices the panel with the public quote and creates no payment request', async () => {

@@ -22,7 +22,6 @@ jest.mock('@dfx.swiss/react', () => ({
         method: 'GET',
         ...(authenticated ? {} : { token: false }),
       }),
-    getAnonymousJob: (uid: string) => mockCall({ url: `job/${encodeURIComponent(uid)}`, method: 'GET', token: false }),
   }),
   useTransaction: () => ({ getTransactionByCkoId: mockGetCko }),
   useApiSession: () => ({ updateSession: mockUpdateSession }),
@@ -40,11 +39,8 @@ jest.mock('react-router-dom', () => ({
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ApiException } from '@dfx.swiss/react';
-import { JobStatus } from '../lib/job';
 import ReturnRouteScreen, { nextPollDelay, CKO_POLL } from '../screens/return-route';
 import { LanguageProvider } from '../i18n';
-
-const MERGE_JOB = { uid: 'job-uid', expectedSeconds: 65 };
 
 function jwt(expSecondsFromNow = 3600): string {
   const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + expSecondsFromNow }))
@@ -85,7 +81,7 @@ describe('ReturnRouteScreen extra paths', () => {
 
   it('adopts a merged JWT and lands on the account screen', async () => {
     mockSearch.value = `otp=abc123`;
-    mockCall.mockResolvedValue({ accessToken: jwt() });
+    mockCall.mockResolvedValue({ kycHash: 'merged-kyc-hash', accessToken: jwt() });
     renderRoute();
     await waitFor(() => expect(mockUpdateSession).toHaveBeenCalled());
     expect(mockNavigate).toHaveBeenCalledWith('/account');
@@ -94,12 +90,13 @@ describe('ReturnRouteScreen extra paths', () => {
       method: 'GET',
       token: false,
     });
+    expect(mockCall).toHaveBeenCalledTimes(1);
   });
 
   it('sends a Bearer merge confirm when already logged in and maps a non-API CKO error', async () => {
     mockSession.isLoggedIn = true;
     mockSearch.value = 'otp=abc123';
-    mockCall.mockResolvedValue({ accessToken: jwt() });
+    mockCall.mockResolvedValue({ kycHash: 'merged-kyc-hash', accessToken: jwt() });
     renderRoute();
     await waitFor(() => expect(mockUpdateSession).toHaveBeenCalled());
     expect(mockCall).toHaveBeenCalledWith({ url: 'auth/mail/confirm?code=abc123', method: 'GET' });
@@ -113,66 +110,39 @@ describe('ReturnRouteScreen extra paths', () => {
 
   it('shows merge-ok when the API returns no token', async () => {
     mockSearch.value = 'otp=abc123';
-    mockCall.mockResolvedValue({});
+    mockCall.mockResolvedValue({ kycHash: 'merged-kyc-hash' });
     renderRoute();
     expect(await screen.findByText(/merged|zusammengeführt|unito|fusionné|merge/i)).toBeInTheDocument();
   });
 
-  it('does not report success when a 202 job ends without Complete', async () => {
+  it.each([
+    ['empty response', {}],
+    ['whitespace-only KYC hash', { kycHash: '   ' }],
+    ['unexpected job response', { uid: 'job-123', status: 'Pending', expectedSeconds: 30 }],
+  ])('fails closed for an %s', async (_description, response) => {
     mockSearch.value = 'otp=abc123';
-    mockCall.mockResolvedValue({
-      ...MERGE_JOB,
-      status: JobStatus.FAILED,
-      error: 'Job job-uid failed, contact support if this persists.',
-    });
+    mockCall.mockResolvedValue(response);
     renderRoute();
-    expect(await screen.findByText(/contact support if this persists/i)).toBeInTheDocument();
+
     expect(
-      screen.queryByText(/your accounts have been merged|deine konten wurden zusammengeführt/i),
-    ).not.toBeInTheDocument();
-    expect(mockUpdateSession).not.toHaveBeenCalled();
-  });
-
-  it('polls a 202 job and only succeeds when it completes', async () => {
-    mockSearch.value = 'otp=abc123';
-    mockCall
-      .mockResolvedValueOnce({ ...MERGE_JOB, status: JobStatus.PENDING })
-      .mockResolvedValueOnce({ ...MERGE_JOB, status: JobStatus.COMPLETE })
-      .mockResolvedValueOnce({ accessToken: jwt() });
-    renderRoute();
-    await waitFor(() => expect(mockUpdateSession).toHaveBeenCalled(), { timeout: 3000 });
-    expect(mockCall).toHaveBeenCalledWith({ url: 'job/job-uid', method: 'GET', token: false });
-    expect(mockNavigate).toHaveBeenCalledWith('/account');
-  });
-
-  it('tells the user to come back later when the merge job is still running', async () => {
-    mockSearch.value = 'otp=abc123';
-    mockCall.mockResolvedValue({ ...MERGE_JOB, expectedSeconds: 0, status: JobStatus.PENDING });
-    renderRoute();
-    expect(await screen.findByText(/taking longer than expected|dauert länger als erwartet/i)).toBeInTheDocument();
-    expect(mockUpdateSession).not.toHaveBeenCalled();
-  });
-
-  it('reports a dead-letter merge job without treating it as success', async () => {
-    mockSearch.value = 'otp=abc123';
-    mockCall.mockResolvedValue({ ...MERGE_JOB, status: JobStatus.DEAD_LETTER });
-    renderRoute();
-    expect(
-      await screen.findByText(/account merge failed|kontozusammenführung ist fehlgeschlagen/i),
+      await screen.findByText(/couldn.t complete|nicht geklappt|non è stato possibile|n.a pas abouti/i),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/your accounts have been merged|deine konten wurden zusammengeführt/i)).not.toBeInTheDocument();
     expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(mockCall).toHaveBeenCalledTimes(1);
   });
 
-  it('treats a second job ticket after Complete as a failed merge', async () => {
+  it('warns instead of reporting merge success when the response token is invalid', async () => {
     mockSearch.value = 'otp=abc123';
-    mockCall
-      .mockResolvedValueOnce({ ...MERGE_JOB, status: JobStatus.COMPLETE })
-      .mockResolvedValueOnce({ ...MERGE_JOB, status: JobStatus.COMPLETE });
+    mockCall.mockResolvedValue({ kycHash: 'merged-kyc-hash', accessToken: 'garbage' });
     renderRoute();
+
     expect(
-      await screen.findByText(/account merge failed|kontozusammenführung ist fehlgeschlagen/i),
+      await screen.findByText(/couldn.t complete|nicht geklappt|non è stato possibile|n.a pas abouti/i),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/your accounts have been merged|deine konten wurden zusammengeführt/i)).not.toBeInTheDocument();
     expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(mockCall).toHaveBeenCalledTimes(1);
   });
 
   it('drops a merge confirm after unmount', async () => {

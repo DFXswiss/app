@@ -101,6 +101,22 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
   }, [ocp.routes, ocp.loadRoutes]);
 
   // Still resolving routes → spinner (matches the static app's gate spinner).
+  if (ocp.routesError) {
+    return (
+      <div className={cx('ocp-empty')} style={{ flexDirection: 'column', gap: 12, textAlign: 'center' }}>
+        <div>{t('loadFail')}</div>
+        <button
+          type="button"
+          className={cx('btn-mini')}
+          style={{ width: 'auto' }}
+          onClick={() => void ocp.loadRoutes()}
+        >
+          {t('retry')}
+        </button>
+      </div>
+    );
+  }
+
   if (ocp.routes === null) {
     return (
       <div className={cx('ocp-empty')}>

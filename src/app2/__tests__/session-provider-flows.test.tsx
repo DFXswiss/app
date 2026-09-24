@@ -1532,7 +1532,7 @@ describe('WalletSessionProvider flows', () => {
     await waitFor(() => expect(mockLogout).toHaveBeenCalled());
   });
 
-  it('does not rebind injected after a reload switch without an injected-EVM association', async () => {
+  it('does not probe or rebind injected after a reload switch without an injected-EVM association', async () => {
     const listeners: Record<string, (value?: unknown) => void> = {};
     const injected = {
       request: jest.fn().mockImplementation(async ({ method }: { method: string }) => {
@@ -1552,15 +1552,13 @@ describe('WalletSessionProvider flows', () => {
       { address: other, label: 'There', wallet: 'Ledger', blockchains: ['Bitcoin'] },
     );
     renderSession();
-    await waitFor(() => expect(injected.request).toHaveBeenCalled());
-    await waitFor(() => expect(injected.on).toHaveBeenCalled());
-    const onCallsAfterMount = injected.on.mock.calls.length;
+    await waitFor(() => expect(screen.getByTestId('in')).toHaveTextContent('true'));
+    expect(injected.request).not.toHaveBeenCalled();
+    expect(injected.on).not.toHaveBeenCalled();
     mockLogout.mockClear();
     fireEvent.click(screen.getByText('switch'));
     await waitFor(() => expect(mockChangeAddress).toHaveBeenCalledWith(other));
-    await expect(
-      waitFor(() => expect(injected.on.mock.calls.length).toBeGreaterThan(onCallsAfterMount), { timeout: 150 }),
-    ).rejects.toThrow();
+    expect(injected.on).not.toHaveBeenCalled();
     act(() => {
       listeners.accountsChanged?.(['0x' + '99'.repeat(20)]);
     });
@@ -1884,6 +1882,119 @@ describe('WalletSessionProvider flows', () => {
     await waitFor(() => expect(mockLogout).toHaveBeenCalled());
   });
 
+  it('invalidates an injected reload on accountsChanged during the pending probe and ignores its stale match', async () => {
+    let resolveProbe: (accounts: string[]) => void = () => undefined;
+    const listeners: Record<string, (value?: unknown) => void> = {};
+    const provider = {
+      request: jest.fn(
+        () =>
+          new Promise<string[]>((resolve) => {
+            resolveProbe = resolve;
+          }),
+      ),
+      on: jest.fn((event: string, handler: (value?: unknown) => void) => {
+        listeners[event] = handler;
+      }),
+      removeListener: jest.fn(),
+    };
+    mockGetInjected.mockReturnValue(provider);
+    mockSeen.mockReturnValue([{ address, walletType: 'MetaMask', walletId: 'MetaMask' }]);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    renderSession();
+
+    await waitFor(() => expect(provider.request).toHaveBeenCalledWith({ method: 'eth_accounts' }));
+    act(() => listeners.accountsChanged?.([other]));
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+    expect(mockDisconnectWc).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveProbe([address]);
+      await Promise.resolve();
+    });
+    expect(mockLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates an injected reload on chainChanged during the pending probe', async () => {
+    let resolveProbe: (accounts: string[]) => void = () => undefined;
+    const listeners: Record<string, (value?: unknown) => void> = {};
+    const provider = {
+      request: jest.fn(
+        () =>
+          new Promise<string[]>((resolve) => {
+            resolveProbe = resolve;
+          }),
+      ),
+      on: jest.fn((event: string, handler: (value?: unknown) => void) => {
+        listeners[event] = handler;
+      }),
+      removeListener: jest.fn(),
+    };
+    mockGetInjected.mockReturnValue(provider);
+    mockSeen.mockReturnValue([{ address, walletType: 'MetaMask', walletId: 'MetaMask' }]);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    renderSession();
+
+    await waitFor(() => expect(provider.request).toHaveBeenCalledWith({ method: 'eth_accounts' }));
+    act(() => listeners.chainChanged?.());
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+    expect(mockDisconnectWc).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveProbe([address]);
+      await Promise.resolve();
+    });
+    expect(mockLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a matching accountsChanged event authoritative over a stale mismatching probe', async () => {
+    let resolveProbe: (accounts: string[]) => void = () => undefined;
+    const listeners: Record<string, (value?: unknown) => void> = {};
+    const provider = {
+      request: jest.fn(
+        () =>
+          new Promise<string[]>((resolve) => {
+            resolveProbe = resolve;
+          }),
+      ),
+      on: jest.fn((event: string, handler: (value?: unknown) => void) => {
+        listeners[event] = handler;
+      }),
+      removeListener: jest.fn(),
+    };
+    mockGetInjected.mockReturnValue(provider);
+    mockSeen.mockReturnValue([{ address, walletType: 'MetaMask', walletId: 'MetaMask' }]);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    renderSession();
+
+    await waitFor(() => expect(provider.request).toHaveBeenCalledWith({ method: 'eth_accounts' }));
+    act(() => listeners.accountsChanged?.([address]));
+    await act(async () => {
+      resolveProbe([other]);
+      await Promise.resolve();
+    });
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('does not probe or monitor an unrelated injected provider for a remembered hardware session', async () => {
+    const provider = {
+      request: jest.fn().mockResolvedValue([other]),
+      on: jest.fn(),
+      removeListener: jest.fn(),
+    };
+    mockGetInjected.mockReturnValue(provider);
+    mockSeen.mockReturnValue([{ address, walletType: 'Ledger', walletId: 'Ledger' }]);
+    mockSessionCtx.isLoggedIn = true;
+    mockAuth.session = { address, blockchains: ['Ethereum'] };
+    renderSession();
+
+    await waitFor(() => expect(screen.getByTestId('in')).toHaveTextContent('true'));
+    expect(mockGetInjected).not.toHaveBeenCalled();
+    expect(provider.request).not.toHaveBeenCalled();
+    expect(provider.on).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+  });
+
   it('signs in after a generic failure and aborts mid-flight connectors', async () => {
     mockCreateSession.mockRejectedValueOnce({ message: 'nope' });
     renderSession();
@@ -2033,36 +2144,50 @@ describe('WalletSessionProvider flows', () => {
   });
 
   it('drops a probe after unmount and ignores a failed eth_accounts request', async () => {
-    let resolveReq: (value: string[]) => void = () => undefined;
+    let rejectReq: (error: Error) => void = () => undefined;
     const provider = {
       request: jest.fn(
         () =>
-          new Promise<string[]>((resolve) => {
-            resolveReq = resolve;
+          new Promise<string[]>((_, reject) => {
+            rejectReq = reject;
           }),
       ),
       on: jest.fn(),
       removeListener: jest.fn(),
     };
     mockGetInjected.mockReturnValue(provider);
+    mockSeen.mockReturnValue([{ address, walletType: 'MetaMask', walletId: 'MetaMask' }]);
     mockSessionCtx.isLoggedIn = true;
     mockAuth.session = { address, blockchains: ['Ethereum'] };
     const view = renderSession();
     await waitFor(() => expect(provider.request).toHaveBeenCalled());
     view.unmount();
     await act(async () => {
-      resolveReq([address]);
+      rejectReq(new Error('late probe failure'));
       await Promise.resolve();
     });
+    expect(mockLogout).not.toHaveBeenCalled();
 
+    const failingListeners: Record<string, (value?: unknown) => void> = {};
     const failing = {
       request: jest.fn().mockRejectedValue(new Error('locked')),
-      on: jest.fn(),
+      on: jest.fn((event: string, handler: (value?: unknown) => void) => {
+        failingListeners[event] = handler;
+      }),
       removeListener: jest.fn(),
     };
     mockGetInjected.mockReturnValue(failing);
     renderSession();
     await waitFor(() => expect(failing.request).toHaveBeenCalled());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockLogout).not.toHaveBeenCalled();
+
+    // A failed reload snapshot is not evidence of an account mismatch. A later live event remains
+    // authoritative and still invalidates the session when it reports a different account.
+    act(() => failingListeners.accountsChanged?.([other]));
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
   });
 
   it('invalidates on accountsChanged after the probe arms the monitor', async () => {

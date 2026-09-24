@@ -61,6 +61,30 @@ describe('OCP invoice view', () => {
     expect(mockGo).toHaveBeenCalledWith('routes');
   });
 
+  it('shows a retry for failed route loads and keeps the add-route CTA for confirmed empty data', () => {
+    const loadRoutes = jest.fn();
+    const failed = renderInvoice({
+      routes: { sell: [], buy: [], swap: [] },
+      routesError: true,
+      lnSellRoutes: [],
+      loadRoutes,
+    });
+    expect(screen.getByText(/couldn't load/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add a lightning sell route/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(loadRoutes).toHaveBeenCalledTimes(1);
+    failed.unmount();
+
+    renderInvoice({
+      routes: { sell: [], buy: [], swap: [] },
+      routesError: false,
+      lnSellRoutes: [],
+      loadRoutes,
+    });
+    expect(screen.getByText(/add a lightning sell route first/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add a lightning sell route/i })).toBeInTheDocument();
+  });
+
   it('validates, generates, copies, prints and downloads', async () => {
     const ocp = {
       routes: { sell: [sellRoute(1, 'CHF')], buy: [], swap: [] },

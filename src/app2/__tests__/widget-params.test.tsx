@@ -11,11 +11,14 @@ const mockReceiveForBuy = jest.fn();
 const mockReceiveForSell = jest.fn();
 const mockReceiveForSwap = jest.fn();
 const mockCreateAccount = jest.fn();
+const mockGetPaymentInfoRequestStatus = jest.fn();
 const mockAssets: Array<Record<string, unknown>> = [];
 const mockCurrencies: Array<Record<string, unknown>> = [];
 const mockBankAccounts: Array<Record<string, unknown>> = [];
 let mockBankAccountsLoaded = true;
 const mockLocation = { search: '' };
+const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+let mockUuidCounter = 0;
 
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: {
@@ -60,6 +63,11 @@ jest.mock('@dfx.swiss/react', () => ({
   useSwap: () => ({ receiveFor: mockReceiveForSwap, quote: mockPublicSwapQuote }),
   useUser: () => ({ updateMail: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
+  useApiSession: () => ({ session: { account: 7 } }),
+  useTransaction: () => ({
+    getPaymentInfoRequestStatus: mockGetPaymentInfoRequestStatus,
+    getTransactionDetailByUid: jest.fn(),
+  }),
   useAssetContext: () => ({ getAssets: () => mockAssets }),
   useFiatContext: () => ({ currencies: mockCurrencies }),
   useBankAccountContext: () => ({
@@ -157,9 +165,15 @@ describe('Home partner widget params', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    mockUuidCounter = 0;
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: { randomUUID: () => `00000000-0000-4000-8000-${(++mockUuidCounter).toString(16).padStart(12, '0')}` },
+    });
     mockAssets.length = 0;
     mockCurrencies.length = 0;
     mockBankAccounts.length = 0;
+    sessionStorage.clear();
     mockBankAccountsLoaded = true;
     mockLocation.search = '';
     mockCall.mockResolvedValue(validQuote);
@@ -172,6 +186,7 @@ describe('Home partner widget params', () => {
       depositAddress: '0xdeposit',
     });
     mockCreateAccount.mockResolvedValue({ id: 9, iban: 'LI21088100002324013AA' });
+    mockGetPaymentInfoRequestStatus.mockResolvedValue({ requestStatus: 'Unknown' });
     mockReceiveForSwap.mockResolvedValue({
       ...validQuote,
       routeId: 8,
@@ -186,6 +201,8 @@ describe('Home partner widget params', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+    if (originalCryptoDescriptor) Object.defineProperty(globalThis, 'crypto', originalCryptoDescriptor);
+    else Reflect.deleteProperty(globalThis, 'crypto');
     window.history.replaceState({}, '', '/');
   });
 
@@ -412,6 +429,94 @@ describe('Home partner widget params', () => {
     expect(mockCall).not.toHaveBeenCalled();
   });
 
+  it('switches amount-out Buy to source mode on pay edit and sends that amount to paymentInfos', async () => {
+    setParams('?amount-out=0.01');
+    renderHome();
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('100');
+    expect(screen.getByRole('textbox', { name: /amount you receive/i })).toHaveValue('0.01');
+
+    mockCall.mockClear();
+    const pay = screen.getByRole('textbox', { name: /amount you pay/i });
+    fireEvent.change(pay, { target: { value: '125' } });
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    const sourceQuote = mockCall.mock.calls.at(-1)?.[0].data;
+    expect(sourceQuote).toEqual(expect.objectContaining({ amount: 125 }));
+    expect(sourceQuote).not.toHaveProperty('targetAmount');
+
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
+    const paymentInfo = mockReceiveForBuy.mock.calls.at(-1)?.[0];
+    expect(paymentInfo).toEqual(expect.objectContaining({ amount: 125 }));
+    expect(paymentInfo).not.toHaveProperty('targetAmount');
+  });
+
+  it('switches amount-out Buy back to target mode when the editable receive amount changes', async () => {
+    setParams('?amount-out=0.01');
+    renderHome();
+    await settleQuote();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '125' } });
+    await settleQuote();
+    mockCall.mockClear();
+
+    const receive = screen.getByRole('textbox', { name: /amount you receive/i });
+    expect(receive).not.toHaveAttribute('readOnly');
+    mockCall.mockResolvedValueOnce({ ...validQuote, amount: 140 });
+    fireEvent.change(receive, { target: { value: '0.03' } });
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    const targetQuote = mockCall.mock.calls.at(-1)?.[0].data;
+    expect(targetQuote).toEqual(expect.objectContaining({ targetAmount: 0.03 }));
+    expect(targetQuote).not.toHaveProperty('amount');
+    expect(screen.getByRole('textbox', { name: /amount you receive/i })).toHaveValue('0.03');
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('140');
+  });
+
+  it('does not fall back to the old source quote or enable payment after target amount is cleared', async () => {
+    setParams('?amount-out=0.01');
+    renderHome();
+    await settleQuote();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '125' } });
+    await settleQuote();
+    const receive = screen.getByRole('textbox', { name: /amount you receive/i });
+    fireEvent.change(receive, { target: { value: '0.03' } });
+    await settleQuote();
+    mockCall.mockClear();
+
+    fireEvent.change(receive, { target: { value: '' } });
+    await settleQuote();
+    expect(receive).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('');
+    expect(mockCall).not.toHaveBeenCalled();
+    const cta = screen.getByTestId('trade-cta');
+    expect(cta).toBeDisabled();
+    fireEvent.click(cta);
+    await settleQuote();
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
+  });
+
+  it('switches amount-out Buy to source mode when a fiat quick chip is selected', async () => {
+    setParams('?amount-out=0.01');
+    renderHome();
+    await settleQuote();
+    mockCall.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /€\s*250/ }));
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    const quote = mockCall.mock.calls.at(-1)?.[0].data;
+    expect(quote).toEqual(expect.objectContaining({ amount: 250 }));
+    expect(quote).not.toHaveProperty('targetAmount');
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
+    const paymentInfo = mockReceiveForBuy.mock.calls.at(-1)?.[0];
+    expect(paymentInfo).toEqual(expect.objectContaining({ amount: 250 }));
+    expect(paymentInfo).not.toHaveProperty('targetAmount');
+  });
+
   it('quotes an explicitly entered source amount when amount-out is absent', async () => {
     renderHome();
     expect(mockCall).not.toHaveBeenCalled();
@@ -587,6 +692,7 @@ describe('Home partner widget params', () => {
     ).not.toBeInTheDocument();
     expect(mockCreateAccount).not.toHaveBeenCalled();
     named.unmount();
+    sessionStorage.clear();
     mockReceiveForSell.mockClear();
 
     setParams('?mode=sell&amount-in=0.1');
@@ -796,7 +902,7 @@ describe('Home partner widget params', () => {
     expect(mockReceiveForSell).toHaveBeenCalledWith(expect.objectContaining({ iban: 'DE89370400440532013000' }));
   });
 
-  it('hides an unverified Frick IBAN and retries without the provider on continue', async () => {
+  it('hides an unverified Frick IBAN and keeps the existing payment request locked', async () => {
     mockReceiveForBuy.mockResolvedValue({
       ...validQuote,
       iban: 'LI75088110105923K000E',
@@ -812,19 +918,14 @@ describe('Home partner widget params', () => {
     await settleQuote();
     await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
     expect(document.body.textContent).not.toMatch(/LI75088110105923K000E/);
-    mockReceiveForBuy.mockClear();
-    mockReceiveForBuy.mockResolvedValue({ ...validQuote, iban: 'CH93', remittanceInfo: 'ref' });
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: /continue without personal iban|ohne persönliche iban|senza iban personale|sans iban personnel/i,
-      }),
-    );
-    await settleQuote();
-    await waitFor(() => {
-      const last = mockReceiveForBuy.mock.calls.at(-1);
-      expect(last).toBeTruthy();
-      expect(last?.[0]).not.toHaveProperty('personalIbanProvider');
-    });
+    expect(mockReceiveForBuy).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /continue without personal iban|ohne persönliche iban/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /check request status/i })).toBeInTheDocument();
+    expect(screen.getByTestId('trade-cta')).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /check request status/i }));
+    await waitFor(() => expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalled());
+    expect(mockReceiveForBuy).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('trade-cta')).toBeDisabled();
   });
 
   it('sends personalIbanProvider on paymentInfos when personal-iban=frick, and omits it when absent', async () => {
@@ -837,6 +938,7 @@ describe('Home partner widget params', () => {
     await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalled());
     expect(mockReceiveForBuy).toHaveBeenCalledWith(expect.objectContaining({ personalIbanProvider: 'Frick' }));
     withFrick.unmount();
+    sessionStorage.clear();
     mockReceiveForBuy.mockClear();
 
     setParams('');
@@ -1002,6 +1104,7 @@ describe('Home partner widget params', () => {
     expect(assign).not.toHaveBeenCalled();
     unsafe.unmount();
 
+    sessionStorage.clear();
     setParams('');
     renderHome();
     fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });

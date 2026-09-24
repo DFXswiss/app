@@ -102,8 +102,48 @@ describe('OcpScreen', () => {
     mockOcp.active = null;
     renderOcp();
     expect(mockProbe).toHaveBeenCalled();
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply for opencryptopay/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /try a live demo/i })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /back/i }));
     expect(mockNavigate).toHaveBeenCalledWith('/account');
+  });
+
+  it('shows a hub retry on probe failure, then renders the confirmed inactive or active state', () => {
+    mockSession.isLoggedIn = true;
+    mockOcp.active = null;
+    mockOcp.probeError = 'network';
+    const view = renderOcp();
+
+    expect(screen.getByText(/couldn't load/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /apply for opencryptopay/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /try a live demo/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ocp-tile')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Manage$/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    expect(mockProbe).toHaveBeenCalled();
+
+    mockOcp.active = false;
+    mockOcp.probeError = null;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <OcpScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(screen.getByRole('button', { name: /apply for opencryptopay/i })).toBeInTheDocument();
+
+    mockOcp.active = true;
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <OcpScreen />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(screen.getByText(/manage/i)).toBeInTheDocument();
+    expect(screen.getAllByTestId('ocp-tile').length).toBeGreaterThan(0);
   });
 
   it('shows the inactive hub apply CTA and demo toggle', () => {

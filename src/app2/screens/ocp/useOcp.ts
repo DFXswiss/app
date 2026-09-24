@@ -26,9 +26,10 @@ import {
   type SellRoute,
   type UpdatePaymentLinkConfig,
   useApi,
+  useApiSession,
   usePaymentRoutes,
 } from '@dfx.swiss/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../../components/ui';
 import { useT } from '../../i18n';
 import { useWalletSession } from '../../wallets/session';
@@ -91,12 +92,18 @@ export interface OcpApi {
   // --- state ---------------------------------------------------------------
   /** Activation gate: `true` active, `false` not applied, `null` unknown (probe first). */
   active: boolean | null;
+  /** Current wallet identity; used to prevent reusing another account's cached till state. */
+  sessionAddress: string | undefined;
+  /** API account plus wallet identity; wallet addresses can survive an account merge. */
+  sessionIdentity: string;
   /** Non-403 probe failure (network/5xx) — keep previous config; show retry. */
   probeError: boolean;
   config: OcpConfig | null;
   routes: PaymentRoutes | null;
   routesError: boolean;
   links: PaymentLink[] | null;
+  /** API account + wallet identity that produced `links`; null means stale. */
+  linksIdentity: string | undefined;
   linksError: boolean;
   history: OcpHistory | null;
   historyError: boolean;
@@ -107,7 +114,8 @@ export interface OcpApi {
   /** GET /route. */
   loadRoutes: () => Promise<void>;
   /** GET /paymentLink. */
-  loadLinks: () => Promise<void>;
+  /** Returns the authoritative current-account list, or null if the refresh failed/staled. */
+  loadLinks: () => Promise<PaymentLink[] | null>;
   /** GET /paymentLink/history. */
   loadHistory: () => Promise<void>;
 
@@ -189,6 +197,11 @@ export function useOcp(): OcpApi {
     activatePaymentRoute,
   } = usePaymentRoutes();
   const { blockchains, address } = useWalletSession();
+  const { session: apiSession } = useApiSession();
+  const sessionIdentity = JSON.stringify([
+    apiSession?.account == null ? null : String(apiSession.account),
+    address ?? null,
+  ]);
   const { showToast } = useToast();
   const { t, language } = useT();
 
@@ -199,17 +212,18 @@ export function useOcp(): OcpApi {
   const [routes, setRoutes] = useState<PaymentRoutes | null>(null);
   const [routesError, setRoutesError] = useState(false);
   const [links, setLinks] = useState<PaymentLink[] | null>(null);
+  const [linksIdentity, setLinksIdentity] = useState<string | undefined>();
   const [linksError, setLinksError] = useState(false);
   const [history, setHistory] = useState<OcpHistory | null>(null);
   const [historyError, setHistoryError] = useState(false);
-  // Bumped on every demo on/off and on every session-address change so a response
+  // Bumped on every demo on/off and on every API-account or wallet-identity change so a response
   // that started under the other mode or account cannot write after the switch.
   const demoEpochRef = useRef(0);
-  const sessionAddressRef = useRef(address);
-
-  useEffect(() => {
-    if (sessionAddressRef.current === address) return;
-    sessionAddressRef.current = address;
+  const sessionIdentityRef = useRef(sessionIdentity);
+  const sessionIdentityReady = sessionIdentityRef.current === sessionIdentity;
+  useLayoutEffect(() => {
+    if (sessionIdentityRef.current === sessionIdentity) return;
+    sessionIdentityRef.current = sessionIdentity;
     demoEpochRef.current += 1;
     setDemo(false);
     setActive(null);
@@ -218,10 +232,11 @@ export function useOcp(): OcpApi {
     setRoutes(null);
     setRoutesError(false);
     setLinks(null);
+    setLinksIdentity(undefined);
     setLinksError(false);
     setHistory(null);
     setHistoryError(false);
-  }, [address]);
+  }, [sessionIdentity]);
 
   const demoLnurl = useCallback((id: string) => lnurlEncode(`${apiBaseUrl}/lnurlp/${id}`), [apiBaseUrl]);
 
@@ -326,9 +341,10 @@ export function useOcp(): OcpApi {
     setConfig(buildDemoConfig());
     setRoutes(buildDemoRoutes());
     setLinks(buildDemoLinks());
+    setLinksIdentity(sessionIdentity);
     setHistory(null);
     showToast(t('demoOn'));
-  }, [buildDemoConfig, buildDemoRoutes, buildDemoLinks, showToast, t]);
+  }, [address, sessionIdentity, buildDemoConfig, buildDemoRoutes, buildDemoLinks, showToast, t]);
 
   const disableDemo = useCallback(() => {
     demoEpochRef.current += 1;
@@ -338,6 +354,7 @@ export function useOcp(): OcpApi {
     setConfig(null);
     setRoutes(null);
     setLinks(null);
+    setLinksIdentity(undefined);
     setHistory(null);
     showToast(t('demoOff'));
   }, [showToast, t]);
@@ -392,21 +409,25 @@ export function useOcp(): OcpApi {
   const loadLinks = useCallback(async () => {
     if (demo) {
       setLinksError(false);
-      return;
+      return [];
     }
     const epoch = demoEpochRef.current;
     try {
       const data = await getPaymentLinks();
-      if (epoch !== demoEpochRef.current) return;
+      if (epoch !== demoEpochRef.current) return null;
       const list = (Array.isArray(data) ? data : [data]).filter(Boolean) as PaymentLink[];
       setLinks(list);
+      setLinksIdentity(sessionIdentity);
       setLinksError(false);
+      return list;
     } catch {
-      if (epoch !== demoEpochRef.current) return;
+      if (epoch !== demoEpochRef.current) return null;
       setLinks([]);
+      setLinksIdentity(sessionIdentity);
       setLinksError(true);
+      return null;
     }
-  }, [demo, getPaymentLinks]);
+  }, [demo, getPaymentLinks, sessionIdentity]);
 
   const loadHistory = useCallback(async () => {
     if (demo) {
@@ -601,11 +622,21 @@ export function useOcp(): OcpApi {
       const epoch = demoEpochRef.current;
       const data = await createPaymentLinkPayment({ amount, externalId } as CreatePaymentLinkPayment, String(linkId));
       if (epoch !== demoEpochRef.current) throw new ApiException(0, t('genErr'));
+      const payment = data.payment;
       const lnurl = extractChargeLnurl(data);
-      if (!lnurl) throw new ApiException(0, t('genErr'));
+      if (!payment || !lnurl) throw new ApiException(0, t('genErr'));
+      // Keep the shared list aligned with the server before another POS mount
+      // can offer a second charge for the same link. extractChargeLnurl only
+      // accepts a nested, amount-bound payment LNURL.
+      setLinks((prev) =>
+        prev?.map((item) =>
+          String(item.id) === String(linkId) ? { ...item, payment } : item,
+        ) ?? prev,
+      );
+      setLinksIdentity(sessionIdentity);
       return { lnurl, externalId };
     },
-    [demo, links, createPaymentLinkPayment, demoLnurl, t],
+    [sessionIdentity, demo, links, createPaymentLinkPayment, demoLnurl, t],
   );
 
   const pollPayment = useCallback(
@@ -659,18 +690,21 @@ export function useOcp(): OcpApi {
 
   return useMemo(
     () => ({
-      demo,
+      demo: sessionIdentityReady && demo,
       enableDemo,
       disableDemo,
-      active,
-      probeError,
-      config,
-      routes,
-      routesError,
-      links,
-      linksError,
-      history,
-      historyError,
+      active: sessionIdentityReady ? active : null,
+      sessionAddress: address,
+      sessionIdentity,
+      probeError: sessionIdentityReady && probeError,
+      config: sessionIdentityReady ? config : null,
+      routes: sessionIdentityReady ? routes : null,
+      routesError: sessionIdentityReady && routesError,
+      links: sessionIdentityReady && (demo || linksIdentity === sessionIdentity) ? links : null,
+      linksIdentity: sessionIdentityReady ? linksIdentity : undefined,
+      linksError: sessionIdentityReady && linksError,
+      history: sessionIdentityReady ? history : null,
+      historyError: sessionIdentityReady && historyError,
       probe,
       loadRoutes,
       loadLinks,
@@ -692,14 +726,18 @@ export function useOcp(): OcpApi {
     }),
     [
       demo,
+      sessionIdentityReady,
       enableDemo,
       disableDemo,
       active,
+      address,
+      sessionIdentity,
       probeError,
       config,
       routes,
       routesError,
       links,
+      linksIdentity,
       linksError,
       history,
       historyError,

@@ -144,16 +144,30 @@ export function KycStepForm({ code, step, onAdvance, onFailed, onTfaRequired, on
     step.name === KycStepName.PERSONAL_DATA ||
     step.name === KycStepName.NATIONALITY_DATA ||
     step.name === KycStepName.BENEFICIAL_OWNER;
-  const [countries, setCountries] = useState<Country[] | null>(needsCountries ? null : []);
+  const [countries, setCountries] = useState<Country[] | null>(null);
+  const [countryLoadError, setCountryLoadError] = useState(false);
+  const countriesRequestRef = useRef(0);
+
+  const loadCountries = () => {
+    const request = ++countriesRequestRef.current;
+    setCountryLoadError(false);
+    getCountries()
+      .then((list) => {
+        if (request !== countriesRequestRef.current) return;
+        setCountries(list);
+      })
+      .catch(() => {
+        if (request !== countriesRequestRef.current) return;
+        // Keep any already-loaded options and partner prefill intact on a failed retry.
+        setCountryLoadError(true);
+      });
+  };
 
   useEffect(() => {
     if (!needsCountries) return;
-    let active = true;
-    getCountries()
-      .then((list) => active && setCountries(list))
-      .catch(() => active && setCountries([]));
+    loadCountries();
     return () => {
-      active = false;
+      countriesRequestRef.current += 1;
     };
     // getCountries is stable from the hook; re-run only when the step changes.
   }, [needsCountries, step.name]);
@@ -202,13 +216,22 @@ export function KycStepForm({ code, step, onAdvance, onFailed, onTfaRequired, on
     handleError,
   };
 
-  if (countries === null) {
+  if (needsCountries && countries === null) {
     return (
       <>
         <StepHead t={t} name={step.name} />
-        <div className={cx('sec')} style={{ textAlign: 'center', padding: 24 }}>
-          <LoadingRow label={t('loading')} />
-        </div>
+        {countryLoadError ? (
+          <div className={cx('paybox-note', 'warn')} style={{ margin: '10px 0', textAlign: 'center' }}>
+            <div>{t('loadFail')}</div>
+            <button className={cx('btn-mini')} type="button" style={{ marginTop: 10 }} onClick={loadCountries}>
+              {t('retry')}
+            </button>
+          </div>
+        ) : (
+          <div className={cx('sec')} style={{ textAlign: 'center', padding: 24 }}>
+            <LoadingRow label={t('loading')} />
+          </div>
+        )}
       </>
     );
   }
@@ -216,7 +239,15 @@ export function KycStepForm({ code, step, onAdvance, onFailed, onTfaRequired, on
   return (
     <>
       <StepHead t={t} name={step.name} />
-      <StepBody ctx={ctx} step={step} countries={countries} onBack={onBack} setBusy={setBusy} />
+      {countryLoadError && (
+        <div className={cx('paybox-note', 'warn')} style={{ margin: '10px 0', textAlign: 'center' }}>
+          <div>{t('loadFail')}</div>
+          <button className={cx('btn-mini')} type="button" style={{ marginTop: 10 }} onClick={loadCountries}>
+            {t('retry')}
+          </button>
+        </div>
+      )}
+      <StepBody ctx={ctx} step={step} countries={countries ?? []} onBack={onBack} setBusy={setBusy} />
     </>
   );
 }
@@ -1271,9 +1302,15 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
     if (!session) return undefined;
     setPollTimedOut(false);
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = Date.now() + IDENT_POLL.deadlineMs;
     let delay: number = IDENT_POLL.initialDelayMs;
+
+    const deadlineTimer = setTimeout(() => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      setPollTimedOut(true);
+    }, IDENT_POLL.deadlineMs);
 
     const tick = async () => {
       try {
@@ -1282,6 +1319,7 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
         const cur = next.currentStep;
         if (!cur || cur.name !== KycStepName.IDENT || isStepDone(cur)) {
           advancedRef.current = true;
+          clearTimeout(deadlineTimer);
           ctx.onAdvance(next);
           return;
         }
@@ -1291,6 +1329,8 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
       if (cancelled || advancedRef.current) return;
       if (Date.now() >= deadline) {
         // Visible stop + retry — never silent, never indefinite.
+        cancelled = true;
+        clearTimeout(deadlineTimer);
         setPollTimedOut(true);
         return;
       }
@@ -1301,7 +1341,8 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
     timer = setTimeout(tick, IDENT_POLL.initialDelayMs);
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      if (timer !== undefined) clearTimeout(timer);
+      clearTimeout(deadlineTimer);
     };
   }, [ctx.code, session?.type, session?.url, pollGen]);
 

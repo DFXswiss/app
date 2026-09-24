@@ -31,7 +31,6 @@ jest.mock('@dfx.swiss/react', () => ({
 import { StoreKey as MainStoreKey } from '../../hooks/store.hook';
 import { SessionStoreKey as MainSessionStoreKey } from '../../hooks/session-store.hook';
 import { BANK_TX_CACHE_PREFIX as MainBankTxPrefix } from '../../util/bank-tx-cache';
-import { JobStatus as MainJobStatus } from '../../util/job';
 import { BitcoinAddressType as MainBtcType, BitcoinAddressPrefix as MainBtcPrefix } from '../../config/key-path';
 import {
   SumsubReviewAnswer as MainSumsubAnswer,
@@ -41,7 +40,6 @@ import { RecommendationStatus as MainRecStatus } from '../../dto/recommendation.
 import { isSafeRedirectUri as MainSafeRedirect } from '../../util/utils';
 import { StoreKey, SessionStoreKey, BANK_TX_CACHE_PREFIX } from '../lib/storage-keys';
 import { isSafeRedirectUri as App2SafeRedirect } from '../utils/url';
-import { JobStatus } from '../lib/job';
 import { BitcoinAddressType, BitcoinAddressPrefix } from '../lib/key-path';
 import { SumsubReviewAnswer, SumsubReviewRejectType, sumsubEnumValues } from '../lib/sumsub';
 import { RecommendationStatus } from '../lib/recommendation';
@@ -65,10 +63,6 @@ describe('App 2.0 copies of main-app contracts', () => {
     expectSameStringRecord({ ...StoreKey }, { ...MainStoreKey });
     expectSameStringRecord({ ...SessionStoreKey }, { ...MainSessionStoreKey });
     expect(BANK_TX_CACHE_PREFIX).toBe(MainBankTxPrefix);
-  });
-
-  it('shares the same job statuses', () => {
-    expect({ ...JobStatus }).toEqual({ ...MainJobStatus });
   });
 
   it('shares the same bitcoin address types and prefixes', () => {

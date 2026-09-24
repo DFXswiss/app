@@ -329,11 +329,127 @@ describe('KycStepForm steps', () => {
     view.unmount();
   });
 
-  it('recovers when the country list fails', async () => {
-    mockGetCountries.mockRejectedValue(new Error('down'));
-    const view = renderStep(KycStepName.NATIONALITY_DATA);
-    const continueBtn = await screen.findByRole('button', { name: /continue/i });
-    expect(continueBtn).toBeDisabled();
+  it('waits for countries when a reused form transitions from a step without countries', async () => {
+    let resolveCountries!: (countries: typeof COUNTRIES) => void;
+    mockGetCountries.mockReturnValue(new Promise((resolve) => { resolveCountries = resolve; }));
+    const view = renderStep(KycStepName.CONTACT_DATA);
+    view.rerender(
+      <LanguageProvider>
+        <KycStepForm code="code-1" step={makeStep(KycStepName.PERSONAL_DATA)} {...handlers} />
+      </LanguageProvider>,
+    );
+
+    expect(screen.getByText(/loading|laden|caricamento|chargement/i)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /^country$/i })).not.toBeInTheDocument();
+    await waitFor(() => expect(mockGetCountries).toHaveBeenCalledTimes(1));
+    await act(async () => resolveCountries(COUNTRIES));
+    expect(await screen.findByRole('combobox', { name: /^country$/i })).toBeInTheDocument();
+    view.unmount();
+  });
+
+  it('ignores a stale country success while the next country step is still loading', async () => {
+    const requests: Array<{
+      resolve: (countries: typeof COUNTRIES) => void;
+      reject: (reason: Error) => void;
+    }> = [];
+    mockGetCountries.mockImplementation(
+      () =>
+        new Promise((resolve, reject) => {
+          requests.push({ resolve, reject });
+        }),
+    );
+    const view = renderStep(KycStepName.PERSONAL_DATA);
+    view.rerender(
+      <LanguageProvider>
+        <KycStepForm code="code-1" step={makeStep(KycStepName.NATIONALITY_DATA)} {...handlers} />
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(requests).toHaveLength(2));
+
+    await act(async () => requests[0].resolve(COUNTRIES));
+    expect(screen.getByText(/loading|laden|caricamento|chargement/i)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+
+    await act(async () => requests[1].resolve(COUNTRIES));
+    expect(await screen.findByRole('combobox')).toBeInTheDocument();
+    view.unmount();
+  });
+
+  it('ignores a stale country failure while the next country step is still loading', async () => {
+    const requests: Array<{
+      resolve: (countries: typeof COUNTRIES) => void;
+      reject: (reason: Error) => void;
+    }> = [];
+    mockGetCountries.mockImplementation(
+      () =>
+        new Promise((resolve, reject) => {
+          requests.push({ resolve, reject });
+        }),
+    );
+    const view = renderStep(KycStepName.PERSONAL_DATA);
+    view.rerender(
+      <LanguageProvider>
+        <KycStepForm code="code-1" step={makeStep(KycStepName.NATIONALITY_DATA)} {...handlers} />
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(requests).toHaveLength(2));
+
+    await act(async () => requests[0].reject(new Error('stale outage')));
+    expect(screen.getByText(/loading|laden|caricamento|chargement/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/couldn't load|konnte nicht laden|impossibile caricare|chargement impossible/i),
+    ).not.toBeInTheDocument();
+
+    await act(async () => requests[1].resolve(COUNTRIES));
+    expect(await screen.findByRole('combobox')).toBeInTheDocument();
+    view.unmount();
+  });
+
+  it('shows a retry after country loading fails and preserves partner-prefilled country', async () => {
+    window.history.replaceState({}, '', '/?country=de');
+    mockGetCountries.mockRejectedValueOnce(new Error('down'));
+    const view = renderStep(KycStepName.PERSONAL_DATA);
+    expect(
+      await screen.findByText(/couldn't load|konnte nicht laden|impossibile caricare|chargement impossible/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry|erneut versuchen|riprova|réessayer/i })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /country/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut versuchen|riprova|réessayer/i }));
+    const country = await screen.findByRole('combobox', { name: /^country$/i });
+    expect(country).toHaveValue('2');
+    expect(screen.queryByText(/couldn't load|konnte nicht laden|impossibile caricare|chargement impossible/i)).not.toBeInTheDocument();
+    view.unmount();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('keeps loaded country choices and the selected country when a later fetch fails', async () => {
+    const view = renderStep(KycStepName.PERSONAL_DATA);
+    await screen.findByText(/first name/i);
+
+    mockGetCountries.mockRejectedValueOnce(new Error('temporary outage'));
+    view.rerender(
+      <LanguageProvider>
+        <KycStepForm code="code-1" step={makeStep(KycStepName.NATIONALITY_DATA)} {...handlers} />
+      </LanguageProvider>,
+    );
+    const country = screen.getByRole('combobox');
+    fireEvent.change(country, { target: { value: '2' } });
+    expect(country).toHaveValue('2');
+
+    expect(
+      await screen.findByText(/couldn't load|konnte nicht laden|impossibile caricare|chargement impossible/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveValue('2');
+    expect(screen.getByRole('option', { name: 'Germany' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut versuchen|riprova|réessayer/i }));
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/couldn't load|konnte nicht laden|impossibile caricare|chargement impossible/i),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('combobox')).toHaveValue('2');
     view.unmount();
   });
 
@@ -744,6 +860,73 @@ describe('KycStepForm ident', () => {
     expect(screen.getByText(/longer than expected|länger als erwartet|più tempo|plus de temps/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
     view.unmount();
+  });
+
+  it('shows timeout for a pending ident request, ignores its late result, and restarts on retry', async () => {
+    jest.useFakeTimers();
+    let resolveContinue!: (value: { currentStep: { name: string; status: string } }) => void;
+    mockContinueKyc.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveContinue = resolve;
+        }),
+    );
+    const view = renderStep(KycStepName.IDENT, {
+      session: { url: 'https://ident.example/start', type: UrlType.BROWSER as never },
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(IDENT_POLL.initialDelayMs);
+      await Promise.resolve();
+    });
+    expect(mockContinueKyc).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(IDENT_POLL.deadlineMs - IDENT_POLL.initialDelayMs);
+    });
+    expect(screen.getByText(/longer than expected|länger als erwartet|più tempo|plus de temps/i)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveContinue({ currentStep: { name: 'ContactData', status: 'InProgress' } });
+      await Promise.resolve();
+    });
+    expect(handlers.onAdvance).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
+    await act(async () => {
+      jest.advanceTimersByTime(IDENT_POLL.initialDelayMs);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockContinueKyc).toHaveBeenCalledTimes(2);
+    expect(handlers.onAdvance).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('does not advance when an ident request resolves after unmount', async () => {
+    jest.useFakeTimers();
+    let resolveContinue!: (value: { currentStep: { name: string; status: string } }) => void;
+    mockContinueKyc.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveContinue = resolve;
+        }),
+    );
+    const view = renderStep(KycStepName.IDENT, {
+      session: { url: 'https://ident.example/start', type: UrlType.BROWSER as never },
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(IDENT_POLL.initialDelayMs);
+    });
+    expect(mockContinueKyc).toHaveBeenCalledTimes(1);
+    view.unmount();
+
+    await act(async () => {
+      resolveContinue({ currentStep: { name: 'ContactData', status: 'InProgress' } });
+      await Promise.resolve();
+    });
+    expect(handlers.onAdvance).not.toHaveBeenCalled();
   });
 
   it('advances when the current ident step is already done and keeps polling after a transient error', async () => {
