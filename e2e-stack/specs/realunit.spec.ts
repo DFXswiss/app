@@ -189,13 +189,10 @@ test.describe('RealUnit area', () => {
     // Insights requests holder history. This stack leaves REALUNIT_GRAPH_URL unset so the API
     // answers 503; the page catches it, and this test proves navigation. Other console errors
     // stay failures.
-    const unexpected = consoleErrors.filter(
-      (msg) =>
-        !/^Failed to load resource: the server responded with a status of 4\d\d/.test(msg) &&
-        !/^Failed to load resource: the server responded with a status of 503\b/.test(msg),
+    assertNoErrors(
+      pageErrors,
+      consoleErrors.filter((msg) => !/^Failed to load resource: the server responded with a status of 503\b/.test(msg)),
     );
-    expect(pageErrors, `uncaught pageerror: ${pageErrors.join('; ')}`).toEqual([]);
-    expect(unexpected, `unexpected console error: ${unexpected.join('; ')}`).toEqual([]);
   });
 
   // CONFIRMED product bug (live uncaught pageerror): fetchHolders() has no .catch() in
