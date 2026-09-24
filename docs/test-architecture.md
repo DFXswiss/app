@@ -114,6 +114,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
   payloads, not that the API produces them. Unit tests against the utility pin the payload shapes
   instead.
+- **The non-Frick buy screens inject a currency list.** `e2e/buy-process.spec.ts` and
+  `e2e/buy-info.spec.ts` fulfil `**/v1/fiat` with CHF, EUR, and a buyable GBP row, and they fulfil
+  the quote with `currency.name` GBP. GBP stands in for a currency outside the Bank Frick set.
+  A green run proves those screens render that injected list and quote. It does not prove that
+  the API offers GBP or returns those payloads.
 - **The RealUnit quotes and dashboard visual specs answer the admin list themselves.**
   `e2e/realunit-quotes.spec.ts` and `e2e/realunit-dashboard.spec.ts` fulfil
   `GET /v1/realunit/admin/quotes` (and, on the dashboard, holders, token info, price history,
