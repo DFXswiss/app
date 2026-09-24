@@ -196,7 +196,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   proves the treasury and insights headings and the section nav. It does not prove that the API
   returns holder stats, or that Insights tolerates the harness 503.
 - **The waiting-for-payment Open-invoice case hits the real invoice route.**
-  The same spec file lets `PUT /v1/transaction/:uid/invoice` run against the API for a CHF
+  `e2e-stack/specs/transactions.spec.ts` lets `PUT /v1/transaction/:uid/invoice` run against the API for a CHF
   `WaitingForPayment` buy and asserts HTTP 200 plus a `%PDF` prefix, and that the quote
   remittance matches the buy route reference. A green run does not prove the PDF content
   (streams are compressed and unread), live prices (the quote uses the `price_rule` backfill
