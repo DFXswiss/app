@@ -183,11 +183,28 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the screen guard and `mail` is present if the cached wallet session has none. A green visual run
   therefore does not prove the mail-first redirect, nor that the account actually has mail or a
   completed KYC level.
-- **The list Open-invoice and Open-receipt tests fulfill the document routes.**
-  `e2e-stack/specs/transactions.spec.ts` answers `PUT /v1/transaction/:uid/invoice` and
-  `/v1/transaction/:id/receipt` with a static PDF body or a `400` with a fixed message, so a green
-  run proves that the click reserves a tab and surfaces the error, not that the API can build an
-  invoice or receipt from SQL-seeded `buy_crypto`.
+- **The stubbed list Open-invoice and Open-receipt tests fulfill the document routes.**
+  In `e2e-stack/specs/transactions.spec.ts`, the two cases that set
+  `page.route('**/v1/transaction/*/invoice')` — the delayed-tab case and the error-message case —
+  and the two Open-receipt cases that set `page.route('**/v1/transaction/*/receipt*')` answer
+  those routes with a static PDF body or a `400` with a fixed message. A green run proves that
+  the click reserves a tab and surfaces the error, not that the API can build an invoice or
+  receipt from SQL-seeded `buy_crypto`.
+- **The waiting-for-payment Open-invoice case hits the real invoice route.**
+  The same spec file lets `PUT /v1/transaction/:uid/invoice` run against the API for a CHF
+  `WaitingForPayment` buy and asserts HTTP 200 plus a `%PDF` prefix, and that the quote
+  remittance matches the buy route reference. A green run does not prove the PDF content
+  (streams are compressed and unread), live prices (the quote uses the `price_rule` backfill
+  from `global.setup.ts`), or EUR. It also does not prove that the IBAN in the document is the
+  one the quote showed: every quote in this environment uses the collection account and stores
+  no bank selection.
+- **The transaction-invoice visual spec answers the waiting buy row itself.**
+  `e2e/transaction-invoice.spec.ts` fulfils `GET /v1/transaction/detail` with a synthetic CHF
+  `WaitingForPayment` buy, signs in with an unsigned client-side session token, and answers
+  `/v2/user`, `/v1/transaction/unassigned` and the startup lookups itself. A green run proves that
+  this row shows Open invoice and hides Open receipt. It does not prove login or session handling,
+  that the API returns the row, or that it can build its invoice; the full-stack case covers the
+  real invoice route.
 - **The compliance-review KYC-status spec answers staff identity itself.**
   `e2e/compliance-review-kyc-status.spec.ts` fulfils `GET /v1/support/issue/clerk` with
   `{ clerk }` and, as fallback, `GET /v1/support/{id}` for any account other than the customer

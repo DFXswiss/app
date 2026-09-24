@@ -4,9 +4,11 @@ import { openPdfFromString } from './utils';
 export function canOpenInvoice(
   tx: Pick<DetailTransaction, 'type' | 'state' | 'inputAsset'>,
 ): boolean {
+  // WaitingForPayment is the unpaid bank buy: the invoice is how the customer pays,
+  // and PUT /v1/transaction/:uid/invoice builds it from the TransactionRequest.
   return (
     tx.type === TransactionType.BUY &&
-    tx.state === TransactionState.COMPLETED &&
+    [TransactionState.COMPLETED, TransactionState.WAITING_FOR_PAYMENT].includes(tx.state) &&
     (tx.inputAsset === 'CHF' || tx.inputAsset === 'EUR')
   );
 }
