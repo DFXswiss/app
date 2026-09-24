@@ -174,6 +174,9 @@ test.describe('RealUnit area', () => {
     },
   );
 
+  // The E2E API has no RealUnit graph URL, so GET /v1/realunit/admin/stats/holders returns 503
+  // "RealUnit graph URL is not configured". The screen shows the hint; the browser line names
+  // no URL. pageerror stays strict.
   test('RealUnit opens treasury and insights from the section nav', async ({ page }) => {
     const { jwt } = await loginAs('RealUnit');
     const { pageErrors, consoleErrors } = attachErrorListeners(page);
@@ -185,8 +188,14 @@ test.describe('RealUnit area', () => {
     await page.getByRole('link', { name: 'Insights' }).click();
     await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Insights' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByText('Failed to load holder count.')).toBeVisible();
 
-    assertNoErrors(pageErrors, consoleErrors);
+    assertNoErrors(
+      pageErrors,
+      consoleErrors.filter(
+        (msg) => msg !== 'Failed to load resource: the server responded with a status of 503 (Service Unavailable)',
+      ),
+    );
   });
 
   // CONFIRMED product bug (live uncaught pageerror): fetchHolders() has no .catch() in
