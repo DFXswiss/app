@@ -5,6 +5,12 @@
 
 const mockReceiveForSell = jest.fn();
 const mockCall = jest.fn();
+const mockPublicBuyQuote = (info: unknown) =>
+  mockCall({ url: 'buy/quote', method: 'PUT', data: info, token: false });
+const mockPublicSellQuote = (info: unknown) =>
+  mockCall({ url: 'sell/quote', method: 'PUT', data: info, token: false });
+const mockPublicSwapQuote = (info: unknown) =>
+  mockCall({ url: 'swap/quote', method: 'PUT', data: info, token: false });
 const mockBankAccounts: unknown[] = [];
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -60,9 +66,9 @@ jest.mock('@dfx.swiss/react', () => ({
   SellUrl: { quote: 'sell/quote' },
   SwapUrl: { quote: 'swap/quote' },
   useApi: () => ({ call: mockCall }),
-  useBuy: () => ({ receiveFor: jest.fn() }),
-  useSell: () => ({ receiveFor: mockReceiveForSell }),
-  useSwap: () => ({ receiveFor: jest.fn() }),
+  useBuy: () => ({ receiveFor: jest.fn(), quote: mockPublicBuyQuote }),
+  useSell: () => ({ receiveFor: mockReceiveForSell, quote: mockPublicSellQuote }),
+  useSwap: () => ({ receiveFor: jest.fn(), quote: mockPublicSwapQuote }),
   useUser: () => ({ updateMail: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
   // Fixtures live inside the factory: jest hoists this call above every other statement, so it

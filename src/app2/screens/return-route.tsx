@@ -17,7 +17,8 @@
 // hash) OUTSIDE this component. To stay robust either way, params are read from
 // the router (hash) search first, then fall back to window.location.search.
 
-import { ApiException, useApi, useApiSession, useTransaction } from '@dfx.swiss/react';
+import { ApiException, useApiSession, useAuth, useTransaction } from '@dfx.swiss/react';
+import type { AccountMergeResponse } from '@dfx.swiss/react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Spinner } from '../components/ui';
@@ -25,11 +26,6 @@ import { JobResponse, JobStatus, isJobResponse, isJobTerminal, pollJobUntilTermi
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { cx } from '../css';
-
-interface MergeRedirect {
-  kycHash?: string;
-  accessToken?: string;
-}
 
 // The merge ran as a job and did not end in a usable result. Carries an already user-facing message,
 // which is what tells it apart from an ApiException in the catch below.
@@ -125,7 +121,7 @@ export default function ReturnRouteScreen() {
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const { isLoggedIn, openConnect } = useWalletSession();
-  const { call } = useApi(); // account-merge OTP confirm has no SDK method
+  const { confirmAccountMerge, getAnonymousJob } = useAuth();
   const { getTransactionByCkoId } = useTransaction();
   const { updateSession } = useApiSession();
 
@@ -258,11 +254,7 @@ export default function ReturnRouteScreen() {
     setPanel({ kind: 'spinner', msgKey: 'mergeVerifying' });
     void (async () => {
       const confirmMerge = () =>
-        call<MergeRedirect | JobResponse>({
-          url: `auth/mail/confirm?code=${encodeURIComponent(otp)}`,
-          method: 'GET',
-          token: isLoggedIn ? undefined : false,
-        });
+        confirmAccountMerge(otp, isLoggedIn);
 
       const mergeJobError = (job: JobResponse): MergeJobError => {
         if (!isJobTerminal(job.status)) return new MergeJobError(t('mergeJobSlow'));
@@ -271,17 +263,20 @@ export default function ReturnRouteScreen() {
 
       try {
         const response = await confirmMerge();
-        let data: MergeRedirect = response as MergeRedirect;
+        let data = response as AccountMergeResponse;
         if (isJobResponse(response)) {
           const job = await pollJobUntilTerminal(
             response,
-            (uid) => call<JobResponse>({ url: `job/${uid}`, method: 'GET', token: false }),
+            async (uid) => {
+              const result = await getAnonymousJob(uid);
+              return { ...result, status: result.status as unknown as JobStatus };
+            },
             { isCancelled: () => cancelledRef.current },
           );
           if (job.status !== JobStatus.COMPLETE) throw mergeJobError(job);
           const result = await confirmMerge();
           if (isJobResponse(result)) throw mergeJobError(result);
-          data = result;
+          data = result as AccountMergeResponse;
         }
         if (cancelledRef.current) return;
         const token = data?.accessToken;
@@ -317,7 +312,7 @@ export default function ReturnRouteScreen() {
         });
       }
     })();
-    // Run once on mount for this route — re-reading isLoggedIn/call identities
+    // Run once on mount for this route — re-reading isLoggedIn/SDK method identities
     // would only re-consume the same (single-use) OTP.
   }, [pathname]);
 

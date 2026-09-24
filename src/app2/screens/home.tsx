@@ -26,7 +26,6 @@ import { useLocation } from 'react-router-dom';
 import { AssetPicker } from '../components/pickers/AssetPicker';
 import { BankAccountPicker } from '../components/pickers/BankAccountPicker';
 import { FiatPicker } from '../components/pickers/FiatPicker';
-import { PaymentMethodPicker, paymentMethodsFor } from '../components/pickers/PaymentMethodPicker';
 import { ConfirmationSheet } from '../components/ConfirmationSheet';
 import { Spinner, useToast } from '../components/ui';
 import { formatAmount, formatFiat, parseAmt, quickChipSymbol } from './trade/amount';
@@ -120,12 +119,11 @@ export default function HomeScreen() {
   const [buyAsset, setBuyAsset] = useState<TradeAsset>();
   const [buyChain, setBuyChain] = useState<Blockchain>();
   const [buyFiat, setBuyFiat] = useState<Fiat>();
-  const [buyMethod, setBuyMethod] = useState<FiatPaymentMethod>(FiatPaymentMethod.BANK);
+  const buyMethod = FiatPaymentMethod.BANK;
   const amountOutParam = useMemo(() => routeOrQueryParam(location.search, 'amount-out'), [location.search]);
   const amountInParam = useMemo(() => routeOrQueryParam(location.search, 'amount-in'), [location.search]);
   const assetInParam = useMemo(() => routeOrQueryParam(location.search, 'asset-in'), [location.search]);
   const assetOutParam = useMemo(() => routeOrQueryParam(location.search, 'asset-out'), [location.search]);
-  const paymentMethodParam = useMemo(() => routeOrQueryParam(location.search, 'payment-method'), [location.search]);
   const assetsParam = useMemo(() => routeOrQueryParam(location.search, 'assets'), [location.search]);
   const blockchainsParam = useMemo(() => routeOrQueryParam(location.search, 'blockchains'), [location.search]);
   const blockchainParam = useMemo(() => routeOrQueryParam(location.search, 'blockchain'), [location.search]);
@@ -137,7 +135,7 @@ export default function HomeScreen() {
   const requestedChain = parseEnumValue<Blockchain>(blockchainParam, Blockchain);
   const spendClearedByUserRef = useRef(false);
 
-  const [buyRaw, setBuyRaw] = useState('100');
+  const [buyRaw, setBuyRaw] = useState('');
 
   const [sellAsset, setSellAsset] = useState<TradeAsset>();
   const [sellChain, setSellChain] = useState<Blockchain>();
@@ -154,7 +152,6 @@ export default function HomeScreen() {
   // ---- sheet visibility --------------------------------------------------------------------
   const [assetPickerOpen, setAssetPickerOpen] = useState<AssetSlot | null>(null);
   const [fiatPickerOpen, setFiatPickerOpen] = useState<FiatSlot | null>(null);
-  const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
   const [bankAccountOpen, setBankAccountOpen] = useState(false);
   const [pendingBankAccount, setPendingBankAccount] = useState<{ param: string; iban: string }>();
   const [pendingRedirect, setPendingRedirect] = useState<{ target: string; host: string }>();
@@ -386,30 +383,17 @@ export default function HomeScreen() {
   const swapFromApiAsset = swapFromAsset && swapFromChain ? assetFor(swapFromAsset, swapFromChain, 'sell') : undefined;
   const swapToApiAsset = swapToAsset && swapToChain ? assetFor(swapToAsset, swapToChain, 'buy') : undefined;
 
-  useEffect(() => {
-    const available = paymentMethodsFor(buyFiat, buyApiAsset);
-    const fromParam = parseEnumValue(paymentMethodParam, FiatPaymentMethod);
-    if (fromParam && available.some((m) => m.id === fromParam)) {
-      setBuyMethod(fromParam);
-      return;
-    }
-    // only reset when the *fiat*/asset changes, not every time the user picks a method — reading
-    // buyMethod here (without depending on it) is intentional, not a stale-closure bug
-    if (buyFiat && !available.some((m) => m.id === buyMethod)) {
-      setBuyMethod(FiatPaymentMethod.BANK);
-    }
-  }, [buyFiat, buyApiAsset, paymentMethodParam]);
-
   const buyAmount = parseAmt(buyRaw, language);
   const buyTargetAmount = parseAmt(buyTargetRaw, language);
   const receiveDrivenByParam = Boolean(amountOutParam) && !amountInParam && !targetClearedByUserRef.current;
   const quoteFromTarget = receiveDrivenByParam && Boolean(buyTargetRaw.trim());
+  const hasValidBuyQuoteAmount = quoteFromTarget
+    ? buyTargetAmount !== null && buyTargetAmount > 0
+    : buyAmount !== null && buyAmount > 0;
   const personalIbanState = personalIbanParamState(
     personalIbanParam,
     PersonalIbanProvider,
     buyFiat?.name,
-    buyMethod,
-    FiatPaymentMethod.BANK,
   );
   const [personalIbanSuppressed, setPersonalIbanSuppressed] = useState(false);
   useEffect(() => {
@@ -436,8 +420,7 @@ export default function HomeScreen() {
   // CTA. Sharing one engine would mean an account gate (no e-mail on file, KYC, …) blanking
   // the rate the moment the sheet is opened.
   const buyQuote = useBuyQuote({
-    enabled:
-      session.isLoggedIn && mode === 'buy' && (quoteFromTarget ? Boolean(buyTargetRaw.trim()) : Boolean(buyRaw.trim())),
+    enabled: session.isLoggedIn && mode === 'buy' && hasValidBuyQuoteAmount,
     asset: buyApiAsset,
     currency: buyFiat,
     amount: quoteFromTarget ? null : buyAmount,
@@ -449,7 +432,7 @@ export default function HomeScreen() {
     paused: paymentSheetOpen || openAfterPaymentInfo,
   });
   const buyPayment = useBuyQuote({
-    enabled: session.isLoggedIn && mode === 'buy' && needPaymentInfo && !personalIbanBlocked,
+    enabled: session.isLoggedIn && mode === 'buy' && needPaymentInfo && hasValidBuyQuoteAmount && !personalIbanBlocked,
     asset: buyApiAsset,
     currency: buyFiat,
     amount: quoteFromTarget ? null : buyAmount,
@@ -626,7 +609,6 @@ export default function HomeScreen() {
     buyAsset,
     buyChain,
     buyFiat,
-    buyMethod,
     sellRaw,
     sellAsset,
     sellChain,
@@ -765,10 +747,8 @@ export default function HomeScreen() {
   const payRaw = mode === 'buy' ? buyRaw : mode === 'sell' ? sellRaw : swapRaw;
   const setPayRaw = mode === 'buy' ? setBuyRaw : mode === 'sell' ? setSellRaw : setSwapRaw;
 
-  // Switch modes, pre-filling the target panel so a quote fires immediately (mirrors the static
-  // app's setMode: `S.amount = mode==='buy' ? 100 : (S.token.stable ? 100 : 0.1)`). Buy already
-  // defaults to '100'; here we only seed sell/swap when their (independent) raw is still empty so
-  // an in-progress amount on that panel is never clobbered.
+  // Switching modes pre-fills sell/swap as before. Buy starts empty and only quotes after an
+  // explicit amount entry/quick chip or a valid partner amount-in/amount-out parameter.
   const changeMode = (next: Mode) => {
     if (next === 'sell' && !sellRaw.trim()) {
       setSellRaw(sellAsset && isStableAsset(sellAsset.code) ? '100' : '0.1');
@@ -807,12 +787,6 @@ export default function HomeScreen() {
       setSwapRaw('');
     }
   };
-
-  const buyMethods = paymentMethodsFor(buyFiat, buyApiAsset);
-  const currentBuyMethod = buyMethods.find((m) => m.id === buyMethod);
-  // Mirrors the static app: only offer the picker when there's a real choice — with a single
-  // method the row drops its caret and stops being interactive (no pointless one-item sheet).
-  const buyMethodPickable = buyMethods.length > 1;
 
   // Pre-login home is the landing hero — the trade form below is the logged-in
   // home only, same split as the static app's `#v-login` vs `#v-buy`. All the hooks above still
@@ -1036,11 +1010,7 @@ export default function HomeScreen() {
 
       {mode === 'buy' && personalIbanBlocked && (
         <div className={cx('paybox-note', 'warn')} style={{ margin: '0 0 12px' }}>
-          {personalIbanState.kind === 'unrecognized'
-            ? t('personalIbanUnknown')
-            : personalIbanState.reason === 'method'
-              ? t('personalIbanNeedBank')
-              : t('personalIbanNeedCurrency')}
+          {personalIbanState.kind === 'unrecognized' ? t('personalIbanUnknown') : t('personalIbanNeedCurrency')}
         </div>
       )}
 
@@ -1051,13 +1021,7 @@ export default function HomeScreen() {
       )}
 
       {mode === 'buy' && (
-        <div
-          className={cx('pmethod')}
-          style={buyMethodPickable ? undefined : { cursor: 'default' }}
-          role={buyMethodPickable ? 'button' : undefined}
-          tabIndex={buyMethodPickable ? 0 : undefined}
-          onClick={buyMethodPickable ? () => setPaymentMethodOpen(true) : undefined}
-        >
+        <div className={cx('pmethod')}>
           <span className={cx('ic')}>
             <svg viewBox="0 0 24 24" fill="none">
               <rect x={3} y={6} width={18} height={12} rx={2.4} stroke="currentColor" strokeWidth={1.7} />
@@ -1065,10 +1029,9 @@ export default function HomeScreen() {
             </svg>
           </span>
           <span className={cx('tx')}>
-            <b>{currentBuyMethod ? t(currentBuyMethod.nameKey) : t('payMethod')}</b>
-            <small>{currentBuyMethod ? t(currentBuyMethod.descKey) : t('payMethodSub')}</small>
+            <b>{t('payBankN')}</b>
+            <small>{t('payBankD')}</small>
           </span>
-          {buyMethodPickable && <span className={cx('caret')}>{CHEVRON_RIGHT}</span>}
         </div>
       )}
 
@@ -1173,15 +1136,6 @@ export default function HomeScreen() {
         currencies={sellCurrencies}
         value={sellFiat}
         onSelect={setSellFiat}
-      />
-
-      <PaymentMethodPicker
-        open={paymentMethodOpen}
-        onClose={() => setPaymentMethodOpen(false)}
-        titleId="payMethodSheetTitle"
-        options={buyMethods}
-        value={buyMethod}
-        onSelect={setBuyMethod}
       />
 
       <BankAccountPicker

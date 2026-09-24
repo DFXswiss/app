@@ -8,11 +8,8 @@
 // switching sub-views never loses loaded data — mirroring the static app's
 // single global `OCP` object.
 //
-// Endpoints reuse the @dfx.swiss/react SDK (`usePaymentRoutes`) wherever a
-// method matches the static app 1:1; the cases the SDK has no method for
-// (GET /paymentLink/payment invoice lookup, GET /paymentLink/history, route
-// activation PUT /<type>/<id> { active: true }, POS poll GET /paymentLink?id=,
-// POST /sell create) go through the raw `useApi` call to preserve functional truth.
+// API requests go through the @dfx.swiss/react SDK; useApi is used only for its
+// versioned base URL when constructing an LNURL.
 // Deactivating a route uses `deletePaymentRoute` (PUT { active: false }).
 
 import {
@@ -137,10 +134,10 @@ export interface OcpApi {
   // --- invoice / pos -------------------------------------------------------
   /** GET /paymentLink/payment → { lnurl } for the invoice QR. Throws on failure. */
   createInvoice: (input: CreateInvoiceInput) => Promise<{ lnurl: string }>;
-  /** POST /paymentLink/payment?linkId { amount } → { lnurl } for the POS QR. Throws on failure. */
-  charge: (linkId: string | number, amount: number) => Promise<{ lnurl: string }>;
-  /** GET /paymentLink?id → the current payment status (for POS polling). */
-  pollPayment: (id: string | number) => Promise<PaymentLinkPaymentStatus | undefined>;
+  /** POST /paymentLink/payment?linkId { amount, externalId } → LNURL + poll identifier. */
+  charge: (linkId: string | number, amount: number) => Promise<{ lnurl: string; externalId: string }>;
+  /** GET /paymentLink filtered by linkId + externalPaymentId → that POS charge's status. */
+  pollPayment: (linkId: string | number, externalPaymentId: string) => Promise<PaymentLinkPaymentStatus | undefined>;
 
   // --- config --------------------------------------------------------------
   /** PUT /paymentLink/config. Throws on failure. */
@@ -174,23 +171,8 @@ function safeDfxUrl(value: string | undefined | null): string | undefined {
   return undefined;
 }
 
-// Shape of one entry in the GET /paymentLink/history response (a link with its
-// payments); only the fields the static app reads are typed.
-interface HistoryLink {
-  payments?: Array<{
-    id: string | number;
-    note?: string;
-    externalId?: string;
-    amount: number;
-    currency: string;
-    status: string;
-    date?: string;
-  }>;
-  totalCompletedAmount?: number;
-}
-
 export function useOcp(): OcpApi {
-  const { call, defaultUrl: apiBaseUrl } = useApi();
+  const { defaultUrl: apiBaseUrl } = useApi();
   const {
     getPaymentLinks,
     getPaymentRoutes,
@@ -201,6 +183,10 @@ export function useOcp(): OcpApi {
     updateUserPaymentLinksConfig,
     createPosLink,
     deletePaymentRoute,
+    getPaymentLinkHistory,
+    createPaymentLinkInvoice,
+    createSellPaymentRoute,
+    activatePaymentRoute,
   } = usePaymentRoutes();
   const { blockchains, address } = useWalletSession();
   const { showToast } = useToast();
@@ -430,7 +416,7 @@ export function useOcp(): OcpApi {
     }
     const epoch = demoEpochRef.current;
     try {
-      const data = await call<HistoryLink[]>({ url: '/paymentLink/history', method: 'GET' });
+      const data = await getPaymentLinkHistory();
       if (epoch !== demoEpochRef.current) return;
       const items: OcpHistoryItem[] = [];
       let total = 0;
@@ -457,7 +443,7 @@ export function useOcp(): OcpApi {
       setHistory({ items: [], total: 0 });
       setHistoryError(true);
     }
-  }, [demo, call, language, buildDemoHistory]);
+  }, [demo, getPaymentLinkHistory, language, buildDemoHistory]);
 
   // ---- derived --------------------------------------------------------------
   const lightningReady = (blockchains ?? []).includes(Blockchain.LIGHTNING);
@@ -491,12 +477,12 @@ export function useOcp(): OcpApi {
         blockchain: blockchain || 'Bitcoin',
       };
       const epoch = demoEpochRef.current;
-      await call({ url: '/sell', method: 'POST', data: body });
+      await createSellPaymentRoute(body);
       if (epoch !== demoEpochRef.current) return;
       setRoutes(null);
       await loadRoutes();
     },
-    [demo, routes, call, loadRoutes],
+    [demo, routes, createSellPaymentRoute, loadRoutes],
   );
 
   const toggleRoute = useCallback(
@@ -511,7 +497,7 @@ export function useOcp(): OcpApi {
       }
       const epoch = demoEpochRef.current;
       if (activeTo) {
-        await call({ url: `/${type}/${id}`, method: 'PUT', data: { active: true } });
+        await activatePaymentRoute(Number(id), type);
       } else {
         await deletePaymentRoute(Number(id), type);
       }
@@ -519,7 +505,7 @@ export function useOcp(): OcpApi {
       setRoutes(null);
       await loadRoutes();
     },
-    [demo, call, deletePaymentRoute, loadRoutes],
+    [demo, activatePaymentRoute, deletePaymentRoute, loadRoutes],
   );
 
   // ---- link actions ---------------------------------------------------------
@@ -590,60 +576,54 @@ export function useOcp(): OcpApi {
       }
       const epoch = demoEpochRef.current;
       const expiryDate = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
-      const query = new URLSearchParams({
-        routeId: String(routeId),
-        amount: String(amount),
-        currency,
-        message,
-        expiryDate,
-      }).toString();
-      const data = await call<{ id: string | number }>({ url: `/paymentLink/payment?${query}`, method: 'GET' });
+      const data = await createPaymentLinkInvoice({ routeId, amount, currency, message, expiryDate });
       if (epoch !== demoEpochRef.current) throw new ApiException(0, t('genErr'));
       if (!data?.id) throw new ApiException(0, t('genErr'));
       const lnurl = lnurlEncode(`${apiBaseUrl}/lnurlp/${data.id}`);
       return { lnurl };
     },
-    [demo, demoLnurl, call, apiBaseUrl, t],
+    [demo, demoLnurl, createPaymentLinkInvoice, apiBaseUrl, t],
   );
 
   const charge = useCallback(
-    async (linkId: string | number, amount: number): Promise<{ lnurl: string }> => {
+    async (linkId: string | number, amount: number): Promise<{ lnurl: string; externalId: string }> => {
       const link = (links ?? []).find((l) => String(l.id) === String(linkId));
-      if (demo) {
-        const lnurl = link?.lnurl || demoLnurl(`pos_${linkId}_${Math.round(amount * 100)}`);
-        return { lnurl };
-      }
-      // Production POS posts amount + externalId; SDK type also lists mode/currency/expiry for
-      // the full merchant form — cast keeps the wire body the API accepts for a POS charge.
       const externalId =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `pos_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      if (demo) {
+        const lnurl = link?.lnurl || demoLnurl(`pos_${linkId}_${Math.round(amount * 100)}`);
+        return { lnurl, externalId };
+      }
+      // Production POS posts amount + externalId; SDK type also lists mode/currency/expiry for
+      // the full merchant form — cast keeps the wire body the API accepts for a POS charge.
       const epoch = demoEpochRef.current;
       const data = await createPaymentLinkPayment({ amount, externalId } as CreatePaymentLinkPayment, String(linkId));
       if (epoch !== demoEpochRef.current) throw new ApiException(0, t('genErr'));
       const lnurl = extractChargeLnurl(data);
       if (!lnurl) throw new ApiException(0, t('genErr'));
-      return { lnurl };
+      return { lnurl, externalId };
     },
     [demo, links, createPaymentLinkPayment, demoLnurl, t],
   );
 
   const pollPayment = useCallback(
-    async (id: string | number): Promise<PaymentLinkPaymentStatus | undefined> => {
+    async (linkId: string | number, externalPaymentId: string): Promise<PaymentLinkPaymentStatus | undefined> => {
       const epoch = demoEpochRef.current;
       try {
-        const data = await call<{ payment?: { status?: PaymentLinkPaymentStatus } }>({
-          url: `/paymentLink?id=${encodeURIComponent(String(id))}`,
-          method: 'GET',
-        });
+        const data = await getPaymentLinks(String(linkId), undefined, externalPaymentId);
         if (epoch !== demoEpochRef.current) return undefined;
-        return data?.payment?.status;
+        const paymentLink = Array.isArray(data)
+          ? data.find((candidate) => candidate.payment?.externalId === externalPaymentId)
+          : data;
+        const payment = paymentLink?.payment;
+        return payment?.externalId === externalPaymentId ? payment.status : undefined;
       } catch {
         return undefined;
       }
     },
-    [call],
+    [getPaymentLinks],
   );
 
   // ---- config ---------------------------------------------------------------

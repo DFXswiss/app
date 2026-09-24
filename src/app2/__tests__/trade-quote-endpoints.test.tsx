@@ -1,12 +1,13 @@
-// Which endpoint a trade quote hits is a money-path decision, so it is pinned here rather than
-// left to reading: the panel must quote publicly (no token, no payment request created), and
-// only a `withPaymentInfo` call may create real payment details — with the transaction id that
-// identifies a payment never leaking onto the public call.
+// The SDK endpoint tests pin the public quote URLs and token behavior. These App 2 tests pin the
+// boundary: display quotes pass only quote fields to the SDK, while payment-info requests carry
+// the transaction id and remain separate from display refreshes.
 
 const mockReceiveForBuy = jest.fn();
 const mockReceiveForSwap = jest.fn();
 const mockReceiveForSell = jest.fn();
-const mockCall = jest.fn();
+const mockQuoteBuy = jest.fn();
+const mockQuoteSwap = jest.fn();
+const mockQuoteSell = jest.fn();
 const mockQuoteSession = { address: undefined as string | undefined };
 
 jest.mock('../wallets/session', () => ({
@@ -21,15 +22,11 @@ jest.mock('@dfx.swiss/react', () => ({
       this.statusCode = httpStatus;
     }
   },
-  BuyUrl: { quote: 'buy/quote', receive: 'buy/paymentInfos' },
-  SellUrl: { quote: 'sell/quote', receive: 'sell/paymentInfos' },
-  SwapUrl: { quote: 'swap/quote', receive: 'swap/paymentInfos' },
   FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
   PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
-  useApi: () => ({ call: mockCall }),
-  useBuy: () => ({ receiveFor: mockReceiveForBuy }),
-  useSell: () => ({ receiveFor: mockReceiveForSell }),
-  useSwap: () => ({ receiveFor: mockReceiveForSwap }),
+  useBuy: () => ({ receiveFor: mockReceiveForBuy, quote: mockQuoteBuy }),
+  useSell: () => ({ receiveFor: mockReceiveForSell, quote: mockQuoteSell }),
+  useSwap: () => ({ receiveFor: mockReceiveForSwap, quote: mockQuoteSwap }),
 }));
 
 import { act, render, waitFor } from '@testing-library/react';
@@ -102,39 +99,29 @@ describe('isTransientQuoteError', () => {
 describe('App2 trade quote endpoints', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockCall.mockResolvedValue({ estimatedAmount: 111 });
+    mockQuoteBuy.mockResolvedValue({ estimatedAmount: 111 });
+    mockQuoteSwap.mockResolvedValue({ estimatedAmount: 99 });
+    mockQuoteSell.mockResolvedValue({ estimatedAmount: 86 });
     mockReceiveForBuy.mockResolvedValue({ estimatedAmount: 111 });
     mockReceiveForSwap.mockResolvedValue({ estimatedAmount: 99 });
     mockReceiveForSell.mockResolvedValue({ estimatedAmount: 86 });
   });
 
-  it('quotes buy publicly — no token, no payment request created, no transaction id', async () => {
+  it('passes display-only buy fields to the SDK without a transaction id', async () => {
     render(<BuyHarness />);
 
-    await waitFor(() => expect(mockCall).toHaveBeenCalledTimes(1));
-    expect(mockCall).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: 'buy/quote',
-        method: 'PUT',
-        token: false,
-        data: { currency, asset, amount: 100, paymentMethod: 'Bank' },
-      }),
-    );
-    expect(mockCall.mock.calls[0][0].data).not.toHaveProperty('externalTransactionId');
+    await waitFor(() => expect(mockQuoteBuy).toHaveBeenCalledTimes(1));
+    expect(mockQuoteBuy).toHaveBeenCalledWith({ currency, asset, amount: 100, paymentMethod: 'Bank' });
+    expect(mockQuoteBuy.mock.calls[0][0]).not.toHaveProperty('externalTransactionId');
     expect(mockReceiveForBuy).not.toHaveBeenCalled();
   });
 
-  it('quotes buy from targetAmount without sending a source amount', async () => {
+  it('passes a buy target amount without a source amount', async () => {
     render(<BuyHarness amount={null} targetAmount={0.01} />);
 
-    await waitFor(() => expect(mockCall).toHaveBeenCalledTimes(1));
-    expect(mockCall).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: 'buy/quote',
-        data: { currency, asset, targetAmount: 0.01, paymentMethod: 'Bank' },
-      }),
-    );
-    expect(mockCall.mock.calls[0][0].data).not.toHaveProperty('amount');
+    await waitFor(() => expect(mockQuoteBuy).toHaveBeenCalledTimes(1));
+    expect(mockQuoteBuy).toHaveBeenCalledWith({ currency, asset, targetAmount: 0.01, paymentMethod: 'Bank' });
+    expect(mockQuoteBuy.mock.calls[0][0]).not.toHaveProperty('amount');
   });
 
   it('sends targetAmount on buy paymentInfos when quoting the destination', async () => {
@@ -149,8 +136,8 @@ describe('App2 trade quote endpoints', () => {
 
   it('sends personalIbanProvider only on paymentInfos, never on the public quote', async () => {
     const { unmount } = render(<BuyHarness personalIbanProvider={PersonalIbanProvider.FRICK} />);
-    await waitFor(() => expect(mockCall).toHaveBeenCalledTimes(1));
-    expect(mockCall.mock.calls[0][0].data).not.toHaveProperty('personalIbanProvider');
+    await waitFor(() => expect(mockQuoteBuy).toHaveBeenCalledTimes(1));
+    expect(mockQuoteBuy.mock.calls[0][0]).not.toHaveProperty('personalIbanProvider');
     unmount();
 
     render(<BuyHarness withPaymentInfo personalIbanProvider={PersonalIbanProvider.FRICK} />);
@@ -169,19 +156,13 @@ describe('App2 trade quote endpoints', () => {
       paymentMethod: 'Bank',
       externalTransactionId: 'tx-42',
     });
-    expect(mockCall).not.toHaveBeenCalled();
+    expect(mockQuoteBuy).not.toHaveBeenCalled();
   });
 
   it('applies the same split to swap', async () => {
     const { unmount } = render(<SwapHarness />);
-    await waitFor(() => expect(mockCall).toHaveBeenCalledTimes(1));
-    expect(mockCall).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: 'swap/quote',
-        token: false,
-        data: { sourceAsset: asset, targetAsset: otherAsset, amount: 100 },
-      }),
-    );
+    await waitFor(() => expect(mockQuoteSwap).toHaveBeenCalledTimes(1));
+    expect(mockQuoteSwap).toHaveBeenCalledWith({ sourceAsset: asset, targetAsset: otherAsset, amount: 100 });
     expect(mockReceiveForSwap).not.toHaveBeenCalled();
     unmount();
 
@@ -198,14 +179,8 @@ describe('App2 trade quote endpoints', () => {
   it('quotes sell publicly while no payout account is bound to the request', async () => {
     render(<SellHarness />);
 
-    await waitFor(() => expect(mockCall).toHaveBeenCalledTimes(1));
-    expect(mockCall).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: 'sell/quote',
-        token: false,
-        data: { asset, currency, amount: 100 },
-      }),
-    );
+    await waitFor(() => expect(mockQuoteSell).toHaveBeenCalledTimes(1));
+    expect(mockQuoteSell).toHaveBeenCalledWith({ asset, currency, amount: 100 });
     expect(mockReceiveForSell).not.toHaveBeenCalled();
   });
 
@@ -220,7 +195,7 @@ describe('App2 trade quote endpoints', () => {
       iban: 'CH93 0076 2011 6238 5295 7',
       externalTransactionId: 'tx-42',
     });
-    expect(mockCall).not.toHaveBeenCalled();
+    expect(mockQuoteSell).not.toHaveBeenCalled();
   });
 
   it('does not retry a lost paymentInfos response', async () => {
@@ -244,29 +219,29 @@ describe('App2 trade quote endpoints', () => {
 
   it('retries a lost public quote', async () => {
     jest.useFakeTimers();
-    mockCall.mockRejectedValue(new Error('network'));
+    mockQuoteBuy.mockRejectedValue(new Error('network'));
     render(<BuyHarness />);
 
     await act(async () => {
       jest.advanceTimersByTime(400);
       await Promise.resolve();
     });
-    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockQuoteBuy).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       jest.advanceTimersByTime(5_000);
       await Promise.resolve();
     });
-    expect(mockCall).toHaveBeenCalledTimes(2);
+    expect(mockQuoteBuy).toHaveBeenCalledTimes(2);
     jest.useRealTimers();
   });
 
   it('switches endpoints when the caller moves to pay, without losing the input identity', async () => {
     const { rerender } = render(<BuyHarness />);
-    await waitFor(() => expect(mockCall).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockQuoteBuy).toHaveBeenCalledTimes(1));
 
     rerender(<BuyHarness withPaymentInfo />);
     await waitFor(() => expect(mockReceiveForBuy).toHaveBeenCalledTimes(1));
-    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockQuoteBuy).toHaveBeenCalledTimes(1);
   });
 });

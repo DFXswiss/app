@@ -5,11 +5,11 @@
 // `posPaidView`/`posFailView` 2527-2528). The cashier picks an active payment
 // link, enters an amount, and charges it: `ocp.charge` returns an LNURL that is
 // rendered as a scannable QR (react-qr-code, value = qrData(lnurl)). While the
-// customer pays we live-poll `ocp.pollPayment` with the static app's backoff
-// loop (start 2000ms ×1.35, capped 10s, 5-min deadline) until the payment is
-// Completed / Cancelled / Expired. Demo mode skips polling and resolves to paid
-// via a single timer. Every timer is cleared on unmount and whenever the view is
-// left (the shell unmounts this component), so no poll can leak.
+// customer pays we live-poll `ocp.pollPayment` by the charge's external ID with
+// the static app's backoff loop (start 2000ms ×1.35, capped 10s, 5-min deadline)
+// until the payment is Completed / Cancelled / Expired. Demo mode skips polling
+// and resolves to paid via a single timer. Every timer is cleared on unmount and
+// whenever the view is left (the shell unmounts this component), so no poll leaks.
 
 import { ApiException, PaymentLinkPaymentStatus, PaymentLinkStatus } from '@dfx.swiss/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -33,7 +33,7 @@ const CHECK_SVG = (
   </svg>
 );
 
-type FailKey = 'posFailed' | 'posNoUpdate';
+type FailKey = 'posFailed';
 
 // The active charge being awaited. A fresh `token` on every charge restarts the
 // polling effect (and its cleanup tears down the previous timer — no leak).
@@ -42,6 +42,7 @@ type FailKey = 'posFailed' | 'posNoUpdate';
 interface Charge {
   token: number;
   linkId: string;
+  externalId: string;
   amount: number;
   lnurl: string;
   currency: string;
@@ -71,6 +72,8 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
   const [charge, setCharge] = useState<Charge | null>(null);
   const [status, setStatus] = useState<'waiting' | 'paid' | 'failed'>('waiting');
   const [failKey, setFailKey] = useState<FailKey>('posFailed');
+  const [pollTimedOut, setPollTimedOut] = useState(false);
+  const [pollAttempt, setPollAttempt] = useState(0);
   const amountRef = useRef<HTMLInputElement>(null);
   // Synchronous lock: `charging` cannot stop a second Enter/click in the same
   // tick, before React commits. Stays true for the whole open payment so a
@@ -81,12 +84,6 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
     chargingRef.current = false;
     setCharging(false);
   }, []);
-
-  const endCharge = useCallback(() => {
-    unlockTill();
-    setCharge(null);
-    setStatus('waiting');
-  }, [unlockTill]);
 
   // Load links + routes on entry — routes supply the currency for the selected link.
   useEffect(() => {
@@ -133,14 +130,16 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
     setStatus('waiting');
     setCharging(true);
     try {
-      const { lnurl } = await ocp.charge(selectedId, amt);
+      const { lnurl, externalId } = await ocp.charge(selectedId, amt);
       setCharge({
         token: Date.now(),
         linkId: selectedId,
+        externalId,
         amount: amt,
         lnurl,
         currency: chargeCurrency,
       });
+      setPollTimedOut(false);
       setStatus('waiting');
       // Stay locked until paid / failed / expired. Re-enabling here used to let
       // a second charge replace the QR and cancel the poll for the previous
@@ -172,27 +171,24 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
       };
     }
 
-    const deadline = Date.now() + 300000;
+    // Surface local silence even if the network request never settles. A late
+    // server status remains authoritative; this timer only changes the warning.
+    const deadlineTimer = setTimeout(() => setPollTimedOut(true), 300000);
     let delay = 2000;
     const tick = async () => {
-      const st = await ocp.pollPayment(charge.linkId);
+      const st = await ocp.pollPayment(charge.linkId, charge.externalId);
       if (cancelled) return;
       if (st === PaymentLinkPaymentStatus.COMPLETED) {
+        setPollTimedOut(false);
         setStatus('paid');
         unlockTill();
         return;
       }
       if (st === PaymentLinkPaymentStatus.CANCELLED || st === PaymentLinkPaymentStatus.EXPIRED) {
+        setPollTimedOut(false);
         setFailKey('posFailed');
         setStatus('failed');
         unlockTill();
-        return;
-      }
-      if (Date.now() >= deadline) {
-        // Local silence is not a server Expired/Cancelled/Completed. Keep the
-        // till locked so a new charge cannot replace a still-payable LNURL.
-        setFailKey('posNoUpdate');
-        setStatus('failed');
         return;
       }
       timer = setTimeout(tick, delay);
@@ -202,8 +198,9 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      clearTimeout(deadlineTimer);
     };
-  }, [charge, status, ocp, unlockTill]);
+  }, [charge, status, ocp, unlockTill, pollAttempt]);
 
   if (ocp.links === null) {
     return (
@@ -287,34 +284,28 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
             ) : status === 'failed' ? (
               <div className={cx('posstat', 'fail')}>
                 {t(failKey)}{' '}
-                {failKey === 'posNoUpdate' ? (
-                  <>
-                    <button
-                      className={cx('btn-mini')}
-                      onClick={() => setStatus('waiting')}
-                      style={{ marginLeft: 10, width: 'auto' }}
-                    >
-                      {t('posKeepWaiting')}
-                    </button>
-                    <button
-                      className={cx('btn-mini')}
-                      onClick={endCharge}
-                      disabled={!charging}
-                      style={{ marginLeft: 10, width: 'auto' }}
-                    >
-                      {t('posEndCharge')}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    className={cx('btn-mini')}
-                    onClick={() => void doCharge()}
-                    disabled={charging}
-                    style={{ marginLeft: 10, width: 'auto' }}
-                  >
-                    {t('retry')}
-                  </button>
-                )}
+                <button
+                  className={cx('btn-mini')}
+                  onClick={() => void doCharge()}
+                  disabled={charging}
+                  style={{ marginLeft: 10, width: 'auto' }}
+                >
+                  {t('retry')}
+                </button>
+              </div>
+            ) : pollTimedOut ? (
+              <div className={cx('posstat', 'fail')}>
+                {t('posNoUpdate')}{' '}
+                <button
+                  className={cx('btn-mini')}
+                  onClick={() => {
+                    setPollTimedOut(false);
+                    setPollAttempt((attempt) => attempt + 1);
+                  }}
+                  style={{ marginLeft: 10, width: 'auto' }}
+                >
+                  {t('posKeepWaiting')}
+                </button>
               </div>
             ) : (
               <div className={cx('posstat')}>

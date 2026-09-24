@@ -1,0 +1,329 @@
+/* ---------- OpenCryptoPay ---------- */
+.ocp-hero {
+  text-align: center;
+  padding: 6px 6px 4px;
+}
+.ocp-badge {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  margin: 2px auto 12px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(155deg, #2231ef, #141fb0);
+  box-shadow: 0 14px 32px -10px rgba(34, 49, 239, 0.6);
+  color: #fff; /* the OCP mark inside draws in currentColor */
+}
+.ocp-badge svg,
+.ocp-badge img {
+  width: 36px;
+  height: auto;
+}
+.ocp-hero h3 {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.ocp-hero p {
+  font-size: 13.5px;
+  color: var(--t-muted);
+  line-height: 1.5;
+  margin-top: 7px;
+  max-width: 330px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.ocp-sub {
+  display: block;
+}
+.statuschip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 11px;
+  border-radius: 20px;
+  margin-top: 12px;
+}
+.statuschip.on {
+  color: var(--success);
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+.statuschip.off {
+  color: var(--t-muted);
+  background: var(--card-overlay);
+  border: 1px solid var(--hair);
+}
+.statuschip .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.ocp-benefits {
+  margin: 16px 0 4px;
+}
+.benefit {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  padding: 13px 4px;
+}
+.benefit + .benefit {
+  border-top: 1px solid var(--hair-soft);
+}
+.benefit .bi {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.benefit .bi svg {
+  width: 21px;
+  height: 21px;
+}
+.benefit b {
+  font-size: 14.5px;
+  font-weight: 700;
+  display: block;
+}
+.benefit small {
+  font-size: 12.5px;
+  color: var(--t-muted);
+  line-height: 1.45;
+  display: block;
+  margin-top: 2px;
+}
+.ocp-step {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  padding: 12px 4px;
+}
+.ocp-step + .ocp-step {
+  border-top: 1px solid var(--hair-soft);
+}
+.ocp-step .stepn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: var(--primary);
+  color: #06182e;
+  font-weight: 800;
+  font-size: 13px;
+}
+.ocp-step b {
+  font-size: 14px;
+  font-weight: 700;
+  display: block;
+}
+.ocp-step small {
+  font-size: 12.5px;
+  color: var(--t-muted);
+  line-height: 1.45;
+  display: block;
+  margin-top: 2px;
+}
+.ocp-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.octile {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 15px 15px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.octile .ti {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.octile .ti svg {
+  width: 22px;
+  height: 22px;
+}
+.octile .tx {
+  flex: 1;
+  min-width: 0;
+}
+.octile .tx b {
+  font-size: 15px;
+  font-weight: 700;
+  display: block;
+  color: var(--t-high);
+}
+.octile .tx small {
+  font-size: 12.5px;
+  color: var(--t-muted);
+  display: block;
+  margin-top: 1px;
+}
+.octile .caret {
+  color: var(--t-faint-dim);
+}
+.octile .badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--primary-soft);
+  padding: 3px 9px;
+  border-radius: 20px;
+}
+.sectionlabel.tight {
+  margin: 18px 4px 8px;
+}
+/* key-value + copy rows */
+.kv {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  font-size: 13.5px;
+}
+.kv + .kv {
+  border-top: 1px solid var(--hair-soft);
+}
+.kv .kk {
+  color: var(--t-muted);
+  flex: 0 0 42%;
+}
+.kv .vv {
+  flex: 1;
+  text-align: right;
+  color: var(--t-high);
+  font-weight: 600;
+  word-break: break-all;
+  font-feature-settings: 'tnum';
+}
+.kv .cpy {
+  flex: 0 0 auto;
+  color: var(--t-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 5px;
+  margin: -3px -4px -3px 0;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+.kv .cpy:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+.kv .cpy svg {
+  width: 16px;
+  height: 16px;
+}
+.kv .cpy:hover {
+  color: var(--primary);
+}
+/* route collapsibles reuse <details> */
+.rcol {
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  background: var(--card-overlay);
+  overflow: hidden;
+}
+.rcol + .rcol {
+  margin-top: 10px;
+}
+.rcol > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 15px;
+}
+.rcol > summary::-webkit-details-marker {
+  display: none;
+}
+.rcol .rci {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.rcol .rci svg {
+  width: 20px;
+  height: 20px;
+}
+.rcol .rtt {
+  flex: 1;
+  min-width: 0;
+}
+.rcol .rtt b {
+  font-size: 14px;
+  font-weight: 700;
+  display: block;
+}
+.rcol .rtt small {
+  font-size: 12px;
+  color: var(--t-muted);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rcol .chev {
+  color: var(--t-faint-dim);
+  transition: transform 0.25s var(--ease);
+}
+.rcol[open] .chev {
+  transform: rotate(180deg);
+}
+.rcol .rbody {
+  border-top: 1px solid var(--hair-soft);
+  padding: 4px 2px;
+}
+.pill-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 14px;
+  flex: 0 0 auto;
+}
+.pill-chip.act {
+  color: var(--success);
+  background: rgba(52, 211, 153, 0.1);
+}
+.pill-chip.rdy {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+.pill-chip.ina {
+  color: var(--t-muted);
+  background: rgba(255, 255, 255, 0.06);
+}
+.pill-chip.warn {
+  color: #f5b8a0;
+  border-color: rgba(245, 150, 110, 0.4);
+}

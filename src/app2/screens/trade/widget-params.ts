@@ -189,27 +189,24 @@ export function matchBankAccount<T extends { id: number; iban: string; label?: s
   return accounts.find((account) => account.label?.toLowerCase() === needle);
 }
 
-export function isPersonalIbanApplicable(currencyName: string | undefined, paymentMethod: string, bank: string): boolean {
-  return Boolean(currencyName && PERSONAL_IBAN_CURRENCIES.includes(currencyName) && paymentMethod === bank);
+export function isPersonalIbanApplicable(currencyName: string | undefined): boolean {
+  return Boolean(currencyName && PERSONAL_IBAN_CURRENCIES.includes(currencyName));
 }
 
 export type PersonalIbanParamState<T extends string = string> =
   | { kind: 'absent' }
   | { kind: 'unrecognized' }
-  | { kind: 'inapplicable'; reason: 'method' | 'currency' }
+  | { kind: 'inapplicable'; reason: 'currency' }
   | { kind: 'ready'; provider: T };
 
 export function personalIbanParamState<T extends string>(
   value: string | undefined,
   providers: Record<string, T>,
   currencyName: string | undefined,
-  paymentMethod: string,
-  bank: string,
 ): PersonalIbanParamState<T> {
   if (value === undefined) return { kind: 'absent' };
   const provider = parseEnumValue(value, providers);
   if (!provider) return { kind: 'unrecognized' };
-  if (paymentMethod !== bank) return { kind: 'inapplicable', reason: 'method' };
   if (!currencyName || !PERSONAL_IBAN_CURRENCIES.includes(currencyName)) {
     return { kind: 'inapplicable', reason: 'currency' };
   }

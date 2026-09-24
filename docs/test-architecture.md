@@ -98,9 +98,10 @@ A leak through those keys is not an SDK bug — `/` and `/app2/` share this orig
 
 ### App 2.0 styles are CSS modules
 
-`src/app2/styles.module.css` hashes every local class at build time. Components apply them
-through `cx()` in `src/app2/css.ts`. html/body/:root stay global. The hashed names are the
-scoping mechanism; the pixels stay the ones in the committed visual baselines.
+The feature-owned files under `src/app2/styles/*.module.css` hash every local class at build time.
+`src/app2/css.ts` merges their class maps in source order, and components apply them through `cx()`.
+html/body/:root stay global. The hashed names are the scoping mechanism; the pixels stay the ones in
+the committed visual baselines.
 
 That gate is the pattern the reality declaration follows: **measure the run, do not trust the
 declaration.** Anything its parser cannot resolve is a hard failure rather than a silent omission.

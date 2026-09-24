@@ -4,6 +4,13 @@
  */
 
 jest.mock('@dfx.swiss/react', () => ({
+  RecommendationStatus: {
+    CREATED: 'Created',
+    PENDING: 'Pending',
+    EXPIRED: 'Expired',
+    REJECTED: 'Rejected',
+    COMPLETED: 'Completed',
+  },
   TransactionError: {
     EMAIL_REQUIRED: 'EmailRequired',
     RECOMMENDATION_REQUIRED: 'RecommendationRequired',

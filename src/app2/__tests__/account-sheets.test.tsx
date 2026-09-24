@@ -8,6 +8,17 @@ const mockUpdateCurrency = jest.fn();
 const mockUpdateCallSettings = jest.fn();
 const mockUpdateLanguage = jest.fn();
 const mockCall = jest.fn();
+const mockGetRecommendations = () => mockCall({ url: 'recommendation', method: 'GET' });
+const mockCreateRecommendation = (data: Record<string, string>) =>
+  mockCall({ url: 'recommendation', method: 'POST', data });
+const mockConfirmRecommendation = (id: number) => mockCall({ url: `recommendation/${id}/confirm`, method: 'PUT' });
+const mockRejectRecommendation = (id: number) => mockCall({ url: `recommendation/${id}/reject`, method: 'PUT' });
+const mockRecommendationApi = {
+  getRecommendations: mockGetRecommendations,
+  createRecommendation: mockCreateRecommendation,
+  confirmRecommendation: mockConfirmRecommendation,
+  rejectRecommendation: mockRejectRecommendation,
+};
 const mockGenerateKeyCT = jest.fn();
 const mockDeleteKeyCT = jest.fn();
 const mockBank = {
@@ -39,6 +50,13 @@ jest.mock('@dfx.swiss/react', () => ({
     }
   },
   KycLevel: { Completed: 50, Sell: 30 },
+  RecommendationStatus: {
+    CREATED: 'Created',
+    PENDING: 'Pending',
+    EXPIRED: 'Expired',
+    REJECTED: 'Rejected',
+    COMPLETED: 'Completed',
+  },
   PhoneCallTime: {
     H_9_TO_10: 'H9To10',
     H_10_TO_11: 'H10To11',
@@ -69,6 +87,7 @@ jest.mock('@dfx.swiss/react', () => ({
     deleteKeyCT: mockDeleteKeyCT,
   }),
   useApi: () => ({ call: mockCall }),
+  useRecommendation: () => mockRecommendationApi,
   useLanguageContext: () => ({ languages: [{ symbol: 'EN', name: 'English' }] }),
 }));
 
@@ -937,8 +956,10 @@ describe('AccountSheets', () => {
 
     fireEvent.click(within(invite()).getByRole('button', { name: 'Confirm' }));
     await waitFor(() => expect(screen.getByText('Invitation confirmed')).toBeInTheDocument());
+    expect(mockCall).toHaveBeenCalledWith({ url: 'recommendation/8/confirm', method: 'PUT' });
     fireEvent.click(within(invite()).getByRole('button', { name: 'Reject' }));
     await waitFor(() => expect(screen.getByText('Invitation rejected')).toBeInTheDocument());
+    expect(mockCall).toHaveBeenCalledWith({ url: 'recommendation/8/reject', method: 'PUT' });
   });
 
   it('does not confirm a pending invite that is no longer in the loaded list', async () => {

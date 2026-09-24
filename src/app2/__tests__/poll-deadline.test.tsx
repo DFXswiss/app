@@ -6,6 +6,15 @@ const mockCall = jest.fn();
 const mockOpenConnect = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
+  useAuth: () => ({
+    confirmAccountMerge: (code: string, authenticated = true) =>
+      mockCall({
+        url: `auth/mail/confirm?code=${encodeURIComponent(code)}`,
+        method: 'GET',
+        ...(authenticated ? {} : { token: false }),
+      }),
+    getAnonymousJob: (uid: string) => mockCall({ url: `job/${encodeURIComponent(uid)}`, method: 'GET', token: false }),
+  }),
   ApiException: class ApiException extends Error {
     statusCode: number;
     constructor(httpStatus: number, errorMessage: string) {
@@ -32,7 +41,6 @@ jest.mock('@dfx.swiss/react', () => ({
     LIGHTNING: 'Lightning',
   },
   TransactionUrl: { single: 'transaction/single' },
-  useApi: () => ({ call: mockCall }),
   useTransaction: () => ({ getTransactionByCkoId: mockCall }),
   useApiSession: () => ({ updateSession: jest.fn() }),
   useKyc: () => ({ continueKyc: jest.fn() }),

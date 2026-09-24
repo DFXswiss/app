@@ -2,6 +2,12 @@ const mockCall = jest.fn();
 const mockReceiveForBuy = jest.fn();
 const mockReceiveForSell = jest.fn();
 const mockReceiveForSwap = jest.fn();
+const mockPublicBuyQuote = (info: unknown) =>
+  mockCall({ url: 'buy/quote', method: 'PUT', data: info, token: false });
+const mockPublicSellQuote = (info: unknown) =>
+  mockCall({ url: 'sell/quote', method: 'PUT', data: info, token: false });
+const mockPublicSwapQuote = (info: unknown) =>
+  mockCall({ url: 'swap/quote', method: 'PUT', data: info, token: false });
 const mockCreateAccount = jest.fn();
 const mockAssets: Array<Record<string, unknown>> = [];
 const mockCurrencies: Array<Record<string, unknown>> = [];
@@ -84,9 +90,9 @@ jest.mock('@dfx.swiss/react', () => ({
     }
   },
   useApi: () => ({ call: mockCall }),
-  useBuy: () => ({ receiveFor: mockReceiveForBuy }),
-  useSell: () => ({ receiveFor: mockReceiveForSell }),
-  useSwap: () => ({ receiveFor: mockReceiveForSwap }),
+  useBuy: () => ({ receiveFor: mockReceiveForBuy, quote: mockPublicBuyQuote }),
+  useSell: () => ({ receiveFor: mockReceiveForSell, quote: mockPublicSellQuote }),
+  useSwap: () => ({ receiveFor: mockReceiveForSwap, quote: mockPublicSwapQuote }),
   useAuth: () => ({ signInWithMail: jest.fn() }),
   useUser: () => ({ updateMail: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
@@ -219,13 +225,14 @@ describe('HomeScreen', () => {
     seedDefaultMarket();
     mockSession.activeWallet = { name: 'MetaMask', icon: 'icon.png' };
     renderHome();
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('');
+    expect(mockCall).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '€50' }));
     await settleQuote();
     await waitFor(() => expect(mockCall).toHaveBeenCalled());
     expect(screen.getByRole('button', { name: /buy|kaufen/i })).not.toBeDisabled();
     expect(screen.getByText(/refreshes|aktualisiert|aggiorna|rafraîch/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '€50' }));
-    await settleQuote();
     const amount = screen.getByRole('textbox', { name: /amount you pay/i });
     expect(amount).toHaveValue('50');
 
@@ -258,7 +265,7 @@ describe('HomeScreen', () => {
     expect(document.querySelector('.walletbar small')?.textContent).toMatch(/ethereum/i);
   });
 
-  it('opens fiat, asset and payment-method pickers and resets Instant when it is no longer valid', async () => {
+  it('does not offer Instant in the buy flow while product approval is pending', async () => {
     seedDefaultMarket();
     renderHome();
     await settleQuote();
@@ -277,15 +284,9 @@ describe('HomeScreen', () => {
     await settleQuote();
 
     const method = document.querySelector('.pmethod') as HTMLElement;
-    expect(method).toHaveAttribute('role', 'button');
-    fireEvent.click(method);
-    fireEvent.click(screen.getByText(/instant|sofort/i));
-    await settleQuote();
-
-    fireEvent.click(screen.getByRole('button', { name: /select pay currency/i }));
-    fireEvent.click(within(screen.getByRole('dialog')).getByText('CHF'));
-    await settleQuote();
-    expect(document.querySelector('.pmethod')?.getAttribute('role')).toBeNull();
+    expect(method).not.toHaveAttribute('role', 'button');
+    expect(within(method).getByText(/bank|überweisung/i)).toBeInTheDocument();
+    expect(within(method).queryByText(/instant|sofort/i)).not.toBeInTheDocument();
   });
 
   it('switches to sell and swap, seeds amounts and opens those asset pickers', async () => {
@@ -315,6 +316,7 @@ describe('HomeScreen', () => {
   it('opens the payment sheet after a buy CTA and closes it with Done', async () => {
     seedDefaultMarket();
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     await waitFor(() => expect(mockCall).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
@@ -329,10 +331,29 @@ describe('HomeScreen', () => {
     );
   });
 
+  it('pauses buy quote refresh while the sell tab is active', async () => {
+    seedDefaultMarket();
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await settleQuote();
+    expect(mockCall).toHaveBeenCalledWith(expect.objectContaining({ url: 'buy/quote' }));
+
+    fireEvent.click(screen.getByRole('tab', { name: /sell|verkaufen/i }));
+    await settleQuote();
+    mockCall.mockClear();
+
+    await act(async () => {
+      jest.advanceTimersByTime(31_000);
+    });
+
+    expect(mockCall.mock.calls.some(([request]) => request.url === 'buy/quote')).toBe(false);
+  });
+
   it('times out a stuck payment-details request', async () => {
     seedDefaultMarket();
     mockReceiveForBuy.mockImplementation(() => new Promise(() => undefined));
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     await act(async () => {
@@ -345,6 +366,7 @@ describe('HomeScreen', () => {
     seedDefaultMarket();
     mockReceiveForBuy.mockRejectedValueOnce(new Error('pay-down'));
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     await settleQuote();
@@ -409,6 +431,7 @@ describe('HomeScreen', () => {
     seedDefaultMarket();
     mockCall.mockRejectedValue(new Error('quote-down'));
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     expect(screen.getByText(/quote unavailable|kurs nicht|quotazione non|cotation indisponible/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
@@ -420,6 +443,7 @@ describe('HomeScreen', () => {
     seedDefaultMarket();
     mockCall.mockImplementation(() => new Promise(() => undefined));
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     expect(screen.getByRole('textbox', { name: /amount you receive/i })).toHaveValue('…');
   });
@@ -433,6 +457,7 @@ describe('HomeScreen', () => {
       estimatedAmount: 0.001,
     });
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     expect(screen.getByRole('button', { name: /buy|kaufen/i })).not.toBeDisabled();
 
@@ -446,6 +471,19 @@ describe('HomeScreen', () => {
     await settleQuote();
     expect(screen.getByRole('button', { name: /buy|kaufen/i })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
+  });
+
+  it('shows an invalid buy estimate without a validity message or refresh countdown', async () => {
+    seedDefaultMarket();
+    mockCall.mockResolvedValue({ ...validQuote, estimatedAmount: 2, isValid: false });
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await settleQuote();
+
+    expect(screen.getByRole('textbox', { name: /amount you receive/i })).toHaveValue('2');
+    expect(screen.queryByText(/refreshes in|aktualisiert in|aggiorna tra|actualisé dans/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /buy|kaufen/i })).toBeDisabled();
     expect(mockReceiveForBuy).not.toHaveBeenCalled();
   });
 
@@ -512,6 +550,7 @@ describe('HomeScreen', () => {
         }),
     );
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '120' } });
@@ -702,6 +741,7 @@ describe('HomeScreen', () => {
     mockSession.activeWallet = undefined;
     mockCall.mockResolvedValue({ estimatedAmount: 0, isValid: false });
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '2' } });
     await settleQuote();
     expect(screen.getByRole('textbox', { name: /amount you receive/i })).toHaveValue('—');
 

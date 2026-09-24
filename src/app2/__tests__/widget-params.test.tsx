@@ -1,6 +1,12 @@
 // Partner widget params: each test asserts the effect, not that the string appears.
 
 const mockCall = jest.fn();
+const mockPublicBuyQuote = (info: unknown) =>
+  mockCall({ url: 'buy/quote', method: 'PUT', data: info, token: false });
+const mockPublicSellQuote = (info: unknown) =>
+  mockCall({ url: 'sell/quote', method: 'PUT', data: info, token: false });
+const mockPublicSwapQuote = (info: unknown) =>
+  mockCall({ url: 'swap/quote', method: 'PUT', data: info, token: false });
 const mockReceiveForBuy = jest.fn();
 const mockReceiveForSell = jest.fn();
 const mockReceiveForSwap = jest.fn();
@@ -49,9 +55,9 @@ jest.mock('@dfx.swiss/react', () => ({
   SellUrl: { quote: 'sell/quote' },
   SwapUrl: { quote: 'swap/quote' },
   useApi: () => ({ call: mockCall }),
-  useBuy: () => ({ receiveFor: mockReceiveForBuy }),
-  useSell: () => ({ receiveFor: mockReceiveForSell }),
-  useSwap: () => ({ receiveFor: mockReceiveForSwap }),
+  useBuy: () => ({ receiveFor: mockReceiveForBuy, quote: mockPublicBuyQuote }),
+  useSell: () => ({ receiveFor: mockReceiveForSell, quote: mockPublicSellQuote }),
+  useSwap: () => ({ receiveFor: mockReceiveForSwap, quote: mockPublicSwapQuote }),
   useUser: () => ({ updateMail: jest.fn() }),
   useUserContext: () => ({ user: undefined }),
   useAssetContext: () => ({ getAssets: () => mockAssets }),
@@ -337,6 +343,7 @@ describe('Home partner widget params', () => {
   it('lets a named private buy complete when flags includes private', async () => {
     setParams('?asset-out=DEPS&flags=private');
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('DEPS');
     expect(screen.queryByText(/does not offer to buy or sell|bietet kauf und verkauf|non offre l'acquisto|n'offre pas l'achat/i)).not.toBeInTheDocument();
@@ -349,6 +356,7 @@ describe('Home partner widget params', () => {
   it('blocks a named private buy when flags is absent', async () => {
     setParams('?asset-out=DEPS');
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     expect(screen.getByRole('button', { name: /select receive asset/i })).toHaveTextContent('DEPS');
     expect(screen.getByText(/does not offer to buy or sell|bietet kauf und verkauf|non offre l'acquisto|n'offre pas l'achat/i)).toBeInTheDocument();
@@ -362,6 +370,7 @@ describe('Home partner widget params', () => {
   it('ignores an unknown flags value and still blocks a private buy', async () => {
     setParams('?asset-out=DEPS&flags=foo');
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     const cta = screen.getByTestId('trade-cta');
     expect(cta).not.toBeDisabled();
@@ -399,18 +408,18 @@ describe('Home partner widget params', () => {
     fireEvent.click(screen.getByText('USDT'));
     await settleQuote();
     expect(screen.getByRole('textbox', { name: /amount you receive/i })).toHaveValue('');
-    await waitFor(() => expect(mockCall).toHaveBeenCalled());
-    expect(mockCall).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ amount: 100 }) }),
-    );
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('');
+    expect(mockCall).not.toHaveBeenCalled();
   });
 
-  it('quotes a source amount when amount-out is absent', async () => {
+  it('quotes an explicitly entered source amount when amount-out is absent', async () => {
     renderHome();
+    expect(mockCall).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '75' } });
     await settleQuote();
     await waitFor(() => expect(mockCall).toHaveBeenCalled());
     expect(mockCall).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ amount: 100 }) }),
+      expect.objectContaining({ data: expect.objectContaining({ amount: 75 }) }),
     );
     expect(
       mockCall.mock.calls.some((call) => Object.prototype.hasOwnProperty.call(call[0].data, 'targetAmount')),
@@ -454,21 +463,28 @@ describe('Home partner widget params', () => {
     expect(receive).not.toHaveValue('0.01');
   });
 
-  it('quotes a default source amount when amount-in is absent', async () => {
+  it('does not synthesize a source amount when amount-in is absent', async () => {
     renderHome();
-    await settleQuote();
-    await waitFor(() => expect(mockCall).toHaveBeenCalled());
-    expect(mockCall).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ amount: 100 }) }),
-    );
-    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('100');
+    await act(async () => {
+      jest.advanceTimersByTime(31_000);
+    });
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('');
+    expect(mockCall).not.toHaveBeenCalled();
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
   });
 
-  it('prefers Instant when payment-method asks for it, and stays on Bank when it is absent or unknown', async () => {
+  it('falls back to Bank when URL requests Instant and keeps Bank for absent or unknown methods', async () => {
     setParams('?asset-out=USDT&payment-method=instant');
     const instant = renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
-    expect(document.querySelector('.pmethod b')?.textContent).toMatch(/instant|sofort/i);
+    const method = document.querySelector('.pmethod') as HTMLElement;
+    expect(within(method).getByText(/bank|sepa/i)).toBeInTheDocument();
+    expect(method).not.toHaveAttribute('role', 'button');
+    fireEvent.click(method);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+    expect(mockCall.mock.calls.every((call) => call[0].data.paymentMethod === 'Bank')).toBe(true);
     instant.unmount();
 
     setParams('?asset-out=USDT&payment-method=paypal');
@@ -483,12 +499,12 @@ describe('Home partner widget params', () => {
     expect(document.querySelector('.pmethod b')?.textContent).toMatch(/bank|sepa/i);
   });
 
-  it('keeps Bank when payment-method is in the enum but not offered for the pair', async () => {
-    // Card is a real FiatPaymentMethod; paymentMethodsFor never returns it (API rejects CARD).
-    // Default BTC is not instantBuyable, so the pair offers Bank only — unlike `paypal`, which
-    // parseEnumValue already drops.
+  it('keeps Bank when payment-method is in the enum but disabled in App2', async () => {
+    // Card is a real enum value, but App2 currently offers Bank only; `paypal` is unknown and
+    // dropped by parseEnumValue before the same Bank fallback.
     setParams('?payment-method=card');
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     await waitFor(() => expect(mockCall).toHaveBeenCalled());
     expect(mockCall.mock.calls.every((call) => call[0].data.paymentMethod === 'Bank')).toBe(true);
@@ -790,6 +806,7 @@ describe('Home partner widget params', () => {
     });
     setParams('?personal-iban=frick');
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     await settleQuote();
@@ -813,6 +830,7 @@ describe('Home partner widget params', () => {
   it('sends personalIbanProvider on paymentInfos when personal-iban=frick, and omits it when absent', async () => {
     setParams('?personal-iban=frick');
     const withFrick = renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     await settleQuote();
@@ -823,6 +841,7 @@ describe('Home partner widget params', () => {
 
     setParams('');
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     await settleQuote();
@@ -833,6 +852,7 @@ describe('Home partner widget params', () => {
   it('blocks an empty personal-iban instead of quoting as ordinary bank', async () => {
     setParams('?personal-iban=');
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     expect(screen.getByText(/not recognized|nicht erkannt|non è riconosciuto|n'est pas reconnu/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
@@ -843,6 +863,7 @@ describe('Home partner widget params', () => {
   it('blocks an unrecognized personal-iban instead of quoting as ordinary bank', async () => {
     setParams('?personal-iban=nope');
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     expect(screen.getByText(/not recognized|nicht erkannt|non è riconosciuto|n'est pas reconnu/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
@@ -850,14 +871,24 @@ describe('Home partner widget params', () => {
     expect(mockReceiveForBuy).not.toHaveBeenCalled();
   });
 
-  it('blocks personal-iban when the offer is not EUR/CHF bank transfer', async () => {
+  it('allows personal-iban after Instant URL input falls back to Bank, but blocks non-EUR/CHF', async () => {
     setParams('?asset-out=USDT&payment-method=instant&personal-iban=frick');
-    const instant = renderHome();
+    const fallback = renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
-    const methodNote = document.querySelector('.paybox-note.warn');
-    expect(methodNote).toBeTruthy();
-    expect(methodNote).toHaveTextContent(/personal ibans require the bank transfer payment method/i);
-    instant.unmount();
+    expect(document.querySelector('.pmethod b')?.textContent).toMatch(/bank|sepa/i);
+    expect(document.querySelector('.paybox-note.warn')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
+    await settleQuote();
+    await waitFor(() =>
+      expect(mockReceiveForBuy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          paymentMethod: 'Bank',
+          personalIbanProvider: 'Frick',
+        }),
+      ),
+    );
+    fallback.unmount();
 
     setParams('?asset-in=USD&personal-iban=frick');
     renderHome();
@@ -899,6 +930,7 @@ describe('Home partner widget params', () => {
 
     setParams('?redirect-uri=https://partner.example/done');
     const withUri = renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     await settleQuote();
@@ -933,6 +965,7 @@ describe('Home partner widget params', () => {
 
     setParams('?redirect-uri=https://partner.example/done');
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     await settleQuote();
@@ -961,6 +994,7 @@ describe('Home partner widget params', () => {
 
     setParams('?redirect-uri=javascript:alert(1)');
     const unsafe = renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     await settleQuote();
@@ -970,6 +1004,7 @@ describe('Home partner widget params', () => {
 
     setParams('');
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     await settleQuote();
@@ -990,6 +1025,7 @@ describe('Home partner widget params', () => {
 
     setParams(`?redirect-uri=${encodeURIComponent(`${runtimeOrigin}/done`)}`);
     renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
     await settleQuote();
     fireEvent.click(screen.getByRole('button', { name: /buy|kaufen/i }));
     await settleQuote();

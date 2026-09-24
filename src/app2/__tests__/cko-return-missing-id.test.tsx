@@ -2,9 +2,19 @@
 // confirmed. A whitespace-only id is the same as a missing one.
 
 const mockGetTransactionByCkoId = jest.fn();
+const mockCall = jest.fn();
 const mockOpenConnect = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
+  useAuth: () => ({
+    confirmAccountMerge: (code: string, authenticated = true) =>
+      mockCall({
+        url: `auth/mail/confirm?code=${encodeURIComponent(code)}`,
+        method: 'GET',
+        ...(authenticated ? {} : { token: false }),
+      }),
+    getAnonymousJob: (uid: string) => mockCall({ url: `job/${encodeURIComponent(uid)}`, method: 'GET', token: false }),
+  }),
   ApiException: class ApiException extends Error {
     statusCode: number;
     constructor(httpStatus: number, errorMessage: string) {
@@ -12,7 +22,6 @@ jest.mock('@dfx.swiss/react', () => ({
       this.statusCode = httpStatus;
     }
   },
-  useApi: () => ({ call: jest.fn() }),
   useTransaction: () => ({ getTransactionByCkoId: mockGetTransactionByCkoId }),
   useApiSession: () => ({ updateSession: jest.fn() }),
 }));

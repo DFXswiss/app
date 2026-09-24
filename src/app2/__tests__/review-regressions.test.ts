@@ -122,33 +122,20 @@ describe('App2 review regressions', () => {
     expect(currenciesForSell(undefined)).toEqual([]);
   });
 
-  it('offers Instant only when both the currency and the selected asset allow it (never Card)', () => {
+  it('keeps buy methods bank-only even when fiat and asset advertise Instant', () => {
     const instantBuyableOnly: Fiat = { ...chf, instantBuyable: true, instantSellable: false };
     const instantSellableCurrency: Fiat = { ...chf, instantSellable: true };
     const instantAsset = asset(10, Blockchain.ETHEREUM, { buyable: true, sellable: true, instantBuyable: true });
     const nonInstantAsset = asset(11, Blockchain.ETHEREUM, { buyable: true, sellable: true, instantBuyable: false });
 
-    // The API checks currency.instantSellable, not currency.instantBuyable
-    // (payment-info.service.ts buyCheck) — a fiat with only the *wrong* flag set must never
-    // offer Instant, no matter what the asset allows.
     expect(paymentMethodsFor(instantBuyableOnly, instantAsset).map(({ id }) => id)).toEqual([FiatPaymentMethod.BANK]);
-
-    // Both the currency and the chosen asset allow it → Instant is offered.
-    expect(paymentMethodsFor(instantSellableCurrency, instantAsset).map(({ id }) => id)).toEqual([
-      FiatPaymentMethod.BANK,
-      FiatPaymentMethod.INSTANT,
-    ]);
-
-    // Currency allows it, but the chosen asset doesn't — still excluded (the API also checks
-    // asset.instantBuyable, which the ported picker ignored entirely).
+    // Product approval is still pending, so capability flags do not expose Instant.
+    // This is the counterexample to the old flag-gated variant: both flags are true.
+    expect(paymentMethodsFor(instantSellableCurrency, instantAsset).map(({ id }) => id)).toEqual([FiatPaymentMethod.BANK]);
     expect(paymentMethodsFor(instantSellableCurrency, nonInstantAsset).map(({ id }) => id)).toEqual([
       FiatPaymentMethod.BANK,
     ]);
-
-    // Card is never offered — the API hard-disables it (fiat-dto.mapper.ts) regardless of any flag.
-    expect(paymentMethodsFor(instantSellableCurrency, instantAsset).map(({ id }) => id)).not.toContain(
-      FiatPaymentMethod.CARD,
-    );
+    expect(paymentMethodsFor(undefined, undefined).map(({ id }) => id)).toEqual([FiatPaymentMethod.BANK]);
   });
 
   it('passes a canonical invite code to both login paths', () => {

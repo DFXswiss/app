@@ -15,7 +15,15 @@ jest.mock('@dfx.swiss/react', () => ({
       this.statusCode = httpStatus;
     }
   },
-  useApi: () => ({ call: mockCall }),
+  useAuth: () => ({
+    confirmAccountMerge: (code: string, authenticated = true) =>
+      mockCall({
+        url: `auth/mail/confirm?code=${encodeURIComponent(code)}`,
+        method: 'GET',
+        ...(authenticated ? {} : { token: false }),
+      }),
+    getAnonymousJob: (uid: string) => mockCall({ url: `job/${encodeURIComponent(uid)}`, method: 'GET', token: false }),
+  }),
   useTransaction: () => ({ getTransactionByCkoId: mockGetCko }),
   useApiSession: () => ({ updateSession: mockUpdateSession }),
 }));
@@ -81,6 +89,11 @@ describe('ReturnRouteScreen extra paths', () => {
     renderRoute();
     await waitFor(() => expect(mockUpdateSession).toHaveBeenCalled());
     expect(mockNavigate).toHaveBeenCalledWith('/account');
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'auth/mail/confirm?code=abc123',
+      method: 'GET',
+      token: false,
+    });
   });
 
   it('sends a Bearer merge confirm when already logged in and maps a non-API CKO error', async () => {
@@ -89,6 +102,7 @@ describe('ReturnRouteScreen extra paths', () => {
     mockCall.mockResolvedValue({ accessToken: jwt() });
     renderRoute();
     await waitFor(() => expect(mockUpdateSession).toHaveBeenCalled());
+    expect(mockCall).toHaveBeenCalledWith({ url: 'auth/mail/confirm?code=abc123', method: 'GET' });
 
     mockPath.value = '/buy/success';
     mockSearch.value = 'cko-payment-id=cko_plain';

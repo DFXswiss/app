@@ -1,6 +1,7 @@
 import { DfxContextProvider } from '@dfx.swiss/react';
 import App2 from './app2/App';
-import './app2/styles.module.css';
+// Keep App 2.0 styles in the entry's side-effect graph even when cx() calls are removed.
+import './app2/css';
 
 function MainApp2() {
   return (

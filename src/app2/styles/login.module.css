@@ -1,0 +1,254 @@
+/* ============ LOGIN ============ */
+.login {
+  padding: 6px 24px 26px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.login .hero {
+  margin-top: auto;
+  margin-bottom: auto;
+  padding-bottom: 8px;
+}
+.login h1 {
+  font-size: 33px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: #fff;
+  text-shadow: 0 2px 20px rgba(4, 16, 32, 0.55);
+}
+.login h1 em {
+  font-style: normal;
+  color: var(--primary);
+}
+.login .lead {
+  color: var(--t-muted);
+  font-size: 15px;
+  line-height: 1.55;
+  margin-top: 13px;
+  max-width: 32ch;
+  text-shadow: 0 1px 12px rgba(4, 16, 32, 0.5);
+}
+.login .auth {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.btn-glass .ic {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: var(--primary-soft);
+}
+.btn-glass .ic svg {
+  width: 22px;
+  height: 22px;
+}
+.btn-glass.cta-wallet {
+  background: linear-gradient(180deg, #5fa8ff, #3b82f6);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 12px 26px -10px rgba(59, 130, 246, 0.5);
+}
+.btn-glass.cta-wallet .ic {
+  background: rgba(255, 255, 255, 0.16);
+}
+.btn-glass.cta-wallet .tx .sub {
+  color: rgba(255, 255, 255, 0.82);
+}
+.btn-glass .tx {
+  flex: 1;
+  text-align: left;
+  min-width: 0;
+}
+.btn-glass .tx b {
+  display: block;
+  font-weight: 700;
+  font-size: 15.5px;
+  letter-spacing: -0.01em;
+}
+.btn-glass .tx .sub {
+  display: block;
+  font-size: 12.5px;
+  color: var(--t-dim);
+  font-weight: 500;
+  margin-top: 1px;
+}
+.btn-glass .arr {
+  color: var(--t-dim);
+  flex: 0 0 auto;
+  transition: transform 0.2s var(--ease);
+}
+.btn-glass:hover .arr {
+  transform: translateX(3px);
+}
+.emailwrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.42s var(--ease);
+}
+.emailwrap.open {
+  grid-template-rows: 1fr;
+}
+.emailwrap > div {
+  overflow: hidden;
+}
+.efield {
+  display: flex;
+  gap: 8px;
+  padding-top: 11px;
+}
+.efield input {
+  flex: 1;
+  height: 54px;
+  border: 1px solid var(--hair);
+  border-radius: 15px;
+  padding: 0 16px;
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  color: #fff;
+  background: rgba(8, 30, 58, 0.55);
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s;
+}
+.efield input::placeholder {
+  color: var(--placeholder);
+}
+.efield input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-soft);
+}
+.efield button {
+  width: 54px;
+  height: 54px;
+  border-radius: 15px;
+  border: none;
+  background: var(--primary);
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition:
+    filter 0.2s,
+    transform 0.15s;
+}
+.efield button:active {
+  transform: scale(0.95);
+}
+/* app2 addition: the static app has no inline form-error pattern to port — this
+   gives the email field a visible invalid state to pair with aria-invalid instead of relying on
+   the native browser tooltip alone. */
+.efield.invalid input {
+  border-color: var(--error);
+}
+.ferr {
+  color: var(--error);
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 7px;
+  padding: 0 2px;
+}
+.login .supported {
+  margin-top: 22px;
+}
+.login .cap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--t-dim);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.login .cap::before,
+.login .cap::after {
+  content: '';
+  height: 1px;
+  background: var(--hair);
+  flex: 1;
+}
+.wstrip {
+  display: flex;
+  gap: 9px;
+  margin-top: 13px;
+}
+.wchip {
+  flex: 1;
+  height: 46px;
+  padding: 0;
+  border-radius: 13px;
+  border: 1px solid var(--hair-soft);
+  background: rgba(255, 255, 255, 0.95);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    transform 0.16s var(--ease),
+    box-shadow 0.2s var(--ease);
+}
+.wchip:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.5);
+}
+.wchip:active {
+  transform: translateY(0);
+}
+.wchip img {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+}
+.trust {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 20px;
+}
+.trust .t {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--t-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.trust .t svg {
+  width: 15px;
+  height: 15px;
+  color: var(--success);
+  flex: 0 0 auto;
+}
+.invite-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 14px auto 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--t-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: color 0.18s;
+}
+.invite-toggle:hover {
+  color: var(--primary);
+}
+.invite-toggle svg {
+  width: 15px;
+  height: 15px;
+}
+.invite-toggle.applied {
+  color: var(--success);
+}

@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
+import { createCx, mergeStyleModules } from '../css-classes';
 
 const APP2_ROOT = join(__dirname, '..');
 
@@ -24,6 +25,25 @@ function cssModuleLocals(css: string): Set<string> {
     }
   }
   return locals;
+}
+
+function moduleLocals(): Set<string> {
+  const locals = new Set<string>();
+  for (const file of walkCssModules(APP2_ROOT)) {
+    for (const name of cssModuleLocals(readFileSync(file, 'utf8'))) locals.add(name);
+  }
+  return locals;
+}
+
+function walkCssModules(dir: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    if (name === '__tests__' || name === 'node_modules') continue;
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) out.push(...walkCssModules(full));
+    else if (name.endsWith('.module.css')) out.push(full);
+  }
+  return out;
 }
 
 function cxClassNames(source: string): string[] {
@@ -66,8 +86,7 @@ function cxClassNames(source: string): string[] {
 }
 
 describe('App 2.0 CSS module class names', () => {
-  const css = readFileSync(join(APP2_ROOT, 'styles.module.css'), 'utf8');
-  const locals = cssModuleLocals(css);
+  const locals = moduleLocals();
 
   it('exports every class name passed to cx()', () => {
     const missing: string[] = [];
@@ -85,14 +104,41 @@ describe('App 2.0 CSS module class names', () => {
     expect(locals.has('crow')).toBe(true);
   });
 
-  it('throws when cx() is given a class the module does not export', () => {
+  it('defines rise keyframes in each CSS module that uses them', () => {
+    for (const name of ['base.module.css', 'buy.module.css', 'support.module.css']) {
+      const file = join(APP2_ROOT, 'styles', name);
+      const css = readFileSync(file, 'utf8');
+      expect(css).toMatch(/@keyframes\s+rise\b/);
+      expect(css).toMatch(/animation(?:-name)?\s*:[^;]*\brise\b/);
+    }
+  });
+
+  it('uses the CSS-module identity proxy when imports have no enumerable keys', () => {
     jest.isolateModules(() => {
-      jest.doMock('../styles.module.css', () => ({ app: 'app_hash' }));
-      // isolateModules needs a runtime load after doMock; CRA has no import() hook here.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { cx } = require('../css') as { cx: (...parts: Array<string | false | 0 | null | undefined>) => string };
-      expect(() => cx('nope')).toThrow(/unknown class "nope"/);
-      expect(cx(false, undefined, 0, '', 'app')).toBe('app_hash');
+      try {
+        const identityProxy = new Proxy<Record<string, string>>(
+          {},
+          {
+            get: (_target, property) => (typeof property === 'string' ? property : undefined),
+          },
+        );
+        jest.doMock('../styles/base.module.css', () => ({ __esModule: true, default: identityProxy }));
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { cx } = require('../css') as { cx: (...parts: Array<string | false | 0 | null | undefined>) => string };
+        expect(cx('ck toast')).toBe('ck toast');
+      } finally {
+        jest.dontMock('../styles/base.module.css');
+      }
     });
+  });
+
+  it('merges duplicate local classes and rejects unknown names', () => {
+    const styles = mergeStyleModules([{ app: 'app_hash', faq: 'support_faq' }, { faq: 'controls_faq' }]);
+    const cx = createCx(styles);
+
+    expect(cx(false, undefined, 0, '', 'app')).toBe('app_hash');
+    expect(cx('faq')).toBe('support_faq controls_faq');
+    expect(cx('faq  app')).toBe('support_faq controls_faq app_hash');
+    expect(() => cx('nope')).toThrow(/unknown class "nope"/);
   });
 });

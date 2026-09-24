@@ -54,7 +54,7 @@ function buildOcp(overrides: Partial<OcpApi> = {}): OcpApi {
     toggleLink: jest.fn(),
     createPosLink: jest.fn(),
     createInvoice: jest.fn(),
-    charge: jest.fn().mockResolvedValue({ lnurl: 'LNURL1TESTCHARGE' }),
+    charge: jest.fn().mockResolvedValue({ lnurl: 'LNURL1TESTCHARGE', externalId: 'charge-1' }),
     pollPayment: jest.fn().mockResolvedValue('Pending'),
     saveConfig: jest.fn(),
     copy: jest.fn(),
@@ -72,13 +72,13 @@ function amountField() {
 }
 
 function chargeButton() {
-  return screen.getByRole('button', { name: /charge|kassieren/i });
+  return screen.getByRole('button', { name: /^(charge|kassieren)$/i });
 }
 
 describe('POS charges exactly once until the payment is terminal', () => {
   it('ignores double Enter and click while the charge request is in flight', async () => {
-    let resolveCharge!: (v: { lnurl: string }) => void;
-    const chargePromise = new Promise<{ lnurl: string }>((resolve) => {
+    let resolveCharge!: (v: { lnurl: string; externalId: string }) => void;
+    const chargePromise = new Promise<{ lnurl: string; externalId: string }>((resolve) => {
       resolveCharge = resolve;
     });
     const ocp = buildOcp({ charge: jest.fn(() => chargePromise) });
@@ -94,7 +94,7 @@ describe('POS charges exactly once until the payment is terminal', () => {
     expect(ocp.charge).toHaveBeenCalledWith('1', 12);
 
     await act(async () => {
-      resolveCharge({ lnurl: 'LNURL1ONCE' });
+      resolveCharge({ lnurl: 'LNURL1ONCE', externalId: 'charge-once' });
     });
     await waitFor(() => {
       expect(document.querySelector('.qcap')?.textContent?.trim()).toBe('EUR 12');
@@ -126,7 +126,7 @@ describe('POS charges exactly once until the payment is terminal', () => {
       charge: jest
         .fn()
         .mockRejectedValueOnce(new ApiException(500, 'busy'))
-        .mockResolvedValueOnce({ lnurl: 'LNURL1RETRY' }),
+        .mockResolvedValueOnce({ lnurl: 'LNURL1RETRY', externalId: 'charge-retry' }),
     });
     const view = renderPos(ocp);
 
@@ -156,6 +156,7 @@ describe('POS charges exactly once until the payment is terminal', () => {
     fireEvent.click(chargeButton());
     await waitFor(() => expect(ocp.charge).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByText(/paid|bezahlt/i)).toBeTruthy());
+    expect(ocp.pollPayment).toHaveBeenCalledWith('1', 'charge-1');
     expect(chargeButton()).not.toBeDisabled();
 
     fireEvent.change(amountField(), { target: { value: '7' } });
@@ -294,28 +295,30 @@ describe('POS extra paths', () => {
 
   it('keeps the till locked when the local deadline elapses without a server status', async () => {
     jest.useFakeTimers();
-    let now = 1_000_000;
-    jest.spyOn(Date, 'now').mockImplementation(() => now);
     const pollPayment = jest.fn().mockResolvedValue('Pending');
-    renderPos(buildOcp({ pollPayment }));
+    const ocp = buildOcp({ pollPayment });
+    renderPos(ocp);
     fireEvent.change(amountField(), { target: { value: '6' } });
     fireEvent.click(chargeButton());
     await act(async () => {
       jest.advanceTimersByTime(2000);
       await Promise.resolve();
     });
-    now = 1_000_000 + 300_000 + 1;
     await act(async () => {
-      jest.advanceTimersByTime(2700);
+      jest.advanceTimersByTime(300_000);
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByText(/no confirmation|keine rückmeldung|nessuna conferma|pas encore de confirmation/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/no confirmation|keine rückmeldung|nessuna conferma|pas encore de confirmation/i),
+    ).toBeInTheDocument();
     expect(chargeButton()).toBeDisabled();
     expect(document.querySelector('.qcap')).toBeTruthy();
 
     const pollsBeforeWait = pollPayment.mock.calls.length;
-    fireEvent.click(screen.getByRole('button', { name: /keep waiting|weiter warten|continua ad aspettare|continuer d'attendre/i }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /keep waiting|weiter warten|continua ad aspettare|continuer d'attendre/i }),
+    );
     await act(async () => {
       jest.advanceTimersByTime(2000);
       await Promise.resolve();
@@ -324,17 +327,58 @@ describe('POS extra paths', () => {
     expect(pollPayment.mock.calls.length).toBeGreaterThan(pollsBeforeWait);
     expect(chargeButton()).toBeDisabled();
 
-    now = now + 300_000 + 1;
     await act(async () => {
-      jest.advanceTimersByTime(2700);
+      jest.advanceTimersByTime(300_000);
       await Promise.resolve();
       await Promise.resolve();
     });
-    fireEvent.click(screen.getByRole('button', { name: /end this payment|vorgang beenden|termina questo|terminer ce paiement/i }));
-    expect(chargeButton()).not.toBeDisabled();
-    expect(document.querySelector('.qcap')).toBeNull();
+    expect(chargeButton()).toBeDisabled();
+    expect(document.querySelector('.qcap')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', {
+        name: /end this payment|vorgang beenden|termina questo|terminer ce paiement|posEndCharge/i,
+      }),
+    ).not.toBeInTheDocument();
+    expect(ocp.charge).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
 
-    jest.spyOn(Date, 'now').mockRestore();
+  it('shows the local deadline while a poll never settles and keeps the charge locked', async () => {
+    jest.useFakeTimers();
+    const pollPayment = jest.fn(() => new Promise<string>(() => undefined));
+    const ocp = buildOcp({ pollPayment });
+    const view = renderPos(ocp);
+
+    fireEvent.change(amountField(), { target: { value: '9' } });
+    await act(async () => {
+      fireEvent.click(chargeButton());
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(document.querySelector('.qrcard')).toBeTruthy();
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+    });
+    expect(pollPayment).toHaveBeenCalledWith('1', 'charge-1');
+
+    await act(async () => {
+      jest.advanceTimersByTime(300_000);
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getByText(/no confirmation|keine rückmeldung|nessuna conferma|pas encore de confirmation/i),
+    ).toBeInTheDocument();
+    expect(chargeButton()).toBeDisabled();
+    expect(document.querySelector('.qrcard')).toBeTruthy();
+    expect(ocp.charge).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole('button', { name: /keep waiting|weiter warten|continua ad aspettare|continuer d'attendre/i }),
+    ).toBeInTheDocument();
+
+    view.unmount();
     jest.useRealTimers();
   });
 

@@ -271,7 +271,8 @@ describe('AccountScreen', () => {
     mockLogout.mockReturnValue(new Promise<void>((resolve) => { finishLogout = resolve; }));
     renderAccount();
     await screen.findByText('ada@example.com');
-    expect(screen.getByText(/SEPA Instant/)).toBeInTheDocument();
+    expect(screen.getByText(/SEPA bank transfer|SEPA-Banküberweisung|Bonifico SEPA|virement SEPA/i)).toBeInTheDocument();
+    expect(screen.queryByText(/SEPA Instant/i)).not.toBeInTheDocument();
 
     const logout = screen.getByRole('button', { name: 'Sign out' });
     fireEvent.click(logout);

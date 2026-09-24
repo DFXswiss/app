@@ -48,12 +48,8 @@
 
 import {
   ApiException,
-  BuyUrl,
   FiatPaymentMethod,
   PersonalIbanProvider,
-  SellUrl,
-  SwapUrl,
-  useApi,
   useBuy,
   useSell,
   useSwap,
@@ -92,8 +88,7 @@ export interface BuyQuoteParams {
 }
 
 export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
-  const { receiveFor } = useBuy();
-  const { call } = useApi();
+  const { quote, receiveFor } = useBuy();
   const { address: sessionAddress } = useWalletSession();
   const { asset, currency, amount, targetAmount, paymentMethod, externalTransactionId, withPaymentInfo, personalIbanProvider } =
     params;
@@ -113,12 +108,13 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
       : '';
 
   const fetcher = useCallback((): Promise<Buy> => {
-    if (!asset || !currency || (!hasTarget && !hasSource)) {
+    if (!asset || !currency) {
       return Promise.reject(new Error('buy quote: missing input'));
     }
     const info: BuyPaymentInfo = { currency, asset, paymentMethod };
-    if (hasTarget && targetAmount != null) info.targetAmount = targetAmount;
-    else if (amount != null) info.amount = amount;
+    if (targetAmount != null && targetAmount > 0) info.targetAmount = targetAmount;
+    else if (amount != null && amount > 0) info.amount = amount;
+    else return Promise.reject(new Error('buy quote: missing input'));
     if (withPaymentInfo) {
       // The external transaction id identifies the payment being created — it belongs to the
       // paymentInfos call only, not to a display quote.
@@ -128,16 +124,14 @@ export function useBuyQuote(params: BuyQuoteParams): QuoteEngineState<Buy> {
     }
     // Public quote: same `Buy` shape (rate/estimatedAmount/fees/feesTarget/priceSteps/isValid)
     // minus the payment details, and independent of the account's own state.
-    return call<Buy>({ url: BuyUrl.quote, method: 'PUT', data: info, token: false });
+    return quote(info);
   }, [
     receiveFor,
-    call,
+    quote,
     asset,
     currency,
     amount,
     targetAmount,
-    hasTarget,
-    hasSource,
     paymentMethod,
     externalTransactionId,
     withPaymentInfo,
@@ -161,8 +155,7 @@ export interface SellQuoteParams {
 }
 
 export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
-  const { receiveFor } = useSell();
-  const { call } = useApi();
+  const { quote, receiveFor } = useSell();
   const { address: sessionAddress } = useWalletSession();
   const { asset, currency, amount, iban, externalTransactionId } = params;
   // Match the static app (`updateQuote()` → token-less `PUT /sell/quote {asset,currency,amount}`):
@@ -190,8 +183,8 @@ export function useSellQuote(params: SellQuoteParams): QuoteEngineState<Sell> {
     // No payout account yet: the public quote endpoint returns the same `Sell` shape
     // (estimatedAmount/fees/feesTarget/isValid/minVolume) minus the deposit details.
     const info: SellPaymentInfo = { asset, currency, amount };
-    return call<Sell>({ url: SellUrl.quote, method: 'PUT', data: info, token: false });
-  }, [receiveFor, call, asset, currency, amount, iban, externalTransactionId]);
+    return quote(info);
+  }, [receiveFor, quote, asset, currency, amount, iban, externalTransactionId]);
 
   return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError, {
     retryWouldDuplicateServerWork: Boolean(iban),
@@ -212,8 +205,7 @@ export interface SwapQuoteParams {
 }
 
 export function useSwapQuote(params: SwapQuoteParams): QuoteEngineState<Swap> {
-  const { receiveFor } = useSwap();
-  const { call } = useApi();
+  const { quote, receiveFor } = useSwap();
   const { address: sessionAddress } = useWalletSession();
   const { sourceAsset, targetAsset, amount, externalTransactionId, withPaymentInfo } = params;
   const ready = !!sourceAsset && !!targetAsset && !!amount && sourceAsset.id !== targetAsset.id;
@@ -231,8 +223,8 @@ export function useSwapQuote(params: SwapQuoteParams): QuoteEngineState<Swap> {
       if (externalTransactionId) info.externalTransactionId = externalTransactionId;
       return receiveFor(info);
     }
-    return call<Swap>({ url: SwapUrl.quote, method: 'PUT', data: info, token: false });
-  }, [receiveFor, call, sourceAsset, targetAsset, amount, externalTransactionId, withPaymentInfo]);
+    return quote(info);
+  }, [receiveFor, quote, sourceAsset, targetAsset, amount, externalTransactionId, withPaymentInfo]);
 
   return useQuoteEngine(params.enabled && ready, key, fetcher, params.paused, isTransientQuoteError, {
     retryWouldDuplicateServerWork: Boolean(withPaymentInfo),
