@@ -1,3 +1,15 @@
+const mockAuth = { role: 'Admin' };
+
+jest.mock('@dfx.swiss/react', () => ({
+  useAuthContext: () => ({ session: { role: mockAuth.role } }),
+  UserRole: {
+    ADMIN: 'Admin',
+    REALUNIT: 'RealUnit',
+    COMPLIANCE: 'Compliance',
+    SUPPORT: 'Support',
+  },
+}));
+
 jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_ns: string, key: string) => key }),
 }));
@@ -20,6 +32,10 @@ function renderAt(path: string) {
 }
 
 describe('RealunitSectionNav', () => {
+  beforeEach(() => {
+    mockAuth.role = 'Admin';
+  });
+
   it('renders nine section links and marks Overview current on /realunit', () => {
     renderAt('/realunit');
     expect(screen.getByRole('link', { name: 'Overview' })).toBeInTheDocument();
@@ -33,6 +49,16 @@ describe('RealunitSectionNav', () => {
     expect(screen.getByRole('link', { name: 'RealUnit Referral' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Treasury' })).toHaveAttribute('href', '/realunit/treasury');
+  });
+
+  it('shows a support user only the quotes link', () => {
+    mockAuth.role = 'Support';
+    renderAt('/realunit/quotes/42');
+    expect(screen.getByRole('link', { name: 'Pending Transactions' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('link', { name: 'Overview' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Treasury' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'RealUnit Support' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'RealUnit Referral' })).not.toBeInTheDocument();
   });
 
   it('marks Pending Transactions current on a nested quotes route', () => {
