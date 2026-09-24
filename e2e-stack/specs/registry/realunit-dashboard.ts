@@ -2,6 +2,8 @@ import type { RouteClaim } from './types';
 
 const claims: RouteClaim[] = [
   { path: '/realunit', spec: 'realunit.spec.ts' },
+  { path: '/realunit/treasury', spec: 'realunit.spec.ts' },
+  { path: '/realunit/insights', spec: 'realunit.spec.ts' },
   { path: '/realunit/holders', spec: 'realunit.spec.ts' },
   { path: '/realunit/quotes', spec: 'realunit.spec.ts' },
   { path: '/realunit/quotes/:id', spec: 'realunit.spec.ts' },
