@@ -105,7 +105,7 @@
   },
   "realunit-dashboard": {
     "title": "RealUnit Dashboard",
-    "description": "RealUnit-Startseite: Karte Max-tokens-per-buy (leer = keine Limite); Sektion Bonus und Empfehlungen mit Prize-Wallet-Adresse, QR-Code, ETH- und REALU-Guthaben; Prize-payouts-Tabelle (Rechtsgrund, Kunde, Anzahl, CHF, Tx, Code, qualifizierender Kauf) mit CSV-Export-Button; Pending-Tabelle mit Address und Kundenname ohne deaktivierte Quotes, Kaufvolumen (CHF und Shares), Holder im Zeitverlauf und Registrierungs-Funnel (Registered → Completed, Drop-off Manual review)."
+    "description": "Die RealUnit-Startseite ist die Übersicht: Kennzahlen, Zeitstempel, Top Holders, pendente und erhaltene Transaktionen. Die Kasse enthält das Kauflimit, Bonus- und Prize-Wallet sowie Prize-payouts. Die Kennzahlen zeigen Preisverlauf, Kaufvolumen, Holder im Zeitverlauf und die Registrierung. Eine Abschnittsnavigation verbindet die Bereiche."
   },
   "responsive": {
     "title": "Responsive Layout",

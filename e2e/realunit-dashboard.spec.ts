@@ -1,10 +1,9 @@
 import { test, expect, Page, Route } from '@playwright/test';
 
 /**
- * Visual regression: RealUnit dashboard home (`/realunit`) pending-quotes table
- * and monitoring charts (buy volume, holders over time, registration), plus the
- * Bonus and Referral prize-wallet card, Prize payouts table, and the
- * max-tokens-per-buy card (empty = no limit).
+ * Visual regression: RealUnit dashboard home (`/realunit`) pending-quotes table,
+ * treasury (`/realunit/treasury`) buy-limit, bonus/referral prize-wallet card and prize payouts,
+ * and insights (`/realunit/insights`) monitoring charts (buy volume, holders over time, registration).
  *
  * Auth is a synthetic Admin JWT. Holders, token info, price history, quotes,
  * transactions, admin stats, GET /v1/realunit/referral/admin/prize-wallet,
@@ -188,24 +187,34 @@ async function installDashboardRoutes(page: Page): Promise<void> {
 }
 
 test.describe('RealUnit dashboard - Visual Regression Tests', () => {
-  test('home pending table shows address and name and hides deactivated quotes', async ({ page }) => {
+  test('home pending table, treasury sections and insights charts', async ({ page }) => {
     await installDashboardRoutes(page);
-    await page.goto(`/realunit?session=${encodeURIComponent(jwt())}&lang=en`);
+    const query = `?session=${encodeURIComponent(jwt())}&lang=en`;
+    const screenshotOpts = { maxDiffPixels: 5000 };
+    const section = (heading: string) => page.getByRole('heading', { name: heading }).locator('xpath=..');
+
+    await page.goto('/realunit' + query);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
-    await expect(page.getByRole('heading', { name: 'Bonus and Referral' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Buy Volume' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Holders over time' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Registration' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Active Buyer' }).first()).toBeVisible();
     await expect(page.getByText('Deactivated Buyer')).toHaveCount(0);
-    await expect(page.locator('.apexcharts-canvas').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Bonus and Referral' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Buy Volume' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Holders over time' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Registration' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toHaveCount(0);
 
-    const screenshotOpts = { maxDiffPixels: 5000 };
-    const section = (heading: string) => page.getByRole('heading', { name: heading }).locator('xpath=..');
+    const pendingSection = section('Pending Transactions');
+    await pendingSection.scrollIntoViewIfNeeded();
+    await expect(pendingSection.getByRole('columnheader', { name: 'Address' })).toBeVisible();
+    await expect(pendingSection.getByRole('columnheader', { name: 'User' })).toHaveCount(0);
+    await expect(pendingSection).toHaveScreenshot('realunit-dashboard-01-pending.png', screenshotOpts);
+
+    await page.goto('/realunit/treasury' + query);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000);
 
     const buyLimitSection = section('Max tokens per buy');
     await buyLimitSection.scrollIntoViewIfNeeded();
@@ -223,11 +232,9 @@ test.describe('RealUnit dashboard - Visual Regression Tests', () => {
     await payoutsSection.scrollIntoViewIfNeeded();
     await expect(payoutsSection).toHaveScreenshot('realunit-dashboard-07-prize-payouts.png', screenshotOpts);
 
-    const pendingSection = section('Pending Transactions');
-    await pendingSection.scrollIntoViewIfNeeded();
-    await expect(pendingSection.getByRole('columnheader', { name: 'Address' })).toBeVisible();
-    await expect(pendingSection.getByRole('columnheader', { name: 'User' })).toHaveCount(0);
-    await expect(pendingSection).toHaveScreenshot('realunit-dashboard-01-pending.png', screenshotOpts);
+    await page.goto('/realunit/insights' + query);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000);
 
     const buyVolume = section('Buy Volume');
     await buyVolume.scrollIntoViewIfNeeded();

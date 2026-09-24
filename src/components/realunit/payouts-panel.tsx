@@ -115,16 +115,14 @@ export function PayoutsPanel(): JSX.Element {
 
   return (
     <div className="mb-6" data-testid="payouts-panel">
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-        <h2 className="text-dfxGray-700">{translate('screens/referral', 'Prize payouts')}</h2>
-        <StyledButton
-          label={translate('screens/referral', 'Export CSV')}
-          onClick={handleExport}
-          width={StyledButtonWidth.MIN}
-          color={StyledButtonColor.STURDY_WHITE}
-          disabled={isLoading || payouts.length === 0}
-        />
-      </div>
+      <h2 className="text-base font-semibold text-dfxBlue-800">{translate('screens/referral', 'Prize payouts')}</h2>
+      <StyledButton
+        label={translate('screens/referral', 'Export CSV')}
+        onClick={handleExport}
+        width={StyledButtonWidth.MIN}
+        color={StyledButtonColor.STURDY_WHITE}
+        disabled={isLoading || payouts.length === 0}
+      />
 
       {isLoading ? (
         <StyledLoadingSpinner size={SpinnerSize.MD} />
@@ -134,37 +132,37 @@ export function PayoutsPanel(): JSX.Element {
         <p className="text-sm text-dfxGray-700">{translate('screens/referral', 'No prize payouts found')}</p>
       ) : (
         <div className="w-full overflow-x-auto">
-          <table className="w-full border-collapse bg-white rounded-lg shadow-sm">
+          <table className="w-full min-w-max border-collapse bg-white rounded-lg shadow-sm">
             <thead>
               <tr className="bg-dfxGray-300">
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'Date')}
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'Legal basis')}
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'Status')}
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'Customer ID')}
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'Wallet')}
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'Amount')}
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'CHF')}
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'Tx hash')}
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'Code')}
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'Qualifying buy')}
                 </th>
               </tr>
@@ -172,28 +170,28 @@ export function PayoutsPanel(): JSX.Element {
             <tbody>
               {payouts.map((payout) => (
                 <tr key={payout.id} className="border-b border-dfxGray-300">
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 whitespace-nowrap">
                     {formatSwissDateTimeWithSeconds(payout.created)}
                   </td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 whitespace-nowrap">
                     {legalBasisLabel(payout.legalBasis)}
                   </td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{payout.status}</td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{payout.customerId}</td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 whitespace-nowrap">{payout.status}</td>
+                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 whitespace-nowrap">{payout.customerId}</td>
+                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 whitespace-nowrap">
                     <CopyableAddress address={payout.customerWallet} />
                   </td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 whitespace-nowrap">
                     {payout.amount.toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 whitespace-nowrap">
                     {payout.chfValue.toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 break-all">
+                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 whitespace-nowrap font-mono text-xs">
                     {payout.txHash ?? '-'}
                   </td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{payout.code ?? '-'}</td>
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 whitespace-nowrap">{payout.code ?? '-'}</td>
+                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 whitespace-nowrap">
                     {qualifyingBuyLabel(payout)}
                   </td>
                 </tr>

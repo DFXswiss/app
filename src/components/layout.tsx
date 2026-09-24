@@ -19,6 +19,7 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
 
   const [isNavigationOpen, setIsNavigationOpen] = useState(false);
   const { pathname } = useLocation();
+  const isRealunitWorkspace = pathname === '/realunit' || pathname.startsWith('/realunit/');
   const { clearParams } = useNavigation();
   const { borderless } = useAppParams();
 
@@ -56,8 +57,8 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
       >
         <div className="flex flex-grow justify-center">
           <div
-            className={`relative w-full ${!noMaxWidth && 'max-w-screen-md'} flex flex-grow flex-col items-center ${
-              textStart ? 'text-start' : 'text-center'
+            className={`relative w-full ${!noMaxWidth && !isRealunitWorkspace && 'max-w-screen-md'} flex flex-grow flex-col items-center ${
+              textStart || isRealunitWorkspace ? 'text-start' : 'text-center'
             } ${!(noPadding || borderless) && 'p-5'} gap-2`}
           >
             {pathname.startsWith('/support') && <InfoBannerComponent />}

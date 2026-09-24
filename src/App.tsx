@@ -4,6 +4,7 @@ import { Router } from '@remix-run/router';
 import { Suspense, lazy, useRef } from 'react';
 import { LoaderFunctionArgs, Outlet, RouteObject, RouterProvider, redirect } from 'react-router-dom';
 import { LayoutWrapper } from './components/layout-wrapper';
+import { RealunitWorkspace } from './components/realunit/workspace';
 import { AppHandlingContextProvider, AppParams, CloseMessageData } from './contexts/app-handling.context';
 import { BalanceContextProvider } from './contexts/balance.context';
 import { OrderUIContextProvider } from './contexts/order-ui.context';
@@ -85,6 +86,8 @@ const SupportDashboardCreateScreen = lazy(() => import('./screens/support-dashbo
 const NotesScreen = lazy(() => import('./screens/notes.screen'));
 const TemplatesScreen = lazy(() => import('./screens/support-templates.screen'));
 const RealunitScreen = lazy(() => import('./screens/realunit.screen'));
+const RealunitTreasuryScreen = lazy(() => import('./screens/realunit-treasury.screen'));
+const RealunitInsightsScreen = lazy(() => import('./screens/realunit-insights.screen'));
 const RealunitHoldersScreen = lazy(() => import('./screens/realunit-holders.screen'));
 const RealunitQuotesScreen = lazy(() => import('./screens/realunit-quotes.screen'));
 const RealunitTransactionsScreen = lazy(() => import('./screens/realunit-transactions.screen'));
@@ -520,13 +523,21 @@ export const Routes = [
         path: 'realunit',
         element: (
           <RealunitContextProvider>
-            <Outlet />
+            <RealunitWorkspace />
           </RealunitContextProvider>
         ),
         children: [
           {
             index: true,
             element: withSuspense(<RealunitScreen />),
+          },
+          {
+            path: 'treasury',
+            element: withSuspense(<RealunitTreasuryScreen />),
+          },
+          {
+            path: 'insights',
+            element: withSuspense(<RealunitInsightsScreen />),
           },
           {
             path: 'holders',
