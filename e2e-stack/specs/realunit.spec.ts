@@ -217,9 +217,7 @@ test.describe('RealUnit area', () => {
     await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Treasury' })).toHaveAttribute('aria-current', 'page');
 
-    // Wait for the holders request so its error UI and console output settle before assertions.
-    // This stack sets no REALUNIT_GRAPH_URL, so the API answers 503 by design; remove the
-    // exception once the stack provides a RealUnit graph.
+    // This stack has no RealUnit graph, so holders statistics must return 503.
     const holdersResponsePromise = page.waitForResponse(
       (response) =>
         response.request().method() === 'GET' &&
@@ -230,11 +228,8 @@ test.describe('RealUnit area', () => {
     const holdersResponse = await holdersResponsePromise;
     await holdersResponse.finished();
     const holdersStatus = holdersResponse.status();
-    expect(holdersStatus === 503 || holdersResponse.ok(), `unexpected holders status ${holdersStatus}`).toBe(true);
-
-    if (holdersStatus === 503) {
-      await expect(page.getByText('Failed to load holder count.')).toBeVisible();
-    }
+    expect(holdersStatus, 'holders statistics no longer 503 — remove this stack exception').toBe(503);
+    await expect(page.getByText('Failed to load holder count.')).toBeVisible();
 
     await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Insights' })).toHaveAttribute('aria-current', 'page');
