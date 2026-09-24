@@ -537,9 +537,10 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
     await open(page, `/realunit/user/${encodeURIComponent(ADDRESS)}`);
     await expect(page.getByRole('heading', { name: 'Account Details' })).toBeVisible();
     await expect(page.getByRole('heading', { name: /Transaction History/ })).toBeVisible();
-    await expect(page).toHaveScreenshot('realunit-dashboard-33-account-chf.png', { ...shot, fullPage: true });
-    await page.getByRole('button', { name: 'REALU' }).click();
-    await expect(page).toHaveScreenshot('realunit-dashboard-34-account-realu.png', { ...shot, fullPage: true });
+    await expect(page).toHaveScreenshot('realunit-dashboard-33-account-realu.png', { ...shot, fullPage: true });
+    await page.getByRole('button', { name: 'CHF' }).click();
+    await expect(page.getByText(/1.000\.00/)).toBeVisible();
+    await expect(page).toHaveScreenshot('realunit-dashboard-34-account-chf.png', { ...shot, fullPage: true });
 
     world.account = 'missing';
     await open(page, `/realunit/user/${encodeURIComponent(ADDRESS)}`);
