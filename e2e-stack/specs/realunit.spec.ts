@@ -66,6 +66,28 @@ function assertNoErrors(pageErrors: string[], consoleErrors: string[]): void {
   expect(unexpected, `unexpected console error: ${unexpected.join('; ')}`).toEqual([]);
 }
 
+// Chromium's resource-error console text has no URL. Pair only as many exact 503 messages as
+// were independently observed for the one permitted request; any surplus 503 stays unexpected.
+function assertNoErrorsExceptHoldersUnavailable(
+  pageErrors: string[],
+  consoleErrors: string[],
+  unavailableHoldersResponses: number,
+): void {
+  let unmatchedResponses = unavailableHoldersResponses;
+  const remainingConsoleErrors = consoleErrors.filter((msg) => {
+    if (
+      unmatchedResponses > 0 &&
+      msg === 'Failed to load resource: the server responded with a status of 503 (Service Unavailable)'
+    ) {
+      unmatchedResponses -= 1;
+      return false;
+    }
+    return true;
+  });
+
+  assertNoErrors(pageErrors, remainingConsoleErrors);
+}
+
 /**
  * Staff roles (Admin, RealUnit, …) need KYC clearance before RoleGuard allows guarded APIs.
  * Sets verifiedName and waits until the background job syncs userDataId into staffKycClearance.
@@ -180,11 +202,14 @@ test.describe('RealUnit area', () => {
   test('RealUnit opens treasury and insights from the section nav', async ({ page }) => {
     const { jwt } = await loginAs('RealUnit');
     const { pageErrors, consoleErrors } = attachErrorListeners(page);
-
-    let holderStats503 = 0;
+    let unavailableHoldersResponses = 0;
     page.on('response', (response) => {
-      if (response.status() === 503 && response.url().includes('/v1/realunit/admin/stats/holders')) {
-        holderStats503 += 1;
+      if (
+        response.request().method() === 'GET' &&
+        response.status() === 503 &&
+        new URL(response.url()).pathname === '/v1/realunit/admin/stats/holders'
+      ) {
+        unavailableHoldersResponses += 1;
       }
     });
 
@@ -192,24 +217,15 @@ test.describe('RealUnit area', () => {
     await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Treasury' })).toHaveAttribute('aria-current', 'page');
 
+    // This stack sets no REALUNIT_GRAPH_URL, so the API answers the holders statistics
+    // (GET /v1/realunit/admin/stats/holders) with 503 by design.
+    // Remove this exception once the stack provides a RealUnit graph.
     await page.getByRole('link', { name: 'Insights' }).click();
     await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Insights' })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByText('Failed to load holder count.')).toBeVisible();
 
-    const holderStats503Line =
-      'Failed to load resource: the server responded with a status of 503 (Service Unavailable)';
-    let remainingHolderStats503 = holderStats503;
-    assertNoErrors(
-      pageErrors,
-      consoleErrors.filter((msg) => {
-        if (msg === holderStats503Line && remainingHolderStats503 > 0) {
-          remainingHolderStats503 -= 1;
-          return false;
-        }
-        return true;
-      }),
-    );
+    assertNoErrorsExceptHoldersUnavailable(pageErrors, consoleErrors, unavailableHoldersResponses);
   });
 
   // CONFIRMED product bug (live uncaught pageerror): fetchHolders() has no .catch() in
