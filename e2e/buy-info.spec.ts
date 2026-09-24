@@ -13,14 +13,16 @@ test.describe('Buy Info - UI Flow', () => {
     return auth.token;
   }
 
-  // USD is outside the Bank Frick currency set: a requested Frick selector cannot apply here, so
-  // the updated mismatch-hint copy (EUR and CHF, not EUR only) must show. Fully static quote, no
-  // upstream forwarding: independent of local KYC state, price rules and Bank Frick issuance.
+  // GBP is outside FRICK_CURRENCIES (EUR, CHF, USD), so the mismatch hint still names only EUR
+  // and CHF, and the request carries no provider. These tests use GBP rather than the hidden-USD
+  // state (USD is in the Frick set and only hidden when the active fiat list omits it). Fully
+  // static quote, no upstream forwarding: independent of local KYC state, price rules and Bank
+  // Frick issuance.
   test('shows the updated mismatch hint for a non-Frick currency', async ({ page, request }) => {
     const token = await getToken(request);
     let receivedProvider: unknown;
 
-    // USD is not served by the app's real currency list; mock it so asset-in=USD resolves.
+    // Mock GBP so asset-in=GBP resolves; it is not served by the app's real currency list.
     await page.route('**/v1/fiat', async (route) => {
       await route.fulfill({
         status: 200,
@@ -48,7 +50,7 @@ test.describe('Buy Info - UI Flow', () => {
           },
           {
             id: 3,
-            name: 'USD',
+            name: 'GBP',
             buyable: true,
             sellable: true,
             cardBuyable: false,
@@ -91,7 +93,7 @@ test.describe('Buy Info - UI Flow', () => {
             platform: 0,
             total: 2.99,
           },
-          currency: { id: 3, name: 'USD' },
+          currency: { id: 3, name: 'GBP' },
           asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
           bic: 'UBSWCHZH80A',
           iban: 'CH9300762011623852957',
@@ -109,7 +111,7 @@ test.describe('Buy Info - UI Flow', () => {
     });
 
     await page.goto(
-      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick`,
     );
 
     await expect(

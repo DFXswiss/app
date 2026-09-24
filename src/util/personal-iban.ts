@@ -18,7 +18,7 @@ export const YAPEAL_BANK_NAME = 'Yapeal';
 
 /**
  * Electronic-format IBANs of DFX's shared collection accounts at Bank Frick, keyed by currency
- * (the same values the public `GET /v1/bank` endpoint serves for the "Bank Frick" EUR/CHF rows).
+ * (the same values the public `GET /v1/bank` endpoint serves for the Bank Frick collection rows).
  * Display-only alternative next to a Frick personal IBAN; transfers to them are attributable
  * only via the remittance reference, so one must never be shown without one. Single source of
  * truth for which currencies Bank Frick serves - `FRICK_CURRENCIES` below is derived from its keys.
@@ -26,6 +26,7 @@ export const YAPEAL_BANK_NAME = 'Yapeal';
 export const FRICK_COLLECTION_IBANS: Readonly<Record<string, string>> = Object.freeze({
   EUR: 'LI75088110105923K000E',
   CHF: 'LI32088110105923K000C',
+  USD: 'LI31088110105923K000U',
 });
 
 /**
@@ -33,6 +34,38 @@ export const FRICK_COLLECTION_IBANS: Readonly<Record<string, string>> = Object.f
  * Product decision; derived from `FRICK_COLLECTION_IBANS`'s keys so the two can never drift apart.
  */
 export const FRICK_CURRENCIES: readonly string[] = Object.freeze(Object.keys(FRICK_COLLECTION_IBANS));
+
+const LEGACY_FRICK_CURRENCIES: readonly string[] = ['EUR', 'CHF'];
+const LEGACY_PERSONAL_IBAN_ERROR =
+  'Bank Frick personal IBANs are currently only available for EUR and CHF.';
+const PERSONAL_IBAN_ERROR_TEMPLATE =
+  'Bank Frick personal IBANs are currently only available for {{currencies}}.';
+const LEGACY_PERSONAL_IBAN_MISMATCH =
+  'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.';
+const PERSONAL_IBAN_MISMATCH_TEMPLATE =
+  'Your requested personal IBAN is only available for {{currencies}} bank transfers, so it was not used for this offer.';
+
+/**
+ * Bank Frick currencies that are present in the active fiat list, in FRICK_CURRENCIES order.
+ * Exact string match; names missing from the active list are omitted.
+ */
+export function displayedFrickCurrencies(activeNames: readonly string[]): string[] {
+  return FRICK_CURRENCIES.filter((name) => activeNames.includes(name));
+}
+
+function displayedFrickSet(activeNames?: readonly string[]): string[] {
+  return displayedFrickCurrencies(activeNames ?? LEGACY_FRICK_CURRENCIES);
+}
+
+function usesLegacyFrickCopy(activeNames?: readonly string[]): boolean {
+  const displayed = displayedFrickSet(activeNames);
+  return displayed.length === 2 && displayed[0] === 'EUR' && displayed[1] === 'CHF';
+}
+
+/** Uninterpolated mismatch sentence; callers pass `{{currencies}}` through translate. */
+export function personalIbanMismatchSentence(activeNames?: readonly string[]): string {
+  return usesLegacyFrickCopy(activeNames) ? LEGACY_PERSONAL_IBAN_MISMATCH : PERSONAL_IBAN_MISMATCH_TEMPLATE;
+}
 
 /**
  * Case-insensitive match against every recognized PersonalIbanProvider member (Frick, Yapeal,
@@ -80,12 +113,19 @@ export function isUnrecognizedPersonalIbanSelector(value: string | undefined): b
   return value !== undefined && !isExplicitPersonalIbanRequest(value);
 }
 
+/**
+ * True when the currency is in the displayed Bank Frick set and the method is BANK.
+ * Without `activeNames` the displayed set is EUR and CHF (legacy).
+ */
 export function isPersonalIbanApplicable(
   currencyName: string | undefined,
   paymentMethod: FiatPaymentMethod | undefined,
+  activeNames?: readonly string[],
 ): boolean {
   return (
-    currencyName !== undefined && FRICK_CURRENCIES.includes(currencyName) && paymentMethod === FiatPaymentMethod.BANK
+    currencyName !== undefined &&
+    displayedFrickSet(activeNames).includes(currencyName) &&
+    paymentMethod === FiatPaymentMethod.BANK
   );
 }
 
@@ -329,7 +369,10 @@ export function personalIbanOnlyParams(search: string): URLSearchParams {
  * with a feature-specific message override so the Complete KYC action stays available.
  * Raw backend BadRequestException texts (e.g. 'Asset not found') are intentionally not matched.
  */
-export function getPersonalIbanErrorMessage(message: string | undefined): string | undefined {
+export function getPersonalIbanErrorMessage(
+  message: string | undefined,
+  activeNames?: readonly string[],
+): string | undefined {
   if (!message) return undefined;
 
   if (message.includes(TransactionError.PAYMENT_METHOD_NOT_ALLOWED)) {
@@ -345,7 +388,7 @@ export function getPersonalIbanErrorMessage(message: string | undefined): string
     return 'The requested personal IBAN provider is not recognized.';
   }
   if (message.includes('PersonalIbanCurrencyNotSupported')) {
-    return 'Bank Frick personal IBANs are currently only available for EUR and CHF.';
+    return usesLegacyFrickCopy(activeNames) ? LEGACY_PERSONAL_IBAN_ERROR : PERSONAL_IBAN_ERROR_TEMPLATE;
   }
   if (message.includes('CurrencyUnsupported')) {
     return 'The selected currency is not available. Please try a different currency or contact support.';

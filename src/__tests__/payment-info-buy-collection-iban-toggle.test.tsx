@@ -1,7 +1,7 @@
 // Focused unit test for the Bank Frick collection-IBAN toggle in PaymentInformationContent.
 // Mounts the REAL component (not mocked) so the toggle button and the displayed/copied IBAN
 // value are exercised. The toggle must only appear for a verified Bank Frick personal IBAN,
-// a currency with a configured collection account (EUR or CHF), and a present remittanceInfo,
+// a currency with a configured collection account (EUR, CHF, or USD), and a present remittanceInfo,
 // and never for customers already shown the collection account (isPersonalIban false) or whose
 // displayed IBAN already is that account.
 
@@ -185,7 +185,7 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
           isPersonalIban: true,
           bank: 'Bank Frick',
           name: 'DFX AG',
-          currency: { name: 'USD' },
+          currency: { name: 'GBP' },
         })}
       />,
     );
@@ -220,6 +220,41 @@ describe('PaymentInformationContent collection-IBAN toggle', () => {
 
     fireEvent.click(within(ibanRow).getByTestId('copy'));
     expect(mockCopy).toHaveBeenLastCalledWith(FRICK_COLLECTION_IBANS.CHF);
+
+    fireEvent.click(showPersonalButton);
+
+    expect(ibanRow).toHaveTextContent(PERSONAL_IBAN);
+  });
+
+  it('toggles the displayed, copied and hinted IBAN between the personal and USD collection account', () => {
+    render(
+      <PaymentInformationContent
+        info={baseInfo({
+          isPersonalIban: true,
+          bank: 'Bank Frick',
+          name: 'DFX AG',
+          currency: { name: 'USD' },
+        })}
+      />,
+    );
+
+    const ibanRow = screen.getByTestId('row-value-IBAN');
+    expect(ibanRow).toHaveTextContent(PERSONAL_IBAN);
+    expect(screen.getByTestId('row-info-IBAN')).toHaveTextContent(DISCOVERABILITY_HINT);
+
+    const showCollectionButton = within(ibanRow).getByRole('button', { name: 'Show collection IBAN' });
+    fireEvent.click(showCollectionButton);
+
+    expect(ibanRow).toHaveTextContent(FRICK_COLLECTION_IBANS.USD);
+    expect(ibanRow).toHaveTextContent('LI31088110105923K000U');
+    expect(ibanRow).not.toHaveTextContent(FRICK_COLLECTION_IBANS.EUR);
+    expect(ibanRow).not.toHaveTextContent(FRICK_COLLECTION_IBANS.CHF);
+    expect(screen.getByTestId('row-info-IBAN')).toHaveTextContent(COLLECTION_HINT);
+    const showPersonalButton = within(ibanRow).getByRole('button', { name: 'Show personal IBAN' });
+    expect(showPersonalButton).toBeInTheDocument();
+
+    fireEvent.click(within(ibanRow).getByTestId('copy'));
+    expect(mockCopy).toHaveBeenLastCalledWith(FRICK_COLLECTION_IBANS.USD);
 
     fireEvent.click(showPersonalButton);
 

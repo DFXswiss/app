@@ -406,16 +406,16 @@ test.describe('Buy Process - UI Flow', () => {
     await expect(paymentDetails).toHaveScreenshot('buy-chf-collection-iban-qr-fail-closed.png');
   });
 
-  // USD is outside the Bank Frick currency set: a requested Frick selector cannot apply here, so
-  // the updated mismatch-hint copy (EUR and CHF, not EUR only) must show instead of Frick
-  // details, and the request sent to the API must never carry the selector for an inapplicable
-  // currency. Fully static quote, no upstream forwarding, same reasoning as the collection-IBAN
-  // toggle test above: independent of local KYC state, price rules and Bank Frick issuance.
+  // GBP is outside FRICK_CURRENCIES (EUR, CHF, USD), so the mismatch hint still names only EUR
+  // and CHF, and the request carries no provider. These tests use GBP rather than the hidden-USD
+  // state (USD is in the Frick set and only hidden when the active fiat list omits it). Fully
+  // static quote, no upstream forwarding, same reasoning as the collection-IBAN toggle test
+  // above: independent of local KYC state, price rules and Bank Frick issuance.
   test('shows the updated mismatch hint for a non-Frick currency', async ({ page, request }) => {
     const token = await getToken(request);
     let receivedProvider: unknown;
 
-    // USD is not served by the app's real currency list; mock it so asset-in=USD resolves.
+    // Mock GBP so asset-in=GBP resolves; it is not served by the app's real currency list.
     await page.route('**/v1/fiat', async (route) => {
       await route.fulfill({
         status: 200,
@@ -443,7 +443,7 @@ test.describe('Buy Process - UI Flow', () => {
           },
           {
             id: 3,
-            name: 'USD',
+            name: 'GBP',
             buyable: true,
             sellable: true,
             cardBuyable: false,
@@ -486,7 +486,7 @@ test.describe('Buy Process - UI Flow', () => {
             platform: 0,
             total: 2.99,
           },
-          currency: { id: 3, name: 'USD' },
+          currency: { id: 3, name: 'GBP' },
           asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
           bic: 'UBSWCHZH80A',
           iban: 'CH9300762011623852957',
@@ -504,7 +504,7 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick`,
     );
 
     await expect(
@@ -520,14 +520,17 @@ test.describe('Buy Process - UI Flow', () => {
     });
   });
 
-  // Same USD scenario as the mismatch-hint test above, but with no requested selector at all
+  // Same GBP scenario as the mismatch-hint test above, but with no requested selector at all
   // (no `personal-iban` URL param): the mismatch hint and the promo banner are mutually exclusive
   // render branches (the promo requires no selector), so this test proves the promo positively
-  // instead of only proving the mismatch hint's absence.
+  // instead of only proving the mismatch hint's absence. GBP is outside the Frick set, so the
+  // mismatch sentence still names only EUR and CHF and the request carries no provider. These
+  // tests use GBP rather than the hidden-USD state (USD is in the Frick set and only hidden when
+  // the active fiat list omits it).
   test('shows the personal-IBAN promo for a non-Frick currency without a selector', async ({ page, request }) => {
     const token = await getToken(request);
 
-    // USD is not served by the app's real currency list; mock it so asset-in=USD resolves.
+    // Mock GBP so asset-in=GBP resolves; it is not served by the app's real currency list.
     await page.route('**/v1/fiat', async (route) => {
       await route.fulfill({
         status: 200,
@@ -555,7 +558,7 @@ test.describe('Buy Process - UI Flow', () => {
           },
           {
             id: 3,
-            name: 'USD',
+            name: 'GBP',
             buyable: true,
             sellable: true,
             cardBuyable: false,
@@ -595,7 +598,7 @@ test.describe('Buy Process - UI Flow', () => {
             platform: 0,
             total: 2.99,
           },
-          currency: { id: 3, name: 'USD' },
+          currency: { id: 3, name: 'GBP' },
           asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
           bic: 'UBSWCHZH80A',
           iban: 'CH9300762011623852957',
@@ -613,7 +616,7 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     // No personal-iban param: no selector at all, the precondition the promo banner requires.
-    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100`);
+    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100`);
 
     const promoBlock = page.getByRole('heading', { name: 'New: Personal IBAN in your own name!' }).locator('..');
     await expect(promoBlock.getByRole('heading', { name: 'New: Personal IBAN in your own name!' })).toBeVisible({

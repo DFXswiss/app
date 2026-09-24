@@ -6,6 +6,7 @@ const mockReceiveFor = jest.fn();
 const mockUseAppParams = jest.fn();
 const mockPersonalIban = jest.fn();
 const mockCurrencies = [{ name: 'EUR' }];
+const mockFiatCurrencies = [{ name: 'EUR' }, { name: 'CHF' }];
 const mockEmptyPersonalIbans: never[] = [];
 
 jest.mock('@dfx.swiss/react', () => {
@@ -49,6 +50,11 @@ jest.mock('@dfx.swiss/react', () => {
     useFiat: () => ({
       getCurrency: (list: any[], name: string) =>
         (list ?? []).find((c: any) => c.name === name),
+    }),
+    useFiatContext: () => ({
+      get currencies() {
+        return mockFiatCurrencies;
+      },
     }),
     useUserContext: () => ({ user: { kyc: { level: 0 }, accountId: 1 }, isUserLoading: false }),
   };
