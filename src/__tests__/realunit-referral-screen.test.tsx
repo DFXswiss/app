@@ -76,37 +76,32 @@ describe('RealunitReferralScreen held-for-review filter', () => {
     mockGetPromoCodes.mockResolvedValue([]);
   });
 
-  it('shows only pending relations by default and the pending count', async () => {
+  it('shows every relation by default and the pending count', async () => {
     mockGetRelations.mockResolvedValue([PENDING, APPROVED]);
     render(<RealunitReferralScreen />);
 
     await waitFor(() => expect(screen.getByText('AB12CD')).toBeInTheDocument());
-
-    expect(screen.queryByText('PROMO9')).not.toBeInTheDocument();
-    expect(screen.getByText(/Relations/)).toHaveTextContent('Relations: 2');
-    expect(screen.getByText(/Held for review only/)).toHaveTextContent('Held for review only (1)');
-  });
-
-  it('shows all relations when the filter is turned off', async () => {
-    mockGetRelations.mockResolvedValue([PENDING, APPROVED]);
-    render(<RealunitReferralScreen />);
-    await waitFor(() => expect(screen.getByText('AB12CD')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('checkbox'));
 
     expect(screen.getByText('PROMO9')).toBeInTheDocument();
+    expect(screen.getByText(/Relations/)).toHaveTextContent('Relations: 2');
+    expect(screen.getByText(/Held for review only/)).toHaveTextContent('Held for review only (1)');
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
   });
 
-  it('shows a dash when reviewStatus is omitted after the filter is turned off', async () => {
-    mockGetRelations.mockResolvedValue([PENDING, NO_STATUS]);
+  it('shows only pending relations when the filter is turned on', async () => {
+    mockGetRelations.mockResolvedValue([PENDING, APPROVED]);
     render(<RealunitReferralScreen />);
     await waitFor(() => expect(screen.getByText('AB12CD')).toBeInTheDocument());
 
-    expect(screen.queryByText('NOSTAT')).not.toBeInTheDocument();
-
     fireEvent.click(screen.getByRole('checkbox'));
 
-    expect(screen.getByText('NOSTAT')).toBeInTheDocument();
+    expect(screen.queryByText('PROMO9')).not.toBeInTheDocument();
+  });
+
+  it('shows a dash when reviewStatus is omitted', async () => {
+    mockGetRelations.mockResolvedValue([PENDING, NO_STATUS]);
+    render(<RealunitReferralScreen />);
+    await waitFor(() => expect(screen.getByText('NOSTAT')).toBeInTheDocument());
     const row = screen.getByText('NOSTAT').closest('tr');
     expect(row).toHaveTextContent('-');
   });

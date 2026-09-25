@@ -1272,6 +1272,8 @@
     "Status": "Stato",
     "Customer ID": "ID cliente",
     "Wallet": "Wallet",
+    "Referrer": "Invitante",
+    "Guest": "Invitato",
     "Amount": "Quantità",
     "CHF": "CHF",
     "Tx hash": "Hash tx",

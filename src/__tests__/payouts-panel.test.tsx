@@ -88,7 +88,11 @@ describe('PayoutsPanel', () => {
     expect(screen.getByText('42')).toBeInTheDocument();
     const addresses = screen.getAllByTestId('copyable-address').map((el) => el.textContent);
     expect(addresses).toContain('0xcustomer');
+    expect(addresses).toContain('0xref');
+    expect(addresses).toContain('0xguest');
     expect(addresses).toContain('0xabc');
+    expect(screen.getByText('7')).toBeInTheDocument();
+    expect(screen.getByText('9')).toBeInTheDocument();
     expect(screen.getByText('AB-CD')).toBeInTheDocument();
     expect(screen.getByText('100 (50)')).toBeInTheDocument();
     expect(mockGetAdminPayouts).toHaveBeenCalledTimes(1);
