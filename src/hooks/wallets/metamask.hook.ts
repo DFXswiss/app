@@ -16,7 +16,9 @@ import { useWeb3 } from '../web3.hook';
 const PROVIDER_MISSING_HINT =
   'No wallet found. Please check your wallet extension or set one up, then reload this page.';
 
-function web3Provider(getProvider: () => any) {
+function web3Provider(
+  getProvider: () => { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> } | undefined,
+) {
   return {
     request: async ({ method, params }: { method: string; params?: unknown[] }) => {
       const provider = getProvider();
@@ -88,7 +90,7 @@ interface MetaMaskError {
 export function useMetaMask(): MetaMaskInterface {
   // Web3 only sees this stable EIP-1193 adapter. Reading the injected provider
   // when an RPC is sent also handles wallets injected or replaced after render.
-  const web3 = useMemo(() => new Web3(web3Provider(() => (window as any).ethereum) as any), []);
+  const web3 = useMemo(() => new Web3(web3Provider(ethereum) as unknown as ConstructorParameters<typeof Web3>[0]), []);
   const { toBlockchain, toChainHex, toChainObject } = useWeb3();
 
   function ethereum() {
@@ -113,7 +115,7 @@ export function useMetaMask(): MetaMaskInterface {
     }
   }
 
-  function listen(event: string, handler: (...args: any[]) => void) {
+  function listen<T>(event: string, handler: (value: T) => void): void {
     try {
       ethereum()?.on(event, handler);
     } catch {
