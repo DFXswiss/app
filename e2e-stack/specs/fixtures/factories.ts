@@ -307,6 +307,14 @@ export interface CreateBuyResult {
   buyId: number;
   routeId?: number;
   assetId?: number;
+  /** TransactionRequest id from PUT /buy/paymentInfos. Only set when withPaymentInfo is true. */
+  requestId?: number;
+  /**
+   * Payment reference from PUT /buy/paymentInfos. Set when withPaymentInfo is true and the quote
+   * returned one; absent otherwise. This harness does not persist bank selection on collection
+   * quotes, so no IBAN is returned.
+   */
+  remittanceInfo?: string;
 }
 
 export interface CreateSellOptions {
@@ -333,7 +341,13 @@ export interface CreateSwapResult {
   assetId: number;
 }
 
-export type TransactionState = 'completed_buy' | 'pending_buy' | 'completed_sell' | 'pending_sell' | 'bank_tx_only';
+export type TransactionState =
+  | 'completed_buy'
+  | 'pending_buy'
+  | 'waiting_for_payment_buy'
+  | 'completed_sell'
+  | 'pending_sell'
+  | 'bank_tx_only';
 
 export interface CreateTransactionOptions {
   tag?: string;
@@ -352,7 +366,8 @@ export interface CreateTransactionOptions {
 }
 
 export interface CreateTransactionResult {
-  transactionId: number;
+  /** Absent for `waiting_for_payment_buy`: that state is a TransactionRequest, not a transaction row. */
+  transactionId?: number;
   uid: string;
   buyCryptoId?: number;
   buyFiatId?: number;
@@ -362,6 +377,12 @@ export interface CreateTransactionResult {
   sellId?: number;
   userId?: number;
   userDataId?: number;
+  /**
+   * Quote payment reference from PUT /buy/paymentInfos. Set for `waiting_for_payment_buy` when
+   * the quote returned one; absent on SQL-seeded states. This harness uses the collection
+   * account and does not persist bankId/virtualIbanId, so no IBAN is returned.
+   */
+  remittanceInfo?: string;
 }
 
 export interface CreateBankTxOptions {
@@ -815,7 +836,7 @@ export async function createBuy(jwt: string, options: CreateBuyOptions = {}): Pr
     // Frontend path: PUT /buy/paymentInfos (createBuyWithPaymentInfo). Needs currency + amount
     // and a live price path; may fail when HttpService mocks break pricing.
     const currencyId = await resolveFiatId(options.currencyId ?? 'CHF');
-    const res = await apiPut<{ id: number; routeId: number }>(
+    const res = await apiPut<{ id: number; routeId: number; remittanceInfo?: string }>(
       'buy/paymentInfos',
       {
         currency: { id: currencyId },
@@ -828,8 +849,16 @@ export async function createBuy(jwt: string, options: CreateBuyOptions = {}): Pr
       { jwt },
     );
     const routeId = requireId(res.routeId, 'createBuy', 'routeId');
+    const requestId = requireId(res.id, 'createBuy', 'id');
     track('buy', routeId);
-    return { buyId: routeId, routeId, assetId: asset.id };
+    track('transaction_request', requestId);
+    return {
+      buyId: routeId,
+      routeId,
+      assetId: asset.id,
+      requestId,
+      remittanceInfo: res.remittanceInfo,
+    };
   }
 
   // Default: POST /buy with CreateBuyDto { asset } — creates the buy route without pricing.
@@ -933,7 +962,9 @@ async function userFromJwt(jwt: string): Promise<{ id: number; userDataId: numbe
 /**
  * Writes transaction (+ buy_crypto / buy_fiat / bank_tx / crypto_input) rows that the disabled
  * bank-tx / pay-in cron jobs would normally create. There is no public API to insert a completed
- * buy_crypto or buy_fiat under DISABLED_PROCESSES=*.
+ * buy_crypto or buy_fiat under DISABLED_PROCESSES=*. `waiting_for_payment_buy` is the exception:
+ * that state is a confirmed TransactionRequest and is created through PUT /buy/paymentInfos plus
+ * confirm, not SQL.
  */
 export async function createTransaction(options: CreateTransactionOptions = {}): Promise<CreateTransactionResult> {
   await ensureFactoryTagCounterSeeded();
@@ -948,14 +979,69 @@ export async function createTransaction(options: CreateTransactionOptions = {}):
   let sellId = options.sellId;
 
   if (!userId || !userDataId) {
-    const user = await createUser({
-      tag: `tx-${tag}`,
-      kycLevel: 30,
-      completePersonalData: true,
+    // waiting_for_payment_buy creates its own KYC-50 user below. A caller-supplied user is not raised.
+    if (state !== 'waiting_for_payment_buy') {
+      const user = await createUser({
+        tag: `tx-${tag}`,
+        kycLevel: 30,
+        completePersonalData: true,
+      });
+      userId = user.userId;
+      userDataId = user.userDataId;
+      jwt = user.jwt;
+    }
+  }
+
+  if (state === 'waiting_for_payment_buy') {
+    // Unpaid bank buy (UI: "Waiting for payment"). Not `pending_buy` — that writes a buy_crypto
+    // row that shows as "DFX check pending". PUT /buy/paymentInfos creates a TransactionRequest
+    // (status Created); PUT /buy/paymentInfos/:id/confirm raises it to WaitingForPayment so
+    // GET /transaction/detail includes it (id null, uid set). SQL is not used: loc can price
+    // this quote after the price_rule backfill in global.setup.ts, and buy.spec.ts already
+    // confirms this confirm endpoint in the same environment.
+    //
+    // BANK CHF quotes need KYC 50. createUser applies DEFAULT_TEST_DEPOSIT_LIMIT at that level.
+    // A caller-supplied user is not raised — paymentInfos fails loud (HTTP 400 KycRequired /
+    // LIMIT_EXCEEDED) if those prerequisites are missing.
+    if (!userId || !userDataId) {
+      const user = await createUser({
+        tag: `tx-${tag}`,
+        kycLevel: 50,
+        completePersonalData: true,
+      });
+      userId = user.userId;
+      userDataId = user.userDataId;
+      jwt = user.jwt;
+    }
+    if (!jwt) {
+      throw new Error('createTransaction: jwt required to create a waiting-for-payment buy');
+    }
+    const buy = await createBuy(jwt, {
+      withPaymentInfo: true,
+      currencyId: await resolveFiatId(options.inputAsset ?? 'CHF'),
+      amount,
     });
-    userId = user.userId;
-    userDataId = user.userDataId;
-    jwt = user.jwt;
+    const requestId = requireId(buy.requestId, 'createTransaction', 'requestId');
+    await apiPut(`buy/paymentInfos/${requestId}/confirm`, undefined, { jwt });
+    const request = await queryOne<{ uid: string; status: string }>(
+      `SELECT uid, status FROM transaction_request WHERE id = $1`,
+      [requestId],
+    );
+    if (!request?.uid) {
+      throw new Error(`createTransaction: transaction_request ${requestId} has no uid after confirm`);
+    }
+    if (request.status !== 'WaitingForPayment') {
+      throw new Error(
+        `createTransaction: expected transaction_request ${requestId} status WaitingForPayment, got ${request.status}`,
+      );
+    }
+    return {
+      uid: request.uid,
+      buyId: buy.buyId,
+      userId,
+      userDataId,
+      remittanceInfo: buy.remittanceInfo,
+    };
   }
 
   if ((state === 'completed_buy' || state === 'pending_buy') && !buyId) {

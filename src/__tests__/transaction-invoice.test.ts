@@ -1,8 +1,21 @@
 jest.mock('@dfx.swiss/react', () => ({
   TransactionState: {
+    CREATED: 'Created',
+    PROCESSING: 'Processing',
+    LIQUIDITY_PENDING: 'LiquidityPending',
+    CHECK_PENDING: 'CheckPending',
+    KYC_REQUIRED: 'KycRequired',
+    LIMIT_EXCEEDED: 'LimitExceeded',
+    FEE_TOO_HIGH: 'FeeTooHigh',
+    PRICE_UNDETERMINABLE: 'PriceUndeterminable',
+    PAYOUT_IN_PROGRESS: 'PayoutInProgress',
     COMPLETED: 'Completed',
     FAILED: 'Failed',
+    RETURN_PENDING: 'ReturnPending',
+    RETURNED: 'Returned',
     UNASSIGNED: 'Unassigned',
+    WAITING_FOR_PAYMENT: 'WaitingForPayment',
+    STOPPED: 'Stopped',
   },
   TransactionType: {
     BUY: 'Buy',
@@ -51,7 +64,7 @@ describe('canOpenInvoice', () => {
     ).toBe(false);
   });
 
-  it('returns false for non-completed Buy', () => {
+  it('returns false for Failed Buy EUR', () => {
     expect(
       canOpenInvoice({
         type: TransactionType.BUY,
@@ -59,6 +72,59 @@ describe('canOpenInvoice', () => {
         inputAsset: 'EUR',
       }),
     ).toBe(false);
+  });
+
+  it('returns true for WaitingForPayment Buy CHF', () => {
+    expect(
+      canOpenInvoice({
+        type: TransactionType.BUY,
+        state: TransactionState.WAITING_FOR_PAYMENT,
+        inputAsset: 'CHF',
+      }),
+    ).toBe(true);
+  });
+
+  it('returns true for WaitingForPayment Buy EUR', () => {
+    expect(
+      canOpenInvoice({
+        type: TransactionType.BUY,
+        state: TransactionState.WAITING_FOR_PAYMENT,
+        inputAsset: 'EUR',
+      }),
+    ).toBe(true);
+  });
+
+  it('returns false for WaitingForPayment Buy BTC', () => {
+    expect(
+      canOpenInvoice({
+        type: TransactionType.BUY,
+        state: TransactionState.WAITING_FOR_PAYMENT,
+        inputAsset: 'BTC',
+      }),
+    ).toBe(false);
+  });
+
+  it('returns false for WaitingForPayment Sell EUR', () => {
+    expect(
+      canOpenInvoice({
+        type: TransactionType.SELL,
+        state: TransactionState.WAITING_FOR_PAYMENT,
+        inputAsset: 'EUR',
+      }),
+    ).toBe(false);
+  });
+
+  it('returns true only for Completed and WaitingForPayment Buy CHF', () => {
+    const allowed = [TransactionState.COMPLETED, TransactionState.WAITING_FOR_PAYMENT];
+    for (const state of Object.values(TransactionState)) {
+      expect(
+        canOpenInvoice({
+          type: TransactionType.BUY,
+          state,
+          inputAsset: 'CHF',
+        }),
+      ).toBe(allowed.includes(state));
+    }
   });
 
   it('returns false when inputAsset is missing', () => {

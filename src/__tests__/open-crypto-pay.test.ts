@@ -15,7 +15,15 @@ jest.mock('../util/utils', () => {
   const originalModule = jest.requireActual('../util/utils');
   return {
     ...originalModule,
-    url: ({ base = 'https://services.dfx.swiss', path = '', params }: { base?: string; path?: string; params?: URLSearchParams }) => {
+    url: ({
+      base = 'https://app.dfx.swiss',
+      path = '',
+      params,
+    }: {
+      base?: string;
+      path?: string;
+      params?: URLSearchParams;
+    }) => {
       const normalizedBase = base?.replace(/\/+$/, '') + '/';
       const normalizedPath = path.replace(/^\/+/, '');
       const absoluteUrl = new URL(normalizedPath, normalizedBase);
@@ -30,7 +38,7 @@ import { Lnurl } from '../util/lnurl';
 
 describe('OpenCryptoPayUtils', () => {
   describe('getOcpUrlByUniqueId', () => {
-    it('should generate valid LNURL for unique ID', () => {
+    it('should contain lightning=LNURL in the result', () => {
       const uniqueId = 'abc123';
       const result = OpenCryptoPayUtils.getOcpUrlByUniqueId(uniqueId);
 
@@ -53,11 +61,13 @@ describe('OpenCryptoPayUtils', () => {
       }
     });
 
-    it('should use correct API URL from environment', () => {
+    it('should include the mocked API base URL in the encoded URL', () => {
       const uniqueId = 'env-test';
       const result = OpenCryptoPayUtils.getOcpUrlByUniqueId(uniqueId);
 
       const lnurlMatch = result.match(/lightning=(LNURL[A-Z0-9]+)/i);
+      expect(lnurlMatch).toBeTruthy();
+
       if (lnurlMatch) {
         const decoded = Lnurl.decode(lnurlMatch[1]);
         expect(decoded).toContain('https://api.dfx.swiss/v1');
@@ -75,7 +85,7 @@ describe('OpenCryptoPayUtils', () => {
       expect(result1).not.toBe(result2);
     });
 
-    it('should return URL containing pl path', () => {
+    it('should contain pl in the result', () => {
       const result = OpenCryptoPayUtils.getOcpUrlByUniqueId('test');
       expect(result).toContain('pl');
     });
