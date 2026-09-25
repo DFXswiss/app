@@ -270,7 +270,6 @@ describe('useMetaMask', () => {
       const instance = lastWeb3Instance();
 
       expect(instance.currentProvider).not.toBeNull();
-      expect(instance.currentProvider).toBeDefined();
       expect(instance.currentProvider).not.toBe(provider);
 
       let account: string | undefined;
