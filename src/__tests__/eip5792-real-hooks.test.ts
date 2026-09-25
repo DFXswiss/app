@@ -302,12 +302,7 @@ describe('EIP-5792 Real Hook Tests', () => {
 
       let txHash = '';
       await act(async () => {
-        txHash = await result.current.sendCallsWithPaymaster(
-          mockCalls,
-          TEST_PAYMASTER_URL,
-          TEST_CHAIN_ID,
-          TEST_ACCOUNT,
-        );
+        txHash = await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID);
       });
 
       expect(txHash).toBe('0xfinaltxhash');
@@ -326,7 +321,7 @@ describe('EIP-5792 Real Hook Tests', () => {
 
       await expect(
         act(async () => {
-          await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID, TEST_ACCOUNT);
+          await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID);
         }),
       ).rejects.toThrow();
     });
@@ -347,7 +342,7 @@ describe('EIP-5792 Real Hook Tests', () => {
 
       await expect(
         act(async () => {
-          await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID, TEST_ACCOUNT);
+          await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID);
         }),
       ).rejects.toThrow();
     });
@@ -368,7 +363,7 @@ describe('EIP-5792 Real Hook Tests', () => {
 
       await expect(
         act(async () => {
-          await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID, TEST_ACCOUNT);
+          await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID);
         }),
       ).rejects.toThrow();
     });
@@ -392,7 +387,7 @@ describe('EIP-5792 Real Hook Tests', () => {
 
       await expect(
         act(async () => {
-          await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID, TEST_ACCOUNT);
+          await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID);
         }),
       ).rejects.toThrow();
     });
@@ -425,12 +420,7 @@ describe('EIP-5792 Real Hook Tests', () => {
 
       let txHash = '';
       await act(async () => {
-        txHash = await result.current.sendCallsWithPaymaster(
-          mockCalls,
-          TEST_PAYMASTER_URL,
-          TEST_CHAIN_ID,
-          TEST_ACCOUNT,
-        );
+        txHash = await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID);
       });
 
       expect(txHash).toBe('0xpolledtxhash');
@@ -461,7 +451,7 @@ describe('EIP-5792 Real Hook Tests', () => {
       const { result } = renderHook(() => useMetaMask());
 
       await act(async () => {
-        await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID, TEST_ACCOUNT);
+        await result.current.sendCallsWithPaymaster(mockCalls, TEST_PAYMASTER_URL, TEST_CHAIN_ID);
       });
 
       expect(capturedParams[0]).toEqual({

@@ -105,7 +105,7 @@ export function useTxHelper(): TxHelperInterface {
         // Used when user has 0 ETH for gas - backend provides EIP-7702 authorization data
         if (txWithGasless.gaslessAvailable && txWithGasless.eip7702Authorization) {
           // Sign the EIP-7702 authorization
-          const signedAuth = await signEip7702Authorization(txWithGasless.eip7702Authorization, session.address);
+          const signedAuth = await signEip7702Authorization(txWithGasless.eip7702Authorization);
 
           // Send to backend's gasless endpoint
           if ('asset' in tx) {
@@ -125,7 +125,7 @@ export function useTxHelper(): TxHelperInterface {
           const { paymasterUrl, calls, chainId } = tx.depositTx.eip5792;
 
           // Send transaction via wallet_sendCalls with paymaster sponsorship
-          const txHash = await sendCallsWithPaymaster(calls, paymasterUrl, chainId, session.address);
+          const txHash = await sendCallsWithPaymaster(calls, paymasterUrl, chainId);
 
           // Confirm the transaction with the backend using the txHash
           if ('asset' in tx) {
