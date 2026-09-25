@@ -623,11 +623,7 @@ test.describe('Buy Process - UI Flow', () => {
       ),
     ).toBeVisible({ timeout: 15000 });
     await expect.poll(() => receivedProvider).toBeUndefined();
-
-    await expect(page).toHaveScreenshot('buy-gbp-mismatch-page.png', {
-      fullPage: true,
-      maxDiffPixels: 10000,
-    });
+    // No full-page baseline: the selector would show a currency the product does not offer.
   });
 
   // The displayed Frick set includes USD, so the same GBP offer uses the currency template.
@@ -742,11 +738,7 @@ test.describe('Buy Process - UI Flow', () => {
       ),
     ).toBeVisible({ timeout: 15000 });
     await expect.poll(() => receivedProvider).toBeUndefined();
-
-    await expect(page).toHaveScreenshot('buy-usd-list-mismatch-page.png', {
-      fullPage: true,
-      maxDiffPixels: 10000,
-    });
+    // No full-page baseline: the selector would show a currency the product does not offer.
   });
 
   // USD is eligible on the client, so the request carries Frick. The quote then rejects the
@@ -928,7 +920,7 @@ test.describe('Buy Process - UI Flow', () => {
       ),
     ).not.toBeVisible();
 
-    await expect(promoBlock).toHaveScreenshot('buy-gbp-promo-block.png');
+    await expect(promoBlock).toHaveScreenshot('buy-personal-iban-promo-block.png');
   });
 
   // Existing Yapeal holder gets the new Bank Frick IBAN by default (KYC pinned to 50 via the

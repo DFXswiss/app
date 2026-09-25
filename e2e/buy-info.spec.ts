@@ -121,7 +121,7 @@ test.describe('Buy Info - UI Flow', () => {
     ).toBeVisible({ timeout: 15000 });
     await expect.poll(() => receivedProvider).toBeUndefined();
 
-    await expect(page).toHaveScreenshot('buy-info-gbp-mismatch.png', {
+    await expect(page).toHaveScreenshot('buy-info-eur-chf-mismatch.png', {
       fullPage: true,
       maxDiffPixels: 10000,
     });
