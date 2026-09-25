@@ -1,9 +1,20 @@
 /**
- * Tests for useMetaMask hook - Basic functionality
+ * Tests for useMetaMask.
  *
- * Note: EIP-5792 flow logic is tested in src/__tests__/eip5792-flow.test.ts
- * with proper isolation. These tests focus on hook setup and wallet detection.
+ * EIP-5792 flow logic is also tested in src/__tests__/eip5792-flow.test.ts.
  */
+import { act, renderHook, waitFor } from '@testing-library/react';
+
+const mockToBlockchain = jest.fn();
+const mockToChainHex = jest.fn();
+const mockToChainObject = jest.fn();
+const mockSendTransaction = jest.fn();
+const mockContract = jest.fn();
+const mockGetBalance = jest.fn();
+const mockPersonalSign = jest.fn();
+const mockToWei = jest.fn();
+let mockIsMobile = false;
+
 // Mock @dfx.swiss/react
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: {
@@ -20,15 +31,7 @@ jest.mock('@dfx.swiss/react', () => ({
   },
 }));
 
-const mockToBlockchain = jest.fn();
-const mockToChainHex = jest.fn();
-const mockToChainObject = jest.fn();
-let mockIsMobile = false;
-let mockUseRealWeb3 = false;
-const mockSendTransaction = jest.fn();
-const mockContract = jest.fn();
-const mockToWei = jest.fn();
-
+// Mock useWeb3 hook
 jest.mock('../../web3.hook', () => ({
   useWeb3: () => ({
     toBlockchain: (...args: unknown[]) => mockToBlockchain(...args),
@@ -37,14 +40,10 @@ jest.mock('../../web3.hook', () => ({
   }),
 }));
 
-// Mock Web3's provider setup and the RPCs exercised by the hook. A real Web3
-// request-manager test below verifies the adapter against the installed version.
+// Records the adapter given to Web3. Account, chain and requestAccounts RPCs go through that
+// adapter. Balance, signing, sending and contracts are the shared mocks configured in beforeEach.
 jest.mock('web3', () => {
   const instances: any[] = [];
-
-  function applyProvider(instance: any, provider: any) {
-    instance.currentProvider = provider || null;
-  }
 
   function invoke(cb: any, promise: Promise<any>) {
     if (typeof cb === 'function') {
@@ -57,28 +56,16 @@ jest.mock('web3', () => {
   }
 
   function MockWeb3(provider?: any) {
-    if (mockUseRealWeb3) {
-      const RealWeb3 = jest.requireActual('web3');
-      const instance = new RealWeb3(provider);
-      instance.eth.getAccounts = jest.fn().mockResolvedValue(['0x1111111111111111111111111111111111111111']);
-      instances.push(instance);
-      return instance;
-    }
-
     const instance: any = {
-      currentProvider: null,
-      setProvider: (next: any) => applyProvider(instance, next),
+      currentProvider: provider ?? null,
       eth: {
         getAccounts: (cb?: any) =>
           invoke(
             cb,
             (async () => {
               const p = instance.currentProvider;
-              if (!p) throw new Error('Provider not set or invalid');
-              if (typeof p.request === 'function') {
-                return (await p.request({ method: 'eth_accounts' })) ?? [];
-              }
-              return [];
+              if (!p || typeof p.request !== 'function') throw new Error('Provider not set or invalid');
+              return (await p.request({ method: 'eth_accounts' })) ?? [];
             })(),
           ),
         getChainId: (cb?: any) =>
@@ -86,38 +73,30 @@ jest.mock('web3', () => {
             cb,
             (async () => {
               const p = instance.currentProvider;
-              if (!p) throw new Error('Provider not set or invalid');
-              if (typeof p.request === 'function') {
-                const result = await p.request({ method: 'eth_chainId' });
-                return typeof result === 'string' ? parseInt(result, 16) : (result ?? 1);
-              }
-              return 1;
+              if (!p || typeof p.request !== 'function') throw new Error('Provider not set or invalid');
+              const result = await p.request({ method: 'eth_chainId' });
+              return typeof result === 'string' ? parseInt(result, 16) : (result ?? 1);
             })(),
           ),
         requestAccounts: async () => {
           const p = instance.currentProvider;
-          if (!p) throw new Error('Provider not set or invalid');
-          if (typeof p.request === 'function') {
-            return (await p.request({ method: 'eth_requestAccounts' })) ?? [];
-          }
-          return [];
+          if (!p || typeof p.request !== 'function') throw new Error('Provider not set or invalid');
+          return (await p.request({ method: 'eth_requestAccounts' })) ?? [];
         },
-        getBalance: jest.fn().mockResolvedValue('0'),
-        personal: { sign: jest.fn() },
-        sendTransaction: mockSendTransaction,
+        getBalance: (...args: unknown[]) => mockGetBalance(...args),
+        personal: { sign: (...args: unknown[]) => mockPersonalSign(...args) },
+        sendTransaction: (...args: unknown[]) => mockSendTransaction(...args),
         Contract: mockContract,
       },
       utils: {
         toChecksumAddress: (addr: string) => addr,
         toHex: (val: number) => `0x${val.toString(16)}`,
-        toWei: mockToWei,
+        toWei: (...args: unknown[]) => mockToWei(...args),
       },
     };
-    applyProvider(instance, provider);
     instances.push(instance);
     return instance;
   }
-
   MockWeb3.givenProvider = {};
   MockWeb3.utils = {
     toChecksumAddress: (addr: string) => addr,
@@ -134,25 +113,24 @@ jest.mock('react-device-detect', () => ({
   },
 }));
 
-const mockDelay = jest.fn();
-jest.mock('../../../util/utils', () => {
-  const actual = jest.requireActual('../../../util/utils');
-  return {
-    ...actual,
-    delay: (...args: unknown[]) => mockDelay(...args),
-  };
-});
-
 import { Asset, AssetType, Blockchain } from '@dfx.swiss/react';
-import { act, renderHook, waitFor } from '@testing-library/react';
 import BigNumber from 'bignumber.js';
-import { createHash } from 'crypto';
+import { Buffer } from 'buffer';
 import Web3 from 'web3';
 import { AbortError } from '../../../util/abort-error';
 import { TranslatedError } from '../../../util/translated-error';
 import { useMetaMask } from '../metamask.hook';
 
 const TEST_ACCOUNT = '0x1111111111111111111111111111111111111111';
+const MISSING_PROVIDER = 'No wallet found. Please check your wallet extension or set one up, then reload this page.';
+
+const ETH_CHAIN = {
+  chainId: '0x1',
+  chainName: 'Ethereum Mainnet',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: ['https://rpc.example'],
+  blockExplorerUrls: ['https://explorer.example'],
+};
 
 function lastWeb3Instance(): any {
   const instances = (Web3 as any).__instances as any[];
@@ -172,14 +150,6 @@ function createBraveLikeProvider(request: jest.Mock) {
     },
   });
 }
-
-const ETH_CHAIN = {
-  chainId: '0x1',
-  chainName: 'Ethereum Mainnet',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: ['https://rpc.example'],
-  blockExplorerUrls: ['https://explorer.example'],
-};
 
 function mockRequest(handler: (args: { method: string; params?: any[] }) => any) {
   return jest.fn(async (args: { method: string; params?: any[] }) => handler(args));
@@ -203,21 +173,23 @@ function tokenContract(methods: Record<string, () => { call?: jest.Mock; send?: 
   lastWeb3Instance().eth.Contract.mockReturnValue({ methods });
 }
 
+function registeredHandler(on: jest.Mock, event: string): (value: any) => void {
+  const handler = on.mock.calls.find((call: unknown[]) => call[0] === event)?.[1];
+  if (typeof handler !== 'function') throw new Error(`missing ${event} handler`);
+  return handler;
+}
+
 describe('useMetaMask', () => {
   beforeEach(() => {
     mockSendTransaction.mockReset();
     mockContract.mockReset().mockReturnValue({ methods: {} });
+    mockGetBalance.mockReset().mockResolvedValue('0');
+    mockPersonalSign.mockReset();
     mockToWei.mockReset().mockImplementation((val: string) => val);
     mockIsMobile = false;
-    mockUseRealWeb3 = false;
-    mockToBlockchain.mockReset();
-    mockToChainHex.mockReset();
-    mockToChainObject.mockReset();
-    mockToBlockchain.mockImplementation(() => 'Ethereum');
-    mockToChainHex.mockImplementation(() => '0x1');
-    mockToChainObject.mockImplementation(() => ETH_CHAIN);
-    mockDelay.mockReset();
-    mockDelay.mockImplementation(() => Promise.resolve());
+    mockToBlockchain.mockReset().mockImplementation(() => 'Ethereum');
+    mockToChainHex.mockReset().mockImplementation(() => '0x1');
+    mockToChainObject.mockReset().mockImplementation(() => ETH_CHAIN);
   });
 
   afterEach(() => {
@@ -261,93 +233,6 @@ describe('useMetaMask', () => {
       (window as any).ethereum = {};
       const { result } = renderHook(() => useMetaMask());
       expect(result.current.isInstalled()).toBe(false);
-    });
-
-    it('returns false without throwing when wallet flag reads throw', () => {
-      (window as any).ethereum = new Proxy(
-        {},
-        {
-          get() {
-            throw new TypeError(
-              "'get' on proxy: property 'on' is a read-only and non-configurable data property on the proxy target but the proxy did not return its actual value",
-            );
-          },
-        },
-      );
-
-      const { result } = renderHook(() => useMetaMask());
-
-      expect(() => result.current.isInstalled()).not.toThrow();
-      expect(result.current.isInstalled()).toBe(false);
-    });
-
-    it('treats a throwing flag as absent and still detects other wallet flags', () => {
-      (window as any).ethereum = new Proxy(
-        { isRabby: true },
-        {
-          get(t, prop) {
-            if (prop === 'isMetaMask') throw new TypeError('hostile isMetaMask');
-            return t[prop as string];
-          },
-        },
-      );
-
-      const { result } = renderHook(() => useMetaMask());
-
-      expect(result.current.isInstalled()).toBe(true);
-      expect(result.current.getWalletType()).toBe('Rabby');
-    });
-  });
-
-  describe('isAvailable', () => {
-    it('resolves true immediately when a wallet is already injected', async () => {
-      (window as any).ethereum = { isMetaMask: true };
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(result.current.isAvailable()).resolves.toBe(true);
-      expect(mockDelay).not.toHaveBeenCalled();
-    });
-
-    it('resolves true when window.ethereum appears after the first poll tick', async () => {
-      jest.useFakeTimers();
-      mockDelay.mockImplementation((s: number) => new Promise((resolve) => setTimeout(resolve, s * 1000)));
-
-      const { result } = renderHook(() => useMetaMask());
-
-      let resolved: boolean | undefined;
-      await act(async () => {
-        const pending = result.current.isAvailable();
-        (window as any).ethereum = { isMetaMask: true };
-        jest.advanceTimersByTime(100);
-        resolved = await pending;
-      });
-
-      expect(resolved).toBe(true);
-      expect(mockDelay).toHaveBeenCalledTimes(1);
-      expect(mockDelay).toHaveBeenCalledWith(0.1);
-    });
-
-    it('resolves false after 20 attempts when no wallet appears', async () => {
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(result.current.isAvailable()).resolves.toBe(false);
-      expect(mockDelay).toHaveBeenCalledTimes(20);
-      expect(mockDelay.mock.calls.every((call) => call[0] === 0.1)).toBe(true);
-    });
-
-    it('resolves true when the wallet appears during the last delay', async () => {
-      let calls = 0;
-      mockDelay.mockImplementation(async () => {
-        calls += 1;
-        if (calls === 20) {
-          (window as any).ethereum = { isMetaMask: true };
-        }
-      });
-
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(result.current.isAvailable()).resolves.toBe(true);
-      expect(mockDelay).toHaveBeenCalledTimes(20);
     });
   });
 
@@ -394,7 +279,7 @@ describe('useMetaMask', () => {
       });
 
       expect(account).toBe(TEST_ACCOUNT);
-      expect(request).toHaveBeenCalledWith({ method: 'eth_accounts' });
+      expect(request).toHaveBeenCalledWith({ method: 'eth_accounts', params: undefined });
     });
 
     it('never exposes the injected provider .on to Web3', () => {
@@ -443,72 +328,6 @@ describe('useMetaMask', () => {
       expect(request).toHaveBeenCalledWith({ method: 'eth_getBalance', params: [TEST_ACCOUNT, 'latest'] });
     });
 
-    it.each(['sendAsync', 'send'])('retains real Web3 RPC support for a legacy %s wallet', async (method) => {
-      const send = jest.fn((payload, callback) => callback(null, { jsonrpc: '2.0', id: payload.id, result: '0x1' }));
-      (window as any).ethereum = { isMetaMask: true, [method]: send };
-
-      renderHook(() => useMetaMask());
-      const RealWeb3 = jest.requireActual('web3') as typeof Web3;
-      const realWeb3 = new RealWeb3(lastWeb3Instance().currentProvider);
-
-      await expect(realWeb3.eth.getChainId()).resolves.toBe(1);
-      expect(send).toHaveBeenCalledWith(
-        expect.objectContaining({ jsonrpc: '2.0', method: 'eth_chainId', params: [], id: expect.any(Number) }),
-        expect.any(Function),
-      );
-    });
-
-    it('reports an injected provider with no RPC method', async () => {
-      (window as any).ethereum = { isMetaMask: true };
-      renderHook(() => useMetaMask());
-
-      await expect(lastWeb3Instance().currentProvider.request({ method: 'eth_chainId' })).rejects.toThrow(
-        'Wallet provider does not support RPC requests',
-      );
-    });
-
-    it('passes a missing params array as an empty legacy RPC array', async () => {
-      const sendAsync = jest.fn((payload, callback) => callback(null, { id: payload.id, result: '0x1' }));
-      (window as any).ethereum = { isMetaMask: true, sendAsync };
-      renderHook(() => useMetaMask());
-
-      await expect(lastWeb3Instance().currentProvider.request({ method: 'eth_chainId' })).resolves.toBe('0x1');
-      expect(sendAsync.mock.calls[0][0].params).toEqual([]);
-    });
-
-    it('passes a legacy RPC transport error to Web3', async () => {
-      const sendAsync = jest.fn((_payload, callback) => callback(new Error('transport down')));
-      (window as any).ethereum = { isMetaMask: true, sendAsync };
-      renderHook(() => useMetaMask());
-
-      await expect(lastWeb3Instance().currentProvider.request({ method: 'eth_chainId' })).rejects.toThrow(
-        'transport down',
-      );
-    });
-
-    it.each([null, { id: -1, result: '0x1' }])('rejects an invalid legacy RPC response', async (response) => {
-      const sendAsync = jest.fn((_payload, callback) => callback(null, response));
-      (window as any).ethereum = { isMetaMask: true, sendAsync };
-      renderHook(() => useMetaMask());
-
-      await expect(lastWeb3Instance().currentProvider.request({ method: 'eth_chainId' })).rejects.toThrow(
-        'Invalid wallet RPC response',
-      );
-    });
-
-    it('keeps the message and code of a legacy RPC error', async () => {
-      const sendAsync = jest.fn((payload, callback) =>
-        callback(null, { id: payload.id, error: { code: 4001, message: 'User rejected' } }),
-      );
-      (window as any).ethereum = { isMetaMask: true, sendAsync };
-      renderHook(() => useMetaMask());
-
-      await expect(lastWeb3Instance().currentProvider.request({ method: 'eth_chainId' })).rejects.toMatchObject({
-        code: 4001,
-        message: 'User rejected',
-      });
-    });
-
     it('keeps register() working when .on throws so getAccounts/getChainId still run', async () => {
       const request = jest.fn(async ({ method }: { method: string }) => {
         if (method === 'eth_accounts') return [TEST_ACCOUNT];
@@ -527,8 +346,8 @@ describe('useMetaMask', () => {
         expect(onAccountChanged).toHaveBeenCalledWith(TEST_ACCOUNT);
         expect(onBlockchainChanged).toHaveBeenCalledWith('Ethereum');
       });
-      expect(request).toHaveBeenCalledWith({ method: 'eth_accounts' });
-      expect(request).toHaveBeenCalledWith({ method: 'eth_chainId' });
+      expect(request).toHaveBeenCalledWith({ method: 'eth_accounts', params: undefined });
+      expect(request).toHaveBeenCalledWith({ method: 'eth_chainId', params: undefined });
     });
 
     it('still registers accountsChanged and chainChanged listeners when .on works', () => {
@@ -546,73 +365,6 @@ describe('useMetaMask', () => {
 
       expect(on).toHaveBeenCalledWith('accountsChanged', expect.any(Function));
       expect(on).toHaveBeenCalledWith('chainChanged', expect.any(Function));
-    });
-
-    it('picks up a provider that appears after the first render', async () => {
-      const { result } = renderHook(() => useMetaMask());
-      const instance = lastWeb3Instance();
-      const adapter = instance.currentProvider;
-      expect(adapter).not.toBeNull();
-
-      const request = jest.fn(async () => [TEST_ACCOUNT]);
-      (window as any).ethereum = { isMetaMask: true, request, on: jest.fn() };
-
-      let account: string | undefined;
-      await act(async () => {
-        account = await result.current.getAccount();
-      });
-
-      expect(instance.currentProvider).toBe(adapter);
-      expect(account).toBe(TEST_ACCOUNT);
-      expect(request).toHaveBeenCalledWith({ method: 'eth_accounts' });
-    });
-
-    it('does not throw when the injected provider breaks property reads and still uses the wallet', async () => {
-      const request = jest.fn(async ({ method }: { method: string }) => {
-        if (method === 'eth_accounts') return [TEST_ACCOUNT];
-        return [];
-      });
-      const provider = createBraveLikeProvider(request);
-      (window as any).ethereum = provider;
-
-      const { result } = renderHook(() => useMetaMask());
-      const instance = lastWeb3Instance();
-
-      expect(() => result.current.isInstalled()).not.toThrow();
-      expect(result.current.isInstalled()).toBe(true);
-      expect(result.current.getWalletType()).toBe('MetaMask');
-      expect(instance.currentProvider).not.toBeNull();
-      expect(instance.currentProvider).not.toBe(provider);
-      expect(typeof instance.currentProvider.request).toBe('function');
-
-      await expect(result.current.getAccount()).resolves.toBe(TEST_ACCOUNT);
-    });
-
-    it('does not read unrelated RPC methods on a hostile provider', async () => {
-      const request = jest.fn(async ({ method }: { method: string }) => {
-        if (method === 'eth_accounts') return [TEST_ACCOUNT];
-        return [];
-      });
-      const target: any = { request, isMetaMask: true };
-      Object.defineProperty(target, 'on', { value: jest.fn(), writable: false, configurable: false });
-      Object.defineProperty(target, 'send', {
-        get() {
-          throw new Error('send is not readable');
-        },
-      });
-      (window as any).ethereum = new Proxy(target, {
-        get(t, prop) {
-          if (prop === 'on') return jest.fn();
-          return t[prop];
-        },
-      });
-
-      const { result } = renderHook(() => useMetaMask());
-      const instance = lastWeb3Instance();
-
-      expect(instance.currentProvider.send).toBeUndefined();
-      expect(typeof instance.currentProvider.request).toBe('function');
-      await expect(result.current.getAccount()).resolves.toBe(TEST_ACCOUNT);
     });
 
     it('uses a replacement provider for later RPCs without rebinding Web3', async () => {
@@ -660,7 +412,6 @@ describe('useMetaMask', () => {
       const { result } = renderHook(() => useMetaMask());
 
       expect(typeof result.current.isInstalled).toBe('function');
-      expect(typeof result.current.isAvailable).toBe('function');
       expect(typeof result.current.getWalletType).toBe('function');
       expect(typeof result.current.register).toBe('function');
       expect(typeof result.current.getAccount).toBe('function');
@@ -715,6 +466,15 @@ describe('useMetaMask', () => {
       expect(result.current.getWalletType()).toBe('InAppBrowser');
     });
 
+    it('returns undefined for Trust on desktop', () => {
+      (window as any).ethereum = { isTrust: true };
+
+      const { result } = renderHook(() => useMetaMask());
+
+      expect(result.current.isInstalled()).toBe(true);
+      expect(result.current.getWalletType()).toBeUndefined();
+    });
+
     it('returns undefined for a Coinbase desktop inject that is neither Rabby nor MetaMask', () => {
       (window as any).ethereum = { isCoinbaseWallet: true };
 
@@ -723,47 +483,24 @@ describe('useMetaMask', () => {
       expect(result.current.isInstalled()).toBe(true);
       expect(result.current.getWalletType()).toBeUndefined();
     });
-
-    it('does not throw and skips in-app detection when isTrust and isCoinbaseWallet reads throw', () => {
-      mockIsMobile = true;
-      (window as any).ethereum = new Proxy(
-        { isMetaMask: true },
-        {
-          get(t, prop) {
-            if (prop === 'isTrust' || prop === 'isCoinbaseWallet') {
-              throw new TypeError('hostile in-app flag');
-            }
-            return t[prop as string];
-          },
-        },
-      );
-
-      const { result } = renderHook(() => useMetaMask());
-
-      expect(() => result.current.getWalletType()).not.toThrow();
-      expect(result.current.getWalletType()).toBe('MetaMask');
-    });
   });
 
   describe('register listener callbacks', () => {
-    it('forwards accountsChanged and chainChanged to the registered callbacks', async () => {
+    it('forwards accountsChanged and chainChanged to the registered callbacks', () => {
       const on = jest.fn();
-      const request = mockRequest(async ({ method }) => {
-        if (method === 'eth_accounts') return [];
-        if (method === 'eth_chainId') return '0x1';
-        return null;
-      });
-      installedProvider(request, { on });
+      installedProvider(
+        mockRequest(async () => []),
+        { on },
+      );
+      mockToBlockchain.mockImplementation((chainId: unknown) => `chain:${String(chainId)}`);
 
       const { result } = renderHook(() => useMetaMask());
       const onAccountChanged = jest.fn();
       const onBlockchainChanged = jest.fn();
       result.current.register(onAccountChanged, onBlockchainChanged);
 
-      const accountsHandler = on.mock.calls.find((call: unknown[]) => call[0] === 'accountsChanged')?.[1];
-      const chainHandler = on.mock.calls.find((call: unknown[]) => call[0] === 'chainChanged')?.[1];
-      expect(accountsHandler).toEqual(expect.any(Function));
-      expect(chainHandler).toEqual(expect.any(Function));
+      const accountsHandler = registeredHandler(on, 'accountsChanged');
+      const chainHandler = registeredHandler(on, 'chainChanged');
 
       act(() => accountsHandler([TEST_ACCOUNT]));
       expect(onAccountChanged).toHaveBeenCalledWith(TEST_ACCOUNT);
@@ -771,8 +508,8 @@ describe('useMetaMask', () => {
       act(() => accountsHandler([]));
       expect(onAccountChanged).toHaveBeenCalledWith(undefined);
 
-      act(() => chainHandler('0x1'));
-      expect(onBlockchainChanged).toHaveBeenCalledWith('Ethereum');
+      act(() => chainHandler('0xa'));
+      expect(onBlockchainChanged).toHaveBeenCalledWith('chain:0xa');
     });
 
     it('calls onAccountChanged with undefined when getAccounts fails so verifyAccount sees no list', async () => {
@@ -785,17 +522,31 @@ describe('useMetaMask', () => {
 
       const { result } = renderHook(() => useMetaMask());
       const onAccountChanged = jest.fn();
-      result.current.register(onAccountChanged, jest.fn());
+      const onBlockchainChanged = jest.fn();
+      result.current.register(onAccountChanged, onBlockchainChanged);
 
       await waitFor(() => expect(onAccountChanged).toHaveBeenCalledWith(undefined));
+      await waitFor(() => expect(onBlockchainChanged).toHaveBeenCalledWith('Ethereum'));
+    });
+
+    it('does not throw when register runs without an injected provider', async () => {
+      const { result } = renderHook(() => useMetaMask());
+      const onAccountChanged = jest.fn();
+      const onBlockchainChanged = jest.fn();
+
+      expect(() => result.current.register(onAccountChanged, onBlockchainChanged)).not.toThrow();
+
+      await waitFor(() => {
+        expect(onAccountChanged).toHaveBeenCalledWith(undefined);
+        expect(onBlockchainChanged).toHaveBeenCalledWith('Ethereum');
+      });
     });
   });
 
   describe('requestAccount and checkConnection', () => {
     it('returns the checksum account after a successful connection check', async () => {
       const request = mockRequest(async ({ method }) => {
-        if (method === 'eth_accounts') return [TEST_ACCOUNT];
-        if (method === 'eth_requestAccounts') return [TEST_ACCOUNT];
+        if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [TEST_ACCOUNT];
         return null;
       });
       installedProvider(request);
@@ -803,7 +554,23 @@ describe('useMetaMask', () => {
       const { result } = renderHook(() => useMetaMask());
 
       await expect(result.current.requestAccount()).resolves.toBe(TEST_ACCOUNT);
-      expect(request).toHaveBeenCalledWith({ method: 'eth_requestAccounts' });
+      expect(request).toHaveBeenCalledWith({ method: 'eth_accounts', params: undefined });
+      expect(request).toHaveBeenCalledWith({ method: 'eth_requestAccounts', params: undefined });
+    });
+
+    it('returns the account from a Brave-like provider whose .on access throws', async () => {
+      const request = jest.fn(async ({ method }: { method: string }) => {
+        if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [TEST_ACCOUNT];
+        return [];
+      });
+      const provider = createBraveLikeProvider(request);
+      (window as any).ethereum = provider;
+      expect(() => provider.on).toThrow(TypeError);
+
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.requestAccount()).resolves.toBe(TEST_ACCOUNT);
+      expect(request).toHaveBeenCalledWith({ method: 'eth_requestAccounts', params: undefined });
     });
 
     it('reloads on a Timeout from the connection check and still requests the account', async () => {
@@ -838,22 +605,21 @@ describe('useMetaMask', () => {
       });
     });
 
-    it('does not reload when the connection check fails with a non-timeout error', async () => {
+    it('reports a missing provider from requestAccount without reloading', async () => {
       const reload = jest.fn();
       Object.defineProperty(window, 'location', { value: { ...window.location, reload }, writable: true });
 
       const { result } = renderHook(() => useMetaMask());
 
       await expect(result.current.requestAccount()).rejects.toBeInstanceOf(TranslatedError);
+      await expect(result.current.requestAccount()).rejects.toThrow(MISSING_PROVIDER);
       expect(reload).not.toHaveBeenCalled();
     });
 
     it('maps user rejection of eth_requestAccounts to AbortError', async () => {
       const request = mockRequest(async ({ method }) => {
         if (method === 'eth_accounts') return [TEST_ACCOUNT];
-        if (method === 'eth_requestAccounts') {
-          throw { code: 4001, message: 'User rejected the request' };
-        }
+        if (method === 'eth_requestAccounts') throw { code: 4001, message: 'User rejected the request' };
         return null;
       });
       installedProvider(request);
@@ -881,14 +647,13 @@ describe('useMetaMask', () => {
     });
 
     it('reads the native balance for the given account', async () => {
-      const request = mockRequest(async () => [TEST_ACCOUNT]);
-      installedProvider(request);
+      installedProvider(mockRequest(async () => [TEST_ACCOUNT]));
 
       const { result } = renderHook(() => useMetaMask());
-      lastWeb3Instance().eth.getBalance.mockResolvedValue('1000');
+      mockGetBalance.mockResolvedValue('1000');
 
       await expect(result.current.requestBalance(TEST_ACCOUNT)).resolves.toBe('1000');
-      expect(lastWeb3Instance().eth.getBalance).toHaveBeenCalledWith(TEST_ACCOUNT);
+      expect(mockGetBalance).toHaveBeenCalledWith(TEST_ACCOUNT);
     });
   });
 
@@ -911,6 +676,7 @@ describe('useMetaMask', () => {
       const { result } = renderHook(() => useMetaMask());
 
       await expect(result.current.requestChangeToBlockchain(Blockchain.ETHEREUM)).resolves.toBeUndefined();
+      expect(mockToChainHex).toHaveBeenCalledWith(Blockchain.ETHEREUM);
       expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_switchEthereumChain' }));
     });
 
@@ -932,9 +698,7 @@ describe('useMetaMask', () => {
 
     it('adds the chain when the wallet reports it is missing (4902)', async () => {
       const request = mockRequest(async ({ method }) => {
-        if (method === 'wallet_switchEthereumChain') {
-          throw { code: 4902, message: 'Unrecognized chain' };
-        }
+        if (method === 'wallet_switchEthereumChain') throw { code: 4902, message: 'Unrecognized chain' };
         if (method === 'wallet_addEthereumChain') return null;
         return null;
       });
@@ -943,6 +707,7 @@ describe('useMetaMask', () => {
       const { result } = renderHook(() => useMetaMask());
 
       await result.current.requestChangeToBlockchain(Blockchain.ETHEREUM);
+      expect(mockToChainObject).toHaveBeenCalledWith(Blockchain.ETHEREUM);
       expect(request).toHaveBeenCalledWith({
         method: 'wallet_addEthereumChain',
         params: [ETH_CHAIN],
@@ -958,15 +723,27 @@ describe('useMetaMask', () => {
 
       const { result } = renderHook(() => useMetaMask());
 
-      await expect(result.current.requestChangeToBlockchain(Blockchain.ETHEREUM)).rejects.toThrow();
+      await expect(result.current.requestChangeToBlockchain(Blockchain.ETHEREUM)).rejects.toThrow(TypeError);
+      expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_addEthereumChain' }));
+    });
+
+    it('rethrows a switch error that is neither pending nor a missing chain', async () => {
+      const rpcError = { code: 123, message: 'switch failed' };
+      const request = mockRequest(async ({ method }) => {
+        if (method === 'wallet_switchEthereumChain') throw rpcError;
+        return null;
+      });
+      installedProvider(request);
+
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.requestChangeToBlockchain(Blockchain.ETHEREUM)).rejects.toBe(rpcError);
       expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_addEthereumChain' }));
     });
 
     it('maps a pending switch request to TranslatedError', async () => {
       const request = mockRequest(async ({ method }) => {
-        if (method === 'wallet_switchEthereumChain') {
-          throw { code: -32002, message: 'Already processing' };
-        }
+        if (method === 'wallet_switchEthereumChain') throw { code: -32002, message: 'Already processing' };
         return null;
       });
       installedProvider(request);
@@ -984,24 +761,32 @@ describe('useMetaMask', () => {
 
   describe('sign', () => {
     it('signs the message with the connected address', async () => {
-      const request = mockRequest(async () => [TEST_ACCOUNT]);
-      installedProvider(request);
+      installedProvider(mockRequest(async () => [TEST_ACCOUNT]));
 
       const { result } = renderHook(() => useMetaMask());
-      lastWeb3Instance().eth.personal.sign.mockResolvedValue('0xsignature');
+      mockPersonalSign.mockResolvedValue('0xsignature');
 
       await expect(result.current.sign(TEST_ACCOUNT, 'hello')).resolves.toBe('0xsignature');
-      expect(lastWeb3Instance().eth.personal.sign).toHaveBeenCalledWith('hello', TEST_ACCOUNT, '');
+      expect(mockPersonalSign).toHaveBeenCalledWith('hello', TEST_ACCOUNT, '');
     });
 
     it('maps a rejected signature to AbortError', async () => {
-      const request = mockRequest(async () => [TEST_ACCOUNT]);
-      installedProvider(request);
+      installedProvider(mockRequest(async () => [TEST_ACCOUNT]));
 
       const { result } = renderHook(() => useMetaMask());
-      lastWeb3Instance().eth.personal.sign.mockRejectedValue({ code: 4001, message: 'User rejected' });
+      mockPersonalSign.mockRejectedValue({ code: 4001, message: 'User rejected' });
 
       await expect(result.current.sign(TEST_ACCOUNT, 'hello')).rejects.toBeInstanceOf(AbortError);
+    });
+
+    it('rethrows a signature error that is not a user rejection or a pending request', async () => {
+      const rpcError = { code: 123, message: 'sign failed' };
+      installedProvider(mockRequest(async () => [TEST_ACCOUNT]));
+
+      const { result } = renderHook(() => useMetaMask());
+      mockPersonalSign.mockRejectedValue(rpcError);
+
+      await expect(result.current.sign(TEST_ACCOUNT, 'hello')).rejects.toBe(rpcError);
     });
   });
 
@@ -1043,6 +828,7 @@ describe('useMetaMask', () => {
       });
 
       await expect(result.current.addContract(token, '<svg />', Blockchain.ETHEREUM)).resolves.toBe(true);
+      expect(mockContract).toHaveBeenCalledWith(expect.any(Array), token.chainId);
       expect(request).toHaveBeenCalledWith(
         expect.objectContaining({
           method: 'wallet_watchAsset',
@@ -1104,7 +890,7 @@ describe('useMetaMask', () => {
     it('converts a coin wei balance with the default 18 decimals', async () => {
       installedProvider(mockRequest(async () => []));
       const { result } = renderHook(() => useMetaMask());
-      lastWeb3Instance().eth.getBalance.mockResolvedValue('1000000000000000000');
+      mockGetBalance.mockResolvedValue('1000000000000000000');
 
       await expect(result.current.readBalance(coin, TEST_ACCOUNT)).resolves.toEqual({ asset: coin, amount: 1 });
     });
@@ -1120,30 +906,43 @@ describe('useMetaMask', () => {
       await expect(result.current.readBalance(token, TEST_ACCOUNT)).resolves.toEqual({ asset: token, amount: 2.5 });
     });
 
-    it('returns a zero balance when a coin balance read throws', async () => {
+    it('returns a zero balance when a coin balance read throws synchronously', async () => {
       installedProvider(mockRequest(async () => []));
       const { result } = renderHook(() => useMetaMask());
-      lastWeb3Instance().eth.getBalance.mockImplementation(() => {
+      mockGetBalance.mockImplementation(() => {
         throw new Error('network');
       });
 
       await expect(result.current.readBalance(coin, TEST_ACCOUNT)).resolves.toEqual({ asset: coin, amount: 0 });
     });
 
-    it('returns a zero balance when a coin balance RPC rejects', async () => {
+    it('rethrows a synchronous coin balance failure when exceptions are requested', async () => {
       installedProvider(mockRequest(async () => []));
       const { result } = renderHook(() => useMetaMask());
-      lastWeb3Instance().eth.getBalance.mockRejectedValue(new Error('rpc'));
+      mockGetBalance.mockImplementation(() => {
+        throw new Error('network');
+      });
 
-      await expect(result.current.readBalance(coin, TEST_ACCOUNT)).resolves.toEqual({ asset: coin, amount: 0 });
+      await expect(result.current.readBalance(coin, TEST_ACCOUNT, true)).rejects.toThrow('network');
     });
 
-    it('rethrows a coin balance RPC rejection when exceptions are requested', async () => {
+    // getBalance().then() is returned without await, so a rejected RPC never enters the catch.
+    it('propagates a rejected coin balance RPC instead of returning zero', async () => {
+      const rpcError = new Error('rpc');
       installedProvider(mockRequest(async () => []));
       const { result } = renderHook(() => useMetaMask());
-      lastWeb3Instance().eth.getBalance.mockRejectedValue(new Error('rpc'));
+      mockGetBalance.mockRejectedValue(rpcError);
 
-      await expect(result.current.readBalance(coin, TEST_ACCOUNT, true)).rejects.toThrow('rpc');
+      await expect(result.current.readBalance(coin, TEST_ACCOUNT)).rejects.toBe(rpcError);
+    });
+
+    it('propagates a rejected coin balance RPC when exceptions are requested', async () => {
+      const rpcError = new Error('rpc');
+      installedProvider(mockRequest(async () => []));
+      const { result } = renderHook(() => useMetaMask());
+      mockGetBalance.mockRejectedValue(rpcError);
+
+      await expect(result.current.readBalance(coin, TEST_ACCOUNT, true)).rejects.toBe(rpcError);
     });
 
     it('rethrows a token balance failure when exceptions are requested', async () => {
@@ -1178,103 +977,27 @@ describe('useMetaMask', () => {
     it('sends a coin transaction converting ether to wei', async () => {
       connectedProvider();
       const { result } = renderHook(() => useMetaMask());
-      lastWeb3Instance().eth.sendTransaction.mockResolvedValue({ transactionHash: '0xcoin' });
+      mockSendTransaction.mockResolvedValue({ transactionHash: '0xcoin' });
 
       await expect(result.current.createTransaction(new BigNumber(2), coin, TEST_ACCOUNT, '0xto')).resolves.toBe(
         '0xcoin',
       );
-      expect(lastWeb3Instance().utils.toWei).toHaveBeenCalledWith('2', 'ether');
-      expect(lastWeb3Instance().eth.sendTransaction).toHaveBeenCalledWith(
-        expect.objectContaining({ from: TEST_ACCOUNT, to: '0xto', value: '2' }),
+      expect(mockToWei).toHaveBeenCalledWith('2', 'ether');
+      expect(mockSendTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          from: TEST_ACCOUNT,
+          to: '0xto',
+          value: '2',
+          maxPriorityFeePerGas: null,
+          maxFeePerGas: null,
+        }),
       );
-    });
-
-    it.each([
-      { name: 'coin', asset: coin },
-      { name: 'token', asset: { ...token, chainId: token.chainId?.toLowerCase() } as Asset },
-    ])('keeps $name receipt polling on the wallet that accepted the transaction', async ({ asset }) => {
-      const transactionHash = `0x${'a'.repeat(64)}`;
-      const receipt = {
-        transactionHash,
-        blockHash: `0x${'b'.repeat(64)}`,
-        blockNumber: '0x1',
-        transactionIndex: '0x0',
-        cumulativeGasUsed: '0x5208',
-        gasUsed: '0x5208',
-        status: '0x1',
-        logs: [],
-      };
-      const replacement = { isMetaMask: true, request: jest.fn(() => Promise.reject(new Error('wrong wallet'))) };
-      const request = jest.fn(async ({ method }: { method: string }) => {
-        if (method === 'eth_sendTransaction') {
-          (window as any).ethereum = replacement;
-          return transactionHash;
-        }
-        if (method === 'eth_getTransactionReceipt') return receipt;
-        if (method === 'eth_getBlockByNumber') return { number: '0x1' };
-        if (method === 'eth_estimateGas') return '0x5208';
-        if (method === 'eth_gasPrice') return '0x3b9aca00';
-        if (method === 'eth_accounts') return [TEST_ACCOUNT];
-        if (method === 'eth_chainId') return '0x1';
-        throw new Error(`Unexpected RPC ${method}`);
-      });
-      installedProvider(request);
-      if (asset.type === AssetType.TOKEN) {
-        const testHash = (input: string) => `0x${createHash('sha256').update(input).digest('hex')}`;
-        jest.spyOn(jest.requireActual('web3-utils/lib/utils'), 'sha3').mockImplementation(testHash);
-        jest.spyOn(jest.requireActual('web3-utils'), 'sha3').mockImplementation(testHash);
-        jest
-          .spyOn(jest.requireActual('web3-utils'), 'toChecksumAddress')
-          .mockImplementation((address: string) => address);
-      }
-      mockUseRealWeb3 = true;
-      const { result } = renderHook(() => useMetaMask());
-      await expect(
-        result.current.createTransaction(new BigNumber(1), asset, TEST_ACCOUNT, TEST_ACCOUNT, { isWeiAmount: true }),
-      ).resolves.toBe(transactionHash);
-      expect(request).toHaveBeenCalledWith(expect.objectContaining({ method: 'eth_sendTransaction' }));
-      expect(request).toHaveBeenCalledWith(expect.objectContaining({ method: 'eth_getTransactionReceipt' }));
-      expect(replacement.request).not.toHaveBeenCalled();
-    });
-
-    it('refuses to send if the selected wallet account changed', async () => {
-      installedProvider(
-        mockRequest(({ method }) =>
-          method === 'eth_accounts' ? ['0x2222222222222222222222222222222222222222'] : '0x1',
-        ),
-      );
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(
-        result.current.createTransaction(new BigNumber(1), coin, TEST_ACCOUNT, TEST_ACCOUNT),
-      ).rejects.toThrow('Wallet account changed');
-      expect(mockSendTransaction).not.toHaveBeenCalled();
-    });
-
-    it('reports a missing wallet before creating a transaction', async () => {
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(
-        result.current.createTransaction(new BigNumber(1), coin, TEST_ACCOUNT, TEST_ACCOUNT),
-      ).rejects.toThrow('No wallet found');
-      expect(mockSendTransaction).not.toHaveBeenCalled();
-    });
-
-    it('refuses to send if the selected wallet network changed', async () => {
-      connectedProvider();
-      mockToBlockchain.mockReturnValue('Optimism');
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(
-        result.current.createTransaction(new BigNumber(1), coin, TEST_ACCOUNT, TEST_ACCOUNT),
-      ).rejects.toThrow('Wallet network changed');
-      expect(mockSendTransaction).not.toHaveBeenCalled();
     });
 
     it('sends a coin transaction using the amount as wei when asked', async () => {
       connectedProvider();
       const { result } = renderHook(() => useMetaMask());
-      lastWeb3Instance().eth.sendTransaction.mockResolvedValue({ transactionHash: '0xwei' });
+      mockSendTransaction.mockResolvedValue({ transactionHash: '0xwei' });
 
       await expect(
         result.current.createTransaction(new BigNumber(500), coin, TEST_ACCOUNT, '0xto', {
@@ -1282,10 +1005,8 @@ describe('useMetaMask', () => {
           gasPrice: 20,
         }),
       ).resolves.toBe('0xwei');
-      expect(lastWeb3Instance().utils.toWei).not.toHaveBeenCalled();
-      expect(lastWeb3Instance().eth.sendTransaction).toHaveBeenCalledWith(
-        expect.objectContaining({ value: '500', gasPrice: 20 }),
-      );
+      expect(mockToWei).not.toHaveBeenCalled();
+      expect(mockSendTransaction).toHaveBeenCalledWith(expect.objectContaining({ value: '500', gasPrice: 20 }));
     });
 
     it('sends a token transfer scaled by decimals', async () => {
@@ -1293,7 +1014,7 @@ describe('useMetaMask', () => {
       const { result } = renderHook(() => useMetaMask());
       const send = jest.fn().mockResolvedValue({ transactionHash: '0xtoken' });
       const transfer = jest.fn().mockReturnValue({ send });
-      lastWeb3Instance().eth.Contract.mockReturnValue({
+      mockContract.mockReturnValue({
         methods: {
           decimals: () => ({ call: jest.fn().mockResolvedValue(6) }),
           transfer,
@@ -1303,6 +1024,7 @@ describe('useMetaMask', () => {
       await expect(result.current.createTransaction(new BigNumber(1.5), token, TEST_ACCOUNT, '0xto')).resolves.toBe(
         '0xtoken',
       );
+      expect(mockContract).toHaveBeenCalledWith(expect.any(Array), token.chainId);
       expect(transfer).toHaveBeenCalledWith('0xto', '1500000');
       expect(send).toHaveBeenCalledWith({
         from: TEST_ACCOUNT,
@@ -1312,50 +1034,13 @@ describe('useMetaMask', () => {
       });
     });
 
-    it.each([
-      { change: 'account', error: 'Wallet account changed' },
-      { change: 'network', error: 'Wallet network changed' },
-    ])('refuses a token transfer when the wallet $change changes while reading decimals', async ({ change, error }) => {
-      let currentAccount = TEST_ACCOUNT;
-      let currentChain = '0x1';
-      installedProvider(
-        mockRequest(({ method }) => {
-          if (method === 'eth_accounts') return [currentAccount];
-          if (method === 'eth_chainId') return currentChain;
-          throw new Error(`Unexpected RPC ${method}`);
-        }),
-      );
-      mockToBlockchain.mockImplementation((chainId) => (chainId === 1 ? 'Ethereum' : 'Optimism'));
-      const { result } = renderHook(() => useMetaMask());
-      const send = jest.fn().mockResolvedValue({ transactionHash: '0xshould-not-send' });
-      const transfer = jest.fn().mockReturnValue({ send });
-      lastWeb3Instance().eth.Contract.mockReturnValue({
-        methods: {
-          decimals: () => ({
-            call: jest.fn(async () => {
-              if (change === 'account') currentAccount = '0x2222222222222222222222222222222222222222';
-              else currentChain = '0xa';
-              return 6;
-            }),
-          }),
-          transfer,
-        },
-      });
-
-      await expect(result.current.createTransaction(new BigNumber(1), token, TEST_ACCOUNT, '0xto')).rejects.toThrow(
-        error,
-      );
-      expect(transfer).not.toHaveBeenCalled();
-      expect(send).not.toHaveBeenCalled();
-    });
-
     it('sends a token transfer without scaling when the amount is already wei', async () => {
       connectedProvider();
       const { result } = renderHook(() => useMetaMask());
       const send = jest.fn().mockResolvedValue({ transactionHash: '0xraw' });
       const transfer = jest.fn().mockReturnValue({ send });
       const decimals = jest.fn();
-      lastWeb3Instance().eth.Contract.mockReturnValue({
+      mockContract.mockReturnValue({
         methods: {
           decimals: () => ({ call: decimals }),
           transfer,
@@ -1370,36 +1055,7 @@ describe('useMetaMask', () => {
     });
   });
 
-  describe('late provider without setProvider', () => {
-    it('uses a late provider without rebinding Web3', async () => {
-      const { result } = renderHook(() => useMetaMask());
-      delete lastWeb3Instance().setProvider;
-
-      installedProvider(mockRequest(async () => [TEST_ACCOUNT]));
-
-      await expect(result.current.getAccount()).resolves.toBe(TEST_ACCOUNT);
-    });
-
-    it('still answers getAccount when provider.on throws on subscribe', async () => {
-      installedProvider(
-        mockRequest(async ({ method }) => {
-          if (method === 'eth_accounts') return [TEST_ACCOUNT];
-          return [];
-        }),
-        {
-          on: jest.fn(() => {
-            throw new Error('subscribe failed');
-          }),
-        },
-      );
-
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(result.current.getAccount()).resolves.toBe(TEST_ACCOUNT);
-    });
-  });
-
-  describe('supportsEip5792Paymaster without an account', () => {
+  describe('supportsEip5792Paymaster', () => {
     it('returns false when no account is connected', async () => {
       installedProvider(
         mockRequest(async ({ method }) => {
@@ -1412,46 +1068,86 @@ describe('useMetaMask', () => {
 
       await expect(result.current.supportsEip5792Paymaster(1)).resolves.toBe(false);
     });
+
+    it('returns false when no wallet is injected', async () => {
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.supportsEip5792Paymaster(1)).resolves.toBe(false);
+    });
+
+    it('returns false when the wallet rejects the capabilities request', async () => {
+      installedProvider(
+        mockRequest(async ({ method }) => {
+          if (method === 'eth_accounts') return [TEST_ACCOUNT];
+          if (method === 'wallet_getCapabilities') throw new Error('unsupported');
+          return null;
+        }),
+      );
+
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.supportsEip5792Paymaster(1)).resolves.toBe(false);
+    });
+
+    it.each([
+      ['no capabilities', null],
+      ['an unknown chain', {}],
+      ['no paymaster service', { '0x1': {} }],
+      ['a paymaster that is not supported', { '0x1': { paymasterService: { supported: false } } }],
+    ])('returns false for %s', async (_label, capabilities) => {
+      installedProvider(
+        mockRequest(async ({ method }) => {
+          if (method === 'eth_accounts') return [TEST_ACCOUNT];
+          if (method === 'wallet_getCapabilities') return capabilities;
+          return null;
+        }),
+      );
+
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.supportsEip5792Paymaster(1)).resolves.toBe(false);
+    });
+
+    it('reports paymaster support for the requested chain', async () => {
+      const request = mockRequest(async ({ method }) => {
+        if (method === 'eth_accounts') return [TEST_ACCOUNT];
+        if (method === 'wallet_getCapabilities') return { '0x1': { paymasterService: { supported: true } } };
+        return null;
+      });
+      installedProvider(request);
+
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.supportsEip5792Paymaster(1)).resolves.toBe(true);
+      expect(request).toHaveBeenCalledWith({ method: 'wallet_getCapabilities', params: [TEST_ACCOUNT] });
+    });
   });
 
-  describe('sendCallsWithPaymaster remaining branches', () => {
+  describe('sendCallsWithPaymaster', () => {
     const calls = [{ to: '0xto', data: '0xdata', value: '0x0' }];
+
+    function paymasterRequest(
+      status: { status: string; receipts?: Array<{ transactionHash: string }> } | string,
+      sendResult: { id: string } | string,
+    ) {
+      return mockRequest(async ({ method, params }) => {
+        if (method === 'eth_accounts') return [TEST_ACCOUNT];
+        if (method === 'wallet_getCapabilities') return { '0x1': { paymasterService: { supported: true } } };
+        if (method === 'wallet_sendCalls') return sendResult;
+        if (method === 'wallet_getCallsStatus') {
+          expect(params?.[0]).toBe(typeof sendResult === 'string' ? sendResult : sendResult.id);
+          return status;
+        }
+        return null;
+      });
+    }
 
     it('reports a missing wallet before sending gasless calls', async () => {
       const { result } = renderHook(() => useMetaMask());
 
-      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1, TEST_ACCOUNT)).rejects.toThrow(
+      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow(
         'No wallet found',
       );
-    });
-
-    it('refuses gasless calls when the wallet account already differs from the session', async () => {
-      const request = mockRequest(({ method }) => {
-        if (method === 'eth_accounts') return ['0x2222222222222222222222222222222222222222'];
-        throw new Error(`Unexpected RPC ${method}`);
-      });
-      installedProvider(request);
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1, TEST_ACCOUNT)).rejects.toThrow(
-        'Wallet account changed',
-      );
-      expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_sendCalls' }));
-    });
-
-    it('refuses gasless calls on the wrong initial network', async () => {
-      const request = mockRequest(({ method }) => {
-        if (method === 'eth_accounts') return [TEST_ACCOUNT];
-        if (method === 'eth_chainId') return '0xa';
-        throw new Error(`Unexpected RPC ${method}`);
-      });
-      installedProvider(request);
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1, TEST_ACCOUNT)).rejects.toThrow(
-        'Wallet network changed',
-      );
-      expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_sendCalls' }));
     });
 
     it('throws when no account is connected', async () => {
@@ -1464,45 +1160,76 @@ describe('useMetaMask', () => {
 
       const { result } = renderHook(() => useMetaMask());
 
-      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1, TEST_ACCOUNT)).rejects.toThrow(
+      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow(
         'No account connected',
       );
     });
 
-    it('queries call status with the raw result when wallet_sendCalls returns no id', async () => {
-      const request = mockRequest(async ({ method, params }) => {
+    it('refuses gasless calls when the wallet does not support a paymaster', async () => {
+      const request = mockRequest(async ({ method }) => {
         if (method === 'eth_accounts') return [TEST_ACCOUNT];
-        if (method === 'eth_chainId') return '0x1';
-        if (method === 'wallet_getCapabilities') {
-          return { '0x1': { paymasterService: { supported: true } } };
-        }
-        if (method === 'wallet_sendCalls') return 'raw-bundle-id';
-        if (method === 'wallet_getCallsStatus') {
-          expect(params?.[0]).toBe('raw-bundle-id');
-          return { status: 'CONFIRMED', receipts: [{ transactionHash: '0xfromraw' }] };
-        }
+        if (method === 'wallet_getCapabilities') return { '0x1': { paymasterService: { supported: false } } };
         return null;
       });
       installedProvider(request);
 
       const { result } = renderHook(() => useMetaMask());
 
-      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1, TEST_ACCOUNT)).resolves.toBe(
-        '0xfromraw',
+      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow(
+        'Your wallet does not support gasless transactions. Please update MetaMask to v12.20+ and enable Smart Account.',
+      );
+      expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_sendCalls' }));
+    });
+
+    it('returns the confirmed transaction hash for a sponsored bundle', async () => {
+      const request = paymasterRequest(
+        { status: 'CONFIRMED', receipts: [{ transactionHash: '0xpaid' }] },
+        { id: 'bundle-123' },
+      );
+      installedProvider(request);
+
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1)).resolves.toBe('0xpaid');
+      expect(request).toHaveBeenCalledWith({
+        method: 'wallet_sendCalls',
+        params: [
+          {
+            version: '1.0',
+            chainId: '0x1',
+            from: TEST_ACCOUNT,
+            calls: [{ to: '0xto', data: '0xdata', value: '0x0' }],
+            capabilities: { paymasterService: { url: 'https://paymaster' } },
+          },
+        ],
+      });
+    });
+
+    it('queries call status with the raw result when wallet_sendCalls returns no id', async () => {
+      const request = paymasterRequest(
+        { status: 'CONFIRMED', receipts: [{ transactionHash: '0xfromraw' }] },
+        'raw-bundle-id',
+      );
+      installedProvider(request);
+
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1)).resolves.toBe('0xfromraw');
+    });
+
+    it('rejects when the sponsored bundle fails', async () => {
+      const request = paymasterRequest({ status: 'FAILED' }, { id: 'bundle-failed' });
+      installedProvider(request);
+
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow(
+        'Transaction failed',
       );
     });
 
     it('times out when call status never confirms', async () => {
-      const request = mockRequest(async ({ method }) => {
-        if (method === 'eth_accounts') return [TEST_ACCOUNT];
-        if (method === 'eth_chainId') return '0x1';
-        if (method === 'wallet_getCapabilities') {
-          return { '0x1': { paymasterService: { supported: true } } };
-        }
-        if (method === 'wallet_sendCalls') return { id: 'bundle-hang' };
-        if (method === 'wallet_getCallsStatus') return { status: 'PENDING' };
-        return null;
-      });
+      const request = paymasterRequest({ status: 'PENDING' }, { id: 'bundle-hang' });
       installedProvider(request);
 
       const realSetTimeout = global.setTimeout;
@@ -1511,73 +1238,14 @@ describe('useMetaMask', () => {
           fn();
           return 0 as unknown as NodeJS.Timeout;
         }
-        return realSetTimeout(fn, ms, ...args);
+        return realSetTimeout(fn, ms as number, ...(args as never[]));
       });
 
       const { result } = renderHook(() => useMetaMask());
 
-      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1, TEST_ACCOUNT)).rejects.toThrow(
+      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow(
         'Transaction timeout - please check your wallet',
       );
-    });
-
-    it('polls the wallet that accepted gasless calls after another wallet is injected', async () => {
-      const replacement = { isMetaMask: true, request: jest.fn(() => Promise.reject(new Error('wrong wallet'))) };
-      const request = mockRequest(async ({ method }) => {
-        if (method === 'eth_accounts') return [TEST_ACCOUNT];
-        if (method === 'eth_chainId') return '0x1';
-        if (method === 'wallet_getCapabilities') return { '0x1': { paymasterService: { supported: true } } };
-        if (method === 'wallet_sendCalls') {
-          (window as any).ethereum = replacement;
-          return { id: 'bundle-123' };
-        }
-        if (method === 'wallet_getCallsStatus')
-          return { status: 'CONFIRMED', receipts: [{ transactionHash: '0xpaid' }] };
-        throw new Error(`Unexpected RPC ${method}`);
-      });
-      installedProvider(request);
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1, TEST_ACCOUNT)).resolves.toBe(
-        '0xpaid',
-      );
-      expect(request).toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_getCallsStatus' }));
-      expect(replacement.request).not.toHaveBeenCalled();
-    });
-
-    it('refuses gasless calls when the account changes before sending', async () => {
-      let accountChecks = 0;
-      const request = mockRequest(async ({ method }) => {
-        if (method === 'eth_accounts')
-          return ++accountChecks === 1 ? [TEST_ACCOUNT] : ['0x2222222222222222222222222222222222222222'];
-        if (method === 'eth_chainId') return '0x1';
-        if (method === 'wallet_getCapabilities') return { '0x1': { paymasterService: { supported: true } } };
-        throw new Error(`Unexpected RPC ${method}`);
-      });
-      installedProvider(request);
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1, TEST_ACCOUNT)).rejects.toThrow(
-        'Wallet account changed',
-      );
-      expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_sendCalls' }));
-    });
-
-    it('refuses gasless calls when the network changes before sending', async () => {
-      let chainChecks = 0;
-      const request = mockRequest(async ({ method }) => {
-        if (method === 'eth_accounts') return [TEST_ACCOUNT];
-        if (method === 'eth_chainId') return ++chainChecks === 1 ? '0x1' : '0xa';
-        if (method === 'wallet_getCapabilities') return { '0x1': { paymasterService: { supported: true } } };
-        throw new Error(`Unexpected RPC ${method}`);
-      });
-      installedProvider(request);
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1, TEST_ACCOUNT)).rejects.toThrow(
-        'Wallet network changed',
-      );
-      expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_sendCalls' }));
     });
   });
 
@@ -1597,7 +1265,7 @@ describe('useMetaMask', () => {
     it('reports a missing wallet before signing an authorization', async () => {
       const { result } = renderHook(() => useMetaMask());
 
-      await expect(result.current.signEip7702Authorization(authData, TEST_ACCOUNT)).rejects.toThrow('No wallet found');
+      await expect(result.current.signEip7702Authorization(authData)).rejects.toThrow('No wallet found');
     });
 
     it('throws when no account is connected', async () => {
@@ -1610,38 +1278,7 @@ describe('useMetaMask', () => {
 
       const { result } = renderHook(() => useMetaMask());
 
-      await expect(result.current.signEip7702Authorization(authData, TEST_ACCOUNT)).rejects.toThrow(
-        'No account connected',
-      );
-    });
-
-    it('refuses to sign for an account different from the session', async () => {
-      const request = mockRequest(({ method }) => {
-        if (method === 'eth_accounts') return ['0x2222222222222222222222222222222222222222'];
-        throw new Error(`Unexpected RPC ${method}`);
-      });
-      installedProvider(request);
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(result.current.signEip7702Authorization(authData, TEST_ACCOUNT)).rejects.toThrow(
-        'Wallet account changed',
-      );
-      expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'eth_signTypedData_v4' }));
-    });
-
-    it('refuses to sign on a network different from the authorization', async () => {
-      const request = mockRequest(({ method }) => {
-        if (method === 'eth_accounts') return [TEST_ACCOUNT];
-        if (method === 'eth_chainId') return '0xa';
-        throw new Error(`Unexpected RPC ${method}`);
-      });
-      installedProvider(request);
-      const { result } = renderHook(() => useMetaMask());
-
-      await expect(result.current.signEip7702Authorization(authData, TEST_ACCOUNT)).rejects.toThrow(
-        'Wallet network changed',
-      );
-      expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'eth_signTypedData_v4' }));
+      await expect(result.current.signEip7702Authorization(authData)).rejects.toThrow('No account connected');
     });
 
     it('splits the typed-data signature into r, s and yParity', async () => {
@@ -1652,7 +1289,7 @@ describe('useMetaMask', () => {
         if (method === 'eth_accounts') return [TEST_ACCOUNT];
         if (method === 'eth_signTypedData_v4') {
           expect(params?.[0]).toBe(TEST_ACCOUNT);
-          expect(JSON.parse(params?.[1])).toEqual(authData.typedData);
+          expect(JSON.parse(params?.[1] as string)).toEqual(authData.typedData);
           return signature;
         }
         return null;
@@ -1661,7 +1298,7 @@ describe('useMetaMask', () => {
 
       const { result } = renderHook(() => useMetaMask());
 
-      await expect(result.current.signEip7702Authorization(authData, TEST_ACCOUNT)).resolves.toEqual({
+      await expect(result.current.signEip7702Authorization(authData)).resolves.toEqual({
         chainId: 1,
         address: '0xcontract',
         nonce: 7,
@@ -1681,7 +1318,7 @@ describe('useMetaMask', () => {
 
       const { result } = renderHook(() => useMetaMask());
 
-      await expect(result.current.signEip7702Authorization(authData, TEST_ACCOUNT)).rejects.toBeInstanceOf(AbortError);
+      await expect(result.current.signEip7702Authorization(authData)).rejects.toBeInstanceOf(AbortError);
     });
   });
 

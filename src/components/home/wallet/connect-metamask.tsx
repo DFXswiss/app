@@ -14,7 +14,7 @@ import { ConnectBase } from '../connect-base';
 import { Account, ConnectContentProps, ConnectError, ConnectProps } from '../connect-shared';
 
 export default function ConnectMetaMask(props: ConnectProps): JSX.Element {
-  const { isAvailable, requestAccount, requestBlockchain, requestChangeToBlockchain, sign } = useMetaMask();
+  const { isInstalled, requestAccount, requestBlockchain, requestChangeToBlockchain, sign } = useMetaMask();
 
   async function getAccount(_w: WalletType, blockchain: Blockchain): Promise<Account> {
     const address = await requestAccount();
@@ -28,7 +28,7 @@ export default function ConnectMetaMask(props: ConnectProps): JSX.Element {
 
   return (
     <ConnectBase
-      isSupported={isAvailable}
+      isSupported={isInstalled}
       fallback={isMobile ? WalletType.WALLET_CONNECT : undefined}
       getAccount={getAccount}
       signMessage={(msg, addr) => sign(addr, msg)}

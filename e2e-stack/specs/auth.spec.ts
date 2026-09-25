@@ -132,24 +132,9 @@ test.describe('Auth area e2e', () => {
     await expect(page.locator('img[src*="walletconnect"]')).toBeVisible();
   });
 
-  test('/login/wallet MetaMask tile without an injected wallet shows the install hint', async ({ page }) => {
-    await page.goto('/login/wallet');
-    await page.waitForLoadState('networkidle');
-
-    expect(normPath(new URL(page.url()).pathname)).toBe('/login/wallet');
-    const metamaskTile = page.locator('img[src*="metamask"]');
-    await expect(metamaskTile).toBeVisible({ timeout: 15000 });
-    await metamaskTile.click();
-
-    // ConnectBase awaits isAvailable() (20 × 100 ms) before rendering InstallHint.
-    await expect(page.getByText('Please install MetaMask or Rabby!', { exact: true })).toBeVisible({
-      timeout: 15000,
-    });
-  });
-
-  // The hook gives Web3 a facade without `.on` when that property throws on the
-  // injected provider. Otherwise the error area would show the missing-wallet
-  // hint instead of the later signature validation.
+  // Web3 sees only the request adapter, and register() catches the throwing `.on`
+  // read. Without that, the missing-provider hint or `Provider not set or invalid`
+  // would show instead of the later signature check.
   // The mock does not answer personal_sign, so login deliberately does not complete.
   test('/login/wallet MetaMask tile with a Brave-like provider does not show the install hint', async ({ page }) => {
     await page.addInitScript((address: string) => {
