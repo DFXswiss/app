@@ -187,7 +187,11 @@ describe('useMetaMask', () => {
     mockPersonalSign.mockReset();
     mockToWei.mockReset().mockImplementation((val: string) => val);
     mockIsMobile = false;
-    mockToBlockchain.mockReset().mockImplementation(() => 'Ethereum');
+    mockToBlockchain
+      .mockReset()
+      .mockImplementation((chainId: string | number | undefined) =>
+        chainId !== undefined && +chainId === 1 ? 'Ethereum' : undefined,
+      );
     mockToChainHex.mockReset().mockImplementation(() => '0x1');
     mockToChainObject.mockReset().mockImplementation(() => ETH_CHAIN);
   });
@@ -511,7 +515,7 @@ describe('useMetaMask', () => {
       expect(onBlockchainChanged).toHaveBeenCalledWith('chain:0xa');
     });
 
-    it('calls onAccountChanged with undefined when getAccounts fails so verifyAccount sees no list', async () => {
+    it('calls onAccountChanged with undefined when getAccounts fails and maps chain id 1 to Ethereum', async () => {
       const request = mockRequest(async ({ method }) => {
         if (method === 'eth_accounts') throw new Error('accounts unavailable');
         if (method === 'eth_chainId') return '0x1';
@@ -526,9 +530,10 @@ describe('useMetaMask', () => {
 
       await waitFor(() => expect(onAccountChanged).toHaveBeenCalledWith(undefined));
       await waitFor(() => expect(onBlockchainChanged).toHaveBeenCalledWith('Ethereum'));
+      expect(mockToBlockchain).toHaveBeenCalledWith(1);
     });
 
-    it('does not throw when register runs without an injected provider', async () => {
+    it('does not throw when register runs without an injected provider and passes undefined to the chain callback', async () => {
       const { result } = renderHook(() => useMetaMask());
       const onAccountChanged = jest.fn();
       const onBlockchainChanged = jest.fn();
@@ -537,8 +542,10 @@ describe('useMetaMask', () => {
 
       await waitFor(() => {
         expect(onAccountChanged).toHaveBeenCalledWith(undefined);
-        expect(onBlockchainChanged).toHaveBeenCalledWith('Ethereum');
+        expect(onBlockchainChanged).toHaveBeenCalledWith(undefined);
       });
+      // getChainId rejects, and the mock calls its callback with only the error, so chainId is undefined.
+      expect(mockToBlockchain).toHaveBeenCalledWith(undefined);
     });
   });
 
