@@ -327,6 +327,116 @@ test.describe('Buy Process - UI Flow', () => {
     });
   });
 
+  // USD is hidden on the live fiat list until its display flag is on. This fixture injects a
+  // buyable USD row so the toggle can be shown. A green run does not prove the API returns it.
+  test('shows the USD collection IBAN toggle when USD is in the fiat list', async ({ page, request }) => {
+    const token = await getToken(request);
+    let receivedProvider: unknown;
+
+    await page.route('**/v1/fiat', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 1,
+            name: 'CHF',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 2,
+            name: 'EUR',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 3,
+            name: 'USD',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+        ],
+      });
+    });
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      const requestData = route.request().postDataJSON() as Record<string, unknown>;
+      receivedProvider = requestData.personalIbanProvider;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          id: 1,
+          isValid: true,
+          amount: 100,
+          estimatedAmount: 0.0251,
+          rate: 3862.5,
+          exchangeRate: 3984.06,
+          priceSteps: [],
+          minVolume: 10,
+          maxVolume: 990000,
+          minVolumeTarget: 0.0026,
+          maxVolumeTarget: 248.5,
+          fees: {
+            rate: 0.0099,
+            fixed: 0,
+            min: 0,
+            dfx: 0.99,
+            network: 0,
+            bank: 0,
+            bankFixed: 1,
+            bankVariable: 0,
+            platform: 0,
+            total: 1.99,
+          },
+          currency: { id: 3, name: 'USD' },
+          asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
+          bank: 'Bank Frick',
+          bic: 'BFRILI22XXX',
+          iban: 'LI91088100002324013AB',
+          name: 'DFX AG',
+          street: 'Bahnhofstrasse',
+          number: '7',
+          zip: '6300',
+          city: 'Zug',
+          country: 'Schweiz',
+          remittanceInfo: 'A1B2-C3D4-E5F6',
+          sepaInstant: false,
+          isPersonalIban: true,
+        },
+      });
+    });
+
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick`,
+    );
+
+    const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
+    const toggle = paymentDetails.getByRole('button', { name: 'Show collection IBAN' });
+    await expect(toggle).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => receivedProvider).toBe('Frick');
+    await expect(paymentDetails.getByText('LI91 0881 0000 2324 013A B')).toBeVisible();
+    await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-toggle-personal-usd.png');
+
+    await toggle.click();
+    await expect(paymentDetails.getByText('LI31 0881 1010 5923 K000 U')).toBeVisible();
+    await expect(paymentDetails.getByRole('button', { name: 'Show personal IBAN' })).toBeVisible();
+    await expect(paymentDetails).toHaveScreenshot('buy-collection-iban-toggle-collection-usd.png');
+  });
+
   // CHF quotes carry Swiss QR-Bill SVG payloads, which must fail closed when the user switches
   // to the collection account: no GiroCode is synthesized, while manual entry and PDF remain.
   test('shows the fail-closed QR hint for a CHF quote', async ({ page, request }) => {
@@ -406,16 +516,16 @@ test.describe('Buy Process - UI Flow', () => {
     await expect(paymentDetails).toHaveScreenshot('buy-chf-collection-iban-qr-fail-closed.png');
   });
 
-  // USD is outside the Bank Frick currency set: a requested Frick selector cannot apply here, so
-  // the updated mismatch-hint copy (EUR and CHF, not EUR only) must show instead of Frick
-  // details, and the request sent to the API must never carry the selector for an inapplicable
-  // currency. Fully static quote, no upstream forwarding, same reasoning as the collection-IBAN
-  // toggle test above: independent of local KYC state, price rules and Bank Frick issuance.
+  // GBP is outside FRICK_CURRENCIES (EUR, CHF, USD), so the mismatch hint still names only EUR
+  // and CHF, and the request carries no provider. These tests use GBP rather than the hidden-USD
+  // state (USD is in the Frick set and only hidden when the active fiat list omits it). Fully
+  // static quote, no upstream forwarding, same reasoning as the collection-IBAN toggle test
+  // above: independent of local KYC state, price rules and Bank Frick issuance.
   test('shows the updated mismatch hint for a non-Frick currency', async ({ page, request }) => {
     const token = await getToken(request);
     let receivedProvider: unknown;
 
-    // USD is not served by the app's real currency list; mock it so asset-in=USD resolves.
+    // Mock GBP so asset-in=GBP resolves; it is not served by the app's real currency list.
     await page.route('**/v1/fiat', async (route) => {
       await route.fulfill({
         status: 200,
@@ -443,7 +553,7 @@ test.describe('Buy Process - UI Flow', () => {
           },
           {
             id: 3,
-            name: 'USD',
+            name: 'GBP',
             buyable: true,
             sellable: true,
             cardBuyable: false,
@@ -486,7 +596,7 @@ test.describe('Buy Process - UI Flow', () => {
             platform: 0,
             total: 2.99,
           },
-          currency: { id: 3, name: 'USD' },
+          currency: { id: 3, name: 'GBP' },
           asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
           bic: 'UBSWCHZH80A',
           iban: 'CH9300762011623852957',
@@ -504,7 +614,7 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick`,
     );
 
     await expect(
@@ -513,21 +623,129 @@ test.describe('Buy Process - UI Flow', () => {
       ),
     ).toBeVisible({ timeout: 15000 });
     await expect.poll(() => receivedProvider).toBeUndefined();
-
-    await expect(page).toHaveScreenshot('buy-usd-mismatch-page.png', {
-      fullPage: true,
-      maxDiffPixels: 10000,
-    });
+    // No full-page baseline: the selector would show a currency the product does not offer.
   });
 
-  // Same USD scenario as the mismatch-hint test above, but with no requested selector at all
-  // (no `personal-iban` URL param): the mismatch hint and the promo banner are mutually exclusive
-  // render branches (the promo requires no selector), so this test proves the promo positively
-  // instead of only proving the mismatch hint's absence.
-  test('shows the personal-IBAN promo for a non-Frick currency without a selector', async ({ page, request }) => {
+  // The displayed Frick set includes USD, so the same GBP offer uses the currency template.
+  // The live fiat list hides USD until the display flag is on. This fixture injects it.
+  test('shows the mismatch sentence naming USD when USD is displayed', async ({ page, request }) => {
+    const token = await getToken(request);
+    let receivedProvider: unknown;
+
+    await page.route('**/v1/fiat', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 1,
+            name: 'CHF',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 2,
+            name: 'EUR',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 3,
+            name: 'USD',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 4,
+            name: 'GBP',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+        ],
+      });
+    });
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      const requestData = route.request().postDataJSON() as Record<string, unknown>;
+      receivedProvider = requestData.personalIbanProvider;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          id: 8,
+          isValid: true,
+          amount: 100,
+          estimatedAmount: 0.0251,
+          rate: 3862.5,
+          exchangeRate: 3984.06,
+          priceSteps: [],
+          minVolume: 10,
+          maxVolume: 990000,
+          minVolumeTarget: 0.0026,
+          maxVolumeTarget: 248.5,
+          fees: {
+            rate: 0.0099,
+            fixed: 0,
+            min: 0,
+            dfx: 0.99,
+            network: 0,
+            bank: 0,
+            bankFixed: 2,
+            bankVariable: 0,
+            platform: 0,
+            total: 2.99,
+          },
+          currency: { id: 4, name: 'GBP' },
+          asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
+          bic: 'UBSWCHZH80A',
+          iban: 'CH9300762011623852957',
+          name: 'DFX AG',
+          street: 'Bahnhofstrasse',
+          number: '7',
+          zip: '6300',
+          city: 'Zug',
+          country: 'Schweiz',
+          remittanceInfo: 'DFX-BUY-8',
+          sepaInstant: false,
+          isPersonalIban: false,
+        },
+      });
+    });
+
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick`,
+    );
+
+    await expect(
+      page.getByText(
+        'Your requested personal IBAN is only available for EUR, CHF, USD bank transfers, so it was not used for this offer.',
+      ),
+    ).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => receivedProvider).toBeUndefined();
+    // No full-page baseline: the selector would show a currency the product does not offer.
+  });
+
+  // USD is eligible on the client, so the request carries Frick. The quote then rejects the
+  // currency. The live fiat list hides USD until the display flag is on. This fixture injects it.
+  test('shows the currency-not-supported sentence when USD is displayed', async ({ page, request }) => {
     const token = await getToken(request);
 
-    // USD is not served by the app's real currency list; mock it so asset-in=USD resolves.
     await page.route('**/v1/fiat', async (route) => {
       await route.fulfill({
         status: 200,
@@ -569,6 +787,82 @@ test.describe('Buy Process - UI Flow', () => {
 
     await page.route('**/v1/buy/paymentInfos', async (route) => {
       await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        json: {
+          statusCode: 400,
+          message: 'PersonalIbanCurrencyNotSupported',
+          error: 'Bad Request',
+        },
+      });
+    });
+
+    await page.goto(
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
+    );
+
+    await expect(
+      page.getByText('Bank Frick personal IBANs are currently only available for EUR, CHF, USD.'),
+    ).toBeVisible({ timeout: 15000 });
+
+    await expect(page).toHaveScreenshot('buy-usd-list-currency-error-page.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+  });
+
+  // Same GBP scenario as the mismatch-hint test above, but with no requested selector at all
+  // (no `personal-iban` URL param): the mismatch hint and the promo banner are mutually exclusive
+  // render branches (the promo requires no selector), so this test proves the promo positively
+  // instead of only proving the mismatch hint's absence. GBP is outside the Frick set, so the
+  // mismatch sentence still names only EUR and CHF and the request carries no provider. These
+  // tests use GBP rather than the hidden-USD state (USD is in the Frick set and only hidden when
+  // the active fiat list omits it).
+  test('shows the personal-IBAN promo for a non-Frick currency without a selector', async ({ page, request }) => {
+    const token = await getToken(request);
+
+    // Mock GBP so asset-in=GBP resolves; it is not served by the app's real currency list.
+    await page.route('**/v1/fiat', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 1,
+            name: 'CHF',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 2,
+            name: 'EUR',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 3,
+            name: 'GBP',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+        ],
+      });
+    });
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
         status: 200,
         contentType: 'application/json',
         json: {
@@ -595,7 +889,7 @@ test.describe('Buy Process - UI Flow', () => {
             platform: 0,
             total: 2.99,
           },
-          currency: { id: 3, name: 'USD' },
+          currency: { id: 3, name: 'GBP' },
           asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
           bic: 'UBSWCHZH80A',
           iban: 'CH9300762011623852957',
@@ -613,7 +907,7 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     // No personal-iban param: no selector at all, the precondition the promo banner requires.
-    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100`);
+    await page.goto(`/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100`);
 
     const promoBlock = page.getByRole('heading', { name: 'New: Personal IBAN in your own name!' }).locator('..');
     await expect(promoBlock.getByRole('heading', { name: 'New: Personal IBAN in your own name!' })).toBeVisible({
@@ -626,7 +920,7 @@ test.describe('Buy Process - UI Flow', () => {
       ),
     ).not.toBeVisible();
 
-    await expect(promoBlock).toHaveScreenshot('buy-usd-promo-block.png');
+    await expect(promoBlock).toHaveScreenshot('buy-personal-iban-promo-block.png');
   });
 
   // Existing Yapeal holder gets the new Bank Frick IBAN by default (KYC pinned to 50 via the

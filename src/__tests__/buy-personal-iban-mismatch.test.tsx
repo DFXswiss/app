@@ -31,7 +31,9 @@ const mockCurrencies = [
   { name: 'EUR', sellable: true },
   { name: 'CHF', sellable: true },
   { name: 'USD', sellable: true },
+  { name: 'GBP', sellable: true },
 ];
+let mockFiatCurrencies: { name: string }[] | undefined = [{ name: 'EUR' }, { name: 'CHF' }];
 // Stable reference: buy.screen currency-selection effect depends on prefCurrency by identity.
 const mockPrefCurrency = { name: 'CHF' };
 
@@ -89,6 +91,11 @@ jest.mock('@dfx.swiss/react', () => {
       toDescription: () => '',
       getCurrency: mockGetCurrency,
       getDefaultCurrency: mockGetDefaultCurrency,
+    }),
+    useFiatContext: () => ({
+      get currencies() {
+        return mockFiatCurrencies;
+      },
     }),
     useSessionContext: () => ({ logout: jest.fn() }),
     useUserContext: () => {
@@ -250,7 +257,13 @@ jest.mock('../contexts/layout.context', () => ({
 // prefCurrency must be truthy: currency effect only calls setVal when prefCurrency && currency.
 jest.mock('../contexts/settings.context', () => ({
   useSettingsContext: () => ({
-    translate: (_ns: string, key: string) => key,
+    translate: (_ns: string, key: string, params?: Record<string, string>) => {
+      if (!params) return key;
+      return Object.entries(params).reduce(
+        (result, [name, value]) => result.replace(`{{${name}}}`, value),
+        key,
+      );
+    },
     translateError: (key: string) => key,
     currency: mockPrefCurrency,
   }),
@@ -410,6 +423,25 @@ function usdOffer() {
   };
 }
 
+function gbpOffer() {
+  return {
+    id: 5,
+    amount: 300,
+    currency: { name: 'GBP' },
+    estimatedAmount: 0.01,
+    asset: { name: 'BTC', uniqueName: 'Bitcoin' },
+    minVolume: 1,
+    maxVolume: 100000,
+    isValid: true,
+    exchangeRate: 1,
+    rate: 1,
+    fees: {},
+    priceSteps: [],
+    isPersonalIban: false,
+    name: 'DFX AG',
+  };
+}
+
 function frickOffer(overrides: Record<string, unknown> = {}) {
   return {
     id: 2,
@@ -466,6 +498,7 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFiatCurrencies = [{ name: 'EUR' }, { name: 'CHF' }];
     mockPersonalIban.mockReturnValue('Frick');
     mockRequestedPersonalIban.mockReturnValue('Frick');
     mockHasAuthenticatedCustomer.mockReturnValue(true);
@@ -505,9 +538,8 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
   }
 
   it('omits personalIbanProvider and requires continue acknowledgement before payment details (A2)', async () => {
-    // USD, not CHF: after the Bank Frick CHF cutover, CHF is itself Frick-applicable (see the
-    // dedicated CHF test below), so a genuine currency mismatch now needs a currency outside the
-    // Bank Frick set (EUR, CHF) entirely.
+    // USD is in the Bank Frick set but hidden unless the active fiat list contains it. The
+    // default mock list is EUR and CHF, so a USD request stays inapplicable.
     mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'USD' }));
     mockReceiveFor.mockResolvedValue(usdOffer());
 
@@ -548,6 +580,61 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     expect(screen.getByTestId('payment-info')).toHaveAttribute('data-show-bank', 'true');
   });
 
+  it('keeps CHF as a Frick currency while the fiat list has not loaded', async () => {
+    mockFiatCurrencies = undefined;
+    mockPersonalIban.mockReturnValue('Frick');
+    mockRequestedPersonalIban.mockReturnValue('Frick');
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'CHF' }));
+    mockReceiveFor.mockResolvedValue(frickOffer({ currency: { name: 'CHF' } }));
+
+    render(<BuyScreen />);
+
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
+    await settle();
+    expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
+    expect(screen.queryByText(MISMATCH_HINT)).not.toBeInTheDocument();
+  });
+
+  it('requests a Frick personal IBAN directly for USD when the active fiat list includes USD', async () => {
+    mockFiatCurrencies = [{ name: 'EUR' }, { name: 'CHF' }, { name: 'USD' }];
+    mockPersonalIban.mockReturnValue('Frick');
+    mockRequestedPersonalIban.mockReturnValue('Frick');
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'USD' }));
+    mockReceiveFor.mockResolvedValue(frickOffer({ currency: { name: 'USD' } }));
+
+    render(<BuyScreen />);
+
+    await waitFor(() => expect(mockReceiveFor).toHaveBeenCalled());
+    await settle();
+    expect(mockReceiveFor.mock.calls[0][0].personalIbanProvider).toBe('Frick');
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toBeInTheDocument());
+    await settle();
+
+    expect(screen.queryByText(MISMATCH_HINT)).not.toBeInTheDocument();
+    expect(screen.getByTestId('payment-info')).toHaveAttribute('data-show-bank', 'true');
+  });
+
+  it('shows the template mismatch sentence for a non-Frick currency when USD is displayed', async () => {
+    mockFiatCurrencies = [{ name: 'EUR' }, { name: 'CHF' }, { name: 'USD' }];
+    mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'GBP' }));
+    mockReceiveFor.mockResolvedValue(gbpOffer());
+
+    render(<BuyScreen />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Your requested personal IBAN is only available for EUR, CHF, USD bank transfers, so it was not used for this offer.',
+        ),
+      ).toBeInTheDocument(),
+    );
+    await settle();
+
+    const request = mockReceiveFor.mock.calls[0][0];
+    expect(request.personalIbanProvider).toBeUndefined();
+    expect(screen.queryByText(MISMATCH_HINT)).not.toBeInTheDocument();
+  });
+
   it('does not show the mismatch hint or personal-IBAN promo for customers without personal-iban', async () => {
     mockPersonalIban.mockReturnValue(undefined);
     mockRequestedPersonalIban.mockReturnValue(undefined);
@@ -566,7 +653,7 @@ describe('BuyScreen personal IBAN mismatch and error handling', () => {
     expect(screen.getByTestId('payment-info')).toHaveAttribute('data-show-bank', 'false');
   });
 
-  it('shows the personal-IBAN promo for a currency outside the Bank Frick set without a selector', async () => {
+  it('shows the personal-IBAN promo for a currency hidden from the displayed Bank Frick set without a selector', async () => {
     mockPersonalIban.mockReturnValue(undefined);
     mockRequestedPersonalIban.mockReturnValue(undefined);
     mockUseAppParams.mockReturnValue(baseAppParams({ assetIn: 'USD' }));

@@ -34,8 +34,10 @@ import {
   FRICK_ACCOUNT_HOLDER_NAME,
   FRICK_BANK_NAME,
   FRICK_COLLECTION_IBANS,
+  FRICK_CURRENCIES,
   YAPEAL_BANK_NAME,
   deriveEffectivePersonalIbanProvider,
+  displayedFrickCurrencies,
   getFrickCollectionIban,
   getOfferableCollectionIban,
   getPersonalIbanErrorMessage,
@@ -50,6 +52,7 @@ import {
   isVerifiedYapealPersonalIbanResponse,
   normalizePersonalIban,
   parsePersonalIbanProvider,
+  personalIbanMismatchSentence,
   personalIbanOnlyParams,
   toCollectionIbanGiroCode,
   toPersonalIbanProviderRequest,
@@ -146,6 +149,19 @@ describe('deriveEffectivePersonalIbanProvider', () => {
   });
 });
 
+describe('displayedFrickCurrencies', () => {
+  it('keeps FRICK_CURRENCIES order even when active names are unordered', () => {
+    expect(FRICK_CURRENCIES).toEqual(['EUR', 'CHF', 'USD']);
+    expect(displayedFrickCurrencies(['USD', 'CHF', 'EUR', 'GBP'])).toEqual(['EUR', 'CHF', 'USD']);
+  });
+
+  it('omits Bank Frick currencies that are absent from the active list', () => {
+    expect(displayedFrickCurrencies(['EUR', 'CHF', 'GBP'])).toEqual(['EUR', 'CHF']);
+    expect(displayedFrickCurrencies([])).toEqual([]);
+    expect(displayedFrickCurrencies(['usd'])).toEqual([]);
+  });
+});
+
 describe('isPersonalIbanApplicable', () => {
   it('returns true for EUR with bank payment', () => {
     expect(isPersonalIbanApplicable('EUR', FiatPaymentMethod.BANK)).toBe(true);
@@ -159,8 +175,21 @@ describe('isPersonalIbanApplicable', () => {
     expect(isPersonalIbanApplicable('CHF', FiatPaymentMethod.CARD)).toBe(false);
   });
 
-  it('returns false for a currency outside the Bank Frick currency set with bank payment', () => {
+  it('returns false for USD with bank payment when the active fiat list is omitted', () => {
+    // USD is in the Bank Frick set but hidden unless the active fiat list contains it.
     expect(isPersonalIbanApplicable('USD', FiatPaymentMethod.BANK)).toBe(false);
+  });
+
+  it('returns true for USD with bank payment when the active fiat list includes USD', () => {
+    expect(isPersonalIbanApplicable('USD', FiatPaymentMethod.BANK, ['EUR', 'CHF', 'USD'])).toBe(true);
+  });
+
+  it('returns false for USD with bank payment when the active fiat list is only EUR and CHF', () => {
+    expect(isPersonalIbanApplicable('USD', FiatPaymentMethod.BANK, ['EUR', 'CHF'])).toBe(false);
+  });
+
+  it('returns false when the displayed set is empty', () => {
+    expect(isPersonalIbanApplicable('EUR', FiatPaymentMethod.BANK, [])).toBe(false);
   });
 
   it('returns false for EUR with a non-bank payment method', () => {
@@ -185,8 +214,12 @@ describe('getFrickCollectionIban', () => {
     expect(getFrickCollectionIban('CHF')).toBe('LI32088110105923K000C');
   });
 
+  it('returns the USD collection IBAN for USD', () => {
+    expect(getFrickCollectionIban('USD')).toBe('LI31088110105923K000U');
+  });
+
   it('returns undefined for a currency without a configured collection IBAN', () => {
-    expect(getFrickCollectionIban('USD')).toBeUndefined();
+    expect(getFrickCollectionIban('GBP')).toBeUndefined();
   });
 
   it('returns undefined for undefined', () => {
@@ -236,11 +269,21 @@ describe('getOfferableCollectionIban', () => {
     ).toBeUndefined();
   });
 
-  it('returns undefined for a currency without a configured collection IBAN (USD)', () => {
+  it('returns the USD collection IBAN for a verified USD Frick personal IBAN with remittanceInfo', () => {
     expect(
       getOfferableCollectionIban({
         ...verifiedFrickBase,
         currency: { name: 'USD' },
+        iban: 'LI35088110102979K002E',
+      }),
+    ).toBe('LI31088110105923K000U');
+  });
+
+  it('returns undefined for a currency without a configured collection IBAN (GBP)', () => {
+    expect(
+      getOfferableCollectionIban({
+        ...verifiedFrickBase,
+        currency: { name: 'GBP' },
         iban: 'LI35088110102979K002E',
       }),
     ).toBeUndefined();
@@ -370,6 +413,19 @@ describe('getPersonalIbanErrorMessage', () => {
     );
   });
 
+  it('uses the uninterpolated template when the displayed set includes USD', () => {
+    expect(
+      getPersonalIbanErrorMessage('PersonalIbanCurrencyNotSupported', ['EUR', 'CHF', 'USD']),
+    ).toBe('Bank Frick personal IBANs are currently only available for {{currencies}}.');
+    expect(displayedFrickCurrencies(['EUR', 'CHF', 'USD']).join(', ')).toBe('EUR, CHF, USD');
+  });
+
+  it('keeps the legacy sentence when extra non-Frick names do not change the displayed set', () => {
+    expect(
+      getPersonalIbanErrorMessage('PersonalIbanCurrencyNotSupported', ['EUR', 'CHF', 'GBP']),
+    ).toBe('Bank Frick personal IBANs are currently only available for EUR and CHF.');
+  });
+
   it.each([
     ['de', de['screens/payment'], /Bank Frick/i],
     ['fr', fr['screens/payment'], /Bank Frick/i],
@@ -381,12 +437,39 @@ describe('getPersonalIbanErrorMessage', () => {
         translations[
           'Bank Frick personal IBANs are currently only available for EUR and CHF.'
         ];
+      const template =
+        translations[
+          'Bank Frick personal IBANs are currently only available for {{currencies}}.'
+        ];
+      const mismatchTemplate =
+        translations[
+          'Your requested personal IBAN is only available for {{currencies}} bank transfers, so it was not used for this offer.'
+        ];
 
       expect(message).toMatch(bankFrick);
       expect(message).toMatch(/EUR/i);
       expect(message).toMatch(/CHF/i);
+      expect(template).toContain('{{currencies}}');
+      expect(mismatchTemplate).toContain('{{currencies}}');
+      expect(
+        translations[
+          'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.'
+        ],
+      ).toBeTruthy();
     },
   );
+
+  it('keeps the legacy de/fr/it currency-rejection copy unchanged', () => {
+    expect(de['screens/payment']['Bank Frick personal IBANs are currently only available for EUR and CHF.']).toBe(
+      'Persönliche IBANs von Bank Frick sind derzeit nur für EUR und CHF verfügbar.',
+    );
+    expect(fr['screens/payment']['Bank Frick personal IBANs are currently only available for EUR and CHF.']).toBe(
+      "Les IBAN personnels de Bank Frick ne sont actuellement disponibles qu'en EUR et en CHF.",
+    );
+    expect(italian['screens/payment']['Bank Frick personal IBANs are currently only available for EUR and CHF.']).toBe(
+      'Gli IBAN personali di Bank Frick sono attualmente disponibili solo per EUR e CHF.',
+    );
+  });
 
   it('maps CurrencyUnsupported to the currency-unavailable message', () => {
     expect(getPersonalIbanErrorMessage('CurrencyUnsupported')).toBe(
@@ -411,6 +494,29 @@ describe('getPersonalIbanErrorMessage', () => {
 
   it('returns undefined for unrelated messages', () => {
     expect(getPersonalIbanErrorMessage('some unrelated message')).toBeUndefined();
+  });
+});
+
+describe('personalIbanMismatchSentence', () => {
+  const legacy =
+    'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.';
+  const template =
+    'Your requested personal IBAN is only available for {{currencies}} bank transfers, so it was not used for this offer.';
+
+  it('returns the legacy sentence when the active list is omitted', () => {
+    expect(personalIbanMismatchSentence()).toBe(legacy);
+  });
+
+  it('returns the legacy sentence when the displayed set is exactly EUR and CHF', () => {
+    expect(personalIbanMismatchSentence(['EUR', 'CHF'])).toBe(legacy);
+    expect(personalIbanMismatchSentence(['CHF', 'EUR'])).toBe(legacy);
+    expect(personalIbanMismatchSentence(['EUR', 'CHF', 'GBP'])).toBe(legacy);
+  });
+
+  it('returns the uninterpolated template when the displayed set is not exactly EUR and CHF', () => {
+    expect(personalIbanMismatchSentence(['EUR', 'CHF', 'USD'])).toBe(template);
+    expect(personalIbanMismatchSentence(['EUR'])).toBe(template);
+    expect(personalIbanMismatchSentence([])).toBe(template);
   });
 });
 
