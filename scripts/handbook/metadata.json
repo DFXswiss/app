@@ -167,6 +167,10 @@
     "title": "Login-Prozess",
     "description": "Login und Home-Seite nach Authentifizierung."
   },
+  "wallet-missing-provider": {
+    "title": "Wallet-Verbindung: Provider-Fehler",
+    "description": "Fehleransicht beim MetaMask-Login, wenn ein synthetischer Wallet-Provider nach dem ersten Kontoabruf verschwindet. Der Screenshot prüft die Anzeige des Hinweises für einen fehlenden Provider; er beweist weder das Verhalten einer echten Wallet-Erweiterung noch einen erfolgreichen Login."
+  },
   "signature-login": {
     "title": "Signatur-Login",
     "description": "Wallet-Signatur-Login: Home, Buy, Sell, Settings, Transaktionen und Fehlerfall."

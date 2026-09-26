@@ -13,6 +13,21 @@ import { TranslatedError } from '../../util/translated-error';
 import { timeout } from '../../util/utils';
 import { useWeb3 } from '../web3.hook';
 
+const PROVIDER_MISSING_HINT =
+  'No wallet found. Please check your wallet extension or set one up, then reload this page.';
+
+function web3Provider(
+  getProvider: () => { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> } | undefined,
+) {
+  return {
+    request: async ({ method, params }: { method: string; params?: unknown[] }) => {
+      const provider = getProvider();
+      if (!provider) throw new TranslatedError(PROVIDER_MISSING_HINT);
+      return provider.request({ method, params });
+    },
+  };
+}
+
 export enum WalletType {
   RABBY = 'Rabby',
   META_MASK = 'MetaMask',
@@ -73,14 +88,9 @@ interface MetaMaskError {
 }
 
 export function useMetaMask(): MetaMaskInterface {
-  const web3 = useMemo(() => {
-    try {
-      return new Web3(Web3.givenProvider);
-    } catch {
-      // conflicting wallet extensions may inject a provider proxy that throws on access
-      return new Web3();
-    }
-  }, []);
+  // Web3 only sees this stable EIP-1193 adapter. Reading the injected provider
+  // when an RPC is sent also handles wallets injected or replaced after render.
+  const web3 = useMemo(() => new Web3(web3Provider(ethereum) as unknown as ConstructorParameters<typeof Web3>[0]), []);
   const { toBlockchain, toChainHex, toChainObject } = useWeb3();
 
   function ethereum() {
@@ -105,6 +115,16 @@ export function useMetaMask(): MetaMaskInterface {
     }
   }
 
+  function listen<T>(event: string, handler: (value: T) => void): void {
+    try {
+      ethereum()?.on(event, handler);
+    } catch {
+      // With the observed proxy, a mere read of `.on` throws, so neither accountsChanged nor
+      // chainChanged is registered and account or network switches are not
+      // observed. Catching here lets the rest of register() continue.
+    }
+  }
+
   function register(
     onAccountChanged: (account?: string) => void,
     onBlockchainChanged: (blockchain?: Blockchain) => void,
@@ -115,10 +135,10 @@ export function useMetaMask(): MetaMaskInterface {
     web3.eth.getChainId((_err, chainId) => {
       onBlockchainChanged(toBlockchain(chainId));
     });
-    ethereum()?.on('accountsChanged', (accounts: string[]) => {
+    listen('accountsChanged', (accounts: string[]) => {
       onAccountChanged(verifyAccount(accounts));
     });
-    ethereum()?.on('chainChanged', (chainId: string) => {
+    listen('chainChanged', (chainId: string) => {
       onBlockchainChanged(toBlockchain(chainId));
     });
   }
