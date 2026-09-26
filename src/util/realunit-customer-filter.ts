@@ -3,6 +3,14 @@ import { RealUnitCustomerListDto } from 'src/dto/realunit-compliance.dto';
 export type BalanceFilter = 'all' | 'with' | 'without';
 export type InsiderFilter = 'all' | 'insider' | 'normal';
 
+export function isBalanceFilter(value: string): value is BalanceFilter {
+  return value === 'all' || value === 'with' || value === 'without';
+}
+
+export function isInsiderFilter(value: string): value is InsiderFilter {
+  return value === 'all' || value === 'insider' || value === 'normal';
+}
+
 // Presentation-only filtering after an explicit load. The API still returns the complete tenant
 // scope when asked; these helpers only decide which loaded rows are shown.
 export function matchesBalanceFilter(customer: RealUnitCustomerListDto, filter: BalanceFilter): boolean {

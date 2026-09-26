@@ -13,6 +13,8 @@ import {
   BalanceFilter,
   filterCustomers,
   InsiderFilter,
+  isBalanceFilter,
+  isInsiderFilter,
 } from 'src/util/realunit-customer-filter';
 
 type PendingConfirm = { type: 'row'; id: number } | { type: 'all' };
@@ -35,6 +37,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm>();
   const [isConfirming, setIsConfirming] = useState(false);
   const lastSearchKeyRef = useRef<string | undefined>();
+  const listRequestedRef = useRef(false);
   const listLoadGenerationRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const pollInFlightRef = useRef(false);
@@ -56,6 +59,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
 
   function loadCustomers(key?: string): void {
     const generation = ++listLoadGenerationRef.current;
+    listRequestedRef.current = true;
     lastSearchKeyRef.current = key;
     setIsLoading(true);
     setError(undefined);
@@ -105,7 +109,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
       setError(status.error ?? 'Unknown error');
       return;
     }
-    if (reload && status.status !== 'Running') loadCustomers(lastSearchKeyRef.current);
+    if (reload && status.status !== 'Running' && listRequestedRef.current) loadCustomers(lastSearchKeyRef.current);
   }
 
   // Do not load customers on open. One GET of the name-check batch on mount; poll while running.
@@ -268,7 +272,9 @@ export default function RealunitComplianceScreen(): JSX.Element {
                 <select
                   className="px-2 py-1 border border-dfxGray-400 rounded bg-white"
                   value={balanceFilter}
-                  onChange={(e) => setBalanceFilter(e.target.value as BalanceFilter)}
+                  onChange={(e) => {
+                    if (isBalanceFilter(e.target.value)) setBalanceFilter(e.target.value);
+                  }}
                 >
                   <option value="all">{translate('screens/compliance', 'All')}</option>
                   <option value="with">{translate('screens/compliance', 'With balance')}</option>
@@ -280,7 +286,9 @@ export default function RealunitComplianceScreen(): JSX.Element {
                 <select
                   className="px-2 py-1 border border-dfxGray-400 rounded bg-white"
                   value={insiderFilter}
-                  onChange={(e) => setInsiderFilter(e.target.value as InsiderFilter)}
+                  onChange={(e) => {
+                    if (isInsiderFilter(e.target.value)) setInsiderFilter(e.target.value);
+                  }}
                 >
                   <option value="all">{translate('screens/compliance', 'All')}</option>
                   <option value="insider">{translate('screens/compliance', 'Internal shareholders (insider)')}</option>

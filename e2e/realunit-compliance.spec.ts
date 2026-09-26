@@ -18,8 +18,9 @@ import { test, expect, Page, Route } from '@playwright/test';
  * test fills the input and presses Enter (the screen's onKeyDown handler runs handleSearch).
  *
  * Intercepted endpoints (base `/v1/` is prepended by useApi):
- *   - GET  realunit/compliance/customers[?key=...] (upfront list / search → RealUnitCustomerListDto[])
+ *   - GET  realunit/compliance/customers[?key=...] (on-demand load via Load all or keyed Search → RealUnitCustomerListDto[])
  *   - GET  realunit/compliance/customers/:id        (dossier → RealUnitCustomerDetailDto)
+ *   - PUT  realunit/compliance/customers/:id/insider (mark / unmark insider)
  *   - GET  realunit/compliance/name-check           (batch status)
  *   - POST realunit/compliance/name-check           (start batch)
  *   - POST realunit/compliance/customers/:id/name-check
@@ -62,6 +63,7 @@ interface RealUnitCustomerListDto {
   lastNameCheckStatus?: 'NoMatch' | 'MatchWithoutBirthday' | 'MatchWithBirthday';
   lastNameCheckEvaluation?: 'Confirmed' | 'Ignored' | 'NotMatching' | 'Canceled';
   canScreen: boolean;
+  realUnitInsider: boolean;
 }
 
 // ~4 synthetic search results (one empty account exercises the default hide-empty toggle).
@@ -360,6 +362,7 @@ const DOSSIER = {
 
 const DETAIL_RE = /\/v1\/realunit\/compliance\/customers\/(\d+)(?:\?|$)/;
 const SEARCH_RE = /\/v1\/realunit\/compliance\/customers(?:\?|$)/;
+const INSIDER_RE = /\/v1\/realunit\/compliance\/customers\/\d+\/insider(?:\?|$)/;
 const NAME_CHECK_BATCH_RE = /\/v1\/realunit\/compliance\/name-check(?:\?|$)/;
 const NAME_CHECK_CUSTOMER_RE = /\/v1\/realunit\/compliance\/customers\/\d+\/name-check(?:\?|$)/;
 
@@ -382,6 +385,10 @@ async function installComplianceRoutes(
 
     if (NAME_CHECK_CUSTOMER_RE.test(url)) {
       return json(route, { id: CUSTOMER_ID, riskStatus: 'NoMatch', date: '2024-06-15T12:00:00.000Z' });
+    }
+    if (INSIDER_RE.test(url)) {
+      const posted = request.postData() ? (request.postDataJSON() as { realUnitInsider?: boolean }) : undefined;
+      return json(route, { ...DOSSIER, realUnitInsider: posted?.realUnitInsider ?? DOSSIER.realUnitInsider });
     }
     if (NAME_CHECK_BATCH_RE.test(url)) return json(route, batch);
     if (DETAIL_RE.test(url)) return json(route, DOSSIER);
@@ -442,7 +449,7 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await expect(input).toBeVisible();
     await input.fill('example');
     // Enter must actually issue the keyed search request. Without this wait the assertions below would also pass on
-    // the upfront-loaded list alone (the mock serves the same fixture for both requests), so a broken onKeyDown →
+    // the Load-all list alone (the mock serves the same fixture for both requests), so a broken onKeyDown →
     // handleSearch → loadCustomers(key) wiring would still go green.
     const keyedSearch = page.waitForRequest((req) => /\/realunit\/compliance\/customers\?key=example/.test(req.url()));
     await input.press('Enter');
@@ -471,6 +478,7 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
+    await page.getByRole('button', { name: 'Load all customers' }).click();
     await expect(page.getByText('ACME Example AG')).toBeVisible();
     await page.getByRole('button', { name: 'Screen', exact: true }).first().click();
     await expect(
@@ -509,6 +517,8 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
+    await page.getByRole('button', { name: 'Load all customers' }).click();
+    await expect(page.getByText('ACME Example AG')).toBeVisible();
     await expect(page.getByRole('button', { name: /Screening 1 \/ 3/ })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Screen', exact: true }).first()).toBeDisabled();
     await page.waitForTimeout(500);

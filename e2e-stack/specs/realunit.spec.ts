@@ -516,26 +516,12 @@ test.describe('RealUnit area', () => {
 
     await expect(page.getByPlaceholder('Search by ID, email, phone or name...')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Search' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Load all customers' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Screen all' })).toBeVisible();
-    // The Dilisense column is inside the table, which mounts only when a row is displayed.
-    // An empty or fully filtered list shows copy instead of the thead.
-    const columnOrEmpty = page
-      .getByText('Last Dilisense check')
-      .or(page.getByText('No entries found'))
-      .or(page.getByText('All accounts are hidden by the filter above'));
-    await expect(columnOrEmpty.first()).toBeVisible();
+    await expect(page.getByText('No customers loaded. Search for a name or load all customers.')).toBeVisible();
     await expect(
       page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.'),
     ).toHaveCount(0);
-
-    // Loading resolves to customers count or empty filter copy — not a crash. GET name-check on
-    // mount must succeed (ErrorHint is not an accepted happy-path settle). Empty result can show
-    // "Customers: 0" and "No entries found" at once; .first() avoids strict mode.
-    const settled = page
-      .getByText(/^Customers:/)
-      .or(page.getByText('No entries found'))
-      .or(page.getByText('All accounts are hidden by the filter above'));
-    await expect(settled.first()).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);
   });

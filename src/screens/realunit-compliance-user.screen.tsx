@@ -1,5 +1,5 @@
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ConfirmDialog } from 'src/components/confirm-dialog';
 import { ErrorHint } from 'src/components/error-hint';
@@ -81,6 +81,7 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
   const [isInsiderSaving, setIsInsiderSaving] = useState(false);
   const [loadError, setLoadError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
+  const loadGenerationRef = useRef(0);
 
   useLayoutOptions({
     title: translate('screens/compliance', 'RealUnit Customer'),
@@ -91,11 +92,28 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
 
   useEffect(() => {
     if (!id) return;
+    const generation = ++loadGenerationRef.current;
+    setCustomer(undefined);
+    setLoadError(undefined);
+    setPendingInsider(undefined);
+    setActionError(undefined);
     setIsLoading(true);
     getCustomer(+id)
-      .then(setCustomer)
-      .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
+      .then((data) => {
+        if (generation !== loadGenerationRef.current) return;
+        setCustomer(data);
+      })
+      .catch((e: Error) => {
+        if (generation !== loadGenerationRef.current) return;
+        setLoadError(e.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (generation !== loadGenerationRef.current) return;
+        setIsLoading(false);
+      });
+    return () => {
+      loadGenerationRef.current++;
+    };
   }, [id, getCustomer]);
 
   const handleDownload = useCallback(

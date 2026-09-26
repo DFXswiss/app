@@ -1,5 +1,5 @@
 import { RealUnitCustomerListDto } from 'src/dto/realunit-compliance.dto';
-import { filterCustomers } from 'src/util/realunit-customer-filter';
+import { filterCustomers, isBalanceFilter, isInsiderFilter } from 'src/util/realunit-customer-filter';
 
 const customer = (overrides: Partial<RealUnitCustomerListDto>): RealUnitCustomerListDto => ({
   id: 1,
@@ -33,5 +33,35 @@ describe('filterCustomers', () => {
 
   it('keeps only non-insiders', () => {
     expect(filterCustomers(rows, 'all', 'normal')).toEqual([withBalance, unresolved]);
+  });
+});
+
+describe('isBalanceFilter', () => {
+  it('accepts all, with, and without', () => {
+    expect(isBalanceFilter('all')).toBe(true);
+    expect(isBalanceFilter('with')).toBe(true);
+    expect(isBalanceFilter('without')).toBe(true);
+  });
+
+  it('rejects unknown values', () => {
+    expect(isBalanceFilter('')).toBe(false);
+    expect(isBalanceFilter('WITH')).toBe(false);
+    expect(isBalanceFilter('foo')).toBe(false);
+    expect(isBalanceFilter('yes')).toBe(false);
+  });
+});
+
+describe('isInsiderFilter', () => {
+  it('accepts all, insider, and normal', () => {
+    expect(isInsiderFilter('all')).toBe(true);
+    expect(isInsiderFilter('insider')).toBe(true);
+    expect(isInsiderFilter('normal')).toBe(true);
+  });
+
+  it('rejects unknown values', () => {
+    expect(isInsiderFilter('')).toBe(false);
+    expect(isInsiderFilter('WITH')).toBe(false);
+    expect(isInsiderFilter('foo')).toBe(false);
+    expect(isInsiderFilter('yes')).toBe(false);
   });
 });
