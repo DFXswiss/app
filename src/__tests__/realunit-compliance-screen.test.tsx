@@ -1,6 +1,6 @@
-// Component tests for the RealUnit compliance customer list screen: default empty-account filter,
-// toggle, search bypass, empty-state messages, and Dilisense name-check actions. Heavy transitive deps
-// are mocked so the screen can render under @testing-library/react without the full app shell.
+// Component tests for the RealUnit compliance customer list screen: on-demand load, balance and
+// insider filters, search bypass, empty-state messages, and Dilisense name-check actions. Heavy
+// transitive deps are mocked so the screen can render under @testing-library/react without the full app shell.
 
 jest.mock('@dfx.swiss/react', () => ({}));
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -101,7 +101,7 @@ async function loadAll(): Promise<void> {
   });
 }
 
-describe('RealunitComplianceScreen empty-account filter', () => {
+describe('RealunitComplianceScreen on-demand load and filters', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetNameCheckBatch.mockResolvedValue(IDLE_BATCH);
@@ -175,6 +175,24 @@ describe('RealunitComplianceScreen empty-account filter', () => {
     fireEvent.change(selects[0], { target: { value: 'without' } });
     expect(screen.queryByText('Alice Muster')).not.toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
+  });
+
+  it('bypasses filters while a search is active and hides the selects', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
+    render(<RealunitComplianceScreen />);
+    await loadAll();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'insider' } });
+    expect(screen.queryByText('Alice Muster')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Search by ID, email, phone or name...'), {
+      target: { value: 'Alice' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await waitFor(() => {
+      expect(mockSearchCustomers).toHaveBeenCalledWith('Alice');
+      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    });
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
   });
 
   it('searches only when a key is present', async () => {

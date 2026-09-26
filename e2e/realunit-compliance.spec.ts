@@ -66,7 +66,7 @@ interface RealUnitCustomerListDto {
   realUnitInsider: boolean;
 }
 
-// ~4 synthetic search results (one empty account exercises the default hide-empty toggle).
+// ~4 synthetic search results (one empty-balance insider exercises the on-demand filters).
 const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
   {
     id: 7101,

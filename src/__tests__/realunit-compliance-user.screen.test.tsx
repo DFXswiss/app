@@ -263,4 +263,52 @@ describe('RealunitComplianceUserScreen insider mark', () => {
     });
     expect(screen.getByText('0xcurrent')).toBeInTheDocument();
   });
+
+  it('ignores a stale setInsider result after the id changes', async () => {
+    let resolveSet: (value: RealUnitCustomerDetailDto) => void = () => undefined;
+    mockGetCustomer
+      .mockResolvedValueOnce(minimalCustomer({ realUnitInsider: false }))
+      .mockResolvedValueOnce(
+        minimalCustomer({
+          id: 8,
+          realUnitInsider: false,
+          addresses: [
+            {
+              id: 22,
+              address: '0xcurrent',
+              status: 'Active',
+              created: '2024-01-02T00:00:00.000Z',
+            },
+          ],
+        }),
+      );
+    mockSetInsider.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSet = resolve;
+        }),
+    );
+
+    const { rerender } = render(<RealunitComplianceUserScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Mark as insider' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as insider' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      expect(mockSetInsider).toHaveBeenCalledWith(7, true);
+    });
+
+    (useParams as jest.Mock).mockReturnValue({ id: '8' });
+    rerender(<RealunitComplianceUserScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('0xcurrent')).toBeInTheDocument();
+    });
+
+    resolveSet(minimalCustomer({ id: 7, realUnitInsider: true, addresses: [] }));
+    await waitFor(() => {
+      expect(screen.queryByText('0xstale')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('0xcurrent')).toBeInTheDocument();
+  });
 });
