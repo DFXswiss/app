@@ -7,12 +7,14 @@
  */
 
 import type { Page } from '@playwright/test';
+import { ethers } from 'ethers';
 import {
   apiGet,
   apiPost,
   apiPut,
   expect,
   gotoWithSession,
+  loginAs,
   normPath,
   openScreen,
   queryOne,
@@ -422,5 +424,116 @@ test.describe('Support (customer)', () => {
     const finalState = await snapshot();
     expect(finalState.state).toBe('Completed');
     expect(finalState.messageCount).toBe(beforeForeignRequests.messageCount + 2);
+  });
+
+  test('accountless company JWT cannot use customer support UID routes', async ({ page }) => {
+    const owner = await createUser({ tag: 'sup-company-scope-owner', language: 'EN' });
+    const privateMessage = 'E2E-company-token-must-not-read-private-support-message';
+    const issue = await createSupportIssue(owner.jwt, {
+      tag: 'sup-company-scope-ticket',
+      type: 'GenericIssue',
+      name: 'Private ticket for accountless-token regression',
+      message: privateMessage,
+    });
+    const attachment = await apiPost<{ id: number }>(
+      `support/issue/${issue.uid}/message`,
+      {
+        message: 'E2E company-token file access fixture',
+        file: 'data:application/pdf;base64,JVBERi0xLjQKJUVPRgo=',
+        fileName: 'company-scope-private.pdf',
+      },
+      { jwt: owner.jwt },
+    );
+    trackRow('support_message', attachment.id);
+
+    // Create a dedicated configured Wallet row through the real admin endpoint. User-wallet rows
+    // are not company Wallet records, so signing with owner.wallet alone cannot exercise this auth
+    // path. The private key is local test-only entropy, and the row is tracked for cleanup.
+    const companyWallet = ethers.Wallet.createRandom();
+    const admin = await loginAs('Admin');
+    const walletRow = await apiPost<{ id: number }>(
+      'wallet',
+      { address: companyWallet.address, displayName: 'E2E company auth wallet', isKycClient: false },
+      { jwt: admin.jwt },
+    );
+    trackRow('wallet', walletRow.id);
+
+    // Mint the accountless CLIENT_COMPANY token through the real challenge/sign-in endpoints;
+    // do not synthesize a JWT.
+    const challenge = await apiGet<{ challenge: string }>(
+      `auth/challenge?address=${encodeURIComponent(companyWallet.address)}`,
+    );
+    const signature = await companyWallet.signMessage(challenge.challenge);
+    const auth = await apiPost<{ accessToken: string }>('auth/signIn', { address: companyWallet.address, signature });
+    const companyJwt = auth.accessToken;
+    const companyClaims = JSON.parse(Buffer.from(companyJwt.split('.')[1], 'base64url').toString('utf8')) as {
+      role?: string;
+      account?: number;
+    };
+    expect(companyClaims.role).toBe('ClientCompany');
+    expect(companyClaims.account).toBeUndefined();
+
+    const issueId =
+      issue.supportIssueId ??
+      (await queryOne<{ id: number }>(`SELECT id FROM support_issue WHERE uid = $1`, [issue.uid]))?.id;
+    expect(issueId, 'seeded support issue must have a numeric id').toBeTruthy();
+    const snapshot = async (): Promise<{ state: string; messageCount: number }> => {
+      const row = await queryOne<{ state: string; messageCount: number }>(
+        `SELECT si.state, COUNT(sm.id)::int AS "messageCount"
+         FROM support_issue si
+         LEFT JOIN support_message sm ON sm."issueId" = si.id
+         WHERE si.id = $1
+         GROUP BY si.id, si.state`,
+        [issueId],
+      );
+      if (!row) throw new Error('support issue snapshot row is missing');
+      return row;
+    };
+    const before = await snapshot();
+
+    let readStatus = 0;
+    await apiGet(`support/issue/${issue.uid}`, {
+      jwt: companyJwt,
+      expectOk: false,
+      onStatus: (status) => (readStatus = status),
+    });
+    expect(readStatus).toBe(404);
+
+    let messageStatus = 0;
+    await apiPost(
+      `support/issue/${issue.uid}/message`,
+      { message: 'E2E-company-token-must-not-write' },
+      { jwt: companyJwt, expectOk: false, onStatus: (status) => (messageStatus = status) },
+    );
+    expect(messageStatus).toBe(404);
+
+    let fileStatus = 0;
+    await apiGet(`support/issue/${issue.uid}/message/${attachment.id}/file?access=Download`, {
+      jwt: companyJwt,
+      expectOk: false,
+      onStatus: (status) => (fileStatus = status),
+    });
+    expect(fileStatus).toBe(404);
+
+    let closeStatus = 0;
+    await apiPut(`support/issue/${issue.uid}/close`, {}, {
+      jwt: companyJwt,
+      expectOk: false,
+      onStatus: (status) => (closeStatus = status),
+    });
+    expect(closeStatus).toBe(404);
+
+    expect(await snapshot()).toEqual(before);
+    const unauthorizedWrite = await queryOne<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM support_message WHERE "issueId" = $1 AND message = $2`,
+      [issueId, 'E2E-company-token-must-not-write'],
+    );
+    expect(unauthorizedWrite?.count).toBe(0);
+
+    // Exercise the actual customer chat route with the minted JWT too. The private message must
+    // remain absent even if the frontend attempts to restore the UID from the URL.
+    await gotoWithSession(page, `/support/chat/${issue.uid}`, companyJwt);
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText(privateMessage)).toHaveCount(0);
   });
 });
