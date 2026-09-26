@@ -8,6 +8,7 @@ import { useCompliance } from 'src/hooks/compliance.hook';
 import { useComplianceGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { callQueueLabel } from 'src/util/call-queue.util';
 
 export default function ComplianceCallQueuesScreen(): JSX.Element {
   useComplianceGuard();
@@ -59,10 +60,11 @@ export default function ComplianceCallQueuesScreen(): JSX.Element {
               queues.map((q) => (
                 <tr
                   key={q.queue}
+                  data-queue={q.queue}
                   className="border-b border-dfxGray-300 transition-colors hover:bg-dfxGray-300 cursor-pointer"
                   onClick={() => navigate(`compliance/call-queues/${q.queue}`)}
                 >
-                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{q.queue}</td>
+                  <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{callQueueLabel(q.queue)}</td>
                   <td className="px-4 py-3 text-right text-sm text-dfxBlue-800 font-semibold">{q.count}</td>
                 </tr>
               ))

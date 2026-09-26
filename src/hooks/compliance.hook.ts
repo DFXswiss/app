@@ -27,6 +27,7 @@ import { PendingChargebackEntry } from 'src/dto/chargeback.dto';
 import { CreateRecallDto, RecallListEntry } from 'src/dto/recall.dto';
 import { buildKycLogMessage, KycLogResult } from 'src/util/compliance-helpers';
 import { downloadFile, downloadPdfFromString, filenameDateFormat } from 'src/util/utils';
+import { DecisionQueue, effectiveCallQueue } from 'src/util/call-queue.util';
 import { useGuardedApi } from './guarded-api.hook';
 
 export interface RefundFeeData {
@@ -135,10 +136,11 @@ export type CallOutcomeContext =
       buyCryptoResetEligible?: undefined;
     };
 
+// Suspicious was dropped as an outcome (21.09.2026): a doubtful call is either failed in the reason
+// queue or repeated; the account status it wrote had no effect on any AML decision.
 export enum CallOutcome {
   COMPLETED = 'Completed',
   UNAVAILABLE = 'Unavailable',
-  SUSPICIOUS = 'Suspicious',
   FAILED = 'Failed',
   REPEAT = 'Repeat',
 }
@@ -751,20 +753,18 @@ function normalizeSearchKey(key: string): string {
 const callOutcomeToPhoneStatus: Record<CallOutcome, PhoneCallStatus | undefined> = {
   [CallOutcome.COMPLETED]: PhoneCallStatus.COMPLETED,
   [CallOutcome.UNAVAILABLE]: PhoneCallStatus.UNAVAILABLE,
-  [CallOutcome.SUSPICIOUS]: PhoneCallStatus.SUSPICIOUS,
   [CallOutcome.FAILED]: PhoneCallStatus.FAILED,
   [CallOutcome.REPEAT]: PhoneCallStatus.REPEAT,
 };
 
-const checkDateFieldByQueue: Record<CallQueue, string> = {
+const checkDateFieldByQueue: Record<DecisionQueue, string> = {
   [CallQueue.MANUAL_CHECK_PHONE]: 'phoneCallCheckDate',
   [CallQueue.MANUAL_CHECK_IP_PHONE]: 'phoneCallIpCheckDate',
   [CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE]: 'phoneCallIpCountryCheckDate',
   [CallQueue.MANUAL_CHECK_EXTERNAL_ACCOUNT_PHONE]: 'phoneCallExternalAccountCheckDate',
-  [CallQueue.UNAVAILABLE_SUSPICIOUS]: 'phoneCallCheckDate',
 };
 
-function checkDateFieldForQueue(queue: CallQueue): string {
+function checkDateFieldForQueue(queue: DecisionQueue): string {
   return checkDateFieldByQueue[queue];
 }
 
@@ -1078,7 +1078,8 @@ export function useCompliance() {
         const udData: Record<string, unknown> = { phoneCallStatus: phoneStatus };
         results.push({ table: 'userData', column: 'phoneCallStatus', value: phoneStatus });
         if (outcome === CallOutcome.COMPLETED) {
-          const checkDateField = checkDateFieldForQueue(context.queue);
+          // A Callback item is decided as the reason queue it was parked from (see effectiveCallQueue).
+          const checkDateField = checkDateFieldForQueue(effectiveCallQueue(context.queue, context.amlReason));
           const checkDateValue = new Date().toISOString();
           udData[checkDateField] = checkDateValue;
           results.push({ table: 'userData', column: checkDateField, value: checkDateValue });

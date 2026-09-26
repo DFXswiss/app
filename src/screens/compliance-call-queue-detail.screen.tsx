@@ -1,4 +1,4 @@
-import { CallQueue, CallQueueSourceType, useSessionContext } from '@dfx.swiss/react';
+import { CallQueue, CallQueueSourceType, CheckStatus, useSessionContext } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
@@ -20,60 +20,48 @@ import { useComplianceGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { canResetBuyCryptoAmlForReview } from 'src/util/buy-crypto-reset.util';
+import { callQueueLabel, DecisionQueue, effectiveCallQueue } from 'src/util/call-queue.util';
 
 type CheckDateField =
-  | 'phoneCallCheckDate'
-  | 'phoneCallIpCheckDate'
-  | 'phoneCallIpCountryCheckDate'
-  | 'phoneCallExternalAccountCheckDate';
+  'phoneCallCheckDate' | 'phoneCallIpCheckDate' | 'phoneCallIpCountryCheckDate' | 'phoneCallExternalAccountCheckDate';
 
 type QueueConfig = {
   highlightCheckDateField: CheckDateField;
   showAddressInfo?: boolean;
   showBankTxInfo?: boolean;
-  outcomes: CallOutcome[];
 };
 
-const TX_OUTCOMES: CallOutcome[] = [
+const OUTCOMES: CallOutcome[] = [
   CallOutcome.COMPLETED,
   CallOutcome.UNAVAILABLE,
-  CallOutcome.SUSPICIOUS,
   CallOutcome.FAILED,
   CallOutcome.REPEAT,
 ];
 
-const USER_OUTCOMES: CallOutcome[] = [
-  CallOutcome.COMPLETED,
-  CallOutcome.UNAVAILABLE,
-  CallOutcome.SUSPICIOUS,
-  CallOutcome.FAILED,
-  CallOutcome.REPEAT,
-];
-
-const QUEUE_CONFIG: Record<CallQueue, QueueConfig> = {
+// Keyed by the reason queue a transaction is decided in. A Callback item resolves to one of these
+// through its AML reason (effectiveCallQueue).
+const QUEUE_CONFIG: Record<DecisionQueue, QueueConfig> = {
   [CallQueue.MANUAL_CHECK_PHONE]: {
     highlightCheckDateField: 'phoneCallCheckDate',
-    outcomes: TX_OUTCOMES,
   },
   [CallQueue.MANUAL_CHECK_IP_PHONE]: {
     highlightCheckDateField: 'phoneCallIpCheckDate',
-    outcomes: TX_OUTCOMES,
   },
   [CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE]: {
     highlightCheckDateField: 'phoneCallIpCountryCheckDate',
     showAddressInfo: true,
-    outcomes: TX_OUTCOMES,
   },
   [CallQueue.MANUAL_CHECK_EXTERNAL_ACCOUNT_PHONE]: {
     highlightCheckDateField: 'phoneCallExternalAccountCheckDate',
     showBankTxInfo: true,
-    outcomes: TX_OUTCOMES,
-  },
-  [CallQueue.UNAVAILABLE_SUSPICIOUS]: {
-    highlightCheckDateField: 'phoneCallCheckDate',
-    outcomes: USER_OUTCOMES,
   },
 };
+
+// Repeat releases a pending transaction from its queue; a failed one (the customer refused the call
+// and allowed calls again) has nothing to release, it is revived by a completed call or failed for good.
+function outcomesFor(amlCheck: string | undefined): CallOutcome[] {
+  return amlCheck === CheckStatus.FAIL ? OUTCOMES.filter((o) => o !== CallOutcome.REPEAT) : OUTCOMES;
+}
 
 function isCallQueue(value: string | undefined): value is CallQueue {
   return value != null && (Object.values(CallQueue) as string[]).includes(value);
@@ -93,7 +81,6 @@ export default function ComplianceCallQueueDetailScreen(): JSX.Element {
   const txId = txIdParam ? Number(txIdParam) : undefined;
 
   const queue = isCallQueue(queueParam) ? queueParam : undefined;
-  const config = queue ? QUEUE_CONFIG[queue] : undefined;
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -101,15 +88,29 @@ export default function ComplianceCallQueueDetailScreen(): JSX.Element {
 
   useEffect(() => {
     if (!isLoggedIn || !userDataId || !queue) return;
+    // The route can move to another account while a load is in flight (list → item → next item on the
+    // same screen instance); a response for the account shown before must not land on the one shown now.
+    let current = true;
     setIsLoading(true);
+    setError(undefined);
+    setData(undefined);
     getUserData(+userDataId)
-      .then(setData)
-      .catch((e) => setError(e.message))
-      .finally(() => setIsLoading(false));
+      .then((loaded) => {
+        if (current) setData(loaded);
+      })
+      .catch((e) => {
+        if (current) setError(e.message);
+      })
+      .finally(() => {
+        if (current) setIsLoading(false);
+      });
+    return () => {
+      current = false;
+    };
   }, [isLoggedIn, userDataId, queue]);
 
   useLayoutOptions({
-    title: queue ? `${queue} – ${userDataId ?? ''}` : translate('screens/compliance', 'Call Queue'),
+    title: queue ? `${callQueueLabel(queue)} – ${userDataId ?? ''}` : translate('screens/compliance', 'Call Queue'),
     noMaxWidth: true,
     backButton: true,
     textStart: true,
@@ -130,10 +131,15 @@ export default function ComplianceCallQueueDetailScreen(): JSX.Element {
     return data.bankDatas.find((b) => b.approved && b.active) ?? data.bankDatas[0];
   }, [transaction, data]);
 
-  if (!queue || !config) return <ErrorHint message={`Unknown call queue: ${queueParam}`} />;
+  if (!queue) return <ErrorHint message={`Unknown call queue: ${queueParam}`} />;
   if (isLoading) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
   if (error) return <ErrorHint message={error} />;
   if (!data || !userDataId) return <ErrorHint message="No data" />;
+
+  // Which check date, which extra panels and which questions: the reason queue the transaction is
+  // decided in (for a Callback item the one it was parked from).
+  const decisionQueue = effectiveCallQueue(queue, transaction?.amlReason);
+  const config = QUEUE_CONFIG[decisionQueue];
 
   const context = buildCallOutcomeContext({
     queue,
@@ -181,10 +187,14 @@ export default function ComplianceCallQueueDetailScreen(): JSX.Element {
         filterTypes={['ManualLog']}
         title={translate('screens/compliance', 'Recent KYC Comments')}
       />
-      <CallQueueQuestions questions={callQueueQuestions[queue]} title={translate('screens/compliance', 'Questions')} />
+      <CallQueueQuestions
+        questions={callQueueQuestions[decisionQueue]}
+        title={translate('screens/compliance', 'Questions')}
+      />
       <CallQueueOutcomeForm
+        key={`${userDataId}-${txId ?? ''}`}
         context={context}
-        availableOutcomes={config.outcomes}
+        availableOutcomes={outcomesFor(transaction?.amlCheck)}
         onSaved={() =>
           navigate({ pathname: `/compliance/call-queues/${queue}` }, { replace: true, clearParams: ['txId'] })
         }
