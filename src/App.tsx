@@ -1,8 +1,8 @@
-import { DfxContextProvider, PaymentRoutesContextProvider, SupportChatContextProvider } from '@dfx.swiss/react';
+import { DfxContextProvider, PaymentRoutesContextProvider, SupportChatContextProvider, useSessionContext } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
 import { Router } from '@remix-run/router';
 import { Suspense, lazy, useRef } from 'react';
-import { LoaderFunctionArgs, Outlet, RouteObject, RouterProvider, redirect } from 'react-router-dom';
+import { LoaderFunctionArgs, Navigate, Outlet, RouteObject, RouterProvider, redirect, useLocation } from 'react-router-dom';
 import { LayoutWrapper } from './components/layout-wrapper';
 import { RealunitWorkspace } from './components/realunit/workspace';
 import { AppHandlingContextProvider, AppParams, CloseMessageData } from './contexts/app-handling.context';
@@ -114,6 +114,21 @@ const SitemapScreen = lazy(() => import('./screens/sitemap.screen'));
 
 setupLanguages();
 
+function IndexRoute(): JSX.Element {
+  const { isInitialized, isLoggedIn } = useSessionContext();
+  const { search } = useLocation();
+
+  if (!isInitialized) {
+    return (
+      <div className="mt-4 flex justify-center">
+        <StyledLoadingSpinner size={SpinnerSize.LG} />
+      </div>
+    );
+  }
+
+  return <Navigate to={{ pathname: isLoggedIn ? '/account' : '/login', search }} replace />;
+}
+
 export const Routes = [
   {
     path: '/',
@@ -130,7 +145,7 @@ export const Routes = [
     children: [
       {
         index: true,
-        element: <HomeScreen />,
+        element: <IndexRoute />,
       },
       {
         path: 'account',
