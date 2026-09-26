@@ -201,8 +201,9 @@ test.describe('Buy Process - UI Flow', () => {
 
     // asset-out is pinned: without it the screen picks the first listed asset, which has
     // no price rule in the local seed and the quote never reaches the payment details.
+    // lang=en: selectors and baselines are English; without it user.language decides the UI locale.
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=EUR&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
