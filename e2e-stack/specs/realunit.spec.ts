@@ -220,6 +220,42 @@ test.describe('RealUnit area', () => {
     );
   });
 
+  test('RealUnit insights shows the exact holder stats API error', async ({ page }) => {
+    const { jwt } = await loginAs('RealUnit');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+
+    await openScreen(page, '/realunit/treasury', jwt);
+    const holderStatsResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === '/v1/realunit/admin/stats/holders' &&
+        url.searchParams.get('timeFrame') === 'ALL'
+      );
+    });
+    await page.getByRole('link', { name: 'Insights' }).click();
+    const holderStatsResponse = await holderStatsResponsePromise;
+    expect(holderStatsResponse.status()).toBe(503);
+    await expect(holderStatsResponse.json()).resolves.toEqual({
+      statusCode: 503,
+      message: 'RealUnit graph URL is not configured',
+      error: 'Service Unavailable',
+    });
+
+    await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Insights' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByText('Failed to load holder count.')).toBeVisible();
+
+    // This single console line is the browser's report of the verified, expected graph 503.
+    // Keep pageerrors strict and pass every other console error through the usual assertion.
+    const expectedGraph503 = /^Failed to load resource: the server responded with a status of 503(?: \(Service Unavailable\))?$/;
+    const expectedGraphConsoleErrors = consoleErrors.filter((message) => expectedGraph503.test(message));
+    expect(expectedGraphConsoleErrors, 'the configured graph 503 should produce exactly one console entry').toHaveLength(1);
+    assertNoErrors(
+      pageErrors,
+      consoleErrors.filter((message) => !expectedGraph503.test(message)),
+    );
+  });
+
   // CONFIRMED product bug (live uncaught pageerror): fetchHolders() has no .catch() in
   // realunit.context.tsx. Observed: ApiException: Cannot read properties of undefined (reading 'document').
   test.fail(
