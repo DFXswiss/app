@@ -140,8 +140,8 @@ export interface OcpApi {
   createPosLink: (id: string | number) => Promise<string | undefined>;
 
   // --- invoice / pos -------------------------------------------------------
-  /** GET /paymentLink/payment → { lnurl } for the invoice QR. Throws on failure. */
-  createInvoice: (input: CreateInvoiceInput) => Promise<{ lnurl: string }>;
+  /** GET /paymentLink/payment → invoice LNURL and external id for owner-scoped sticker lookup. */
+  createInvoice: (input: CreateInvoiceInput) => Promise<{ lnurl: string; externalId?: string }>;
   /** POST /paymentLink/payment?linkId { amount, externalId } → LNURL + poll identifier. */
   charge: (
     linkId: string | number,
@@ -399,7 +399,7 @@ export function useOcp(): OcpApi {
     }
     const epoch = demoEpochRef.current;
     try {
-      const data = await getPaymentRoutes();
+      const data = await getPaymentRoutes({ includeInactiveSell: true });
       if (epoch !== demoEpochRef.current) return;
       setRoutes(data ?? { buy: [], sell: [], swap: [] });
       setRoutesError(false);
@@ -594,7 +594,7 @@ export function useOcp(): OcpApi {
 
   // ---- invoice / pos --------------------------------------------------------
   const createInvoice = useCallback(
-    async ({ routeId, amount, currency, message }: CreateInvoiceInput): Promise<{ lnurl: string }> => {
+    async ({ routeId, amount, currency, message }: CreateInvoiceInput): Promise<{ lnurl: string; externalId?: string }> => {
       if (demo) {
         const lnurl = demoLnurl(`inv_${routeId}_${Math.round(amount * 100)}_${message.replace(/\W+/g, '')}`);
         return { lnurl };
@@ -604,8 +604,10 @@ export function useOcp(): OcpApi {
       const data = await createPaymentLinkInvoice({ routeId, amount, currency, message, expiryDate });
       if (epoch !== demoEpochRef.current) throw new ApiException(0, t('genErr'));
       if (!data?.id) throw new ApiException(0, t('genErr'));
+      const externalId = data.externalId;
+      if (typeof externalId !== 'string' || !externalId) throw new ApiException(0, t('genErr'));
       const lnurl = lnurlEncode(`${apiBaseUrl}/lnurlp/${data.id}`);
-      return { lnurl };
+      return { lnurl, externalId };
     },
     [demo, demoLnurl, createPaymentLinkInvoice, apiBaseUrl, t],
   );

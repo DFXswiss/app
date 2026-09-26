@@ -10,7 +10,14 @@ bash "$STACK_DIR/scripts/up.sh"
 # No optional branch here. This script is the gate: if the tests service cannot be resolved, the
 # run must fail rather than report success for having started a stack and executed nothing.
 # `compose config` keeps its stderr for the same reason — a broken compose file has to be readable.
-if ! compose config --services | grep -qx tests; then
+if services="$(compose config --services)"; then
+  :
+else
+  compose_status=$?
+  log_error "Could not resolve the compose services (exit ${compose_status}); see the Compose error above."
+  exit "$compose_status"
+fi
+if ! grep -Fxq tests <<< "$services"; then
   log_error "No 'tests' service in the compose configuration — nothing would be executed."
   log_error "Check that ${STACK_DIR}/compose.tests.yml exists and defines it."
   exit 1

@@ -33,6 +33,9 @@ if (foldedReturn && typeof window !== 'undefined') {
 const router = createHashRouter([
   {
     element: <Shell />,
+    // RouterProvider handles route render errors itself, so the outer class boundary cannot
+    // provide the branded recovery screen for failures thrown by a routed screen.
+    errorElement: <App2ErrorFallback />,
     children: [
       { path: '/', element: <HomeScreen /> },
       { path: '/account', element: <AccountScreen /> },

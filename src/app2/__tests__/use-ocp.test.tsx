@@ -122,6 +122,7 @@ describe('useOcp', () => {
       await result.current.loadLinks();
       await result.current.loadHistory();
     });
+    expect(mockGetPaymentRoutes).toHaveBeenCalledWith({ includeInactiveSell: true });
     expect(mockGetPaymentLinkHistory).toHaveBeenCalled();
     expect(result.current.routes).toEqual({ sell: [], buy: [], swap: [] });
     expect(result.current.links).toEqual([]);
@@ -184,10 +185,11 @@ describe('useOcp', () => {
 
   it('creates live invoices, charges and polls', async () => {
     const { result } = renderHook(() => useOcp(), { wrapper });
-    mockCreatePaymentLinkInvoice.mockResolvedValueOnce({ id: 'pay1' });
+    mockCreatePaymentLinkInvoice.mockResolvedValueOnce({ id: 'pay1', externalId: 'x/3CHF' });
     await act(async () => {
       const inv = await result.current.createInvoice({ routeId: 1, amount: 3, currency: 'CHF', message: 'x' });
       expect(inv.lnurl).toMatch(/^LNURL/i);
+      expect(inv.externalId).toBe('x/3CHF');
     });
     expect(mockCreatePaymentLinkInvoice).toHaveBeenCalledWith(
       expect.objectContaining({ routeId: 1, amount: 3, currency: 'CHF', message: 'x' }),
@@ -266,6 +268,21 @@ describe('useOcp', () => {
     result.current.copy(undefined);
     Object.assign(navigator, { clipboard: undefined });
     result.current.copy('no-clip');
+  });
+
+  it('rejects a live invoice without the external id needed to look up its owner payment link', async () => {
+    const { result } = renderHook(() => useOcp(), { wrapper });
+    mockCreatePaymentLinkInvoice.mockResolvedValueOnce({ id: 'payment-without-external-id' });
+
+    await act(async () => {
+      await expect(
+        result.current.createInvoice({ routeId: 1, amount: 2, currency: 'CHF', message: 'owner lookup required' }),
+      ).rejects.toMatchObject({ statusCode: 0 });
+    });
+
+    expect(mockCreatePaymentLinkInvoice).toHaveBeenCalledWith(
+      expect.objectContaining({ routeId: 1, amount: 2, currency: 'CHF', message: 'owner lookup required' }),
+    );
   });
 
   it('keeps the authenticated payment-link cache current after creating a POS charge', async () => {

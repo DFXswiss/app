@@ -228,6 +228,36 @@ describe('HomeScreen', () => {
     }
   });
 
+  it('keeps the payment CTA closed after a generic quote failure', async () => {
+    seedDefaultMarket();
+    mockCall.mockRejectedValueOnce(new ApiException(503, 'service unavailable'));
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalledWith(expect.objectContaining({ url: 'buy/quote' })));
+
+    expect(screen.getByTestId('trade-cta')).toBeDisabled();
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('app2:pending-payment-request:7')).toBeNull();
+  });
+
+  it('keeps the CTA navigable for a classified account gate from the quote endpoint', async () => {
+    seedDefaultMarket();
+    mockCall.mockRejectedValueOnce(new ApiException(400, 'KycRequired', 'KycRequired'));
+    mockReceiveForBuy.mockRejectedValueOnce(new ApiException(400, 'KycRequired', 'KycRequired'));
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await settleQuote();
+    await waitFor(() => expect(mockCall).toHaveBeenCalledWith(expect.objectContaining({ url: 'buy/quote' })));
+
+    const cta = screen.getByTestId('trade-cta');
+    expect(cta).toBeEnabled();
+    fireEvent.click(cta);
+    await settleQuote();
+    expect(mockReceiveForBuy).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('dialog', { name: /complete your purchase|kauf abschliessen/i })).toBeInTheDocument();
+  });
+
   it('renders the landing hero while logged out', () => {
     mockSession.isLoggedIn = false;
     renderHome();

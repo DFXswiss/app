@@ -108,6 +108,10 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
   const sell = ocp.routes?.sell ?? [];
   const swap = ocp.routes?.swap ?? [];
   const total = buy.length + sell.length + swap.length;
+  const hasSelectedCurrency = currencyId !== '' && sellableCurrencies.some((currency) =>
+    currency.id != null && String(currency.id) === currencyId,
+  );
+  const hasSelectedChain = chainList.some((availableChain) => String(availableChain) === chain);
 
   async function onToggle(type: PaymentRouteType, id: string | number, to: boolean) {
     setBusyId(id);
@@ -122,6 +126,7 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
   }
 
   async function submit() {
+    if (!hasSelectedCurrency || !hasSelectedChain) return;
     const clean = iban.trim().replace(/\s+/g, '');
     const check = ibanCheck(clean);
     if (!check.ok) {
@@ -138,7 +143,7 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
       ),
     });
     try {
-      await ocp.createRoute({ iban: clean, currencyId: currencyId || undefined, blockchain: chain });
+      await ocp.createRoute({ iban: clean, currencyId, blockchain: chain });
       setResult(null);
       setIban('');
       showToast(t('routeCreated'));
@@ -288,7 +293,7 @@ export default function RoutesView({ ocp }: OcpSubViewProps) {
             type="button"
             className={cx('btn-primary')}
             style={{ marginTop: 8 }}
-            disabled={submitting}
+            disabled={submitting || !hasSelectedCurrency || !hasSelectedChain}
             onClick={submit}
           >
             {t('createRoute')}

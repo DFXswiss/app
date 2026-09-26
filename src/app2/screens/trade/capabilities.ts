@@ -19,6 +19,33 @@ export function isAmountValidityError(error: TransactionError | undefined): bool
   return error === TransactionError.AMOUNT_TOO_LOW || error === TransactionError.AMOUNT_TOO_HIGH;
 }
 
+/** Fresh invalid quotes may open the payment sheet only for account gates the sheet knows how
+ * to explain and recover from. Keep this allowlist explicit: an unknown API error or an
+ * unsupported asset/currency/payment-method combination must not arm authenticated
+ * `paymentInfos` and create a route for a trade the public quote rejected. The legacy primary
+ * email codes are still emitted by some API paths before they were added to the SDK enum. */
+const ACCOUNT_GATE_ERRORS = new Set([
+  'kycrequired',
+  'kycdatarequired',
+  'kycrequiredinstant',
+  'videoidentrequired',
+  'namerequired',
+  'limitexceeded',
+  'emailrequired',
+  'primaryemailrequired',
+  'primaryemailnotconfirmed',
+  'recommendationrequired',
+  'ibancurrencymismatch',
+  'countrynotallowed',
+  'nationalitynotallowed',
+]);
+
+export function isAccountGateValidityError(error: TransactionError | string | undefined): boolean {
+  if (error == null || error === '') return false;
+  const code = String(error).replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return ACCOUNT_GATE_ERRORS.has(code);
+}
+
 /** Whether the receive panel must refuse to print a number. Besides the amount errors above,
  * this catches an invalid quote that carries no estimate at all: the API answers a rejected
  * asset/currency/payment-method combination with a 200 whose fields are all zero

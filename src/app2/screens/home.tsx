@@ -46,7 +46,7 @@ import {
   currenciesForBuy,
   currenciesForSell,
   hasNoDisplayableEstimate,
-  isAmountValidityError,
+  isAccountGateValidityError,
 } from './trade/capabilities';
 import {
   assetFormatter,
@@ -686,16 +686,27 @@ export default function HomeScreen() {
               assetFormatter(swapFromAsset?.code as string, language),
             )
           : undefined;
-  // Amount min/max rejections are already shown in the receive panel (`receiveMeta`). Treating
-  // them like account-state gates would enable the CTA, fire authenticated `paymentInfos`, and
-  // create a server-side route/transaction-request for an amount that was never valid. Keep
-  // account gates (KYC/limit/email/…) openable — those need the sheet's gate UI.
-  const activeAmountGate =
+  // A fresh invalid public quote may arm paymentInfos only when its exact error is a known
+  // account gate that the sheet can explain (KYC/email/limit/recommendation/account restriction).
+  // Amount rejections, unsupported combinations, and unknown future API errors must fail closed:
+  // opening paymentInfos for any of them can create a route for a trade the public quote rejected.
+  const activeAccountValidityGate =
     !!activeQuote.data &&
     activeQuote.isFresh &&
     activeQuote.data.isValid === false &&
-    isAmountValidityError(activeQuote.data.error);
-  const canOpenGate = Boolean((activeValidityMessage && !activeAmountGate) || activeThrownError);
+    isAccountGateValidityError(activeQuote.data.error);
+  const activeAccountGateError =
+    isApiExceptionLike(activeQuote.error) &&
+    activeQuote.error.statusCode === 400 &&
+    (activeThrownError?.kind === 'email' || activeThrownError?.kind === 'setup');
+  // A thrown quote failure is not itself evidence of an account gate. Network/5xx and
+  // unclassified errors must leave the CTA closed: opening paymentInfos without a valid quote
+  // can create a route for a trade the user has never seen priced. Only mapped account/setup
+  // errors may proceed to the sheet; fresh invalid quotes require an explicit account-gate code.
+  const canOpenGate = Boolean(
+    activeAccountValidityGate ||
+    activeAccountGateError,
+  );
   /** A tap has been made and the sheet is waiting on the payment-details request it armed —
    * the CTA stays busy until that request settles. */
   const awaitingPaymentInfo = openAfterPaymentInfo;

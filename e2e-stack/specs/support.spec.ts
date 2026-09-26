@@ -7,8 +7,19 @@
  */
 
 import type { Page } from '@playwright/test';
-import { expect, gotoWithSession, normPath, openScreen, queryOne, test, waitForRow } from './fixtures';
-import { cleanupCreatedData, createSupportIssue, createUser } from './fixtures/factories';
+import {
+  apiGet,
+  apiPost,
+  apiPut,
+  expect,
+  gotoWithSession,
+  normPath,
+  openScreen,
+  queryOne,
+  test,
+  waitForRow,
+} from './fixtures';
+import { cleanupCreatedData, createSupportIssue, createUser, trackRow } from './fixtures/factories';
 
 /**
  * Open a StyledDropdown by its field label, then pick an option by visible label text.
@@ -266,42 +277,150 @@ test.describe('Support (customer)', () => {
     await expect(page.getByText(secretMessage)).toHaveCount(0);
   });
 
-  test.fixme('a ticket uid opened by a different signed-in customer is scoped to that customer', async ({ page }) => {
-    // Pending a product decision, so asserted as an intent rather than as current behaviour.
-    //
-    // Ticket lookup by uid is reachable without a session by design — the pre-login order-support
-    // flow relies on it, and the uid itself is what authorises the read. The open question is
-    // narrower: when the caller *does* present a session, should the lookup additionally be scoped
-    // to that account? The two answers lead to different products, so this is not a call to make
-    // from a test file.
-    //
-    // The neighbouring test above covers what is settled: the ticket list never hands a customer a
-    // uid belonging to someone else, so this path is not reachable through the interface itself.
-    //
-    // Details of the observed behaviour were reported to the team out of band rather than written
-    // down here — this repository is public.
+  test('ticket UID blocks a foreign customer while preserving owner and anonymous guest access', async ({ page }) => {
     const customerA = await createUser({ tag: 'sup-iso-fix-a', language: 'EN' });
     const customerB = await createUser({ tag: 'sup-iso-fix-b', language: 'EN' });
 
-    const secretMessage = 'SECRET-A-ONLY-MESSAGE-do-not-leak-2';
+    const secretMessage = 'E2E-private-support-message-customer-a';
     const issueA = await createSupportIssue(customerA.jwt, {
       tag: 'sup-iso-fix-ticket',
       type: 'GenericIssue',
       name: 'Customer A private ticket 2',
       message: secretMessage,
     });
+    const attachment = await apiPost<{ id: number }>(
+      `support/issue/${issueA.uid}/message`,
+      {
+        message: 'E2E private attachment for authorization check',
+        file: 'data:application/pdf;base64,JVBERi0xLjQKJUVPRgo=',
+        fileName: 'e2e-private-support.pdf',
+      },
+      { jwt: customerA.jwt },
+    );
+    trackRow('support_message', attachment.id);
 
-    // Open A's chat uid while signed in as B; the expectation below is the intended scoping.
+    const issueId = issueA.supportIssueId;
+    const snapshot = async (): Promise<{ state: string; messageCount: number }> => {
+      const row = await queryOne<{ state: string; messageCount: number }>(
+        `SELECT si.state, COUNT(sm.id)::int AS "messageCount"
+         FROM support_issue si
+         LEFT JOIN support_message sm ON sm."issueId" = si.id
+         WHERE si.id = $1
+         GROUP BY si.id, si.state`,
+        [issueId],
+      );
+      if (!row) throw new Error('support issue snapshot row is missing');
+      return row;
+    };
+
+    const beforeForeignRequests = await snapshot();
+    const foreignMessage = 'E2E-foreign-customer-must-not-write-this';
+
+    let getStatus = 0;
+    await apiGet(`support/issue/${issueA.uid}`, {
+      jwt: customerB.jwt,
+      expectOk: false,
+      onStatus: (status) => (getStatus = status),
+    });
+    expect(getStatus).toBe(404);
+
+    let messageStatus = 0;
+    await apiPost(
+      `support/issue/${issueA.uid}/message`,
+      { message: foreignMessage },
+      { jwt: customerB.jwt, expectOk: false, onStatus: (status) => (messageStatus = status) },
+    );
+    expect(messageStatus).toBe(404);
+
+    let closeStatus = 0;
+    await apiPut(`support/issue/${issueA.uid}/close`, {}, {
+      jwt: customerB.jwt,
+      expectOk: false,
+      onStatus: (status) => (closeStatus = status),
+    });
+    expect(closeStatus).toBe(404);
+
+    let fileStatus = 0;
+    await apiGet(`support/issue/${issueA.uid}/message/${attachment.id}/file?access=Download`, {
+      jwt: customerB.jwt,
+      expectOk: false,
+      onStatus: (status) => (fileStatus = status),
+    });
+    expect(fileStatus).toBe(404);
+
+    expect(await snapshot()).toEqual(beforeForeignRequests);
+    const foreignWrite = await queryOne<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM support_message WHERE "issueId" = $1 AND message = $2`,
+      [issueId, foreignMessage],
+    );
+    expect(foreignWrite?.count).toBe(0);
+
+    // The real chat route attempts the same UID lookup, then follows its existing failed-load
+    // behavior to /support/issue. It must never render A's private message to B.
     await gotoWithSession(page, `/support/chat/${issueA.uid}`, customerB.jwt);
     await page.waitForLoadState('networkidle');
 
     await expect
       .poll(() => normPath(new URL(page.url()).pathname), {
-        message: 'customer B must be redirected away from customer A chat',
+        message: 'a foreign ticket lookup must leave the chat route after its failed API load',
         timeout: 15000,
       })
       .toBe('/support/issue');
 
     await expect(page.getByText(secretMessage)).toHaveCount(0);
+
+    // Anonymous UID access remains the guest capability path. Exercise real read, message, file,
+    // and close requests; then verify the owner can still read, reply, and close the same issue.
+    const guestView = await apiGet<{ uid: string; messages: { message?: string }[] }>(`support/issue/${issueA.uid}`);
+    expect(guestView.uid).toBe(issueA.uid);
+    expect(guestView.messages.some((message) => message.message === secretMessage)).toBe(true);
+
+    const guestReply = await apiPost<{ id: number }>(
+      `support/issue/${issueA.uid}/message`,
+      {
+        message: 'E2E anonymous guest reply with local fixture file',
+        file: 'data:application/pdf;base64,JVBERi0xLjQKJUVPRgo=',
+        fileName: 'e2e-guest-support.pdf',
+      },
+    );
+    trackRow('support_message', guestReply.id);
+    const guestMessageRow = await waitForRow<{ id: number; fileUrl: string | null }>(
+      `SELECT id, "fileUrl" AS "fileUrl" FROM support_message WHERE id = $1`,
+      [guestReply.id],
+    );
+    expect(guestMessageRow.fileUrl).toBeTruthy();
+
+    const guestFile = await apiGet<{ contentType: string; data: { type: string; data: number[] } }>(
+      `support/issue/${issueA.uid}/message/${guestReply.id}/file?access=Download`,
+    );
+    expect(guestFile.contentType).toBe('application/pdf');
+    expect(guestFile.data.type).toBe('Buffer');
+    expect(guestFile.data.data.length).toBeGreaterThan(0);
+
+    const guestClose = await apiPut<{ uid: string; state: string }>(`support/issue/${issueA.uid}/close`, {});
+    expect(guestClose.uid).toBe(issueA.uid);
+    expect(guestClose.state).toBe('Completed');
+
+    const ownerView = await apiGet<{ uid: string; messages: { message?: string }[] }>(`support/issue/${issueA.uid}`, {
+      jwt: customerA.jwt,
+    });
+    expect(ownerView.uid).toBe(issueA.uid);
+    expect(ownerView.messages.some((message) => message.message === secretMessage)).toBe(true);
+
+    const ownerReply = await apiPost<{ id: number }>(
+      `support/issue/${issueA.uid}/message`,
+      { message: 'E2E owner reply after guest close' },
+      { jwt: customerA.jwt },
+    );
+    trackRow('support_message', ownerReply.id);
+    const ownerClose = await apiPut<{ uid: string; state: string }>(`support/issue/${issueA.uid}/close`, {}, {
+      jwt: customerA.jwt,
+    });
+    expect(ownerClose.uid).toBe(issueA.uid);
+    expect(ownerClose.state).toBe('Completed');
+
+    const finalState = await snapshot();
+    expect(finalState.state).toBe('Completed');
+    expect(finalState.messageCount).toBe(beforeForeignRequests.messageCount + 2);
   });
 });

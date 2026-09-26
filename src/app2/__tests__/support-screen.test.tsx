@@ -882,9 +882,76 @@ describe('SupportScreen', () => {
     await waitFor(() => expect(mockSupport.submitMessage).toHaveBeenCalled());
   });
 
+  it('downloads a non-image attachment on the first click after file data updates the message immutably', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0x1';
+    mockSupport.tickets = [
+      {
+        uid: 't1',
+        type: 'GenericIssue',
+        state: 'Pending',
+        created: '2026-01-02T10:00:00Z',
+        messages: [{ id: 1, message: 'download-thread', status: 'Sent' }],
+      },
+    ];
+    mockSupport.supportIssue = {
+      uid: 't1',
+      type: 'GenericIssue',
+      state: 'Pending',
+      messages: [
+        {
+          id: 5,
+          fileName: 'statement.pdf',
+          status: 'Sent',
+          author: 'Support',
+          created: '2026-01-02T10:01:00Z',
+        },
+      ],
+    };
+
+    const downloads: Array<{ href: string; filename: string }> = [];
+    jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push({ href: this.href, filename: this.download });
+    });
+    const view = renderSupport();
+    const rerenderWithUpdatedIssue = () =>
+      view.rerender(
+        <LanguageProvider>
+          <ToastProvider>
+            <SupportScreen />
+          </ToastProvider>
+        </LanguageProvider>,
+    );
+    mockSupport.loadFileData.mockImplementation(async (messageId: number) => {
+      const issue = mockSupport.supportIssue as {
+        uid: string;
+        type: string;
+        state: string;
+        messages: Array<Record<string, unknown>>;
+      };
+      mockSupport.supportIssue = {
+        ...issue,
+        messages: issue.messages.map((message) =>
+          message.id === messageId
+            ? { ...message, file: { type: 'application/pdf', url: 'blob:http://localhost/report' } }
+            : message,
+        ),
+      };
+      act(() => rerenderWithUpdatedIssue());
+    });
+
+    fireEvent.click(screen.getByText('download-thread'));
+    fireEvent.click(await screen.findByRole('button', { name: 'statement.pdf' }));
+
+    await waitFor(() => expect(downloads).toEqual([{ href: 'blob:http://localhost/report', filename: 'statement.pdf' }]));
+    expect(mockSupport.loadFileData).toHaveBeenCalledTimes(1);
+    expect(mockSupport.loadFileData).toHaveBeenCalledWith(5);
+  });
+
   it('toasts when an attachment fetch fails and ignores a second send while busy', async () => {
     mockSession.isLoggedIn = true;
     mockSession.address = '0x1';
+    const anchorClick = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     mockSupport.loadFileData.mockRejectedValue(new Error('file-down'));
     mockSupport.submitMessage.mockImplementation(() => new Promise(() => undefined));
     mockSupport.tickets = [
@@ -921,6 +988,8 @@ describe('SupportScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: /doc\.pdf/i }));
     fireEvent.click(screen.getByText('doc.pdf'));
     expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(mockSupport.loadFileData).toHaveBeenCalledTimes(1);
+    expect(anchorClick).not.toHaveBeenCalled();
 
     const composer = screen.getAllByLabelText('Message').at(-1) as HTMLTextAreaElement;
     fireEvent.change(composer, { target: { value: 'busy' } });
@@ -989,6 +1058,39 @@ describe('SupportScreen', () => {
     fireEvent.click(screen.getByText(/create a support ticket|support-ticket erstellen|crea un ticket|créer un ticket/i));
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('button', { name: /submit ticket/i })).not.toBeInTheDocument();
+  });
+
+  it('reloads the ticket list once when returning from a thread and exposes retry on failure', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0x1';
+    mockSupport.tickets = [
+      {
+        uid: 't1',
+        type: 'GenericIssue',
+        state: 'Pending',
+        created: '2026-01-02T10:00:00Z',
+        messages: [{ id: 1, message: 'refresh-after-back', status: 'Sent' }],
+      },
+    ];
+    mockSupport.supportIssue = {
+      uid: 't1',
+      type: 'GenericIssue',
+      state: 'Pending',
+      messages: [{ id: 1, message: 'refresh-after-back', status: 'Sent' }],
+    };
+    renderSupport();
+    fireEvent.click(await screen.findByRole('button', { name: /general question/i }));
+    await waitFor(() => expect(mockSupport.loadSupportIssue).toHaveBeenCalledWith('t1'));
+
+    mockSupport.loadTickets.mockClear();
+    mockSupport.loadTickets.mockRejectedValueOnce(new Error('refresh-down'));
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(await screen.findByText(/couldn't load|nicht laden|caricare|charger/i)).toBeInTheDocument();
+    expect(mockSupport.loadTickets).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
+    await waitFor(() => expect(mockSupport.loadTickets).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/couldn't load|nicht laden|caricare|charger/i)).not.toBeInTheDocument();
   });
 
   it('retries a failed ticket list, ignores a second create, and toasts a missing local file', async () => {
@@ -1068,18 +1170,18 @@ describe('SupportScreen', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /^retry$|^erneut senden$|^riprova$|^réessayer$/i })[1]);
   });
 
-  it('toasts when attachment bytes load without a URL and ignores a send for another ticket', async () => {
+  it('keeps a non-image attachment retryable when a successful fetch publishes no URL', async () => {
     mockSession.isLoggedIn = true;
     mockSession.address = '0x1';
+    const anchorClick = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     mockSupport.loadFileData.mockResolvedValue(undefined);
-    mockSupport.submitMessage.mockImplementation(() => new Promise(() => undefined));
     mockSupport.tickets = [
       {
         uid: 't1',
         type: 'GenericIssue',
         state: 'Pending',
         created: '2026-01-02T10:00:00Z',
-        messages: [{ id: 1, fileName: 'doc.pdf', status: 'Sent' }],
+        messages: [{ id: 1, message: 'open-attachment-ticket', status: 'Sent' }],
       },
     ];
     mockSupport.supportIssue = {
@@ -1096,21 +1198,18 @@ describe('SupportScreen', () => {
         },
       ],
     };
+    const originalUrl = window.location.href;
     renderSupport();
+    fireEvent.click(screen.getByRole('button', { name: /open-attachment-ticket/ }));
+    await waitFor(() => expect(mockSupport.loadSupportIssue).toHaveBeenCalledWith('t1'));
     fireEvent.click(screen.getByRole('button', { name: /doc\.pdf/i }));
-    fireEvent.click(screen.getByText('doc.pdf'));
-    expect(await screen.findByRole('alert')).toBeInTheDocument();
-
-    const composer = screen.getAllByLabelText('Message').at(-1) as HTMLTextAreaElement;
-    fireEvent.change(composer, { target: { value: 'cross' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    mockSupport.supportIssue = {
-      uid: 'other',
-      type: 'GenericIssue',
-      state: 'Pending',
-      messages: [],
-    };
-    fireEvent.change(screen.getByLabelText(/search for your problem/i), { target: { value: 'zz' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('app2-toast-alert')).toHaveTextContent("Couldn't load — check your connection."),
+    );
+    expect(mockSupport.loadFileData).toHaveBeenCalledTimes(1);
+    expect(anchorClick).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'doc.pdf' })).toBeInTheDocument();
+    expect(window.location.href).toBe(originalUrl);
   });
 
   it('submits a ticket with an out-of-range type', async () => {
@@ -1125,7 +1224,7 @@ describe('SupportScreen', () => {
     await waitFor(() => expect(mockSupport.createSupportIssue).toHaveBeenCalled());
   });
 
-  it('skips download when an inline image is tapped', async () => {
+  it('auto-loads an inline image without starting a download', async () => {
     mockSession.isLoggedIn = true;
     mockSession.address = '0x1';
     mockUser.user = { mail: 'a@b.c' };
@@ -1135,7 +1234,7 @@ describe('SupportScreen', () => {
         type: 'GenericIssue',
         state: 'Pending',
         created: '2026-01-02T10:00:00Z',
-        messages: [{ id: 1, fileName: 'shot.png', status: 'Sent' }],
+        messages: [{ id: 1, message: 'inline-image-thread', fileName: 'shot.png', status: 'Sent' }],
       },
     ];
     mockSupport.supportIssue = {
@@ -1146,16 +1245,54 @@ describe('SupportScreen', () => {
         {
           id: 1,
           fileName: 'shot.png',
-          file: { url: 'https://files.example/shot.png' },
           status: 'Sent',
           author: 'Support',
           created: '2026-01-02T10:00:00Z',
         },
       ],
     };
-    renderSupport();
-    fireEvent.click(screen.getByRole('button', { name: /shot\.png/i }));
-    fireEvent.click(await screen.findByAltText('shot.png'));
+    const anchorClick = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const viewRef: { current?: ReturnType<typeof renderSupport> } = {};
+    const rerenderWithUpdatedIssue = () =>
+      viewRef.current?.rerender(
+        <LanguageProvider>
+          <ToastProvider>
+            <SupportScreen />
+          </ToastProvider>
+        </LanguageProvider>,
+    );
+    mockSupport.loadFileData.mockImplementation(async (messageId: number) => {
+      // Let renderSupport return so the rerender callback has its mounted view.
+      await Promise.resolve();
+      const issue = mockSupport.supportIssue as {
+        uid: string;
+        type: string;
+        state: string;
+        messages: Array<Record<string, unknown>>;
+      };
+      mockSupport.supportIssue = {
+        ...issue,
+        messages: issue.messages.map((message) =>
+          message.id === messageId
+            ? { ...message, file: { type: 'image/png', url: 'https://files.example/shot.png' } }
+            : message,
+        ),
+      };
+      act(() => rerenderWithUpdatedIssue());
+    });
+    const view = renderSupport();
+    viewRef.current = view;
+    await waitFor(() => expect(mockSupport.loadFileData).toHaveBeenCalledWith(1));
+    expect((mockSupport.supportIssue?.messages as Array<{ file?: { url?: string } }>)[0].file?.url).toBe(
+      'https://files.example/shot.png',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /inline-image-thread/ }));
+    await waitFor(() => expect(mockSupport.loadSupportIssue).toHaveBeenCalledWith('img'));
+    const loadedImage = await screen.findByAltText('shot.png');
+    expect(loadedImage).toHaveAttribute('src', 'https://files.example/shot.png');
+    fireEvent.click(loadedImage);
+    expect(mockSupport.loadFileData).toHaveBeenCalledTimes(1);
+    expect(anchorClick).not.toHaveBeenCalled();
   });
 
   it('retries a typeless attachment and downloads a ready document', async () => {
@@ -1200,6 +1337,63 @@ describe('SupportScreen', () => {
     fireEvent.click(pdfs[pdfs.length - 1]);
     fireEvent.click(screen.getByRole('button', { name: /retry|erneut senden|riprova|réessayer/i }));
     await waitFor(() => expect(mockSupport.submitMessage).toHaveBeenCalled());
+  });
+
+  it('ignores attachment load completion after its chat thread unmounts', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0x1';
+    mockUser.user = { mail: 'a@b.c' };
+    mockSupport.tickets = [
+      {
+        uid: 'late-file',
+        type: 'GenericIssue',
+        state: 'Pending',
+        created: '2026-01-02T10:00:00Z',
+        messages: [{ id: 7, fileName: 'report.pdf', status: 'Sent' }],
+      },
+    ];
+    mockSupport.supportIssue = {
+      uid: 'late-file',
+      type: 'GenericIssue',
+      state: 'Pending',
+      messages: [
+        {
+          id: 7,
+          fileName: 'report.pdf',
+          status: 'Sent',
+          author: 'Support',
+          created: '2026-01-02T10:00:00Z',
+        },
+      ],
+    };
+    const anchorClick = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    for (const outcome of ['resolve', 'reject'] as const) {
+      let settleFile: (() => void) | undefined;
+      let rejectFile: ((error: Error) => void) | undefined;
+      mockSupport.loadFileData.mockReset();
+      mockSupport.loadFileData.mockImplementation(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            settleFile = resolve;
+            rejectFile = reject;
+          }),
+      );
+      const view = renderSupport();
+      fireEvent.click(screen.getByRole('button', { name: /report\.pdf/ }));
+      await waitFor(() => expect(mockSupport.loadSupportIssue).toHaveBeenCalledWith('late-file'));
+      fireEvent.click(await screen.findByRole('button', { name: 'report.pdf' }));
+      await waitFor(() => expect(mockSupport.loadFileData).toHaveBeenCalledTimes(1));
+      view.unmount();
+
+      await act(async () => {
+        if (outcome === 'resolve') settleFile?.();
+        else rejectFile?.(new Error('late-file-failure'));
+      });
+
+      expect(anchorClick).not.toHaveBeenCalled();
+      mockSupport.loadSupportIssue.mockClear();
+    }
   });
 
   it('sends a file-only message and times out after the issue uid changes', async () => {

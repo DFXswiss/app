@@ -1397,7 +1397,8 @@ export async function createSupportIssue(
  * Payment links require a Lightning deposit_route and paymentLinksAllowed=true.
  * EVM_DEPOSIT_SEED does not seed Lightning, so the API path (POST /paymentLink) usually fails
  * without a free Lightning deposit. We therefore create deposit + sell-route + payment_link
- * (+ optional payment) via SQL, matching the tables the API would write.
+ * (+ optional payment) via SQL, matching the tables the API would write. The synthetic Sell
+ * includes its core Route row because pay-request generation reads the route label relation.
  */
 export async function createPaymentLink(
   jwt: string,
@@ -1434,7 +1435,10 @@ export async function createPaymentLink(
       deposit = { id: depositId };
     }
 
-    // deposit_route STI: type='Sell' + sell columns (iban, fiatId) on same table.
+    // deposit_route STI: type='Sell' + sell columns (iban, fiatId) on same table. The core
+    // Route label is nullable in real Sell routes, but the relation itself must exist for
+    // PaymentLinkService.createPayRequest.
+    const coreRouteId = await insertReturningId('route', ['label'], [null]);
     // Check constraint requires bankDataId when active=true AND type='Sell'.
     const fiatId = await resolveFiatId('CHF');
     const bankDataId = await insertReturningId(
@@ -1455,12 +1459,14 @@ export async function createPaymentLink(
         'bankDataId',
         'annualVolume',
         'monthlyVolume',
+        'routeId',
       ],
-      ['Sell', true, 0, deposit.id, user.id, TEST_IBAN, fiatId, bankDataId, 0, 0],
+      ['Sell', true, 0, deposit.id, user.id, TEST_IBAN, fiatId, bankDataId, 0, 0, coreRouteId],
     );
   }
 
-  const uniqueId = `pl${tag}`.replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
+  // Match Util.createUniqueId('pl', 16) and LnUrlForwardService's `pl_` dispatch prefix.
+  const uniqueId = `pl_${randomBytes(8).toString('hex')}`;
   const paymentLinkId = await insertReturningId(
     'payment_link',
     ['routeId', 'uniqueId', 'status', 'mode', 'webhookFailCount', 'label', 'externalId'],
@@ -1470,7 +1476,8 @@ export async function createPaymentLink(
   let paymentId: number | undefined;
   const amount = options.amount ?? 25;
   const fiatId = await resolveFiatId(options.currency ?? 'CHF');
-  const paymentUid = `plp${tag}`.replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
+  // Match Util.createUniqueId('plp', 16) and LnUrlForwardService's `plp_` dispatch prefix.
+  const paymentUid = `plp_${randomBytes(8).toString('hex')}`;
   const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
   paymentId = await insertReturningId(
     'payment_link_payment',

@@ -3,6 +3,7 @@ import { TextEncoder } from 'util';
 (global as { TextEncoder: typeof TextEncoder }).TextEncoder = TextEncoder;
 
 const mockGetStickers = jest.fn();
+const mockGetPaymentLinks = jest.fn();
 const mockCreateInvoice = jest.fn();
 const mockCopy = jest.fn();
 const mockLoadRoutes = jest.fn();
@@ -16,7 +17,7 @@ jest.mock('@dfx.swiss/react', () => ({
       this.statusCode = statusCode;
     }
   },
-  usePaymentRoutes: () => ({ getPaymentStickers: mockGetStickers }),
+  usePaymentRoutes: () => ({ getPaymentStickers: mockGetStickers, getPaymentLinks: mockGetPaymentLinks }),
   Blockchain: { LIGHTNING: 'Lightning', BITCOIN: 'Bitcoin' },
 }));
 
@@ -43,7 +44,8 @@ function renderInvoice(ocp: Record<string, unknown>) {
 describe('OCP invoice view', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockCreateInvoice.mockResolvedValue({ lnurl: 'LNURL1DEMOINVOICE' });
+    mockCreateInvoice.mockResolvedValue({ lnurl: 'LNURL1DEMOINVOICE', externalId: 'INV-1/12.5CHF' });
+    mockGetPaymentLinks.mockResolvedValue({ id: 61, externalId: 'INV-1/12.5CHF' });
     mockGetStickers.mockResolvedValue({ data: new Blob(['pdf']) });
     Object.assign(URL, {
       createObjectURL: jest.fn(() => 'blob:invoice'),
@@ -86,6 +88,7 @@ describe('OCP invoice view', () => {
   });
 
   it('validates, generates, copies, prints and downloads', async () => {
+    mockCreateInvoice.mockResolvedValueOnce({ lnurl: 'LNURL1DEMOINVOICE', externalId: 'INV-1/12.5CHF' });
     const ocp = {
       routes: { sell: [sellRoute(1, 'CHF')], buy: [], swap: [] },
       lnSellRoutes: [sellRoute(1, 'CHF'), sellRoute(2)],
@@ -157,11 +160,115 @@ describe('OCP invoice view', () => {
     Object.defineProperty(window, 'Image', { configurable: true, writable: true, value: OriginalImage });
 
     fireEvent.click(screen.getByRole('button', { name: /sticker/i }));
-    await waitFor(() => expect(mockGetStickers).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mockGetStickers).toHaveBeenCalledWith('2', undefined, '61', 'BitcoinFocus', 'Customer', 'EN'),
+    );
 
     mockGetStickers.mockRejectedValueOnce(new Error('down'));
     fireEvent.click(screen.getByRole('button', { name: /sticker/i }));
     await waitFor(() => expect(mockGetStickers).toHaveBeenCalledTimes(2));
+  });
+
+  it('looks up stickers by the returned owned payment-link id even when the invoice id contains a comma', async () => {
+    mockCreateInvoice.mockResolvedValueOnce({ lnurl: 'LNURL1COMMA', externalId: 'INV,6/2CHF' });
+    mockGetPaymentLinks.mockResolvedValueOnce({ id: 61, externalId: 'INV,6/2CHF' });
+    renderInvoice({
+      routes: { sell: [sellRoute(1, 'CHF')], buy: [], swap: [] },
+      lnSellRoutes: [sellRoute(1, 'CHF')],
+      loadRoutes: mockLoadRoutes,
+      createInvoice: mockCreateInvoice,
+      copy: mockCopy,
+      demo: false,
+    });
+    fireEvent.change(screen.getByLabelText('Invoice ID'), { target: { value: 'INV,6' } });
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /generate invoice/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /sticker/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /sticker/i }));
+    await waitFor(() =>
+      expect(mockGetStickers).toHaveBeenCalledWith('1', undefined, '61', 'BitcoinFocus', 'Customer', 'EN'),
+    );
+    expect(mockGetPaymentLinks).toHaveBeenCalledWith(undefined, 'INV,6/2CHF');
+  });
+
+  it('keeps a generated invoice visible when owner lookup fails during sticker download', async () => {
+    mockCreateInvoice.mockResolvedValueOnce({ lnurl: 'LNURL1OWNED', externalId: 'INV-7/2CHF' });
+    mockGetPaymentLinks.mockRejectedValueOnce(new Error('lookup unavailable'));
+    renderInvoice({
+      routes: { sell: [sellRoute(1, 'CHF')], buy: [], swap: [] },
+      lnSellRoutes: [sellRoute(1, 'CHF')],
+      loadRoutes: mockLoadRoutes,
+      createInvoice: mockCreateInvoice,
+      copy: mockCopy,
+      demo: false,
+    });
+    fireEvent.change(screen.getByLabelText('Invoice ID'), { target: { value: 'INV-7' } });
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /generate invoice/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /copy lnurl/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /sticker/i }));
+    await waitFor(() => expect(mockGetPaymentLinks).toHaveBeenCalledWith(undefined, 'INV-7/2CHF'));
+    expect(screen.getByRole('button', { name: /copy lnurl/i })).toBeInTheDocument();
+    expect(mockGetStickers).not.toHaveBeenCalled();
+    expect(await screen.findByText(/something went wrong/i)).toBeInTheDocument();
+  });
+
+  it('does not start sticker lookup when the generated invoice has no payment-link owner id', async () => {
+    mockCreateInvoice.mockResolvedValueOnce({ lnurl: 'LNURL1NOOWNER' });
+    renderInvoice({
+      routes: { sell: [sellRoute(1, 'CHF')], buy: [], swap: [] },
+      lnSellRoutes: [sellRoute(1, 'CHF')],
+      loadRoutes: mockLoadRoutes,
+      createInvoice: mockCreateInvoice,
+      copy: mockCopy,
+      demo: false,
+    });
+    fireEvent.change(screen.getByLabelText('Invoice ID'), { target: { value: 'INV-NO-OWNER' } });
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /generate invoice/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /copy lnurl/i })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /sticker/i }));
+    await waitFor(() => expect(screen.getByTestId('app2-toast')).toHaveTextContent('Something went wrong'));
+    expect(mockGetPaymentLinks).not.toHaveBeenCalled();
+    expect(mockGetStickers).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing owner record', undefined, false],
+    ['list instead of one owner record', [], false],
+    ['owner record for a different invoice', { id: 61, externalId: 'INV-OTHER/2CHF' }, false],
+    ['zero numeric link id', { id: 0, externalId: 'INV-STICKER/2CHF' }, false],
+    ['unsafe numeric link id', { id: Number.MAX_SAFE_INTEGER + 1, externalId: 'INV-STICKER/2CHF' }, false],
+    ['non-decimal string link id', { id: 'payment-61', externalId: 'INV-STICKER/2CHF' }, false],
+    ['zero string link id', { id: '0', externalId: 'INV-STICKER/2CHF' }, false],
+    ['unsafe decimal string link id', { id: '9007199254740992', externalId: 'INV-STICKER/2CHF' }, false],
+    ['positive decimal string link id', { id: '61', externalId: 'INV-STICKER/2CHF' }, true],
+  ])('validates the owned payment-link response before sticker download (%s)', async (_case, ownerLink, valid) => {
+    const externalId = 'INV-STICKER/2CHF';
+    mockCreateInvoice.mockResolvedValueOnce({ lnurl: 'LNURL1STICKER', externalId });
+    mockGetPaymentLinks.mockResolvedValueOnce(ownerLink);
+    renderInvoice({
+      routes: { sell: [sellRoute(1, 'CHF')], buy: [], swap: [] },
+      lnSellRoutes: [sellRoute(1, 'CHF')],
+      loadRoutes: mockLoadRoutes,
+      createInvoice: mockCreateInvoice,
+      copy: mockCopy,
+      demo: false,
+    });
+    fireEvent.change(screen.getByLabelText('Invoice ID'), { target: { value: 'INV-STICKER' } });
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /generate invoice/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /copy lnurl/i })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /sticker/i }));
+    await waitFor(() => expect(mockGetPaymentLinks).toHaveBeenCalledWith(undefined, externalId));
+    if (valid) {
+      await waitFor(() => expect(mockGetStickers).toHaveBeenCalledWith('1', undefined, '61', 'BitcoinFocus', 'Customer', 'EN'));
+    } else {
+      await waitFor(() => expect(screen.getByTestId('app2-toast')).toHaveTextContent('Something went wrong'));
+      expect(mockGetStickers).not.toHaveBeenCalled();
+    }
   });
 
   it('surfaces API and generic generate errors and a demo sticker toast', async () => {

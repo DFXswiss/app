@@ -17,23 +17,66 @@ import { cx } from '../css';
 
 const FLAGS: Record<string, string> = { gb: gbFlag, de: deFlag, it: itFlag, fr: frFlag };
 
+// The language sheet and header menu can both submit through the same account session. Keep
+// preference writes in click order so a slower first response cannot overwrite a later choice.
+let languageUpdateTail: Promise<void> = Promise.resolve();
+
 /** Shared `pickLang()` port: set the local language, toast the label, and — when
  * logged in — mirror the choice to the API user, matching the static app. */
 function useLanguagePick(onClose: () => void) {
   const { setLanguage, t } = useT();
   const { showToast } = useToast();
   const { languages } = useLanguageContext();
-  const { updateLanguage } = useUserContext();
+  const { user, updateLanguage } = useUserContext();
   const { isLoggedIn } = useWalletSession();
+  const sessionRef = useRef({ isLoggedIn, accountId: user?.accountId, epoch: 0 });
+  useEffect(() => {
+    if (sessionRef.current.isLoggedIn !== isLoggedIn || sessionRef.current.accountId !== user?.accountId) {
+      sessionRef.current = {
+        isLoggedIn,
+        accountId: user?.accountId,
+        epoch: sessionRef.current.epoch + 1,
+      };
+    }
+  }, [isLoggedIn, user?.accountId]);
 
-  return (code: Language, label: string) => {
+  return async (code: Language, label: string) => {
+    const apiLanguage = languages?.find(({ symbol }) => symbol.toLowerCase() === code);
+    if (isLoggedIn) {
+      // The local label must not claim success when the account update cannot run. The language
+      // context and user context load independently; keep the picker open so the user can retry.
+      if (!user || !apiLanguage) {
+        showToast(t('languageNotReady'), { assertive: true });
+        return;
+      }
+
+      const sessionEpoch = sessionRef.current.epoch;
+      const precedingUpdate = languageUpdateTail;
+      let releaseUpdate!: () => void;
+      languageUpdateTail = new Promise<void>((resolve) => { releaseUpdate = resolve; });
+      try {
+        await precedingUpdate;
+        if (sessionRef.current.epoch !== sessionEpoch || !sessionRef.current.isLoggedIn) {
+          showToast(t('languageSessionChanged'), { assertive: true });
+          return;
+        }
+        await updateLanguage(apiLanguage);
+      } catch {
+        showToast(t('genErr'), { assertive: true });
+        return;
+      } finally {
+        releaseUpdate();
+      }
+      // Do not apply a stale request's local success state after logout or account switching.
+      if (sessionRef.current.epoch !== sessionEpoch || !sessionRef.current.isLoggedIn) {
+        showToast(t('languageSessionChanged'), { assertive: true });
+        return;
+      }
+    }
+
     setLanguage(code);
     onClose();
     showToast(label);
-    const apiLanguage = languages?.find(({ symbol }) => symbol.toLowerCase() === code);
-    if (isLoggedIn && apiLanguage) {
-      void updateLanguage(apiLanguage).catch(() => showToast(t('genErr'), { assertive: true }));
-    }
   };
 }
 

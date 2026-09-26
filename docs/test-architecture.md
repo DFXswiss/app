@@ -131,6 +131,12 @@ This section lists the fakes introduced by this repository's own suites and stat
 run does not prove for each one; the taxonomy and cross-repository entries live in
 `DFXswiss/backend` under `docs/test-architecture.md`.
 
+- **The App2 account recovery E2E simulates one transient user-load failure.**
+  `e2e-stack/specs/app2-account-extended.spec.ts` fulfils only the first authenticated
+  `GET /v2/user` with HTTP 503; clicking Retry sends the next request to the real local API.
+  A green run proves the error and retry UI plus recovery from a subsequent local API response,
+  not that the API or a production dependency generates or recovers from that failure.
+
 - **The buy-process specs answer the quote endpoint themselves.** `e2e/buy-process.spec.ts` fulfils
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
   payloads, not that the API produces them. Unit tests against the utility pin the payload shapes
@@ -413,6 +419,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   no further Refresh action; the till stays locked. These records and statuses are mocked. They do
   not prove that production `/paymentLink` responses retain those fields or that a real Lightning
   payment settles.
+- **The App 2.0 OCP merchant-stack spec provisions only its prerequisite state synthetically.**
+  `e2e-stack/specs/app2-ocp-merchant.spec.ts` signs up a local Lightning-shaped custodial account,
+  sets the merchant approval/KYC fields in Postgres, and adds synthetic Lightning deposit-pool
+  addresses. The UI then creates/toggles routes and links, generates invoice and POS payments via
+  the real local API, and asserts the resulting rows. Its terminal-history case changes one owned
+  pending payment to `Completed` in Postgres because local settlement workers are disabled; this
+  verifies API/UI readback only, not a Lightning payment, merchant approval workflow, or settlement.
 - **The App 2.0 retry screenshots synthesize service failures.** `e2e/app2-session.spec.ts` installs
   the KYC country 503 after app bootstrap and uses separate Wallet 4 / Wallet 5 accounts for desktop
   and mobile. It starts or continues verification and answers `PUT /v2/kyc?autoStep=true` with a

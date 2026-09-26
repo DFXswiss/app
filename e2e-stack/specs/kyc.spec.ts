@@ -574,33 +574,38 @@ test.describe('KYC area e2e', () => {
     const kycHash = await kycHashOf(owner.userDataId);
     await uploadRealAdditionalDocument(owner.userDataId, kycHash, 'owner-doc');
 
-    const fileRow = await waitForRow<{ uid: string; name: string }>(
-      `SELECT uid, name FROM kyc_file WHERE "userDataId" = $1 ORDER BY id DESC LIMIT 1`,
+    const fileRow = await waitForRow<{ id: number; uid: string; name: string }>(
+      `SELECT id, uid, name FROM kyc_file WHERE "userDataId" = $1 ORDER BY id DESC LIMIT 1`,
       [owner.userDataId],
       15000,
     );
 
+    const metadata = waitForKycFileMetadataResponse(page, fileRow.uid);
     await openScreen(page, `/file/${fileRow.uid}`, owner.jwt);
+    expect((await metadata).status()).toBe(200);
     await expect(page.getByText('ID', { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(fileRow.name, { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'View file' })).toBeVisible();
+    await waitForRow(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND result = $2 ORDER BY id DESC LIMIT 1`,
+      [owner.userDataId, `User ${owner.userDataId} is viewing KYC file ${fileRow.name} (ID: ${fileRow.id})`],
+      15000,
+    );
   });
 
-  test('/file/:id is readable by its owner and by nobody else', async ({ page }) => {
+  test('/file/:id is readable by its owner and concealed from anonymous and foreign users', async ({ page }) => {
     // Intended access rule: a stranger must not see another user's customer-uploaded KYC document.
-    // Access scope for this document class is open with the team; once fixed, remove test.fail().
     //
     // openScreen can return before getFile's metadata GET starts (route spinner gone, brief
     // networkidle). Asserting View file count 0 in that window mistakes an unloaded page for
-    // denial and spuriously passes under test.fail. Await the real GET + terminal UI first.
-    // test.fail stays immediately before the product assertion so setup/sync failures stay real.
+    // denial and spuriously passes. Await the real GET + terminal UI before checking the denial.
 
     const owner = await createUser({ tag: 'file-owner', kycLevel: 0, language: 'EN' });
     const ownerHash = await kycHashOf(owner.userDataId);
     await uploadRealAdditionalDocument(owner.userDataId, ownerHash, 'owner-doc');
 
-    const fileRow = await waitForRow<{ uid: string; protected: boolean }>(
-      `SELECT uid, protected FROM kyc_file WHERE "userDataId" = $1 ORDER BY id DESC LIMIT 1`,
+    const fileRow = await waitForRow<{ id: number; uid: string; name: string; protected: boolean }>(
+      `SELECT id, uid, name, protected FROM kyc_file WHERE "userDataId" = $1 ORDER BY id DESC LIMIT 1`,
       [owner.userDataId],
       15000,
     );
@@ -608,21 +613,29 @@ test.describe('KYC area e2e', () => {
     // case rather than a corner of the model.
     expect(fileRow.protected).toBe(false);
 
+    const anonymousResponse = await fetch(`${apiBase()}/v2/kyc/file/${encodeURIComponent(fileRow.uid)}`);
+    expect(anonymousResponse.status).toBe(404);
+    expect(await anonymousResponse.json()).not.toHaveProperty('content');
+    const anonymousAudit = await queryOne<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND result = $2 ORDER BY id DESC LIMIT 1`,
+      [owner.userDataId, `User undefined is viewing KYC file ${fileRow.name} (ID: ${fileRow.id})`],
+    );
+    expect(anonymousAudit).toBeUndefined();
+
     const stranger = await createUser({ tag: 'file-stranger', kycLevel: 0, language: 'EN' });
     const metadata = waitForKycFileMetadataResponse(page, fileRow.uid);
     await openScreen(page, `/file/${fileRow.uid}`, stranger.jwt);
-    await metadata;
-    // Settled is 'file' today (product serves the stranger the document) or 'error' once fixed.
+    const foreignResponse = await metadata;
+    expect(foreignResponse.status()).toBe(404);
+    expect(await foreignResponse.json()).not.toHaveProperty('content');
     await waitForKycFileScreenSettled(page);
 
-    // Correct product behaviour after the metadata GET completes: stranger must not get the
-    // document viewer — ErrorHint, not View file. Today the API still serves the file, so the
-    // assertions below fail until access scope is fixed.
-    test.fail(
-      true,
-      'A stranger can currently open another user KYC document; access scope is open with the team.',
-    );
     await expect(page.getByRole('button', { name: 'View file' })).toHaveCount(0);
     await expect(page.getByText(KYC_FILE_ERROR_TEXT)).toBeVisible();
+    const foreignAudit = await queryOne<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND result = $2 ORDER BY id DESC LIMIT 1`,
+      [owner.userDataId, `User ${stranger.userDataId} is viewing KYC file ${fileRow.name} (ID: ${fileRow.id})`],
+    );
+    expect(foreignAudit).toBeUndefined();
   });
 });
