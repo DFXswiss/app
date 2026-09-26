@@ -12,6 +12,7 @@ import {
   apiGet,
   apiPost,
   apiPut,
+  createTransaction,
   expect,
   gotoWithSession,
   loginAs,
@@ -472,6 +473,55 @@ test.describe('Support (customer)', () => {
     };
     expect(companyClaims.role).toBe('ClientCompany');
     expect(companyClaims.account).toBeUndefined();
+
+    // A transaction UID is a guest capability for support creation, but it must not let an
+    // accountless company bearer use POST /support/issue as an authenticated caller. Use the
+    // ordinary fixture API so the referenced UID belongs to a real owner transaction in Postgres.
+    const ownerTransaction = await createTransaction({ tag: 'sup-company-create-uid', state: 'completed_buy' });
+    if (!ownerTransaction.transactionId) throw new Error('owner transaction fixture must return a transaction id');
+    const createPayload = {
+      type: 'TransactionIssue',
+      reason: 'TransactionMissing',
+      name: 'E2E company token transaction support create regression',
+      message: 'E2E company token must not create an issue with a known transaction UID',
+      transaction: { uid: ownerTransaction.uid },
+    };
+    const companyCreateCount = async (): Promise<{ issueCount: number; messageCount: number }> => {
+      const row = await queryOne<{ issueCount: number; messageCount: number }>(
+        `SELECT COUNT(DISTINCT si.id)::int AS "issueCount", COUNT(sm.id)::int AS "messageCount"
+         FROM support_issue si
+         LEFT JOIN support_message sm ON sm."issueId" = si.id
+         WHERE si."transactionId" = $1 AND si.name = $2`,
+        [ownerTransaction.transactionId, createPayload.name],
+      );
+      if (!row) throw new Error('company support-create regression counts are missing');
+      return row;
+    };
+    expect(await companyCreateCount()).toEqual({ issueCount: 0, messageCount: 0 });
+
+    let companyCreateStatus = 0;
+    await apiPost('support/issue', createPayload, {
+      jwt: companyJwt,
+      expectOk: false,
+      onStatus: (status) => (companyCreateStatus = status),
+    });
+    expect(companyCreateStatus).toBe(404);
+    expect(await companyCreateCount()).toEqual({ issueCount: 0, messageCount: 0 });
+
+    // The exact same known-UID request remains valid without Authorization for guest support.
+    const guestCreated = await apiPost<{ uid: string }>('support/issue', createPayload);
+    const guestIssue = await waitForRow<{ id: number; transactionId: number | null }>(
+      `SELECT id, "transactionId" AS "transactionId" FROM support_issue WHERE uid = $1`,
+      [guestCreated.uid],
+    );
+    trackRow('support_issue', guestIssue.id);
+    expect(guestIssue.transactionId).toBe(ownerTransaction.transactionId);
+    const guestMessage = await waitForRow<{ id: number }>(
+      `SELECT id FROM support_message WHERE "issueId" = $1 AND message = $2`,
+      [guestIssue.id, createPayload.message],
+    );
+    trackRow('support_message', guestMessage.id);
+    expect(await companyCreateCount()).toEqual({ issueCount: 1, messageCount: 1 });
 
     const issueId =
       issue.supportIssueId ??
