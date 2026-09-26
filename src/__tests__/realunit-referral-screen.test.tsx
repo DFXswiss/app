@@ -39,7 +39,7 @@ jest.mock('src/hooks/realunit-referral.hook', () => ({
 
 jest.mock('src/util/utils', () => ({ formatSwissDateTimeWithSeconds: (v: string) => v }));
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { RealUnitCodeKind, RealUnitManualReviewStatus } from 'src/dto/realunit-referral.dto';
 import RealunitReferralScreen from 'src/screens/realunit-referral.screen';
 
@@ -102,8 +102,8 @@ describe('RealunitReferralScreen held-for-review filter', () => {
     mockGetRelations.mockResolvedValue([PENDING, NO_STATUS]);
     render(<RealunitReferralScreen />);
     await waitFor(() => expect(screen.getByText('NOSTAT')).toBeInTheDocument());
-    const row = screen.getByText('NOSTAT').closest('tr');
-    expect(row).toHaveTextContent('-');
+    const row = screen.getByText('NOSTAT').closest('tr') as HTMLElement;
+    expect(within(row).getAllByRole('cell')[3]).toHaveTextContent('-');
   });
 
   it('navigates to the detail on row click', async () => {
