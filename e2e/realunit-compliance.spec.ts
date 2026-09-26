@@ -108,8 +108,7 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     lastNameCheckDate: '2024-01-20T12:00:00.000Z',
     lastNameCheckStatus: 'MatchWithoutBirthday',
   },
-  // intentionally no name/mail/accountType — the only unnamed empty account; hidden by the without-name
-  // empty-account rule, shown in search because an active search bypasses the filter
+  // unnamed empty-balance row — still in Load all when the default filters are All; search also returns it
   {
     id: 7104,
     kycStatus: 'NA',
@@ -458,6 +457,9 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
 
     await expect(page.getByText('ACME Example AG')).toBeVisible();
     await expect(page.getByText('bob@example.com')).toBeVisible();
+    await expect(
+      page.getByRole('row', { name: /Bob Beispiel/ }).getByText('Internal shareholders (insider)', { exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Last Dilisense check' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Result' })).toBeVisible();
     await expect(page.getByText('No match')).toBeVisible();

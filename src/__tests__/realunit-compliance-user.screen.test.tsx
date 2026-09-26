@@ -391,8 +391,11 @@ describe('RealunitComplianceUserScreen load, downloads, checks, and collections'
     rerender(<RealunitComplianceUserScreen />);
     fireEvent.click(screen.getByRole('button', { name: 'Download' }));
     fireEvent.click(screen.getByRole('button', { name: 'Download dossier (ZIP)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as insider' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     expect(mockDownloadFile).not.toHaveBeenCalled();
     expect(mockDownloadDossier).not.toHaveBeenCalled();
+    expect(mockSetInsider).not.toHaveBeenCalled();
   });
 
   it('falls back to the file name when the download payload has no name', async () => {
