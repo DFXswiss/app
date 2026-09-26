@@ -96,6 +96,63 @@ describe('PayoutsPanel', () => {
     expect(screen.getByText('AB-CD')).toBeInTheDocument();
     expect(screen.getByText('100 (50)')).toBeInTheDocument();
     expect(mockGetAdminPayouts).toHaveBeenCalledTimes(1);
+    expect(mockGetAdminPayouts).toHaveBeenCalledWith();
+  });
+
+  it('lists every payout and shows referrer and guest only when each side is present', async () => {
+    mockGetAdminPayouts.mockResolvedValue([
+      PAYOUT,
+      {
+        ...PAYOUT,
+        id: 12,
+        legalBasis: RealUnitLegalBasis.PROMO_GRANT,
+        status: RealUnitPrizePayoutStatus.PENDING,
+        customerId: 43,
+        customerWallet: '0xother',
+        referrerAccountId: undefined,
+        referrerWallet: undefined,
+        guestAccountId: undefined,
+        guestWallet: undefined,
+      },
+      {
+        ...PAYOUT,
+        id: 13,
+        customerId: 44,
+        customerWallet: '0xreferreronly',
+        referrerAccountId: 70,
+        referrerWallet: undefined,
+        guestAccountId: undefined,
+        guestWallet: undefined,
+      },
+      {
+        ...PAYOUT,
+        id: 14,
+        customerId: 45,
+        customerWallet: '0xguestonly',
+        referrerAccountId: undefined,
+        referrerWallet: undefined,
+        guestAccountId: 80,
+        guestWallet: undefined,
+      },
+    ]);
+    render(<PayoutsPanel />);
+    await waitFor(() => expect(screen.getByText('Promo grant')).toBeInTheDocument());
+    expect(screen.getByText('Referral premium')).toBeInTheDocument();
+    expect(screen.getByText(RealUnitPrizePayoutStatus.PENDING)).toBeInTheDocument();
+    expect(screen.getByText('70')).toBeInTheDocument();
+    expect(screen.getByText('80')).toBeInTheDocument();
+    const addresses = screen.getAllByTestId('copyable-address').map((el) => el.textContent);
+    expect(addresses).not.toContain('0xabc000');
+    expect(addresses).toContain('0xref');
+    expect(addresses).toContain('0xguest');
+    const rows = screen.getAllByRole('row');
+    const referrerOnly = rows.find((row) => row.textContent?.includes('70'));
+    const guestOnly = rows.find((row) => row.textContent?.includes('80'));
+    const neither = rows.find((row) => row.textContent?.includes('43'));
+    expect(referrerOnly).toHaveTextContent('-');
+    expect(guestOnly).toHaveTextContent('-');
+    expect(neither).toHaveTextContent('-');
+    expect(mockGetAdminPayouts).toHaveBeenCalledWith();
   });
 
   it('shows the empty state when there are no payouts', async () => {
@@ -202,6 +259,10 @@ describe('PayoutsPanel', () => {
     const rows = mockToSemicolonCsv.mock.calls[0][1] as Array<Array<string | number | undefined>>;
     expect(rows[0][1]).toBe('Promo-Zugabe');
     expect(rows[0][7]).toBeUndefined();
+    expect(rows[0][8]).toBeUndefined();
+    expect(rows[0][9]).toBeUndefined();
+    expect(rows[0][10]).toBeUndefined();
+    expect(rows[0][11]).toBeUndefined();
     expect(rows[0][12]).toBeUndefined();
     expect(rows[0][13]).toBeUndefined();
   });
