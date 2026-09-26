@@ -23,7 +23,7 @@ services:
       POSTGRES_PASSWORD: LocalDev2026
       POSTGRES_DB: dfx
     # The image volume is anonymous and Compose replaces it on recreate, which drops the
-    # migrated schema; `down -v` still removes e2e-db.
+    # schema built by synchronize; `down -v` still removes e2e-db.
     volumes:
       - e2e-db:/var/lib/postgresql/data
     healthcheck:
