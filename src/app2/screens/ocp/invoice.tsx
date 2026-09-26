@@ -67,6 +67,7 @@ interface InvoiceOut {
   amount: number;
   invId: string;
   routeId: string;
+  externalId?: string;
 }
 
 interface NoteState {
@@ -77,7 +78,7 @@ interface NoteState {
 export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
   const { t, language } = useT();
   const { showToast } = useToast();
-  const { getPaymentStickers } = usePaymentRoutes();
+  const { getPaymentStickers, getPaymentLinks } = usePaymentRoutes();
 
   const [routeId, setRouteId] = useState('');
   const [invId, setInvId] = useState('');
@@ -172,14 +173,14 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
     });
 
     try {
-      const { lnurl } = await ocp.createInvoice({
+      const { lnurl, externalId } = await ocp.createInvoice({
         routeId: selectedId,
         amount,
         currency,
         message: trimmedInvId,
       });
       setNote(null);
-      setOut({ lnurl, currency, amount, invId: trimmedInvId, routeId: selectedId });
+      setOut({ lnurl, currency, amount, invId: trimmedInvId, routeId: selectedId, externalId });
     } catch (err) {
       const msg = err instanceof ApiException ? err.message : '';
       setNote({ variant: 'warn', node: `${t('genErr')}${msg ? `: ${msg}` : ''}` });
@@ -249,12 +250,30 @@ export default function InvoiceView({ ocp, go }: OcpSubViewProps) {
       showToast(t('stickerDemo'));
       return;
     }
+    if (!current.externalId) {
+      showToast(t('genErr'));
+      return;
+    }
     showToast(`${t('downloadSticker')}…`);
     try {
+      const ownerLink = await getPaymentLinks(undefined, current.externalId);
+      if (!ownerLink || Array.isArray(ownerLink) || ownerLink.externalId !== current.externalId) {
+        throw new Error('Payment link not found');
+      }
+      const rawId: unknown = ownerLink.id;
+      const stickerId =
+        typeof rawId === 'number'
+          ? Number.isSafeInteger(rawId) && rawId > 0
+            ? String(rawId)
+            : undefined
+          : typeof rawId === 'string' && /^\d+$/.test(rawId) && Number.isSafeInteger(Number(rawId)) && Number(rawId) > 0
+            ? rawId
+            : undefined;
+      if (!stickerId) throw new Error('Invalid payment link id');
       const { data } = await getPaymentStickers(
         current.routeId,
-        current.invId,
         undefined,
+        stickerId,
         'BitcoinFocus',
         'Customer',
         language.toUpperCase(),

@@ -484,7 +484,10 @@ export function RefundPanel({ tx, onClose }: { tx: DetailTransaction; onClose: (
       };
       const houseValue = houseNumber.trim();
       if (houseValue) creditorData.houseNumber = houseValue;
-      body = { refundTarget: cleanIban, creditorData };
+      // The API already has the destination when refundData supplied a fixed target.
+      // Repeating it is rejected as an attempt to override that target; creditor data
+      // is still required to process the bank refund.
+      body = { ...(ibanFixed ? {} : { refundTarget: cleanIban }), creditorData };
     } else {
       body = {}; // card → refund goes back to the card automatically (empty body)
     }

@@ -119,6 +119,28 @@ The harness does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` other
 
 The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (override listen port with `E2E_LOOPBACK_PORT`, upstream with `E2E_API_URL`) that relays to the real API service. Under `Environment.LOC` the API builds some URLs (notably KYC-step endpoints) as `http://localhost:3000/...` because it assumes frontend and API share a host; without the forwarder, the browser inside the Playwright container would hit itself and fail with `net::ERR_CONNECTION_REFUSED`.
 
+### Optional Magic Link expiration check
+
+The App2 Magic Link expiration case is deliberately opt-in: the ordinary full suite leaves
+`E2E_MAIL_LOGIN_TTL_MINUTES` unset, so the API keeps its existing 10-minute default and the test
+skips without waiting. To exercise the real expiration path, run it in a separate Compose project
+with its own database, containers, and host debug ports:
+
+```bash
+E2E_PROJECT=dfx-e2e-magic-link-expiry E2E_PORT_API=3300 E2E_PORT_FRONTEND=3301 E2E_MAIL_LOGIN_TTL_MINUTES=0.25 npm run e2e:stack -- --grep @magic-link-expiry
+```
+
+This gives the API a real 15-second TTL, submits the link through the browser, reads its OTP from
+the local Postgres `notification` row, waits beyond the configured lifetime, and opens the link in
+the browser. The API and Postgres are real; in `ENVIRONMENT=loc`, the API records the notification
+but does not send production email, and the internal Docker network has no route to external
+providers. A passing run proves the short configured-TTL expiration response, visible error page,
+and absence of a browser session in this local stack. It does not prove SMTP delivery, production
+provider behavior, the production configuration's full 10-minute elapsed wait, or the full E2E
+route-coverage gate: `--grep` is a filtered run by design. Do not run this against the normal
+`dfx-e2e-stack` project; use the distinct project name shown so teardown cannot remove that stack's
+database or volumes.
+
 ## Relation to the existing suite under `e2e/`
 
 The suite under `e2e/` is visual-regression testing (screenshot baselines). It deliberately does not run in CI, because baselines are platform- and font-dependent.

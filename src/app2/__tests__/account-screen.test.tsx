@@ -3,6 +3,7 @@ const mockLogout = jest.fn();
 const mockDeleteAccount = jest.fn();
 const mockGetRef = jest.fn();
 const mockGetProfile = jest.fn();
+const mockReloadUser = jest.fn();
 let mockFreshUserMethods = false;
 const mockOpenSwitcher = jest.fn();
 const mockOpenConnect = jest.fn();
@@ -21,7 +22,10 @@ const mockSession: {
   openConnect: mockOpenConnect,
   activeWallet: { walletId: 'MetaMask' },
 };
-const mockUserState: { user?: Record<string, unknown>; isUserLoading: boolean } = { isUserLoading: false };
+const mockUserState: { user?: Record<string, unknown>; isUserLoading: boolean; userLoadError: boolean } = {
+  isUserLoading: false,
+  userLoadError: false,
+};
 const i18nOverride: { language?: string } = {};
 
 jest.mock('@dfx.swiss/react', () => ({
@@ -34,6 +38,8 @@ jest.mock('@dfx.swiss/react', () => ({
   useUserContext: () => ({
     user: mockUserState.user,
     isUserLoading: mockUserState.isUserLoading,
+    userLoadError: mockUserState.userLoadError,
+    reloadUser: mockReloadUser,
     deleteAccount: mockDeleteAccount,
   }),
 }));
@@ -94,9 +100,11 @@ describe('AccountScreen', () => {
     mockFreshUserMethods = false;
     mockUserState.user = undefined;
     mockUserState.isUserLoading = false;
+    mockUserState.userLoadError = false;
     delete i18nOverride.language;
     mockGetRef.mockResolvedValue({ code: 'AB-CD12-EF34-GH', refCount: 2 });
     mockGetProfile.mockResolvedValue({ firstName: 'Ada', lastName: 'Lovelace' });
+    mockReloadUser.mockResolvedValue(undefined);
     mockLogout.mockResolvedValue(undefined);
     mockDeleteAccount.mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText: jest.fn().mockResolvedValue(undefined) } });
@@ -135,6 +143,16 @@ describe('AccountScreen', () => {
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: /log out|abmelden|esci|sign out|déconnexion/i }));
     await waitFor(() => expect(mockLogout).toHaveBeenCalled());
+  });
+
+  it('shows account load failure and retries through the SDK user loader', async () => {
+    mockSession.isLoggedIn = true;
+    mockUserState.userLoadError = true;
+    renderAccount();
+
+    expect(screen.getByText("Couldn't load — check your connection.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(mockReloadUser).toHaveBeenCalledTimes(1));
   });
 
   it('deletes the account after confirm and toasts a copy failure without clipboard', async () => {

@@ -701,7 +701,8 @@ function NationalityFields({ ctx, countries }: { ctx: StepContext; countries: Co
     e.preventDefault();
     const country = countryById(countries, nationality);
     if (!country) return;
-    ctx.submit(() => kyc.setNationalityData(ctx.code, ctx.url, { country }));
+    const data = { nationality: country };
+    ctx.submit(() => kyc.setNationalityData(ctx.code, ctx.url, data));
   };
 
   return (
@@ -1151,7 +1152,7 @@ function FinancialFields({ ctx, setBusy }: { ctx: StepContext; setBusy: (busy: b
   const answerValue = (): string | undefined => {
     switch (current.type) {
       case QuestionType.CONFIRMATION:
-        return checkboxValue ? 'true' : undefined;
+        return checkboxValue ? current.options?.[0]?.key : undefined;
       case QuestionType.SINGLE_CHOICE:
         return singleValue || undefined;
       case QuestionType.MULTIPLE_CHOICE:

@@ -1426,6 +1426,74 @@ describe('RefundPanel', () => {
     mockGetCountries.mockResolvedValue([{ id: 1, name: 'Switzerland', symbol: 'CH' }]);
   });
 
+  it('omits a server-fixed bank refund target but still submits creditor data', async () => {
+    const fixedIban = 'CH9300762011623852957';
+    mockGetRefund.mockResolvedValue({
+      refundTarget: fixedIban,
+      refundAmount: 90,
+      refundAsset: { name: 'CHF' },
+      bankDetails: {
+        iban: fixedIban,
+        name: 'Ada Lovelace',
+        address: 'Street',
+        zip: '8000',
+        city: 'Zurich',
+        country: 'CH',
+      },
+    });
+    renderPanel({ id: 501, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Bank' });
+
+    const iban = await screen.findByPlaceholderText('DE..');
+    expect(iban).toHaveValue(fixedIban);
+    expect(iban).toHaveAttribute('readonly');
+    fireEvent.click(screen.getByRole('button', { name: /confirm refund|rückerstattung bestätigen/i }));
+
+    await waitFor(() => expect(mockSetRefund).toHaveBeenCalledTimes(1));
+    expect(mockSetRefund).toHaveBeenCalledWith(501, {
+      creditorData: {
+        name: 'Ada Lovelace',
+        address: 'Street',
+        zip: '8000',
+        city: 'Zurich',
+        country: 'CH',
+      },
+    });
+  });
+
+  it('keeps a user-entered target on an editable bank refund', async () => {
+    mockGetRefund.mockResolvedValue({
+      refundTarget: '',
+      refundAmount: 90,
+      refundAsset: { name: 'EUR' },
+      bankDetails: {
+        iban: '',
+        name: 'Ada Lovelace',
+        address: 'Street',
+        zip: '8000',
+        city: 'Zurich',
+        country: 'CH',
+      },
+    });
+    renderPanel({ id: 502, type: 'Buy', state: 'Failed', inputPaymentMethod: 'Bank' });
+
+    const iban = await screen.findByPlaceholderText('DE..');
+    expect(iban).not.toHaveAttribute('readonly');
+    fireEvent.change(iban, { target: { value: 'DE89370400440532013000' } });
+    fireEvent.click(screen.getByRole('button', { name: /confirm refund|rückerstattung bestätigen/i }));
+
+    await waitFor(() => expect(mockSetRefund).toHaveBeenCalledTimes(1));
+    expect(mockSetRefund).toHaveBeenCalledWith(502, {
+      refundTarget: 'DE89370400440532013000',
+      creditorData: {
+        name: 'Ada Lovelace',
+        address: 'Street',
+        zip: '8000',
+        city: 'Zurich',
+        country: 'CH',
+      },
+    });
+  });
+
   it('shows a dash when the refund amount is missing and swallows a country load error', async () => {
     mockGetCountries.mockRejectedValueOnce(new Error('countries-down'));
     mockGetRefund.mockResolvedValue({

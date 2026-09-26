@@ -136,7 +136,7 @@ describe('OCP routes view', () => {
     fireEvent.change(screen.getByLabelText(/receive network/i), { target: { value: 'Bitcoin' } });
     fireEvent.click(screen.getByRole('button', { name: /create route/i }));
     await waitFor(() => expect(screen.getByRole('button', { name: /create route/i })).not.toBeDisabled());
-    expect(mockCreate).toHaveBeenCalled();
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ currencyId: '1', blockchain: 'Bitcoin' }));
 
     mockCreate.mockRejectedValueOnce(new ApiException(400, 'iban-no'));
     fireEvent.change(screen.getByLabelText(/payout iban/i), { target: { value: 'CH93 0076 2011 6238 5295 7' } });
@@ -188,6 +188,85 @@ describe('OCP routes view', () => {
       createRoute: mockCreate,
     });
     expect(screen.getByLabelText(/receive network/i)).toHaveValue('Bitcoin');
+  });
+
+  it('keeps route creation disabled until a sellable currency is available', () => {
+    mockCurrencies.currencies = undefined as never;
+    mockSession.blockchains = ['Lightning'];
+    renderRoutes({
+      routes: { sell: [], buy: [], swap: [] },
+      routesError: false,
+      loadRoutes: mockLoad,
+      createRoute: mockCreate,
+      lightningReady: false,
+    });
+
+    const create = screen.getByRole('button', { name: /create route/i });
+    expect(create).toBeDisabled();
+    fireEvent.click(create);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('keeps route creation disabled until a payout network is available', () => {
+    mockSession.blockchains = undefined as never;
+    renderRoutes({
+      routes: { sell: [], buy: [], swap: [] },
+      routesError: false,
+      loadRoutes: mockLoad,
+      createRoute: mockCreate,
+      lightningReady: false,
+    });
+
+    const create = screen.getByRole('button', { name: /create route/i });
+    expect(create).toBeDisabled();
+    fireEvent.click(create);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('does not submit if a currency or payout network is unavailable when the handler runs', async () => {
+    // The API DTO type requires numeric ids, but a malformed empty id would otherwise match the
+    // empty select state and let the form submit without a concrete payout currency.
+    mockCurrencies.currencies = [{ id: '' as never, name: 'CHF', sellable: true }];
+    mockSession.blockchains = ['Lightning'];
+    const noCurrency = renderRoutes({
+      routes: { sell: [], buy: [], swap: [] },
+      routesError: false,
+      loadRoutes: mockLoad,
+      createRoute: mockCreate,
+      lightningReady: true,
+    });
+    fireEvent.change(screen.getByLabelText(/payout iban/i), { target: { value: 'CH93 0076 2011 6238 5295 7' } });
+    const currencyGuardButton = screen.getByRole('button', { name: /create route/i }) as HTMLButtonElement;
+    expect(currencyGuardButton).toBeDisabled();
+    const invokeReactClickHandler = async (button: HTMLButtonElement) => {
+      const reactPropsKey = Object.keys(button).find((key) => key.startsWith('__reactProps$'));
+      const onClick = reactPropsKey
+        ? (button as unknown as Record<string, { onClick?: () => void | Promise<void> }>)[reactPropsKey]?.onClick
+        : undefined;
+      expect(onClick).toBeDefined();
+      await act(async () => {
+        await onClick?.();
+      });
+    };
+    await invokeReactClickHandler(currencyGuardButton);
+    expect(mockCreate).not.toHaveBeenCalled();
+    noCurrency.unmount();
+
+    mockCurrencies.currencies = [{ id: 1, name: 'CHF', sellable: true }];
+    mockSession.blockchains = [];
+    renderRoutes({
+      routes: { sell: [], buy: [], swap: [] },
+      routesError: false,
+      loadRoutes: mockLoad,
+      createRoute: mockCreate,
+      lightningReady: false,
+    });
+    await waitFor(() => expect(screen.getByLabelText(/payout currency/i)).toHaveValue('1'));
+    fireEvent.change(screen.getByLabelText(/payout iban/i), { target: { value: 'CH93 0076 2011 6238 5295 7' } });
+    const chainGuardButton = screen.getByRole('button', { name: /create route/i }) as HTMLButtonElement;
+    expect(chainGuardButton).toBeDisabled();
+    await invokeReactClickHandler(chainGuardButton);
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('shows the empty list, a KYC warning and sparse route rows', () => {

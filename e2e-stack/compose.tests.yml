@@ -43,6 +43,9 @@ services:
       # It is a fixed, deterministic, throwaway test mnemonic, never used for real funds.
       E2E_EVM_DEPOSIT_SEED: ${E2E_EVM_DEPOSIT_SEED:-away under gun lens ice mean sketch absent stand evoke cigar clever}
       E2E_WIDGET_URL: ${E2E_WIDGET_URL:-http://frontend-widget}
+      # Empty in normal runs (the expiry-only browser test skips); set together with
+      # the API override for the explicitly isolated short-TTL run.
+      E2E_MAIL_LOGIN_TTL_MINUTES: ${E2E_MAIL_LOGIN_TTL_MINUTES:-}
     volumes:
       - e2e-test-results:/work/test-results
       - e2e-playwright-report:/work/playwright-report

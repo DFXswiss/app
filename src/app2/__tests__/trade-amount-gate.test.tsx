@@ -115,7 +115,7 @@ function renderHome() {
   );
 }
 
-describe('amount CTA gate', () => {
+describe('invalid quote CTA gate', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
@@ -128,6 +128,10 @@ describe('amount CTA gate', () => {
   it.each([
     ['AmountTooLow', 'AmountTooLow'],
     ['AmountTooHigh', 'AmountTooHigh'],
+    ['unsupported asset', 'AssetUnsupported'],
+    ['unsupported currency', 'CurrencyUnsupported'],
+    ['unsupported payment method', 'PaymentMethodNotAllowed'],
+    ['unknown future API error', 'SomeFutureQuoteError'],
   ])('disables the buy CTA and never arms paymentInfos for %s', async (_name, error) => {
     mockCall.mockResolvedValue({
       estimatedAmount: 0,
@@ -149,7 +153,7 @@ describe('amount CTA gate', () => {
     });
     await waitFor(() => expect(mockCall).toHaveBeenCalled());
 
-    const cta = screen.getByRole('button', { name: /buy|kaufen/i });
+    const cta = screen.getByTestId('trade-cta');
     expect(cta).toBeDisabled();
 
     fireEvent.click(cta);
@@ -157,6 +161,44 @@ describe('amount CTA gate', () => {
       jest.advanceTimersByTime(600);
     });
     expect(mockReceiveForBuy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'KycRequired',
+    'KycDataRequired',
+    'KycRequiredInstant',
+    'VideoIdentRequired',
+    'NameRequired',
+    'LimitExceeded',
+    'EmailRequired',
+    'PrimaryEmailRequired',
+    'PrimaryEmailNotConfirmed',
+    'RecommendationRequired',
+    'IbanCurrencyMismatch',
+    'CountryNotAllowed',
+    'NationalityNotAllowed',
+  ])('keeps the CTA available for the known account gate %s', async (error) => {
+    mockCall.mockResolvedValue({
+      estimatedAmount: 0,
+      amount: 100,
+      fees: { total: 0, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      feesTarget: { total: 0, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      exchangeRate: 0,
+      rate: 0,
+      isValid: false,
+      error,
+      minVolume: 10,
+      maxVolume: 1000,
+    });
+
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+
+    expect(screen.getByTestId('trade-cta')).toBeEnabled();
   });
 
   it('still enables the CTA when the public quote is valid', async () => {
@@ -177,7 +219,7 @@ describe('amount CTA gate', () => {
     });
     await waitFor(() => expect(mockCall).toHaveBeenCalled());
 
-    const cta = screen.getByRole('button', { name: /buy|kaufen/i });
+    const cta = screen.getByTestId('trade-cta');
     expect(cta).not.toBeDisabled();
   });
 });

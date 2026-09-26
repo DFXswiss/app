@@ -453,12 +453,12 @@ describe('KycStepForm steps', () => {
     view.unmount();
   });
 
-  it('submits nationality for the default CH country', async () => {
+  it('submits the selected Swiss nationality in the API payload', async () => {
     const view = renderStep(KycStepName.NATIONALITY_DATA);
-    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '2' } });
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '1' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
     await waitFor(() => expect(mockSetNationality).toHaveBeenCalled());
-    expect(mockSetNationality.mock.calls[0][2].country.symbol).toBe('DE');
+    expect(mockSetNationality.mock.calls[0][2]).toEqual({ nationality: expect.objectContaining({ symbol: 'CH' }) });
     view.unmount();
   });
 
@@ -635,12 +635,18 @@ describe('KycStepForm financial questionnaire', () => {
   it('answers confirmation, single, multi and text questions then advances', async () => {
     mockGetFinancial.mockResolvedValue({
       questions: [
-        { key: 'c1', type: 'Confirmation', title: 'Confirm this', description: 'Yes?' },
+        {
+          key: 'c1',
+          type: 'Confirmation',
+          title: 'Confirm this',
+          description: 'Yes?',
+          options: [{ key: 'accept', text: 'Accept' }],
+        },
         {
           key: 'gated',
           type: 'Text',
           title: 'How much?',
-          conditions: [{ question: 'c1', response: 'true' }],
+          conditions: [{ question: 'c1', response: 'accept' }],
         },
         {
           key: 'hidden',
@@ -671,6 +677,11 @@ describe('KycStepForm financial questionnaire', () => {
     expect(await screen.findByText('Confirm this')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    await waitFor(() => expect(mockSetFinancial).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      { responses: expect.arrayContaining([{ key: 'c1', value: 'accept' }]) },
+    ));
     expect(await screen.findByText('How much?')).toBeInTheDocument();
     expect(screen.queryByText('Hidden forever')).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '10k' } });
@@ -1058,7 +1069,12 @@ describe('KycStepForm remaining forms', () => {
   it('does not submit a confirmation or text question without an answer', async () => {
     mockGetFinancial.mockResolvedValue({
       questions: [
-        { key: 'c1', type: 'Confirmation', title: 'Confirm this' },
+        {
+          key: 'c1',
+          type: 'Confirmation',
+          title: 'Confirm this',
+          options: [{ key: 'accept', text: 'Accept' }],
+        },
         { key: 't1', type: 'Text', title: 'Tell us' },
       ],
       responses: [],
@@ -1165,7 +1181,12 @@ describe('KycStepForm remaining forms', () => {
 
   it('ignores a busy or empty financial answer', async () => {
     mockGetFinancial.mockResolvedValue({
-      questions: [{ key: 'c1', type: 'Confirmation', title: 'Confirm this' }],
+      questions: [{
+        key: 'c1',
+        type: 'Confirmation',
+        title: 'Confirm this',
+        options: [{ key: 'accept', text: 'Accept' }],
+      }],
       responses: [],
     });
     mockSetFinancial.mockImplementation(() => new Promise(() => undefined));

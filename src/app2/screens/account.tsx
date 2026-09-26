@@ -235,7 +235,7 @@ export default function AccountScreen() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { isLoggedIn, address, logout, openSwitcher, activeWallet } = useWalletSession();
-  const { user, isUserLoading, deleteAccount } = useUserContext();
+  const { user, isUserLoading, userLoadError, reloadUser, deleteAccount } = useUserContext();
   const { getRef, getProfile } = useUser();
 
   const [referral, setReferral] = useState<Referral | undefined>();
@@ -296,6 +296,22 @@ export default function AccountScreen() {
         <p className={cx('tnote')} style={{ padding: '0 4px 8px' }}>
           <LoadingRow label={t('loading')} />
         </p>
+      </div>
+    );
+  }
+
+  if (userLoadError && !user) {
+    return (
+      <div className={cx('account')}>
+        <div className={cx('txhead')}>
+          <h2>{t('mAcct')}</h2>
+        </div>
+        <div role="alert" className={cx('tnote')} style={{ padding: '0 4px 8px' }}>
+          <p>{t('loadFail')}</p>
+          <button type="button" className={cx('btn-mini')} onClick={() => void reloadUser()}>
+            {t('retry')}
+          </button>
+        </div>
       </div>
     );
   }

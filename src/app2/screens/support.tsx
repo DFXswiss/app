@@ -820,7 +820,11 @@ function SupportScreenBody() {
     void support.loadSupportIssue(uid).catch(() => setThreadError(t('loadFail')));
   };
 
-  const closeThread = () => setActiveUid(undefined);
+  const closeThread = () => {
+    setActiveUid(undefined);
+    setTicketsError('');
+    void support.loadTickets().catch(() => setTicketsError(t('loadFail')));
+  };
 
   const submitNewIssue = (e: FormEvent) => {
     e.preventDefault();
@@ -1299,16 +1303,43 @@ function ChatBubble({
   const { showToast } = useToast();
   const [loadedUrl, setLoadedUrl] = useState<string | undefined>(message.file?.url);
   const [loading, setLoading] = useState(false);
+  const [loadCompletion, setLoadCompletion] = useState(0);
+  const pendingAttachment = useRef<{ fileName: string; download: boolean } | undefined>(undefined);
+  const mountedRef = useRef(true);
   const mine = message.author === 'Customer';
   const failed = message.status === SupportMessageStatus.FAILED || deliveryTimedOut;
   const timestamp = formatDateTime(message.created, language);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      pendingAttachment.current = undefined;
+    };
+  }, []);
 
   // `onLoadFile` mutates the message inside SupportChatContext and the new
   // `message` prop arrives on the next render — read it here instead of in
   // the `.then()` below, which would otherwise close over the stale prop.
   useEffect(() => {
-    if (message.file?.url) setLoadedUrl(message.file.url);
-  }, [message.file?.url]);
+    const url = message.file?.url;
+    if (!url) return;
+    setLoadedUrl(url);
+    const pending = pendingAttachment.current;
+    if (pending) {
+      pendingAttachment.current = undefined;
+      if (pending.download) downloadFile(url, pending.fileName);
+    }
+  }, [message.file?.url, message.fileName]);
+
+  // A successful loader must publish the updated message URL before a download
+  // can happen. If it resolves without doing so, keep the previous visible
+  // failure behavior instead of leaving a pending download intent behind.
+  useEffect(() => {
+    if (loading || !pendingAttachment.current || message.file?.url) return;
+    pendingAttachment.current = undefined;
+    showToast(t('loadFail'), { assertive: true });
+  }, [loading, loadCompletion, message.file?.url, showToast, t]);
 
   // Auto-load image attachments on mount (mirrors the static app's
   // `chatHydrateAttach`): any message carrying an image renders inline without a
@@ -1333,22 +1364,24 @@ function ChatBubble({
     if (loading || !message.fileName) return;
     const fileName = message.fileName;
     const image = isImageFile(fileName);
-    if (loadedUrl) {
-      downloadFile(loadedUrl, fileName);
+    const readyUrl = loadedUrl ?? message.file?.url;
+    if (readyUrl) {
+      downloadFile(readyUrl, fileName);
       return;
     }
+    pendingAttachment.current = { fileName, download: !image };
     setLoading(true);
     onLoadFile()
-      .then(() => {
-        const nextUrl = message.file?.url;
-        if (!nextUrl) throw new Error('Attachment data missing');
-        setLoadedUrl(nextUrl);
-        if (!image) downloadFile(nextUrl, fileName);
-      })
       .catch(() => {
+        if (!mountedRef.current) return;
+        pendingAttachment.current = undefined;
         showToast(t('loadFail'), { assertive: true });
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!mountedRef.current) return;
+        setLoading(false);
+        setLoadCompletion((completed) => completed + 1);
+      });
   };
 
   return (
