@@ -5,6 +5,8 @@ import {
   createTestCredentials,
   createTestCredentialsWallet2,
   createTestCredentialsWallet3,
+  createTestCredentialsWallet4,
+  createTestCredentialsWallet5,
   createBitcoinCredentials,
   createLightningCredentials,
   createLightningCredentialsWallet2,
@@ -36,7 +38,15 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export type BlockchainType = 'evm' | 'evm-wallet2' | 'bitcoin' | 'lightning' | 'solana' | 'tron';
+export type BlockchainType =
+  | 'evm'
+  | 'evm-wallet2'
+  | 'evm-wallet4'
+  | 'evm-wallet5'
+  | 'bitcoin'
+  | 'lightning'
+  | 'solana'
+  | 'tron';
 
 // Linked address types - these are authenticated using an existing token from another blockchain
 export type LinkedBlockchainType = 'evm-linked' | 'solana-linked' | 'tron-linked' | 'lightning-linked';
@@ -56,6 +66,12 @@ async function generateCredentials(type: BlockchainType): Promise<TestCredential
       break;
     case 'evm-wallet2':
       credentials = await createTestCredentialsWallet2(config.seed);
+      break;
+    case 'evm-wallet4':
+      credentials = await createTestCredentialsWallet4(config.seed);
+      break;
+    case 'evm-wallet5':
+      credentials = await createTestCredentialsWallet5(config.seed);
       break;
     case 'bitcoin':
       credentials = await createBitcoinCredentials(config.seed);

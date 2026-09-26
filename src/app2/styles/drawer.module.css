@@ -1,0 +1,152 @@
+/* ============ DRAWER (burger menu) ============ */
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 14, 28, 0.6);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.32s var(--ease);
+  z-index: 40;
+}
+.scrim.on {
+  opacity: 1;
+  pointer-events: auto;
+}
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 330px;
+  max-width: 86%;
+  z-index: 50;
+  background: linear-gradient(180deg, #0b3560, #0a3055);
+  border-left: 1px solid var(--hair);
+  box-shadow: -30px 0 60px -20px rgba(0, 0, 0, 0.6);
+  transform: translateX(102%);
+  transition: transform 0.42s var(--ease);
+  display: flex;
+  flex-direction: column;
+}
+.drawer.on {
+  transform: translateX(0);
+}
+.drawer .dhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 18px 14px;
+  border-bottom: 1px solid var(--hair-soft);
+}
+.drawer .dhead .who {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.drawer .dhead .av {
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background: linear-gradient(145deg, var(--app-surface-r), var(--app-surface));
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 15px;
+  color: #fff;
+  flex: 0 0 auto;
+}
+.drawer .dhead .nm {
+  min-width: 0;
+}
+.drawer .dhead .nm b {
+  font-size: 14.5px;
+  font-weight: 700;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drawer .dhead .nm small {
+  font-size: 11.5px;
+  color: var(--t-dim);
+  font-feature-settings: 'tnum';
+}
+.dscroll {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 8px 10px 16px;
+}
+.dscroll::-webkit-scrollbar {
+  display: none;
+}
+.dgroup {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--t-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  padding: 14px 12px 5px;
+}
+.mitem {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--t-high);
+  transition: background 0.14s var(--ease);
+}
+.mitem:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.mitem.active {
+  background: var(--primary-soft);
+}
+.mitem.active .micon {
+  color: var(--primary);
+}
+.mitem .micon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  display: grid;
+  place-items: center;
+  color: var(--t-muted);
+  flex: 0 0 auto;
+}
+.mitem .micon svg {
+  width: 18px;
+  height: 18px;
+}
+/* The Open CryptoPay mark is 170×129, not square — the square icon rule above would squash it.
+   It is a solid mark among 1.8px stroke icons, so it runs slightly smaller to carry the same
+   optical weight in the row. */
+.mitem .micon svg.ocp-mark {
+  width: 17px;
+  height: auto;
+}
+.mitem span {
+  flex: 1;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.mitem .ext {
+  width: 14px;
+  height: 14px;
+  color: var(--t-faint-dim);
+}
+.dfoot {
+  padding: 12px 18px 18px;
+  border-top: 1px solid var(--hair-soft);
+  text-align: center;
+}
+.dfoot .acc {
+  font-size: 11.5px;
+  color: var(--t-dim);
+  font-feature-settings: 'tnum';
+}

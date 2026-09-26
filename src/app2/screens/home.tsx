@@ -1,0 +1,1722 @@
+// DFX App 2.0 — home (buy/sell/swap) screen.
+//
+// Markup/classes ported 1:1 from the static preview's `v-buy` view (public/app2/index.html,
+// `.seg`/`.panels`/`.quick`/`.fees`/`.pmethod`) — see components/Sheet-based pickers under
+// components/pickers/ and screens/trade/ for the pieces this screen wires together. All
+// asset/fiat/quote/payment data comes from @dfx.swiss/react (useAssetContext/useFiatContext/
+// useBuy/useSell/useSwap/useBankAccountContext) via screens/trade/*; nothing here hand-rolls
+// an API call.
+//
+// Buy/sell/swap keep independent selection + amount state (asset, chain, fiat, amount) instead
+// of the static app's single shared `S.token`/`S.amount` re-validated on every tab switch —
+// simpler to reason about, and it means switching tabs never loses what you were doing on the
+// other one.
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Blockchain,
+  FiatPaymentMethod,
+  PersonalIbanProvider,
+  useAssetContext,
+  useBankAccountContext,
+  useFiatContext,
+  useApiSession,
+  useTransaction,
+} from '@dfx.swiss/react';
+import type { Asset, BankAccount, Buy, DetailTransaction, Fiat, Sell, Swap } from '@dfx.swiss/react';
+import { useLocation } from 'react-router-dom';
+import { AssetPicker } from '../components/pickers/AssetPicker';
+import { BankAccountPicker } from '../components/pickers/BankAccountPicker';
+import { FiatPicker } from '../components/pickers/FiatPicker';
+import { ConfirmationSheet } from '../components/ConfirmationSheet';
+import { Spinner, useToast } from '../components/ui';
+import { formatAmount, formatFiat, parseAmt, quickChipSymbol } from './trade/amount';
+import {
+  assetFor,
+  availableAssets,
+  findNamedTradeAsset,
+  groupAssets,
+  heldBalance,
+  includeInPartnerPool,
+  parseBalances,
+  shownChainsFor,
+} from './trade/asset-pool';
+import { chainName, isStableAsset } from './trade/blockchain-meta';
+import {
+  currenciesForBuy,
+  currenciesForSell,
+  hasNoDisplayableEstimate,
+  isAccountGateValidityError,
+} from './trade/capabilities';
+import {
+  assetFormatter,
+  fiatFormatter,
+  isApiExceptionLike,
+  isKnownPreClaimGateError,
+  mapThrownError,
+  mapTransactionError,
+} from './trade/errors';
+import { AssetChainGlyph, FiatGlyph } from './trade/glyphs';
+import { FeesPanel } from './trade/FeesPanel';
+import { PaymentSheet } from './trade/PaymentSheet';
+import { Landing } from './parts/Landing';
+import { MODES, type Capability, type Mode, type TradeAsset } from './trade/types';
+import { useBuyQuote, useSellQuote, useSwapQuote } from './trade/useTradeQuote';
+import { useT, type TranslationKey } from '../i18n';
+import { firstQueryParam, requiresRedirectConfirmation, routeOrQueryParam } from '../utils/url';
+import { ibanCheck } from './trade/iban';
+import {
+  completionRedirectUrl,
+  filterAssetsByParam,
+  isPresentFlag,
+  matchBankAccount,
+  parseEnumValue,
+  personalIbanParamState,
+  privateTradeBlocked,
+  restrictBlockchains,
+} from './trade/widget-params';
+import { useWalletSession } from '../wallets/session';
+import { cx } from '../css';
+
+const QUICK_FIAT_AMOUNTS = [50, 100, 250, 500];
+const PENDING_PAYMENT_KEY_PREFIX = 'app2:pending-payment-request:';
+
+function createPaymentRequestId(): string | undefined {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
+  if (!cryptoApi?.getRandomValues) return undefined;
+  const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+const CHEVRON_RIGHT = (
+  <svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+    <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+const WALLET_ICON = (
+  <svg viewBox="0 0 24 24" fill="none" style={{ width: 20, height: 20 }}>
+    <rect x={3} y={6} width={18} height={13} rx={3} stroke="#0E3A63" strokeWidth={1.8} />
+    <circle cx={16.5} cy={12.5} r={1.6} fill="#0E3A63" />
+  </svg>
+);
+
+type AssetSlot = 'buyReceive' | 'sellPay' | 'swapFrom' | 'swapTo';
+type FiatSlot = 'buyPay' | 'sellReceive';
+
+/** Frozen at the moment the payment sheet opens — the sheet renders exclusively
+ * from this snapshot so the 30s quote auto-refresh (paused while the sheet is open, but this
+ * also covers the debounce window right after opening / an explicit retry) can never silently
+ * swap the displayed IBAN/reference/amount out from under the user. */
+interface PaymentSnapshot {
+  mode: Mode;
+  buy: Buy | null;
+  sell: Sell | null;
+  swap: Swap | null;
+  rawError: unknown;
+  loading: boolean;
+  payAssetCode: string;
+  receiveAssetCode: string;
+  receiveBlockchain?: Blockchain;
+  currency?: Fiat;
+  amount: number;
+}
+
+export default function HomeScreen() {
+  const { t, language } = useT();
+  const { showToast } = useToast();
+  const session = useWalletSession();
+  const { session: apiSession } = useApiSession();
+  const { getAssets } = useAssetContext();
+  const { currencies } = useFiatContext();
+  const { bankAccounts, createAccount } = useBankAccountContext();
+  const transactionApi = useTransaction();
+  const location = useLocation();
+
+  const [mode, setMode] = useState<Mode>('buy');
+
+  // ---- selection state (independent per mode) --------------------------------------------
+  const [buyAsset, setBuyAsset] = useState<TradeAsset>();
+  const [buyChain, setBuyChain] = useState<Blockchain>();
+  const [buyFiat, setBuyFiat] = useState<Fiat>();
+  const buyMethod = FiatPaymentMethod.BANK;
+  const amountOutParam = useMemo(() => routeOrQueryParam(location.search, 'amount-out'), [location.search]);
+  const amountInParam = useMemo(() => routeOrQueryParam(location.search, 'amount-in'), [location.search]);
+  const assetInParam = useMemo(() => routeOrQueryParam(location.search, 'asset-in'), [location.search]);
+  const assetOutParam = useMemo(() => routeOrQueryParam(location.search, 'asset-out'), [location.search]);
+  const assetsParam = useMemo(() => routeOrQueryParam(location.search, 'assets'), [location.search]);
+  const blockchainsParam = useMemo(() => routeOrQueryParam(location.search, 'blockchains'), [location.search]);
+  const blockchainParam = useMemo(() => routeOrQueryParam(location.search, 'blockchain'), [location.search]);
+  const bankAccountParam = useMemo(() => routeOrQueryParam(location.search, 'bank-account'), [location.search]);
+  const personalIbanParam = useMemo(() => routeOrQueryParam(location.search, 'personal-iban'), [location.search]);
+  const redirectUriParam = useMemo(() => routeOrQueryParam(location.search, 'redirect-uri'), [location.search]);
+  const flagsParam = useMemo(() => routeOrQueryParam(location.search, 'flags'), [location.search]);
+  const hideTargetSelection = isPresentFlag(routeOrQueryParam(location.search, 'hide-target-selection'));
+  const requestedChain = parseEnumValue<Blockchain>(blockchainParam, Blockchain);
+  const spendClearedByUserRef = useRef(false);
+
+  const [buyRaw, setBuyRaw] = useState('');
+
+  const [sellAsset, setSellAsset] = useState<TradeAsset>();
+  const [sellChain, setSellChain] = useState<Blockchain>();
+  const [sellFiat, setSellFiat] = useState<Fiat>();
+  const [sellBankAccount, setSellBankAccount] = useState<BankAccount>();
+  const [sellRaw, setSellRaw] = useState('');
+
+  const [swapFromAsset, setSwapFromAsset] = useState<TradeAsset>();
+  const [swapFromChain, setSwapFromChain] = useState<Blockchain>();
+  const [swapToAsset, setSwapToAsset] = useState<TradeAsset>();
+  const [swapToChain, setSwapToChain] = useState<Blockchain>();
+  const [swapRaw, setSwapRaw] = useState('');
+
+  // ---- sheet visibility --------------------------------------------------------------------
+  const [assetPickerOpen, setAssetPickerOpen] = useState<AssetSlot | null>(null);
+  const [fiatPickerOpen, setFiatPickerOpen] = useState<FiatSlot | null>(null);
+  const [bankAccountOpen, setBankAccountOpen] = useState(false);
+  const [pendingBankAccount, setPendingBankAccount] = useState<{ param: string; iban: string }>();
+  const [pendingRedirect, setPendingRedirect] = useState<{ target: string; host: string }>();
+  const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
+  // Frozen quote snapshot the payment sheet renders from — see PaymentSnapshot.
+  const [sheetSnapshot, setSheetSnapshot] = useState<PaymentSnapshot | null>(null);
+  const sheetWasOpenRef = useRef(false);
+  const [sheetRetrying, setSheetRetrying] = useState(false);
+  // All three modes ask the authenticated paymentInfos endpoint only once the user moves to
+  // pay; the panels themselves run on the public quote endpoints, so account gates (no e-mail
+  // on file, KYC, limit, …) can no longer take the rate display down with them.
+  // `openAfterPaymentInfo` is the one-shot intent that opens the sheet as soon as that keyed
+  // request settles — armed by the CTA, or by picking the payout account the sell CTA asked for.
+  const [needPaymentInfo, setNeedPaymentInfo] = useState(false);
+  const [openAfterPaymentInfo, setOpenAfterPaymentInfo] = useState(false);
+  const [paymentRequestId, setPaymentRequestId] = useState<string>();
+  const [paymentRequestOwner, setPaymentRequestOwner] = useState<string>();
+  const [recoveringPaymentRequest, setRecoveringPaymentRequest] = useState(false);
+  const restoredPaymentModeOwnerRef = useRef<string>();
+  const [existingRequestUid, setExistingRequestUid] = useState<string>();
+  const [existingRequestStatus, setExistingRequestStatus] = useState<string>();
+  const [pendingNewPayment, setPendingNewPayment] = useState(false);
+  const [buyTargetRaw, setBuyTargetRaw] = useState('');
+  const targetEditedByUserRef = useRef(false);
+  const [buyAmountDirection, setBuyAmountDirection] = useState<'source' | 'target'>('target');
+  const bankAccountPromptRef = useRef<string>();
+  const bankAccountParamLiveRef = useRef(bankAccountParam);
+  bankAccountParamLiveRef.current = bankAccountParam;
+
+  const paymentAccountId = apiSession?.account === undefined ? undefined : String(apiSession.account);
+  const pendingPaymentStorageKey = paymentAccountId
+    ? `${PENDING_PAYMENT_KEY_PREFIX}${paymentAccountId}`
+    : undefined;
+
+  useEffect(() => {
+    if (!pendingPaymentStorageKey || paymentRequestId) return;
+    try {
+      const stored = sessionStorage.getItem(pendingPaymentStorageKey);
+      if (!stored) return;
+      const pending = JSON.parse(stored) as { requestId?: unknown; mode?: unknown };
+      if (
+        typeof pending.requestId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(pending.requestId) ||
+        (pending.mode !== 'buy' && pending.mode !== 'sell' && pending.mode !== 'swap')
+      ) {
+        sessionStorage.removeItem(pendingPaymentStorageKey);
+        return;
+      }
+      setMode(pending.mode);
+      setPaymentRequestId(pending.requestId);
+      setPaymentRequestOwner(paymentAccountId);
+      restoredPaymentModeOwnerRef.current = paymentAccountId;
+      setRecoveringPaymentRequest(true);
+    } catch {
+      showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+    }
+  }, [pendingPaymentStorageKey, paymentRequestId, showToast, t]);
+
+  const paymentRequestSameOwner = paymentAccountId !== undefined && paymentRequestOwner === paymentAccountId;
+  const activePaymentRequestId = paymentRequestSameOwner ? paymentRequestId : undefined;
+  const paymentRequestLocked = activePaymentRequestId !== undefined;
+  const paymentRecoveryReady = paymentAccountId !== undefined && (paymentRequestId === undefined || paymentRequestSameOwner);
+  const loadExistingRequest = useCallback(
+    (uid: string): Promise<DetailTransaction> => transactionApi.getTransactionDetailByUid(uid),
+    [transactionApi.getTransactionDetailByUid],
+  );
+  const requestType = mode === 'buy' ? 'Buy' : mode === 'sell' ? 'Sell' : 'Swap';
+  const visibleExistingRequestUid = paymentRequestSameOwner ? existingRequestUid : undefined;
+  const visibleExistingRequestStatus = paymentRequestSameOwner ? existingRequestStatus : undefined;
+  const visiblePaymentSheetOpen = paymentSheetOpen && paymentRequestSameOwner;
+  const canStartSeparatePayment = visibleExistingRequestUid !== undefined && visibleExistingRequestStatus === 'Completed';
+  const paymentRequestIdentity = paymentRequestSameOwner && activePaymentRequestId
+    ? `${paymentAccountId}:${activePaymentRequestId}:${requestType}`
+    : undefined;
+  const paymentRequestIdentityRef = useRef<string>();
+  paymentRequestIdentityRef.current = paymentRequestIdentity;
+  const preClaimRetryIdentityRef = useRef<string>();
+  const rotatedPreClaimRetryIdentitiesRef = useRef(new Set<string>());
+
+  const checkExistingPaymentStatus = useCallback(async () => {
+    // PaymentSheet only exposes this callback for an open, same-owner payment request.
+    // Keep the required values local after that UI invariant has narrowed their runtime state.
+    const requestId = activePaymentRequestId as string;
+    const expectedIdentity = paymentRequestIdentity as string;
+    try {
+      const status = await transactionApi.getPaymentInfoRequestStatus(requestId, requestType);
+      if (paymentRequestIdentityRef.current !== expectedIdentity) return;
+      setExistingRequestUid(status.existingUid);
+      setExistingRequestStatus(status.requestStatus);
+    } catch {
+      if (paymentRequestIdentityRef.current !== expectedIdentity) return;
+      // A missing claim is not proof that the original request is no longer in flight.
+      setExistingRequestUid(undefined);
+      setExistingRequestStatus('Unknown');
+    }
+  }, [activePaymentRequestId, paymentRequestIdentity, requestType, transactionApi.getPaymentInfoRequestStatus]);
+
+  useEffect(() => {
+    if (paymentRequestId && paymentRequestOwner !== paymentAccountId) {
+      setPaymentRequestId(undefined);
+      setPaymentRequestOwner(undefined);
+      setNeedPaymentInfo(false);
+      setOpenAfterPaymentInfo(false);
+      setPaymentSheetOpen(false);
+      setSheetSnapshot(null);
+      setRecoveringPaymentRequest(false);
+      setExistingRequestUid(undefined);
+      setExistingRequestStatus(undefined);
+    }
+  }, [paymentAccountId, paymentRequestId, paymentRequestOwner]);
+
+  useEffect(() => {
+    if (!recoveringPaymentRequest || !activePaymentRequestId) return undefined;
+    let current = true;
+    const expectedIdentity = paymentRequestIdentity;
+    void transactionApi
+      .getPaymentInfoRequestStatus(activePaymentRequestId, requestType)
+      .then((status) => {
+        if (!current || paymentRequestIdentityRef.current !== expectedIdentity) return;
+        setExistingRequestUid(status.existingUid);
+        setExistingRequestStatus(status.requestStatus);
+        setRecoveringPaymentRequest(false);
+        setSheetSnapshot({
+          mode,
+          buy: null,
+          sell: null,
+          swap: null,
+          rawError: null,
+          loading: false,
+          payAssetCode: '',
+          receiveAssetCode: '',
+          currency: undefined,
+          amount: 0,
+        });
+        setPaymentSheetOpen(true);
+      })
+      .catch(() => {
+        if (!current || paymentRequestIdentityRef.current !== expectedIdentity) return;
+        setExistingRequestUid(undefined);
+        setExistingRequestStatus('Unknown');
+        setRecoveringPaymentRequest(false);
+        setSheetSnapshot({
+          mode,
+          buy: null,
+          sell: null,
+          swap: null,
+          rawError: null,
+          loading: false,
+          payAssetCode: '',
+          receiveAssetCode: '',
+          currency: undefined,
+          amount: 0,
+        });
+        setPaymentSheetOpen(true);
+      });
+    return () => {
+      current = false;
+    };
+  }, [recoveringPaymentRequest, activePaymentRequestId, paymentRequestIdentity, transactionApi.getPaymentInfoRequestStatus, requestType, mode]);
+
+  useEffect(() => {
+    if (paymentRequestId || recoveringPaymentRequest || restoredPaymentModeOwnerRef.current === paymentAccountId) return;
+    const requestedMode =
+      new URLSearchParams(location.search).get('mode') ||
+      new URLSearchParams(window.location.search).get('mode') ||
+      routeOrQueryParam(location.search, 'service');
+    if (requestedMode === 'buy' || requestedMode === 'sell' || requestedMode === 'swap') setMode(requestedMode);
+  }, [location.search, paymentRequestId, recoveringPaymentRequest, paymentAccountId]);
+
+  // Partner embed contract (main-app app-handling.context): external-transaction-id tags the
+  // payment attempt. Read from hash and real query so both deep-link styles work.
+  const externalTransactionId = useMemo(
+    () =>
+      new URLSearchParams(location.search).get('external-transaction-id')?.trim() ||
+      firstQueryParam('external-transaction-id'),
+    [location.search],
+  );
+
+  // ---- asset pool (real data — useAssetContext(), grouped per ticker; see asset-pool.ts) ---
+  // Buy and sell apply the PUBLIC filter separately: buy excepts `asset-out` (buy.screen.tsx:358),
+  // sell excepts `asset-in` (sell.screen.tsx:202). A shared OR would leak the other side's private
+  // asset into the picker. Swap has no PUBLIC filter in the main app; here it reuses these pools
+  // (from = sell / to = buy), so each crypto leg inherits that side's exception.
+  const allAssets = useMemo<Asset[]>(() => getAssets(Object.values(Blockchain)), [getAssets]);
+  const buyPool = useMemo(() => {
+    const visible = filterAssetsByParam(allAssets, assetsParam).filter((asset) =>
+      includeInPartnerPool(asset, assetOutParam),
+    );
+    return availableAssets(groupAssets(visible), 'buy');
+  }, [allAssets, assetsParam, assetOutParam]);
+  const sellPoolAll = useMemo(() => {
+    const visible = filterAssetsByParam(allAssets, assetsParam).filter((asset) =>
+      includeInPartnerPool(asset, assetInParam),
+    );
+    return availableAssets(groupAssets(visible), 'sell');
+  }, [allAssets, assetsParam, assetInParam]);
+  const balancesParam = useMemo(() => routeOrQueryParam(location.search, 'balances'), [location.search]);
+  const chainFilter = useMemo(
+    () => restrictBlockchains(session.blockchains, requestedChain),
+    [session.blockchains, requestedChain],
+  );
+  const balances = useMemo(
+    () => parseBalances(balancesParam ? `?balances=${encodeURIComponent(balancesParam)}` : '', allAssets),
+    [balancesParam, allAssets],
+  );
+  const buyCurrencies = useMemo(() => currenciesForBuy(currencies), [currencies]);
+  const sellCurrencies = useMemo(() => currenciesForSell(currencies), [currencies]);
+  const hasBalances = Object.keys(balances).length > 0;
+  const sellPool = useMemo(
+    () => (hasBalances ? sellPoolAll.filter((tk) => heldBalance(balances, tk.code) > 0) : sellPoolAll),
+    [sellPoolAll, hasBalances, balances],
+  );
+  const swapAvailable = buyPool.length > 1 && sellPool.length > 0;
+
+  // ---- defaults once the pool/currency list is loaded ---------------------------------------
+  useEffect(() => {
+    if (!buyPool.length) return;
+    const currentChains = buyAsset ? shownChainsFor(buyAsset, 'buy', chainFilter, blockchainsParam) : [];
+    if (buyAsset && currentChains.length) {
+      if (!currentChains.some((chain) => chain.blockchain === buyChain)) setBuyChain(currentChains[0].blockchain);
+      return;
+    }
+    const reachable = buyPool.filter((asset) => shownChainsFor(asset, 'buy', chainFilter, blockchainsParam).length > 0);
+    const named = findNamedTradeAsset(reachable, assetOutParam);
+    const btc = reachable.find((tk) => tk.code === 'BTC');
+    const def = named ? named : btc ? btc : reachable[0];
+    if (!def) return;
+    const chains = shownChainsFor(def, 'buy', chainFilter, blockchainsParam);
+    const preferred =
+      requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
+        ? requestedChain
+        : chains[0]?.blockchain;
+    setBuyAsset(def);
+    setBuyChain(preferred);
+  }, [buyPool, buyAsset, buyChain, chainFilter, blockchainsParam, assetOutParam, requestedChain]);
+
+  useEffect(() => {
+    if (!sellPool.length) return;
+    const currentChains = sellAsset ? shownChainsFor(sellAsset, 'sell', chainFilter, blockchainsParam) : [];
+    if (sellAsset && currentChains.length) {
+      if (!currentChains.some((chain) => chain.blockchain === sellChain)) setSellChain(currentChains[0].blockchain);
+      return;
+    }
+    const reachable = sellPool.filter((asset) => shownChainsFor(asset, 'sell', chainFilter, blockchainsParam).length > 0);
+    const named = findNamedTradeAsset(reachable, assetInParam);
+    const btc = reachable.find((tk) => tk.code === 'BTC');
+    const def = named ? named : btc ? btc : reachable[0];
+    if (!def) return;
+    const chains = shownChainsFor(def, 'sell', chainFilter, blockchainsParam);
+    const preferred =
+      requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
+        ? requestedChain
+        : chains[0]?.blockchain;
+    setSellAsset(def);
+    setSellChain(preferred);
+  }, [sellPool, sellAsset, sellChain, chainFilter, blockchainsParam, assetInParam, requestedChain]);
+
+  useEffect(() => {
+    if (!sellPool.length) return;
+    const currentChains = swapFromAsset ? shownChainsFor(swapFromAsset, 'sell', chainFilter, blockchainsParam) : [];
+    if (swapFromAsset && currentChains.length) {
+      if (!currentChains.some((chain) => chain.blockchain === swapFromChain)) {
+        setSwapFromChain(currentChains[0].blockchain);
+      }
+      return;
+    }
+    const reachable = sellPool.filter((asset) => shownChainsFor(asset, 'sell', chainFilter, blockchainsParam).length > 0);
+    const named = findNamedTradeAsset(reachable, assetInParam);
+    const def = named ? named : reachable[0];
+    if (!def) return;
+    const chains = shownChainsFor(def, 'sell', chainFilter, blockchainsParam);
+    const preferred =
+      requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
+        ? requestedChain
+        : chains[0]?.blockchain;
+    setSwapFromAsset(def);
+    setSwapFromChain(preferred);
+  }, [sellPool, swapFromAsset, swapFromChain, chainFilter, blockchainsParam, assetInParam, requestedChain]);
+
+  useEffect(() => {
+    if (!buyPool.length) return;
+    const currentChains = swapToAsset ? shownChainsFor(swapToAsset, 'buy', chainFilter, blockchainsParam) : [];
+    if (swapToAsset && swapToAsset.code !== swapFromAsset?.code && currentChains.length) {
+      if (!currentChains.some((chain) => chain.blockchain === swapToChain)) setSwapToChain(currentChains[0].blockchain);
+      return;
+    }
+    const rest = buyPool.filter(
+      (tk) => tk.code !== swapFromAsset?.code && shownChainsFor(tk, 'buy', chainFilter, blockchainsParam).length > 0,
+    );
+    const named = findNamedTradeAsset(rest, assetOutParam);
+    const def = named ? named : rest[0];
+    if (!def) return;
+    const chains = shownChainsFor(def, 'buy', chainFilter, blockchainsParam);
+    const preferred =
+      requestedChain && chains.some((chain) => chain.blockchain === requestedChain)
+        ? requestedChain
+        : chains[0]?.blockchain;
+    setSwapToAsset(def);
+    setSwapToChain(preferred);
+  }, [buyPool, swapToAsset, swapToChain, swapFromAsset, chainFilter, blockchainsParam, assetOutParam, requestedChain]);
+
+  useEffect(() => {
+    if (buyFiat || !buyCurrencies.length) return;
+    const wanted = assetInParam?.toLowerCase();
+    const fromParam = wanted
+      ? buyCurrencies.find((currency) => currency.name.toLowerCase() === wanted)
+      : undefined;
+    setBuyFiat(fromParam ?? buyCurrencies.find((c) => c.name === 'EUR') ?? buyCurrencies[0]);
+  }, [buyCurrencies, buyFiat, assetInParam]);
+
+  useEffect(() => {
+    if (amountInParam && !spendClearedByUserRef.current) {
+      setBuyRaw(amountInParam);
+      setSellRaw(amountInParam);
+      setSwapRaw(amountInParam);
+    }
+  }, [amountInParam, buyAsset, sellAsset, swapFromAsset]);
+
+  useEffect(() => {
+    targetEditedByUserRef.current = false;
+    setBuyAmountDirection('target');
+  }, [amountOutParam, amountInParam]);
+
+  useEffect(() => {
+    if (amountOutParam && !targetEditedByUserRef.current) setBuyTargetRaw(amountOutParam);
+  }, [amountOutParam, buyAsset]);
+
+  useEffect(() => {
+    if (sellFiat || !sellCurrencies.length) return;
+    const wanted = assetOutParam?.toLowerCase();
+    const fromParam = wanted
+      ? sellCurrencies.find((currency) => currency.name.toLowerCase() === wanted)
+      : undefined;
+    setSellFiat(fromParam ?? sellCurrencies.find((c) => c.name === 'EUR') ?? sellCurrencies[0]);
+  }, [sellCurrencies, sellFiat, assetOutParam]);
+
+  useEffect(() => {
+    if (!bankAccounts) return;
+    if (bankAccountParam) {
+      const found = matchBankAccount(bankAccounts, bankAccountParam);
+      if (found) {
+        bankAccountPromptRef.current = bankAccountParam;
+        setPendingBankAccount(undefined);
+        setSellBankAccount(found);
+        return;
+      }
+      if (ibanCheck(bankAccountParam).ok) {
+        if (bankAccountPromptRef.current !== bankAccountParam) {
+          const fallback = bankAccounts.find((account) => account.default);
+          setSellBankAccount(fallback ? fallback : bankAccounts[0]);
+          bankAccountPromptRef.current = bankAccountParam;
+          setPendingBankAccount({
+            param: bankAccountParam,
+            iban: bankAccountParam.replace(/\s+/g, '').toUpperCase(),
+          });
+        }
+      } else {
+        bankAccountPromptRef.current = bankAccountParam;
+        setPendingBankAccount(undefined);
+      }
+      return;
+    }
+    bankAccountPromptRef.current = undefined;
+    setPendingBankAccount(undefined);
+    if (!sellBankAccount) {
+      const fallback = bankAccounts.find((a) => a.default);
+      setSellBankAccount(fallback ? fallback : bankAccounts[0]);
+    }
+  }, [bankAccounts, bankAccountParam, sellBankAccount]);
+
+  // ---- resolved API assets + parsed amounts --------------------------------------------------
+  const buyApiAsset = buyAsset && buyChain ? assetFor(buyAsset, buyChain, 'buy') : undefined;
+  const sellApiAsset = sellAsset && sellChain ? assetFor(sellAsset, sellChain, 'sell') : undefined;
+  const swapFromApiAsset = swapFromAsset && swapFromChain ? assetFor(swapFromAsset, swapFromChain, 'sell') : undefined;
+  const swapToApiAsset = swapToAsset && swapToChain ? assetFor(swapToAsset, swapToChain, 'buy') : undefined;
+
+  const buyAmount = parseAmt(buyRaw, language);
+  const buyTargetAmount = parseAmt(buyTargetRaw, language);
+  const targetInputAvailable = Boolean(amountOutParam) && !amountInParam;
+  const targetMode = targetInputAvailable && buyAmountDirection === 'target';
+  const quoteFromTarget = targetMode && Boolean(buyTargetRaw.trim());
+  const hasValidBuyQuoteAmount = targetMode
+    ? buyTargetAmount !== null && buyTargetAmount > 0
+    : buyAmount !== null && buyAmount > 0;
+  const personalIbanState = personalIbanParamState(
+    personalIbanParam,
+    PersonalIbanProvider,
+    buyFiat?.name,
+  );
+  const personalIbanProvider =
+    personalIbanState.kind !== 'ready' ? undefined : personalIbanState.provider;
+  const personalIbanBlocked = personalIbanState.kind === 'unrecognized' || personalIbanState.kind === 'inapplicable';
+  const privateBlocked = privateTradeBlocked(
+    flagsParam,
+    mode === 'buy'
+      ? [buyApiAsset?.category]
+      : mode === 'sell'
+        ? [sellApiAsset?.category]
+        : [swapFromApiAsset?.category, swapToApiAsset?.category],
+  );
+  const sellAmount = parseAmt(sellRaw, language);
+  const swapAmount = parseAmt(swapRaw, language);
+
+  // ---- quotes (debounced + stale-guarded — see useQuoteEngine.ts) ---------------------------
+  // Display and transaction are two separate requests, and they stay two separate engines:
+  // buyQuote/swapQuote are the public quotes the panel renders (never account-gated), while
+  // buyPayment/swapPayment fetch the real payment details and only run once the user taps the
+  // CTA. Sharing one engine would mean an account gate (no e-mail on file, KYC, …) blanking
+  // the rate the moment the sheet is opened.
+  const buyQuote = useBuyQuote({
+    enabled: session.isLoggedIn && mode === 'buy' && hasValidBuyQuoteAmount,
+    asset: buyApiAsset,
+    currency: buyFiat,
+    amount: quoteFromTarget ? null : buyAmount,
+    targetAmount: quoteFromTarget ? buyTargetAmount : null,
+    paymentMethod: buyMethod,
+    externalTransactionId,
+    // Also paused between CTA tap and sheet opening, so the panel number behind the spinner
+    // can't flip to a new 30s quote in that window.
+    paused: paymentSheetOpen || openAfterPaymentInfo,
+  });
+  const buyPayment = useBuyQuote({
+    enabled: paymentRecoveryReady && session.isLoggedIn && mode === 'buy' && needPaymentInfo && hasValidBuyQuoteAmount && !personalIbanBlocked,
+    asset: buyApiAsset,
+    currency: buyFiat,
+    amount: quoteFromTarget ? null : buyAmount,
+    targetAmount: quoteFromTarget ? buyTargetAmount : null,
+    paymentMethod: buyMethod,
+    externalTransactionId,
+    withPaymentInfo: true,
+    personalIbanProvider,
+    clientRequestId: activePaymentRequestId,
+    paused: paymentSheetOpen,
+  });
+  const sellQuote = useSellQuote({
+    // No IBAN on the display engine: the payout account only decides where the money goes, not
+    // what the rate is, and asking the authenticated endpoint for it would put the panel back
+    // behind the account gates (a user without a confirmed e-mail saw no rate at all).
+    enabled: session.isLoggedIn && mode === 'sell' && Boolean(sellRaw.trim()),
+    asset: sellApiAsset,
+    currency: sellFiat,
+    amount: sellAmount,
+    externalTransactionId,
+    paused: paymentSheetOpen || openAfterPaymentInfo,
+  });
+  const sellPayment = useSellQuote({
+    enabled: paymentRecoveryReady && session.isLoggedIn && mode === 'sell' && needPaymentInfo && Boolean(sellBankAccount?.iban),
+    asset: sellApiAsset,
+    currency: sellFiat,
+    amount: sellAmount,
+    iban: sellBankAccount?.iban,
+    externalTransactionId,
+    clientRequestId: activePaymentRequestId,
+    paused: paymentSheetOpen,
+  });
+  const swapQuote = useSwapQuote({
+    enabled: session.isLoggedIn && mode === 'swap' && Boolean(swapRaw.trim()),
+    sourceAsset: swapFromApiAsset,
+    targetAsset: swapToApiAsset,
+    amount: swapAmount,
+    externalTransactionId,
+    paused: paymentSheetOpen || openAfterPaymentInfo,
+  });
+  const swapPayment = useSwapQuote({
+    enabled: paymentRecoveryReady && session.isLoggedIn && mode === 'swap' && needPaymentInfo,
+    sourceAsset: swapFromApiAsset,
+    targetAsset: swapToApiAsset,
+    amount: swapAmount,
+    externalTransactionId,
+    withPaymentInfo: true,
+    clientRequestId: activePaymentRequestId,
+    paused: paymentSheetOpen,
+  });
+
+  const buyReady = hasValidBuyQuoteAmount && !!buyQuote.data && buyQuote.isFresh && buyQuote.data.isValid !== false;
+  const sellReady = !!sellQuote.data && sellQuote.isFresh && sellQuote.data.isValid !== false;
+  const swapReady = !!swapQuote.data && swapQuote.isFresh && swapQuote.data.isValid !== false;
+
+  const activeQuote = mode === 'buy' ? buyQuote : mode === 'sell' ? sellQuote : swapQuote;
+  /** The engine that produces what the payment sheet shows — the authenticated payment-details
+   * request of the active mode (for sell, the IBAN-bound one). */
+  const activePayment = mode === 'buy' ? buyPayment : mode === 'sell' ? sellPayment : swapPayment;
+  // Declared above the trade engines as well; this is an owner-scoped lock so a switched
+  // account never inherits another account's request ID or existing-request display.
+  const activeThrownError = activeQuote.errorIsCurrent ? mapThrownError(t, activeQuote.error) : null;
+  const activeValidityMessage =
+    mode === 'buy' && buyQuote.data?.isValid === false && buyQuote.isFresh
+      ? mapTransactionError(
+          t,
+          buyQuote.data.error,
+          buyQuote.data.minVolume,
+          buyQuote.data.maxVolume,
+          fiatFormatter(buyFiat?.name as string, language),
+        )
+      : mode === 'sell' && sellQuote.data?.isValid === false && sellQuote.isFresh
+        ? mapTransactionError(
+            t,
+            sellQuote.data.error,
+            sellQuote.data.minVolume,
+            sellQuote.data.maxVolume,
+            assetFormatter(sellAsset?.code as string, language),
+          )
+        : mode === 'swap' && swapQuote.data?.isValid === false && swapQuote.isFresh
+          ? mapTransactionError(
+              t,
+              swapQuote.data.error,
+              swapQuote.data.minVolume,
+              swapQuote.data.maxVolume,
+              assetFormatter(swapFromAsset?.code as string, language),
+            )
+          : undefined;
+  // A fresh invalid public quote may arm paymentInfos only when its exact error is a known
+  // account gate that the sheet can explain (KYC/email/limit/recommendation/account restriction).
+  // Amount rejections, unsupported combinations, and unknown future API errors must fail closed:
+  // opening paymentInfos for any of them can create a route for a trade the public quote rejected.
+  const activeAccountValidityGate =
+    !!activeQuote.data &&
+    activeQuote.isFresh &&
+    activeQuote.data.isValid === false &&
+    isAccountGateValidityError(activeQuote.data.error);
+  const activeAccountGateError =
+    isApiExceptionLike(activeQuote.error) &&
+    activeQuote.error.statusCode === 400 &&
+    (activeThrownError?.kind === 'email' || activeThrownError?.kind === 'setup');
+  // A thrown quote failure is not itself evidence of an account gate. Network/5xx and
+  // unclassified errors must leave the CTA closed: opening paymentInfos without a valid quote
+  // can create a route for a trade the user has never seen priced. Only mapped account/setup
+  // errors may proceed to the sheet; fresh invalid quotes require an explicit account-gate code.
+  const canOpenGate = Boolean(
+    activeAccountValidityGate ||
+    activeAccountGateError,
+  );
+  /** A tap has been made and the sheet is waiting on the payment-details request it armed —
+   * the CTA stays busy until that request settles. */
+  const awaitingPaymentInfo = openAfterPaymentInfo;
+
+  // ---- CTA -------------------------------------------------------------------------------
+  const ctaEnabled = !session.isLoggedIn
+    ? true
+    : personalIbanBlocked && mode === 'buy'
+      ? false
+      : mode === 'buy'
+        ? hasValidBuyQuoteAmount && (buyReady || canOpenGate)
+        : mode === 'swap'
+          ? swapReady || canOpenGate
+          : !!sellAmount && !!sellApiAsset && !!sellFiat && (sellReady || canOpenGate);
+
+  // ---- payment-sheet snapshot -------------------------------------------------------------
+  // Everything the sheet renders is captured here on open (and re-captured whenever the live
+  // fetch this mode is showing finishes loading — see the effect below) instead of the sheet
+  // reading buyQuote/sellQuote/swapQuote directly, so the 30s auto-refresh (paused via `paused:
+  // paymentSheetOpen` above) can't silently swap the displayed IBAN/reference/amount out from
+  // under the user while the sheet is on screen.
+  const sheetPayAssetCode =
+    mode === 'sell' ? (sellAsset?.code ?? '') : mode === 'swap' ? (swapFromAsset?.code ?? '') : '';
+  const sheetReceiveAssetCode =
+    mode === 'buy' ? (buyAsset?.code ?? '') : mode === 'swap' ? (swapToAsset?.code ?? '') : '';
+  const sheetReceiveBlockchain = mode === 'buy' ? buyChain : mode === 'swap' ? swapToChain : undefined;
+  const sheetCurrency = mode === 'buy' ? buyFiat : mode === 'sell' ? sellFiat : undefined;
+  const sheetAmount = (mode === 'buy' ? buyAmount : mode === 'sell' ? sellAmount : swapAmount) ?? 0;
+  const sheetLoadingLive = activePayment.loading;
+
+  const latchSnapshot = () => {
+    setSheetSnapshot({
+      mode,
+      buy: mode === 'buy' ? buyPayment.data : null,
+      sell: mode === 'sell' ? sellPayment.data : null,
+      swap: mode === 'swap' ? swapPayment.data : null,
+      rawError: activePayment.errorIsCurrent ? activePayment.error : null,
+      loading: sheetLoadingLive,
+      payAssetCode: sheetPayAssetCode,
+      receiveAssetCode: sheetReceiveAssetCode,
+      receiveBlockchain: sheetReceiveBlockchain,
+      currency: sheetCurrency,
+      amount: sheetAmount,
+    });
+  };
+
+  // One-shot open, armed by the CTA enabling the payment-details engine (for sell, by picking
+  // the payout account the CTA asked for). `settled` is keyed, so what gets latched is that
+  // exact response — or its account-gate error — never the public quote that was on screen a
+  // moment ago, and never the previous missing-IBAN state.
+  useEffect(() => {
+    if (!openAfterPaymentInfo || !needPaymentInfo || !activePayment.settled) return;
+    latchSnapshot();
+    setOpenAfterPaymentInfo(false);
+    setPaymentSheetOpen(true);
+  }, [openAfterPaymentInfo, needPaymentInfo, activePayment.settled]);
+
+  // Keep the same key after a local timeout. The server may already have created a payable
+  // request, so retrying must recover its claim instead of creating another one.
+  useEffect(() => {
+    if (!awaitingPaymentInfo) return undefined;
+    const timer = setTimeout(() => {
+      showToast(t('requestStillChecking'), { assertive: true });
+      activePayment.refresh();
+    }, 20_000);
+    return () => clearTimeout(timer);
+  }, [awaitingPaymentInfo, showToast, t, activePayment.refresh]);
+
+  // The armed intent belongs to the exact inputs that armed it: editing anything (or switching
+  // modes) drops back to the public quote instead of opening a sheet the user no longer asked for.
+  useEffect(() => {
+    setOpenAfterPaymentInfo(false);
+    setNeedPaymentInfo(false);
+    // `sellBankAccount` is deliberately absent: picking the payout account is what *arms* the
+    // sell intent, so listing it here would cancel the intent in the same commit that sets it.
+  }, [
+    mode,
+    buyRaw,
+    buyTargetRaw,
+    buyAmountDirection,
+    buyAsset,
+    buyChain,
+    buyFiat,
+    sellRaw,
+    sellAsset,
+    sellChain,
+    sellFiat,
+    swapRaw,
+    swapFromAsset,
+    swapFromChain,
+    swapToAsset,
+    swapToChain,
+  ]);
+
+  // A frozen sheet changes only after an explicit Retry. Passive TTL refreshes remain paused,
+  // and opening another modal can no longer re-latch live data behind the user's back.
+  useEffect(() => {
+    if (!sheetRetrying || !paymentSheetOpen || !activePayment.settled) return;
+    latchSnapshot();
+    setSheetRetrying(false);
+  }, [sheetRetrying, paymentSheetOpen, activePayment.settled]);
+
+  // On close: drop the snapshot and resume the engine with an immediate refresh, so the buy/
+  // sell/swap panel behind the (now-closed) sheet isn't left showing whatever was current when
+  // the sheet opened, possibly a while ago.
+  useEffect(() => {
+    if (sheetWasOpenRef.current && !paymentSheetOpen) {
+      setSheetSnapshot(null);
+      setSheetRetrying(false);
+      // Stop asking the account-gated endpoint (and stop keeping a payment reference alive)
+      // once the sheet is gone; the panel's own public quote keeps running either way.
+      setNeedPaymentInfo(false);
+      setOpenAfterPaymentInfo(false);
+      activeQuote.refresh();
+    }
+    sheetWasOpenRef.current = paymentSheetOpen;
+  }, [paymentSheetOpen]);
+
+  const handleCta = () => {
+    if (privateBlocked) return;
+    if (mode === 'sell' && !sellBankAccount) {
+      setBankAccountOpen(true);
+      return;
+    }
+    // The panel runs on the public quote, so no payment details exist yet. Start the
+    // payment-details request; the effect above opens the sheet on that exact response, which
+    // is also what guards against showing numbers that have gone stale in the meantime.
+    const requestId = activePaymentRequestId ?? createPaymentRequestId();
+    if (!requestId) {
+      showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+      return;
+    }
+    try {
+      // The CTA is disabled without an API account, so this key is present on this path.
+      sessionStorage.setItem(pendingPaymentStorageKey as string, JSON.stringify({ requestId, mode }));
+    } catch {
+      showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+      return;
+    }
+    setPaymentRequestId(requestId);
+    setPaymentRequestOwner(paymentAccountId);
+    setRecoveringPaymentRequest(false);
+    setNeedPaymentInfo(true);
+    setOpenAfterPaymentInfo(true);
+  };
+
+  // ---- receive-panel display --------------------------------------------------------------
+  // Home only renders once logged in (see the early `<Landing/>` return below), so — matching
+  // the static app's own updateQuote() — an empty/zero amount reads "0". Sell shows its live
+  // rate before any payout account is chosen (the IBAN is gated at confirm, not here); only
+  // settled requests can produce quote errors.
+  let receiveValue = '0';
+  let receiveMeta = '';
+  // True only for the live "Refreshes in Ns" countdown — the static app wraps that (and only that)
+  // in `<span class="qcount">` for the tabular/dimmed styling; other meta text stays unwrapped.
+  let receiveMetaCountdown = false;
+  // A failed quote is a dead end without this: the engine retries itself on a short backoff
+  // ladder (useQuoteEngine.ts) and then stops, so a persistent failure needs an explicit way
+  // back in rather than leaving the panel stuck on "Rate unavailable" forever. Gated on
+  // `activeQuote.errorIsCurrent` (not just "reached the catch-all branch below") because that
+  // branch also covers `enabled === false` (inputs not resolved yet) and the one-render window
+  // around a TTL rollover, where `refresh()` would be a no-op — a visible button that does
+  // nothing is worse than none.
+  let receiveShowRetry = false;
+  if (mode === 'buy') {
+    if (!buyAmount) receiveValue = '0';
+    else if (buyQuote.loading) receiveValue = '…';
+    else if (buyQuote.data && buyQuote.isFresh && hasNoDisplayableEstimate(buyQuote.data)) {
+      receiveValue = '—';
+      if (activeValidityMessage) receiveMeta = activeValidityMessage;
+    } else if (buyQuote.data && buyQuote.isFresh) {
+      receiveValue = formatAmount(buyQuote.data.estimatedAmount, 8, language);
+      if (buyQuote.data.isValid === false) {
+        // A real conversion for an order that still can't be placed — say why, never dress it
+        // up with a refresh countdown.
+        if (activeValidityMessage) receiveMeta = activeValidityMessage;
+      } else {
+        receiveMeta = t('quoteRefresh', { n: buyQuote.secondsLeft });
+        receiveMetaCountdown = true;
+      }
+    } else {
+      receiveValue = '—';
+      receiveMeta = t('quoteErr');
+      receiveShowRetry = activeQuote.errorIsCurrent;
+    }
+  } else if (mode === 'sell') {
+    if (!sellAmount) receiveValue = '0';
+    else if (sellQuote.loading) receiveValue = '…';
+    else if (sellQuote.data && sellQuote.isFresh && hasNoDisplayableEstimate(sellQuote.data)) {
+      receiveValue = '—';
+      if (activeValidityMessage) receiveMeta = activeValidityMessage;
+    } else if (sellQuote.data && sellQuote.isFresh) {
+      receiveValue = formatFiat(sellQuote.data.estimatedAmount, sellFiat?.name as string, language);
+      if (sellQuote.data.isValid === false) {
+        // A real conversion for an order that still can't be placed — say why, never dress it
+        // up with a refresh countdown.
+        if (activeValidityMessage) receiveMeta = activeValidityMessage;
+      } else {
+        receiveMeta = t('quoteRefresh', { n: sellQuote.secondsLeft });
+        receiveMetaCountdown = true;
+      }
+    } else {
+      receiveValue = '—';
+      receiveMeta = t('quoteErr');
+      receiveShowRetry = activeQuote.errorIsCurrent;
+    }
+  } else {
+    if (!swapAmount) receiveValue = '0';
+    else if (swapQuote.loading) receiveValue = '…';
+    else if (swapQuote.data && swapQuote.isFresh && hasNoDisplayableEstimate(swapQuote.data)) {
+      receiveValue = '—';
+      if (activeValidityMessage) receiveMeta = activeValidityMessage;
+    } else if (swapQuote.data && swapQuote.isFresh) {
+      receiveValue = formatAmount(swapQuote.data.estimatedAmount, 6, language);
+      if (swapQuote.data.isValid === false) {
+        // A real conversion for an order that still can't be placed — say why, never dress it
+        // up with a refresh countdown.
+        if (activeValidityMessage) receiveMeta = activeValidityMessage;
+      } else {
+        receiveMeta = t('quoteRefresh', { n: swapQuote.secondsLeft });
+        receiveMetaCountdown = true;
+      }
+    } else {
+      receiveValue = '—';
+      receiveMeta = t('quoteErr');
+      receiveShowRetry = activeQuote.errorIsCurrent;
+    }
+  }
+
+  const modeIndex = MODES.indexOf(mode);
+  const isFiatPay = mode === 'buy';
+  const isFiatReceive = mode === 'sell';
+
+  const payRaw = mode === 'buy' ? buyRaw : mode === 'sell' ? sellRaw : swapRaw;
+  const setPayRaw = mode === 'buy' ? setBuyRaw : mode === 'sell' ? setSellRaw : setSwapRaw;
+  const setBuySourceAmount = (next: string) => {
+    if (targetInputAvailable) setBuyAmountDirection('source');
+    setBuyRaw(next);
+  };
+
+  // Switching modes pre-fills sell/swap as before. Buy starts empty and only quotes after an
+  // explicit amount entry/quick chip or a valid partner amount-in/amount-out parameter.
+  const changeMode = (next: Mode) => {
+    if (next === 'sell' && !sellRaw.trim()) {
+      setSellRaw(sellAsset && isStableAsset(sellAsset.code) ? '100' : '0.1');
+    } else if (next === 'swap' && !swapRaw.trim()) {
+      setSwapRaw(swapFromAsset && isStableAsset(swapFromAsset.code) ? '100' : '0.1');
+    }
+    setMode(next);
+    // Mirror the static app's setMode: any non-silent switch to sell/swap toasts the mode name
+    // (`if(!silent && mode!=="buy") toast(t(mode))`). The deep-link init above uses setMode()
+    // directly, so it stays silent — this only fires on a user tab/flip.
+    if (next !== 'buy') showToast(t(next));
+  };
+
+  // After a swap flip the old target becomes the new source (needs sellable) and the old source
+  // becomes the new target (needs buyable). `assetFor` is the same doomed-quote guard the
+  // engines use; disable the control rather than land in an untradeable pairing.
+  const canFlipSwap =
+    !!swapFromAsset &&
+    !!swapFromChain &&
+    !!swapToAsset &&
+    !!swapToChain &&
+    !!assetFor(swapToAsset, swapToChain, 'sell') &&
+    !!assetFor(swapFromAsset, swapFromChain, 'buy');
+
+  const flip = () => {
+    if (mode === 'buy') changeMode('sell');
+    else if (mode === 'sell') changeMode('buy');
+    else {
+      const a = swapFromAsset;
+      const ac = swapFromChain;
+      setSwapFromAsset(swapToAsset);
+      setSwapFromChain(swapToChain);
+      setSwapToAsset(a);
+      setSwapToChain(ac);
+      // Amount was typed in units of the previous source asset — drop it rather than reuse it.
+      setSwapRaw('');
+    }
+  };
+
+  // Pre-login home is the landing hero — the trade form below is the logged-in
+  // home only, same split as the static app's `#v-login` vs `#v-buy`. All the hooks above still
+  // run unconditionally either way (rules of hooks), they just don't fetch while logged out.
+  if (!session.isLoggedIn) return <Landing />;
+
+  return (
+    <div className={cx('buy')}>
+      <div className={cx('seg')} role="tablist" aria-label={t('cta')}>
+        <span className={cx('ind')} style={{ transform: `translateX(${modeIndex}00%)` }} />
+        {MODES.map((m) => (
+          <button
+            key={m}
+            className={mode === m ? cx('on') : undefined}
+            role="tab"
+            aria-selected={mode === m}
+            style={m === 'swap' && !swapAvailable ? { opacity: 0.38, pointerEvents: 'none' } : undefined}
+            onClick={() => changeMode(m)}
+            disabled={paymentRequestLocked}
+          >
+            {t(m)}
+          </button>
+        ))}
+      </div>
+
+      {activePaymentRequestId && !visiblePaymentSheetOpen && (
+        <div className={cx('paybox-note', 'warn')} data-testid="pending-payment-recovery" style={{ margin: '12px 0' }}>
+          <div>{t('paymentRecoveryPrompt')}</div>
+          <div style={{ overflowWrap: 'anywhere', marginTop: 6 }}>
+            {visibleExistingRequestUid ?? activePaymentRequestId}
+            {visibleExistingRequestStatus ? ` · ${visibleExistingRequestStatus}` : ''}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button type="button" className={cx('btn-glass')} onClick={() => {
+              setSheetSnapshot(null);
+              void checkExistingPaymentStatus();
+              setPaymentSheetOpen(true);
+            }}>
+              {t('checkRequestStatus')}
+            </button>
+            {canStartSeparatePayment ? (
+              <button type="button" className={cx('btn-glass')} onClick={() => setPendingNewPayment(true)}>
+                {t('startNewPayment')}
+              </button>
+            ) : <span>{t('paymentManualClarification')}</span>}
+          </div>
+        </div>
+      )}
+
+      <button className={cx('walletbar')} type="button" onClick={() => session.openSwitcher()} disabled={paymentRequestLocked}>
+        <span className={cx('wbLogo')}>
+          {/* Sizing/fit belongs to `.walletbar .wbLogo img` (23px, object-fit: contain) — an
+              inline 100%/cover here used to crop brand marks to the edges of the white tile. */}
+          {session.activeWallet?.icon ? <img src={session.activeWallet.icon} alt="" /> : WALLET_ICON}
+        </span>
+        <span className={cx('wbtx')}>
+          {(() => {
+            const short = session.address ? `${session.address.slice(0, 6)}…${session.address.slice(-4)}` : '';
+            const name = session.activeWallet?.name;
+            const showName = Boolean(name && name !== 'Wallet');
+            return (
+              <>
+                <b>{showName ? name : short}</b>
+                <small>{showName ? short : (session.blockchain ?? '')}</small>
+              </>
+            );
+          })()}
+        </span>
+        <span className={cx('wbchg')}>
+          <svg viewBox="0 0 24 24" fill="none">
+            <path
+              d="M7 10h10l-3-3M17 14H7l3 3"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span>{t('change')}</span>
+        </span>
+      </button>
+
+      <div className={cx('panels')}>
+        <div className={cx('panel')}>
+          <div className={cx('prow')}>
+            <span className={cx('plabel')}>{t('youPay')}</span>
+            <span className={cx('pmeta')} />
+          </div>
+          <div className={cx('pinput')}>
+            <input
+              className={cx('amt')}
+              inputMode="decimal"
+              value={
+                mode === 'buy' && targetMode
+                  ? hasValidBuyQuoteAmount && buyQuote.data && buyQuote.isFresh
+                    ? formatAmount(buyQuote.data.amount, 2, language)
+                    : ''
+                  : payRaw
+              }
+              placeholder="0"
+              aria-label="Amount you pay"
+              disabled={paymentRequestLocked}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (!next) spendClearedByUserRef.current = true;
+                if (mode === 'buy') setBuySourceAmount(next);
+                else setPayRaw(next);
+              }}
+            />
+            {isFiatPay ? (
+              <button
+                className={cx('pill')}
+                aria-label="Select pay currency"
+                disabled={paymentRequestLocked}
+                onClick={() => setFiatPickerOpen('buyPay')}
+              >
+                {buyFiat ? (
+                  <span className={cx('glyph')}>
+                    <FiatGlyph code={buyFiat.name} />
+                  </span>
+                ) : null}
+                <span className={cx('meta')}>
+                  <b>{buyFiat?.name ?? ''}</b>
+                  <s>{buyFiat ? fiatDescription(t, buyFiat.name) : ''}</s>
+                </span>
+                <span className={cx('caret')}>{CHEVRON_RIGHT}</span>
+              </button>
+            ) : (
+              <button
+                className={cx('pill')}
+                aria-label="Select pay asset"
+                disabled={paymentRequestLocked}
+                onClick={() => setAssetPickerOpen(mode === 'sell' ? 'sellPay' : 'swapFrom')}
+              >
+                <PillAsset
+                  asset={mode === 'sell' ? sellAsset : swapFromAsset}
+                  chain={mode === 'sell' ? sellChain : swapFromChain}
+                />
+                <span className={cx('caret')}>{CHEVRON_RIGHT}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <button
+          className={cx('fab')}
+          aria-label="Flip direction"
+          onClick={flip}
+          disabled={paymentRequestLocked || (mode === 'swap' && !canFlipSwap)}
+          style={mode === 'swap' && !canFlipSwap ? { opacity: 0.38 } : undefined}
+        >
+          <svg viewBox="0 0 24 24" fill="none">
+            <path
+              d="M7 4v13m0 0-3-3m3 3 3-3M17 20V7m0 0-3 3m3-3 3 3"
+              stroke="currentColor"
+              strokeWidth={1.9}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+
+        <div className={cx('panel', 'recv')} aria-live="polite">
+          <div className={cx('prow')}>
+            <span className={cx('plabel')}>{t('youReceive')}</span>
+            <span className={cx('pmeta')}>
+              {receiveMetaCountdown ? <span className={cx('qcount')}>{receiveMeta}</span> : receiveMeta}
+              {receiveShowRetry && (
+                <>
+                  {' · '}
+                  <button className={cx('msg-retry')} type="button" onClick={() => activeQuote.refresh()} disabled={paymentRequestLocked}>
+                    {t('retry')}
+                  </button>
+                </>
+              )}
+            </span>
+          </div>
+          <div className={cx('pinput')}>
+            <input
+              className={cx('amt')}
+              value={
+                quoteFromTarget
+                  ? buyTargetRaw
+                  : targetInputAvailable && !hasValidBuyQuoteAmount
+                    ? ''
+                    : receiveValue
+              }
+              readOnly={!targetInputAvailable}
+              aria-label="Amount you receive"
+              disabled={paymentRequestLocked}
+              onChange={
+                targetInputAvailable
+                  ? (e) => {
+                      const next = e.target.value;
+                      targetEditedByUserRef.current = true;
+                      setBuyAmountDirection('target');
+                      setBuyTargetRaw(next);
+                    }
+                  : undefined
+              }
+            />
+            {isFiatReceive ? (
+              <button
+                className={cx('pill')}
+                aria-label="Select receive currency"
+                disabled={hideTargetSelection || paymentRequestLocked}
+                onClick={hideTargetSelection ? undefined : () => setFiatPickerOpen('sellReceive')}
+                style={hideTargetSelection ? { cursor: 'default' } : undefined}
+              >
+                {sellFiat ? (
+                  <span className={cx('glyph')}>
+                    <FiatGlyph code={sellFiat.name} />
+                  </span>
+                ) : null}
+                <span className={cx('meta')}>
+                  <b>{sellFiat?.name ?? ''}</b>
+                  <s>{sellFiat ? fiatDescription(t, sellFiat.name) : ''}</s>
+                </span>
+                {!hideTargetSelection && <span className={cx('caret')}>{CHEVRON_RIGHT}</span>}
+              </button>
+            ) : (
+              <button
+                className={cx('pill')}
+                aria-label="Select receive asset"
+                disabled={hideTargetSelection || paymentRequestLocked}
+                onClick={
+                  hideTargetSelection ? undefined : () => setAssetPickerOpen(mode === 'buy' ? 'buyReceive' : 'swapTo')
+                }
+                style={hideTargetSelection ? { cursor: 'default' } : undefined}
+              >
+                <PillAsset
+                  asset={mode === 'buy' ? buyAsset : swapToAsset}
+                  chain={mode === 'buy' ? buyChain : swapToChain}
+                />
+                {!hideTargetSelection && <span className={cx('caret')}>{CHEVRON_RIGHT}</span>}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {mode === 'buy' && buyFiat && (
+        <div className={cx('quick')}>
+          {QUICK_FIAT_AMOUNTS.map((v) => (
+            <button key={v} onClick={() => setBuySourceAmount(String(v))} disabled={paymentRequestLocked}>
+              {quickChipSymbol(buyFiat.name)}
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <FeesPanel
+        mode={mode}
+        quote={mode === 'buy' ? buyQuote.data : mode === 'sell' ? sellQuote.data : swapQuote.data}
+        isFresh={mode === 'buy' ? buyQuote.isFresh : mode === 'sell' ? sellQuote.isFresh : swapQuote.isFresh}
+        payAssetCode={mode === 'sell' ? (sellAsset?.code ?? '') : mode === 'swap' ? (swapFromAsset?.code ?? '') : ''}
+        receiveAssetCode={mode === 'buy' ? (buyAsset?.code ?? '') : mode === 'swap' ? (swapToAsset?.code ?? '') : ''}
+        currencyCode={mode === 'buy' ? (buyFiat?.name ?? '') : mode === 'sell' ? (sellFiat?.name ?? '') : ''}
+        language={language}
+      />
+
+      {mode === 'buy' && personalIbanBlocked && (
+        <div className={cx('paybox-note', 'warn')} style={{ margin: '0 0 12px' }}>
+          {personalIbanState.kind === 'unrecognized' ? t('personalIbanUnknown') : t('personalIbanNeedCurrency')}
+        </div>
+      )}
+
+      {privateBlocked && (
+        <div className={cx('paybox-note', 'warn')} style={{ margin: '0 0 12px' }}>
+          {t('privateAssetHint')}
+        </div>
+      )}
+
+      {mode === 'buy' && (
+        <div className={cx('pmethod')}>
+          <span className={cx('ic')}>
+            <svg viewBox="0 0 24 24" fill="none">
+              <rect x={3} y={6} width={18} height={12} rx={2.4} stroke="currentColor" strokeWidth={1.7} />
+              <path d="M3 10h18" stroke="currentColor" strokeWidth={1.7} />
+            </svg>
+          </span>
+          <span className={cx('tx')}>
+            <b>{t('payBankN')}</b>
+            <small>{t('payBankD')}</small>
+          </span>
+        </div>
+      )}
+
+      <button
+        className={cx('btn-primary', 'cta')}
+        data-testid="trade-cta"
+        style={mode === 'buy' ? undefined : { marginTop: 'auto' }}
+        // The payment-details request between tap and sheet is short but not instant — without
+        // this the CTA looked dead for a moment and invited a second tap.
+        disabled={!ctaEnabled || !paymentAccountId || awaitingPaymentInfo || paymentRequestLocked}
+        aria-busy={awaitingPaymentInfo || undefined}
+        onClick={handleCta}
+      >
+        <span>{t(mode)}</span>{' '}
+        <span>
+          {mode === 'swap'
+            ? `${swapFromAsset?.code ?? ''} → ${swapToAsset?.code ?? ''}`
+            : mode === 'sell'
+              ? (sellAsset?.code ?? '')
+              : (buyAsset?.code ?? '')}
+        </span>
+        {awaitingPaymentInfo ? (
+          <Spinner />
+        ) : (
+          <svg viewBox="0 0 24 24" fill="none">
+            <path
+              d="M5 12h14m0 0-6-6m6 6-6 6"
+              stroke="#fff"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </button>
+      <div className={cx('secure')}>
+        <svg viewBox="0 0 24 24" fill="none">
+          <rect x={5} y={11} width={14} height={9} rx={2} stroke="currentColor" strokeWidth={1.6} />
+          <path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth={1.6} />
+        </svg>
+        <span>{mode === 'sell' ? t('securedSell') : mode === 'swap' ? t('securedSwap') : t('secured')}</span>
+      </div>
+
+      <AssetPickerSlot
+        slot={assetPickerOpen}
+        onClose={() => setAssetPickerOpen(null)}
+        buyPool={buyPool}
+        sellPool={sellPool}
+        balances={balances}
+        sessionBlockchains={chainFilter}
+        partnerBlockchains={blockchainsParam}
+        swapFromCode={swapFromAsset?.code}
+        swapToCode={swapToAsset?.code}
+        selectedCode={
+          assetPickerOpen === 'buyReceive'
+            ? buyAsset?.code
+            : assetPickerOpen === 'sellPay'
+              ? sellAsset?.code
+              : assetPickerOpen === 'swapFrom'
+                ? swapFromAsset?.code
+                : swapToAsset?.code
+        }
+        selectedBlockchain={
+          assetPickerOpen === 'buyReceive'
+            ? buyChain
+            : assetPickerOpen === 'sellPay'
+              ? sellChain
+              : assetPickerOpen === 'swapFrom'
+                ? swapFromChain
+                : swapToChain
+        }
+        onSelectBuyReceive={(tk, bc) => {
+          setBuyAsset(tk);
+          setBuyChain(bc);
+        }}
+        onSelectSellPay={(tk, bc) => {
+          setSellAsset(tk);
+          setSellChain(bc);
+        }}
+        onSelectSwapFrom={(tk, bc) => {
+          setSwapFromAsset(tk);
+          setSwapFromChain(bc);
+        }}
+        onSelectSwapTo={(tk, bc) => {
+          setSwapToAsset(tk);
+          setSwapToChain(bc);
+        }}
+      />
+
+      <FiatPicker
+        open={fiatPickerOpen === 'buyPay'}
+        onClose={() => setFiatPickerOpen(null)}
+        titleId="buyFiatSheetTitle"
+        currencies={buyCurrencies}
+        value={buyFiat}
+        onSelect={setBuyFiat}
+      />
+      <FiatPicker
+        open={fiatPickerOpen === 'sellReceive'}
+        onClose={() => setFiatPickerOpen(null)}
+        titleId="sellFiatSheetTitle"
+        currencies={sellCurrencies}
+        value={sellFiat}
+        onSelect={setSellFiat}
+      />
+
+      <BankAccountPicker
+        open={bankAccountOpen}
+        onClose={() => setBankAccountOpen(false)}
+        titleId="bankAccountSheetTitle"
+        value={sellBankAccount}
+        onSelect={(account) => {
+          setSellBankAccount(account);
+          if (!paymentAccountId) {
+            showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+            return;
+          }
+          const requestId = activePaymentRequestId ?? createPaymentRequestId();
+          if (!requestId) {
+            showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+            return;
+          }
+          const storageKey = `${PENDING_PAYMENT_KEY_PREFIX}${paymentAccountId}`;
+          try {
+            sessionStorage.setItem(storageKey, JSON.stringify({ requestId, mode }));
+          } catch {
+            showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+            return;
+          }
+          setPaymentRequestId(requestId);
+          setPaymentRequestOwner(paymentAccountId);
+          setRecoveringPaymentRequest(false);
+          // The user only reached this picker by tapping the sell CTA, so selecting an account
+          // continues that intent: fetch the payment details for it and open the sheet.
+          setNeedPaymentInfo(true);
+          setOpenAfterPaymentInfo(true);
+        }}
+      />
+
+      <ConfirmationSheet
+        open={!!pendingBankAccount}
+        titleId="bankAccountConfirmTitle"
+        title={t('bankAccountConfirmTitle')}
+        description={t('bankAccountConfirmBody')}
+        detail={pendingBankAccount?.iban}
+        confirmLabel={t('bankAccountConfirmAction')}
+        onClose={() => setPendingBankAccount(undefined)}
+        onConfirm={() => {
+          const requested = pendingBankAccount;
+          if (!requested) return;
+          setPendingBankAccount(undefined);
+          createAccount({ iban: requested.iban })
+            .then((account) => {
+              if (bankAccountParamLiveRef.current === requested.param) setSellBankAccount(account);
+            })
+            .catch(() => showToast(t('genErr'), { assertive: true }));
+        }}
+      />
+
+      <ConfirmationSheet
+        open={!!pendingRedirect}
+        titleId="redirectConfirmTitle"
+        title={t('redirectConfirmTitle')}
+        description={t('redirectConfirmBody')}
+        detail={pendingRedirect?.host}
+        confirmLabel={t('redirectConfirmAction')}
+        onClose={() => setPendingRedirect(undefined)}
+        onConfirm={() => {
+          const target = pendingRedirect;
+          if (!target) return;
+          setPendingRedirect(undefined);
+          window.location.assign(target.target);
+        }}
+      />
+
+      <ConfirmationSheet
+        open={pendingNewPayment}
+        titleId="newPaymentConfirmTitle"
+        title={t('startNewPayment')}
+        description={t('newPaymentWarning')}
+        detail={visibleExistingRequestUid ?? activePaymentRequestId}
+        confirmLabel={t('startNewPayment')}
+        onClose={() => setPendingNewPayment(false)}
+        onConfirm={() => {
+          if (!canStartSeparatePayment) return;
+          sessionStorage.removeItem(pendingPaymentStorageKey as string);
+          setPendingNewPayment(false);
+          setPaymentRequestId(undefined);
+          setPaymentRequestOwner(undefined);
+          restoredPaymentModeOwnerRef.current = undefined;
+          setExistingRequestUid(undefined);
+          setExistingRequestStatus(undefined);
+          setRecoveringPaymentRequest(false);
+          setNeedPaymentInfo(false);
+          setPaymentSheetOpen(false);
+          setSheetSnapshot(null);
+        }}
+      />
+
+      <PaymentSheet
+        open={visiblePaymentSheetOpen}
+        onClose={() => {
+          setPaymentSheetOpen(false);
+          setSheetSnapshot(null);
+          setRecoveringPaymentRequest(false);
+        }}
+        onDone={(existingRequest) => {
+          setPaymentSheetOpen(false);
+          setRecoveringPaymentRequest(false);
+          if (existingRequest || visibleExistingRequestUid) return;
+          const extra =
+            sheetSnapshot?.mode === 'sell' && sheetSnapshot.sell
+              ? {
+                  routeId: String(sheetSnapshot.sell.routeId),
+                  amount: String(sheetSnapshot.sell.amount),
+                  asset: sheetSnapshot.sell.asset.name,
+                  blockchain: String(sheetSnapshot.sell.asset.blockchain),
+                  isComplete: 'false',
+                }
+              : sheetSnapshot?.mode === 'swap' && sheetSnapshot.swap
+                ? {
+                    routeId: String(sheetSnapshot.swap.routeId),
+                    amount: String(sheetSnapshot.swap.amount),
+                    asset: sheetSnapshot.swap.sourceAsset.name,
+                    blockchain: String(sheetSnapshot.swap.sourceAsset.blockchain),
+                    isComplete: 'false',
+                  }
+                : undefined;
+          const target = completionRedirectUrl(
+            redirectUriParam,
+            sheetSnapshot?.mode === 'sell' ? 'sell' : sheetSnapshot?.mode === 'swap' ? 'swap' : 'buy',
+            extra,
+          );
+          if (!target) return;
+          if (requiresRedirectConfirmation(target)) {
+            setPendingRedirect({ target, host: new URL(target).host });
+            return;
+          }
+          window.location.assign(target);
+        }}
+        mode={sheetSnapshot?.mode ?? mode}
+        loading={sheetSnapshot?.loading ?? sheetLoadingLive}
+        rawError={sheetSnapshot?.rawError ?? null}
+        buy={sheetSnapshot?.buy ?? null}
+        sell={sheetSnapshot?.sell ?? null}
+        swap={sheetSnapshot?.swap ?? null}
+        payAssetCode={sheetSnapshot?.payAssetCode ?? sheetPayAssetCode}
+        receiveAssetCode={sheetSnapshot?.receiveAssetCode ?? sheetReceiveAssetCode}
+        receiveBlockchain={sheetSnapshot?.receiveBlockchain ?? sheetReceiveBlockchain}
+        currency={sheetSnapshot?.currency ?? sheetCurrency}
+        amount={sheetSnapshot?.amount ?? sheetAmount}
+        sessionAddress={session.address}
+        onRetry={async () => {
+          const paymentError = sheetSnapshot?.rawError;
+          // PaymentSheet dispatches this callback only for a locked pre-claim retry.
+          // An open sheet is owned by this account and has a persisted request ID.
+          const currentRequestId = activePaymentRequestId as string;
+          const expectedIdentity = paymentRequestIdentity as string;
+          const storageKey = pendingPaymentStorageKey as string;
+          if (
+            preClaimRetryIdentityRef.current === expectedIdentity ||
+            rotatedPreClaimRetryIdentitiesRef.current.has(expectedIdentity)
+          ) return;
+          preClaimRetryIdentityRef.current = expectedIdentity;
+          const releasePreClaimRetry = () => {
+            if (preClaimRetryIdentityRef.current === expectedIdentity) preClaimRetryIdentityRef.current = undefined;
+          };
+          setSheetSnapshot((snapshot) => ({ ...(snapshot as PaymentSnapshot), loading: true }));
+          let confirmedMissingClaim = false;
+          try {
+            const status = await transactionApi.getPaymentInfoRequestStatus(currentRequestId, requestType);
+            if (paymentRequestIdentityRef.current !== expectedIdentity) {
+              releasePreClaimRetry();
+              return;
+            }
+            setExistingRequestUid(status.existingUid);
+            setExistingRequestStatus(status.requestStatus);
+          } catch (error) {
+            if (paymentRequestIdentityRef.current !== expectedIdentity) {
+              releasePreClaimRetry();
+              return;
+            }
+            if (isApiExceptionLike(error) && error.statusCode === 404) {
+              confirmedMissingClaim = true;
+            } else {
+              setExistingRequestUid(undefined);
+              setExistingRequestStatus('Unknown');
+            }
+          }
+          if (!confirmedMissingClaim) {
+            setSheetSnapshot((snapshot) => ({
+              ...(snapshot as PaymentSnapshot),
+              loading: false,
+              rawError: paymentError,
+            }));
+            releasePreClaimRetry();
+            return;
+          }
+          const requestId = createPaymentRequestId();
+          if (!requestId) {
+            setSheetSnapshot((snapshot) => ({
+              ...(snapshot as PaymentSnapshot),
+              loading: false,
+              rawError: paymentError,
+            }));
+            releasePreClaimRetry();
+            showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+            return;
+          }
+          try {
+            sessionStorage.setItem(storageKey, JSON.stringify({ requestId, mode }));
+          } catch {
+            setSheetSnapshot((snapshot) => ({
+              ...(snapshot as PaymentSnapshot),
+              loading: false,
+              rawError: paymentError,
+            }));
+            releasePreClaimRetry();
+            showToast(t('paymentRecoveryUnavailable'), { assertive: true });
+            return;
+          }
+          rotatedPreClaimRetryIdentitiesRef.current.add(expectedIdentity);
+          releasePreClaimRetry();
+          setPaymentRequestId(requestId);
+          setPaymentRequestOwner(paymentAccountId);
+          setExistingRequestUid(undefined);
+          setExistingRequestStatus(undefined);
+          setSheetSnapshot((snapshot) => ({
+            ...(snapshot as PaymentSnapshot),
+            rawError: null,
+            loading: true,
+          }));
+          setSheetRetrying(true);
+          setNeedPaymentInfo(true);
+        }}
+        onReconnect={session.openConnect}
+        personalIbanProvider={personalIbanProvider}
+        requestLocked={paymentRequestLocked}
+        loadExistingRequest={loadExistingRequest}
+        existingRequestUid={visibleExistingRequestUid}
+        existingRequestStatus={visibleExistingRequestStatus}
+        onCheckExistingRequest={paymentRequestIdentity ? checkExistingPaymentStatus : undefined}
+        retryPreClaimGateError={isKnownPreClaimGateError(sheetSnapshot?.rawError)}
+      />
+    </div>
+  );
+}
+
+function PillAsset({ asset, chain }: { asset: TradeAsset | undefined; chain: Blockchain | undefined }) {
+  if (!asset) {
+    return (
+      <span className={cx('meta')}>
+        <b>—</b>
+      </span>
+    );
+  }
+  return (
+    <>
+      <AssetChainGlyph code={asset.code} blockchain={chain} />
+      <span className={cx('meta')}>
+        <b>{asset.code}</b>
+        <s>{chainName(chain as Blockchain)}</s>
+      </span>
+    </>
+  );
+}
+
+function fiatDescription(t: (key: TranslationKey) => string, code: string): string {
+  // Only EUR/CHF get a spelled-out name; everything else (USD, …) shows its raw code, mirroring
+  // the static app's fiatName() (`FIAT_LABEL={EUR,CHF}` → t(); else the currency's own name/code).
+  const key = code === 'EUR' ? 'curEur' : code === 'CHF' ? 'curChf' : undefined;
+  return key ? t(key) : code;
+}
+
+interface AssetPickerSlotProps {
+  slot: AssetSlot | null;
+  onClose: () => void;
+  buyPool: TradeAsset[];
+  sellPool: TradeAsset[];
+  balances: Record<string, number>;
+  sessionBlockchains?: readonly string[];
+  partnerBlockchains?: string;
+  swapFromCode?: string;
+  swapToCode?: string;
+  selectedCode?: string;
+  selectedBlockchain?: Blockchain;
+  onSelectBuyReceive: (asset: TradeAsset, chain: Blockchain) => void;
+  onSelectSellPay: (asset: TradeAsset, chain: Blockchain) => void;
+  onSelectSwapFrom: (asset: TradeAsset, chain: Blockchain) => void;
+  onSelectSwapTo: (asset: TradeAsset, chain: Blockchain) => void;
+}
+
+/** A single AssetPicker sheet reused for every asset-selecting pill — its pool/capability/
+ * onSelect are computed from whichever pill triggered it (`slot`). Keeps props valid even
+ * while `open` is false so the sheet's close transition doesn't flash empty content. */
+function AssetPickerSlot({
+  slot,
+  onClose,
+  buyPool,
+  sellPool,
+  balances,
+  sessionBlockchains,
+  partnerBlockchains,
+  swapFromCode,
+  swapToCode,
+  selectedCode,
+  selectedBlockchain,
+  onSelectBuyReceive,
+  onSelectSellPay,
+  onSelectSwapFrom,
+  onSelectSwapTo,
+}: AssetPickerSlotProps) {
+  const effective = slot ?? 'buyReceive';
+  const config: {
+    pool: TradeAsset[];
+    cap: Capability;
+    excludeCode?: string;
+    sortByBalance?: boolean;
+    onSelect: (asset: TradeAsset, chain: Blockchain) => void;
+  } =
+    effective === 'buyReceive'
+      ? { pool: buyPool, cap: 'buy', onSelect: onSelectBuyReceive }
+      : effective === 'sellPay'
+        ? { pool: sellPool, cap: 'sell', sortByBalance: true, onSelect: onSelectSellPay }
+        : effective === 'swapFrom'
+          ? { pool: sellPool, cap: 'sell', excludeCode: swapToCode, sortByBalance: true, onSelect: onSelectSwapFrom }
+          : { pool: buyPool, cap: 'buy', excludeCode: swapFromCode, onSelect: onSelectSwapTo };
+
+  return (
+    <AssetPicker
+      open={slot !== null}
+      onClose={onClose}
+      titleId="assetSheetTitle"
+      titleKey="chooseAsset"
+      pool={config.pool}
+      cap={config.cap}
+      sessionBlockchains={sessionBlockchains}
+      partnerBlockchains={partnerBlockchains}
+      balances={balances}
+      sortByBalance={config.sortByBalance}
+      excludeCode={config.excludeCode}
+      selectedCode={selectedCode}
+      selectedBlockchain={selectedBlockchain}
+      onSelect={config.onSelect}
+    />
+  );
+}

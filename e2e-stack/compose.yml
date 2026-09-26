@@ -37,6 +37,10 @@ services:
     image: ${E2E_API_IMAGE:-dfx-api:e2e}
     env_file:
       - env/api.env
+    environment:
+      # Preserve the API's normal 10-minute default. The dedicated expiry E2E run may
+      # shorten it through E2E_MAIL_LOGIN_TTL_MINUTES without changing env/api.env.
+      MAIL_LOGIN_EXPIRES_IN: ${E2E_MAIL_LOGIN_TTL_MINUTES:-10}
     # No NODE_OPTIONS here on purpose. An earlier revision downgraded unhandled rejections to
     # warnings so an API image without guarded error handling could boot; that silences every
     # unhandled rejection for the whole run, including ones introduced later, which is exactly the

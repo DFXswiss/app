@@ -1,0 +1,225 @@
+// An amount-out-of-range public quote must disable the CTA so a tap cannot arm
+// authenticated paymentInfos (and create a server-side route) for a never-valid amount.
+// Account-state gates stay openable; this test only pins the amount branch.
+
+const mockReceiveForBuy = jest.fn();
+const mockCall = jest.fn();
+const mockPublicBuyQuote = (info: unknown) =>
+  mockCall({ url: 'buy/quote', method: 'PUT', data: info, token: false });
+const mockPublicSellQuote = (info: unknown) =>
+  mockCall({ url: 'sell/quote', method: 'PUT', data: info, token: false });
+const mockPublicSwapQuote = (info: unknown) =>
+  mockCall({ url: 'swap/quote', method: 'PUT', data: info, token: false });
+
+jest.mock('@dfx.swiss/react', () => ({
+  Blockchain: {
+    BITCOIN: 'Bitcoin',
+    LIGHTNING: 'Lightning',
+    ETHEREUM: 'Ethereum',
+    ARBITRUM: 'Arbitrum',
+    OPTIMISM: 'Optimism',
+    POLYGON: 'Polygon',
+    BASE: 'Base',
+    BINANCE_SMART_CHAIN: 'BinanceSmartChain',
+    GNOSIS: 'Gnosis',
+    HAQQ: 'Haqq',
+    SOLANA: 'Solana',
+    MONERO: 'Monero',
+    TRON: 'Tron',
+    CARDANO: 'Cardano',
+    INTERNET_COMPUTER: 'InternetComputer',
+    CITREA: 'Citrea',
+    CITREA_TESTNET: 'CitreaTestnet',
+    SEPOLIA: 'Sepolia',
+    FIRO: 'Firo',
+    ZANO: 'Zano',
+    SPARK: 'Spark',
+    ARKADE: 'Arkade',
+    LIQUID: 'Liquid',
+    ARWEAVE: 'Arweave',
+    RAILGUN: 'Railgun',
+    DEFICHAIN: 'DeFiChain',
+  },
+  AuthWalletType: {
+    METAMASK: 'MetaMask',
+    RABBY: 'Rabby',
+    WALLET_BROWSER: 'WalletBrowser',
+    TRUST: 'Trust',
+    PHANTOM: 'Phantom',
+    TRON_LINK: 'TronLink',
+    CLI: 'CLI',
+    LEDGER: 'Ledger',
+    BIT_BOX: 'BitBox',
+    TREZOR: 'Trezor',
+    ALBY: 'Alby',
+    WALLET_CONNECT: 'WalletConnect',
+    DFX_TARO: 'DfxTaro',
+  },
+  FiatPaymentMethod: { BANK: 'Bank', INSTANT: 'Instant', CARD: 'Card' },
+  PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
+  VirtualIbanStatus: { ACTIVE: 'Active' },
+  TransactionError: { AMOUNT_TOO_LOW: 'AmountTooLow', AMOUNT_TOO_HIGH: 'AmountTooHigh' },
+  BuyUrl: { quote: 'buy/quote' },
+  SellUrl: { quote: 'sell/quote' },
+  SwapUrl: { quote: 'swap/quote' },
+  useApi: () => ({ call: mockCall }),
+  useBuy: () => ({ receiveFor: mockReceiveForBuy, quote: mockPublicBuyQuote }),
+  useSell: () => ({ receiveFor: jest.fn(), quote: mockPublicSellQuote }),
+  useSwap: () => ({ receiveFor: jest.fn(), quote: mockPublicSwapQuote }),
+  useUser: () => ({ updateMail: jest.fn() }),
+  useUserContext: () => ({ user: undefined }),
+  useApiSession: () => ({ session: { account: 7 } }),
+  useTransaction: () => ({ getPaymentInfoRequestStatus: jest.fn(), getTransactionDetailByUid: jest.fn() }),
+  useAssetContext: () => ({
+    getAssets: () => [
+      {
+        id: 123,
+        name: 'USDT',
+        description: 'Tether',
+        blockchain: 'Ethereum',
+        buyable: true,
+        sellable: true,
+      },
+    ],
+  }),
+  useFiatContext: () => ({ currencies: [{ id: 2, name: 'EUR', buyable: true, sellable: true }] }),
+  useBankAccountContext: () => ({ bankAccounts: [], isLoading: false, createAccount: jest.fn() }),
+}));
+
+jest.mock('react-router-dom', () => ({ useLocation: () => ({ search: '' }) }));
+
+jest.mock('../wallets/session', () => ({
+  useWalletSession: () => ({
+    isLoggedIn: true,
+    address: '0x7099797000000000000000000000000000000000',
+    blockchain: 'Ethereum',
+    blockchains: ['Ethereum'],
+    activeWallet: undefined,
+    openConnect: jest.fn(),
+    openSwitcher: jest.fn(),
+  }),
+}));
+
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import HomeScreen from '../screens/home';
+import { LanguageProvider } from '../i18n';
+import { ToastProvider } from '../components/ui';
+
+function renderHome() {
+  return render(
+    <LanguageProvider>
+      <ToastProvider>
+        <HomeScreen />
+      </ToastProvider>
+    </LanguageProvider>,
+  );
+}
+
+describe('invalid quote CTA gate', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it.each([
+    ['AmountTooLow', 'AmountTooLow'],
+    ['AmountTooHigh', 'AmountTooHigh'],
+    ['unsupported asset', 'AssetUnsupported'],
+    ['unsupported currency', 'CurrencyUnsupported'],
+    ['unsupported payment method', 'PaymentMethodNotAllowed'],
+    ['unknown future API error', 'SomeFutureQuoteError'],
+  ])('disables the buy CTA and never arms paymentInfos for %s', async (_name, error) => {
+    mockCall.mockResolvedValue({
+      estimatedAmount: 0,
+      amount: 100,
+      fees: { total: 0, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      feesTarget: { total: 0, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      exchangeRate: 1,
+      rate: 1,
+      isValid: false,
+      error,
+      minVolume: 10,
+      maxVolume: 1000,
+    });
+
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+
+    const cta = screen.getByTestId('trade-cta');
+    expect(cta).toBeDisabled();
+
+    fireEvent.click(cta);
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'KycRequired',
+    'KycDataRequired',
+    'KycRequiredInstant',
+    'VideoIdentRequired',
+    'NameRequired',
+    'LimitExceeded',
+    'EmailRequired',
+    'PrimaryEmailRequired',
+    'PrimaryEmailNotConfirmed',
+    'RecommendationRequired',
+    'IbanCurrencyMismatch',
+    'CountryNotAllowed',
+    'NationalityNotAllowed',
+  ])('keeps the CTA available for the known account gate %s', async (error) => {
+    mockCall.mockResolvedValue({
+      estimatedAmount: 0,
+      amount: 100,
+      fees: { total: 0, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      feesTarget: { total: 0, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      exchangeRate: 0,
+      rate: 0,
+      isValid: false,
+      error,
+      minVolume: 10,
+      maxVolume: 1000,
+    });
+
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+
+    expect(screen.getByTestId('trade-cta')).toBeEnabled();
+  });
+
+  it('still enables the CTA when the public quote is valid', async () => {
+    mockCall.mockResolvedValue({
+      estimatedAmount: 111,
+      amount: 100,
+      fees: { total: 1.99, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      feesTarget: { total: 1.99, rate: 0, fixed: 0, network: 0, dfx: 0, bank: 0 },
+      exchangeRate: 1.11,
+      rate: 1.11,
+      isValid: true,
+    });
+
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await waitFor(() => expect(mockCall).toHaveBeenCalled());
+
+    const cta = screen.getByTestId('trade-cta');
+    expect(cta).not.toBeDisabled();
+  });
+});

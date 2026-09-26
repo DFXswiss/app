@@ -3,17 +3,19 @@
  *
  * `frontend-widget` now exists and serves a real widget-mode build (`src/index-widget.tsx`
  * as entry via `e2e-stack/images/frontend-widget/Dockerfile`, host document at
- * `e2e-stack/images/frontend-widget/host.html`). The three tests under "Widget mode —
+ * `e2e-stack/images/frontend-widget/host.html`). The tests under "Widget mode —
  * frontend-widget build" are therefore real, passing, browser-executed tests against
  * `E2E_WIDGET_URL` (default `http://frontend-widget`).
  *
- * Coverage is deliberately limited to the OUTSIDE view of `<dfx-services>`: custom-element
- * registration, mounting/rendering (presence + non-zero size), reaction to HTML-attribute
- * changes on the light-DOM host, and absence of uncaught exceptions. The widget defines
+ * Coverage uses only the OUTSIDE view of `<dfx-services>`: custom-element registration,
+ * mounting/rendering (presence + non-zero size), light-DOM host attributes, the real API effect
+ * of initial `amount-in` / `asset-out`, and absence of uncaught exceptions. The widget defines
  * its custom element with `shadow: 'closed'` (see `src/Main.widget.tsx`), so Playwright
  * cannot reach inside the shadow tree — proven earlier in this file with a synthetic
  * closed-shadow page, and re-confirmed against the real component below. That is a
- * property of the component's design, not a testing shortcut left for later.
+ * property of the component's design, not a testing shortcut left for later. Runtime attribute
+ * changes are not asserted as behavior: AppHandlingContextProvider snapshots ordinary `params`
+ * in its one-time `init()` path, while `personalIban` is explicitly read live from widget props.
  *
  * Observation (unchanged gap): repo-root `widget.html` is a DIFFERENT file from the new,
  * correctly-pathed `e2e-stack/images/frontend-widget/host.html` that `frontend-widget`
@@ -24,7 +26,7 @@
  */
 
 import type { Page } from '@playwright/test';
-import { expect, required, test } from './fixtures';
+import { cleanupCreatedData, createUser, expect, queryOne, required, test, waitForRow } from './fixtures';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -159,14 +161,33 @@ test.describe('Widget mode — frontend image gap', () => {
 });
 
 test.describe('Widget mode — frontend-widget build', () => {
+  test.afterEach(async () => cleanupCreatedData());
+
   test('dfx-services custom element registers and mounts Main.widget', async ({ page }) => {
     await allowWidgetHost(page);
 
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(String(err)));
 
+    const assetResponsePromise = page.waitForResponse((response) => {
+      const requestUrl = new URL(response.url());
+      return requestUrl.pathname.endsWith('/asset') && response.request().method() === 'GET';
+    });
+
     await page.goto(widgetUrl(), { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle').catch(() => undefined);
+
+    // The closed root hides rendered content from Playwright, but a mounted widget must still
+    // consume the real API's asset catalogue. This is observable host-to-widget behavior, not a
+    // claim that its internal DOM can be inspected.
+    const assetResponse = await assetResponsePromise;
+    expect(assetResponse.ok(), 'embedded widget must load its asset catalogue from the API').toBe(true);
+    const assets = (await assetResponse.json()) as { buyable?: boolean; sellable?: boolean; comingSoon?: boolean }[];
+    expect(assets.length, 'the API response must contain asset catalogue data').toBeGreaterThan(0);
+    expect(
+      assets.some((asset) => asset.buyable || asset.sellable || asset.comingSoon),
+      'the live catalogue must contain at least one renderable asset',
+    ).toBe(true);
 
     const defined = await page.evaluate(() => typeof customElements.get('dfx-services'));
     expect(defined, 'customElements.get("dfx-services") must be a function').toBe('function');
@@ -237,6 +258,237 @@ test.describe('Widget mode — frontend-widget build', () => {
     expect(remountedBox.height).toBeGreaterThan(0);
 
     expect(pageErrors, `uncaught pageerror on attribute change: ${pageErrors.join('; ')}`).toEqual([]);
+  });
+
+  test('initial amount-in and asset-out attributes drive a real widget payment-info request', async ({ page }) => {
+    await allowWidgetHost(page);
+    const user = await createUser({
+      tag: 'widget-initial-buy-params',
+      kycLevel: 50,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const apiRequests: Array<Record<string, unknown>> = [];
+    const apiResponses: Array<Record<string, unknown>> = [];
+    const responseBodyTasks: Promise<void>[] = [];
+    const pageErrors: string[] = [];
+    const widgetResources: Array<Record<string, unknown>> = [];
+    const widgetHost = new URL(widgetUrl()).hostname;
+
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.hostname === widgetHost) {
+        widgetResources.push({ type: request.resourceType(), method: request.method(), path: url.pathname });
+      }
+      if (!url.pathname.includes('/v1/')) return;
+      let body: unknown;
+      try {
+        const parsed = request.postDataJSON() as Record<string, unknown> | undefined;
+        if (parsed) {
+          body = {
+            amount: parsed.amount,
+            targetAmount: parsed.targetAmount,
+            assetId: (parsed.asset as { id?: unknown } | undefined)?.id,
+            currencyId: (parsed.currency as { id?: unknown } | undefined)?.id,
+            paymentMethod: parsed.paymentMethod,
+          };
+        }
+      } catch {
+        body = '<non-json request body>';
+      }
+      apiRequests.push({ method: request.method(), path: url.pathname, body });
+    });
+    page.on('response', (response) => {
+      const url = new URL(response.url());
+      if (url.hostname === widgetHost) {
+        widgetResources.push({
+          type: response.request().resourceType(),
+          method: response.request().method(),
+          path: url.pathname,
+          status: response.status(),
+          contentType: response.headers()['content-type'],
+        });
+      }
+      if (!url.pathname.includes('/v1/')) return;
+      const event: Record<string, unknown> = {
+        method: response.request().method(),
+        path: url.pathname,
+        status: response.status(),
+      };
+      apiResponses.push(event);
+      if (response.status() >= 400) {
+        responseBodyTasks.push(response.text().then((body) => {
+          event.body = body.slice(0, 2000);
+        }).catch(() => undefined));
+      }
+    });
+
+    // Use the real host document unchanged. Its widget script is deferred, so this observer runs
+    // after the parser inserts the custom element but before the script registers/upgrades it.
+    // That exercises initial attribute consumption without fulfilling or rewriting any response.
+    await page.addInitScript((session: string) => {
+      const testWindow = window as Window & {
+        __e2eWidgetParamsApplied?: boolean;
+        __e2eWidgetDefinedBeforeParams?: boolean;
+      };
+      testWindow.__e2eWidgetParamsApplied = false;
+      const applyInitialParams = () => {
+        const host = document.querySelector('dfx-services');
+        if (!host) return;
+        testWindow.__e2eWidgetDefinedBeforeParams = Boolean(customElements.get('dfx-services'));
+        host.setAttribute('session', session);
+        host.setAttribute('asset-out', 'ETH');
+        host.setAttribute('amount-in', '100');
+        testWindow.__e2eWidgetParamsApplied = true;
+        observer.disconnect();
+      };
+      const observer = new MutationObserver(applyInitialParams);
+      observer.observe(document, { childList: true, subtree: true });
+      applyInitialParams();
+    }, user.jwt);
+
+    page.on('requestfailed', (request) => {
+      const url = new URL(request.url());
+      if (url.hostname === widgetHost) {
+        widgetResources.push({
+          type: request.resourceType(),
+          method: request.method(),
+          path: url.pathname,
+          failure: request.failure()?.errorText,
+        });
+      }
+    });
+
+    const assetResponsePromise = page
+      .waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname.endsWith('/asset') && response.request().method() === 'GET',
+        { timeout: 20000 },
+      )
+      .catch(() => undefined);
+    // The widget entry mounts the legacy App, whose Buy screen requests paymentInfos directly;
+    // App2's separate public `/buy/quote` endpoint is not part of this widget runtime.
+    const paymentInfoResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      if (!url.pathname.endsWith('/buy/paymentInfos') || response.request().method() !== 'PUT') return false;
+      try {
+        const body = response.request().postDataJSON() as { amount?: number };
+        return body.amount === 100;
+      } catch {
+        return false;
+      }
+    }, { timeout: 20000 }).catch(() => undefined);
+
+    await page.goto(widgetUrl(), { waitUntil: 'domcontentloaded' });
+    const paymentInfoResponse = await paymentInfoResponsePromise;
+    if (!paymentInfoResponse) {
+      await Promise.all(responseBodyTasks);
+      const widgetState = await page.evaluate(() => {
+        const host = document.querySelector('dfx-services');
+        const testWindow = window as Window & {
+          __e2eWidgetParamsApplied?: boolean;
+          __e2eWidgetDefinedBeforeParams?: boolean;
+        };
+        return {
+          url: window.location.href,
+          readyState: document.readyState,
+          scripts: Array.from(document.scripts).map((script) => script.src),
+          hostAttributes: host
+            ? Array.from(host.attributes).map(({ name, value }) => ({
+                name,
+                value: name === 'session' ? '<redacted>' : value,
+              }))
+            : [],
+          customElementDefined: typeof customElements.get('dfx-services') === 'function',
+          paramsAppliedBeforeRegistration: testWindow.__e2eWidgetParamsApplied === true &&
+            testWindow.__e2eWidgetDefinedBeforeParams === false,
+          hostText: host?.textContent?.trim(),
+          documentText: document.body.innerText.slice(0, 3000),
+          sessionStored: Boolean(window.localStorage.getItem('dfx.authenticationToken')),
+        };
+      });
+      // The shadow root intentionally stays closed. Playwright's failure screenshot remains the
+      // rendered-state artifact; this error adds only host-page state and request diagnostics.
+      throw new Error(
+        `No PUT /buy/paymentInfos with amount 100. API requests=${JSON.stringify(apiRequests)}; ` +
+          `API responses=${JSON.stringify(apiResponses)}; page errors=${JSON.stringify(pageErrors)}; ` +
+          `widget resources=${JSON.stringify(widgetResources)}; widget state=${JSON.stringify(widgetState)}`,
+      );
+    }
+    const parameterState = await page.evaluate(() => {
+      const testWindow = window as Window & {
+        __e2eWidgetParamsApplied?: boolean;
+        __e2eWidgetDefinedBeforeParams?: boolean;
+      };
+      return {
+        applied: testWindow.__e2eWidgetParamsApplied,
+        definedBeforeParams: testWindow.__e2eWidgetDefinedBeforeParams,
+      };
+    });
+    expect(parameterState).toEqual({ applied: true, definedBeforeParams: false });
+    const assetResponse = await assetResponsePromise;
+    if (!assetResponse) throw new Error('Widget payment-info request arrived without an asset catalogue response');
+    expect(assetResponse.ok(), 'the widget must load the real asset catalogue').toBe(true);
+    expect(
+      paymentInfoResponse.ok(),
+      `the widget payment-info request returned HTTP ${paymentInfoResponse.status()}`,
+    ).toBe(true);
+
+    const assets = (await assetResponse.json()) as Array<{ id: number; name: string; buyable: boolean }>;
+    const paymentInfoRequest = paymentInfoResponse.request().postDataJSON() as {
+      amount: number;
+      asset: { id: number };
+    };
+    const selectedApiAsset = assets.find((asset) => asset.id === paymentInfoRequest.asset.id);
+    expect(paymentInfoRequest.amount).toBe(100);
+    expect(selectedApiAsset, 'asset-out=ETH must select an asset present in the real API catalogue').toEqual(
+      expect.objectContaining({ name: 'ETH', buyable: true }),
+    );
+
+    const paymentInfo = (await paymentInfoResponse.json()) as {
+      id: number;
+      routeId: number;
+      asset: { id: number };
+      isValid: boolean;
+      estimatedAmount: number;
+    };
+    expect(paymentInfo.id).toBeGreaterThan(0);
+    expect(paymentInfo.routeId).toBeGreaterThan(0);
+    expect(paymentInfo.asset.id).toBe(paymentInfoRequest.asset.id);
+    expect(paymentInfo.isValid).toBe(true);
+    expect(paymentInfo.estimatedAmount).toBeGreaterThan(0);
+
+    const persisted = await waitForRow<{
+      id: number;
+      routeId: number;
+      targetId: number;
+      amount: string;
+      userId: number;
+    }>(
+      `SELECT id, "routeId" AS "routeId", "targetId" AS "targetId", amount, "userId" AS "userId"
+       FROM transaction_request WHERE id = $1 AND "userId" = $2`,
+      [paymentInfo.id, user.userId],
+    );
+    expect(persisted.id).toBe(paymentInfo.id);
+    expect(persisted.routeId).toBe(paymentInfo.routeId);
+    expect(persisted.targetId).toBe(paymentInfo.asset.id);
+    expect(Number(persisted.amount)).toBe(100);
+    const ownedBuy = await queryOne<{ id: number; userId: number }>(
+      `SELECT id, "userId" AS "userId" FROM buy WHERE id = $1 AND "userId" = $2`,
+      [paymentInfo.routeId, user.userId],
+    );
+    expect(ownedBuy).toEqual({ id: paymentInfo.routeId, userId: user.userId });
+
+    // The authenticated response and owner-scoped DB rows prove the widget consumed both attributes:
+    // amount-in became the persisted source amount, and asset-out selected the persisted target.
+    // No assertion reaches into the closed root.
+    const elementAttributes = await page.locator('dfx-services').evaluate((element) => ({
+      amountIn: element.getAttribute('amount-in'),
+      assetOut: element.getAttribute('asset-out'),
+      shadowRoot: element.shadowRoot,
+    }));
+    expect(elementAttributes).toMatchObject({ amountIn: '100', assetOut: 'ETH', shadowRoot: null });
   });
 
   test('widget closed shadow tree renders without uncaught exceptions', async ({ page }) => {

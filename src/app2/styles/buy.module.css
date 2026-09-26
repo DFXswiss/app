@@ -1,0 +1,432 @@
+/* ============ BUY ============ */
+.buy {
+  padding: 2px 16px 26px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.seg {
+  position: relative;
+  display: flex;
+  background: rgba(8, 30, 58, 0.5);
+  border: 1px solid var(--hair-soft);
+  border-radius: 15px;
+  padding: 4px;
+  margin-bottom: 14px;
+}
+.seg .ind {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: calc((100% - 8px) / 3);
+  left: 4px;
+  background: var(--card-overlay);
+  border: 1px solid var(--hair);
+  border-radius: 11px;
+  transition: transform 0.32s var(--ease);
+}
+.seg button {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--t-dim);
+  padding: 10px 0;
+  cursor: pointer;
+  transition: color 0.25s var(--ease);
+}
+.seg button.on {
+  color: #fff;
+}
+.panels {
+  position: relative;
+  border: 1px solid var(--hair);
+  border-radius: 22px;
+  overflow: hidden;
+  background: var(--card-overlay);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+.panel {
+  padding: 15px 16px;
+}
+.panel + .panel {
+  border-top: 1px solid var(--hair);
+}
+.panel.recv {
+  background: rgba(8, 30, 58, 0.35);
+}
+.prow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.plabel {
+  font-size: 12.5px;
+  color: var(--t-muted);
+  font-weight: 600;
+}
+.pmeta {
+  font-size: 12px;
+  color: var(--t-dim);
+  font-weight: 500;
+}
+.pmeta .walletchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  padding: 3px 9px;
+  border-radius: 99px;
+  border: 1px solid var(--hair-soft);
+  background: rgba(255, 255, 255, 0.04);
+  transition:
+    border-color 0.18s,
+    background 0.18s;
+}
+.pmeta .walletchip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.pmeta .walletchip svg {
+  width: 13px;
+  height: 13px;
+}
+.pinput {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 9px;
+}
+.amt {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 33px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: #fff;
+  width: 100%;
+}
+.amt::placeholder {
+  color: rgba(255, 255, 255, 0.46);
+}
+.amt:read-only {
+  cursor: default;
+}
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--hair);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 99px;
+  padding: 6px 11px 6px 6px;
+  cursor: pointer;
+  /* Fixed share of the .pinput row so the pay/fiat pill and the receive/asset pill are
+     the SAME width and left-aligned to the same x in each half — instead of each hugging
+     its own content (which left them different widths and offset). The amount input
+     (.amt, flex:1) fills the remaining ~50%. Long labels truncate via the .meta ellipsis. */
+  flex: 0 0 46%;
+  max-width: 46%;
+  min-width: 0;
+  transition:
+    border-color 0.18s,
+    background 0.18s,
+    transform 0.12s;
+}
+.pill:hover {
+  border-color: var(--hair-strong);
+  background: rgba(255, 255, 255, 0.1);
+}
+.pill:active {
+  transform: scale(0.985);
+}
+.pill .meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.12;
+  min-width: 0;
+  /* Grow to fill the fixed-width pill so the caret sits flush right; overflow clips the
+     ellipsis'd label lines below. */
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.pill .meta b {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff;
+}
+.pill .meta s {
+  text-decoration: none;
+  font-size: 11px;
+  color: var(--t-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.pill .caret {
+  color: var(--t-dim);
+  flex: 0 0 auto;
+}
+.glyph {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-block;
+  line-height: 0;
+}
+.glyph > img.coin {
+  display: block;
+  border-radius: 50%;
+  background: #fff;
+}
+.glyph > img.badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  border-radius: 50%;
+  background: var(--app-surface);
+  padding: 1px;
+  box-shadow: 0 0 0 1.5px var(--app-surface);
+}
+.fab {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  background: var(--app-surface-l);
+  border: 1px solid var(--hair-strong);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--primary);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  transition:
+    transform 0.35s var(--ease),
+    color 0.2s;
+}
+.fab:hover {
+  color: #fff;
+}
+.fab:active {
+  transform: translate(-50%, -50%) rotate(180deg);
+}
+.fab svg {
+  width: 18px;
+  height: 18px;
+}
+.quick {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.quick button {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid var(--hair-soft);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--t-muted);
+  cursor: pointer;
+  transition: all 0.16s var(--ease);
+}
+.quick button:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+.fees {
+  margin-top: 12px;
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  background: rgba(8, 30, 58, 0.4);
+  overflow: hidden;
+}
+.fees summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  user-select: none;
+}
+.fees summary::-webkit-details-marker {
+  display: none;
+}
+.fees summary .l {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--t-high);
+}
+.fees summary .l svg {
+  width: 15px;
+  height: 15px;
+  color: var(--success);
+}
+.fees summary .r {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--t-muted);
+}
+.fees summary .chev {
+  transition: transform 0.25s var(--ease);
+  color: var(--t-dim);
+}
+.fees[open] summary .chev {
+  transform: rotate(180deg);
+}
+.fees .fbody {
+  padding: 3px 14px 12px;
+  border-top: 1px dashed var(--hair);
+  animation: rise 0.25s var(--ease);
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fees .li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+  font-size: 13px;
+}
+.fees .li span {
+  color: var(--t-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fees .li b {
+  font-weight: 600;
+  color: var(--t-high);
+}
+.fees .li.pos b {
+  color: var(--success);
+}
+.fees .li.sub {
+  border-top: 1px solid var(--hair);
+  margin-top: 3px;
+  padding-top: 9px;
+}
+.fees .li.sub b,
+.fees .li.sub span {
+  font-weight: 700;
+  color: var(--t-high);
+}
+.fees .li.total {
+  border-top: 1px solid var(--hair);
+  margin-top: 3px;
+  padding-top: 10px;
+}
+.fees .li.total span {
+  color: #fff;
+  font-weight: 600;
+}
+.fees .li.total b {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--primary);
+}
+.chip-good {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--success);
+  background: rgba(52, 211, 153, 0.14);
+  padding: 3px 8px;
+  border-radius: 7px;
+}
+.pmethod {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  padding: 12px 14px;
+  cursor: pointer;
+  background: var(--card-overlay);
+  transition: border-color 0.18s;
+}
+.pmethod:hover {
+  border-color: var(--hair-strong);
+}
+.pmethod .ic {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--primary-soft);
+  display: grid;
+  place-items: center;
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+.pmethod .ic svg {
+  width: 21px;
+  height: 21px;
+}
+.pmethod .tx {
+  flex: 1;
+}
+.pmethod .tx b {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+}
+.pmethod .tx small {
+  font-size: 12px;
+  color: var(--t-muted);
+}
+.pmethod .caret {
+  color: var(--t-dim);
+}
+.cta {
+  margin-top: 14px;
+  box-shadow: 0 8px 18px -10px rgba(59, 130, 246, 0.4);
+} /* softer glow so the rounded app corner doesn't clip it at the bottom */
+.secure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 12px;
+  color: var(--t-dim);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.secure svg {
+  width: 14px;
+  height: 14px;
+}

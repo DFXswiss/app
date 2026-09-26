@@ -82,11 +82,32 @@ no arguments and clears it otherwise — clearing matters because `e2e-stack/com
 whatever the caller's environment holds — and the CI workflow sets it when it brings the stack up (full run).
 Develop PRs without `ci:full` never set it; `ci:full`, PRs into `main`, and a bare `workflow_dispatch`
 (empty `base_ref`) force that full invocation.
+
+App 2.0 is claimed separately as hosted `/app2/` paths (`e2e-stack/specs/registry/app2.ts`); those
+are not in `src/App.tsx`. `e2e-stack/specs/app2.spec.ts` opens every hash route and, for a logged-in
+user, submits a buy quote and a KYC contact step through the App 2.0 UI and checks the matching
+Postgres row. A green unit run does not prove the full-stack harness cloned `DFXswiss/api` or opened
+those hashes.
+
 Adding a route therefore means adding a claim in `e2e-stack/specs/registry/` and a test that navigates
 there.
 
 That gate is the pattern the reality declaration follows: **measure the run, do not trust the
 declaration.** Anything its parser cannot resolve is a hard failure rather than a silent omission.
+
+### App 2.0 talks to two layers, not one
+
+The HTTP API is reached only through `@dfx.swiss/react`. Same-origin storage keys, job tickets,
+hardware paths and a few DTOs are copied under `src/app2/lib/` so App 2.0 does not import the
+main app's private modules. `legacy-contract.test.ts` pins those copies to the main-app values.
+A leak through those keys is not an SDK bug — `/` and `/app2/` share this origin on purpose.
+
+### App 2.0 styles are CSS modules
+
+The feature-owned files under `src/app2/styles/*.module.css` hash every local class at build time.
+`src/app2/css.ts` merges their class maps in source order, and components apply them through `cx()`.
+html/body/:root stay global. The hashed names are the scoping mechanism; the pixels stay the ones in
+the committed visual baselines.
 
 ## Reality declaration — hard requirement
 
@@ -109,6 +130,12 @@ from memory, with omissions.
 This section lists the fakes introduced by this repository's own suites and states what a green
 run does not prove for each one; the taxonomy and cross-repository entries live in
 `DFXswiss/backend` under `docs/test-architecture.md`.
+
+- **The App2 account recovery E2E simulates one transient user-load failure.**
+  `e2e-stack/specs/app2-account-extended.spec.ts` fulfils only the first authenticated
+  `GET /v2/user` with HTTP 503; clicking Retry sends the next request to the real local API.
+  A green run proves the error and retry UI plus recovery from a subsequent local API response,
+  not that the API or a production dependency generates or recovers from that failure.
 
 - **The buy-process specs answer the quote endpoint themselves.** `e2e/buy-process.spec.ts` fulfils
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
@@ -344,6 +371,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   merged account really produces a 401 with `switchToCode`.
   `src/__tests__/link.screen.test.tsx` pins that `handleMergedError` is tried first at every
   catch site instead.
+  The spec stays on the AML reset path and does not assert the Editor label.
 - **The known-rejections visual spec answers the rejections itself.**
   `e2e/known-rejections.spec.ts` fulfils `GET /v2/kyc/PersonalData` and `GET /v2/kyc` with a
   synthetic step session, `PUT` on that session with a synthetic 400 character-set message,
@@ -371,6 +399,56 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   results. It does not prove the exact `pl?lightning=…` link or the exact
   decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
   the real `url()` treats those arguments identically; no assertion pins the outer host.
+- **The 27 App 2.0 session baselines per viewport are a logged-in walk through the harness, not a
+  funded account.** The pictures come from that stack's mock providers, which do not serve quotes, and from a
+  fresh account. Buy, sell, swap, account, transactions, KYC, limit, the OpenCryptoPay hub and apply
+  form, plus the six merchant sub-pages (payment routes, invoice, POS, links, history, settings) are
+  captured that way. This is 27 screenshot names per viewport: 23 direct assertions and four
+  terminal-receipt helper cases. The OpenCryptoPay sub-pages are shown in the built-in demo mode. A
+  green run does not prove that the buy screen ever renders a real rate, nor that the transaction
+  list ever shows rows.
+- **The recovered POS baseline uses mocked payment-link records.** `e2e/app2-session.spec.ts`
+  verifies that pending QR details survive a fresh screen mount, that more than one pending till can
+  be selected, and that a deactivated link's pending charge remains visible. The POS screenshots
+  also show recovery when a committed POST response is lost and when a concurrent till payment
+  produces the API's specific pending-link conflict. These mocked records do not prove that a live
+  API commits before a dropped response, or that two browser tabs race this way in production. They
+  also cover four terminal receipt states: paid and failed, each with an active and an inactive till;
+  receipts identify the amount, currency, till and external payment ID, and an active till can accept
+  the next charge. After two status checks remain unsettled, the cashier sees the support state with
+  no further Refresh action; the till stays locked. These records and statuses are mocked. They do
+  not prove that production `/paymentLink` responses retain those fields or that a real Lightning
+  payment settles.
+- **The App 2.0 OCP merchant-stack spec provisions only its prerequisite state synthetically.**
+  `e2e-stack/specs/app2-ocp-merchant.spec.ts` signs up a local Lightning-shaped custodial account,
+  sets the merchant approval/KYC fields in Postgres, and adds synthetic Lightning deposit-pool
+  addresses. The UI then creates/toggles routes and links, generates invoice and POS payments via
+  the real local API, and asserts the resulting rows. Its terminal-history case changes one owned
+  pending payment to `Completed` in Postgres because local settlement workers are disabled; this
+  verifies API/UI readback only, not a Lightning payment, merchant approval workflow, or settlement.
+- **The App 2.0 retry screenshots synthesize service failures.** `e2e/app2-session.spec.ts` installs
+  the KYC country 503 after app bootstrap and uses separate Wallet 4 / Wallet 5 accounts for desktop
+  and mobile. It starts or continues verification and answers `PUT /v2/kyc?autoStep=true` with a
+  synthetic `PersonalData` step to isolate the form from the real contact-email OTP flow. The first
+  `/country` request then receives a synthetic 503 and retry continues to the live route. The
+  unassigned-transaction case also answers its first request with a synthetic 503 before continuing.
+  A green run proves that the country and
+  unmatched-payment error/retry UI works for those responses; it does not prove that the KYC workflow
+  advances to PersonalData, contact-email verification works, or either live endpoint returns 503
+  and recovers on retry.
+- **App 2.0 widget-param specs SQL-write `"user".ref`.**
+  `e2e-stack/specs/app2-widget-params.spec.ts` (`assignReferrerCode`) updates the referrer's own
+  code so sign-in can look it up. A green run does **not** prove that the API assigns `user.ref`
+  on sign-up or that a factory account already carries one.
+- **App 2.0 widget-param specs fulfil the partner redirect host.**
+  `e2e-stack/specs/app2-widget-params.spec.ts` answers `https://example.com/**` with a static 200
+  so Done can leave `/app2/`. A green run does **not** prove that a real partner origin answers
+  or that the browser follows that host outside the test.
+- **App 2.0 specs SQL-reset ContactData so auto-start opens the mail form.**
+  `e2e-stack/specs/app2.spec.ts` and `e2e-stack/specs/app2-widget-params.spec.ts`
+  (`reopenContactData`) null `user_data.mail` and set `kyc_step` ContactData to `NotStarted`.
+  Sign-up completes that step even at kycLevel 0. A green run does **not** prove that a new
+  account still has ContactData open, or that mail is cleared through the product path.
 
 ## Known gaps
 

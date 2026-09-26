@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "include": ["/static/*", "/widget/*", "/favicon.ico", "/logo.png", "/robots.txt", "/manifest.json", "/asset-manifest.json", "/version.json"],
+  "include": ["/static/*", "/widget/*", "/favicon.ico", "/logo.png", "/robots.txt", "/manifest.json", "/asset-manifest.json", "/version.json", "/app2/static/*", "/app2/favicon.svg", "/app2/favicon-32.png", "/app2/apple-touch-icon.png", "/app2/manifest.webmanifest", "/app2/icons/*", "/app2/licenses/*", "/app2/THIRD-PARTY-NOTICES.md"],
   "exclude": []
 }
