@@ -382,8 +382,6 @@ describe('ConnectBase login', () => {
   it.each([
     ['another wallet is active', WalletType.ALBY, { address: '0xabc' }],
     ['the address differs from the session', WalletType.META_MASK, { address: '0xdef' }],
-    ['the session has no address', WalletType.META_MASK, {}],
-    ['there is no session', WalletType.META_MASK, undefined],
   ])('logs out and logs in again when %s', async (_case, activeWallet, session) => {
     mockActiveWallet = activeWallet;
     mockSession = session;
@@ -393,6 +391,28 @@ describe('ConnectBase login', () => {
 
     expect(mockSwitchBlockchain).not.toHaveBeenCalled();
     expect(mockLogout).toHaveBeenCalled();
+    expect(mockLogin).toHaveBeenCalledWith(
+      WalletType.META_MASK,
+      '0xabc',
+      Blockchain.ETHEREUM,
+      expect.any(Function),
+      undefined,
+    );
+    expect(mockOnLogin).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['the session has no address', WalletType.META_MASK, {}],
+    ['there is no session', WalletType.META_MASK, undefined],
+  ])('keeps an address-less session and logs in when %s', async (_case, activeWallet, session) => {
+    mockActiveWallet = activeWallet;
+    mockSession = session;
+    await renderReady();
+
+    await act(() => content().connect());
+
+    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
     expect(mockLogin).toHaveBeenCalledWith(
       WalletType.META_MASK,
       '0xabc',
@@ -424,6 +444,21 @@ describe('ConnectBase login', () => {
 
   it('sets the session when the wallet returns a session', async () => {
     mockActiveWallet = WalletType.META_MASK;
+    mockGetAccount.mockResolvedValue({ session: 'access-token' });
+    await renderReady();
+
+    await act(() => content().connect());
+
+    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(mockSetSession).toHaveBeenCalledWith('access-token', WalletType.META_MASK, Blockchain.ETHEREUM);
+    expect(mockLogin).not.toHaveBeenCalled();
+    expect(mockOnLogin).toHaveBeenCalled();
+  });
+
+  it('logs out before setting the session when the wallet returns a session and one already exists', async () => {
+    mockActiveWallet = WalletType.META_MASK;
+    mockSession = { address: '0xabc' };
     mockGetAccount.mockResolvedValue({ session: 'access-token' });
     await renderReady();
 
