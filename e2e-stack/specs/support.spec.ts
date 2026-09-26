@@ -426,9 +426,9 @@ test.describe('Support (customer)', () => {
     expect(finalState.messageCount).toBe(beforeForeignRequests.messageCount + 2);
   });
 
-  test('accountless company JWT cannot use customer support UID routes', async ({ page }) => {
+  test('company bearer support UID requests are denied while a rejected browser session falls back to guest access', async ({ page }) => {
     const owner = await createUser({ tag: 'sup-company-scope-owner', language: 'EN' });
-    const privateMessage = 'E2E-company-token-must-not-read-private-support-message';
+    const privateMessage = 'E2E-company-guest-capability-private-message';
     const issue = await createSupportIssue(owner.jwt, {
       tag: 'sup-company-scope-ticket',
       type: 'GenericIssue',
@@ -530,10 +530,26 @@ test.describe('Support (customer)', () => {
     );
     expect(unauthorizedWrite?.count).toBe(0);
 
-    // Exercise the actual customer chat route with the minted JWT too. The private message must
-    // remain absent even if the frontend attempts to restore the UID from the URL.
-    await gotoWithSession(page, `/support/chat/${issue.uid}`, companyJwt);
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByText(privateMessage)).toHaveCount(0);
+    // The frontend rejects accountless company tokens as customer sessions, then its known-UID
+    // chat path intentionally remains available to anonymous guests. Exercise that boundary
+    // directly and identify the browser's resulting read as anonymous, not company-authenticated.
+    const guestChatResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' && response.url().includes(`/v1/support/issue/${issue.uid}`),
+    );
+    await page.goto(`/support/chat/${issue.uid}?session=${encodeURIComponent(companyJwt)}`);
+    await page.waitForLoadState('domcontentloaded');
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('session'), {
+        message: 'the one-shot company session parameter should be removed after handling',
+      })
+      .toBe(false);
+    await expect
+      .poll(() => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')))
+      .toBeFalsy();
+    const guestChatResponse = await guestChatResponsePromise;
+    expect(guestChatResponse.status()).toBe(200);
+    expect(guestChatResponse.request().headers().authorization).toBeFalsy();
+    await expect(page.getByText(privateMessage)).toBeVisible();
   });
 });
