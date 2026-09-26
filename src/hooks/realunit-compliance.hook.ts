@@ -70,6 +70,14 @@ export function useRealunitCompliance() {
     });
   }
 
+  async function setInsider(id: number, realUnitInsider: boolean): Promise<RealUnitCustomerDetailDto> {
+    return call<RealUnitCustomerDetailDto>({
+      url: `realunit/compliance/customers/${id}/insider`,
+      method: 'PUT',
+      data: { realUnitInsider },
+    });
+  }
+
   return useMemo(
     () => ({
       searchCustomers,
@@ -79,6 +87,7 @@ export function useRealunitCompliance() {
       screenCustomer,
       startNameCheckBatch,
       getNameCheckBatch,
+      setInsider,
     }),
     [call],
   );

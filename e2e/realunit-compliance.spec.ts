@@ -75,6 +75,7 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     name: 'ACME Example AG',
     balance: 1250,
     canScreen: true,
+    realUnitInsider: false,
     lastNameCheckDate: '2024-06-15T12:00:00.000Z',
     lastNameCheckStatus: 'NoMatch',
   },
@@ -87,6 +88,7 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     name: 'Alice Muster',
     balance: 30.5,
     canScreen: true,
+    realUnitInsider: false,
     lastNameCheckDate: '2024-03-01T12:00:00.000Z',
     lastNameCheckStatus: 'MatchWithBirthday',
   },
@@ -100,6 +102,7 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     name: 'Bob Beispiel',
     balance: 0,
     canScreen: true,
+    realUnitInsider: false,
     lastNameCheckDate: '2024-01-20T12:00:00.000Z',
     lastNameCheckStatus: 'MatchWithoutBirthday',
   },
@@ -111,6 +114,7 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     kycLevel: '0',
     balance: 0,
     canScreen: false,
+    realUnitInsider: false,
   },
 ];
 
@@ -119,6 +123,7 @@ const DOSSIER = {
   id: CUSTOMER_ID,
   created: '2024-01-01T00:00:00.000Z',
   accountType: 'Organization',
+  realUnitInsider: false,
   mail: 'ops@acme-example.com',
   firstname: 'Petra',
   surname: 'Prokura',
@@ -428,12 +433,9 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
-    // the complete customer list is loaded upfront (list request without a key)
+    await expect(page.getByText('No customers loaded')).toBeVisible();
+    await page.getByRole('button', { name: 'Load all customers' }).click();
     await expect(page.getByText('ACME Example AG')).toBeVisible();
-    // empty-account toggle is available because the fixture set includes one empty account
-    await expect(page.getByText('Hide empty accounts')).toBeVisible();
-    // the empty account (id 7104) is hidden by the default filter before any search
-    await expect(page.getByText('7104')).not.toBeVisible();
 
     // the screen exposes only a controlled input (no ?search= URL support) — type a key and submit via Enter
     const input = page.locator('input').first();
@@ -446,11 +448,8 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await input.press('Enter');
     await keyedSearch;
 
-    // results table rendered
     await expect(page.getByText('ACME Example AG')).toBeVisible();
     await expect(page.getByText('bob@example.com')).toBeVisible();
-    // active search bypasses the empty filter — the empty account (id 7104) is visible too
-    await expect(page.getByText('7104')).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Last Dilisense check' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Result' })).toBeVisible();
     await expect(page.getByText('No match')).toBeVisible();

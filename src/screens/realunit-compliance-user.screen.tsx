@@ -1,6 +1,7 @@
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { ConfirmDialog } from 'src/components/confirm-dialog';
 import { ErrorHint } from 'src/components/error-hint';
 import { InfoPanel, InfoRow, SupportMessageList } from 'src/components/support/info-panel';
 import { useSettingsContext } from 'src/contexts/settings.context';
@@ -71,11 +72,13 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
 
   const { id } = useParams();
   const { translate } = useSettingsContext();
-  const { getCustomer, downloadFile, downloadDossier } = useRealunitCompliance();
+  const { getCustomer, downloadFile, downloadDossier, setInsider } = useRealunitCompliance();
 
   const [customer, setCustomer] = useState<RealUnitCustomerDetailDto>();
   const [isLoading, setIsLoading] = useState(true);
   const [isDossierLoading, setIsDossierLoading] = useState(false);
+  const [pendingInsider, setPendingInsider] = useState<boolean>();
+  const [isInsiderSaving, setIsInsiderSaving] = useState(false);
   const [loadError, setLoadError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
 
@@ -134,6 +137,21 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
     }
   }, [id, downloadDossier]);
 
+  const handleSetInsider = useCallback(async (): Promise<void> => {
+    if (!id || pendingInsider == null || isInsiderSaving) return;
+    setIsInsiderSaving(true);
+    setActionError(undefined);
+    try {
+      const updated = await setInsider(+id, pendingInsider);
+      setCustomer(updated);
+      setPendingInsider(undefined);
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : 'Error updating insider');
+    } finally {
+      setIsInsiderSaving(false);
+    }
+  }, [id, pendingInsider, isInsiderSaving, setInsider]);
+
   if (loadError) return <ErrorHint message={loadError} />;
   if (isLoading || !customer) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
 
@@ -173,7 +191,16 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
       {actionError && <ErrorHint message={actionError} />}
 
       {/* Full dossier export (ZIP of all visible files; audit-logged api-side) */}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <button
+          className="px-3 py-1.5 text-sm font-medium bg-dfxBlue-400 text-white rounded hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
+          onClick={() => setPendingInsider(!customer.realUnitInsider)}
+          disabled={isInsiderSaving}
+        >
+          {customer.realUnitInsider
+            ? translate('screens/compliance', 'Remove insider mark')
+            : translate('screens/compliance', 'Mark as insider')}
+        </button>
         <button
           className="px-3 py-1.5 text-sm font-medium bg-white border border-dfxGray-400 text-dfxBlue-800 rounded hover:bg-dfxGray-300 transition-colors disabled:opacity-50"
           onClick={handleDossierDownload}
@@ -191,6 +218,14 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
           <InfoRow label="ID" value={String(customer.id)} mono />
           <InfoRow label="Created" value={formatDate(customer.created)} />
           <InfoRow label="Account Type" value={customer.accountType ?? '-'} />
+          <InfoRow
+            label={translate('screens/compliance', 'Insider')}
+            value={
+              customer.realUnitInsider
+                ? translate('screens/compliance', 'Internal shareholders (insider)')
+                : translate('screens/compliance', 'Not internal shareholders (normal)')
+            }
+          />
           <InfoRow label="Email" value={customer.mail ?? '-'} />
           <InfoRow label="First Name" value={customer.firstname ?? '-'} />
           <InfoRow label="Surname" value={customer.surname ?? '-'} />
@@ -467,6 +502,25 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={pendingInsider != null}
+        title={translate(
+          'screens/compliance',
+          pendingInsider ? 'Mark as insider' : 'Remove insider mark',
+        )}
+        message={translate(
+          'screens/compliance',
+          pendingInsider
+            ? 'Mark this shareholder as an insider? The 20 REALU referral prize will be withheld.'
+            : 'Remove the insider mark? The shareholder can receive the referral prize again.',
+        )}
+        isLoading={isInsiderSaving}
+        onConfirm={handleSetInsider}
+        onCancel={() => {
+          if (!isInsiderSaving) setPendingInsider(undefined);
+        }}
+      />
     </div>
   );
 }
