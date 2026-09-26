@@ -1,4 +1,4 @@
-import { ApiError, Utils, Validations } from '@dfx.swiss/react';
+import { ApiError, Utils, Validations, hasPaymentQuote } from '@dfx.swiss/react';
 import { Form, StyledButton, StyledButtonWidth, StyledInput, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -25,7 +25,7 @@ export default function PaymentLinkAssignScreen(): JSX.Element {
   useEffect(() => {
     if (!payRequest) {
       navigate('/');
-    } else if (payRequest.statusCode !== 400) {
+    } else if (hasPaymentQuote(payRequest) || payRequest.statusCode !== 400) {
       navigate('/pl');
     }
   }, [payRequest]);
