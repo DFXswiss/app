@@ -165,6 +165,7 @@ describe('RealunitComplianceScreen on-demand load and filters', () => {
     fireEvent.change(selects[1], { target: { value: 'insider' } });
     expect(screen.queryByText('Alice Muster')).not.toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
+    expect(screen.getByText(/Customers: 1 \/ 2/)).toBeInTheDocument();
   });
 
   it('filters to accounts without balance after an explicit load', async () => {
@@ -174,6 +175,17 @@ describe('RealunitComplianceScreen on-demand load and filters', () => {
     const selects = screen.getAllByRole('combobox');
     fireEvent.change(selects[0], { target: { value: 'without' } });
     expect(screen.queryByText('Alice Muster')).not.toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
+  });
+
+  it('ignores unknown values from the balance and insider selects', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
+    render(<RealunitComplianceScreen />);
+    await loadAll();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: 'nope' } });
+    fireEvent.change(selects[1], { target: { value: 'nope' } });
+    expect(screen.getByText('Alice Muster')).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
   });
 

@@ -66,7 +66,7 @@ interface RealUnitCustomerListDto {
   realUnitInsider: boolean;
 }
 
-// ~4 synthetic search results (one empty-balance insider exercises the on-demand filters).
+// ~4 synthetic search results (Bob is an empty-balance insider; 7104 has no name and is hidden by the empty filter).
 const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
   {
     id: 7101,
@@ -104,12 +104,12 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     name: 'Bob Beispiel',
     balance: 0,
     canScreen: true,
-    realUnitInsider: false,
+    realUnitInsider: true,
     lastNameCheckDate: '2024-01-20T12:00:00.000Z',
     lastNameCheckStatus: 'MatchWithoutBirthday',
   },
-  // intentionally no name/mail/accountType — the only empty account; hidden by the toggle in the default
-  // view, shown in search because an active search bypasses the filter
+  // intentionally no name/mail/accountType — the only unnamed empty account; hidden by the without-name
+  // empty-account rule, shown in search because an active search bypasses the filter
   {
     id: 7104,
     kycStatus: 'NA',
@@ -377,6 +377,7 @@ async function json(route: Route, body: unknown): Promise<void> {
 async function installComplianceRoutes(
   page: Page,
   batch: { status: string; total: number; done: number; failed: number; skipped: number } = IDLE_BATCH,
+  dossier: typeof DOSSIER = DOSSIER,
 ): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
@@ -388,10 +389,10 @@ async function installComplianceRoutes(
     }
     if (INSIDER_RE.test(url)) {
       const posted = request.postData() ? (request.postDataJSON() as { realUnitInsider?: boolean }) : undefined;
-      return json(route, { ...DOSSIER, realUnitInsider: posted?.realUnitInsider ?? DOSSIER.realUnitInsider });
+      return json(route, { ...dossier, realUnitInsider: posted?.realUnitInsider ?? dossier.realUnitInsider });
     }
     if (NAME_CHECK_BATCH_RE.test(url)) return json(route, batch);
-    if (DETAIL_RE.test(url)) return json(route, DOSSIER);
+    if (DETAIL_RE.test(url)) return json(route, dossier);
     if (SEARCH_RE.test(url)) return json(route, SEARCH_RESULTS);
 
     if (
@@ -547,6 +548,42 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await expect(page.getByText('Missing incoming transfer')).toBeVisible();
 
     await expect(page).toHaveScreenshot('realunit-compliance-02-dossier.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('Mark as insider opens the confirm dialog', async ({ page }) => {
+    await installComplianceRoutes(page);
+
+    await page.goto(`/realunit/compliance/user/${CUSTOMER_ID}?session=${encodeURIComponent(token)}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    await page.getByRole('button', { name: 'Mark as insider' }).click();
+    await expect(
+      page.getByText('Mark this shareholder as an insider? The 20 REALU referral prize will be withheld.'),
+    ).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page).toHaveScreenshot('realunit-compliance-06-insider-confirm.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('marked-insider dossier shows Remove insider mark', async ({ page }) => {
+    await installComplianceRoutes(page, IDLE_BATCH, { ...DOSSIER, realUnitInsider: true });
+
+    await page.goto(`/realunit/compliance/user/${CUSTOMER_ID}?session=${encodeURIComponent(token)}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    await expect(page.getByRole('button', { name: 'Remove insider mark' })).toBeVisible();
+    await expect(page.getByText('Internal shareholders (insider)')).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page).toHaveScreenshot('realunit-compliance-07-dossier-insider.png', {
       fullPage: true,
       maxDiffPixels: 5000,
     });
