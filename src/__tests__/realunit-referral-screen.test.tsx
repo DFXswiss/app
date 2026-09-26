@@ -1,5 +1,5 @@
-// Component tests for the RealUnit referral admin list screen: the held-for-review default filter,
-// the pending count, toggling to show all, row navigation, and the empty state. Heavy transitive
+// Component tests for the RealUnit referral admin list screen: every relation is shown by default,
+// the pending count, the held-for-review filter, row navigation, and the empty state. Heavy transitive
 // deps are mocked so the screen renders under @testing-library/react without the full app shell.
 
 jest.mock('@dfx.swiss/react', () => ({}));
@@ -116,11 +116,14 @@ describe('RealunitReferralScreen held-for-review filter', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/referral/1');
   });
 
-  it('shows the empty state when the filtered list is empty', async () => {
-    mockGetRelations.mockResolvedValue([APPROVED]); // only a non-pending row → filtered out by default
+  it('shows the empty state when the review filter hides every row', async () => {
+    mockGetRelations.mockResolvedValue([APPROVED]);
     render(<RealunitReferralScreen />);
+    await waitFor(() => expect(screen.getByText('PROMO9')).toBeInTheDocument());
 
-    await waitFor(() => expect(screen.getByText('No entries found')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox'));
+
+    expect(screen.getByText('No entries found')).toBeInTheDocument();
   });
 
   it('does not crash when the list load fails', async () => {
