@@ -9,7 +9,9 @@ This harness runs the full application in one pass: the frontend, a real API, an
 **Real**
 
 - Postgres — freshly created, ephemeral, and schema-built via TypeORM's `synchronize` from
-  the entities (not via the real migration chain — see below)
+  the entities (not via the real migration chain — see below). The data directory is the named
+  volume `e2e-db`, removed by `down -v`, because an anonymous volume is replaced when the
+  container is recreated.
 - The API
 - The frontend
 

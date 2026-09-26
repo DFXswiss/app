@@ -21,7 +21,7 @@ export default function RealunitReferralScreen(): JSX.Element {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
   // presentation-only default filter; the loaded list always stays complete
-  const [reviewOnly, setReviewOnly] = useState(true);
+  const [reviewOnly, setReviewOnly] = useState(false);
 
   useLayoutOptions({
     title: translate('screens/referral', 'RealUnit Referral'),

@@ -13,6 +13,7 @@ import {
   useAssetContext,
   useBuy,
   useFiat,
+  useFiatContext,
   useUserContext,
 } from '@dfx.swiss/react';
 import {
@@ -43,6 +44,7 @@ import { usePersonalIbanSelection } from '../hooks/personal-iban.hook';
 import { getKycErrorFromMessage } from '../util/api-error';
 import {
   deriveEffectivePersonalIbanProvider,
+  displayedFrickCurrencies,
   getPersonalIbanErrorMessage,
   getPersonalIbanKycMessage,
   getYapealAlternative,
@@ -52,6 +54,7 @@ import {
   isUnrecognizedPersonalIbanSelector,
   isVerifiedFrickPersonalIbanResponse,
   isVerifiedYapealPersonalIbanResponse,
+  personalIbanMismatchSentence,
 } from '../util/personal-iban';
 
 export default function BuyInfoScreen(): JSX.Element {
@@ -77,6 +80,7 @@ export default function BuyInfoScreen(): JSX.Element {
   const { getAsset } = useAsset();
   const { getCurrency } = useFiat();
   const { currencies, receiveFor } = useBuy();
+  const { currencies: fiatCurrencies } = useFiatContext();
   const { closeServices } = useAppHandlingContext();
   const { isInitialized: isWalletInitialized } = useWalletContext();
   const { scrollToTop } = useLayoutContext();
@@ -195,9 +199,13 @@ export default function BuyInfoScreen(): JSX.Element {
   const personalIbanSelector = activeSuppressPersonalIban
     ? undefined
     : requestedPersonalIban;
+  const activeFiatNames =
+    fiatCurrencies == null ? undefined : fiatCurrencies.map((fiatCurrency) => fiatCurrency.name);
+  const displayedFrickCurrencyList = displayedFrickCurrencies(activeFiatNames).join(', ');
   const isPersonalIbanEligible = isPersonalIbanApplicable(
     currency?.name,
     FiatPaymentMethod.BANK,
+    activeFiatNames,
   );
   // NOT a ?? default: kyc is only readable once `user` exists, so both conditions are spelled
   // out explicitly.
@@ -237,6 +245,7 @@ export default function BuyInfoScreen(): JSX.Element {
     kycAllowsFrick,
     automaticFrickSuppressed: activeAutomaticFrickSuppressed,
   });
+  const requestPersonalIbanProvider = isPersonalIbanEligible ? effectiveProvider : undefined;
 
   // default params
   useEffect(() => {
@@ -306,9 +315,6 @@ export default function BuyInfoScreen(): JSX.Element {
     setKycMessageOverride(undefined);
     setPaymentInfoState(undefined);
 
-    const requestPersonalIbanProvider = isPersonalIbanEligible
-      ? effectiveProvider
-      : undefined;
     // Feature-specific errors apply only to a request that actually carried the provider.
     // personalIbanSelector keeps the raw requested value even when ineligible or unrecognized;
     // effectivePersonalIban reflects an explicitly recognized Frick selector (subject to
@@ -317,12 +323,15 @@ export default function BuyInfoScreen(): JSX.Element {
     const personalIbanErrorApplies = requestPersonalIbanProvider !== undefined;
 
     if (isUnrecognizedPersonalIbanSelector(personalIbanSelector)) {
-      const personalIbanErrorText = getPersonalIbanErrorMessage('PersonalIbanProviderUnsupported');
+      const personalIbanErrorText = getPersonalIbanErrorMessage(
+        'PersonalIbanProviderUnsupported',
+        activeFiatNames,
+      );
       if (generation === quoteGeneration.current) {
         setPaymentInfoState(undefined);
         setErrorMessage(
           personalIbanErrorText
-            ? translate('screens/payment', personalIbanErrorText)
+            ? translate('screens/payment', personalIbanErrorText, { currencies: displayedFrickCurrencyList })
             : translate('screens/payment', 'The requested personal IBAN provider is not recognized.'),
         );
         setIsLoading(false);
@@ -400,10 +409,12 @@ export default function BuyInfoScreen(): JSX.Element {
           return;
         }
         const personalIbanErrorText = personalIbanErrorApplies
-          ? getPersonalIbanErrorMessage(error.message)
+          ? getPersonalIbanErrorMessage(error.message, activeFiatNames)
           : undefined;
         if (personalIbanErrorText) {
-          setErrorMessage(translate('screens/payment', personalIbanErrorText));
+          setErrorMessage(
+            translate('screens/payment', personalIbanErrorText, { currencies: displayedFrickCurrencyList }),
+          );
           if (error.message?.includes('PersonalIbanProviderNotAvailable') === true) {
             setPersonalIbanProviderUnavailable({
               value: true,
@@ -434,6 +445,7 @@ export default function BuyInfoScreen(): JSX.Element {
     amountOut,
     effectivePersonalIban,
     effectiveProvider,
+    requestPersonalIbanProvider,
     personalIbanSelector,
     shouldWaitForApplicableExplicitCustomer,
     shouldWaitForPersonalIbanRows,
@@ -553,8 +565,8 @@ export default function BuyInfoScreen(): JSX.Element {
     paymentInfo != null &&
     !activeContinueWithoutPersonalIban &&
     ((personalIbanSelector !== undefined &&
-      !isPersonalIbanApplicable(paymentInfo.currency.name, FiatPaymentMethod.BANK) &&
-      !isPersonalIbanApplicable(currency?.name, FiatPaymentMethod.BANK)) ||
+      !isPersonalIbanApplicable(paymentInfo.currency.name, FiatPaymentMethod.BANK, activeFiatNames) &&
+      !isPersonalIbanApplicable(currency?.name, FiatPaymentMethod.BANK, activeFiatNames)) ||
       personalIbanProviderVerificationFailed);
 
   const isUnrecognizedBlocked =
@@ -642,7 +654,8 @@ export default function BuyInfoScreen(): JSX.Element {
                 )
               : translate(
                   'screens/payment',
-                  'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.',
+                  personalIbanMismatchSentence(activeFiatNames),
+                  { currencies: displayedFrickCurrencyList },
                 )}
           </StyledInfoText>
           <StyledButton
@@ -683,11 +696,12 @@ export default function BuyInfoScreen(): JSX.Element {
             )}
 
             {effectivePersonalIban !== undefined &&
-              !isPersonalIbanApplicable(paymentInfo.currency.name, FiatPaymentMethod.BANK) && (
+              !isPersonalIbanApplicable(paymentInfo.currency.name, FiatPaymentMethod.BANK, activeFiatNames) && (
                 <StyledInfoText invertedIcon>
                   {translate(
                     'screens/payment',
-                    'Your requested personal IBAN is only available for EUR and CHF bank transfers, so it was not used for this offer.',
+                    personalIbanMismatchSentence(activeFiatNames),
+                    { currencies: displayedFrickCurrencyList },
                   )}
                 </StyledInfoText>
               )}
