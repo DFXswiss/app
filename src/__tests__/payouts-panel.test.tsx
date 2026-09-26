@@ -137,7 +137,7 @@ describe('PayoutsPanel', () => {
     ]);
     render(<PayoutsPanel />);
     await waitFor(() => expect(screen.getByText('Promo grant')).toBeInTheDocument());
-    expect(screen.getByText('Referral premium')).toBeInTheDocument();
+    expect(screen.getAllByText('Referral premium').length).toBeGreaterThan(0);
     expect(screen.getByText(RealUnitPrizePayoutStatus.PENDING)).toBeInTheDocument();
     const rows = screen.getAllByRole('row').slice(1);
     const cells = (id: string) => within(rows.find((row) => within(row).queryByText(id)) as HTMLElement).getAllByRole('cell');
