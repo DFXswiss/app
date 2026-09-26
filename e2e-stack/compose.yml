@@ -22,6 +22,10 @@ services:
       POSTGRES_USER: sa
       POSTGRES_PASSWORD: LocalDev2026
       POSTGRES_DB: dfx
+    # The image volume is anonymous and Compose replaces it on recreate, which drops the
+    # migrated schema; `down -v` still removes e2e-db.
+    volumes:
+      - e2e-db:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sa -d dfx"]
       interval: 5s
@@ -108,3 +112,6 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+
+volumes:
+  e2e-db:
