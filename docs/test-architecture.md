@@ -56,8 +56,14 @@ This layer arrived with #1288 and lives in `e2e-stack/`.
 
 Measured on the head of that pull request, `acb6814a`, in CI: 223 tests, of which 219 passed, 3 were
 skipped and 1 failed, in 9.6 minutes on a single worker. The failure was the route gate doing its job —
-the merge target had gained a route the registry did not claim yet. Re-measure after any change to the
-suite; the number of tests is not pinned anywhere.
+the merge target had gained a route the registry did not claim yet. Measured locally from commit
+`0d374873` on base `a40a65cb` with `E2E_API_IMAGE=dfx-api:e2e bash e2e-stack/scripts/run.sh`:
+267 tests, of which 260 passed, 3 were skipped, 2 did not run and 2 failed, in 11.8 minutes on a
+single worker. The failures were `/buyCrypto/update: Admin save updates buyId and shows Saved` and
+`/realunit/compliance list renders search UI and result count or empty copy`. Both also failed in a
+filtered run on the unchanged base `a40a65cb` with the same API image (4 setup tests passed, 2 browser
+tests failed), so neither failure requires this branch. Re-measure after any change to the suite; the
+number of tests is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every
 external provider through two independent mechanisms: the API mocks its own outbound calls, and the
@@ -284,6 +290,26 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixtures render. It does not prove that those bootstrap endpoints return real data,
   that a live account has that kyc status, or that `deleteAccount` persists against
   the API.
+- **The sell KycOnly bank-account visual spec answers POST /v1/bankAccount itself.**
+  `e2e/sell-bank-account-kyc-only.spec.ts` fulfils that POST with a `400` and
+  `You cannot add an IBAN to a KYC only account`, and fulfils the sell bootstrap
+  GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner`, `/v2/user`). Unmatched `/v1/**` and `/v2/**` calls get
+  `501`. The session is a synthetic unsigned JWT that carries an address, so the
+  address guard stays on `/sell` and `/sell/info`. The `/safe` cases additionally
+  mock a writable legacy custody account, an empty portfolio and order history.
+  A green run proves all three screens render the rejection and the wallet link
+  where applicable. It does not prove that the API emits the rejection, or that
+  a live account reaches the screen this way.
+  Two further cases fulfil the same POST with `Multi-account IBAN cannot be added`
+  and prove the support-ticket hint renders on all three screens. A green run does not prove the API
+  emits that sentence either.
+- **The sell KYC-only full-stack case writes `user_data.status` with SQL.**
+  `e2e-stack/specs/sell-swap.spec.ts` creates a wallet-backed user and then sets
+  `user_data.status` to `KycOnly`. A green run proves `/sell` and `/sell/info`
+  render the wallet hint for that row. It does not prove the product path that
+  leaves an account in `KycOnly`, and it does not prove the rejection for an
+  account that never had a wallet.
 - **The info-banner layout visual spec answers GET /v1/setting/infoBanner itself.**
   `e2e/info-banner-layout.spec.ts` fulfils `/v1/setting/infoBanner` with synthetic
   multilingual copy, fulfils `GET /v1/support/issue` with one fixture ticket, and

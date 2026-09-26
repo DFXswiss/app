@@ -135,6 +135,10 @@
     "title": "Info-Banner in der App",
     "description": "CMS-Info-Banner auf Support sitzt in der Inhaltsspalte unter dem Header, nicht als Streifen darüber. Varianten: Support-Startseite und Ticket-Liste."
   },
+  "sell-bank-account-kyc-only": {
+    "title": "Bankverbindung ohne Wallet (Verkauf)",
+    "description": "Hinweise bei abgelehnter IBAN aus einem Link auf Verkauf, Verkaufsbestätigung und Safe-Auszahlung. Varianten: Konto ohne Wallet (Deutsch und Englisch auf Verkauf, Deutsch auf Bestätigung und Safe-Auszahlung) sowie Multi-Account-IBAN (Deutsch auf allen drei Ansichten)."
+  },
   "settings-verification-call": {
     "title": "Verifizierungsanruf (Settings)",
     "description": "Settings-Sektion Verifizierungsanruf: ungesetzte Einwilligung (Platzhalter Auswählen), Ja mit bevorzugter Anrufzeit, und Nein ohne Zeitauswahl. Die Sektion ist der Ort, an dem Kundinnen den Anruf erlauben oder ablehnen."

@@ -34,7 +34,9 @@ import {
   StyledLoadingSpinner,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { BankAccountFailureKind, bankAccountFailureKind } from 'src/components/payment/bank-account-create-failure';
+import { BankAccountCreateHint } from 'src/components/payment/bank-account-create-hint';
 import { PaymentInformationContent } from 'src/components/payment/payment-info-sell';
 import { useWalletContext } from 'src/contexts/wallet.context';
 import { useCountdown } from 'src/hooks/countdown.hook';
@@ -75,16 +77,59 @@ export default function SellInfoScreen(): JSX.Element {
 
   const [isLoading, setIsLoading] = useState(true);
   const [paymentInfo, setPaymentInfo] = useState<Sell>();
+  const [quotedBankAccountId, setQuotedBankAccountId] = useState<number>();
   const [showsCompletion, setShowsCompletion] = useState(false);
   const [asset, setAsset] = useState<Asset>();
   const [currency, setCurrency] = useState<Fiat>();
   const [bankAccount, setBankAccount] = useState<BankAccount>();
-  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [customAmountError, setCustomAmountError] = useState<string>();
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [bankAccountFailure, setBankAccountFailure] = useState<Exclude<BankAccountFailureKind, 'other'>>();
   const [kycError, setKycError] = useState<TransactionError>();
   const [isProcessing, setIsProcessing] = useState(false);
   const [sellTxId, setSellTxId] = useState<string>();
+  const [bankAccountRetryGeneration, setBankAccountRetryGeneration] = useState(0);
+  const mountedRef = useRef(true);
+  const isCreatingAccountRef = useRef(false);
+  const bankAccountRequestGenerationRef = useRef(0);
+  const requestedCreateIbanRef = useRef<string>();
+  const latestBankAccountParamRef = useRef(bankAccountParam);
+  const previousBankAccountParamRef = useRef(bankAccountParam);
+  const quoteRequestGenerationRef = useRef(0);
+  const pendingSendRef = useRef(false);
+  const pendingSendAccountIdRef = useRef<number>();
+  const refreshAfterSendAccountIdRef = useRef<number>();
+  latestBankAccountParamRef.current = bankAccountParam;
+  const activeBankAccount =
+    bankAccount && getAccount([bankAccount], bankAccountParam)?.id === bankAccount.id ? bankAccount : undefined;
+  const quoteMatchesCurrentAccount = activeBankAccount && quotedBankAccountId === activeBankAccount.id;
+  const activePaymentInfo = quoteMatchesCurrentAccount ? paymentInfo : undefined;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (previousBankAccountParamRef.current === bankAccountParam) return;
+    previousBankAccountParamRef.current = bankAccountParam;
+    bankAccountRequestGenerationRef.current += 1;
+    quoteRequestGenerationRef.current += 1;
+    isCreatingAccountRef.current = false;
+    requestedCreateIbanRef.current = undefined;
+    setBankAccount(undefined);
+    setPaymentInfo(undefined);
+    setQuotedBankAccountId(undefined);
+    setShowsCompletion(false);
+    setSellTxId(undefined);
+    setIsProcessing(pendingSendRef.current);
+    setErrorMessage(undefined);
+    setBankAccountFailure(undefined);
+    setCustomAmountError(undefined);
+    setKycError(undefined);
+  }, [bankAccountParam]);
 
   // default params
   useEffect(() => {
@@ -102,32 +147,90 @@ export default function SellInfoScreen(): JSX.Element {
     if (bankAccountParam && bankAccounts !== undefined) {
       const account = getAccount(bankAccounts, bankAccountParam);
       if (account) {
+        bankAccountRequestGenerationRef.current += 1;
+        isCreatingAccountRef.current = false;
+        requestedCreateIbanRef.current = undefined;
+        setErrorMessage(undefined);
+        setBankAccountFailure(undefined);
         setBankAccount(account);
-      } else if (!isCreatingAccount) {
+      } else if (!isCreatingAccountRef.current && requestedCreateIbanRef.current !== bankAccountParam) {
         const ibanIsValid = Validations.Iban(allowedCountries).validate(bankAccountParam);
         if (ibanIsValid !== true) {
+          setBankAccountFailure(undefined);
           setErrorMessage(`Invalid IBAN: ${ibanIsValid}`);
           return;
         }
 
-        setIsCreatingAccount(true);
+        const requestGeneration = ++bankAccountRequestGenerationRef.current;
+        isCreatingAccountRef.current = true;
+        requestedCreateIbanRef.current = bankAccountParam;
+        setErrorMessage(undefined);
         createAccount({ iban: bankAccountParam })
-          .then(setBankAccount)
-          .catch((error) => setErrorMessage(`Failed to create bank account: ${error.message}`))
-          .finally(() => setIsCreatingAccount(false));
+          .then((account) => {
+            if (
+              !mountedRef.current ||
+              bankAccountRequestGenerationRef.current !== requestGeneration ||
+              latestBankAccountParamRef.current !== bankAccountParam
+            )
+              return;
+            setErrorMessage(undefined);
+            setBankAccountFailure(undefined);
+            setBankAccount(account);
+          })
+          .catch((error: ApiError) => {
+            if (
+              !mountedRef.current ||
+              bankAccountRequestGenerationRef.current !== requestGeneration ||
+              latestBankAccountParamRef.current !== bankAccountParam
+            )
+              return;
+
+            const kind = bankAccountFailureKind(error);
+            if (kind === 'other') {
+              setBankAccountFailure(undefined);
+              setErrorMessage(translate('screens/sell', 'The bank account could not be added.'));
+              return;
+            }
+            setErrorMessage(undefined);
+            setBankAccountFailure(kind);
+          })
+          .finally(() => {
+            if (mountedRef.current && bankAccountRequestGenerationRef.current === requestGeneration) {
+              isCreatingAccountRef.current = false;
+              setBankAccountRetryGeneration((generation) => generation + 1);
+            }
+          });
       }
     }
-  }, [bankAccountParam, getAccount, bankAccounts, allowedCountries]);
+  }, [
+    bankAccountParam,
+    getAccount,
+    bankAccounts,
+    allowedCountries,
+    createAccount,
+    translate,
+    bankAccountRetryGeneration,
+  ]);
 
   useEffect(() => {
-    if (!paymentInfo || isLoading) return;
-    const priceTimestamp = new Date(paymentInfo.timestamp);
+    if (!activePaymentInfo || isLoading) return;
+    const polledQuoteId = activePaymentInfo.id;
+    const polledParam = bankAccountParam;
+    const polledGeneration = quoteRequestGenerationRef.current;
+    let cancelled = false;
+    const isCurrent = () =>
+      !cancelled &&
+      mountedRef.current &&
+      quoteRequestGenerationRef.current === polledGeneration &&
+      latestBankAccountParamRef.current === polledParam;
+    const priceTimestamp = new Date(activePaymentInfo.timestamp);
     const expiration = priceTimestamp.setMinutes(priceTimestamp.getMinutes() + 15);
     startTimer(new Date(expiration));
 
     const checkTransactionInterval = setInterval(() => {
-      getTransactionByRequestId(paymentInfo.id)
+      getTransactionByRequestId(polledQuoteId)
         .then((tx) => {
+          if (!isCurrent()) return;
           setSellTxId(tx.inputTxId);
           setShowsCompletion(true);
           clearInterval(checkTransactionInterval);
@@ -138,18 +241,30 @@ export default function SellInfoScreen(): JSX.Element {
     }, 5000);
 
     return () => {
+      cancelled = true;
       clearInterval(checkTransactionInterval);
     };
-  }, [paymentInfo, isLoading]);
+  }, [activePaymentInfo, isLoading, bankAccountParam]);
 
   useEffect(() => {
     if (remainingSeconds <= 1) fetchData();
   }, [remainingSeconds]);
 
-  useEffect(() => fetchData(), [asset, currency, bankAccount, amountIn, amountOut]);
+  useEffect(() => {
+    if (isProcessing || refreshAfterSendAccountIdRef.current === undefined || !activeBankAccount) return;
+    const shouldRefresh = refreshAfterSendAccountIdRef.current === activeBankAccount.id && !showsCompletion;
+    refreshAfterSendAccountIdRef.current = undefined;
+    if (shouldRefresh) fetchData();
+  }, [isProcessing, activeBankAccount, showsCompletion]);
+
+  useEffect(() => fetchData(), [asset, currency, activeBankAccount, amountIn, amountOut]);
 
   function fetchData() {
-    if (!(asset && currency && bankAccount && (amountIn || amountOut))) {
+    if (activeBankAccount && pendingSendRef.current && activeBankAccount.id === pendingSendAccountIdRef.current) {
+      refreshAfterSendAccountIdRef.current = activeBankAccount.id;
+      return;
+    }
+    if (!(asset && currency && activeBankAccount && (amountIn || amountOut))) {
       const inputIsComplete = (amountIn || amountOut) && assetIn && assetOut && bankAccountParam;
       !inputIsComplete && setErrorMessage('Missing required information');
       return;
@@ -160,25 +275,62 @@ export default function SellInfoScreen(): JSX.Element {
     const request: SellPaymentInfo = {
       asset,
       currency,
-      iban: bankAccount?.iban,
+      iban: activeBankAccount.iban,
       externalTransactionId,
       exactPrice: true,
     };
     if (amountIn) {
       request.amount = +amountIn;
-    } else if (amountOut) {
-      request.targetAmount = +amountOut;
+    } else {
+      // The guard above returns unless amountIn or amountOut is set, so amountOut holds here.
+      request.targetAmount = +(amountOut as string);
     }
 
+    const requestGeneration = ++quoteRequestGenerationRef.current;
+    const requestedParam = bankAccountParam;
     setIsLoading(true);
+    setIsProcessing(pendingSendRef.current);
     receiveFor(request)
-      .then(validateSell)
-      .then(setPaymentInfo)
+      .then((sell) =>
+        quoteRequestGenerationRef.current === requestGeneration && latestBankAccountParamRef.current === requestedParam
+          ? validateSell(sell)
+          : undefined,
+      )
+      .then((sell) => {
+        if (
+          quoteRequestGenerationRef.current !== requestGeneration ||
+          latestBankAccountParamRef.current !== requestedParam
+        )
+          return;
+        setQuotedBankAccountId(activeBankAccount.id);
+        setPaymentInfo(sell);
+      })
       .catch((error: ApiError) => {
+        if (
+          quoteRequestGenerationRef.current !== requestGeneration ||
+          latestBankAccountParamRef.current !== requestedParam
+        )
+          return;
         setPaymentInfo(undefined);
+        setQuotedBankAccountId(undefined);
         setErrorMessage(error.message ?? 'Unknown error');
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (quoteRequestGenerationRef.current === requestGeneration) setIsLoading(false);
+      });
+  }
+
+  function handleRetry() {
+    if (bankAccountParam && !bankAccount) {
+      bankAccountRequestGenerationRef.current += 1;
+      isCreatingAccountRef.current = false;
+      requestedCreateIbanRef.current = undefined;
+      setErrorMessage(undefined);
+      setBankAccountRetryGeneration((generation) => generation + 1);
+      return;
+    }
+
+    fetchData();
   }
 
   function validateSell(sell: Sell): Sell | undefined {
@@ -225,6 +377,19 @@ export default function SellInfoScreen(): JSX.Element {
   }
 
   async function handleNext(paymentInfo: Sell): Promise<void> {
+    if (
+      pendingSendRef.current ||
+      !activeBankAccount ||
+      activePaymentInfo !== paymentInfo ||
+      latestBankAccountParamRef.current !== bankAccountParam
+    )
+      return;
+    const actionGeneration = quoteRequestGenerationRef.current;
+    const actionParam = bankAccountParam;
+    const isCurrent = () =>
+      mountedRef.current &&
+      quoteRequestGenerationRef.current === actionGeneration &&
+      latestBankAccountParamRef.current === actionParam;
     setIsProcessing(true);
 
     if (canSendTransaction() && !activeWallet) {
@@ -233,10 +398,18 @@ export default function SellInfoScreen(): JSX.Element {
     }
 
     try {
-      if (canSendTransaction()) await sendTransaction(paymentInfo).then(setSellTxId);
+      if (canSendTransaction()) {
+        pendingSendRef.current = true;
+        pendingSendAccountIdRef.current = activeBankAccount.id;
+        const txId = await sendTransaction(paymentInfo);
+        if (!isCurrent()) return;
+        setSellTxId(txId);
+      }
       setShowsCompletion(true);
     } finally {
-      setIsProcessing(false);
+      pendingSendRef.current = false;
+      pendingSendAccountIdRef.current = undefined;
+      if (mountedRef.current) setIsProcessing(false);
     }
   }
 
@@ -252,8 +425,10 @@ export default function SellInfoScreen(): JSX.Element {
 
   return (
     <>
-      {showsCompletion && paymentInfo ? (
-        <SellCompletion paymentInfo={paymentInfo} navigateOnClose={false} txId={sellTxId} />
+      {showsCompletion && activePaymentInfo ? (
+        <SellCompletion paymentInfo={activePaymentInfo} navigateOnClose={false} txId={sellTxId} />
+      ) : bankAccountFailure ? (
+        <BankAccountCreateHint kind={bankAccountFailure} />
       ) : errorMessage ? (
         <StyledVerticalStack center className="text-center">
           <ErrorHint message={errorMessage} />
@@ -261,14 +436,12 @@ export default function SellInfoScreen(): JSX.Element {
           <StyledButton
             width={StyledButtonWidth.MIN}
             label={translate('general/actions', 'Retry')}
-            onClick={fetchData}
+            onClick={handleRetry}
             className="mt-4"
             color={StyledButtonColor.STURDY_WHITE}
           />
         </StyledVerticalStack>
-      ) : !paymentInfo ? (
-        <StyledLoadingSpinner size={SpinnerSize.LG} />
-      ) : customAmountError ? (
+      ) : quoteMatchesCurrentAccount && customAmountError ? (
         <>
           <StyledInfoText invertedIcon>{customAmountError}</StyledInfoText>
           <StyledButton
@@ -277,11 +450,13 @@ export default function SellInfoScreen(): JSX.Element {
             onClick={() => closeServices({ type: CloseType.CANCEL }, false)}
           />
         </>
-      ) : kycError ? (
+      ) : quoteMatchesCurrentAccount && kycError ? (
         <QuoteErrorHint type={TransactionType.SELL} error={kycError} />
+      ) : !activePaymentInfo ? (
+        <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : (
-        bankAccount &&
-        paymentInfo && (
+        activeBankAccount &&
+        activePaymentInfo && (
           <>
             <StyledVerticalStack gap={8} full>
               <StyledVerticalStack gap={1} full>
@@ -292,7 +467,7 @@ export default function SellInfoScreen(): JSX.Element {
                   minWidth={false}
                 >
                   <StyledDataTableRow label={translate('screens/payment', 'Amount')} isLoading={isLoading}>
-                    {`${paymentInfo.estimatedAmount.toFixed(2)} ${paymentInfo.currency.name}`}
+                    {`${activePaymentInfo.estimatedAmount.toFixed(2)} ${activePaymentInfo.currency.name}`}
                   </StyledDataTableRow>
                   <StyledDataTableRow
                     label={`${translate('screens/payment', 'Beneficiary bank account')} (${translate(
@@ -300,11 +475,11 @@ export default function SellInfoScreen(): JSX.Element {
                       'IBAN',
                     )})`}
                   >
-                    {Utils.formatIban(paymentInfo.beneficiary.iban)}
+                    {Utils.formatIban(activePaymentInfo.beneficiary.iban)}
                   </StyledDataTableRow>
-                  {paymentInfo.beneficiary.name && (
+                  {activePaymentInfo.beneficiary.name && (
                     <StyledDataTableRow label={translate('screens/payment', 'Beneficiary name')}>
-                      {paymentInfo.beneficiary.name}
+                      {activePaymentInfo.beneficiary.name}
                     </StyledDataTableRow>
                   )}
                 </StyledDataTable>
@@ -318,9 +493,9 @@ export default function SellInfoScreen(): JSX.Element {
                     'screens/payment',
                     'The exchange rate of {{rate}} {{currency}}/{{asset}} is fixed for {{timer}}, after which it will be recalculated.',
                     {
-                      rate: Utils.formatAmount(1 / paymentInfo.rate),
-                      currency: paymentInfo.currency.name,
-                      asset: paymentInfo.asset.name,
+                      rate: Utils.formatAmount(1 / activePaymentInfo.rate),
+                      currency: activePaymentInfo.currency.name,
+                      asset: activePaymentInfo.asset.name,
                       timer: `${timer.minutes}m ${timer.seconds}s`,
                     },
                   )}
@@ -329,8 +504,8 @@ export default function SellInfoScreen(): JSX.Element {
 
               {!isLoading ? (
                 <PaymentInformationContent
-                  info={paymentInfo}
-                  infoText={getPaymentInfoString(paymentInfo, bankAccount)}
+                  info={activePaymentInfo}
+                  infoText={getPaymentInfoString(activePaymentInfo, activeBankAccount)}
                   showAmount={true}
                 />
               ) : (
@@ -359,7 +534,7 @@ export default function SellInfoScreen(): JSX.Element {
                     <StyledButton
                       width={StyledButtonWidth.FULL}
                       label={translate('screens/sell', 'Complete transaction in your wallet')}
-                      onClick={() => handleNext(paymentInfo)}
+                      onClick={() => handleNext(activePaymentInfo)}
                       caps={false}
                       className="mt-4"
                       isLoading={isProcessing}
