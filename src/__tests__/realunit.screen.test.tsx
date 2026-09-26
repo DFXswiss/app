@@ -47,6 +47,10 @@ jest.mock('src/contexts/realunit.context', () => ({
   useRealunitContext: () => mockContext,
 }));
 
+jest.mock('src/components/realunit/payouts-panel', () => ({
+  PayoutsPanel: () => <div data-testid="payouts-panel" />,
+}));
+
 jest.mock('src/util/utils', () => ({
   blankedAddress: (address: string) => address,
   formatSwissDateTimeWithSeconds: (value: string) => value,
@@ -138,9 +142,10 @@ describe('RealunitScreen', () => {
     setContext();
   });
 
-  it('calls the realunit guard on render', () => {
+  it('calls the realunit guard on render and shows referral and bonus payouts', () => {
     renderScreen();
     expect(mockUseRealunitGuard).toHaveBeenCalledWith();
+    expect(screen.getByTestId('payouts-panel')).toBeInTheDocument();
   });
 
   it('shows a large spinner when holders and tokenInfo are empty', () => {

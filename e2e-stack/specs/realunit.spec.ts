@@ -190,7 +190,15 @@ test.describe('RealUnit area', () => {
 
     await openScreen(page, '/realunit/treasury', jwt);
     await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Prize payouts' })).toBeVisible();
+    const payouts = page.getByTestId('payouts-panel');
+    await expect(
+      payouts.getByText('No prize payouts found').or(payouts.getByRole('columnheader', { name: 'Referrer' })),
+    ).toBeVisible();
     await expect(page.getByRole('link', { name: 'Treasury' })).toHaveAttribute('aria-current', 'page');
+
+    await page.getByRole('link', { name: 'RealUnit Referral' }).click();
+    await expect(page.getByRole('checkbox', { name: /Held for review only/ })).not.toBeChecked();
 
     await page.getByRole('link', { name: 'Insights' }).click();
     await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();

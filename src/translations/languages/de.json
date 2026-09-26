@@ -1273,6 +1273,8 @@
     "Status": "Status",
     "Customer ID": "Kunden-ID",
     "Wallet": "Wallet",
+    "Referrer": "Empfehler",
+    "Guest": "Eingeladene",
     "Amount": "Anzahl",
     "CHF": "CHF",
     "Tx hash": "Tx-Hash",
