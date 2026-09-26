@@ -141,6 +141,19 @@ describe('useRealunitCompliance', () => {
     expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/compliance/customers', method: 'GET' });
   });
 
+  it('sets insider on the customer dossier', async () => {
+    mockCall.mockResolvedValue({ id: 9, realUnitInsider: true });
+    const { result } = renderHook(() => useRealunitCompliance());
+
+    await result.current.setInsider(9, true);
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'realunit/compliance/customers/9/insider',
+      method: 'PUT',
+      data: { realUnitInsider: true },
+    });
+  });
+
   it('hits the reduced dossier and download endpoints', async () => {
     const { result } = renderHook(() => useRealunitCompliance());
 

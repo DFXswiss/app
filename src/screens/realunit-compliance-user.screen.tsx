@@ -1,6 +1,7 @@
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { ConfirmDialog } from 'src/components/confirm-dialog';
 import { ErrorHint } from 'src/components/error-hint';
 import { InfoPanel, InfoRow, SupportMessageList } from 'src/components/support/info-panel';
 import { useSettingsContext } from 'src/contexts/settings.context';
@@ -71,13 +72,16 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
 
   const { id } = useParams();
   const { translate } = useSettingsContext();
-  const { getCustomer, downloadFile, downloadDossier } = useRealunitCompliance();
+  const { getCustomer, downloadFile, downloadDossier, setInsider } = useRealunitCompliance();
 
   const [customer, setCustomer] = useState<RealUnitCustomerDetailDto>();
   const [isLoading, setIsLoading] = useState(true);
   const [isDossierLoading, setIsDossierLoading] = useState(false);
+  const [pendingInsider, setPendingInsider] = useState<boolean>();
+  const [isInsiderSaving, setIsInsiderSaving] = useState(false);
   const [loadError, setLoadError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
+  const loadGenerationRef = useRef(0);
 
   useLayoutOptions({
     title: translate('screens/compliance', 'RealUnit Customer'),
@@ -88,11 +92,29 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
 
   useEffect(() => {
     if (!id) return;
+    const generation = ++loadGenerationRef.current;
+    setCustomer(undefined);
+    setLoadError(undefined);
+    setPendingInsider(undefined);
+    setActionError(undefined);
+    setIsInsiderSaving(false);
     setIsLoading(true);
     getCustomer(+id)
-      .then(setCustomer)
-      .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
+      .then((data) => {
+        if (generation !== loadGenerationRef.current) return;
+        setCustomer(data);
+      })
+      .catch((e: Error) => {
+        if (generation !== loadGenerationRef.current) return;
+        setLoadError(e.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (generation !== loadGenerationRef.current) return;
+        setIsLoading(false);
+      });
+    return () => {
+      loadGenerationRef.current++;
+    };
   }, [id, getCustomer]);
 
   const handleDownload = useCallback(
@@ -134,6 +156,26 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
     }
   }, [id, downloadDossier]);
 
+  const handleSetInsider = useCallback(async (): Promise<void> => {
+    if (!id || pendingInsider == null || isInsiderSaving) return;
+    const generation = loadGenerationRef.current;
+    const accountId = +id;
+    const next = pendingInsider;
+    setIsInsiderSaving(true);
+    setActionError(undefined);
+    try {
+      const updated = await setInsider(accountId, next);
+      if (generation !== loadGenerationRef.current) return;
+      setCustomer(updated);
+      setPendingInsider(undefined);
+    } catch (e: unknown) {
+      if (generation !== loadGenerationRef.current) return;
+      setActionError(e instanceof Error ? e.message : 'Error updating insider');
+    } finally {
+      if (generation === loadGenerationRef.current) setIsInsiderSaving(false);
+    }
+  }, [id, pendingInsider, isInsiderSaving, setInsider]);
+
   if (loadError) return <ErrorHint message={loadError} />;
   if (isLoading || !customer) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
 
@@ -173,7 +215,16 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
       {actionError && <ErrorHint message={actionError} />}
 
       {/* Full dossier export (ZIP of all visible files; audit-logged api-side) */}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <button
+          className="px-3 py-1.5 text-sm font-medium bg-dfxBlue-400 text-white rounded hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
+          onClick={() => setPendingInsider(!customer.realUnitInsider)}
+          disabled={isInsiderSaving}
+        >
+          {customer.realUnitInsider
+            ? translate('screens/compliance', 'Remove insider mark')
+            : translate('screens/compliance', 'Mark as insider')}
+        </button>
         <button
           className="px-3 py-1.5 text-sm font-medium bg-white border border-dfxGray-400 text-dfxBlue-800 rounded hover:bg-dfxGray-300 transition-colors disabled:opacity-50"
           onClick={handleDossierDownload}
@@ -191,6 +242,14 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
           <InfoRow label="ID" value={String(customer.id)} mono />
           <InfoRow label="Created" value={formatDate(customer.created)} />
           <InfoRow label="Account Type" value={customer.accountType ?? '-'} />
+          <InfoRow
+            label={translate('screens/compliance', 'Insider')}
+            value={
+              customer.realUnitInsider
+                ? translate('screens/compliance', 'Internal shareholders (insider)')
+                : translate('screens/compliance', 'Not internal shareholders (normal)')
+            }
+          />
           <InfoRow label="Email" value={customer.mail ?? '-'} />
           <InfoRow label="First Name" value={customer.firstname ?? '-'} />
           <InfoRow label="Surname" value={customer.surname ?? '-'} />
@@ -467,6 +526,25 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={pendingInsider != null}
+        title={translate(
+          'screens/compliance',
+          pendingInsider ? 'Mark as insider' : 'Remove insider mark',
+        )}
+        message={translate(
+          'screens/compliance',
+          pendingInsider
+            ? 'Mark this shareholder as an insider? The 20 REALU referral prize will be withheld.'
+            : 'Remove the insider mark? The shareholder can receive the referral prize again.',
+        )}
+        isLoading={isInsiderSaving}
+        onConfirm={handleSetInsider}
+        onCancel={() => {
+          if (!isInsiderSaving) setPendingInsider(undefined);
+        }}
+      />
     </div>
   );
 }

@@ -93,7 +93,7 @@
   },
   "realunit-compliance": {
     "title": "RealUnit Compliance",
-    "description": "RealUnit-Compliance: Kundensuche mit letztem Dilisense-Datum und -Ergebnis, Screen pro Zeile und Screen all (jeweils mit Kosten-Bestätigung), laufender Batch mit Fortschritt, und reduziertes Kundendossier."
+    "description": "RealUnit-Compliance: Kundenliste erst nach Load all oder Suche, Filter nach Balance und Insider, Screen pro Zeile und Screen all (jeweils mit Kosten-Bestätigung), laufender Batch mit Fortschritt, reduziertes Kundendossier mit Mark-as-insider-Bestätigung und markiertem Insider."
   },
   "realunit-support": {
     "title": "RealUnit Support",

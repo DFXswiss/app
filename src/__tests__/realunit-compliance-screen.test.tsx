@@ -1,6 +1,6 @@
-// Component tests for the RealUnit compliance customer list screen: default empty-account filter,
-// toggle, search bypass, empty-state messages, and Dilisense name-check actions. Heavy transitive deps
-// are mocked so the screen can render under @testing-library/react without the full app shell.
+// Component tests for the RealUnit compliance customer list screen: on-demand load, balance and
+// insider filters, search bypass, empty-state messages, and Dilisense name-check actions. Heavy
+// transitive deps are mocked so the screen can render under @testing-library/react without the full app shell.
 
 jest.mock('@dfx.swiss/react', () => ({}));
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -80,6 +80,7 @@ const FULL = {
   mail: 'a@b.ch',
   balance: 3,
   canScreen: true,
+  realUnitInsider: false,
   lastNameCheckDate: '2024-06-15T12:00:00.000Z',
   lastNameCheckStatus: 'NoMatch' as const,
 };
@@ -90,111 +91,132 @@ const EMPTY = {
   kycLevel: '0',
   balance: 0,
   canScreen: false,
+  realUnitInsider: true,
 };
 
-describe('RealunitComplianceScreen empty-account filter', () => {
+async function loadAll(): Promise<void> {
+  fireEvent.click(screen.getByRole('button', { name: 'Load all customers' }));
+  await waitFor(() => {
+    expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+  });
+}
+
+describe('RealunitComplianceScreen on-demand load and filters', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetNameCheckBatch.mockResolvedValue(IDLE_BATCH);
   });
 
-  it('filters empty accounts in the default view and shows the toggle with the empty count', async () => {
+  it('does not load customers on open', async () => {
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(mockGetNameCheckBatch).toHaveBeenCalled();
+    });
+    expect(mockSearchCustomers).not.toHaveBeenCalled();
+    expect(screen.getByText(/No customers loaded/)).toBeInTheDocument();
+  });
+
+  it('shows empty list copy on mount', async () => {
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(
+        screen.getByText('No customers loaded. Search for a name or load all customers.'),
+      ).toBeInTheDocument();
+    });
+    expect(mockSearchCustomers).not.toHaveBeenCalled();
+  });
+
+  it('shows filter-hidden copy when every loaded row is filtered out', async () => {
     mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
     render(<RealunitComplianceScreen />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
-
-    expect(screen.queryByRole('cell', { name: '2' })).not.toBeInTheDocument();
-    expect(screen.getByText(/Customers/)).toHaveTextContent('Customers: 2');
-    expect(screen.getByText(/Hide empty accounts/)).toHaveTextContent('Hide empty accounts (1)');
+    await loadAll();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: 'with' } });
+    fireEvent.change(selects[1], { target: { value: 'insider' } });
+    expect(screen.getByText('All accounts are hidden by the filter above')).toBeInTheDocument();
   });
 
-  it('shows empty accounts when the hide toggle is turned off', async () => {
-    mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
-    render(<RealunitComplianceScreen />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
-
-    const checkbox = screen.getByRole('checkbox');
-    fireEvent.click(checkbox);
-
-    expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
-    expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-  });
-
-  it('bypasses the filter when a search is active and hides the toggle', async () => {
-    mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
-    render(<RealunitComplianceScreen />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
-
-    const input = screen.getByPlaceholderText('Search by ID, email, phone or name...');
-    fireEvent.change(input, { target: { value: 'x' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    await waitFor(() => {
-      expect(mockSearchCustomers).toHaveBeenCalledWith('x');
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-      expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText(/Hide empty accounts/)).not.toBeInTheDocument();
-  });
-
-  it('shows a dedicated message when every account is hidden by the filter', async () => {
-    mockSearchCustomers.mockResolvedValue([EMPTY]);
-    render(<RealunitComplianceScreen />);
-
-    await waitFor(() => {
-      expect(screen.getByText('All accounts are hidden by the filter above')).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText('No entries found')).not.toBeInTheDocument();
-  });
-
-  it('shows the generic empty message and no toggle when the list is empty', async () => {
+  it('shows No entries found when Load all returns an empty list', async () => {
     mockSearchCustomers.mockResolvedValue([]);
     render(<RealunitComplianceScreen />);
-
+    fireEvent.click(screen.getByRole('button', { name: 'Load all customers' }));
     await waitFor(() => {
       expect(screen.getByText('No entries found')).toBeInTheDocument();
     });
-
-    expect(screen.queryByText(/Hide empty accounts/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('No customers loaded. Search for a name or load all customers.'),
+    ).not.toBeInTheDocument();
   });
 
-  it('re-engages the filter when the search is cleared', async () => {
+  it('loads the complete list only after Load all customers', async () => {
     mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
     render(<RealunitComplianceScreen />);
+    await loadAll();
+    expect(mockSearchCustomers).toHaveBeenCalledWith(undefined);
+    expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
+  });
 
+  it('filters to insiders after an explicit load', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
+    render(<RealunitComplianceScreen />);
+    await loadAll();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'insider' } });
+    expect(screen.queryByText('Alice Muster')).not.toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
+    expect(screen.getByText(/Customers: 1 \/ 2/)).toBeInTheDocument();
+  });
+
+  it('filters to accounts without balance after an explicit load', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
+    render(<RealunitComplianceScreen />);
+    await loadAll();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: 'without' } });
+    expect(screen.queryByText('Alice Muster')).not.toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
+  });
+
+  it('ignores unknown values from the balance and insider selects', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
+    render(<RealunitComplianceScreen />);
+    await loadAll();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: 'nope' } });
+    fireEvent.change(selects[1], { target: { value: 'nope' } });
+    expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
+  });
+
+  it('bypasses filters while a search is active and hides the selects', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
+    render(<RealunitComplianceScreen />);
+    await loadAll();
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'insider' } });
+    expect(screen.queryByText('Alice Muster')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Search by ID, email, phone or name...'), {
+      target: { value: 'Alice' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     await waitFor(() => {
+      expect(mockSearchCustomers).toHaveBeenCalledWith('Alice');
       expect(screen.getByText('Alice Muster')).toBeInTheDocument();
     });
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+  });
 
+  it('searches only when a key is present', async () => {
+    mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
+    render(<RealunitComplianceScreen />);
     const input = screen.getByPlaceholderText('Search by ID, email, phone or name...');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(mockSearchCustomers).not.toHaveBeenCalled();
     fireEvent.change(input, { target: { value: 'x' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-
     await waitFor(() => {
-      expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
-    });
-
-    fireEvent.change(input, { target: { value: '' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    await waitFor(() => {
-      expect(mockSearchCustomers).toHaveBeenLastCalledWith(undefined);
-      expect(screen.queryByRole('cell', { name: '2' })).not.toBeInTheDocument();
-      expect(screen.getByText(/Hide empty accounts/)).toHaveTextContent('Hide empty accounts (1)');
+      expect(mockSearchCustomers).toHaveBeenCalledWith('x');
     });
   });
 });
@@ -208,12 +230,9 @@ describe('RealunitComplianceScreen name-check', () => {
   it('does not navigate when the Screen button is clicked', async () => {
     mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
     render(<RealunitComplianceScreen />);
+    await loadAll();
 
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
+    fireEvent.click(screen.getAllByRole('button', { name: /^Screen$/ })[0]);
 
     expect(mockNavigate).not.toHaveBeenCalled();
   });
@@ -221,10 +240,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('opens a confirm dialog when Screen all is clicked', async () => {
     mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
     render(<RealunitComplianceScreen />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
 
@@ -236,12 +252,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('disables Screen when canScreen is false', async () => {
     mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
     render(<RealunitComplianceScreen />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('checkbox'));
+    await loadAll();
 
     const emptyRow = screen.getByRole('cell', { name: '2' }).closest('tr');
     if (emptyRow == null) throw new Error('expected empty-account row');
@@ -253,10 +264,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('renders the last Dilisense check date and translated status', async () => {
     mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
     render(<RealunitComplianceScreen />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     expect(screen.getByText('Last Dilisense check')).toBeInTheDocument();
     expect(screen.getByText('Result')).toBeInTheDocument();
@@ -267,27 +275,24 @@ describe('RealunitComplianceScreen name-check', () => {
   it('renders Match without Birthday and open vs evaluated Match with Birthday', async () => {
     mockSearchCustomers.mockResolvedValue([{ ...FULL, lastNameCheckStatus: 'MatchWithoutBirthday' as const }]);
     const { unmount } = render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Match without Birthday')).toBeInTheDocument();
-    });
+    await loadAll();
+    expect(screen.getByText('Match without Birthday')).toBeInTheDocument();
     unmount();
 
     mockSearchCustomers.mockResolvedValue([
       { ...FULL, lastNameCheckStatus: 'MatchWithBirthday' as const, lastNameCheckEvaluation: undefined },
     ]);
     const second = render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Match with Birthday (Open)')).toBeInTheDocument();
-    });
+    await loadAll();
+    expect(screen.getByText('Match with Birthday (Open)')).toBeInTheDocument();
     second.unmount();
 
     mockSearchCustomers.mockResolvedValue([
       { ...FULL, lastNameCheckStatus: 'MatchWithBirthday' as const, lastNameCheckEvaluation: 'Ignored' as const },
     ]);
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Match with Birthday')).toBeInTheDocument();
-    });
+    await loadAll();
+    expect(screen.getByText('Match with Birthday')).toBeInTheDocument();
     expect(screen.queryByText('Match with Birthday (Open)')).not.toBeInTheDocument();
   });
 
@@ -299,9 +304,7 @@ describe('RealunitComplianceScreen name-check', () => {
       date: '2024-06-16T12:00:00.000Z',
     });
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -316,7 +319,6 @@ describe('RealunitComplianceScreen name-check', () => {
     jest.useFakeTimers();
     let resolveSearch: (value: (typeof FULL)[]) => void = () => undefined;
     mockSearchCustomers
-      .mockResolvedValueOnce([FULL])
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
@@ -357,7 +359,6 @@ describe('RealunitComplianceScreen name-check', () => {
     jest.useFakeTimers();
     let rejectSearch: (reason: Error) => void = () => undefined;
     mockSearchCustomers
-      .mockResolvedValueOnce([FULL])
       .mockImplementationOnce(
         () =>
           new Promise((_, reject) => {
@@ -404,9 +405,7 @@ describe('RealunitComplianceScreen name-check', () => {
       .mockResolvedValue({ status: 'Completed', total: 1, done: 1, failed: 0, skipped: 0 });
 
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -431,6 +430,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('shows an error when the customer list fails to load', async () => {
     mockSearchCustomers.mockRejectedValue(new Error('list down'));
     render(<RealunitComplianceScreen />);
+    fireEvent.click(screen.getByRole('button', { name: 'Load all customers' }));
 
     await waitFor(() => {
       expect(screen.getByText('list down')).toBeInTheDocument();
@@ -445,17 +445,16 @@ describe('RealunitComplianceScreen name-check', () => {
     await waitFor(() => {
       expect(screen.getByText('batch down')).toBeInTheDocument();
     });
-    expect(screen.getByRole('button', { name: /^Screen$/ })).toBeDisabled();
+    expect(screen.getByText(/No customers loaded/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Screen all' })).toBeDisabled();
+    expect(mockSearchCustomers).not.toHaveBeenCalled();
   });
 
   it('shows an error when a row screen fails', async () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockScreenCustomer.mockRejectedValue(new Error('dilisense down'));
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -469,9 +468,7 @@ describe('RealunitComplianceScreen name-check', () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockScreenCustomer.mockRejectedValueOnce(new Error('dilisense down')).mockResolvedValue(undefined);
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -489,9 +486,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('closes the confirm dialog on Cancel', async () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
     expect(
@@ -517,9 +512,51 @@ describe('RealunitComplianceScreen name-check', () => {
 
     jest.advanceTimersByTime(2000);
     await waitFor(() => {
-      expect(mockSearchCustomers.mock.calls.length).toBeGreaterThan(1);
+      expect(mockGetNameCheckBatch.mock.calls.length).toBeGreaterThan(1);
     });
+    expect(mockSearchCustomers).not.toHaveBeenCalled();
+    expect(screen.getByText(/No customers loaded/)).toBeInTheDocument();
     jest.useRealTimers();
+  });
+
+  it('does not GET customers when a mount poll completes, then reloads after an explicit load', async () => {
+    jest.useFakeTimers();
+    mockSearchCustomers.mockResolvedValue([FULL]);
+    mockGetNameCheckBatch
+      .mockResolvedValueOnce({ status: 'Running', total: 3, done: 1, failed: 0, skipped: 0 })
+      .mockResolvedValueOnce({ status: 'Completed', total: 3, done: 3, failed: 0, skipped: 0 })
+      .mockResolvedValue(IDLE_BATCH);
+    mockStartNameCheckBatch.mockResolvedValue({
+      status: 'Completed',
+      total: 0,
+      done: 0,
+      failed: 0,
+      skipped: 1,
+    });
+
+    render(<RealunitComplianceScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Screening {{done}} / {{total}}' })).toBeDisabled();
+    });
+    expect(screen.getByText(/No customers loaded/)).toBeInTheDocument();
+
+    jest.advanceTimersByTime(2000);
+    await waitFor(() => {
+      expect(mockGetNameCheckBatch.mock.calls.length).toBeGreaterThan(1);
+    });
+    expect(mockSearchCustomers).not.toHaveBeenCalled();
+    expect(screen.getByText(/No customers loaded/)).toBeInTheDocument();
+
+    jest.useRealTimers();
+    await loadAll();
+    expect(mockSearchCustomers).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      expect(mockStartNameCheckBatch).toHaveBeenCalled();
+      expect(mockSearchCustomers).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('keeps screening locked when polling errors', async () => {
@@ -552,9 +589,7 @@ describe('RealunitComplianceScreen name-check', () => {
         }),
     );
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -570,9 +605,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('navigates to the customer dossier when a row is clicked', async () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByText('Alice Muster'));
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/compliance/user/1');
@@ -588,9 +621,7 @@ describe('RealunitComplianceScreen name-check', () => {
       skipped: 1,
     });
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -605,9 +636,7 @@ describe('RealunitComplianceScreen name-check', () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockStartNameCheckBatch.mockRejectedValue(new Error('quota'));
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -630,9 +659,7 @@ describe('RealunitComplianceScreen name-check', () => {
       },
     ]);
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     const row = screen.getByText('Alice Muster').closest('tr');
     if (row == null) throw new Error('expected customer row');
@@ -642,9 +669,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('does not navigate when the Screen cell is clicked outside the button', async () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     const cell = screen.getByRole('button', { name: /^Screen$/ }).closest('td');
     if (cell == null) throw new Error('expected Screen cell');
@@ -655,6 +680,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('shows Unknown error when a list load fails without a message', async () => {
     mockSearchCustomers.mockRejectedValue({ message: undefined });
     render(<RealunitComplianceScreen />);
+    fireEvent.click(screen.getByRole('button', { name: 'Load all customers' }));
 
     await waitFor(() => {
       expect(screen.getByText('Unknown error')).toBeInTheDocument();
@@ -671,9 +697,7 @@ describe('RealunitComplianceScreen name-check', () => {
         }),
     );
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -700,9 +724,7 @@ describe('RealunitComplianceScreen name-check', () => {
         }),
     );
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
 
     fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -728,9 +750,7 @@ describe('RealunitComplianceScreen name-check', () => {
         }),
     );
     const { unmount } = render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
     fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     unmount();
@@ -747,9 +767,7 @@ describe('RealunitComplianceScreen name-check', () => {
         }),
     );
     const { unmount } = render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
     fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     unmount();
@@ -768,7 +786,7 @@ describe('RealunitComplianceScreen name-check', () => {
     );
     const { unmount } = render(<RealunitComplianceScreen />);
     await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Screen all' })).toBeEnabled();
     });
     fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -838,6 +856,7 @@ describe('RealunitComplianceScreen name-check', () => {
         }),
     );
     render(<RealunitComplianceScreen />);
+    fireEvent.click(screen.getByRole('button', { name: 'Load all customers' }));
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '…' })).toBeDisabled();
     });
@@ -852,9 +871,7 @@ describe('RealunitComplianceScreen name-check', () => {
   it('does not search when a non-Enter key is pressed', async () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
     const input = screen.getByPlaceholderText('Search by ID, email, phone or name...');
     fireEvent.change(input, { target: { value: 'x' } });
     fireEvent.keyDown(input, { key: 'a' });
@@ -891,9 +908,7 @@ describe('RealunitComplianceScreen name-check', () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockScreenCustomer.mockRejectedValue({});
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
     fireEvent.click(screen.getByRole('button', { name: /^Screen$/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
@@ -905,9 +920,7 @@ describe('RealunitComplianceScreen name-check', () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockStartNameCheckBatch.mockRejectedValue({});
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
     fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
@@ -948,8 +961,9 @@ describe('RealunitComplianceScreen name-check', () => {
     );
     const { unmount } = render(<RealunitComplianceScreen />);
     await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+      expect(screen.getByText(/No customers loaded/)).toBeInTheDocument();
     });
+    expect(mockSearchCustomers).not.toHaveBeenCalled();
     unmount();
     resolveBatch({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 });
   });
@@ -966,7 +980,7 @@ describe('RealunitComplianceScreen name-check', () => {
     );
     const { unmount } = render(<RealunitComplianceScreen />);
     await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Screen all' })).toBeEnabled();
     });
     fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -978,9 +992,7 @@ describe('RealunitComplianceScreen name-check', () => {
     mockSearchCustomers.mockResolvedValue([FULL]);
     mockGetNameCheckBatch.mockImplementation(() => new Promise(() => undefined));
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
     expect(screen.getByRole('button', { name: /^Screen$/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Screen all' })).toBeDisabled();
   });
@@ -999,7 +1011,7 @@ describe('RealunitComplianceScreen name-check', () => {
     await waitFor(() => {
       expect(screen.getByText('quota')).toBeInTheDocument();
     });
-    expect(mockSearchCustomers).toHaveBeenCalledTimes(1);
+    expect(mockSearchCustomers).not.toHaveBeenCalled();
   });
 
   it('shows a failed Screen-all response without treating it as success', async () => {
@@ -1013,9 +1025,7 @@ describe('RealunitComplianceScreen name-check', () => {
       error: 'quota',
     });
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
     fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
@@ -1037,9 +1047,7 @@ describe('RealunitComplianceScreen name-check', () => {
       })
       .mockResolvedValue({ status: 'Running', total: 1, done: 0, failed: 0, skipped: 0 });
     render(<RealunitComplianceScreen />);
-    await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
-    });
+    await loadAll();
     fireEvent.click(screen.getByRole('button', { name: 'Screen all' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
@@ -1083,8 +1091,9 @@ describe('RealunitComplianceScreen name-check', () => {
     );
     const { unmount } = render(<RealunitComplianceScreen />);
     await waitFor(() => {
-      expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+      expect(screen.getByText(/No customers loaded/)).toBeInTheDocument();
     });
+    expect(mockSearchCustomers).not.toHaveBeenCalled();
     unmount();
     rejectBatch(new Error('late batch'));
   });

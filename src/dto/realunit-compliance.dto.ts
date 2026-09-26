@@ -111,6 +111,7 @@ export interface RealUnitCustomerListDto {
   lastNameCheckStatus?: 'NoMatch' | 'MatchWithoutBirthday' | 'MatchWithBirthday';
   lastNameCheckEvaluation?: 'Confirmed' | 'Ignored' | 'NotMatching' | 'Canceled';
   canScreen: boolean;
+  realUnitInsider: boolean;
 }
 
 export interface RealUnitNameCheckBatchDto {
@@ -253,6 +254,7 @@ export interface RealUnitCustomerDetailDto {
   kycType?: string;
   highRisk?: boolean;
   pep?: boolean;
+  realUnitInsider: boolean;
 
   // current REALU holdings (share count, summed over all wallet addresses); undefined = could not be resolved
   balance?: number;

@@ -18,8 +18,9 @@ import { test, expect, Page, Route } from '@playwright/test';
  * test fills the input and presses Enter (the screen's onKeyDown handler runs handleSearch).
  *
  * Intercepted endpoints (base `/v1/` is prepended by useApi):
- *   - GET  realunit/compliance/customers[?key=...] (upfront list / search → RealUnitCustomerListDto[])
+ *   - GET  realunit/compliance/customers[?key=...] (on-demand load via Load all or keyed Search → RealUnitCustomerListDto[])
  *   - GET  realunit/compliance/customers/:id        (dossier → RealUnitCustomerDetailDto)
+ *   - PUT  realunit/compliance/customers/:id/insider (mark / unmark insider)
  *   - GET  realunit/compliance/name-check           (batch status)
  *   - POST realunit/compliance/name-check           (start batch)
  *   - POST realunit/compliance/customers/:id/name-check
@@ -62,9 +63,10 @@ interface RealUnitCustomerListDto {
   lastNameCheckStatus?: 'NoMatch' | 'MatchWithoutBirthday' | 'MatchWithBirthday';
   lastNameCheckEvaluation?: 'Confirmed' | 'Ignored' | 'NotMatching' | 'Canceled';
   canScreen: boolean;
+  realUnitInsider: boolean;
 }
 
-// ~4 synthetic search results (one empty account exercises the default hide-empty toggle).
+// ~4 synthetic search results (Bob is an empty-balance insider; 7104 has no name and is hidden by the empty filter).
 const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
   {
     id: 7101,
@@ -75,6 +77,7 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     name: 'ACME Example AG',
     balance: 1250,
     canScreen: true,
+    realUnitInsider: false,
     lastNameCheckDate: '2024-06-15T12:00:00.000Z',
     lastNameCheckStatus: 'NoMatch',
   },
@@ -87,6 +90,7 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     name: 'Alice Muster',
     balance: 30.5,
     canScreen: true,
+    realUnitInsider: false,
     lastNameCheckDate: '2024-03-01T12:00:00.000Z',
     lastNameCheckStatus: 'MatchWithBirthday',
   },
@@ -100,17 +104,18 @@ const SEARCH_RESULTS: RealUnitCustomerListDto[] = [
     name: 'Bob Beispiel',
     balance: 0,
     canScreen: true,
+    realUnitInsider: true,
     lastNameCheckDate: '2024-01-20T12:00:00.000Z',
     lastNameCheckStatus: 'MatchWithoutBirthday',
   },
-  // intentionally no name/mail/accountType — the only empty account; hidden by the toggle in the default
-  // view, shown in search because an active search bypasses the filter
+  // unnamed empty-balance row — still in Load all when the default filters are All; search also returns it
   {
     id: 7104,
     kycStatus: 'NA',
     kycLevel: '0',
     balance: 0,
     canScreen: false,
+    realUnitInsider: false,
   },
 ];
 
@@ -119,6 +124,7 @@ const DOSSIER = {
   id: CUSTOMER_ID,
   created: '2024-01-01T00:00:00.000Z',
   accountType: 'Organization',
+  realUnitInsider: false,
   mail: 'ops@acme-example.com',
   firstname: 'Petra',
   surname: 'Prokura',
@@ -355,6 +361,7 @@ const DOSSIER = {
 
 const DETAIL_RE = /\/v1\/realunit\/compliance\/customers\/(\d+)(?:\?|$)/;
 const SEARCH_RE = /\/v1\/realunit\/compliance\/customers(?:\?|$)/;
+const INSIDER_RE = /\/v1\/realunit\/compliance\/customers\/\d+\/insider(?:\?|$)/;
 const NAME_CHECK_BATCH_RE = /\/v1\/realunit\/compliance\/name-check(?:\?|$)/;
 const NAME_CHECK_CUSTOMER_RE = /\/v1\/realunit\/compliance\/customers\/\d+\/name-check(?:\?|$)/;
 
@@ -369,6 +376,7 @@ async function json(route: Route, body: unknown): Promise<void> {
 async function installComplianceRoutes(
   page: Page,
   batch: { status: string; total: number; done: number; failed: number; skipped: number } = IDLE_BATCH,
+  dossier: typeof DOSSIER = DOSSIER,
 ): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
@@ -378,8 +386,12 @@ async function installComplianceRoutes(
     if (NAME_CHECK_CUSTOMER_RE.test(url)) {
       return json(route, { id: CUSTOMER_ID, riskStatus: 'NoMatch', date: '2024-06-15T12:00:00.000Z' });
     }
+    if (INSIDER_RE.test(url)) {
+      const posted = request.postData() ? (request.postDataJSON() as { realUnitInsider?: boolean }) : undefined;
+      return json(route, { ...dossier, realUnitInsider: posted?.realUnitInsider ?? dossier.realUnitInsider });
+    }
     if (NAME_CHECK_BATCH_RE.test(url)) return json(route, batch);
-    if (DETAIL_RE.test(url)) return json(route, DOSSIER);
+    if (DETAIL_RE.test(url)) return json(route, dossier);
     if (SEARCH_RE.test(url)) return json(route, SEARCH_RESULTS);
 
     if (
@@ -428,29 +440,26 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
-    // the complete customer list is loaded upfront (list request without a key)
+    await expect(page.getByText('No customers loaded')).toBeVisible();
+    await page.getByRole('button', { name: 'Load all customers' }).click();
     await expect(page.getByText('ACME Example AG')).toBeVisible();
-    // empty-account toggle is available because the fixture set includes one empty account
-    await expect(page.getByText('Hide empty accounts')).toBeVisible();
-    // the empty account (id 7104) is hidden by the default filter before any search
-    await expect(page.getByText('7104')).not.toBeVisible();
 
     // the screen exposes only a controlled input (no ?search= URL support) — type a key and submit via Enter
     const input = page.locator('input').first();
     await expect(input).toBeVisible();
     await input.fill('example');
     // Enter must actually issue the keyed search request. Without this wait the assertions below would also pass on
-    // the upfront-loaded list alone (the mock serves the same fixture for both requests), so a broken onKeyDown →
+    // the Load-all list alone (the mock serves the same fixture for both requests), so a broken onKeyDown →
     // handleSearch → loadCustomers(key) wiring would still go green.
     const keyedSearch = page.waitForRequest((req) => /\/realunit\/compliance\/customers\?key=example/.test(req.url()));
     await input.press('Enter');
     await keyedSearch;
 
-    // results table rendered
     await expect(page.getByText('ACME Example AG')).toBeVisible();
     await expect(page.getByText('bob@example.com')).toBeVisible();
-    // active search bypasses the empty filter — the empty account (id 7104) is visible too
-    await expect(page.getByText('7104')).toBeVisible();
+    await expect(
+      page.getByRole('row', { name: /Bob Beispiel/ }).getByText('Internal shareholders (insider)', { exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Last Dilisense check' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Result' })).toBeVisible();
     await expect(page.getByText('No match')).toBeVisible();
@@ -472,6 +481,7 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
+    await page.getByRole('button', { name: 'Load all customers' }).click();
     await expect(page.getByText('ACME Example AG')).toBeVisible();
     await page.getByRole('button', { name: 'Screen', exact: true }).first().click();
     await expect(
@@ -510,6 +520,8 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
 
+    await page.getByRole('button', { name: 'Load all customers' }).click();
+    await expect(page.getByText('ACME Example AG')).toBeVisible();
     await expect(page.getByRole('button', { name: /Screening 1 \/ 3/ })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Screen', exact: true }).first()).toBeDisabled();
     await page.waitForTimeout(500);
@@ -538,6 +550,42 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await expect(page.getByText('Missing incoming transfer')).toBeVisible();
 
     await expect(page).toHaveScreenshot('realunit-compliance-02-dossier.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('Mark as insider opens the confirm dialog', async ({ page }) => {
+    await installComplianceRoutes(page);
+
+    await page.goto(`/realunit/compliance/user/${CUSTOMER_ID}?session=${encodeURIComponent(token)}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    await page.getByRole('button', { name: 'Mark as insider' }).click();
+    await expect(
+      page.getByText('Mark this shareholder as an insider? The 20 REALU referral prize will be withheld.'),
+    ).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page).toHaveScreenshot('realunit-compliance-06-insider-confirm.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('marked-insider dossier shows Remove insider mark', async ({ page }) => {
+    await installComplianceRoutes(page, IDLE_BATCH, { ...DOSSIER, realUnitInsider: true });
+
+    await page.goto(`/realunit/compliance/user/${CUSTOMER_ID}?session=${encodeURIComponent(token)}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    await expect(page.getByRole('button', { name: 'Remove insider mark' })).toBeVisible();
+    await expect(page.getByText('Internal shareholders (insider)')).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page).toHaveScreenshot('realunit-compliance-07-dossier-insider.png', {
       fullPage: true,
       maxDiffPixels: 5000,
     });

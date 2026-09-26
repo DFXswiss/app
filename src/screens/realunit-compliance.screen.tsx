@@ -9,7 +9,13 @@ import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { useRealunitCompliance } from 'src/hooks/realunit-compliance.hook';
 import { formatDate } from 'src/util/compliance-helpers';
-import { isEmptyAccount } from 'src/util/realunit-customer-filter';
+import {
+  BalanceFilter,
+  filterCustomers,
+  InsiderFilter,
+  isBalanceFilter,
+  isInsiderFilter,
+} from 'src/util/realunit-customer-filter';
 
 type PendingConfirm = { type: 'row'; id: number } | { type: 'all' };
 
@@ -24,14 +30,14 @@ export default function RealunitComplianceScreen(): JSX.Element {
   const [results, setResults] = useState<RealUnitCustomerListDto[]>();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
-  // presentation-only default filter; the loaded list always stays complete (see realunit-customer-filter)
-  const [hideEmpty, setHideEmpty] = useState(true);
-  // whether the current results were loaded with a search key (searchKey is just the live input value)
+  const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>('all');
+  const [insiderFilter, setInsiderFilter] = useState<InsiderFilter>('all');
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [batch, setBatch] = useState<RealUnitNameCheckBatchDto>();
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm>();
   const [isConfirming, setIsConfirming] = useState(false);
   const lastSearchKeyRef = useRef<string | undefined>();
+  const listRequestedRef = useRef(false);
   const listLoadGenerationRef = useRef(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
   const pollInFlightRef = useRef(false);
@@ -53,6 +59,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
 
   function loadCustomers(key?: string): void {
     const generation = ++listLoadGenerationRef.current;
+    listRequestedRef.current = true;
     lastSearchKeyRef.current = key;
     setIsLoading(true);
     setError(undefined);
@@ -102,15 +109,12 @@ export default function RealunitComplianceScreen(): JSX.Element {
       setError(status.error ?? 'Unknown error');
       return;
     }
-    if (reload && status.status !== 'Running') loadCustomers(lastSearchKeyRef.current);
+    if (reload && status.status !== 'Running' && listRequestedRef.current) loadCustomers(lastSearchKeyRef.current);
   }
 
-  // Load the complete customer list upfront; a search key narrows it down, an empty search returns to the
-  // unsearched view. The hide-empty toggle state deliberately persists across searches (user choice wins);
-  // "re-engaged" only means the search bypass ends. One GET of the name-check batch on mount; poll while running.
+  // Do not load customers on open. One GET of the name-check batch on mount; poll while running.
   useEffect(() => {
     const generation = pollGenerationRef.current;
-    loadCustomers();
     getNameCheckBatch()
       .then((status) => {
         if (generation !== pollGenerationRef.current) return;
@@ -128,7 +132,13 @@ export default function RealunitComplianceScreen(): JSX.Element {
   }, []);
 
   function handleSearch(): void {
-    loadCustomers(searchKey.trim() || undefined);
+    const key = searchKey.trim();
+    if (!key) return;
+    loadCustomers(key);
+  }
+
+  function handleLoadAll(): void {
+    loadCustomers();
   }
 
   function handleConfirmScreen(): void {
@@ -189,16 +199,12 @@ export default function RealunitComplianceScreen(): JSX.Element {
     }
   }
 
-  // An active search always shows every match: whoever searches for a specific customer must find them,
-  // hidden rows included (that blind spot is exactly what this screen once suffered from). Filtering never
-  // reorders: rows keep their API position.
   const displayedResults = useMemo(
-    () => results && (isSearchActive || !hideEmpty ? results : results.filter((c) => !isEmptyAccount(c))),
-    [results, isSearchActive, hideEmpty],
+    () => results && (isSearchActive ? results : filterCustomers(results, balanceFilter, insiderFilter)),
+    [results, isSearchActive, balanceFilter, insiderFilter],
   );
 
   const hiddenCount = results && displayedResults ? results.length - displayedResults.length : 0;
-  const emptyCount = useMemo(() => (results ?? []).filter(isEmptyAccount).length, [results]);
   const isBatchRunning = batch?.status === 'Running';
   const screeningLocked = batch == null || isBatchRunning || isConfirming;
 
@@ -218,9 +224,16 @@ export default function RealunitComplianceScreen(): JSX.Element {
           <button
             className="px-4 py-1.5 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
             onClick={handleSearch}
-            disabled={isLoading || isConfirming}
+            disabled={isLoading || isConfirming || !searchKey.trim()}
           >
             {isLoading ? '…' : translate('general/actions', 'Search')}
+          </button>
+          <button
+            className="px-4 py-1.5 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50 whitespace-nowrap"
+            onClick={handleLoadAll}
+            disabled={isLoading || isConfirming}
+          >
+            {translate('screens/compliance', 'Load all customers')}
           </button>
           <button
             className="px-4 py-1.5 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50 whitespace-nowrap"
@@ -240,16 +253,49 @@ export default function RealunitComplianceScreen(): JSX.Element {
 
       {isLoading && <StyledLoadingSpinner size={SpinnerSize.LG} />}
 
+      {!results && !isLoading && (
+        <p className="p-4 text-sm text-dfxGray-700 bg-white rounded-lg shadow-sm">
+          {translate('screens/compliance', 'No customers loaded. Search for a name or load all customers.')}
+        </p>
+      )}
+
       {results && !isLoading && (
-        <div className="bg-white rounded-lg shadow-sm p-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-dfxBlue-800">
+        <div className="bg-white rounded-lg shadow-sm p-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-dfxBlue-800">
           <span className="font-semibold">
-            {translate('screens/compliance', 'Customers')}: {results.length}
+            {translate('screens/compliance', 'Customers')}: {displayedResults?.length ?? 0}
+            {hiddenCount > 0 ? ` / ${results.length}` : ''}
           </span>
-          {!isSearchActive && emptyCount > 0 && (
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
-              {translate('screens/compliance', 'Hide empty accounts')} ({emptyCount})
-            </label>
+          {!isSearchActive && (
+            <>
+              <label className="flex items-center gap-1.5">
+                {translate('screens/compliance', 'Balance')}
+                <select
+                  className="px-2 py-1 border border-dfxGray-400 rounded bg-white"
+                  value={balanceFilter}
+                  onChange={(e) => {
+                    if (isBalanceFilter(e.target.value)) setBalanceFilter(e.target.value);
+                  }}
+                >
+                  <option value="all">{translate('screens/compliance', 'All')}</option>
+                  <option value="with">{translate('screens/compliance', 'With balance')}</option>
+                  <option value="without">{translate('screens/compliance', 'Without balance')}</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5">
+                {translate('screens/compliance', 'Shareholders')}
+                <select
+                  className="px-2 py-1 border border-dfxGray-400 rounded bg-white"
+                  value={insiderFilter}
+                  onChange={(e) => {
+                    if (isInsiderFilter(e.target.value)) setInsiderFilter(e.target.value);
+                  }}
+                >
+                  <option value="all">{translate('screens/compliance', 'All')}</option>
+                  <option value="insider">{translate('screens/compliance', 'Internal shareholders (insider)')}</option>
+                  <option value="normal">{translate('screens/compliance', 'Not internal shareholders (normal)')}</option>
+                </select>
+              </label>
+            </>
           )}
         </div>
       )}
@@ -286,6 +332,9 @@ export default function RealunitComplianceScreen(): JSX.Element {
                     {translate('screens/compliance', 'Balance (REALU)')}
                   </th>
                   <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
+                    {translate('screens/compliance', 'Insider')}
+                  </th>
+                  <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
                     {translate('screens/compliance', 'Last Dilisense check')}
                   </th>
                   <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
@@ -309,6 +358,11 @@ export default function RealunitComplianceScreen(): JSX.Element {
                     <td className="px-3 py-2 text-dfxBlue-800 group-hover:text-white">{u.kycLevel ?? '-'}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-dfxBlue-800 group-hover:text-white">
                       {u.balance != null ? u.balance.toLocaleString('de-CH') : '-'}
+                    </td>
+                    <td className="px-3 py-2 text-dfxBlue-800 group-hover:text-white">
+                      {u.realUnitInsider
+                        ? translate('screens/compliance', 'Internal shareholders (insider)')
+                        : translate('screens/compliance', 'Not internal shareholders (normal)')}
                     </td>
                     <td className="px-3 py-2 text-dfxBlue-800 group-hover:text-white">
                       {u.lastNameCheckDate ? formatDate(u.lastNameCheckDate) : '-'}
