@@ -110,6 +110,7 @@ const DashboardFinancialLiveScreen = lazy(() => import('./screens/dashboard-fina
 const DashboardFinancialExpensesScreen = lazy(() => import('./screens/dashboard-financial-expenses.screen'));
 const DashboardFinancialLiquidityScreen = lazy(() => import('./screens/dashboard-financial-liquidity.screen'));
 const DashboardFinancialLogValidityScreen = lazy(() => import('./screens/dashboard-financial-log-validity.screen'));
+const DashboardFinancialKundengelderScreen = lazy(() => import('./screens/dashboard-financial-kundengelder.screen'));
 const SitemapScreen = lazy(() => import('./screens/sitemap.screen'));
 
 setupLanguages();
@@ -631,6 +632,10 @@ export const Routes = [
               {
                 path: 'log-validity',
                 element: withSuspense(<DashboardFinancialLogValidityScreen />),
+              },
+              {
+                path: 'kundengelder',
+                element: withSuspense(<DashboardFinancialKundengelderScreen />),
               },
             ],
           },

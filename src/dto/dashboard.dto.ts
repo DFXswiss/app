@@ -67,3 +67,52 @@ export interface LatestBalanceResponse {
   byType: BalanceByGroup[];
   byBlockchain: BalanceByGroup[];
 }
+
+export interface KundengelderLine {
+  key: string;
+  label: string;
+  currency: string;
+  amount: number;
+  amountChf: number;
+  count: number;
+}
+
+export interface KundengelderAccount {
+  key: string; // IBAN or CheckoutLtdCHF | CheckoutLtdEUR | CryptoCrypto
+  name: string;
+  iban?: string;
+  currency: string;
+  lines: KundengelderLine[];
+}
+
+export interface KundengelderDiff {
+  key: string; // e.g. `${iban}|BuyCrypto after Fee` or with `|CHF`/`|EUR` suffix for Revolut
+  live: number;
+  booked: number;
+  delta: number;
+}
+
+export interface KundengelderExtract {
+  year: number;
+  eurRate: number;
+  accounts: KundengelderAccount[];
+  diffs: KundengelderDiff[];
+}
+
+export interface KundengelderTx {
+  id: number;
+  bookingDate?: string; // JSON date
+  type: string;
+  currency?: string;
+  amount?: number;
+  afterFee?: number;
+  instructionId?: string;
+  accountServiceRef?: string;
+}
+
+export interface KundengelderTxList {
+  year: number;
+  accountKey: string;
+  line: string;
+  rows: KundengelderTx[];
+}

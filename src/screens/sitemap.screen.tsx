@@ -133,6 +133,7 @@ const sections: PageSection[] = [
       { path: '/dashboard/financial/history/expenses', label: 'Expenses' },
       { path: '/dashboard/financial/liquidity', label: 'Liquidity' },
       { path: '/dashboard/financial/log-validity', label: 'Log Validity' },
+      { path: '/dashboard/financial/kundengelder', label: 'Kundengelder' },
     ],
   },
   {
