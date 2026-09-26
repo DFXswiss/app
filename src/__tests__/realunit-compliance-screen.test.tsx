@@ -136,6 +136,18 @@ describe('RealunitComplianceScreen empty-account filter', () => {
     expect(screen.getByText('All accounts are hidden by the filter above')).toBeInTheDocument();
   });
 
+  it('shows No entries found when Load all returns an empty list', async () => {
+    mockSearchCustomers.mockResolvedValue([]);
+    render(<RealunitComplianceScreen />);
+    fireEvent.click(screen.getByRole('button', { name: 'Load all customers' }));
+    await waitFor(() => {
+      expect(screen.getByText('No entries found')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText('No customers loaded. Search for a name or load all customers.'),
+    ).not.toBeInTheDocument();
+  });
+
   it('loads the complete list only after Load all customers', async () => {
     mockSearchCustomers.mockResolvedValue([FULL, EMPTY]);
     render(<RealunitComplianceScreen />);

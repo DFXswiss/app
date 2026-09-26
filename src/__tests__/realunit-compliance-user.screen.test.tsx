@@ -6,7 +6,9 @@ jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', LG: 'lg' },
   StyledLoadingSpinner: () => null,
 }));
-jest.mock('src/components/error-hint', () => ({ ErrorHint: () => null }));
+jest.mock('src/components/error-hint', () => ({
+  ErrorHint: ({ message }: { message: string }) => <div>{message}</div>,
+}));
 jest.mock('src/components/confirm-dialog', () => ({
   ConfirmDialog: ({
     isOpen,
@@ -173,6 +175,34 @@ describe('RealunitComplianceUserScreen insider mark', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => {
       expect(mockSetInsider).toHaveBeenCalledWith(7, false);
+    });
+  });
+
+  it('shows the Error message when setInsider rejects', async () => {
+    mockGetCustomer.mockResolvedValue(minimalCustomer({ realUnitInsider: false }));
+    mockSetInsider.mockRejectedValue(new Error('insider down'));
+    render(<RealunitComplianceUserScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Mark as insider' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as insider' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      expect(screen.getByText('insider down')).toBeInTheDocument();
+    });
+  });
+
+  it('shows a fallback when setInsider rejects without a message', async () => {
+    mockGetCustomer.mockResolvedValue(minimalCustomer({ realUnitInsider: false }));
+    mockSetInsider.mockRejectedValue({});
+    render(<RealunitComplianceUserScreen />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Mark as insider' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as insider' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => {
+      expect(screen.getByText('Error updating insider')).toBeInTheDocument();
     });
   });
 

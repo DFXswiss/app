@@ -97,6 +97,7 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
     setLoadError(undefined);
     setPendingInsider(undefined);
     setActionError(undefined);
+    setIsInsiderSaving(false);
     setIsLoading(true);
     getCustomer(+id)
       .then((data) => {
@@ -157,16 +158,21 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
 
   const handleSetInsider = useCallback(async (): Promise<void> => {
     if (!id || pendingInsider == null || isInsiderSaving) return;
+    const generation = loadGenerationRef.current;
+    const accountId = +id;
+    const next = pendingInsider;
     setIsInsiderSaving(true);
     setActionError(undefined);
     try {
-      const updated = await setInsider(+id, pendingInsider);
+      const updated = await setInsider(accountId, next);
+      if (generation !== loadGenerationRef.current) return;
       setCustomer(updated);
       setPendingInsider(undefined);
     } catch (e: unknown) {
+      if (generation !== loadGenerationRef.current) return;
       setActionError(e instanceof Error ? e.message : 'Error updating insider');
     } finally {
-      setIsInsiderSaving(false);
+      if (generation === loadGenerationRef.current) setIsInsiderSaving(false);
     }
   }, [id, pendingInsider, isInsiderSaving, setInsider]);
 
