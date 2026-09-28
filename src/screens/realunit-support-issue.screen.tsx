@@ -38,6 +38,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>();
+  const loadErrorTicketIdRef = useRef<string>();
   const [actionError, setActionError] = useState<string>();
   const [clerkListError, setClerkListError] = useState<string>();
   const [issueData, setIssueData] = useState<SupportIssueInternalData>();
@@ -51,6 +52,9 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   const [updateDepartment, setUpdateDepartment] = useState('');
   const [updateClerk, setUpdateClerk] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const updatingIssueIdsRef = useRef(new Set<string>());
+  const messageLoadSeqRef = useRef(0);
+  const issueLoadSeqRef = useRef(0);
 
   // Message form state
   // Draft persisted per ticket, so a detour to the customer profile does not lose the text.
@@ -72,6 +76,8 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
     name: string;
     messageId: number;
   }>();
+  // A route round-trip A→B→A must also invalidate work started during the first visit to A.
+  const requestGenRef = useRef(0);
   const { containerRef, splitPercent, handleSplitDrag } = useSplitPane();
 
   useLayoutOptions({
@@ -92,10 +98,15 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   }, [getClerks]);
 
   const loadIssue = useCallback((): void => {
-    if (!id) return;
+    if (!id || idRef.current !== id) return;
+    const requestId = id;
+    const gen = requestGenRef.current;
+    const seq = ++issueLoadSeqRef.current;
+    setLoadError(undefined);
     setIsLoading(true);
-    getIssueData(+id)
+    getIssueData(+requestId)
       .then((data) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
@@ -103,29 +114,67 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
           data.clerkUserDataId != null ? String(data.clerkUserDataId) : data.clerk ? LEFTOVER_CLERK_VALUE : '',
         );
       })
-      .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
+      .catch((e: Error) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
+        loadErrorTicketIdRef.current = requestId;
+        setLoadError(e.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (idRef.current === requestId && requestGenRef.current === gen && issueLoadSeqRef.current === seq) {
+          setIsLoading(false);
+        }
+      });
   }, [id, getIssueData]);
 
   const loadMessages = useCallback((): void => {
-    if (!issueData?.id) return;
+    if (!issueData?.id || !id || issueData.id !== +id) return;
+    const requestId = id;
+    const gen = requestGenRef.current;
+    const seq = ++messageLoadSeqRef.current;
     getIssueMessages(issueData.id)
       .then((fetched) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
         setMessages(fetched);
         setPendingCount(0);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
-  }, [issueData?.id, getIssueMessages]);
+      .catch((e: Error) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
+        setActionError(e.message ?? 'Failed to load messages');
+      });
+  }, [issueData?.id, id, getIssueMessages]);
 
   const pollForNewMessages = useCallback((): void => {
-    if (!issueData?.id) return;
+    if (!issueData?.id || !id || issueData.id !== +id) return;
+    const requestId = id;
+    const gen = requestGenRef.current;
+    const seq = messageLoadSeqRef.current;
     getIssueMessages(issueData.id)
       .then((fetched) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
         const newCount = fetched.filter((m) => !visibleIdsRef.current.has(m.id)).length;
         if (newCount > 0) setPendingCount(newCount);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
-  }, [issueData?.id, getIssueMessages]);
+      .catch((e: Error) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
+        setActionError(e.message ?? 'Failed to load messages');
+      });
+  }, [issueData?.id, id, getIssueMessages]);
+
+  // Invalidate in-flight work and clear ticket-local UI before loading the next ticket.
+  useEffect(() => {
+    setIsUpdating(id != null && updatingIssueIdsRef.current.has(id));
+    messageLoadSeqRef.current += 1;
+    issueLoadSeqRef.current += 1;
+    sendInFlight.current = false;
+    setIsSending(false);
+    setSelectedFiles([]);
+    setActionError(undefined);
+    setLoadError(undefined);
+    setIssueData(undefined);
+    requestGenRef.current += 1;
+    setMessages([]);
+    setPendingCount(0);
+  }, [id]);
 
   useEffect(() => {
     loadIssue();
@@ -134,14 +183,6 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
-
-  // Clear send UI state when navigating to a different ticket
-  useEffect(() => {
-    sendInFlight.current = false;
-    setIsSending(false);
-    setSelectedFiles([]);
-    setActionError(undefined);
-  }, [id]);
 
   useEffect(() => {
     visibleIdsRef.current = new Set(messages.map((m) => m.id));
@@ -158,11 +199,13 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   }, [messages]);
 
   async function handleUpdate(): Promise<void> {
-    if (!id) return;
+    if (!id || updatingIssueIdsRef.current.has(id)) return;
+    const requestId = id;
+    updatingIssueIdsRef.current.add(requestId);
     setIsUpdating(true);
     setActionError(undefined);
     try {
-      await updateIssue(+id, {
+      await updateIssue(+requestId, {
         state: updateState || undefined,
         department: updateDepartment || undefined,
         ...clerkAssignmentPayload(updateClerk, issueData?.clerkUserDataId, {
@@ -170,11 +213,14 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
           allowedIds: clerks.map((c) => c.clerkUserDataId),
         }),
       });
+      if (idRef.current !== requestId) return;
       loadIssue();
     } catch (e: unknown) {
+      if (idRef.current !== requestId) return;
       setActionError(e instanceof Error ? e.message : 'Update failed');
     } finally {
-      setIsUpdating(false);
+      updatingIssueIdsRef.current.delete(requestId);
+      if (idRef.current === requestId) setIsUpdating(false);
     }
   }
 
@@ -268,8 +314,9 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
     };
   }, [filePreview]);
 
-  if (loadError) return <ErrorHint message={loadError} />;
-  if (isLoading || !issueData) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
+  if (id && issueData && issueData.id !== +id) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
+  if (loadError && loadErrorTicketIdRef.current === id) return <ErrorHint message={loadError} />;
+  if (isLoading || !issueData || !id) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
 
   return (
     <div ref={containerRef} className="w-full flex text-left">
