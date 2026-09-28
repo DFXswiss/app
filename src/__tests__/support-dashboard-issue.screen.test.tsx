@@ -290,6 +290,38 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
     expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
   });
 
+  it('shows an unresolved assigned clerk id as the selected fallback option', async () => {
+    mockGetIssueData.mockResolvedValue(issue(1, { clerkUserDataId: 99 }));
+
+    render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByDisplayValue('#99')).toHaveValue('99');
+  });
+
+  it('keeps the empty clerk-list hint across a ticket switch and update', async () => {
+    const hint = 'Clerk list is empty. Assign after the API update is live.';
+    mockGetClerks.mockResolvedValue([]);
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText(hint)).toBeInTheDocument();
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+    expect(screen.getByText(hint)).toBeInTheDocument();
+
+    const ticketLoadsBeforeUpdate = mockGetIssueData.mock.calls.filter((call) => call[0] === 2).length;
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    await waitFor(() => {
+      expect(mockGetIssueData.mock.calls.filter((call) => call[0] === 2).length).toBeGreaterThan(
+        ticketLoadsBeforeUpdate,
+      );
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Update' })).toBeEnabled());
+    expect(screen.getByText(hint)).toBeInTheDocument();
+    expect(mockGetClerks).toHaveBeenCalledTimes(1);
+  });
+
   it('remounts the message list and removes ticket A messages when switching to ticket B', async () => {
     mockGetIssueMessages.mockImplementation((uid: string) =>
       Promise.resolve([{ id: uid === 'SI-1' ? 1 : 2, message: uid === 'SI-1' ? 'body-A' : 'body-B' }]),

@@ -252,7 +252,7 @@ async function json(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function installSupportRoutes(page: Page): Promise<void> {
+async function installSupportRoutes(page: Page, clerks = CLERKS): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
     const url = request.url();
@@ -261,7 +261,7 @@ async function installSupportRoutes(page: Page): Promise<void> {
     if (LIST_RE.test(url)) return json(route, { data: OPEN_ISSUES, total: OPEN_ISSUES.length });
     if (COUNTS_RE.test(url)) return json(route, COUNTS);
     if (ACTIVITY_RE.test(url)) return json(route, { count: 0 });
-    if (CLERKS_RE.test(url)) return json(route, CLERKS);
+    if (CLERKS_RE.test(url)) return json(route, clerks);
     if (DATA_RE.test(url)) return json(route, ISSUE_DATA);
     if (MESSAGES_RE.test(url)) return json(route, MESSAGES);
     if (request.method() === 'GET' && path === '/v1/support/issue/clerk')
@@ -337,6 +337,26 @@ test.describe('RealUnit Support dashboards - Visual Regression Tests', () => {
     await expect(page.getByRole('button', { name: /^Send$/ })).toBeVisible();
 
     await expect(page).toHaveScreenshot('realunit-support-02-issue.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('issue screen shows the empty clerk-list hint', async ({ page }) => {
+    await installSupportRoutes(page, []);
+
+    await page.goto(`/realunit/support/issue/${ISSUE_ID}?session=${encodeURIComponent(token)}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    await expect(page.getByText('Clerk list is empty. Assign after the API update is live.')).toBeVisible();
+
+    await page.setViewportSize({ width: 1280, height: 1400 });
+    const composer = page.locator('textarea');
+    await composer.scrollIntoViewIfNeeded();
+    await expect(composer).toBeVisible();
+
+    await expect(page).toHaveScreenshot('realunit-support-03-issue-empty-clerks.png', {
       fullPage: true,
       maxDiffPixels: 5000,
     });
