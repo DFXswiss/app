@@ -264,7 +264,8 @@ async function installSupportRoutes(page: Page): Promise<void> {
     if (CLERKS_RE.test(url)) return json(route, CLERKS);
     if (DATA_RE.test(url)) return json(route, ISSUE_DATA);
     if (MESSAGES_RE.test(url)) return json(route, MESSAGES);
-    if (request.method() === 'GET' && path === '/v1/support/issue/clerk') return json(route, { clerk: 'Ada Clerk' });
+    if (request.method() === 'GET' && path === '/v1/support/issue/clerk')
+      return json(route, { clerkUserDataId: 1, clerk: 'Ada Clerk' });
 
     if (
       request.method() === 'GET' &&

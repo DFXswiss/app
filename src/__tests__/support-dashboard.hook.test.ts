@@ -23,63 +23,118 @@ describe('useSupportDashboard', () => {
     mockCall.mockReset().mockResolvedValue(undefined);
   });
 
-  it('getClerks returns { clerkUserDataId, clerk }[] from GET support/issue/clerks', async () => {
-    mockCall.mockResolvedValue([{ clerkUserDataId: 3, clerk: 'Alex' }]);
-    const { result } = renderHook(() => useSupportDashboard());
+  it('getIssueList encodes the given filters and drops empty ones', async () => {
+    await hook().getIssueList({ department: 'Compliance', states: 'Open,Pending', query: 'a b', take: 20, skip: 0 });
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'support/issue/list?department=Compliance&states=Open%2CPending&query=a%20b&take=20&skip=0',
+      method: 'GET',
+    });
 
-    const clerks = await result.current.getClerks();
+    mockCall.mockClear();
+    await hook().getIssueList({ department: '', type: undefined });
+    expect(mockCall).toHaveBeenCalledWith({ url: 'support/issue/list', method: 'GET' });
 
-    expect(mockCall).toHaveBeenCalledWith({ url: 'support/issue/clerks', method: 'GET' });
-    expect(clerks).toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
+    mockCall.mockClear();
+    await hook().getIssueList();
+    expect(mockCall).toHaveBeenCalledWith({ url: 'support/issue/list', method: 'GET' });
   });
 
-  it('getClerks drops entries without a finite clerkUserDataId', async () => {
+  it('getIssueCounts, getClerks and getIssueStatistics are plain GETs', async () => {
+    mockCall
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce([{ clerkUserDataId: 3, clerk: 'Alex' }])
+      .mockResolvedValueOnce(undefined);
+    await hook().getIssueCounts();
+    await expect(hook().getClerks()).resolves.toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
+    await hook().getIssueStatistics(30);
+    expect(mockCall.mock.calls).toEqual([
+      [{ url: 'support/issue/counts', method: 'GET' }],
+      [{ url: 'support/issue/clerks', method: 'GET' }],
+      [{ url: 'support/issue/statistics?days=30', method: 'GET' }],
+    ]);
+  });
+
+  it('getClerks drops entries without a finite clerkUserDataId or a clerk name', async () => {
     mockCall.mockResolvedValue([
       { clerkUserDataId: 3, clerk: 'Alex' },
       { clerkUserDataId: Number.NaN, clerk: 'Broken' },
+      { clerk: 'No id' },
+      { clerkUserDataId: 4, clerk: '' },
     ]);
-    const { result } = renderHook(() => useSupportDashboard());
 
-    await expect(result.current.getClerks()).resolves.toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
+    await expect(hook().getClerks()).resolves.toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
   });
 
-  it('getMyClerk GETs support/issue/clerk and trims the clerk name', async () => {
-    mockCall.mockResolvedValue({ clerkUserDataId: 7, clerk: '  Ada  ' });
-    const { result } = renderHook(() => useSupportDashboard());
+  it('getIssueActivity passes the since timestamp only when given', async () => {
+    await hook().getIssueActivity(new Date('2026-09-15T10:00:00.000Z'));
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'support/issue/activity?since=2026-09-15T10%3A00%3A00.000Z',
+      method: 'GET',
+    });
 
-    await expect(result.current.getMyClerk()).resolves.toEqual({ clerkUserDataId: 7, clerk: 'Ada' });
+    mockCall.mockClear();
+    await hook().getIssueActivity();
+    expect(mockCall).toHaveBeenCalledWith({ url: 'support/issue/activity', method: 'GET' });
+  });
+
+  it.each([
+    ['  Fixture Clerk  ', { clerkUserDataId: 7, clerk: 'Fixture Clerk' }],
+    ['', undefined],
+    ['   ', undefined],
+    [null, undefined],
+  ])('getMyClerk trims %p to %p', async (clerk, expected) => {
+    mockCall.mockResolvedValue({ clerkUserDataId: 7, clerk });
+    await expect(hook().getMyClerk()).resolves.toEqual(expected);
     expect(mockCall).toHaveBeenCalledWith({ url: 'support/issue/clerk', method: 'GET' });
   });
 
-  it('getMyClerk returns undefined when clerk is null', async () => {
-    mockCall.mockResolvedValue({ clerkUserDataId: 7, clerk: null });
-    const { result } = renderHook(() => useSupportDashboard());
-
-    await expect(result.current.getMyClerk()).resolves.toBeUndefined();
-  });
-
-  it('updateIssue PUTs clerkUserDataId', async () => {
-    const { result } = renderHook(() => useSupportDashboard());
-
-    await result.current.updateIssue(42, { state: 'Completed', clerkUserDataId: 9 });
-
-    expect(mockCall).toHaveBeenCalledWith({
-      url: 'support/issue/42',
-      method: 'PUT',
-      data: { state: 'Completed', clerkUserDataId: 9 },
-    });
+  it('getIssueData, updateIssue, sendMessage and createIssue address the issue routes', async () => {
+    await hook().getIssueData(42);
+    await hook().updateIssue(42, { state: 'Closed', clerkUserDataId: 9 });
+    await hook().sendMessage(42, { author: 'Fixture Clerk', message: 'Hallo' });
+    await hook().createIssue(7, { type: 'GenericIssue', reason: 'Other', name: 'Frage', author: 'Fixture Clerk' });
+    expect(mockCall.mock.calls).toEqual([
+      [{ url: 'support/issue/42/data', method: 'GET' }],
+      [{ url: 'support/issue/42', method: 'PUT', data: { state: 'Closed', clerkUserDataId: 9 } }],
+      [{ url: 'support/issue/42/message', method: 'POST', data: { author: 'Fixture Clerk', message: 'Hallo' } }],
+      [
+        {
+          url: 'support/issue/support?userDataId=7',
+          method: 'POST',
+          data: { type: 'GenericIssue', reason: 'Other', name: 'Frage', author: 'Fixture Clerk' },
+        },
+      ],
+    ]);
   });
 
   it('updateIssue PUTs null to unassign', async () => {
-    const { result } = renderHook(() => useSupportDashboard());
-
-    await result.current.updateIssue(42, { clerkUserDataId: null });
+    await hook().updateIssue(42, { clerkUserDataId: null });
 
     expect(mockCall).toHaveBeenCalledWith({
       url: 'support/issue/42',
       method: 'PUT',
       data: { clerkUserDataId: null },
     });
+  });
+
+  it('searchUsers encodes the key and answers an empty list when the API has none', async () => {
+    mockCall.mockResolvedValue({ userDatas: [{ id: 1, kycStatus: 'Completed' }] });
+    await expect(hook().searchUsers('a b')).resolves.toEqual([{ id: 1, kycStatus: 'Completed' }]);
+    expect(mockCall).toHaveBeenCalledWith({ url: 'support?key=a%20b', method: 'GET' });
+
+    mockCall.mockResolvedValue({});
+    await expect(hook().searchUsers('x')).resolves.toEqual([]);
+  });
+
+  it('getIssueMessages unwraps the messages and passes fromMessageId only when given', async () => {
+    const messages = [{ id: 1, author: 'Customer', created: '2026-09-01' }];
+    mockCall.mockResolvedValue({ messages });
+    await expect(hook().getIssueMessages('I123', 5)).resolves.toBe(messages);
+    expect(mockCall).toHaveBeenCalledWith({ url: 'support/issue/I123?fromMessageId=5', method: 'GET' });
+
+    mockCall.mockClear();
+    await hook().getIssueMessages('I123');
+    expect(mockCall).toHaveBeenCalledWith({ url: 'support/issue/I123', method: 'GET' });
   });
 
   it('getMessageFile defaults to access=View', async () => {
