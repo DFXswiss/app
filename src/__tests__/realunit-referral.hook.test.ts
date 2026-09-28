@@ -160,6 +160,29 @@ describe('useRealunitReferral', () => {
     expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/referral/promo/3/deactivate', method: 'PUT' });
   });
 
+  it('activates a promo code', async () => {
+    const { result } = renderHook(() => useRealunitReferral());
+
+    await result.current.activatePromoCode(3);
+
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/referral/promo/3/activate', method: 'PUT' });
+  });
+
+  it('updates a promo code', async () => {
+    const { result } = renderHook(() => useRealunitReferral());
+    const dto = {
+      code: 'NEW2026',
+      redemptionCap: 80,
+      minBuyRealu: 200,
+      validFrom: '2026-09-09T00:00:00.000Z',
+      validUntil: '2026-12-31T23:59:59.999Z',
+    };
+
+    await result.current.updatePromoCode(3, dto);
+
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/referral/promo/3', method: 'PUT', data: dto });
+  });
+
   it('lists admin payouts', async () => {
     mockCall.mockResolvedValue([]);
     const { result } = renderHook(() => useRealunitReferral());

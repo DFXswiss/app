@@ -11,7 +11,8 @@ interface PromoPanelProps {
 }
 
 export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element {
-  const { getPromoCodes, createPromoCode, createPromoCodes, deactivatePromoCode } = useRealunitReferral();
+  const { getPromoCodes, createPromoCode, createPromoCodes, deactivatePromoCode, activatePromoCode, updatePromoCode } =
+    useRealunitReferral();
 
   const [codes, setCodes] = useState<RealUnitPromoCode[]>([]);
   const [listError, setListError] = useState<string>();
@@ -20,8 +21,12 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deactivatingIds, setDeactivatingIds] = useState<Set<number>>(new Set());
+  const [activatingIds, setActivatingIds] = useState<Set<number>>(new Set());
+  const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
   const isSubmittingRef = useRef(false);
   const deactivatingIdsRef = useRef<Set<number>>(new Set());
+  const activatingIdsRef = useRef<Set<number>>(new Set());
+  const savingIdsRef = useRef<Set<number>>(new Set());
 
   const [code, setCode] = useState('');
   const [quantity, setQuantity] = useState('1');
@@ -30,6 +35,13 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
   const [validFrom, setValidFrom] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [qrCode, setQrCode] = useState<string>();
+
+  const [editingId, setEditingId] = useState<number>();
+  const [editCode, setEditCode] = useState('');
+  const [editCap, setEditCap] = useState('');
+  const [editMinBuy, setEditMinBuy] = useState('');
+  const [editValidFrom, setEditValidFrom] = useState('');
+  const [editValidUntil, setEditValidUntil] = useState('');
 
   useEffect(() => {
     loadCodes();
@@ -65,6 +77,22 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
     validFrom.length > 0 &&
     validUntil.length > 0 &&
     validUntil >= validFrom;
+
+  function canSaveRow(row: RealUnitPromoCode): boolean {
+    const saveCap = Number(editCap);
+    const saveMinBuy = Number(editMinBuy);
+    return (
+      editCode.trim().length > 0 &&
+      Number.isInteger(saveCap) &&
+      saveCap >= 1 &&
+      Number.isInteger(saveMinBuy) &&
+      saveMinBuy >= 1 &&
+      saveCap >= (row.redemptionCount ?? 0) &&
+      editValidFrom.length > 0 &&
+      editValidUntil.length > 0 &&
+      editValidUntil >= editValidFrom
+    );
+  }
 
   function onSubmit(event?: FormEvent): void {
     event?.preventDefault();
@@ -119,6 +147,57 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
       .finally(() => {
         deactivatingIdsRef.current.delete(id);
         setDeactivatingIds(new Set(deactivatingIdsRef.current));
+      });
+  }
+
+  function onActivate(id: number): void {
+    if (activatingIdsRef.current.has(id)) return;
+    activatingIdsRef.current.add(id);
+    setActivatingIds(new Set(activatingIdsRef.current));
+    setActionError(undefined);
+    activatePromoCode(id)
+      .then((updated) => setCodes((prev) => prev.map((row) => (row.id === id ? updated : row))))
+      .catch((e: Error) => setActionError(e.message ?? 'Unknown error'))
+      .finally(() => {
+        activatingIdsRef.current.delete(id);
+        setActivatingIds(new Set(activatingIdsRef.current));
+      });
+  }
+
+  function onEdit(row: RealUnitPromoCode): void {
+    setEditingId(row.id);
+    setEditCode(row.code);
+    setEditCap(String(row.redemptionCap));
+    setEditMinBuy(String(row.minBuyRealu));
+    setEditValidFrom(row.validFrom.slice(0, 10));
+    setEditValidUntil(row.validUntil.slice(0, 10));
+  }
+
+  function onCancel(): void {
+    setEditingId(undefined);
+  }
+
+  function onSave(row: RealUnitPromoCode): void {
+    if (savingIdsRef.current.has(row.id)) return;
+    if (!canSaveRow(row)) return;
+    savingIdsRef.current.add(row.id);
+    setSavingIds(new Set(savingIdsRef.current));
+    setActionError(undefined);
+    updatePromoCode(row.id, {
+      code: editCode.trim(),
+      redemptionCap: Number(editCap),
+      minBuyRealu: Number(editMinBuy),
+      validFrom: new Date(`${editValidFrom}T00:00:00.000Z`).toISOString(),
+      validUntil: new Date(`${editValidUntil}T23:59:59.999Z`).toISOString(),
+    })
+      .then((updated) => {
+        setCodes((prev) => prev.map((item) => (item.id === row.id ? updated : item)));
+        setEditingId(undefined);
+      })
+      .catch((e: Error) => setActionError(e.message ?? 'Unknown error'))
+      .finally(() => {
+        savingIdsRef.current.delete(row.id);
+        setSavingIds(new Set(savingIdsRef.current));
       });
   }
 
@@ -217,6 +296,9 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
                   {translate('screens/referral', 'Redemption cap')}
                 </th>
                 <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
+                  {translate('screens/referral', 'Redeemed')}
+                </th>
+                <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
                   {translate('screens/referral', 'Minimum buy (REALU)')}
                 </th>
                 <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
@@ -235,48 +317,152 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
               </tr>
             </thead>
             <tbody>
-              {codes.map((row) => (
-                <tr key={row.id} className="border-b border-dfxGray-300">
-                  <td className="px-3 py-2 text-dfxBlue-800 break-all">{row.code}</td>
-                  <td className="px-3 py-2 text-dfxBlue-800">{row.redemptionCap}</td>
-                  <td className="px-3 py-2 text-dfxBlue-800">{row.minBuyRealu}</td>
-                  <td className="px-3 py-2 text-dfxBlue-800">{row.validFrom.slice(0, 10)}</td>
-                  <td className="px-3 py-2 text-dfxBlue-800">{row.validUntil.slice(0, 10)}</td>
-                  <td className="px-3 py-2">
-                    <a
-                      className="text-dfxBlue-800 underline break-all"
-                      href={promoLandingUrl(row.code)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {promoLandingUrl(row.code)}
-                    </a>
-                  </td>
-                  <td className="px-3 py-2">
-                    <button
-                      type="button"
-                      className="text-dfxBlue-800 underline text-sm"
-                      onClick={() => setQrCode(row.code)}
-                    >
-                      {translate('screens/referral', 'View QR code')}
-                    </button>
-                  </td>
-                  <td className="px-3 py-2">
-                    {row.deactivatedAt ? (
-                      <span className="text-dfxGray-700">{translate('screens/referral', 'Deactivated')}</span>
-                    ) : (
+              {codes.map((row) => {
+                const isEditing = editingId === row.id;
+                return (
+                  <tr key={row.id} className="border-b border-dfxGray-300">
+                    <td className="px-3 py-2 text-dfxBlue-800 break-all">
+                      {isEditing ? (
+                        <input
+                          className="border border-dfxGray-400 rounded px-2 py-1"
+                          value={editCode}
+                          onChange={(e) => setEditCode(e.target.value)}
+                          maxLength={256}
+                          autoComplete="off"
+                        />
+                      ) : (
+                        row.code
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-dfxBlue-800">
+                      {isEditing ? (
+                        <input
+                          className="border border-dfxGray-400 rounded px-2 py-1"
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={editCap}
+                          onChange={(e) => setEditCap(e.target.value)}
+                        />
+                      ) : (
+                        row.redemptionCap
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-dfxBlue-800">{String(row.redemptionCount ?? 0)}</td>
+                    <td className="px-3 py-2 text-dfxBlue-800">
+                      {isEditing ? (
+                        <input
+                          className="border border-dfxGray-400 rounded px-2 py-1"
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={editMinBuy}
+                          onChange={(e) => setEditMinBuy(e.target.value)}
+                        />
+                      ) : (
+                        row.minBuyRealu
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-dfxBlue-800">
+                      {isEditing ? (
+                        <input
+                          className="border border-dfxGray-400 rounded px-2 py-1"
+                          type="date"
+                          value={editValidFrom}
+                          onChange={(e) => setEditValidFrom(e.target.value)}
+                        />
+                      ) : (
+                        row.validFrom.slice(0, 10)
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-dfxBlue-800">
+                      {isEditing ? (
+                        <input
+                          className="border border-dfxGray-400 rounded px-2 py-1"
+                          type="date"
+                          value={editValidUntil}
+                          onChange={(e) => setEditValidUntil(e.target.value)}
+                        />
+                      ) : (
+                        row.validUntil.slice(0, 10)
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <a
+                        className="text-dfxBlue-800 underline break-all"
+                        href={promoLandingUrl(row.code)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {promoLandingUrl(row.code)}
+                      </a>
+                    </td>
+                    <td className="px-3 py-2">
                       <button
                         type="button"
-                        className={`text-dfxRed-100 underline text-sm${deactivatingIds.has(row.id) ? ' opacity-50' : ''}`}
-                        aria-disabled={deactivatingIds.has(row.id)}
-                        onClick={() => onDeactivate(row.id)}
+                        className="text-dfxBlue-800 underline text-sm"
+                        onClick={() => setQrCode(row.code)}
                       >
-                        {translate('screens/referral', 'Deactivate')}
+                        {translate('screens/referral', 'View QR code')}
                       </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-3 py-2">
+                      {isEditing ? (
+                        <>
+                          <button
+                            type="button"
+                            className={`text-dfxBlue-800 underline text-sm${savingIds.has(row.id) ? ' opacity-50' : ''}`}
+                            disabled={!canSaveRow(row)}
+                            aria-disabled={savingIds.has(row.id) || !canSaveRow(row)}
+                            onClick={() => onSave(row)}
+                          >
+                            {translate('screens/referral', 'Save')}
+                          </button>
+                          <button
+                            type="button"
+                            className="text-dfxBlue-800 underline text-sm"
+                            onClick={onCancel}
+                          >
+                            {translate('screens/referral', 'Cancel')}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="text-dfxBlue-800 underline text-sm"
+                            onClick={() => onEdit(row)}
+                          >
+                            {translate('screens/referral', 'Edit')}
+                          </button>
+                          {row.deactivatedAt ? (
+                            <>
+                              <span className="text-dfxGray-700">{translate('screens/referral', 'Deactivated')}</span>
+                              <button
+                                type="button"
+                                className={`text-dfxBlue-800 underline text-sm${activatingIds.has(row.id) ? ' opacity-50' : ''}`}
+                                aria-disabled={activatingIds.has(row.id)}
+                                onClick={() => onActivate(row.id)}
+                              >
+                                {translate('screens/referral', 'Activate')}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className={`text-dfxRed-100 underline text-sm${deactivatingIds.has(row.id) ? ' opacity-50' : ''}`}
+                              aria-disabled={deactivatingIds.has(row.id)}
+                              onClick={() => onDeactivate(row.id)}
+                            >
+                              {translate('screens/referral', 'Deactivate')}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

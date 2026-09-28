@@ -100,6 +100,7 @@ export interface RealUnitPromoCode {
   validFrom: string;
   validUntil: string;
   deactivatedAt?: string;
+  redemptionCount?: number;
 }
 
 export interface CreateRealUnitPromoCode {
@@ -117,4 +118,12 @@ export interface CreateRealUnitPromoBatch {
   minBuyRealu?: number;
   validFrom: string;
   validUntil: string;
+}
+
+export interface UpdateRealUnitPromoCode {
+  code?: string;
+  redemptionCap?: number;
+  minBuyRealu?: number;
+  validFrom?: string;
+  validUntil?: string;
 }

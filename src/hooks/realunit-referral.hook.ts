@@ -8,6 +8,7 @@ import {
   RealUnitPrizeWalletAlert,
   RealUnitPromoCode,
   RealUnitReferralRelation,
+  UpdateRealUnitPromoCode,
 } from 'src/dto/realunit-referral.dto';
 import { useGuardedApi } from './guarded-api.hook';
 
@@ -107,6 +108,21 @@ export function useRealunitReferral() {
     });
   }
 
+  async function activatePromoCode(id: number): Promise<RealUnitPromoCode> {
+    return call<RealUnitPromoCode>({
+      url: `realunit/referral/promo/${id}/activate`,
+      method: 'PUT',
+    });
+  }
+
+  async function updatePromoCode(id: number, dto: UpdateRealUnitPromoCode): Promise<RealUnitPromoCode> {
+    return call<RealUnitPromoCode>({
+      url: `realunit/referral/promo/${id}`,
+      method: 'PUT',
+      data: dto,
+    });
+  }
+
   async function getAdminPayouts(): Promise<RealUnitAdminPayout[]> {
     return call<RealUnitAdminPayout[]>({
       url: 'realunit/referral/admin/payouts',
@@ -128,6 +144,8 @@ export function useRealunitReferral() {
       createPromoCode,
       createPromoCodes,
       deactivatePromoCode,
+      activatePromoCode,
+      updatePromoCode,
       getAdminPayouts,
     }),
     [call],

@@ -94,6 +94,7 @@ const PROMO_CODES = [
     redemptionCap: 50,
     validFrom: '2026-09-01T00:00:00.000Z',
     validUntil: '2026-12-31T23:59:59.000Z',
+    redemptionCount: 0,
   },
 ];
 
@@ -170,6 +171,49 @@ test.describe('RealUnit Referral admin', () => {
     await expect(page.getByRole('button', { name: 'Download PNG' })).toBeVisible();
     await page.waitForTimeout(500);
     await expect(page).toHaveScreenshot('realunit-referral-04-promo-qr.png', {
+      fullPage: true,
+      maxDiffPixelRatio: 0.01,
+    });
+  });
+
+  test('promo row opens an editor', async ({ page }) => {
+    await mockReferralApi(page, PROMO_CODES);
+
+    await page.goto(`/realunit/referral?session=${encodeURIComponent(jwt())}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000);
+
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page).toHaveScreenshot('realunit-referral-05-promo-edit.png', {
+      fullPage: true,
+      maxDiffPixelRatio: 0.01,
+    });
+  });
+
+  test('deactivated promo row offers activate', async ({ page }) => {
+    await mockReferralApi(page, [
+      {
+        ...PROMO_CODES[0],
+        code: 'OLD',
+        deactivatedAt: '2026-09-25T11:56:47.917Z',
+        redemptionCount: 0,
+      },
+    ]);
+
+    await page.goto(`/realunit/referral?session=${encodeURIComponent(jwt())}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000);
+
+    await expect(page.getByText('Deactivated')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Activate', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Deactivate', exact: true })).toHaveCount(0);
+    await page.waitForTimeout(500);
+
+    await expect(page).toHaveScreenshot('realunit-referral-06-promo-activate.png', {
       fullPage: true,
       maxDiffPixelRatio: 0.01,
     });

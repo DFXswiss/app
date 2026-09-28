@@ -33,12 +33,16 @@ const mockGetPromoCodes = jest.fn();
 const mockCreatePromoCode = jest.fn();
 const mockCreatePromoCodes = jest.fn();
 const mockDeactivatePromoCode = jest.fn();
+const mockActivatePromoCode = jest.fn();
+const mockUpdatePromoCode = jest.fn();
 jest.mock('src/hooks/realunit-referral.hook', () => ({
   useRealunitReferral: () => ({
     getPromoCodes: (...args: unknown[]) => mockGetPromoCodes(...args),
     createPromoCode: (...args: unknown[]) => mockCreatePromoCode(...args),
     createPromoCodes: (...args: unknown[]) => mockCreatePromoCodes(...args),
     deactivatePromoCode: (...args: unknown[]) => mockDeactivatePromoCode(...args),
+    activatePromoCode: (...args: unknown[]) => mockActivatePromoCode(...args),
+    updatePromoCode: (...args: unknown[]) => mockUpdatePromoCode(...args),
   }),
 }));
 
@@ -63,6 +67,8 @@ describe('RealunitPromoPanel', () => {
     mockCreatePromoCode.mockResolvedValue(ACTIVE);
     mockCreatePromoCodes.mockResolvedValue([ACTIVE]);
     mockDeactivatePromoCode.mockResolvedValue(undefined);
+    mockActivatePromoCode.mockResolvedValue(ACTIVE);
+    mockUpdatePromoCode.mockResolvedValue(ACTIVE);
   });
 
   it('shows a loading spinner while promo codes load', () => {
@@ -533,5 +539,218 @@ describe('RealunitPromoPanel', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('dialog').parentElement as HTMLElement);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('activates a deactivated promo code', async () => {
+    mockGetPromoCodes.mockResolvedValue([{ ...ACTIVE, deactivatedAt: '2026-09-01T00:00:00.000Z' }]);
+    mockActivatePromoCode.mockResolvedValue({ ...ACTIVE });
+    render(<RealunitPromoPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByText('Deactivated')).toBeInTheDocument());
+
+    const startRow = screen.getByText('START2026').closest('tr') as HTMLElement;
+    expect(within(startRow).queryByRole('button', { name: 'Deactivate' })).not.toBeInTheDocument();
+    expect(within(startRow).getByRole('button', { name: 'Activate' })).toBeInTheDocument();
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Activate' }));
+
+    await waitFor(() => expect(mockActivatePromoCode).toHaveBeenCalledWith(3));
+    await waitFor(() => {
+      const row = screen.getByText('START2026').closest('tr') as HTMLElement;
+      expect(within(row).queryByText('Deactivated')).not.toBeInTheDocument();
+      expect(within(row).getByRole('button', { name: 'Deactivate' })).toBeInTheDocument();
+    });
+  });
+
+  it('ignores a second Activate click on the same row while in flight', async () => {
+    mockGetPromoCodes.mockResolvedValue([{ ...ACTIVE, deactivatedAt: '2026-09-01T00:00:00.000Z' }]);
+    mockActivatePromoCode.mockImplementation(() => new Promise(() => undefined));
+    render(<RealunitPromoPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByText('START2026')).toBeInTheDocument());
+
+    const startRow = screen.getByText('START2026').closest('tr') as HTMLElement;
+    const activate = within(startRow).getByRole('button', { name: 'Activate' });
+    fireEvent.click(activate);
+    fireEvent.click(activate);
+
+    expect(mockActivatePromoCode).toHaveBeenCalledTimes(1);
+    expect(mockActivatePromoCode).toHaveBeenCalledWith(3);
+  });
+
+  it('shows an action error when activate fails and leaves the row deactivated', async () => {
+    mockGetPromoCodes.mockResolvedValue([{ ...ACTIVE, deactivatedAt: '2026-09-01T00:00:00.000Z' }]);
+    mockActivatePromoCode.mockRejectedValue(new Error('cannot-activate'));
+    render(<RealunitPromoPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByText('START2026')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
+
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('cannot-activate'));
+    const startRow = screen.getByText('START2026').closest('tr') as HTMLElement;
+    expect(within(startRow).getByText('Deactivated')).toBeInTheDocument();
+    expect(within(startRow).getByRole('button', { name: 'Activate' })).toBeInTheDocument();
+    expect(within(startRow).queryByRole('button', { name: 'Deactivate' })).not.toBeInTheDocument();
+  });
+
+  it('falls back to Unknown error when activate rejects without a message and leaves the row deactivated', async () => {
+    mockGetPromoCodes.mockResolvedValue([{ ...ACTIVE, deactivatedAt: '2026-09-01T00:00:00.000Z' }]);
+    mockActivatePromoCode.mockRejectedValue({ message: undefined });
+    render(<RealunitPromoPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByText('START2026')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
+
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error'));
+    const startRow = screen.getByText('START2026').closest('tr') as HTMLElement;
+    expect(within(startRow).getByText('Deactivated')).toBeInTheDocument();
+    expect(within(startRow).getByRole('button', { name: 'Activate' })).toBeInTheDocument();
+    expect(within(startRow).queryByRole('button', { name: 'Deactivate' })).not.toBeInTheDocument();
+  });
+
+  it('saves edits to an active promo code with day-bounded ISO dates', async () => {
+    mockGetPromoCodes.mockResolvedValue([ACTIVE]);
+    mockUpdatePromoCode.mockResolvedValue({
+      ...ACTIVE,
+      code: 'NEW2026',
+      redemptionCap: 80,
+      minBuyRealu: 350,
+      validFrom: '2026-10-01T00:00:00.000Z',
+      validUntil: '2027-01-15T23:59:59.999Z',
+    });
+    render(<RealunitPromoPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByText('START2026')).toBeInTheDocument());
+
+    const startRow = screen.getByText('START2026').closest('tr') as HTMLElement;
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Edit' }));
+    fireEvent.change(within(startRow).getByDisplayValue('START2026'), { target: { value: 'NEW2026' } });
+    fireEvent.change(within(startRow).getByDisplayValue('50'), { target: { value: '80' } });
+    fireEvent.change(within(startRow).getByDisplayValue('200'), { target: { value: '350' } });
+    fireEvent.change(within(startRow).getByDisplayValue('2026-09-09'), { target: { value: '2026-10-01' } });
+    fireEvent.change(within(startRow).getByDisplayValue('2026-12-31'), { target: { value: '2027-01-15' } });
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(mockUpdatePromoCode).toHaveBeenCalled());
+    expect(mockUpdatePromoCode).toHaveBeenCalledWith(3, {
+      code: 'NEW2026',
+      redemptionCap: 80,
+      minBuyRealu: 350,
+      validFrom: '2026-10-01T00:00:00.000Z',
+      validUntil: '2027-01-15T23:59:59.999Z',
+    });
+    await waitFor(() => expect(screen.getByText('NEW2026')).toBeInTheDocument());
+  });
+
+  it('does not update when edit is cancelled', async () => {
+    mockGetPromoCodes.mockResolvedValue([ACTIVE]);
+    render(<RealunitPromoPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByText('START2026')).toBeInTheDocument());
+
+    const startRow = screen.getByText('START2026').closest('tr') as HTMLElement;
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Edit' }));
+    fireEvent.change(within(startRow).getByDisplayValue('START2026'), { target: { value: 'CHANGED' } });
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Cancel' }));
+
+    expect(mockUpdatePromoCode).not.toHaveBeenCalled();
+    expect(screen.getByText('START2026')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('CHANGED')).not.toBeInTheDocument();
+  });
+
+  it('keeps Save disabled when the cap is below the redemption count', async () => {
+    mockGetPromoCodes.mockResolvedValue([{ ...ACTIVE, redemptionCount: 10 }]);
+    render(<RealunitPromoPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByText('START2026')).toBeInTheDocument());
+
+    const startRow = screen.getByText('START2026').closest('tr') as HTMLElement;
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Edit' }));
+    fireEvent.change(within(startRow).getByDisplayValue('50'), { target: { value: '9' } });
+
+    expect(within(startRow).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(mockUpdatePromoCode).not.toHaveBeenCalled();
+  });
+
+  it('shows an action error when save fails', async () => {
+    mockGetPromoCodes.mockResolvedValue([ACTIVE]);
+    mockUpdatePromoCode.mockRejectedValue(new Error('cannot-save'));
+    render(<RealunitPromoPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByText('START2026')).toBeInTheDocument());
+
+    const startRow = screen.getByText('START2026').closest('tr') as HTMLElement;
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Edit' }));
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('cannot-save'));
+  });
+
+  it('falls back to Unknown error when save rejects without a message', async () => {
+    mockGetPromoCodes.mockResolvedValue([ACTIVE]);
+    mockUpdatePromoCode.mockRejectedValue({ message: undefined });
+    render(<RealunitPromoPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByText('START2026')).toBeInTheDocument());
+
+    const startRow = screen.getByText('START2026').closest('tr') as HTMLElement;
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Edit' }));
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error'));
+  });
+
+  it('ignores a second Save click on the same row while in flight', async () => {
+    mockGetPromoCodes.mockResolvedValue([ACTIVE]);
+    mockUpdatePromoCode.mockImplementation(() => new Promise(() => undefined));
+    render(<RealunitPromoPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByText('START2026')).toBeInTheDocument());
+
+    const startRow = screen.getByText('START2026').closest('tr') as HTMLElement;
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Edit' }));
+    const save = within(startRow).getByRole('button', { name: 'Save' });
+    fireEvent.click(save);
+    fireEvent.click(save);
+
+    expect(mockUpdatePromoCode).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Save disabled for empty code, invalid cap or min buy, empty dates, or until before from', async () => {
+    mockGetPromoCodes.mockResolvedValue([ACTIVE]);
+    render(<RealunitPromoPanel translate={translate} />);
+    await waitFor(() => expect(screen.getByText('START2026')).toBeInTheDocument());
+
+    const startRow = screen.getByText('START2026').closest('tr') as HTMLElement;
+    fireEvent.click(within(startRow).getByRole('button', { name: 'Edit' }));
+
+    fireEvent.change(within(startRow).getByDisplayValue('START2026'), { target: { value: '' } });
+    expect(within(startRow).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(mockUpdatePromoCode).not.toHaveBeenCalled();
+    fireEvent.change(within(startRow).getByDisplayValue(''), { target: { value: 'START2026' } });
+
+    fireEvent.change(within(startRow).getByDisplayValue('50'), { target: { value: '1.5' } });
+    expect(within(startRow).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(mockUpdatePromoCode).not.toHaveBeenCalled();
+
+    fireEvent.change(within(startRow).getByDisplayValue('1.5'), { target: { value: '0' } });
+    expect(within(startRow).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(mockUpdatePromoCode).not.toHaveBeenCalled();
+    fireEvent.change(within(startRow).getByDisplayValue('0'), { target: { value: '50' } });
+
+    fireEvent.change(within(startRow).getByDisplayValue('200'), { target: { value: '1.5' } });
+    expect(within(startRow).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(mockUpdatePromoCode).not.toHaveBeenCalled();
+
+    fireEvent.change(within(startRow).getByDisplayValue('1.5'), { target: { value: '0' } });
+    expect(within(startRow).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(mockUpdatePromoCode).not.toHaveBeenCalled();
+    fireEvent.change(within(startRow).getByDisplayValue('0'), { target: { value: '200' } });
+
+    fireEvent.change(within(startRow).getByDisplayValue('2026-09-09'), { target: { value: '' } });
+    expect(within(startRow).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(mockUpdatePromoCode).not.toHaveBeenCalled();
+    fireEvent.change(within(startRow).getByDisplayValue(''), { target: { value: '2026-09-09' } });
+
+    fireEvent.change(within(startRow).getByDisplayValue('2026-12-31'), { target: { value: '' } });
+    expect(within(startRow).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(mockUpdatePromoCode).not.toHaveBeenCalled();
+    fireEvent.change(within(startRow).getByDisplayValue(''), { target: { value: '2026-12-31' } });
+
+    fireEvent.change(within(startRow).getByDisplayValue('2026-09-09'), { target: { value: '2026-09-10' } });
+    fireEvent.change(within(startRow).getByDisplayValue('2026-12-31'), { target: { value: '2026-09-09' } });
+    expect(within(startRow).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(mockUpdatePromoCode).not.toHaveBeenCalled();
   });
 });
