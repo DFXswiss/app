@@ -263,7 +263,7 @@ test.describe('Account area e2e', () => {
     );
   });
 
-  test('/settings Delete account deactivates the current account, clears its session, and leaves a second account lifecycle statuses unchanged', async ({ page }) => {
+  test('/settings Delete account deactivates the current account, clears its session, and leaves a second account\'s lifecycle statuses unchanged', async ({ page }) => {
     const user = await createUser({ tag: 'acct-delete-target', language: 'EN' });
     const control = await createUser({ tag: 'acct-delete-control', language: 'EN' });
 
