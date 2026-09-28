@@ -3,10 +3,12 @@ import { useState } from 'react';
 import type { ComplianceUserData, TransactionInfo } from 'src/hooks/compliance.hook';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { RefUserKycClearRow } from './ref-user-kyc-clear-row';
 import { StaffIdentityBlock } from './staff-identity';
 import { canManuallySetAmlPass } from 'src/util/aml-pass.util';
 import { canResetBuyCryptoAmlForReview, hasBuyCryptoReviewResetEligibleState } from 'src/util/buy-crypto-reset.util';
 import { statusBadge } from 'src/util/compliance-helpers';
+import { hasRefUserKycHold } from 'src/util/ref-user-kyc.util';
 import { hasScorechainHighRisk, scorechainHighlightValue } from 'src/util/scorechain.util';
 import { formatSwissDate } from 'src/util/utils';
 
@@ -27,6 +29,9 @@ interface AmlCheckPendingPanelProps {
   onUpdate: (tx: TransactionInfo, update: AmlCheckUpdate, clerk: string) => Promise<void>;
   onReset: (tx: TransactionInfo, clerk: string) => Promise<void>;
   onReviewReset: (tx: TransactionInfo) => Promise<void>;
+  // Reloads the account after the referrer's open check was waived for it (the parked transaction is
+  // reset by the API and leaves this panel).
+  onRefUserKycCleared?: () => Promise<void>;
 }
 
 const AML_CHECK_OPTIONS = [CheckStatus.PASS, CheckStatus.FAIL, CheckStatus.PENDING, 'Reset'] as const;
@@ -48,6 +53,7 @@ function TransactionEntry({
   isSaving,
   userDataId,
   canResetBuyCrypto,
+  onRefUserKycCleared,
 }: {
   tx: PendingTransaction;
   onUpdate: (data: AmlCheckUpdate, clerk: string) => Promise<void>;
@@ -55,6 +61,7 @@ function TransactionEntry({
   isSaving: boolean;
   userDataId?: number;
   canResetBuyCrypto: boolean;
+  onRefUserKycCleared?: () => Promise<void>;
 }): JSX.Element {
   const { navigate } = useNavigation();
   const { session } = useAuthContext();
@@ -201,6 +208,9 @@ function TransactionEntry({
               Reset ist erst verfügbar, wenn der BuyCrypto noch unvollständig ist und kein Payout/Refund/Batch läuft.
             </p>
           )}
+          {userDataId != null && hasRefUserKycHold(tx.comment) && (
+            <RefUserKycClearRow userDataId={userDataId} disabled={isSaving} onCleared={onRefUserKycCleared} />
+          )}
           {isReset ? (
             <p className="px-3 py-2 text-xs text-dfxGray-700">
               Reset entfernt AmlCheck, AmlReason und priceDefinitionAllowedDate. Die automatische AML-Prüfung
@@ -316,6 +326,7 @@ export function AmlCheckPendingPanel({
   onUpdate,
   onReset,
   onReviewReset,
+  onRefUserKycCleared,
 }: AmlCheckPendingPanelProps): JSX.Element {
   const { navigate } = useNavigation();
 
@@ -475,6 +486,7 @@ export function AmlCheckPendingPanel({
             isSaving={isSaving}
             userDataId={ud.id}
             canResetBuyCrypto={canResetBuyCryptoAmlForReview(tx)}
+            onRefUserKycCleared={onRefUserKycCleared}
           />
         </div>
       ))}

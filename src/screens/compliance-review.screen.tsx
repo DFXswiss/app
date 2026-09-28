@@ -571,12 +571,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
               isSaving={isSaving}
             />
           ) : effectiveTab === 'stammdaten' ? (
-            <StammdatenPanel
-              data={data}
-              onOpenFile={openFile}
-              onSave={handleSave}
-              isSaving={isSaving}
-            />
+            <StammdatenPanel data={data} onOpenFile={openFile} onSave={handleSave} isSaving={isSaving} />
           ) : effectiveTab === 'ident' ? (
             <IdentPanel data={data} onOpenFile={openFile} onSave={handleSave} isSaving={isSaving} />
           ) : effectiveTab === 'bankDataReview' ? (
@@ -594,6 +589,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
               onUpdate={handleAmlUpdate}
               onReset={handleAmlReset}
               onReviewReset={handleAmlReviewReset}
+              onRefUserKycCleared={loadData}
             />
           ) : (
             <ComplianceReviewPanel
