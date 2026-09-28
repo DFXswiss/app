@@ -114,17 +114,22 @@ jest.mock('src/hooks/guard.hook', () => ({
   useSupportDashboardGuard: (...args: unknown[]) => mockUseSupportDashboardGuard(...args),
 }));
 
-jest.mock('src/hooks/support-dashboard.hook', () => ({
-  ASSIGNABLE_DEPARTMENTS: ['Support', 'Compliance'],
-  useSupportDashboard: () => ({
-    getIssueData: mockGetIssueData,
-    getIssueMessages: mockGetIssueMessages,
-    getClerks: mockGetClerks,
-    updateIssue: mockUpdateIssue,
-    sendMessage: mockSendMessage,
-    getMessageFile: mockGetMessageFile,
-  }),
-}));
+jest.mock('src/hooks/support-dashboard.hook', () => {
+  const actual = jest.requireActual(
+    'src/hooks/support-dashboard.hook',
+  ) as typeof import('src/hooks/support-dashboard.hook');
+  return {
+    ...actual,
+    useSupportDashboard: () => ({
+      getIssueData: mockGetIssueData,
+      getIssueMessages: mockGetIssueMessages,
+      getClerks: mockGetClerks,
+      updateIssue: mockUpdateIssue,
+      sendMessage: mockSendMessage,
+      getMessageFile: mockGetMessageFile,
+    }),
+  };
+});
 
 jest.mock('src/hooks/compliance.hook', () => ({
   LimitRequestFinalDecisions: [],
@@ -247,7 +252,7 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
     mockListMounts = 0;
     mockGetIssueData.mockImplementation((id: number) => Promise.resolve(issue(id)));
     mockGetIssueMessages.mockImplementation((uid: string) => Promise.resolve([{ id: 1, message: `body-${uid}` }]));
-    mockGetClerks.mockResolvedValue([]);
+    mockGetClerks.mockResolvedValue([{ clerkUserDataId: 7, clerk: 'Rita' }]);
     mockUpdateIssue.mockResolvedValue(undefined);
     mockSendMessage.mockResolvedValue(undefined);
     mockGetUserData.mockResolvedValue({ userData: { id: 8 }, transactions: [] });
