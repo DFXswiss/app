@@ -263,6 +263,57 @@ test.describe('Account area e2e', () => {
     );
   });
 
+  test('/settings Delete account deactivates the current account, clears its session, and leaves a second account unchanged', async ({ page }) => {
+    const user = await createUser({ tag: 'acct-delete-target', language: 'EN' });
+    const control = await createUser({ tag: 'acct-delete-control', language: 'EN' });
+
+    const readAccountStatuses = async (userId: number) =>
+      queryOne<{ userDataStatus: string; userStatus: string }>(
+        `SELECT ud.status AS "userDataStatus", u.status AS "userStatus"
+         FROM user_data ud
+         JOIN "user" u ON u."userDataId" = ud.id
+         WHERE u.id = $1`,
+        [userId],
+      );
+
+    const initialTarget = required(await readAccountStatuses(user.userId), 'target account must exist');
+    const initialControl = required(await readAccountStatuses(control.userId), 'control account must exist');
+    expect(initialTarget.userDataStatus).toBe('NA');
+    expect(initialControl.userDataStatus).toBe('NA');
+
+    await openScreen(page, '/settings', user.jwt);
+    await page.getByRole('button', { name: 'Danger Zone' }).click();
+    await page.getByRole('button', { name: 'Delete account' }).click();
+
+    const deleteResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === 'DELETE' && new URL(response.url()).pathname.endsWith('/v2/user'),
+    );
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    const deleteResponse = await deleteResponsePromise;
+    expect(deleteResponse.status(), 'DELETE /v2/user must succeed').toBe(200);
+
+    await expect
+      .poll(() => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')))
+      .toBeNull();
+    await page.goto('/account');
+    await page.waitForLoadState('networkidle');
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), {
+        message: 'the deleted account session must not open a protected screen',
+        timeout: 15000,
+      })
+      .not.toBe('/account');
+
+    await expect
+      .poll(async () => (await readAccountStatuses(user.userId))?.userDataStatus)
+      .toBe('Deactivated');
+    expect(await readAccountStatuses(user.userId)).toMatchObject({
+      userDataStatus: 'Deactivated',
+      userStatus: initialTarget.userStatus,
+    });
+    expect(await readAccountStatuses(control.userId)).toEqual(initialControl);
+  });
+
   test('/settings without session redirects away (useUserGuard → /login)', async ({ page }) => {
     await page.goto('/settings');
     await page.waitForLoadState('networkidle');
