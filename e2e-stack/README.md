@@ -89,17 +89,17 @@ port conflict when you are not doing so.
 - Node 20
 - Either:
   - the API repository checked out as a sibling directory (default `../api`, overridable via `E2E_API_REPO`), or
-  - `E2E_API_IMAGE` set to a pre-built API image (skips building from a local checkout)
+  - `E2E_API_IMAGE` set to a pre-built API image (skips building from a local checkout; an API source checkout is still used for provenance classification when available)
 
 Relevant environment variables:
 
-| Variable            | Role                                                                                   |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| `E2E_API_IMAGE`     | If set, use this pre-built API image instead of building one                           |
-| `E2E_API_REPO`      | Path to a checked-out API repo; default `../api` (ignored when `E2E_API_IMAGE` is set) |
-| `E2E_PORT_API`      | Host port for the API (default `3000`) — debugging only                                |
-| `E2E_PORT_FRONTEND` | Host port for the frontend (default `3001`) — debugging only                           |
-| `E2E_WIDGET_URL`    | Internal URL of the widget host (default `http://frontend-widget`)                     |
+| Variable            | Role                                                                                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `E2E_API_IMAGE`     | If set, use this pre-built API image instead of building one                                                               |
+| `E2E_API_REPO`      | Path to a checked-out API repo; default `../api`; used for commit and KYC guard classification even with a pre-built image |
+| `E2E_PORT_API`      | Host port for the API (default `3000`) — debugging only                                                                    |
+| `E2E_PORT_FRONTEND` | Host port for the frontend (default `3001`) — debugging only                                                               |
+| `E2E_WIDGET_URL`    | Internal URL of the widget host (default `http://frontend-widget`)                                                         |
 
 ## Frontend widget service
 
@@ -136,9 +136,12 @@ run. Both suites exist side by side and serve different purposes.
 
 The API repository has its own workflow that checks out this repository (`DFXswiss/app`)
 to obtain `e2e-stack/`. Conversely, this harness builds the API image from a checked-out API
-repo (`E2E_API_REPO`, default `../api`) or uses a pre-built image (`E2E_API_IMAGE`). The two
-repos therefore depend on each other for full-stack CI: the harness lives here; the API image
-and the workflow that drives the stack against API changes live in the API repository.
+repo (`E2E_API_REPO`, default `../api`) or uses a pre-built image (`E2E_API_IMAGE`). When an API
+checkout is available, `up.sh` requires it to be clean, derives the owner-guard rollout state from
+its source and history, and the KYC spec verifies that the running image's `/version.commit` matches
+that checkout. Without source provenance, KYC checks stay strict. The two repos therefore depend on
+each other for full-stack CI: the harness lives here; the API image and the workflow that drives the
+stack against API changes live in the API repository.
 
 ## Troubleshooting
 

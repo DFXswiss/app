@@ -79,20 +79,22 @@ async function kycHashOf(userDataId: number): Promise<string> {
   return row.kycHash;
 }
 
-/**
- * Detects the API rollout that fixes stranger access to KYC file metadata. The newer API has an
- * authenticated payment-info status route whose DTO rejects an invalid UUID with 400; the older
- * API does not have that route and returns 404. The request uses a valid account JWT and valid
- * transaction type, while its invalid UUID is rejected before the controller can read or write data.
- */
-async function kycFileAuthorizationRollout(jwt: string): Promise<'legacy' | 'rolled-out'> {
-  const response = await fetch(
-    `${apiBase()}/v1/transaction/payment-info-request?type=Buy&clientRequestId=not-a-uuid`,
-    { headers: { Authorization: `Bearer ${jwt}` } },
-  );
-  const status = response.status;
-  expect([400, 404]).toContain(status);
-  return status === 400 ? 'rolled-out' : 'legacy';
+/** Checks that the running API image matches the source classified by scripts/up.sh. */
+async function kycFileAuthorizationRollout(): Promise<'legacy' | 'rolled-out'> {
+  const response = await fetch(`${apiBase()}/version`);
+  expect(response.status, 'the API build identity endpoint must respond').toBe(200);
+  const version = (await response.json()) as { commit?: unknown };
+  expect(typeof version.commit, 'the API image must expose its build commit').toBe('string');
+  const expectedCommit = process.env.E2E_API_SOURCE_COMMIT;
+  if (expectedCommit) {
+    expect(version.commit, 'the running API image must match the classified source checkout').toBe(expectedCommit);
+  }
+  // Missing or unknown declarations are strict; only the host-side source classifier may opt
+  // into the legacy expected-failure branch.
+  return typeof expectedCommit === 'string' && expectedCommit.length > 0 &&
+    process.env.E2E_KYC_FILE_GUARD_STATE === 'legacy-develop'
+    ? 'legacy'
+    : 'rolled-out';
 }
 
 /**
@@ -590,33 +592,40 @@ test.describe('KYC area e2e', () => {
     const kycHash = await kycHashOf(owner.userDataId);
     await uploadRealAdditionalDocument(owner.userDataId, kycHash, 'owner-doc');
 
-    const fileRow = await waitForRow<{ uid: string; name: string }>(
-      `SELECT uid, name FROM kyc_file WHERE "userDataId" = $1 ORDER BY id DESC LIMIT 1`,
+    const fileRow = await waitForRow<{ id: number; uid: string; name: string }>(
+      `SELECT id, uid, name FROM kyc_file WHERE "userDataId" = $1 ORDER BY id DESC LIMIT 1`,
       [owner.userDataId],
       15000,
     );
 
+    const metadata = waitForKycFileMetadataResponse(page, fileRow.uid);
     await openScreen(page, `/file/${fileRow.uid}`, owner.jwt);
+    expect((await metadata).status()).toBe(200);
     await expect(page.getByText('ID', { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(fileRow.name, { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'View file' })).toBeVisible();
+    await waitForRow(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND result = $2 ORDER BY id DESC LIMIT 1`,
+      [owner.userDataId, `User ${owner.userDataId} is viewing KYC file ${fileRow.name} (ID: ${fileRow.id})`],
+      15000,
+    );
   });
 
-  test('/file/:id is readable by its owner and by nobody else', async ({ page }) => {
+  test('/file/:id is readable by its owner and concealed from anonymous and foreign users', async ({ page }) => {
     // Intended access rule: a stranger must not see another user's customer-uploaded KYC document.
     //
     // openScreen can return before getFile's metadata GET starts (route spinner gone, brief
     // networkidle). Asserting View file count 0 in that window mistakes an unloaded page for
     // denial and spuriously passes under test.fail. Await the real GET + terminal UI first.
-    // Probe a backend capability that ships with the authorization fix. This keeps the legacy
-    // exposure visible during rollout while ensuring a later regression cannot remain green.
+    // scripts/up.sh classifies the API source checkout; this helper verifies /version.commit against it.
+    // Only the pre-guard develop baseline may expect-fail; all other API revisions require denial.
 
     const owner = await createUser({ tag: 'file-owner', kycLevel: 0, language: 'EN' });
     const ownerHash = await kycHashOf(owner.userDataId);
     await uploadRealAdditionalDocument(owner.userDataId, ownerHash, 'owner-doc');
 
-    const fileRow = await waitForRow<{ uid: string; protected: boolean }>(
-      `SELECT uid, protected FROM kyc_file WHERE "userDataId" = $1 ORDER BY id DESC LIMIT 1`,
+    const fileRow = await waitForRow<{ id: number; uid: string; name: string; protected: boolean }>(
+      `SELECT id, uid, name, protected FROM kyc_file WHERE "userDataId" = $1 ORDER BY id DESC LIMIT 1`,
       [owner.userDataId],
       15000,
     );
@@ -624,8 +633,13 @@ test.describe('KYC area e2e', () => {
     // case rather than a corner of the model.
     expect(fileRow.protected).toBe(false);
 
+    // Capture anonymous behavior before the foreign-browser request, but defer assertions until
+    // after that request: the legacy image also exposes anonymous files, and the transition XFAIL
+    // must be caused by the real foreign-user HTTP 200 below.
+    const anonymousResponse = await fetch(`${apiBase()}/v2/kyc/file/${encodeURIComponent(fileRow.uid)}`);
+
     const stranger = await createUser({ tag: 'file-stranger', kycLevel: 0, language: 'EN' });
-    const rollout = await kycFileAuthorizationRollout(stranger.jwt);
+    const rollout = await kycFileAuthorizationRollout();
     const metadata = waitForKycFileMetadataResponse(page, fileRow.uid);
     await openScreen(page, `/file/${fileRow.uid}`, stranger.jwt);
     const metadataResponse = await metadata;
@@ -633,22 +647,32 @@ test.describe('KYC area e2e', () => {
     await waitForKycFileScreenSettled(page);
 
     const metadataStatus = metadataResponse.status();
-
-    if (rollout === 'rolled-out') {
-      // Once the capability is present, HTTP 200 is a hard regression even if the UI looks denied.
-      expect(metadataStatus).toBe(404);
-    } else {
-      // Until then, preserve the legacy server's exposure as a visible, executed expected failure.
+    if (rollout === 'legacy') {
       expect([200, 404]).toContain(metadataStatus);
       test.fail(
         metadataStatus === 200,
         'The legacy API still exposes another user KYC document to a stranger (HTTP 200).',
       );
-      // This assertion makes HTTP 200 an expected failure even if the UI happens to mask it.
-      expect(metadataStatus).toBe(404);
     }
+
+    // This direct status assertion makes HTTP 200 fail even if the UI masks the leaked response.
+    expect(metadataStatus).toBe(404);
+    expect(await metadataResponse.json()).not.toHaveProperty('content');
+
+    expect(anonymousResponse.status).toBe(404);
+    expect(await anonymousResponse.json()).not.toHaveProperty('content');
+    const anonymousAudit = await queryOne<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND result = $2 ORDER BY id DESC LIMIT 1`,
+      [owner.userDataId, `User undefined is viewing KYC file ${fileRow.name} (ID: ${fileRow.id})`],
+    );
+    expect(anonymousAudit).toBeUndefined();
 
     await expect(page.getByRole('button', { name: 'View file' })).toHaveCount(0);
     await expect(page.getByText(KYC_FILE_ERROR_TEXT)).toBeVisible();
+    const foreignAudit = await queryOne<{ id: number }>(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND result = $2 ORDER BY id DESC LIMIT 1`,
+      [owner.userDataId, `User ${stranger.userDataId} is viewing KYC file ${fileRow.name} (ID: ${fileRow.id})`],
+    );
+    expect(foreignAudit).toBeUndefined();
   });
 });
