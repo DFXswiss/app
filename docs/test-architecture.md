@@ -153,12 +153,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The RealUnit support visual spec answers the issue list and thread itself.**
   `e2e/realunit-support.spec.ts` fulfils the RealUnit support list, counts, activity, clerks,
   issue data and messages with synthetic fixtures; the clerks carry the `{ clerkUserDataId, clerk }`
-  shape and the issue fixture a `clerkUserDataId`. Auth is a synthetic unsigned Admin JWT.
+  shape and the issue fixture a `clerkUserDataId`. Further variants answer the clerks list empty,
+  with HTTP 500, or leave the assigned id off the list. Auth is a synthetic unsigned Admin JWT.
   Staff bootstrap GETs and `GET /v2/user` are fulfilled, unmatched `GET /v1/**` returns `[]`,
   and other unmatched `/v1/**` methods return `{}`. A green run proves those list and issue
   fixtures render. It does not prove production auth, that the API returns those issues or
   answers the clerk endpoints in that shape, that assignment writes `clerkUserDataId`, or that
-  sending a message reaches the server.
+  sending a message reaches the server, or that the API fails the clerks list the way the 500 fixture does.
 - **The RealUnit referral visual spec answers the relation list and promo list itself.**
   `e2e/realunit-referral.spec.ts` fulfils `GET /v1/realunit/referral/admin/relations` and
   `GET /v1/realunit/referral/promo` with synthetic fixtures: an empty promo list on the
@@ -299,8 +300,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The DFX support issue visual spec answers the issue endpoints itself.**
   `e2e/support-dashboard-issue.spec.ts` uses a synthetic unsigned Admin JWT and fulfils
   `GET /v1/support/issue/clerks`, `GET /v1/support/issue/clerk` (the acting staff identity),
-  `/v1/support/issue/:id/data`, `/v1/support/issue/:uid` (message thread) and staff bootstrap GETs.
-  A green run proves the issue screen renders that fixture, not that the API returns it, not that
+  `/v1/support/issue/:id/data`, `/v1/support/issue/:uid` (message thread) and staff bootstrap GETs;
+  further variants answer the clerks list empty, with HTTP 500, or leave the assigned id off the list.
+  A green run proves the issue screen renders those fixtures, not that the API returns them, not that
   the logged-in account really resolves to that clerk identity, and not that login works.
 - **The full-stack clerk-assignment spec SQL-writes `user_data.verifiedName` and `setting.supportClerks`.**
   `e2e-stack/specs/support-dashboard.spec.ts` (`assigns a clerk from the resolved list`) gives the Support
