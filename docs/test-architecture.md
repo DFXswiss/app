@@ -152,11 +152,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   prize-wallet, alert, payout, buy-limit or account endpoints return real data.
 - **The RealUnit support visual spec answers the issue list and thread itself.**
   `e2e/realunit-support.spec.ts` fulfils the RealUnit support list, counts, activity, clerks,
-  issue data and messages with synthetic fixtures. Auth is a synthetic unsigned Admin JWT.
+  issue data and messages with synthetic fixtures; the clerks carry the `{ clerkUserDataId, clerk }`
+  shape and the issue fixture a `clerkUserDataId`. Auth is a synthetic unsigned Admin JWT.
   Staff bootstrap GETs and `GET /v2/user` are fulfilled, unmatched `GET /v1/**` returns `[]`,
   and other unmatched `/v1/**` methods return `{}`. A green run proves those list and issue
-  fixtures render. It does not prove production auth, that the API returns those issues, or
-  that sending a message reaches the server.
+  fixtures render. It does not prove production auth, that the API returns those issues or
+  answers the clerk endpoints in that shape, that assignment writes `clerkUserDataId`, or that
+  sending a message reaches the server.
 - **The RealUnit referral visual spec answers the relation list and promo list itself.**
   `e2e/realunit-referral.spec.ts` fulfils `GET /v1/realunit/referral/admin/relations` and
   `GET /v1/realunit/referral/promo` with synthetic fixtures: an empty promo list on the
@@ -252,7 +254,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   real invoice route.
 - **The compliance-review KYC-status spec answers staff identity itself.**
   `e2e/compliance-review-kyc-status.spec.ts` fulfils `GET /v1/support/issue/clerk` with
-  `{ clerk }` and, as fallback, `GET /v1/support/{id}` for any account other than the customer
+  `{ clerkUserDataId, clerk }` and, as fallback, `GET /v1/support/{id}` for any account other than the customer
   fixture with `{ userData: { verifiedName } }`. A green run proves that the review screen
   accepts that name, not that the API returns the logged-in staff member's `verifiedName`.
   The spec covers the resettable AML-reset path and the pending ManualCheck decision form
@@ -261,7 +263,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   is the logged-in staff member's `verifiedName`.
 - **The call-queue outcome spec answers staff identity and the dossier itself.**
   `e2e/compliance-call-queue-outcome.spec.ts` fulfils `GET /v1/support/issue/clerk` with
-  `{ clerk }`, a differently named fallback on `GET /v1/support/{staffAccount}`,
+  `{ clerkUserDataId, clerk }`, a differently named fallback on `GET /v1/support/{staffAccount}`,
   `GET /v1/support/{customer}` with a synthetic dossier, empty lookup lists, a null
   info banner, and `GET /v2/user` with a synthetic account. A green run proves the
   outcome form renders that clerk name as a read-only signature and does not request a
