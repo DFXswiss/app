@@ -302,7 +302,10 @@ export function useMetaMask(): MetaMaskInterface {
   }
 
   function createContract(chainId?: string, client = web3): Contract {
-    return new client.eth.Contract(ERC20_ABI as any, chainId);
+    return new client.eth.Contract(
+      ERC20_ABI as unknown as ConstructorParameters<typeof client.eth.Contract>[0],
+      chainId,
+    );
   }
 
   /**

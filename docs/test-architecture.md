@@ -115,6 +115,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   use a JavaScript proxy that throws when `on` is read. The unit tests also pass that
   request adapter through the real Web3 request manager, including a provider injected
   after the hook has rendered, and check that method and parameters arrive unchanged.
+  They replace `window.ethereum` after `eth_sendTransaction` and after
+  `wallet_sendCalls` with a second provider that rejects every request, then check
+  that `eth_getTransactionReceipt` and `wallet_getCallsStatus` stay on the provider
+  that accepted the send. A green run of that replacement does not prove a real
+  extension swap still confirms a payment that was already broadcast. The token
+  receipt case stubs `sha3` in `web3-utils` with SHA-256 and returns the address
+  from `toChecksumAddress` unchanged, so it checks provider routing and receipt
+  polling, not cryptographic encoding.
   The full-stack fake returns fixed accounts and chain data and does not produce a valid signature.
   The visual spec
   `e2e/wallet-missing-provider.spec.ts` supplies a detectable wallet that disappears after its
