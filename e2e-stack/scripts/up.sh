@@ -59,9 +59,18 @@ if [[ -d "$api_repo" ]] && git -C "$api_repo" rev-parse --git-dir >/dev/null 2>&
   api_shallow="$(git -C "$api_repo" rev-parse --is-shallow-repository)"
   api_kyc_service="$api_repo/src/subdomains/generic/kyc/services/kyc.service.ts"
   owner_guard_signature='const isOwner = jwt?.account === kycFile.userData.id'
+  if ! command -v grep >/dev/null 2>&1; then
+    log_error "grep is required to classify the KYC owner guard."
+    exit 1
+  fi
   guard_in_source=false
-  if rg -Fq "$owner_guard_signature" "$api_kyc_service"; then
+  guard_probe_status=0
+  grep -Fq "$owner_guard_signature" "$api_kyc_service" || guard_probe_status=$?
+  if [[ "$guard_probe_status" -eq 0 ]]; then
     guard_in_source=true
+  elif [[ "$guard_probe_status" -ne 1 ]]; then
+    log_error "Failed to read API KYC service while checking the owner guard (grep exit ${guard_probe_status})."
+    exit 1
   fi
 
   # Only the immutable old-image control and a full-history checkout exactly at the canonical
