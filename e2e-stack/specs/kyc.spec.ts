@@ -80,6 +80,22 @@ async function kycHashOf(userDataId: number): Promise<string> {
 }
 
 /**
+ * Detects the API rollout that fixes stranger access to KYC file metadata. The newer API has an
+ * authenticated payment-info status route whose DTO rejects an invalid UUID with 400; the older
+ * API does not have that route and returns 404. The request uses a valid account JWT and valid
+ * transaction type, while its invalid UUID is rejected before the controller can read or write data.
+ */
+async function kycFileAuthorizationRollout(jwt: string): Promise<'legacy' | 'rolled-out'> {
+  const response = await fetch(
+    `${apiBase()}/v1/transaction/payment-info-request?type=Buy&clientRequestId=not-a-uuid`,
+    { headers: { Authorization: `Bearer ${jwt}` } },
+  );
+  const status = response.status;
+  expect([400, 404]).toContain(status);
+  return status === 400 ? 'rolled-out' : 'legacy';
+}
+
+/**
  * `createUser` always sets a mail during signup (PUT /v2/user/mail, unconditional - see
  * e2e-stack/specs/fixtures/factories.ts createUser). Verified live: a mail alone already satisfies
  * the KYC engine's Link-level (10) requirement regardless of the raw `user_data.kycLevel` column, so
@@ -592,8 +608,8 @@ test.describe('KYC area e2e', () => {
     // openScreen can return before getFile's metadata GET starts (route spinner gone, brief
     // networkidle). Asserting View file count 0 in that window mistakes an unloaded page for
     // denial and spuriously passes under test.fail. Await the real GET + terminal UI first.
-    // The transition accepts only the known legacy exposure (200) and the fixed denial (404).
-    // Other responses and setup/sync failures remain ordinary failures.
+    // Probe a backend capability that ships with the authorization fix. This keeps the legacy
+    // exposure visible during rollout while ensuring a later regression cannot remain green.
 
     const owner = await createUser({ tag: 'file-owner', kycLevel: 0, language: 'EN' });
     const ownerHash = await kycHashOf(owner.userDataId);
@@ -609,6 +625,7 @@ test.describe('KYC area e2e', () => {
     expect(fileRow.protected).toBe(false);
 
     const stranger = await createUser({ tag: 'file-stranger', kycLevel: 0, language: 'EN' });
+    const rollout = await kycFileAuthorizationRollout(stranger.jwt);
     const metadata = waitForKycFileMetadataResponse(page, fileRow.uid);
     await openScreen(page, `/file/${fileRow.uid}`, stranger.jwt);
     const metadataResponse = await metadata;
@@ -616,14 +633,21 @@ test.describe('KYC area e2e', () => {
     await waitForKycFileScreenSettled(page);
 
     const metadataStatus = metadataResponse.status();
-    expect([200, 404]).toContain(metadataStatus);
 
-    // Keep the legacy server's exposure visible as an executed expected failure while allowing
-    // the fixed server's 404 denial to pass normally.
-    test.fail(
-      metadataStatus === 200,
-      'A legacy server still exposes another user KYC document to a stranger (HTTP 200).',
-    );
+    if (rollout === 'rolled-out') {
+      // Once the capability is present, HTTP 200 is a hard regression even if the UI looks denied.
+      expect(metadataStatus).toBe(404);
+    } else {
+      // Until then, preserve the legacy server's exposure as a visible, executed expected failure.
+      expect([200, 404]).toContain(metadataStatus);
+      test.fail(
+        metadataStatus === 200,
+        'The legacy API still exposes another user KYC document to a stranger (HTTP 200).',
+      );
+      // This assertion makes HTTP 200 an expected failure even if the UI happens to mask it.
+      expect(metadataStatus).toBe(404);
+    }
+
     await expect(page.getByRole('button', { name: 'View file' })).toHaveCount(0);
     await expect(page.getByText(KYC_FILE_ERROR_TEXT)).toBeVisible();
   });
