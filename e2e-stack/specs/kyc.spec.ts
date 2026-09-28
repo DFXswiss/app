@@ -588,12 +588,12 @@ test.describe('KYC area e2e', () => {
 
   test('/file/:id is readable by its owner and by nobody else', async ({ page }) => {
     // Intended access rule: a stranger must not see another user's customer-uploaded KYC document.
-    // Access scope for this document class is open with the team; once fixed, remove test.fail().
     //
     // openScreen can return before getFile's metadata GET starts (route spinner gone, brief
     // networkidle). Asserting View file count 0 in that window mistakes an unloaded page for
     // denial and spuriously passes under test.fail. Await the real GET + terminal UI first.
-    // test.fail stays immediately before the product assertion so setup/sync failures stay real.
+    // The transition accepts only the known legacy exposure (200) and the fixed denial (404).
+    // Other responses and setup/sync failures remain ordinary failures.
 
     const owner = await createUser({ tag: 'file-owner', kycLevel: 0, language: 'EN' });
     const ownerHash = await kycHashOf(owner.userDataId);
@@ -611,16 +611,18 @@ test.describe('KYC area e2e', () => {
     const stranger = await createUser({ tag: 'file-stranger', kycLevel: 0, language: 'EN' });
     const metadata = waitForKycFileMetadataResponse(page, fileRow.uid);
     await openScreen(page, `/file/${fileRow.uid}`, stranger.jwt);
-    await metadata;
+    const metadataResponse = await metadata;
     // Settled is 'file' today (product serves the stranger the document) or 'error' once fixed.
     await waitForKycFileScreenSettled(page);
 
-    // Correct product behaviour after the metadata GET completes: stranger must not get the
-    // document viewer — ErrorHint, not View file. Today the API still serves the file, so the
-    // assertions below fail until access scope is fixed.
+    const metadataStatus = metadataResponse.status();
+    expect([200, 404]).toContain(metadataStatus);
+
+    // Keep the legacy server's exposure visible as an executed expected failure while allowing
+    // the fixed server's 404 denial to pass normally.
     test.fail(
-      true,
-      'A stranger can currently open another user KYC document; access scope is open with the team.',
+      metadataStatus === 200,
+      'A legacy server still exposes another user KYC document to a stranger (HTTP 200).',
     );
     await expect(page.getByRole('button', { name: 'View file' })).toHaveCount(0);
     await expect(page.getByText(KYC_FILE_ERROR_TEXT)).toBeVisible();
