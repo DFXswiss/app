@@ -215,6 +215,12 @@ const ISSUE_DATA: SupportIssueInternalData = {
   },
 };
 
+const UNLISTED_CLERK_ISSUE_DATA: SupportIssueInternalData = {
+  ...ISSUE_DATA,
+  clerk: undefined,
+  clerkUserDataId: 999,
+};
+
 // Message thread for RU-7001-UID: customer (left) + support author (right) bubbles.
 const MESSAGES: SupportMessageInfo[] = [
   {
@@ -252,7 +258,11 @@ async function json(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function installSupportRoutes(page: Page, clerks = CLERKS): Promise<void> {
+async function installSupportRoutes(
+  page: Page,
+  options: { clerks?: typeof CLERKS; issueData?: SupportIssueInternalData; clerksStatus?: number } = {},
+): Promise<void> {
+  const { clerks = CLERKS, issueData = ISSUE_DATA, clerksStatus = 200 } = options;
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
     const url = request.url();
@@ -261,8 +271,17 @@ async function installSupportRoutes(page: Page, clerks = CLERKS): Promise<void> 
     if (LIST_RE.test(url)) return json(route, { data: OPEN_ISSUES, total: OPEN_ISSUES.length });
     if (COUNTS_RE.test(url)) return json(route, COUNTS);
     if (ACTIVITY_RE.test(url)) return json(route, { count: 0 });
-    if (CLERKS_RE.test(url)) return json(route, clerks);
-    if (DATA_RE.test(url)) return json(route, ISSUE_DATA);
+    if (CLERKS_RE.test(url)) {
+      if (clerksStatus !== 200) {
+        return route.fulfill({
+          status: clerksStatus,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Failed to load clerks' }),
+        });
+      }
+      return json(route, clerks);
+    }
+    if (DATA_RE.test(url)) return json(route, issueData);
     if (MESSAGES_RE.test(url)) return json(route, MESSAGES);
     if (request.method() === 'GET' && path === '/v1/support/issue/clerk')
       return json(route, { clerkUserDataId: 1, clerk: 'Ada Clerk' });
@@ -292,6 +311,13 @@ async function installSupportRoutes(page: Page, clerks = CLERKS): Promise<void> 
     }
     await route.continue();
   });
+}
+
+async function prepareIssueScreenshot(page: Page): Promise<void> {
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  const composer = page.locator('textarea');
+  await composer.scrollIntoViewIfNeeded();
+  await expect(composer).toBeVisible();
 }
 
 test.describe('RealUnit Support dashboards - Visual Regression Tests', () => {
@@ -330,10 +356,7 @@ test.describe('RealUnit Support dashboards - Visual Regression Tests', () => {
 
     // Cmd/Ctrl+Enter is a keybinding, not chrome. The handbook shot still has to include the
     // composer (textarea + Send) — the 1280x720 viewport cuts it off below the thread.
-    await page.setViewportSize({ width: 1280, height: 1400 });
-    const composer = page.locator('textarea');
-    await composer.scrollIntoViewIfNeeded();
-    await expect(composer).toBeVisible();
+    await prepareIssueScreenshot(page);
     await expect(page.getByRole('button', { name: /^Send$/ })).toBeVisible();
 
     await expect(page).toHaveScreenshot('realunit-support-02-issue.png', {
@@ -343,20 +366,50 @@ test.describe('RealUnit Support dashboards - Visual Regression Tests', () => {
   });
 
   test('issue screen shows the empty clerk-list hint', async ({ page }) => {
-    await installSupportRoutes(page, []);
+    await installSupportRoutes(page, { clerks: [] });
 
     await page.goto(`/realunit/support/issue/${ISSUE_ID}?session=${encodeURIComponent(token)}&lang=en`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
 
     await expect(page.getByText('Clerk list is empty. Assign after the API update is live.')).toBeVisible();
-
-    await page.setViewportSize({ width: 1280, height: 1400 });
-    const composer = page.locator('textarea');
-    await composer.scrollIntoViewIfNeeded();
-    await expect(composer).toBeVisible();
+    await prepareIssueScreenshot(page);
 
     await expect(page).toHaveScreenshot('realunit-support-03-issue-empty-clerks.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('issue screen shows the clerk-list load error', async ({ page }) => {
+    await installSupportRoutes(page, { clerksStatus: 500 });
+
+    await page.goto(`/realunit/support/issue/${ISSUE_ID}?session=${encodeURIComponent(token)}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    await expect(page.getByText('Failed to load clerks')).toBeVisible();
+    await prepareIssueScreenshot(page);
+
+    await expect(page).toHaveScreenshot('realunit-support-04-issue-clerks-failed.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('issue screen shows an unlisted assigned clerk id', async ({ page }) => {
+    await installSupportRoutes(page, { issueData: UNLISTED_CLERK_ISSUE_DATA });
+
+    await page.goto(`/realunit/support/issue/${ISSUE_ID}?session=${encodeURIComponent(token)}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    const clerkSelect = page.locator('select').filter({ hasText: '#999' });
+    await expect(clerkSelect).toHaveValue('999');
+    await expect(clerkSelect.locator('option:checked')).toHaveText('#999');
+    await prepareIssueScreenshot(page);
+
+    await expect(page).toHaveScreenshot('realunit-support-05-issue-unlisted-clerk.png', {
       fullPage: true,
       maxDiffPixels: 5000,
     });

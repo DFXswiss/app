@@ -52,6 +52,12 @@ const ISSUE_DATA = {
   },
 };
 
+const UNLISTED_CLERK_ISSUE_DATA = {
+  ...ISSUE_DATA,
+  clerk: undefined,
+  clerkUserDataId: 999,
+};
+
 const MESSAGES = [
   {
     id: 501,
@@ -75,14 +81,27 @@ async function json(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function installIssueRoutes(page: Page, clerks = CLERKS): Promise<void> {
+async function installIssueRoutes(
+  page: Page,
+  options: { clerks?: typeof CLERKS; issueData?: unknown; clerksStatus?: number } = {},
+): Promise<void> {
+  const { clerks = CLERKS, issueData = ISSUE_DATA, clerksStatus = 200 } = options;
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
     const url = request.url();
     const path = new URL(url).pathname;
 
-    if (CLERKS_RE.test(url)) return json(route, clerks);
-    if (DATA_RE.test(url)) return json(route, ISSUE_DATA);
+    if (CLERKS_RE.test(url)) {
+      if (clerksStatus !== 200) {
+        return route.fulfill({
+          status: clerksStatus,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Failed to load clerks' }),
+        });
+      }
+      return json(route, clerks);
+    }
+    if (DATA_RE.test(url)) return json(route, issueData);
     if (THREAD_RE.test(url) && request.method() === 'GET') return json(route, { messages: MESSAGES });
 
     if (
@@ -117,6 +136,14 @@ async function installIssueRoutes(page: Page, clerks = CLERKS): Promise<void> {
   });
 }
 
+async function prepareIssueScreenshot(page: Page): Promise<void> {
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await expect(page.getByText(MESSAGES[0].message)).toBeVisible();
+  const composer = page.locator('textarea');
+  await composer.scrollIntoViewIfNeeded();
+  await expect(composer).toBeVisible();
+}
+
 test.describe('Support Dashboard - issue detail', () => {
   const token = jwt();
 
@@ -130,6 +157,7 @@ test.describe('Support Dashboard - issue detail', () => {
     await expect(page.getByText('Issue Details')).toBeVisible();
     await expect(page.getByText(ISSUE_UID)).toBeVisible();
     await expect(page.locator('select').filter({ hasText: 'Rita Clerk' })).toHaveValue('101');
+    await prepareIssueScreenshot(page);
 
     await expect(page).toHaveScreenshot('support-dashboard-02-issue.png', {
       fullPage: true,
@@ -138,15 +166,50 @@ test.describe('Support Dashboard - issue detail', () => {
   });
 
   test('issue screen shows the empty clerk-list hint', async ({ page }) => {
-    await installIssueRoutes(page, []);
+    await installIssueRoutes(page, { clerks: [] });
 
     await page.goto(`/support/dashboard/issue/${ISSUE_ID}?session=${encodeURIComponent(token)}&lang=en`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
 
     await expect(page.getByText('Clerk list is empty. Assign after the API update is live.')).toBeVisible();
+    await prepareIssueScreenshot(page);
 
     await expect(page).toHaveScreenshot('support-dashboard-03-issue-empty-clerks.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('issue screen shows the clerk-list load error', async ({ page }) => {
+    await installIssueRoutes(page, { clerksStatus: 500 });
+
+    await page.goto(`/support/dashboard/issue/${ISSUE_ID}?session=${encodeURIComponent(token)}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    await expect(page.getByText('Failed to load clerks')).toBeVisible();
+    await prepareIssueScreenshot(page);
+
+    await expect(page).toHaveScreenshot('support-dashboard-04-issue-clerks-failed.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('issue screen shows an unlisted assigned clerk id', async ({ page }) => {
+    await installIssueRoutes(page, { issueData: UNLISTED_CLERK_ISSUE_DATA });
+
+    await page.goto(`/support/dashboard/issue/${ISSUE_ID}?session=${encodeURIComponent(token)}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    const clerkSelect = page.locator('select').filter({ hasText: '#999' });
+    await expect(clerkSelect).toHaveValue('999');
+    await expect(clerkSelect.locator('option:checked')).toHaveText('#999');
+    await prepareIssueScreenshot(page);
+
+    await expect(page).toHaveScreenshot('support-dashboard-05-issue-unlisted-clerk.png', {
       fullPage: true,
       maxDiffPixels: 5000,
     });

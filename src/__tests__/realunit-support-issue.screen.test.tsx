@@ -10,6 +10,7 @@ const mockCreateMessage = jest.fn();
 const mockGetFile = jest.fn();
 const mockNavigate = jest.fn();
 const mockHandleSplitDrag = jest.fn();
+const mockToBase64 = jest.fn();
 
 const mockParams: { id?: string } = { id: '1' };
 let mockDraftText = '';
@@ -134,7 +135,7 @@ jest.mock('src/util/support-draft', () => ({
 
 jest.mock('src/util/utils', () => ({
   saveBufferedFile: jest.fn(),
-  toBase64: jest.fn(),
+  toBase64: (file: File) => mockToBase64(file),
 }));
 
 jest.mock('src/util/message-composer', () => ({
@@ -198,6 +199,8 @@ describe('RealunitSupportIssueScreen ticket switches', () => {
     mockGetClerks.mockResolvedValue([{ clerkUserDataId: 7, clerk: 'Rita' }]);
     mockUpdateIssue.mockResolvedValue(undefined);
     mockCreateMessage.mockResolvedValue(undefined);
+    mockToBase64.mockReset();
+    mockToBase64.mockImplementation(async (file: File) => `data:${file.name}`);
   });
 
   afterEach(() => {
@@ -310,6 +313,40 @@ describe('RealunitSupportIssueScreen ticket switches', () => {
       await sendA.promise.catch(() => undefined);
     });
 
+    expect(writeDraft).toHaveBeenCalledWith('1', 'hello');
+  });
+
+  it('restores only unsent files after a partial send failure', async () => {
+    mockDraftText = 'hello';
+    mockCreateMessage.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Second file failed'));
+    render(<RealunitSupportIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+
+    const firstFile = new File(['first'], 'first.pdf', { type: 'application/pdf' });
+    const secondFile = new File(['second'], 'second.pdf', { type: 'application/pdf' });
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).not.toBeNull();
+    fireEvent.change(fileInput as HTMLInputElement, { target: { files: [firstFile, secondFile] } });
+
+    expect(screen.getByText('first.pdf')).toBeInTheDocument();
+    expect(screen.getByText('second.pdf')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('Second file failed');
+    expect(mockCreateMessage).toHaveBeenCalledTimes(2);
+    expect(mockCreateMessage).toHaveBeenNthCalledWith(
+      1,
+      1,
+      expect.objectContaining({ file: 'data:first.pdf', fileName: 'first.pdf' }),
+    );
+    expect(mockCreateMessage).toHaveBeenNthCalledWith(
+      2,
+      1,
+      expect.objectContaining({ file: 'data:second.pdf', fileName: 'second.pdf' }),
+    );
+    expect(screen.queryByText('first.pdf')).not.toBeInTheDocument();
+    expect(screen.getByText('second.pdf')).toBeInTheDocument();
     expect(writeDraft).toHaveBeenCalledWith('1', 'hello');
   });
 
@@ -520,6 +557,30 @@ describe('RealunitSupportIssueScreen ticket switches', () => {
 
     navigateTo('2', rerender);
     expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+    expect(screen.getByText(hint)).toBeInTheDocument();
+    expect(mockGetClerks).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the clerk-list load error across a ticket switch and update', async () => {
+    const hint = 'Clerk service unavailable';
+    mockGetClerks.mockRejectedValue(new Error(hint));
+    const { rerender } = render(<RealunitSupportIssueScreen />);
+
+    expect(await screen.findByText(hint)).toBeInTheDocument();
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+    expect(screen.getByText(hint)).toBeInTheDocument();
+
+    const ticketLoadsBeforeUpdate = mockGetIssueData.mock.calls.filter((call) => call[0] === 2).length;
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    await waitFor(() => {
+      expect(mockGetIssueData.mock.calls.filter((call) => call[0] === 2).length).toBeGreaterThan(
+        ticketLoadsBeforeUpdate,
+      );
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Update' })).toBeEnabled());
     expect(screen.getByText(hint)).toBeInTheDocument();
     expect(mockGetClerks).toHaveBeenCalledTimes(1);
   });
