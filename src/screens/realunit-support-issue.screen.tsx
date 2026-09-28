@@ -65,7 +65,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   const { name: messageAuthor, isLoading: isLoadingAuthor, error: authorError } = useStaffVerifiedName();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
-  const sendInFlight = useRef(false);
+  const sendingIssueIdsRef = useRef(new Set<string>());
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -162,11 +162,10 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
 
   // Invalidate in-flight work and clear ticket-local UI before loading the next ticket.
   useEffect(() => {
+    setIsSending(id != null && sendingIssueIdsRef.current.has(id));
     setIsUpdating(id != null && updatingIssueIdsRef.current.has(id));
     messageLoadSeqRef.current += 1;
     issueLoadSeqRef.current += 1;
-    sendInFlight.current = false;
-    setIsSending(false);
     setSelectedFiles([]);
     setActionError(undefined);
     setLoadError(undefined);
@@ -225,54 +224,56 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   }
 
   async function handleSendMessage(): Promise<void> {
-    if (isSending || sendInFlight.current) return;
-    if (!id || (!messageText.trim() && selectedFiles.length === 0)) return;
+    if (!id || sendingIssueIdsRef.current.has(id)) return;
+    if (!messageText.trim() && selectedFiles.length === 0) return;
     if (isLoadingAuthor) return;
     if (!messageAuthor) {
       setActionError(authorError ? staffNameLoadError(authorError) : STAFF_NAME_MISSING);
       return;
     }
-    sendInFlight.current = true;
+    sendingIssueIdsRef.current.add(id);
     setIsSending(true);
     setActionError(undefined);
     // The draft is dropped before the request, so a detour during the send cannot bring back text
-    // that is already on its way. On failure, storage is restored for the ticket that was sending;
-    // the composer is only updated if the clerk is still on that same ticket.
+    // that is already on its way. On failure, storage is always restored for this ticket; the
+    // composer and error are restored only if the clerk is still on it.
     const sendIssueId = id;
     const draft = messageText;
+    const files = selectedFiles;
     clearDraft();
+    let sent = 0;
     try {
       const author = messageAuthor;
       const text = draft.trim() || undefined;
 
-      if (selectedFiles.length > 0) {
-        for (let i = 0; i < selectedFiles.length; i++) {
-          const fileData = await toBase64(selectedFiles[i]);
-          const isLast = i === selectedFiles.length - 1;
+      if (files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const fileData = await toBase64(files[i]);
+          const isLast = i === files.length - 1;
           await createMessage(+sendIssueId, {
             author,
             message: isLast ? text : undefined,
             file: fileData,
-            fileName: selectedFiles[i].name,
+            fileName: files[i].name,
           });
+          sent += 1;
         }
       } else {
         await createMessage(+sendIssueId, { author, message: text });
       }
 
-      if (idRef.current === sendIssueId) {
-        setSelectedFiles([]);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        loadMessages();
-      }
+      if (idRef.current !== sendIssueId) return;
+      setSelectedFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      loadMessages();
     } catch (e: unknown) {
       writeDraft(sendIssueId, draft);
-      if (idRef.current === sendIssueId) {
-        setMessageText(draft);
-        setActionError(e instanceof Error ? e.message : 'Send failed');
-      }
+      if (idRef.current !== sendIssueId) return;
+      if (files.length > 0) setSelectedFiles(files.slice(sent));
+      setMessageText(draft);
+      setActionError(e instanceof Error ? e.message : 'Send failed');
     } finally {
-      sendInFlight.current = false;
+      sendingIssueIdsRef.current.delete(sendIssueId);
       if (idRef.current === sendIssueId) setIsSending(false);
     }
   }

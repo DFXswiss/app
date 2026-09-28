@@ -12,6 +12,7 @@ const mockNavigate = jest.fn();
 const mockHandleSplitDrag = jest.fn();
 
 const mockParams: { id?: string } = { id: '1' };
+let mockDraftText = '';
 
 jest.mock('@dfx.swiss/react', () => ({
   Department: {
@@ -102,7 +103,7 @@ jest.mock('src/hooks/split-pane.hook', () => ({
 }));
 
 jest.mock('src/hooks/support-draft.hook', () => ({
-  useSupportDraft: () => ['', jest.fn(), jest.fn()],
+  useSupportDraft: () => [mockDraftText, jest.fn(), jest.fn()],
 }));
 
 jest.mock('src/hooks/staff-verified-name.hook', () => ({
@@ -143,6 +144,7 @@ jest.mock('src/util/message-composer', () => ({
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import RealunitSupportIssueScreen from 'src/screens/realunit-support-issue.screen';
+import { writeDraft } from 'src/util/support-draft';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -190,6 +192,7 @@ describe('RealunitSupportIssueScreen ticket switches', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockParams.id = '1';
+    mockDraftText = '';
     mockGetIssueData.mockImplementation((id: number) => Promise.resolve(issue(id)));
     mockGetIssueMessages.mockImplementation((id: number) => Promise.resolve([{ id, message: `body-${id}` }]));
     mockGetClerks.mockResolvedValue([{ clerkUserDataId: 7, clerk: 'Rita' }]);
@@ -266,6 +269,48 @@ describe('RealunitSupportIssueScreen ticket switches', () => {
 
     expect(screen.queryByText('body-A')).not.toBeInTheDocument();
     expect(screen.getByText('body-B')).toBeInTheDocument();
+  });
+
+  it('does not start a second send on A after A to B to A while A is in flight', async () => {
+    mockDraftText = 'hello';
+    const sendA = createDeferred<void>();
+    mockCreateMessage.mockReturnValue(sendA.promise);
+    const { rerender } = render(<RealunitSupportIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    expect(mockCreateMessage).toHaveBeenCalledTimes(1);
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+
+    mockDraftText = 'hello';
+    navigateTo('1', rerender);
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+
+    expect(screen.getByRole('button', { name: '...' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '...' }));
+    expect(mockCreateMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes ticket A draft after a failed send even if the clerk switched to B', async () => {
+    mockDraftText = 'hello';
+    const sendA = createDeferred<void>();
+    mockCreateMessage.mockReturnValue(sendA.promise);
+    const { rerender } = render(<RealunitSupportIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+
+    await act(async () => {
+      sendA.reject(new Error('Send failed'));
+      await sendA.promise.catch(() => undefined);
+    });
+
+    expect(writeDraft).toHaveBeenCalledWith('1', 'hello');
   });
 
   it('does not reload after a ticket A update finishes on ticket B', async () => {
