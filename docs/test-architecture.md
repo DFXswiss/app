@@ -114,6 +114,24 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
   payloads, not that the API produces them. Unit tests against the utility pin the payload shapes
   instead.
+- **The non-Frick buy screens inject a currency list.** `e2e/buy-process.spec.ts` and
+  `e2e/buy-info.spec.ts` fulfil `**/v1/fiat` with CHF, EUR, and one buyable row outside the
+  Bank Frick set, and they fulfil the quote in that currency. The product does not offer that
+  currency, so the buy form is not a handbook baseline. Buy Info baselines the EUR-and-CHF
+  sentence only. A green run does not prove that the API offers that currency.
+- **The USD collection toggle injects a buyable USD row.** `e2e/buy-process.spec.ts` fulfils
+  `**/v1/fiat` with USD marked buyable so the screen treats USD as a displayed Bank Frick
+  currency, and fulfils the quote with a static personal IBAN. A green run proves that toggle
+  renders. It does not prove that the API currently offers USD.
+- **The USD-list mismatch sentence injects USD and a non-product currency.** `e2e/buy-process.spec.ts`
+  and `e2e/buy-info.spec.ts` fulfil `**/v1/fiat` with buyable CHF, EUR, USD and one currency outside
+  the Bank Frick set, and fulfil the quote in that currency. Buy Info baselines the sentence that
+  names EUR, CHF and USD. The buy form is not a baseline, because it would show a currency the
+  product does not offer. A green run does not prove that the API offers USD or that currency.
+- **The USD-list currency error injects USD and a rejected quote.** The same two specs fulfil
+  `**/v1/fiat` with buyable CHF, EUR and USD, and fulfil `**/v1/buy/paymentInfos` with HTTP 400
+  and message `PersonalIbanCurrencyNotSupported`. A green run proves the error sentence then
+  names EUR, CHF and USD. It does not prove that the API rejects USD or returns that message.
 - **The RealUnit quotes and dashboard visual specs answer the admin list themselves.**
   `e2e/realunit-quotes.spec.ts` and `e2e/realunit-dashboard.spec.ts` fulfil
   `GET /v1/realunit/admin/quotes` (and, on the dashboard, holders, token info, price history,
@@ -150,16 +168,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixtures render. It does not prove that the live promo or relations API returns those
   payloads, that login or token verification works, or that create/deactivate succeed against
   the server.
-- **The RealUnit compliance visual spec answers the customer list, Dilisense actions, and dossier itself.**
+- **The RealUnit compliance visual spec answers the customer list, Dilisense actions, dossier, and insider mark itself.**
   `e2e/realunit-compliance.spec.ts` fulfils `GET /v1/realunit/compliance/customers`,
-  `GET /v1/realunit/compliance/customers/:id`, `GET /v1/realunit/compliance/name-check`,
+  `GET /v1/realunit/compliance/customers/:id`, `PUT /v1/realunit/compliance/customers/:id/insider`,
+  `GET /v1/realunit/compliance/name-check`,
   `POST /v1/realunit/compliance/name-check` and `POST /v1/realunit/compliance/customers/:id/name-check`
-  with synthetic fixtures (including `addresses` and name-check results). Auth is a synthetic Admin
+  with synthetic fixtures (including `addresses`, name-check results, and `realUnitInsider`). Auth is a synthetic Admin
   JWT plus staff bootstrap GETs. Unmatched `GET /v1/**` calls return `[]` and other unmatched
   `/v1/**` methods return `{}`, so a green visual run does not prove which other staff endpoints the
   screen calls. A green run proves those fixtures render, including the Screen / Screen-all confirm
-  dialogs and a running-batch state. It does not prove that the API returns that payload, that login
-  works, or that the server filters to RealUnit wallets.
+  dialogs, the insider confirm dialog, a marked-insider dossier, and a running-batch state. It does not prove that the API returns that payload, that login
+  works, that the server filters to RealUnit wallets, or that `PUT …/insider` persists `realUnitInsider`.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for

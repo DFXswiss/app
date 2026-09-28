@@ -1,6 +1,7 @@
 import { CopyButton, IconColor, SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
 import { useEffect, useRef } from 'react';
 import { CopyableAddress } from 'src/components/realunit/copyable-address';
+import { PayoutsPanel } from 'src/components/realunit/payouts-panel';
 import { useRealunitContext } from 'src/contexts/realunit.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { quoteIsDeactivated } from 'src/dto/realunit.dto';
@@ -111,6 +112,8 @@ export default function RealunitScreen(): JSX.Element {
               </div>
             </div>
           </div>
+
+          <PayoutsPanel />
 
           {isLoading && !tokenInfo && (
             <div className="shadow-card rounded-xl p-6 flex justify-center mb-6">

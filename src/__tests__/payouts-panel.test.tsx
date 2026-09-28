@@ -43,7 +43,7 @@ jest.mock('src/util/utils', () => ({
 }));
 
 import { StrictMode } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PayoutsPanel } from 'src/components/realunit/payouts-panel';
 import {
   RealUnitCodeKind,
@@ -88,10 +88,74 @@ describe('PayoutsPanel', () => {
     expect(screen.getByText('42')).toBeInTheDocument();
     const addresses = screen.getAllByTestId('copyable-address').map((el) => el.textContent);
     expect(addresses).toContain('0xcustomer');
+    expect(addresses).toContain('0xref');
+    expect(addresses).toContain('0xguest');
     expect(addresses).toContain('0xabc');
+    expect(screen.getByText('7')).toBeInTheDocument();
+    expect(screen.getByText('9')).toBeInTheDocument();
     expect(screen.getByText('AB-CD')).toBeInTheDocument();
     expect(screen.getByText('100 (50)')).toBeInTheDocument();
     expect(mockGetAdminPayouts).toHaveBeenCalledTimes(1);
+    expect(mockGetAdminPayouts).toHaveBeenCalledWith();
+  });
+
+  it('lists every payout and shows referrer and guest only when each side is present', async () => {
+    mockGetAdminPayouts.mockResolvedValue([
+      PAYOUT,
+      {
+        ...PAYOUT,
+        id: 12,
+        legalBasis: RealUnitLegalBasis.PROMO_GRANT,
+        status: RealUnitPrizePayoutStatus.PENDING,
+        customerId: 43,
+        customerWallet: '0xother',
+        referrerAccountId: undefined,
+        referrerWallet: undefined,
+        guestAccountId: undefined,
+        guestWallet: undefined,
+      },
+      {
+        ...PAYOUT,
+        id: 13,
+        customerId: 44,
+        customerWallet: '0xreferreronly',
+        referrerAccountId: 70,
+        referrerWallet: undefined,
+        guestAccountId: undefined,
+        guestWallet: undefined,
+      },
+      {
+        ...PAYOUT,
+        id: 14,
+        customerId: 45,
+        customerWallet: '0xguestonly',
+        referrerAccountId: undefined,
+        referrerWallet: undefined,
+        guestAccountId: 80,
+        guestWallet: undefined,
+      },
+    ]);
+    render(<PayoutsPanel />);
+    await waitFor(() => expect(screen.getByText('Promo grant')).toBeInTheDocument());
+    expect(screen.getAllByText('Referral premium').length).toBeGreaterThan(0);
+    expect(screen.getByText(RealUnitPrizePayoutStatus.PENDING)).toBeInTheDocument();
+    const rows = screen.getAllByRole('row').slice(1);
+    const cells = (id: string) => within(rows.find((row) => within(row).queryByText(id)) as HTMLElement).getAllByRole('cell');
+    expect(cells('42')[5]).toHaveTextContent('7');
+    expect(cells('42')[5]).toHaveTextContent('0xref');
+    expect(cells('42')[6]).toHaveTextContent('9');
+    expect(cells('42')[6]).toHaveTextContent('0xguest');
+    expect(cells('70')[5]).toHaveTextContent('70');
+    expect(within(cells('70')[5]).queryByTestId('copyable-address')).not.toBeInTheDocument();
+    expect(cells('70')[6]).toHaveTextContent('-');
+    expect(cells('80')[5]).toHaveTextContent('-');
+    expect(cells('80')[6]).toHaveTextContent('80');
+    expect(within(cells('80')[6]).queryByTestId('copyable-address')).not.toBeInTheDocument();
+    expect(cells('43')[5]).toHaveTextContent('-');
+    expect(cells('43')[6]).toHaveTextContent('-');
+    expect(cells('43')[1]).toHaveTextContent('Promo grant');
+    expect(cells('43')[2]).toHaveTextContent(RealUnitPrizePayoutStatus.PENDING);
+    expect(mockGetAdminPayouts).toHaveBeenCalledWith();
   });
 
   it('shows the empty state when there are no payouts', async () => {
@@ -198,6 +262,10 @@ describe('PayoutsPanel', () => {
     const rows = mockToSemicolonCsv.mock.calls[0][1] as Array<Array<string | number | undefined>>;
     expect(rows[0][1]).toBe('Promo-Zugabe');
     expect(rows[0][7]).toBeUndefined();
+    expect(rows[0][8]).toBeUndefined();
+    expect(rows[0][9]).toBeUndefined();
+    expect(rows[0][10]).toBeUndefined();
+    expect(rows[0][11]).toBeUndefined();
     expect(rows[0][12]).toBeUndefined();
     expect(rows[0][13]).toBeUndefined();
   });

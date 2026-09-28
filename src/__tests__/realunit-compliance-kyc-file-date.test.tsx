@@ -8,6 +8,9 @@ jest.mock('@dfx.swiss/react-components', () => ({
   StyledLoadingSpinner: () => null,
 }));
 jest.mock('src/components/error-hint', () => ({ ErrorHint: () => null }));
+jest.mock('src/components/confirm-dialog', () => ({
+  ConfirmDialog: () => null,
+}));
 jest.mock('src/components/support/info-panel', () => ({
   InfoPanel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   InfoRow: () => null,
@@ -31,6 +34,7 @@ jest.mock('src/hooks/realunit-compliance.hook', () => ({
     getCustomer: mockGetCustomer,
     downloadFile: jest.fn(),
     downloadDossier: jest.fn(),
+    setInsider: jest.fn(),
   }),
 }));
 
@@ -46,6 +50,7 @@ const DOSSIER: RealUnitCustomerDetailDto = {
   id: 7101,
   created: new Date(2024, 0, 1).toISOString(),
   kycStatus: 'Completed',
+  realUnitInsider: false,
   checks: {},
   kycFiles: [
     { uid: 'file-1', type: 'Identification', name: 'passport.pdf', created: FILE_DATE.toISOString() },

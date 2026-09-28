@@ -4,7 +4,7 @@ import { expect, Page, Route, test } from '@playwright/test';
  * E2E Visual Regression Tests: RealUnit staff Referral-admin dashboard
  *
  * Routes:
- *   - /realunit/referral        (relation list — held-for-review filter on by default)
+ *   - /realunit/referral        (relation list — every relation, review filter off by default)
  *   - /realunit/referral/:id    (relation detail — review/reward history + approve/reject/manual-prize)
  *
  * Auth is a synthetic Admin JWT. Feature data is MOCKED: relations, promo codes, and staff
@@ -130,7 +130,7 @@ async function mockReferralApi(page: Page, promo: unknown[] = []): Promise<void>
 }
 
 test.describe('RealUnit Referral admin', () => {
-  test('relation list renders held-for-review relations', async ({ page }) => {
+  test('relation list renders every relation', async ({ page }) => {
     await mockReferralApi(page);
 
     await page.goto(`/realunit/referral?session=${encodeURIComponent(jwt())}&lang=en`);
@@ -141,8 +141,8 @@ test.describe('RealUnit Referral admin', () => {
     await expect(page.getByText('No promo codes yet')).toBeVisible();
     await expect(page.getByText('AB12CD')).toBeVisible();
     await expect(page.getByText('PROMO24')).toBeVisible();
-    // held-for-review filter is on by default → the credited/Approved relation is filtered out
-    await expect(page.getByText('ZZ99YY')).not.toBeVisible();
+    await expect(page.getByRole('checkbox')).not.toBeChecked();
+    await expect(page.getByText('ZZ99YY')).toBeVisible();
     await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot('realunit-referral-01-list.png', {

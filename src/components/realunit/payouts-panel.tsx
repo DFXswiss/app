@@ -156,6 +156,12 @@ export function PayoutsPanel(): JSX.Element {
                 <th className="px-3 py-2 text-left text-xs font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'Wallet')}
                 </th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-dfxBlue-800 whitespace-nowrap">
+                  {translate('screens/referral', 'Referrer')}
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-dfxBlue-800 whitespace-nowrap">
+                  {translate('screens/referral', 'Guest')}
+                </th>
                 <th className="px-3 py-2 text-right text-xs font-semibold text-dfxBlue-800 whitespace-nowrap">
                   {translate('screens/referral', 'Amount')}
                 </th>
@@ -188,6 +194,26 @@ export function PayoutsPanel(): JSX.Element {
                   </td>
                   <td className="px-3 py-2 text-left text-sm text-dfxBlue-800 whitespace-nowrap">
                     <CopyableAddress address={payout.customerWallet} />
+                  </td>
+                  <td className="px-3 py-2 text-left text-sm text-dfxBlue-800 whitespace-nowrap">
+                    {payout.referrerAccountId != null ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="tabular-nums">{payout.referrerAccountId}</span>
+                        {payout.referrerWallet ? <CopyableAddress address={payout.referrerWallet} /> : null}
+                      </span>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-left text-sm text-dfxBlue-800 whitespace-nowrap">
+                    {payout.guestAccountId != null ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="tabular-nums">{payout.guestAccountId}</span>
+                        {payout.guestWallet ? <CopyableAddress address={payout.guestWallet} /> : null}
+                      </span>
+                    ) : (
+                      '-'
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right text-sm text-dfxBlue-800 whitespace-nowrap tabular-nums">
                     {payout.amount.toLocaleString()}

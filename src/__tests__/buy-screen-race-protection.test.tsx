@@ -43,6 +43,7 @@ let mockCurrencies = [
   { name: 'CHF', sellable: true },
   { name: 'USD', sellable: true },
 ];
+const mockFiatCurrencies = [{ name: 'EUR' }, { name: 'CHF' }];
 // Stable reference: buy.screen currency-selection effect depends on prefCurrency by identity.
 let mockPrefCurrency: { name: string } | undefined = { name: 'CHF' };
 
@@ -94,6 +95,11 @@ jest.mock('@dfx.swiss/react', () => {
       toDescription: () => '',
       getCurrency: mockGetCurrency,
       getDefaultCurrency: mockGetDefaultCurrency,
+    }),
+    useFiatContext: () => ({
+      get currencies() {
+        return mockFiatCurrencies;
+      },
     }),
     useSessionContext: () => ({ logout: mockLogout }),
     useUserContext: () => ({ user: mockUser, isUserLoading: mockIsUserLoading }),

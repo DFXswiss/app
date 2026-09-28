@@ -13,14 +13,16 @@ test.describe('Buy Info - UI Flow', () => {
     return auth.token;
   }
 
-  // USD is outside the Bank Frick currency set: a requested Frick selector cannot apply here, so
-  // the updated mismatch-hint copy (EUR and CHF, not EUR only) must show. Fully static quote, no
-  // upstream forwarding: independent of local KYC state, price rules and Bank Frick issuance.
+  // GBP is outside FRICK_CURRENCIES (EUR, CHF, USD), so the mismatch hint still names only EUR
+  // and CHF, and the request carries no provider. These tests use GBP rather than the hidden-USD
+  // state (USD is in the Frick set and only hidden when the active fiat list omits it). Fully
+  // static quote, no upstream forwarding: independent of local KYC state, price rules and Bank
+  // Frick issuance.
   test('shows the updated mismatch hint for a non-Frick currency', async ({ page, request }) => {
     const token = await getToken(request);
     let receivedProvider: unknown;
 
-    // USD is not served by the app's real currency list; mock it so asset-in=USD resolves.
+    // Mock GBP so asset-in=GBP resolves; it is not served by the app's real currency list.
     await page.route('**/v1/fiat', async (route) => {
       await route.fulfill({
         status: 200,
@@ -48,7 +50,7 @@ test.describe('Buy Info - UI Flow', () => {
           },
           {
             id: 3,
-            name: 'USD',
+            name: 'GBP',
             buyable: true,
             sellable: true,
             cardBuyable: false,
@@ -91,7 +93,7 @@ test.describe('Buy Info - UI Flow', () => {
             platform: 0,
             total: 2.99,
           },
-          currency: { id: 3, name: 'USD' },
+          currency: { id: 3, name: 'GBP' },
           asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
           bic: 'UBSWCHZH80A',
           iban: 'CH9300762011623852957',
@@ -109,7 +111,7 @@ test.describe('Buy Info - UI Flow', () => {
     });
 
     await page.goto(
-      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick`,
     );
 
     await expect(
@@ -119,7 +121,196 @@ test.describe('Buy Info - UI Flow', () => {
     ).toBeVisible({ timeout: 15000 });
     await expect.poll(() => receivedProvider).toBeUndefined();
 
-    await expect(page).toHaveScreenshot('buy-info-usd-mismatch.png', {
+    await expect(page).toHaveScreenshot('buy-info-eur-chf-mismatch.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+  });
+
+  // USD is in the displayed Frick set, so the mismatch sentence names EUR, CHF and USD.
+  // The live fiat list hides USD until the display flag is on. This fixture injects it.
+  test('shows the mismatch sentence naming USD when USD is displayed', async ({ page, request }) => {
+    const token = await getToken(request);
+    let receivedProvider: unknown;
+
+    await page.route('**/v1/fiat', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 1,
+            name: 'CHF',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 2,
+            name: 'EUR',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 3,
+            name: 'USD',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 4,
+            name: 'GBP',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+        ],
+      });
+    });
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      const requestData = route.request().postDataJSON() as Record<string, unknown>;
+      receivedProvider = requestData.personalIbanProvider;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: {
+          id: 7,
+          isValid: true,
+          amount: 100,
+          estimatedAmount: 0.0251,
+          rate: 3862.5,
+          exchangeRate: 3984.06,
+          priceSteps: [],
+          minVolume: 10,
+          maxVolume: 990000,
+          minVolumeTarget: 0.0026,
+          maxVolumeTarget: 248.5,
+          fees: {
+            rate: 0.0099,
+            fixed: 0,
+            min: 0,
+            dfx: 0.99,
+            network: 0,
+            bank: 0,
+            bankFixed: 2,
+            bankVariable: 0,
+            platform: 0,
+            total: 2.99,
+          },
+          currency: { id: 4, name: 'GBP' },
+          asset: { id: 111, name: 'ETH', uniqueName: 'Ethereum/ETH', blockchain: 'Ethereum', category: 'Public' },
+          bic: 'UBSWCHZH80A',
+          iban: 'CH9300762011623852957',
+          name: 'DFX AG',
+          street: 'Bahnhofstrasse',
+          number: '7',
+          zip: '6300',
+          city: 'Zug',
+          country: 'Schweiz',
+          remittanceInfo: 'DFX-BUY-7',
+          sepaInstant: false,
+          isPersonalIban: false,
+        },
+      });
+    });
+
+    await page.goto(
+      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick`,
+    );
+
+    await expect(
+      page.getByText(
+        'Your requested personal IBAN is only available for EUR, CHF, USD bank transfers, so it was not used for this offer.',
+      ),
+    ).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => receivedProvider).toBeUndefined();
+
+    await expect(page).toHaveScreenshot('buy-info-usd-list-mismatch.png', {
+      fullPage: true,
+      maxDiffPixels: 10000,
+    });
+  });
+
+  // USD is eligible on the client, so the request carries Frick. The quote then rejects the
+  // currency. The live fiat list hides USD until the display flag is on. This fixture injects it.
+  test('shows the currency-not-supported sentence when USD is displayed', async ({ page, request }) => {
+    const token = await getToken(request);
+
+    await page.route('**/v1/fiat', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        json: [
+          {
+            id: 1,
+            name: 'CHF',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 2,
+            name: 'EUR',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+          {
+            id: 3,
+            name: 'USD',
+            buyable: true,
+            sellable: true,
+            cardBuyable: false,
+            cardSellable: false,
+            instantBuyable: false,
+            instantSellable: false,
+          },
+        ],
+      });
+    });
+
+    await page.route('**/v1/buy/paymentInfos', async (route) => {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        json: {
+          statusCode: 400,
+          message: 'PersonalIbanCurrencyNotSupported',
+          error: 'Bad Request',
+        },
+      });
+    });
+
+    await page.goto(
+      `/buy/info?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
+    );
+
+    await expect(
+      page.getByText('Bank Frick personal IBANs are currently only available for EUR, CHF, USD.'),
+    ).toBeVisible({ timeout: 15000 });
+
+    await expect(page).toHaveScreenshot('buy-info-usd-list-currency-error.png', {
       fullPage: true,
       maxDiffPixels: 10000,
     });
