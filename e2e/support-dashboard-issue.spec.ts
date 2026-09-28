@@ -75,13 +75,13 @@ async function json(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function installIssueRoutes(page: Page): Promise<void> {
+async function installIssueRoutes(page: Page, clerks = CLERKS): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
     const url = request.url();
     const path = new URL(url).pathname;
 
-    if (CLERKS_RE.test(url)) return json(route, CLERKS);
+    if (CLERKS_RE.test(url)) return json(route, clerks);
     if (DATA_RE.test(url)) return json(route, ISSUE_DATA);
     if (THREAD_RE.test(url) && request.method() === 'GET') return json(route, { messages: MESSAGES });
 
@@ -132,6 +132,21 @@ test.describe('Support Dashboard - issue detail', () => {
     await expect(page.locator('select').filter({ hasText: 'Rita Clerk' })).toHaveValue('101');
 
     await expect(page).toHaveScreenshot('support-dashboard-02-issue.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+  });
+
+  test('issue screen shows the empty clerk-list hint', async ({ page }) => {
+    await installIssueRoutes(page, []);
+
+    await page.goto(`/support/dashboard/issue/${ISSUE_ID}?session=${encodeURIComponent(token)}&lang=en`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1500);
+
+    await expect(page.getByText('Clerk list is empty. Assign after the API update is live.')).toBeVisible();
+
+    await expect(page).toHaveScreenshot('support-dashboard-03-issue-empty-clerks.png', {
       fullPage: true,
       maxDiffPixels: 5000,
     });

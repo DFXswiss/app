@@ -39,6 +39,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
+  const [clerkListError, setClerkListError] = useState<string>();
   const [issueData, setIssueData] = useState<SupportIssueInternalData>();
   const [messages, setMessages] = useState<SupportMessageInfo[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -81,12 +82,13 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   });
 
   useEffect(() => {
+    setClerkListError(undefined);
     getClerks()
       .then((list) => {
         setClerks(list);
-        if (list.length === 0) setActionError('Clerk list is empty. Assign after the API update is live.');
+        setClerkListError(list.length === 0 ? 'Clerk list is empty. Assign after the API update is live.' : undefined);
       })
-      .catch((e: unknown) => setActionError(e instanceof Error ? e.message : 'Failed to load clerks'));
+      .catch((e: unknown) => setClerkListError(e instanceof Error ? e.message : 'Failed to load clerks'));
   }, [getClerks]);
 
   const loadIssue = useCallback((): void => {
@@ -272,6 +274,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   return (
     <div ref={containerRef} className="w-full flex text-left">
       <div style={{ width: `${splitPercent}%` }} className="flex flex-col gap-6 min-w-0 pr-2">
+        {clerkListError && <ErrorHint message={clerkListError} />}
         {actionError && <ErrorHint message={actionError} />}
 
         {/* Info Panels */}
@@ -362,10 +365,9 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
                 )}
                 {updateClerk &&
                   Number.isFinite(Number(updateClerk)) &&
-                  issueData?.clerk &&
                   !clerks.some((c) => String(c.clerkUserDataId) === updateClerk) && (
                     <option key={updateClerk} value={updateClerk}>
-                      {issueData.clerk}
+                      {issueData.clerk || `#${updateClerk}`}
                     </option>
                   )}
                 {clerks.map((c) => (
