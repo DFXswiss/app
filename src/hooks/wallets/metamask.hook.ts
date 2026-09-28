@@ -172,7 +172,10 @@ export function useMetaMask(): MetaMaskInterface {
     const chainId = toChainHex(blockchain);
     if (!chainId) return;
 
-    return ethereum()
+    const provider = ethereum();
+    if (!provider) throw new TranslatedError(PROVIDER_MISSING_HINT);
+
+    return provider
       .request({ method: 'wallet_switchEthereumChain', params: [{ chainId }] })
       .catch((e: MetaMaskError) => {
         // 4902 chain is not yet added to MetaMask, therefore add chainId to MetaMask

@@ -697,6 +697,15 @@ describe('useMetaMask', () => {
       expect(request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'wallet_switchEthereumChain' }));
     });
 
+    it('rejects with the missing-provider hint when no wallet is injected', async () => {
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.requestChangeToBlockchain(Blockchain.ETHEREUM)).rejects.toBeInstanceOf(
+        TranslatedError,
+      );
+      await expect(result.current.requestChangeToBlockchain(Blockchain.ETHEREUM)).rejects.toThrow(MISSING_PROVIDER);
+    });
+
     it('switches to the requested chain', async () => {
       const request = mockRequest(async ({ method }) => {
         if (method === 'wallet_switchEthereumChain') return null;
