@@ -211,6 +211,10 @@
     "title": "Support-Ticket KYC-File-Übernahme",
     "description": "Staff-Ticket: Anhang aus dem Nachrichten-Thread ins KYC-File des Kunden übernehmen."
   },
+  "support-message-origin": {
+    "title": "Support-Ticket Herkunft",
+    "description": "Staff-Thread: Kundennachrichten tragen E-Mail oder In-App. Eine Kundennachricht ohne Herkunft und die Antwort des Supports bleiben ohne Tag."
+  },
   "subpage": {
     "title": "Unterseiten",
     "description": "Buy-, Sell-, Swap- und Transaktions-Unterseiten."
