@@ -198,6 +198,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e/support-kyc-file-transfer.spec.ts` answers the issue payload, messages, clerks, clerk mapping
   and activity with fixtures. A green run proves those fixtures render. It does not prove that the
   API returns them or that PUT kycFile persists.
+- **The staff message-origin visual spec answers boot and the issue thread itself.**
+  `e2e/support-message-origin.spec.ts` fulfils the staff session's user, languages and the issue,
+  messages, clerks, clerk mapping and activity with fixtures, including one customer mail tag, one
+  in-app tag, a customer message without an origin and a staff reply that carries an origin. A green
+  run proves the messages panel renders those tags. It does not prove that the API stores `origin`,
+  that a mail opened the ticket, or that the session is a real staff login.
 - **The support-issue receiver-IBAN spec pins KYC level and account mail on GET /v2/user.**
   `e2e/support-issue-receiver-iban.spec.ts` rewrites that response so `kyc.level` is high enough for
   the screen guard and `mail` is present if the cached wallet session has none. A green visual run
