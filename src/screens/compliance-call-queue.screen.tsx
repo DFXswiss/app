@@ -33,8 +33,11 @@ export default function ComplianceCallQueueScreen(): JSX.Element {
   const showIp = queue === CallQueue.MANUAL_CHECK_IP_PHONE || queue === CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE;
   const showCountry = queue === CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE || queue === CallQueue.UNAVAILABLE_SUSPICIOUS;
   const showStatus = queue === CallQueue.UNAVAILABLE_SUSPICIOUS;
+  // Only these two queues show the preferred call time in the list. The other phone queues keep it in the detail view.
+  const showPhoneCallTimes =
+    queue === CallQueue.MANUAL_CHECK_PHONE || queue === CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE;
 
-  const columnCount = 5 + [isTxQueue, showIp, showCountry, showStatus].filter(Boolean).length;
+  const columnCount = 5 + [isTxQueue, showIp, showCountry, showStatus, showPhoneCallTimes].filter(Boolean).length;
 
   useEffect(() => {
     if (!isLoggedIn || !queue) return;
@@ -46,7 +49,6 @@ export default function ComplianceCallQueueScreen(): JSX.Element {
   }, [isLoggedIn, queue]);
 
   function openDetail(item: CallQueueItem) {
-    if (!queue) return;
     const search = item.txId != null ? `?txId=${item.txId}` : '';
     navigate(
       { pathname: `/compliance/call-queues/${queue}/${item.userDataId}`, search },
@@ -97,6 +99,11 @@ export default function ComplianceCallQueueScreen(): JSX.Element {
                   {translate('screens/compliance', 'Status')}
                 </th>
               )}
+              {showPhoneCallTimes && (
+                <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
+                  {translate('screens/compliance', 'Phone Call Times')}
+                </th>
+              )}
               <th className="px-4 py-3 text-left text-sm font-semibold text-dfxBlue-800">
                 {translate('screens/compliance', 'Date')}
               </th>
@@ -131,6 +138,9 @@ export default function ComplianceCallQueueScreen(): JSX.Element {
                   )}
                   {showStatus && (
                     <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.phoneCallStatus ?? '-'}</td>
+                  )}
+                  {showPhoneCallTimes && (
+                    <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{item.phoneCallTimes || '-'}</td>
                   )}
                   <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{formatSwissDate(item.date)}</td>
                 </tr>
