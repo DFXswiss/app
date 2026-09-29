@@ -254,8 +254,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `GET /v1/support/call-queues/{queue}/items` for ManualCheckPhone,
   ManualCheckIpCountryPhone and UnavailableSuspicious with synthetic items
   that include `phoneCallTimes` `H9To10;H10To11`, and fulfils the Callback
-  queue with one fixture row plus the customer dossier, the clerk signature
-  and `/v2/user`. Empty lists cover `/v1/language`, `/v1/fiat`, `/v1/asset`,
+  queue with one fixture row and `/v2/user`. Empty lists cover `/v1/language`, `/v1/fiat`, `/v1/asset`,
   `/v1/bankAccount` and `/v1/country`, plus a null info banner. The session
   is a synthetic unsigned JWT. A green run proves the Phone Call Times column
   appears only for ManualCheckPhone and ManualCheckIpCountryPhone and stays
