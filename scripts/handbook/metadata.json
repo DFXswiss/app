@@ -93,7 +93,7 @@
   },
   "compliance-call-queue-list": {
     "title": "Compliance: Call-Queue-Liste",
-    "description": "Call-Queue-Liste mit der Spalte Anrufzeiten unmittelbar vor dem Datum für ManualCheckPhone und ManualCheckIpCountryPhone, und ohne diese Spalte für UnavailableSuspicious."
+    "description": "Anrufzeiten unmittelbar vor dem Datum für ManualCheckPhone und ManualCheckIpCountryPhone, ohne diese Spalte für UnavailableSuspicious. Die Callback-Liste zeigt Status, Markierungsdatum und Frist, eine offene und eine abgelaufene Frist in Rot."
   },
   "realunit-compliance": {
     "title": "RealUnit Compliance",

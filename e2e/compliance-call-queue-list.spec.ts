@@ -1,5 +1,21 @@
 import { expect, Page, Route, test } from '@playwright/test';
 
+const USER_DATA_ID = 2001;
+const QUEUE = 'UnavailableSuspicious';
+
+const TABLE_HEADERS = [
+  'User',
+  'Phone',
+  'Lang',
+  'KYC',
+  'Transaction',
+  'Country',
+  'Status',
+  'Marked',
+  'Deadline',
+  'Date',
+] as const;
+
 const itemsByQueue: Record<string, object[]> = {
   ManualCheckPhone: [
     {
@@ -49,6 +65,42 @@ const itemsByQueue: Record<string, object[]> = {
   ],
 };
 
+type CallbackQueueItem = {
+  userDataId: number;
+  userName: string;
+  phone: string;
+  language: string;
+  kycLevel: number;
+  txId: number;
+  sourceType: string;
+  inputAmount: number;
+  inputAsset: string;
+  amlCheck: string;
+  country: string;
+  phoneCallStatus: string;
+  phoneCallStatusDate: string;
+  date: string;
+};
+
+function queueItem(date: string, phoneCallStatusDate: string): CallbackQueueItem {
+  return {
+    userDataId: USER_DATA_ID,
+    userName: 'Fixture User',
+    phone: '+41790000000',
+    language: 'DE',
+    kycLevel: 50,
+    txId: 101,
+    sourceType: 'BuyCrypto',
+    inputAmount: 100,
+    inputAsset: 'CHF',
+    amlCheck: 'Pending',
+    country: 'Switzerland',
+    phoneCallStatus: 'Unavailable',
+    phoneCallStatusDate,
+    date,
+  };
+}
+
 function jwt(): string {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
   return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
@@ -63,7 +115,10 @@ async function fulfillJson(route: Route, body: unknown): Promise<void> {
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: string[] }> {
+async function installSyntheticApi(
+  page: Page,
+  callbackItem?: CallbackQueueItem,
+): Promise<{ unexpectedRequests: string[] }> {
   const unexpectedRequests: string[] = [];
 
   await page.route('**/v1/**', async (route) => {
@@ -86,6 +141,10 @@ async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: st
 
     const itemsMatch = pathname.match(/^\/v1\/support\/call-queues\/([^/]+)\/items$/);
     if (method === 'GET' && itemsMatch) {
+      if (callbackItem && itemsMatch[1] === 'UnavailableSuspicious') {
+        await fulfillJson(route, [callbackItem]);
+        return;
+      }
       const items = itemsByQueue[itemsMatch[1]];
       if (items) {
         await fulfillJson(route, items);
@@ -126,6 +185,32 @@ async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: st
   });
 
   return { unexpectedRequests };
+}
+
+async function expectVisibleCallbackList(
+  page: Page,
+  dates: { marked: string; deadline: string; date: string },
+  deadlineIsPast: boolean,
+): Promise<void> {
+  await expect(page.getByText('Callback', { exact: true })).toBeVisible();
+
+  for (const header of TABLE_HEADERS) {
+    await expect(page.getByRole('columnheader', { name: header, exact: true })).toBeVisible();
+  }
+
+  await expect(page.getByText(dates.date, { exact: true })).toBeVisible();
+  await expect(page.getByText(dates.marked, { exact: true })).toBeVisible();
+  await expect(page.getByText('Unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByText('Switzerland', { exact: true })).toBeVisible();
+  await expect(page.getByText('BuyCrypto #101 (100 CHF) · Pending', { exact: true })).toBeVisible();
+
+  const deadlineCell = page.getByText(dates.deadline, { exact: true });
+  await expect(deadlineCell).toBeVisible();
+  if (deadlineIsPast) {
+    await expect(deadlineCell).toHaveClass(/text-dfxRed-100/);
+  } else {
+    await expect(deadlineCell).not.toHaveClass(/text-dfxRed-100/);
+  }
 }
 
 test.describe('Call-queue list', () => {
@@ -173,6 +258,36 @@ test.describe('Call-queue list', () => {
     await expect(page.locator('table')).toHaveScreenshot('compliance-call-queue-list-unavailable-suspicious.png', {
       maxDiffPixels: 5000,
     });
+
+    expect(unexpectedRequests).toEqual([]);
+  });
+});
+
+test.describe('Call-queue callback list', () => {
+  // Fixture timestamps are UTC; the screen formats them in the browser locale without an
+  // explicit timeZone, so pin Zurich like the other fullPage compliance screenshots.
+  test.use({ timezoneId: 'Europe/Zurich', viewport: { width: 1600, height: 900 } });
+
+  test('shows a pending callback with the mark date and a future deadline', async ({ page }) => {
+    const item = queueItem('2099-01-01T12:00:00.000Z', '2099-01-02T12:00:00.000Z');
+    const { unexpectedRequests } = await installSyntheticApi(page, item);
+
+    await page.goto(`/compliance/call-queues/${QUEUE}?session=${jwt()}`);
+
+    await expectVisibleCallbackList(page, { date: '01.01.2099', marked: '02.01.2099', deadline: '15.01.2099' }, false);
+    await expect(page.locator('table')).toHaveScreenshot('future-deadline.png', { maxDiffPixels: 5000 });
+
+    expect(unexpectedRequests).toEqual([]);
+  });
+
+  test('shows a passed callback deadline in red', async ({ page }) => {
+    const item = queueItem('2020-01-01T12:00:00.000Z', '2020-01-02T12:00:00.000Z');
+    const { unexpectedRequests } = await installSyntheticApi(page, item);
+
+    await page.goto(`/compliance/call-queues/${QUEUE}?session=${jwt()}`);
+
+    await expectVisibleCallbackList(page, { date: '01.01.2020', marked: '02.01.2020', deadline: '15.01.2020' }, true);
+    await expect(page.locator('table')).toHaveScreenshot('past-deadline.png', { maxDiffPixels: 5000 });
 
     expect(unexpectedRequests).toEqual([]);
   });
