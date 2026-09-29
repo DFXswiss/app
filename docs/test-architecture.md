@@ -272,6 +272,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/kyc-continue-race.spec.ts` upserts ContactData, PersonalData, NationalityData
   and Ident (`SumsubAuto`) to `Completed`. A green run does **not** prove those steps complete
   through the product path, including live ident.
+- **Full-stack compliance specs SQL-insert a pending Recommendation step.**
+  `e2e-stack/specs/compliance.spec.ts` inserts a `kyc_step` named `Recommendation` in status
+  `InternalReview`, on a synthetic account at KYC level 30 with completed personal data. A green run
+  does **not** prove that the customer KYC flow creates that open step.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
