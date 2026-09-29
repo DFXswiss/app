@@ -221,16 +221,21 @@ export function UserDataPanel({
   const { session } = useAuthContext();
 
   // A reactivation answers with the account's new status row; the box shows it until the screen reloads
-  // the account. The answer is tied to the account it came from (the screen keeps this box mounted
-  // while the clerk moves to another account).
+  // the account. The row on screen must be that same account: this box stays mounted, and the screen
+  // can still pass the previous row with the next route id until the reload returns. Overlay and the
+  // button both fail closed unless the row is that id; the overlay also requires the stored answer.
   const [reactivated, setReactivated] = useState<UserDataStatusInfo>();
+  const rowIsThisAccount = userData.id === userDataId;
   const current: UserDataDetail =
-    reactivated && reactivated.id === userDataId
+    rowIsThisAccount && reactivated && reactivated.id === userDataId
       ? { ...userData, status: reactivated.status, deactivationDate: reactivated.deactivationDate }
       : userData;
 
   const statusNode: ReactNode =
-    userDataId && current.status === DEACTIVATED_STATUS && canReactivateAccount(session?.role) ? (
+    rowIsThisAccount &&
+    userDataId !== undefined &&
+    current.status === DEACTIVATED_STATUS &&
+    canReactivateAccount(session?.role) ? (
       <div className="flex items-center justify-between gap-2">
         <span>{display(current.status)}</span>
         <ReactivateAccount userDataId={userDataId} onReactivated={setReactivated} />

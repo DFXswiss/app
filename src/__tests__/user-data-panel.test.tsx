@@ -266,6 +266,37 @@ describe('UserDataPanel', () => {
       expect(screen.getByRole('button', { name: 'Reactivate' })).toBeInTheDocument();
     });
 
+    it('does not offer Reactivate when the row belongs to a different account than the route', () => {
+      render(<UserDataPanel userData={detail({ id: 88001 })} userDataId={88002} />);
+
+      expect(rowValue('UserData', 'status')).toContain('Deactivated');
+      expect(screen.queryByRole('button', { name: 'Reactivate' })).not.toBeInTheDocument();
+    });
+
+    it('does not paint a stored answer onto a row that is not that account', () => {
+      const { rerender } = render(<UserDataPanel userData={detail({ id: 88002 })} userDataId={88002} />);
+      act(() => mockReactivateProps.onReactivated?.({ id: 88002, status: 'NA', deactivationDate: undefined }));
+      expect(rowValue('UserData', 'status')).toBe('NA');
+
+      rerender(<UserDataPanel userData={detail({ id: 88001 })} userDataId={88002} />);
+
+      expect(rowValue('UserData', 'status')).toContain('Deactivated');
+      expect(rowValue('Other', 'deactivationDate')).toBe('d:2025-07-01T21:35:38.000Z');
+      expect(screen.queryByRole('button', { name: 'Reactivate' })).not.toBeInTheDocument();
+    });
+
+    it('does not apply a stored answer for the route when the row is still another account', () => {
+      const { rerender } = render(<UserDataPanel userData={detail({ id: 88001 })} userDataId={88001} />);
+      act(() => mockReactivateProps.onReactivated?.({ id: 88001, status: 'NA', deactivationDate: undefined }));
+      expect(rowValue('UserData', 'status')).toBe('NA');
+
+      rerender(<UserDataPanel userData={detail({ id: 88002 })} userDataId={88001} />);
+
+      expect(rowValue('UserData', 'status')).toContain('Deactivated');
+      expect(rowValue('Other', 'deactivationDate')).toBe('d:2025-07-01T21:35:38.000Z');
+      expect(screen.queryByRole('button', { name: 'Reactivate' })).not.toBeInTheDocument();
+    });
+
     it.each(['Active', 'NA', 'KycOnly'])('shows the plain status %s without a button', (status) => {
       render(<UserDataPanel userData={detail({ status })} userDataId={88001} />);
 

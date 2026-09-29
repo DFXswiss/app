@@ -129,6 +129,22 @@ describe('ReactivateAccount', () => {
     });
 
     expect(onReactivated).not.toHaveBeenCalled();
+
+    // The rejection path after unmount must be just as silent.
+    const deferredReject = createDeferred<{ id: number; status: string }>();
+    mockReactivateAccount.mockReturnValue(deferredReject.promise);
+    const { unmount: unmountSecond } = render(element({ onReactivated }));
+    openForm();
+    fillReason('reason');
+    fireEvent.click(saveButton());
+    unmountSecond();
+
+    await act(async () => {
+      deferredReject.reject(new Error('late'));
+      await deferredReject.promise.catch(() => undefined);
+    });
+
+    expect(onReactivated).not.toHaveBeenCalled();
   });
 
   it('closes the form on account switch, resets the save lock, and drops a late success for the previous account', async () => {
