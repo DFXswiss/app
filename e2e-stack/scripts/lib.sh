@@ -19,7 +19,9 @@ compose() {
   if [[ -f "$STACK_DIR/.env.generated" ]]; then
     env_file=(--env-file "$STACK_DIR/.env.generated")
   fi
-  docker compose -p "$E2E_PROJECT" "${env_file[@]}" "${files[@]}" "$@"
+  # Classification belongs to .env.generated; caller shell variables must not override it.
+  env -u E2E_API_SOURCE_COMMIT -u E2E_KYC_FILE_GUARD_STATE \
+    docker compose -p "$E2E_PROJECT" "${env_file[@]}" "${files[@]}" "$@"
 }
 
 # Rebuild the `tests` image so that spec-file edits are actually picked up. The image COPYs

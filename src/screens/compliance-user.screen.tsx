@@ -1,6 +1,6 @@
-import { useAuthContext, UserRole } from '@dfx.swiss/react';
+import { useAuthContext, useSessionContext, UserRole } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   BankDatasTable,
@@ -26,9 +26,10 @@ import { UserDataPanel } from 'src/components/compliance/user-data-panel';
 import { ErrorHint } from 'src/components/error-hint';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { ComplianceUserData, KycFile, useCompliance } from 'src/hooks/compliance.hook';
-import { useSupportDashboardGuard } from 'src/hooks/guard.hook';
+import { SUPPORT_DASHBOARD_ROLES, useSupportDashboardGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useSplitPane } from 'src/hooks/split-pane.hook';
+import { hasSameAuthSessionScope, isUnauthorizedApiError } from 'src/util/auth-scope';
 import { saveBufferedFile } from 'src/util/utils';
 
 type TabType =
@@ -45,6 +46,15 @@ type TabType =
   | 'notifications'
   | 'notes';
 
+interface FilePreview {
+  scopeKey: string;
+  authToken: string;
+  url: string;
+  contentType: string;
+  name: string;
+  uid?: string;
+}
+
 interface TabConfig {
   id: TabType;
   label: string;
@@ -53,17 +63,53 @@ interface TabConfig {
 
 export default function ComplianceUserScreen(): JSX.Element {
   useSupportDashboardGuard();
-  const { session } = useAuthContext();
+  const { session, getAuthToken, getAuthTokenSession } = useAuthContext();
+  const { isInitialized, isLoggedIn } = useSessionContext();
+  const { id: userDataId } = useParams();
   const role = session?.role;
+  const sessionAccount = session?.account;
+  const sessionUser = session?.user;
+  const sessionAddress = session?.address;
+  const authToken = getAuthToken();
+  const sessionReady =
+    isInitialized &&
+    isLoggedIn &&
+    typeof sessionAccount === 'number' &&
+    Number.isSafeInteger(sessionAccount) &&
+    sessionAccount > 0 &&
+    typeof sessionUser === 'number' &&
+    Number.isSafeInteger(sessionUser) &&
+    sessionUser > 0 &&
+    !!role &&
+    SUPPORT_DASHBOARD_ROLES.includes(role);
+  const scopeKey = JSON.stringify([userDataId, sessionAccount, sessionUser, sessionAddress, role]);
+  const scopeGeneration = useRef(0);
+  const currentScopeKey = useRef(scopeKey);
+  useLayoutEffect(() => {
+    currentScopeKey.current = scopeKey;
+    scopeGeneration.current += 1;
+  }, [authToken, scopeKey]);
 
   const { translate } = useSettingsContext();
-  const { id: userDataId } = useParams();
   const { getUserData, getKycFile } = useCompliance();
+  const getUserDataRef = useRef(getUserData);
+  getUserDataRef.current = getUserData;
+  const getAuthTokenRef = useRef(getAuthToken);
+  getAuthTokenRef.current = getAuthToken;
+  const getAuthTokenSessionRef = useRef(getAuthTokenSession);
+  getAuthTokenSessionRef.current = getAuthTokenSession;
   const navigate = useNavigate();
 
   const [error, setError] = useState<string>();
-  const [data, setData] = useState<ComplianceUserData>();
-  const [preview, setPreview] = useState<{ url: string; contentType: string; name: string; uid?: string }>();
+  const [loadedData, setLoadedData] = useState<{
+    scopeKey: string;
+    authToken: string;
+    data: ComplianceUserData;
+  }>();
+  const [preview, setPreview] = useState<FilePreview>();
+  const activePreview = preview?.scopeKey === scopeKey && preview.authToken === authToken ? preview : undefined;
+  const previewRef = useRef(activePreview);
+  previewRef.current = activePreview;
   const [activeTab, setActiveTab] = useState<TabType>('transactions');
   const [expandedBankTxId, setExpandedBankTxId] = useState<number>();
   const [expandedCryptoInputId, setExpandedCryptoInputId] = useState<number>();
@@ -71,6 +117,22 @@ export default function ComplianceUserScreen(): JSX.Element {
   const [expandedFiatOutputId, setExpandedFiatOutputId] = useState<number>();
   const [expandedTxUid, setExpandedTxUid] = useState<string>();
   const { containerRef, splitPercent, setSplitPercent, handleSplitDrag } = useSplitPane();
+  const requestGeneration = useRef(0);
+
+  function isCurrentAuthScope(
+    requestScopeKey: string,
+    requestSession: typeof session,
+    requestToken: string | undefined,
+    requestScopeGeneration: number,
+  ): boolean {
+    return (
+      !!requestToken &&
+      scopeGeneration.current === requestScopeGeneration &&
+      currentScopeKey.current === requestScopeKey &&
+      getAuthTokenRef.current() === requestToken &&
+      hasSameAuthSessionScope(getAuthTokenSessionRef.current(), requestSession)
+    );
+  }
 
   function handleExpandBankTx(id: number | undefined): void {
     setExpandedBankTxId(id);
@@ -113,8 +175,19 @@ export default function ComplianceUserScreen(): JSX.Element {
   }
 
   async function openFile(file: KycFile): Promise<void> {
+    const requestScopeKey = scopeKey;
+    const requestSession = session;
+    const requestToken = authToken;
+    const requestScopeGeneration = scopeGeneration.current;
+    const isRequestCurrent = () =>
+      isCurrentAuthScope(requestScopeKey, requestSession, requestToken, requestScopeGeneration);
+    if (!requestToken || !sessionReady || !isRequestCurrent()) return;
+
+    setError(undefined);
+    setPreview(undefined);
     try {
       const { content, contentType } = await getKycFile(file.uid, 'View');
+      if (!isRequestCurrent()) return;
       if (!content || content.type !== 'Buffer' || !Array.isArray(content.data)) {
         setError('Invalid file type');
         return;
@@ -123,43 +196,107 @@ export default function ComplianceUserScreen(): JSX.Element {
       const blob = new Blob([new Uint8Array(content.data)], { type: contentType });
       const url = URL.createObjectURL(blob);
 
-      setPreview({ url, contentType, name: file.name, uid: file.uid });
+      setPreview({
+        scopeKey: requestScopeKey,
+        authToken: requestToken,
+        url,
+        contentType,
+        name: file.name,
+        uid: file.uid,
+      });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error loading file');
+      if (isRequestCurrent()) setError(e instanceof Error ? e.message : 'Error loading file');
     }
   }
 
   async function downloadPreview(): Promise<void> {
-    if (!preview?.uid) return;
+    const requestPreview = activePreview;
+    if (!requestPreview?.uid) return;
+    const requestScopeKey = requestPreview.scopeKey;
+    const requestSession = session;
+    const requestToken = authToken;
+    const requestScopeGeneration = scopeGeneration.current;
+    const isRequestCurrent = () =>
+      isCurrentAuthScope(requestScopeKey, requestSession, requestToken, requestScopeGeneration) &&
+      requestPreview === previewRef.current;
+    if (!requestToken || !sessionReady || requestPreview.authToken !== requestToken || !isRequestCurrent()) return;
+
+    setError(undefined);
     try {
-      const { content, contentType } = await getKycFile(preview.uid, 'Download');
+      const { content, contentType } = await getKycFile(requestPreview.uid, 'Download');
+      if (!isRequestCurrent()) return;
       if (!content || content.type !== 'Buffer' || !Array.isArray(content.data)) {
         setError('Invalid file type');
         return;
       }
-      saveBufferedFile(content, contentType, preview.name);
+      saveBufferedFile(content, contentType, requestPreview.name);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error downloading file');
+      if (isRequestCurrent()) setError(e instanceof Error ? e.message : 'Error downloading file');
     }
   }
 
+  const data = loadedData?.scopeKey === scopeKey && loadedData.authToken === authToken ? loadedData.data : undefined;
+
   const loadData = useCallback(() => {
+    const generation = ++requestGeneration.current;
+    const requestScopeKey = scopeKey;
+    const requestSession = session;
+    const requestToken = authToken;
+    const requestScopeGeneration = scopeGeneration.current;
+    const isRequestCurrent = () =>
+      requestGeneration.current === generation &&
+      isCurrentAuthScope(requestScopeKey, requestSession, requestToken, requestScopeGeneration);
+
+    if (!requestToken || !sessionReady || !isRequestCurrent()) return;
     if (!userDataId) {
       setError('No ID provided');
       return;
     }
-    getUserData(+userDataId)
-      .then(setData)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Unknown error'));
-  }, [userDataId, getUserData]);
+    setError(undefined);
+    getUserDataRef.current(+userDataId)
+      .then((result) => {
+        if (!isRequestCurrent()) return;
+        setLoadedData({ scopeKey: requestScopeKey, authToken: requestToken, data: result });
+      })
+      .catch((e: unknown) => {
+        if (isRequestCurrent()) {
+          setLoadedData(undefined);
+          setError(e instanceof Error ? e.message : 'Unknown error');
+        } else if (
+          isUnauthorizedApiError(e) &&
+          requestGeneration.current === generation &&
+          !getAuthTokenRef.current()
+        ) {
+          // useApi clears the current token before rejecting a 401, so the normal scope check fails.
+          // Clear this request's dossier while the auth guard redirects; generation still prevents an old
+          // account request from clearing data loaded for a newer request.
+          setLoadedData(undefined);
+        }
+      });
+  }, [authToken, role, scopeKey, session, sessionReady, userDataId]);
 
   useEffect(() => {
+    setError(undefined);
     loadData();
+    return () => {
+      requestGeneration.current += 1;
+    };
   }, [loadData]);
+
+  useEffect(() => {
+    setPreview(undefined);
+  }, [authToken, scopeKey]);
 
   useEffect(() => {
     return () => preview && URL.revokeObjectURL(preview.url);
   }, [preview]);
+
+  useEffect(() => {
+    return () => {
+      requestGeneration.current += 1;
+      scopeGeneration.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     if (role === UserRole.SUPPORT) setSplitPercent(50);
@@ -199,6 +336,11 @@ export default function ComplianceUserScreen(): JSX.Element {
 
   return (
     <div className="w-full flex flex-col gap-4">
+      {error && data && (
+        <div role="alert">
+          <ErrorHint message={error} />
+        </div>
+      )}
       {/* Top Section: (User Data | Middle Panels) | Splitter | (File Preview | Support Overview) */}
       <div ref={containerRef} className="flex min-h-[400px]">
         <div style={{ width: `${showRightPanel ? splitPercent : 100}%` }} className="flex gap-4 min-w-0 pr-2">
@@ -254,7 +396,7 @@ export default function ComplianceUserScreen(): JSX.Element {
                 <SupportUserOverviewPanel data={data} />
               ) : (
                 <FilePreviewPanel
-                  preview={preview}
+                  preview={activePreview}
                   label={translate('screens/compliance', 'File Preview')}
                   onClose={() => setPreview(undefined)}
                   onDownload={downloadPreview}

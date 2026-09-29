@@ -54,6 +54,46 @@ async function ensureStaffKycComplete(userId: number): Promise<void> {
   });
 }
 
+const TEST_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+async function uploadRealKycPreviewFile(userDataId: number, kycHash: string, tag: string): Promise<void> {
+  const step = await createKycStep(userDataId, {
+    name: 'AdditionalDocuments',
+    sequenceNumber: 900,
+  });
+  const apiBase = process.env.E2E_API_URL ?? 'http://api:3000';
+  const response = await fetch(`${apiBase}/v2/kyc/data/additional/${step.kycStepId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-kyc-code': kycHash },
+    body: JSON.stringify({
+      file: `data:image/png;base64,${TEST_PNG_BASE64}`,
+      fileName: `${tag}.png`,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`KYC file upload failed: ${response.status} ${await response.text()}`);
+  }
+}
+
+async function uploadRealResidencePermitFile(userDataId: number, kycHash: string, fileName: string): Promise<void> {
+  const step = await createKycStep(userDataId, { name: 'ResidencePermit', sequenceNumber: 901 });
+  const apiBase = process.env.E2E_API_URL ?? 'http://api:3000';
+  const response = await fetch(`${apiBase}/v2/kyc/data/residence/${step.kycStepId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'x-kyc-code': kycHash },
+    body: JSON.stringify({ file: `data:image/png;base64,${TEST_PNG_BASE64}`, fileName }),
+  });
+  if (!response.ok) {
+    throw new Error(`Residence permit upload failed: ${response.status} ${await response.text()}`);
+  }
+}
+
+async function kycHashFor(userDataId: number): Promise<string> {
+  const row = await queryOne<{ kycHash: string }>(`SELECT "kycHash" FROM user_data WHERE id = $1`, [userDataId]);
+  if (!row?.kycHash) throw new Error(`Missing KYC hash for userDataId ${userDataId}`);
+  return row.kycHash;
+}
+
 /**
  * All 25 compliance routes with concrete placeholders for param segments.
  * `:queue` uses a non-enum placeholder — the guard runs before queue validation, so denial
@@ -338,6 +378,112 @@ test.describe('Compliance area (overview)', () => {
       [customer.userDataId, `%comment: Reset: ${reason}%`],
       15000,
     );
+  });
+
+  test('/compliance/user/:id previews and downloads a real KYC file, then clears it on customer change', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const customer = await createUser({ tag: 'cmp-preview-file', kycLevel: 30, completePersonalData: true });
+    const otherCustomer = await createUser({ tag: 'cmp-preview-other', kycLevel: 30, completePersonalData: true });
+    const uploadedFilenameSuffix = 'cmp-preview-file.png';
+    await uploadRealKycPreviewFile(customer.userDataId, await kycHashFor(customer.userDataId), 'cmp-preview-file');
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+    const fileRow = page.getByRole('row').filter({ hasText: uploadedFilenameSuffix });
+    await expect(fileRow).toBeVisible({ timeout: 15000 });
+    // The real upload endpoint prefixes the submitted name with timestamp, document type, and ID.
+    // Read the actual API-backed name from the dossier row for the preview alt text and download checks.
+    const filename = (await fileRow.getByRole('cell').nth(1).innerText()).trim();
+    expect(filename).toContain(uploadedFilenameSuffix);
+
+    const fileResponses: Array<{ access: string | null; status: number }> = [];
+    page.on('response', (response) => {
+      const url = new URL(response.url());
+      if (url.pathname.includes('/v2/kyc/file/')) {
+        fileResponses.push({ access: url.searchParams.get('access'), status: response.status() });
+      }
+    });
+
+    await fileRow.click();
+    await expect(page.getByRole('img', { name: filename, exact: true })).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => fileResponses.filter((item) => item.access === 'View' && item.status === 200).length).toBe(1);
+
+    const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
+    await page.getByRole('button', { name: 'Download', exact: true }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(filename);
+    await expect.poll(() => fileResponses.filter((item) => item.access === 'Download' && item.status === 200).length).toBe(1);
+
+    const fileLogCount = async (): Promise<number> => {
+      const row = await queryOne<{ count: number }>(
+        `SELECT COUNT(*)::int AS count FROM kyc_log WHERE type = 'KycFileLog' AND "userDataId" = $1 AND result LIKE $2`,
+        [customer.userDataId, `%${filename}%`],
+      );
+      return row?.count ?? 0;
+    };
+    await expect.poll(fileLogCount).toBe(2);
+
+    await page.evaluate((path) => {
+      window.history.pushState({}, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, `/compliance/user/${otherCustomer.userDataId}`);
+    await expect(page.getByText('No KYC files', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('img', { name: filename, exact: true })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'File Preview', exact: true })).toBeVisible();
+  });
+
+  test('/compliance/user/:id/kyc previews and downloads a real file, then clears it on customer change', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const customer = await createUser({ tag: 'cmp-review-preview', kycLevel: 30, completePersonalData: true });
+    const otherCustomer = await createUser({ tag: 'cmp-review-other', kycLevel: 30, completePersonalData: true });
+    const uploadedFilenameSuffix = 'cmp-review-preview.png';
+    await uploadRealResidencePermitFile(customer.userDataId, await kycHashFor(customer.userDataId), uploadedFilenameSuffix);
+
+    const reviewPath = (userDataId: number) => `/compliance/user/${userDataId}/kyc`;
+    await openScreen(page, reviewPath(customer.userDataId), jwt);
+    await page.getByRole('button', { name: 'Aufenthaltsbewilligung', exact: true }).click();
+    const fileButton = page.getByRole('button').filter({ hasText: uploadedFilenameSuffix });
+    await expect(fileButton).toBeVisible({ timeout: 15000 });
+    // The real endpoint prefixes the submitted filename; use the API-backed UI name
+    // for preview, download, and audit-log assertions.
+    const filename = (await fileButton.locator('span.underline').innerText()).trim();
+    expect(filename).toContain(uploadedFilenameSuffix);
+
+    const fileResponses: Array<{ access: string | null; status: number }> = [];
+    page.on('response', (response) => {
+      const url = new URL(response.url());
+      if (url.pathname.includes('/v2/kyc/file/')) {
+        fileResponses.push({ access: url.searchParams.get('access'), status: response.status() });
+      }
+    });
+
+    await fileButton.click();
+    await expect(page.getByRole('img', { name: filename, exact: true })).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => fileResponses.filter((item) => item.access === 'View' && item.status === 200).length).toBe(1);
+
+    const downloadPromise = page.waitForEvent('download', { timeout: 15000 });
+    await page.getByRole('button', { name: 'Download', exact: true }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(filename);
+    await expect.poll(() => fileResponses.filter((item) => item.access === 'Download' && item.status === 200).length).toBe(1);
+    await expect.poll(async () => {
+      const row = await queryOne<{ count: number }>(
+        `SELECT COUNT(*)::int AS count FROM kyc_log WHERE type = 'KycFileLog' AND "userDataId" = $1 AND result LIKE $2`,
+        [customer.userDataId, `%${filename}%`],
+      );
+      return row?.count ?? 0;
+    }).toBe(2);
+
+    await page.evaluate((path) => {
+      window.history.pushState({}, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, reviewPath(otherCustomer.userDataId));
+    await expect(page.getByText('Aufenthaltsbewilligung', { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('img', { name: filename, exact: true })).toHaveCount(0);
+    await expect(page.getByText('Click a file to preview', { exact: true })).toBeVisible();
   });
 
   // -------------------------------------------------------------------------

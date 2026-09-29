@@ -79,6 +79,24 @@ async function kycHashOf(userDataId: number): Promise<string> {
   return row.kycHash;
 }
 
+/** Checks that the running API image matches the source classified by scripts/up.sh. */
+async function kycFileAuthorizationRollout(): Promise<'legacy' | 'rolled-out'> {
+  const response = await fetch(`${apiBase()}/version`);
+  expect(response.status, 'the API build identity endpoint must respond').toBe(200);
+  const version = (await response.json()) as { commit?: unknown };
+  expect(typeof version.commit, 'the API image must expose its build commit').toBe('string');
+  const expectedCommit = process.env.E2E_API_SOURCE_COMMIT;
+  if (expectedCommit) {
+    expect(version.commit, 'the running API image must match the classified source checkout').toBe(expectedCommit);
+  }
+  // Missing or unknown declarations are strict; only the host-side source classifier may opt
+  // into the legacy expected-failure branch.
+  return typeof expectedCommit === 'string' && expectedCommit.length > 0 &&
+    process.env.E2E_KYC_FILE_GUARD_STATE === 'legacy-develop'
+    ? 'legacy'
+    : 'rolled-out';
+}
+
 /**
  * `createUser` always sets a mail during signup (PUT /v2/user/mail, unconditional - see
  * e2e-stack/specs/fixtures/factories.ts createUser). Verified live: a mail alone already satisfies
@@ -598,7 +616,9 @@ test.describe('KYC area e2e', () => {
     //
     // openScreen can return before getFile's metadata GET starts (route spinner gone, brief
     // networkidle). Asserting View file count 0 in that window mistakes an unloaded page for
-    // denial and spuriously passes. Await the real GET + terminal UI before checking the denial.
+    // denial and spuriously passes under test.fail. Await the real GET + terminal UI first.
+    // scripts/up.sh classifies the API source checkout; this helper verifies /version.commit against it.
+    // Only the pre-guard develop baseline may expect-fail; all other API revisions require denial.
 
     const owner = await createUser({ tag: 'file-owner', kycLevel: 0, language: 'EN' });
     const ownerHash = await kycHashOf(owner.userDataId);
@@ -613,7 +633,32 @@ test.describe('KYC area e2e', () => {
     // case rather than a corner of the model.
     expect(fileRow.protected).toBe(false);
 
+    // Capture anonymous behavior before the foreign-browser request, but defer assertions until
+    // after that request: the legacy image also exposes anonymous files, and the transition XFAIL
+    // must be caused by the real foreign-user HTTP 200 below.
     const anonymousResponse = await fetch(`${apiBase()}/v2/kyc/file/${encodeURIComponent(fileRow.uid)}`);
+
+    const stranger = await createUser({ tag: 'file-stranger', kycLevel: 0, language: 'EN' });
+    const rollout = await kycFileAuthorizationRollout();
+    const metadata = waitForKycFileMetadataResponse(page, fileRow.uid);
+    await openScreen(page, `/file/${fileRow.uid}`, stranger.jwt);
+    const metadataResponse = await metadata;
+    // Settled is 'file' today (product serves the stranger the document) or 'error' once fixed.
+    await waitForKycFileScreenSettled(page);
+
+    const metadataStatus = metadataResponse.status();
+    if (rollout === 'legacy') {
+      expect([200, 404]).toContain(metadataStatus);
+      test.fail(
+        metadataStatus === 200,
+        'The legacy API still exposes another user KYC document to a stranger (HTTP 200).',
+      );
+    }
+
+    // This direct status assertion makes HTTP 200 fail even if the UI masks the leaked response.
+    expect(metadataStatus).toBe(404);
+    expect(await metadataResponse.json()).not.toHaveProperty('content');
+
     expect(anonymousResponse.status).toBe(404);
     expect(await anonymousResponse.json()).not.toHaveProperty('content');
     const anonymousAudit = await queryOne<{ id: number }>(
@@ -621,14 +666,6 @@ test.describe('KYC area e2e', () => {
       [owner.userDataId, `User undefined is viewing KYC file ${fileRow.name} (ID: ${fileRow.id})`],
     );
     expect(anonymousAudit).toBeUndefined();
-
-    const stranger = await createUser({ tag: 'file-stranger', kycLevel: 0, language: 'EN' });
-    const metadata = waitForKycFileMetadataResponse(page, fileRow.uid);
-    await openScreen(page, `/file/${fileRow.uid}`, stranger.jwt);
-    const foreignResponse = await metadata;
-    expect(foreignResponse.status()).toBe(404);
-    expect(await foreignResponse.json()).not.toHaveProperty('content');
-    await waitForKycFileScreenSettled(page);
 
     await expect(page.getByRole('button', { name: 'View file' })).toHaveCount(0);
     await expect(page.getByText(KYC_FILE_ERROR_TEXT)).toBeVisible();

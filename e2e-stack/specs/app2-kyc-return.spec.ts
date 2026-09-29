@@ -4,7 +4,7 @@
  * Sumsub and Checkout.com are external providers and are not represented as live here.
  */
 
-import { expect, gotoWithSession, test, waitForRow, withDb } from './fixtures';
+import { apiGet, apiPost, apiPut, expect, gotoWithSession, test, waitForRow, withDb } from './fixtures';
 import { cleanupCreatedData, createKycStep, createUser, e2eMail } from './fixtures/factories';
 
 interface KycWrite {
@@ -94,6 +94,15 @@ async function codeFromVerificationMail(userDataId: number): Promise<string> {
   return code;
 }
 
+function codeFromEmailVerificationData(data: string): string {
+  const parsed = JSON.parse(data) as { texts?: Array<{ params?: { code?: string } }> };
+  const code = parsed.texts
+    ?.map((item) => item.params?.code)
+    .find((value) => typeof value === 'string' && value.length > 0);
+  if (!code) throw new Error('EmailVerification notification did not contain texts[].params.code');
+  return code;
+}
+
 async function completeMailTwoFactor(page: import('@playwright/test').Page, userDataId: number): Promise<void> {
   await expect(page.getByPlaceholder('Email code')).toBeVisible({ timeout: 20000 });
   const code = await codeFromVerificationMail(userDataId);
@@ -156,7 +165,12 @@ test.describe('App 2.0 KYC and return flows', () => {
       [user.userDataId, 'App2First', 'App2Last'],
       20000,
     );
-    expect(personalRow).toMatchObject({ firstname: 'App2First', surname: 'App2Last', street: 'Bahnhofstrasse', zip: '8001' });
+    expect(personalRow).toMatchObject({
+      firstname: 'App2First',
+      surname: 'App2Last',
+      street: 'Bahnhofstrasse',
+      zip: '8001',
+    });
     const personalWrite = await waitForKycWrite(
       capture,
       (write) => (write.body as { firstName?: string; lastName?: string })?.firstName === 'App2First' &&
@@ -259,10 +273,44 @@ test.describe('App 2.0 KYC and return flows', () => {
     const master = await createUser({ tag: 'app2-merge-master', mail: masterMail, language: 'EN' });
     const slave = await createUser({ tag: 'app2-merge-slave', mail: slaveMail, language: 'EN' });
 
-    // Establish the authenticated merge request with the real local API via its existing 2FA and
-    // email-change UI; this spec's tested confirmation/return screen is App2.
+    // Establish 2FA through the real UI and create an independent pending mail OTP. The merge
+    // conflict below is checked before that OTP cache is changed, so it remains valid to exercise
+    // the merged-account recovery branch after the merge.
     await gotoWithSession(page, '/2fa', slave.jwt);
     await completeMailTwoFactor(page, slave.userDataId);
+
+    const pendingMail = e2eMail('app2-merge-pending');
+    const pendingMailNotificationBaseline = await withDb(async (client) => {
+      const result = await client.query<{ id: number | null }>(
+        `SELECT MAX(id) AS id FROM notification
+         WHERE "userDataId" = $1 AND context = 'EmailVerification'`,
+        [slave.userDataId],
+      );
+      return result.rows[0]?.id ?? 0;
+    });
+    let pendingMailStatus: number | undefined;
+    await apiPut(
+      'user/mail',
+      { mail: pendingMail },
+      {
+        jwt: slave.jwt,
+        version: 'v2',
+        expectOk: false,
+        onStatus: (status) => (pendingMailStatus = status),
+      },
+    );
+    expect(pendingMailStatus).toBe(202);
+    const pendingMailNotification = await waitForRow<{ data: string }>(
+      `SELECT data FROM notification
+       WHERE "userDataId" = $1 AND context = 'EmailVerification' AND id > $2
+       ORDER BY id DESC LIMIT 1`,
+      [slave.userDataId, pendingMailNotificationBaseline],
+      20000,
+    );
+    const pendingMailOtp = codeFromEmailVerificationData(pendingMailNotification.data);
+
+    // Create the merge request by asking for the master's email. This is the same real API path
+    // driven by the customer UI, and the conflict must leave the pending OTP available.
     await gotoWithSession(page, '/account/mail', slave.jwt);
     await expect(page.getByRole('textbox', { name: 'Email address' })).toBeVisible({ timeout: 20000 });
     await page.getByRole('textbox', { name: 'Email address' }).fill(masterMail);
@@ -287,13 +335,8 @@ test.describe('App 2.0 KYC and return flows', () => {
     } catch {
       // Keep the status assertion below useful for non-JSON error responses too.
     }
-    const safeConfirmBody = {
-      ...confirmBody,
-      accessToken: typeof confirmBody.accessToken === 'string' ? '[redacted]' : confirmBody.accessToken,
-    };
-    expect(confirmResponse.status(), `GET ${new URL(confirmResponse.url()).pathname} body=${JSON.stringify(safeConfirmBody)}`)
-      .toBe(200);
-    expect(confirmBody.kycHash).toEqual(expect.any(String));
+    expect(confirmResponse.status(), `GET ${new URL(confirmResponse.url()).pathname}`).toBe(200);
+    expect(typeof confirmBody.kycHash === 'string').toBe(true);
     if (typeof confirmBody.accessToken === 'string') {
       await expect.poll(() => new URL(page.url()).hash).toBe('#/account');
     } else {
@@ -313,6 +356,160 @@ test.describe('App 2.0 KYC and return flows', () => {
       20000,
     );
     expect(merged.status).toBe('Merged');
+
+    // A merge moves this user row to the master. Without account-session enforcement, the stale
+    // slave token can still read the moved row through the legacy endpoint and mutate its referral
+    // settings through the v2 endpoint.
+    const slaveUserAfterMerge = await waitForRow<{ userDataId: number }>(
+      `SELECT "userDataId" FROM "user" WHERE id = $1`,
+      [slave.userId],
+      20000,
+    );
+    expect(slaveUserAfterMerge.userDataId).toBe(master.userDataId);
+
+    let staleRefGetStatus: number | undefined;
+    await apiGet('user/ref', {
+      jwt: slave.jwt,
+      version: 'v2',
+      expectOk: false,
+      onStatus: (status) => (staleRefGetStatus = status),
+    });
+    expect(staleRefGetStatus).toBe(401);
+
+    let stalePrivateGetStatus: number | undefined;
+    await apiGet('user', {
+      jwt: slave.jwt,
+      version: 'v1',
+      expectOk: false,
+      onStatus: (status) => (stalePrivateGetStatus = status),
+    });
+    expect(stalePrivateGetStatus).toBe(401);
+
+    const slaveRefBefore = await waitForRow<{ refPayoutFrequency: string }>(
+      `SELECT "refPayoutFrequency" FROM "user" WHERE id = $1`,
+      [slave.userId],
+      20000,
+    );
+    const attemptedSlaveFrequency = slaveRefBefore.refPayoutFrequency === 'Daily' ? 'Monthly' : 'Daily';
+    let staleRefPutStatus: number | undefined;
+    await apiPut(
+      'user/ref',
+      { payoutFrequency: attemptedSlaveFrequency },
+      {
+        jwt: slave.jwt,
+        version: 'v2',
+        expectOk: false,
+        onStatus: (status) => (staleRefPutStatus = status),
+      },
+    );
+    expect(staleRefPutStatus).toBe(401);
+    const slaveRefAfter = await waitForRow<{ refPayoutFrequency: string }>(
+      `SELECT "refPayoutFrequency" FROM "user" WHERE id = $1`,
+      [slave.userId],
+      20000,
+    );
+    expect(slaveRefAfter.refPayoutFrequency).toBe(slaveRefBefore.refPayoutFrequency);
+
+    let masterRefGetStatus: number | undefined;
+    await apiGet('user/ref', {
+      jwt: master.jwt,
+      version: 'v2',
+      expectOk: false,
+      onStatus: (status) => (masterRefGetStatus = status),
+    });
+    expect(masterRefGetStatus).toBe(200);
+    const masterRefBefore = await waitForRow<{ refPayoutFrequency: string }>(
+      `SELECT "refPayoutFrequency" FROM "user" WHERE id = $1`,
+      [master.userId],
+      20000,
+    );
+    const updatedMasterFrequency = masterRefBefore.refPayoutFrequency === 'Daily' ? 'Monthly' : 'Daily';
+    let masterRefPutStatus: number | undefined;
+    await apiPut(
+      'user/ref',
+      { payoutFrequency: updatedMasterFrequency },
+      {
+        jwt: master.jwt,
+        version: 'v2',
+        expectOk: false,
+        onStatus: (status) => (masterRefPutStatus = status),
+      },
+    );
+    expect(masterRefPutStatus).toBe(200);
+    const masterRefAfter = await waitForRow<{ refPayoutFrequency: string }>(
+      `SELECT "refPayoutFrequency" FROM "user" WHERE id = $1`,
+      [master.userId],
+      20000,
+    );
+    expect(masterRefAfter.refPayoutFrequency).toBe(updatedMasterFrequency);
+
+    const masterKycHash = confirmBody.kycHash as string;
+    let mergedMailPutStatus: number | undefined;
+    const mergedMailPut = await apiPut<Record<string, unknown>>(
+      'user/mail',
+      { mail: e2eMail('app2-merge-recovery') },
+      {
+        jwt: slave.jwt,
+        version: 'v2',
+        expectOk: false,
+        onStatus: (status) => (mergedMailPutStatus = status),
+      },
+    );
+    expect(mergedMailPutStatus).toBe(401);
+    expect(mergedMailPut.switchToCode === masterKycHash).toBe(true);
+
+    let mergedMailVerifyStatus: number | undefined;
+    const mergedMailVerify = await apiPost<Record<string, unknown>>(
+      'user/mail/verify',
+      { token: pendingMailOtp },
+      {
+        jwt: slave.jwt,
+        version: 'v2',
+        expectOk: false,
+        onStatus: (status) => (mergedMailVerifyStatus = status),
+      },
+    );
+    expect(mergedMailVerifyStatus).toBe(401);
+    expect(mergedMailVerify.switchToCode === masterKycHash).toBe(true);
+    const slaveMailAfterRecovery = await waitForRow<{ mail: string }>(
+      `SELECT mail FROM user_data WHERE id = $1`,
+      [slave.userDataId],
+      20000,
+    );
+    expect(slaveMailAfterRecovery.mail).toBe(slaveMail);
+
+    // Replaying the completed merge code with the old JWT is an allowed recovery action: it
+    // should mint a token for the master. Keep the OTP-bearing URL and token out of diagnostics.
+    let mergeReplayStatus: number | undefined;
+    const mergeReplay = await apiGet<{ accessToken?: string }>(
+      `auth/mail/confirm?code=${encodeURIComponent(merge.code)}`,
+      {
+        jwt: slave.jwt,
+        version: 'v1',
+        expectOk: false,
+        onStatus: (status) => (mergeReplayStatus = status),
+      },
+    );
+    expect(mergeReplayStatus).toBe(200);
+    const hasMasterAccessToken = typeof mergeReplay.accessToken === 'string' && mergeReplay.accessToken.length > 0;
+    expect(hasMasterAccessToken).toBe(true);
+    let remintedRefGetStatus: number | undefined;
+    await apiGet('user/ref', {
+      jwt: mergeReplay.accessToken,
+      version: 'v2',
+      expectOk: false,
+      onStatus: (status) => (remintedRefGetStatus = status),
+    });
+    expect(remintedRefGetStatus).toBe(200);
+
+    let invalidMergeReplayStatus: number | undefined;
+    await apiGet('auth/mail/confirm?code=not-a-real-merge-code', {
+      jwt: slave.jwt,
+      version: 'v1',
+      expectOk: false,
+      onStatus: (status) => (invalidMergeReplayStatus = status),
+    });
+    expect(invalidMergeReplayStatus).toBe(404);
 
     await openApp2(page, master.jwt, '#/buy/failure');
     await expect(page.getByText(/payment failed/i)).toBeVisible({ timeout: 20000 });

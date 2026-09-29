@@ -277,7 +277,7 @@ export interface CreateUserResult {
   address: string;
   jwt: string;
   wallet: TestWallet;
-  mail?: string;
+  mail: string;
 }
 
 export interface CreateBankAccountOptions {
