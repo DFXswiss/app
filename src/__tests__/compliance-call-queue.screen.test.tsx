@@ -521,7 +521,7 @@ describe('ComplianceCallQueueScreen', () => {
       expect(screen.getByText('15.09.2026')).toHaveClass('text-dfxRed-100');
     });
 
-    it('shows no deadline and no mark date for a failed transaction of a customer who allowed calls again', async () => {
+    it('shows no deadline and no mark date for a failed transaction whose customer allowed calls', async () => {
       await renderLoaded([
         item({
           amlCheck: 'Fail',

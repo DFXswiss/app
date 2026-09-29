@@ -464,7 +464,7 @@ describe('CallQueueOutcomeForm in-flight guards', () => {
     await waitFor(() => expect(button).toBeEnabled());
   });
 
-  it('tells the owner about a save that finishes after the form was unmounted, without touching its state', async () => {
+  it('tells the owner about a save that finishes after the form was unmounted, without touching state', async () => {
     let resolveSave: (value: unknown) => void = () => undefined;
     mockSaveCallOutcome.mockReturnValue(new Promise((resolve) => (resolveSave = resolve)));
     const onSaved = jest.fn();

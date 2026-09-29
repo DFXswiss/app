@@ -359,7 +359,7 @@ describe('ComplianceCallQueueDetailScreen', () => {
       expect(screen.queryByTestId('address-info')).not.toBeInTheDocument();
     });
 
-    it('decides a parked transaction as the reason queue it came from, keeping the Callback queue in the context', async () => {
+    it('decides a parked transaction as the reason queue it came from, and keeps Callback in context', async () => {
       mockSearch = '?txId=101';
       const tx = transaction({ buyCryptoId: 7001, amlCheck: 'Pending', amlReason: 'ManualCheckIpCountryPhone' });
 
