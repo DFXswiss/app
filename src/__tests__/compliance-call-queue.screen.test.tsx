@@ -111,7 +111,7 @@ describe('ComplianceCallQueueScreen', () => {
     capturedLayoutOptions = undefined;
     mockIsLoggedIn = true;
     mockParams = { queue: 'ManualCheckPhone' };
-    mockGetCallQueueItems.mockReturnValue(new Promise(() => {}));
+    mockGetCallQueueItems.mockReturnValue(new Promise(() => undefined));
   });
 
   it('calls the compliance guard without arguments', () => {
