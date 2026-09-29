@@ -59,6 +59,10 @@ export function RefUserKycClearRow({ userDataId, disabled, onCleared }: Readonly
   // An answer for the previous account is not reported as a result of the current one.
   const userDataIdRef = useRef(userDataId);
   userDataIdRef.current = userDataId;
+  // The click's function would still close over the previous account's reload. The screen replaces
+  // that callback as soon as the route changes, and this ref follows it.
+  const onClearedRef = useRef(onCleared);
+  onClearedRef.current = onCleared;
   useEffect(() => {
     clearingRef.current = false;
     setIsClearing(false);
@@ -78,7 +82,7 @@ export function RefUserKycClearRow({ userDataId, disabled, onCleared }: Readonly
       const result = await clearRefUserKyc(requestedId);
       if (mountedRef.current && userDataIdRef.current === requestedId) setSummary(refUserKycClearSummary(result));
       // The account changed on the API side either way; the owner reloads even when this row is gone.
-      if (userDataIdRef.current === requestedId) await onCleared?.();
+      if (userDataIdRef.current === requestedId) await onClearedRef.current?.();
     } catch (e: unknown) {
       if (mountedRef.current && userDataIdRef.current === requestedId)
         setError(e instanceof Error ? e.message : 'Failed to clear the referrer check');

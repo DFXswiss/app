@@ -1,6 +1,6 @@
 import { AmlReason, CheckStatus, KycStatus } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ComplianceReviewHeader } from 'src/components/compliance/compliance-review-header';
 import {
@@ -34,6 +34,10 @@ export default function ComplianceReviewScreen(): JSX.Element {
   useComplianceGuard();
 
   const { id: userDataId } = useParams();
+  // loadData reads this at call time. A reload started on the previous account must not write that
+  // account onto the route the clerk has since opened.
+  const routeIdRef = useRef(userDataId);
+  routeIdRef.current = userDataId;
   const navigateTo = useNavigate();
   const [searchParams] = useSearchParams();
   const initialTabParam = searchParams.get('tab') as ReviewCheckTab | null;
@@ -58,6 +62,15 @@ export default function ComplianceReviewScreen(): JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [data, setData] = useState<ComplianceUserData>();
+  // The panels stay mounted until this render. Clear the previous account before paint, or its waiver
+  // row still shows on the new route and can reload the old account over the new one.
+  const [shownId, setShownId] = useState(userDataId);
+  if (userDataId !== shownId) {
+    setShownId(userDataId);
+    setData(undefined);
+    setError(undefined);
+    setIsLoading(true);
+  }
   const [activeTab, setActiveTab] = useState<ReviewCheckTab | undefined>(initialTabParam ?? undefined);
   const [isSaving, setIsSaving] = useState(false);
   const [preview, setPreview] = useState<{ url: string; contentType: string; name: string; uid?: string }>();
@@ -65,7 +78,8 @@ export default function ComplianceReviewScreen(): JSX.Element {
 
   const loadData = useCallback(
     async (options?: { throwOnError?: boolean }): Promise<void> => {
-      if (!userDataId) {
+      const id = routeIdRef.current;
+      if (!id) {
         setError('No ID provided');
         setIsLoading(false);
         return;
@@ -74,20 +88,25 @@ export default function ComplianceReviewScreen(): JSX.Element {
       setIsLoading(true);
       setError(undefined);
       try {
-        setData(await getUserData(+userDataId));
+        const fresh = await getUserData(+id);
+        if (routeIdRef.current !== id) return;
+        setData(fresh);
       } catch (e: unknown) {
+        if (routeIdRef.current !== id) return;
         setError(e instanceof Error ? e.message : 'Unknown error');
         if (options?.throwOnError) throw e;
       } finally {
-        setIsLoading(false);
+        if (routeIdRef.current === id) setIsLoading(false);
       }
     },
-    [userDataId, getUserData],
+    [getUserData],
   );
 
   useEffect(() => {
+    // loadData's identity does not change with the route. The id does, and that must start a new load.
+    routeIdRef.current = userDataId;
     loadData();
-  }, [loadData]);
+  }, [loadData, userDataId]);
 
   useEffect(() => {
     return () => {

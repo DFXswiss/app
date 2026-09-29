@@ -173,6 +173,21 @@ describe('RefUserKycClearRow', () => {
     expect(button()).toBeEnabled();
   });
 
+  it('reloads through the callback passed now, not the one captured at the click', async () => {
+    let resolve: (value: RefUserKycClearResult) => void = () => undefined;
+    mockClear.mockReturnValue(new Promise<RefUserKycClearResult>((r) => (resolve = r)));
+    const first = jest.fn().mockResolvedValue(undefined);
+    const second = jest.fn().mockResolvedValue(undefined);
+
+    const { rerender } = render(<RefUserKycClearRow userDataId={325674} disabled={false} onCleared={first} />);
+    fireEvent.click(button());
+    rerender(<RefUserKycClearRow userDataId={325674} disabled={false} onCleared={second} />);
+
+    await act(async () => resolve(result));
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
   it('does not report a late success for the previous account after the id switched', async () => {
     let resolve: (value: RefUserKycClearResult) => void = () => undefined;
     mockClear.mockReturnValue(new Promise<RefUserKycClearResult>((r) => (resolve = r)));
