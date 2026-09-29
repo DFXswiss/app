@@ -243,6 +243,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   clerks list, not that the API returns those records or the logged-in staff member's
   `verifiedName`. The session is a synthetic unsigned JWT, so a green run also does not
   prove login or token verification.
+- **The call-queue list spec answers the queue items itself.**
+  `e2e/compliance-call-queue-list.spec.ts` fulfils
+  `GET /v1/support/call-queues/{queue}/items` for ManualCheckPhone,
+  ManualCheckIpCountryPhone and UnavailableSuspicious with synthetic items
+  that include `phoneCallTimes` `H9To10;H10To11`, empty lists for
+  `/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount` and
+  `/v1/country`, a null info banner, and `GET /v2/user` with a synthetic
+  account. The session is a synthetic unsigned JWT. A green run proves the
+  Phone Call Times column appears only for ManualCheckPhone and
+  ManualCheckIpCountryPhone, immediately before Date, and stays hidden for
+  UnavailableSuspicious even when the item carries a value. It does not prove
+  API payloads, login, or token verification.
 - **Full-stack guest assign/refund specs SQL-write `transaction.actionSecretHash`.**
   `e2e-stack/specs/transactions.spec.ts` (`seedActionSecret`) updates the hash directly. A green run
   does **not** prove that the mail/API path creates, hashes, or delivers the action secret.
