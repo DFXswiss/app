@@ -29,8 +29,8 @@ interface AmlCheckPendingPanelProps {
   onUpdate: (tx: TransactionInfo, update: AmlCheckUpdate, clerk: string) => Promise<void>;
   onReset: (tx: TransactionInfo, clerk: string) => Promise<void>;
   onReviewReset: (tx: TransactionInfo) => Promise<void>;
-  // Reloads the account after the referrer's open check was waived for it (the parked transaction is
-  // reset by the API and leaves this panel).
+  // Reloads the account after the referrer hold was waived for it (the parked transaction is reset by
+  // the API and leaves this panel). The clearance stays even if the referrer's KYC status changes later.
   onRefUserKycCleared?: () => Promise<void>;
 }
 

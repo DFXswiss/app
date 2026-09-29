@@ -20,6 +20,7 @@ import {
   REF_USER_KYC_CLEAR_CONFIRM,
   REF_USER_KYC_CLEAR_HINT,
   REF_USER_KYC_CLEAR_LABEL,
+  REF_USER_KYC_CLEAR_TITLE,
   RefUserKycClearRow,
   refUserKycClearSummary,
 } from 'src/components/compliance/ref-user-kyc-clear-row';
@@ -48,7 +49,7 @@ describe('RefUserKycClearRow', () => {
   it('renders the row label, the explanation and the button', () => {
     render(<RefUserKycClearRow userDataId={325674} disabled={false} />);
 
-    expect(screen.getByText('Empfehler auf Check')).toBeInTheDocument();
+    expect(screen.getByText(REF_USER_KYC_CLEAR_TITLE)).toBeInTheDocument();
     expect(screen.getByText(REF_USER_KYC_CLEAR_HINT)).toBeInTheDocument();
     expect(button()).toBeEnabled();
   });

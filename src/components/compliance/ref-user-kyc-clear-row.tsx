@@ -12,15 +12,18 @@ interface Props {
 
 export const REF_USER_KYC_CLEAR_LABEL = 'Empfehler-Check aufheben';
 
+export const REF_USER_KYC_CLEAR_TITLE = 'Empfehler blockiert die Zahlung';
+
 export const REF_USER_KYC_CLEAR_HINT =
-  'Der Empfehler dieses Kunden steht auf KYC-Status Check. Damit bleibt jede Zahlung dieses Kunden hängen. ' +
-  'Aufheben heisst: Der Empfehler-Status wird für diesen Kunden nicht mehr geprüft, solange der Empfehler auf ' +
-  'Check steht. Die Zahlung wird danach automatisch neu geprüft und freigegeben, wenn kein weiterer Fehler ' +
-  'offen ist. Wird im Support-Log mit deinem Namen festgehalten.';
+  'Der Empfehler dieses Kunden hat einen KYC-Status, der keine Zahlung zulässt (Check, Rejected oder ' +
+  'Terminated). Deshalb bleibt jede Zahlung dieses Kunden hängen. Aufheben heisst: Dieser Kunde ist ' +
+  'freigegeben. Der Empfehler wird für ihn nicht mehr geprüft, auch wenn sich der KYC-Status des ' +
+  'Empfehlers danach ändert. Die Zahlung wird danach automatisch neu geprüft und freigegeben, wenn kein ' +
+  'weiterer Fehler offen ist. Wird im Support-Log mit deinem Namen festgehalten.';
 
 export const REF_USER_KYC_CLEAR_CONFIRM =
-  'Empfehler-Check für diesen Kunden wirklich aufheben?\n\nGilt für alle Zahlungen des Kunden, solange der ' +
-  'Empfehler auf Check steht. Die hängenden Zahlungen werden neu geprüft.';
+  'Empfehler-Check für diesen Kunden wirklich aufheben?\n\nDie Freigabe bleibt bestehen, auch wenn sich ' +
+  'der KYC-Status des Empfehlers danach ändert. Die hängenden Zahlungen werden neu geprüft.';
 
 export function refUserKycClearSummary(result: RefUserKycClearResult): string {
   const referrers = result.referrers.map((r) => `#${r.userDataId}`).join(', ');
@@ -30,8 +33,9 @@ export function refUserKycClearSummary(result: RefUserKycClearResult): string {
 }
 
 // One row inside the AML decision box, shown only while the transaction carries InvalidKycStatusRefUser:
-// the account-level waiver of the referrer's open check. Not a Pass — the API resets the parked
-// transactions and the automatic AML run decides again (docs/aml-pass-policy.md in the backend).
+// the account-level waiver of a referrer whose KYC status does not allow payments (Check, Rejected or
+// Terminated). Once compliance clears it, the waiver stays even if that status changes later. Not a Pass —
+// the API resets the parked transactions and the automatic AML run decides again.
 export function RefUserKycClearRow({ userDataId, disabled, onCleared }: Readonly<Props>): JSX.Element {
   const { clearRefUserKyc } = useRefUserKycClear();
 
@@ -89,7 +93,7 @@ export function RefUserKycClearRow({ userDataId, disabled, onCleared }: Readonly
   return (
     <div className="px-3 py-2 border-b border-dfxGray-300 flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-dfxBlue-800">Empfehler auf Check</span>
+        <span className="text-sm text-dfxBlue-800">{REF_USER_KYC_CLEAR_TITLE}</span>
         {summary ? (
           <span className="text-xs text-dfxGray-700 text-right">{summary}</span>
         ) : (

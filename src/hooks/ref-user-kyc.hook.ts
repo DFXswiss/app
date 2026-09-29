@@ -16,9 +16,10 @@ export interface RefUserKycClearResult {
   resetBuyFiatIds: number[];
 }
 
-// Waives the referrer's open KYC check for one account (PUT support/:id/refUserKycCleared, Compliance
-// role). The API stamps the account, logs the clerk and resets every transaction the hold parked; the
-// automatic AML run then decides again. It never sets Pass.
+// Waives a referrer who does not allow payments (Check, Rejected or Terminated) for one account
+// (PUT support/:id/refUserKycCleared, Compliance role). The API stamps the account, logs the clerk and
+// resets every transaction the hold parked. The stamp stays if the referrer's status changes later.
+// The automatic AML run then decides again. It never sets Pass.
 export function useRefUserKycClear(): {
   clearRefUserKyc: (userDataId: number) => Promise<RefUserKycClearResult>;
 } {
