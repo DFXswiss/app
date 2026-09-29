@@ -470,7 +470,10 @@
     "Country": "Pays",
     "Status": "Statut",
     "Date": "Date",
-    "Phone Call Times": "Heures d'appel"
+    "Phone Call Times": "Heures d'appel",
+    "Callback": "Callback",
+    "Marked": "Marqué",
+    "Deadline": "Échéance"
   },
   "screens/2fa": {
     "2FA": "2FA",

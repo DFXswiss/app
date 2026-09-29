@@ -470,7 +470,10 @@
     "Country": "Paese",
     "Status": "Stato",
     "Date": "Data",
-    "Phone Call Times": "Orari di chiamata"
+    "Phone Call Times": "Orari di chiamata",
+    "Callback": "Callback",
+    "Marked": "Contrassegnato",
+    "Deadline": "Scadenza"
   },
   "screens/2fa": {
     "2FA": "2FA",

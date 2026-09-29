@@ -37,7 +37,9 @@ export function CallQueuesSection({ entries }: Props): JSX.Element | null {
               className="border-b border-dfxGray-300 transition-colors hover:bg-dfxGray-300 cursor-pointer"
               onClick={() => navigate(`compliance/call-queues/${q.queue}`)}
             >
-              <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{callQueueLabel(q.queue)}</td>
+              <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                {translate('screens/compliance', callQueueLabel(q.queue))}
+              </td>
               <td className="px-4 py-3 text-right text-sm text-dfxBlue-800 font-semibold">{q.count}</td>
             </tr>
           ))}

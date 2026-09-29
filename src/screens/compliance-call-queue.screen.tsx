@@ -44,7 +44,8 @@ export default function ComplianceCallQueueScreen(): JSX.Element {
     queue === CallQueue.MANUAL_CHECK_PHONE || queue === CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE;
 
   // 6 is User, Phone, Lang, KYC, Transaction, Date; addends are IP, Country, the three Callback columns and Phone Call Times.
-  const columnCount = 6 + (showIp ? 1 : 0) + (showCountry ? 1 : 0) + (isCallback ? 3 : 0) + (showPhoneCallTimes ? 1 : 0);
+  const columnCount =
+    6 + (showIp ? 1 : 0) + (showCountry ? 1 : 0) + (isCallback ? 3 : 0) + (showPhoneCallTimes ? 1 : 0);
 
   useEffect(() => {
     if (!isLoggedIn || !queue) return;
@@ -79,7 +80,9 @@ export default function ComplianceCallQueueScreen(): JSX.Element {
   }
 
   useLayoutOptions({
-    title: queue ? callQueueLabel(queue) : translate('screens/compliance', 'Call Queue'),
+    title: queue
+      ? translate('screens/compliance', callQueueLabel(queue))
+      : translate('screens/compliance', 'Call Queue'),
     noMaxWidth: true,
     backButton: true,
     onBack: () => navigate(-1),

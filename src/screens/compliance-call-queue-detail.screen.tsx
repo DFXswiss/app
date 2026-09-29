@@ -110,7 +110,9 @@ export default function ComplianceCallQueueDetailScreen(): JSX.Element {
   }, [isLoggedIn, userDataId, queue]);
 
   useLayoutOptions({
-    title: queue ? `${callQueueLabel(queue)} – ${userDataId ?? ''}` : translate('screens/compliance', 'Call Queue'),
+    title: queue
+      ? `${translate('screens/compliance', callQueueLabel(queue))} – ${userDataId ?? ''}`
+      : translate('screens/compliance', 'Call Queue'),
     noMaxWidth: true,
     backButton: true,
     textStart: true,
