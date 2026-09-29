@@ -242,6 +242,7 @@ test.describe('Compliance review KYC and AML actions', () => {
         buyCryptoHasChargeback: false,
         buyCryptoReviewResetBlocked: false,
         created: '2026-07-31T08:30:00.000Z',
+        comment: 'InvalidKycStatusRefUser',
       },
     ];
 
@@ -250,6 +251,8 @@ test.describe('Compliance review KYC and AML actions', () => {
     await page.goto(`/compliance/user/${USER_DATA_ID}/kyc?session=${jwt()}&tab=amlPending`);
 
     await expect(page.getByText('AmlCheck', { exact: true })).toBeVisible();
+    await expect(page.getByText('Empfehler blockiert die Zahlung')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Empfehler-Check aufheben' })).toBeVisible();
 
     await page.locator('select').first().selectOption('Fail');
 
