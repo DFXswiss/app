@@ -3,6 +3,7 @@
 
 const route: { id: string; bump: () => void } = { id: '325674', bump: () => undefined };
 const mockGetUserData = jest.fn();
+const mockAuthSession = { account: 1, user: 2, address: '0xroute-test', role: 'Compliance' };
 
 jest.mock('react-router-dom', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -27,6 +28,13 @@ jest.mock('@dfx.swiss/react', () => ({
   KycStatus: { CHECK: 'Check' },
   CheckStatus: { PENDING: 'Pending' },
   AmlReason: { MANUAL_CHECK: 'ManualCheck' },
+  UserRole: { ADMIN: 'Admin', COMPLIANCE: 'Compliance' },
+  useAuthContext: () => ({
+    session: mockAuthSession,
+    getAuthToken: () => 'route-test-token',
+    getAuthTokenSession: () => mockAuthSession,
+  }),
+  useSessionContext: () => ({ isInitialized: true, isLoggedIn: true }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
