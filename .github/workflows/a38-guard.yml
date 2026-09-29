@@ -41,7 +41,7 @@ jobs:
       # from its own action_path (DFXswiss/agent) and reads the base manifest
       # / head workflow YAML via the GitHub API as data only.
       - name: dfx pr guard
-        uses: DFXswiss/agent/.github/actions/a38-guard@73fb5306608ef5b8cbb1ed21e73d1eef58dfb36f
+        uses: DFXswiss/agent/.github/actions/a38-guard@9e7ab96ad6d034e3dfe591bdf0799378a6269ed3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
