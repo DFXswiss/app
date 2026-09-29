@@ -104,6 +104,10 @@ html,
 body {
   height: 100%;
 }
+:global(#root) {
+  min-width: 0;
+  max-width: 100%;
+}
 body {
   font-family:
     'Inter',

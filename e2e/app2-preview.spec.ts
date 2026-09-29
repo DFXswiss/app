@@ -62,7 +62,19 @@ test.describe('App2 preview screens', () => {
 
   test('support (logged out)', async ({ page }) => {
     await openApp2(page, '#/support');
-    await expect(page.getByRole('heading', { name: /support|supporto/i })).toBeVisible();
+    const heading = page.getByRole('heading', { name: /support|supporto/i });
+    await expect(heading).toBeVisible();
+    const supportFitsViewport = await heading.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return (
+        document.documentElement.scrollWidth <= window.innerWidth &&
+        bounds.left >= 0 &&
+        bounds.right <= window.innerWidth
+      );
+    });
+    expect(supportFitsViewport, 'support page and heading should fit the viewport without horizontal overflow').toBe(
+      true,
+    );
     await expect(page).toHaveScreenshot('app2-support.png', screenshotOpts);
   });
 
@@ -82,7 +94,10 @@ test.describe('App2 preview screens', () => {
 
   test('connect sheet', async ({ page }) => {
     await openApp2(page, '#/');
-    await page.getByRole('button', { name: /connect wallet|wallet verbinden/i }).first().click();
+    await page
+      .getByRole('button', { name: /connect wallet|wallet verbinden/i })
+      .first()
+      .click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page).toHaveScreenshot('app2-connect-sheet.png', screenshotOpts);
   });
