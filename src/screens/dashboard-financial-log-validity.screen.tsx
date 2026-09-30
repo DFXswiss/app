@@ -28,6 +28,7 @@ interface RangeFormData {
   to: string;
   min: string;
   max: string;
+  reference: string;
 }
 
 interface LogValidityResponse {
@@ -41,6 +42,13 @@ interface FinancialValidityRequest {
   min?: number;
   max?: number;
   valid: boolean;
+  reference: string;
+  auditAll?: boolean;
+}
+
+interface FinancialValidityResponse {
+  affected: number;
+  audited: number;
 }
 
 interface PendingConfirmation {
@@ -114,7 +122,7 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
     reset: resetRange,
   } = useForm<RangeFormData>({
     mode: 'onTouched',
-    defaultValues: { from: '', to: '', min: '', max: '' },
+    defaultValues: { from: '', to: '', min: '', max: '', reference: '' },
   });
 
   const [rangeLoading, setRangeLoading] = useState(false);
@@ -123,7 +131,11 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
 
   // Validate the range form against the backend rules and build the request payload.
   // Returns undefined (and sets an error) when the input is invalid.
-  function buildRangePayload(data: RangeFormData, valid: boolean): FinancialValidityRequest | undefined {
+  function buildRangePayload(
+    data: RangeFormData,
+    valid: boolean,
+    auditAll: boolean,
+  ): FinancialValidityRequest | undefined {
     const minStr = data.min.trim();
     const maxStr = data.max.trim();
 
@@ -171,24 +183,37 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
       return undefined;
     }
 
-    const payload: FinancialValidityRequest = { valid };
+    const reference = data.reference.trim();
+    if (!reference) {
+      setRangeError('A reason is required.');
+      return undefined;
+    }
+    if (reference.length > 1024) {
+      setRangeError('The reason must be at most 1024 characters.');
+      return undefined;
+    }
+
+    const payload: FinancialValidityRequest = { valid, reference };
     if (fromDate) payload.from = fromDate.toISOString();
     if (toDate) payload.to = toDate.toISOString();
     if (min !== undefined) payload.min = min;
     if (max !== undefined) payload.max = max;
+    if (auditAll) payload.auditAll = true;
     return payload;
   }
 
   async function executeRange(payload: FinancialValidityRequest) {
     setRangeLoading(true);
     try {
-      const response = await call<{ affected: number }>({
+      const response = await call<FinancialValidityResponse>({
         url: 'log/financial/validity',
         method: 'PUT',
         data: payload,
       });
       setRangeSuccess(
-        `Updated ${response.affected} ${response.affected === 1 ? 'entry' : 'entries'} to valid = ${payload.valid}.`,
+        payload.auditAll
+          ? `Recorded an info point for ${response.audited} ${response.audited === 1 ? 'entry' : 'entries'} (${response.affected} changed to valid = true).`
+          : `Updated ${response.affected} ${response.affected === 1 ? 'entry' : 'entries'} to valid = ${payload.valid}.`,
       );
       setTimeout(() => setRangeSuccess(undefined), 4000);
       resetRange();
@@ -199,11 +224,11 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
     }
   }
 
-  function requestRangeConfirmation(data: RangeFormData, valid: boolean) {
+  function requestRangeConfirmation(data: RangeFormData, valid: boolean, auditAll: boolean) {
     setRangeError(undefined);
     setRangeSuccess(undefined);
 
-    const payload = buildRangePayload(data, valid);
+    const payload = buildRangePayload(data, valid, auditAll);
     if (!payload) return;
 
     const filters: string[] = [];
@@ -215,8 +240,17 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
     setConfirmation({
       content: (
         <p className="text-dfxBlue-800 mb-2 text-center">
-          Update all financial data logs matching <strong>{filters.join(', ')}</strong> to valid ={' '}
-          <strong>{String(valid)}</strong>?
+          {auditAll ? (
+            <>
+              Record an info point for all financial data logs matching <strong>{filters.join(', ')}</strong>? They stay
+              valid = <strong>true</strong>.
+            </>
+          ) : (
+            <>
+              Update all financial data logs matching <strong>{filters.join(', ')}</strong> to valid ={' '}
+              <strong>{String(valid)}</strong>?
+            </>
+          )}
         </p>
       ),
       run: () => executeRange(payload),
@@ -290,6 +324,8 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
         <p className="text-sm text-gray-500 mb-4">
           Bulk-update the validity of financial data logs. At least one filter is required. Dates are picked in your
           local time and sent as UTC; from is inclusive, to is exclusive. min/max apply exclusively to totalBalanceChf.
+          A reason is required and is shown on the treasury chart. 'Add info point' records the matched entries without
+          changing them.
         </p>
 
         <Form control={rangeControl} errors={rangeErrors} translate={translateError} hasFormElement={false}>
@@ -312,13 +348,14 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
               full
               smallLabel
             />
+            <StyledInput name="reference" label="Reason (shown on the chart)" placeholder="Reason" full smallLabel />
 
             {rangeError && <ErrorHint message={rangeError} />}
 
             <StyledButton
               label="Set valid = true"
               color={StyledButtonColor.GREEN}
-              onClick={handleRangeSubmit((data) => requestRangeConfirmation(data, true))}
+              onClick={handleRangeSubmit((data) => requestRangeConfirmation(data, true, false))}
               width={StyledButtonWidth.FULL}
               isLoading={rangeLoading}
               disabled={rangeLoading}
@@ -326,7 +363,15 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
             <StyledButton
               label="Set valid = false"
               color={StyledButtonColor.RED}
-              onClick={handleRangeSubmit((data) => requestRangeConfirmation(data, false))}
+              onClick={handleRangeSubmit((data) => requestRangeConfirmation(data, false, false))}
+              width={StyledButtonWidth.FULL}
+              isLoading={rangeLoading}
+              disabled={rangeLoading}
+            />
+            <StyledButton
+              label="Add info point (keep valid)"
+              color={StyledButtonColor.BLUE}
+              onClick={handleRangeSubmit((data) => requestRangeConfirmation(data, true, true))}
               width={StyledButtonWidth.FULL}
               isLoading={rangeLoading}
               disabled={rangeLoading}
