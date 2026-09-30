@@ -453,7 +453,7 @@ export function SettingsOverlay({ type, data, onClose }: SettingsOverlayProps): 
             <p className="text-dfxBlue-800 mb-2">
               <Trans i18nKey="screens/settings.delete" values={{ address: formattedAddress }}>
                 Are you sure you want to delete the address <strong>{formattedAddress}</strong> from your DFX account?
-                This action is irreversible.
+                You can reactivate it by signing in with it again.
               </Trans>
             </p>
           }
