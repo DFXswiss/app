@@ -615,6 +615,7 @@ function SupportScreenBody() {
   const [presetTxUid, setPresetTxUid] = useState<string | undefined>();
   const location = useLocation();
   const presetHandledRef = useRef(false);
+  const nameEditedRef = useRef(false);
   const [typeIndex, setTypeIndex] = useState(0);
   const [realName, setRealName] = useState('');
   const [name, setName] = useState('');
@@ -663,7 +664,7 @@ function SupportScreenBody() {
     void getProfile()
       .then((profile) => {
         if (cancelled || !profile) return;
-        setRealName([profile.firstName, profile.lastName].filter(Boolean).join(' '));
+        setRealName([profile.firstName, profile.lastName].filter(Boolean).join(' ').trim());
       })
       .catch(() => undefined);
     return () => {
@@ -672,6 +673,10 @@ function SupportScreenBody() {
     // `getProfile` intentionally omitted — re-created every render; this should
     // only re-run when the session changes.
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (newIssueOpen && realName && !nameEditedRef.current) setName(realName);
+  }, [newIssueOpen, realName]);
 
   useEffect(() => {
     // The SDK's sync path reads the last message without guarding an empty thread.
@@ -786,6 +791,7 @@ function SupportScreenBody() {
       return;
     }
     setTypeIndex(0);
+    nameEditedRef.current = false;
     setName(realName || shortAddress(address));
     setEmail('');
     setMessage('');
@@ -1091,39 +1097,41 @@ function SupportScreenBody() {
         </span>
         <span className={cx('ext-ic')}>{CHEV_ICON}</span>
       </div>
-      <a className={cx('suprow', 'glass')} href="mailto:support@dfx.swiss">
-        <span className={cx('ic')}>{MAIL_ICON}</span>
-        <span className={cx('tx')}>
-          <b>{t('supEmail')}</b>
-          <small>support@dfx.swiss</small>
-        </span>
-        {EXT_ICON}
-      </a>
-      <a className={cx('suprow', 'glass')} href="https://docs.dfx.swiss/" target="_blank" rel="noopener noreferrer">
-        <span className={cx('ic')}>{DOCS_ICON}</span>
-        <span className={cx('tx')}>
-          <b>{t('supDocs')}</b>
-          <small>docs.dfx.swiss</small>
-        </span>
-        {EXT_ICON}
-      </a>
-      <a className={cx('suprow', 'glass')} href="https://x.com/DFX_Swiss" target="_blank" rel="noopener noreferrer">
-        <span className={cx('ic')}>{X_ICON}</span>
-        <span className={cx('tx')}>
-          <b>{t('supX')}</b>
-          <small>x.com/DFX_Swiss</small>
-        </span>
-        {EXT_ICON}
-      </a>
+      <div className={cx('supcontact-list')} data-testid="support-contact-list">
+        <a className={cx('suprow', 'glass')} href="mailto:support@dfx.swiss">
+          <span className={cx('ic')}>{MAIL_ICON}</span>
+          <span className={cx('tx')}>
+            <b>{t('supEmail')}</b>
+            <small>support@dfx.swiss</small>
+          </span>
+          {EXT_ICON}
+        </a>
+        <a className={cx('suprow', 'glass')} href="https://docs.dfx.swiss/" target="_blank" rel="noopener noreferrer">
+          <span className={cx('ic')}>{DOCS_ICON}</span>
+          <span className={cx('tx')}>
+            <b>{t('supDocs')}</b>
+            <small>docs.dfx.swiss</small>
+          </span>
+          {EXT_ICON}
+        </a>
+        <a className={cx('suprow', 'glass')} href="https://x.com/DFX_Swiss" target="_blank" rel="noopener noreferrer">
+          <span className={cx('ic')}>{X_ICON}</span>
+          <span className={cx('tx')}>
+            <b>{t('supX')}</b>
+            <small>x.com/DFX_Swiss</small>
+          </span>
+          {EXT_ICON}
+        </a>
+      </div>
       <div className={cx('supfoot')}>{t('supFoot')}</div>
 
       {/* ---- create-issue sheet ---- */}
       <Sheet open={newIssueOpen} onClose={() => setNewIssueOpen(false)} titleId={newIssueTitleId}>
         <SheetHeader titleId={newIssueTitleId} title={t('newTicket')} onClose={() => setNewIssueOpen(false)} />
-        <p className={cx('tnote')} style={{ padding: '0 4px 8px' }}>
+        <p className={cx('tnote', 'ticket-lead-inset')} data-testid="support-ticket-lead">
           {t('ticketLead')}
         </p>
-        <form className={cx('tform')} onSubmit={submitNewIssue}>
+        <form className={cx('tform', 'ticket-form-inset')} onSubmit={submitNewIssue}>
           <label className={cx('flabel')}>{t('ticketTopic')}</label>
           <select
             className={cx('tinput')}
@@ -1156,7 +1164,10 @@ function SupportScreenBody() {
           <input
             className={cx('tinput')}
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              nameEditedRef.current = true;
+              setName(e.target.value);
+            }}
             autoComplete="name"
             aria-label={t('ticketName')}
           />

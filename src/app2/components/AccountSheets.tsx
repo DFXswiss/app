@@ -16,6 +16,7 @@ import {
   PhoneCallTime,
   type Referral,
   useBankAccountContext,
+  useFiat,
   useFiatContext,
   useUserContext,
 } from '@dfx.swiss/react';
@@ -945,16 +946,50 @@ function CoinTrackingSheet({ open, onClose }: SheetProps) {
 function CurrencySheet({ open, onClose }: SheetProps) {
   const { t } = useT();
   const { showToast } = useToast();
-  const { currencies } = useFiatContext();
+  const { getCurrencies } = useFiat();
   const { user, updateCurrency } = useUserContext();
+  const getCurrenciesRef = useRef(getCurrencies);
+  getCurrenciesRef.current = getCurrencies;
+  const loadGeneration = useRef(0);
+  const [currencyState, setCurrencyState] = useState<
+    { status: 'idle' | 'loading' | 'loaded' | 'error'; currencies: Fiat[] }
+  >({ status: 'idle', currencies: [] });
+
+  const loadCurrencies = useCallback(() => {
+    const generation = ++loadGeneration.current;
+    setCurrencyState({ status: 'loading', currencies: [] });
+    void Promise.resolve()
+      .then(() => getCurrenciesRef.current())
+      .then((currencies) => {
+        if (loadGeneration.current === generation) setCurrencyState({ status: 'loaded', currencies });
+      })
+      .catch(() => {
+        if (loadGeneration.current === generation) setCurrencyState({ status: 'error', currencies: [] });
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setCurrencyState({ status: 'idle', currencies: [] });
+      return;
+    }
+    loadCurrencies();
+    return () => {
+      loadGeneration.current += 1;
+    };
+  }, [open, user?.accountId, loadCurrencies]);
 
   return (
     <FiatPicker
       open={open}
       onClose={onClose}
       titleId="acctCurTitle"
-      currencies={currencies ?? []}
+      currencies={currencyState.currencies}
       value={user?.currency}
+      loading={open && (currencyState.status === 'idle' || currencyState.status === 'loading')}
+      loadError={currencyState.status === 'error'}
+      onRetry={loadCurrencies}
+      emptyMessage={currencyState.status === 'loaded' && open ? t('currencyEmpty') : undefined}
       onSelect={(fiat) => {
         void updateCurrency(fiat)
           .then(() => showToast(fiat.name))

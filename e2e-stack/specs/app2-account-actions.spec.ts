@@ -136,14 +136,45 @@ test.describe('App2 account and customer actions', () => {
     await expect.poll(async () => (await withDb(async (db) => (await db.query(`SELECT "languageId" FROM user_data WHERE id = $1`, [user.userDataId])).rows[0]?.languageId))).toBe(german.id);
   });
 
-  test('display currency preference persists in user_data', async ({ page }) => {
-    const user = await createUser({ tag: 'app2-currency', language: 'EN' });
+  test('display currency preference accepts USD and survives reload with the real profile name', async ({ page }) => {
+    const user = await createUser({ tag: 'app2-currency', language: 'EN', completePersonalData: true });
+    const profileResponsePromise = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/v2/user/profile') && response.request().method() === 'GET',
+    );
+    const fiatResponsePromise = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/v1/fiat') && response.request().method() === 'GET',
+    );
     await openApp2(page, user.jwt, '#/account');
+    const [profileResponse, fiatResponse] = await Promise.all([profileResponsePromise, fiatResponsePromise]);
+    expect(profileResponse.ok(), 'App2 must load the real local customer profile').toBe(true);
+    expect(await profileResponse.json()).toMatchObject({ firstName: 'E2E', lastName: 'Tester' });
+    await expect(page.getByRole('heading', { name: 'E2E Tester', exact: true })).toBeVisible();
+    await expect(page.locator('#leftBtn > span')).toHaveText('ET');
+    expect(fiatResponse.ok(), 'App2 must load the real local fiat catalogue').toBe(true);
+    const apiFiats = (await fiatResponse.json()) as Array<{ id: number; name: string }>;
+    expect(apiFiats.map(({ name }) => name)).toEqual(expect.arrayContaining(['USD', 'GBP', 'JPY']));
+
     await page.getByRole('button', { name: /^Display currency\b/ }).click();
     const currencySheet = page.getByRole('dialog', { name: 'Choose currency', exact: true });
-    await currencySheet.getByRole('button', { name: 'EUR', exact: true }).click();
-    const eur = await waitForRow<{ id: number }>(`SELECT id FROM fiat WHERE name = 'EUR' LIMIT 1`, []);
-    await expect.poll(async () => (await withDb(async (db) => (await db.query(`SELECT "currencyId" FROM user_data WHERE id = $1`, [user.userDataId])).rows[0]?.currencyId))).toBe(eur.id);
+    await expect(currencySheet.locator('[role="button"]')).toHaveCount(apiFiats.length);
+    expect(await currencySheet.locator('[role="button"] b').allTextContents()).toEqual(apiFiats.map(({ name }) => name));
+    await currencySheet.getByRole('button', { name: 'USD', exact: true }).click();
+    const usd = await waitForRow<{ id: number }>(`SELECT id FROM fiat WHERE name = 'USD' LIMIT 1`, []);
+    await expect.poll(async () => (await withDb(async (db) => (await db.query(`SELECT "currencyId" FROM user_data WHERE id = $1`, [user.userDataId])).rows[0]?.currencyId))).toBe(usd.id);
+
+    const reloadedUserPromise = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/v2/user') && response.request().method() === 'GET',
+    );
+    await page.reload();
+    const reloadedUser = await reloadedUserPromise;
+    expect(reloadedUser.ok(), 'the real user API must reload after changing display currency').toBe(true);
+    expect(await reloadedUser.json()).toMatchObject({ currency: { id: usd.id, name: 'USD' } });
+    await expect(page.getByRole('button', { name: /^Display currency\b/ })).toContainText('USD');
+    await page.getByRole('button', { name: /^Display currency\b/ }).click();
+    await expect(page.getByRole('dialog', { name: 'Choose currency', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'USD', exact: true })).toHaveClass(/sel/);
+    await expect(page.getByRole('heading', { name: 'E2E Tester', exact: true })).toBeVisible();
+    await expect(page.locator('#leftBtn > span')).toHaveText('ET');
   });
 
   test('CoinTracking key can be created and removed from account settings', async ({ page }) => {

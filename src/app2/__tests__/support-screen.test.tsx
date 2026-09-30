@@ -75,7 +75,7 @@ jest.mock('../wallets/session', () => ({
   useWalletSession: () => mockSession,
 }));
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ApiException } from '@dfx.swiss/react';
 import SupportScreen from '../screens/support';
 import { LanguageProvider } from '../i18n';
@@ -136,6 +136,104 @@ describe('SupportScreen', () => {
       chips.scrollTo = jest.fn();
     }
     fireEvent.click(screen.getByRole('button', { name: /more topics/i }));
+  });
+
+  it('keeps ticket creation primary, preserves contact destinations, and marks the form inset', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xabcdef1234567890';
+    await act(async () => {
+      renderSupport();
+    });
+
+    const ticketAction = screen.getByRole('button', { name: /create a support ticket/i });
+    expect(ticketAction).toBeInTheDocument();
+
+    const contactList = screen.getByTestId('support-contact-list');
+    const emailLink = screen.getByRole('link', { name: /support@dfx\.swiss/i });
+    const docsLink = screen.getByRole('link', { name: /docs\.dfx\.swiss/i });
+    const socialLink = screen.getByRole('link', { name: /x\.com\/dfx_swiss/i });
+    expect(emailLink).toHaveAttribute('href', 'mailto:support@dfx.swiss');
+    expect(docsLink).toHaveAttribute('href', 'https://docs.dfx.swiss/');
+    expect(socialLink).toHaveAttribute('href', 'https://x.com/DFX_Swiss');
+    expect(emailLink.parentElement).toBe(contactList);
+    expect(docsLink.parentElement).toBe(contactList);
+    expect(socialLink.parentElement).toBe(contactList);
+
+    fireEvent.click(ticketAction);
+    const dialog = screen.getByRole('dialog', { name: /new support ticket/i });
+    expect(dialog.querySelector('form')).toHaveClass('ticket-form-inset');
+    expect(within(dialog).getByLabelText('Topic')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Your name')).toHaveValue('Ada Lovelace');
+    expect(within(dialog).getByLabelText('Message')).toBeInTheDocument();
+  });
+
+  it('prefills an open ticket with the profile name when the profile arrives late', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xabcdef1234567890';
+    let resolveProfile: ((value: { firstName: string; lastName: string }) => void) | undefined;
+    mockGetProfile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveProfile = resolve;
+        }),
+    );
+    renderSupport();
+    await waitFor(() => expect(mockGetProfile).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /create a support ticket/i }));
+    const dialog = screen.getByRole('dialog', { name: /new support ticket/i });
+    const nameField = within(dialog).getByLabelText('Your name');
+    expect(nameField).toHaveValue('0xabcd…7890');
+
+    await act(async () => {
+      resolveProfile?.({ firstName: 'Ada', lastName: 'Lovelace' });
+      await Promise.resolve();
+    });
+
+    expect(nameField).toHaveValue('Ada Lovelace');
+  });
+
+  it.each([
+    { label: 'a custom name', value: 'Customer chosen name' },
+    { label: 'an intentionally empty value', value: '' },
+  ])('preserves $label if the profile arrives after the ticket is opened', async ({ value }) => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xabcdef1234567890';
+    let resolveProfile: ((profile: { firstName: string; lastName: string }) => void) | undefined;
+    mockGetProfile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveProfile = resolve;
+        }),
+    );
+    renderSupport();
+    await waitFor(() => expect(mockGetProfile).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole('button', { name: /create a support ticket/i }));
+    const dialog = screen.getByRole('dialog', { name: /new support ticket/i });
+    const nameField = within(dialog).getByLabelText('Your name');
+    fireEvent.change(nameField, { target: { value } });
+
+    await act(async () => {
+      resolveProfile?.({ firstName: 'Ada', lastName: 'Lovelace' });
+      await Promise.resolve();
+    });
+
+    expect(nameField).toHaveValue(value);
+  });
+
+  it('keeps the wallet-address fallback when the profile has no name', async () => {
+    mockSession.isLoggedIn = true;
+    mockSession.address = '0xabcdef1234567890';
+    mockGetProfile.mockResolvedValueOnce({ firstName: '', lastName: '' });
+    await act(async () => {
+      renderSupport();
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /create a support ticket/i }));
+    const dialog = screen.getByRole('dialog', { name: /new support ticket/i });
+    expect(within(dialog).getByLabelText('Your name')).toHaveValue('0xabcd…7890');
   });
 
   it('drops an open thread when the session address changes', async () => {

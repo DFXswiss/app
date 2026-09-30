@@ -5,6 +5,7 @@ const mockChangeMail = jest.fn();
 const mockUpdateMail = jest.fn();
 const mockVerifyMail = jest.fn();
 const mockUpdateCurrency = jest.fn();
+const mockGetCurrencies = jest.fn();
 const mockUpdateCallSettings = jest.fn();
 const mockUpdateLanguage = jest.fn();
 const mockCall = jest.fn();
@@ -70,6 +71,7 @@ jest.mock('@dfx.swiss/react', () => ({
   Blockchain: { ETHEREUM: 'Ethereum', BITCOIN: 'Bitcoin' },
   useBankAccountContext: () => mockBank,
   useFiatContext: () => mockFiat,
+  useFiat: () => ({ getCurrencies: mockGetCurrencies }),
   useUserContext: () => ({
     user: mockUser.user,
     userAddresses: mockUserAddresses,
@@ -132,6 +134,11 @@ describe('AccountSheets', () => {
     mockChangeMail.mockResolvedValue(undefined);
     mockUpdateMail.mockResolvedValue(undefined);
     mockUpdateCurrency.mockResolvedValue(undefined);
+    mockGetCurrencies.mockResolvedValue([
+      { id: 1, name: 'CHF', buyable: true, sellable: true },
+      { id: 2, name: 'EUR', buyable: true, sellable: true },
+      { id: 3, name: 'USD', buyable: false, sellable: false },
+    ]);
     mockUpdateCallSettings.mockResolvedValue(undefined);
     mockUpdateLanguage.mockResolvedValue(undefined);
     mockCall.mockResolvedValue([]);
@@ -194,7 +201,7 @@ describe('AccountSheets', () => {
     email.unmount();
 
     const currency = renderSheet('currency');
-    fireEvent.click(screen.getByRole('button', { name: 'EUR' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'EUR' }));
     await waitFor(() => expect(mockUpdateCurrency).toHaveBeenCalled());
     currency.unmount();
 
@@ -214,6 +221,130 @@ describe('AccountSheets', () => {
 
     renderSheet('addresses');
     expect(screen.getAllByText(/no addresses|keine adressen|nessun indirizzo|aucune adresse/i)[0]).toBeInTheDocument();
+  });
+
+  it('loads API currencies beyond the trading-filtered context and persists a non-trading choice', async () => {
+    mockFiat.currencies = [
+      { id: 1, name: 'CHF', buyable: true, sellable: true },
+      { id: 2, name: 'EUR', buyable: true, sellable: true },
+      { id: 17, name: 'AED', buyable: true, sellable: false },
+    ];
+    const names = [
+      'CHF', 'EUR', 'USD', 'GBP', 'JPY', 'AUD', 'NZD', 'CAD', 'HKD', 'SGD', 'DKK', 'NOK',
+      'SEK', 'ISK', 'CZK', 'ZAR', 'AED', 'HUF', 'MXN', 'ILS', 'PLN', 'RON', 'RUB', 'TRY',
+    ];
+    const apiFiats = names.map((name, index) => ({
+      id: index + 1,
+      name,
+      buyable: [1, 2, 17].includes(index + 1),
+      sellable: index + 1 === 1 || index + 1 === 2,
+    }));
+    const usd = apiFiats[2];
+    mockGetCurrencies.mockResolvedValueOnce(apiFiats);
+
+    renderSheet('currency');
+    const picker = screen.getByRole('dialog', { name: 'Choose currency' });
+    expect(await within(picker).findByRole('button', { name: 'USD' })).toBeInTheDocument();
+    expect(mockGetCurrencies).toHaveBeenCalledTimes(1);
+    expect(picker.querySelectorAll('[role="button"]')).toHaveLength(24);
+    expect(within(picker).getByRole('button', { name: /AED$/ })).toBeInTheDocument();
+    expect(within(picker).getByRole('button', { name: 'CHF' })).toBeInTheDocument();
+    expect(within(picker).getByRole('button', { name: 'AUD' })).toBeInTheDocument();
+
+    fireEvent.click(within(picker).getByRole('button', { name: 'USD' }));
+    await waitFor(() => expect(mockUpdateCurrency).toHaveBeenCalledWith(usd));
+    await waitFor(() => expect(screen.getByTestId('app2-toast')).toHaveTextContent('USD'));
+  });
+
+  it('shows a currency load error, retries, and reports failed preference updates', async () => {
+    mockGetCurrencies.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([
+      { id: 3, name: 'USD', buyable: false, sellable: false },
+    ]);
+    const view = renderSheet('currency');
+    const picker = screen.getByRole('dialog', { name: 'Choose currency' });
+    expect(await within(picker).findByRole('alert')).toHaveTextContent("Couldn't load — check your connection.");
+
+    fireEvent.click(within(picker).getByRole('button', { name: 'Retry' }));
+    const usd = await within(picker).findByRole('button', { name: 'USD' });
+    expect(mockGetCurrencies).toHaveBeenCalledTimes(2);
+
+    mockUpdateCurrency.mockRejectedValueOnce(new Error('save failed'));
+    fireEvent.click(usd);
+    await waitFor(() => expect(screen.getByTestId('app2-toast-alert')).toHaveTextContent('Something went wrong'));
+    expect(mockUpdateCurrency).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
+  it('shows the translated empty state for every supported account language', async () => {
+    const messages = [
+      ['en', 'No currencies are available right now.'],
+      ['de', 'Aktuell sind keine Währungen verfügbar.'],
+      ['it', 'Al momento non ci sono valute disponibili.'],
+      ['fr', 'Aucune devise n’est disponible pour le moment.'],
+    ] as const;
+    for (const [language, message] of messages) {
+      window.localStorage.setItem('dfx_lang', language);
+      mockGetCurrencies.mockResolvedValueOnce([]);
+      const view = renderSheet('currency');
+      const picker = screen.getByRole('dialog');
+      await waitFor(() => expect(within(picker).getByRole('status')).toHaveTextContent(message));
+      view.unmount();
+    }
+  });
+
+  it('ignores a late currency response after the account identity changes', async () => {
+    let resolveOld: (fiats: Array<{ id: number; name: string }>) => void = () => undefined;
+    mockGetCurrencies.mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }));
+    mockGetCurrencies.mockResolvedValueOnce([{ id: 8, name: 'AUD' }]);
+    const view = renderSheet('currency');
+    await waitFor(() => expect(mockGetCurrencies).toHaveBeenCalledTimes(1));
+
+    mockUser.user = { ...mockUser.user, accountId: 21 };
+    view.rerenderSheet('currency');
+    const picker = screen.getByRole('dialog', { name: 'Choose currency' });
+    expect(await within(picker).findByRole('button', { name: 'AUD' })).toBeInTheDocument();
+    await act(async () => {
+      resolveOld([{ id: 9, name: 'CAD' }]);
+    });
+    expect(within(picker).queryByRole('button', { name: 'CAD' })).not.toBeInTheDocument();
+    expect(within(picker).getByRole('button', { name: 'AUD' })).toBeInTheDocument();
+  });
+
+  it('does not surface a stale load failure after the account identity changes', async () => {
+    let rejectOld: (error: Error) => void = () => undefined;
+    mockGetCurrencies.mockReturnValueOnce(new Promise((_, reject) => { rejectOld = reject; }));
+    mockGetCurrencies.mockResolvedValueOnce([{ id: 8, name: 'AUD' }]);
+    const view = renderSheet('currency');
+    await waitFor(() => expect(mockGetCurrencies).toHaveBeenCalledTimes(1));
+
+    mockUser.user = { ...mockUser.user, accountId: 21 };
+    view.rerenderSheet('currency');
+    const picker = screen.getByRole('dialog', { name: 'Choose currency' });
+    expect(await within(picker).findByRole('button', { name: 'AUD' })).toBeInTheDocument();
+    await act(async () => {
+      rejectOld(new Error('stale offline'));
+    });
+    expect(within(picker).queryByRole('alert')).not.toBeInTheDocument();
+    expect(within(picker).getByRole('button', { name: 'AUD' })).toBeInTheDocument();
+  });
+
+  it('clears currencies when closed and starts a fresh request when reopened', async () => {
+    let resolveClosed: (fiats: Array<{ id: number; name: string }>) => void = () => undefined;
+    mockGetCurrencies
+      .mockReturnValueOnce(new Promise((resolve) => { resolveClosed = resolve; }))
+      .mockResolvedValueOnce([{ id: 10, name: 'NZD' }]);
+    const view = renderSheet('currency');
+    await waitFor(() => expect(mockGetCurrencies).toHaveBeenCalledTimes(1));
+
+    view.rerenderSheet('email');
+    await act(async () => {
+      resolveClosed([{ id: 11, name: 'CAD' }]);
+    });
+    view.rerenderSheet('currency');
+    const picker = screen.getByRole('dialog', { name: 'Choose currency' });
+    expect(await within(picker).findByRole('button', { name: 'NZD' })).toBeInTheDocument();
+    expect(within(picker).queryByRole('button', { name: 'CAD' })).not.toBeInTheDocument();
+    expect(mockGetCurrencies).toHaveBeenCalledTimes(2);
   });
 
   it('generates, copies and deletes a CoinTracking key', async () => {
@@ -878,8 +1009,8 @@ describe('AccountSheets', () => {
   it('toasts when display-currency update fails', async () => {
     mockUpdateCurrency.mockRejectedValueOnce(new Error('down'));
     renderSheet('currency');
-    fireEvent.click(screen.getByRole('button', { name: 'EUR' }));
-    await waitFor(() => expect(screen.getByText('Something went wrong')).toBeInTheDocument());
+    fireEvent.click(await screen.findByRole('button', { name: 'EUR' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong'));
   });
 
   it('treats a non-array recommendation payload as an empty list', async () => {

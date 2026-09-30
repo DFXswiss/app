@@ -52,10 +52,40 @@
 .suprow .ext-ic {
   color: var(--t-dim);
   flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
 }
 .suprow .ext-ic svg {
   width: 16px;
   height: 16px;
+}
+.supcontact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.supcontact-list .suprow {
+  min-height: 48px;
+  padding: 4px 12px;
+  margin-bottom: 0;
+  gap: 10px;
+  border-radius: 13px;
+}
+.supcontact-list .ic {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+.supcontact-list .ic svg {
+  width: 18px;
+  height: 18px;
+}
+.supcontact-list .tx b {
+  font-size: 13.5px;
+}
+.supcontact-list .tx small {
+  font-size: 11.5px;
 }
 .supfoot {
   text-align: center;
@@ -124,6 +154,14 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.ticket-form-inset {
+  padding: 0 20px 20px;
+}
+.tnote.ticket-lead-inset {
+  margin-left: 20px;
+  margin-right: 20px;
+  padding: 0 0 8px;
 }
 .tform .flabel {
   font-size: 12px;

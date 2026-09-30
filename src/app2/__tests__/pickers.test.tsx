@@ -65,6 +65,71 @@ describe('FiatPicker and PaymentMethodPicker', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it('shows currency loading, retryable failure, and an empty API result', () => {
+    const onRetry = jest.fn();
+    const renderPicker = (props: Partial<React.ComponentProps<typeof FiatPicker>>) =>
+      render(
+        <LanguageProvider>
+          <FiatPicker
+            open
+            onClose={jest.fn()}
+            titleId="cur-title"
+            currencies={[]}
+            onSelect={jest.fn()}
+            {...props}
+          />
+        </LanguageProvider>,
+      );
+
+    const loading = renderPicker({ loading: true });
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
+    loading.unmount();
+
+    const failed = renderPicker({ loadError: true, onRetry });
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load — check your connection.");
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    failed.unmount();
+
+    renderPicker({ currencies: [], emptyMessage: 'No currencies are available right now.' });
+    expect(screen.getByRole('status')).toHaveTextContent('No currencies are available right now.');
+  });
+
+  it('does not render a retry control when a load error has no retry callback', () => {
+    render(
+      <LanguageProvider>
+        <FiatPicker
+          open
+          onClose={jest.fn()}
+          titleId="cur-title"
+          currencies={[]}
+          onSelect={jest.fn()}
+          loadError
+        />
+      </LanguageProvider>,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load — check your connection.");
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  });
+
+  it('keeps default empty trade pickers visually empty without a currency-specific message', () => {
+    render(
+      <LanguageProvider>
+        <FiatPicker
+          open
+          onClose={jest.fn()}
+          titleId="cur-title"
+          currencies={[]}
+          onSelect={jest.fn()}
+        />
+      </LanguageProvider>,
+    );
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('keeps buy payment bank-only pending product approval', () => {
     const onSelect = jest.fn();
     const onClose = jest.fn();

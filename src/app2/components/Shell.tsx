@@ -2,8 +2,9 @@
 // from the static preview's outer markup (public/app2/index.html, `<div
 // class="app" id="app">…`). Screens render into `.body` via <Outlet/>.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { type UserProfile, useUser, useUserContext } from '@dfx.swiss/react';
 import logoWhite from '../assets/brand/logo-white.svg';
 import { useT } from '../i18n';
 import { ConnectSheet } from '../wallets/ConnectSheet';
@@ -15,11 +16,24 @@ import { routeOrQueryParam } from '../utils/url';
 import { isPresentFlag, isTrueFlag } from '../screens/trade/widget-params';
 import { cx } from '../css';
 
-/** Mirrors the static app's initials() for the address case: strip a `0x`
- * prefix, take the first two characters, uppercase. */
-function addressInitials(address: string): string {
-  const raw = address.startsWith('0x') ? address.slice(2) : address;
-  return (raw.slice(0, 2) || '·').toUpperCase();
+function firstCodePoint(value: string | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed ? Array.from(trimmed)[0].toUpperCase() : '';
+}
+
+function customerInitials(profile: UserProfile | undefined): string {
+  const first = firstCodePoint(profile?.firstName);
+  const last = firstCodePoint(profile?.lastName);
+  if (first || last) return `${first}${last}`;
+
+  const organization = profile?.organizationName?.trim();
+  if (!organization) return '·';
+  const words = organization.split(/\s+/);
+  if (words.length > 1) return `${firstCodePoint(words[0])}${firstCodePoint(words[1])}`;
+  return Array.from(organization)
+    .slice(0, 2)
+    .map((codePoint) => codePoint.toUpperCase())
+    .join('');
 }
 
 export function Shell() {
@@ -27,10 +41,45 @@ export function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isLoggedIn, address, closeConnect, connectSheet, openConnect } = useWalletSession();
+  const { getProfile } = useUser();
+  const { user } = useUserContext();
+  const profileGetterRef = useRef(getProfile);
+  profileGetterRef.current = getProfile;
+  const profileIdentity = useMemo(
+    () => ({ isLoggedIn, address, accountId: user?.accountId }),
+    [isLoggedIn, address, user?.accountId],
+  );
+  const [loadedProfile, setLoadedProfile] = useState<{
+    identity: typeof profileIdentity;
+    initials: string;
+  }>();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const langBtnRef = useRef<HTMLButtonElement>(null);
   const openedConnectRef = useRef(false);
+
+  useEffect(() => {
+    if (!isLoggedIn || !address) {
+      setLoadedProfile(undefined);
+      return undefined;
+    }
+
+    let cancelled = false;
+    profileGetterRef.current()
+      .then((profile) => {
+        if (!cancelled) setLoadedProfile({ identity: profileIdentity, initials: customerInitials(profile) });
+      })
+      .catch(() => {
+        if (!cancelled) setLoadedProfile({ identity: profileIdentity, initials: '·' });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, address, location.pathname, profileIdentity]);
+
+  const initials =
+    isLoggedIn && loadedProfile?.identity === profileIdentity ? loadedProfile.initials : '·';
 
   useEffect(() => {
     document.title = 'DFX';
@@ -77,7 +126,7 @@ export function Shell() {
             style={{ visibility: isLoggedIn ? 'visible' : 'hidden' }}
             onClick={() => navigate('/account')}
           >
-            <span className={cx('initials')}>{address ? addressInitials(address) : '·'}</span>
+            <span className={cx('initials')}>{initials}</span>
           </button>
           <img className={cx('brand-logo')} src={logoWhite} alt="DFX" />
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>

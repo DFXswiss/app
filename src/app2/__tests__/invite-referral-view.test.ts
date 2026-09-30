@@ -31,6 +31,7 @@ jest.mock('@dfx.swiss/react', () => ({
   PhoneCallTime: {},
   useApi: () => ({ call: jest.fn() }),
   useBankAccountContext: () => ({ bankAccounts: [], createAccount: jest.fn() }),
+  useFiat: () => ({ getCurrencies: jest.fn().mockResolvedValue([]) }),
   useFiatContext: () => ({ currencies: [] }),
   useUserContext: () => ({ user: undefined, changeMail: jest.fn(), addBankAccount: jest.fn() }),
 }));

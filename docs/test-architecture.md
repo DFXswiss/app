@@ -142,6 +142,23 @@ This section lists the fakes introduced by this repository's own suites and stat
 run does not prove for each one; the taxonomy and cross-repository entries live in
 `DFXswiss/backend` under `docs/test-architecture.md`.
 
+- **The App2 customer-initials screenshots replace the profile response.**
+  `e2e/app2-customer-initials.spec.ts` uses a cached wallet session and fulfils only
+  `GET /v2/user/profile` with a synthetic Personal profile named Ada Lovelace. The desktop and
+  mobile screenshots prove that the supplied name renders as initials `AL`; they do not prove
+  profile API behavior, authentication, or any real customer's name.
+- **The App2 display-currency screenshots supply currency data and inject a failed load.**
+  `e2e/app2-display-currencies.spec.ts` uses a synthetic unsigned User JWT and fulfils allowlisted
+  bootstrap, user, profile and referral routes plus the fiat lookup with local fixtures; unmatched
+  v1/v2 routes fail closed. The fiat fixture lists all 24 local currency codes, including non-trading
+  currencies such as USD, and the test injects loading, error/retry and empty responses. A green
+  visual run proves those supplied rows and states render, not authentication, live API data, that
+  a currency preference persists, or that the update API accepts it.
+- **The App2 compact-support screenshots use the local authenticated stack.**
+  `e2e/app2-support-compact.spec.ts` uses a cached wallet session and real local API responses for
+  profile and support content, without route fixtures. The screenshots prove layout for the data
+  returned by that local stack; they do not establish production support metadata or customer data.
+
 - **The App2 account recovery E2E simulates one transient user-load failure.**
   `e2e-stack/specs/app2-account-extended.spec.ts` fulfils only the first authenticated
   `GET /v2/user` with HTTP 503; clicking Retry sends the next request to the real local API.
