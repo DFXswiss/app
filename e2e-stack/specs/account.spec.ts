@@ -348,6 +348,7 @@ test.describe('Account area e2e', () => {
     await page.getByRole('button', { name: 'Reactivate address' }).click();
 
     await expect(page.getByRole('button', { name: 'Danger Zone' })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('heading', { name: 'Your Bank Accounts' })).toBeVisible();
     await expect(page.getByText('This address is deactivated in DFX.', { exact: true })).toHaveCount(0);
     expect(normPath(new URL(page.url()).pathname)).toBe('/settings');
 

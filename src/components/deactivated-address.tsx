@@ -17,9 +17,11 @@ export function DeactivatedAddress({ address, onReactivate }: DeactivatedAddress
   function reactivate(): void {
     setIsReactivating(true);
     setError(undefined);
-    onReactivate(address)
-      .catch((e: ApiError) => setError(e.message ?? 'Unknown error'))
-      .finally(() => setIsReactivating(false));
+    // Success dismisses the notice, so only a failure clears the busy state and allows another request.
+    onReactivate(address).catch((e: ApiError) => {
+      setError(e.message ?? 'Unknown error');
+      setIsReactivating(false);
+    });
   }
 
   return (
