@@ -1,9 +1,9 @@
 import { expect, Page, Route, test } from '@playwright/test';
 
 /**
- * Visual variant of a rejected automatic address switch on /connect: after the API rejects the
- * switch, the error is shown above the address dropdown and the dropdown is cleared and usable.
- * The suite also asserts that the rejected switch is sent exactly once.
+ * Visual variant of a rejected automatic address switch on /connect: the rejected automatic switch
+ * is sent exactly once, the error is shown above the address selection, and selecting the address
+ * again sends exactly one new attempt.
  *
  * Auth is a synthetic unsigned JWT WITHOUT `address` (a mail-login session); all `/v1/**` and
  * `/v2/**` calls are intercepted via page.route(...).
@@ -128,5 +128,12 @@ test.describe('Connect address switch', () => {
     expect(api.unexpectedRequests).toEqual([]);
 
     await expect(page).toHaveScreenshot('connect-address-switch-01-rejected.png', { fullPage: true });
+
+    // The cleared selection stays usable: choosing the address again starts exactly one new attempt.
+    await page.getByText('Select...').click();
+    await page.getByText(ADDRESS.address.slice(0, 6)).first().click();
+    await expect.poll(() => api.changeCalls).toBe(2);
+    await page.waitForTimeout(2000);
+    expect(api.changeCalls).toBe(2);
   });
 });
