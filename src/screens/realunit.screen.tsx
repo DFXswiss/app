@@ -1,5 +1,13 @@
-import { CopyButton, IconColor, SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
+import {
+  CopyButton,
+  IconColor,
+  SpinnerSize,
+  StyledButton,
+  StyledButtonWidth,
+  StyledLoadingSpinner,
+} from '@dfx.swiss/react-components';
 import { useEffect, useRef } from 'react';
+import { ErrorHint } from 'src/components/error-hint';
 import { CopyableAddress } from 'src/components/realunit/copyable-address';
 import { PayoutsPanel } from 'src/components/realunit/payouts-panel';
 import { useRealunitContext } from 'src/contexts/realunit.context';
@@ -25,8 +33,11 @@ export default function RealunitScreen(): JSX.Element {
   const {
     holders,
     totalCount,
+    holdersLoading,
+    holdersError,
     tokenInfo,
-    isLoading,
+    tokenInfoLoading,
+    tokenInfoError,
     quotes,
     transactions,
     quotesLoading,
@@ -50,6 +61,7 @@ export default function RealunitScreen(): JSX.Element {
   }, [fetchHolders, fetchTokenInfo, fetchQuotes, fetchTransactions]);
 
   const topHolders = holders.slice(0, 3);
+  const overviewLoading = holdersLoading || tokenInfoLoading;
   const pendingQuotes = quotes.filter((quote) => !quoteIsDeactivated(quote));
   const topQuotes = pendingQuotes.slice(0, 3);
   const topTransactions = transactions.slice(0, 3);
@@ -82,27 +94,37 @@ export default function RealunitScreen(): JSX.Element {
 
   return (
     <>
-      {!holders.length && !tokenInfo ? (
+      {overviewLoading ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
             <div className="bg-white rounded-lg shadow-sm px-4 py-3 text-left">
               <div className="text-xs text-dfxGray-700">{translate('screens/realunit', 'Holders')}</div>
-              <div className="text-xl font-semibold text-dfxBlue-800 tabular-nums">
-                {totalCount?.toLocaleString() ?? '0'}
-              </div>
+              {holdersError ? (
+                <div className="text-xl font-semibold text-dfxBlue-800 tabular-nums">—</div>
+              ) : (
+                <div className="text-xl font-semibold text-dfxBlue-800 tabular-nums">
+                  {totalCount?.toLocaleString() ?? '0'}
+                </div>
+              )}
             </div>
             <div className="bg-white rounded-lg shadow-sm px-4 py-3 text-left">
               <div className="text-xs text-dfxGray-700">{translate('screens/realunit', 'Shares')}</div>
               <div className="text-xl font-semibold text-dfxBlue-800 tabular-nums">
-                {tokenInfo ? Number(tokenInfo.totalShares.total).toLocaleString() : '…'}
+                {tokenInfoError ? (
+                  '—'
+                ) : tokenInfo ? (
+                  Number(tokenInfo.totalShares.total).toLocaleString()
+                ) : (
+                  '…'
+                )}
               </div>
             </div>
             <div className="bg-white rounded-lg shadow-sm px-4 py-3 text-left">
               <div className="text-xs text-dfxGray-700">{translate('screens/realunit', 'Total Supply')}</div>
               <div className="text-xl font-semibold text-dfxBlue-800 tabular-nums">
-                {tokenInfo ? `${Number(tokenInfo.totalSupply.value).toLocaleString()} REALU` : '…'}
+                {tokenInfoError ? '—' : tokenInfo ? `${Number(tokenInfo.totalSupply.value).toLocaleString()} REALU` : '…'}
               </div>
             </div>
             <div className="bg-white rounded-lg shadow-sm px-4 py-3 text-left">
@@ -113,13 +135,32 @@ export default function RealunitScreen(): JSX.Element {
             </div>
           </div>
 
-          <PayoutsPanel />
-
-          {isLoading && !tokenInfo && (
-            <div className="shadow-card rounded-xl p-6 flex justify-center mb-6">
-              <StyledLoadingSpinner size={SpinnerSize.MD} />
+          {(holdersError || tokenInfoError) && (
+            <div className="bg-white rounded-lg shadow-sm p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {holdersError && (
+                <div>
+                  <ErrorHint message={translate('screens/realunit', 'Failed to load holders.')} />
+                  <StyledButton
+                    label={translate('general/actions', 'Retry')}
+                    onClick={() => fetchHolders()}
+                    width={StyledButtonWidth.MIN}
+                  />
+                </div>
+              )}
+              {tokenInfoError && (
+                <div>
+                  <ErrorHint message={translate('screens/realunit', 'Failed to load token info.')} />
+                  <StyledButton
+                    label={translate('general/actions', 'Retry')}
+                    onClick={fetchTokenInfo}
+                    width={StyledButtonWidth.MIN}
+                  />
+                </div>
+              )}
             </div>
           )}
+
+          <PayoutsPanel />
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <div className="bg-white rounded-lg shadow-sm overflow-x-auto">

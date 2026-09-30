@@ -6,7 +6,8 @@ import {
   StyledButtonWidth,
   StyledLoadingSpinner,
 } from '@dfx.swiss/react-components';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { ErrorHint } from 'src/components/error-hint';
 import { useRealunitContext } from 'src/contexts/realunit.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { PaginationDirection } from 'src/dto/realunit.dto';
@@ -23,11 +24,14 @@ export default function RealunitHoldersScreen(): JSX.Element {
   const { navigate } = useNavigation();
   const { copy } = useClipboard();
 
-  const { holders, totalCount, pageInfo, isLoading, fetchHolders } = useRealunitContext();
+  const { holders, totalCount, pageInfo, holdersLoading, holdersError, fetchHolders } = useRealunitContext();
 
   useLayoutOptions({ title: translate('screens/realunit', 'All Holders'), backButton: true });
 
+  const didBootstrapHolders = useRef(false);
   useEffect(() => {
+    if (didBootstrapHolders.current) return;
+    didBootstrapHolders.current = true;
     if (!holders.length) fetchHolders();
   }, [fetchHolders]);
 
@@ -41,13 +45,23 @@ export default function RealunitHoldersScreen(): JSX.Element {
 
   return (
     <>
-      {isLoading && !holders.length ? (
+      {holdersLoading && !holders.length ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
       ) : (
         <div className="w-full">
+          {holdersError && (
+            <div className="mb-4">
+              <ErrorHint message={translate('screens/realunit', 'Failed to load holders.')} />
+              <StyledButton
+                label={translate('general/actions', 'Retry')}
+                onClick={() => fetchHolders()}
+                width={StyledButtonWidth.MIN}
+              />
+            </div>
+          )}
           <div className="w-full overflow-x-auto mb-4">
             <h2 className="text-dfxGray-700 mb-4">
-              {translate('screens/realunit', 'All Holders')} ({totalCount?.toLocaleString() ?? '0'})
+              {translate('screens/realunit', 'All Holders')} ({holdersError ? '—' : totalCount?.toLocaleString() ?? '0'})
             </h2>
             <table className="w-full border-collapse bg-white rounded-lg shadow-sm">
               <thead>
@@ -95,7 +109,7 @@ export default function RealunitHoldersScreen(): JSX.Element {
               <StyledButton
                 label={translate('general/actions', 'Previous')}
                 onClick={() => changePage(PaginationDirection.PREV)}
-                disabled={!pageInfo.hasPreviousPage}
+                disabled={!pageInfo.hasPreviousPage || holdersLoading}
                 width={StyledButtonWidth.MIN}
               />
             </div>
@@ -104,7 +118,7 @@ export default function RealunitHoldersScreen(): JSX.Element {
               <StyledButton
                 label={translate('general/actions', 'Next')}
                 onClick={() => changePage(PaginationDirection.NEXT)}
-                disabled={!pageInfo.hasNextPage}
+                disabled={!pageInfo.hasNextPage || holdersLoading}
                 width={StyledButtonWidth.MIN}
               />
             </div>

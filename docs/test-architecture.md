@@ -183,7 +183,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   The dashboard spec also fulfils `GET /v1/realunit/referral/admin/prize-wallet/alerts`,
   `GET /v1/realunit/account/:address` and `GET /v1/realunit/account/:address/history`,
   and it answers price history, buy volume, holder count, registration, the prize wallet
-  and the buy limit with HTTP errors when a scenario asks for the error state.
+  and the buy limit with HTTP errors when a scenario asks for the error state. It now also
+  injects holder, token-info, token-price, account-summary and account-history failures, including
+  a successful account summary followed by a history error; retry states are exercised. New
+  overview, holder and account error layouts are captured at desktop and mobile viewports, alongside
+  the CHF token-price error and loading states and a successful empty holders response.
   A green run proves the overview, treasury, insights, holder, transaction and account
   fixtures render, including those error states. It does not prove that the API returns
   those payloads, that login or token verification works, or that the staff, stats,

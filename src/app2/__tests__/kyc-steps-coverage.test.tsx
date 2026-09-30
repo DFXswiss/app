@@ -676,28 +676,80 @@ describe('KycStepForm financial questionnaire', () => {
     const view = renderStep(KycStepName.FINANCIAL_DATA);
     expect(await screen.findByText('Confirm this')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
-    await waitFor(() => expect(mockSetFinancial).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
-      { responses: expect.arrayContaining([{ key: 'c1', value: 'accept' }]) },
-    ));
+    const continueButton = () => screen.getByRole('button', { name: /continue/i });
+    const waitForSavedResponses = (call: number, responses: Array<{ key: string; value: string }>) =>
+      waitFor(() => expect(mockSetFinancial).toHaveBeenNthCalledWith(
+        call,
+        expect.anything(),
+        expect.anything(),
+        { responses },
+      ));
+    const saveAnswer = async (call: number, responses: Array<{ key: string; value: string }>) => {
+      await act(async () => {
+        fireEvent.click(continueButton());
+        // FinancialFields applies the saved responses in the request's .then()
+        // before its current-question effect resets the next answer controls.
+        await mockSetFinancial.mock.results[call - 1].value;
+      });
+      await waitForSavedResponses(call, responses);
+    };
+
+    expect(continueButton()).toBeEnabled();
+    await saveAnswer(1, [{ key: 'other', value: 'x' }, { key: 'c1', value: 'accept' }]);
     expect(await screen.findByText('How much?')).toBeInTheDocument();
     expect(screen.queryByText('Hidden forever')).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '10k' } });
-    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    const answer = screen.getByRole('textbox');
+    fireEvent.change(answer, { target: { value: '10k' } });
+    await waitFor(() => {
+      expect(answer).toHaveValue('10k');
+      expect(continueButton()).toBeEnabled();
+    });
+    await saveAnswer(2, [
+      { key: 'other', value: 'x' },
+      { key: 'c1', value: 'accept' },
+      { key: 'gated', value: '10k' },
+    ]);
     expect(await screen.findByText('Pick one')).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'b' } });
-    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    const singleChoice = screen.getByRole('combobox');
+    fireEvent.change(singleChoice, { target: { value: 'b' } });
+    await waitFor(() => {
+      expect(singleChoice).toHaveValue('b');
+      expect(continueButton()).toBeEnabled();
+    });
+    await saveAnswer(3, [
+      { key: 'other', value: 'x' },
+      { key: 'c1', value: 'accept' },
+      { key: 'gated', value: '10k' },
+      { key: 's1', value: 'b' },
+    ]);
     expect(await screen.findByText('Pick many')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('X-ray'));
     fireEvent.click(screen.getByLabelText('Yankee'));
     fireEvent.click(screen.getByLabelText('Yankee')); // toggle off then on again
     fireEvent.click(screen.getByLabelText('Yankee'));
-    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    expect(continueButton()).toBeEnabled();
+    await saveAnswer(4, [
+      { key: 'other', value: 'x' },
+      { key: 'c1', value: 'accept' },
+      { key: 'gated', value: '10k' },
+      { key: 's1', value: 'b' },
+      { key: 'm1', value: 'x,y' },
+    ]);
     expect(await screen.findByText('Tell us')).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'because' } });
-    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    const finalAnswer = screen.getByRole('textbox');
+    fireEvent.change(finalAnswer, { target: { value: 'because' } });
+    await waitFor(() => {
+      expect(finalAnswer).toHaveValue('because');
+      expect(continueButton()).toBeEnabled();
+    });
+    await saveAnswer(5, [
+      { key: 'other', value: 'x' },
+      { key: 'c1', value: 'accept' },
+      { key: 'gated', value: '10k' },
+      { key: 's1', value: 'b' },
+      { key: 'm1', value: 'x,y' },
+      { key: 't1', value: 'because' },
+    ]);
     await waitFor(() => expect(mockContinueKyc).toHaveBeenCalled());
     view.unmount();
   });

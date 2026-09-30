@@ -55,11 +55,37 @@ function buildPartyXml(name: string, address?: PartyAddress): string {
   return `<Nm>${escapeXml(name)}</Nm>${addressXml}`;
 }
 
+function createUuid(): string {
+  const cryptoApi = globalThis.crypto;
+
+  if (typeof cryptoApi?.randomUUID === 'function') {
+    try {
+      return cryptoApi.randomUUID();
+    } catch {
+      // Some browsers expose randomUUID but reject it outside a secure context.
+    }
+  }
+
+  if (typeof cryptoApi?.getRandomValues !== 'function') {
+    throw new Error('Secure random UUID generation is unavailable.');
+  }
+
+  try {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+    return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-');
+  } catch {
+    throw new Error('Secure random UUID generation is unavailable.');
+  }
+}
+
 export function buildCamt053Xml(data: Camt053Data): string {
   const now = new Date();
   const timestamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 14);
   const isoTimestamp = now.toISOString().replace('Z', '+00:00');
-  const ref = crypto.randomUUID();
+  const ref = createUuid();
   const parsed = parseFloat(data.amount);
   const amount = isNaN(parsed) ? '0.00' : parsed.toFixed(2);
   const isCredit = data.direction === 'CRDT';

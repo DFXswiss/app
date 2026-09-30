@@ -101,6 +101,15 @@ function wallet(overrides: Partial<UserInfo> = {}): UserInfo {
 }
 
 async function fillOpenedRefForm(code: string, reason: string): Promise<void> {
+  // Set appears with the fetched wallets; awaiting that fetch in act also flushes
+  // UsedRefEditor's initial userDataId reset effect before the click.
+  const lastFetch = mockGetUserData.mock.results[mockGetUserData.mock.results.length - 1]?.value as Promise<{
+    users: UserInfo[];
+  }>;
+  await act(async () => {
+    const response = await lastFetch;
+    expect(Array.isArray(response.users)).toBe(true);
+  });
   fireEvent.click(screen.getByRole('button', { name: /^Set$/ }));
   const codeField = await screen.findByRole('textbox', { name: 'Ref-Code' });
   fireEvent.change(codeField, { target: { value: code } });
