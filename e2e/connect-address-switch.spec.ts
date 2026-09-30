@@ -1,0 +1,132 @@
+import { expect, Page, Route, test } from '@playwright/test';
+
+/**
+ * Visual variant of a rejected automatic address switch on /connect: after the API rejects the
+ * switch, the error is shown above the address dropdown and the dropdown is cleared and usable.
+ * The suite also asserts that the rejected switch is sent exactly once.
+ *
+ * Auth is a synthetic unsigned JWT WITHOUT `address` (a mail-login session); all `/v1/**` and
+ * `/v2/**` calls are intercepted via page.route(...).
+ */
+
+const ADDRESS = {
+  wallet: 'MetaMask',
+  address: '0x1111111111111111111111111111111111111111',
+  blockchains: ['Ethereum'],
+  isCustody: false,
+  refCode: 'SYN-0001',
+};
+
+const USER = {
+  accountId: 1,
+  mail: 'synthetic@example.com',
+  language: { id: 1, name: 'English', symbol: 'EN', foreignName: 'English', enable: true },
+  currency: { id: 1, name: 'CHF', buyable: true, sellable: true },
+  kyc: { hash: 'synthetic-kyc-hash', level: 0, dataComplete: false },
+  volumes: { buy: { total: 0, annual: 0 }, sell: { total: 0, annual: 0 }, swap: { total: 0, annual: 0 } },
+  addresses: [ADDRESS],
+  activeAddress: undefined,
+  paymentMethods: [],
+};
+
+function jwt(): string {
+  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+    account: 1,
+    user: 1,
+    role: 'User',
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })}.synthetic`;
+}
+
+async function fulfillJson(route: Route, body: unknown, status = 200): Promise<void> {
+  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+}
+
+async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: string[]; changeCalls: number }> {
+  const unexpectedRequests: string[] = [];
+  const state = { changeCalls: 0, unexpectedRequests };
+
+  await page.route('**/v1/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const method = request.method();
+
+    if (method === 'GET' && path === '/v1/language') {
+      await fulfillJson(route, [{ id: 1, name: 'English', symbol: 'EN', foreignName: 'English', enable: true }]);
+      return;
+    }
+
+    if (method === 'GET' && path === '/v1/fiat') {
+      await fulfillJson(route, [{ id: 1, name: 'CHF', buyable: true, sellable: true }]);
+      return;
+    }
+
+    if (method === 'GET' && ['/v1/asset', '/v1/bankAccount', '/v1/country'].includes(path)) {
+      await fulfillJson(route, []);
+      return;
+    }
+
+    if (method === 'GET' && path === '/v1/setting/infoBanner') {
+      await fulfillJson(route, null);
+      return;
+    }
+
+    if (method === 'POST' && path === '/v1/log/clientError') {
+      await fulfillJson(route, null);
+      return;
+    }
+
+    if (method === 'POST' && path === '/v1/user/change') {
+      state.changeCalls++;
+      await fulfillJson(route, { statusCode: 403, message: 'Forbidden' }, 403);
+      return;
+    }
+
+    unexpectedRequests.push(`${method} ${path}`);
+    await route.fulfill({
+      status: 501,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Unexpected test request' }),
+    });
+  });
+
+  await page.route('**/v2/**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const method = request.method();
+
+    if (method === 'GET' && path === '/v2/user') {
+      await fulfillJson(route, USER);
+      return;
+    }
+
+    unexpectedRequests.push(`${method} ${path}`);
+    await route.fulfill({
+      status: 501,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Unexpected test request' }),
+    });
+  });
+
+  return state;
+}
+
+test.describe('Connect address switch', () => {
+  test('rejected automatic switch is sent once and shown above the address selection', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const api = await installSyntheticApi(page);
+
+    await page.goto(`/connect?session=${encodeURIComponent(jwt())}&lang=en`);
+
+    await expect(page.getByText('Please select an address or add a new one to continue.')).toBeVisible();
+    await expect(page.getByText(/Something went wrong/)).toBeVisible();
+
+    // A looping screen would keep calling during the wait.
+    await page.waitForTimeout(2000);
+    expect(api.changeCalls).toBe(1);
+    expect(api.unexpectedRequests).toEqual([]);
+
+    await expect(page).toHaveScreenshot('connect-address-switch-01-rejected.png', { fullPage: true });
+  });
+});

@@ -8,7 +8,7 @@ import {
   StyledLoadingSpinner,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { ErrorHint } from 'src/components/error-hint';
 import { ConnectProps } from 'src/components/home/connect-shared';
@@ -41,6 +41,8 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [switchError, setSwitchError] = useState<string>();
+  const attemptedAddress = useRef<string>();
 
   const isCustodySignup = !hasAddress && CustodyAssets.includes(assetOut ?? '');
 
@@ -48,30 +50,38 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
     control,
     formState: { errors },
     setValue,
+    resetField,
   } = useForm<FormData>();
 
   const selectedAddress = useWatch({ control, name: 'address' });
 
-  useEffect(() => {
-    const preselectedAddress = user?.activeAddress ?? (userAddresses.length === 1 ? userAddresses[0] : undefined);
-    if (preselectedAddress) {
-      setValue('address', preselectedAddress);
-    }
-  }, [user?.activeAddress, userAddresses]);
+  const preselectedAddress = user?.activeAddress ?? (userAddresses.length === 1 ? userAddresses[0] : undefined);
 
   useEffect(() => {
-    const isAddressChange = user?.activeAddress?.address !== selectedAddress?.address;
-    const needsSessionUpdate = sessionHasNoAddress && selectedAddress?.address;
+    if (preselectedAddress) setValue('address', preselectedAddress);
+  }, [preselectedAddress?.address]);
 
-    if (selectedAddress?.address && (isAddressChange || needsSessionUpdate) && !isUserLoading) {
-      setIsLoading(true);
-      changeAddress(selectedAddress.address)
-        .then(() => {
-          setWallet();
-          onLogin();
-        })
-        .catch(() => setIsLoading(false));
-    }
+  useEffect(() => {
+    const address = selectedAddress?.address;
+    const isAddressChange = user?.activeAddress?.address !== address;
+    if (!address || !(isAddressChange || sessionHasNoAddress) || isUserLoading) return;
+    if (attemptedAddress.current === address) return;
+
+    attemptedAddress.current = address;
+    setSwitchError(undefined);
+    setIsLoading(true);
+    changeAddress(address)
+      .then(() => {
+        setWallet();
+        onLogin();
+      })
+      .catch((e: ApiError) => {
+        // wait for the user to select an address again instead of retrying
+        attemptedAddress.current = undefined;
+        resetField('address');
+        setSwitchError(e.message ?? 'Unknown error');
+        setIsLoading(false);
+      });
   }, [selectedAddress, user?.activeAddress, isUserLoading, sessionHasNoAddress]);
 
   useEffect(() => {
@@ -99,7 +109,8 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
     </div>
   ) : (
     <StyledVerticalStack gap={4} center full marginY={4} className="z-10">
-      {userAddresses.length && (
+      {switchError && <ErrorHint message={switchError} />}
+      {userAddresses.length > 0 && (
         <>
           <p className="text-dfxGray-700">
             {translate('screens/home', 'Please select an address or add a new one to continue.')}

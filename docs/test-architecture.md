@@ -439,6 +439,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   results. It does not prove the exact `pl?lightning=…` link or the exact
   decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
   the real `url()` treats those arguments identically; no assertion pins the outer host.
+- **The rejected address switch visual spec answers the user and the switch itself.**
+  `e2e/connect-address-switch.spec.ts` authenticates with a synthetic unsigned JWT without an address, fulfils
+  `GET /v2/user` with one synthetic address and the bootstrap GETs, and answers `POST /v1/user/change` with a 403.
+  A green run proves that the screen sends the rejected switch once and shows the error above the address
+  selection. It does not prove when or why the API rejects the switch, or that login or token verification works.
 
 ## Known gaps
 
