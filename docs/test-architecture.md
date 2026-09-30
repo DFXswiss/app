@@ -449,6 +449,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   after the mail login, so the API rejects the automatic address switch. A green run proves that the screen sends
   the rejected switch once and shows the API's message. It does not prove how an account reaches that state in
   production or any other reason the API may reject the switch.
+- **The address-switch unit test runs the SDK user context against replaced HTTP and session hooks.**
+  `src/__tests__/address-switch.test.tsx` transpiles `UserContextProvider` from the installed `@dfx.swiss/react`
+  build and wires it to hand-written `useUser` and `useApiSession` replacements; the dropdown, `ErrorHint`,
+  labels and the app contexts are stubbed as well. A green run proves, against that harness, that
+  `ConnectAddress` and `AccountScreen` each send a switch only once and that `ConnectAddress` shows a
+  rejection and retries only after the user selects an address again. It does not prove the real session
+  or token handling, the rendered dropdown or error text, or that the API returns those errors.
 
 ## Known gaps
 
