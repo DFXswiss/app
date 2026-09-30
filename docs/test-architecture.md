@@ -444,6 +444,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `GET /v2/user` with one synthetic address and the bootstrap GETs, and answers `POST /v1/user/change` with a 403.
   A green run proves that the screen sends the rejected switch once and shows the error above the address
   selection. It does not prove when or why the API rejects the switch, or that login or token verification works.
+- **The rejected address switch full-stack case deactivates the account with SQL.**
+  In `e2e-stack/specs/auth.spec.ts`, the `/connect` mail-session case sets `user_data.status` to `Deactivated`
+  after the mail login, so the API rejects the automatic address switch. A green run proves that the screen sends
+  the rejected switch once and shows the API's message. It does not prove how an account reaches that state in
+  production or any other reason the API may reject the switch.
 
 ## Known gaps
 

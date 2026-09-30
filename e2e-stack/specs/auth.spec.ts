@@ -18,6 +18,7 @@ import {
   normPath,
   openScreen,
   queryOne,
+  queryRows,
   requestMailLogin,
   required,
   signatureLogin,
@@ -160,6 +161,37 @@ test.describe('Auth area e2e', () => {
     await expect(page.getByText('Please select an address or add a new one to continue.', { exact: true })).toHaveCount(
       0,
     );
+  });
+
+  test('/connect with a mail session sends a rejected address switch once and shows the error', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const user = await createUser({ tag: 'auth-switch' });
+    const mail = required(user.mail, 'created user must have a mail address');
+    await requestMailLogin(mail);
+    const jwt = await completeMailLogin(mail);
+
+    // SQL: no customer API puts an account into this state while keeping a valid session.
+    await queryRows(`UPDATE user_data SET status = 'Deactivated' WHERE id = $1`, [user.userDataId]);
+
+    let switchCalls = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === '/v1/user/change') switchCalls++;
+    });
+
+    await gotoWithSession(page, '/connect', jwt);
+
+    await expect(page.getByText('Please select an address or add a new one to continue.', { exact: true })).toBeVisible(
+      {
+        timeout: 20000,
+      },
+    );
+    await expect(page.getByText('User is deactivated or blocked')).toBeVisible({ timeout: 20000 });
+
+    // A retrying screen would keep sending during the wait.
+    await page.waitForTimeout(3000);
+    expect(switchCalls).toBe(1);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/connect');
   });
 
   // ---------------------------------------------------------------------------
