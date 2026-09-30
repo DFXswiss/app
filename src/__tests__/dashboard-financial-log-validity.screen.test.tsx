@@ -57,7 +57,7 @@ jest.mock('@dfx.swiss/react-components', () => {
     StyledInput: ({
       name,
       label,
-      type = 'text',
+      type,
       placeholder,
     }: {
       name: string;
@@ -94,7 +94,7 @@ jest.mock('@dfx.swiss/react-components', () => {
             onChange={field.onChange}
             placeholder={placeholder}
             ref={field.ref}
-            type="text"
+            type={type}
             value={String(field.value ?? '')}
           />
           {fieldState.error?.message && <span role="alert">{String(fieldState.error.message)}</span>}
@@ -182,7 +182,7 @@ async function requestId(label: 'Set valid = true' | 'Set valid = false'): Promi
 }
 
 async function requestRange(
-  label: 'Set valid = true' | 'Set valid = false' | 'Add info point (keep valid)',
+  label: 'Set valid = true' | 'Set valid = false' | 'Add info point (set valid)',
 ): Promise<void> {
   fireEvent.click(section('By financial range / threshold').getByRole('button', { name: label }));
   await screen.findByRole('button', { name: 'Confirm' });
@@ -207,16 +207,6 @@ const RANGE_VALIDATION_CASES: {
     message: 'At least one filter is required (from, to, min or max).',
   },
   {
-    name: 'rejects an invalid from date',
-    values: { 'From (created >=)': 'not-a-date', 'Reason (shown on the chart)': 'Reconcile chart' },
-    message: "Invalid 'from' date.",
-  },
-  {
-    name: 'rejects an invalid to date',
-    values: { 'To (created <)': 'not-a-date', 'Reason (shown on the chart)': 'Reconcile chart' },
-    message: "Invalid 'to' date.",
-  },
-  {
     name: 'requires from to precede to',
     values: {
       'From (created >=)': '2026-02-02T10:00',
@@ -224,16 +214,6 @@ const RANGE_VALIDATION_CASES: {
       'Reason (shown on the chart)': 'Reconcile chart',
     },
     message: "'from' must be earlier than or equal to 'to'.",
-  },
-  {
-    name: 'rejects a non-numeric min',
-    values: { 'Min totalBalanceChf (exclusive)': 'nope', 'Reason (shown on the chart)': 'Reconcile chart' },
-    message: "'min' must be a number.",
-  },
-  {
-    name: 'rejects a non-numeric max',
-    values: { 'Max totalBalanceChf (exclusive)': 'nope', 'Reason (shown on the chart)': 'Reconcile chart' },
-    message: "'max' must be a number.",
   },
   {
     name: 'requires min to be less than max',
@@ -250,6 +230,14 @@ const RANGE_VALIDATION_CASES: {
     message: 'A reason is required.',
   },
   {
+    name: 'rejects a reason containing only spaces',
+    values: {
+      'Min totalBalanceChf (exclusive)': '1',
+      'Reason (shown on the chart)': '   ',
+    },
+    message: 'A reason is required.',
+  },
+  {
     name: 'limits the reason length',
     values: {
       'Min totalBalanceChf (exclusive)': '1',
@@ -261,9 +249,7 @@ const RANGE_VALIDATION_CASES: {
 
 describe('DashboardFinancialLogValidityScreen', () => {
   beforeEach(() => {
-    jest.useRealTimers();
     jest.clearAllMocks();
-    mockCall.mockReset();
   });
 
   afterEach(() => {
@@ -276,9 +262,9 @@ describe('DashboardFinancialLogValidityScreen', () => {
     expect(mockUseAdminGuard).toHaveBeenCalledWith();
     expect(mockUseLayoutOptions).toHaveBeenCalledWith({ title: 'Log Validity', noMaxWidth: true });
     expect(screen.getByLabelText('Reason (shown on the chart)')).toHaveAttribute('placeholder', 'Reason');
-    expect(screen.getByRole('button', { name: 'Add info point (keep valid)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add info point (set valid)' })).toBeInTheDocument();
     expect(screen.getByText(/A reason is required and is shown on the treasury chart/)).toHaveTextContent(
-      "'Add info point' records the matched entries without changing them.",
+      "'Add info point' records the matched entries on the chart and sets any of them that are not valid to valid = true.",
     );
   });
 
@@ -288,15 +274,15 @@ describe('DashboardFinancialLogValidityScreen', () => {
     fireEvent.click(section('By log ID').getByRole('button', { name: 'Set valid = true' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('required');
 
-    setInput('Log ID', 'abc');
+    setInput('Log ID', '1e3');
     fireEvent.click(section('By log ID').getByRole('button', { name: 'Set valid = true' }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('pattern'));
     expect(mockCall).not.toHaveBeenCalled();
   });
 
-  it('sets one ID valid and clears its success message after four seconds', async () => {
+  it('keeps the latest ID success visible for four seconds after overlapping successes', async () => {
     jest.useFakeTimers();
-    mockCall.mockResolvedValueOnce({ id: 17, valid: true });
+    mockCall.mockResolvedValueOnce({ id: 17, valid: true }).mockResolvedValueOnce({ id: 18, valid: true });
     renderScreen();
     setInput('Log ID', '17');
 
@@ -305,10 +291,22 @@ describe('DashboardFinancialLogValidityScreen', () => {
     await confirm();
 
     expect(mockCall).toHaveBeenCalledWith({ url: 'log/17', method: 'PUT', data: { valid: true } });
-    expect(screen.getByText('Saved: log #17 set to valid = true')).toBeInTheDocument();
+    expect(await screen.findByText('Saved: log #17 set to valid = true')).toBeInTheDocument();
 
-    act(() => jest.advanceTimersByTime(4000));
-    expect(screen.queryByText('Saved: log #17 set to valid = true')).not.toBeInTheDocument();
+    act(() => jest.advanceTimersByTime(3000));
+    setInput('Log ID', '18');
+    await requestId('Set valid = true');
+    await confirm();
+    expect(await screen.findByText('Saved: log #18 set to valid = true')).toBeInTheDocument();
+
+    act(() => jest.advanceTimersByTime(1000));
+    expect(screen.getByText('Saved: log #18 set to valid = true')).toBeInTheDocument();
+
+    act(() => jest.advanceTimersByTime(2999));
+    expect(screen.getByText('Saved: log #18 set to valid = true')).toBeInTheDocument();
+
+    act(() => jest.advanceTimersByTime(1));
+    expect(screen.queryByText('Saved: log #18 set to valid = true')).not.toBeInTheDocument();
   });
 
   it('sets one ID invalid', async () => {
@@ -382,6 +380,11 @@ describe('DashboardFinancialLogValidityScreen', () => {
       },
     });
     expect(await screen.findByText('Updated 1 entry to valid = true.')).toBeInTheDocument();
+    expect(screen.getByLabelText('From (created >=)')).toHaveValue('');
+    expect(screen.getByLabelText('To (created <)')).toHaveValue('');
+    expect(screen.getByLabelText('Min totalBalanceChf (exclusive)')).toHaveValue(null);
+    expect(screen.getByLabelText('Max totalBalanceChf (exclusive)')).toHaveValue(null);
+    expect(screen.getByLabelText('Reason (shown on the chart)')).toHaveValue('');
   });
 
   it('updates a range to invalid with a plural message', async () => {
@@ -406,7 +409,27 @@ describe('DashboardFinancialLogValidityScreen', () => {
     expect(await screen.findByText('Updated 2 entries to valid = false.')).toBeInTheDocument();
   });
 
-  it('records a singular info point for every match and keeps validity true', async () => {
+  it('accepts and sends a reason of exactly 1024 characters', async () => {
+    const reference = 'x'.repeat(1024);
+    mockCall.mockResolvedValueOnce({ affected: 0, audited: 0 });
+    renderScreen();
+    setRange({
+      'Min totalBalanceChf (exclusive)': '1',
+      'Reason (shown on the chart)': reference,
+    });
+
+    await requestRange('Set valid = true');
+    await confirm();
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'log/financial/validity',
+      method: 'PUT',
+      data: { min: 1, valid: true, reference },
+    });
+    expect(await screen.findByText('Updated 0 entries to valid = true.')).toBeInTheDocument();
+  });
+
+  it('records a singular info point and requests valid true', async () => {
     mockCall.mockResolvedValueOnce({ affected: 0, audited: 1 });
     renderScreen();
     setRange({
@@ -414,9 +437,9 @@ describe('DashboardFinancialLogValidityScreen', () => {
       'Reason (shown on the chart)': '  Treasury checkpoint  ',
     });
 
-    await requestRange('Add info point (keep valid)');
+    await requestRange('Add info point (set valid)');
     expect(screen.getByTestId('confirmation-message')).toHaveTextContent(
-      'Record an info point for all financial data logs matching max 500? They stay valid = true.',
+      'Record an info point for all financial data logs matching max 500? Entries that are not valid yet are set to valid = true.',
     );
     await confirm();
 
@@ -438,7 +461,7 @@ describe('DashboardFinancialLogValidityScreen', () => {
       'Reason (shown on the chart)': 'Monthly checkpoint',
     });
 
-    await requestRange('Add info point (keep valid)');
+    await requestRange('Add info point (set valid)');
     await confirm();
 
     expect(
@@ -461,6 +484,8 @@ describe('DashboardFinancialLogValidityScreen', () => {
     await confirm();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(screen.getByLabelText('Min totalBalanceChf (exclusive)')).toHaveValue(1);
+    expect(screen.getByLabelText('Reason (shown on the chart)')).toHaveValue('Retry range');
   });
 
   it('cancels a pending range update without calling the API', async () => {
@@ -473,13 +498,16 @@ describe('DashboardFinancialLogValidityScreen', () => {
     await requestRange('Set valid = true');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
+    expect(screen.queryByRole('button', { name: 'Confirm' })).toBeNull();
     expect(screen.getByRole('heading', { name: 'By financial range / threshold' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Min totalBalanceChf (exclusive)')).toHaveValue(1);
+    expect(screen.getByLabelText('Reason (shown on the chart)')).toHaveValue('Do not apply');
     expect(mockCall).not.toHaveBeenCalled();
   });
 
-  it('clears a range success message after four seconds', async () => {
+  it('keeps the latest range success visible for four seconds after overlapping successes', async () => {
     jest.useFakeTimers();
-    mockCall.mockResolvedValueOnce({ affected: 1, audited: 1 });
+    mockCall.mockResolvedValueOnce({ affected: 1, audited: 1 }).mockResolvedValueOnce({ affected: 2, audited: 2 });
     renderScreen();
     setRange({
       'Min totalBalanceChf (exclusive)': '1',
@@ -488,9 +516,56 @@ describe('DashboardFinancialLogValidityScreen', () => {
 
     await requestRange('Set valid = true');
     await confirm();
-    expect(screen.getByText('Updated 1 entry to valid = true.')).toBeInTheDocument();
+    expect(await screen.findByText('Updated 1 entry to valid = true.')).toBeInTheDocument();
 
-    act(() => jest.advanceTimersByTime(4000));
-    expect(screen.queryByText('Updated 1 entry to valid = true.')).not.toBeInTheDocument();
+    act(() => jest.advanceTimersByTime(3000));
+    setRange({
+      'Max totalBalanceChf (exclusive)': '10',
+      'Reason (shown on the chart)': 'Latest success',
+    });
+    await requestRange('Set valid = false');
+    await confirm();
+    expect(await screen.findByText('Updated 2 entries to valid = false.')).toBeInTheDocument();
+
+    act(() => jest.advanceTimersByTime(1000));
+    expect(screen.getByText('Updated 2 entries to valid = false.')).toBeInTheDocument();
+
+    act(() => jest.advanceTimersByTime(2999));
+    expect(screen.getByText('Updated 2 entries to valid = false.')).toBeInTheDocument();
+
+    act(() => jest.advanceTimersByTime(1));
+    expect(screen.queryByText('Updated 2 entries to valid = false.')).not.toBeInTheDocument();
+  });
+
+  it('clears pending success timers on unmount without warnings', async () => {
+    jest.useFakeTimers();
+    mockCall.mockResolvedValueOnce({ id: 20, valid: true }).mockResolvedValueOnce({ affected: 1, audited: 1 });
+    const { unmount } = render(<DashboardFinancialLogValidityScreen />);
+
+    setInput('Log ID', '20');
+    await requestId('Set valid = true');
+    await confirm();
+    expect(await screen.findByText('Saved: log #20 set to valid = true')).toBeInTheDocument();
+
+    setRange({
+      'Min totalBalanceChf (exclusive)': '1',
+      'Reason (shown on the chart)': 'Unmount cleanup',
+    });
+    await requestRange('Set valid = true');
+    await confirm();
+    expect(await screen.findByText('Updated 1 entry to valid = true.')).toBeInTheDocument();
+
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      unmount();
+      expect(jest.getTimerCount()).toBe(0);
+      act(() => jest.runOnlyPendingTimers());
+      expect(consoleError).not.toHaveBeenCalled();
+      expect(consoleWarn).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+      consoleWarn.mockRestore();
+    }
   });
 });

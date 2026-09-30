@@ -10,7 +10,7 @@ import {
   StyledInput,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { ErrorHint } from 'src/components/error-hint';
 import { ConfirmationOverlay } from 'src/components/overlay/confirmation-overlay';
@@ -75,6 +75,7 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
   const [idLoading, setIdLoading] = useState(false);
   const [idError, setIdError] = useState<string>();
   const [idSuccess, setIdSuccess] = useState<string>();
+  const idSuccessTimeout = useRef<ReturnType<typeof setTimeout> | undefined>();
 
   const idRules = Utils.createRules({
     id: [Validations.Required, Validations.Custom((value) => (/^\d+$/.test(String(value)) ? true : 'pattern'))],
@@ -92,7 +93,8 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
         data: { valid },
       });
       setIdSuccess(`Saved: log #${response.id} set to valid = ${valid}`);
-      setTimeout(() => setIdSuccess(undefined), 4000);
+      if (idSuccessTimeout.current !== undefined) clearTimeout(idSuccessTimeout.current);
+      idSuccessTimeout.current = setTimeout(() => setIdSuccess(undefined), 4000);
       resetId();
     } catch (e) {
       setIdError(e instanceof Error ? e.message : 'Unknown error');
@@ -128,6 +130,14 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
   const [rangeLoading, setRangeLoading] = useState(false);
   const [rangeError, setRangeError] = useState<string>();
   const [rangeSuccess, setRangeSuccess] = useState<string>();
+  const rangeSuccessTimeout = useRef<ReturnType<typeof setTimeout> | undefined>();
+
+  useEffect(() => {
+    return () => {
+      if (idSuccessTimeout.current !== undefined) clearTimeout(idSuccessTimeout.current);
+      if (rangeSuccessTimeout.current !== undefined) clearTimeout(rangeSuccessTimeout.current);
+    };
+  }, []);
 
   // Validate the range form against the backend rules and build the request payload.
   // Returns undefined (and sets an error) when the input is invalid.
@@ -154,14 +164,6 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
     const fromDate = hasFrom ? new Date(data.from) : undefined;
     const toDate = hasTo ? new Date(data.to) : undefined;
 
-    if (fromDate && isNaN(fromDate.getTime())) {
-      setRangeError("Invalid 'from' date.");
-      return undefined;
-    }
-    if (toDate && isNaN(toDate.getTime())) {
-      setRangeError("Invalid 'to' date.");
-      return undefined;
-    }
     if (fromDate && toDate && fromDate.getTime() > toDate.getTime()) {
       setRangeError("'from' must be earlier than or equal to 'to'.");
       return undefined;
@@ -170,14 +172,6 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
     const min = hasMin ? Number(minStr) : undefined;
     const max = hasMax ? Number(maxStr) : undefined;
 
-    if (min !== undefined && isNaN(min)) {
-      setRangeError("'min' must be a number.");
-      return undefined;
-    }
-    if (max !== undefined && isNaN(max)) {
-      setRangeError("'max' must be a number.");
-      return undefined;
-    }
     if (min !== undefined && max !== undefined && min >= max) {
       setRangeError("'min' must be less than 'max'.");
       return undefined;
@@ -215,7 +209,8 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
           ? `Recorded an info point for ${response.audited} ${response.audited === 1 ? 'entry' : 'entries'} (${response.affected} changed to valid = true).`
           : `Updated ${response.affected} ${response.affected === 1 ? 'entry' : 'entries'} to valid = ${payload.valid}.`,
       );
-      setTimeout(() => setRangeSuccess(undefined), 4000);
+      if (rangeSuccessTimeout.current !== undefined) clearTimeout(rangeSuccessTimeout.current);
+      rangeSuccessTimeout.current = setTimeout(() => setRangeSuccess(undefined), 4000);
       resetRange();
     } catch (e) {
       setRangeError(e instanceof Error ? e.message : 'Unknown error');
@@ -242,8 +237,8 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
         <p className="text-dfxBlue-800 mb-2 text-center">
           {auditAll ? (
             <>
-              Record an info point for all financial data logs matching <strong>{filters.join(', ')}</strong>? They stay
-              valid = <strong>true</strong>.
+              Record an info point for all financial data logs matching <strong>{filters.join(', ')}</strong>? Entries
+              that are not valid yet are set to valid = <strong>true</strong>.
             </>
           ) : (
             <>
@@ -324,8 +319,8 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
         <p className="text-sm text-gray-500 mb-4">
           Bulk-update the validity of financial data logs. At least one filter is required. Dates are picked in your
           local time and sent as UTC; from is inclusive, to is exclusive. min/max apply exclusively to totalBalanceChf.
-          A reason is required and is shown on the treasury chart. 'Add info point' records the matched entries without
-          changing them.
+          A reason is required and is shown on the treasury chart. 'Add info point' records the matched entries on the
+          chart and sets any of them that are not valid to valid = true.
         </p>
 
         <Form control={rangeControl} errors={rangeErrors} translate={translateError} hasFormElement={false}>
@@ -369,7 +364,7 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
               disabled={rangeLoading}
             />
             <StyledButton
-              label="Add info point (keep valid)"
+              label="Add info point (set valid)"
               color={StyledButtonColor.BLUE}
               onClick={handleRangeSubmit((data) => requestRangeConfirmation(data, true, true))}
               width={StyledButtonWidth.FULL}

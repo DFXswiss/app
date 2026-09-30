@@ -211,6 +211,10 @@
     "title": "Kundengelder-Jahresauszug",
     "description": "Admin-Financial-Dashboard: Jahresauszug der Kundengelder, Kontokarten, Live-gegen-Buchwert-Diffs und CSV-Export."
   },
+  "dashboard-financial-log-validity": {
+    "title": "Financial-Log-Gültigkeit",
+    "description": "Admin-Screen: Gültigkeit einzelner Logs per ID oder von Financial-Logs per Zeitraum/Schwelle setzen, mit Pflicht-Begründung und Info-Punkt für den Treasury-Chart; Bestätigung vor dem Info-Punkt."
+  },
   "support-ticket-note": {
     "title": "Support-Ticket Kundennotiz",
     "description": "Staff-Issue: interne Kundennotiz mit Ticket-Betreff und Entwurf, nicht in den Kunden-Thread."
