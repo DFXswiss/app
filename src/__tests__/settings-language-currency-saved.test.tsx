@@ -356,6 +356,20 @@ describe('SettingsScreen language and currency saved flash', () => {
       });
     }).not.toThrow();
   });
+
+  it('explains that a deleted address can be reactivated', () => {
+    render(
+      <SettingsOverlay
+        type={OverlayType.DELETE_ADDRESS}
+        data={{ address: '0xabc', wallet: 'MetaMask' }}
+        onClose={jest.fn()}
+      />,
+    );
+
+    const dialog = screen.getByTestId('confirmation-overlay');
+    expect(dialog).toHaveTextContent('You can reactivate it by signing in with it again.');
+    expect(dialog).not.toHaveTextContent('irreversible');
+  });
 });
 
 describe('Settings screen remaining coverage', () => {

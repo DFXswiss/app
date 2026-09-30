@@ -34,6 +34,7 @@
     "Browse": "Durchsuchen",
     "Rename address": "Adresse umbenennen",
     "Delete address": "Adresse löschen",
+    "Reactivate address": "Adresse reaktivieren",
     "Add new address": "Adresse hinzufügen",
     "Delete account": "Konto löschen",
     "Add bank account": "Bankverbindung hinzufügen",
@@ -630,7 +631,8 @@
     "Too many incorrect attempts. Please request a new code.": "Zu viele falsche Versuche. Bitte fordere einen neuen Code an.",
     "We have sent you a new code.": "Wir haben Dir einen neuen Code geschickt.",
     "Too many attempts. Please wait a moment and try again.": "Zu viele Versuche. Bitte warte einen Moment und versuche es erneut.",
-    "Something went wrong. Please try again.": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
+    "Something went wrong. Please try again.": "Etwas ist schiefgelaufen. Bitte versuche es erneut.",
+    "This address is deactivated in DFX.": "Diese Adresse ist bei DFX deaktiviert."
   },
   "screens/buy": {
     "You spend": "Du zahlst",
@@ -1091,7 +1093,7 @@
     "Default": "Standard",
     "Show deleted addresses": "Gelöschte Adressen anzeigen",
     "Hide deleted addresses": "Gelöschte Adressen ausblenden",
-    "delete": "Bist Du sicher, dass Du die Adresse <1>{{address}}</1> von Deinem DFX-Konto löschen möchtest? Diese Aktion ist nicht rückgängig zu machen.",
+    "delete": "Bist Du sicher, dass Du die Adresse <1>{{address}}</1> von Deinem DFX-Konto löschen möchtest? Du kannst sie reaktivieren, indem Du Dich erneut mit ihr anmeldest.",
     "delete_iban": "Bist Du sicher, dass Du das Bankkonto <1>{{address}}</1> von Deinem DFX-Konto löschen möchtest?",
     "Deleting your account ends our business relationship. Under Swiss law we are required to retain all data for 10 years and then permanently delete it.": "Mit dem Löschen des Kontos beenden wir die Geschäftsbeziehung. Nach schweizerischem Recht sind wir verpflichtet, sämtliche Daten 10 Jahre zu speichern und sie anschliessend endgültig zu löschen.",
     "Verification Call": "Verifizierungsanruf",
