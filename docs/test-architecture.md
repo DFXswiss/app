@@ -316,6 +316,19 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixtures render. It does not prove that those bootstrap endpoints return real data,
   that a live account has that kyc status, or that `deleteAccount` persists against
   the API.
+- **The deactivated-address visual spec answers GET /v2/user and the reactivate route itself.**
+  `e2e/deactivated-address.spec.ts` fulfils `/v2/user` with a synthetic address that carries
+  `isDeleted: true` until the spec's own `POST /v2/user/addresses/{address}/reactivate` answered
+  `201` with a synthetic token (or `400` in the rejection variant), fulfils `/v1/bankAccount`
+  with `403` while the address is deleted and `[]` afterwards, and fulfils the Settings bootstrap
+  GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/country`, `/v1/setting/infoBanner`), user
+  PUT/PATCH and `POST /v1/log/clientError`. Unmatched `/v1/**` and `/v2/**` calls get `501`. The
+  session is a synthetic unsigned JWT, so a green run does not prove login or token verification.
+  A green run proves the notice (EN and DE), the rejection hint, the delete-address dialog text and
+  that Settings renders again after the reactivation. It does not prove that the API reports
+  `isDeleted`, issues a token on reactivation, rejects the bank-account list for a deleted
+  session, or that a real address is reactivated; the full-stack test in
+  `e2e-stack/specs/account.spec.ts` covers that once the stack's API reports the field.
 - **The info-banner layout visual spec answers GET /v1/setting/infoBanner itself.**
   `e2e/info-banner-layout.spec.ts` fulfils `/v1/setting/infoBanner` with synthetic
   multilingual copy, fulfils `GET /v1/support/issue` with one fixture ticket, and

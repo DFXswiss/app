@@ -51,7 +51,7 @@ describe('DeactivatedAddress', () => {
     expect(button).toBeDisabled();
   });
 
-  it('enables the button after a successful request without showing an error', async () => {
+  it('keeps the button disabled after a successful request without showing an error', async () => {
     const request = deferred();
     const onReactivate = jest.fn(() => request.promise);
     render(<DeactivatedAddress address="0xabc" onReactivate={onReactivate} />);
@@ -60,7 +60,7 @@ describe('DeactivatedAddress', () => {
     fireEvent.click(button);
     await act(async () => request.resolve());
 
-    await waitFor(() => expect(button).toBeEnabled());
+    expect(button).toBeDisabled();
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 

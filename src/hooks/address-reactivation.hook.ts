@@ -1,5 +1,7 @@
 import { useApi, useApiSession, useAuthContext, UserAddress, useUserContext } from '@dfx.swiss/react';
 import { useCallback, useMemo, useState } from 'react';
+import { isEmbedded } from '../util/client-error';
+import { getStorageBlockedFlag } from '../util/storage-block-flag';
 
 // The published SDK types do not know the deletion flag of an address yet.
 type DeletableUserAddress = UserAddress & { isDeleted?: boolean };
@@ -18,6 +20,7 @@ const SessionAddressPaths = [
   '/swap',
   '/routes',
   '/safe',
+  '/support/tickets',
   '/tx',
 ];
 // KYC pages also work with a KYC code in the URL alone, without a session.
@@ -39,9 +42,9 @@ export function useAddressReactivation(): {
   const [reactivatedToken, setReactivatedToken] = useState<string>();
 
   const activeAddress: DeletableUserAddress | undefined = user?.activeAddress;
-  // A successful reactivation token belongs to an active address, even if reloadUser leaves stale user data
-  // after a failed request. Comparing tokens also lets a later sign-in show the notice again if the address was
-  // deleted again.
+  // A successful reactivation token belongs to an active address. In the branch without a reload, comparing tokens
+  // keeps stale deleted user data hidden and also lets a later sign-in show the notice again if the address was deleted
+  // again.
   const deactivatedAddress =
     activeAddress?.isDeleted === true && getAuthToken() !== reactivatedToken ? activeAddress.address : undefined;
 
@@ -56,7 +59,17 @@ export function useAddressReactivation(): {
       });
       updateSession(accessToken);
       setReactivatedToken(accessToken);
-      await reloadUser();
+
+      // The SDK contexts fetched their data while the API still rejected the session (the bank accounts, for
+      // one) and only reload when a session opens, so a token swap alone leaves that data empty. The token,
+      // the query params and the wallet type are persisted, so a fresh start comes back on this page with the
+      // reactivated session. Inside a host page the window is not ours to reload, and without storage the
+      // token would not survive it; there the user record is reloaded and the rest stays as loaded.
+      if (isEmbedded() || getStorageBlockedFlag()) {
+        await reloadUser();
+      } else {
+        window.location.reload();
+      }
     },
     [call, reloadUser, updateSession],
   );

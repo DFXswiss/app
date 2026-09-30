@@ -1,6 +1,17 @@
 import { act, renderHook } from '@testing-library/react';
 
 const mockCall = jest.fn();
+const mockIsEmbedded = jest.fn();
+const mockStorageBlocked = jest.fn();
+const originalLocation = window.location;
+let reload: jest.MockedFunction<() => void>;
+
+afterAll(() => {
+  Object.defineProperty(window, 'location', { value: originalLocation, writable: true });
+});
+
+jest.mock('src/util/client-error', () => ({ isEmbedded: () => mockIsEmbedded() }));
+jest.mock('src/util/storage-block-flag', () => ({ getStorageBlockedFlag: () => mockStorageBlocked() }));
 const mockUpdateSession = jest.fn();
 const mockGetAuthToken = jest.fn();
 const mockReloadUser = jest.fn();
@@ -38,6 +49,7 @@ describe('requiresSessionAddress', () => {
     '/contact',
     '/routes',
     '/safe',
+    '/support/tickets',
     '/tx',
   ])('requires a session address for %s', (path) => {
     expect(requiresSessionAddress(path, '')).toBe(true);
@@ -48,7 +60,6 @@ describe('requiresSessionAddress', () => {
     '/login',
     '/connect',
     '/support',
-    '/support/tickets',
     '/tx/T123',
     '/tx/T123/refund',
     '/buy/success',
@@ -77,6 +88,10 @@ describe('requiresSessionAddress', () => {
 
 describe('useAddressReactivation', () => {
   beforeEach(() => {
+    mockIsEmbedded.mockReturnValue(false);
+    mockStorageBlocked.mockReturnValue(false);
+    reload = jest.fn();
+    Object.defineProperty(window, 'location', { value: { ...window.location, reload }, writable: true });
     mockAuthToken = 'old-token';
     mockUser = { activeAddress: { address: '0xabc', isDeleted: true } };
 
@@ -136,6 +151,9 @@ describe('useAddressReactivation', () => {
     mockReloadUser.mockImplementation(async () => {
       order.push('reloadUser');
     });
+    reload.mockImplementation(() => {
+      order.push('reload');
+    });
     const { result } = renderHook(() => useAddressReactivation());
 
     await act(async () => {
@@ -149,9 +167,60 @@ describe('useAddressReactivation', () => {
       method: 'POST',
     });
     expect(mockUpdateSession).toHaveBeenCalledWith('new-token');
-    expect(mockReloadUser).toHaveBeenCalledTimes(1);
-    expect(order).toEqual(['call', 'updateSession', 'reloadUser']);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(order).toEqual(['call', 'updateSession', 'reload']);
     expect(result.current.deactivatedAddress).toBeUndefined();
+  });
+
+  it('reloads the user instead of the host page when embedded', async () => {
+    const order: string[] = [];
+    mockIsEmbedded.mockReturnValue(true);
+    mockCall.mockImplementation(async () => {
+      order.push('call');
+      return { accessToken: 'new-token' };
+    });
+    mockUpdateSession.mockImplementation((token: string) => {
+      order.push('updateSession');
+      mockAuthToken = token;
+    });
+    mockReloadUser.mockImplementation(async () => {
+      order.push('reloadUser');
+    });
+    const { result } = renderHook(() => useAddressReactivation());
+
+    await act(async () => {
+      await result.current.reactivateAddress('0xabc');
+    });
+
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
+    expect(order).toEqual(['call', 'updateSession', 'reloadUser']);
+  });
+
+  it('reloads the user instead of the page when storage is blocked', async () => {
+    const order: string[] = [];
+    mockStorageBlocked.mockReturnValue(true);
+    mockCall.mockImplementation(async () => {
+      order.push('call');
+      return { accessToken: 'new-token' };
+    });
+    mockUpdateSession.mockImplementation((token: string) => {
+      order.push('updateSession');
+      mockAuthToken = token;
+    });
+    mockReloadUser.mockImplementation(async () => {
+      order.push('reloadUser');
+    });
+    const { result } = renderHook(() => useAddressReactivation());
+
+    await act(async () => {
+      await result.current.reactivateAddress('0xabc');
+    });
+
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
+    expect(order).toEqual(['call', 'updateSession', 'reloadUser']);
   });
 
   it('shows the deleted address again after a later sign-in changes the token', async () => {
@@ -169,14 +238,17 @@ describe('useAddressReactivation', () => {
   });
 
   it('keeps the notice hidden for the new token when reloading leaves stale deleted user data', async () => {
-    const reloadError = new Error('reload failed');
-    mockReloadUser.mockRejectedValue(reloadError);
-    const { result } = renderHook(() => useAddressReactivation());
+    mockIsEmbedded.mockReturnValue(true);
+    mockReloadUser.mockResolvedValue(undefined);
+    const { result, rerender } = renderHook(() => useAddressReactivation());
 
     await act(async () => {
-      await expect(result.current.reactivateAddress('0xabc')).rejects.toBe(reloadError);
+      await result.current.reactivateAddress('0xabc');
     });
+    rerender();
 
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
     expect(result.current.deactivatedAddress).toBeUndefined();
   });
 
@@ -194,7 +266,7 @@ describe('useAddressReactivation', () => {
     });
   });
 
-  it('propagates API errors without updating the session or reloading the user', async () => {
+  it('propagates API errors without updating the session or reloading', async () => {
     const error = new Error('reactivation failed');
     mockCall.mockRejectedValue(error);
     const { result } = renderHook(() => useAddressReactivation());
@@ -203,6 +275,7 @@ describe('useAddressReactivation', () => {
 
     expect(mockUpdateSession).not.toHaveBeenCalled();
     expect(mockReloadUser).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
     expect(result.current.deactivatedAddress).toBe('0xabc');
   });
 

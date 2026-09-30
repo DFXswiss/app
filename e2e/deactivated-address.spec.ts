@@ -8,7 +8,8 @@ import { expect, Page, Route, test } from '@playwright/test';
  *
  * Auth uses synthetic unsigned JWTs (`alg: none`, role User). All feature data is synthetic, and
  * unmatched v1/v2 calls return 501, so the suite does not need a live API. A green run proves the
- * mocked UI flow and screenshots only; it does not prove live authentication or API behavior.
+ * mocked UI flow and screenshots only; it does not prove live authentication, that the API rejects the
+ * bank-account list for a deleted session, or that the real list reloads after reactivation.
  *
  * Intercepted endpoints:
  *   - GET  /v1/language, /v1/fiat, /v1/asset, /v1/bankAccount, /v1/country, /v1/setting/infoBanner
@@ -82,7 +83,13 @@ async function installRoutes(
       return json(route, [CHF_FIAT]);
     }
 
-    if (method === 'GET' && ['/v1/asset', '/v1/bankAccount', '/v1/country'].includes(path)) {
+    if (method === 'GET' && path === '/v1/bankAccount') {
+      return initiallyDeleted && !reactivated
+        ? json(route, { statusCode: 403, message: 'Forbidden resource', error: 'Forbidden' }, 403)
+        : json(route, []);
+    }
+
+    if (method === 'GET' && ['/v1/asset', '/v1/country'].includes(path)) {
       return json(route, []);
     }
 
@@ -191,16 +198,18 @@ test.describe('Deactivated Address - Visual Regression Tests', () => {
     });
   });
 
-  test('renders Settings after successful reactivation without navigation', async ({ page }) => {
+  test('reloads and renders Settings after successful reactivation', async ({ page }) => {
     await installRoutes(page);
 
     await page.goto(`/settings?session=${encodeURIComponent(token)}&lang=en`);
     const button = page.getByRole('button', { name: 'Reactivate address' });
     await expect(button).toBeVisible({ timeout: 15_000 });
+    // Restarting the page with the persisted session is the behavior under test.
     await button.click();
 
-    await expect(page.getByRole('button', { name: 'Danger Zone' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Danger Zone' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('This address is deactivated in DFX.')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Your Bank Accounts' })).toBeVisible();
   });
 
   test('explains reactivation in the delete-address dialog', async ({ page }) => {
