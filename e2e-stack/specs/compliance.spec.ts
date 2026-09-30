@@ -24,6 +24,7 @@ import {
   queryRows,
   resolveAppSourcePath,
   test,
+  waitForRow,
   withDb,
 } from './fixtures';
 import {
@@ -113,7 +114,6 @@ test.describe('Compliance area (overview)', () => {
         .not.toBe(normPath(target));
     }
   });
-
 
   // -------------------------------------------------------------------------
   // Access control (server layer) — the redirect test above only proves the FRONTEND route
@@ -288,6 +288,56 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText(issue.uid, { exact: true })).toBeVisible();
     await expect(page.getByText('E2E compliance support issue', { exact: true })).toBeVisible();
     await expect(page.getByText('GenericIssue', { exact: true }).first()).toBeVisible();
+  });
+
+  test('/compliance/user/:id resets a pending recommendation and persists the step and the KYC log', async ({
+    page,
+  }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const customer = await createUser({
+      tag: 'cmp-reset',
+      kycLevel: 30,
+      completePersonalData: true,
+      language: 'EN',
+    });
+    const step = await createKycStep(customer.userDataId, {
+      name: 'Recommendation',
+      status: 'InternalReview',
+    });
+    const reason = `e2e reset ${Date.now()}`;
+
+    await openScreen(page, `/compliance/user/${customer.userDataId}`, jwt);
+
+    await expect(page.getByRole('heading', { name: 'Recommendation (1)' })).toBeVisible({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+
+    const reasonInput = page.locator('#recommendation-reset-reason');
+    await reasonInput.fill(reason);
+    const resetForm = page.locator('div.mt-2.flex.flex-col').filter({ has: reasonInput });
+    const save = resetForm.getByRole('button', { name: 'Save', exact: true });
+    await expect(save).toBeEnabled({ timeout: 15000 });
+    await save.click();
+
+    await expect(
+      page.getByText(
+        'The request was reset. The customer gets a new Recommendation step the next time they open the KYC.',
+      ),
+    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'Reset', exact: true })).toHaveCount(0);
+    await expect(page.getByText('Canceled', { exact: true }).first()).toBeVisible();
+
+    await waitForRow(
+      `SELECT id FROM kyc_step WHERE id = $1 AND status = 'Canceled' AND comment = $2`,
+      [step.kycStepId, `Reset: ${reason}`],
+      15000,
+    );
+    await waitForRow(
+      `SELECT id FROM kyc_log WHERE "userDataId" = $1 AND type = 'ManualLog' AND comment LIKE $2`,
+      [customer.userDataId, `%comment: Reset: ${reason}%`],
+      15000,
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -542,7 +592,8 @@ test.describe('Compliance area (overview)', () => {
     let queueName = '';
 
     for (let i = 0; i < rowCount; i++) {
-      const name = (await queueRows.nth(i).locator('td').first().innerText()).trim();
+      // The row shows the queue's label; its key (the URL segment) is on the row.
+      const name = ((await queueRows.nth(i).getAttribute('data-queue')) ?? '').trim();
       const countText = (await queueRows.nth(i).locator('td').nth(1).innerText()).trim();
       if (!name || countText === '0') continue;
 

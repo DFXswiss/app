@@ -465,7 +465,8 @@ test.describe('Compliance area (cases)', () => {
     let foundUserInQueue = false;
 
     for (let i = 0; i < rowCount; i++) {
-      const name = (await queueRows.nth(i).locator('td').first().innerText()).trim();
+      // The row shows the queue's label; its key (the URL segment) is on the row.
+      const name = ((await queueRows.nth(i).getAttribute('data-queue')) ?? '').trim();
       const countText = (await queueRows.nth(i).locator('td').nth(1).innerText()).trim();
       if (!name || countText === '0') continue;
 

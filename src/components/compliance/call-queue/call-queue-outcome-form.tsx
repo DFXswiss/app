@@ -1,6 +1,6 @@
-import { useAuthContext } from '@dfx.swiss/react';
+import { CheckStatus, useAuthContext } from '@dfx.swiss/react';
 import { StyledButton, StyledButtonWidth } from '@dfx.swiss/react-components';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import {
@@ -13,6 +13,7 @@ import {
 } from 'src/hooks/compliance.hook';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { canManuallySetAmlPass } from 'src/util/aml-pass.util';
+import { effectiveCallQueue } from 'src/util/call-queue.util';
 import { STAFF_NAME_MISSING, staffNameLoadError } from '../staff-identity';
 
 // These outcomes leave nothing to decide: the save itself already determines the transaction — the API
@@ -20,11 +21,7 @@ import { STAFF_NAME_MISSING, staffNameLoadError } from '../staff-identity';
 // and on Repeat releases this one transaction while the account stays in the queue. Offering an AML
 // action on top would only invite the combination that cannot work: a plain reset re-runs the very
 // check the missing check date is still failing.
-const OutcomesImplyingAmlAction: (CallOutcome | '')[] = [
-  CallOutcome.COMPLETED,
-  CallOutcome.FAILED,
-  CallOutcome.REPEAT,
-];
+const OutcomesImplyingAmlAction: (CallOutcome | '')[] = [CallOutcome.COMPLETED, CallOutcome.FAILED, CallOutcome.REPEAT];
 
 interface Props {
   context: CallOutcomeContext;
@@ -33,12 +30,7 @@ interface Props {
   title: string;
 }
 
-export function CallQueueOutcomeForm({
-  context,
-  availableOutcomes,
-  onSaved,
-  title,
-}: Props): JSX.Element {
+export function CallQueueOutcomeForm({ context, availableOutcomes, onSaved, title }: Props): JSX.Element {
   const { translate } = useSettingsContext();
   const { saveCallOutcome } = useCompliance();
   const { session } = useAuthContext();
@@ -50,17 +42,35 @@ export function CallQueueOutcomeForm({
   const [amlAction, setAmlAction] = useState<AmlAction | ''>('');
   const [isSaving, setIsSaving] = useState(false);
   const [result, setResult] = useState<CallOutcomeResult>();
+  const mountedRef = useRef(true);
+  // Sync guard: isSaving only disables the button after re-render; a second click in the same tick must
+  // not start another save.
+  const savingRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const hasTx = context.txId != null && context.sourceType != null;
   const buyCryptoResetUnavailable = context.sourceType === 'BuyCrypto' && !context.buyCryptoResetEligible;
+  // A Callback item is decided as the reason queue it was parked from.
+  const decisionQueue = effectiveCallQueue(context.queue, context.amlReason);
+  // A failed transaction is not the tool's to reset: once the account's call is completed the API
+  // resets every failed phone transaction of the account itself (checkAmlResetTx), and a Reset from
+  // here would only race that and report a conflict on a state that is already right. Failed keeps
+  // it failed. So the automatic action is only sent for a pending transaction.
+  const txFailed = context.amlCheck === CheckStatus.FAIL;
+  const sendsAutomaticReset = !txFailed && needsExplicitAmlReset(decisionQueue);
   // The clerk is not asked for an AML action on those outcomes; every other one is open-ended and
   // keeps the selector.
   const outcomeImpliesAmlAction = OutcomesImplyingAmlAction.includes(outcome);
   const showAmlCheck = hasTx && !outcomeImpliesAmlAction;
   // Blocks the save: without the reset the transaction stays Pending forever on a recheck-blocked
   // queue, while the form would still report success and navigate away.
-  const impliedResetUnavailable =
-    hasTx && outcomeImpliesAmlAction && needsExplicitAmlReset(context.queue) && buyCryptoResetUnavailable;
+  const impliedResetUnavailable = hasTx && outcomeImpliesAmlAction && sendsAutomaticReset && buyCryptoResetUnavailable;
   const canSubmit =
     !!signature && !!outcome && !!comment.trim() && !isSaving && !isLoadingSignature && !impliedResetUnavailable;
 
@@ -70,7 +80,7 @@ export function CallQueueOutcomeForm({
   // AML check on the state the call just produced — the API decides the outcome, not the tool. On
   // Repeat the release is written before this reset, so the re-run no longer sees the call-queue error.
   function impliedAmlAction(): AmlAction | undefined {
-    if (!needsExplicitAmlReset(context.queue) || buyCryptoResetUnavailable) return undefined;
+    if (!sendsAutomaticReset || buyCryptoResetUnavailable) return undefined;
     return 'Reset';
   }
 
@@ -81,17 +91,24 @@ export function CallQueueOutcomeForm({
     setAmlAction('');
   }
 
+  // Only reachable through the Save button, which canSubmit disables until signature and outcome are set.
   async function handleSubmit() {
-    if (!signature || !outcome) return;
+    if (savingRef.current) return;
+    savingRef.current = true;
     setIsSaving(true);
     setResult(undefined);
-    const res = await saveCallOutcome(context, outcome, {
-      signature,
+    const res = await saveCallOutcome(context, outcome as CallOutcome, {
+      signature: signature as string,
       comment,
       amlAction: hasTx ? (outcomeImpliesAmlAction ? impliedAmlAction() : amlAction || undefined) : undefined,
     });
-    setIsSaving(false);
-    setResult(res);
+    savingRef.current = false;
+    // The form's own state only while it is still shown; the owner learns of the saved outcome either
+    // way, so a save that finishes after the screen was left still leaves the queue.
+    if (mountedRef.current) {
+      setIsSaving(false);
+      setResult(res);
+    }
     if (res.success) onSaved();
   }
 
@@ -106,9 +123,7 @@ export function CallQueueOutcomeForm({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-dfxBlue-800 mb-1">Signature</label>
-          <p className="w-full px-3 py-2 text-sm text-dfxBlue-800">
-            {isLoadingSignature ? '…' : (signature ?? '—')}
-          </p>
+          <p className="w-full px-3 py-2 text-sm text-dfxBlue-800">{isLoadingSignature ? '…' : (signature ?? '—')}</p>
         </div>
         <div>
           <label className="block text-sm font-medium text-dfxBlue-800 mb-1">Outcome</label>
@@ -157,8 +172,8 @@ export function CallQueueOutcomeForm({
       {impliedResetUnavailable && (
         <p className="mt-4 text-xs text-primary-red">
           Saving is disabled: this queue is excluded from the AML recheck and automatic reset is unavailable for this
-          BuyCrypto, so the transaction would stay pending. Reload after the BuyCrypto is eligible for reset, then
-          save the outcome.
+          BuyCrypto, so the transaction would stay pending. Reload after the BuyCrypto is eligible for reset, then save
+          the outcome.
         </p>
       )}
       <div className="mt-4">

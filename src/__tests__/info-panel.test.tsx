@@ -154,6 +154,35 @@ describe('SupportMessageList', () => {
     expect(screen.queryByTestId('kyc-file-transfer')).not.toBeInTheDocument();
   });
 
+  it('tags customer messages as E-Mail or In-App and leaves staff and untagged messages unchanged', () => {
+    render(
+      <SupportMessageList
+        messages={[
+          { id: 1, author: 'Customer', message: 'per mail', created: '2026-09-01T10:00:00Z', origin: 'Email' },
+          { id: 2, author: 'Customer', message: 'in der app', created: '2026-09-02T10:00:00Z', origin: 'InApp' },
+          { id: 3, author: 'Customer', message: 'alt', created: '2026-09-03T10:00:00Z' },
+          { id: 4, author: 'Jana', message: 'Antwort', created: '2026-09-04T10:00:00Z', origin: 'Email' },
+        ]}
+      />,
+    );
+
+    const mailBubble = screen.getByText('per mail').closest('div.flex') as HTMLElement;
+    const appBubble = screen.getByText('in der app').closest('div.flex') as HTMLElement;
+    const oldBubble = screen.getByText('alt').closest('div.flex') as HTMLElement;
+    const staffBubble = screen.getByText('Antwort').closest('div.flex') as HTMLElement;
+
+    const mailTag = within(mailBubble).getByText('E-Mail');
+    const appTag = within(appBubble).getByText('In-App');
+    expect(mailTag.className).toContain('text-xs');
+    expect(mailTag.className).toContain('rounded');
+    expect(mailTag.className).toContain('border');
+    expect(appTag.className).toContain('text-xs');
+    expect(within(oldBubble).queryByText('E-Mail')).not.toBeInTheDocument();
+    expect(within(oldBubble).queryByText('In-App')).not.toBeInTheDocument();
+    expect(within(staffBubble).queryByText('E-Mail')).not.toBeInTheDocument();
+    expect(within(staffBubble).queryByText('In-App')).not.toBeInTheDocument();
+  });
+
   it('hides the previous ticket thread when the path changes before messages are replaced', () => {
     const msgs = [{ id: 1, author: 'Customer', fileName: 'ausweis.pdf', created: '2026-09-01' }];
     mockedUseLocation.mockReturnValue({ pathname: '/support/dashboard/issue/1' });

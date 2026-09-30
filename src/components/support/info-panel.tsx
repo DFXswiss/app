@@ -72,6 +72,7 @@ export interface SupportMessageListItem {
   message?: string;
   fileName?: string;
   created: string;
+  origin?: 'InApp' | 'Email';
   kycFileId?: number;
   kycFileName?: string;
 }
@@ -118,7 +119,14 @@ export function SupportMessageList({
               }`}
             >
               <div className="flex justify-between items-center gap-4 mb-1">
-                <span className="text-xs font-medium">{msg.author}</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-medium">{msg.author}</span>
+                  {isCustomer && (msg.origin === 'Email' || msg.origin === 'InApp') && (
+                    <span className="text-xs px-1 rounded border border-dfxGray-400">
+                      {msg.origin === 'Email' ? 'E-Mail' : 'In-App'}
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs opacity-70">{formatDateTime(msg.created)}</span>
               </div>
               <div className="text-sm whitespace-pre-wrap break-words">

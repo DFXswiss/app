@@ -91,6 +91,7 @@ export interface SupportMessageInfo {
   message?: string;
   fileName?: string;
   created: string;
+  origin?: 'InApp' | 'Email';
   // Set once a clerk transferred the attachment into the customer's KYC file.
   kycFileId?: number;
   kycFileName?: string;

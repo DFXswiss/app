@@ -13,6 +13,11 @@ const pages = [
     title: 'Log Validity',
     description: 'Set validity of log entries by ID or financial range',
   },
+  {
+    path: '/dashboard/financial/kundengelder',
+    title: 'Kundengelder',
+    description: 'Year extract of customer funds as booked into the ledger import',
+  },
 ];
 
 export default function DashboardFinancialScreen(): JSX.Element {

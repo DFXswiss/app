@@ -4,6 +4,8 @@ import {
   FinancialChangesResponse,
   FinancialLogChartResponse,
   FinancialLogResponse,
+  KundengelderExtract,
+  KundengelderTxList,
   LatestBalanceResponse,
   RefRewardRecipient,
 } from 'src/dto/dashboard.dto';
@@ -73,6 +75,24 @@ export function useDashboard() {
     });
   }
 
+  async function getKundengelderExtract(year: number): Promise<KundengelderExtract> {
+    return call<KundengelderExtract>({
+      url: `dashboard/financial/kundengelder?year=${year}`,
+      method: 'GET',
+    });
+  }
+
+  async function getKundengelderLines(year: number, iban: string, line: string): Promise<KundengelderTxList> {
+    const params = new URLSearchParams();
+    params.set('year', String(year));
+    params.set('iban', iban);
+    params.set('line', line);
+    return call<KundengelderTxList>({
+      url: `dashboard/financial/kundengelder/lines?${params.toString()}`,
+      method: 'GET',
+    });
+  }
+
   return useMemo(
     () => ({
       getFinancialLog,
@@ -81,6 +101,8 @@ export function useDashboard() {
       getLatestBalance,
       getLatestChanges,
       getRefRecipients,
+      getKundengelderExtract,
+      getKundengelderLines,
     }),
     [call],
   );

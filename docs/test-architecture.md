@@ -198,6 +198,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e/support-kyc-file-transfer.spec.ts` answers the issue payload, messages, clerks, clerk mapping
   and activity with fixtures. A green run proves those fixtures render. It does not prove that the
   API returns them or that PUT kycFile persists.
+- **The staff message-origin visual spec answers boot and the issue thread itself.**
+  `e2e/support-message-origin.spec.ts` fulfils the staff session's user, languages and the issue,
+  messages, clerks, clerk mapping and activity with fixtures, including one customer mail tag, one
+  in-app tag, a customer message without an origin and a staff reply that carries an origin. A green
+  run proves the messages panel renders those tags. It does not prove that the API stores `origin`,
+  that a mail opened the ticket, or that the session is a real staff login.
 - **The support-issue receiver-IBAN spec pins KYC level and account mail on GET /v2/user.**
   `e2e/support-issue-receiver-iban.spec.ts` rewrites that response so `kyc.level` is high enough for
   the screen guard and `mail` is present if the cached wallet session has none. A green visual run
@@ -243,6 +249,26 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   clerks list, not that the API returns those records or the logged-in staff member's
   `verifiedName`. The session is a synthetic unsigned JWT, so a green run also does not
   prove login or token verification.
+- **The call-queue list spec answers the queue items itself.**
+  `e2e/compliance-call-queue-list.spec.ts` fulfils
+  `GET /v1/support/call-queues/{queue}/items` for ManualCheckPhone,
+  ManualCheckIpCountryPhone and UnavailableSuspicious with synthetic items
+  that include `phoneCallTimes` `H9To10;H10To11`, and fulfils the Callback
+  queue with one fixture row and `/v2/user`. Empty lists cover `/v1/language`, `/v1/fiat`, `/v1/asset`,
+  `/v1/bankAccount` and `/v1/country`, plus a null info banner. The session
+  is a synthetic unsigned JWT. A green run proves the Phone Call Times column
+  appears only for ManualCheckPhone and ManualCheckIpCountryPhone and stays
+  hidden for UnavailableSuspicious even when the item carries a value, and
+  that the Callback list shows Country, Status, Marked and Deadline, including
+  a past deadline in red. It does not prove that the API returns those rows,
+  that the mark date is the account's phone-call date, or that login and
+  token verification succeed.
+- **Full-stack compliance specs SQL-seed a call-queue case.**
+  `e2e-stack/specs/fixtures/factories.ts` (`createCallQueueEntry`) inserts a pending `buy_crypto`
+  with AML reason `ManualCheckPhone` and SQL-writes `user_data.phoneCallStatus`,
+  `phoneCallStatusDate` (where the column exists) and `phoneCallCheckDate`. A green run does
+  **not** prove that the AML pipeline parks a transaction in the Callback queue or that a clerk's
+  Unavailable outcome stamps the mark date through the product path.
 - **Full-stack guest assign/refund specs SQL-write `transaction.actionSecretHash`.**
   `e2e-stack/specs/transactions.spec.ts` (`seedActionSecret`) updates the hash directly. A green run
   does **not** prove that the mail/API path creates, hashes, or delivers the action secret.
@@ -266,6 +292,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/kyc-continue-race.spec.ts` upserts ContactData, PersonalData, NationalityData
   and Ident (`SumsubAuto`) to `Completed`. A green run does **not** prove those steps complete
   through the product path, including live ident.
+- **Full-stack compliance specs SQL-insert a pending Recommendation step.**
+  `e2e-stack/specs/compliance.spec.ts` inserts a `kyc_step` named `Recommendation` in status
+  `InternalReview`, on a synthetic account at KYC level 30 with completed personal data. A green run
+  does **not** prove that the customer KYC flow creates that open step.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs

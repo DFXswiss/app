@@ -27,6 +27,15 @@ jest.mock('src/hooks/staff-verified-name.hook', () => ({
   useStaffVerifiedName: () => mockStaffName,
 }));
 
+const mockClearRow = jest.fn();
+
+jest.mock('src/components/compliance/ref-user-kyc-clear-row', () => ({
+  RefUserKycClearRow: (props: unknown) => {
+    mockClearRow(props);
+    return null;
+  },
+}));
+
 jest.mock('src/components/error-hint', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const React = require('react');
@@ -673,5 +682,43 @@ describe('AmlCheckPendingPanel review reset entry', () => {
     renderPanel({ transactions: [buyCrypto] }, { isSaving: true });
 
     expect(screen.getByRole('button', { name: 'AML-Check zurücksetzen' })).toBeDisabled();
+  });
+});
+
+describe('AmlCheckPendingPanel referrer waiver row', () => {
+  beforeEach(() => {
+    mockAuth.session = { role: 'Compliance' };
+    mockClearRow.mockReset();
+  });
+
+  it('offers the waiver row for a pending transaction held by InvalidKycStatusRefUser', () => {
+    const onRefUserKycCleared = jest.fn().mockResolvedValue(undefined);
+    render(
+      <AmlCheckPendingPanel
+        data={{ ...data, transactions: [{ ...pendingTx, comment: 'InvalidKycStatusRefUser' }] }}
+        isSaving={true}
+        onUpdate={jest.fn()}
+        onReset={jest.fn()}
+        onReviewReset={jest.fn()}
+        onRefUserKycCleared={onRefUserKycCleared}
+      />,
+    );
+
+    expect(mockClearRow).toHaveBeenCalledWith({ userDataId: 322190, disabled: true, onCleared: onRefUserKycCleared });
+  });
+
+  it('hides the waiver row for any other comment', () => {
+    renderPanel();
+
+    expect(mockClearRow).not.toHaveBeenCalled();
+  });
+
+  it('hides the waiver row when the user data id is missing', () => {
+    renderPanel({
+      userData: { kycStatus: 'Check', kycLevel: 50 } as ComplianceUserData['userData'],
+      transactions: [{ ...pendingTx, comment: 'InvalidKycStatusRefUser' }],
+    });
+
+    expect(mockClearRow).not.toHaveBeenCalled();
   });
 });

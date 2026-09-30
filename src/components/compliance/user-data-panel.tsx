@@ -1,8 +1,12 @@
+import { useAuthContext } from '@dfx.swiss/react';
 import { ReactNode, useState } from 'react';
 import { CollapsibleSection } from 'src/components/compliance/collapsible-section';
 import { LimitRequestModal } from 'src/components/compliance/limit-request-modal';
+import { ReactivateAccount } from 'src/components/compliance/reactivate-account';
+import type { UserDataStatusInfo } from 'src/hooks/account-reactivation.hook';
 import { useClipboard } from 'src/hooks/clipboard.hook';
 import { OrganizationDetail, UserDataDetail } from 'src/hooks/compliance.hook';
+import { canReactivateAccount, DEACTIVATED_STATUS } from 'src/util/account-reactivation.util';
 import { display, formatBirthday, formatDate, formatDateTime, Primitive, refName } from 'src/util/compliance-helpers';
 
 interface UserDataPanelProps {
@@ -100,11 +104,11 @@ function SectionTable({
   );
 }
 
-function userDataRows(d: UserDataDetail, depositLimitNode: ReactNode, idNode: ReactNode): Row[] {
+function userDataRows(d: UserDataDetail, depositLimitNode: ReactNode, idNode: ReactNode, statusNode: ReactNode): Row[] {
   return [
     { key: 'id', value: idNode },
     { key: 'created', value: fmtDateTime(d.created) },
-    { key: 'status', value: display(d.status) },
+    { key: 'status', value: statusNode },
     { key: 'riskStatus', value: display(d.riskStatus) },
     { key: 'kycStatus', value: display(d.kycStatus) },
     { key: 'kycLevel', value: display(d.kycLevel) },
@@ -214,6 +218,31 @@ export function UserDataPanel({
   onCreateNote,
 }: Readonly<UserDataPanelProps>): JSX.Element {
   const [showLimitRequestModal, setShowLimitRequestModal] = useState(false);
+  const { session } = useAuthContext();
+
+  // A reactivation answers with the account's new status row; the box shows it until the screen reloads
+  // the account. The row on screen must be that same account: this box stays mounted, and the screen
+  // can still pass the previous row with the next route id until the reload returns. Overlay and the
+  // button both fail closed unless the row is that id; the overlay also requires the stored answer.
+  const [reactivated, setReactivated] = useState<UserDataStatusInfo>();
+  const rowIsThisAccount = userData.id === userDataId;
+  const current: UserDataDetail =
+    rowIsThisAccount && reactivated && reactivated.id === userDataId
+      ? { ...userData, status: reactivated.status, deactivationDate: reactivated.deactivationDate }
+      : userData;
+
+  const statusNode: ReactNode =
+    rowIsThisAccount &&
+    userDataId !== undefined &&
+    current.status === DEACTIVATED_STATUS &&
+    canReactivateAccount(session?.role) ? (
+      <div className="flex items-center justify-between gap-2">
+        <span>{display(current.status)}</span>
+        <ReactivateAccount userDataId={userDataId} onReactivated={setReactivated} />
+      </div>
+    ) : (
+      display(current.status)
+    );
 
   const depositLimitNode: ReactNode =
     userDataId && canRequestLimit ? (
@@ -249,7 +278,7 @@ export function UserDataPanel({
       <div className={`${wide ? 'w-full' : 'w-1/2'} min-w-0`}>
         <div className="bg-white rounded-lg shadow-sm divide-y divide-dfxGray-300">
           <CollapsibleSection title="UserData" initiallyOpen>
-            <SectionTable rows={userDataRows(userData, depositLimitNode, idNode)} />
+            <SectionTable rows={userDataRows(current, depositLimitNode, idNode, statusNode)} />
           </CollapsibleSection>
 
           <CollapsibleSection title="Personal Data" initiallyOpen>
@@ -281,7 +310,7 @@ export function UserDataPanel({
           </CollapsibleSection>
 
           <CollapsibleSection title="Other">
-            <SectionTable rows={otherRows(userData)} />
+            <SectionTable rows={otherRows(current)} />
           </CollapsibleSection>
         </div>
       </div>

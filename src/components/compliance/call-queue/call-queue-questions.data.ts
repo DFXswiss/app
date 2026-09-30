@@ -1,4 +1,5 @@
 import { CallQueue } from '@dfx.swiss/react';
+import { DecisionQueue } from 'src/util/call-queue.util';
 
 const disclaimer =
   'Disclaimer: Kunden darauf hinweisen, dass sie wahrheitsgemäss antworten müssen, ansonsten Möglichkeit sich strafbar zu machen (Geldwäsche/Identitätsdiebstahl)';
@@ -18,10 +19,10 @@ const confirmMail = 'Können Sie mir Ihre E-Mail-Adresse bestätigen?';
 const ipSystemNotice =
   'Unser System hat ungewöhnliche Aktivitäten festgestellt, daher können wir die Transaktion momentan nicht ausführen';
 
-export const callQueueQuestions: Record<CallQueue, string[]> = {
+// A Callback item asks the questions of the reason queue it was parked from (effectiveCallQueue).
+export const callQueueQuestions: Record<DecisionQueue, string[]> = {
   [CallQueue.MANUAL_CHECK_PHONE]: [disclaimer, ...coreQuestions, confirmMail],
   [CallQueue.MANUAL_CHECK_IP_PHONE]: [disclaimer, ...coreQuestions, ipSystemNotice],
   [CallQueue.MANUAL_CHECK_IP_COUNTRY_PHONE]: [disclaimer, ...coreQuestions],
   [CallQueue.MANUAL_CHECK_EXTERNAL_ACCOUNT_PHONE]: [disclaimer, ...coreQuestions, confirmMail],
-  [CallQueue.UNAVAILABLE_SUSPICIOUS]: [disclaimer, ...coreQuestions, confirmMail],
 };

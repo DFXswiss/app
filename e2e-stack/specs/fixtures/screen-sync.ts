@@ -73,6 +73,8 @@ export function financialDestinationGetUrlParts(path: string): string[] {
       return ['/dashboard/financial/changes', '/dashboard/financial/ref-recipients'];
     case '/dashboard/financial/log-validity':
       return [];
+    case '/dashboard/financial/kundengelder':
+      return ['/dashboard/financial/kundengelder'];
     default:
       throw new Error(`financialDestinationGetUrlParts: unknown path ${path}`);
   }
@@ -90,7 +92,10 @@ export function waitForFinancialDestinationRequests(page: Page, path: string): P
   return Promise.all(
     parts.map((part) =>
       page.waitForResponse(
-        (r) => r.request().method() === 'GET' && matchesFinancialGet(r.url(), part),
+        (r) =>
+          r.request().method() === 'GET' &&
+          r.request().resourceType() !== 'document' &&
+          matchesFinancialGet(r.url(), part),
         { timeout: 15000 },
       ),
     ),
@@ -121,6 +126,9 @@ export async function waitForFinancialDestinationReady(page: Page, path: string)
     case '/dashboard/financial/log-validity':
       await expect(page.getByRole('heading', { name: 'By log ID' })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'By financial range / threshold' })).toBeVisible();
+      return;
+    case '/dashboard/financial/kundengelder':
+      await expect(page.getByRole('heading', { name: 'Kundengelder' })).toBeVisible();
       return;
     default:
       throw new Error(`waitForFinancialDestinationReady: unknown path ${path}`);
