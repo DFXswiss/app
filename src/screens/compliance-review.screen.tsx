@@ -133,6 +133,25 @@ export default function ComplianceReviewScreen(): JSX.Element {
     const requestScopeGeneration = scopeGeneration.current;
     return () => isCurrentAuthScope(requestScopeKey, scopedSession, requestToken, requestScopeGeneration);
   }, [authToken, isCurrentAuthScope, requestSession, scopeKey]);
+  const captureAuthCheck = useCallback(() => {
+    const scopedSession = requestSession;
+    const requestToken = authToken;
+    // The initial scope check requires a token before any write starts.
+    return () =>
+      getAuthTokenRef.current() === requestToken &&
+      hasSameAuthSessionScope(getAuthTokenSessionRef.current(), scopedSession);
+  }, [authToken, requestSession]);
+
+  function reportWriteError(
+    message: string,
+    scopedUserDataId: number,
+    isScopeCurrent: () => boolean,
+    isAuthCurrent: () => boolean,
+  ): void {
+    if (isScopeCurrent()) setError(message);
+    else if (isAuthCurrent()) setError(`Customer ${scopedUserDataId}: ${message}`);
+  }
+
   const { containerRef, splitPercent, handleSplitDrag } = useSplitPane();
 
   const loadData = useCallback(
@@ -261,9 +280,11 @@ export default function ComplianceReviewScreen(): JSX.Element {
     return undefined;
   }
 
-  // A scope check after each await covers the synchronous work through the next await.
+  // Route changes only gate UI updates; writes for the captured customer continue under the same authentication.
   async function handleFreigabeSave(params: ComplianceReviewFreigabeSaveParams): Promise<void> {
     const isScopeCurrent = captureScopeCheck();
+    const isAuthCurrent = captureAuthCheck();
+    const scopedUserDataId = Number(userDataId);
     const requestToken = authToken;
     const requestScopeKey = scopeKey;
     if (!requestToken || !isScopeCurrent()) return;
@@ -276,14 +297,14 @@ export default function ComplianceReviewScreen(): JSX.Element {
         result: params.result,
         comment: params.comment,
       });
-      if (!isScopeCurrent()) return;
+      if (!isAuthCurrent()) return;
 
       const results: KycLogResult[] = [{ table: 'kycStep', column: 'status', value: params.status }];
 
       // 2. Update UserData if needed
       if (params.userDataUpdate && userDataId) {
-        await updateUserData(+userDataId, params.userDataUpdate);
-        if (!isScopeCurrent()) return;
+        await updateUserData(scopedUserDataId, params.userDataUpdate);
+        if (!isAuthCurrent()) return;
         for (const [col, val] of Object.entries(params.userDataUpdate)) {
           if (val == null) continue;
           results.push({ table: 'userData', column: col, value: String(val) });
@@ -293,14 +314,14 @@ export default function ComplianceReviewScreen(): JSX.Element {
       // 3. KycLog (Editor = processedBy aus den params, single source of truth)
       const clerk = params.pdfData?.processedBy;
       if (userDataId && clerk) {
-        await createKycLog(+userDataId, buildKycLogMessage({ description: 'DfxApproval', clerk, results }));
-        if (!isScopeCurrent()) return;
+        await createKycLog(scopedUserDataId, buildKycLogMessage({ description: 'DfxApproval', clerk, results }));
+        if (!isAuthCurrent()) return;
       }
 
       // 4. Generate PDF if data provided
       if (params.pdfData && userDataId) {
         try {
-          const { pdfData, fileName } = await generateOnboardingPdf(+userDataId, params.pdfData);
+          const { pdfData, fileName } = await generateOnboardingPdf(scopedUserDataId, params.pdfData);
           if (!isScopeCurrent()) return;
 
           // Show PDF in preview
@@ -321,13 +342,21 @@ export default function ComplianceReviewScreen(): JSX.Element {
           });
         } catch (e) {
           console.error('Failed to generate PDF:', e);
+          if (!isScopeCurrent()) {
+            reportWriteError(
+              e instanceof Error ? e.message : 'Error generating PDF',
+              scopedUserDataId,
+              isScopeCurrent,
+              isAuthCurrent,
+            );
+          }
         }
       }
 
       // 5. Reload data (now includes the new PDF)
-      await loadData();
+      if (isScopeCurrent()) await loadData();
     } catch (e: unknown) {
-      if (isScopeCurrent()) setError(e instanceof Error ? e.message : 'Error saving');
+      reportWriteError(e instanceof Error ? e.message : 'Error saving', scopedUserDataId, isScopeCurrent, isAuthCurrent);
     } finally {
       if (isScopeCurrent()) setIsSaving(false);
     }
@@ -343,13 +372,14 @@ export default function ComplianceReviewScreen(): JSX.Element {
     result?: string,
   ): Promise<void> {
     const isScopeCurrent = captureScopeCheck();
+    const isAuthCurrent = captureAuthCheck();
     const scopedUserDataId = Number(userDataId);
     if (!isScopeCurrent()) return;
     setIsSaving(true);
     setError(undefined);
     try {
       await updateKycStep(stepId, { status, comment, result });
-      if (!isScopeCurrent()) return;
+      if (!isAuthCurrent()) return;
 
       const results: KycLogResult[] = [{ table: 'kycStep', column: 'status', value: status }];
 
@@ -358,7 +388,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
         const amlAccountType = deriveAmlAccountType(step);
         if (amlAccountType) {
           await updateUserData(scopedUserDataId, { amlAccountType });
-          if (!isScopeCurrent()) return;
+          if (!isAuthCurrent()) return;
           results.push({ table: 'userData', column: 'amlAccountType', value: amlAccountType });
         }
       }
@@ -368,7 +398,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
 
       await loadData();
     } catch (e: unknown) {
-      if (isScopeCurrent()) setError(e instanceof Error ? e.message : 'Error saving');
+      reportWriteError(e instanceof Error ? e.message : 'Error saving', scopedUserDataId, isScopeCurrent, isAuthCurrent);
     } finally {
       if (isScopeCurrent()) setIsSaving(false);
     }
@@ -376,13 +406,14 @@ export default function ComplianceReviewScreen(): JSX.Element {
 
   async function handleBankDataApprove(bankDataId: number, clerk: string): Promise<void> {
     const isScopeCurrent = captureScopeCheck();
+    const isAuthCurrent = captureAuthCheck();
     const scopedUserDataId = Number(userDataId);
     if (!isScopeCurrent()) return;
     setIsSaving(true);
     setError(undefined);
     try {
       await updateBankData(bankDataId, { manualApproved: true, approved: true, status: 'Completed' });
-      if (!isScopeCurrent()) return;
+      if (!isAuthCurrent()) return;
       await createKycLog(
         scopedUserDataId,
         buildKycLogMessage({
@@ -398,7 +429,12 @@ export default function ComplianceReviewScreen(): JSX.Element {
       if (!isScopeCurrent()) return;
       await loadData();
     } catch (e: unknown) {
-      if (isScopeCurrent()) setError(e instanceof Error ? e.message : 'Error approving');
+      reportWriteError(
+        e instanceof Error ? e.message : 'Error approving',
+        scopedUserDataId,
+        isScopeCurrent,
+        isAuthCurrent,
+      );
     } finally {
       if (isScopeCurrent()) setIsSaving(false);
     }
@@ -406,13 +442,14 @@ export default function ComplianceReviewScreen(): JSX.Element {
 
   async function handleBankDataReject(bankDataId: number, clerk: string): Promise<void> {
     const isScopeCurrent = captureScopeCheck();
+    const isAuthCurrent = captureAuthCheck();
     const scopedUserDataId = Number(userDataId);
     if (!isScopeCurrent()) return;
     setIsSaving(true);
     setError(undefined);
     try {
       await updateBankData(bankDataId, { manualApproved: false, approved: false, status: 'Failed' });
-      if (!isScopeCurrent()) return;
+      if (!isAuthCurrent()) return;
       await createKycLog(
         scopedUserDataId,
         buildKycLogMessage({
@@ -428,7 +465,12 @@ export default function ComplianceReviewScreen(): JSX.Element {
       if (!isScopeCurrent()) return;
       await loadData();
     } catch (e: unknown) {
-      if (isScopeCurrent()) setError(e instanceof Error ? e.message : 'Error rejecting');
+      reportWriteError(
+        e instanceof Error ? e.message : 'Error rejecting',
+        scopedUserDataId,
+        isScopeCurrent,
+        isAuthCurrent,
+      );
     } finally {
       if (isScopeCurrent()) setIsSaving(false);
     }
@@ -473,6 +515,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
 
   async function handleAmlUpdate(tx: TransactionInfo, update: AmlCheckUpdate, clerk: string): Promise<void> {
     const isScopeCurrent = captureScopeCheck();
+    const isAuthCurrent = captureAuthCheck();
     const scopedUserDataId = Number(userDataId);
     if (!isScopeCurrent()) return;
     setIsSaving(true);
@@ -483,7 +526,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
       if (isBc) await updateBuyCrypto(tx.buyCryptoId as number, update);
       // ManualCheck rows are projected only from a BuyCrypto or BuyFiat relation.
       else await updateBuyFiat(tx.buyFiatId as number, update);
-      if (!isScopeCurrent()) return;
+      if (!isAuthCurrent()) return;
       const results: KycLogResult[] = [];
       // The panel disables Save until a status is selected; Reset uses the separate reset callback.
       results.push({ table, column: 'amlCheck', value: update.amlCheck as string });
@@ -494,7 +537,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
       if (!isScopeCurrent()) return;
       await loadData();
     } catch (e: unknown) {
-      if (isScopeCurrent()) setError(e instanceof Error ? e.message : 'Error saving');
+      reportWriteError(e instanceof Error ? e.message : 'Error saving', scopedUserDataId, isScopeCurrent, isAuthCurrent);
     } finally {
       if (isScopeCurrent()) setIsSaving(false);
     }
@@ -502,6 +545,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
 
   async function handleAmlReset(tx: TransactionInfo, clerk: string): Promise<void> {
     const isScopeCurrent = captureScopeCheck();
+    const isAuthCurrent = captureAuthCheck();
     const scopedUserDataId = Number(userDataId);
     if (!isScopeCurrent()) return;
     setIsSaving(true);
@@ -520,7 +564,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
           // ManualCheck rows are projected only from a BuyCrypto or BuyFiat relation.
           await resetBuyFiatAml(tx.buyFiatId as number);
         }
-        if (!isScopeCurrent()) return;
+        if (!isAuthCurrent()) return;
       } catch (e: unknown) {
         if (!isScopeCurrent()) return;
         const message = e instanceof Error ? e.message : 'Error resetting';
@@ -546,20 +590,24 @@ export default function ComplianceReviewScreen(): JSX.Element {
         );
         if (!isScopeCurrent()) return;
       } catch (e: unknown) {
-        if (!isScopeCurrent()) return;
         const message = e instanceof Error ? e.message : 'Unknown error';
         logWarning = `AML check was reset, but the additional KYC log failed: ${message}`;
+        if (!isScopeCurrent()) {
+          reportWriteError(logWarning, scopedUserDataId, isScopeCurrent, isAuthCurrent);
+          return;
+        }
       }
 
       try {
         await loadData({ throwOnError: true });
-        if (logWarning && isScopeCurrent()) setError(logWarning);
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Unknown error';
         if (isScopeCurrent()) {
           setError(`${logWarning ? `${logWarning}. ` : 'AML check was reset, but '}Data refresh failed: ${message}`);
+          return;
         }
       }
+      if (logWarning) reportWriteError(logWarning, scopedUserDataId, isScopeCurrent, isAuthCurrent);
     } finally {
       if (isScopeCurrent()) setIsSaving(false);
     }

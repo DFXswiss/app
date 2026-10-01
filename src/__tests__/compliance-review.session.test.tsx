@@ -137,14 +137,16 @@ jest.mock('src/components/compliance/compliance-review-configs', () => ({
   ],
 }));
 jest.mock('src/components/compliance/compliance-review-header', () => ({
-  ComplianceReviewHeader: ({ userData, onSetKycStatusCheck }: {
+  ComplianceReviewHeader: ({ userData, onSetKycStatusCheck, isSaving }: {
     userData: ReviewResponse['userData'];
     onSetKycStatusCheck: () => Promise<void>;
+    isSaving: boolean;
   }) => {
     mockReviewCallbacks.kycCheck = onSetKycStatusCheck;
     return (
       <>
       <div data-testid="review-customer">{userData.marker}</div>
+      <output data-testid="review-saving">{String(isSaving)}</output>
       <button type="button" data-testid="set-kyc-check" onClick={() => {
         mockLastAsyncAction = onSetKycStatusCheck();
       }}>Set KYC Check</button>
@@ -171,7 +173,9 @@ jest.mock('src/components/compliance/freigabe-panel', () => ({
       })}>
         Open review file
       </button>
-      <button type="button" data-testid="save-review" onClick={() => onSave(mockFreigabeParams)}>
+      <button type="button" data-testid="save-review" onClick={() => {
+        mockLastAsyncAction = onSave(mockFreigabeParams);
+      }}>
         Save review
       </button>
       </>
@@ -305,6 +309,355 @@ describe('ComplianceReviewScreen scoped requests', () => {
     mockOnBack = undefined;
     Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: mockCreateObjectURL });
     Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: mockRevokeObjectURL });
+  });
+
+  // These mocked hook responses test frontend ordering and UI isolation, not server-side audit persistence.
+  describe.each([
+    {
+      name: 'Freigabe',
+      tab: 'freigabe',
+      action: 'save-review',
+      write: mockUpdateKycStep,
+      id: 10,
+      log: 'Services - DfxApproval',
+    },
+    {
+      name: 'KYC step',
+      tab: 'operationalActivity',
+      action: 'save-step',
+      write: mockUpdateKycStep,
+      id: 11,
+      log: 'Services - StepSave',
+    },
+    {
+      name: 'bank approval',
+      tab: 'bankDataReview',
+      action: 'approve-bank',
+      write: mockUpdateBankData,
+      id: 44,
+      log: 'bankData-approved-true',
+    },
+    {
+      name: 'bank rejection',
+      tab: 'bankDataReview',
+      action: 'reject-bank',
+      write: mockUpdateBankData,
+      id: 44,
+      log: 'bankData-approved-false',
+    },
+    {
+      name: 'BuyCrypto AML update',
+      tab: 'amlPending',
+      action: 'update-crypto-aml',
+      write: mockUpdateBuyCrypto,
+      id: 31,
+      log: 'buyCrypto-amlCheck-Fail',
+    },
+    {
+      name: 'BuyFiat AML update',
+      tab: 'amlPending',
+      action: 'update-fiat-aml',
+      write: mockUpdateBuyFiat,
+      id: 32,
+      log: 'buyFiat-amlCheck-Pass',
+    },
+    {
+      name: 'BuyCrypto AML reset',
+      tab: 'amlPending',
+      action: 'reset-crypto-aml',
+      write: mockResetBuyCryptoReviewAml,
+      id: 31,
+      log: 'buyCrypto-amlCheck-Reset',
+    },
+    {
+      name: 'BuyFiat AML reset',
+      tab: 'amlPending',
+      action: 'reset-fiat-aml',
+      write: mockResetBuyFiatAml,
+      id: 32,
+      log: 'buyFiat-amlCheck-Reset',
+    },
+  ])('$name write chain', ({ tab, action, write, id, log }) => {
+    beforeEach(() => {
+      mockSearchTab = tab;
+      mockGetUserData.mockResolvedValueOnce({
+        ...response('customer A'),
+        kycSteps: [
+          {
+            id: 11,
+            name: 'OperationalActivity',
+            status: 'Pending',
+            sequenceNumber: 1,
+            result: '{"isOperational":true}',
+          },
+        ],
+      });
+    });
+
+    it('finishes writes and the audit log for A after switching to B without refreshing B', async () => {
+      const firstWrite = deferred<void>();
+      write.mockReturnValueOnce(firstWrite.promise);
+      const view = render(<ComplianceReviewScreen />);
+      expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer A');
+      fireEvent.click(screen.getByTestId(action));
+      const operation = mockLastAsyncAction;
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(write.mock.calls[0][0]).toBe(id);
+      expect(screen.getByTestId('review-saving')).toHaveTextContent('true');
+      expect(mockCreateKycLog).not.toHaveBeenCalled();
+
+      mockParams = { id: '9' };
+      mockGetUserData.mockResolvedValueOnce(response('customer B'));
+      await act(async () => view.rerender(<ComplianceReviewScreen />));
+      expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer B');
+      expect(screen.getByTestId('review-saving')).toHaveTextContent('false');
+      await act(async () => {
+        firstWrite.resolve();
+        await operation;
+      });
+
+      expect(mockCreateKycLog).toHaveBeenCalledTimes(1);
+      expect(mockCreateKycLog).toHaveBeenCalledWith(8, expect.stringContaining(log));
+      if (tab === 'freigabe') {
+        expect(mockUpdateUserData).toHaveBeenCalledWith(8, mockFreigabeParams.userDataUpdate);
+        expect(mockGenerateOnboardingPdf).toHaveBeenCalledWith(8, mockFreigabeParams.pdfData);
+        expect(mockCreateObjectURL).not.toHaveBeenCalled();
+      } else if (tab === 'operationalActivity') {
+        expect(mockUpdateUserData).toHaveBeenCalledWith(8, { amlAccountType: 'operativ tätige Gesellschaft' });
+        expect(mockCreateKycLog).toHaveBeenCalledWith(8, expect.stringContaining('userData-amlAccountType-operativ'));
+      }
+      expect(mockGetUserData.mock.calls).toEqual([[8], [9]]);
+      expect(screen.getByTestId('review-customer')).toHaveTextContent('customer B');
+      expect(screen.getByTestId('review-saving')).toHaveTextContent('false');
+    });
+
+    it.each(['replacement token', 'removed token', 'different session'])(
+      'stops follow-up writes after a route change and a %s without waiting for an auth rerender',
+      async (change) => {
+        const firstWrite = deferred<void>();
+        write.mockReturnValueOnce(firstWrite.promise);
+        const view = render(<ComplianceReviewScreen />);
+        expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer A');
+        fireEvent.click(screen.getByTestId(action));
+        const operation = mockLastAsyncAction;
+        expect(write).toHaveBeenCalledTimes(1);
+
+        mockParams = { id: '9' };
+        mockGetUserData.mockResolvedValueOnce(response('customer B'));
+        await act(async () => view.rerender(<ComplianceReviewScreen />));
+        expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer B');
+        if (change === 'replacement token') mockToken = 'replacement-token';
+        else if (change === 'removed token') mockToken = undefined;
+        else mockRawTokenSession = { account: 102, user: 202, address: '0xDef', role: 'Compliance' };
+
+        await act(async () => {
+          firstWrite.resolve();
+          await operation;
+        });
+        expect(mockUpdateUserData).not.toHaveBeenCalled();
+        expect(mockCreateKycLog).not.toHaveBeenCalled();
+        expect(mockGenerateOnboardingPdf).not.toHaveBeenCalled();
+        expect(mockGetUserData.mock.calls).toEqual([[8], [9]]);
+      },
+    );
+
+    it('reports a failed audit log for A while displaying B without refreshing B', async () => {
+      const pendingLog = deferred<void>();
+      mockCreateKycLog.mockReturnValueOnce(pendingLog.promise);
+      const view = render(<ComplianceReviewScreen />);
+      expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer A');
+      fireEvent.click(screen.getByTestId(action));
+      const operation = mockLastAsyncAction;
+      await waitFor(() => expect(mockCreateKycLog).toHaveBeenCalledWith(8, expect.stringContaining(log)));
+      expect(write).toHaveBeenCalledTimes(1);
+
+      mockParams = { id: '9' };
+      mockGetUserData.mockResolvedValueOnce(response('customer B'));
+      await act(async () => view.rerender(<ComplianceReviewScreen />));
+      expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer B');
+      await act(async () => {
+        pendingLog.reject(new Error('audit unavailable'));
+        await operation;
+      });
+      expect(screen.getByText(/^Customer 8: .*audit unavailable$/)).toBeInTheDocument();
+      expect(screen.getByTestId('review-customer')).toHaveTextContent('customer B');
+      expect(screen.getByTestId('review-saving')).toHaveTextContent('false');
+      expect(mockGetUserData.mock.calls).toEqual([[8], [9]]);
+      expect(mockGenerateOnboardingPdf).not.toHaveBeenCalled();
+    });
+
+    it('does not expose a failed audit log from A to another authenticated session', async () => {
+      const pendingLog = deferred<void>();
+      mockCreateKycLog.mockReturnValueOnce(pendingLog.promise);
+      const view = render(<ComplianceReviewScreen />);
+      expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer A');
+      fireEvent.click(screen.getByTestId(action));
+      const operation = mockLastAsyncAction;
+      await waitFor(() => expect(mockCreateKycLog).toHaveBeenCalledTimes(1));
+
+      mockToken = 'replacement-token';
+      mockGetUserData.mockResolvedValueOnce(response('new session'));
+      await act(async () => view.rerender(<ComplianceReviewScreen />));
+      expect(await screen.findByTestId('review-customer')).toHaveTextContent('new session');
+      await act(async () => {
+        pendingLog.reject(new Error('old session audit failed'));
+        await operation;
+      });
+      expect(screen.queryByText(/old session audit failed/)).not.toBeInTheDocument();
+      expect(mockGetUserData).toHaveBeenCalledTimes(2);
+      expect(mockGenerateOnboardingPdf).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each(['freigabe', 'operationalActivity'])(
+    'keeps %s user-data follow-ups scoped to A and stops them if authentication then changes',
+    async (tab) => {
+      mockSearchTab = tab;
+      mockGetUserData.mockResolvedValueOnce({
+        ...response('customer A'),
+        kycSteps: [
+          {
+            id: 11,
+            name: 'OperationalActivity',
+            status: 'Pending',
+            sequenceNumber: 1,
+            result: '{"isOperational":true}',
+          },
+        ],
+      });
+      const pendingUserData = deferred<void>();
+      mockUpdateUserData.mockReturnValueOnce(pendingUserData.promise);
+      const view = render(<ComplianceReviewScreen />);
+      expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer A');
+      fireEvent.click(screen.getByTestId(tab === 'freigabe' ? 'save-review' : 'save-step'));
+      const operation = mockLastAsyncAction;
+      await waitFor(() => expect(mockUpdateUserData).toHaveBeenCalledWith(8, expect.any(Object)));
+
+      mockParams = { id: '9' };
+      mockGetUserData.mockResolvedValueOnce(response('customer B'));
+      await act(async () => view.rerender(<ComplianceReviewScreen />));
+      expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer B');
+      mockRawTokenSession = { account: 102, user: 202, address: '0xDef', role: 'Compliance' };
+      await act(async () => {
+        pendingUserData.resolve();
+        await operation;
+      });
+      expect(mockCreateKycLog).not.toHaveBeenCalled();
+      expect(mockGenerateOnboardingPdf).not.toHaveBeenCalled();
+      expect(mockGetUserData.mock.calls).toEqual([[8], [9]]);
+    },
+  );
+
+  it('does not generate a Freigabe PDF when authentication changes during audit logging', async () => {
+    const pendingLog = deferred<void>();
+    mockCreateKycLog.mockReturnValueOnce(pendingLog.promise);
+    render(<ComplianceReviewScreen />);
+    expect(await screen.findByTestId('review-customer')).toHaveTextContent('default');
+    fireEvent.click(screen.getByTestId('save-review'));
+    const operation = mockLastAsyncAction;
+    await waitFor(() => expect(mockCreateKycLog).toHaveBeenCalledWith(8, expect.any(String)));
+    mockToken = undefined;
+    await act(async () => {
+      pendingLog.resolve();
+      await operation;
+    });
+    expect(mockGenerateOnboardingPdf).not.toHaveBeenCalled();
+    expect(mockGetUserData).toHaveBeenCalledTimes(1);
+  });
+
+  it('finishes A without clearing the saving state of an in-flight save for B', async () => {
+    const saveA = deferred<void>();
+    const saveB = deferred<void>();
+    mockUpdateKycStep.mockReturnValueOnce(saveA.promise).mockReturnValueOnce(saveB.promise);
+    const view = render(<ComplianceReviewScreen />);
+    expect(await screen.findByTestId('review-customer')).toHaveTextContent('default');
+    fireEvent.click(screen.getByTestId('save-review'));
+    const operationA = mockLastAsyncAction;
+
+    mockParams = { id: '9' };
+    mockGetUserData.mockResolvedValue(response('customer B'));
+    await act(async () => view.rerender(<ComplianceReviewScreen />));
+    expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer B');
+    expect(screen.getByTestId('review-saving')).toHaveTextContent('false');
+    fireEvent.click(screen.getByTestId('save-review'));
+    const operationB = mockLastAsyncAction;
+    expect(screen.getByTestId('review-saving')).toHaveTextContent('true');
+    await act(async () => {
+      saveA.resolve();
+      await operationA;
+    });
+    expect(mockCreateKycLog).toHaveBeenCalledWith(8, expect.any(String));
+    expect(mockGetUserData.mock.calls).toEqual([[8], [9]]);
+    expect(screen.getByTestId('review-saving')).toHaveTextContent('true');
+    expect(screen.getByTestId('review-preview-url')).toBeEmptyDOMElement();
+
+    await act(async () => {
+      saveB.resolve();
+      await operationB;
+    });
+    expect(mockCreateKycLog).toHaveBeenLastCalledWith(9, expect.any(String));
+    expect(mockGetUserData.mock.calls).toEqual([[8], [9], [9]]);
+    expect(screen.getByTestId('review-saving')).toHaveTextContent('false');
+  });
+
+  it.each([
+    { failure: new Error('PDF unavailable'), message: 'PDF unavailable' },
+    { failure: 'raw PDF rejection', message: 'Error generating PDF' },
+  ])('reports a late PDF failure for A while displaying B: $message', async ({ failure, message }) => {
+    const pendingPdf = deferred<{ pdfData: string; fileName: string }>();
+    mockGenerateOnboardingPdf.mockReturnValueOnce(pendingPdf.promise);
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const view = render(<ComplianceReviewScreen />);
+      expect(await screen.findByTestId('review-customer')).toHaveTextContent('default');
+      fireEvent.click(screen.getByTestId('save-review'));
+      const operation = mockLastAsyncAction;
+      await waitFor(() => expect(mockGenerateOnboardingPdf).toHaveBeenCalledWith(8, mockFreigabeParams.pdfData));
+
+      mockParams = { id: '9' };
+      mockGetUserData.mockResolvedValueOnce(response('customer B'));
+      await act(async () => view.rerender(<ComplianceReviewScreen />));
+      expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer B');
+      await act(async () => {
+        pendingPdf.reject(failure);
+        await operation;
+      });
+      expect(screen.getByText(`Customer 8: ${message}`)).toBeInTheDocument();
+      expect(screen.getByTestId('review-customer')).toHaveTextContent('customer B');
+      expect(mockCreateObjectURL).not.toHaveBeenCalled();
+      expect(mockGetUserData.mock.calls).toEqual([[8], [9]]);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('keeps an AML audit failure visible for A when the customer changes during the recovery refresh', async () => {
+    mockSearchTab = 'amlPending';
+    const pendingRefresh = deferred<ReviewResponse>();
+    mockCreateKycLog.mockRejectedValueOnce(new Error('audit unavailable'));
+    mockGetUserData
+      .mockResolvedValueOnce(response('customer A'))
+      .mockReturnValueOnce(pendingRefresh.promise)
+      .mockResolvedValueOnce(response('customer B'));
+    const view = render(<ComplianceReviewScreen />);
+    expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer A');
+    fireEvent.click(screen.getByTestId('reset-crypto-aml'));
+    const operation = mockLastAsyncAction;
+    await waitFor(() => expect(mockGetUserData).toHaveBeenCalledTimes(2));
+    expect(mockCreateKycLog).toHaveBeenCalledWith(8, expect.stringContaining('buyCrypto-amlCheck-Reset'));
+
+    mockParams = { id: '9' };
+    await act(async () => view.rerender(<ComplianceReviewScreen />));
+    expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer B');
+    await act(async () => {
+      pendingRefresh.resolve(response('old A refresh'));
+      await operation;
+    });
+    expect(
+      screen.getByText('Customer 8: AML check was reset, but the additional KYC log failed: audit unavailable'),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('review-customer')).toHaveTextContent('customer B');
+    expect(mockGetUserData.mock.calls).toEqual([[8], [8], [9]]);
   });
 
   it('keeps the new customer after an older route request resolves late', async () => {
@@ -500,7 +853,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
     expect(mockGetKycFile).toHaveBeenCalledTimes(fileRequestsBeforeStaleCallbacks);
   });
 
-  it('does not show errors from review writes that reject after the customer changes', async () => {
+  it('identifies the customer for late write-chain failures and suppresses unrelated single-write errors', async () => {
     mockGetUserData.mockResolvedValue(response('customer 8'));
     const view = render(<ComplianceReviewScreen />);
     expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer 8');
@@ -518,6 +871,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
       callback: () => Promise<void>,
       startExpectation: () => Promise<void>,
       pending: ReturnType<typeof deferred<void>>,
+      reportsCustomer = true,
     ): Promise<void> {
       let operation!: Promise<void>;
       act(() => { operation = callback(); });
@@ -527,7 +881,11 @@ describe('ComplianceReviewScreen scoped requests', () => {
         pending.reject(new Error('late request failed'));
         await operation;
       });
-      expect(screen.queryByText('late request failed')).not.toBeInTheDocument();
+      if (reportsCustomer) {
+        expect(screen.getByText(`Customer ${customerId - 1}: late request failed`)).toBeInTheDocument();
+      } else {
+        expect(screen.queryByText(/late request failed/)).not.toBeInTheDocument();
+      }
     }
 
     let pending = deferred<void>();
@@ -581,6 +939,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
       mockReviewCallbacks.amlReset,
       async () => waitFor(() => expect(mockResetBuyCryptoReviewAml).toHaveBeenCalledTimes(1)),
       pending,
+      false,
     );
 
     pending = deferred<void>();
@@ -589,6 +948,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
       mockReviewCallbacks.amlReviewReset,
       async () => waitFor(() => expect(mockResetBuyCryptoReviewAml).toHaveBeenCalledTimes(2)),
       pending,
+      false,
     );
 
     pending = deferred<void>();
@@ -597,6 +957,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
       mockReviewCallbacks.kycCheck,
       async () => waitFor(() => expect(mockSetKycStatusCheck).toHaveBeenCalledTimes(1)),
       pending,
+      false,
     );
   });
 
@@ -645,7 +1006,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
     expect(screen.queryByText('stale review reset failed')).not.toBeInTheDocument();
   });
 
-  it('does not show a late AML audit-log rejection or refresh a new customer', async () => {
+  it('reports a late AML audit-log rejection with the original customer without refreshing the new customer', async () => {
     mockGetUserData.mockResolvedValueOnce(response('customer 8'));
     const view = render(<ComplianceReviewScreen />);
     expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer 8');
@@ -670,10 +1031,12 @@ describe('ComplianceReviewScreen scoped requests', () => {
     });
     expect(mockGetUserData).toHaveBeenCalledTimes(readsBeforeOldLog);
     expect(screen.getByTestId('review-customer')).toHaveTextContent('customer 9');
-    expect(screen.queryByText(/old audit log failed/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Customer 8: AML check was reset, but the additional KYC log failed: old audit log failed'),
+    ).toBeInTheDocument();
   });
 
-  it('stops review write chains when their successful response arrives after a customer change', async () => {
+  it('completes review write chains for their original customer without refreshing the new customer', async () => {
     mockGetUserData.mockResolvedValue(response('customer 8'));
     const view = render(<ComplianceReviewScreen />);
     expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer 8');
@@ -709,7 +1072,8 @@ describe('ComplianceReviewScreen scoped requests', () => {
       async () => waitFor(() => expect(mockUpdateKycStep).toHaveBeenCalledTimes(1)),
       pending,
     );
-    expect(mockUpdateUserData).not.toHaveBeenCalled();
+    expect(mockUpdateUserData).toHaveBeenCalledWith(8, mockFreigabeParams.userDataUpdate);
+    expect(mockCreateKycLog).toHaveBeenLastCalledWith(8, expect.stringContaining('DfxApproval'));
 
     fireEvent.click(screen.getByRole('button', { name: /Operational Activity/ }));
     pending = deferred<void>();
@@ -719,7 +1083,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
       async () => waitFor(() => expect(mockUpdateKycStep).toHaveBeenCalledTimes(2)),
       pending,
     );
-    expect(mockCreateKycLog).not.toHaveBeenCalled();
+    expect(mockCreateKycLog).toHaveBeenLastCalledWith(9, expect.stringContaining('StepSave'));
 
     fireEvent.click(screen.getByRole('button', { name: /BankData Review/ }));
     pending = deferred<void>();
@@ -729,7 +1093,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
       async () => waitFor(() => expect(mockUpdateBankData).toHaveBeenCalledTimes(1)),
       pending,
     );
-    expect(mockCreateKycLog).not.toHaveBeenCalled();
+    expect(mockCreateKycLog).toHaveBeenLastCalledWith(10, expect.stringContaining('bankData-approved-true'));
 
     fireEvent.click(screen.getByRole('button', { name: /BankData Review/ }));
     pending = deferred<void>();
@@ -739,7 +1103,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
       async () => waitFor(() => expect(mockUpdateBankData).toHaveBeenCalledTimes(2)),
       pending,
     );
-    expect(mockCreateKycLog).not.toHaveBeenCalled();
+    expect(mockCreateKycLog).toHaveBeenLastCalledWith(11, expect.stringContaining('bankData-approved-false'));
 
     fireEvent.click(screen.getByRole('button', { name: /AML Pending/ }));
     pending = deferred<void>();
@@ -749,7 +1113,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
       async () => waitFor(() => expect(mockUpdateBuyCrypto).toHaveBeenCalledTimes(1)),
       pending,
     );
-    expect(mockCreateKycLog).not.toHaveBeenCalled();
+    expect(mockCreateKycLog).toHaveBeenLastCalledWith(12, expect.stringContaining('buyCrypto-amlCheck-Fail'));
 
     fireEvent.click(screen.getByRole('button', { name: /AML Pending/ }));
     pending = deferred<void>();
@@ -759,7 +1123,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
       async () => waitFor(() => expect(mockResetBuyCryptoReviewAml).toHaveBeenCalledTimes(1)),
       pending,
     );
-    expect(mockCreateKycLog).not.toHaveBeenCalled();
+    expect(mockCreateKycLog).toHaveBeenLastCalledWith(13, expect.stringContaining('buyCrypto-amlCheck-Reset'));
 
     pending = deferred<void>();
     mockResetBuyCryptoReviewAml.mockReturnValueOnce(pending.promise);
@@ -780,7 +1144,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
     expect(mockGetUserData).toHaveBeenCalledTimes(9);
   });
 
-  it('does not start PDF generation or refresh after audit logging completes in an old customer scope', async () => {
+  it('generates the original customer PDF after a late audit log without installing its preview or refreshing', async () => {
     mockGetUserData.mockResolvedValue(response('customer 8'));
     const view = render(<ComplianceReviewScreen />);
     expect(await screen.findByTestId('review-customer')).toHaveTextContent('customer 8');
@@ -810,7 +1174,8 @@ describe('ComplianceReviewScreen scoped requests', () => {
     }
 
     await completeLateLog(mockReviewCallbacks.freigabeSave, 1);
-    expect(mockGenerateOnboardingPdf).not.toHaveBeenCalled();
+    expect(mockGenerateOnboardingPdf).toHaveBeenCalledWith(8, mockFreigabeParams.pdfData);
+    expect(mockCreateObjectURL).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: /Operational Activity/ }));
     await completeLateLog(mockReviewCallbacks.stepSave, 2);
@@ -1131,7 +1496,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
     );
   });
 
-  it('stops Operational Activity follow-up writes when the customer changes during account update', async () => {
+  it('logs Operational Activity for the original customer after a route change during account update', async () => {
     const pendingUpdate = deferred<void>();
     mockGetUserData.mockResolvedValueOnce({
       ...response('old organization'),
@@ -1157,7 +1522,7 @@ describe('ComplianceReviewScreen scoped requests', () => {
       pendingUpdate.resolve();
       await oldSave;
     });
-    expect(mockCreateKycLog).not.toHaveBeenCalled();
+    expect(mockCreateKycLog).toHaveBeenCalledWith(8, expect.stringContaining('userData-amlAccountType-operativ'));
     expect(mockGetUserData).toHaveBeenCalledTimes(2);
   });
 
