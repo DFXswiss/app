@@ -84,10 +84,11 @@ test.describe('Log Validity - Visual Regression Tests', () => {
 
     await expect(page).toHaveScreenshot('log-validity-02-info-point-confirmation.png', shot);
 
+    // Pause before confirming, so the success message's 4 s auto-hide timer cannot fire before the capture.
+    const pauseTime = await page.evaluate(() => Date.now() + 1000);
+    await page.clock.pauseAt(pauseTime);
     await page.getByRole('button', { name: 'Confirm' }).click();
     await expect(page.getByText('Recorded an info point for 3 entries (1 changed to valid = true).')).toBeVisible();
-    const pauseTime = await page.evaluate(() => Date.now() + 1);
-    await page.clock.pauseAt(pauseTime);
 
     await expect(page).toHaveScreenshot('log-validity-03-info-point-success.png', shot);
   });

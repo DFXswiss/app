@@ -9,6 +9,14 @@ describe('parseLocalDateTime', () => {
     ['after the Zurich overlap', '2026-10-25T03:00', 'Europe/Zurich', '2026-10-25T02:00:00.000Z'],
     ['a year affected by the Date.UTC 1900 mapping', '0099-01-01T00:00', 'UTC', '0099-01-01T00:00:00.000Z'],
     ['a representable five-digit year', '20266-09-30T19:00', 'UTC', '+020266-09-30T19:00:00.000Z'],
+    [
+      'the last representable day, whose next day is out of range',
+      '275760-09-13T00:00',
+      'UTC',
+      '+275760-09-13T00:00:00.000Z',
+    ],
+    // Bern mean time (+00:29:46) applied before 1894: the offset carries seconds.
+    ['a historical offset with seconds', '1890-01-01T12:00', 'Europe/Zurich', '1890-01-01T11:30:14.000Z'],
   ])('parses %s', (_name, value, timeZone, iso) => {
     expect(parseLocalDateTime(value, timeZone)).toEqual({ status: 'valid', date: new Date(iso) });
   });
@@ -16,6 +24,7 @@ describe('parseLocalDateTime', () => {
   it.each([
     ['Zurich spring gap', '2026-03-29T02:30', 'Europe/Zurich'],
     ['Lord Howe 30-minute spring gap', '2026-10-04T02:15', 'Australia/Lord_Howe'],
+    ['last representable day behind UTC, whose instant is out of range', '275760-09-13T00:00', 'America/New_York'],
   ])('rejects the %s', (_name, value, timeZone) => {
     expect(parseLocalDateTime(value, timeZone)).toEqual({ status: 'invalid' });
   });
