@@ -430,14 +430,19 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
   it('renders a Kontenblatt for every sheet and exports that sheet', async () => {
     const kaleido: KundengelderSheet = {
-      key: 'CH6008245111962200001|CHF',
-      name: 'Kaleido CHF',
+      key: '10037',
+      accountNo: '10037',
+      name: 'Kaleido Privatbank CHF',
       iban: 'CH6008245111962200001',
       currency: 'CHF',
-      soll: [{ label: 'Anfangsbestand', amount: 10 }],
-      haben: [{ label: 'Saldo', amount: 10 }],
-      sollSum: 10,
-      habenSum: 10,
+      soll: [
+        { label: 'Anfangsbestand', amount: 0 },
+        { label: 'Intern', amount: 10000, date: '2024-08-16' },
+        { label: 'Intern', amount: 0, date: '2024-09-24' },
+      ],
+      haben: [{ label: 'Saldo', amount: 10000 }],
+      sollSum: 10000,
+      habenSum: 10000,
       control: 0,
     };
     const buy: KundengelderSheet = {
@@ -461,7 +466,10 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Kaleido CHF' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Kaleido Privatbank CHF' })).toBeInTheDocument();
+    expect(screen.getByText('10037')).toBeInTheDocument();
+    expect(screen.getAllByText('Intern')).toHaveLength(2);
+    expect(screen.getByText('2024-08-16')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
     expect(screen.getAllByText('Soll').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Haben').length).toBeGreaterThan(0);
@@ -477,6 +485,11 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Kontrolle'));
-    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Kaleido CHF'));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(
+      `kundengelder-${YEAR}.csv`,
+      expect.stringContaining('Kaleido Privatbank CHF'),
+    );
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('2024-08-16'));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('10037'));
   });
 });

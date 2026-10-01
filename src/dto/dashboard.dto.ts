@@ -95,12 +95,16 @@ export interface KundengelderDiff {
 export interface KundengelderSheetLine {
   label: string;
   amount: number;
+  /** Booking date, YYYY-MM-DD. Absent on Saldo. */
+  date?: string;
   lineKey?: string;
 }
 
-/** T-account for one bank account (or checkout / crypto-crypto) and one currency. */
+/** Booked T-account for one client-money account and one year. */
 export interface KundengelderSheet {
   key: string;
+  /** Ledger account number. */
+  accountNo?: string;
   name: string;
   iban?: string;
   currency: string;

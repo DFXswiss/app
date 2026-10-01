@@ -21,7 +21,7 @@ import { withEveryBankAccount } from 'src/util/kundengelder-accounts';
 import { downloadCsv, toSemicolonCsv } from 'src/util/semicolon-csv';
 
 const CSV_HEADERS = ['Account', 'AccountKey', 'Line', 'Currency', 'Count', 'Amount', 'AmountChf'];
-const SHEET_CSV_HEADERS = ['Account', 'Side', 'Label', 'Amount', 'Kontrolle'];
+const SHEET_CSV_HEADERS = ['Account', 'AccountNo', 'Side', 'Date', 'Label', 'Amount', 'Currency', 'Kontrolle'];
 
 interface OpenedLine {
   viewKey: string;
@@ -126,11 +126,29 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
   function exportCsv(data: KundengelderExtract): void {
     if (data.sheets && data.sheets.length > 0) {
       const rows = data.sheets.flatMap((sheet) => [
-        ...sheet.soll.map((line) => [sheet.name, 'Soll', line.label, line.amount, '']),
-        [sheet.name, 'Soll', 'Summe', sheet.sollSum, ''],
-        ...sheet.haben.map((line) => [sheet.name, 'Haben', line.label, line.amount, '']),
-        [sheet.name, 'Haben', 'Summe', sheet.habenSum, ''],
-        [sheet.name, 'Kontrolle', '', '', sheet.control],
+        ...sheet.soll.map((line) => [
+          sheet.name,
+          sheet.accountNo ?? '',
+          'Soll',
+          line.date ?? '',
+          line.label,
+          line.amount,
+          sheet.currency,
+          '',
+        ]),
+        [sheet.name, sheet.accountNo ?? '', 'Soll', '', 'Summe', sheet.sollSum, sheet.currency, ''],
+        ...sheet.haben.map((line) => [
+          sheet.name,
+          sheet.accountNo ?? '',
+          'Haben',
+          line.date ?? '',
+          line.label,
+          line.amount,
+          sheet.currency,
+          '',
+        ]),
+        [sheet.name, sheet.accountNo ?? '', 'Haben', '', 'Summe', sheet.habenSum, sheet.currency, ''],
+        [sheet.name, sheet.accountNo ?? '', 'Kontrolle', '', '', '', sheet.currency, sheet.control],
       ]);
       downloadCsv(`kundengelder-${year}.csv`, toSemicolonCsv(SHEET_CSV_HEADERS, rows));
       return;
@@ -315,11 +333,13 @@ function KontenblattCard({
   return (
     <div className="bg-white rounded-lg shadow p-4">
       <h2 className="text-lg font-semibold">{sheet.name}</h2>
-      {sheet.iban && (
-        <div className="text-sm mb-3" style={{ color: '#6b7280' }}>
-          {sheet.iban}
-        </div>
-      )}
+      <div className="text-sm mb-3" style={{ color: '#6b7280' }}>
+        {sheet.accountNo && <span>{sheet.accountNo}</span>}
+        {sheet.accountNo && sheet.iban && <span> · </span>}
+        {sheet.iban && <span>{sheet.iban}</span>}
+        {(sheet.accountNo || sheet.iban) && <span> · </span>}
+        <span>{sheet.currency}</span>
+      </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SheetSide
           title="Soll"
@@ -368,19 +388,21 @@ function SheetSide({
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-gray-200">
+          <th className="text-left py-2 px-3 font-semibold">Date</th>
           <th className="text-left py-2 px-3 font-semibold">{title}</th>
           <th className="text-right py-2 px-3 font-semibold">Amount</th>
         </tr>
       </thead>
       <tbody>
-        {lines.map((line) => {
-          const open = opened && opened.viewKey === sheetKey && opened.lineKey === line.lineKey;
+        {lines.map((line, index) => {
+          const open = opened && opened.viewKey === sheetKey && line.lineKey != null && opened.lineKey === line.lineKey;
           return (
-            <Fragment key={line.label}>
+            <Fragment key={`${index}-${line.date ?? ''}-${line.label}-${line.amount}`}>
               <tr
                 className={`border-b border-gray-100 ${line.lineKey ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
                 onClick={() => line.lineKey && onLine(line)}
               >
+                <td className="py-1.5 px-3">{line.date ?? ''}</td>
                 <td className="py-1.5 px-3">{line.label}</td>
                 <td className="py-1.5 px-3 text-right">
                   {line.amount.toLocaleString('de-CH')} {currency}
@@ -388,7 +410,7 @@ function SheetSide({
               </tr>
               {open && (
                 <tr>
-                  <td colSpan={2} className="py-2 px-3 bg-gray-50">
+                  <td colSpan={3} className="py-2 px-3 bg-gray-50">
                     {opened?.error && <ErrorHint message={opened.error} />}
                     {opened?.list && <TxTable list={opened.list} />}
                   </td>
@@ -398,6 +420,7 @@ function SheetSide({
           );
         })}
         <tr className="border-t border-gray-300">
+          <td className="py-1.5 px-3" />
           <td className="py-1.5 px-3 font-semibold">Summe</td>
           <td className="py-1.5 px-3 text-right font-semibold">
             {sum.toLocaleString('de-CH')} {currency}
