@@ -3,6 +3,8 @@
 
 const mockSignInWithMail = jest.fn();
 const mockRedirectPath = jest.fn();
+const mockIsWidget = jest.fn();
+const mockWidgetPersonalIban = jest.fn();
 const mockNavigate = jest.fn();
 const mockUseAppParams = jest.fn();
 const mockUseLocation = jest.fn();
@@ -42,6 +44,8 @@ jest.mock('react-router-dom', () => ({
 jest.mock('../contexts/app-handling.context', () => ({
   useAppHandlingContext: () => ({
     redirectPath: mockRedirectPath(),
+    isWidget: mockIsWidget(),
+    widgetPersonalIban: mockWidgetPersonalIban(),
   }),
 }));
 
@@ -75,6 +79,8 @@ describe('ConnectMail login redirect', () => {
     jest.clearAllMocks();
     delete process.env.REACT_APP_PUBLIC_URL;
     mockSignInWithMail.mockResolvedValue(undefined);
+    mockIsWidget.mockReturnValue(false);
+    mockWidgetPersonalIban.mockReturnValue(undefined);
     mockUseAppParams.mockReturnValue({ wallet: undefined, recommendationCode: undefined });
     mockUseLocation.mockReturnValue({ search: '?user=user@example.com' });
     onCancel = jest.fn();
@@ -166,13 +172,29 @@ describe('ConnectMail login redirect', () => {
   it('uses the app origin from the env when embedded on another site', async () => {
     process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
     locationStub.origin = 'https://embedding.example.org';
-    locationStub.search = '?foo=bar&personal-iban=frick';
+    locationStub.search = '?foo=bar&personal-iban=yapeal';
+    mockIsWidget.mockReturnValue(true);
+    mockWidgetPersonalIban.mockReturnValue('frick');
     mockRedirectPath.mockReturnValue('/buy');
 
     renderConnectMail();
     await submitNext();
 
     expect(mockSignInWithMail.mock.calls[0][1]).toBe('https://app.example.com/buy?personal-iban=frick');
+  });
+
+  it('uses the app origin when embedded without a personal-iban attribute', async () => {
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
+    locationStub.origin = 'https://embedding.example.org';
+    locationStub.search = '?foo=bar&personal-iban=yapeal';
+    mockIsWidget.mockReturnValue(true);
+    mockWidgetPersonalIban.mockReturnValue(undefined);
+    mockRedirectPath.mockReturnValue('/buy');
+
+    renderConnectMail();
+    await submitNext();
+
+    expect(mockSignInWithMail.mock.calls[0][1]).toBe('https://app.example.com/buy');
   });
 
   it('falls back to window.location.origin when the env var is unset', async () => {

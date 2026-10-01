@@ -13,13 +13,13 @@ import { WalletType } from '../../../contexts/wallet.context';
 import { useAlby } from '../../../hooks/wallets/alby.hook';
 import { AbortError } from '../../../util/abort-error';
 import { appOrigin } from '../../../util/app-origin';
-import { personalIbanOnlyParams } from '../../../util/personal-iban';
+import { loginRedirectParams } from '../../../util/login-redirect';
 import { delay, relativeUrl, url } from '../../../util/utils';
 import { ConnectBase } from '../connect-base';
 import { Account, ConnectContentProps, ConnectError, ConnectProps } from '../connect-shared';
 
 export default function ConnectAlby(props: ConnectProps): JSX.Element {
-  const { redirectPath, params: appParams } = useAppHandlingContext();
+  const { redirectPath, params: appParams, isWidget, widgetPersonalIban } = useAppHandlingContext();
   const { isAvailable, enable, signMessage } = useAlby();
 
   async function getAccount(): Promise<Account> {
@@ -46,7 +46,10 @@ export default function ConnectAlby(props: ConnectProps): JSX.Element {
       redirectPath &&
         redirectUrl.searchParams.set(
           'redirect',
-          relativeUrl({ path: redirectPath, params: personalIbanOnlyParams(win.location.search) }),
+          relativeUrl({
+            path: redirectPath,
+            params: loginRedirectParams({ isWidget, widgetPersonalIban }, win.location.search),
+          }),
         );
 
       const params = new URLSearchParams({ redirectUri: redirectUrl.toString() });
