@@ -1,7 +1,8 @@
 // Component-level: the screens that switch the session to another address of the account
-// (ConnectAddress and AccountScreen) run against the real UserContextProvider of the SDK; only the
-// HTTP layer (useUser) and the session store (useApiSession / useAuthContext) are replaced. A
-// rejected switch must not be sent again on its own, and a successful one must be sent exactly once.
+// (ConnectAddress and AccountScreen) run against the real UserContextProvider of the SDK; its HTTP
+// and session hooks (useUser, useApiSession) are replaced, as are useAuthContext, useApi, the UI
+// components, the client-error reporter and the app contexts. A rejected switch must not be sent
+// again on its own, and a successful one must be sent exactly once.
 
 import { createContext, ReactNode, useContext, useState } from 'react';
 
