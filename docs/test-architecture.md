@@ -405,22 +405,25 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the real `url()` treats those arguments identically; no assertion pins the outer host.
 - **The rejected address switch visual spec answers the user and the switch itself.**
   `e2e/connect-address-switch.spec.ts` authenticates with a synthetic unsigned JWT without an address, fulfils
-  `GET /v2/user` with one synthetic address and the bootstrap GETs, and answers `POST /v1/user/change` with a 403.
-  A green run proves that the screen sends the rejected switch once, shows the error above the address
-  selection, and sends exactly one new attempt when the address is selected again.
-  It does not prove when or why the API rejects the switch, or that login or token verification works.
+  `GET /v2/user` with one synthetic address and the bootstrap GETs, answers `POST /v1/user/change` with a 403
+  and fulfils the client-error POST. A green run proves that the screen sends the rejected switch once, shows
+  the translated rejection sentence above the selection without the API's text, reports it once, and sends
+  exactly one new attempt when the address is selected again. It does not prove when or why the API rejects
+  the switch, or that login or token verification works.
 - **The rejected address switch full-stack case deactivates the account with SQL.**
   In `e2e-stack/specs/auth.spec.ts`, the `/connect` mail-session case sets `user_data.status` to `Deactivated`
-  after the mail login, so the API rejects the automatic address switch. A green run proves that the screen sends
-  the rejected switch once and shows the API's message. It does not prove how an account reaches that state in
-  production or any other reason the API may reject the switch.
+  after the mail login, so the API rejects the automatic address switch. A green run proves that the screen
+  sends the rejected switch once and shows the translated rejection sentence instead of the API's text. It
+  does not prove how an account reaches that state in production or any other reason the API may reject the
+  switch.
 - **The address-switch unit test runs the SDK user context against replaced HTTP and session hooks.**
   `src/__tests__/address-switch.test.tsx` transpiles `UserContextProvider` from the installed `@dfx.swiss/react`
   build and wires it to hand-written `useUser` and `useApiSession` replacements; the dropdown, `ErrorHint`,
-  labels and the app contexts are stubbed as well. A green run proves, against that harness, that
-  `ConnectAddress` and `AccountScreen` each send a switch only once and that `ConnectAddress` shows a
-  rejection and retries only after the user selects an address again. It does not prove the real session
-  or token handling, the rendered dropdown or error text, or that the API returns those errors.
+  labels, the app contexts and the client-error reporter are stubbed as well. A green run proves, against that
+  harness, that `ConnectAddress` and `AccountScreen` each send a switch only once and that `ConnectAddress`
+  shows the translated rejection sentence instead of the API's text for 400/401/403/404, keeps the generic
+  hint for other failures, reports the rejection once, and retries only after re-selection. It does not prove
+  the real session or token handling, the rendered dropdown, or that the API returns those statuses.
 
 ## Known gaps
 

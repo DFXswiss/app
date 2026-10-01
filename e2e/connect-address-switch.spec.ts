@@ -2,8 +2,9 @@ import { expect, Page, Route, test } from '@playwright/test';
 
 /**
  * Visual variant of a rejected automatic address switch on /connect: the rejected automatic switch
- * is sent exactly once, the error is shown above the address selection, and selecting the address
- * again sends exactly one new attempt.
+ * is sent exactly once, the translated rejection sentence is shown above the address selection
+ * (without the API's text or the generic ErrorHint), the rejection is reported once via the
+ * client-error log, and selecting the address again sends exactly one new attempt.
  *
  * Auth is a synthetic unsigned JWT WITHOUT `address` (a mail-login session); all `/v1/**` and
  * `/v2/**` calls are intercepted via page.route(...).
@@ -29,6 +30,8 @@ const USER = {
   paymentMethods: [],
 };
 
+const REJECTION_TEXT = 'This address could not be selected. Please use another address or contact our support.';
+
 function jwt(): string {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
   return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
@@ -43,9 +46,11 @@ async function fulfillJson(route: Route, body: unknown, status = 200): Promise<v
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: string[]; changeCalls: number }> {
+async function installSyntheticApi(
+  page: Page,
+): Promise<{ unexpectedRequests: string[]; changeCalls: number; reports: unknown[] }> {
   const unexpectedRequests: string[] = [];
-  const state = { changeCalls: 0, unexpectedRequests };
+  const state = { changeCalls: 0, unexpectedRequests, reports: [] as unknown[] };
 
   await page.route('**/v1/**', async (route) => {
     const request = route.request();
@@ -73,13 +78,14 @@ async function installSyntheticApi(page: Page): Promise<{ unexpectedRequests: st
     }
 
     if (method === 'POST' && path === '/v1/log/clientError') {
+      state.reports.push(request.postDataJSON());
       await fulfillJson(route, null);
       return;
     }
 
     if (method === 'POST' && path === '/v1/user/change') {
       state.changeCalls++;
-      await fulfillJson(route, { statusCode: 403, message: 'Forbidden' }, 403);
+      await fulfillJson(route, { statusCode: 403, message: 'Forbidden resource', error: 'Forbidden' }, 403);
       return;
     }
 
@@ -120,11 +126,19 @@ test.describe('Connect address switch', () => {
     await page.goto(`/connect?session=${encodeURIComponent(jwt())}&lang=en`);
 
     await expect(page.getByText('Please select an address or add a new one to continue.')).toBeVisible();
-    await expect(page.getByText(/Something went wrong/)).toBeVisible();
+    await expect(page.getByText(REJECTION_TEXT)).toBeVisible();
+    await expect(page.getByText(/Something went wrong/)).toHaveCount(0);
+    await expect(page.getByText('Forbidden resource')).toHaveCount(0);
 
     // A looping screen would keep calling during the wait.
     await page.waitForTimeout(2000);
     expect(api.changeCalls).toBe(1);
+    expect(
+      api.reports.filter((report) => {
+        const body = JSON.stringify(report);
+        return body.includes('KnownRejection') && body.includes('Forbidden resource');
+      }),
+    ).toHaveLength(1);
     expect(api.unexpectedRequests).toEqual([]);
 
     await expect(page).toHaveScreenshot('connect-address-switch-01-rejected.png', { fullPage: true });
@@ -135,5 +149,6 @@ test.describe('Connect address switch', () => {
     await expect.poll(() => api.changeCalls).toBe(2);
     await page.waitForTimeout(2000);
     expect(api.changeCalls).toBe(2);
+    await expect(page.getByText(REJECTION_TEXT)).toBeVisible();
   });
 });
