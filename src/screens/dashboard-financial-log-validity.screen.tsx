@@ -67,6 +67,13 @@ function matchesLocalDateTime(value: string, date: Date): boolean {
   return Number.isNaN(date.getTime()) === false && formatLocalDateTime(date) === value;
 }
 
+function isAmbiguousLocalDateTime(value: string, date: Date): boolean {
+  const oneHour = 60 * 60 * 1000;
+  const previousHourMatches = formatLocalDateTime(new Date(date.getTime() - oneHour)) === value;
+  const nextHourMatches = formatLocalDateTime(new Date(date.getTime() + oneHour)) === value;
+  return [previousHourMatches, nextHourMatches].includes(true);
+}
+
 export default function DashboardFinancialLogValidityScreen(): JSX.Element {
   useAdminGuard();
 
@@ -196,6 +203,16 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
       return undefined;
     }
 
+    if (fromDate !== undefined && isAmbiguousLocalDateTime(data.from, fromDate)) {
+      setRangeError("Ambiguous 'from' time (daylight saving change).");
+      return undefined;
+    }
+
+    if (toDate !== undefined && isAmbiguousLocalDateTime(data.to, toDate)) {
+      setRangeError("Ambiguous 'to' time (daylight saving change).");
+      return undefined;
+    }
+
     if (fromDate && toDate && fromDate.getTime() > toDate.getTime()) {
       setRangeError("'from' must be earlier than or equal to 'to'.");
       return undefined;
@@ -213,6 +230,15 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
 
     const min = hasMin ? Number(minStr) : undefined;
     const max = hasMax ? Number(maxStr) : undefined;
+
+    if (min !== undefined && Number.isFinite(min) === false) {
+      setRangeError("'min' must be a number.");
+      return undefined;
+    }
+    if (max !== undefined && Number.isFinite(max) === false) {
+      setRangeError("'max' must be a number.");
+      return undefined;
+    }
 
     if (min !== undefined && max !== undefined && min >= max) {
       setRangeError("'min' must be less than 'max'.");
@@ -260,7 +286,9 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
     } else {
       setRangeSuccess(
         payload.auditAll
-          ? `Recorded an info point for ${response.audited} ${response.audited === 1 ? 'entry' : 'entries'} (${response.affected} changed to valid = true).`
+          ? response.audited === 0
+            ? 'No matching entries; no info point was recorded.'
+            : `Recorded an info point for ${response.audited} ${response.audited === 1 ? 'entry' : 'entries'} (${response.affected} changed to valid = true).`
           : `Updated ${response.affected} ${response.affected === 1 ? 'entry' : 'entries'} to valid = ${payload.valid}.`,
       );
       if (rangeSuccessTimeout.current !== undefined) clearTimeout(rangeSuccessTimeout.current);

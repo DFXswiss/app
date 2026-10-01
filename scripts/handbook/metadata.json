@@ -213,7 +213,7 @@
   },
   "dashboard-financial-log-validity": {
     "title": "Financial-Log-Gültigkeit",
-    "description": "Admin-Screen: Gültigkeit einzelner Logs per ID oder von Financial-Logs per Zeitraum/Schwelle setzen, mit Pflicht-Begründung und Info-Punkt für den Treasury-Chart; Bestätigung vor dem Info-Punkt."
+    "description": "Admin-Screen: Gültigkeit einzelner Logs per ID oder von Financial-Logs per Zeitraum/Schwelle setzen, mit Pflicht-Begründung und Info-Punkt für den Treasury-Chart; Bestätigung vor dem Info-Punkt und Erfolgsmeldung danach."
   },
   "support-ticket-note": {
     "title": "Support-Ticket Kundennotiz",

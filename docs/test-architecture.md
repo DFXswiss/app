@@ -183,10 +183,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The Log Validity visual spec answers the app shell itself.**
   `e2e/dashboard-financial-log-validity.spec.ts` uses a synthetic unsigned Admin JWT and fulfils
   `/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
-  `/v1/setting/infoBanner` and `/v2/user` with synthetic fixtures. The screen fetches nothing on
-  mount and the spec sends no request. A green run proves the form and the info-point confirmation
-  render. It does not prove production auth, that the API accepts `reference` or `auditAll`, or that
-  it returns `{ affected, audited }`.
+  `/v1/setting/infoBanner` and `/v2/user` with synthetic fixtures, and answers
+  `PUT /v1/log/financial/validity` with a synthetic `{ affected: 1, audited: 3 }`. The screen fetches
+  nothing on mount; other `/v1/**` and `/v2/**` requests are passed through unchanged (`route.continue()`).
+  A green run proves the form, the info-point confirmation and the success message render.
+  It does not prove production auth, that the API accepts `reference` or `auditAll`, or that it returns
+  `{ affected, audited }`.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for

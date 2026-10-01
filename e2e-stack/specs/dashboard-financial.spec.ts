@@ -313,7 +313,7 @@ test.describe('Financial dashboard', () => {
     await rangeSection.getByRole('button', { name: 'Add info point (set valid)' }).click();
     await page.getByRole('button', { name: 'Confirm' }).click();
 
-    await expect(page.getByText('Recorded an info point for 0 entries (0 changed to valid = true).')).toBeVisible();
+    await expect(page.getByText('No matching entries; no info point was recorded.')).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);
   });

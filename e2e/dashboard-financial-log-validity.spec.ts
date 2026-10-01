@@ -2,12 +2,14 @@ import { expect, Page, Route, test } from '@playwright/test';
 
 /**
  * Visual regression for the Log Validity admin screen (/dashboard/financial/log-validity): the empty
- * form with both sections, and the confirmation shown before an info point is recorded.
+ * form with both sections, the confirmation shown before an info point is recorded, and the success
+ * message after it.
  *
  * Auth is a synthetic Admin JWT and the app shell reads are mocked, the same way as the RealUnit
- * workspace spec. The screen fetches nothing on mount, so no validity data is involved.
- * A green run proves the form and the info-point confirmation render. It does not prove production auth, that the
- * API accepts `reference` or `auditAll`, or that it returns `{ affected, audited }`.
+ * workspace spec. The screen fetches nothing on mount; the info-point request is answered with a synthetic
+ * `{ affected: 1, audited: 3 }`. A green run proves the form, the info-point confirmation and the success message
+ * render. It does not prove production auth, that the API accepts `reference` or `auditAll`, or that it returns
+ * `{ affected, audited }`.
  */
 
 function jwt(): string {
@@ -35,6 +37,8 @@ async function installShellRoutes(page: Page): Promise<void> {
       return json(route, []);
     }
     if (request.method() === 'GET' && path === '/v1/setting/infoBanner') return json(route, null);
+    if (request.method() === 'PUT' && path === '/v1/log/financial/validity')
+      return json(route, { affected: 1, audited: 3 });
     await route.continue();
   });
 
@@ -78,5 +82,10 @@ test.describe('Log Validity - Visual Regression Tests', () => {
     await expect(page.getByText(/Record an info point for all financial data logs matching/)).toBeVisible();
 
     await expect(page).toHaveScreenshot('log-validity-02-info-point-confirmation.png', shot);
+
+    await page.getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.getByText('Recorded an info point for 3 entries (1 changed to valid = true).')).toBeVisible();
+
+    await expect(page).toHaveScreenshot('log-validity-03-info-point-success.png', shot);
   });
 });

@@ -237,16 +237,21 @@ const RANGE_VALIDATION_CASES: {
     values: { 'To (created <)': '2026-09-30T19:00:30' },
     message: "Invalid 'to' date.",
   },
-  ...['-', '1e', 'abc'].map((value) => ({
+  ...['1e3', '.5', '+5', '9'.repeat(309)].map((value) => ({
     name: `rejects ${value} as a minimum`,
-    values: { 'Min totalBalanceChf (exclusive)': value },
+    values: {
+      'From (created >=)': '2026-01-15T10:00',
+      'Min totalBalanceChf (exclusive)': value,
+      'Reason (shown on the chart)': 'Reject invalid minimum',
+    },
     message: "'min' must be a number.",
   })),
-  ...['-', '1e', 'abc'].map((value) => ({
+  ...['1e3', '.5', '+5', '9'.repeat(309)].map((value) => ({
     name: `rejects ${value} as a maximum`,
     values: {
-      'From (created >=)': '2026-09-30T19:00',
+      'From (created >=)': '2026-01-15T10:00',
       'Max totalBalanceChf (exclusive)': value,
+      'Reason (shown on the chart)': 'Reject invalid maximum',
     },
     message: "'max' must be a number.",
   })),
@@ -383,6 +388,52 @@ describe('DashboardFinancialLogValidityScreen', () => {
     expect(mockCall).not.toHaveBeenCalled();
   });
 
+  describe('daylight saving validation in Europe/Zurich', () => {
+    const previousTimezone = process.env.TZ;
+
+    beforeAll(() => {
+      process.env.TZ = 'Europe/Zurich';
+    });
+
+    afterAll(() => {
+      if (previousTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTimezone;
+      }
+    });
+
+    it.each([
+      {
+        name: 'rejects a from time in the daylight saving gap',
+        values: { 'From (created >=)': '2026-03-29T02:30' },
+        message: "Invalid 'from' date.",
+      },
+      {
+        name: 'rejects an ambiguous from time in the daylight saving overlap',
+        values: { 'From (created >=)': '2026-10-25T02:30' },
+        message: "Ambiguous 'from' time (daylight saving change).",
+      },
+      {
+        name: 'rejects an ambiguous to time in the daylight saving overlap',
+        values: {
+          'From (created >=)': '2026-10-25T01:30',
+          'To (created <)': '2026-10-25T02:30',
+        },
+        message: "Ambiguous 'to' time (daylight saving change).",
+      },
+    ])('$name', async ({ values, message }) => {
+      renderScreen();
+      setRange(values);
+
+      fireEvent.click(section('By financial range / threshold').getByRole('button', { name: 'Set valid = true' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(message);
+      expect(screen.queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument();
+      expect(mockCall).not.toHaveBeenCalled();
+    });
+  });
+
   it('updates a fully filtered range to valid with a trimmed reason and a singular message', async () => {
     const from = '2026-01-01T10:00';
     const to = '2026-01-02T10:00';
@@ -488,6 +539,20 @@ describe('DashboardFinancialLogValidityScreen', () => {
     expect(
       await screen.findByText('Recorded an info point for 1 entry (0 changed to valid = true).'),
     ).toBeInTheDocument();
+  });
+
+  it('reports when an info point request matches no entries', async () => {
+    mockCall.mockResolvedValueOnce({ affected: 0, audited: 0 });
+    renderScreen();
+    setRange({
+      'Max totalBalanceChf (exclusive)': '500',
+      'Reason (shown on the chart)': 'Empty checkpoint',
+    });
+
+    await requestRange('Add info point (set valid)');
+    await confirm();
+
+    expect(await screen.findByText('No matching entries; no info point was recorded.')).toBeInTheDocument();
   });
 
   it('records plural info points', async () => {
