@@ -99,6 +99,13 @@ export interface KundengelderExtract {
   diffs: KundengelderDiff[];
 }
 
+/** One row of GET /v1/bank: a DFX account of record, not a customer IBAN. */
+export interface DfxBankAccount {
+  name: string;
+  iban: string;
+  currency: string;
+}
+
 export interface KundengelderTx {
   id: number;
   bookingDate?: string; // JSON date

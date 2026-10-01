@@ -28,10 +28,12 @@ jest.mock('src/components/error-hint', () => ({
 }));
 
 const mockGetKundengelderExtract = jest.fn();
+const mockGetDfxBanks = jest.fn();
 const mockGetKundengelderLines = jest.fn();
 jest.mock('src/hooks/dashboard.hook', () => ({
   useDashboard: () => ({
     getKundengelderExtract: mockGetKundengelderExtract,
+    getDfxBanks: mockGetDfxBanks,
     getKundengelderLines: mockGetKundengelderLines,
   }),
 }));
@@ -99,6 +101,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     jest.clearAllMocks();
     mockUseSessionContext.mockReturnValue({ isLoggedIn: true });
     mockGetKundengelderExtract.mockResolvedValue(EXTRACT);
+    mockGetDfxBanks.mockResolvedValue([]);
     mockGetKundengelderLines.mockResolvedValue({ year: YEAR, accountKey: EXTRACT.accounts[0].key, line: '', rows: [] });
   });
 
@@ -111,6 +114,18 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(mockUseAdminGuard).toHaveBeenCalled();
     expect(mockUseLayoutOptions).toHaveBeenCalledWith({ title: 'Kundengelder', noMaxWidth: true });
     expect(mockGetKundengelderExtract).not.toHaveBeenCalled();
+    expect(mockGetDfxBanks).not.toHaveBeenCalled();
+  });
+
+  it('shows every bank account, including one with no movements', async () => {
+    mockGetDfxBanks.mockResolvedValue([{ name: 'Kaleido', iban: 'CH6008245111962200001', currency: 'CHF' }]);
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Kaleido CHF' })).toBeInTheDocument();
+    expect(screen.getByText('No movements')).toBeInTheDocument();
+    expect(screen.getByText('CH6008245111962200001')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
   });
 
   it('loads the current UTC year extract, line amounts and a visible non-zero diff', async () => {

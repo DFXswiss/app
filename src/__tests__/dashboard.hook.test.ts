@@ -41,6 +41,17 @@ describe('useDashboard Kundengelder methods', () => {
     expect(params.get('iban')).toBe('CheckoutLtdEUR');
     expect(params.get('line')).toBe('BuyCrypto after Fee');
   });
+
+  it('getDfxBanks() calls GET bank', async () => {
+    const { result } = renderHook(() => useDashboard());
+
+    await result.current.getDfxBanks();
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'bank',
+      method: 'GET',
+    });
+  });
 });
 
 describe('useDashboard financial methods', () => {

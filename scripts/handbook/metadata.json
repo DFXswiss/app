@@ -209,7 +209,7 @@
   },
   "dashboard-financial-kundengelder": {
     "title": "Kundengelder-Jahresauszug",
-    "description": "Admin-Financial-Dashboard: Jahresauszug der Kundengelder, Kontokarten, Live-gegen-Buchwert-Diffs und CSV-Export."
+    "description": "Admin-Financial-Dashboard: Jahresauszug jedes DFX-Bankkontos, auch ohne Bewegung, plus Live-gegen-Buchwert-Diffs und CSV-Export."
   },
   "dashboard-financial-log-validity": {
     "title": "Financial-Log-Gültigkeit",

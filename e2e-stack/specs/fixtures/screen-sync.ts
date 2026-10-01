@@ -74,7 +74,7 @@ export function financialDestinationGetUrlParts(path: string): string[] {
     case '/dashboard/financial/log-validity':
       return [];
     case '/dashboard/financial/kundengelder':
-      return ['/dashboard/financial/kundengelder'];
+      return ['/dashboard/financial/kundengelder', '/bank'];
     default:
       throw new Error(`financialDestinationGetUrlParts: unknown path ${path}`);
   }

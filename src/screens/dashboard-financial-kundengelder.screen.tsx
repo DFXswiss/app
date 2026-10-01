@@ -12,6 +12,7 @@ import { KundengelderAccount, KundengelderExtract, KundengelderLine, Kundengelde
 import { useDashboard } from 'src/hooks/dashboard.hook';
 import { useAdminGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
+import { withEveryBankAccount } from 'src/util/kundengelder-accounts';
 import { downloadCsv, toSemicolonCsv } from 'src/util/semicolon-csv';
 
 const CSV_HEADERS = ['Account', 'AccountKey', 'Line', 'Currency', 'Count', 'Amount', 'AmountChf'];
@@ -45,7 +46,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
   useLayoutOptions({ title: 'Kundengelder', noMaxWidth: true });
 
   const { isLoggedIn } = useSessionContext();
-  const { getKundengelderExtract, getKundengelderLines } = useDashboard();
+  const { getKundengelderExtract, getDfxBanks, getKundengelderLines } = useDashboard();
 
   const [year, setYear] = useState(() => new Date().getUTCFullYear());
   const [extract, setExtract] = useState<KundengelderExtract>();
@@ -61,9 +62,9 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
     setIsLoading(true);
     setOpened(undefined);
     setError(undefined);
-    getKundengelderExtract(year)
-      .then((data) => {
-        if (!cancelled) setExtract(data);
+    Promise.all([getKundengelderExtract(year), getDfxBanks()])
+      .then(([data, banks]) => {
+        if (!cancelled) setExtract(withEveryBankAccount(data, banks));
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -118,8 +119,11 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
   }
 
   function exportCsv(data: KundengelderExtract): void {
-    const rows = data.accounts.flatMap((account) =>
-      account.lines.map((line) => [
+    const rows = data.accounts.flatMap((account) => {
+      if (account.lines.length === 0) {
+        return [[account.name, account.key, '', account.currency, 0, 0, 0]];
+      }
+      return account.lines.map((line) => [
         account.name,
         account.key,
         line.label,
@@ -127,8 +131,8 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
         line.count,
         line.amount,
         line.amountChf,
-      ]),
-    );
+      ]);
+    });
 
     downloadCsv(`kundengelder-${year}.csv`, toSemicolonCsv(CSV_HEADERS, rows));
   }
@@ -195,6 +199,13 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
                 </tr>
               </thead>
               <tbody>
+                {account.lines.length === 0 && (
+                  <tr>
+                    <td className="py-1.5 px-3" colSpan={4}>
+                      No movements
+                    </td>
+                  </tr>
+                )}
                 {account.lines.map((line) => {
                   return (
                     <Fragment key={line.key}>
