@@ -19,6 +19,8 @@ const mockCsvPopup: { opener: Window | null; location: { replace: jest.Mock }; c
 const mockUserAddresses: Array<{ address: string; blockchains: string[]; label?: string }> = [];
 const mockUserCtx = { userAddresses: mockUserAddresses };
 
+// Reality declaration: SDK fixtures include unmatched payments and referral payouts. A green
+// run proves their labels, not that a live account or API returns these records or enum values.
 jest.mock('@dfx.swiss/react', () => ({
   ApiException: class ApiException extends Error {
     statusCode: number;
@@ -27,7 +29,7 @@ jest.mock('@dfx.swiss/react', () => ({
       this.statusCode = httpStatus;
     }
   },
-  TransactionType: { BUY: 'Buy', SELL: 'Sell', SWAP: 'Swap' },
+  TransactionType: { BUY: 'Buy', SELL: 'Sell', SWAP: 'Swap', REFERRAL: 'Referral' },
   Blockchain: {
     BITCOIN: 'Bitcoin',
     ETHEREUM: 'Ethereum',
@@ -221,6 +223,80 @@ describe('TransactionsScreen', () => {
 
   afterEach(() => {
     (window.open as jest.Mock | undefined)?.mockRestore?.();
+  });
+
+  it.each([
+    [
+      'en',
+      '1 unmatched payment',
+      '2 unmatched payments',
+      'Tap to assign it to a purchase',
+      'Tap to assign them to a purchase',
+    ],
+    [
+      'de',
+      '1 nicht zugeordnete Zahlung',
+      '2 nicht zugeordnete Zahlungen',
+      'Tippe, um sie einem Kauf zuzuordnen',
+      'Tippe, um sie einem Kauf zuzuordnen',
+    ],
+    [
+      'it',
+      '1 pagamento non assegnato',
+      '2 pagamenti non assegnati',
+      'Tocca per assegnarlo a un acquisto',
+      'Tocca per assegnarli a un acquisto',
+    ],
+    [
+      'fr',
+      '1 paiement non attribué',
+      '2 paiements non attribués',
+      'Touche pour le rattacher à un achat',
+      'Touche pour les rattacher à un achat',
+    ],
+  ])(
+    'uses singular title and subtitle for one unmatched payment and plural for two in %s',
+    async (language, singular, plural, singularSubtitle, pluralSubtitle) => {
+      window.localStorage.setItem('dfx_lang', language);
+      mockSession.isLoggedIn = true;
+      const payment = { id: 9, inputAmount: 250, inputAsset: 'CHF' };
+      mockGetUnassigned.mockResolvedValue([payment]);
+      try {
+        const view = renderTx();
+        const notice = await screen.findByText(singular, { exact: true });
+        expect(notice.closest('button')).toBeInTheDocument();
+        expect(notice.querySelector('small')?.textContent).toBe(singularSubtitle);
+        expect(screen.queryByText(plural, { exact: true })).not.toBeInTheDocument();
+        view.unmount();
+
+        mockGetUnassigned.mockResolvedValue([payment, { ...payment, id: 10 }]);
+        renderTx();
+        const pluralNotice = await screen.findByText(plural, { exact: true });
+        expect(pluralNotice.closest('button')).toBeInTheDocument();
+        expect(pluralNotice.querySelector('small')?.textContent).toBe(pluralSubtitle);
+        expect(screen.queryByText(singular, { exact: true })).not.toBeInTheDocument();
+      } finally {
+        window.localStorage.removeItem('dfx_lang');
+      }
+    },
+  );
+
+  it.each([
+    ['en', 'Referral reward'],
+    ['de', 'Empfehlungsprämie'],
+    ['it', 'Premio di segnalazione'],
+    ['fr', 'Prime de parrainage'],
+  ])('translates the referral transaction type in %s', async (language, label) => {
+    window.localStorage.setItem('dfx_lang', language);
+    mockSession.isLoggedIn = true;
+    mockGetDetail.mockResolvedValue([tx({ type: 'Referral' })]);
+    try {
+      renderTx();
+      expect((await screen.findByText(label, { exact: true })).closest('summary')).toBeInTheDocument();
+      expect(screen.queryByText('Referral', { exact: true })).not.toBeInTheDocument();
+    } finally {
+      window.localStorage.removeItem('dfx_lang');
+    }
   });
 
   it('asks a logged-out visitor to connect', () => {
@@ -417,7 +493,11 @@ describe('TransactionsScreen', () => {
     mockGetTargets.mockResolvedValue([{ id: 44, asset: { name: 'BTC' }, address: 'bc1qassign' }]);
     mockSetTarget.mockResolvedValue(undefined);
     renderTx();
-    fireEvent.click(await screen.findByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
+      }),
+    );
     await screen.findByRole('combobox');
     fireEvent.click(screen.getByRole('button', { name: /assign|zuordnen|assegna|attribuer/i }));
     await waitFor(() => expect(mockSetTarget).toHaveBeenCalledWith(9, 44));
@@ -434,7 +514,7 @@ describe('TransactionsScreen', () => {
     renderTx();
     fireEvent.click(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     );
     fireEvent.click(await screen.findByRole('button', { name: /assign|zuordnen|assegna|attribuer/i }));
@@ -444,7 +524,7 @@ describe('TransactionsScreen', () => {
     );
     fireEvent.click(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     );
     expect(await screen.findByRole('button', { name: /assign|zuordnen|assegna|attribuer/i })).toBeEnabled();
@@ -573,7 +653,11 @@ describe('TransactionsScreen', () => {
     mockGetUnassigned.mockResolvedValueOnce([]);
     renderTx();
     expect(await screen.findByText(/no transactions yet/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', {
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
+      }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/couldn't load unmatched bank payments|nicht zugeordnete bankzahlungen konnten nicht geladen werden|impossibile caricare i pagamenti bancari|impossible de charger les paiements bancaires/i)).not.toBeInTheDocument();
   });
 
@@ -584,7 +668,11 @@ describe('TransactionsScreen', () => {
     renderTx();
     expect(await screen.findByText(/couldn't load unmatched bank payments/i)).toBeInTheDocument();
     expect(screen.getByText(/100 CHF.*0\.002 BTC/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', {
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
+      }),
+    ).not.toBeInTheDocument();
 
     mockGetUnassigned.mockResolvedValueOnce([]);
     fireEvent.click(screen.getByRole('button', { name: /retry|erneut versuchen|riprova|réessayer/i }));
@@ -605,7 +693,11 @@ describe('TransactionsScreen', () => {
     ]);
     mockGetTargets.mockRejectedValueOnce(new Error('targets-down'));
     renderTx();
-    fireEvent.click(await screen.findByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
+      }),
+    );
     expect(
       await screen.findByText(/couldn't load|konnte nicht laden|impossibile caricare|chargement impossible/i),
     ).toBeInTheDocument();
@@ -633,7 +725,11 @@ describe('TransactionsScreen', () => {
     ]);
     mockGetTargets.mockResolvedValueOnce([]);
     renderTx();
-    fireEvent.click(await screen.findByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
+      }),
+    );
     expect(
       await screen.findByText(/no purchase to assign|kein kauf, dem du|nessun acquisto a cui|aucun achat auquel/i),
     ).toBeInTheDocument();
@@ -649,7 +745,7 @@ describe('TransactionsScreen', () => {
     renderTx();
     fireEvent.click(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     );
     expect(
@@ -663,7 +759,7 @@ describe('TransactionsScreen', () => {
     );
     expect(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     ).toBeInTheDocument();
   });
@@ -673,7 +769,11 @@ describe('TransactionsScreen', () => {
     mockGetUnassigned.mockResolvedValue([{ date: '2026-01-05T10:00:00Z' }]);
     mockGetTargets.mockResolvedValueOnce({ not: 'array' });
     renderTx();
-    fireEvent.click(await screen.findByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
+      }),
+    );
     expect(await screen.findByText(/no purchase to assign|kein kauf, dem du|nessun acquisto a cui|aucun achat auquel/i)).toBeInTheDocument();
     expect(screen.getByText('#0')).toBeInTheDocument();
   });
@@ -683,7 +783,11 @@ describe('TransactionsScreen', () => {
     mockGetUnassigned.mockResolvedValue([{ id: 9, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z' }]);
     mockGetTargets.mockResolvedValue([{ id: 44, asset: { name: 'BTC' }, address: 'bc1qassign' }]);
     renderTx();
-    fireEvent.click(await screen.findByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
+      }),
+    );
     await screen.findByRole('combobox');
     fireEvent.click(screen.getByRole('button', { name: /assign|zuordnen|assegna|attribuer/i }));
     await waitFor(() => expect(mockSetTarget).toHaveBeenCalledWith(9, 44));
@@ -694,7 +798,11 @@ describe('TransactionsScreen', () => {
     mockGetUnassigned.mockResolvedValue([{ id: 10, inputAmount: 20, inputAsset: 'EUR', date: '2026-01-04T10:00:00Z' }]);
     mockGetTargets.mockResolvedValue([{ asset: { name: 'BTC' } }]);
     renderTx();
-    fireEvent.click(await screen.findByRole('button', { name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
+      }),
+    );
     await screen.findByRole('combobox');
     fireEvent.click(screen.getByRole('button', { name: /assign|zuordnen|assegna|attribuer/i }));
     expect(mockSetTarget).not.toHaveBeenCalled();
@@ -1013,7 +1121,7 @@ describe('TransactionsScreen', () => {
     });
     expect(
       screen.queryByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     ).not.toBeInTheDocument();
   });
@@ -1046,7 +1154,7 @@ describe('TransactionsScreen', () => {
     });
     expect(
       screen.queryByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     ).not.toBeInTheDocument();
   });
@@ -1151,7 +1259,7 @@ describe('TransactionsScreen', () => {
     const view = renderTx();
     expect(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     ).toBeInTheDocument();
     mockSession.isLoggedIn = false;
@@ -1165,7 +1273,7 @@ describe('TransactionsScreen', () => {
     );
     expect(
       screen.queryByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     ).not.toBeInTheDocument();
   });
@@ -1189,7 +1297,7 @@ describe('TransactionsScreen', () => {
     const view = renderTx();
     fireEvent.click(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     );
     await screen.findAllByRole('combobox');
@@ -1229,7 +1337,7 @@ describe('TransactionsScreen', () => {
     );
     fireEvent.click(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     );
     await screen.findAllByRole('combobox');
@@ -1266,7 +1374,7 @@ describe('TransactionsScreen', () => {
     const view = renderTx();
     fireEvent.click(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     );
     await screen.findAllByRole('combobox');
@@ -1313,7 +1421,7 @@ describe('TransactionsScreen', () => {
     const view = renderTx();
     fireEvent.click(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     );
     await waitFor(() => expect(mockGetTargets).toHaveBeenCalledTimes(1));
@@ -1327,7 +1435,7 @@ describe('TransactionsScreen', () => {
     );
     fireEvent.click(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     );
     await waitFor(() => expect(mockGetTargets).toHaveBeenCalledTimes(2));
@@ -1366,7 +1474,7 @@ describe('TransactionsScreen', () => {
     const view = renderTx();
     fireEvent.click(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     );
     await waitFor(() => expect(mockGetTargets).toHaveBeenCalledTimes(1));
@@ -1380,7 +1488,7 @@ describe('TransactionsScreen', () => {
     );
     fireEvent.click(
       await screen.findByRole('button', {
-        name: /unmatched payments|nicht zugeordnet|non assegnati|non attribués/i,
+        name: /unmatched payments?|nicht zugeordnet|non assegnat[oi]|non attribués?/i,
       }),
     );
     await waitFor(() => expect(mockGetTargets).toHaveBeenCalledTimes(2));

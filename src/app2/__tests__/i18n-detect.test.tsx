@@ -55,6 +55,38 @@ describe('i18n detectLanguage / useT', () => {
     expect(screen.getByTestId('lang')).toHaveTextContent('de');
   });
 
+  it.each(['constructor', '__proto__'])('rejects inherited query language %s and uses storage', (value) => {
+    mockSearch(`?lang=${value}`);
+    window.localStorage.setItem('dfx_lang', 'it');
+    render(
+      <LanguageProvider>
+        <Probe />
+      </LanguageProvider>,
+    );
+    expect(screen.getByTestId('lang')).toHaveTextContent('it');
+    expect(screen.getByTestId('retry')).toHaveTextContent('Riprova');
+  });
+
+  it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])(
+    'rejects inherited stored language %s and uses navigator',
+    (value) => {
+      mockSearch('');
+      window.localStorage.setItem('dfx_lang', value);
+      const navigatorLanguage = jest.spyOn(window.navigator, 'language', 'get').mockReturnValue('de-CH');
+      try {
+        render(
+          <LanguageProvider>
+            <Probe />
+          </LanguageProvider>,
+        );
+        expect(screen.getByTestId('lang')).toHaveTextContent('de');
+        expect(screen.getByTestId('retry')).toHaveTextContent('Erneut versuchen');
+      } finally {
+        navigatorLanguage.mockRestore();
+      }
+    },
+  );
+
   it('falls back to stored language, then persists setLanguage', () => {
     mockSearch('?lang=zz');
     window.localStorage.setItem('dfx_lang', 'it');

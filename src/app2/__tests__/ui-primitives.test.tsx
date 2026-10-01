@@ -78,7 +78,13 @@ function ModalHarness({
       </Sheet>
     </>
   );
-  return withApp ? <div className="app">{inner}</div> : <div data-testid="root">{inner}</div>;
+  return withApp ? (
+    <div className="app" data-app2-root>
+      {inner}
+    </div>
+  ) : (
+    <div data-testid="root">{inner}</div>
+  );
 }
 
 function DetachedModal({ open }: { open: boolean }) {

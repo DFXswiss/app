@@ -33,10 +33,25 @@ import {
 } from '../screens/parts/format';
 
 describe('format helpers', () => {
-  it('maps languages to locales and falls back to en-US', () => {
-    expect(localeFor('de')).toBe('de-DE');
-    expect(localeFor('en')).toBe('en-US');
-    expect(localeFor('xx' as 'en')).toBe('en-US');
+  it('maps languages to Swiss and British locales and falls back to en-GB', () => {
+    expect(localeFor('de')).toBe('de-CH');
+    expect(localeFor('en')).toBe('en-GB');
+    expect(localeFor('fr')).toBe('fr-CH');
+    expect(localeFor('it')).toBe('it-CH');
+    expect(localeFor('xx' as 'en')).toBe('en-GB');
+  });
+
+  it('uses Swiss German grouping and British day-first dates', () => {
+    // ICU/CLDR versions differ in the Swiss apostrophe glyph; pin the locale, not that glyph.
+    const swissNumber = new Intl.NumberFormat('de-CH', { maximumFractionDigits: 6 }).format(12500.5);
+    const swissWholeNumber = new Intl.NumberFormat('de-CH', { maximumFractionDigits: 0 }).format(12500);
+    expect(formatNumber(12500.5, 'de')).toBe(swissNumber);
+    expect(formatAmount(12500.5, 'CHF', 'de')).toBe(`${swissNumber} CHF`);
+    expect(formatChf(12500.4, 'de')).toBe(`${swissWholeNumber} CHF`);
+    expect(formatNumber(12500.5, 'en')).toBe('12,500.5');
+    expect(formatChf(12500.4, 'en')).toBe('12,500 CHF');
+    expect(formatDate(new Date(2026, 0, 15, 12, 30), 'en')).toBe('15 Jan 2026');
+    expect(formatDateTime(new Date(2026, 0, 15, 12, 30), 'en')).toBe('15 Jan 2026, 12:30');
   });
 
   it('shortens addresses and leaves short values intact', () => {

@@ -1,8 +1,16 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { LanguageProvider, useT } from '../i18n';
 import { LanguageMenu, LanguageSheet } from '../components/LanguageSheet';
 import { ToastProvider } from '../components/ui';
+import { cx } from '../css';
+
+// Reality declaration: synthetic CSS-module hashes exercise DOM behavior independently of local
+// class names. A green JSDOM run does not prove webpack output or screen-reader announcements.
+jest.mock('../styles/base.module.css', () => ({
+  __esModule: true,
+  default: new Proxy({}, { get: (_target, name) => `h_${String(name)}` }),
+}));
 
 const mockUpdateLanguage = jest.fn();
 const mockSession = { isLoggedIn: false };
@@ -20,13 +28,14 @@ jest.mock('../wallets/session', () => ({
 
 function MenuHarness({ startOpen = true }: { startOpen?: boolean }) {
   const anchorRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(startOpen);
   return (
     <LanguageProvider>
       <ToastProvider>
-        <button ref={anchorRef} type="button">
+        <button ref={anchorRef} type="button" onClick={() => setOpen(true)}>
           pill
         </button>
-        <LanguageMenu open={startOpen} onClose={jest.fn()} anchorRef={anchorRef} />
+        <LanguageMenu open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} />
       </ToastProvider>
     </LanguageProvider>
   );
@@ -41,8 +50,10 @@ function SheetHarness({ onClose }: { onClose: () => void }) {
   return (
     <LanguageProvider>
       <ToastProvider>
-        <LanguageSheet open onClose={onClose} />
-        <LanguageReadout />
+        <div className={cx('app')} data-app2-root>
+          <LanguageSheet open onClose={onClose} />
+          <LanguageReadout />
+        </div>
       </ToastProvider>
     </LanguageProvider>
   );
@@ -107,6 +118,9 @@ describe('LanguageSheet and LanguageMenu', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /deutsch/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Account settings are still loading');
+    for (let node: HTMLElement | null = screen.getByRole('alert'); node; node = node.parentElement) {
+      expect(node.inert).not.toBe(true);
+    }
     expect(mockUpdateLanguage).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByTestId('active-language')).toHaveTextContent('en');
@@ -209,7 +223,8 @@ describe('LanguageSheet and LanguageMenu', () => {
     expect(screen.getByTestId('active-language')).toHaveTextContent('en');
   });
 
-  it('closes the menu on outside click and Escape, and moves with arrow keys', async () => {
+  it('focuses the selected hashed option, roves with arrow keys, and closes on outside click and Escape', async () => {
+    window.localStorage.setItem('dfx_lang', 'de');
     const onClose = jest.fn();
     const anchorRef = { current: document.createElement('button') };
     document.body.appendChild(anchorRef.current);
@@ -222,12 +237,9 @@ describe('LanguageSheet and LanguageMenu', () => {
       </LanguageProvider>,
     );
 
-    await waitFor(() => expect(document.querySelector('.lopt.sel')).toBeTruthy());
-    await act(async () => {
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => resolve());
-      });
-    });
+    const options = screen.getAllByRole('menuitem');
+    expect(options[1]).toHaveClass('h_lopt', 'h_sel');
+    await waitFor(() => expect(options[1]).toHaveFocus());
 
     fireEvent.mouseDown(screen.getByRole('menu'));
     expect(onClose).not.toHaveBeenCalled();
@@ -235,16 +247,24 @@ describe('LanguageSheet and LanguageMenu', () => {
     expect(onClose).not.toHaveBeenCalled();
 
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' });
+    expect(options[2]).toHaveFocus();
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' });
+    expect(options[1]).toHaveFocus();
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Home' });
+    expect(options[0]).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' });
+    expect(options[3]).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' });
+    expect(options[0]).toHaveFocus();
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'End' });
+    expect(options[3]).toHaveFocus();
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' });
 
     fireEvent.keyDown(screen.getByRole('menuitem', { name: /français/i }), { key: 'Tab' });
-    fireEvent.click(document.querySelector('.lopt') as HTMLElement);
+    fireEvent.click(options[0]);
     expect(onClose).toHaveBeenCalled();
-    fireEvent.keyDown(document.querySelector('.lopt') as HTMLElement, { key: 'Enter' });
-    fireEvent.keyDown(document.querySelectorAll('.lopt')[1] as HTMLElement, { key: ' ' });
+    fireEvent.keyDown(options[0], { key: 'Enter' });
+    fireEvent.keyDown(options[1], { key: ' ' });
     expect(onClose).toHaveBeenCalledTimes(3);
 
     fireEvent.mouseDown(document.body);
@@ -252,8 +272,40 @@ describe('LanguageSheet and LanguageMenu', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(5);
+    expect(anchorRef.current).toHaveFocus();
 
     anchorRef.current.remove();
+  });
+
+  it('hides and inerts the closed menu, restores focus on Escape, and exposes options again on reopen', async () => {
+    render(<MenuHarness startOpen={false} />);
+    const menu = screen.getByRole('menu', { hidden: true });
+    const trigger = screen.getByRole('button', { name: 'pill' });
+    expect(menu).toHaveAttribute('aria-hidden', 'true');
+    expect(menu).toHaveProperty('inert', true);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menu')).toBe(menu);
+    expect(menu).toHaveAttribute('aria-hidden', 'false');
+    expect(menu).toHaveProperty('inert', false);
+    expect(screen.getAllByRole('menuitem')).toHaveLength(4);
+    const selectedOption = screen.getByRole('menuitem', { name: 'English' });
+    await waitFor(() => expect(selectedOption).toHaveFocus());
+
+    fireEvent.keyDown(selectedOption, { key: 'Escape' });
+    expect(menu).toHaveAttribute('aria-hidden', 'true');
+    expect(menu).toHaveProperty('inert', true);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+    expect(trigger).toHaveFocus();
+
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menu')).toBe(menu);
+    expect(menu).toHaveAttribute('aria-hidden', 'false');
+    expect(menu).toHaveProperty('inert', false);
+    await waitFor(() => expect(selectedOption).toHaveFocus());
   });
 
   it('does not attach listeners while the menu is closed', () => {

@@ -90,6 +90,11 @@ function avatarInitials(): string | null {
 }
 
 describe('Shell', () => {
+  it('marks the app container as the modal inert boundary', () => {
+    renderShell();
+    expect(document.getElementById('app')).toHaveAttribute('data-app2-root');
+  });
+
   beforeEach(() => {
     mockCloseConnect.mockReset();
     mockOpenConnect.mockReset();

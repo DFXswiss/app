@@ -116,7 +116,7 @@ export function Shell() {
   }, [location.search, openConnect]);
 
   return (
-    <div className={cx('app')} id="app">
+    <div className={cx('app')} id="app" data-app2-root>
       <div className={cx('layer')} id="layer">
         <div className={cx('topbar')} id="topbar">
           <button

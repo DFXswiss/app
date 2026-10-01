@@ -12,7 +12,7 @@ import gbFlag from '../assets/flags/gb.svg';
 import itFlag from '../assets/flags/it.svg';
 import { LANGUAGES, useT, type Language } from '../i18n';
 import { useWalletSession } from '../wallets/session';
-import { Sheet, SheetHeader, useToast } from './ui';
+import { Sheet, SheetHeader, useInertWhenClosed, useToast } from './ui';
 import { cx } from '../css';
 
 const FLAGS: Record<string, string> = { gb: gbFlag, de: deFlag, it: itFlag, fr: frFlag };
@@ -138,7 +138,7 @@ interface LanguageMenuProps {
 export function LanguageMenu({ open, onClose, anchorRef }: LanguageMenuProps) {
   const { language } = useT();
   const pick = useLanguagePick(onClose);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useInertWhenClosed<HTMLDivElement>(open);
 
   // Outside-click and Escape close, mirroring the static app's document listener
   // and langMenu keydown handler.
@@ -160,19 +160,21 @@ export function LanguageMenu({ open, onClose, anchorRef }: LanguageMenuProps) {
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [open, onClose, anchorRef]);
+  }, [open, onClose, anchorRef, menuRef]);
 
   // Focus the current (or first) option when the menu opens, as openLang() did.
   useEffect(() => {
     if (!open) return;
     const node = menuRef.current;
-    const id = requestAnimationFrame(() => node?.querySelector<HTMLElement>('.lopt.sel')?.focus());
+    const id = requestAnimationFrame(() =>
+      node?.querySelector<HTMLElement>('[data-lang-option][aria-current="true"]')?.focus(),
+    );
     return () => cancelAnimationFrame(id);
-  }, [open]);
+  }, [open, menuRef]);
 
   // Arrow-key roving focus within the menu, matching the static langMenu keydown.
   const onMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const items = Array.from((menuRef.current as HTMLDivElement).querySelectorAll<HTMLElement>('.lopt'));
+    const items = Array.from((menuRef.current as HTMLDivElement).querySelectorAll<HTMLElement>('[data-lang-option]'));
     if (!items.length) return;
     const i = items.indexOf(document.activeElement as HTMLElement);
     if (e.key === 'ArrowDown') {
@@ -196,6 +198,7 @@ export function LanguageMenu({ open, onClose, anchorRef }: LanguageMenuProps) {
       id="langMenu"
       role="menu"
       aria-label="Language"
+      aria-hidden={!open}
       ref={menuRef}
       onKeyDown={onMenuKeyDown}
     >
@@ -204,6 +207,7 @@ export function LanguageMenu({ open, onClose, anchorRef }: LanguageMenuProps) {
           key={code}
           className={cx('lopt', language === code && 'sel')}
           role="menuitem"
+          data-lang-option={code}
           tabIndex={-1}
           aria-current={language === code || undefined}
           onClick={() => pick(code, label)}

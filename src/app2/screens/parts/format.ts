@@ -7,14 +7,10 @@
 import { Blockchain } from '@dfx.swiss/react';
 import type { Language } from '../../i18n';
 import { isSafeHttpsUrl } from '../../utils/url';
+import { localeFor } from '../trade/amount';
 
 export { isSafeHttpsUrl } from '../../utils/url';
-
-const LOCALES: Record<Language, string> = { en: 'en-US', de: 'de-DE', fr: 'fr-CH', it: 'it-CH' };
-
-export function localeFor(language: Language): string {
-  return LOCALES[language] ?? 'en-US';
-}
+export { localeFor } from '../trade/amount';
 
 /** `0x1234…abcd`, same slice points as the static app's `short()`. */
 export function shortAddress(address?: string): string {
@@ -76,8 +72,8 @@ export function formatAmount(
   return asset ? `${amount} ${asset}` : amount;
 }
 
-/** `12'500 CHF` — trading limits and volumes are always CHF-denominated,
- * same as the static app's `fmtCHF()`. */
+/** Rounded whole-number amount with locale-specific grouping and a CHF suffix — trading limits
+ * and volumes are always CHF-denominated, same as the static app's `fmtCHF()`. */
 export function formatChf(value: number | undefined | null, language: Language): string {
   if (value == null) return '—';
   return `${formatNumber(Math.round(value), language, 0)} CHF`;

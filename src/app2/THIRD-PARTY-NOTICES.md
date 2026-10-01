@@ -15,8 +15,18 @@ under its own license; DFX application code is covered by the repository `LICENS
 - **@walletconnect/ethereum-provider** — WalletConnect, Inc. Apache License 2.0.
 - **ethers** — MIT License.
 - **react-qr-code** — MIT License.
+- **bitbox-api 0.2.1** — Apache License 2.0; includes a WebAssembly core.
+- **@ledgerhq/hw-transport-webhid 6.30.0** — Apache License 2.0.
+- **@ledgerhq/hw-app-eth 6.47.1** — Apache License 2.0.
+- **ledger-bitcoin 0.2.3** — Apache License 2.0.
+- **@trezor/connect-web 9.6.4** — Trezor Reference Source License (T-RSL).
 
-There are no separately vendored browser bundles or WebAssembly files in App 2.0.
+App 2.0 dynamically imports these hardware-wallet libraries from the npm dependency
+graph, including the WebAssembly core supplied by bitbox-api. Trezor Connect also
+uses its hosted popup/iframe at `connect.trezor.io`.
+
+The repository also includes **@ledgerhq/hw-app-btc 6.27.1** (Apache License 2.0);
+App 2.0's hardware provider uses ledger-bitcoin for Bitcoin.
 
 ## Icons
 

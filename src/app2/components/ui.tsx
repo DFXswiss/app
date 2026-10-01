@@ -58,7 +58,7 @@ export function useModalDialog<T extends HTMLElement>(
         previousInert.set(sibling, sibling.inert);
         sibling.inert = true;
       });
-      if (parent.classList.contains('app')) break;
+      if (parent.hasAttribute('data-app2-root')) break;
       current = parent;
     }
 

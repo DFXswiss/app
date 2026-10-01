@@ -104,7 +104,9 @@ html,
 body {
   height: 100%;
 }
+/* Prevent content-dependent mobile widths; .app auto margins keep the desktop card centered. */
 :global(#root) {
+  width: 100%;
   min-width: 0;
   max-width: 100%;
 }
@@ -149,6 +151,7 @@ body::after {
   z-index: 1;
   width: 420px;
   max-width: 100%;
+  margin-inline: auto;
   height: 846px;
   max-height: calc(100vh - 76px);
   max-height: calc(100dvh - 76px);

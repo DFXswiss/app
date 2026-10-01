@@ -1071,8 +1071,8 @@ export default function TransactionsScreen() {
             >
               <span className={cx('ni')}>{ALERT_ICON}</span>
               <span className={cx('nt')}>
-                {t('txUnassignedN', { n: currentUnassigned.length })}
-                <small>{t('txUnassignedSub')}</small>
+                {t(currentUnassigned.length === 1 ? 'txUnassigned1' : 'txUnassignedN', { n: currentUnassigned.length })}
+                <small>{t(currentUnassigned.length === 1 ? 'txUnassignedSub1' : 'txUnassignedSub')}</small>
               </span>
               <span className={cx('caret')}>{CARET_ICON}</span>
             </button>
@@ -1115,7 +1115,9 @@ export default function TransactionsScreen() {
                       ? t('mSell')
                       : tx.type === TransactionType.SWAP
                         ? t('mSwap')
-                        : tx.type;
+                        : tx.type === TransactionType.REFERRAL
+                          ? t('txReferral')
+                          : tx.type;
                 // 8 fraction digits (not the formatAmount default of 6) so sub-1e-6
                 // amounts — e.g. Lightning sales of tens of sats — don't collapse to "0 BTC".
                 // Same floor for the rate: sub-1e-6 quotes would otherwise also read as 0.

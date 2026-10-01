@@ -389,17 +389,21 @@
   box-shadow: 0 20px 50px -16px rgba(0, 0, 0, 0.6);
   padding: 6px;
   opacity: 0;
+  visibility: hidden;
   transform: translateY(-8px) scale(0.97);
   transform-origin: top right;
   pointer-events: none;
   transition:
     opacity 0.2s var(--ease),
-    transform 0.2s var(--ease);
+    transform 0.2s var(--ease),
+    visibility 0s linear 0.2s;
 }
 .langmenu.on {
   opacity: 1;
+  visibility: visible;
   transform: none;
   pointer-events: auto;
+  transition-delay: 0s;
 }
 .lopt {
   display: flex;

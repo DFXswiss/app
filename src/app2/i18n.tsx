@@ -280,7 +280,9 @@ export const en = {
   csvCompact: 'Compact CSV',
   csvCoinTracking: 'CoinTracking export',
   txUnassignedN: '{n} unmatched payments',
+  txUnassigned1: '{n} unmatched payment',
   txUnassignedSub: 'Tap to assign them to a purchase',
+  txUnassignedSub1: 'Tap to assign it to a purchase',
   txUnassignedLoadFail: "Couldn't load unmatched bank payments — check your connection.",
   txBackToList: 'Back to transactions',
   txAssignTitle: 'Assign your payments',
@@ -698,6 +700,7 @@ export const en = {
   mBuy: 'Buy',
   mSell: 'Sell',
   mSwap: 'Swap',
+  txReferral: 'Referral reward',
   mAcct: 'My account',
   mTx: 'Transactions',
   mKyc: 'Verification (KYC)',
@@ -981,7 +984,9 @@ export const de = {
   csvCompact: 'Kompakt-CSV',
   csvCoinTracking: 'CoinTracking-Export',
   txUnassignedN: '{n} nicht zugeordnete Zahlungen',
+  txUnassigned1: '{n} nicht zugeordnete Zahlung',
   txUnassignedSub: 'Tippe, um sie einem Kauf zuzuordnen',
+  txUnassignedSub1: 'Tippe, um sie einem Kauf zuzuordnen',
   txUnassignedLoadFail: 'Nicht zugeordnete Bankzahlungen konnten nicht geladen werden — prüfe deine Verbindung.',
   txBackToList: 'Zurück zu den Transaktionen',
   txAssignTitle: 'Zahlungen zuordnen',
@@ -1381,6 +1386,7 @@ export const de = {
   mBuy: 'Kaufen',
   mSell: 'Verkaufen',
   mSwap: 'Tauschen',
+  txReferral: 'Empfehlungsprämie',
   mAcct: 'Mein Konto',
   mTx: 'Transaktionen',
   mKyc: 'Verifizierung (KYC)',
@@ -1755,7 +1761,9 @@ export const it = {
   csvCompact: 'CSV compatto',
   csvCoinTracking: 'Esportazione CoinTracking',
   txUnassignedN: '{n} pagamenti non assegnati',
+  txUnassigned1: '{n} pagamento non assegnato',
   txUnassignedSub: 'Tocca per assegnarli a un acquisto',
+  txUnassignedSub1: 'Tocca per assegnarlo a un acquisto',
   txUnassignedLoadFail: 'Impossibile caricare i pagamenti bancari non assegnati — controlla la connessione.',
   txBackToList: 'Torna alle transazioni',
   txAssignTitle: 'Assegna i tuoi pagamenti',
@@ -2150,6 +2158,7 @@ export const it = {
   mBuy: 'Compra',
   mSell: 'Vendi',
   mSwap: 'Scambia',
+  txReferral: 'Premio di segnalazione',
   mAcct: 'Il mio conto',
   mTx: 'Transazioni',
   mKyc: 'Verifica (KYC)',
@@ -2527,7 +2536,9 @@ export const fr = {
   csvCompact: 'CSV compact',
   csvCoinTracking: 'Export CoinTracking',
   txUnassignedN: '{n} paiements non attribués',
+  txUnassigned1: '{n} paiement non attribué',
   txUnassignedSub: 'Touche pour les rattacher à un achat',
+  txUnassignedSub1: 'Touche pour le rattacher à un achat',
   txUnassignedLoadFail: 'Impossible de charger les paiements bancaires non attribués — vérifie ta connexion.',
   txBackToList: 'Retour aux transactions',
   txAssignTitle: 'Attribue tes paiements',
@@ -2923,6 +2934,7 @@ export const fr = {
   mBuy: 'Acheter',
   mSell: 'Vendre',
   mSwap: 'Échanger',
+  txReferral: 'Prime de parrainage',
   mAcct: 'Mon compte',
   mTx: 'Transactions',
   mKyc: 'Vérification (KYC)',
@@ -3124,7 +3136,7 @@ export const LANGUAGES: { code: Language; label: string; flag: string }[] = [
 const STORAGE_KEY = 'dfx_lang';
 
 function isLanguage(value: string): value is Language {
-  return value in dictionaries;
+  return Object.prototype.hasOwnProperty.call(dictionaries, value);
 }
 
 function detectLanguage(): Language {

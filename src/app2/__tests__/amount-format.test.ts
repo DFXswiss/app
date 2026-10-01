@@ -7,8 +7,29 @@ import {
   quickChipSymbol,
   shortAddress,
 } from '../screens/trade/amount';
+import { formatNumber, localeFor as screenLocaleFor } from '../screens/parts/format';
+
+// Reality declaration: the SDK's chain constants are stubbed for the formatting helper import;
+// these pure formatting assertions do not exercise the SDK or any block explorer.
+jest.mock('@dfx.swiss/react', () => ({ Blockchain: {} }));
 
 describe('trade amount helpers', () => {
+  it('shares the locale resolver and German amount format with secondary screens', () => {
+    // Use an explicit reference locale so a regression to de-DE still fails across ICU versions.
+    const swissNumber = new Intl.NumberFormat('de-CH', { maximumFractionDigits: 2 }).format(12500.5);
+    const swissFiat = new Intl.NumberFormat('de-CH', {
+      style: 'currency',
+      currency: 'CHF',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(12500.5);
+    expect(localeFor).toBe(screenLocaleFor);
+    expect(localeFor('xx' as 'en')).toBe('en-GB');
+    expect(formatAmount(12500.5, 2, 'de')).toBe(swissNumber);
+    expect(formatNumber(12500.5, 'de', 2)).toBe(swissNumber);
+    expect(formatFiat(12500.5, 'CHF', 'de')).toBe(swissFiat);
+  });
+
   it('rejects empty, zero and malformed amounts', () => {
     expect(parseAmt(undefined)).toBeNull();
     expect(parseAmt('')).toBeNull();

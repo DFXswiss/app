@@ -28,7 +28,7 @@ export function parseAmt(raw: string | number | null | undefined, language?: Lan
 const LOCALES: Record<Language, string> = { en: 'en-GB', de: 'de-CH', it: 'it-CH', fr: 'fr-CH' };
 
 export function localeFor(language: Language): string {
-  return LOCALES[language];
+  return LOCALES[language] ?? 'en-GB';
 }
 
 /** Currency-formatted fiat amount, e.g. "€ 100.00" / "CHF 100.00" (locale-aware symbol + grouping). */
