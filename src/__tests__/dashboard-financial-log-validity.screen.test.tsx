@@ -217,12 +217,12 @@ const RANGE_VALIDATION_CASES: {
     message: "'from' must be earlier than or equal to 'to'.",
   },
   {
-    name: 'rejects a from value that does not roundtrip to minutes',
+    name: 'rejects a from value with seconds',
     values: { 'From (created >=)': '2026-09-30T19:00:30' },
     message: "Invalid 'from' date.",
   },
   {
-    name: 'rejects a to value that does not roundtrip to minutes',
+    name: 'rejects a to value with seconds',
     values: { 'To (created <)': '2026-09-30T19:00:30' },
     message: "Invalid 'to' date.",
   },
