@@ -3,13 +3,17 @@ import {
   ScorechainContext,
   ScorechainObjectType,
   ScorechainScreeningDto,
+  ScorechainSeverity,
   ScorechainTriggerType,
 } from 'src/dto/scorechain.dto';
 import {
   hasScorechainHighRisk,
+  isSentinelSeverity,
   parseScorechainHighlight,
   SCORECHAIN_HIGH_RISK_TOKEN,
+  SCORECHAIN_UNAVAILABLE_TOKEN,
   scorechainHighlightValue,
+  scorechainHold,
   screeningMatchesHighlight,
 } from 'src/util/scorechain.util';
 
@@ -48,6 +52,43 @@ describe('hasScorechainHighRisk', () => {
 
   it('is false for a longer token that merely contains the string (membership, not substring)', () => {
     expect(hasScorechainHighRisk('ScorechainHighRiskLegacy')).toBe(false);
+  });
+});
+
+describe('isSentinelSeverity', () => {
+  it('is true for the three informational severities', () => {
+    expect(isSentinelSeverity(ScorechainSeverity.NOT_SUPPORTED)).toBe(true);
+    expect(isSentinelSeverity(ScorechainSeverity.NO_COVERAGE)).toBe(true);
+    expect(isSentinelSeverity(ScorechainSeverity.NOT_FOUND)).toBe(true);
+  });
+
+  it('is false for a missing severity and for any other severity', () => {
+    expect(isSentinelSeverity(undefined)).toBe(false);
+    expect(isSentinelSeverity(ScorechainSeverity.HIGH_RISK)).toBe(false);
+  });
+});
+
+describe('scorechainHold', () => {
+  it('is HighRisk for the high-risk token', () => {
+    expect(scorechainHold(SCORECHAIN_HIGH_RISK_TOKEN)).toBe('HighRisk');
+  });
+
+  it('is Unavailable for the unavailable token as one member of a ;-joined list', () => {
+    expect(scorechainHold(`SomeOtherError; ${SCORECHAIN_UNAVAILABLE_TOKEN}`)).toBe('Unavailable');
+  });
+
+  it('prefers HighRisk when both tokens are present', () => {
+    expect(scorechainHold(`${SCORECHAIN_UNAVAILABLE_TOKEN};${SCORECHAIN_HIGH_RISK_TOKEN}`)).toBe('HighRisk');
+  });
+
+  it('is undefined for a Sanction hit, an unrelated comment and a missing comment', () => {
+    expect(scorechainHold('ScorechainSanction')).toBeUndefined();
+    expect(scorechainHold('InvalidKycStatusRefUser')).toBeUndefined();
+    expect(scorechainHold(undefined)).toBeUndefined();
+  });
+
+  it('is undefined for a longer token that merely contains the unavailable string', () => {
+    expect(scorechainHold('ScorechainUnavailableLegacy')).toBeUndefined();
   });
 });
 

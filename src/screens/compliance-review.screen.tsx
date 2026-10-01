@@ -609,6 +609,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
               onReset={handleAmlReset}
               onReviewReset={handleAmlReviewReset}
               onRefUserKycCleared={loadData}
+              onScorechainCleared={loadData}
             />
           ) : (
             <ComplianceReviewPanel

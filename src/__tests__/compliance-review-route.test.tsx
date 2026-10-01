@@ -65,13 +65,20 @@ jest.mock('src/components/compliance/aml-check-panel', () => ({
   AmlCheckPendingPanel: ({
     data,
     onRefUserKycCleared,
+    onScorechainCleared,
   }: {
     data: { userData: { id: number } };
     onRefUserKycCleared?: () => Promise<void>;
+    onScorechainCleared?: () => Promise<void>;
   }) => (
-    <button type="button" onClick={() => void onRefUserKycCleared?.()}>
-      reload-{data.userData.id}
-    </button>
+    <>
+      <button type="button" onClick={() => void onRefUserKycCleared?.()}>
+        reload-{data.userData.id}
+      </button>
+      <button type="button" onClick={() => void onScorechainCleared?.()}>
+        scorechain-reload-{data.userData.id}
+      </button>
+    </>
   ),
 }));
 
@@ -133,5 +140,20 @@ describe('ComplianceReviewScreen route change', () => {
     const next = pending.find((call) => call.id === 999);
     await act(async () => next?.resolve(account(999)));
     expect(await screen.findByText('account-999')).toBeInTheDocument();
+  });
+
+  it('reloads the shown account after a Scorechain acknowledgement', async () => {
+    render(<ComplianceReviewScreen />);
+
+    await waitFor(() => expect(pending).toHaveLength(1));
+    await act(async () => pending[0].resolve(account(325674)));
+    expect(await screen.findByText('account-325674')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'scorechain-reload-325674' }));
+
+    await waitFor(() => expect(pending).toHaveLength(2));
+    expect(pending[1].id).toBe(325674);
+    await act(async () => pending[1].resolve(account(325674)));
+    expect(await screen.findByText('account-325674')).toBeInTheDocument();
   });
 });
