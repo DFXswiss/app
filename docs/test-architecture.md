@@ -420,13 +420,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   does not prove how an account reaches that state in production or any other reason the API may reject the
   switch.
 - **The address-switch unit test runs the SDK user context against replaced HTTP and session hooks.**
-  `src/__tests__/address-switch.test.tsx` transpiles `UserContextProvider` from the installed `@dfx.swiss/react`
-  build and wires it to hand-written `useUser` and `useApiSession` replacements; the dropdown, `ErrorHint`,
-  labels, the app contexts and the client-error reporter are stubbed as well. A green run proves, against that
-  harness, that `ConnectAddress` and `AccountScreen` each send a switch only once and that `ConnectAddress`
-  shows the translated rejection sentence instead of the API's text for 400/401/403/404, keeps the generic
-  hint for other failures, reports the rejection once, and retries only after re-selection. It does not prove
-  the real session or token handling, the rendered dropdown, or that the API returns those statuses.
+  `src/__tests__/address-switch.test.tsx` transpiles `UserContextProvider` from the installed
+  `@dfx.swiss/react` build and wires it to hand-written `useUser` and `useApiSession` replacements; the
+  dropdown, `ErrorHint`, labels, the app contexts and the client-error reporter are stubbed as well. A green
+  run proves, against that harness, that `ConnectAddress` and `AccountScreen` each send a switch only once
+  and that `ConnectAddress` shows the translated rejection sentence instead of the API's text for
+  400/401/403/404, keeps the generic hint for other failures, reports each displayed rejection once to the
+  client-error reporter (so again after re-selection), and retries only after re-selection. It does not prove
+  the real session or token handling, the rendered dropdown, that the API returns those statuses, or the
+  reporter's 60 s deduplication of identical reports, since the reporter is replaced.
 
 ## Known gaps
 
