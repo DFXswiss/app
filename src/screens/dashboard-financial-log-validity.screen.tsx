@@ -56,6 +56,17 @@ interface PendingConfirmation {
   run: () => Promise<void>;
 }
 
+function formatLocalDateTime(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+}
+
+function matchesLocalDateTime(value: string, date: Date): boolean {
+  return Number.isNaN(date.getTime()) === false && formatLocalDateTime(date) === value;
+}
+
 export default function DashboardFinancialLogValidityScreen(): JSX.Element {
   useAdminGuard();
 
@@ -76,6 +87,7 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
   const [idError, setIdError] = useState<string>();
   const [idSuccess, setIdSuccess] = useState<string>();
   const idSuccessTimeout = useRef<ReturnType<typeof setTimeout> | undefined>();
+  const mountedRef = useRef(false);
 
   const idRules = Utils.createRules({
     id: [Validations.Required, Validations.Custom((value) => (/^\d+$/.test(String(value)) ? true : 'pattern'))],
@@ -86,21 +98,29 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
     setIdError(undefined);
     setIdSuccess(undefined);
 
+    let response: LogValidityResponse | undefined;
+    let callError: unknown = undefined;
     try {
-      const response = await call<LogValidityResponse>({
+      response = await call<LogValidityResponse>({
         url: `log/${data.id}`,
         method: 'PUT',
         data: { valid },
       });
+    } catch (e) {
+      callError = e;
+    }
+
+    if (mountedRef.current === false) return;
+
+    if (response === undefined) {
+      setIdError(callError instanceof Error ? callError.message : 'Unknown error');
+    } else {
       setIdSuccess(`Saved: log #${response.id} set to valid = ${valid}`);
       if (idSuccessTimeout.current !== undefined) clearTimeout(idSuccessTimeout.current);
       idSuccessTimeout.current = setTimeout(() => setIdSuccess(undefined), 4000);
       resetId();
-    } catch (e) {
-      setIdError(e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setIdLoading(false);
     }
+    setIdLoading(false);
   }
 
   function requestIdConfirmation(data: IdFormData, valid: boolean) {
@@ -133,13 +153,15 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
   const rangeSuccessTimeout = useRef<ReturnType<typeof setTimeout> | undefined>();
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (idSuccessTimeout.current !== undefined) clearTimeout(idSuccessTimeout.current);
       if (rangeSuccessTimeout.current !== undefined) clearTimeout(rangeSuccessTimeout.current);
     };
   }, []);
 
-  // Validate the range form against the backend rules and build the request payload.
+  // Validate the range form against the API rules and build the request payload.
   // Returns undefined (and sets an error) when the input is invalid.
   function buildRangePayload(
     data: RangeFormData,
@@ -160,12 +182,32 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
     }
 
     // The datetime-local field holds local wall-clock time; new Date() reads it as local,
-    // toISOString() then sends the unambiguous UTC instant the backend expects.
+    // toISOString() then sends the unambiguous UTC instant the API expects.
     const fromDate = hasFrom ? new Date(data.from) : undefined;
     const toDate = hasTo ? new Date(data.to) : undefined;
 
+    if (fromDate !== undefined && matchesLocalDateTime(data.from, fromDate) === false) {
+      setRangeError("Invalid 'from' date.");
+      return undefined;
+    }
+
+    if (toDate !== undefined && matchesLocalDateTime(data.to, toDate) === false) {
+      setRangeError("Invalid 'to' date.");
+      return undefined;
+    }
+
     if (fromDate && toDate && fromDate.getTime() > toDate.getTime()) {
       setRangeError("'from' must be earlier than or equal to 'to'.");
+      return undefined;
+    }
+
+    const numberPattern = /^-?\d+(\.\d+)?$/;
+    if (hasMin && numberPattern.test(minStr) === false) {
+      setRangeError("'min' must be a number.");
+      return undefined;
+    }
+    if (hasMax && numberPattern.test(maxStr) === false) {
+      setRangeError("'max' must be a number.");
       return undefined;
     }
 
@@ -198,12 +240,24 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
 
   async function executeRange(payload: FinancialValidityRequest) {
     setRangeLoading(true);
+
+    let response: FinancialValidityResponse | undefined;
+    let callError: unknown = undefined;
     try {
-      const response = await call<FinancialValidityResponse>({
+      response = await call<FinancialValidityResponse>({
         url: 'log/financial/validity',
         method: 'PUT',
         data: payload,
       });
+    } catch (e) {
+      callError = e;
+    }
+
+    if (mountedRef.current === false) return;
+
+    if (response === undefined) {
+      setRangeError(callError instanceof Error ? callError.message : 'Unknown error');
+    } else {
       setRangeSuccess(
         payload.auditAll
           ? `Recorded an info point for ${response.audited} ${response.audited === 1 ? 'entry' : 'entries'} (${response.affected} changed to valid = true).`
@@ -212,11 +266,8 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
       if (rangeSuccessTimeout.current !== undefined) clearTimeout(rangeSuccessTimeout.current);
       rangeSuccessTimeout.current = setTimeout(() => setRangeSuccess(undefined), 4000);
       resetRange();
-    } catch (e) {
-      setRangeError(e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setRangeLoading(false);
     }
+    setRangeLoading(false);
   }
 
   function requestRangeConfirmation(data: RangeFormData, valid: boolean, auditAll: boolean) {
@@ -265,6 +316,7 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
             onCancel={() => setConfirmation(undefined)}
             onConfirm={async () => {
               await confirmation.run();
+              if (mountedRef.current === false) return;
               setConfirmation(undefined);
             }}
           />
@@ -329,7 +381,7 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
             <StyledInput name="to" type="datetime-local" label="To (created <)" full smallLabel />
             <StyledInput
               name="min"
-              type="number"
+              type="text"
               label="Min totalBalanceChf (exclusive)"
               placeholder="0"
               full
@@ -337,7 +389,7 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
             />
             <StyledInput
               name="max"
-              type="number"
+              type="text"
               label="Max totalBalanceChf (exclusive)"
               placeholder="0"
               full

@@ -277,7 +277,9 @@ test.describe('Financial dashboard', () => {
     assertNoErrors(pageErrors, consoleErrors);
   });
 
-  test('/dashboard/financial/log-validity: ID error and empty range sweep are handled', async ({ page }) => {
+  test('/dashboard/financial/log-validity: ID error, empty range sweep and info point are handled', async ({
+    page,
+  }) => {
     const { jwt } = await loginAs('Admin');
     const { pageErrors, consoleErrors } = attachErrorListeners(page);
 
@@ -305,6 +307,13 @@ test.describe('Financial dashboard', () => {
     await page.getByRole('button', { name: 'Confirm' }).click();
 
     await expect(page.getByText('Updated 0 entries to valid = false.')).toBeVisible();
+
+    await rangeSection.locator('input[type="datetime-local"]').first().fill('2026-01-01T00:00');
+    await rangeSection.getByPlaceholder('Reason').fill('E2E empty info point');
+    await rangeSection.getByRole('button', { name: 'Add info point (set valid)' }).click();
+    await page.getByRole('button', { name: 'Confirm' }).click();
+
+    await expect(page.getByText('Recorded an info point for 0 entries (0 changed to valid = true).')).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);
   });

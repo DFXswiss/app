@@ -6,6 +6,8 @@ import { expect, Page, Route, test } from '@playwright/test';
  *
  * Auth is a synthetic Admin JWT and the app shell reads are mocked, the same way as the RealUnit
  * workspace spec. The screen fetches nothing on mount, so no validity data is involved.
+ * A green run proves the form and the info-point confirmation render. It does not prove production auth, that the
+ * API accepts `reference` or `auditAll`, or that it returns `{ affected, audited }`.
  */
 
 function jwt(): string {
@@ -56,7 +58,7 @@ const shot = { fullPage: true, maxDiffPixels: 1000, animations: 'disabled' as co
 
 test.describe('Log Validity - Visual Regression Tests', () => {
   // The confirmation prints the picked local time as UTC, so the zone is pinned for a stable baseline.
-  test.use({ timezoneId: 'Europe/Zurich' });
+  test.use({ timezoneId: 'Europe/Zurich', locale: 'en-US' });
 
   test('form and info point confirmation', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1400 });
