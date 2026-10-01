@@ -14,6 +14,7 @@ import { useAppParams } from 'src/hooks/app-params.hook';
 import { useAppHandlingContext } from '../../../contexts/app-handling.context';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { useNavigation } from '../../../hooks/navigation.hook';
+import { appOrigin } from '../../../util/app-origin';
 import { personalIbanOnlyParams } from '../../../util/personal-iban';
 import { relativeUrl } from '../../../util/utils';
 import { ConnectError, ConnectProps } from '../connect-shared';
@@ -39,9 +40,10 @@ export default function ConnectMail({ onCancel }: ConnectProps): JSX.Element {
   const win: Window = window;
   // Merge redirectPath with an allowlisted callback param set (only personal-iban when present).
   // Do not copy the entire live search — that would forward user=/arbitrary= into the magic link.
+  // The origin is the app's own, not the embedding page's (the API only accepts the app's origins as login redirect).
   const redirectUri =
     redirectPath &&
-    `${win.location.origin}${relativeUrl({
+    `${appOrigin()}${relativeUrl({
       path: redirectPath,
       params: personalIbanOnlyParams(win.location.search),
     })}`;

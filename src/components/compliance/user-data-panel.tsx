@@ -7,6 +7,7 @@ import type { UserDataStatusInfo } from 'src/hooks/account-reactivation.hook';
 import { useClipboard } from 'src/hooks/clipboard.hook';
 import { OrganizationDetail, UserDataDetail } from 'src/hooks/compliance.hook';
 import { canReactivateAccount, DEACTIVATED_STATUS } from 'src/util/account-reactivation.util';
+import { appOrigin } from 'src/util/app-origin';
 import { display, formatBirthday, formatDate, formatDateTime, Primitive, refName } from 'src/util/compliance-helpers';
 
 interface UserDataPanelProps {
@@ -19,14 +20,10 @@ interface UserDataPanelProps {
   onCreateNote?: () => void;
 }
 
-function kycServicesBaseUrl(): string {
-  return process.env.REACT_APP_PUBLIC_URL ?? window.location.origin;
-}
-
 function KycLinkButtons({ kycHash }: Readonly<{ kycHash: string }>): JSX.Element {
   const kycLink = useClipboard();
   const videoLink = useClipboard();
-  const base = kycServicesBaseUrl();
+  const base = appOrigin();
   const buttonClass =
     'px-2 py-0.5 text-xs font-medium bg-dfxBlue-800 text-white rounded hover:bg-dfxBlue-800/80 transition-colors whitespace-nowrap';
   return (
