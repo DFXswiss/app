@@ -372,6 +372,21 @@ describe('ConnectAddress automatic address switch', () => {
     );
   });
 
+  it('reports Unknown error when a rejection has an empty message', async () => {
+    mockGetUser.mockResolvedValue({ addresses: [ADDRESS_A], activeAddress: undefined });
+    rejectSwitch({ statusCode: 403, message: '' });
+
+    renderWithUser(<ConnectAddress onLogin={jest.fn()} onCancel={jest.fn()} />);
+    await settle();
+
+    expect(screen.getByText(REJECTION_TEXT)).toBeInTheDocument();
+    expect(mockChangeUserAddress).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockReportClientError).toHaveBeenCalledTimes(1));
+    expect(mockReportClientError.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ message: 'Unknown error', name: 'KnownRejection' }),
+    );
+  });
+
   it('lets the user pick another address after a rejection and succeeds', async () => {
     mockGetUser.mockResolvedValue({ addresses: [ADDRESS_A, ADDRESS_B], activeAddress: undefined });
     mockChangeUserAddress
@@ -544,6 +559,22 @@ describe('ConnectAddress automatic address switch', () => {
     await settle();
 
     expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('handles custody sign-up failure with empty message', async () => {
+    mockAssetOut = 'ZCHF';
+    mockGetUser.mockResolvedValue({ addresses: [], activeAddress: undefined });
+    mockCall.mockRejectedValue({ statusCode: 500, message: '' });
+
+    renderWithUser(
+      <LoadedUser>
+        <ConnectAddress onLogin={jest.fn()} onCancel={jest.fn()} />
+      </LoadedUser>,
+    );
+    await settle();
+
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
+    expect(screen.queryByTestId('spinner')).toBeNull();
   });
 
   it('uses label when present and wallet otherwise in descriptionFunc', async () => {

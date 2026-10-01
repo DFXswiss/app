@@ -4,7 +4,8 @@ import { expect, Page, Route, test } from '@playwright/test';
  * Visual variant of a rejected automatic address switch on /connect: the rejected automatic switch
  * is sent exactly once, the translated rejection sentence is shown above the address selection
  * (without the API's text or the generic ErrorHint), the rejection is reported once via the
- * client-error log, and selecting the address again sends exactly one new attempt.
+ * client-error log (also across the repeated rejection after re-selection), and selecting the
+ * address again sends exactly one new attempt.
  *
  * Auth is a synthetic unsigned JWT WITHOUT `address` (a mail-login session); all `/v1/**` and
  * `/v2/**` calls are intercepted via page.route(...).
@@ -44,6 +45,13 @@ function jwt(): string {
 
 async function fulfillJson(route: Route, body: unknown, status = 200): Promise<void> {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+}
+
+function knownRejectionReports(reports: unknown[]): unknown[] {
+  return reports.filter((report) => {
+    const body = JSON.stringify(report);
+    return body.includes('KnownRejection') && body.includes('Forbidden resource');
+  });
 }
 
 async function installSyntheticApi(
@@ -133,12 +141,7 @@ test.describe('Connect address switch', () => {
     // A looping screen would keep calling during the wait.
     await page.waitForTimeout(2000);
     expect(api.changeCalls).toBe(1);
-    expect(
-      api.reports.filter((report) => {
-        const body = JSON.stringify(report);
-        return body.includes('KnownRejection') && body.includes('Forbidden resource');
-      }),
-    ).toHaveLength(1);
+    expect(knownRejectionReports(api.reports)).toHaveLength(1);
     expect(api.unexpectedRequests).toEqual([]);
 
     await expect(page).toHaveScreenshot('connect-address-switch-01-rejected.png', { fullPage: true });
@@ -150,5 +153,7 @@ test.describe('Connect address switch', () => {
     await page.waitForTimeout(2000);
     expect(api.changeCalls).toBe(2);
     await expect(page.getByText(REJECTION_TEXT)).toBeVisible();
+    // The client-error reporter drops an identical report within 60 s, so the repeated rejection is logged once.
+    expect(knownRejectionReports(api.reports)).toHaveLength(1);
   });
 });
