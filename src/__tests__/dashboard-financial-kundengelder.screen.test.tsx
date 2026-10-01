@@ -57,6 +57,16 @@ const chf = (value: number): string => `${value.toLocaleString('de-CH')} CHF`;
 const money = (value: number): string =>
   value.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+function cardByHeading(name: string): HTMLElement {
+  const card = screen.getByRole('heading', { name }).parentElement;
+  if (!card) throw new Error(`missing card for ${name}`);
+  return card;
+}
+
+function clickLine(accountName: string, label: string): void {
+  fireEvent.click(within(cardByHeading(accountName)).getByText(label));
+}
+
 const YEAR = new Date().getUTCFullYear();
 
 const EXTRACT: KundengelderExtract = {
@@ -152,7 +162,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     render(<DashboardFinancialKundengelderScreen />);
 
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
     expect(await screen.findByText('99')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Jahr'), { target: { value: '2022' } });
@@ -181,7 +191,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     const chfAccount = EXTRACT.accounts[0];
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
 
     expect(await screen.findByText('99')).toBeInTheDocument();
     expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, chfAccount.key, chfAccount.lines[0].key);
@@ -221,7 +231,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
     mockGetKundengelderLines.mockRejectedValueOnce(new Error('line boom'));
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('line boom');
   });
 
@@ -255,10 +265,10 @@ describe('DashboardFinancialKundengelderScreen', () => {
     render(<DashboardFinancialKundengelderScreen />);
 
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
     expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
     expect(screen.queryByText('Keine Buchungen')).not.toBeInTheDocument();
   });
 
@@ -273,8 +283,8 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
 
     await act(async () => {
       resolveLines({
@@ -299,8 +309,8 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
 
     await act(async () => {
       rejectLines(new Error('late line boom'));
@@ -312,7 +322,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
   it('opens a line on the second account without treating it as a toggle', async () => {
     render(<DashboardFinancialKundengelderScreen />);
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
     expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Checkout'));
     await waitFor(() => expect(mockGetKundengelderLines).toHaveBeenLastCalledWith(YEAR, 'CheckoutLtdEUR', 'Checkout'));
@@ -426,7 +436,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     render(<DashboardFinancialKundengelderScreen />);
 
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
 
     expect(await screen.findByText('instr-101')).toBeInTheDocument();
     expect(screen.getByText('101')).toBeInTheDocument();
@@ -487,7 +497,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.queryByRole('heading', { name: 'Test CHF Account' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    clickLine('Maerki Baumann CHF', 'BuyCrypto after Fee');
     expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'CH9300762011623852957', 'BuyCrypto after Fee');
     expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
 
@@ -548,7 +558,8 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByText('BuyCrypto after Fee')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
+    expect(within(cardByHeading('Maerki Baumann CHF')).getByText('BuyCrypto after Fee')).toBeInTheDocument();
     expect(screen.getByText('nicht abgelegt')).toBeInTheDocument();
     expect(
       screen.getByRole('option', { name: 'Maerki Baumann CHF · CH3408573177975200001' }),
