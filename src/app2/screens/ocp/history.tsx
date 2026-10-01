@@ -1,6 +1,6 @@
 // DFX App 2.0 — OpenCryptoPay » Payment history sub-view.
 // Faithful port of the static preview's ocpHistoryHtml (index.html ~2582-2588)
-// + wireHistory (2589): the "total received" tile followed by a per-payment
+// + wireHistory (2589): monthly completed totals by currency followed by a per-payment
 // list, sourced from GET /paymentLink/history (loaded by useOcp.loadHistory).
 // wireHistory was a no-op in the static app — the list is render-only — so the
 // only behaviour beyond rendering is triggering the load once when history is
@@ -67,13 +67,26 @@ export default function HistoryView({ ocp }: OcpSubViewProps) {
     );
   }
 
-  const total = Math.round(history.total * 100) / 100;
+  const totals = new Map<string, number>();
+  for (const payment of history.items) {
+    if (payment.status === 'Completed') {
+      totals.set(payment.currency, (totals.get(payment.currency) ?? 0) + payment.amount);
+    }
+  }
 
   return (
     <>
       <div className={cx('limit-now')} style={{ marginBottom: 12 }}>
-        <div className={cx('lab')}>{t('totalReceived')}</div>
-        <div className={cx('big')}>{formatNumber(total, language)} CHF</div>
+        <div className={cx('lab')}>{t('completedThisMonth')}</div>
+        {totals.size === 0 ? (
+          <div className={cx('big')}>{formatNumber(0, language)}</div>
+        ) : (
+          Array.from(totals, ([currency, total]) => (
+            <div className={cx('big')} key={currency}>
+              {formatNumber(Math.round(total * 100) / 100, language)} {currency}
+            </div>
+          ))
+        )}
       </div>
       {history.items.length === 0 ? (
         historyError ? (

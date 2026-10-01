@@ -113,6 +113,106 @@ describe('POS charges exactly once until the payment is terminal', () => {
   beforeEach(() => {
     sessionStorage.clear();
   });
+
+  it.each([400, 401, 403, 404, 407, 410, 422, 429, 499])(
+    'unlocks and forgets a definitively rejected HTTP %s charge, including after remount',
+    async (statusCode) => {
+      const message = `Payment rejected (${statusCode})`;
+      const ocp = buildOcp({ charge: jest.fn().mockRejectedValue(new ApiException(statusCode, message)) });
+      const view = renderPos(ocp);
+      fireEvent.change(amountField(), { target: { value: '0.01' } });
+      fireEvent.click(chargeButton());
+
+      expect(await screen.findByText(`Something went wrong: ${message}`)).toBeInTheDocument();
+      expect(chargeButton()).toBeEnabled();
+      expect(amountField()).toHaveValue('0.01');
+      expect(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${ocp.sessionIdentity}`)).toBeNull();
+      expect(screen.queryByTestId('ocp-pos-ambiguous-charge')).not.toBeInTheDocument();
+      expect(ocp.pollPayment).not.toHaveBeenCalled();
+      expect(ocp.loadLinks).not.toHaveBeenCalled();
+
+      fireEvent.change(amountField(), { target: { value: '12' } });
+      fireEvent.click(chargeButton());
+      await waitFor(() => expect(ocp.charge).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(chargeButton()).toBeEnabled());
+      const chargeCalls = (ocp.charge as jest.Mock).mock.calls;
+      expect(chargeCalls[1][2]).not.toBe(chargeCalls[0][2]);
+      expect(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${ocp.sessionIdentity}`)).toBeNull();
+
+      view.unmount();
+      renderPos(ocp);
+      expect(chargeButton()).toBeEnabled();
+      expect(screen.queryByTestId('ocp-pos-ambiguous-charge')).not.toBeInTheDocument();
+    },
+  );
+
+  it('unlocks a definitively rejected charge with no API message even if storage cleanup fails', async () => {
+    const ocp = buildOcp({ charge: jest.fn().mockRejectedValue(new ApiException(400, '')) });
+    renderPos(ocp);
+    jest.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('Storage unavailable');
+    });
+    fireEvent.change(amountField(), { target: { value: '8' } });
+    fireEvent.click(chargeButton());
+    expect(await screen.findByText('Something went wrong')).toBeInTheDocument();
+    expect(chargeButton()).toBeEnabled();
+    expect(screen.queryByTestId('ocp-pos-ambiguous-charge')).not.toBeInTheDocument();
+  });
+
+  it('does not clear remounted till storage when an unmounted charge receives a late rejection', async () => {
+    let rejectCharge!: (error: Error) => void;
+    const ocp = buildOcp({
+      charge: jest.fn(
+        () =>
+          new Promise<{ lnurl: string; externalId: string }>((_resolve, reject) => {
+            rejectCharge = reject;
+          }),
+      ),
+    });
+    const view = renderPos(ocp);
+    fireEvent.change(amountField(), { target: { value: '12' } });
+    fireEvent.click(chargeButton());
+    const storageKey = `ocp-pos-ambiguous-charge:${ocp.sessionIdentity}`;
+    const saved = sessionStorage.getItem(storageKey);
+    expect(saved).not.toBeNull();
+    view.unmount();
+    renderPos(ocp);
+    await act(async () => rejectCharge(new ApiException(400, 'Late rejection')));
+    expect(sessionStorage.getItem(storageKey)).toBe(saved);
+    expect(screen.getByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['network failure', new Error('Connection lost')],
+    ['HTTP 399', new ApiException(399, 'Unexpected response')],
+    ['HTTP 408', new ApiException(408, 'Request timed out')],
+    ['HTTP 409', new ApiException(409, 'Conflict without pending match')],
+    ['HTTP 500', new ApiException(500, 'Server error')],
+    ['HTTP 503', new ApiException(503, 'Unavailable')],
+  ])('preserves the attempt and till lock after %s and remount', async (_description, error) => {
+    const ocp = buildOcp({
+      charge: jest.fn().mockRejectedValue(error),
+      pollPayment: jest.fn().mockResolvedValue(undefined),
+    });
+    const view = renderPos(ocp);
+    fireEvent.change(amountField(), { target: { value: '12' } });
+    fireEvent.click(chargeButton());
+    expect(await screen.findByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(charge|kassieren)$/i })).not.toBeInTheDocument();
+    const externalId = (ocp.charge as jest.Mock).mock.calls[0][2];
+    const saved = JSON.parse(sessionStorage.getItem(`ocp-pos-ambiguous-charge:${ocp.sessionIdentity}`) as string);
+    expect(saved).toMatchObject({
+      externalId,
+      amount: 12,
+    });
+    view.unmount();
+    renderPos(ocp);
+    expect(screen.getByTestId('ocp-pos-ambiguous-charge')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument();
+    expect(ocp.charge).toHaveBeenCalledTimes(1);
+  });
+
   it('ignores double Enter and click while the charge request is in flight', async () => {
     let resolveCharge!: (v: { lnurl: string; externalId: string }) => void;
     const chargePromise = new Promise<{ lnurl: string; externalId: string }>((resolve) => {

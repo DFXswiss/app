@@ -2,8 +2,10 @@
 //
 // Ported verbatim from the static preview's bech32 helpers
 // (public/app2/index.html, ~lines 2140-2150) so invoice / payment-link QR codes
-// carry a real, scannable LNURL. Pure functions, no DOM, no deps — unit-testable
+// carry a real, scannable LNURL. The bech32 helpers are pure — unit-testable
 // and CSP-safe (the QR itself is rendered by react-qr-code in the sub-views).
+
+import { appUrl } from '../../utils/url';
 
 const B32 = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 
@@ -88,11 +90,8 @@ export function lnurlEncode(url: string): string {
   return b32Enc('lnurl', convBits(bytes, 8, 5, true)).toUpperCase();
 }
 
-// A web link a phone camera can open (→ the payer page). Mirrors the static
-// app's OCP_PL / qrData(), which matches Lnurl.prependLnurl(link.lnurl).
-export const OCP_PL = 'https://app.dfx.swiss/pl?lightning=';
-
 /** Build the scannable QR payload string from a payment link's LNURL. */
 export function qrData(lnurl: string): string {
-  return OCP_PL + lnurl;
+  const payerUrl = appUrl('pl');
+  return payerUrl ? `${payerUrl}?lightning=${lnurl}` : lnurl;
 }

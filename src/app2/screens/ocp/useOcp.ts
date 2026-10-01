@@ -61,7 +61,6 @@ export interface OcpHistoryItem {
 
 export interface OcpHistory {
   items: OcpHistoryItem[];
-  total: number;
 }
 
 /** Input for `createRoute` (adds a Lightning sell route — POST /sell). */
@@ -333,8 +332,7 @@ export function useOcp(): OcpApi {
       { id: 9003, note: 'Gift card', amount: 50, currency: 'CHF', status: 'Pending', when: 'Today · 11:51' },
       { id: 9004, note: 'Refund', amount: 5, currency: 'CHF', status: 'Cancelled', when: 'Yesterday · 17:30' },
     ];
-    const total = items.filter((p) => p.status === 'Completed').reduce((a, p) => a + p.amount, 0);
-    return { items, total };
+    return { items };
   }, []);
 
   const enableDemo = useCallback(() => {
@@ -444,7 +442,6 @@ export function useOcp(): OcpApi {
       const data = await getPaymentLinkHistory();
       if (epoch !== demoEpochRef.current) return;
       const items: OcpHistoryItem[] = [];
-      let total = 0;
       if (Array.isArray(data)) {
         for (const link of data) {
           for (const p of link.payments ?? []) {
@@ -457,15 +454,14 @@ export function useOcp(): OcpApi {
               when: p.date ? formatDateTime(p.date, language) : '',
             });
           }
-          total += link.totalCompletedAmount || 0;
         }
       }
       items.sort((a, b) => Number(b.id) - Number(a.id));
-      setHistory({ items, total });
+      setHistory({ items });
       setHistoryError(false);
     } catch {
       if (epoch !== demoEpochRef.current) return;
-      setHistory({ items: [], total: 0 });
+      setHistory({ items: [] });
       setHistoryError(true);
     }
   }, [demo, getPaymentLinkHistory, language, buildDemoHistory]);

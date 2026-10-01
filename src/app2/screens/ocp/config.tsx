@@ -40,7 +40,7 @@ function configFormKey(form: ConfigForm): string {
   return JSON.stringify({
     standards: [...form.standards].sort(),
     completion: form.completion,
-    paymentTimeout: Number(form.timeout) || 60,
+    paymentTimeout: Number(form.timeout),
     displayQr: form.displayQr,
     cancellable: form.cancellable,
   });
@@ -76,10 +76,15 @@ export default function ConfigView({ ocp }: OcpSubViewProps) {
 
   async function save() {
     const sent = formRef.current;
+    const paymentTimeout = Number(sent.timeout);
+    if (!Number.isInteger(paymentTimeout) || paymentTimeout <= 0) {
+      setResult({ kind: 'error', text: t('cfgTimeoutInvalid') });
+      return;
+    }
     const body: UpdatePaymentLinkConfig = {
       standards: sent.standards,
       minCompletionStatus: sent.completion,
-      paymentTimeout: Number(sent.timeout) || 60,
+      paymentTimeout,
       displayQr: sent.displayQr,
       cancellable: sent.cancellable,
     };

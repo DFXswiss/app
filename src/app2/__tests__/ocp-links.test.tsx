@@ -131,6 +131,7 @@ describe('OCP links view', () => {
       demo: false,
     };
     renderLinks(ocp);
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole('button', { name: /copy lnurl/i })[0]);
     fireEvent.click(screen.getAllByRole('button', { name: /copy lnurl/i })[1]);
@@ -159,6 +160,62 @@ describe('OCP links view', () => {
     mockCreate.mockRejectedValueOnce(new Error('x'));
     fireEvent.click(screen.getByRole('button', { name: 'Create payment link' }));
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(3));
+  });
+
+  it('defaults to the first Lightning route and sends the selected route ID', async () => {
+    const routes = [
+      { id: 201, currency: { name: 'CHF' } },
+      { id: 202, currency: { name: 'EUR' } },
+    ];
+    renderLinks({
+      links: [],
+      routes: { sell: routes, buy: [], swap: [] },
+      lnSellRoutes: routes,
+      createLink: mockCreate,
+    });
+    const picker = screen.getByRole('combobox', { name: 'Settle to route' });
+    expect(picker).toHaveValue('201');
+    expect(screen.getByRole('option', { name: 'Route 201 · CHF' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Route 202 · EUR' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Create payment link' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create payment link' })).toBeEnabled());
+    expect(mockCreate).toHaveBeenNthCalledWith(1, 201);
+
+    fireEvent.change(picker, { target: { value: '202' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create payment link' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create payment link' })).toBeEnabled());
+    expect(picker).toHaveValue('202');
+    expect(mockCreate).toHaveBeenNthCalledWith(2, 202);
+  });
+
+  it.each([undefined, {}])('renders a route ID when its currency name is missing (%j)', (currency) => {
+    const routes = [
+      { id: 201, currency: { name: 'CHF' } },
+      { id: 202, currency },
+    ];
+    renderLinks({ links: [], routes: { sell: routes }, lnSellRoutes: routes });
+    expect(screen.getByRole('option', { name: 'Route 202 ·' })).toBeInTheDocument();
+  });
+
+  it('uses the remaining route when the previously selected route is no longer active', async () => {
+    const routes = [
+      { id: 201, currency: { name: 'CHF' } },
+      { id: 202, currency: { name: 'EUR' } },
+    ];
+    const ocp = { links: [], routes: { sell: routes }, lnSellRoutes: routes, createLink: mockCreate };
+    const view = renderLinks(ocp);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '202' } });
+    view.rerender(
+      <LanguageProvider>
+        <ToastProvider>
+          <LinksView ocp={{ ...ocp, lnSellRoutes: [routes[0]] } as never} go={mockGo} />
+        </ToastProvider>
+      </LanguageProvider>,
+    );
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Create payment link' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create payment link' })).toBeEnabled());
+    expect(mockCreate).toHaveBeenCalledWith(201);
   });
 
   it('opens the in-app POS in demo mode', async () => {

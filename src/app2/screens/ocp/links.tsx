@@ -169,6 +169,7 @@ export default function LinksView({ ocp, go }: OcpSubViewProps) {
   const [creating, setCreating] = useState(false);
   const [note, setNote] = useState<CreateNote | null>(null);
   const [togglingId, setTogglingId] = useState<string | number | null>(null);
+  const [routeId, setRouteId] = useState('');
 
   // The create button gates on a Lightning sell route, so load routes too —
   // mirrors the static app loading /route alongside /paymentLink for this view.
@@ -178,9 +179,9 @@ export default function LinksView({ ocp, go }: OcpSubViewProps) {
   }, [ocp.links, ocp.routes, ocp.loadLinks, ocp.loadRoutes]);
 
   const canCreate = ocp.lnSellRoutes.length > 0;
+  const selectedRoute = ocp.lnSellRoutes.find((route) => String(route.id) === routeId) ?? ocp.lnSellRoutes[0];
 
   const create = async () => {
-    const ln = ocp.lnSellRoutes;
     setCreating(true);
     setNote({
       variant: '',
@@ -191,7 +192,7 @@ export default function LinksView({ ocp, go }: OcpSubViewProps) {
       ),
     });
     try {
-      await ocp.createLink(ln[0].id);
+      await ocp.createLink(selectedRoute.id);
       setNote(null);
       showToast(t('linkCreated'));
     } catch (err) {
@@ -283,6 +284,25 @@ export default function LinksView({ ocp, go }: OcpSubViewProps) {
         <div className={cx('ocp-empty')}>{t('linksEmpty')}</div>
       )}
       <div className={cx('ocp-actions')}>
+        {ocp.lnSellRoutes.length > 1 && (
+          <div className={cx('tform')}>
+            <label className={cx('flabel')} htmlFor="linkRoute">
+              {t('invoiceRoute')}
+            </label>
+            <select
+              id="linkRoute"
+              className={cx('tinput')}
+              value={String(selectedRoute.id)}
+              onChange={(e) => setRouteId(e.target.value)}
+            >
+              {ocp.lnSellRoutes.map((route) => (
+                <option key={route.id} value={String(route.id)}>
+                  {t('route')} {route.id} · {route.currency?.name || ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <button
           type="button"
           className={cx('btn-primary')}

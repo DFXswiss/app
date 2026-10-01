@@ -1,15 +1,60 @@
 import { TextEncoder } from 'util';
-import { b32Enc, b32Hrp, b32Polymod, b32Sum, convBits, isValidLnurl, lnurlEncode, qrData, OCP_PL } from '../screens/ocp/lnurl';
+import { b32Enc, b32Hrp, b32Polymod, b32Sum, convBits, isValidLnurl, lnurlEncode, qrData } from '../screens/ocp/lnurl';
 
 (global as { TextEncoder: typeof TextEncoder }).TextEncoder = TextEncoder;
 
 describe('LNURL bech32 helpers', () => {
+  const originalPublicUrl = process.env.REACT_APP_PUBLIC_URL;
+  const originalLocation = window.location;
+
+  afterEach(() => {
+    if (originalPublicUrl === undefined) delete process.env.REACT_APP_PUBLIC_URL;
+    else process.env.REACT_APP_PUBLIC_URL = originalPublicUrl;
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation });
+  });
+
   it('encodes a payment-link URL as an uppercase LNURL and builds the QR payload', () => {
-    const url = 'https://api.dfx.swiss/v1/lnurlp/abc';
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.dev.dfx.swiss/app2/';
+    const url = 'https://api.dev.dfx.swiss/v1/lnurlp/abc';
     const encoded = lnurlEncode(url);
     expect(encoded.startsWith('LNURL')).toBe(true);
     expect(encoded).toMatch(/^[A-Z0-9]+$/);
-    expect(qrData(encoded)).toBe(`${OCP_PL}${encoded}`);
+    expect(qrData(encoded)).toBe(`https://app.dev.dfx.swiss/pl?lightning=${encoded}`);
+  });
+
+  it('uses the runtime origin when no public app URL is configured', () => {
+    delete process.env.REACT_APP_PUBLIC_URL;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, origin: 'https://runtime.example' },
+    });
+    const encoded = lnurlEncode('https://api.dev.dfx.swiss/v1/lnurlp/abc');
+    expect(qrData(encoded)).toBe(`https://runtime.example/pl?lightning=${encoded}`);
+  });
+
+  it.each(['', 'not-an-origin', 'http://app.dfx.swiss', 'javascript:alert(1)'])(
+    'keeps the bare LNURL when the configured origin %j is unsafe',
+    (origin) => {
+      process.env.REACT_APP_PUBLIC_URL = origin;
+      const encoded = lnurlEncode('https://api.dev.dfx.swiss/v1/lnurlp/abc');
+      expect(qrData(encoded)).toBe(encoded);
+    },
+  );
+
+  it('keeps the bare LNURL when neither a configured nor a safe runtime origin is available', () => {
+    delete process.env.REACT_APP_PUBLIC_URL;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, origin: 'null' },
+    });
+    const encoded = lnurlEncode('https://api.dev.dfx.swiss/v1/lnurlp/abc');
+    expect(qrData(encoded)).toBe(encoded);
+  });
+
+  it('builds a local payer link for a configured local development origin', () => {
+    process.env.REACT_APP_PUBLIC_URL = 'http://localhost:3001';
+    const encoded = lnurlEncode('http://localhost:3000/v1/lnurlp/abc');
+    expect(qrData(encoded)).toBe(`http://localhost:3001/pl?lightning=${encoded}`);
   });
 
   it('checks the LNURL bech32 checksum before a recovered QR is trusted', () => {

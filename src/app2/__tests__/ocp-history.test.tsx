@@ -11,7 +11,7 @@ jest.mock('../screens/ocp/links', () => ({
   paymentStatusLabel: (_t: (key: string) => string, status: string) => status,
 }));
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import HistoryView from '../screens/ocp/history';
 import { LanguageProvider } from '../i18n';
 
@@ -37,7 +37,7 @@ describe('OCP history view', () => {
             {
               loadHistory,
               historyError: false,
-              history: { total: 12.345, items: [] },
+              history: { items: [] },
             } as never
           }
         />
@@ -53,7 +53,6 @@ describe('OCP history view', () => {
             {
               loadHistory,
               history: {
-                total: 10,
                 items: [
                   { id: '1', status: 'Completed', note: 'Tip', when: 'today', currency: 'CHF', amount: 5 },
                   { id: '2', status: 'Pending', when: '', currency: '', amount: 3 },
@@ -76,7 +75,7 @@ describe('OCP history view', () => {
     renderHistory({
       loadHistory,
       historyError: true,
-      history: { total: 0, items: [] },
+      history: { items: [] },
     });
     expect(
       screen.getByText(/couldn't load|konnte nicht laden|impossibile caricare|chargement impossible/i),
@@ -86,5 +85,47 @@ describe('OCP history view', () => {
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
     expect(loadHistory).toHaveBeenCalled();
+  });
+
+  it('shows completed monthly payments as separate currency totals and excludes pending and expired amounts', () => {
+    renderHistory({
+      loadHistory: jest.fn(),
+      history: {
+        items: [
+          { id: 1, status: 'Completed', currency: 'CHF', amount: 40 },
+          { id: 2, status: 'Completed', currency: 'EUR', amount: 50 },
+          { id: 3, status: 'Completed', currency: 'CHF', amount: 60 },
+          { id: 4, status: 'Pending', currency: 'CHF', amount: 200 },
+          { id: 5, status: 'Expired', currency: 'EUR', amount: 300 },
+        ],
+      },
+    });
+    const tile = within(screen.getByText('Completed this month').parentElement as HTMLElement);
+    expect(tile.getByText('100 CHF')).toBeInTheDocument();
+    expect(tile.getByText('50 EUR')).toBeInTheDocument();
+    expect(tile.queryByText('150 CHF')).not.toBeInTheDocument();
+    expect(tile.queryByText('300 CHF')).not.toBeInTheDocument();
+    expect(tile.queryByText('350 EUR')).not.toBeInTheDocument();
+    expect(screen.queryByText('Total received')).not.toBeInTheDocument();
+  });
+
+  it('formats an EUR-only total without inventing a CHF amount', () => {
+    renderHistory({
+      loadHistory: jest.fn(),
+      history: { items: [{ id: 1, status: 'Completed', currency: 'EUR', amount: 12.345 }] },
+    });
+    const tile = within(screen.getByText('Completed this month').parentElement as HTMLElement);
+    expect(tile.getByText('12.35 EUR')).toBeInTheDocument();
+    expect(tile.queryByText(/CHF/)).not.toBeInTheDocument();
+  });
+
+  it('shows zero without an invented currency when there are no completed payments', () => {
+    renderHistory({
+      loadHistory: jest.fn(),
+      history: { items: [{ id: 1, status: 'Pending', currency: 'EUR', amount: 5 }] },
+    });
+    const tile = within(screen.getByText('Completed this month').parentElement as HTMLElement);
+    expect(tile.getByText('0')).toBeInTheDocument();
+    expect(tile.queryByText(/CHF|EUR/)).not.toBeInTheDocument();
   });
 });

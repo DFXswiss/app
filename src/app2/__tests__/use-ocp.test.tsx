@@ -55,11 +55,12 @@ jest.mock('../wallets/session', () => ({
   useWalletSession: () => mockOcpSession,
 }));
 
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { ApiException } from '@dfx.swiss/react';
 import { LanguageProvider } from '../i18n';
 import { ToastProvider } from '../components/ui';
 import { useOcp } from '../screens/ocp/useOcp';
+import HistoryView from '../screens/ocp/history';
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -138,7 +139,9 @@ describe('useOcp', () => {
     await act(async () => {
       await result.current.loadHistory();
     });
-    expect(result.current.history?.total).toBe(5);
+    expect(result.current.history?.items).toEqual([
+      expect.objectContaining({ amount: 5, currency: 'CHF', status: 'Completed' }),
+    ]);
 
     await act(async () => {
       result.current.copy('abc');
@@ -183,6 +186,50 @@ describe('useOcp', () => {
     expect(result.current.demo).toBe(false);
   });
 
+  it('renders monthly totals from API payments by currency instead of link-level totals', async () => {
+    mockGetPaymentLinkHistory.mockResolvedValueOnce([
+      {
+        totalCompletedAmount: 999,
+        payments: [
+          { id: 1, amount: 40, currency: 'CHF', status: 'Completed' },
+          { id: 2, amount: 50, currency: 'EUR', status: 'Completed' },
+        ],
+      },
+      {
+        totalCompletedAmount: 888,
+        payments: [
+          { id: 3, amount: 60, currency: 'CHF', status: 'Completed' },
+          { id: 4, amount: 500, currency: 'EUR', status: 'Pending' },
+        ],
+      },
+    ]);
+    const { result } = renderHook(() => useOcp(), { wrapper });
+    await act(async () => {
+      await result.current.loadHistory();
+    });
+    render(<HistoryView ocp={result.current} go={jest.fn()} />, { wrapper });
+    const tile = within(screen.getByText('Completed this month').parentElement as HTMLElement);
+    expect(tile.getByText('100 CHF')).toBeInTheDocument();
+    expect(tile.getByText('50 EUR')).toBeInTheDocument();
+    expect(tile.queryByText(/999|888|1,787|550/)).not.toBeInTheDocument();
+    expect(mockGetPaymentLinkHistory).toHaveBeenCalledWith();
+  });
+
+  it('renders the demo history with a completed monthly total excluding pending and cancelled payments', async () => {
+    const { result } = renderHook(() => useOcp(), { wrapper });
+    act(() => result.current.enableDemo());
+    await act(async () => {
+      await result.current.loadHistory();
+    });
+    render(<HistoryView ocp={result.current} go={jest.fn()} />, { wrapper });
+    const tile = within(screen.getByText('Completed this month').parentElement as HTMLElement);
+    expect(tile.getByText('33.4 CHF')).toBeInTheDocument();
+    expect(screen.getByText('Coffee & croissant')).toBeInTheDocument();
+    expect(screen.getByText('Gift card')).toBeInTheDocument();
+    expect(screen.getByText('Refund')).toBeInTheDocument();
+    expect(mockGetPaymentLinkHistory).not.toHaveBeenCalled();
+  });
+
   it('creates live invoices, charges and polls', async () => {
     const { result } = renderHook(() => useOcp(), { wrapper });
     mockCreatePaymentLinkInvoice.mockResolvedValueOnce({ id: 'pay1', externalId: 'x/3CHF' });
@@ -223,7 +270,7 @@ describe('useOcp', () => {
     await act(async () => {
       await result.current.loadHistory();
     });
-    expect(result.current.history).toEqual({ items: [], total: 0 });
+    expect(result.current.history).toEqual({ items: [] });
     expect(result.current.historyError).toBe(true);
     mockGetPaymentLinkHistory.mockResolvedValueOnce([]);
     await act(async () => {
@@ -414,7 +461,7 @@ describe('useOcp', () => {
     await act(async () => {
       await result.current.loadHistory();
     });
-    expect(result.current.history).toEqual({ items: [], total: 0 });
+    expect(result.current.history).toEqual({ items: [] });
     expect(result.current.historyError).toBe(false);
 
     mockGetPaymentLinkHistory.mockResolvedValueOnce([
@@ -707,7 +754,7 @@ describe('useOcp', () => {
     });
     expect(result.current.config).toEqual({ accessKey: 'account-A-key' });
     expect(result.current.routes?.sell).toEqual([{ id: 'account-A-route' }]);
-    expect(result.current.history?.total).toBe(5);
+    expect(result.current.history).toEqual({ items: [] });
 
     mockApiAccount = 8;
     rerender();

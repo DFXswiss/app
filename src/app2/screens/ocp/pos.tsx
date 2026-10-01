@@ -659,9 +659,29 @@ export default function PosView({ ocp, go }: OcpSubViewProps) {
       // a second charge replace the QR and cancel the poll for the previous
       // LNURL, which the customer could still pay.
     } catch (err) {
-      if (sessionIdentityRef.current !== attemptIdentity) return;
+      if (sessionIdentityRef.current !== attemptIdentity || !mountedRef.current) return;
       creatingChargeRef.current = false;
       const msg = err instanceof ApiException ? err.message : '';
+      const statusCode = err instanceof ApiException ? err.statusCode : undefined;
+      if (
+        statusCode !== undefined &&
+        statusCode >= 400 &&
+        statusCode < 500 &&
+        statusCode !== 408 &&
+        statusCode !== 409
+      ) {
+        try {
+          sessionStorage.removeItem(attemptStorageKey(attemptIdentity));
+        } catch {
+          // The definitive rejection still allows this mounted till to retry.
+        }
+        ambiguousAttemptRef.current = null;
+        setAmbiguousAttempt(null);
+        setCharge(null);
+        unlockTill();
+        setNote(`${t('genErr')}${msg ? `: ${msg}` : ''}`);
+        return;
+      }
       const isConcurrentPendingConflict = isPendingPaymentConflict(err);
       let refreshedLinks: NonNullable<OcpApi['links']> | null = null;
       try {

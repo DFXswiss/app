@@ -48,17 +48,60 @@ describe('OCP config view', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /lightning/i }));
     const selects = screen.getAllByRole('combobox');
     fireEvent.change(selects[0], { target: { value: 'TxCompleted' } });
-    fireEvent.change(screen.getByDisplayValue('60'), { target: { value: 'not-a-number' } });
+    fireEvent.change(screen.getByDisplayValue('60'), { target: { value: '120' } });
     fireEvent.change(selects[1], { target: { value: '0' } });
     fireEvent.change(selects[2], { target: { value: '0' } });
     fireEvent.click(screen.getByRole('button', { name: /save|speichern|salva|enregistrer/i }));
     await waitFor(() => expect(document.querySelector('.paybox-note.ok')).toBeTruthy());
     expect(mockSaveConfig).toHaveBeenCalled();
     expect(mockSaveConfig.mock.calls[0][0]).toMatchObject({
-      paymentTimeout: 60,
+      paymentTimeout: 120,
       displayQr: false,
       cancellable: false,
     });
+  });
+
+  it.each(['', '0', '-5', '1.5', 'abc', '   ', 'Infinity'])(
+    'rejects timeout %j inline without saving or reporting success',
+    async (timeout) => {
+      renderConfig();
+      fireEvent.change(screen.getByDisplayValue('60'), { target: { value: timeout } });
+      fireEvent.click(screen.getByRole('button', { name: /save|speichern|salva|enregistrer/i }));
+      expect(await screen.findByText('Enter a positive whole number of seconds.')).toBeInTheDocument();
+      expect(mockSaveConfig).not.toHaveBeenCalled();
+      expect(document.querySelector('.paybox-note.ok')).toBeNull();
+      expect(screen.queryByText(/^Saved$/)).not.toBeInTheDocument();
+    },
+  );
+
+  it('saves the minimum positive integer after correcting an invalid timeout', async () => {
+    renderConfig();
+    fireEvent.change(screen.getByDisplayValue('60'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    expect(await screen.findByText('Enter a positive whole number of seconds.')).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue('0'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    await waitFor(() => expect(document.querySelector('.paybox-note.ok')).toBeTruthy());
+    expect(mockSaveConfig).toHaveBeenCalledTimes(1);
+    expect(mockSaveConfig).toHaveBeenCalledWith(expect.objectContaining({ paymentTimeout: 1 }));
+    expect(screen.queryByText('Enter a positive whole number of seconds.')).not.toBeInTheDocument();
+  });
+
+  it('does not claim saved when a pending default timeout is cleared', async () => {
+    let release!: () => void;
+    mockSaveConfig.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderConfig();
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+    expect(await screen.findByText(/sending/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue('60'), { target: { value: '' } });
+    release();
+    await waitFor(() => expect(document.querySelector('.paybox-note.warn')).toHaveTextContent(/form changed/i));
+    expect(document.querySelector('.paybox-note.ok')).toBeNull();
   });
 
   it('shows the sending state while save is in flight', async () => {
