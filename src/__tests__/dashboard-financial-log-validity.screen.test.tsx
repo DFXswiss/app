@@ -149,6 +149,7 @@ jest.mock('src/hooks/layout-config.hook', () => ({
 
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import DashboardFinancialLogValidityScreen from 'src/screens/dashboard-financial-log-validity.screen';
+import * as localDateTimeUtil from 'src/util/local-date-time.util';
 
 type SectionName = 'By log ID' | 'By financial range / threshold';
 type RangeValue =
@@ -215,18 +216,6 @@ const RANGE_VALIDATION_CASES: {
     },
     message: "'from' must be earlier than or equal to 'to'.",
   },
-  // jsdom 16.7 accepts valid datetime-local years with more than four digits, so the normal
-  // fireEvent.change path preserves these values for the screen's Date/roundtrip validation.
-  {
-    name: 'rejects an unrepresentable from year',
-    values: { 'From (created >=)': '20266-09-30T19:00' },
-    message: "Invalid 'from' date.",
-  },
-  {
-    name: 'rejects an unrepresentable to year',
-    values: { 'To (created <)': '20266-09-30T19:00' },
-    message: "Invalid 'to' date.",
-  },
   {
     name: 'rejects a from value that does not roundtrip to minutes',
     values: { 'From (created >=)': '2026-09-30T19:00:30' },
@@ -287,6 +276,43 @@ const RANGE_VALIDATION_CASES: {
   },
 ];
 
+const LOCAL_DATE_TIME_RESULT_CASES: {
+  name: string;
+  label: 'From (created >=)' | 'To (created <)';
+  value: string;
+  status: 'invalid' | 'ambiguous';
+  message: string;
+}[] = [
+  {
+    name: 'rejects a from time in a daylight saving gap',
+    label: 'From (created >=)',
+    value: '2026-03-29T02:30',
+    status: 'invalid',
+    message: "Invalid 'from' date.",
+  },
+  {
+    name: 'rejects a to time in a daylight saving gap',
+    label: 'To (created <)',
+    value: '2026-03-29T02:30',
+    status: 'invalid',
+    message: "Invalid 'to' date.",
+  },
+  {
+    name: 'rejects an ambiguous from time',
+    label: 'From (created >=)',
+    value: '2026-10-25T02:30',
+    status: 'ambiguous',
+    message: "Ambiguous 'from' time (daylight saving change).",
+  },
+  {
+    name: 'rejects an ambiguous to time',
+    label: 'To (created <)',
+    value: '2026-10-25T02:30',
+    status: 'ambiguous',
+    message: "Ambiguous 'to' time (daylight saving change).",
+  },
+];
+
 describe('DashboardFinancialLogValidityScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -294,6 +320,7 @@ describe('DashboardFinancialLogValidityScreen', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
   it('guards and configures the screen and explains the range audit action', () => {
@@ -388,50 +415,17 @@ describe('DashboardFinancialLogValidityScreen', () => {
     expect(mockCall).not.toHaveBeenCalled();
   });
 
-  describe('daylight saving validation in Europe/Zurich', () => {
-    const previousTimezone = process.env.TZ;
+  it.each(LOCAL_DATE_TIME_RESULT_CASES)('$name', async ({ label, value, status, message }) => {
+    const parseLocalDateTime = jest.spyOn(localDateTimeUtil, 'parseLocalDateTime').mockReturnValue({ status });
+    renderScreen();
+    setRange({ [label]: value });
 
-    beforeAll(() => {
-      process.env.TZ = 'Europe/Zurich';
-    });
+    fireEvent.click(section('By financial range / threshold').getByRole('button', { name: 'Set valid = true' }));
 
-    afterAll(() => {
-      if (previousTimezone === undefined) {
-        delete process.env.TZ;
-      } else {
-        process.env.TZ = previousTimezone;
-      }
-    });
-
-    it.each([
-      {
-        name: 'rejects a from time in the daylight saving gap',
-        values: { 'From (created >=)': '2026-03-29T02:30' },
-        message: "Invalid 'from' date.",
-      },
-      {
-        name: 'rejects an ambiguous from time in the daylight saving overlap',
-        values: { 'From (created >=)': '2026-10-25T02:30' },
-        message: "Ambiguous 'from' time (daylight saving change).",
-      },
-      {
-        name: 'rejects an ambiguous to time in the daylight saving overlap',
-        values: {
-          'From (created >=)': '2026-10-25T01:30',
-          'To (created <)': '2026-10-25T02:30',
-        },
-        message: "Ambiguous 'to' time (daylight saving change).",
-      },
-    ])('$name', async ({ values, message }) => {
-      renderScreen();
-      setRange(values);
-
-      fireEvent.click(section('By financial range / threshold').getByRole('button', { name: 'Set valid = true' }));
-
-      expect(await screen.findByRole('alert')).toHaveTextContent(message);
-      expect(screen.queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument();
-      expect(mockCall).not.toHaveBeenCalled();
-    });
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(parseLocalDateTime).toHaveBeenCalledWith(value, Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(screen.queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument();
+    expect(mockCall).not.toHaveBeenCalled();
   });
 
   it('updates a fully filtered range to valid with a trimmed reason and a singular message', async () => {

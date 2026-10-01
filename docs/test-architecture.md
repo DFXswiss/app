@@ -186,7 +186,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `/v1/setting/infoBanner` and `/v2/user` with synthetic fixtures, and answers
   `PUT /v1/log/financial/validity` with a synthetic `{ affected: 1, audited: 3 }`. The screen fetches
   nothing on mount; other `/v1/**` and `/v2/**` requests are passed through unchanged (`route.continue()`).
-  A green run proves the form, the info-point confirmation and the success message render.
+  A green run proves the form, the info-point confirmation and the success message render with the
+  success-state clock frozen.
   It does not prove production auth, that the API accepts `reference` or `auditAll`, or that it returns
   `{ affected, audited }`.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the

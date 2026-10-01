@@ -67,6 +67,7 @@ test.describe('Log Validity - Visual Regression Tests', () => {
   test('form and info point confirmation', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1400 });
     await installShellRoutes(page);
+    await page.clock.install();
     await page.goto(`/dashboard/financial/log-validity?session=${encodeURIComponent(jwt())}&lang=en`);
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('heading', { name: 'By financial range / threshold' })).toBeVisible();
@@ -85,6 +86,8 @@ test.describe('Log Validity - Visual Regression Tests', () => {
 
     await page.getByRole('button', { name: 'Confirm' }).click();
     await expect(page.getByText('Recorded an info point for 3 entries (1 changed to valid = true).')).toBeVisible();
+    const pauseTime = await page.evaluate(() => Date.now() + 1);
+    await page.clock.pauseAt(pauseTime);
 
     await expect(page).toHaveScreenshot('log-validity-03-info-point-success.png', shot);
   });

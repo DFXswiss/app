@@ -17,6 +17,7 @@ import { ConfirmationOverlay } from 'src/components/overlay/confirmation-overlay
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useAdminGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
+import { parseLocalDateTime } from 'src/util/local-date-time.util';
 import { useGuardedApi } from '../hooks/guarded-api.hook';
 
 interface IdFormData {
@@ -54,24 +55,6 @@ interface FinancialValidityResponse {
 interface PendingConfirmation {
   content: JSX.Element;
   run: () => Promise<void>;
-}
-
-function formatLocalDateTime(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${String(date.getFullYear()).padStart(4, '0')}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
-    date.getHours(),
-  )}:${pad(date.getMinutes())}`;
-}
-
-function matchesLocalDateTime(value: string, date: Date): boolean {
-  return Number.isNaN(date.getTime()) === false && formatLocalDateTime(date) === value;
-}
-
-function isAmbiguousLocalDateTime(value: string, date: Date): boolean {
-  const oneHour = 60 * 60 * 1000;
-  const previousHourMatches = formatLocalDateTime(new Date(date.getTime() - oneHour)) === value;
-  const nextHourMatches = formatLocalDateTime(new Date(date.getTime() + oneHour)) === value;
-  return [previousHourMatches, nextHourMatches].includes(true);
 }
 
 export default function DashboardFinancialLogValidityScreen(): JSX.Element {
@@ -188,30 +171,32 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
       return undefined;
     }
 
-    // The datetime-local field holds local wall-clock time; new Date() reads it as local,
-    // toISOString() then sends the unambiguous UTC instant the API expects.
-    const fromDate = hasFrom ? new Date(data.from) : undefined;
-    const toDate = hasTo ? new Date(data.to) : undefined;
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const fromResult = hasFrom ? parseLocalDateTime(data.from, timeZone) : undefined;
+    const toResult = hasTo ? parseLocalDateTime(data.to, timeZone) : undefined;
 
-    if (fromDate !== undefined && matchesLocalDateTime(data.from, fromDate) === false) {
+    if (fromResult?.status === 'invalid') {
       setRangeError("Invalid 'from' date.");
       return undefined;
     }
 
-    if (toDate !== undefined && matchesLocalDateTime(data.to, toDate) === false) {
+    if (toResult?.status === 'invalid') {
       setRangeError("Invalid 'to' date.");
       return undefined;
     }
 
-    if (fromDate !== undefined && isAmbiguousLocalDateTime(data.from, fromDate)) {
+    if (fromResult?.status === 'ambiguous') {
       setRangeError("Ambiguous 'from' time (daylight saving change).");
       return undefined;
     }
 
-    if (toDate !== undefined && isAmbiguousLocalDateTime(data.to, toDate)) {
+    if (toResult?.status === 'ambiguous') {
       setRangeError("Ambiguous 'to' time (daylight saving change).");
       return undefined;
     }
+
+    const fromDate = fromResult?.status === 'valid' ? fromResult.date : undefined;
+    const toDate = toResult?.status === 'valid' ? toResult.date : undefined;
 
     if (fromDate && toDate && fromDate.getTime() > toDate.getTime()) {
       setRangeError("'from' must be earlier than or equal to 'to'.");
