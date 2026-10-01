@@ -1,3 +1,5 @@
+// KYC responses and country lists are mocked; green tests do not prove backend DTO acceptance.
+// Sumsub is a props probe; green tests do not prove real widget token renewal or portal completion.
 const mockSetContact = jest.fn();
 const mockSetPersonal = jest.fn();
 const mockSetNationality = jest.fn();
@@ -165,6 +167,7 @@ describe('isInAppStep and ident poll helper', () => {
 describe('KycStepForm steps', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.localStorage.setItem('dfx_lang', 'en');
     mockSumsub.props = undefined;
     mockGetCountries.mockResolvedValue(COUNTRIES);
     mockSetContact.mockResolvedValue(done('ContactData'));
@@ -259,6 +262,52 @@ describe('KycStepForm steps', () => {
     view.unmount();
     window.history.replaceState({}, '', '/');
   });
+
+  it.each(['personal', 'organization'])(
+    'does not submit a %s address whose selected country disappeared during reload',
+    async (addressType) => {
+      const view = renderStep(KycStepName.NATIONALITY_DATA);
+      await screen.findByRole('combobox');
+      let reload!: (countries: typeof COUNTRIES) => void;
+      mockGetCountries.mockReturnValueOnce(
+        new Promise<typeof COUNTRIES>((resolve) => {
+          reload = resolve;
+        }),
+      );
+      view.rerender(
+        <LanguageProvider>
+          <KycStepForm code="code-1" step={makeStep(KycStepName.PERSONAL_DATA)} {...handlers} />
+        </LanguageProvider>,
+      );
+      const boxes = screen.getAllByRole('textbox');
+      ['Ada', 'Lovelace', 'Main Street', '', '8000', 'Zurich', '+41791234567'].forEach((value, index) => {
+        fireEvent.change(boxes[index], { target: { value } });
+      });
+      if (addressType === 'organization') {
+        fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'Organization' } });
+        fireEvent.change(screen.getByRole('combobox', { name: /^country$/i }), { target: { value: '2' } });
+        fireEvent.change(orgNameBox(), { target: { value: 'DFX AG' } });
+        fireEvent.change(orgAddressBox(/organization address street/i), { target: { value: 'Other Street' } });
+        fireEvent.change(orgAddressBox(/organization address zip/i), { target: { value: '3000' } });
+        fireEvent.change(orgAddressBox(/organization address city/i), { target: { value: 'Bern' } });
+      }
+      expect(mockGetCountries).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole('button', { name: /continue/i })).toBeEnabled();
+      await act(async () => reload([COUNTRIES[0]]));
+      expect(screen.queryByRole('option', { name: 'Switzerland' })).not.toBeInTheDocument();
+      fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+      expect(mockSetPersonal).not.toHaveBeenCalled();
+
+      const country =
+        addressType === 'organization' ? orgCountryBox() : screen.getByRole('combobox', { name: /^country$/i });
+      fireEvent.change(country, { target: { value: '2' } });
+      fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+      await waitFor(() => expect(mockSetPersonal).toHaveBeenCalledTimes(1));
+      const payload = mockSetPersonal.mock.calls[0][2];
+      expect(payload.address.country).toEqual(COUNTRIES[0]);
+      if (addressType === 'organization') expect(payload.organizationAddress.country).toEqual(COUNTRIES[0]);
+    },
+  );
 
   it('prefills organization name and address from URL when organization-name is set', async () => {
     const search =
@@ -535,12 +584,202 @@ describe('KycStepForm steps', () => {
     fireEvent.change(boxes[3], { target: { value: '9' } });
     fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'false' } });
     fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: '2' } });
+    fireEvent.change(boxes[6], { target: { value: 'Bob' } });
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+    fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+    expect(mockSetBeneficial).not.toHaveBeenCalled();
+    fireEvent.change(boxes[7], { target: { value: 'Second' } });
+    fireEvent.change(boxes[8], { target: { value: 'Other Street' } });
+    fireEvent.change(boxes[10], { target: { value: '3000' } });
+    fireEvent.change(boxes[11], { target: { value: 'Bern' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
     await waitFor(() => expect(mockSetBeneficial).toHaveBeenCalled());
     const data = mockSetBeneficial.mock.calls[0][2];
     expect(data.hasBeneficialOwners).toBe(true);
-    expect(data.beneficialOwners[0].firstName).toBe('Ann');
+    expect(data.beneficialOwners).toEqual([
+      {
+        firstName: 'Ann',
+        lastName: 'Owner',
+        street: 'Street',
+        houseNumber: '9',
+        zip: '8000',
+        city: 'Zurich',
+        country: COUNTRIES[0],
+      },
+      {
+        firstName: 'Bob',
+        lastName: 'Second',
+        street: 'Other Street',
+        houseNumber: undefined,
+        zip: '3000',
+        city: 'Bern',
+        country: COUNTRIES[1],
+      },
+    ]);
+    expect(data.managingDirector).toBeUndefined();
     view.unmount();
+  });
+
+  it.each([
+    [0, ''],
+    [3, '   '],
+  ] as const)(
+    'submits only completed owner %s and ignores added rows containing %j',
+    async (filledIndex, blank) => {
+      renderStep(KycStepName.BENEFICIAL_OWNER);
+      fireEvent.change((await screen.findAllByRole('combobox'))[0], { target: { value: 'true' } });
+      for (let index = 0; index < 3; index += 1) {
+        fireEvent.click(screen.getByRole('button', { name: /add person/i }));
+      }
+      expect(screen.queryByRole('button', { name: /add person/i })).not.toBeInTheDocument();
+      const boxes = screen.getAllByRole('textbox');
+      boxes.forEach((box) => fireEvent.change(box, { target: { value: blank } }));
+      expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+      fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+      expect(mockSetBeneficial).not.toHaveBeenCalled();
+
+      ['Ann', 'Owner', 'Main Street', '', '8000', 'Zurich'].forEach((value, index) => {
+        fireEvent.change(boxes[filledIndex * 6 + index], { target: { value } });
+      });
+      expect(screen.getByRole('button', { name: /continue/i })).toBeEnabled();
+      fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+      await waitFor(() => expect(mockSetBeneficial).toHaveBeenCalledTimes(1));
+      expect(mockSetBeneficial).toHaveBeenCalledWith('code-1', expect.any(String), {
+        hasBeneficialOwners: true,
+        isAccountHolderInvolved: true,
+        beneficialOwners: [
+          {
+            firstName: 'Ann',
+            lastName: 'Owner',
+            street: 'Main Street',
+            houseNumber: undefined,
+            zip: '8000',
+            city: 'Zurich',
+            country: COUNTRIES[1],
+          },
+        ],
+      });
+    },
+  );
+
+  it.each([0, 1, 2, 3, 4, 5, 'country'])(
+    'blocks a partially filled added owner (%s) until that row is cleared',
+    async (field) => {
+      renderStep(KycStepName.BENEFICIAL_OWNER);
+      fireEvent.change((await screen.findAllByRole('combobox'))[0], { target: { value: 'true' } });
+      const boxes = screen.getAllByRole('textbox');
+      ['Ann', 'Owner', 'Main Street', '', '8000', 'Zurich'].forEach((value, index) => {
+        fireEvent.change(boxes[index], { target: { value } });
+      });
+      fireEvent.click(screen.getByRole('button', { name: /add person/i }));
+      const input =
+        field === 'country' ? screen.getAllByRole('combobox')[3] : screen.getAllByRole('textbox')[6 + Number(field)];
+      fireEvent.change(input, { target: { value: field === 'country' ? '2' : 'Partial' } });
+      expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+      fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+      expect(mockSetBeneficial).not.toHaveBeenCalled();
+
+      fireEvent.change(input, { target: { value: field === 'country' ? '1' : '   ' } });
+      expect(screen.getByRole('button', { name: /continue/i })).toBeEnabled();
+      fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+      await waitFor(() => expect(mockSetBeneficial).toHaveBeenCalledTimes(1));
+      expect(mockSetBeneficial.mock.calls[0][2].beneficialOwners).toEqual([
+        expect.objectContaining({ firstName: 'Ann', lastName: 'Owner', country: COUNTRIES[1] }),
+      ]);
+    },
+  );
+
+  it.each([0, 1, 2, 4, 5, 'country'])('blocks an owner with a missing required field (%s)', async (missing) => {
+    renderStep(KycStepName.BENEFICIAL_OWNER);
+    const selects = await screen.findAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: 'true' } });
+    const boxes = screen.getAllByRole('textbox');
+    ['Ann', 'Owner', 'Main Street', '', '8000', 'Zurich'].forEach((value, index) => {
+      fireEvent.change(boxes[index], { target: { value: index === missing ? '  ' : value } });
+    });
+    if (missing === 'country') {
+      fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: '' } });
+    }
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+    fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+    expect(mockSetBeneficial).not.toHaveBeenCalled();
+  });
+
+  it('rejects a country id outside the loaded country list', async () => {
+    renderStep(KycStepName.BENEFICIAL_OWNER);
+    const selects = await screen.findAllByRole('combobox');
+    fireEvent.change(selects[0], { target: { value: 'true' } });
+    const boxes = screen.getAllByRole('textbox');
+    ['Ann', 'Owner', 'Main Street', '', '8000', 'Zurich'].forEach((value, index) => {
+      fireEvent.change(boxes[index], { target: { value } });
+    });
+    // Injected option exercises the stale-id guard; it does not prove the country API's data integrity.
+    const country = screen.getAllByRole('combobox')[2] as HTMLSelectElement;
+    country.add(new Option('Stale country', '999'));
+    fireEvent.change(country, { target: { value: '999' } });
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+    fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+    expect(mockSetBeneficial).not.toHaveBeenCalled();
+  });
+
+  it('requires and submits a managing director when there are no owners and the account holder is uninvolved', async () => {
+    renderStep(KycStepName.BENEFICIAL_OWNER);
+    const selects = await screen.findAllByRole('combobox');
+    expect(screen.queryByText('Managing director')).not.toBeInTheDocument();
+    fireEvent.change(selects[1], { target: { value: 'false' } });
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+    fireEvent.submit(document.querySelector('form') as HTMLFormElement);
+    expect(mockSetBeneficial).not.toHaveBeenCalled();
+    const fields = [
+      [/managing director first name/i, ' Ada '],
+      [/managing director last name/i, ' Lovelace '],
+      [/managing director street/i, ' Rue de l’Église '],
+      [/managing director no\./i, ' 1‘A '],
+      [/managing director zip/i, ' 8’000 '],
+      [/managing director city/i, ' L’Isle '],
+    ] as const;
+    fields.forEach(([name, value]) => {
+      expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+      fireEvent.change(screen.getByRole('textbox', { name }), { target: { value } });
+    });
+    const country = screen.getByRole('combobox', { name: /managing director country/i });
+    fireEvent.change(country, { target: { value: '' } });
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+    fireEvent.change(country, { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    await waitFor(() =>
+      expect(mockSetBeneficial).toHaveBeenCalledWith('code-1', expect.any(String), {
+        hasBeneficialOwners: false,
+        isAccountHolderInvolved: false,
+        managingDirector: {
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          street: "Rue de l'Église",
+          houseNumber: "1'A",
+          zip: "8'000",
+          city: "L'Isle",
+          country: COUNTRIES[0],
+        },
+      }),
+    );
+  });
+
+  it('omits hidden director data when the account holder becomes involved', async () => {
+    renderStep(KycStepName.BENEFICIAL_OWNER);
+    const selects = await screen.findAllByRole('combobox');
+    fireEvent.change(selects[1], { target: { value: 'false' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /managing director first name/i }), {
+      target: { value: 'Ada' },
+    });
+    fireEvent.change(selects[1], { target: { value: 'true' } });
+    expect(screen.queryByText('Managing director')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    await waitFor(() =>
+      expect(mockSetBeneficial).toHaveBeenCalledWith('code-1', expect.any(String), {
+        hasBeneficialOwners: false,
+        isAccountHolderInvolved: true,
+      }),
+    );
   });
 
   it('submits beneficial data when there are no extra owners', async () => {
@@ -797,6 +1036,7 @@ describe('KycStepForm financial questionnaire', () => {
 describe('KycStepForm ident', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    window.localStorage.setItem('dfx_lang', 'en');
     mockSumsub.props = undefined;
     mockGetCountries.mockResolvedValue(COUNTRIES);
     mockContinueKyc.mockResolvedValue({ currentStep: { name: 'Ident', status: 'InProgress' } });
@@ -837,6 +1077,9 @@ describe('KycStepForm ident', () => {
   });
 
   it('invokes the Sumsub status and expiration handlers', async () => {
+    mockContinueKyc.mockResolvedValueOnce({
+      currentStep: { name: 'Ident', session: { type: 'Token', url: 'fresh-sumsub-token' } },
+    });
     const view = renderStep(KycStepName.IDENT, {
       session: { url: 'sumsub-token', type: UrlType.TOKEN as never },
     });
@@ -844,7 +1087,8 @@ describe('KycStepForm ident', () => {
     await act(async () => {
       const onMessage = mockSumsub.props?.onMessage as (type: string, payload: unknown) => void;
       const expiration = mockSumsub.props?.expirationHandler as () => Promise<string>;
-      await expiration?.();
+      await expect(expiration()).resolves.toBe('fresh-sumsub-token');
+      expect(mockContinueKyc).toHaveBeenCalledWith('code-1', true);
       onMessage?.('other.event', {});
       onMessage?.('idCheck.onApplicantStatusChanged', {
         reviewResult: { reviewAnswer: 'GREEN', reviewRejectType: 'RETRY' },
@@ -857,6 +1101,35 @@ describe('KycStepForm ident', () => {
       });
     });
     view.unmount();
+  });
+
+  it.each([
+    undefined,
+    { name: 'PersonalData', session: { type: 'Token', url: 'wrong-step-token' } },
+    { name: 'Ident' },
+    { name: 'Ident', session: { type: 'Browser', url: 'https://ident.example' } },
+    { name: 'Ident', session: { type: 'Token', url: '' } },
+  ])('rejects token refresh without a current IDENT token (%j) and offers the portal', async (currentStep) => {
+    mockContinueKyc.mockResolvedValueOnce({ currentStep });
+    renderStep(KycStepName.IDENT, { session: { url: 'expired-token', type: UrlType.TOKEN as never } });
+    const expiration = mockSumsub.props?.expirationHandler as () => Promise<string>;
+    await act(async () => {
+      await expect(expiration()).rejects.toThrow('No current identification token');
+    });
+    expect(mockContinueKyc).toHaveBeenCalledWith('code-1', true);
+    expect(screen.queryByTestId('sumsub')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Finish setup on app.dfx.swiss' })).toBeInTheDocument();
+  });
+
+  it('rejects a failed token refresh instead of returning the expired token', async () => {
+    const error = new Error('token refresh failed');
+    mockContinueKyc.mockRejectedValueOnce(error);
+    renderStep(KycStepName.IDENT, { session: { url: 'expired-token', type: UrlType.TOKEN as never } });
+    const expiration = mockSumsub.props?.expirationHandler as () => Promise<string>;
+    await act(async () => {
+      await expect(expiration()).rejects.toBe(error);
+    });
+    expect(screen.getByRole('link', { name: 'Finish setup on app.dfx.swiss' })).toBeInTheDocument();
   });
 
   it('hides the portal link when the app origin is not a safe URL', async () => {
@@ -1197,7 +1470,6 @@ describe('KycStepForm remaining forms', () => {
     recall.unmount();
 
     mockGetCountries.mockResolvedValueOnce([]);
-    mockSetBeneficial.mockResolvedValueOnce(done('BeneficialOwner'));
     const beneficial = renderStep(KycStepName.BENEFICIAL_OWNER);
     const selects = await screen.findAllByRole('combobox');
     fireEvent.change(selects[0], { target: { value: 'true' } });
@@ -1207,7 +1479,8 @@ describe('KycStepForm remaining forms', () => {
     fireEvent.change(boxes[0], { target: { value: 'Ann' } });
     fireEvent.change(boxes[1], { target: { value: 'Owner' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
-    await waitFor(() => expect(mockSetBeneficial).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
+    expect(mockSetBeneficial).not.toHaveBeenCalled();
     beneficial.unmount();
   });
 

@@ -17,7 +17,16 @@
 // hash) OUTSIDE this component. To stay robust either way, params are read from
 // the router (hash) search first, then fall back to window.location.search.
 
-import { ApiException, useApiSession, useAuth, useTransaction } from '@dfx.swiss/react';
+import {
+  ApiException,
+  JobStatus,
+  isJobResponse,
+  isJobTerminal,
+  useApiSession,
+  useAuth,
+  useJob,
+  useTransaction,
+} from '@dfx.swiss/react';
 import type { AccountMergeResponse } from '@dfx.swiss/react';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -25,6 +34,7 @@ import { Spinner } from '../components/ui';
 import { useT, type TranslationKey } from '../i18n';
 import { useWalletSession } from '../wallets/session';
 import { cx } from '../css';
+import { pollJobUntilTerminal } from '../lib/job';
 
 /**
  * CKO payment poll schedule — same shape as ocp/pos.tsx (`pollPos`):
@@ -130,6 +140,7 @@ export default function ReturnRouteScreen() {
   const [searchParams] = useSearchParams();
   const { isLoggedIn, openConnect } = useWalletSession();
   const { confirmAccountMerge } = useAuth();
+  const { getJob } = useJob();
   const { getTransactionByCkoId } = useTransaction();
   const { updateSession } = useApiSession();
 
@@ -147,6 +158,7 @@ export default function ReturnRouteScreen() {
   const pollGenerationRef = useRef(0);
   const cancelledRef = useRef(false);
   const mergeStartedRef = useRef(false);
+  const mergeAbortRef = useRef<AbortController>();
   const ckoStartedRef = useRef(false);
 
   const goContinue = useCallback(() => navigate('/'), [navigate]);
@@ -249,11 +261,12 @@ export default function ReturnRouteScreen() {
   useEffect(() => {
     return () => {
       cancelledRef.current = true;
+      mergeAbortRef.current?.abort();
       stopPoll();
     };
   }, [stopPoll]);
 
-  // /account-merge?otp= — the current API confirms the merge synchronously. A
+  // /account-merge?otp= — slow merges return a job ticket. A
   // returned access token re-authenticates the app as the merged account.
   useEffect(() => {
     if (pathname !== '/account-merge' || mergeStartedRef.current) return;
@@ -271,10 +284,33 @@ export default function ReturnRouteScreen() {
     }
 
     setPanel({ kind: 'spinner', msgKey: 'mergeVerifying' });
+    const controller = new AbortController();
+    mergeAbortRef.current = controller;
     void (async () => {
+      let jobError: string | undefined;
       try {
-        const response: unknown = await confirmAccountMerge(otp, isLoggedIn);
+        let response: unknown = await confirmAccountMerge(otp, isLoggedIn);
         if (cancelledRef.current) return;
+        if (isJobResponse(response)) {
+          const job = await pollJobUntilTerminal(response, (uid) => getJob(uid, false), controller.signal);
+          if (cancelledRef.current) return;
+          if (!isJobTerminal(job.status)) {
+            setPanel({
+              kind: 'result',
+              variant: 'warn',
+              title: t('mergeTimedOut'),
+              buttons: [{ label: t('routeContinue'), onClick: goContinue, primary: true }],
+            });
+            return;
+          }
+          if (job.status !== JobStatus.COMPLETE) {
+            jobError = job.error;
+            throw new Error('Account merge job failed');
+          }
+          response = await confirmAccountMerge(otp, isLoggedIn);
+          if (cancelledRef.current) return;
+          if (isJobResponse(response)) throw new Error('Account merge result is still a job');
+        }
         if (!isAccountMergeResponse(response)) throw new Error('Unexpected account merge response');
         const data = response;
         const token = data?.accessToken;
@@ -297,13 +333,13 @@ export default function ReturnRouteScreen() {
         setPanel({
           kind: 'result',
           variant: 'warn',
-          title: t(key),
+          title: jobError || t(key),
           buttons: [{ label: t('routeContinue'), onClick: goContinue, primary: true }],
         });
       }
     })();
     // Run once on mount for this route — re-reading isLoggedIn/SDK method identities
-    // would only re-consume the same (single-use) OTP.
+    // would start another confirmation flow. A job result uses the same OTP.
   }, [pathname]);
 
   // /buy/success?cko-payment-id= — needs a session to look up the tx. Without

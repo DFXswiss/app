@@ -853,6 +853,47 @@ describe('AccountSheets', () => {
     );
   });
 
+  it.each(['', '   '])('does not rename an empty label (%j) or clear the user', (label) => {
+    mockUserAddresses.push({ address: '0xAAA111222333', label: 'Hot' });
+    const originalUser = mockUser.user;
+    // Model the SDK's destructive result; this does not exercise the real UserContext lifecycle.
+    mockRenameAddress.mockImplementation(async () => {
+      mockUser.user = undefined;
+    });
+    renderSheet('addresses');
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    fireEvent.change(screen.getByDisplayValue('Hot'), { target: { value: label } });
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
+    expect(mockRenameAddress).not.toHaveBeenCalled();
+    expect(mockUser.user).toBe(originalUser);
+    expect(screen.getByText('Hot')).toBeInTheDocument();
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument();
+    mockRenameAddress.mockReset();
+  });
+
+  it.each(['a@b.c', 'A@B.C', '  A@b.c  '])('keeps an unchanged email (%s) on step one', (mail) => {
+    renderSheet('email');
+    const sheet = within(screen.getByRole('dialog', { name: 'Email address' }));
+    fireEvent.change(sheet.getByPlaceholderText('you@email.com'), { target: { value: mail } });
+    fireEvent.click(sheet.getByRole('button', { name: 'Send code' }));
+    expect(mockUpdateMail).not.toHaveBeenCalled();
+    expect(sheet.getByText('This is already your email address.')).toBeInTheDocument();
+    expect(sheet.getByRole('button', { name: 'Send code' })).toBeInTheDocument();
+    expect(sheet.queryByPlaceholderText('000000')).not.toBeInTheDocument();
+  });
+
+  it('requests a code for a new email when no user is loaded', async () => {
+    mockUser.user = undefined;
+    renderSheet('email');
+    const sheet = within(screen.getByRole('dialog', { name: 'Email address' }));
+    fireEvent.change(sheet.getByPlaceholderText('you@email.com'), { target: { value: 'new@example.com' } });
+    fireEvent.click(sheet.getByRole('button', { name: 'Send code' }));
+    expect(await sheet.findByPlaceholderText('000000')).toBeInTheDocument();
+    expect(mockUpdateMail).toHaveBeenCalledWith('new@example.com');
+  });
+
   it('renames, removes and toggles linked wallet addresses', async () => {
     mockUserAddresses.push(
       { address: '0xAAA111222333', label: 'Hot' },
@@ -878,6 +919,7 @@ describe('AccountSheets', () => {
 
     mockRenameAddress.mockRejectedValueOnce(new Error('rename'));
     fireEvent.click(within(addr()).getAllByRole('button', { name: 'Rename' })[1]);
+    fireEvent.change(within(addr()).getByRole('textbox'), { target: { value: 'Other wallet' } });
     fireEvent.click(within(addr()).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(mockRenameAddress).toHaveBeenCalledTimes(2));
 

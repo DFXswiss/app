@@ -23,6 +23,7 @@ import {
   useUserContext,
 } from '@dfx.swiss/react';
 import type {
+  ContactPersonData,
   Country,
   KycAddress,
   KycBeneficialData,
@@ -613,7 +614,8 @@ function PersonalFields({ ctx, countries }: { ctx: StepContext; countries: Count
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!valid) return;
-    const personalAddress = toKycAddress(address, countries) as NonNullable<ReturnType<typeof toKycAddress>>;
+    const personalAddress = toKycAddress(address, countries);
+    if (!personalAddress) return;
     const data: Parameters<typeof kyc.setPersonalData>[2] = {
       accountType,
       firstName: firstName.trim(),
@@ -622,8 +624,10 @@ function PersonalFields({ ctx, countries }: { ctx: StepContext; countries: Count
       address: personalAddress,
     };
     if (isOrg) {
+      const organizationAddress = toKycAddress(orgAddress, countries);
+      if (!organizationAddress) return;
       data.organizationName = orgName.trim();
-      data.organizationAddress = toKycAddress(orgAddress, countries) as NonNullable<ReturnType<typeof toKycAddress>>;
+      data.organizationAddress = organizationAddress;
     }
     ctx.submit(() => kyc.setPersonalData(ctx.code, ctx.url, data));
   };
@@ -923,12 +927,37 @@ function BeneficialFields({ ctx, countries }: { ctx: StepContext; countries: Cou
   const [hasBeneficialOwners, setHasBeneficialOwners] = useState(false);
   const [involved, setInvolved] = useState(true);
   const [owners, setOwners] = useState<OwnerState[]>(() => [emptyOwner(countries)]);
+  const [director, setDirector] = useState<OwnerState>(() => emptyOwner(countries));
 
   const updateOwner = (index: number, patch: Partial<OwnerState>) =>
     setOwners((list) => list.map((owner, i) => (i === index ? { ...owner, ...patch } : owner)));
 
-  const namedOwners = owners.filter((owner) => owner.firstName.trim() && owner.lastName.trim());
-  const valid = !hasBeneficialOwners || namedOwners.length > 0;
+  const contactComplete = (person: OwnerState) =>
+    !!person.firstName.trim() &&
+    !!person.lastName.trim() &&
+    addressComplete(person) &&
+    !!countryById(countries, person.country);
+  const filledOwners = owners.filter(
+    (person) =>
+      [person.firstName, person.lastName, person.street, person.houseNumber, person.zip, person.city].some(
+        (value) => !!value.trim(),
+      ) || person.country !== defaultCountryId(countries),
+  );
+  const valid = hasBeneficialOwners
+    ? filledOwners.length > 0 && filledOwners.every(contactComplete)
+    : involved || contactComplete(director);
+
+  // Match the main app's address apostrophe normalization without importing its private modules.
+  const normalize = (value: string) => value.trim().replace(/[\u2018\u2019]/g, "'");
+  const contactData = (person: OwnerState): ContactPersonData => ({
+    firstName: person.firstName.trim(),
+    lastName: person.lastName.trim(),
+    street: normalize(person.street),
+    houseNumber: normalize(person.houseNumber) || undefined,
+    zip: normalize(person.zip),
+    city: normalize(person.city),
+    country: countryById(countries, person.country) as Country,
+  });
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -938,19 +967,9 @@ function BeneficialFields({ ctx, countries }: { ctx: StepContext; countries: Cou
       isAccountHolderInvolved: involved,
     };
     if (hasBeneficialOwners) {
-      const beneficialOwners = namedOwners.map((owner) => {
-        const kycAddress = toKycAddress(owner, countries);
-        return {
-          firstName: owner.firstName.trim(),
-          lastName: owner.lastName.trim(),
-          street: kycAddress?.street ?? owner.street.trim(),
-          houseNumber: owner.houseNumber.trim() || undefined,
-          zip: owner.zip.trim(),
-          city: owner.city.trim(),
-          country: kycAddress?.country ?? countryById(countries, owner.country) ?? countries[0],
-        };
-      });
-      data.beneficialOwners = beneficialOwners;
+      data.beneficialOwners = filledOwners.map(contactData);
+    } else if (!involved) {
+      data.managingDirector = contactData(director);
     }
     ctx.submit(() => kyc.setBeneficialData(ctx.code, ctx.url, data));
   };
@@ -975,6 +994,34 @@ function BeneficialFields({ ctx, countries }: { ctx: StepContext; countries: Cou
         <option value="true">{t('yes')}</option>
         <option value="false">{t('no')}</option>
       </select>
+      {!hasBeneficialOwners && !involved && (
+        <div>
+          <div className={cx('sectionlabel', 'tight')}>{t('kycManagingDirector')}</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              className={cx('tinput')}
+              placeholder={t('kycFirstName')}
+              aria-label={fieldLabel(t('kycManagingDirector'), t('kycFirstName'))}
+              value={director.firstName}
+              onChange={(e) => setDirector({ ...director, firstName: e.target.value })}
+            />
+            <input
+              className={cx('tinput')}
+              placeholder={t('kycLastName')}
+              aria-label={fieldLabel(t('kycManagingDirector'), t('kycLastName'))}
+              value={director.lastName}
+              onChange={(e) => setDirector({ ...director, lastName: e.target.value })}
+            />
+          </div>
+          <AddressFields
+            t={t}
+            countries={countries}
+            value={director}
+            onChange={(address) => setDirector({ ...director, ...address })}
+            namePrefix={t('kycManagingDirector')}
+          />
+        </div>
+      )}
       {hasBeneficialOwners && (
         <div>
           {owners.map((owner, index) => (
@@ -1426,7 +1473,23 @@ function IdentStep({ ctx, step, onBack }: { ctx: StepContext; step: KycStepSessi
           <div style={{ minHeight: 420, background: '#fff', borderRadius: 16, overflow: 'hidden' }}>
             <SumsubWebSdk
               accessToken={tokenUrl}
-              expirationHandler={() => Promise.resolve(tokenUrl)}
+              expirationHandler={async () => {
+                try {
+                  const next = await kyc.continueKyc(ctx.code, true);
+                  const current = next.currentStep;
+                  if (
+                    current?.name !== KycStepName.IDENT ||
+                    current.session?.type !== UrlType.TOKEN ||
+                    !current.session.url
+                  ) {
+                    throw new Error('No current identification token');
+                  }
+                  return current.session.url;
+                } catch (error) {
+                  setSdkFailed(true);
+                  throw error;
+                }
+              }}
               config={{ lang: ctx.language }}
               options={{ addViewportTag: false, adaptIframeHeight: true }}
               onMessage={(type: string, payload: SumsubStatusPayload) => {

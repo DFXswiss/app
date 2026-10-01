@@ -540,7 +540,7 @@ function AddressesSheet({ open, onClose }: SheetProps) {
                     type="button"
                     className={cx('btn-primary')}
                     style={{ marginTop: 8 }}
-                    disabled={busy === a.address}
+                    disabled={busy === a.address || !label.trim()}
                     onClick={() => void save(a.address)}
                   >
                     {busy === a.address ? <Spinner /> : t('save')}
@@ -608,6 +608,10 @@ function ChangeEmailSheet({ open, onClose }: SheetProps) {
     const value = mail.trim();
     if (!value || !value.includes('@')) {
       setError(t('tkNeedMail'));
+      return;
+    }
+    if (value.toLowerCase() === user?.mail?.trim().toLowerCase()) {
+      setError(t('mailUnchanged'));
       return;
     }
     setBusy(true);

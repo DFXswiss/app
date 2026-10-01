@@ -1,4 +1,5 @@
 const mockCall = jest.fn();
+const mockGetJob = jest.fn();
 const mockGetCko = jest.fn();
 const mockUpdateSession = jest.fn();
 const mockNavigate = jest.fn();
@@ -8,6 +9,14 @@ const mockPath = { value: '/account-merge' };
 const mockSearch = { value: '' };
 
 jest.mock('@dfx.swiss/react', () => ({
+  // SDK responses are faked: these tests do not prove backend job execution or HTTP authentication.
+  JobStatus: { COMPLETE: 'Complete' },
+  isJobResponse: (value: unknown) => {
+    const job = value as { uid?: unknown; status?: unknown } | null | undefined;
+    return typeof job?.uid === 'string' && typeof job?.status === 'string';
+  },
+  isJobTerminal: (status: string) => ['Complete', 'Failed', 'DeadLetter'].includes(status),
+  useJob: () => ({ getJob: mockGetJob }),
   ApiException: class ApiException extends Error {
     statusCode: number;
     constructor(httpStatus: number, errorMessage: string) {
@@ -63,6 +72,8 @@ describe('ReturnRouteScreen extra paths', () => {
     mockSession.isLoggedIn = false;
     mockPath.value = '/account-merge';
     mockSearch.value = '';
+    window.localStorage.setItem('dfx_lang', 'en');
+    mockGetJob.mockReset();
   });
 
   afterEach(() => {
@@ -123,7 +134,10 @@ describe('ReturnRouteScreen extra paths', () => {
   it.each([
     ['empty response', {}],
     ['whitespace-only KYC hash', { kycHash: '   ' }],
-    ['unexpected job response', { uid: 'job-123', status: 'Pending', expectedSeconds: 30 }],
+    ['null response', null],
+    ['primitive response', 'invalid'],
+    ['non-string KYC hash', { kycHash: 123 }],
+    ['non-string token', { kycHash: 'hash', accessToken: 123 }],
   ])('fails closed for an %s', async (_description, response) => {
     mockSearch.value = 'otp=abc123';
     mockCall.mockResolvedValue(response);
@@ -135,6 +149,183 @@ describe('ReturnRouteScreen extra paths', () => {
     expect(screen.queryByText(/your accounts have been merged|deine konten wurden zusammengeführt/i)).not.toBeInTheDocument();
     expect(mockUpdateSession).not.toHaveBeenCalled();
     expect(mockCall).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])('polls anonymously and repeats the same merge arguments (login=%s)', async (loggedIn) => {
+    jest.useFakeTimers();
+    mockSession.isLoggedIn = loggedIn;
+    mockSearch.value = 'otp=same%2Bcode';
+    const job = { uid: 'job-123', status: 'Pending', expectedSeconds: 5 };
+    const token = jwt();
+    mockCall.mockResolvedValueOnce(job).mockResolvedValueOnce({ kycHash: 'merged', accessToken: token });
+    mockGetJob.mockResolvedValueOnce({ ...job, status: 'Retry' }).mockResolvedValueOnce({ ...job, status: 'Complete' });
+    renderRoute();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockGetJob).not.toHaveBeenCalled();
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(mockGetJob.mock.calls).toEqual([
+      ['job-123', false],
+      ['job-123', false],
+    ]);
+    expect(mockCall).toHaveBeenCalledTimes(2);
+    expect(mockCall.mock.calls[1]).toEqual(mockCall.mock.calls[0]);
+    expect(mockCall.mock.calls[1][0]).toEqual({
+      url: 'auth/mail/confirm?code=same%2Bcode',
+      method: 'GET',
+      ...(loggedIn ? {} : { token: false }),
+    });
+    expect(mockUpdateSession).toHaveBeenCalledWith(token);
+    expect(mockNavigate).toHaveBeenCalledWith('/account');
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    ['Failed', 'Merge could not migrate addresses'],
+    ['DeadLetter', 'Merge attempts exhausted'],
+    ['Failed', undefined],
+  ])('shows a %s job error (%s) without confirming again', async (status, error) => {
+    jest.useFakeTimers();
+    mockSearch.value = 'otp=abc123';
+    const job = { uid: 'job-123', status: 'Processing', expectedSeconds: 5 };
+    mockCall.mockResolvedValueOnce(job);
+    mockGetJob.mockResolvedValueOnce({ ...job, status, error });
+    renderRoute();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(screen.getByText(error ?? "We couldn't complete the account merge. Please try again.")).toBeInTheDocument();
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+  });
+
+  it('shows a distinct timeout when the merge job exhausts its original budget', async () => {
+    jest.useFakeTimers();
+    mockSearch.value = 'otp=abc123';
+    const job = { uid: 'job-123', status: 'Pending', expectedSeconds: 2 };
+    mockCall.mockResolvedValueOnce(job);
+    mockGetJob.mockResolvedValue({ ...job, status: 'Processing', expectedSeconds: 999 });
+    renderRoute();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(mockGetJob).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(screen.getByText('The account merge is taking longer than expected. Please try again later.')).toBeInTheDocument();
+    expect(screen.queryByText("We couldn't complete the account merge. Please try again.")).not.toBeInTheDocument();
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button'));
+    expect(mockNavigate).toHaveBeenCalledWith('/');
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('rejects a second job ticket after completion', async () => {
+    mockSearch.value = 'otp=abc123';
+    mockCall.mockResolvedValue({ uid: 'job-123', status: 'Complete', expectedSeconds: 3 });
+    renderRoute();
+    expect(await screen.findByText("We couldn't complete the account merge. Please try again.")).toBeInTheDocument();
+    expect(mockCall).toHaveBeenCalledTimes(2);
+    expect(mockGetJob).not.toHaveBeenCalled();
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+  });
+
+  it('cancels merge polling on unmount before the first request', async () => {
+    jest.useFakeTimers();
+    mockSearch.value = 'otp=abc123';
+    mockCall.mockResolvedValueOnce({ uid: 'job-123', status: 'Pending', expectedSeconds: 5 });
+    const view = renderRoute();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    view.unmount();
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(mockGetJob).not.toHaveBeenCalled();
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('ignores the repeated merge result after unmount', async () => {
+    mockSearch.value = 'otp=abc123';
+    let resolveResult!: (value: unknown) => void;
+    mockCall
+      .mockResolvedValueOnce({ uid: 'job-123', status: 'Complete', expectedSeconds: 5 })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveResult = resolve;
+        }),
+      );
+    const view = renderRoute();
+    await waitFor(() => expect(mockCall).toHaveBeenCalledTimes(2));
+    view.unmount();
+    await act(async () => {
+      resolveResult({ kycHash: 'merged', accessToken: jwt() });
+    });
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('ignores a completed merge job received after unmount', async () => {
+    jest.useFakeTimers();
+    mockSearch.value = 'otp=abc123';
+    const job = { uid: 'job-123', status: 'Pending', expectedSeconds: 5 };
+    let resolveJob!: (value: unknown) => void;
+    mockCall.mockResolvedValueOnce(job);
+    mockGetJob.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveJob = resolve;
+      }),
+    );
+    const view = renderRoute();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(mockGetJob).toHaveBeenCalledWith('job-123', false);
+    view.unmount();
+    await act(async () => {
+      resolveJob({ ...job, status: 'Complete' });
+    });
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('shows a lookup failure without retrying the merge endpoint', async () => {
+    jest.useFakeTimers();
+    mockSearch.value = 'otp=abc123';
+    mockCall.mockResolvedValueOnce({ uid: 'job-123', status: 'Pending', expectedSeconds: 5 });
+    mockGetJob.mockRejectedValueOnce(new Error('lookup failed'));
+    renderRoute();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(screen.getByText("We couldn't complete the account merge. Please try again.")).toBeInTheDocument();
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
   });
 
   it('warns instead of reporting merge success when the response token is invalid', async () => {

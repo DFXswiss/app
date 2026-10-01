@@ -6,6 +6,7 @@ const mockCall = jest.fn();
 const mockOpenConnect = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
+  useJob: () => ({ getJob: jest.fn() }),
   useAuth: () => ({
     confirmAccountMerge: (code: string, authenticated = true) =>
       mockCall({

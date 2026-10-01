@@ -320,6 +320,7 @@ export const en = {
   mergeBad: 'This link is invalid or has expired.',
   mergeDone: 'This account merge has already been completed.',
   mergeErr: "We couldn't complete the account merge. Please try again.",
+  mergeTimedOut: 'The account merge is taking longer than expected. Please try again later.',
   mergeOk: 'Your accounts have been merged.',
   ckoWait: 'Waiting for payment confirmation…',
   ckoDone: 'Payment confirmed',
@@ -380,6 +381,7 @@ export const en = {
   kycBOInvolved: 'Are you involved yourself?',
   kycAddOwner: 'Add person',
   kycOwner: 'Person',
+  kycManagingDirector: 'Managing director',
   kycTfaTitle: 'Two-factor authentication',
   kycTfaSetupFail: 'Two-factor authentication could not be prepared. Try again or return to the overview.',
   kycTfaLead: 'Scan the QR code with an authenticator app (e.g. Google Authenticator), then enter the 6-digit code.',
@@ -461,6 +463,7 @@ export const en = {
   tkBug: 'Report a bug',
   tkNeedMsg: 'Please describe your issue.',
   tkNeedMail: 'Add an email so we can reply.',
+  mailUnchanged: 'This is already your email address.',
   mailTaken:
     "This email already belongs to a DFX account. Connect that account's wallet to file a ticket, or use a different email.",
   genErr: 'Something went wrong',
@@ -1019,6 +1022,7 @@ export const de = {
   mergeBad: 'Dieser Link ist ungültig oder abgelaufen.',
   mergeDone: 'Die Kontozusammenführung wurde bereits abgeschlossen.',
   mergeErr: 'Die Kontozusammenführung hat nicht geklappt. Bitte versuche es erneut.',
+  mergeTimedOut: 'Die Kontozusammenführung dauert länger als erwartet. Bitte versuche es später erneut.',
   mergeOk: 'Deine Konten wurden zusammengeführt.',
   ckoWait: 'Wir warten auf die Zahlungsbestätigung…',
   ckoDone: 'Zahlung bestätigt',
@@ -1081,6 +1085,7 @@ export const de = {
   kycBOInvolved: 'Bist du selbst beteiligt?',
   kycAddOwner: 'Person hinzufügen',
   kycOwner: 'Person',
+  kycManagingDirector: 'Geschäftsführer',
   kycTfaTitle: 'Zwei-Faktor-Authentifizierung',
   kycTfaSetupFail:
     'Die Zwei-Faktor-Authentifizierung konnte nicht vorbereitet werden. Versuche es erneut oder kehre zur Übersicht zurück.',
@@ -1164,6 +1169,7 @@ export const de = {
   tkBug: 'Fehler melden',
   tkNeedMsg: 'Bitte beschreibe dein Anliegen.',
   tkNeedMail: 'Gib eine E-Mail an, damit wir antworten können.',
+  mailUnchanged: 'Das ist bereits deine E-Mail-Adresse.',
   mailTaken:
     'Diese E-Mail gehört bereits zu einem DFX-Konto. Verbinde die Wallet dieses Kontos, um ein Ticket zu erstellen, oder nutze eine andere E-Mail.',
   genErr: 'Etwas ist schiefgelaufen',
@@ -1790,6 +1796,7 @@ export const it = {
   mergeBad: 'Questo link non è valido o è scaduto.',
   mergeDone: "L'unione degli account è già stata completata.",
   mergeErr: "Non è stato possibile completare l'unione degli account. Riprova.",
+  mergeTimedOut: "L'unione degli account sta richiedendo più tempo del previsto. Riprova più tardi.",
   mergeOk: 'I tuoi account sono stati uniti.',
   ckoWait: 'In attesa della conferma del pagamento…',
   ckoDone: 'Pagamento confermato',
@@ -1851,6 +1858,7 @@ export const it = {
   kycBOInvolved: 'Sei coinvolto tu stesso?',
   kycAddOwner: 'Aggiungi persona',
   kycOwner: 'Persona',
+  kycManagingDirector: 'Amministratore delegato',
   kycTfaTitle: 'Autenticazione a due fattori',
   kycTfaSetupFail: "Non è stato possibile preparare l'autenticazione a due fattori. Riprova o torna alla panoramica.",
   kycTfaLead:
@@ -1933,6 +1941,7 @@ export const it = {
   tkBug: 'Segnala un bug',
   tkNeedMsg: 'Descrivi il tuo problema.',
   tkNeedMail: "Aggiungi un'email per poterti rispondere.",
+  mailUnchanged: 'Questo è già il tuo indirizzo email.',
   mailTaken:
     "Questa email appartiene già a un account DFX. Connetti il wallet di quell'account per creare un ticket, oppure usa un'altra email.",
   genErr: 'Qualcosa è andato storto',
@@ -2559,6 +2568,7 @@ export const fr = {
   mergeBad: 'Ce lien est invalide ou a expiré.',
   mergeDone: 'La fusion des comptes a déjà été effectuée.',
   mergeErr: "La fusion des comptes n'a pas abouti. Réessaie.",
+  mergeTimedOut: 'La fusion des comptes prend plus de temps que prévu. Réessaie plus tard.',
   mergeOk: 'Tes comptes ont été fusionnés.',
   ckoWait: 'En attente de la confirmation du paiement…',
   ckoDone: 'Paiement confirmé',
@@ -2620,6 +2630,7 @@ export const fr = {
   kycBOInvolved: 'Es-tu impliqué toi-même ?',
   kycAddOwner: 'Ajouter une personne',
   kycOwner: 'Personne',
+  kycManagingDirector: 'Directeur général',
   kycTfaTitle: 'Authentification à deux facteurs',
   kycTfaSetupFail: "L'authentification à deux facteurs n'a pas pu être préparée. Réessaie ou retourne à l'aperçu.",
   kycTfaLead:
@@ -2702,6 +2713,7 @@ export const fr = {
   tkBug: 'Signaler un bug',
   tkNeedMsg: 'Décris ton problème.',
   tkNeedMail: "Ajoute un e-mail pour qu'on puisse répondre.",
+  mailUnchanged: 'C’est déjà ton adresse e-mail.',
   mailTaken:
     'Cet e-mail appartient déjà à un compte DFX. Connecte le wallet de ce compte pour créer un ticket, ou utilise un autre e-mail.',
   genErr: "Une erreur s'est produite",
