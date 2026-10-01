@@ -24,17 +24,16 @@ export const SCORECHAIN_CLEAR_HINT: Record<ScorechainHold, string> = {
     'Scorechain hat bei dieser Zahlung ein hohes Risiko gemeldet. Prüfe zuerst die Scorechain-Ansicht ' +
     '(Link im Kommentar). Quittieren heisst: Du hast die Warnung geprüft, für diese Zahlung gilt sie als ' +
     'erledigt. Die Zahlung wird danach automatisch neu geprüft und freigegeben, wenn kein weiterer Fehler ' +
-    'offen ist. Eine Sanktion blockiert weiterhin. Wird im Support-Log mit deinem Namen festgehalten.',
+    'offen ist. Wird im Support-Log mit deinem Namen festgehalten.',
   Unavailable:
     'Scorechain hat für diese Zahlung kein Ergebnis geliefert. Quittieren heisst: Du hast die Zahlung ohne ' +
     'Scorechain-Ergebnis geprüft, für diese Zahlung gilt der Fehler als erledigt. Die Zahlung wird danach ' +
-    'automatisch neu geprüft und freigegeben, wenn kein weiterer Fehler offen ist. Eine Sanktion blockiert ' +
-    'weiterhin. Wird im Support-Log mit deinem Namen festgehalten.',
+    'automatisch neu geprüft und freigegeben, wenn kein weiterer Fehler offen ist. Wird im Support-Log mit ' +
+    'deinem Namen festgehalten.',
 };
 
 export const SCORECHAIN_CLEAR_CONFIRM =
-  'Scorechain für diese Zahlung wirklich quittieren?\n\nDie Zahlung wird danach automatisch neu geprüft. ' +
-  'Eine Sanktion blockiert weiterhin.';
+  'Scorechain für diese Zahlung wirklich quittieren?\n\nDie Zahlung wird danach automatisch neu geprüft.';
 
 export const SCORECHAIN_CLEAR_SUMMARY = 'Scorechain quittiert. Die Zahlung wird neu geprüft.';
 
