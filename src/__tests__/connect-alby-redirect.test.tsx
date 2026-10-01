@@ -296,6 +296,7 @@ describe('ConnectAlby login redirect', () => {
 
 describe('ConnectAlby', () => {
   const originalEnv = process.env.REACT_APP_PUBLIC_URL;
+  const originalLocation = window.location;
   let capturedLocation: string | undefined;
   let locationStub: { href: string; search: string; origin: string; pathname: string };
 
@@ -334,6 +335,11 @@ describe('ConnectAlby', () => {
     } else {
       process.env.REACT_APP_PUBLIC_URL = originalEnv;
     }
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
   });
 
   function renderConnectAlby() {

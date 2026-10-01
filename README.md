@@ -93,7 +93,7 @@ DFX services can be integrated as a web component. See the [code example](#web-c
 
 For web component integration, a closing callback (`on-close` attribute) should be provided. On cancel or completion, this callback is called. See [below](#close-message) for details on the message format.
 
-Logins that leave the page and return through a link or a redirect — the e-mail login link and the Alby account login — do not return to the embedding page. They continue in the DFX app ([app.dfx.swiss](https://app.dfx.swiss/)), where the user arrives logged in at the selected service. Other parameters supplied to the widget as attributes (for example a preselected asset or amount) are not carried over. The login redirect carries the session, so it only ever targets the DFX app itself.
+Logins that leave the page and return through a link or a redirect — the e-mail login link and the Alby account login — do not return to the embedding page. They continue in the DFX app ([app.dfx.swiss](https://app.dfx.swiss/)), where the user arrives logged in at the selected service. Other parameters supplied to the widget as attributes (for example a preselected asset or amount) are not carried over. The login redirect carries the session, so the API only accepts the DFX app itself as its target.
 
 #### React Component
 
