@@ -185,7 +185,7 @@
   },
   "connect-address-switch": {
     "title": "Abgelehnter Adresswechsel",
-    "description": "Eine Sitzung ohne Adresse (z. B. nach Mail-Login) öffnet /connect; die App wechselt automatisch auf die einzige Adresse des Kontos. Lehnt die API den Wechsel ab, wird er nicht wiederholt: über der Adressauswahl erscheint ein übersetzter Hinweis, dass diese Adresse nicht ausgewählt werden konnte (ohne den Text der API), die Auswahl ist leer und bleibt bedienbar."
+    "description": "Eine Sitzung ohne Adresse (z. B. nach Mail-Login) öffnet /connect; die App wechselt automatisch auf die einzige Adresse des Kontos. Lehnt die API den Wechsel ab, wird er nicht wiederholt: über der Adressauswahl erscheint ein übersetzter Hinweis, dass diese Adresse nicht ausgewählt werden konnte (ohne den Text der API), die Auswahl ist leer und bleibt bedienbar. Weitere Varianten: ein anderer Fehler beim Wechsel (z. B. ein Serverfehler) zeigt weiterhin den allgemeinen Fehlerhinweis über der Adressauswahl; schlägt die Safe-Eröffnung ohne Fehlertext fehl, erscheint der allgemeine Hinweis mit «Unknown error» statt eines endlosen Ladekreises."
   },
   "tfa-merged-redirect": {
     "title": "2FA-Screen: Weiterleitung bei zusammengeführtem Account",

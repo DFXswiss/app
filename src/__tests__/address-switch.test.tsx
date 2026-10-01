@@ -298,8 +298,9 @@ describe('ConnectAddress automatic address switch', () => {
     expect(mockSetWallet).toHaveBeenCalledTimes(1);
   });
 
+  // In the app the SDK also clears the session on 401, which this harness does not model.
   it.each([400, 401, 403, 404])(
-    'shows the translated rejection sentence for status %s without the API text',
+    'treats status %s as a rejection: translated sentence, no API text, one KnownRejection report',
     async (statusCode) => {
       mockGetUser.mockResolvedValue({ addresses: [ADDRESS_A], activeAddress: undefined });
       rejectSwitch({ statusCode, message: 'Forbidden resource' });
