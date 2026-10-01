@@ -76,7 +76,7 @@ test.describe('App2 extended account and transaction checklist', () => {
       await expect(page.getByText('Trading limit', { exact: true })).toBeVisible();
       await expect(page.getByText('Account & security', { exact: true })).toBeVisible();
       const limitCard = page.getByText('Trading limit', { exact: true }).locator('xpath=../..');
-      const expectedLimit = `${Math.round(userDto.tradingLimit.limit).toLocaleString('en-US')} CHF per year`;
+      const expectedLimit = `${Math.round(userDto.tradingLimit.limit).toLocaleString('en-GB')} CHF per year`;
       await expect(limitCard).toContainText(expectedLimit);
       if (record.currency) {
         await expect(page.getByRole('button', { name: new RegExp(`Display currency.*${record.currency}`) })).toBeVisible();
@@ -568,11 +568,15 @@ test.describe('App2 extended account and transaction checklist', () => {
       `App2 GET /transaction/unassigned returned HTTP ${unassigned.status()}: ${responseBody}`,
     ).toBe(true);
     const payments = JSON.parse(responseBody) as Array<{ id: number }>;
+    expect(payments).toHaveLength(1);
     expect(payments.some((entry) => entry.id === payment.transactionId)).toBe(true);
     const targetsResponse = page.waitForResponse((response) =>
       new URL(response.url()).pathname.endsWith('/transaction/target') && response.request().method() === 'GET',
     );
-    await page.getByRole('button', { name: /unmatched payments/i }).click();
+    const unmatchedPayment = page.getByRole('button', { name: /^1 unmatched payment\b/ });
+    await expect(unmatchedPayment).toBeVisible();
+    await expect(unmatchedPayment.getByText('Tap to assign it to a purchase', { exact: true })).toBeVisible();
+    await unmatchedPayment.click();
     await expect(page.getByLabel('Assign to')).toBeVisible();
     const targets = await targetsResponse;
     expect(targets.ok(), 'assignment picker must load real targets').toBe(true);
@@ -596,6 +600,6 @@ test.describe('App2 extended account and transaction checklist', () => {
         )).rows[0],
       ),
     ).toEqual({ bankTxType: 'BuyCrypto', buyCryptoBuyId: target.buyId });
-    await expect(page.getByRole('button', { name: /unmatched payments/i })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /unmatched payments?/i })).toHaveCount(0);
   });
 });

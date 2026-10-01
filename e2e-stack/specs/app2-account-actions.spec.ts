@@ -5,8 +5,8 @@
  *
  * Known coverage gaps: App2 exposes wallet address rename/remove but no add-address flow;
  * the customer UI cannot change support-ticket status; transaction-list refresh has no
- * deterministic real-API failure fixture. Email replacement also needs a full 2FA mail
- * round-trip and is not represented as a successful assertion in this file.
+ * deterministic real-API failure fixture. Email replacement uses the local 2FA mail
+ * round-trip and verifies the new address with the stored notification code.
  */
 
 import type { Page } from '@playwright/test';
@@ -126,6 +126,21 @@ test.describe('App2 account and customer actions', () => {
     await expect(callSheet.getByRole('button', { name: '10:00–11:00' })).toHaveClass(/on/);
   });
 
+  test('keyboard language menu focuses the active language and Escape restores the trigger', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('dfx_lang', 'en'));
+    const response = await page.goto('/app2/#/account');
+    expect(response?.ok()).toBe(true);
+    const trigger = page.getByRole('button', { name: 'Change language', exact: true });
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    const active = page.getByRole('menuitem', { name: 'English', exact: true });
+    await expect(active).toHaveAttribute('aria-current', 'true');
+    await expect(active).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
   test('language preference persists in user_data', async ({ page }) => {
     const user = await createUser({ tag: 'app2-language', language: 'EN' });
     await openApp2(page, user.jwt, '#/account');
@@ -184,6 +199,28 @@ test.describe('App2 account and customer actions', () => {
     await expect.poll(async () => (await withDb(async (db) => (await db.query(`SELECT "apiKeyCT" FROM user_data WHERE id = $1`, [user.userDataId])).rows[0]?.apiKeyCT))).toBeTruthy();
     await page.getByRole('button', { name: 'Remove connection' }).click();
     await expect.poll(async () => (await withDb(async (db) => (await db.query(`SELECT "apiKeyCT" FROM user_data WHERE id = $1`, [user.userDataId])).rows[0]?.apiKeyCT))).toBeNull();
+  });
+
+  test('unchanged email stays in the sheet without requesting a verification code', async ({ page }) => {
+    const user = await createUser({ tag: 'app2-email-unchanged', language: 'EN' });
+    const mailRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/v2/user/mail') && request.method() !== 'GET') {
+        mailRequests.push(request.method());
+      }
+    });
+    await openApp2(page, user.jwt, '#/account');
+    await page.getByRole('button', { name: /^Email address\b/ }).click();
+    const sheet = page.getByRole('dialog', { name: 'Email address', exact: true });
+    await expect(sheet.getByPlaceholder('you@email.com')).toHaveValue(user.mail);
+    await sheet.getByRole('button', { name: 'Send code', exact: true }).click();
+    await expect(sheet.getByText('This is already your email address.', { exact: true })).toBeVisible();
+    await expect(sheet.getByPlaceholder('000000')).toHaveCount(0);
+    expect(mailRequests).toEqual([]);
+    const persistedMail = await withDb(async (db) =>
+      (await db.query<{ mail: string }>('SELECT mail FROM user_data WHERE id = $1', [user.userDataId])).rows[0]?.mail,
+    );
+    expect(persistedMail).toBe(user.mail);
   });
 
   test('App2 changes email after real 2FA and verifies the new address with the notification code', async ({ page }) => {
@@ -258,7 +295,12 @@ test.describe('App2 account and customer actions', () => {
     // This factory user has exactly one linked address. Scope the controls to the visible
     // sheet instead of relying on a styling class that is transformed by the CSS helper.
     await addressesSheet.getByRole('button', { name: 'Rename', exact: true }).click();
+    await addressesSheet.locator('input:visible').fill('');
+    await expect(addressesSheet.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+    await addressesSheet.locator('input:visible').fill('   ');
+    await expect(addressesSheet.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
     await addressesSheet.locator('input:visible').fill('E2E wallet label');
+    await expect(addressesSheet.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
     await addressesSheet.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(addressesSheet.getByText('E2E wallet label', { exact: true })).toBeVisible();
     const savedAddress = await waitForRow<{ id: number; label: string }>(

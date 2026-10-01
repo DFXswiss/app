@@ -1,6 +1,7 @@
 /**
  * App 2.0 Buy minimum-volume boundary against the real local API and Postgres.
- * Requests are never fulfilled or mocked; an unexpected valid quote reports the full response.
+ * Minimum-volume cases use real quotes; the recovery cases explicitly inject a 503 or an
+ * unsupported validity response. An unexpected valid minimum quote reports the full response.
  */
 
 import type { Page, Response } from '@playwright/test';
@@ -39,7 +40,7 @@ function waitForBuyQuote(page: Page, amount: number): Promise<Response> {
 test.describe('App2 Buy minimum-volume E2E', () => {
   test.afterEach(async () => cleanupCreatedData());
 
-  test('a real quote endpoint 503 fails closed and manual retry recovers without arming payment info', async ({ page }) => {
+  test('an injected quote endpoint 503 fails closed and manual retry recovers without arming payment info', async ({ page }) => {
     test.setTimeout(90000);
     const user = await createUser({
       tag: 'app2-buy-quote-503',
@@ -184,6 +185,28 @@ test.describe('App2 Buy minimum-volume E2E', () => {
       `Expected the real API to return AmountTooLow for ${probeAmount}; full response: ${JSON.stringify(lowQuote)}`,
     ).toMatchObject({ isValid: false, errorCodes: expect.arrayContaining(['AmountTooLow']) });
     await expect(page.getByText(/^Min\b/), 'invalid quote must show the inline minimum-amount reason').toBeVisible();
+    await expect(page.getByTestId('trade-cta')).toBeDisabled();
+
+    // Derive a destination amount below the real CHF floor using the accepted quote for
+    // this exact pair. Reload with only amount-out so the minimum must move to the pay panel.
+    const targetAmount = baseline.estimatedAmount * (floor / 100) / 4;
+    expect(targetAmount).toBeGreaterThan(0);
+    const targetQuotePromise = page.waitForResponse((response) => {
+      if (!new URL(response.url()).pathname.endsWith('/v1/buy/quote')) return false;
+      if (response.request().method() !== 'PUT') return false;
+      return response.request().postDataJSON()?.targetAmount === targetAmount;
+    });
+    const params = new URLSearchParams({ session: user.jwt, 'amount-out': String(targetAmount), 'asset-in': 'CHF' });
+    const targetPage = await page.goto(`/app2/?${params}#/`);
+    expect(targetPage?.ok()).toBe(true);
+    const targetResponse = await targetQuotePromise;
+    expect(targetResponse.status()).toBe(200);
+    const targetQuote = await targetResponse.json() as BuyQuoteResponse;
+    expect(targetQuote, `target quote: ${JSON.stringify(targetQuote)}`).toMatchObject({ isValid: false });
+    expect([targetQuote.error, ...(targetQuote.errors ?? []).map(({ error }) => error)]).toContain('AmountTooLow');
+    const payPanel = page.getByRole('textbox', { name: 'Amount you pay' }).locator('../..');
+    await expect(payPanel.getByText(/^Min\b/)).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Amount you receive' })).toHaveValue(String(targetAmount));
     await expect(page.getByTestId('trade-cta')).toBeDisabled();
 
     const persisted = await queryOne<{ routes: number; requests: number }>(

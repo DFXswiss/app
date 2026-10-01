@@ -177,8 +177,13 @@ test.describe('App 2.0 OCP merchant provisioning and transactions', () => {
     test.setTimeout(120000);
     const merchant = await makeMerchant();
     await openOcpSub(page, merchant.jwt, 'routes');
-    const route = await createRouteThroughUi(page, merchant.userId);
+    await createRouteThroughUi(page, merchant.userId);
+    const route = await createRouteThroughUi(page, merchant.userId, 'CH6600762011623852958');
     await openOcpSub(page, merchant.jwt, 'links');
+    const routePicker = page.locator('#linkRoute');
+    await expect(routePicker.locator('option')).toHaveCount(2);
+    await routePicker.selectOption(String(route.id));
+    await expect(routePicker).toHaveValue(String(route.id));
     await page.getByRole('button', { name: /create payment link/i }).click();
     const link = await waitForRow<LinkDto>(
       `SELECT pl.id, pl."routeId" AS "routeId", pl.status, '' AS lnurl FROM payment_link pl
@@ -285,6 +290,8 @@ test.describe('App 2.0 OCP merchant provisioning and transactions', () => {
     await expect(page.getByText('Paid · EUR 4.75', { exact: true })).toBeVisible({ timeout: 20000 });
     await openOcpSub(page, merchant.jwt, 'history');
     await expect(page.getByText(payment.externalId, { exact: true })).toBeVisible({ timeout: 20000 });
+    const completedTotals = page.getByText('Completed this month', { exact: true }).locator('..');
+    await expect(completedTotals).toContainText('4.75 EUR');
     const history = await apiGet<Array<{ payments?: Array<{ id: number; status: string; amount: number }> }>>(
       'paymentLink/history', { jwt: merchant.jwt },
     );
@@ -295,6 +302,16 @@ test.describe('App 2.0 OCP merchant provisioning and transactions', () => {
 
     await openOcpSub(page, merchant.jwt, 'config');
     const timeout = page.locator('input[inputmode="numeric"]');
+    let configWrites = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/v1/paymentLink/config') && request.method() === 'PUT') {
+        configWrites += 1;
+      }
+    });
+    await timeout.fill('0');
+    await page.getByRole('button', { name: /save/i }).click();
+    await expect(page.getByText('Enter a positive whole number of seconds.', { exact: true })).toBeVisible();
+    expect(configWrites).toBe(0);
     await timeout.fill('73');
     await page.getByRole('button', { name: /save/i }).click();
     await expect.poll(async () => {

@@ -159,6 +159,20 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   profile and support content, without route fixtures. The screenshots prove layout for the data
   returned by that local stack; they do not establish production support metadata or customer data.
 
+- **The App2 review-fix screenshots replace every API response.**
+  `e2e/app2-review-fixes.spec.ts` uses an unsigned synthetic User JWT, fixed browser time and
+  allowlisted v1/v2 responses; unmatched requests fail closed. Fixtures provide a merchant with
+  CHF/EUR history and two Lightning routes, a rejected POS charge, account sheets, pending/failed
+  merge jobs, a BeneficialOwner step, one unassigned payment, a referral and target-amount quote
+  failures. The merge deadline uses Playwright's clock. A green run proves the rendered fixture
+  states and keyboard focus, not authentication, API acceptance, persistence, actual merge job
+  timing, payment settlement, quote correctness or Sumsub processing.
+- **The App2 beneficial-owner E2E prepares an organizational KYC step with SQL.**
+  `e2e-stack/specs/app2-kyc-extended.spec.ts` marks earlier steps completed, sets the account type
+  to Organization and inserts an in-progress BeneficialOwner step. Owner and managing-director
+  submissions use the real UI, mail TFA and API, and read the result from Postgres. A green run
+  does not prove that the normal KYC sequence makes that step available or that Sumsub accepts it.
+
 - **The App2 account recovery E2E simulates one transient user-load failure.**
   `e2e-stack/specs/app2-account-extended.spec.ts` fulfils only the first authenticated
   `GET /v2/user` with HTTP 503; clicking Retry sends the next request to the real local API.

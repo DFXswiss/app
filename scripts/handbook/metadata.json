@@ -11,6 +11,10 @@
     "title": "App2: Anzeigewährung",
     "description": "Die Anzeigewährung zeigt die vollständige Fiat-Auswahl einschließlich Währungen ohne Handelsfreigabe sowie Lade-, Fehler-/Retry- und Leerzustand. Acht Desktop- und Mobil-Baselines belegen die Darstellung der Fixture-Daten, nicht die API-Antwort oder die gespeicherte Kontoeinstellung."
   },
+  "app2-review-fixes": {
+    "title": "App2: Review-Korrekturen",
+    "description": "Desktop- und Mobilvarianten zeigen den OCP-Verlauf mit getrennten CHF- und EUR-Summen, die Auswahl zwischen zwei Lightning-Verkaufsrouten, einen ungültigen Timeout und die nach einer eindeutigen 400-Ablehnung wieder freie Kasse. Hinzu kommen der Hinweis zur unveränderten E-Mail, ein leeres Adresslabel mit gesperrtem Speichern, die Kontozusammenführung nach Zeitüberschreitung und mit Job-Fehler, Geschäftsführer-Felder ohne wirtschaftlich Berechtigte und ohne Beteiligung des Kontoinhabers, ein wirtschaftlich Berechtigter ohne Adresse mit gesperrtem Absenden, genau eine nicht zugeordnete Zahlung samt Empfehlungsprämie, Mindestbetrag- und Retry-Hinweise im Trade-Zielmodus sowie das per Tastatur geöffnete Sprachmenü mit Fokus auf der aktiven Sprache. Die Antworten und das JWT sind synthetisch; die Bilder belegen Darstellung, keine echten API-Abläufe."
+  },
   "app2-customer-initials": {
     "title": "App2: Kundeninitialen",
     "description": "Desktop- und Mobil-Baselines zeigen die aus einem gemockten Profil gelieferten Initialen AL. Sie belegen die Darstellung der Fixture-Daten, nicht echte Profilnamen oder Profil-API-Verhalten."

@@ -81,6 +81,13 @@ test.describe('App2 preview screens', () => {
   test('OpenCryptoPay hub (logged out)', async ({ page }) => {
     await openApp2(page, '#/ocp');
     await expect(page.getByRole('heading', { name: /opencryptopay/i })).toBeVisible();
+    const frame = await page.locator('[data-app2-root]').evaluate((element) => ({
+      width: element.getBoundingClientRect().width,
+      viewportWidth: window.innerWidth,
+    }));
+    if (frame.viewportWidth <= 460) {
+      expect(frame.width, 'the mobile OpenCryptoPay app frame should fill the viewport width').toBe(frame.viewportWidth);
+    }
     await expect(page).toHaveScreenshot('app2-ocp.png', screenshotOpts);
   });
 
@@ -89,6 +96,13 @@ test.describe('App2 preview screens', () => {
     await expect(
       page.getByRole('heading', { name: /page not found|seite nicht gefunden|pagina non trovata|page introuvable/i }),
     ).toBeVisible();
+    const frame = await page.locator('[data-app2-root]').evaluate((element) => ({
+      width: element.getBoundingClientRect().width,
+      viewportWidth: window.innerWidth,
+    }));
+    if (frame.viewportWidth <= 460) {
+      expect(frame.width, 'the mobile 404 app frame should fill the viewport width').toBe(frame.viewportWidth);
+    }
     await expect(page).toHaveScreenshot('app2-404.png', screenshotOpts);
   });
 

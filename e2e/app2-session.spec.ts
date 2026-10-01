@@ -241,7 +241,7 @@ test.describe('App2 session screens', () => {
 
     // Keep the real POS screen and its five-minute timeout. Only the OCP API is
     // local-mocked so this handbook baseline cannot create a real payment.
-    await page.route('**/route', (route) =>
+    await page.route(/\/route(?:\?.*)?$/, (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -337,7 +337,7 @@ test.describe('App2 session screens', () => {
   test('OpenCryptoPay POS keeps an unrecoverable pending payment locked with recovery actions', async ({ page }) => {
     let linkLoads = 0;
     let charges = 0;
-    await page.route('**/route', (route) =>
+    await page.route(/\/route(?:\?.*)?$/, (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -427,7 +427,7 @@ test.describe('App2 session screens', () => {
     if (test.info().project.name === 'chromium') {
       await page.setViewportSize({ width: 1280, height: 900 });
     }
-    await page.route('**/route', (route) =>
+    await page.route(/\/route(?:\?.*)?$/, (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -499,7 +499,7 @@ test.describe('App2 session screens', () => {
     if (test.info().project.name === 'chromium') {
       await page.setViewportSize({ width: 1280, height: 900 });
     }
-    await page.route('**/route', (route) =>
+    await page.route(/\/route(?:\?.*)?$/, (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -582,7 +582,7 @@ test.describe('App2 session screens', () => {
     if (test.info().project.name === 'chromium') {
       await page.setViewportSize({ width: 1280, height: 900 });
     }
-    await page.route('**/route', (route) =>
+    await page.route(/\/route(?:\?.*)?$/, (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -702,7 +702,7 @@ test.describe('App2 session screens', () => {
     if (test.info().project.name === 'chromium') {
       await page.setViewportSize({ width: 1280, height: 900 });
     }
-    await page.route('**/route', (route) =>
+    await page.route(/\/route(?:\?.*)?$/, (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -805,7 +805,7 @@ test.describe('App2 session screens', () => {
     if (testInfo.project.name === 'chromium') {
       await page.setViewportSize({ width: 1280, height: 900 });
     }
-    await page.route('**/route', (route) =>
+    await page.route(/\/route(?:\?.*)?$/, (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -928,6 +928,9 @@ test.describe('App2 session screens', () => {
     ).toBeVisible();
     await expect(page.getByText('Coffee & croissant')).toBeVisible();
     await expect(page.getByText('Lunch menu')).toBeVisible();
+    await expect(
+      page.getByText(/^(Completed this month|Abgeschlossen in diesem Monat|Completati questo mese|Terminés ce mois-ci)$/),
+    ).toBeVisible();
     await expect(page.getByTestId('ocp-demo-badge')).toBeVisible();
     await expect(page).toHaveScreenshot('app2-ocp-history.png', screenshotOpts);
   });

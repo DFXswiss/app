@@ -111,6 +111,7 @@ test.describe('App2 extended KYC checklist', () => {
 
     await form.getByPlaceholder('First name').fill('Local');
     await form.getByPlaceholder('Last name').fill('Owner');
+    await expect(submit, 'a name without a complete owner address cannot be submitted').toBeDisabled();
     await form.getByPlaceholder('Street').fill('Bahnhofstrasse');
     await form.getByPlaceholder('No.').fill('8');
     await form.getByPlaceholder('ZIP').fill('8001');
@@ -148,6 +149,48 @@ test.describe('App2 extended KYC checklist', () => {
       [user.userDataId],
     );
     expect(userSummary).toEqual({ allBeneficialOwnersName: 'Local Owner', allBeneficialOwnersDomicile: 'Switzerland' });
+  });
+
+  test('beneficial form requires and persists a director when the account holder is not involved', async ({ page }) => {
+    const user = await createUser({ tag: 'app2-kyc-director', kycLevel: 0, language: 'EN' });
+    await withDb(async (db) => {
+      await db.query(`UPDATE user_data SET "accountType" = 'Organization' WHERE id = $1`, [user.userDataId]);
+    });
+    const step = await seedPendingStep(user.userDataId, 'BeneficialOwner');
+    await openApp2(page, user.jwt, '#/kyc?auto-start=true');
+    await completeKycMailTwoFactor(page, user.userDataId);
+    const form = page.locator('form').filter({ has: page.locator('select') });
+    await form.locator('select').nth(0).selectOption('false');
+    await form.locator('select').nth(1).selectOption('false');
+    const submit = form.getByRole('button', { name: /^continue$/i });
+    await expect(form.getByText('Managing director', { exact: true })).toBeVisible();
+    await expect(submit).toBeDisabled();
+    await form.getByRole('textbox', { name: 'Managing director First name', exact: true }).fill('Local');
+    await form.getByRole('textbox', { name: 'Managing director Last name', exact: true }).fill('Director');
+    await expect(submit).toBeDisabled();
+    await form.getByRole('textbox', { name: 'Managing director Street', exact: true }).fill('Bahnhofstrasse');
+    await form.getByPlaceholder('No.', { exact: true }).fill('8');
+    await form.getByPlaceholder('ZIP', { exact: true }).fill('8001');
+    await form.getByPlaceholder('City', { exact: true }).fill('Zurich');
+    await form.locator('select').nth(2).selectOption({ label: 'Switzerland' });
+    const countryId = Number(await form.locator('select').nth(2).inputValue());
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    const saved = await waitForStepResult(user.userDataId, step.kycStepId);
+    expect(['InternalReview', 'ManualReview', 'Completed']).toContain(saved.status);
+    expect(JSON.parse(saved.result)).toMatchObject({
+      hasBeneficialOwners: false,
+      isAccountHolderInvolved: false,
+      managingDirector: {
+        firstName: 'Local',
+        lastName: 'Director',
+        street: 'Bahnhofstrasse',
+        houseNumber: '8',
+        zip: '8001',
+        city: 'Zurich',
+        country: { id: countryId },
+      },
+    });
   });
 
   test('recommendation email creates a real pending referral and persists its step result', async ({ page }) => {
