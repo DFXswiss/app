@@ -452,6 +452,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   of an endless spinner. It does not prove when or why the API rejects the switch, or that login or token
   verification works, or that the real client-error endpoint receives or stores the report. It does not prove
   that the screen itself reports only once: it reports each displayed rejection, which the unit test covers.
+  It does not prove that the real API answers the switch with a 500 or rejects the custody
+  sign-up with an empty message.
 - **The rejected address switch full-stack case deactivates the account with SQL.** In
   `e2e-stack/specs/auth.spec.ts`, the `/connect` mail-session case sets `user_data.status` to `Deactivated`
   after the mail login, so the API rejects the automatic address switch. A green run proves that the screen

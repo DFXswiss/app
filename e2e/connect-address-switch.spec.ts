@@ -56,12 +56,8 @@ async function fulfillJson(route: Route, body: unknown, status = 200): Promise<v
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-function knownRejectionReports(reports: unknown[]): unknown[] {
-  return reports.filter((report) => {
-    const body = JSON.stringify(report);
-    return body.includes('KnownRejection') && body.includes('Forbidden resource');
-  });
-}
+const knownRejectionReports = (reports: unknown[]) =>
+  reports.filter((report) => (report as { type?: string })?.type === 'KnownRejection');
 
 async function installSyntheticApi(
   page: Page,
@@ -163,6 +159,9 @@ test.describe('Connect address switch', () => {
     await page.waitForTimeout(2000);
     expect(api.changeCalls).toBe(1);
     expect(knownRejectionReports(api.reports)).toHaveLength(1);
+    expect(knownRejectionReports(api.reports)[0]).toEqual(
+      expect.objectContaining({ type: 'KnownRejection', message: 'Forbidden resource' }),
+    );
     expect(api.unexpectedRequests).toEqual([]);
 
     await expect(page).toHaveScreenshot('connect-address-switch-01-rejected.png', { fullPage: true });
@@ -176,6 +175,9 @@ test.describe('Connect address switch', () => {
     await expect(page.getByText(REJECTION_TEXT)).toBeVisible();
     // The client-error reporter drops an identical report within 60 s, so the repeated rejection is logged once.
     expect(knownRejectionReports(api.reports)).toHaveLength(1);
+    expect(knownRejectionReports(api.reports)[0]).toEqual(
+      expect.objectContaining({ type: 'KnownRejection', message: 'Forbidden resource' }),
+    );
   });
 
   test('generic switch failure keeps the generic hint above the address selection', async ({ page }) => {
