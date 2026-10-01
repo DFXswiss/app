@@ -327,7 +327,7 @@ test.describe('Financial dashboard', () => {
     const responses = await extractRequests;
     expect(responses.every((r) => r.ok())).toBeTruthy();
     await expect(page.getByRole('heading', { name: 'Kundengelder' })).toBeVisible();
-    await expect(page.getByLabel('Year')).toBeVisible();
+    await expect(page.getByLabel('Jahr')).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);
   });

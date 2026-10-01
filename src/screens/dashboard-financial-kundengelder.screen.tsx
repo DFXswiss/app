@@ -32,6 +32,8 @@ interface OpenedLine {
   error?: string;
 }
 
+type SheetLineWithKey = KundengelderSheetLine & { lineKey: string };
+
 function utcYearsFrom2020(): number[] {
   const end = new Date().getUTCFullYear();
   const years: number[] = [];
@@ -111,10 +113,14 @@ function splitDiffKey(
   return { account: named?.name ?? (currency ? `${head} ${currency}` : head), position };
 }
 
-function sideAmount(label: string | undefined, amount: number | undefined): string {
-  if (!label) return '';
+function sideAmount(label: string, amount: number | undefined): string {
   if (amount == null) return label === 'Anfangsbestand' ? 'nicht abgelegt' : '';
   return formatAmount(amount);
+}
+
+function movementDate(lines: KundengelderSheetLine[], lineKey: string | undefined): string {
+  if (!lineKey) return '';
+  return lines.find((line) => line.lineKey === lineKey)?.date ?? '';
 }
 
 function errorMessage(error: unknown): string {
@@ -199,34 +205,82 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
 
   function exportCsv(data: KundengelderExtract): void {
     if (data.sheets && data.sheets.length > 0) {
-      const rows = data.sheets.flatMap((sheet) => [
-        ...sheet.soll.map((line) => [
-          sheet.name,
-          sheet.accountNo ?? '',
-          'Soll',
-          line.date ?? '',
-          line.label,
-          line.amount,
-          sheet.currency,
-          '',
-        ]),
-        [sheet.name, sheet.accountNo ?? '', 'Soll', '', 'Summe', sheet.sollSum, sheet.currency, ''],
-        ...sheet.haben.map((line) => [
+      const rows = data.sheets.flatMap((sheet) => {
+        const summeSoll = [sheet.name, sheet.accountNo ?? '', 'Soll', '', 'Summe', sheet.sollSum, sheet.currency, ''];
+        const summeHaben = [
           sheet.name,
           sheet.accountNo ?? '',
           'Haben',
-          line.date ?? '',
-          line.label,
-          line.amount,
+          '',
+          'Summe',
+          sheet.habenSum,
           sheet.currency,
           '',
-        ]),
-        [sheet.name, sheet.accountNo ?? '', 'Haben', '', 'Summe', sheet.habenSum, sheet.currency, ''],
-        [sheet.name, sheet.accountNo ?? '', 'Kontrolle', '', '', '', sheet.currency, sheet.control],
-        ...(sheet.openingCheck
+        ];
+        const kontrolle = [sheet.name, sheet.accountNo ?? '', 'Kontrolle', '', '', '', sheet.currency, sheet.control];
+        const pruefung = sheet.openingCheck
           ? [[sheet.name, sheet.accountNo ?? '', 'Prüfung', '', openingCheckText(sheet), '', sheet.currency, '']]
-          : []),
-      ]);
+          : [];
+
+        if (sheet.rows && sheet.rows.length > 0) {
+          const fromRows = sheet.rows.flatMap((row) => {
+            const records: Array<Array<string | number>> = [];
+            if (row.sollLabel || row.sollAmount != null) {
+              records.push([
+                sheet.name,
+                sheet.accountNo ?? '',
+                'Soll',
+                movementDate(sheet.soll, row.sollLineKey),
+                row.sollLabel ?? '',
+                row.sollAmount ?? '',
+                sheet.currency,
+                '',
+              ]);
+            }
+            if (row.habenLabel || row.habenAmount != null) {
+              records.push([
+                sheet.name,
+                sheet.accountNo ?? '',
+                'Haben',
+                movementDate(sheet.haben, row.habenLineKey),
+                row.habenLabel ?? '',
+                row.habenAmount ?? '',
+                sheet.currency,
+                '',
+              ]);
+            }
+            return records;
+          });
+          return [...fromRows, summeSoll, summeHaben, kontrolle, ...pruefung];
+        }
+
+        return [
+          ...sheet.soll.map((line) => [
+            sheet.name,
+            sheet.accountNo ?? '',
+            'Soll',
+            line.date ?? '',
+            line.label,
+            line.amount,
+            sheet.currency,
+            '',
+          ]),
+          summeSoll,
+          ...sheet.haben.map((line) => [
+            sheet.name,
+            sheet.accountNo ?? '',
+            'Haben',
+            line.date ?? '',
+            line.label,
+            line.amount,
+            sheet.currency,
+            '',
+          ]),
+          summeHaben,
+          kontrolle,
+          ...pruefung,
+        ];
+      });
       downloadCsv(`kundengelder-${year}.csv`, toSemicolonCsv(SHEET_CSV_HEADERS, rows));
       return;
     }
@@ -316,20 +370,16 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
         sheets
           .filter(
             (sheet) =>
-              accountKey === 'all' ||
-              sheet.key === accountKey ||
-              !sheets.some((item) => item.key === accountKey),
+              accountKey === 'all' || sheet.key === accountKey || !sheets.some((item) => item.key === accountKey),
           )
           .map((sheet) => (
-          <KontenblattCard
-            key={sheet.key}
-            sheet={sheet}
-            opened={opened}
-            onLine={(line) => {
-              if (line.lineKey) onLineClick(sheet.key, sheet.iban ?? sheet.key, line.lineKey);
-            }}
-          />
-        ))}
+            <KontenblattCard
+              key={sheet.key}
+              sheet={sheet}
+              opened={opened}
+              onLine={(line) => onLineClick(sheet.key, sheet.iban ?? sheet.key, line.lineKey)}
+            />
+          ))}
 
       {!showSheets &&
         extract?.accounts.map((account) => (
@@ -431,7 +481,7 @@ function KontenblattCard({
 }: {
   sheet: KundengelderSheet;
   opened?: OpenedLine;
-  onLine: (line: KundengelderSheetLine) => void;
+  onLine: (line: SheetLineWithKey) => void;
 }): JSX.Element {
   return (
     <div className="bg-white rounded-lg shadow p-4">
@@ -459,32 +509,36 @@ function KontenblattCard({
         )}
       </div>
       {sheet.rows && sheet.rows.length > 0 ? (
-        <SheetTable sheet={sheet} opened={opened} onLine={onLine} />
+        <SheetTable sheet={sheet} rows={sheet.rows} opened={opened} onLine={onLine} />
       ) : (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <SheetSide
-          title="Soll"
-          lines={sheet.soll}
-          sum={sheet.sollSum}
-          currency={sheet.currency}
-          sheetKey={sheet.key}
-          opened={opened}
-          onLine={onLine}
-        />
-        <SheetSide
-          title="Haben"
-          lines={sheet.haben}
-          sum={sheet.habenSum}
-          currency={sheet.currency}
-          sheetKey={sheet.key}
-          opened={opened}
-          onLine={onLine}
-        />
-      </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <SheetSide
+            title="Soll"
+            lines={sheet.soll}
+            sum={sheet.sollSum}
+            currency={sheet.currency}
+            sheetKey={sheet.key}
+            opened={opened}
+            onLine={onLine}
+          />
+          <SheetSide
+            title="Haben"
+            lines={sheet.haben}
+            sum={sheet.habenSum}
+            currency={sheet.currency}
+            sheetKey={sheet.key}
+            opened={opened}
+            onLine={onLine}
+          />
+        </div>
       )}
       <div className="mt-3 flex flex-wrap gap-6 text-sm font-medium">
-        <span>Summe Soll {formatAmount(sheet.sollSum)} {sheet.currency}</span>
-        <span>Summe Haben {formatAmount(sheet.habenSum)} {sheet.currency}</span>
+        <span>
+          Summe Soll {formatAmount(sheet.sollSum)} {sheet.currency}
+        </span>
+        <span>
+          Summe Haben {formatAmount(sheet.habenSum)} {sheet.currency}
+        </span>
       </div>
       <div className={`mt-1 text-sm font-medium ${sheet.control !== 0 ? 'text-dfxRed-100' : ''}`}>
         Kontrolle {formatAmount(sheet.control)} {sheet.currency}
@@ -496,12 +550,14 @@ function KontenblattCard({
 
 function SheetTable({
   sheet,
+  rows,
   opened,
   onLine,
 }: {
   sheet: KundengelderSheet;
+  rows: KundengelderSheetRow[];
   opened?: OpenedLine;
-  onLine: (line: KundengelderSheetLine) => void;
+  onLine: (line: SheetLineWithKey) => void;
 }): JSX.Element {
   return (
     <div className="overflow-auto">
@@ -515,7 +571,7 @@ function SheetTable({
           </tr>
         </thead>
         <tbody>
-          {(sheet.rows ?? []).map((row, index) => (
+          {rows.map((row, index) => (
             <SheetRowView
               key={`${index}-${row.sollLabel ?? ''}-${row.habenLabel ?? ''}`}
               row={row}
@@ -539,9 +595,10 @@ function SheetRowView({
   row: KundengelderSheetRow;
   sheet: KundengelderSheet;
   opened?: OpenedLine;
-  onLine: (line: KundengelderSheetLine) => void;
+  onLine: (line: SheetLineWithKey) => void;
 }): JSX.Element {
-  const sollOpen = opened && row.sollLineKey != null && opened.viewKey === sheet.key && opened.lineKey === row.sollLineKey;
+  const sollOpen =
+    opened && row.sollLineKey != null && opened.viewKey === sheet.key && opened.lineKey === row.sollLineKey;
   const habenOpen =
     opened && row.habenLineKey != null && opened.viewKey === sheet.key && opened.lineKey === row.habenLineKey;
   return (
@@ -551,14 +608,18 @@ function SheetRowView({
           label={row.sollLabel}
           amount={row.sollAmount}
           lineKey={row.sollLineKey}
-          onClick={() => row.sollLineKey && onLine({ label: row.sollLabel ?? '', amount: row.sollAmount ?? 0, lineKey: row.sollLineKey })}
+          onClick={() =>
+            row.sollLineKey &&
+            onLine({ label: row.sollLabel ?? '', amount: row.sollAmount ?? 0, lineKey: row.sollLineKey })
+          }
         />
         <AmountCell
           label={row.habenLabel}
           amount={row.habenAmount}
           lineKey={row.habenLineKey}
           onClick={() =>
-            row.habenLineKey && onLine({ label: row.habenLabel ?? '', amount: row.habenAmount ?? 0, lineKey: row.habenLineKey })
+            row.habenLineKey &&
+            onLine({ label: row.habenLabel ?? '', amount: row.habenAmount ?? 0, lineKey: row.habenLineKey })
           }
         />
       </tr>
@@ -606,9 +667,7 @@ function AmountCell({
 
 function OpeningCheck({ sheet }: { sheet: KundengelderSheet }): JSX.Element {
   const mismatch = sheet.openingCheck === 'mismatch';
-  return (
-    <p className={`mt-3 text-sm ${mismatch ? 'text-dfxRed-100' : ''}`}>{openingCheckText(sheet)}</p>
-  );
+  return <p className={`mt-3 text-sm ${mismatch ? 'text-dfxRed-100' : ''}`}>{openingCheckText(sheet)}</p>;
 }
 
 function SheetSide({
@@ -626,7 +685,7 @@ function SheetSide({
   currency: string;
   sheetKey: string;
   opened?: OpenedLine;
-  onLine: (line: KundengelderSheetLine) => void;
+  onLine: (line: SheetLineWithKey) => void;
 }): JSX.Element {
   return (
     <table className="w-full text-sm">
@@ -644,7 +703,10 @@ function SheetSide({
             <Fragment key={`${index}-${line.date ?? ''}-${line.label}-${line.amount}`}>
               <tr
                 className={`border-b border-gray-100 ${line.lineKey ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
-                onClick={() => line.lineKey && onLine(line)}
+                onClick={() => {
+                  const { lineKey } = line;
+                  if (lineKey) onLine({ ...line, lineKey });
+                }}
               >
                 <td className="py-1.5 px-3">{line.date ?? ''}</td>
                 <td className="py-1.5 px-3">{line.label}</td>

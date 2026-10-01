@@ -6,7 +6,7 @@ function bankTitle(bank: DfxBankAccount): string {
 
 /**
  * Every DFX bank account stays on the extract, including a year with no movements.
- * Accounts that are not bank accounts (Checkout, Crypto-Crypto) keep their place after them.
+ * Checkout stays, and Crypto-Crypto is not an account option.
  */
 export function withEveryBankAccount(extract: KundengelderExtract, banks: DfxBankAccount[]): KundengelderExtract {
   const byKey = new Map(extract.accounts.map((account) => [account.key, account]));
@@ -18,7 +18,7 @@ export function withEveryBankAccount(extract: KundengelderExtract, banks: DfxBan
 
   for (const bank of sorted) {
     const iban = bank.iban.trim();
-    if (!iban || seen.has(iban)) continue;
+    if (!iban || !bank.currency.trim() || seen.has(iban)) continue;
     seen.add(iban);
     const existing = byKey.get(iban);
     if (existing) {
@@ -35,6 +35,7 @@ export function withEveryBankAccount(extract: KundengelderExtract, banks: DfxBan
   }
 
   for (const account of extract.accounts) {
+    if (account.key === 'CryptoCrypto') continue;
     if (!seen.has(account.key)) accounts.push(account);
   }
 

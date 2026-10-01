@@ -561,12 +561,8 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(await screen.findByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
     expect(within(cardByHeading('Maerki Baumann CHF')).getByText('BuyCrypto after Fee')).toBeInTheDocument();
     expect(screen.getByText('nicht abgelegt')).toBeInTheDocument();
-    expect(
-      screen.getByRole('option', { name: 'Maerki Baumann CHF · CH3408573177975200001' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('option', { name: 'Maerki Baumann EUR · CH6808573177975201814' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Maerki Baumann CHF · CH3408573177975200001' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Maerki Baumann EUR · CH6808573177975201814' })).toBeInTheDocument();
     expect(screen.getByText(/Verifiziert/)).toBeInTheDocument();
     expect(screen.getByText(/stimmt nicht/)).toBeInTheDocument();
     expect(screen.getAllByText('Bankkonto').length).toBeGreaterThan(0);
@@ -613,5 +609,554 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(within(diffRow).getByText('Revolut CHF')).toBeInTheDocument();
     expect(within(diffRow).getByText('BuyCrypto after Fee')).toBeInTheDocument();
     expect(within(diffRow).queryByText('Revolut EUR')).not.toBeInTheDocument();
+  });
+
+  it('keeps only the selected sheet heading when Konto changes from all to one key', async () => {
+    const kaleido: KundengelderSheet = {
+      key: '10037',
+      name: 'Kaleido Privatbank CHF',
+      iban: 'CH6008245111962200001',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    const maerki: KundengelderSheet = {
+      key: 'CH9300762011623852957|CHF',
+      name: 'Maerki Baumann CHF',
+      iban: 'CH9300762011623852957',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [kaleido, maerki] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Kaleido Privatbank CHF' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: kaleido.key } });
+
+    expect(screen.getByRole('heading', { name: 'Kaleido Privatbank CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Maerki Baumann CHF' })).not.toBeInTheDocument();
+  });
+
+  it('shows a sheet without iban as the name alone in the Konto options', async () => {
+    const checkout: KundengelderSheet = {
+      key: 'CheckoutLtdCHF',
+      name: 'Checkout Ltd CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [checkout] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('option', { name: 'Checkout Ltd CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Checkout Ltd CHF ·' })).not.toBeInTheDocument();
+  });
+
+  it('renders Haben for a negative opening-check balance and omits Soll or Haben at zero', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'CH3408573177975200001|CHF',
+      name: 'Maerki Baumann CHF',
+      iban: 'CH3408573177975200001',
+      currency: 'CHF',
+      periodEnd: '2024-12-31',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+      closingBalance: -12.5,
+      nextOpeningBalance: 0,
+      openingCheck: 'verified',
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    const check = await screen.findByText(/Verifiziert/);
+    expect(check).toHaveTextContent(`Haben ${money(12.5)} CHF`);
+    expect(check).toHaveTextContent(`(${money(0)} CHF)`);
+    expect(check).not.toHaveTextContent('Soll');
+  });
+
+  it('names Checkout and CryptoCrypto booked diffs and keeps CryptoCrypto off the sheet list', async () => {
+    const checkoutChf: KundengelderSheet = {
+      key: 'CheckoutLtdCHF',
+      name: 'Checkout Ltd CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    const checkoutEur: KundengelderSheet = {
+      key: 'CheckoutLtdEUR',
+      name: 'Checkout Ltd EUR',
+      currency: 'EUR',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({
+      ...EXTRACT,
+      accounts: [
+        ...EXTRACT.accounts,
+        { key: 'CheckoutLtdCHF', name: 'Checkout Ltd CHF', currency: 'CHF', lines: [] },
+        { key: 'CryptoCrypto', name: 'CryptoCrypto', currency: 'CHF', lines: [] },
+      ],
+      sheets: [checkoutChf, checkoutEur],
+      diffs: [
+        { key: 'CheckoutLtdCHF|BuyCrypto after Fee', live: 1, booked: 1, delta: 0 },
+        { key: 'CheckoutLtdEUR|BuyCrypto Fee', live: 2, booked: 2, delta: 0 },
+        { key: 'CryptoCrypto|BuyCrypto after Fee', live: 3, booked: 3, delta: 0 },
+      ],
+    });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toBeInTheDocument();
+    const comparison = cardByHeading('Abweichung zur Buchhaltung');
+    expect(within(comparison).getByText('Checkout Ltd CHF')).toBeInTheDocument();
+    expect(within(comparison).getByText('Checkout Ltd EUR')).toBeInTheDocument();
+    expect(within(comparison).getByText('CryptoCrypto')).toBeInTheDocument();
+    expect(within(comparison).getAllByText('BuyCrypto after Fee')).toHaveLength(2);
+    expect(within(comparison).getByText('BuyCrypto Fee')).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'CryptoCrypto' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'CryptoCrypto' })).not.toBeInTheDocument();
+  });
+
+  it('exports a zero row for an extract with no sheets and one empty account', async () => {
+    mockGetKundengelderExtract.mockResolvedValue({
+      year: YEAR,
+      eurRate: 1,
+      accounts: [
+        {
+          key: 'CH6008245111962200001',
+          name: 'Kaleido CHF',
+          iban: 'CH6008245111962200001',
+          currency: 'CHF',
+          lines: [],
+        },
+      ],
+      diffs: [],
+    });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    const button = await screen.findByRole('button', { name: 'Export CSV' });
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Kaleido CHF'));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('0'));
+  });
+
+  it('requests a sheet row line from sollLineKey and from habenLineKey', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'CH9300762011623852957|CHF',
+      name: 'Maerki Baumann CHF',
+      iban: 'CH9300762011623852957',
+      currency: 'CHF',
+      soll: [{ label: 'BuyCrypto after Fee', amount: 90, lineKey: 'BuyCrypto after Fee', date: '2024-12-31' }],
+      haben: [{ label: 'Charge', amount: 1, lineKey: 'Charge', date: '2024-12-31' }],
+      rows: [
+        { sollLabel: 'BuyCrypto after Fee', sollAmount: 90, sollLineKey: 'BuyCrypto after Fee' },
+        { habenLabel: 'Charge', habenAmount: 1, habenLineKey: 'Charge' },
+      ],
+      sollSum: 90,
+      habenSum: 1,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
+    clickLine('Maerki Baumann CHF', 'BuyCrypto after Fee');
+    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'CH9300762011623852957', 'BuyCrypto after Fee');
+
+    clickLine('Maerki Baumann CHF', 'Charge');
+    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'CH9300762011623852957', 'Charge');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(
+      `kundengelder-${YEAR}.csv`,
+      expect.stringContaining('BuyCrypto after Fee'),
+    );
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Charge'));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('2024-12-31'));
+  });
+
+  it('renders Kontrolle with a non-zero control amount', async () => {
+    const sheet: KundengelderSheet = {
+      key: '10037',
+      name: 'Kaleido Privatbank CHF',
+      iban: 'CH6008245111962200001',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 10,
+      habenSum: 7,
+      control: 3,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByText(`Kontrolle ${money(3)} CHF`)).toBeInTheDocument();
+  });
+
+  it('shows verified opening check without a period-end year', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'verified-no-period',
+      name: 'Verified CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      rows: [{ sollLabel: 'Saldo', sollAmount: 0 }],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+      openingCheck: 'verified',
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    const check = await screen.findByText(/Verifiziert/);
+    expect(check).toHaveTextContent('Anfangsbestand (');
+    expect(check).not.toHaveTextContent(/Anfangsbestand \d/);
+  });
+
+  it('labels unmatched diff keys from prefix, plain key, currency suffix and iban fallback', async () => {
+    const maerki: KundengelderSheet = {
+      key: 'CH1|EUR',
+      name: 'Maerki EUR',
+      iban: 'CH1',
+      currency: 'EUR',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({
+      ...EXTRACT,
+      sheets: [maerki],
+      diffs: [
+        { key: 'CheckoutLtdCHF|Fee', live: 1, booked: 1, delta: 0 },
+        { key: 'PLAIN', live: 2, booked: 2, delta: 0 },
+        { key: 'UNKNOWN|Buy|CHF', live: 3, booked: 3, delta: 0 },
+        { key: 'CH1|Line|CHF', live: 4, booked: 4, delta: 0 },
+      ],
+    });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Maerki EUR' })).toBeInTheDocument();
+    const comparison = cardByHeading('Abweichung zur Buchhaltung');
+
+    const feeRow = within(comparison).getByText('Fee').closest('tr');
+    if (!feeRow) throw new Error('expected fee row');
+    expect(within(feeRow).getByText('CheckoutLtdCHF')).toBeInTheDocument();
+
+    const plainRow = within(comparison).getAllByText('PLAIN')[0].closest('tr');
+    if (!plainRow) throw new Error('expected plain row');
+    expect(within(plainRow).getAllByText('PLAIN')).toHaveLength(2);
+
+    const unknownRow = within(comparison).getByText('UNKNOWN CHF').closest('tr');
+    if (!unknownRow) throw new Error('expected unknown row');
+    expect(within(unknownRow).getByText('Buy')).toBeInTheDocument();
+
+    const lineRow = within(comparison).getByText('Line').closest('tr');
+    if (!lineRow) throw new Error('expected line row');
+    expect(within(lineRow).getByText('Maerki EUR')).toBeInTheDocument();
+  });
+
+  it('exports sparse sheet rows without a movement date', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'sparse',
+      name: 'Sparse CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      rows: [
+        { sollLabel: 'Anfangsbestand', sollAmount: 1 },
+        { sollAmount: 2 },
+        { sollLabel: 'NurLabel' },
+        { habenAmount: 3 },
+        { habenLabel: 'NurHaben' },
+        { sollLabel: 'MissingKey', sollAmount: 4, sollLineKey: 'nope' },
+      ],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+      openingCheck: 'unchecked',
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Sparse CHF' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+    expect(mockDownloadCsv).toHaveBeenCalled();
+    const csv = String(mockDownloadCsv.mock.calls[0]?.[1] ?? '');
+    expect(csv).toContain('Anfangsbestand');
+    expect(csv).toContain('NurLabel');
+    expect(csv).toContain('NurHaben');
+    expect(csv).toContain('MissingKey');
+    expect(csv).toContain('Prüfung');
+    expect(csv).toContain('Nicht überprüft');
+    expect(csv).not.toContain('2024-12-31');
+  });
+
+  it('renders a section row with both labels', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'section',
+      name: 'Section CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      rows: [
+        { sollLabel: 'Eingänge', habenLabel: 'Ausgänge', section: true },
+        { sollLabel: 'Saldo', sollAmount: 1 },
+      ],
+      sollSum: 1,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Section CHF' })).toBeInTheDocument();
+    expect(within(cardByHeading('Section CHF')).getByText('Eingänge')).toBeInTheDocument();
+    expect(within(cardByHeading('Section CHF')).getByText('Ausgänge')).toBeInTheDocument();
+  });
+
+  it('requests a sheet row line from the amount cell when the sheet has no iban', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'CheckoutLtdCHF',
+      name: 'Checkout CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      rows: [{ sollLabel: 'Nach Gebühr', sollAmount: 5, sollLineKey: 'after' }],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Checkout CHF' })).toBeInTheDocument();
+    fireEvent.click(within(cardByHeading('Checkout CHF')).getByText(money(5)));
+    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'CheckoutLtdCHF', 'after');
+  });
+
+  it('requests sheet row lines from empty amount and haben-only cells', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'line-cells',
+      name: 'Line Cells CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      rows: [{ sollLabel: 'Ohne', sollLineKey: 'ohne' }, { habenLineKey: 'haben-only' }],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Line Cells CHF' })).toBeInTheDocument();
+    clickLine('Line Cells CHF', 'Ohne');
+    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'line-cells', 'ohne');
+
+    const table = within(cardByHeading('Line Cells CHF')).getByRole('table');
+    const emptyRow = within(table)
+      .getAllByRole('row')
+      .find((row) => {
+        const cells = within(row).queryAllByRole('cell');
+        return cells.length === 4 && cells.every((cell) => cell.textContent === '');
+      });
+    if (!emptyRow) throw new Error('missing haben-only row');
+    fireEvent.click(within(emptyRow).getAllByRole('cell')[2]);
+    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'line-cells', 'haben-only');
+  });
+
+  it('shows ErrorHint when a sheet row line rejects', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'row-err',
+      name: 'Row Error CHF',
+      iban: 'CH-ROW',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      rows: [{ sollLabel: 'Buy', sollAmount: 1, sollLineKey: 'Buy' }],
+      sollSum: 1,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Row Error CHF' })).toBeInTheDocument();
+    mockGetKundengelderLines.mockRejectedValueOnce(new Error('row boom'));
+    clickLine('Row Error CHF', 'Buy');
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('row boom');
+  });
+
+  it('shows sheet row transactions after a successful line load', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'row-list',
+      name: 'Row List CHF',
+      iban: 'CH-LIST',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      rows: [{ sollLabel: 'Buy', sollAmount: 1, sollLineKey: 'Buy' }],
+      sollSum: 1,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+    mockGetKundengelderLines.mockResolvedValue({
+      year: YEAR,
+      accountKey: 'CH-LIST',
+      line: 'Buy',
+      rows: [{ id: 501, type: 'BuyCrypto', amount: 1, bookingDate: '2024-08-16' }],
+    });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Row List CHF' })).toBeInTheDocument();
+    clickLine('Row List CHF', 'Buy');
+    expect(await screen.findByText('501')).toBeInTheDocument();
+  });
+
+  it('shows ErrorHint when a sheet side line rejects', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'side-err',
+      name: 'Side Error CHF',
+      iban: 'CH-SIDE',
+      currency: 'CHF',
+      soll: [{ label: 'Buy', amount: 1, lineKey: 'Buy' }],
+      haben: [],
+      sollSum: 1,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Side Error CHF' })).toBeInTheDocument();
+    mockGetKundengelderLines.mockRejectedValueOnce(new Error('side boom'));
+    clickLine('Side Error CHF', 'Buy');
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('side boom');
+  });
+
+  it('does not show missing-opening text for a non-opening label without amount', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'intern-empty',
+      name: 'Intern Sheet CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      rows: [{ sollLabel: 'Intern' }],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Intern Sheet CHF' })).toBeInTheDocument();
+    const card = cardByHeading('Intern Sheet CHF');
+    expect(within(card).getByText('Intern')).toBeInTheDocument();
+    expect(within(card).queryByText('nicht abgelegt')).not.toBeInTheDocument();
+  });
+
+  it('names an exact CheckoutLtdCHF diff key as account and position', async () => {
+    mockGetKundengelderExtract.mockResolvedValue({
+      ...EXTRACT,
+      diffs: [{ key: 'CheckoutLtdCHF', live: 6, booked: 6, delta: 0 }],
+    });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toBeInTheDocument();
+    const comparison = cardByHeading('Abweichung zur Buchhaltung');
+    const diffRow = within(comparison).getAllByText('CheckoutLtdCHF')[0].closest('tr');
+    if (!diffRow) throw new Error('expected CheckoutLtdCHF row');
+    expect(within(diffRow).getAllByText('CheckoutLtdCHF')).toHaveLength(2);
+  });
+
+  it('requests a sheet row line from a soll amount without a label', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'bare-amount',
+      name: 'Bare Amount CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      rows: [{ sollAmount: 1, sollLineKey: 'bare' }],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Bare Amount CHF' })).toBeInTheDocument();
+    const table = within(cardByHeading('Bare Amount CHF')).getByRole('table');
+    const dataRow = within(table)
+      .getAllByRole('row')
+      .find((row) => within(row).queryAllByRole('cell').length === 4);
+    if (!dataRow) throw new Error('missing bare row');
+    fireEvent.click(within(dataRow).getAllByRole('cell')[1]);
+    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'bare-amount', 'bare');
+  });
+
+  it('does not request lines when a sheet side row has no lineKey', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'side-no-key',
+      name: 'Side No Key CHF',
+      currency: 'CHF',
+      soll: [{ label: 'Anfangsbestand', amount: 0 }],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Side No Key CHF' })).toBeInTheDocument();
+    clickLine('Side No Key CHF', 'Anfangsbestand');
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
   });
 });

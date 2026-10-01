@@ -50,4 +50,22 @@ describe('withEveryBankAccount', () => {
     expect(merged.accounts[1].lines).toHaveLength(1);
     expect(merged.diffs).toBe(extract.diffs);
   });
+
+  it('omits a blank-currency bank and CryptoCrypto while keeping CheckoutLtdCHF', () => {
+    const merged = withEveryBankAccount(
+      {
+        ...extract,
+        accounts: [...extract.accounts, { key: 'CryptoCrypto', name: 'Crypto-Crypto', currency: 'CHF', lines: [] }],
+      },
+      [
+        { name: 'Maerki Baumann', iban: 'CH3408573177975200001', currency: 'CHF' },
+        { name: 'Blank FX', iban: 'CH0000000000000000000', currency: '  ' },
+      ],
+    );
+
+    const keys = merged.accounts.map((account) => account.key);
+    expect(keys).not.toContain('CH0000000000000000000');
+    expect(keys).not.toContain('CryptoCrypto');
+    expect(keys).toContain('CheckoutLtdCHF');
+  });
 });
