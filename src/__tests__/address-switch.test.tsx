@@ -27,6 +27,7 @@ const mockChangeUserAddress = jest.fn();
 const mockCall = jest.fn();
 const mockSetWallet = jest.fn();
 const mockSetSession = jest.fn();
+const mockReportClientError = jest.fn();
 let mockAssetOut: string | undefined;
 
 // stable like the real hook (memoized on the api caller)
@@ -167,6 +168,15 @@ jest.mock('src/util/utils', () => ({
   url: () => '',
 }));
 
+jest.mock('src/util/client-error', () => ({
+  reportClientError: (...args: unknown[]) => mockReportClientError(...args),
+}));
+
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useLocation: () => ({ pathname: '/connect' }),
+}));
+
 jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_ns: string, key: string) => key }),
 }));
@@ -197,7 +207,7 @@ jest.mock('src/hooks/kyc-helper.hook', () => ({ useKycHelper: () => ({ startStep
 jest.mock('src/hooks/layout-config.hook', () => ({ useLayoutOptions: () => undefined }));
 jest.mock('src/hooks/navigation.hook', () => ({ useNavigation: () => ({ navigate: jest.fn() }) }));
 
-import { act, fireEvent, render, RenderResult, screen } from '@testing-library/react';
+import { act, fireEvent, render, RenderResult, screen, waitFor } from '@testing-library/react';
 import ConnectAddress from '../components/home/wallet/connect-address';
 import AccountScreen from '../screens/account.screen';
 
@@ -205,6 +215,8 @@ const ADDRESS_A = { address: '0xA', blockchains: ['Ethereum'], wallet: 'MetaMask
 const ADDRESS_B = { address: '0xB', blockchains: ['Ethereum'], wallet: 'MetaMask', isCustody: false };
 
 const VOLUMES = { buy: { total: 0, annual: 0 }, sell: { total: 0, annual: 0 }, swap: { total: 0, annual: 0 } };
+
+const REJECTION_TEXT = 'This address could not be selected. Please use another address or contact our support.';
 
 // A looping screen would starve the test; after this many calls the switch never settles.
 const CALL_CAP = 100;
@@ -256,6 +268,7 @@ async function settle(rounds = 50): Promise<void> {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockReportClientError.mockReset();
   mockAssetOut = undefined;
   mockCall.mockResolvedValue([]);
 });
@@ -285,17 +298,54 @@ describe('ConnectAddress automatic address switch', () => {
     expect(mockSetWallet).toHaveBeenCalledTimes(1);
   });
 
-  it('shows ErrorHint on rejection and retries only after the user selects again', async () => {
+  it.each([400, 401, 403, 404])(
+    'shows the translated rejection sentence for status %s without the API text',
+    async (statusCode) => {
+      mockGetUser.mockResolvedValue({ addresses: [ADDRESS_A], activeAddress: undefined });
+      rejectSwitch({ statusCode, message: 'Forbidden resource' });
+
+      renderWithUser(<ConnectAddress onLogin={jest.fn()} onCancel={jest.fn()} />);
+      await settle();
+
+      expect(mockChangeUserAddress).toHaveBeenCalledTimes(1);
+      expect(screen.getByText(REJECTION_TEXT)).toBeInTheDocument();
+      expect(screen.queryByText('Forbidden resource')).toBeNull();
+      expect(screen.queryByTestId('error-hint')).toBeNull();
+      await waitFor(() => expect(mockReportClientError).toHaveBeenCalledTimes(1));
+      expect(mockReportClientError.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ message: 'Forbidden resource', name: 'KnownRejection' }),
+      );
+    },
+  );
+
+  it.each([
+    [{ statusCode: 500, message: 'Server down' }, 'Server down'],
+    [{ statusCode: 0, message: 'Network error' }, 'Network error'],
+    [{}, 'Unknown error'],
+  ])('shows ErrorHint for a non-rejection failure %#', async (error, expectedMessage) => {
     mockGetUser.mockResolvedValue({ addresses: [ADDRESS_A], activeAddress: undefined });
-    rejectSwitch({ statusCode: 403, message: 'Forbidden' });
+    rejectSwitch(error);
+
+    renderWithUser(<ConnectAddress onLogin={jest.fn()} onCancel={jest.fn()} />);
+    await settle();
+
+    expect(screen.getByTestId('error-hint')).toHaveTextContent(expectedMessage);
+    expect(screen.queryByText(REJECTION_TEXT)).toBeNull();
+    expect(mockReportClientError).not.toHaveBeenCalled();
+  });
+
+  it('shows the translated rejection and retries only after the user selects again', async () => {
+    mockGetUser.mockResolvedValue({ addresses: [ADDRESS_A], activeAddress: undefined });
+    rejectSwitch({ statusCode: 403, message: 'Forbidden resource' });
 
     renderWithUser(<ConnectAddress onLogin={jest.fn()} onCancel={jest.fn()} />);
     await settle();
 
     expect(mockChangeUserAddress).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('error-hint')).toHaveTextContent('Forbidden');
+    expect(screen.getByText(REJECTION_TEXT)).toBeInTheDocument();
     expect(screen.queryByTestId('spinner')).toBeNull();
     expect(screen.getByTestId('address-select')).toHaveValue('');
+    await waitFor(() => expect(mockReportClientError).toHaveBeenCalledTimes(1));
 
     fireEvent.change(screen.getByTestId('address-select'), { target: { value: '0xA' } });
     await settle();
@@ -303,16 +353,23 @@ describe('ConnectAddress automatic address switch', () => {
     expect(mockChangeUserAddress).toHaveBeenCalledTimes(2);
     await settle();
     expect(mockChangeUserAddress).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(REJECTION_TEXT)).toBeInTheDocument();
+    await waitFor(() => expect(mockReportClientError).toHaveBeenCalledTimes(2));
   });
 
-  it('shows Unknown error when rejection has no message', async () => {
+  it('reports Unknown error when a rejection has no message', async () => {
     mockGetUser.mockResolvedValue({ addresses: [ADDRESS_A], activeAddress: undefined });
     rejectSwitch({ statusCode: 403 });
 
     renderWithUser(<ConnectAddress onLogin={jest.fn()} onCancel={jest.fn()} />);
     await settle();
 
-    expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
+    expect(screen.getByText(REJECTION_TEXT)).toBeInTheDocument();
+    expect(screen.queryByTestId('error-hint')).toBeNull();
+    await waitFor(() => expect(mockReportClientError).toHaveBeenCalledTimes(1));
+    expect(mockReportClientError.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ message: 'Unknown error', name: 'KnownRejection' }),
+    );
   });
 
   it('lets the user pick another address after a rejection and succeeds', async () => {
@@ -332,7 +389,7 @@ describe('ConnectAddress automatic address switch', () => {
 
     expect(mockChangeUserAddress).toHaveBeenCalledTimes(1);
     expect(mockChangeUserAddress).toHaveBeenCalledWith('0xA');
-    expect(screen.getByTestId('error-hint')).toHaveTextContent('Forbidden');
+    expect(screen.getByText(REJECTION_TEXT)).toBeInTheDocument();
 
     fireEvent.change(screen.getByTestId('address-select'), { target: { value: '0xB' } });
     await settle();
@@ -341,6 +398,7 @@ describe('ConnectAddress automatic address switch', () => {
     expect(mockChangeUserAddress).toHaveBeenCalledWith('0xB');
     expect(onLogin).toHaveBeenCalledTimes(1);
     expect(mockSetWallet).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(REJECTION_TEXT)).toBeNull();
     expect(screen.queryByTestId('error-hint')).toBeNull();
   });
 
@@ -419,11 +477,11 @@ describe('ConnectAddress automatic address switch', () => {
     expect(mockChangeUserAddress).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      rejectPending({ message: 'Forbidden' });
+      rejectPending({ statusCode: 403, message: 'Forbidden' });
     });
     await settle();
     expect(mockChangeUserAddress).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('error-hint')).toHaveTextContent('Forbidden');
+    expect(screen.getByText(REJECTION_TEXT)).toBeInTheDocument();
   });
 
   it('does not render 0 when the account has no addresses', async () => {

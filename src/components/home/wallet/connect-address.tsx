@@ -18,9 +18,14 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { useWalletContext } from 'src/contexts/wallet.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import { useAppParams } from 'src/hooks/app-params.hook';
+import { useReportDisplayedError } from 'src/hooks/report-displayed-error.hook';
+import { KnownRejectionType } from 'src/util/known-rejections';
 import { blankedAddress, sortAddressesByBlockchain } from 'src/util/utils';
 
 export const CustodyAssets = ['ZCHF', 'FPS', 'DEPSPresale'];
+
+// The API rejected the switch for this session, so another attempt cannot succeed.
+const SwitchRejectionStatusCodes = [400, 401, 403, 404];
 
 interface FormData {
   address: UserAddress;
@@ -41,7 +46,8 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
-  const [switchError, setSwitchError] = useState<string>();
+  const [switchError, setSwitchError] = useState<{ message: string; isRejection: boolean }>();
+  useReportDisplayedError(switchError?.isRejection ? switchError.message : undefined, KnownRejectionType);
   const attemptedAddress = useRef<string>();
 
   const isCustodySignup = !hasAddress && CustodyAssets.includes(assetOut ?? '');
@@ -79,7 +85,10 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
         // wait for the user to select an address again instead of retrying
         attemptedAddress.current = undefined;
         resetField('address');
-        setSwitchError(e.message ?? 'Unknown error');
+        setSwitchError({
+          message: e.message ?? 'Unknown error',
+          isRejection: SwitchRejectionStatusCodes.includes(e.statusCode),
+        });
         setIsLoading(false);
       });
   }, [selectedAddress, user?.activeAddress, isUserLoading, sessionHasNoAddress]);
@@ -109,7 +118,17 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
     </div>
   ) : (
     <StyledVerticalStack gap={4} center full marginY={4} className="z-10">
-      {switchError && <ErrorHint message={switchError} />}
+      {switchError &&
+        (switchError.isRejection ? (
+          <p className="text-dfxRed-100">
+            {translate(
+              'screens/home',
+              'This address could not be selected. Please use another address or contact our support.',
+            )}
+          </p>
+        ) : (
+          <ErrorHint message={switchError.message} />
+        ))}
       {userAddresses.length > 0 && (
         <>
           <p className="text-dfxGray-700">

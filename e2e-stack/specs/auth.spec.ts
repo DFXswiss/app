@@ -163,7 +163,9 @@ test.describe('Auth area e2e', () => {
     );
   });
 
-  test('/connect with a mail session sends a rejected address switch once and shows the error', async ({ page }) => {
+  test('/connect with a mail session sends a rejected address switch once and shows the rejection', async ({
+    page,
+  }) => {
     test.setTimeout(90000);
 
     const user = await createUser({ tag: 'auth-switch' });
@@ -186,7 +188,12 @@ test.describe('Auth area e2e', () => {
         timeout: 20000,
       },
     );
-    await expect(page.getByText('User is deactivated or blocked')).toBeVisible({ timeout: 20000 });
+    await expect(
+      page.getByText('This address could not be selected. Please use another address or contact our support.', {
+        exact: true,
+      }),
+    ).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('User is deactivated or blocked')).toHaveCount(0);
 
     // A retrying screen would keep sending during the wait.
     await page.waitForTimeout(3000);
