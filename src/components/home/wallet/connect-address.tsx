@@ -86,7 +86,7 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
         attemptedAddress.current = undefined;
         resetField('address');
         setSwitchError({
-          message: e.message ?? 'Unknown error',
+          message: e.message || 'Unknown error',
           isRejection: SwitchRejectionStatusCodes.includes(e.statusCode),
         });
         setIsLoading(false);
@@ -106,7 +106,7 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
           setSession(accessToken);
           onLogin();
         })
-        .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
+        .catch((error: ApiError) => setError(error.message || 'Unknown error'));
     }
   }, [assetOut, hasAddress, isUserLoading]);
 
