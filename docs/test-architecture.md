@@ -246,10 +246,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `{ clerk }` and, as fallback, `GET /v1/support/{id}` for any account other than the customer
   fixture with `{ userData: { verifiedName } }`. A green run proves that the review screen
   accepts that name, not that the API returns the logged-in staff member's `verifiedName`.
-  The spec covers the resettable AML-reset path and the pending ManualCheck decision form
+  The spec covers the resettable AML-reset path, the pending ManualCheck decision form
   in the Fail (AmlReason visible, priceDefinitionAllowedDate hidden) and Reset (hint, both
-  hidden) variants. A green run does not prove live API payloads or that the Editor label
-  is the logged-in staff member's `verifiedName`.
+  hidden) variants, and two synthetic transaction comments, `ScorechainHighRisk` and
+  `ScorechainUnavailable`, that are placeholder hold tokens rather than a screening result.
+  A green run does not prove live API payloads, that Scorechain or the API produced those
+  holds, or that the Editor label is the logged-in staff member's `verifiedName`.
 - **The call-queue outcome spec answers staff identity and the dossier itself.**
   `e2e/compliance-call-queue-outcome.spec.ts` fulfils `GET /v1/support/issue/clerk` with
   `{ clerk }`, a differently named fallback on `GET /v1/support/{staffAccount}`,
