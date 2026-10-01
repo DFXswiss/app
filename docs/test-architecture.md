@@ -218,8 +218,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   messages, clerks (in the `{ clerkUserDataId, clerk }` shape), clerk mapping and activity with
   fixtures, including one customer mail tag, one
   in-app tag, a customer message without an origin and a staff reply that carries an origin. A green
-  run proves the messages panel renders those tags. It does not prove that the API stores `origin`,
-  that a mail opened the ticket, or that the session is a real staff login.
+  run proves the messages panel renders those tags. It does not prove that the API answers the clerk
+  endpoints in that shape, that it stores `origin`, that a mail opened the ticket, or that the session
+  is a real staff login.
 - **The support-issue receiver-IBAN spec pins KYC level and account mail on GET /v2/user.**
   `e2e/support-issue-receiver-iban.spec.ts` rewrites that response so `kyc.level` is high enough for
   the screen guard and `mail` is present if the cached wallet session has none. A green visual run
