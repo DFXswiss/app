@@ -3,9 +3,10 @@ import { expect, Page, Route, test } from '@playwright/test';
 /**
  * Visual variant of a rejected automatic address switch on /connect: the rejected automatic switch
  * is sent exactly once, the translated rejection sentence is shown above the address selection
- * (without the API's text or the generic ErrorHint), the rejection is reported once via the
- * client-error log (also across the repeated rejection after re-selection), and selecting the
- * address again sends exactly one new attempt.
+ * (without the API's text or the generic ErrorHint), one `KnownRejection` report reaches the
+ * client-error endpoint (including when the same rejection is shown again after re-selection,
+ * because the reporter drops an identical report within 60 s), and selecting the address again
+ * sends exactly one new attempt.
  *
  * Auth is a synthetic unsigned JWT WITHOUT `address` (a mail-login session); all `/v1/**` and
  * `/v2/**` calls are intercepted via page.route(...).

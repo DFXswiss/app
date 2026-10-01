@@ -407,10 +407,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e/connect-address-switch.spec.ts` authenticates with a synthetic unsigned JWT without an address, fulfils
   `GET /v2/user` with one synthetic address and the bootstrap GETs, answers `POST /v1/user/change` with a 403
   and fulfils the client-error POST. A green run proves that the screen sends the rejected switch once, shows
-  the translated rejection sentence above the selection without the API's text, reports the rejection once,
-  also across the repeated rejection after re-selection, and sends exactly one new attempt when the address
-  is selected again. It does not prove when or why the API rejects the switch, or that login or token
-  verification works.
+  the translated rejection sentence above the selection without the API's text, and sends exactly one new
+  attempt when the address is selected again; the client-error endpoint receives one `KnownRejection` report,
+  including when the same rejection is shown again after re-selection, because the reporter drops an identical
+  report within 60 s. It does not prove when or why the API rejects the switch, or that login or token
+  verification works. It does not prove that the screen itself reports only once: it reports each displayed
+  rejection, which the unit test covers.
 - **The rejected address switch full-stack case deactivates the account with SQL.**
   In `e2e-stack/specs/auth.spec.ts`, the `/connect` mail-session case sets `user_data.status` to `Deactivated`
   after the mail login, so the API rejects the automatic address switch. A green run proves that the screen
