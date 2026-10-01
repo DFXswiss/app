@@ -70,6 +70,10 @@ function openingCheckText(sheet: KundengelderSheet): string {
   return `Überprüft. Der errechnete Endbestand ${end} stimmt nicht mit dem Anfangsbestand${when} (${next}) überein.`;
 }
 
+function accountOptionLabel(sheet: KundengelderSheet): string {
+  return sheet.iban ? `${sheet.name} · ${sheet.iban}` : sheet.name;
+}
+
 function sideAmount(label: string | undefined, amount: number | undefined): string {
   if (!label) return '';
   if (amount == null) return label === 'Anfangsbestand' ? 'nicht abgelegt' : '';
@@ -237,7 +241,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
             <option value="all">All</option>
             {sheets.map((sheet) => (
               <option key={sheet.key} value={sheet.key}>
-                {sheet.name}
+                {accountOptionLabel(sheet)}
               </option>
             ))}
           </select>

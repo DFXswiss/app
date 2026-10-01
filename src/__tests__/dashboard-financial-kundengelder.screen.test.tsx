@@ -522,6 +522,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
       ...verified,
       key: 'CH6808573177975201814|EUR',
       name: 'Maerki Baumann EUR',
+      iban: 'CH6808573177975201814',
       currency: 'EUR',
       rows: [{ sollLabel: 'Anfangsbestand' }, { habenLabel: 'Saldo', habenAmount: 40 }],
       closingBalance: 40,
@@ -534,6 +535,12 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByText('BuyCrypto after Fee')).toBeInTheDocument();
     expect(screen.getByText('nicht abgelegt')).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'Maerki Baumann CHF · CH3408573177975200001' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'Maerki Baumann EUR · CH6808573177975201814' }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Verifiziert/)).toBeInTheDocument();
     expect(screen.getByText(/stimmt nicht/)).toBeInTheDocument();
     expect(screen.getAllByText('2024-01-01 – 2024-12-31').length).toBeGreaterThan(0);
