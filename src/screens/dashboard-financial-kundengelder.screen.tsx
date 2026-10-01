@@ -12,6 +12,7 @@ import {
   KundengelderExtract,
   KundengelderSheet,
   KundengelderSheetLine,
+  KundengelderSheetRow,
   KundengelderTxList,
 } from 'src/dto/dashboard.dto';
 import { useDashboard } from 'src/hooks/dashboard.hook';
@@ -44,6 +45,37 @@ function formatChf(value: number): string {
   return `${value.toLocaleString('de-CH')} CHF`;
 }
 
+function formatAmount(value: number): string {
+  return value.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function balanceText(signed: number, currency: string): string {
+  const amount = formatAmount(Math.abs(signed));
+  if (signed > 0) return `Soll ${amount} ${currency}`;
+  if (signed < 0) return `Haben ${amount} ${currency}`;
+  return `${amount} ${currency}`;
+}
+
+function openingCheckText(sheet: KundengelderSheet): string {
+  if (sheet.openingCheck === 'unchecked') {
+    return 'Nicht überprüft, weil kein Anfangsbestand des Folgejahres in der Datenbank abgelegt ist.';
+  }
+  const year = sheet.periodEnd ? Number(sheet.periodEnd.slice(0, 4)) + 1 : undefined;
+  const end = balanceText(sheet.closingBalance ?? 0, sheet.currency);
+  const next = balanceText(sheet.nextOpeningBalance ?? 0, sheet.currency);
+  const when = year ? ` ${year}` : '';
+  if (sheet.openingCheck === 'verified') {
+    return `Verifiziert. Der errechnete Endbestand ${end} stimmt mit dem Anfangsbestand${when} (${next}) überein.`;
+  }
+  return `Überprüft. Der errechnete Endbestand ${end} stimmt nicht mit dem Anfangsbestand${when} (${next}) überein.`;
+}
+
+function sideAmount(label: string | undefined, amount: number | undefined): string {
+  if (!label) return '';
+  if (amount == null) return label === 'Anfangsbestand' ? 'nicht abgelegt' : '';
+  return formatAmount(amount);
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
 }
@@ -56,6 +88,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
   const { getKundengelderExtract, getDfxBanks, getKundengelderLines } = useDashboard();
 
   const [year, setYear] = useState(() => new Date().getUTCFullYear());
+  const [accountKey, setAccountKey] = useState('all');
   const [extract, setExtract] = useState<KundengelderExtract>();
   const [error, setError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
@@ -149,6 +182,9 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
         ]),
         [sheet.name, sheet.accountNo ?? '', 'Haben', '', 'Summe', sheet.habenSum, sheet.currency, ''],
         [sheet.name, sheet.accountNo ?? '', 'Kontrolle', '', '', '', sheet.currency, sheet.control],
+        ...(sheet.openingCheck
+          ? [[sheet.name, sheet.accountNo ?? '', 'Prüfung', '', openingCheckText(sheet), '', sheet.currency, '']]
+          : []),
       ]);
       downloadCsv(`kundengelder-${year}.csv`, toSemicolonCsv(SHEET_CSV_HEADERS, rows));
       return;
@@ -189,6 +225,22 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-lg font-semibold">Kundengelder</h1>
         <div className="flex flex-wrap items-center gap-4">
+          <label htmlFor="kundengelder-account" className="text-sm">
+            Account
+          </label>
+          <select
+            id="kundengelder-account"
+            value={accountKey}
+            onChange={(event) => setAccountKey(event.target.value)}
+            className="border border-gray-300 rounded px-2 py-1"
+          >
+            <option value="all">All</option>
+            {sheets.map((sheet) => (
+              <option key={sheet.key} value={sheet.key}>
+                {sheet.name}
+              </option>
+            ))}
+          </select>
           <label htmlFor="kundengelder-year" className="text-sm">
             Year
           </label>
@@ -220,7 +272,14 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
       {error && <ErrorHint message={error} />}
 
       {showSheets &&
-        sheets.map((sheet) => (
+        sheets
+          .filter(
+            (sheet) =>
+              accountKey === 'all' ||
+              sheet.key === accountKey ||
+              !sheets.some((item) => item.key === accountKey),
+          )
+          .map((sheet) => (
           <KontenblattCard
             key={sheet.key}
             sheet={sheet}
@@ -339,7 +398,16 @@ function KontenblattCard({
         {sheet.iban && <span>{sheet.iban}</span>}
         {(sheet.accountNo || sheet.iban) && <span> · </span>}
         <span>{sheet.currency}</span>
+        {sheet.periodStart && sheet.periodEnd && (
+          <span>
+            {' '}
+            · {sheet.periodStart} – {sheet.periodEnd}
+          </span>
+        )}
       </div>
+      {sheet.rows && sheet.rows.length > 0 ? (
+        <SheetTable sheet={sheet} opened={opened} onLine={onLine} />
+      ) : (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SheetSide
           title="Soll"
@@ -360,10 +428,133 @@ function KontenblattCard({
           onLine={onLine}
         />
       </div>
-      <div className={`mt-3 text-sm font-medium ${sheet.control !== 0 ? 'text-dfxRed-100' : ''}`}>
-        Kontrolle {sheet.control.toLocaleString('de-CH')} {sheet.currency}
+      )}
+      <div className="mt-3 flex flex-wrap gap-6 text-sm font-medium">
+        <span>Summe Soll {formatAmount(sheet.sollSum)} {sheet.currency}</span>
+        <span>Summe Haben {formatAmount(sheet.habenSum)} {sheet.currency}</span>
       </div>
+      <div className={`mt-1 text-sm font-medium ${sheet.control !== 0 ? 'text-dfxRed-100' : ''}`}>
+        Kontrolle {formatAmount(sheet.control)} {sheet.currency}
+      </div>
+      {sheet.openingCheck && <OpeningCheck sheet={sheet} />}
     </div>
+  );
+}
+
+function SheetTable({
+  sheet,
+  opened,
+  onLine,
+}: {
+  sheet: KundengelderSheet;
+  opened?: OpenedLine;
+  onLine: (line: KundengelderSheetLine) => void;
+}): JSX.Element {
+  return (
+    <div className="overflow-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-200">
+            <th className="text-left py-2 px-3 font-semibold">Soll</th>
+            <th className="text-right py-2 px-3 font-semibold">Betrag</th>
+            <th className="text-left py-2 px-3 font-semibold">Haben</th>
+            <th className="text-right py-2 px-3 font-semibold">Betrag</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(sheet.rows ?? []).map((row, index) => (
+            <SheetRowView
+              key={`${index}-${row.sollLabel ?? ''}-${row.habenLabel ?? ''}`}
+              row={row}
+              sheet={sheet}
+              opened={opened}
+              onLine={onLine}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SheetRowView({
+  row,
+  sheet,
+  opened,
+  onLine,
+}: {
+  row: KundengelderSheetRow;
+  sheet: KundengelderSheet;
+  opened?: OpenedLine;
+  onLine: (line: KundengelderSheetLine) => void;
+}): JSX.Element {
+  const sollOpen = opened && row.sollLineKey != null && opened.viewKey === sheet.key && opened.lineKey === row.sollLineKey;
+  const habenOpen =
+    opened && row.habenLineKey != null && opened.viewKey === sheet.key && opened.lineKey === row.habenLineKey;
+  return (
+    <>
+      <tr className={`border-b border-gray-100 ${row.section ? 'font-semibold' : ''}`}>
+        <AmountCell
+          label={row.sollLabel}
+          amount={row.sollAmount}
+          lineKey={row.sollLineKey}
+          onClick={() => row.sollLineKey && onLine({ label: row.sollLabel ?? '', amount: row.sollAmount ?? 0, lineKey: row.sollLineKey })}
+        />
+        <AmountCell
+          label={row.habenLabel}
+          amount={row.habenAmount}
+          lineKey={row.habenLineKey}
+          onClick={() =>
+            row.habenLineKey && onLine({ label: row.habenLabel ?? '', amount: row.habenAmount ?? 0, lineKey: row.habenLineKey })
+          }
+        />
+      </tr>
+      {(sollOpen || habenOpen) && (
+        <tr>
+          <td colSpan={4} className="py-2 px-3 bg-gray-50">
+            {opened?.error && <ErrorHint message={opened.error} />}
+            {opened?.list && <TxTable list={opened.list} />}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function AmountCell({
+  label,
+  amount,
+  lineKey,
+  onClick,
+}: {
+  label?: string;
+  amount?: number;
+  lineKey?: string;
+  onClick: () => void;
+}): JSX.Element {
+  const clickable = Boolean(lineKey);
+  return (
+    <>
+      <td
+        className={`py-1.5 px-3 ${clickable ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
+        onClick={() => clickable && onClick()}
+      >
+        {label ?? ''}
+      </td>
+      <td
+        className={`py-1.5 px-3 text-right ${clickable ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
+        onClick={() => clickable && onClick()}
+      >
+        {label ? sideAmount(label, amount) : ''}
+      </td>
+    </>
+  );
+}
+
+function OpeningCheck({ sheet }: { sheet: KundengelderSheet }): JSX.Element {
+  const mismatch = sheet.openingCheck === 'mismatch';
+  return (
+    <p className={`mt-3 text-sm ${mismatch ? 'text-dfxRed-100' : ''}`}>{openingCheckText(sheet)}</p>
   );
 }
 

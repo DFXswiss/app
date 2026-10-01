@@ -444,6 +444,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
       sollSum: 10000,
       habenSum: 10000,
       control: 0,
+      openingCheck: 'unchecked',
     };
     const buy: KundengelderSheet = {
       key: 'CH9300762011623852957|CHF',
@@ -491,5 +492,50 @@ describe('DashboardFinancialKundengelderScreen', () => {
     );
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('2024-08-16'));
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('10037'));
+    expect(screen.getByText(/kein Anfangsbestand des Folgejahres/)).toBeInTheDocument();
+  });
+
+  it('shows every PDF row and the three opening checks', async () => {
+    const verified: KundengelderSheet = {
+      key: 'CH3408573177975200001|CHF',
+      name: 'Maerki Baumann CHF',
+      iban: 'CH3408573177975200001',
+      currency: 'CHF',
+      periodStart: '2024-01-01',
+      periodEnd: '2024-12-31',
+      soll: [],
+      haben: [],
+      rows: [
+        { sollLabel: 'Anfangsbestand', sollAmount: 100 },
+        { sollLabel: 'BuyCrypto after Fee', sollAmount: 0 },
+        { habenLabel: 'Saldo', habenAmount: 100 },
+      ],
+      sollSum: 100,
+      habenSum: 100,
+      control: 0,
+      closingBalance: 100,
+      openingBalance: 100,
+      nextOpeningBalance: 100,
+      openingCheck: 'verified',
+    };
+    const mismatch: KundengelderSheet = {
+      ...verified,
+      key: 'CH6808573177975201814|EUR',
+      name: 'Maerki Baumann EUR',
+      currency: 'EUR',
+      rows: [{ sollLabel: 'Anfangsbestand' }, { habenLabel: 'Saldo', habenAmount: 40 }],
+      closingBalance: 40,
+      nextOpeningBalance: 10,
+      openingCheck: 'mismatch',
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [verified, mismatch] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByText('BuyCrypto after Fee')).toBeInTheDocument();
+    expect(screen.getByText('nicht abgelegt')).toBeInTheDocument();
+    expect(screen.getByText(/Verifiziert/)).toBeInTheDocument();
+    expect(screen.getByText(/stimmt nicht/)).toBeInTheDocument();
+    expect(screen.getAllByText('2024-01-01 – 2024-12-31').length).toBeGreaterThan(0);
   });
 });

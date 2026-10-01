@@ -100,7 +100,20 @@ export interface KundengelderSheetLine {
   lineKey?: string;
 }
 
-/** Booked T-account for one client-money account and one year. */
+export interface KundengelderSheetRow {
+  sollLabel?: string;
+  sollAmount?: number;
+  sollLineKey?: string;
+  habenLabel?: string;
+  habenAmount?: number;
+  habenLineKey?: string;
+  section?: boolean;
+}
+
+/** verified matches, mismatch was checked and differs, unchecked has no next opening. */
+export type KundengelderOpeningCheck = 'verified' | 'mismatch' | 'unchecked';
+
+/** T-account for one client-money account and one year. */
 export interface KundengelderSheet {
   key: string;
   /** Ledger account number. */
@@ -108,11 +121,19 @@ export interface KundengelderSheet {
   name: string;
   iban?: string;
   currency: string;
+  periodStart?: string;
+  periodEnd?: string;
   soll: KundengelderSheetLine[];
   haben: KundengelderSheetLine[];
+  rows?: KundengelderSheetRow[];
   sollSum: number;
   habenSum: number;
   control: number;
+  /** Signed end balance. Positive is Soll, negative is Haben. */
+  closingBalance?: number;
+  openingBalance?: number;
+  nextOpeningBalance?: number;
+  openingCheck?: KundengelderOpeningCheck;
 }
 
 export interface KundengelderExtract {
