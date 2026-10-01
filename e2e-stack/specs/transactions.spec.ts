@@ -527,17 +527,78 @@ test('transaction detail shows completed buy status fields', async ({ page }) =>
     inputAsset: 'CHF',
   });
 
+  const responseFor = () =>
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        response.request().method() === 'GET' &&
+        url.pathname.endsWith('/v1/transaction/single') &&
+        url.searchParams.get('uid') === tx.uid
+      );
+    });
+  const dbTransaction = await queryOne<{
+    id: number;
+    uid: string;
+    amountInChf: number;
+    assets: string;
+    inputAmount: number;
+    inputAsset: string;
+  }>(
+    `SELECT t.id, t.uid, t."amountInChf", t.assets, bc."inputAmount", bc."inputAsset"
+     FROM transaction t JOIN buy_crypto bc ON bc."transactionId" = t.id WHERE t.id = $1`,
+    [tx.transactionId],
+  );
+  expect(dbTransaction).toMatchObject({
+    id: tx.transactionId,
+    uid: tx.uid,
+    amountInChf: 166,
+    assets: 'CHF',
+    inputAmount: 166,
+    inputAsset: 'CHF',
+  });
+
+  const detailResponse = responseFor();
   await openScreen(page, `/tx/${tx.uid}`, user.jwt);
+  const apiResponse = await detailResponse;
+  expect(apiResponse.ok(), 'transaction status must come from the real single-transaction API').toBe(true);
+  const apiTransaction = (await apiResponse.json()) as {
+    id: number;
+    uid: string;
+    type: string;
+    state: string;
+    inputAmount: number;
+    inputAsset: string;
+  };
+  expect(apiTransaction.uid, `single-transaction API should return transaction ${tx.uid}`).toBe(tx.uid);
+  expect(apiTransaction).toMatchObject({
+    id: dbTransaction?.id,
+    uid: dbTransaction?.uid,
+    type: 'Buy',
+    state: 'Completed',
+    inputAmount: dbTransaction?.inputAmount,
+    inputAsset: dbTransaction?.inputAsset,
+  });
 
   await expect(page.getByText('Transaction status', { exact: true })).toBeVisible();
   await expect(page.getByText('ID', { exact: true })).toBeVisible();
-  await expect(page.getByText(String(tx.transactionId), { exact: true })).toBeVisible();
+  await expect(page.getByText(String(apiTransaction?.id), { exact: true })).toBeVisible();
   await expect(page.getByText('Type', { exact: true })).toBeVisible();
-  await expect(page.getByText('Buy', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(apiTransaction?.type ?? '', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('State', { exact: true })).toBeVisible();
-  await expect(page.getByText('Completed', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(apiTransaction?.state ?? '', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Input', { exact: true })).toBeVisible();
-  await expect(page.getByText(/166.*CHF|CHF.*166/)).toBeVisible();
+  const inputAmountPattern = new RegExp(
+    `${apiTransaction?.inputAmount}.*${apiTransaction?.inputAsset}|${apiTransaction?.inputAsset}.*${apiTransaction?.inputAmount}`,
+  );
+  await expect(page.getByText(inputAmountPattern)).toBeVisible();
+
+  const reloadedDetailResponse = responseFor();
+  await page.reload();
+  const reloadedResponse = await reloadedDetailResponse;
+  expect(reloadedResponse.ok(), 'transaction detail must reload from the real API').toBe(true);
+  const reloadedTransaction = (await reloadedResponse.json()) as typeof apiTransaction;
+  expect(reloadedTransaction).toMatchObject(apiTransaction);
+  await expect(page.getByText(apiTransaction?.state ?? '', { exact: true }).first()).toBeVisible();
 });
 
 test('transaction detail shows pending sell status fields', async ({ page }) => {

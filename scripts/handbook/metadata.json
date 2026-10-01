@@ -1,4 +1,28 @@
 {
+  "app2-preview": {
+    "title": "DFX App 2.0",
+    "description": "App-2.0-Vorschau unter /app2/. Die visuellen Baselines decken die abgemeldete Startseite, Konto, Transaktionen, KYC, Limit, Support, den OpenCryptoPay-Hub und die 404-Seite ab, plus den Verbindungsbogen. Jeder Screen liegt in beiden Seiten des 460px-Umbruchs vor: als gerahmte Karte auf dem Desktop und vollflächig auf dem Mobilgerät."
+  },
+  "app2-session": {
+    "title": "DFX App 2.0 (angemeldet)",
+    "description": "App 2.0 hinter einer Wallet: Kauf, Verkauf, Tausch, angemeldetes Konto, Transaktionen, KYC-Schritte, Limit-Antrag, OpenCryptoPay-Hub und Apply-Bogen sowie die sechs Händler-Unterseiten Zahlungswege, Rechnung, POS, Links, Verlauf und Einstellungen. Die Aufnahmen stammen aus dem lokalen E2E-Stack. Die Unterseiten setzen ein aktives Händlerkonto voraus; die Bilder zeigen deshalb den eingebauten Demo-Modus, erkennbar am Demo-Abzeichen in der Kopfzeile. Zusätzlich zeigen isoliert gemockte API-Fehler beim KYC-Länderkatalog und bei nicht zugeordneten Bankzahlungen jeweils eine wahrheitsgemäße Meldung und einen funktionierenden Retry. Ein isoliert gemockter POS-API-Aufruf zeigt den Zustand nach fünf Minuten ohne Serverabschluss: QR bleibt sichtbar, die Kasse bleibt gesperrt und die Schaltfläche „Weiter warten“ bleibt verfügbar. Ein weiterer POS-Fall zeigt eine offene Zahlung ohne wiederherstellbare Daten: neue Belastungen bleiben gesperrt, bis ein Server-Endstatus eintrifft; Statusaktualisierung, Prüfung der Zahlungslinks und Supporthinweis sind sichtbar. Nach zwei unbeantworteten Statusabfragen bleibt die Kasse gesperrt und zeigt den Supportweg ohne wirkungslose Refresh-Schaltfläche. Terminale POS-Belege für aktive und inaktive Zahlungslinks zeigen Ergebnis, Betrag, Währung, Till-ID und externe Zahlungs-ID; bei aktiven Tills bleibt die nächste Belastung möglich. Zwei zusätzliche POS-Fälle zeigen die Wiederherstellung nach verlorenem POST-Response anhand derselben externen Zahlungs-ID sowie die Übernahme einer anderen offenen Zahlung nach dem spezifischen 409-Pending-Konflikt. Ein weiterer POS-Aufruf zeigt die Wiederherstellung mehrerer aus der Payment-Link-Antwort geladener Pending-Zahlungen, auch für einen inzwischen deaktivierten Till. Jeder Screen liegt in beiden Seiten des 460px-Umbruchs vor."
+  },
+  "app2-display-currencies": {
+    "title": "App2: Anzeigewährung",
+    "description": "Die Anzeigewährung zeigt die vollständige Fiat-Auswahl einschließlich Währungen ohne Handelsfreigabe sowie Lade-, Fehler-/Retry- und Leerzustand. Acht Desktop- und Mobil-Baselines belegen die Darstellung der Fixture-Daten, nicht die API-Antwort oder die gespeicherte Kontoeinstellung."
+  },
+  "app2-review-fixes": {
+    "title": "App2: Review-Korrekturen",
+    "description": "Desktop- und Mobilvarianten zeigen den OCP-Verlauf mit getrennten CHF- und EUR-Summen, die Auswahl zwischen zwei Lightning-Verkaufsrouten, einen ungültigen Timeout und die nach einer eindeutigen 400-Ablehnung wieder freie Kasse. Hinzu kommen der Hinweis zur unveränderten E-Mail, ein leeres Adresslabel mit gesperrtem Speichern, die Kontozusammenführung nach Zeitüberschreitung und mit Job-Fehler, Geschäftsführer-Felder ohne wirtschaftlich Berechtigte und ohne Beteiligung des Kontoinhabers, ein wirtschaftlich Berechtigter ohne Adresse mit gesperrtem Absenden, genau eine nicht zugeordnete Zahlung samt Empfehlungsprämie, Mindestbetrag- und Retry-Hinweise im Trade-Zielmodus sowie das per Tastatur geöffnete Sprachmenü mit Fokus auf der aktiven Sprache. Die Antworten und das JWT sind synthetisch; die Bilder belegen Darstellung, keine echten API-Abläufe."
+  },
+  "app2-customer-initials": {
+    "title": "App2: Kundeninitialen",
+    "description": "Desktop- und Mobil-Baselines zeigen die aus einem gemockten Profil gelieferten Initialen AL. Sie belegen die Darstellung der Fixture-Daten, nicht echte Profilnamen oder Profil-API-Verhalten."
+  },
+  "app2-support-compact": {
+    "title": "App2: Kompakter Support",
+    "description": "Desktop- und Mobil-Baselines zeigen Kontakt- und Support-Sheet im lokalen authentifizierten Stack. Sie belegen das Layout mit den dort gelieferten Antworten, nicht Produktionsdaten."
+  },
   "buy-process": {
     "title": "Kaufprozess",
     "description": "Buy-Flow: Seitenladezustand, Betragseingabe, Zahlungsdetails, Collection-/Personal-IBAN-Umschaltung und Bank-Frick-/Yapeal-Provider-Umschaltung für Bestandskunden. Der Mismatch-Hinweis und der Währungsfehler nennen bei angezeigtem USD die Währungen EUR, CHF und USD, sonst nur EUR und CHF. Zusätzlich werden der KYC-Fallback auf die bestehende Yapeal-IBAN und der Fehlerfall eines nicht verfügbaren Personal-IBAN-Providers gezeigt."
@@ -113,7 +137,11 @@
   },
   "realunit-dashboard": {
     "title": "RealUnit Dashboard",
-    "description": "RealUnit-Arbeitsbereich mit Abschnittsnavigation. Übersicht: gefüllte Kennzahlen und Tabellen, Prämien-Buchungen mit Empfehler und Eingeladenem, leere Listen, sowie More bei mehr als drei Zeilen. Kasse: Kauflimit leer, gesetzt, ungültig und Ladefehler; Prize-Wallet mit QR, fehlend und Fehler; Prize-payouts gefüllt (mit Empfehler und Eingeladenem) und leer; Bestandswarnung als Liste und Formular. Kennzahlen: Preisverlauf, Kaufvolumen in CHF und Shares, Holder, Registrierung, Zeitrahmen 1M und die vier Fehlerzustände. Dazu Holder-Liste, leere Liste und nächste Seite, erhaltene Transaktionen, Detail, leer, Fehler und nicht gefunden, sowie Konto in CHF, REALU und ohne Daten."
+    "description": "RealUnit-Arbeitsbereich mit Abschnittsnavigation. Übersicht: gefüllte Kennzahlen und Tabellen, Prämien-Buchungen mit Empfehler und Eingeladenem, leere Listen, More bei mehr als drei Zeilen, erfolgreiche leere Holder-Daten und explizite Fehler für Holder sowie Token-Info jeweils mit Retry (Desktop und Mobile). Kasse: Kauflimit leer, gesetzt, ungültig und Ladefehler; Prize-Wallet mit QR, fehlend und Fehler; Prize-payouts gefüllt (mit Empfehler und Eingeladenem) und leer; Bestandswarnung als Liste und Formular. Kennzahlen: Preisverlauf, Kaufvolumen in CHF und Shares, Holder, Registrierung, Zeitrahmen 1M und die vier Fehlerzustände. Dazu Holder-Liste, leer, nächste Seite und Holder-Fehler mit Retry (Desktop und Mobile), erhaltene Transaktionen, Detail, leer, Fehler und nicht gefunden sowie Konto in CHF und REALU. Beim Konto werden Account-Fehler, 404, erfolgreiche Kontodaten mit fehlgeschlagener Historie sowie CHF-Preisfehler und Ladezustand gezeigt, jeweils mit Retry wo verfügbar und für Fehlerlayouts auf Desktop und Mobile. Alle RealUnit-API-Antworten in diesen Aufnahmen sind synthetisch; sie belegen keine Live-API-Antworten oder Zahlungen."
+  },
+  "sepa-manual": {
+    "title": "SEPA manuelle Zahlung",
+    "description": "Manueller SEPA-Zahlungsfluss mit ausgefülltem, gültigem Formular auf Desktop und Mobile. Wenn crypto.randomUUID im unsicheren HTTP-Kontext nicht verfügbar ist, erzeugt der Upload seine UUID mit kryptografisch sicheren crypto.getRandomValues. Ein sichtbarer Fehler beim Erzeugen der Zahlung wird ebenfalls auf Desktop und Mobile gezeigt. Die Aufnahmen verwenden einen synthetischen Admin und gemockte API-Antworten einschließlich eines erfolgreichen POST; sie belegen weder echte API-Annahme noch Persistenz."
   },
   "responsive": {
     "title": "Responsive Layout",

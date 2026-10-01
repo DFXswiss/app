@@ -14,6 +14,10 @@ let mockContext: Record<string, unknown>;
 
 jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', MD: 'md', LG: 'lg' },
+  StyledButtonWidth: { MIN: 'min' },
+  StyledButton: ({ label, onClick }: { label: string; onClick: () => void }) => (
+    <button type="button" onClick={onClick}>{label}</button>
+  ),
   IconColor: { GRAY: 'gray' },
   StyledLoadingSpinner: ({ size }: { size?: string }) => <div data-testid="loading-spinner" data-size={size} />,
   CopyButton: ({ onCopy }: { onCopy?: () => void }) => (
@@ -45,6 +49,10 @@ jest.mock('src/hooks/clipboard.hook', () => ({
 
 jest.mock('src/contexts/realunit.context', () => ({
   useRealunitContext: () => mockContext,
+}));
+
+jest.mock('src/components/error-hint', () => ({
+  ErrorHint: ({ message }: { message: string }) => <p role="alert">{message}</p>,
 }));
 
 jest.mock('src/components/realunit/payouts-panel', () => ({
@@ -103,8 +111,17 @@ function setContext(overrides: Record<string, unknown> = {}) {
   mockContext = {
     holders: [HOLDER],
     totalCount: 12,
+    holdersLoading: false,
+    holdersError: false,
     tokenInfo: TOKEN_INFO,
+    tokenInfoLoading: false,
+    tokenInfoError: false,
     isLoading: false,
+    accountSummaryError: false,
+    historyLoading: false,
+    historyError: false,
+    tokenPriceLoading: false,
+    tokenPriceError: false,
     priceHistory: [{ timestamp: '2026-01-01T00:00:00.000Z', chf: 1, eur: 1, usd: 1 }],
     priceHistoryError: false,
     timeframe: 'ALL',
@@ -148,10 +165,36 @@ describe('RealunitScreen', () => {
     expect(screen.getByTestId('payouts-panel')).toBeInTheDocument();
   });
 
-  it('shows a large spinner when holders and tokenInfo are empty', () => {
-    setContext({ holders: [], tokenInfo: undefined });
+  it.each([
+    { holders: [HOLDER], tokenInfo: undefined, holdersLoading: true, tokenInfoLoading: false },
+    { holders: [], tokenInfo: TOKEN_INFO, holdersLoading: false, tokenInfoLoading: true },
+  ])('shows a large spinner while either overview graph request is pending', (loadingState) => {
+    setContext(loadingState);
     renderScreen();
     expect(screen.getByTestId('loading-spinner')).toHaveAttribute('data-size', 'lg');
+    expect(screen.queryByText('Top Holders')).not.toBeInTheDocument();
+  });
+
+  it('settles the overview and shows explicit errors instead of zero data when both graph requests fail', () => {
+    setContext({
+      holders: [],
+      totalCount: undefined,
+      holdersLoading: false,
+      holdersError: true,
+      tokenInfo: undefined,
+      tokenInfoLoading: false,
+      tokenInfoError: true,
+    });
+    renderScreen();
+    expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Failed to load holders.')).toHaveLength(1);
+    expect(screen.getByText('Failed to load token info.')).toBeInTheDocument();
+    expect(screen.getAllByText('—')).toHaveLength(3);
+    const retries = screen.getAllByRole('button', { name: 'Retry' });
+    fireEvent.click(retries[0]);
+    fireEvent.click(retries[1]);
+    expect(mockFetchHolders).toHaveBeenCalled();
+    expect(mockFetchTokenInfo).toHaveBeenCalled();
   });
 
   it('fetches empty collections on mount and skips fetches when data already exists', async () => {
@@ -219,10 +262,10 @@ describe('RealunitScreen', () => {
     expect(screen.getByText('2026-01-02T00:00:00.000Z')).toBeInTheDocument();
   });
 
-  it('shows the medium spinner while token info is loading', () => {
-    setContext({ isLoading: true, tokenInfo: undefined, holders: [HOLDER] });
+  it('shows the overview spinner while token info is loading', () => {
+    setContext({ holdersLoading: false, tokenInfoLoading: true, tokenInfo: undefined, holders: [HOLDER] });
     renderScreen();
-    expect(screen.getByTestId('loading-spinner')).toHaveAttribute('data-size', 'md');
+    expect(screen.getByTestId('loading-spinner')).toHaveAttribute('data-size', 'lg');
     expect(screen.queryByText('Overview')).not.toBeInTheDocument();
   });
 

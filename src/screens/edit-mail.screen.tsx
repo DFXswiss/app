@@ -78,7 +78,7 @@ export default function EditMailScreen(): JSX.Element {
             setError(e.message);
           }
         } else {
-          setError(e.message ?? 'Unknown error');
+          setError(e.message || 'Unknown error');
         }
       });
   }
@@ -109,7 +109,7 @@ export default function EditMailScreen(): JSX.Element {
             setError(e.message);
           }
         } else {
-          setError(e.message ?? 'Unknown error');
+          setError(e.message || 'Unknown error');
         }
       })
       .finally(() => setIsSubmitting(false));
@@ -143,11 +143,13 @@ export default function EditMailScreen(): JSX.Element {
         </StyledVerticalStack>
       ) : checking2fa || isUserLoading ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
+      ) : user == null ? (
+        <ErrorHint message={translate('screens/kyc', 'Unable to load user')} />
       ) : !mailVerificationStep ? (
         <EditOverlay
           label={translate('screens/kyc', 'Email address')}
           autocomplete="email"
-          prefill={user?.mail}
+          prefill={user.mail}
           placeholder={translate('screens/kyc', 'Email address')}
           validation={Validations.Mail}
           onCancel={() => {

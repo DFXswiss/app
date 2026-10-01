@@ -1,0 +1,220 @@
+/* wallet picker rows */
+.crow .ctx {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 46%;
+}
+.cchip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--t-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--hair-soft);
+  border-radius: 99px;
+  padding: 3px 7px;
+  white-space: nowrap;
+}
+.cchip img {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+/* confirmation */
+.confirm {
+  padding: 6px 22px 26px;
+  text-align: center;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  scrollbar-width: none;
+}
+.confirm::-webkit-scrollbar {
+  display: none;
+}
+.paybox-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--t-high);
+  text-align: left;
+  margin-bottom: 4px;
+}
+.paybox-note {
+  font-size: 11.5px;
+  color: var(--t-dim);
+  text-align: left;
+  margin-top: 8px;
+  line-height: 1.45;
+}
+#ticketResult.paybox-note {
+  font-size: 13px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  border: 1px solid var(--hair);
+  background: rgba(8, 30, 58, 0.45);
+}
+#ticketResult.ok {
+  color: var(--success);
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.08);
+}
+#ticketResult.warn {
+  color: #ffc8d2;
+  border-color: rgba(245, 81, 108, 0.35);
+  background: rgba(245, 81, 108, 0.08);
+}
+#ticketResult b {
+  color: #fff;
+}
+.spin {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation-duration: 1.6s;
+  }
+}
+.emailgate {
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  padding: 13px 14px;
+  text-align: left;
+  background: rgba(8, 30, 58, 0.45);
+  margin-top: 12px;
+}
+.emailgate .efield input {
+  height: 48px;
+}
+.paybox .pbrow {
+  align-items: center;
+}
+.copybtn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  margin-left: 6px;
+  flex: 0 0 auto;
+}
+.copybtn svg {
+  width: 15px;
+  height: 15px;
+}
+.pbrow b {
+  flex: 1;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.confirm-ic {
+  width: 64px;
+  height: 64px;
+  border-radius: 32px;
+  margin: 6px auto 0;
+  background: rgba(52, 211, 153, 0.16);
+  display: grid;
+  place-items: center;
+  color: var(--success);
+}
+/* A gate (verify e-mail, KYC, amount out of range) is not a success state — the green tick
+   below would read as "done" on a sheet that is asking for one more step. */
+.confirm-ic.gate {
+  background: rgba(255, 190, 80, 0.16);
+  color: #ffbe50;
+}
+.confirm-ic svg {
+  width: 32px;
+  height: 32px;
+}
+.confirm h3 {
+  font-size: 22px;
+  font-weight: 800;
+  margin-top: 14px;
+  letter-spacing: -0.02em;
+}
+.csub {
+  color: var(--t-muted);
+  font-size: 13.5px;
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.confirm .rowlist {
+  text-align: left;
+  padding: 6px 14px;
+}
+.confirm .rowlist .pbrow {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 13.5px;
+}
+.confirm .rowlist .pbrow + .pbrow {
+  border-top: 1px solid var(--hair-soft);
+}
+.confirm .rowlist .pbrow span {
+  color: var(--t-muted);
+}
+.confirm .rowlist .pbrow b {
+  font-weight: 600;
+}
+.confirm .rowlist .pbrow b.pos {
+  color: var(--success);
+}
+.paybox {
+  border: 1px dashed var(--hair-strong);
+  border-radius: 14px;
+  padding: 10px 14px;
+  text-align: left;
+  background: rgba(8, 30, 58, 0.45);
+  margin-top: 12px;
+}
+.pbrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+.pbrow span {
+  color: var(--t-muted);
+}
+.pbrow b {
+  font-weight: 600;
+  font-feature-settings: 'tnum';
+}
+/* initials avatar (top-left) */
+.avatar-btn .initials {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-transform: uppercase;
+}
+.avatar-btn {
+  background: linear-gradient(145deg, var(--app-surface-r), var(--app-surface));
+}
+.drawer .dhead .av .initials,
+.acct-head .avatar .initials {
+  text-transform: uppercase;
+}

@@ -1,18 +1,25 @@
-# SPA deep-link fallback: unknown paths serve the app shell (client-side routing).
+# Cloudflare Pages SPA fallback: without a 404.html, unknown paths serve the app shell.
 #
-# A path with no file behind it is answered with index.html and status 200. That is what makes deep
-# links work, and it is also why an absent build asset was answered with the app shell. The
-# /static/* rule in _headers then stamped that HTML with the cache lifetime meant for fingerprinted
-# assets, so a client asking for a chunk that a later deploy had replaced received an app shell
-# parsed as JavaScript -- cached under the chunk's own URL.
+# This built-in behavior makes client-side deep links work. Missing build assets are listed in
+# public/_routes.json so functions/[[path]].js intercepts those paths and answers 404 with no-store;
+# otherwise a missing chunk could receive the app shell and be cached under the chunk's URL.
 #
-# functions/[[path]].js now intercepts that case for the asset paths listed in _routes.json and
-# answers 404 with no-store, which is a failure a client can recover from. Verify with a request
+# Verify with a request
 # for any absent asset:
 #   curl -sI https://app.dfx.swiss/static/js/999.deadbeef.chunk.js  -> 404
 #
-# A 404 cannot be expressed in this file: _redirects supports redirects (301, 302, 303, 307, 308)
-# and rewrites with 200, and a rule written with 404 is rejected as invalid. Narrowing the rule
-# below is not an option either: Cloudflare documents that redirects apply whether or not an asset
-# matches the request, so an explicit /static/* rule would shadow the assets themselves.
-/*    /index.html    200
+# /app2 without a trailing slash would otherwise use the SPA fallback and serve the main app shell
+# instead of App2, so this redirect must come before the App 2.0 return-path rules.
+# /app2/ and /app2/index.html stay out of _routes.json include (see public/_headers): the
+# Function would 404 the App2 shell itself if they were listed.
+/app2    /app2/    308
+# App 2.0 is hash-routed. Checkout.com and e-mail callbacks hit real paths under
+# /app2/.... A 200 rewrite to index.html would keep the nested document URL, so
+# relative ./static/js bundles would resolve under /app2/buy/... — redirect into
+# the hash under /app2/ instead (query is preserved).
+/app2/buy/success    /app2/#/buy/success    302
+/app2/buy/success/   /app2/#/buy/success    302
+/app2/buy/failure    /app2/#/buy/failure    302
+/app2/buy/failure/   /app2/#/buy/failure    302
+/app2/account-merge  /app2/#/account-merge  302
+/app2/account-merge/ /app2/#/account-merge  302

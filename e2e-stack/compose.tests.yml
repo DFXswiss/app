@@ -23,6 +23,10 @@ services:
     environment:
       E2E_FRONTEND_URL: ${E2E_FRONTEND_URL:-http://frontend}
       E2E_API_URL: ${E2E_API_URL:-http://api:3000}
+      # Stamped by scripts/up.sh from the checkout that built or supplied the API image.
+      # Missing source provenance defaults to strict KYC authorization assertions.
+      E2E_API_SOURCE_COMMIT: ${E2E_API_SOURCE_COMMIT:-}
+      E2E_KYC_FILE_GUARD_STATE: ${E2E_KYC_FILE_GUARD_STATE:-strict}
       # images/playwright/entrypoint.sh reads this to pick the socat listen port; without the
       # passthrough the variable never reaches the container and an override is silently ignored.
       # It must stay 3000 unless the frontend image is rebuilt with a matching
@@ -43,6 +47,9 @@ services:
       # It is a fixed, deterministic, throwaway test mnemonic, never used for real funds.
       E2E_EVM_DEPOSIT_SEED: ${E2E_EVM_DEPOSIT_SEED:-away under gun lens ice mean sketch absent stand evoke cigar clever}
       E2E_WIDGET_URL: ${E2E_WIDGET_URL:-http://frontend-widget}
+      # Empty in normal runs (the expiry-only browser test skips); set together with
+      # the API override for the explicitly isolated short-TTL run.
+      E2E_MAIL_LOGIN_TTL_MINUTES: ${E2E_MAIL_LOGIN_TTL_MINUTES:-}
     volumes:
       - e2e-test-results:/work/test-results
       - e2e-playwright-report:/work/playwright-report

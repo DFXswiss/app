@@ -21,6 +21,7 @@ import {
   queryOne,
   required,
   requestMailLogin,
+  signatureLogin,
   TEST_IBAN,
   test,
   testEmail,
@@ -261,6 +262,95 @@ test.describe('Account area e2e', () => {
       [user.userDataId, deLanguageId],
       20000,
     );
+  });
+
+  test('/settings Delete account revokes the old JWT across reactivation and leaves the control account unchanged', async ({ page }) => {
+    const user = await createUser({ tag: 'acct-delete-target', language: 'EN' });
+    const control = await createUser({ tag: 'acct-delete-control', language: 'EN' });
+
+    const readAccountState = async (userId: number) =>
+      queryOne<{ userDataStatus: string; userStatus: string; phoneCallTimes: string | null }>(
+        `SELECT ud.status AS "userDataStatus", u.status AS "userStatus", ud."phoneCallTimes" AS "phoneCallTimes"
+         FROM user_data ud
+         JOIN "user" u ON u."userDataId" = ud.id
+         WHERE u.id = $1`,
+        [userId],
+      );
+
+    const initialTarget = required(await readAccountState(user.userId), 'target account must exist');
+    const initialControl = required(await readAccountState(control.userId), 'control account must exist');
+    expect(initialTarget.userDataStatus).toBe('NA');
+    expect(initialControl.userDataStatus).toBe('NA');
+    expect(initialTarget.phoneCallTimes).not.toBe('H9To10');
+    const expectedReactivatedStatus = initialTarget.userStatus === 'Active' ? 'Active' : 'NA';
+
+    await openScreen(page, '/settings', user.jwt);
+    await page.getByRole('button', { name: 'Danger Zone' }).click();
+    await page.getByRole('button', { name: 'Delete account' }).click();
+
+    const deleteResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === 'DELETE' && new URL(response.url()).pathname.endsWith('/v2/user'),
+    );
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    const deleteResponse = await deleteResponsePromise;
+    expect(deleteResponse.status(), 'DELETE /v2/user must succeed').toBe(200);
+
+    await expect
+      .poll(() => page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken')))
+      .toBeNull();
+    await page.goto('/account');
+    await page.waitForLoadState('networkidle');
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), {
+        message: 'the deleted account session must not open a protected screen',
+        timeout: 15000,
+      })
+      .not.toBe('/account');
+
+    const apiBase = process.env.E2E_API_URL ?? 'http://api:3000';
+    const expectOldJwtRejected = async (phase: 'deactivation' | 'reactivation') => {
+      const oldGetResponse = await page.request.get(`${apiBase}/v2/user`, {
+        headers: { Authorization: `Bearer ${user.jwt}` },
+      });
+      expect([401, 403], `old JWT GET /v2/user must be rejected after ${phase}`).toContain(oldGetResponse.status());
+
+      const oldPutResponse = await page.request.put(`${apiBase}/v2/user`, {
+        headers: { Authorization: `Bearer ${user.jwt}` },
+        data: { preferredPhoneTimes: ['H9To10'] },
+      });
+      // Read persistence before the response assertion so the old-source counterprobe
+      // proves this valid UpdateUserDto mutation actually changed stored data.
+      expect((await readAccountState(user.userId))?.phoneCallTimes).toBe(initialTarget.phoneCallTimes);
+      expect([401, 403], `old JWT PUT /v2/user must be rejected after ${phase}`).toContain(oldPutResponse.status());
+    };
+
+    await expectOldJwtRejected('deactivation');
+    expect((await readAccountState(user.userId))?.userDataStatus).toBe('Deactivated');
+
+    const freshJwt = await signatureLogin(user.wallet);
+    expect(freshJwt).not.toBe(user.jwt);
+    const reactivatedState = await readAccountState(user.userId);
+    expect(reactivatedState?.userDataStatus).not.toBe('Deactivated');
+    expect(reactivatedState?.userDataStatus).toBe(expectedReactivatedStatus);
+    const freshGetResponse = await page.request.get(`${apiBase}/v2/user`, {
+      headers: { Authorization: `Bearer ${freshJwt}` },
+    });
+    expect(freshGetResponse.status(), 'a fresh wallet-signature JWT can read its reactivated account').toBe(200);
+    const freshUser = (await freshGetResponse.json()) as { accountId: number };
+    expect(freshUser.accountId).toBe(user.userDataId);
+
+    await expectOldJwtRejected('reactivation');
+    expect(await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'))).toBeNull();
+
+    await expect
+      .poll(async () => (await readAccountState(user.userId))?.userDataStatus)
+      .toBe(expectedReactivatedStatus);
+    expect(await readAccountState(user.userId)).toMatchObject({
+      userDataStatus: expectedReactivatedStatus,
+      userStatus: initialTarget.userStatus,
+      phoneCallTimes: initialTarget.phoneCallTimes,
+    });
+    expect(await readAccountState(control.userId)).toEqual(initialControl);
   });
 
   test('/settings without session redirects away (useUserGuard → /login)', async ({ page }) => {

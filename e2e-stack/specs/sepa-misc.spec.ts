@@ -340,12 +340,11 @@ test.describe('SEPA + misc e2e', () => {
   });
 
   test('/sepa/manual valid form upload stores bank_tx', async ({ page }) => {
-    // The Upload button becomes enabled with every required field filled and valid, and clicking
-    // it sends no request at all — reported to the team. Remove test.fail once it does.
-    test.fail(true, 'The /sepa/manual upload button sends no request; nothing reaches the API.');
     test.setTimeout(45000);
+    const pageErrors: string[] = [];
     const { jwt } = await loginAs('Admin');
     await openScreen(page, '/sepa/manual', jwt);
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
 
     const remittanceTag = e2eMail('manual').split('@')[0];
     await fillSepaManualRequiredFields(page, {
@@ -380,14 +379,30 @@ test.describe('SEPA + misc e2e', () => {
     expect(status, `POST /bankTx must succeed: HTTP ${status} -- ${body.slice(0, 400)}`).toBeLessThan(300);
 
     await expect(page.getByText('Uploaded', { exact: true })).toBeVisible({ timeout: 15000 });
-    const row = await waitForRow<{ id: number }>(
-      `SELECT id FROM bank_tx
-       WHERE "remittanceInfo" = $1 OR "accountServiceRef" LIKE $2
+    const row = await waitForRow<{
+      id: number;
+      remittanceInfo: string;
+      accountServiceRef: string;
+      txAmount: number | string;
+      txCurrency: string;
+      creditDebitIndicator: string;
+    }>(
+      `SELECT id, "remittanceInfo" AS "remittanceInfo",
+              "accountServiceRef" AS "accountServiceRef", "txAmount" AS "txAmount",
+              "txCurrency" AS "txCurrency", "creditDebitIndicator" AS "creditDebitIndicator"
+       FROM bank_tx
+       WHERE "remittanceInfo" = $1
        ORDER BY id DESC LIMIT 1`,
-      [`E2E-MANUAL-${remittanceTag}`, 'e2e-%'],
+      [`E2E-MANUAL-${remittanceTag}`],
       20000,
     );
     expect(row.id).toBeGreaterThan(0);
+    expect(row.remittanceInfo).toBe(`E2E-MANUAL-${remittanceTag}`);
+    expect(Number(row.txAmount)).toBe(42.5);
+    expect(row.txCurrency).toBe('EUR');
+    expect(row.creditDebitIndicator).toBe('CRDT');
+    expect(row.accountServiceRef).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(pageErrors, `uncaught browser errors during manual SEPA upload: ${pageErrors.join('; ')}`).toEqual([]);
   });
 
   // ---------------------------------------------------------------------------

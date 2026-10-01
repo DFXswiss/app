@@ -35,7 +35,14 @@ jest.mock('src/hooks/realunit-api.hook', () => ({
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { PropsWithChildren } from 'react';
 import { RealunitContextProvider, useRealunitContext } from 'src/contexts/realunit.context';
-import { PaginationDirection } from 'src/dto/realunit.dto';
+import {
+  AccountHistory,
+  AccountSummary,
+  HoldersResponse,
+  PaginationDirection,
+  TokenInfo,
+  TokenPrice,
+} from 'src/dto/realunit.dto';
 import { Timeframe } from 'src/util/chart';
 
 function wrapper({ children }: PropsWithChildren) {
@@ -113,6 +120,7 @@ describe('RealunitContextProvider', () => {
     await waitFor(() => {
       expect(result.current.accountSummary).toEqual(summary);
       expect(result.current.isLoading).toBe(false);
+      expect(result.current.accountSummaryError).toBe(false);
     });
 
     mockGetAccountSummary.mockRejectedValueOnce(new Error('fail'));
@@ -122,10 +130,18 @@ describe('RealunitContextProvider', () => {
     await waitFor(() => {
       expect(result.current.accountSummary).toBeUndefined();
       expect(result.current.isLoading).toBe(false);
+      expect(result.current.accountSummaryError).toBe(true);
+    });
+    mockGetAccountSummary.mockResolvedValueOnce(summary);
+    act(() => result.current.fetchAccountSummary('0x1'));
+    await waitFor(() => {
+      expect(result.current.accountSummary).toEqual(summary);
+      expect(result.current.accountSummaryError).toBe(false);
+      expect(result.current.isLoading).toBe(false);
     });
   });
 
-  it('fetchAccountHistory sets history from the API response', async () => {
+  it('fetchAccountHistory settles loading, clears rejected data, and can retry an empty page', async () => {
     const history = {
       address: '0x1',
       addressType: 1,
@@ -142,8 +158,165 @@ describe('RealunitContextProvider', () => {
     });
     await waitFor(() => {
       expect(result.current.history).toEqual(history);
+      expect(result.current.historyLoading).toBe(false);
+      expect(result.current.historyError).toBe(false);
     });
     expect(mockGetAccountHistory).toHaveBeenCalledWith('0x1', 'c1', PaginationDirection.NEXT);
+
+    mockGetAccountHistory.mockRejectedValueOnce(new Error('history unavailable'));
+    act(() => result.current.fetchAccountHistory('0x1'));
+    expect(result.current.historyLoading).toBe(true);
+    expect(result.current.history).toEqual(history);
+    await waitFor(() => {
+      expect(result.current.history).toBeUndefined();
+      expect(result.current.historyError).toBe(true);
+      expect(result.current.historyLoading).toBe(false);
+    });
+
+    const emptyHistory = { ...history, history: [] };
+    mockGetAccountHistory.mockResolvedValueOnce(emptyHistory);
+    act(() => result.current.fetchAccountHistory('0x1'));
+    await waitFor(() => {
+      expect(result.current.history).toEqual(emptyHistory);
+      expect(result.current.historyError).toBe(false);
+      expect(result.current.historyLoading).toBe(false);
+    });
+  });
+
+  it('ignores late account and history responses after the address changes', async () => {
+    const staleSummarySuccess = createDeferred<AccountSummary>();
+    const staleSummaryFailure = createDeferred<AccountSummary>();
+    const staleHistorySuccess = createDeferred<AccountHistory>();
+    const staleHistoryFailure = createDeferred<AccountHistory>();
+    const freshSummary = { address: '0xfresh', addressType: 1, balance: '2', lastUpdated: 'fresh' };
+    const freshHistory = { address: '0xfresh', addressType: 1, history: [], totalCount: 0, pageInfo: EMPTY_PAGE };
+    mockGetAccountSummary
+      .mockReturnValueOnce(staleSummarySuccess.promise)
+      .mockReturnValueOnce(staleSummaryFailure.promise)
+      .mockResolvedValueOnce(freshSummary);
+    mockGetAccountHistory
+      .mockReturnValueOnce(staleHistoryFailure.promise)
+      .mockReturnValueOnce(staleHistorySuccess.promise)
+      .mockResolvedValueOnce(freshHistory);
+    const { result } = renderHook(() => useRealunitContext(), { wrapper });
+
+    act(() => {
+      result.current.fetchAccountSummary('0xstale');
+      result.current.fetchAccountHistory('0xstale');
+      result.current.fetchAccountSummary('0xalso-stale');
+      result.current.fetchAccountHistory('0xalso-stale');
+      result.current.fetchAccountSummary('0xfresh');
+      result.current.fetchAccountHistory('0xfresh');
+    });
+    await waitFor(() => {
+      expect(result.current.accountSummary).toEqual(freshSummary);
+      expect(result.current.history).toEqual(freshHistory);
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.historyLoading).toBe(false);
+    });
+
+    await act(async () => {
+      staleSummarySuccess.resolve({ address: '0xstale', addressType: 1, balance: '99', lastUpdated: 'stale' });
+      staleSummaryFailure.reject(new Error('stale address summary failed'));
+      staleHistorySuccess.resolve({ address: '0xalso-stale', addressType: 1, history: [], totalCount: 0, pageInfo: EMPTY_PAGE });
+      staleHistoryFailure.reject(new Error('stale address history failed'));
+    });
+    expect(result.current.accountSummary).toEqual(freshSummary);
+    expect(result.current.history).toEqual(freshHistory);
+    expect(result.current.accountSummaryError).toBe(false);
+    expect(result.current.historyError).toBe(false);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.historyLoading).toBe(false);
+  });
+
+  it('ignores stale successful holder, token-info, and token-price responses', async () => {
+    const staleHolders = createDeferred<HoldersResponse>();
+    const staleTokenInfo = createDeferred<TokenInfo>();
+    const staleTokenPrice = createDeferred<TokenPrice>();
+    const freshHolders = { holders: [{ address: '0xfresh', balance: '2', percentage: 2 }], pageInfo: EMPTY_PAGE, totalCount: 1 };
+    const freshTokenInfo = {
+      totalShares: { total: '2', timestamp: 'fresh', txHash: 'fresh' },
+      totalSupply: { value: '2', timestamp: 'fresh' },
+    };
+    const freshTokenPrice = { timestamp: 'fresh', chf: 2, eur: 2, usd: 2 };
+    mockGetHolders.mockReturnValueOnce(staleHolders.promise).mockResolvedValueOnce(freshHolders);
+    mockGetTokenInfo.mockReturnValueOnce(staleTokenInfo.promise).mockResolvedValueOnce(freshTokenInfo);
+    mockGetTokenPrice.mockReturnValueOnce(staleTokenPrice.promise).mockResolvedValueOnce(freshTokenPrice);
+    const { result } = renderHook(() => useRealunitContext(), { wrapper });
+
+    act(() => {
+      result.current.fetchHolders();
+      result.current.fetchHolders();
+      result.current.fetchTokenInfo();
+      result.current.fetchTokenInfo();
+      result.current.fetchTokenPrice();
+      result.current.fetchTokenPrice();
+    });
+    await waitFor(() => {
+      expect(result.current.holders).toEqual(freshHolders.holders);
+      expect(result.current.tokenInfo).toEqual(freshTokenInfo);
+      expect(result.current.tokenPrice).toEqual(freshTokenPrice);
+      expect(result.current.holdersLoading).toBe(false);
+      expect(result.current.tokenInfoLoading).toBe(false);
+      expect(result.current.tokenPriceLoading).toBe(false);
+    });
+
+    await act(async () => {
+      staleHolders.resolve({ holders: [{ address: '0xstale', balance: '9', percentage: 9 }], pageInfo: EMPTY_PAGE, totalCount: 9 });
+      staleTokenInfo.resolve({ totalShares: { total: '9', timestamp: 'stale', txHash: 'stale' }, totalSupply: { value: '9', timestamp: 'stale' } });
+      staleTokenPrice.resolve({ timestamp: 'stale', chf: 9, eur: 9, usd: 9 });
+    });
+    expect(result.current.holders).toEqual(freshHolders.holders);
+    expect(result.current.tokenInfo).toEqual(freshTokenInfo);
+    expect(result.current.tokenPrice).toEqual(freshTokenPrice);
+    expect(result.current.holdersError).toBe(false);
+    expect(result.current.tokenInfoError).toBe(false);
+    expect(result.current.tokenPriceError).toBe(false);
+  });
+
+  it('ignores stale rejected holder, token-info, and token-price responses after a retry succeeds', async () => {
+    const staleHolders = createDeferred<HoldersResponse>();
+    const staleTokenInfo = createDeferred<TokenInfo>();
+    const staleTokenPrice = createDeferred<TokenPrice>();
+    const freshHolders = { holders: [{ address: '0xfresh', balance: '3', percentage: 3 }], pageInfo: EMPTY_PAGE, totalCount: 1 };
+    const freshTokenInfo = {
+      totalShares: { total: '3', timestamp: 'fresh', txHash: 'fresh' },
+      totalSupply: { value: '3', timestamp: 'fresh' },
+    };
+    const freshTokenPrice = { timestamp: 'fresh', chf: 3, eur: 3, usd: 3 };
+    mockGetHolders.mockReturnValueOnce(staleHolders.promise).mockResolvedValueOnce(freshHolders);
+    mockGetTokenInfo.mockReturnValueOnce(staleTokenInfo.promise).mockResolvedValueOnce(freshTokenInfo);
+    mockGetTokenPrice.mockReturnValueOnce(staleTokenPrice.promise).mockResolvedValueOnce(freshTokenPrice);
+    const { result } = renderHook(() => useRealunitContext(), { wrapper });
+
+    act(() => {
+      result.current.fetchHolders();
+      result.current.fetchHolders();
+      result.current.fetchTokenInfo();
+      result.current.fetchTokenInfo();
+      result.current.fetchTokenPrice();
+      result.current.fetchTokenPrice();
+    });
+    await waitFor(() => {
+      expect(result.current.holders).toEqual(freshHolders.holders);
+      expect(result.current.tokenInfo).toEqual(freshTokenInfo);
+      expect(result.current.tokenPrice).toEqual(freshTokenPrice);
+    });
+
+    await act(async () => {
+      staleHolders.reject(new Error('stale holders failure'));
+      staleTokenInfo.reject(new Error('stale token info failure'));
+      staleTokenPrice.reject(new Error('stale token price failure'));
+    });
+    expect(result.current.holders).toEqual(freshHolders.holders);
+    expect(result.current.tokenInfo).toEqual(freshTokenInfo);
+    expect(result.current.tokenPrice).toEqual(freshTokenPrice);
+    expect(result.current.holdersError).toBe(false);
+    expect(result.current.tokenInfoError).toBe(false);
+    expect(result.current.tokenPriceError).toBe(false);
+    expect(result.current.holdersLoading).toBe(false);
+    expect(result.current.tokenInfoLoading).toBe(false);
+    expect(result.current.tokenPriceLoading).toBe(false);
   });
 
   it('fetchHolders loads the first page, early-returns when already loaded without cursor, and paginates with cursor', async () => {
@@ -187,6 +360,49 @@ describe('RealunitContextProvider', () => {
     expect(result.current.totalCount).toBe(3);
   });
 
+  it('fetchHolders reports rejection, clears stale pagination data, and retries successfully with an empty result', async () => {
+    mockGetHolders.mockResolvedValueOnce({
+      holders: [{ address: '0xstale', balance: '1', percentage: 1 }],
+      pageInfo: { ...EMPTY_PAGE, endCursor: 'stale-end', hasNextPage: true },
+      totalCount: 1,
+    });
+    const { result } = renderHook(() => useRealunitContext(), { wrapper });
+
+    act(() => result.current.fetchHolders());
+    await waitFor(() => expect(result.current.holders).toHaveLength(1));
+
+    mockGetHolders.mockRejectedValueOnce(new Error('holders unavailable'));
+    act(() => result.current.fetchHolders('stale-end', PaginationDirection.NEXT));
+    await waitFor(() => {
+      expect(result.current.holders).toEqual([]);
+      expect(result.current.totalCount).toBeUndefined();
+      expect(result.current.pageInfo).toEqual(EMPTY_PAGE);
+      expect(result.current.holdersError).toBe(true);
+      expect(result.current.holdersLoading).toBe(false);
+    });
+
+    mockGetHolders.mockResolvedValueOnce({ holders: [], pageInfo: EMPTY_PAGE, totalCount: 0 });
+    act(() => result.current.fetchHolders());
+    await waitFor(() => {
+      expect(result.current.holders).toEqual([]);
+      expect(result.current.totalCount).toBe(0);
+      expect(result.current.holdersError).toBe(false);
+      expect(result.current.holdersLoading).toBe(false);
+    });
+  });
+
+  it('fetchHolders keeps loading true until its current request settles', async () => {
+    const pending = createDeferred<{ holders: []; pageInfo: typeof EMPTY_PAGE; totalCount: number }>();
+    mockGetHolders.mockReturnValueOnce(pending.promise);
+    const { result } = renderHook(() => useRealunitContext(), { wrapper });
+
+    act(() => result.current.fetchHolders());
+    expect(result.current.holdersLoading).toBe(true);
+    await act(async () => pending.resolve({ holders: [], pageInfo: EMPTY_PAGE, totalCount: 0 }));
+    expect(result.current.holdersLoading).toBe(false);
+    expect(result.current.holdersError).toBe(false);
+  });
+
   it('fetchPriceHistory sets data and timeframe on success, and flags error on catch; default timeframe is ALL', async () => {
     const prices = [{ timestamp: 't', chf: 1, eur: 1, usd: 1 }];
     mockGetPriceHistory.mockResolvedValueOnce(prices);
@@ -220,7 +436,7 @@ describe('RealunitContextProvider', () => {
     });
   });
 
-  it('fetchTokenInfo and fetchTokenPrice set their state from the API', async () => {
+  it('fetchTokenInfo and fetchTokenPrice clear rejected values, settle, and recover on retry', async () => {
     const tokenInfo = {
       totalShares: { total: '1', timestamp: 't', txHash: '0x' },
       totalSupply: { value: '1', timestamp: 't' },
@@ -238,6 +454,38 @@ describe('RealunitContextProvider', () => {
     await waitFor(() => {
       expect(result.current.tokenInfo).toEqual(tokenInfo);
       expect(result.current.tokenPrice).toEqual(tokenPrice);
+      expect(result.current.tokenInfoLoading).toBe(false);
+      expect(result.current.tokenPriceLoading).toBe(false);
+      expect(result.current.tokenInfoError).toBe(false);
+      expect(result.current.tokenPriceError).toBe(false);
+    });
+
+    mockGetTokenInfo.mockRejectedValueOnce(new Error('token info unavailable'));
+    mockGetTokenPrice.mockRejectedValueOnce(new Error('token price unavailable'));
+    act(() => {
+      result.current.fetchTokenInfo();
+      result.current.fetchTokenPrice();
+    });
+    await waitFor(() => {
+      expect(result.current.tokenInfo).toBeUndefined();
+      expect(result.current.tokenPrice).toBeUndefined();
+      expect(result.current.tokenInfoError).toBe(true);
+      expect(result.current.tokenPriceError).toBe(true);
+      expect(result.current.tokenInfoLoading).toBe(false);
+      expect(result.current.tokenPriceLoading).toBe(false);
+    });
+
+    mockGetTokenInfo.mockResolvedValueOnce(tokenInfo);
+    mockGetTokenPrice.mockResolvedValueOnce(tokenPrice);
+    act(() => {
+      result.current.fetchTokenInfo();
+      result.current.fetchTokenPrice();
+    });
+    await waitFor(() => {
+      expect(result.current.tokenInfo).toEqual(tokenInfo);
+      expect(result.current.tokenPrice).toEqual(tokenPrice);
+      expect(result.current.tokenInfoError).toBe(false);
+      expect(result.current.tokenPriceError).toBe(false);
     });
   });
 

@@ -1,0 +1,227 @@
+/* transactions */
+.txhead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0 12px;
+}
+.txhead h2 {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.txrow {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 12px 12px;
+  border-radius: 14px;
+}
+.txrow + .txrow {
+  border-top: 1px solid var(--hair-soft);
+}
+.txicon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.txicon svg {
+  width: 18px;
+  height: 18px;
+}
+.txrow .ti {
+  flex: 1;
+  min-width: 0;
+}
+.txrow .ti b {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #fff;
+}
+.txrow .ti small {
+  font-size: 12px;
+  color: var(--t-dim);
+}
+.txrow .ta {
+  text-align: right;
+  flex: 0 0 auto;
+}
+.txrow .ta b {
+  font-size: 14px;
+  font-weight: 600;
+  display: block;
+}
+.txrow .ta b.pos {
+  color: var(--success);
+}
+.txrow .ta small {
+  font-size: 11.5px;
+  color: var(--t-dim);
+}
+.txitem + .txitem {
+  border-top: 1px solid var(--hair-soft);
+}
+.txitem > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.txitem > summary::-webkit-details-marker {
+  display: none;
+}
+.txbody {
+  padding: 2px 12px 12px;
+}
+.txbody .kv {
+  padding-left: 0;
+  padding-right: 0;
+}
+.txbar {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.txbar button {
+  flex: 1;
+  min-height: 42px;
+  border: 1px solid var(--hair-soft);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--t-muted);
+  cursor: pointer;
+  transition: all 0.16s var(--ease);
+}
+.txbar button:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+/* tx actions (Block B) */
+.txtop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 10px;
+}
+.txlink {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--t-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 4px 0;
+}
+.txlink:hover {
+  color: var(--primary);
+}
+.txmenu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 4px 10px;
+}
+.txmenu .btn-mini {
+  width: 100%;
+}
+.txnotice {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 13px;
+  border-radius: 14px;
+  background: rgba(255, 190, 80, 0.09);
+  border: 1px solid rgba(255, 190, 80, 0.28);
+  cursor: pointer;
+  margin: 0 0 10px;
+  transition: background 0.14s var(--ease);
+}
+.txnotice:hover {
+  background: rgba(255, 190, 80, 0.14);
+}
+.txnotice .ni {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: rgba(255, 190, 80, 0.18);
+  display: grid;
+  place-items: center;
+  color: #ffc864;
+  flex: 0 0 auto;
+}
+.txnotice .ni svg {
+  width: 17px;
+  height: 17px;
+}
+.txnotice .nt {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+.txnotice .nt small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--t-muted);
+  font-weight: 500;
+  margin-top: 1px;
+}
+.txactions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.txactions .btn-mini {
+  flex: 1;
+  min-width: 120px;
+}
+.assignrow {
+  padding: 12px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.assignrow + .assignrow {
+  margin-top: 8px;
+}
+.assignrow .ah {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 8px;
+}
+.assignrow .ah small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--t-muted);
+  font-weight: 500;
+  margin-top: 1px;
+}
+.assignrow .ac {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.assignrow .ac select {
+  flex: 1;
+  min-width: 0;
+}
+.assignrow .ac .btn-mini {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 0 14px;
+}
+.refundbox {
+  padding: 2px 0;
+}

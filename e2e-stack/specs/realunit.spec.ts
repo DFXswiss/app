@@ -66,6 +66,20 @@ function assertNoErrors(pageErrors: string[], consoleErrors: string[]): void {
   expect(unexpected, `unexpected console error: ${unexpected.join('; ')}`).toEqual([]);
 }
 
+function assertNoErrorsWithExpectedServerFailures(
+  pageErrors: string[],
+  consoleErrors: string[],
+  expectedServerFailureCount: number,
+): void {
+  const isServerFailure = (message: string) =>
+    /^Failed to load resource: the server responded with a status of 5\d\d(?: \([^)]+\))?$/.test(message);
+  const expectedServerErrors = consoleErrors.filter(isServerFailure);
+  expect(expectedServerErrors, 'each observed 5xx response should have one browser network error').toHaveLength(
+    expectedServerFailureCount,
+  );
+  assertNoErrors(pageErrors, consoleErrors.filter((message) => !isServerFailure(message)));
+}
+
 /**
  * Staff roles (Admin, RealUnit, …) need KYC clearance before RoleGuard allows guarded APIs.
  * Sets verifiedName and waits until the background job syncs userDataId into staffKycClearance.
@@ -149,30 +163,45 @@ test.describe('RealUnit area', () => {
     expect(status, 'GET /v1/realunit/compliance/customers must reject a plain User role').toBe(403);
   });
 
-  // The section nav lives outside the overview body, so its links mount even while the body
-  // is still a spinner. The body bug is unchanged: fetchHolders()/fetchTokenInfo() have no
-  // .catch(), so a rejected subgraph request leaves holders empty and tokenInfo undefined and
-  // the overview headings never replace the spinner.
-  test.fail(
-    '/realunit empty state — overview body stuck on spinner (fetchHolders/fetchTokenInfo no .catch)',
-    async ({ page }) => {
-      const { jwt } = await loginAs('RealUnit');
-      const { pageErrors, consoleErrors } = attachErrorListeners(page);
+  test('/realunit overview settles graph failures and shows explicit errors', async ({ page }) => {
+    const { jwt } = await loginAs('RealUnit');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    const graphFailures: Array<{ path: string; status: number }> = [];
+    page.on('response', (response) => {
+      const path = new URL(response.url()).pathname;
+      if (!response.ok() && (path === '/v1/realunit/holders' || path === '/v1/realunit/tokenInfo')) {
+        graphFailures.push({ path, status: response.status() });
+      }
+    });
 
-      await openScreen(page, '/realunit', jwt);
+    await openScreen(page, '/realunit', jwt);
 
-      await expect(page.getByRole('link', { name: 'RealUnit Support' })).toBeVisible();
-      await expect(page.getByRole('link', { name: 'RealUnit Compliance' })).toBeVisible();
-      await expect(page.getByRole('link', { name: 'RealUnit Referral' })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Top Holders' })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Received Transactions' })).toBeVisible();
-      await expect(page.getByText('No pending transactions found')).toBeVisible();
-      await expect(page.getByText('No received transactions found')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'RealUnit Support' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'RealUnit Compliance' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'RealUnit Referral' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Top Holders' })).toBeVisible();
+    await expect(page.getByText('Failed to load holders.')).toBeVisible();
+    await expect(page.getByText('Failed to load token info.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Received Transactions' })).toBeVisible();
+    await expect(page.getByText('No pending transactions found')).toBeVisible();
+    await expect(page.getByText('No received transactions found')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(2);
+    const holdersMetric = page.locator('.grid.grid-cols-2 > div').filter({ hasText: 'Holders' }).first();
+    await expect(holdersMetric).toContainText('—');
+    await expect(holdersMetric).not.toContainText('0');
+    expect(graphFailures.map(({ path }) => path).sort()).toEqual([
+      '/v1/realunit/holders',
+      '/v1/realunit/tokenInfo',
+    ]);
+    expect(graphFailures.every(({ status }) => status >= 400)).toBe(true);
 
-      assertNoErrors(pageErrors, consoleErrors);
-    },
-  );
+    assertNoErrorsWithExpectedServerFailures(
+      pageErrors,
+      consoleErrors,
+      graphFailures.filter(({ status }) => status >= 500).length,
+    );
+  });
 
   // The E2E API has no RealUnit graph URL, so GET /v1/realunit/admin/stats/holders returns 503
   // "RealUnit graph URL is not configured". The screen shows the hint. The browser line names
@@ -220,26 +249,71 @@ test.describe('RealUnit area', () => {
     );
   });
 
-  // CONFIRMED product bug (live uncaught pageerror): fetchHolders() has no .catch() in
-  // realunit.context.tsx. Observed: ApiException: Cannot read properties of undefined (reading 'document').
-  test.fail(
-    '/realunit/holders empty state — uncaught ApiException from fetchHolders() (no .catch; reading document)',
-    async ({ page }) => {
-      const { jwt } = await loginAs('RealUnit');
-      const { pageErrors, consoleErrors } = attachErrorListeners(page);
+  test('RealUnit insights shows the exact holder stats API error', async ({ page }) => {
+    const { jwt } = await loginAs('RealUnit');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
 
-      await openScreen(page, '/realunit/holders', jwt);
+    await openScreen(page, '/realunit/treasury', jwt);
+    const holderStatsResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === '/v1/realunit/admin/stats/holders' &&
+        url.searchParams.get('timeFrame') === 'ALL'
+      );
+    });
+    await page.getByRole('link', { name: 'Insights' }).click();
+    const holderStatsResponse = await holderStatsResponsePromise;
+    expect(holderStatsResponse.status()).toBe(503);
+    await expect(holderStatsResponse.json()).resolves.toEqual({
+      statusCode: 503,
+      message: 'RealUnit graph URL is not configured',
+      error: 'Service Unavailable',
+    });
 
-      await expect(page.getByRole('heading', { name: /All Holders/ })).toBeVisible();
-      await expect(tableHeader(page, 'Address')).toBeVisible();
-      await expect(tableHeader(page, 'Balance')).toBeVisible();
-      await expect(tableHeader(page, 'Percentage')).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Previous' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Next' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Insights' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByText('Failed to load holder count.')).toBeVisible();
 
-      assertNoErrors(pageErrors, consoleErrors);
-    },
-  );
+    // This single console line is the browser's report of the verified, expected graph 503.
+    // Keep pageerrors strict and pass every other console error through the usual assertion.
+    const expectedGraph503 = /^Failed to load resource: the server responded with a status of 503(?: \(Service Unavailable\))?$/;
+    const expectedGraphConsoleErrors = consoleErrors.filter((message) => expectedGraph503.test(message));
+    expect(expectedGraphConsoleErrors, 'the configured graph 503 should produce exactly one console entry').toHaveLength(1);
+    assertNoErrors(
+      pageErrors,
+      consoleErrors.filter((message) => !expectedGraph503.test(message)),
+    );
+  });
+
+  test('/realunit/holders settles a graph failure and shows a retryable error', async ({ page }) => {
+    const { jwt } = await loginAs('RealUnit');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    const holderFailures: Array<{ status: number }> = [];
+    page.on('response', (response) => {
+      if (new URL(response.url()).pathname === '/v1/realunit/holders' && !response.ok()) {
+        holderFailures.push({ status: response.status() });
+      }
+    });
+
+    await openScreen(page, '/realunit/holders', jwt);
+
+    await expect(page.getByRole('heading', { name: 'All Holders (—)' })).toBeVisible();
+    await expect(page.getByText('Failed to load holders.')).toBeVisible();
+    await expect(tableHeader(page, 'Address')).toBeVisible();
+    await expect(tableHeader(page, 'Balance')).toBeVisible();
+    await expect(tableHeader(page, 'Percentage')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Previous' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Next' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    expect(holderFailures).toHaveLength(1);
+    expect(holderFailures[0].status).toBeGreaterThanOrEqual(400);
+
+    assertNoErrorsWithExpectedServerFailures(
+      pageErrors,
+      consoleErrors,
+      holderFailures.filter(({ status }) => status >= 500).length,
+    );
+  });
 
   test('/realunit/quotes list renders empty or ErrorHint without crash', async ({ page }) => {
     const { jwt } = await loginAs('RealUnit');
@@ -454,23 +528,43 @@ test.describe('RealUnit area', () => {
     assertNoErrors(pageErrors, consoleErrors);
   });
 
-  // CONFIRMED product bug (live uncaught pageerror): fetchAccountHistory() has no .catch() in
-  // realunit.context.tsx. Observed: ApiException: Cannot read properties of undefined (reading 'document').
-  // (fetchAccountSummary does catch and would yield "No data available" if history did not crash first.)
-  test.fail(
-    '/realunit/user/:address empty state — uncaught ApiException from fetchAccountHistory() (no .catch; reading document)',
-    async ({ page }) => {
-      const { jwt } = await loginAs('RealUnit');
-      const { pageErrors, consoleErrors } = attachErrorListeners(page);
-      const path = `/realunit/user/${NEVER_HELD_ADDRESS}`;
+  test('/realunit/user/:address settles account and history failures as explicit errors', async ({ page }) => {
+    const { jwt } = await loginAs('RealUnit');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+    const path = `/realunit/user/${NEVER_HELD_ADDRESS}`;
+    const accountFailures: Array<{ path: string; status: number }> = [];
+    const requiredAccountPaths = [
+      `/v1/realunit/account/${NEVER_HELD_ADDRESS}`,
+      `/v1/realunit/account/${NEVER_HELD_ADDRESS}/history`,
+    ];
+    const tokenPricePath = '/v1/realunit/price';
+    const monitoredPaths = new Set([...requiredAccountPaths, tokenPricePath]);
+    page.on('response', (response) => {
+      const responsePath = new URL(response.url()).pathname;
+      if (monitoredPaths.has(responsePath) && !response.ok()) {
+        accountFailures.push({ path: responsePath, status: response.status() });
+      }
+    });
 
-      await openScreen(page, path, jwt);
+    await openScreen(page, path, jwt);
 
-      await expect(page.getByText('No data available')).toBeVisible();
+    await expect(page.getByText('Failed to load account summary.')).toBeVisible();
+    await expect(page.getByText('Failed to load transaction history.')).toBeVisible();
+    await expect(page.getByText('No data available')).toHaveCount(0);
+    for (const requiredPath of requiredAccountPaths) {
+      expect(accountFailures.some(({ path: failedPath }) => failedPath === requiredPath)).toBe(true);
+    }
+    if (accountFailures.some(({ path: failedPath }) => failedPath === tokenPricePath)) {
+      await expect(page.getByText('Failed to load token price.')).toBeVisible();
+    }
+    expect(accountFailures.every(({ status }) => status >= 400)).toBe(true);
 
-      assertNoErrors(pageErrors, consoleErrors);
-    },
-  );
+    assertNoErrorsWithExpectedServerFailures(
+      pageErrors,
+      consoleErrors,
+      accountFailures.filter(({ status }) => status >= 500).length,
+    );
+  });
 
   test('/realunit/support list renders tabs, search, Open Issues (clean empty/scoped state)', async ({ page }) => {
     // Seed a normal DFX support issue so a known uid exists; do not assert it appears in the

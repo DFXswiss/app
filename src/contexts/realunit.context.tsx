@@ -28,7 +28,12 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
   const [accountSummary, setAccountSummary] = useState<AccountSummary | undefined>();
   const [history, setHistory] = useState<AccountHistory | undefined>();
   const [isLoading, setIsLoading] = useState(false);
+  const [accountSummaryError, setAccountSummaryError] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
   const [holders, setHolders] = useState<Holder[]>([]);
+  const [holdersLoading, setHoldersLoading] = useState(false);
+  const [holdersError, setHoldersError] = useState(false);
   const [totalCount, setTotalCount] = useState<number | undefined>();
   const [pageInfo, setPageInfo] = useState<PageInfo>({
     hasNextPage: false,
@@ -37,7 +42,11 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
     endCursor: '',
   });
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | undefined>();
+  const [tokenInfoLoading, setTokenInfoLoading] = useState(false);
+  const [tokenInfoError, setTokenInfoError] = useState(false);
   const [tokenPrice, setTokenPrice] = useState<TokenPrice | undefined>();
+  const [tokenPriceLoading, setTokenPriceLoading] = useState(false);
+  const [tokenPriceError, setTokenPriceError] = useState(false);
   const [priceHistory, setPriceHistory] = useState<PriceHistoryEntry[]>([]);
   const [timeframe, setTimeframe] = useState<Timeframe>(Timeframe.ALL);
   const [quotes, setQuotes] = useState<RealUnitQuote[]>([]);
@@ -62,6 +71,12 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
   const buyVolumeRequest = useRef(0);
   const holderCountRequest = useRef(0);
   const registrationRequest = useRef(0);
+  const accountSummaryRequest = useRef(0);
+  const historyRequest = useRef(0);
+  const holdersRequest = useRef(0);
+  const tokenInfoRequest = useRef(0);
+  const tokenPriceRequest = useRef(0);
+  const historyAddress = useRef<string | undefined>(undefined);
 
   const {
     getAccountSummary,
@@ -81,26 +96,54 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
 
   const fetchAccountSummary = useCallback(
     (address: string) => {
+      const requestId = ++accountSummaryRequest.current;
       setIsLoading(true);
+      setAccountSummary(undefined);
+      setAccountSummaryError(false);
       getAccountSummary(address)
         .then((accountData) => {
+          if (requestId !== accountSummaryRequest.current) return;
           setAccountSummary(accountData);
         })
         .catch(() => {
+          if (requestId !== accountSummaryRequest.current) return;
           setAccountSummary(undefined);
+          setAccountSummaryError(true);
         })
-        .finally(() => setIsLoading(false));
+        .finally(() => {
+          if (requestId !== accountSummaryRequest.current) return;
+          setIsLoading(false);
+        });
     },
-    [setAccountSummary, setIsLoading],
+    [getAccountSummary],
   );
 
   const fetchAccountHistory = useCallback(
     (address: string, cursor?: string, direction?: PaginationDirection) => {
-      getAccountHistory(address, cursor, direction).then((accountHistory) => {
-        setHistory(accountHistory);
-      });
+      const requestId = ++historyRequest.current;
+      setHistoryLoading(true);
+      setHistoryError(false);
+      if (historyAddress.current !== address) {
+        setHistory(undefined);
+        historyAddress.current = address;
+      }
+      getAccountHistory(address, cursor, direction)
+        .then((accountHistory) => {
+          if (requestId !== historyRequest.current) return;
+          setHistory(accountHistory);
+        })
+        .catch(() => {
+          if (requestId !== historyRequest.current) return;
+          setHistory(undefined);
+          historyAddress.current = undefined;
+          setHistoryError(true);
+        })
+        .finally(() => {
+          if (requestId !== historyRequest.current) return;
+          setHistoryLoading(false);
+        });
     },
-    [setHistory],
+    [getAccountHistory],
   );
 
   const fetchHolders = useCallback(
@@ -108,15 +151,31 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
       if (!cursor && holders.length > 0) {
         return;
       }
-      getHolders(cursor, direction).then((holdersData) => {
-        setHolders(holdersData.holders);
-        setPageInfo(holdersData.pageInfo);
-        if (!cursor) {
-          setTotalCount(holdersData.totalCount);
-        }
-      });
+      const requestId = ++holdersRequest.current;
+      setHoldersLoading(true);
+      setHoldersError(false);
+      getHolders(cursor, direction)
+        .then((holdersData) => {
+          if (requestId !== holdersRequest.current) return;
+          setHolders(holdersData.holders);
+          setPageInfo(holdersData.pageInfo);
+          if (!cursor) {
+            setTotalCount(holdersData.totalCount);
+          }
+        })
+        .catch(() => {
+          if (requestId !== holdersRequest.current) return;
+          setHolders([]);
+          setPageInfo({ hasNextPage: false, hasPreviousPage: false, startCursor: '', endCursor: '' });
+          setTotalCount(undefined);
+          setHoldersError(true);
+        })
+        .finally(() => {
+          if (requestId !== holdersRequest.current) return;
+          setHoldersLoading(false);
+        });
     },
-    [holders.length, setHolders, setPageInfo, setTotalCount],
+    [getHolders, holders.length],
   );
 
   const fetchPriceHistory = useCallback(
@@ -133,16 +192,44 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
   );
 
   const fetchTokenInfo = useCallback(() => {
-    getTokenInfo().then((tokenData) => {
-      setTokenInfo(tokenData);
-    });
-  }, [setTokenInfo]);
+    const requestId = ++tokenInfoRequest.current;
+    setTokenInfoLoading(true);
+    setTokenInfoError(false);
+    getTokenInfo()
+      .then((tokenData) => {
+        if (requestId !== tokenInfoRequest.current) return;
+        setTokenInfo(tokenData);
+      })
+      .catch(() => {
+        if (requestId !== tokenInfoRequest.current) return;
+        setTokenInfo(undefined);
+        setTokenInfoError(true);
+      })
+      .finally(() => {
+        if (requestId !== tokenInfoRequest.current) return;
+        setTokenInfoLoading(false);
+      });
+  }, [getTokenInfo]);
 
   const fetchTokenPrice = useCallback(() => {
-    getTokenPrice().then((tokenPrice) => {
-      setTokenPrice(tokenPrice);
-    });
-  }, [setTokenPrice]);
+    const requestId = ++tokenPriceRequest.current;
+    setTokenPriceLoading(true);
+    setTokenPriceError(false);
+    getTokenPrice()
+      .then((price) => {
+        if (requestId !== tokenPriceRequest.current) return;
+        setTokenPrice(price);
+      })
+      .catch(() => {
+        if (requestId !== tokenPriceRequest.current) return;
+        setTokenPrice(undefined);
+        setTokenPriceError(true);
+      })
+      .finally(() => {
+        if (requestId !== tokenPriceRequest.current) return;
+        setTokenPriceLoading(false);
+      });
+  }, [getTokenPrice]);
 
   const fetchQuotes = useCallback(() => {
     setQuotesLoading(true);
@@ -244,11 +331,20 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
       accountSummary,
       history,
       isLoading,
+      accountSummaryError,
+      historyLoading,
+      historyError,
       holders,
+      holdersLoading,
+      holdersError,
       totalCount,
       pageInfo,
       tokenInfo,
+      tokenInfoLoading,
+      tokenInfoError,
       tokenPrice,
+      tokenPriceLoading,
+      tokenPriceError,
       priceHistory,
       timeframe,
       quotes,
@@ -289,11 +385,20 @@ export function RealunitContextProvider({ children }: PropsWithChildren): JSX.El
       accountSummary,
       history,
       isLoading,
+      accountSummaryError,
+      historyLoading,
+      historyError,
       holders,
+      holdersLoading,
+      holdersError,
       totalCount,
       pageInfo,
       tokenInfo,
+      tokenInfoLoading,
+      tokenInfoError,
       tokenPrice,
+      tokenPriceLoading,
+      tokenPriceError,
       priceHistory,
       timeframe,
       quotes,

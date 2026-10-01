@@ -76,14 +76,23 @@ export default function SepaManualScreen(): JSX.Element {
   });
 
   function onSubmit(data: ManualBankTxForm) {
-    const xml = buildCamt053Xml({ ...data, country: data.country?.symbol });
+    setShowNotification(false);
+    setError(undefined);
+
+    let xml: string;
+    try {
+      xml = buildCamt053Xml({ ...data, country: data.country?.symbol });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Secure random UUID generation is unavailable.');
+      return;
+    }
+
     const file = new File([xml], 'manual-bank-tx.xml', { type: 'text/xml' });
 
     const fileData = new FormData();
     fileData.append('files', file);
 
     setIsUploading(true);
-    setError(undefined);
     call({
       url: 'bankTx',
       method: 'POST',

@@ -300,4 +300,66 @@ describe('buildCamt053Xml', () => {
     expect(xml).toContain(`<CreDtTm>${FROZEN_ISO}</CreDtTm>`);
     expect(xml).toContain(`<AcctSvcrRef>${FROZEN_UUID}</AcctSvcrRef>`);
   });
+
+  it('uses secure random bytes for a version 4 AcctSvcrRef when randomUUID is unavailable', () => {
+    const randomValues = jest
+      .fn((bytes: Uint8Array) => bytes)
+      .mockImplementationOnce((bytes) => {
+        bytes.set(Uint8Array.from({ length: 16 }, (_, index) => index));
+        return bytes;
+      })
+      .mockImplementationOnce((bytes) => {
+        bytes.set(Uint8Array.from({ length: 16 }, (_, index) => 15 - index));
+        return bytes;
+      });
+    Object.defineProperty(globalThis, 'crypto', {
+      value: { getRandomValues: randomValues },
+      configurable: true,
+    });
+
+    const firstXml = buildCamt053Xml(baseData());
+    const secondXml = buildCamt053Xml(baseData());
+    const firstRef = firstXml.match(/<AcctSvcrRef>([^<]+)<\/AcctSvcrRef>/)?.[1];
+    const secondRef = secondXml.match(/<AcctSvcrRef>([^<]+)<\/AcctSvcrRef>/)?.[1];
+
+    expect(firstRef).toBe('00010203-0405-4607-8809-0a0b0c0d0e0f');
+    expect(secondRef).toBe('0f0e0d0c-0b0a-4908-8706-050403020100');
+    expect(firstRef).not.toBe(secondRef);
+    expect(firstRef).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(randomValues).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to secure random bytes when randomUUID throws', () => {
+    const randomUUID = jest.fn(() => {
+      throw new Error('randomUUID requires a secure context');
+    });
+    const getRandomValues = jest.fn((bytes: Uint8Array) => {
+      bytes.fill(0xff);
+      return bytes;
+    });
+    Object.defineProperty(globalThis, 'crypto', {
+      value: { randomUUID, getRandomValues },
+      configurable: true,
+    });
+
+    const xml = buildCamt053Xml(baseData());
+
+    expect(randomUUID).toHaveBeenCalledTimes(1);
+    expect(getRandomValues).toHaveBeenCalledTimes(1);
+    expect(xml).toContain('<AcctSvcrRef>ffffffff-ffff-4fff-bfff-ffffffffffff</AcctSvcrRef>');
+  });
+
+  it('fails closed when secure random values are unavailable or throw', () => {
+    Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
+    expect(() => buildCamt053Xml(baseData())).toThrow('Secure random UUID generation is unavailable.');
+
+    Object.defineProperty(globalThis, 'crypto', { value: {}, configurable: true });
+    expect(() => buildCamt053Xml(baseData())).toThrow('Secure random UUID generation is unavailable.');
+
+    Object.defineProperty(globalThis, 'crypto', {
+      value: { getRandomValues: jest.fn(() => { throw new Error('entropy unavailable'); }) },
+      configurable: true,
+    });
+    expect(() => buildCamt053Xml(baseData())).toThrow('Secure random UUID generation is unavailable.');
+  });
 });

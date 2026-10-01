@@ -7,7 +7,9 @@ import { test, expect, Page, Route } from '@playwright/test';
  * payouts, empty payouts, balance alerts, alert form), insights (charts, share
  * mode, 1M timeframe, each chart error), holders (list, empty, next page),
  * received transactions (list, empty, error, detail, missing), and the holder
- * account (CHF, REALU, missing).
+ * account (CHF, REALU, account failures, history failures, and CHF price failure/loading).
+ * Overview graph failures, successful empty holders, and holders-page failures are also captured
+ * on desktop and mobile. All API responses here are synthetic; they do not prove live behavior.
  *
  * Auth is a synthetic Admin JWT. RealUnit reads are mocked. A green run does
  * not prove the live API returns these fields.
@@ -29,6 +31,11 @@ async function json(route: Route, body: unknown, status = 200): Promise<void> {
 
 async function fail(route: Route, message: string, status = 500): Promise<void> {
   await json(route, { statusCode: status, message }, status);
+}
+
+function styledSpinner(page: Page) {
+  // StyledLoadingSpinner renders SpinnerCircular's root SVG (viewBox 0 0 66 66).
+  return page.locator('svg[viewBox="0 0 66 66"]');
 }
 
 const ADDRESS = '0xabc0000000000000000000000000000000008001';
@@ -154,7 +161,9 @@ type ListMode = 'one' | 'empty' | 'many';
 type World = {
   quotes: 'mixed' | 'empty' | 'many';
   transactions: ListMode | 'error';
-  holders: ListMode | 'paged';
+  holders: ListMode | 'paged' | 'error';
+  tokenInfo: 'ok' | 'error';
+  tokenPrice: 'ok' | 'error' | 'loading';
   buyLimit: 'empty' | 'set' | 'error';
   wallet: 'ok' | 'missing' | 'error';
   alerts: 'empty' | 'one' | 'error';
@@ -163,13 +172,15 @@ type World = {
   buyVolume: 'ok' | 'error';
   holderCount: 'ok' | 'error';
   registration: 'ok' | 'error';
-  account: 'ok' | 'missing';
+  account: 'ok' | 'missing' | 'summary-error' | 'history-error';
 };
 
 const defaults: World = {
   quotes: 'mixed',
   transactions: 'one',
   holders: 'one',
+  tokenInfo: 'ok',
+  tokenPrice: 'ok',
   buyLimit: 'empty',
   wallet: 'ok',
   alerts: 'empty',
@@ -183,10 +194,16 @@ const defaults: World = {
 
 const world: World = { ...defaults };
 let holderCalls = 0;
+let pendingTokenPriceRoute: Route | undefined;
+let onPendingTokenPriceRequest: (() => void) | undefined;
+const unexpectedApiRequests: string[] = [];
+const uncaughtPageErrors: string[] = [];
 
 function resetWorld(): void {
   Object.assign(world, defaults);
   holderCalls = 0;
+  pendingTokenPriceRoute = undefined;
+  onPendingTokenPriceRequest = undefined;
 }
 
 function holder(address: string, balance: string, percentage: number) {
@@ -263,16 +280,28 @@ async function installDashboardRoutes(page: Page): Promise<void> {
       return json(route, transactionsBody());
     }
     if (path === '/v1/realunit/holders') {
+      if (world.holders === 'error') return fail(route, 'holders unavailable');
       holderCalls += 1;
       const pageNo = world.holders === 'paged' && holderCalls > 1 ? 2 : 1;
       return json(route, holdersBody(pageNo));
     }
-    if (path === '/v1/realunit/tokenInfo') return json(route, TOKEN);
+    if (path === '/v1/realunit/tokenInfo') {
+      if (world.tokenInfo === 'error') return fail(route, 'token info unavailable');
+      return json(route, TOKEN);
+    }
     if (path === '/v1/realunit/price/history') {
       if (world.priceHistory === 'error') return fail(route, 'price history down');
       return json(route, PRICE);
     }
-    if (path === '/v1/realunit/price') return json(route, PRICE[0]);
+    if (path === '/v1/realunit/price') {
+      if (world.tokenPrice === 'error') return fail(route, 'token price unavailable');
+      if (world.tokenPrice === 'loading') {
+        pendingTokenPriceRoute = route;
+        onPendingTokenPriceRequest?.();
+        return;
+      }
+      return json(route, PRICE[0]);
+    }
     if (path === '/v1/realunit/admin/stats/buy-volume') {
       if (world.buyVolume === 'error') return fail(route, 'buy volume down');
       return json(route, VOLUME);
@@ -304,10 +333,12 @@ async function installDashboardRoutes(page: Page): Promise<void> {
     }
     if (/\/v1\/realunit\/account\/[^/]+\/history$/.test(path)) {
       if (world.account === 'missing') return fail(route, 'Not found', 404);
+      if (world.account === 'history-error') return fail(route, 'account history unavailable');
       return json(route, HISTORY);
     }
     if (/\/v1\/realunit\/account\/[^/]+$/.test(path)) {
       if (world.account === 'missing') return fail(route, 'Not found', 404);
+      if (world.account === 'summary-error') return fail(route, 'account summary unavailable');
       return json(route, ACCOUNT);
     }
 
@@ -318,7 +349,17 @@ async function installDashboardRoutes(page: Page): Promise<void> {
       return json(route, []);
     }
     if (request.method() === 'GET' && path === '/v1/setting/infoBanner') return json(route, null);
-    await route.continue();
+    if (request.method() === 'POST' && path === '/v1/log/clientError') {
+      // Intentional mocked 5xx graph cases trigger the shared client's synthetic error logger.
+      return json(route, {});
+    }
+    const unexpected = `${request.method()} ${path}`;
+    unexpectedApiRequests.push(unexpected);
+    return json(
+      route,
+      { statusCode: 501, message: 'Unexpected request in synthetic RealUnit visual test', request: unexpected },
+      501,
+    );
   });
 
   await page.route('**/v2/**', async (route: Route) => {
@@ -333,7 +374,13 @@ async function installDashboardRoutes(page: Page): Promise<void> {
         language: { id: 1, name: 'English', symbol: 'EN' },
       });
     }
-    await route.continue();
+    const unexpected = `${request.method()} ${path}`;
+    unexpectedApiRequests.push(unexpected);
+    return json(
+      route,
+      { statusCode: 501, message: 'Unexpected request in synthetic RealUnit visual test', request: unexpected },
+      501,
+    );
   });
 }
 
@@ -355,6 +402,12 @@ async function shootPage(page: Page, name: string): Promise<void> {
   await expect(page).toHaveScreenshot(name, { ...shot, fullPage: true });
 }
 
+async function shootMobilePage(page: Page, name: string): Promise<void> {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(200);
+  await expect(page).toHaveScreenshot(name, { ...shot, fullPage: true });
+}
+
 async function open(page: Page, path: string): Promise<void> {
   await installDashboardRoutes(page);
   await page.goto(path + query());
@@ -366,12 +419,30 @@ function section(page: Page, heading: string) {
   return page.getByRole('heading', { name: heading }).locator('xpath=..');
 }
 
+function overviewMetric(page: Page, label: string) {
+  return page
+    .locator('div.bg-white.rounded-lg.shadow-sm.px-4.py-3')
+    .filter({ has: page.getByText(label, { exact: true }) });
+}
+
+function retryFor(page: Page, message: string) {
+  return page.getByText(message, { exact: true }).locator('xpath=../..').getByRole('button', { name: 'Retry' });
+}
+
 test.describe('RealUnit workspace - Visual Regression Tests', () => {
   test.describe.configure({ timeout: 180_000 });
   test.beforeEach(async ({ page }) => {
     resetWorld();
+    unexpectedApiRequests.length = 0;
+    uncaughtPageErrors.length = 0;
+    page.on('pageerror', (error) => uncaughtPageErrors.push(error.message));
     // Tall viewport so the app bar and the section nav are both in frame.
     await page.setViewportSize({ width: 1440, height: 1700 });
+  });
+
+  test.afterEach(async () => {
+    expect(unexpectedApiRequests, 'all synthetic API requests must match an explicit route').toEqual([]);
+    expect(uncaughtPageErrors, 'the page must not emit uncaught errors').toEqual([]);
   });
 
   test('populated overview, treasury and insights', async ({ page }) => {
@@ -433,6 +504,42 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
     await open(page, '/realunit');
     await expect(page.getByRole('button', { name: 'More' })).toHaveCount(3);
     await shootPage(page, 'realunit-dashboard-11-overview-more.png');
+  });
+
+  test('overview graph errors and retries on desktop and mobile', async ({ page }) => {
+    world.holders = 'error';
+    world.tokenInfo = 'error';
+    await open(page, '/realunit');
+    await expect(page.getByText('Failed to load holders.')).toBeVisible();
+    await expect(page.getByText('Failed to load token info.')).toBeVisible();
+    await expect(styledSpinner(page)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(2);
+    await shootPage(page, 'realunit-dashboard-39-overview-graph-errors.png');
+    await shootMobilePage(page, 'realunit-dashboard-40-overview-graph-errors-mobile.png');
+
+    world.holders = 'one';
+    await retryFor(page, 'Failed to load holders.').click();
+    await expect(page.getByText('Failed to load holders.')).toHaveCount(0);
+    await expect(page.getByText('Failed to load token info.')).toBeVisible();
+
+    world.tokenInfo = 'ok';
+    await retryFor(page, 'Failed to load token info.').click();
+    await expect(page.getByText('Failed to load token info.')).toHaveCount(0);
+  });
+
+  test('overview keeps a successful empty holders response distinct from an error on desktop and mobile', async ({ page }) => {
+    world.holders = 'empty';
+    await open(page, '/realunit');
+    await expect(page.getByText('Failed to load holders.')).toHaveCount(0);
+    await expect(page.getByText('Failed to load token info.')).toHaveCount(0);
+    const holdersMetric = overviewMetric(page, 'Holders');
+    const sharesMetric = overviewMetric(page, 'Shares');
+    await expect(holdersMetric).toHaveCount(1);
+    await expect(holdersMetric.getByText('0', { exact: true })).toBeVisible();
+    await expect(sharesMetric).toHaveCount(1);
+    await expect(sharesMetric.getByText('1,000', { exact: true })).toBeVisible();
+    await shootPage(page, 'realunit-dashboard-41-overview-empty-holders.png');
+    await shootMobilePage(page, 'realunit-dashboard-42-overview-empty-holders-mobile.png');
   });
 
   test('treasury buy limit, wallet and payout scenarios', async ({ page }) => {
@@ -527,6 +634,20 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
     await shootPage(page, 'realunit-dashboard-38-holders-page-two.png');
   });
 
+  test('holders-page errors and retry on desktop and mobile', async ({ page }) => {
+    world.holders = 'error';
+    await open(page, '/realunit/holders');
+    await expect(page.getByText('Failed to load holders.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'All Holders (—)' })).toBeVisible();
+    await shootPage(page, 'realunit-dashboard-43-holders-error.png');
+    await shootMobilePage(page, 'realunit-dashboard-44-holders-error-mobile.png');
+
+    world.holders = 'one';
+    await page.getByRole('button', { name: 'Retry' }).click();
+    await expect(page.getByText('Failed to load holders.')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'All Holders (1)' })).toBeVisible();
+  });
+
   test('received transactions, detail, empty, error and missing', async ({ page }) => {
     await open(page, '/realunit/transactions');
     await expect(page.getByRole('cell', { name: 'Buy' })).toBeVisible();
@@ -563,7 +684,96 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
 
     world.account = 'missing';
     await open(page, `/realunit/user/${encodeURIComponent(ADDRESS)}`);
-    await expect(page.getByText('No data available')).toBeVisible();
+    await expect(page.getByText('Failed to load account summary.')).toBeVisible();
+    await expect(page.getByText('Failed to load transaction history.')).toBeVisible();
+    await expect(page.getByText('No data available')).toHaveCount(0);
     await shootPage(page, 'realunit-dashboard-35-account-missing.png');
+    await shootMobilePage(page, 'realunit-dashboard-45-account-missing-mobile.png');
+  });
+
+  test('account summary failure and retry on desktop and mobile', async ({ page }) => {
+    world.account = 'summary-error';
+    await open(page, `/realunit/user/${encodeURIComponent(ADDRESS)}`);
+    await expect(page.getByText('Failed to load account summary.')).toBeVisible();
+    await expect(page.getByText('Failed to load transaction history.')).toHaveCount(0);
+    await shootPage(page, 'realunit-dashboard-46-account-summary-error.png');
+    await shootMobilePage(page, 'realunit-dashboard-47-account-summary-error-mobile.png');
+
+    world.account = 'ok';
+    await retryFor(page, 'Failed to load account summary.').click();
+    await expect(page.getByText('Failed to load account summary.')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Account Details' })).toBeVisible();
+  });
+
+  test('history failure after a successful account lookup and retry on desktop and mobile', async ({ page }) => {
+    world.account = 'history-error';
+    await open(page, `/realunit/user/${encodeURIComponent(ADDRESS)}`);
+    await expect(page.getByRole('heading', { name: 'Account Details' })).toBeVisible();
+    await expect(page.getByText('Failed to load transaction history.')).toBeVisible();
+    await expect(page.getByText('Failed to load account summary.')).toHaveCount(0);
+    await shootPage(page, 'realunit-dashboard-48-account-history-error.png');
+    await page.setViewportSize({ width: 390, height: 844 });
+    const historyError = page.getByText('Failed to load transaction history.');
+    await historyError.scrollIntoViewIfNeeded();
+    await expect(retryFor(page, 'Failed to load transaction history.')).toBeInViewport();
+    await expect(page).toHaveScreenshot('realunit-dashboard-49-account-history-error-mobile.png', {
+      ...shot,
+      fullPage: false,
+    });
+
+    world.account = 'ok';
+    await retryFor(page, 'Failed to load transaction history.').click();
+    await expect(page.getByText('Failed to load transaction history.')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Transaction History (1)' })).toBeVisible();
+  });
+
+  test('CHF token-price error and loading variants on desktop and mobile', async ({ page }) => {
+    world.tokenPrice = 'error';
+    await open(page, `/realunit/user/${encodeURIComponent(ADDRESS)}`);
+    await page.getByRole('button', { name: 'CHF' }).click();
+    const priceError = page.getByText('Failed to load token price.');
+    const priceRetry = retryFor(page, 'Failed to load token price.');
+    const balanceChart = page.locator('#chart-timeline .apexcharts-canvas').last();
+    await expect(priceError).toBeVisible();
+    await expect(priceRetry).toBeVisible();
+    const desktopErrorBox = await priceError.boundingBox();
+    const desktopRetryBox = await priceRetry.boundingBox();
+    const desktopChartBox = await balanceChart.boundingBox();
+    expect(desktopErrorBox).not.toBeNull();
+    expect(desktopRetryBox).not.toBeNull();
+    expect(desktopChartBox).not.toBeNull();
+    expect(desktopErrorBox!.y + desktopErrorBox!.height).toBeLessThanOrEqual(desktopChartBox!.y);
+    expect(desktopRetryBox!.y + desktopRetryBox!.height).toBeLessThanOrEqual(desktopChartBox!.y);
+    await shootPage(page, 'realunit-dashboard-50-account-chf-price-error.png');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(priceRetry).toBeInViewport();
+    const mobileErrorBox = await priceError.boundingBox();
+    const mobileRetryBox = await priceRetry.boundingBox();
+    const mobileChartBox = await balanceChart.boundingBox();
+    expect(mobileErrorBox).not.toBeNull();
+    expect(mobileRetryBox).not.toBeNull();
+    expect(mobileChartBox).not.toBeNull();
+    expect(mobileErrorBox!.y + mobileErrorBox!.height).toBeLessThanOrEqual(mobileChartBox!.y);
+    expect(mobileRetryBox!.y + mobileRetryBox!.height).toBeLessThanOrEqual(mobileChartBox!.y);
+    await shootMobilePage(page, 'realunit-dashboard-51-account-chf-price-error-mobile.png');
+
+    world.tokenPrice = 'loading';
+    let signalRequestSeen: (() => void) | undefined;
+    const requestSeen = new Promise<void>((resolve) => {
+      signalRequestSeen = resolve;
+    });
+    onPendingTokenPriceRequest = () => signalRequestSeen?.();
+    await page.getByRole('button', { name: 'Retry' }).click();
+    await requestSeen;
+    await expect(styledSpinner(page)).toBeVisible();
+    await shootPage(page, 'realunit-dashboard-52-account-chf-price-loading.png');
+    await shootMobilePage(page, 'realunit-dashboard-53-account-chf-price-loading-mobile.png');
+
+    const priceRoute = pendingTokenPriceRoute;
+    if (!priceRoute) throw new Error('pending CHF price request was not captured');
+    await json(priceRoute, PRICE[0]);
+    pendingTokenPriceRoute = undefined;
+    onPendingTokenPriceRequest = undefined;
+    await expect(styledSpinner(page)).toHaveCount(0);
   });
 });

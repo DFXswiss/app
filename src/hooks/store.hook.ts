@@ -1,6 +1,6 @@
-import { InfoBanner } from '@dfx.swiss/react';
-import { AppParams } from '../contexts/app-handling.context';
-import { WalletType } from '../contexts/wallet.context';
+import type { InfoBanner } from '@dfx.swiss/react';
+import type { AppParams } from '../contexts/app-handling.context';
+import type { WalletType } from '../contexts/wallet.context';
 import { storageGet, storageGetJson, storageRemove, storageSet, storageSetJson } from '../util/safe-storage';
 
 export interface StoreItem<T> {
@@ -18,7 +18,8 @@ export interface StoreInterface {
   queryParams: StoreItem<AppParams>;
 }
 
-enum StoreKey {
+export enum StoreKey {
+  AUTH_TOKEN = 'dfx.authenticationToken',
   REDIRECT_URI = 'dfx.srv.redirectUri',
   BALANCES = 'dfx.srv.balances',
   LANGUAGE = 'dfx.srv.language',

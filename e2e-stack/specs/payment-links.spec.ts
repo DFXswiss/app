@@ -10,9 +10,12 @@
  * SQL factory instead.
  */
 
+import { randomBytes } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import {
   apiGet,
+  apiPost,
+  apiPut,
   cleanupCreatedData,
   createBuy,
   createPaymentLink,
@@ -24,6 +27,7 @@ import {
   queryOne,
   queryRows,
   test,
+  trackRow,
   waitForRow,
 } from './fixtures';
 
@@ -37,6 +41,7 @@ interface PaymentLinkPaymentDto {
   amount: number;
   currency?: string | { name?: string };
   externalId?: string;
+  lnurl?: string;
 }
 
 interface PaymentLinkDto {
@@ -51,12 +56,71 @@ interface PaymentLinkDto {
   payment?: PaymentLinkPaymentDto | null;
 }
 
+interface PaymentLinkPayRequestDto extends PaymentLinkDto {
+  externalId: string;
+  mode: string;
+  standard: string;
+  quote: { id: string; expiration: string; payment: string };
+  requestedAmount: { asset: string; amount: number };
+  transferAmounts: Array<{
+    method: string;
+    minFee: number;
+    assets: Array<{ asset: string; amount?: number | string }>;
+  }>;
+}
+
+function assertPositiveDecimalAmount(value: number | string | undefined, context: string): void {
+  expect(typeof value === 'number' || (typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value)), context).toBe(
+    true,
+  );
+  const amount = Number(value);
+  expect(Number.isFinite(amount), `${context} must be finite`).toBe(true);
+  expect(amount, `${context} must be positive`).toBeGreaterThan(0);
+}
+
+async function assertRealLightningQuote(
+  payRequest: PaymentLinkPayRequestDto,
+  paymentLinkId: number,
+  expectedAmount: number,
+): Promise<void> {
+  expect(payRequest.quote.id).toBeTruthy();
+  expect(payRequest.quote.payment).toBeTruthy();
+  expect(payRequest.requestedAmount).toEqual({ asset: 'CHF', amount: expectedAmount });
+  const lightning = payRequest.transferAmounts.find((amount) => amount.method === 'Lightning');
+  expect(lightning?.minFee).toBe(0);
+  const responseBtcAmount = lightning?.assets.find((asset) => asset.asset === 'BTC')?.amount;
+  assertPositiveDecimalAmount(responseBtcAmount, 'API Lightning BTC transfer amount');
+
+  const storedQuote = await waitForRow<{
+    quoteId: number;
+    quoteStatus: string;
+    paymentId: number;
+    paymentStatus: string;
+    amount: number;
+    transferAmounts: string;
+  }>(
+    `SELECT q.id AS "quoteId", q.status AS "quoteStatus", q."paymentId" AS "paymentId",
+            p.status AS "paymentStatus", p.amount, q."transferAmounts" AS "transferAmounts"
+     FROM payment_quote q
+     JOIN payment_link_payment p ON p.id = q."paymentId"
+     WHERE q."uniqueId" = $1 AND p."uniqueId" = $2 AND p."linkId" = $3`,
+    [payRequest.quote.id, payRequest.quote.payment, paymentLinkId],
+  );
+  trackRow('payment_quote', storedQuote.quoteId);
+  expect(storedQuote.quoteStatus).toBe('Actual');
+  expect(storedQuote.paymentStatus).toBe('Pending');
+  expect(Number(storedQuote.amount)).toBe(expectedAmount);
+  const persistedTransfers = JSON.parse(storedQuote.transferAmounts) as PaymentLinkPayRequestDto['transferAmounts'];
+  const persistedLightning = persistedTransfers.find((amount) => amount.method === 'Lightning');
+  expect(persistedLightning?.minFee).toBe(0);
+  const storedBtcAmount = persistedLightning?.assets.find((asset) => asset.asset === 'BTC')?.amount;
+  assertPositiveDecimalAmount(storedBtcAmount, 'persisted Lightning BTC transfer amount');
+}
+
 // ---------------------------------------------------------------------------
 // Minimal bech32 encoder (BIP-173), matching src/util/lnurl.ts's `Lnurl.encode` exactly
-// (HRP "LNURL", uppercased output). Used only to build an lnurl for a URL this harness's
-// browser can actually reach (http://api:3000/...) -- see the "self-built lnurl" tests below
-// for why the API's own lnurl (built from Config.url(), http://localhost:<port> under
-// ENVIRONMENT=loc) is not usable from inside the `tests` container.
+// (HRP "LNURL", uppercased output). Used to build deterministic LNURLs for API addresses
+// reachable from the browser container.
 // ---------------------------------------------------------------------------
 
 const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
@@ -217,6 +281,87 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByText('Payment routes', { exact: true }).first()).toBeVisible();
   });
 
+  test('pending POS payment remains owner-visible after its Sell route is deactivated and through terminal status', async () => {
+    const owner = await createUser({ tag: 'pl-pos-inactive-owner', language: 'EN', kycLevel: 30, completePersonalData: true });
+    const other = await createUser({ tag: 'pl-pos-inactive-other', language: 'EN', kycLevel: 30, completePersonalData: true });
+    const link = await createPaymentLink(owner.jwt, { tag: 'pl-pos-inactive', amount: 3, label: 'inactive-pos-till' });
+    if (!link.paymentId || !link.routeId) throw new Error('payment-link factory did not create a payment and Sell route');
+
+    // Clear the factory's fixture payment, then create the payable invoice through the real POS API.
+    await queryRows(`UPDATE payment_link_payment SET status = 'Completed' WHERE id = $1`, [link.paymentId]);
+    const externalId = `e2e-pos-inactive-${link.paymentLinkId}`;
+    const created = await apiPost<PaymentLinkDto>(
+      `paymentLink/payment?linkId=${link.paymentLinkId}`,
+      { amount: 19, currency: 'CHF', externalId },
+      { jwt: owner.jwt },
+    );
+    expect(created.payment?.status).toBe('Pending');
+    await waitForRow(
+      `SELECT id FROM payment_link_payment WHERE "linkId" = $1 AND "externalId" = $2 AND status = 'Pending'`,
+      [link.paymentLinkId, externalId],
+    );
+
+    // A historical terminal row with a larger id must not hide the still-payable pending row
+    // when the inactive-route owner list is assembled. The partial unique index permits this
+    // legacy-shaped state because only one row is Pending.
+    const currency = await queryOne<{ currencyId: number }>(
+      `SELECT "currencyId" FROM payment_link_payment WHERE "linkId" = $1 AND "externalId" = $2`,
+      [link.paymentLinkId, externalId],
+    );
+    if (!currency) throw new Error('Could not resolve payment currency for terminal shadow row');
+    const shadowRows = await queryRows<{ id: number }>(
+      `INSERT INTO payment_link_payment ("linkId", "uniqueId", status, amount, "currencyId", mode, "expiryDate", "txCount", "isConfirmed")
+       VALUES ($1, $2, 'Completed', 1, $3, 'Single', NOW() + INTERVAL '1 day', 0, false)
+       RETURNING id`,
+      [link.paymentLinkId, `plp-shadow-${link.paymentLinkId}`, currency.currencyId],
+    );
+    if (!shadowRows[0]) throw new Error('Could not create terminal shadow payment row');
+    trackRow('payment_link_payment', shadowRows[0].id);
+
+    // This is the existing merchant route update; it does not cancel an issued payment.
+    await apiPut<unknown>(`sell/${link.routeId}`, { active: false }, { jwt: owner.jwt });
+    const route = await waitForRow<{ active: boolean }>(`SELECT active FROM deposit_route WHERE id = $1`, [link.routeId]);
+    expect(route.active).toBe(false);
+
+    const listedRaw = await apiGet<PaymentLinkDto[] | PaymentLinkDto>('paymentLink', { jwt: owner.jwt });
+    const listed = Array.isArray(listedRaw) ? listedRaw : [listedRaw];
+    expect(
+      listed.some(
+        (item) =>
+          String(item.id) === String(link.paymentLinkId) &&
+          item.payment?.externalId === externalId &&
+          item.payment.status === 'Pending',
+      ),
+    ).toBe(true);
+
+    const exactPath = `paymentLink?linkId=${link.paymentLinkId}&externalPaymentId=${encodeURIComponent(externalId)}`;
+    const pending = await apiGet<PaymentLinkDto>(exactPath, { jwt: owner.jwt });
+    expect(pending.payment?.status).toBe('Pending');
+
+    let foreignStatus = 0;
+    await apiGet<unknown>(exactPath, { jwt: other.jwt, expectOk: false, onStatus: (status) => { foreignStatus = status; } });
+    expect(foreignStatus).toBe(404);
+
+    await queryRows(
+      `UPDATE payment_link_payment SET status = 'Completed' WHERE "linkId" = $1 AND "externalId" = $2`,
+      [link.paymentLinkId, externalId],
+    );
+    const completed = await apiGet<PaymentLinkDto>(exactPath, { jwt: owner.jwt });
+    expect(completed.payment?.status).toBe('Completed');
+
+    const terminalListRaw = await apiGet<PaymentLinkDto[] | PaymentLinkDto>('paymentLink', { jwt: owner.jwt });
+    const terminalList = Array.isArray(terminalListRaw) ? terminalListRaw : [terminalListRaw];
+    expect(terminalList.some((item) => String(item.id) === String(link.paymentLinkId))).toBe(false);
+
+    let inactiveChargeStatus = 0;
+    await apiPost<unknown>(
+      `paymentLink/payment?linkId=${link.paymentLinkId}`,
+      { amount: 20, currency: 'CHF', externalId: `${externalId}-retry` },
+      { jwt: owner.jwt, expectOk: false, onStatus: (status) => { inactiveChargeStatus = status; } },
+    );
+    expect(inactiveChargeStatus).toBe(404);
+  });
+
   test('/routes: buy, sell, payment link and pending payment appear; Create Payment Link stays hidden', async ({
     page,
   }) => {
@@ -295,7 +440,7 @@ test.describe('Payment links / routes / invoice', () => {
       .toBe('/');
   });
 
-  test('/pl: valid lightning param renders merchant display from a real payment link', async ({ page }) => {
+  test('/pl: invoice parameters render the issued payment and persisted quote', async ({ page }) => {
     const user = await createUser({ tag: 'pl-pay-view', language: 'EN', kycLevel: 30, completePersonalData: true });
     const externalId = 'e2e-pl-view-x';
     const pl = await createPaymentLink(user.jwt, {
@@ -305,14 +450,8 @@ test.describe('Payment links / routes / invoice', () => {
       externalId,
     });
 
-    // API contract check: GET /paymentLink must expose a real bech32 lnurl for the link (this is
-    // what the "Payment Links" list on /routes turns into the `?lightning=` param). Navigating the
-    // browser to that lnurl is exercised separately below (see the test "/pl: the real lightning=
-    // URL from GET /paymentLink now resolves through the tests-container forwarder"): the API bakes
-    // the lnurl from Config.url(), which under ENVIRONMENT=loc resolves to `http://localhost:<port>`
-    // (see api/src/config/config.ts `url()`) -- the tests image runs a socat forwarder on
-    // 127.0.0.1:3000 to the real api service, so the browser process, which runs inside that same
-    // container, resolves `localhost:3000` correctly too. Not a harness limitation anymore.
+    // The PaymentLink factory creates a tracked core Route relation while leaving its nullable
+    // label empty, matching a real Sell route without relying on an unavailable Lightning API path.
     const dto = await fetchPaymentLinkDto(user.jwt, pl.uniqueId, pl.paymentLinkId);
     expect(dto.lnurl, 'API must return a bech32 lnurl for the link').toBeTruthy();
 
@@ -327,21 +466,36 @@ test.describe('Payment links / routes / invoice', () => {
     // http://api:3000 in this harness). Matching externalId + amount + currency makes
     // PaymentLinkService.createInvoice return this exact existing link instead of creating a
     // new one (see payment-link.service.ts createInvoice `matchingLink` branch).
+    const payRequestResponsePromise = page.waitForResponse((response) => {
+      const { pathname } = new URL(response.url());
+      return response.request().method() === 'GET' && pathname.endsWith('/paymentLink/payment');
+    });
     await page.goto(`/pl?routeId=${pl.routeId}&externalId=${encodeURIComponent(externalId)}&amount=22&currency=CHF`);
-    await waitForPublicPath(page, '/pl');
+    const payRequestResponse = await payRequestResponsePromise;
+    const payRequestBody = await payRequestResponse.text();
+    expect(
+      payRequestResponse.ok(),
+      `Invoice pay request returned HTTP ${payRequestResponse.status()}: ${payRequestBody}`,
+    ).toBe(true);
+    const payRequest = JSON.parse(payRequestBody) as PaymentLinkPayRequestDto;
+    expect(payRequest.externalId).toBe(externalId);
+    expect(payRequest.mode).toBe('Multiple');
+    await assertRealLightningQuote(payRequest, pl.paymentLinkId, 22);
 
-    // The real, verified rendering in this harness: PaymentLinkService.createPayRequest finds
-    // the pending payment and builds a quote, but quote generation needs a live BTC transfer
-    // amount (GET .../paymentLink/payment returns 404 "No BTC transfer amount found" here,
-    // confirmed directly against the API) -- the exact "live price-based payment infos" gap
-    // documented in test-data.md (outbound HTTP is mocked under ENVIRONMENT=loc). The frontend
-    // still renders correctly for that response shape: no `quote` key and no "payment complete"
-    // message resolve to NoPaymentLinkPaymentStatus.NO_PAYMENT, and PaymentStatusTile shows its
-    // real "NO PAYMENT ACTIVE" copy -- screen-specific content proving /pl rendered.
-    await expect(page.getByText('NO PAYMENT ACTIVE', { exact: true })).toBeVisible({ timeout: 20000 });
-    await expect(page.getByText(/Tell the cashier that you want to pay with crypto/i)).toBeVisible();
+    // Browser response and persisted quote are the source of truth. The real quote now exposes a
+    // Pending payment with a positive BTC Lightning transfer amount; the public UI renders that
+    // amount and payment details instead of treating the pay request as absent.
+    await expect(page.getByText('Payment details', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('CHF 22.-', { exact: true })).toBeVisible();
+    await expect(page.getByText('NO PAYMENT ACTIVE', { exact: true })).toHaveCount(0);
+    // With a real quote, payment-link.screen renders the QR instruction before checking mode;
+    // the cashier copy belongs to the no-quote, non-PUBLIC branch.
+    await expect(
+      page.getByText('Scan the QR-Code with a compatible app to complete the payment.', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText(/Tell the cashier that you want to pay with crypto/i)).toHaveCount(0);
 
-    // The DB row is unaffected by the quote failure and remains the source of truth.
+    // The issued payment remains pending after the browser's real quote request.
     if (pl.paymentId) {
       const pay = await queryOne<{ amount: number; status: string }>(
         `SELECT amount, status FROM payment_link_payment WHERE id = $1`,
@@ -352,31 +506,42 @@ test.describe('Payment links / routes / invoice', () => {
     }
   });
 
-  test('/pl: the real lightning= URL from GET /paymentLink now resolves through the tests-container forwarder', async ({
+  test('/pl: the real lightning= URL from GET /paymentLink returns and renders its actual quote', async ({
     page,
   }) => {
-    // Previously fixme'd: LightningHelper.createLnurlp/createEncodedLnurlp build the lnurl from
-    // Config.url(), which under ENVIRONMENT=loc is hardcoded to `http://localhost:<port>`
-    // (api/src/config/config.ts `url()`) -- correct for a single-machine local dev setup, and
-    // unreachable from a browser in a separate container. The tests image now runs a socat
-    // forwarder on 127.0.0.1:3000 -> the real api service (commit "Forward localhost:3000 to the
-    // api service in the tests container"), so the browser process -- which runs inside that same
-    // container -- resolves `localhost:3000` correctly too. This is the actual, unmodified value
-    // GET /paymentLink hands out, exercised exactly as a real partner integration would use it
-    // (Lnurl.prependLnurl(link.lnurl) on /routes), not a self-built substitute.
+    // Exercise the actual LNURL returned by GET /paymentLink, as a partner would use it.
     const user = await createUser({ tag: 'pl-real-lnurl', language: 'EN', kycLevel: 30, completePersonalData: true });
-    const pl = await createPaymentLink(user.jwt, { tag: 'pl-real-lnurl', amount: 19, label: 'e2e-real-lnurl' });
+    const externalId = `e2e-real-lnurl-${randomBytes(6).toString('hex')}`;
+    const pl = await createPaymentLink(user.jwt, {
+      tag: 'pl-real-lnurl',
+      amount: 19,
+      label: 'e2e-real-lnurl',
+      externalId,
+    });
     const dto = await fetchPaymentLinkDto(user.jwt, pl.uniqueId, pl.paymentLinkId);
     expect(dto.lnurl, 'API must return a bech32 lnurl for the link').toBeTruthy();
 
+    const payRequestResponsePromise = page.waitForResponse((response) => {
+      const { pathname } = new URL(response.url());
+      return response.request().method() === 'GET' && pathname.endsWith(`/lnurlp/${pl.uniqueId}`);
+    });
     await page.goto(`/pl?lightning=${encodeURIComponent(dto.lnurl)}`);
-    await waitForPublicPath(page, '/pl');
+    const payRequestResponse = await payRequestResponsePromise;
+    const payRequestBody = await payRequestResponse.text();
+    expect(
+      payRequestResponse.ok(),
+      `LNURL pay request returned HTTP ${payRequestResponse.status()}: ${payRequestBody}`,
+    ).toBe(true);
+    const payRequest = JSON.parse(payRequestBody) as PaymentLinkPayRequestDto;
+    expect(payRequest.externalId).toBe(externalId);
+    await assertRealLightningQuote(payRequest, pl.paymentLinkId, 19);
 
-    // No "Failed to fetch" anymore -- the real lnurl resolves, and rendering lands on the same
-    // documented pricing boundary as the invoice-param test above (live BTC/Lightning pricing is
-    // unavailable under ENVIRONMENT=loc's mocked outbound HTTP, test-data.md), not a network error.
+    // The API response includes the real quote and positive BTC amount; the public page renders
+    // its requested amount and quote details instead of only proving that the forwarder answered.
     await expect(page.getByText('Failed to fetch', { exact: false })).toHaveCount(0);
-    await expect(page.getByText('NO PAYMENT ACTIVE', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('Payment details', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('CHF 19.-', { exact: true })).toBeVisible();
+    await expect(page.getByText('NO PAYMENT ACTIVE', { exact: true })).toHaveCount(0);
 
     if (pl.paymentId) {
       const pay = await queryOne<{ amount: number; status: string }>(
@@ -421,8 +586,8 @@ test.describe('Payment links / routes / invoice', () => {
     // - The Sell route's optional `Route.label` relation (Sell.route, nullable: true in
     //   sell.entity.ts) must be a real row: PaymentLinkService.createDefaultErrorResponse reads
     //   `paymentLink.route.route.label` with no null guard, so any Sell route without one --
-    //   which includes every route the createSell/createPaymentLink factories produce, since
-    //   neither sets it -- crashes any payment-link error response (not assigned / payment
+    //   which includes synthetic routes with no core Route row -- crashes any payment-link error
+    //   response (not assigned / payment
     //   complete / no pending payment) with `500 Cannot read properties of null (reading
     //   'label')` instead of the intended 4xx. That looks like a genuine null-safety gap in the
     //   application, not a harness limitation; a base `route` row is inserted here purely to
@@ -434,9 +599,7 @@ test.describe('Payment links / routes / invoice', () => {
     //   `paymentLinksName` is set to the same value the form will submit so the lookup finds
     //   this test's own route.
     //
-    // Reaching the screen needs a `lightning=` URL reachable from this harness's browser (the
-    // API's own lnurl embeds Config.url() = http://localhost:<port> under ENVIRONMENT=loc,
-    // unreachable from the separate `tests` container -- see the /pl fixme test above). Since
+    // Reaching the screen needs a `lightning=` URL reachable from this harness's browser. Since
     // this row is inserted directly, its uniqueId is fully controlled, so it is given the `pl_`
     // prefix the GET /v1/lnurlp/:id forwarder requires (LnUrlForwardService.PAYMENT_LINK_PREFIX)
     // and bech32-encoded against http://api:3000, which the tests container can reach.
@@ -584,25 +747,102 @@ test.describe('Payment links / routes / invoice', () => {
     await expect(page.getByRole('button', { name: 'Authenticate', exact: true })).toBeVisible({ timeout: 20000 });
   });
 
-  test.fixme('/pl/pos: with a real access key shows Create Payment and proves a UI-driven payment', async () => {
-    // Re-checked after the tests-container forwarder (commit "Forward localhost:3000 to the
-    // api service in the tests container") and the price_rule freshness fix (commit "Give
-    // staff sessions clearance and seed the data the API expects to already exist") -- both
-    // landed, but this specific gap is unrelated to either and is still open, reproduced fresh
-    // directly against the API with curl on this run: `GET /paymentLink/payment` for a route
-    // with a real Pending payment still answers `404 No BTC transfer amount found`, and
-    // price_rule rows carry the container's own boot timestamp (not stale), so the remaining
-    // blocker is not price staleness -- it looks like Lightning/BTC quote generation itself has
-    // no live counterpart under ENVIRONMENT=loc's mocked outbound HTTP, independent of the
-    // price_rule table.
-    //
-    // PaymentPosContext.checkAuthentication calls GET paymentLink/history with
-    // `externalLinkId: payRequest?.externalId`. `externalId` is only ever present on the
-    // SUCCESS payRequest DTO (PaymentLinkService.createPayRequest, built after
-    // paymentQuoteService.createQuote succeeds) -- the 404 error-shaped response this harness
-    // gets instead has no `externalId` field at all, so the request is sent as literally
-    // `externalLinkId=undefined` and never authenticates. The reachable unauthenticated state
-    // is covered by the passing test above instead.
+  test('/pl/pos: fresh owner-created key authenticates and creates a pending payment with a real quote', async ({ page }) => {
+    const user = await createUser({ tag: 'pl-pos-authenticated', language: 'EN', kycLevel: 30, completePersonalData: true });
+    const fixtureSuffix = randomBytes(6).toString('hex');
+    const linkExternalId = `e2e-pos-auth-${fixtureSuffix}`;
+    const link = await createPaymentLink(user.jwt, {
+      tag: `pl-pos-auth-${fixtureSuffix}`,
+      amount: 15,
+      label: `e2e-pos-auth-${fixtureSuffix}`,
+      externalId: linkExternalId,
+    });
+    if (!link.paymentId || !link.routeId) throw new Error('POS payment-link factory did not create its fixture payment');
+
+    const accountConfigBefore = await apiGet<{ accessKey?: string }>('paymentLink/config', { jwt: user.jwt });
+    expect(accountConfigBefore.accessKey).toBeUndefined();
+
+    // Ask the real owner endpoint to generate a fresh key. PaymentLink.configObj merges the
+    // account-level paymentLinksConfigObj with link config, and access-key lookup checks this
+    // merged config during POS authentication.
+    const posLink = await apiPut<{ url: string }>(`paymentLink/pos?linkId=${link.paymentLinkId}`, {}, { jwt: user.jwt });
+    const posUrl = new URL(posLink.url);
+    const lightning = posUrl.searchParams.get('lightning');
+    const posKey = posUrl.searchParams.get('key');
+    expect(posUrl.pathname).toMatch(/\/pl\/pos$/);
+    expect(lightning).toBeTruthy();
+    expect(posKey).toBeTruthy();
+    const accountConfigAfter = await apiGet<{ accessKey?: string }>('paymentLink/config', { jwt: user.jwt });
+    expect(accountConfigAfter.accessKey).toBe(posKey);
+    const linkConfig = await queryOne<{ config: string | null }>(`SELECT config FROM payment_link WHERE id = $1`, [
+      link.paymentLinkId,
+    ]);
+    expect(JSON.parse(linkConfig?.config ?? '{}').accessKeys).toBeUndefined();
+
+    // The fixture begins with a pending payment; make it terminal so POS must authenticate into
+    // the Create Payment form instead of the pending-payment controls.
+    await queryRows(`UPDATE payment_link_payment SET status = 'Cancelled' WHERE id = $1 RETURNING id`, [link.paymentId]);
+    const oldPayment = await waitForRow<{ status: string }>(
+      `SELECT status FROM payment_link_payment WHERE id = $1`,
+      [link.paymentId],
+    );
+    expect(oldPayment.status).toBe('Cancelled');
+
+    const initialPayRequestPromise = page.waitForResponse((response) => {
+      const { pathname } = new URL(response.url());
+      return response.request().method() === 'GET' && pathname.endsWith(`/lnurlp/${link.uniqueId}`);
+    });
+    const authenticationResponsePromise = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        response.request().method() === 'GET' &&
+        url.pathname.endsWith('/paymentLink/history') &&
+        url.searchParams.get('key') === posKey
+      );
+    });
+    await page.goto(`/pl/pos?lightning=${encodeURIComponent(lightning as string)}&key=${encodeURIComponent(posKey as string)}`);
+    const initialPayRequestResponse = await initialPayRequestPromise;
+    expect(initialPayRequestResponse.status()).toBe(404);
+    const noPending = (await initialPayRequestResponse.json()) as { externalId?: string; statusCode?: number };
+    expect(noPending.externalId).toBeTruthy();
+    expect(noPending.statusCode).toBe(404);
+    const authenticationResponse = await authenticationResponsePromise;
+    const authenticationBody = await authenticationResponse.text();
+    expect(
+      authenticationResponse.ok(),
+      `fresh owner-generated key must authenticate by externalLinkId; HTTP ${authenticationResponse.status()}: ${authenticationBody}`,
+    ).toBe(true);
+    await expect(page.getByRole('button', { name: 'Create Payment', exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('button', { name: 'Authenticate', exact: true })).toHaveCount(0);
+
+    const createPaymentResponsePromise = page.waitForResponse((response) => {
+      const { pathname } = new URL(response.url());
+      return response.request().method() === 'POST' && pathname.endsWith('/paymentLink/payment');
+    });
+    const payRequestResponsePromise = page.waitForResponse((response) => {
+      const { pathname } = new URL(response.url());
+      return response.request().method() === 'GET' && pathname.endsWith(`/lnurlp/${link.uniqueId}`);
+    });
+    // StyledInput renders a visible label but does not associate it with the input via htmlFor.
+    // The numeric input is therefore exposed by its native spinbutton role, not getByLabel().
+    await page.getByRole('spinbutton').fill('19');
+    await page.getByRole('button', { name: 'Create Payment', exact: true }).click();
+
+    const createPaymentResponse = await createPaymentResponsePromise;
+    expect(createPaymentResponse.ok(), `POS payment POST returned HTTP ${createPaymentResponse.status()}`).toBe(true);
+    const createdLink = (await createPaymentResponse.json()) as PaymentLinkDto;
+    expect(createdLink.payment?.status).toBe('Pending');
+    expect(Number(createdLink.payment?.amount)).toBe(19);
+    expect(createdLink.payment?.externalId).toBeTruthy();
+
+    const payRequestResponse = await payRequestResponsePromise;
+    expect(payRequestResponse.ok(), `POS pay request returned HTTP ${payRequestResponse.status()}`).toBe(true);
+    const payRequest = (await payRequestResponse.json()) as PaymentLinkPayRequestDto;
+    expect(payRequest.externalId).toBe(linkExternalId);
+    await assertRealLightningQuote(payRequest, link.paymentLinkId, 19);
+
+    await expect(page.getByText('CHF 19.-', { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
   });
 
   // =========================================================================

@@ -345,6 +345,14 @@ export const EVM_DERIVATION_PATH_WALLET2 = "m/44'/60'/0'/0/0";
 export const EVM_DERIVATION_PATH_WALLET3 = "m/44'/60'/0'/0/1";
 
 /**
+ * BIP-44 derivation path for EVM Wallet 4 (index 2), reserved for isolated App 2.0 E2E sessions.
+ */
+export const EVM_DERIVATION_PATH_WALLET4 = "m/44'/60'/0'/0/2";
+
+/** BIP-44 derivation path for EVM Wallet 5 (index 3), reserved for isolated E2E sessions. */
+export const EVM_DERIVATION_PATH_WALLET5 = "m/44'/60'/0'/0/3";
+
+/**
  * Get test wallet addresses dynamically from seed
  * Returns addresses for Wallet 1 (default) and Wallet 2 (BIP-44 derived)
  */
@@ -396,6 +404,16 @@ export function getWallet2FromMnemonic(mnemonic: string): HDNodeWallet {
  */
 export async function createTestCredentialsWallet3(mnemonic: string): Promise<TestCredentials> {
   return createTestCredentials(mnemonic, EVM_DERIVATION_PATH_WALLET3);
+}
+
+/** Creates EVM credentials for Wallet 4 (index 2) for an isolated test account. */
+export async function createTestCredentialsWallet4(mnemonic: string): Promise<TestCredentials> {
+  return createTestCredentials(mnemonic, EVM_DERIVATION_PATH_WALLET4);
+}
+
+/** Creates EVM credentials for Wallet 5 (index 3) for an isolated test account. */
+export async function createTestCredentialsWallet5(mnemonic: string): Promise<TestCredentials> {
+  return createTestCredentials(mnemonic, EVM_DERIVATION_PATH_WALLET5);
 }
 
 // =============================================================================

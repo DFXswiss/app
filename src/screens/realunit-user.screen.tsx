@@ -9,6 +9,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { BalanceChart, BalanceMetric } from 'src/components/realunit/balance-chart';
+import { ErrorHint } from 'src/components/error-hint';
 import { ButtonGroup, ButtonGroupSize } from 'src/components/safe/button-group';
 import { useRealunitContext } from 'src/contexts/realunit.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
@@ -24,8 +25,20 @@ export default function RealunitUserScreen(): JSX.Element {
   const { translate } = useSettingsContext();
   const { copy } = useClipboard();
   const { address } = useParams<{ address: string }>();
-  const { accountSummary, history, isLoading, fetchAccountSummary, fetchAccountHistory, tokenPrice, fetchTokenPrice } =
-    useRealunitContext();
+  const {
+    accountSummary,
+    history,
+    isLoading,
+    accountSummaryError,
+    historyLoading,
+    historyError,
+    fetchAccountSummary,
+    fetchAccountHistory,
+    tokenPrice,
+    tokenPriceLoading,
+    tokenPriceError,
+    fetchTokenPrice,
+  } = useRealunitContext();
 
   const [metric, setMetric] = useState<BalanceMetric>(BalanceMetric.REALU);
 
@@ -54,15 +67,47 @@ export default function RealunitUserScreen(): JSX.Element {
     () =>
       accountSummary &&
       (metric === BalanceMetric.CHF
-        ? formatCurrency(Number(accountSummary.balance) * (tokenPrice?.chf ?? 0), 2, 2)
+        ? tokenPrice
+          ? formatCurrency(Number(accountSummary.balance) * tokenPrice.chf, 2, 2)
+          : undefined
         : accountSummary.balance),
     [accountSummary, metric, tokenPrice],
   );
+  const tokenPriceFailureVisible = metric === BalanceMetric.CHF && tokenPriceError;
 
   return (
     <>
       {isLoading && !accountSummary ? (
         <StyledLoadingSpinner size={SpinnerSize.LG} />
+      ) : accountSummaryError ? (
+        <div>
+          <ErrorHint message={translate('screens/realunit', 'Failed to load account summary.')} />
+          <StyledButton
+            label={translate('general/actions', 'Retry')}
+            onClick={() => address && fetchAccountSummary(address)}
+            width={StyledButtonWidth.MIN}
+          />
+          {historyError && (
+            <>
+              <ErrorHint message={translate('screens/realunit', 'Failed to load transaction history.')} />
+              <StyledButton
+                label={translate('general/actions', 'Retry')}
+                onClick={() => address && fetchAccountHistory(address)}
+                width={StyledButtonWidth.MIN}
+              />
+            </>
+          )}
+          {tokenPriceError && (
+            <>
+              <ErrorHint message={translate('screens/realunit', 'Failed to load token price.')} />
+              <StyledButton
+                label={translate('general/actions', 'Retry')}
+                onClick={fetchTokenPrice}
+                width={StyledButtonWidth.MIN}
+              />
+            </>
+          )}
+        </div>
       ) : !accountSummary ? (
         <p className="text-dfxGray-700">{translate('screens/realunit', 'No data available')}</p>
       ) : (
@@ -123,7 +168,10 @@ export default function RealunitUserScreen(): JSX.Element {
               <div className="shadow-card rounded-xl">
                 <div id="chart-timeline" className="relative">
                   <div className="p-2 gap-2 flex flex-col items-start">
-                    <div className="relative w-full" style={{ height: '350px' }}>
+                    <div
+                      className="relative w-full"
+                      style={tokenPriceFailureVisible ? undefined : { height: '350px' }}
+                    >
                       <div className="w-full flex flex-col gap-3 text-left leading-none z-10">
                         <h2 className="text-dfxBlue-800">{translate('screens/realunit', 'Balance History')}</h2>
                         <p className="text-dfxGray-700">{translate('screens/realunit', 'Current balance')}</p>
@@ -136,14 +184,29 @@ export default function RealunitUserScreen(): JSX.Element {
                             size={ButtonGroupSize.SM}
                           />
                           <div className="text-dfxBlue-800">
-                            <span className="text-lg font-bold">{currentBalance}</span>{' '}
-                            <span className="text-base">{metric === BalanceMetric.CHF ? 'CHF' : 'REALU'}</span>
+                            {tokenPriceFailureVisible ? (
+                              <div>
+                                <ErrorHint message={translate('screens/realunit', 'Failed to load token price.')} />
+                                <StyledButton
+                                  label={translate('general/actions', 'Retry')}
+                                  onClick={fetchTokenPrice}
+                                  width={StyledButtonWidth.MIN}
+                                />
+                              </div>
+                            ) : tokenPriceLoading && metric === BalanceMetric.CHF ? (
+                              <StyledLoadingSpinner size={SpinnerSize.SM} />
+                            ) : (
+                              <>
+                                <span className="text-lg font-bold">{currentBalance}</span>{' '}
+                                <span className="text-base">{metric === BalanceMetric.CHF ? 'CHF' : 'REALU'}</span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
-                      <div className="absolute inset-0">
+                      <div className={tokenPriceFailureVisible ? 'relative mt-4' : 'absolute inset-0'}>
                         <BalanceChart
-                          historicalBalances={accountSummary.historicalBalances ?? []}
+                          historicalBalances={accountSummary.historicalBalances}
                           metric={metric}
                           isLoading={false}
                         />
@@ -154,12 +217,24 @@ export default function RealunitUserScreen(): JSX.Element {
               </div>
             )}
 
-            {history && (
+            {historyLoading && !history ? (
+              <StyledLoadingSpinner size={SpinnerSize.LG} />
+            ) : historyError ? (
+              <div>
+                <h2 className="text-dfxGray-700 mb-4">{translate('screens/realunit', 'Transaction History')}</h2>
+                <ErrorHint message={translate('screens/realunit', 'Failed to load transaction history.')} />
+                <StyledButton
+                  label={translate('general/actions', 'Retry')}
+                  onClick={() => address && fetchAccountHistory(address)}
+                  width={StyledButtonWidth.MIN}
+                />
+              </div>
+            ) : history ? (
               <div>
                 <h2 className="text-dfxGray-700 mb-4">
                   {translate('screens/realunit', 'Transaction History')} ({history.totalCount ?? 0})
                 </h2>
-                {isLoading ? (
+                {historyLoading ? (
                   <StyledLoadingSpinner size={SpinnerSize.LG} />
                 ) : history.history.length > 0 ? (
                   <>
@@ -181,64 +256,71 @@ export default function RealunitUserScreen(): JSX.Element {
                         </tr>
                       </thead>
                       <tbody>
-                        {history.history.map((event, index) => (
-                          <tr
-                            key={index}
-                            className="border-b border-dfxGray-300 transition-colors hover:bg-dfxGray-300"
-                          >
-                            <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
-                              {formatSwissDateTimeWithSeconds(event.timestamp)}
-                            </td>
-                            <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{event.eventType}</td>
-                            <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
-                              {event.transfer && (
-                                <div className="flex flex-col gap-1">
+                        {history.history.map((event, index) => {
+                          const txHash = event.txHash;
+                          return (
+                            <tr
+                              key={index}
+                              className="border-b border-dfxGray-300 transition-colors hover:bg-dfxGray-300"
+                            >
+                              <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                                {formatSwissDateTimeWithSeconds(event.timestamp)}
+                              </td>
+                              <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">{event.eventType}</td>
+                              <td className="px-4 py-3 text-left text-sm text-dfxBlue-800">
+                                {event.transfer && (
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold">From:</span>
+                                      <span>{blankedAddress(event.transfer.from ?? '', { displayLength: 22 })}</span>
+                                      <CopyButton
+                                        color={IconColor.GRAY}
+                                        onCopy={() => copy(event.transfer?.from ?? '')}
+                                      />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold">To:</span>
+                                      <span>{blankedAddress(event.transfer.to ?? '', { displayLength: 22 })}</span>
+                                      <CopyButton
+                                        color={IconColor.GRAY}
+                                        onCopy={() => copy(event.transfer?.to ?? '')}
+                                      />
+                                    </div>
+                                    <div>
+                                      <span className="font-bold">Value:</span>{' '}
+                                      {Number(event.transfer.value).toFixed(2)}
+                                    </div>
+                                  </div>
+                                )}
+                                {event.approval && (
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2">
+                                      <span>Spender:</span>
+                                      <span>{blankedAddress(event.approval.spender ?? '', { displayLength: 22 })}</span>
+                                      <CopyButton
+                                        color={IconColor.GRAY}
+                                        onCopy={() => copy(event.approval?.spender ?? '')}
+                                      />
+                                    </div>
+                                    <div>Value: {Number(event.approval.value).toFixed(2)}</div>
+                                  </div>
+                                )}
+                                {event.tokensDeclaredInvalid && `Amount: ${event.tokensDeclaredInvalid.amount}`}
+                                {event.addressTypeUpdate && `Type: ${event.addressTypeUpdate.addressType}`}
+                              </td>
+                              <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 break-all">
+                                {txHash ? (
                                   <div className="flex items-center gap-2">
-                                    <span className="font-bold">From:</span>
-                                    <span>{blankedAddress(event.transfer.from, { displayLength: 22 })}</span>
-                                    <CopyButton
-                                      color={IconColor.GRAY}
-                                      onCopy={() => copy(event.transfer?.from ?? '')}
-                                    />
+                                    <span>{blankedAddress(txHash, { displayLength: 22 })}</span>
+                                    <CopyButton color={IconColor.GRAY} onCopy={() => copy(txHash)} />
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-bold">To:</span>
-                                    <span>{blankedAddress(event.transfer.to, { displayLength: 22 })}</span>
-                                    <CopyButton color={IconColor.GRAY} onCopy={() => copy(event.transfer?.to ?? '')} />
-                                  </div>
-                                  <div>
-                                    <span className="font-bold">Value:</span> {Number(event.transfer.value).toFixed(2)}
-                                  </div>
-                                </div>
-                              )}
-                              {event.approval && (
-                                <div className="flex flex-col gap-1">
-                                  <div className="flex items-center gap-2">
-                                    <span>Spender:</span>
-                                    <span>{blankedAddress(event.approval.spender, { displayLength: 22 })}</span>
-                                    <CopyButton
-                                      color={IconColor.GRAY}
-                                      onCopy={() => copy(event.approval?.spender ?? '')}
-                                    />
-                                  </div>
-                                  <div>Value: {Number(event.approval.value).toFixed(2)}</div>
-                                </div>
-                              )}
-                              {event.tokensDeclaredInvalid && `Amount: ${event.tokensDeclaredInvalid.amount}`}
-                              {event.addressTypeUpdate && `Type: ${event.addressTypeUpdate.addressType}`}
-                            </td>
-                            <td className="px-4 py-3 text-left text-sm text-dfxBlue-800 break-all">
-                              {event.txHash ? (
-                                <div className="flex items-center gap-2">
-                                  <span>{blankedAddress(event.txHash, { displayLength: 22 })}</span>
-                                  <CopyButton color={IconColor.GRAY} onCopy={() => copy(event.txHash ?? '')} />
-                                </div>
-                              ) : (
-                                '-'
-                              )}
-                            </td>
-                          </tr>
-                        ))}
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
 
@@ -246,13 +328,13 @@ export default function RealunitUserScreen(): JSX.Element {
                       <StyledButton
                         label={translate('general/actions', 'Previous')}
                         onClick={() => changePage(PaginationDirection.PREV)}
-                        disabled={!history.pageInfo.hasPreviousPage}
+                        disabled={!history.pageInfo.hasPreviousPage || historyLoading}
                         width={StyledButtonWidth.MIN}
                       />
                       <StyledButton
                         label={translate('general/actions', 'Next')}
                         onClick={() => changePage(PaginationDirection.NEXT)}
-                        disabled={!history.pageInfo.hasNextPage}
+                        disabled={!history.pageInfo.hasNextPage || historyLoading}
                         width={StyledButtonWidth.MIN}
                       />
                     </div>
@@ -261,7 +343,7 @@ export default function RealunitUserScreen(): JSX.Element {
                   <p className="text-dfxGray-700">{translate('screens/realunit', 'No transactions found')}</p>
                 )}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}
