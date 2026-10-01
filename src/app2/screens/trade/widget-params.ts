@@ -227,10 +227,8 @@ export function appendCompletionPath(
     Object.entries(extra).forEach(([key, val]) => parsed.searchParams.set(key, val));
   }
   if (parsed.origin === 'null') {
-    const pathname = parsed.pathname ? parsed.pathname : '//';
-    const next = new URL(adaptPath(`${parsed.protocol}${pathname}`, kind));
-    parsed.searchParams.forEach((val, key) => next.searchParams.set(key, val));
-    return next;
+    // Opaque paths cannot be assigned through URL.pathname; keep the serialized authority too.
+    return new URL(adaptPath(parsed.href.split(/[?#]/)[0], kind) + parsed.search + parsed.hash);
   }
   parsed.pathname = adaptPath(parsed.pathname, kind);
   return parsed;

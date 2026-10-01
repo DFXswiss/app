@@ -663,6 +663,7 @@ export function WalletSessionProvider({ children }: PropsWithChildren): JSX.Elem
   const outerSearch = useOuterSearch();
   const logoutSession = useCallback(async () => {
     lastAppliedCredentialsRef.current = {};
+    sessionAuthorityRef.current = undefined;
     await libLogout();
   }, [libLogout]);
   // Per-attempt cancellation: `attemptIdRef` invalidates whatever

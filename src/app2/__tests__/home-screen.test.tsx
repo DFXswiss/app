@@ -797,7 +797,8 @@ describe('HomeScreen', () => {
     expect(screen.getByTestId('trade-cta')).toBeDisabled();
   });
 
-  it('keeps an unresolved request locked and provides no new-payment escape hatch', async () => {
+  // Status responses are mocked: these tests do not establish the backend's claim-creation guarantees.
+  it('unlocks an interrupted payment after a 404 status check and retries with a new request id', async () => {
     seedDefaultMarket();
     mockReceiveForBuy.mockRejectedValueOnce(new Error('pay-down'));
     mockGetPaymentInfoRequestStatus.mockRejectedValueOnce(new ApiException(404, 'ClaimNotFound', 'NotFound'));
@@ -809,15 +810,102 @@ describe('HomeScreen', () => {
     const dialog = await screen.findByRole('dialog', {
       name: /complete your purchase|kauf abschliessen|completa l.acquisto|finalise ton achat/i,
     });
+    const firstRequestId = mockReceiveForBuy.mock.calls[0][0].clientRequestId;
     fireEvent.click(within(dialog).getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
     await settleQuote();
     await waitFor(() => expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalled());
     expect(mockReceiveForBuy).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('pending-payment-recovery')).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('app2:pending-payment-request:7')).toBeNull();
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).not.toBeDisabled();
+    expect(screen.getByRole('tab', { name: /sell|verkaufen/i })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /change|wechseln/i })).not.toBeDisabled();
+    expect(screen.getByTestId('trade-cta')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    expect(mockReceiveForBuy).toHaveBeenCalledTimes(2);
+    expect(mockReceiveForBuy.mock.calls[1][0].clientRequestId).not.toBe(firstRequestId);
+    expect(sessionStorage.getItem('app2:pending-payment-request:7')).toContain(
+      mockReceiveForBuy.mock.calls[1][0].clientRequestId,
+    );
+  });
+
+  it('unlocks a missing persisted claim on mount without submitting a payment', async () => {
+    seedDefaultMarket();
+    const requestId = 'cdab92dc-8f3f-4a90-bb37-a7026e12a9fa';
+    sessionStorage.setItem('app2:pending-payment-request:7', JSON.stringify({ requestId, mode: 'buy' }));
+    mockGetPaymentInfoRequestStatus.mockRejectedValueOnce(new ApiException(404, 'ClaimNotFound', 'NotFound'));
+    renderHome();
+    await settleQuote();
+    expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalledWith(requestId, 'Buy');
+    expect(sessionStorage.getItem('app2:pending-payment-request:7')).toBeNull();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('pending-payment-recovery')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /sell|verkaufen/i })).not.toBeDisabled();
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await settleQuote();
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    expect(mockReceiveForBuy).toHaveBeenCalledTimes(1);
+    expect(mockReceiveForBuy.mock.calls[0][0].clientRequestId).not.toBe(requestId);
+  });
+
+  it('unlocks a missing claim from the recovery box after an unavailable status lookup', async () => {
+    seedDefaultMarket();
+    const requestId = 'cdab92dc-8f3f-4a90-bb37-a7026e12a9fa';
+    sessionStorage.setItem('app2:pending-payment-request:7', JSON.stringify({ requestId, mode: 'buy' }));
+    mockGetPaymentInfoRequestStatus
+      .mockRejectedValueOnce(new ApiException(503, 'status unavailable'))
+      .mockRejectedValueOnce(new ApiException(404, 'ClaimNotFound', 'NotFound'));
+    renderHome();
+    const dialog = await screen.findByRole('dialog', { name: /existing payment request|bestehende zahlungsanfrage/i });
+    expect(within(dialog).getByText(/unknown|unbekannt/i)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: /close/i }));
-    expect(screen.getByText(/state is not confirmed|status ist nicht bestätigt/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /start a separate payment|separate zahlung starten/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /check request status|anfrage-status prüfen/i }));
+    await settleQuote();
+    expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('pending-payment-recovery')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).not.toBeDisabled();
+    expect(sessionStorage.getItem('app2:pending-payment-request:7')).toBeNull();
+    expect(mockReceiveForBuy).not.toHaveBeenCalled();
+  });
+
+  it('keeps an interrupted request locked when a manual status check fails without a 404', async () => {
+    seedDefaultMarket();
+    mockReceiveForBuy.mockRejectedValueOnce(new Error('pay-down'));
+    mockGetPaymentInfoRequestStatus.mockRejectedValueOnce(new ApiException(503, 'status unavailable'));
+    renderHome();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '100' } });
+    await settleQuote();
+    fireEvent.click(screen.getByTestId('trade-cta'));
+    await settleQuote();
+    const dialog = await screen.findByRole('dialog', {
+      name: /complete your purchase|kauf abschliessen|completa l.acquisto|finalise ton achat/i,
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
+    await settleQuote();
+    expect(within(dialog).getByText(/unknown|unbekannt/i)).toBeInTheDocument();
     expect(screen.getByTestId('trade-cta')).toBeDisabled();
+    expect(mockReceiveForBuy).toHaveBeenCalledTimes(1);
     expect(sessionStorage.getItem('app2:pending-payment-request:7')).toContain('requestId');
+  });
+
+  it('keeps a missing claim locked when removing its recovery record fails', async () => {
+    seedDefaultMarket();
+    const requestId = 'cdab92dc-8f3f-4a90-bb37-a7026e12a9fa';
+    sessionStorage.setItem('app2:pending-payment-request:7', JSON.stringify({ requestId, mode: 'buy' }));
+    mockGetPaymentInfoRequestStatus.mockRejectedValueOnce(new ApiException(404, 'ClaimNotFound', 'NotFound'));
+    jest.spyOn(Storage.prototype, 'removeItem').mockImplementationOnce(() => {
+      throw new Error('storage denied');
+    });
+    renderHome();
+    const dialog = await screen.findByRole('dialog', { name: /existing payment request|bestehende zahlungsanfrage/i });
+    expect(within(dialog).getByText(/unknown|unbekannt/i)).toBeInTheDocument();
+    expect(screen.getByTestId('trade-cta')).toBeDisabled();
+    expect(sessionStorage.getItem('app2:pending-payment-request:7')).toContain(requestId);
   });
 
   it('rotates the request id only after the explicit EmailRequired gate is cleared', async () => {
@@ -899,7 +987,7 @@ describe('HomeScreen', () => {
     expect(screen.queryByText('old-account-claim')).not.toBeInTheDocument();
   });
 
-  it('drops a late failed pre-claim status check after the API account changes', async () => {
+  it.each([404, 503])('drops a late %s pre-claim status check after the API account changes', async (status) => {
     seedDefaultMarket();
     mockReceiveForBuy.mockRejectedValueOnce(new ApiException(400, 'EmailRequired', 'EmailRequired'));
     let rejectStatus!: (error: unknown) => void;
@@ -917,7 +1005,7 @@ describe('HomeScreen', () => {
     await waitFor(() => expect(mockGetPaymentInfoRequestStatus).toHaveBeenCalledTimes(1));
     mockApiAccount = 8;
     view.rerender(<LanguageProvider><ToastProvider><HomeScreen /></ToastProvider></LanguageProvider>);
-    await act(async () => rejectStatus(new ApiException(404, 'ClaimNotFound', 'NotFound')));
+    await act(async () => rejectStatus(new ApiException(status, 'old-account-status')));
     expect(mockReceiveForBuy).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('dialog', { name: /complete your purchase|kauf abschliessen/i })).not.toBeInTheDocument();
   });

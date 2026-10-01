@@ -54,6 +54,8 @@ jest.mock('@dfx.swiss/react', () => ({
   PersonalIbanProvider: { FRICK: 'Frick', YAPEAL: 'Yapeal' },
   VirtualIbanStatus: { ACTIVE: 'Active' },
   TransactionError: { AMOUNT_TOO_LOW: 'AmountTooLow' },
+  // SDK error identity is simulated for quote retries; this does not exercise real HTTP error parsing.
+  ApiException: class ApiException extends Error {},
   BuyUrl: { quote: 'buy/quote' },
   SellUrl: { quote: 'sell/quote' },
   SwapUrl: { quote: 'swap/quote' },
@@ -153,6 +155,12 @@ function renderHome() {
       </ToastProvider>
     </LanguageProvider>,
   );
+}
+
+function withinAmountPanel(input: HTMLElement) {
+  const panel = input.parentElement?.parentElement;
+  if (!panel) throw new Error('Amount input panel not found');
+  return within(panel);
 }
 
 async function settleQuote() {
@@ -454,6 +462,62 @@ describe('Home partner widget params', () => {
     expect(paymentInfo).not.toHaveProperty('targetAmount');
   });
 
+  // Quote fixtures exercise panel state only; they do not verify live pricing or API validation.
+  it.each([0, 0.00001])('shows target-mode AmountTooLow in the pay panel with estimate %s', async (estimate) => {
+    setParams('?amount-out=0.00001');
+    mockCall.mockResolvedValue({
+      ...validQuote,
+      amount: 0.5,
+      estimatedAmount: estimate,
+      isValid: false,
+      error: 'AmountTooLow',
+    });
+    renderHome();
+    await settleQuote();
+    const pay = screen.getByRole('textbox', { name: /amount you pay/i });
+    const receive = screen.getByRole('textbox', { name: /amount you receive/i });
+    expect(withinAmountPanel(pay).getByText(/^Min/)).toHaveTextContent(/1/);
+    expect(pay).toHaveValue('—');
+    expect(withinAmountPanel(receive).queryByText(/^Min/)).not.toBeInTheDocument();
+    expect(receive).toHaveValue('0.00001');
+    expect(screen.getByTestId('trade-cta')).toBeDisabled();
+    expect(screen.queryByText(/refreshes in|aktualisiert in|aggiorna tra|actualisé dans/i)).not.toBeInTheDocument();
+  });
+
+  it('retries a failed target-mode quote from the pay panel with the same target amount', async () => {
+    setParams('?amount-out=0.01');
+    mockCall.mockRejectedValue(new Error('quote unavailable'));
+    renderHome();
+    await settleQuote();
+    const pay = screen.getByRole('textbox', { name: /amount you pay/i });
+    const payPanel = withinAmountPanel(pay);
+    expect(payPanel.getByText(/quote unavailable|kurs nicht|quotazione non|cotation indisponible/i)).toBeInTheDocument();
+    expect(pay).toHaveValue('—');
+    expect(screen.getByRole('textbox', { name: /amount you receive/i })).toHaveValue('0.01');
+    expect(screen.getByTestId('trade-cta')).toBeDisabled();
+
+    mockCall.mockResolvedValue(validQuote);
+    mockCall.mockClear();
+    fireEvent.click(payPanel.getByRole('button', { name: /retry|erneut|riprova|réessayer/i }));
+    await settleQuote();
+    expect(mockCall).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ targetAmount: 0.01 }) }),
+    );
+    expect(pay).toHaveValue('100');
+    expect(payPanel.queryByRole('button', { name: /retry|erneut|riprova|réessayer/i })).not.toBeInTheDocument();
+    expect(payPanel.getByText(/refreshes in|aktualisiert in|aggiorna tra|actualisé dans/i)).toBeInTheDocument();
+    expect(screen.getByTestId('trade-cta')).not.toBeDisabled();
+  });
+
+  it('shows the target-mode loading state in pay while retaining the entered receive amount', async () => {
+    setParams('?amount-out=0.01');
+    mockCall.mockImplementationOnce(() => new Promise(() => undefined));
+    renderHome();
+    await settleQuote();
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('…');
+    expect(screen.getByRole('textbox', { name: /amount you receive/i })).toHaveValue('0.01');
+  });
+
   it('switches amount-out Buy back to target mode when the editable receive amount changes', async () => {
     setParams('?amount-out=0.01');
     renderHome();
@@ -548,6 +612,78 @@ describe('Home partner widget params', () => {
     mockCall.mockClear();
     fireEvent.click(screen.getByRole('button', { name: /select receive asset/i }));
     fireEvent.click(screen.getByText('USDT'));
+    await settleQuote();
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('');
+  });
+
+  it.each(['buy', 'sell', 'swap'])(
+    'keeps an edited %s amount across an asset change and payment submission',
+    async (mode) => {
+      setParams(`?mode=${mode}&amount-in=100`);
+      renderHome();
+      await settleQuote();
+      const pay = screen.getByRole('textbox', { name: /amount you pay/i });
+      expect(pay).toHaveValue('100');
+      fireEvent.change(pay, { target: { value: '250' } });
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: mode === 'buy' ? /select receive asset/i : /select pay asset/i,
+        }),
+      );
+      fireEvent.click(within(screen.getByRole('dialog')).getByText('ETH'));
+      await settleQuote();
+      expect(pay).toHaveValue('250');
+      expect(mockCall.mock.calls.at(-1)?.[0]).toEqual(
+        expect.objectContaining({
+          url: `${mode}/quote`,
+          data: expect.objectContaining({ amount: 250 }),
+        }),
+      );
+      fireEvent.click(screen.getByTestId('trade-cta'));
+      await settleQuote();
+      const receiveFor = mode === 'buy' ? mockReceiveForBuy : mode === 'sell' ? mockReceiveForSell : mockReceiveForSwap;
+      expect(receiveFor).toHaveBeenCalledWith(expect.objectContaining({ amount: 250 }));
+    },
+  );
+
+  it('preserves a quick-chip edit across asset changes without marking other modes edited', async () => {
+    setParams('?amount-in=100');
+    renderHome();
+    await settleQuote();
+    fireEvent.click(screen.getByRole('button', { name: /€\s*250/ }));
+    fireEvent.click(screen.getByRole('button', { name: /select receive asset/i }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByText('ETH'));
+    await settleQuote();
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('250');
+    fireEvent.click(screen.getByRole('tab', { name: /sell|verkaufen/i }));
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('100');
+    fireEvent.click(screen.getByRole('tab', { name: /swap|tausch/i }));
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('100');
+    fireEvent.click(screen.getByRole('button', { name: /flip direction/i }));
+    await settleQuote();
+    expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('100');
+  });
+
+  it.each(['sell', 'swap'])(
+    'does not restore a cleared partner amount after changing the %s source asset',
+    async (mode) => {
+      setParams(`?mode=${mode}&amount-in=100`);
+      renderHome();
+      await settleQuote();
+      fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '' } });
+      fireEvent.click(screen.getByRole('button', { name: /select pay asset/i }));
+      fireEvent.click(within(screen.getByRole('dialog')).getByText('ETH'));
+      await settleQuote();
+      expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('');
+    },
+  );
+
+  it('keeps the amount reset on swap flip after a user edit', async () => {
+    setParams('?mode=swap&amount-in=100');
+    renderHome();
+    await settleQuote();
+    fireEvent.change(screen.getByRole('textbox', { name: /amount you pay/i }), { target: { value: '250' } });
+    fireEvent.click(screen.getByRole('button', { name: /flip direction/i }));
     await settleQuote();
     expect(screen.getByRole('textbox', { name: /amount you pay/i })).toHaveValue('');
   });

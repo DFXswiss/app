@@ -156,7 +156,7 @@ export default function HomeScreen() {
   const flagsParam = useMemo(() => routeOrQueryParam(location.search, 'flags'), [location.search]);
   const hideTargetSelection = isPresentFlag(routeOrQueryParam(location.search, 'hide-target-selection'));
   const requestedChain = parseEnumValue<Blockchain>(blockchainParam, Blockchain);
-  const spendClearedByUserRef = useRef(false);
+  const spendEditedByUserRef = useRef({ buy: false, sell: false, swap: false });
 
   const [buyRaw, setBuyRaw] = useState('');
 
@@ -254,23 +254,52 @@ export default function HomeScreen() {
   const preClaimRetryIdentityRef = useRef<string>();
   const rotatedPreClaimRetryIdentitiesRef = useRef(new Set<string>());
 
+  const lookupPaymentRequest = useCallback(
+    async (requestId: string) => {
+      try {
+        return await transactionApi.getPaymentInfoRequestStatus(requestId, requestType);
+      } catch (error) {
+        if (isApiExceptionLike(error) && error.statusCode === 404) return undefined;
+        throw error;
+      }
+    },
+    [requestType, transactionApi.getPaymentInfoRequestStatus],
+  );
+
+  const clearMissingPaymentRequest = useCallback(() => {
+    // Only a same-owner status lookup can reach this path. Remove persistence before unlocking.
+    sessionStorage.removeItem(pendingPaymentStorageKey as string);
+    setPaymentRequestId(undefined);
+    setPaymentRequestOwner(undefined);
+    setExistingRequestUid(undefined);
+    setExistingRequestStatus(undefined);
+    setRecoveringPaymentRequest(false);
+    setNeedPaymentInfo(false);
+    setOpenAfterPaymentInfo(false);
+    setPaymentSheetOpen(false);
+    setSheetSnapshot(null);
+  }, [pendingPaymentStorageKey]);
+
   const checkExistingPaymentStatus = useCallback(async () => {
     // PaymentSheet only exposes this callback for an open, same-owner payment request.
     // Keep the required values local after that UI invariant has narrowed their runtime state.
     const requestId = activePaymentRequestId as string;
     const expectedIdentity = paymentRequestIdentity as string;
     try {
-      const status = await transactionApi.getPaymentInfoRequestStatus(requestId, requestType);
+      const status = await lookupPaymentRequest(requestId);
       if (paymentRequestIdentityRef.current !== expectedIdentity) return;
+      if (!status) {
+        clearMissingPaymentRequest();
+        return;
+      }
       setExistingRequestUid(status.existingUid);
       setExistingRequestStatus(status.requestStatus);
     } catch {
       if (paymentRequestIdentityRef.current !== expectedIdentity) return;
-      // A missing claim is not proof that the original request is no longer in flight.
       setExistingRequestUid(undefined);
       setExistingRequestStatus('Unknown');
     }
-  }, [activePaymentRequestId, paymentRequestIdentity, requestType, transactionApi.getPaymentInfoRequestStatus]);
+  }, [activePaymentRequestId, paymentRequestIdentity, lookupPaymentRequest, clearMissingPaymentRequest]);
 
   useEffect(() => {
     if (paymentRequestId && paymentRequestOwner !== paymentAccountId) {
@@ -290,10 +319,13 @@ export default function HomeScreen() {
     if (!recoveringPaymentRequest || !activePaymentRequestId) return undefined;
     let current = true;
     const expectedIdentity = paymentRequestIdentity;
-    void transactionApi
-      .getPaymentInfoRequestStatus(activePaymentRequestId, requestType)
+    void lookupPaymentRequest(activePaymentRequestId)
       .then((status) => {
         if (!current || paymentRequestIdentityRef.current !== expectedIdentity) return;
+        if (!status) {
+          clearMissingPaymentRequest();
+          return;
+        }
         setExistingRequestUid(status.existingUid);
         setExistingRequestStatus(status.requestStatus);
         setRecoveringPaymentRequest(false);
@@ -333,7 +365,14 @@ export default function HomeScreen() {
     return () => {
       current = false;
     };
-  }, [recoveringPaymentRequest, activePaymentRequestId, paymentRequestIdentity, transactionApi.getPaymentInfoRequestStatus, requestType, mode]);
+  }, [
+    recoveringPaymentRequest,
+    activePaymentRequestId,
+    paymentRequestIdentity,
+    lookupPaymentRequest,
+    clearMissingPaymentRequest,
+    mode,
+  ]);
 
   useEffect(() => {
     if (paymentRequestId || recoveringPaymentRequest || restoredPaymentModeOwnerRef.current === paymentAccountId) return;
@@ -486,10 +525,10 @@ export default function HomeScreen() {
   }, [buyCurrencies, buyFiat, assetInParam]);
 
   useEffect(() => {
-    if (amountInParam && !spendClearedByUserRef.current) {
-      setBuyRaw(amountInParam);
-      setSellRaw(amountInParam);
-      setSwapRaw(amountInParam);
+    if (amountInParam) {
+      if (!spendEditedByUserRef.current.buy) setBuyRaw(amountInParam);
+      if (!spendEditedByUserRef.current.sell) setSellRaw(amountInParam);
+      if (!spendEditedByUserRef.current.swap) setSwapRaw(amountInParam);
     }
   }, [amountInParam, buyAsset, sellAsset, swapFromAsset]);
 
@@ -872,13 +911,17 @@ export default function HomeScreen() {
   // nothing is worse than none.
   let receiveShowRetry = false;
   if (mode === 'buy') {
-    if (!buyAmount) receiveValue = '0';
+    if (!(targetMode ? buyTargetAmount : buyAmount)) receiveValue = '0';
     else if (buyQuote.loading) receiveValue = '…';
     else if (buyQuote.data && buyQuote.isFresh && hasNoDisplayableEstimate(buyQuote.data)) {
       receiveValue = '—';
       if (activeValidityMessage) receiveMeta = activeValidityMessage;
     } else if (buyQuote.data && buyQuote.isFresh) {
-      receiveValue = formatAmount(buyQuote.data.estimatedAmount, 8, language);
+      receiveValue = formatAmount(
+        targetMode ? buyQuote.data.amount : buyQuote.data.estimatedAmount,
+        targetMode ? 2 : 8,
+        language,
+      );
       if (buyQuote.data.isValid === false) {
         // A real conversion for an order that still can't be placed — say why, never dress it
         // up with a refresh countdown.
@@ -943,9 +986,30 @@ export default function HomeScreen() {
   const payRaw = mode === 'buy' ? buyRaw : mode === 'sell' ? sellRaw : swapRaw;
   const setPayRaw = mode === 'buy' ? setBuyRaw : mode === 'sell' ? setSellRaw : setSwapRaw;
   const setBuySourceAmount = (next: string) => {
+    spendEditedByUserRef.current.buy = true;
     if (targetInputAvailable) setBuyAmountDirection('source');
     setBuyRaw(next);
   };
+
+  const quoteInPayPanel = mode === 'buy' && targetMode;
+  const quoteMeta = (
+    <>
+      {receiveMetaCountdown ? <span className={cx('qcount')}>{receiveMeta}</span> : receiveMeta}
+      {receiveShowRetry && (
+        <>
+          {' · '}
+          <button
+            className={cx('msg-retry')}
+            type="button"
+            onClick={() => activeQuote.refresh()}
+            disabled={paymentRequestLocked}
+          >
+            {t('retry')}
+          </button>
+        </>
+      )}
+    </>
+  );
 
   // Switching modes pre-fills sell/swap as before. Buy starts empty and only quotes after an
   // explicit amount entry/quick chip or a valid partner amount-in/amount-out parameter.
@@ -1073,7 +1137,7 @@ export default function HomeScreen() {
         <div className={cx('panel')}>
           <div className={cx('prow')}>
             <span className={cx('plabel')}>{t('youPay')}</span>
-            <span className={cx('pmeta')} />
+            <span className={cx('pmeta')}>{quoteInPayPanel && quoteMeta}</span>
           </div>
           <div className={cx('pinput')}>
             <input
@@ -1081,8 +1145,8 @@ export default function HomeScreen() {
               inputMode="decimal"
               value={
                 mode === 'buy' && targetMode
-                  ? hasValidBuyQuoteAmount && buyQuote.data && buyQuote.isFresh
-                    ? formatAmount(buyQuote.data.amount, 2, language)
+                  ? hasValidBuyQuoteAmount
+                    ? receiveValue
                     : ''
                   : payRaw
               }
@@ -1091,7 +1155,7 @@ export default function HomeScreen() {
               disabled={paymentRequestLocked}
               onChange={(e) => {
                 const next = e.target.value;
-                if (!next) spendClearedByUserRef.current = true;
+                spendEditedByUserRef.current[mode] = true;
                 if (mode === 'buy') setBuySourceAmount(next);
                 else setPayRaw(next);
               }}
@@ -1152,17 +1216,7 @@ export default function HomeScreen() {
         <div className={cx('panel', 'recv')} aria-live="polite">
           <div className={cx('prow')}>
             <span className={cx('plabel')}>{t('youReceive')}</span>
-            <span className={cx('pmeta')}>
-              {receiveMetaCountdown ? <span className={cx('qcount')}>{receiveMeta}</span> : receiveMeta}
-              {receiveShowRetry && (
-                <>
-                  {' · '}
-                  <button className={cx('msg-retry')} type="button" onClick={() => activeQuote.refresh()} disabled={paymentRequestLocked}>
-                    {t('retry')}
-                  </button>
-                </>
-              )}
-            </span>
+            <span className={cx('pmeta')}>{!quoteInPayPanel && quoteMeta}</span>
           </div>
           <div className={cx('pinput')}>
             <input
@@ -1543,24 +1597,24 @@ export default function HomeScreen() {
           setSheetSnapshot((snapshot) => ({ ...(snapshot as PaymentSnapshot), loading: true }));
           let confirmedMissingClaim = false;
           try {
-            const status = await transactionApi.getPaymentInfoRequestStatus(currentRequestId, requestType);
+            const status = await lookupPaymentRequest(currentRequestId);
             if (paymentRequestIdentityRef.current !== expectedIdentity) {
               releasePreClaimRetry();
               return;
             }
-            setExistingRequestUid(status.existingUid);
-            setExistingRequestStatus(status.requestStatus);
-          } catch (error) {
-            if (paymentRequestIdentityRef.current !== expectedIdentity) {
-              releasePreClaimRetry();
-              return;
-            }
-            if (isApiExceptionLike(error) && error.statusCode === 404) {
-              confirmedMissingClaim = true;
+            if (status) {
+              setExistingRequestUid(status.existingUid);
+              setExistingRequestStatus(status.requestStatus);
             } else {
-              setExistingRequestUid(undefined);
-              setExistingRequestStatus('Unknown');
+              confirmedMissingClaim = true;
             }
+          } catch {
+            if (paymentRequestIdentityRef.current !== expectedIdentity) {
+              releasePreClaimRetry();
+              return;
+            }
+            setExistingRequestUid(undefined);
+            setExistingRequestStatus('Unknown');
           }
           if (!confirmedMissingClaim) {
             setSheetSnapshot((snapshot) => ({

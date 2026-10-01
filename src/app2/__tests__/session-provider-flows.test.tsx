@@ -1358,6 +1358,79 @@ describe('WalletSessionProvider flows', () => {
     expect(mockUpdateSession).not.toHaveBeenCalled();
   });
 
+  // Provider events and SDK completions are simulated: these assertions do not prove extension or JWT persistence behavior.
+  it.each(['accountsChanged', 'chainChanged'])(
+    'does not restore an invalidated token after %s and a cancelled replacement login',
+    async (event) => {
+      const listeners: Record<string, (value?: unknown) => void> = {};
+      const provider = {
+        request: jest.fn().mockResolvedValue([address]),
+        on: jest.fn((name: string, handler: (value?: unknown) => void) => {
+          listeners[name] = handler;
+        }),
+        removeListener: jest.fn(),
+      };
+      const oldToken = jwt(['Ethereum']);
+      mockResolveInjected.mockReturnValue(provider);
+      mockCreateSession.mockResolvedValueOnce(oldToken);
+      mockSessionCtx.isLoggedIn = true;
+      mockAuth.session = { address, blockchains: ['Ethereum'] };
+      const view = renderSession();
+      fireEvent.click(screen.getByText('pick-mm'));
+      await waitFor(() => expect(mockRemember).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(listeners[event]).toBeDefined());
+      await act(async () => listeners[event]([other]));
+      await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+      mockSessionCtx.isLoggedIn = false;
+      mockAuth.session = undefined;
+      view.rerender(sessionTree());
+
+      let resolveLogin!: (token: string) => void;
+      mockConnectInjected.mockResolvedValueOnce(other);
+      mockGetSignMessage.mockResolvedValueOnce(`by_signing_this_message ${other} dfx.swiss`);
+      mockCreateSession.mockReturnValueOnce(
+        new Promise<string>((resolve) => {
+          resolveLogin = resolve;
+        }),
+      );
+      fireEvent.click(screen.getByText('open'));
+      fireEvent.click(screen.getByText('pick-mm'));
+      await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(2));
+      expect(mockCreateSession.mock.calls[1][0]).toBe(other);
+      fireEvent.click(screen.getByText('close'));
+      mockUpdateSession.mockClear();
+      await act(async () => resolveLogin(jwt(['Bitcoin'])));
+
+      expect(mockUpdateSession).not.toHaveBeenCalledWith(oldToken);
+      expect(mockUpdateSession).not.toHaveBeenCalled();
+      expect(mockLogout).toHaveBeenCalledTimes(2);
+      expect(mockRemember).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('does not restore a token rejected by URL bootstrap after a cancelled login completes', async () => {
+    const token = jwt();
+    mockUpdateSession.mockImplementationOnce(() => {
+      throw new Error('invalid session');
+    });
+    window.history.replaceState({}, '', `/app2/?session=${token}`);
+    renderSession();
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1));
+    let resolveLogin!: (value: string) => void;
+    mockCreateSession.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        resolveLogin = resolve;
+      }),
+    );
+    fireEvent.click(screen.getByText('pick-mm'));
+    await waitFor(() => expect(mockCreateSession).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText('close'));
+    mockUpdateSession.mockClear();
+    await act(async () => resolveLogin(jwt(['Bitcoin'])));
+    expect(mockUpdateSession).not.toHaveBeenCalled();
+    expect(mockLogout).toHaveBeenCalledTimes(2);
+  });
+
   it('discards a superseded switch failure so it cannot restore bindings or toast switchFail', async () => {
     const pending: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
     mockChangeAddress.mockImplementation(

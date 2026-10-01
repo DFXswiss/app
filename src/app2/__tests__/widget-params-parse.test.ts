@@ -231,7 +231,7 @@ describe('widget param parsers', () => {
       'https://partner.example/done/sell?isComplete=false',
     );
     const deep = appendCompletionPath(new URL('mywallet://callback'), 'swap', { amount: '1' });
-    expect(deep.toString()).toMatch(/^mywallet:/);
+    expect(deep.toString()).toBe('mywallet://callback/swap?amount=1');
     expect(deep.searchParams.get('amount')).toBe('1');
 
     const custom = new URL('https://example.com');
@@ -239,6 +239,21 @@ describe('widget param parsers', () => {
     custom.pathname = '';
     const fromEmpty = appendCompletionPath(custom, 'buy');
     expect(fromEmpty.toString()).toMatch(/buy/);
+  });
+
+  it.each([
+    ['mywallet://callback', 'mywallet://callback/buy'],
+    ['mywallet://callback/path', 'mywallet://callback/path/buy'],
+    ['mywallet://callback/path/', 'mywallet://callback/path/buy'],
+    ['mywallet:/x', 'mywallet:/x/buy'],
+    ['mywallet:x', 'mywallet:x/buy'],
+    ['mywallet:', 'mywallet:/buy'],
+    ['mywallet:///x', 'mywallet:///x/buy'],
+  ])('preserves authority and path when completing %s', (uri, expected) => {
+    expect(appendCompletionPath(new URL(`${uri}?keep=1#done`), 'buy', { amount: '2' }).href).toBe(
+      `${expected}?keep=1&amount=2#done`,
+    );
+    expect(completionRedirectUrl(uri, 'buy')).toBe(expected);
   });
 
   it('returns a completion URL only for a safe redirect-uri', () => {
