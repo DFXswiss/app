@@ -204,19 +204,6 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   mapping pins the token contract instead.
 - **The staff ticket customer-note visual spec answers the issue payload itself.**
   `e2e/support-ticket-note.spec.ts` fulfils `GET /v1/support/issue/:id/data`, the message thread
-  for that uid, clerks, clerk mapping and activity with synthetic fixtures. A green run proves
-  that the Kundennotiz composer renders those fixtures. It does not prove that the API returns
-  that issue or that `createSupportNote` persists a note.
-- **The staff ticket KYC-file-transfer visual spec answers the issue payload itself.**
-  `e2e/support-kyc-file-transfer.spec.ts` answers the issue payload, messages, clerks, clerk mapping
-  and activity with fixtures. A green run proves those fixtures render. It does not prove that the
-  API returns them or that PUT kycFile persists.
-- **The staff message-origin visual spec answers boot and the issue thread itself.**
-  `e2e/support-message-origin.spec.ts` fulfils the staff session's user, languages and the issue,
-  messages, clerks, clerk mapping and activity with fixtures, including one customer mail tag, one
-  in-app tag, a customer message without an origin and a staff reply that carries an origin. A green
-  run proves the messages panel renders those tags. It does not prove that the API stores `origin`,
-  that a mail opened the ticket, or that the session is a real staff login.
   for that uid, clerks, clerk mapping and activity with synthetic fixtures; the clerk fixtures carry
   the `{ clerkUserDataId, clerk }` shape. A green run proves that the Kundennotiz composer renders
   those fixtures. It does not prove that the API returns that issue, that it answers the clerk
@@ -226,6 +213,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and activity with fixtures; the clerk fixtures carry the `{ clerkUserDataId, clerk }` shape. A
   green run proves those fixtures render. It does not prove that the API returns them, that it
   answers the clerk endpoints in that shape, or that PUT kycFile persists.
+- **The staff message-origin visual spec answers boot and the issue thread itself.**
+  `e2e/support-message-origin.spec.ts` fulfils the staff session's user, languages and the issue,
+  messages, clerks (in the `{ clerkUserDataId, clerk }` shape), clerk mapping and activity with
+  fixtures, including one customer mail tag, one
+  in-app tag, a customer message without an origin and a staff reply that carries an origin. A green
+  run proves the messages panel renders those tags. It does not prove that the API stores `origin`,
+  that a mail opened the ticket, or that the session is a real staff login.
 - **The support-issue receiver-IBAN spec pins KYC level and account mail on GET /v2/user.**
   `e2e/support-issue-receiver-iban.spec.ts` rewrites that response so `kyc.level` is high enough for
   the screen guard and `mail` is present if the cached wallet session has none. A green visual run
@@ -291,12 +285,6 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `phoneCallStatusDate` (where the column exists) and `phoneCallCheckDate`. A green run does
   **not** prove that the AML pipeline parks a transaction in the Callback queue or that a clerk's
   Unavailable outcome stamps the mark date through the product path.
-- **The RealUnit support visual spec answers the support endpoints itself.**
-  `e2e/realunit-support.spec.ts` fulfils `GET /v1/realunit/support/list`, `/counts`, `/activity`,
-  `/clerks`, `/:id/data` and `/:id/messages` with synthetic `{ clerkUserDataId, clerk }[]` clerks and
-  `clerkUserDataId` on the issue fixture. A green run proves those fixtures render. It does not
-  prove that the API returns object clerks, that assignment writes `clerkUserDataId`, or that
-  login works — auth is a real admin token, feature data is not.
 - **The DFX support issue visual spec answers the issue endpoints itself.**
   `e2e/support-dashboard-issue.spec.ts` uses a synthetic unsigned Admin JWT and fulfils
   `GET /v1/support/issue/clerks`, `GET /v1/support/issue/clerk` (the acting staff identity),
