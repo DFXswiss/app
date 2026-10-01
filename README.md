@@ -35,12 +35,13 @@ Copy `.env.sample` to `.env` and adjust as needed:
 cp .env.sample .env
 ```
 
-| Variable            | Default               | Description                      |
-| ------------------- | --------------------- | -------------------------------- |
-| `PORT`              | 3001                  | Services port                    |
-| `REACT_APP_API_URL` | http://localhost:3000 | API URL                          |
-| `TEST_SEED`         | -                     | Test wallet mnemonic (E2E tests) |
-| `TEST_EMAIL`        | -                     | Test email (E2E tests)           |
+| Variable               | Default               | Description                      |
+| ---------------------- | --------------------- | -------------------------------- |
+| `PORT`                 | 3001                  | Services port                    |
+| `REACT_APP_PUBLIC_URL` | http://localhost:3001 | Public app URL (login redirects) |
+| `REACT_APP_API_URL`    | http://localhost:3000 | API URL                          |
+| `TEST_SEED`            | -                     | Test wallet mnemonic (E2E tests) |
+| `TEST_EMAIL`           | -                     | Test email (E2E tests)           |
 
 ### NPM Scripts
 
@@ -93,7 +94,7 @@ DFX services can be integrated as a web component. See the [code example](#web-c
 
 For web component integration, a closing callback (`on-close` attribute) should be provided. On cancel or completion, this callback is called. See [below](#close-message) for details on the message format.
 
-Logins that leave the page and return through a link or a redirect — the e-mail login link and the Alby account login — do not return to the embedding page. They continue in the DFX app ([app.dfx.swiss](https://app.dfx.swiss/)), where the user arrives logged in at the selected service. Other parameters supplied to the widget as attributes (for example a preselected asset or amount) are not carried over. The login redirect carries the session, so the API only accepts the DFX app itself as its target.
+Logins that leave the page and return through a link or a redirect — the e-mail login link and the Alby account login — do not return to the embedding page. They continue in the DFX app ([app.dfx.swiss](https://app.dfx.swiss/)), where the user arrives logged in at the selected service. Parameters supplied to the widget as attributes (for example a preselected asset or amount) are not carried over to the app; sign-up parameters sent with the login request itself, such as `wallet`, still apply. The login redirect carries the session, so the API only accepts the DFX app itself as its target.
 
 #### React Component
 
