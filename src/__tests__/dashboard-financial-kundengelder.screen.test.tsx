@@ -54,6 +54,8 @@ import { KundengelderExtract, KundengelderSheet, KundengelderTx, KundengelderTxL
 import DashboardFinancialKundengelderScreen from 'src/screens/dashboard-financial-kundengelder.screen';
 
 const chf = (value: number): string => `${value.toLocaleString('de-CH')} CHF`;
+const money = (value: number): string =>
+  value.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const YEAR = new Date().getUTCFullYear();
 
@@ -115,7 +117,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     render(<DashboardFinancialKundengelderScreen />);
 
     expect(await screen.findByRole('heading', { name: 'Kaleido CHF' })).toBeInTheDocument();
-    expect(screen.getByText('No movements')).toBeInTheDocument();
+    expect(screen.getByText('Keine Bewegungen')).toBeInTheDocument();
     expect(screen.getByText('CH6008245111962200001')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
   });
@@ -130,12 +132,13 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.getAllByText(chf(10)).length).toBeGreaterThan(0);
     expect(screen.getAllByText(chf(50)).length).toBeGreaterThan(0);
 
-    expect(screen.getByRole('heading', { name: 'Live vs booked' })).toBeInTheDocument();
-    const diffRow = screen.getByText('CH9300762011623852957|BuyCrypto after Fee').closest('tr');
+    expect(screen.getByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toBeInTheDocument();
+    const diffRow = screen.getByText(money(100)).closest('tr');
     if (!diffRow) throw new Error('expected diff row');
-    expect(within(diffRow).getByText('100')).toBeInTheDocument();
-    expect(within(diffRow).getByText('90')).toBeInTheDocument();
-    expect(within(diffRow).getByText('10')).toBeInTheDocument();
+    expect(within(diffRow).getByText('Test CHF Account')).toBeInTheDocument();
+    expect(within(diffRow).getByText('BuyCrypto after Fee')).toBeInTheDocument();
+    expect(within(diffRow).getByText(money(90))).toBeInTheDocument();
+    expect(within(diffRow).getByText(money(10))).toBeInTheDocument();
   });
 
   it('refetches extract when the year changes and closes opened lines', async () => {
@@ -152,14 +155,14 @@ describe('DashboardFinancialKundengelderScreen', () => {
     fireEvent.click(screen.getByText('BuyCrypto after Fee'));
     expect(await screen.findByText('99')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '2022' } });
+    fireEvent.change(screen.getByLabelText('Jahr'), { target: { value: '2022' } });
 
     await waitFor(() => expect(mockGetKundengelderExtract).toHaveBeenCalledWith(2022));
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
     expect(screen.queryByText('99')).not.toBeInTheDocument();
   });
 
-  it('loads line transactions on row click and shows No transactions when rows are empty', async () => {
+  it('loads line transactions on row click and shows an empty list when rows are empty', async () => {
     mockGetKundengelderLines
       .mockResolvedValueOnce({
         year: YEAR,
@@ -184,7 +187,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, chfAccount.key, chfAccount.lines[0].key);
 
     fireEvent.click(screen.getByText('SellFiat'));
-    expect(await screen.findByText('No transactions')).toBeInTheDocument();
+    expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
     expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, chfAccount.key, chfAccount.lines[1].key);
   });
 
@@ -209,7 +212,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('extract failed');
     expect(screen.getByRole('heading', { name: 'Kundengelder' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Year')).toBeInTheDocument();
+    expect(screen.getByLabelText('Jahr')).toBeInTheDocument();
     expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
   });
 
@@ -241,7 +244,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.getByRole('heading', { name: 'Kundengelder' })).toBeInTheDocument();
   });
 
-  it('closes an opened empty line on a second click and hides No transactions', async () => {
+  it('closes an opened empty line on a second click and hides the empty list', async () => {
     mockGetKundengelderLines.mockResolvedValueOnce({
       year: YEAR,
       accountKey: EXTRACT.accounts[0].key,
@@ -253,10 +256,10 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
     fireEvent.click(screen.getByText('BuyCrypto after Fee'));
-    expect(await screen.findByText('No transactions')).toBeInTheDocument();
+    expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('BuyCrypto after Fee'));
-    expect(screen.queryByText('No transactions')).not.toBeInTheDocument();
+    expect(screen.queryByText('Keine Buchungen')).not.toBeInTheDocument();
   });
 
   it('ignores a line response that resolves after the row is closed', async () => {
@@ -310,7 +313,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     render(<DashboardFinancialKundengelderScreen />);
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
     fireEvent.click(screen.getByText('BuyCrypto after Fee'));
-    expect(await screen.findByText('No transactions')).toBeInTheDocument();
+    expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Checkout'));
     await waitFor(() => expect(mockGetKundengelderLines).toHaveBeenLastCalledWith(YEAR, 'CheckoutLtdEUR', 'Checkout'));
   });
@@ -330,19 +333,19 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
     expect(mockGetKundengelderExtract).toHaveBeenCalledTimes(1);
 
-    fireEvent.change(screen.getByLabelText('Year'), { target: { value: 'nope' } });
-    fireEvent.change(screen.getByLabelText('Year'), { target: { value: String(YEAR) } });
+    fireEvent.change(screen.getByLabelText('Jahr'), { target: { value: 'nope' } });
+    fireEvent.change(screen.getByLabelText('Jahr'), { target: { value: String(YEAR) } });
 
     expect(mockGetKundengelderExtract).toHaveBeenCalledTimes(1);
 
-    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '2019' } });
-    fireEvent.change(screen.getByLabelText('Year'), { target: { value: `${YEAR + 1}` } });
-    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Jahr'), { target: { value: '2019' } });
+    fireEvent.change(screen.getByLabelText('Jahr'), { target: { value: `${YEAR + 1}` } });
+    fireEvent.change(screen.getByLabelText('Jahr'), { target: { value: '' } });
 
     expect(mockGetKundengelderExtract).toHaveBeenCalledTimes(1);
   });
 
-  it('renders Live vs booked when a diff has a zero delta', async () => {
+  it('renders the booked comparison when a diff has a zero delta', async () => {
     mockGetKundengelderExtract.mockResolvedValue({
       ...EXTRACT,
       diffs: [{ key: 'CH9300762011623852957|BuyCrypto after Fee', live: 50, booked: 50, delta: 0 }],
@@ -350,8 +353,12 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Live vs booked' })).toBeInTheDocument();
-    expect(screen.getByText('CH9300762011623852957|BuyCrypto after Fee')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toBeInTheDocument();
+    const diffRow = screen.getAllByText(money(50))[0].closest('tr');
+    if (!diffRow) throw new Error('expected diff row');
+    expect(within(diffRow).getByText('Test CHF Account')).toBeInTheDocument();
+    expect(within(diffRow).getByText('BuyCrypto after Fee')).toBeInTheDocument();
+    expect(screen.queryByText('CH9300762011623852957|BuyCrypto after Fee')).not.toBeInTheDocument();
   });
 
   it('year select options include 2022 and the current UTC year', async () => {
@@ -359,7 +366,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
 
-    const yearSelect = screen.getByLabelText('Year');
+    const yearSelect = screen.getByLabelText('Jahr');
     expect(within(yearSelect).getByRole('option', { name: '2020' })).toHaveAttribute('value', '2020');
     expect(within(yearSelect).getByRole('option', { name: '2022' })).toHaveAttribute('value', '2022');
     expect(within(yearSelect).getByRole('option', { name: `${YEAR}` })).toHaveAttribute('value', `${YEAR}`);
@@ -476,13 +483,13 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.getAllByText('Haben').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Summe').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Kontrolle/).length).toBeGreaterThan(0);
-    expect(screen.queryByText('No movements')).not.toBeInTheDocument();
+    expect(screen.queryByText('Keine Bewegungen')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Test CHF Account' })).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Live vs booked' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('BuyCrypto after Fee'));
     expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'CH9300762011623852957', 'BuyCrypto after Fee');
-    expect(await screen.findByText('No transactions')).toBeInTheDocument();
+    expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Kontrolle'));
@@ -529,7 +536,15 @@ describe('DashboardFinancialKundengelderScreen', () => {
       nextOpeningBalance: 10,
       openingCheck: 'mismatch',
     };
-    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [verified, mismatch] });
+    const unnamed: KundengelderSheet = {
+      ...verified,
+      key: 'CH8383019496938261612|EUR',
+      name: 'CH8383019496938261612 EUR',
+      iban: 'CH8383019496938261612',
+      currency: 'EUR',
+      openingCheck: 'unchecked',
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [verified, mismatch, unnamed] });
 
     render(<DashboardFinancialKundengelderScreen />);
 
@@ -543,6 +558,49 @@ describe('DashboardFinancialKundengelderScreen', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Verifiziert/)).toBeInTheDocument();
     expect(screen.getByText(/stimmt nicht/)).toBeInTheDocument();
-    expect(screen.getAllByText('2024-01-01 – 2024-12-31').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Bankkonto').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Startdatum').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('2024-01-01').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Enddatum').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('2024-12-31').length).toBeGreaterThan(0);
+    expect(screen.getByRole('option', { name: 'CH8383019496938261612 EUR' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('option', { name: 'CH8383019496938261612 EUR · CH8383019496938261612' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('names a Revolut difference after the currency of that sheet', async () => {
+    const revolutChf: KundengelderSheet = {
+      key: 'GB77REVO00996972945099|CHF',
+      name: 'Revolut CHF',
+      iban: 'GB77REVO00996972945099',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      rows: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    const revolutEur: KundengelderSheet = {
+      ...revolutChf,
+      key: 'GB77REVO00996972945099|EUR',
+      name: 'Revolut EUR',
+      currency: 'EUR',
+    };
+    mockGetKundengelderExtract.mockResolvedValue({
+      ...EXTRACT,
+      sheets: [revolutChf, revolutEur],
+      diffs: [{ key: 'GB77REVO00996972945099|BuyCrypto after Fee|CHF', live: 2227.5, booked: 2227.5, delta: 0 }],
+    });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toBeInTheDocument();
+    const diffRow = screen.getAllByText(money(2227.5))[0].closest('tr');
+    if (!diffRow) throw new Error('expected diff row');
+    expect(within(diffRow).getByText('Revolut CHF')).toBeInTheDocument();
+    expect(within(diffRow).getByText('BuyCrypto after Fee')).toBeInTheDocument();
+    expect(within(diffRow).queryByText('Revolut EUR')).not.toBeInTheDocument();
   });
 });

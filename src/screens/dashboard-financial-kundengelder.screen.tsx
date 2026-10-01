@@ -71,7 +71,44 @@ function openingCheckText(sheet: KundengelderSheet): string {
 }
 
 function accountOptionLabel(sheet: KundengelderSheet): string {
-  return sheet.iban ? `${sheet.name} · ${sheet.iban}` : sheet.name;
+  if (!sheet.iban) return sheet.name;
+  if (sheet.name.replace(/\s/g, '').includes(sheet.iban)) return sheet.name;
+  return `${sheet.name} · ${sheet.iban}`;
+}
+
+const DIFF_CURRENCIES = ['CHF', 'EUR', 'USD', 'AED', 'AUD'];
+
+function splitDiffKey(
+  key: string,
+  sheets: KundengelderSheet[],
+  accounts: KundengelderExtract['accounts'],
+): { account: string; position: string } {
+  const known = ['CheckoutLtdCHF', 'CheckoutLtdEUR', 'CryptoCrypto'];
+  for (const prefix of known) {
+    if (key !== prefix && !key.startsWith(`${prefix}|`)) continue;
+    const named = sheets.find((item) => item.key === prefix) ?? accounts.find((item) => item.key === prefix);
+    return { account: named?.name ?? prefix, position: key === prefix ? key : key.slice(prefix.length + 1) };
+  }
+
+  const sep = key.indexOf('|');
+  const head = sep === -1 ? key : key.slice(0, sep);
+  let position = sep === -1 ? key : key.slice(sep + 1);
+  let currency: string | undefined;
+  for (const code of DIFF_CURRENCIES) {
+    if (!position.endsWith(`|${code}`)) continue;
+    currency = code;
+    position = position.slice(0, -(code.length + 1));
+    break;
+  }
+
+  const sameAccount = (iban: string | undefined, accountKey: string, accountCurrency: string): boolean =>
+    (iban === head || accountKey === head) && (!currency || accountCurrency === currency);
+  const named =
+    sheets.find((item) => sameAccount(item.iban, item.key, item.currency)) ??
+    accounts.find((item) => sameAccount(item.iban, item.key, item.currency)) ??
+    sheets.find((item) => item.iban === head || item.key === head) ??
+    accounts.find((item) => item.iban === head || item.key === head);
+  return { account: named?.name ?? (currency ? `${head} ${currency}` : head), position };
 }
 
 function sideAmount(label: string | undefined, amount: number | undefined): string {
@@ -230,7 +267,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
         <h1 className="text-lg font-semibold">Kundengelder</h1>
         <div className="flex flex-wrap items-center gap-4">
           <label htmlFor="kundengelder-account" className="text-sm">
-            Account
+            Konto
           </label>
           <select
             id="kundengelder-account"
@@ -238,7 +275,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
             onChange={(event) => setAccountKey(event.target.value)}
             className="border border-gray-300 rounded px-2 py-1"
           >
-            <option value="all">All</option>
+            <option value="all">Alle</option>
             {sheets.map((sheet) => (
               <option key={sheet.key} value={sheet.key}>
                 {accountOptionLabel(sheet)}
@@ -246,7 +283,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
             ))}
           </select>
           <label htmlFor="kundengelder-year" className="text-sm">
-            Year
+            Jahr
           </label>
           <select
             id="kundengelder-year"
@@ -260,7 +297,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
               </option>
             ))}
           </select>
-          {extract !== undefined && <div className="text-sm">EUR rate {extract.eurRate}</div>}
+          {extract !== undefined && <div className="text-sm">EUR-Kurs {extract.eurRate}</div>}
           {extract !== undefined && (
             <StyledButton
               label="Export CSV"
@@ -305,17 +342,17 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200">
-                    <th className="text-left py-2 px-3 font-semibold">Label</th>
-                    <th className="text-right py-2 px-3 font-semibold">Count</th>
-                    <th className="text-right py-2 px-3 font-semibold">Amount</th>
-                    <th className="text-right py-2 px-3 font-semibold">Amount CHF</th>
+                    <th className="text-left py-2 px-3 font-semibold">Bezeichnung</th>
+                    <th className="text-right py-2 px-3 font-semibold">Anzahl</th>
+                    <th className="text-right py-2 px-3 font-semibold">Betrag</th>
+                    <th className="text-right py-2 px-3 font-semibold">Betrag CHF</th>
                   </tr>
                 </thead>
                 <tbody>
                   {account.lines.length === 0 && (
                     <tr>
                       <td className="py-1.5 px-3" colSpan={4}>
-                        No movements
+                        Keine Bewegungen
                       </td>
                     </tr>
                   )}
@@ -352,26 +389,29 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
 
       {extract !== undefined && (
         <div className="bg-white rounded-lg shadow p-4">
-          <h2 className="text-lg font-semibold mb-3">Live vs booked</h2>
+          <h2 className="text-lg font-semibold mb-3">Abweichung zur Buchhaltung</h2>
           <div className="overflow-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 px-3 font-semibold">Key</th>
+                  <th className="text-left py-2 px-3 font-semibold">Konto</th>
+                  <th className="text-left py-2 px-3 font-semibold">Position</th>
                   <th className="text-right py-2 px-3 font-semibold">Live</th>
-                  <th className="text-right py-2 px-3 font-semibold">Booked</th>
-                  <th className="text-right py-2 px-3 font-semibold">Delta</th>
+                  <th className="text-right py-2 px-3 font-semibold">Gebucht</th>
+                  <th className="text-right py-2 px-3 font-semibold">Differenz</th>
                 </tr>
               </thead>
               <tbody>
                 {extract.diffs.map((diff) => {
                   const deltaClass = diff.delta !== 0 ? 'text-dfxRed-100' : '';
+                  const parts = splitDiffKey(diff.key, sheets, extract.accounts);
                   return (
                     <tr key={diff.key} className="border-b border-gray-100">
-                      <td className="py-1.5 px-3">{diff.key}</td>
-                      <td className="py-1.5 px-3 text-right">{diff.live}</td>
-                      <td className="py-1.5 px-3 text-right">{diff.booked}</td>
-                      <td className={`py-1.5 px-3 text-right ${deltaClass}`}>{diff.delta}</td>
+                      <td className="py-1.5 px-3">{parts.account}</td>
+                      <td className="py-1.5 px-3">{parts.position}</td>
+                      <td className="py-1.5 px-3 text-right">{formatAmount(diff.live)}</td>
+                      <td className="py-1.5 px-3 text-right">{formatAmount(diff.booked)}</td>
+                      <td className={`py-1.5 px-3 text-right ${deltaClass}`}>{formatAmount(diff.delta)}</td>
                     </tr>
                   );
                 })}
@@ -396,17 +436,26 @@ function KontenblattCard({
   return (
     <div className="bg-white rounded-lg shadow p-4">
       <h2 className="text-lg font-semibold">{sheet.name}</h2>
-      <div className="text-sm mb-3" style={{ color: '#6b7280' }}>
-        {sheet.accountNo && <span>{sheet.accountNo}</span>}
-        {sheet.accountNo && sheet.iban && <span> · </span>}
-        {sheet.iban && <span>{sheet.iban}</span>}
-        {(sheet.accountNo || sheet.iban) && <span> · </span>}
-        <span>{sheet.currency}</span>
-        {sheet.periodStart && sheet.periodEnd && (
-          <span>
-            {' '}
-            · {sheet.periodStart} – {sheet.periodEnd}
-          </span>
+      <div className="text-sm mb-3 space-y-0.5" style={{ color: '#374151' }}>
+        {sheet.accountNo && (
+          <div>
+            <span className="font-medium">Kontonummer</span> <span>{sheet.accountNo}</span>
+          </div>
+        )}
+        {sheet.iban && (
+          <div>
+            <span className="font-medium">Bankkonto</span> <span>{sheet.iban}</span>
+          </div>
+        )}
+        {sheet.periodStart && (
+          <div>
+            <span className="font-medium">Startdatum</span> <span>{sheet.periodStart}</span>
+          </div>
+        )}
+        {sheet.periodEnd && (
+          <div>
+            <span className="font-medium">Enddatum</span> <span>{sheet.periodEnd}</span>
+          </div>
         )}
       </div>
       {sheet.rows && sheet.rows.length > 0 ? (
@@ -497,7 +546,7 @@ function SheetRowView({
     opened && row.habenLineKey != null && opened.viewKey === sheet.key && opened.lineKey === row.habenLineKey;
   return (
     <>
-      <tr className={`border-b border-gray-100 ${row.section ? 'font-semibold' : ''}`}>
+      <tr className={`border-b border-gray-100 ${row.section ? 'font-semibold bg-gray-50' : ''}`}>
         <AmountCell
           label={row.sollLabel}
           amount={row.sollAmount}
@@ -583,9 +632,9 @@ function SheetSide({
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-gray-200">
-          <th className="text-left py-2 px-3 font-semibold">Date</th>
+          <th className="text-left py-2 px-3 font-semibold">Datum</th>
           <th className="text-left py-2 px-3 font-semibold">{title}</th>
-          <th className="text-right py-2 px-3 font-semibold">Amount</th>
+          <th className="text-right py-2 px-3 font-semibold">Betrag</th>
         </tr>
       </thead>
       <tbody>
@@ -632,7 +681,7 @@ function TxTable({ list }: { list: KundengelderTxList }): JSX.Element {
       <table className="w-full text-sm">
         <tbody>
           <tr>
-            <td>No transactions</td>
+            <td>Keine Buchungen</td>
           </tr>
         </tbody>
       </table>
@@ -644,11 +693,11 @@ function TxTable({ list }: { list: KundengelderTxList }): JSX.Element {
       <thead>
         <tr className="border-b border-gray-200">
           <th className="text-left py-1 px-2 font-semibold">ID</th>
-          <th className="text-left py-1 px-2 font-semibold">Booking date</th>
-          <th className="text-left py-1 px-2 font-semibold">Type</th>
-          <th className="text-right py-1 px-2 font-semibold">Amount</th>
-          <th className="text-right py-1 px-2 font-semibold">After fee</th>
-          <th className="text-left py-1 px-2 font-semibold">Instruction ID</th>
+          <th className="text-left py-1 px-2 font-semibold">Buchungsdatum</th>
+          <th className="text-left py-1 px-2 font-semibold">Art</th>
+          <th className="text-right py-1 px-2 font-semibold">Betrag</th>
+          <th className="text-right py-1 px-2 font-semibold">Nach Gebühr</th>
+          <th className="text-left py-1 px-2 font-semibold">Instruktion</th>
         </tr>
       </thead>
       <tbody>
