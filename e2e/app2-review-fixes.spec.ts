@@ -44,14 +44,7 @@ const step = {
 };
 
 type Scenario =
-  | 'ocp'
-  | 'account'
-  | 'merge-timeout'
-  | 'merge-failed'
-  | 'kyc'
-  | 'transactions'
-  | 'minimum'
-  | 'quote-error';
+  'ocp' | 'account' | 'merge-timeout' | 'merge-failed' | 'kyc' | 'transactions' | 'minimum' | 'quote-error';
 type ApiFixture = { scenario: Scenario; requests: string[] };
 
 async function json(route: Route, body: unknown, status = 200): Promise<void> {
@@ -307,6 +300,29 @@ test('OCP POS unlocks after a definitive 400 rejection', async ({ page, api }) =
   await expect(page.getByRole('button', { name: /^charge/i })).toBeEnabled();
   await expect(page.getByTestId('ocp-pos-ambiguous-charge')).toHaveCount(0);
   await expect(page).toHaveScreenshot('app2-fix-ocp-rejected.png', app2ScreenshotOpts);
+});
+
+test('email input scrollIntoView keeps the app frame unscrolled and the sheet bottom anchored', async ({
+  page,
+  api,
+}) => {
+  api.scenario = 'account';
+  await open(page, '#/account');
+  await page.getByRole('button', { name: /^Email address\b/ }).click();
+  const app = page.locator('[data-app2-root]');
+  const sheet = page.getByRole('dialog', { name: 'Email address', exact: true });
+  const input = sheet.getByPlaceholder('you@email.com');
+  await expect(input).toHaveValue(MAIL);
+  const bottomOffset = async () => {
+    const sheetBottom = await sheet.evaluate((el) => el.getBoundingClientRect().bottom);
+    const appBottom = await app.evaluate((el) => el.getBoundingClientRect().bottom);
+    return Math.abs(sheetBottom - appBottom);
+  };
+  // Wait for the opening transition before asking the browser to reveal the input.
+  await expect.poll(bottomOffset).toBeLessThanOrEqual(1);
+  await input.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await expect.poll(() => app.evaluate((el) => el.scrollTop)).toBe(0);
+  await expect.poll(bottomOffset).toBeLessThanOrEqual(1);
 });
 
 test('email sheet explains an unchanged address', async ({ page, api }) => {

@@ -67,11 +67,9 @@ export function useModalDialog<T extends HTMLElement>(
       'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
     const focusFirst = window.requestAnimationFrame(() => {
       const first = dialog.querySelector<HTMLElement>(focusableSelector);
-      // preventScroll: the sheets are position:absolute; bottom:0 anchored to the
-      // (overflow:hidden but programmatically scrollable) `.app` frame. A plain
-      // focus() lets the browser scroll `.app` to reveal the focused control,
-      // which drags every bottom-anchored sheet up with it — clipping the first
-      // list item off the top and exposing the next closed sheet at the bottom.
+      // `.app` uses overflow:clip so browser scrolling cannot shift bottom-anchored sheets.
+      // Keep preventScroll for initial focus, including browsers that fall back to
+      // overflow:hidden, where the frame remains programmatically scrollable.
       (first ?? dialog).focus({ preventScroll: true });
     });
     const onKeyDown = (event: KeyboardEvent) => {

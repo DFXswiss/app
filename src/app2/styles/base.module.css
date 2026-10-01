@@ -157,6 +157,8 @@ body::after {
   max-height: calc(100dvh - 76px);
   border-radius: 40px;
   overflow: hidden;
+  /* Keep browser scrollIntoView from scrolling the frame and shifting bottom-anchored sheets. */
+  overflow: clip;
   box-shadow:
     0 50px 110px -30px rgba(0, 0, 0, 0.7),
     0 0 0 1px rgba(255, 255, 255, 0.05),
