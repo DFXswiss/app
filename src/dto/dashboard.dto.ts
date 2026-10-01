@@ -92,11 +92,31 @@ export interface KundengelderDiff {
   delta: number;
 }
 
+export interface KundengelderSheetLine {
+  label: string;
+  amount: number;
+  lineKey?: string;
+}
+
+/** T-account for one bank account (or checkout / crypto-crypto) and one currency. */
+export interface KundengelderSheet {
+  key: string;
+  name: string;
+  iban?: string;
+  currency: string;
+  soll: KundengelderSheetLine[];
+  haben: KundengelderSheetLine[];
+  sollSum: number;
+  habenSum: number;
+  control: number;
+}
+
 export interface KundengelderExtract {
   year: number;
   eurRate: number;
   accounts: KundengelderAccount[];
   diffs: KundengelderDiff[];
+  sheets?: KundengelderSheet[];
 }
 
 /** One row of GET /v1/bank: a DFX account of record, not a customer IBAN. */

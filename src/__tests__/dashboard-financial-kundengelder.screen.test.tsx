@@ -8,15 +8,7 @@ jest.mock('@dfx.swiss/react-components', () => ({
   StyledLoadingSpinner: () => <div data-testid="loading-spinner" />,
   StyledButtonWidth: { MIN: 'min' },
   StyledButtonColor: { STURDY_WHITE: 'sturdy-white' },
-  StyledButton: ({
-    label,
-    onClick,
-    disabled,
-  }: {
-    label: string;
-    onClick?: () => void;
-    disabled?: boolean;
-  }) => (
+  StyledButton: ({ label, onClick, disabled }: { label: string; onClick?: () => void; disabled?: boolean }) => (
     <button type="button" onClick={onClick} disabled={disabled}>
       {label}
     </button>
@@ -58,7 +50,7 @@ jest.mock('src/util/semicolon-csv', () => {
 });
 
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { KundengelderExtract, KundengelderTx, KundengelderTxList } from 'src/dto/dashboard.dto';
+import { KundengelderExtract, KundengelderSheet, KundengelderTx, KundengelderTxList } from 'src/dto/dashboard.dto';
 import DashboardFinancialKundengelderScreen from 'src/screens/dashboard-financial-kundengelder.screen';
 
 const chf = (value: number): string => `${value.toLocaleString('de-CH')} CHF`;
@@ -320,9 +312,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     fireEvent.click(screen.getByText('BuyCrypto after Fee'));
     expect(await screen.findByText('No transactions')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Checkout'));
-    await waitFor(() =>
-      expect(mockGetKundengelderLines).toHaveBeenLastCalledWith(YEAR, 'CheckoutLtdEUR', 'Checkout'),
-    );
+    await waitFor(() => expect(mockGetKundengelderLines).toHaveBeenLastCalledWith(YEAR, 'CheckoutLtdEUR', 'Checkout'));
   });
 
   it('does not download CSV when Export is clicked after an extract error', async () => {
@@ -345,7 +335,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(mockGetKundengelderExtract).toHaveBeenCalledTimes(1);
 
-    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '2021' } });
+    fireEvent.change(screen.getByLabelText('Year'), { target: { value: '2019' } });
     fireEvent.change(screen.getByLabelText('Year'), { target: { value: `${YEAR + 1}` } });
     fireEvent.change(screen.getByLabelText('Year'), { target: { value: '' } });
 
@@ -370,6 +360,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
 
     const yearSelect = screen.getByLabelText('Year');
+    expect(within(yearSelect).getByRole('option', { name: '2020' })).toHaveAttribute('value', '2020');
     expect(within(yearSelect).getByRole('option', { name: '2022' })).toHaveAttribute('value', '2022');
     expect(within(yearSelect).getByRole('option', { name: `${YEAR}` })).toHaveAttribute('value', `${YEAR}`);
   });
@@ -436,5 +427,56 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.getByText('2026-01-15')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
   });
-});
 
+  it('renders a Kontenblatt for every sheet and exports that sheet', async () => {
+    const kaleido: KundengelderSheet = {
+      key: 'CH6008245111962200001|CHF',
+      name: 'Kaleido CHF',
+      iban: 'CH6008245111962200001',
+      currency: 'CHF',
+      soll: [{ label: 'Anfangsbestand', amount: 10 }],
+      haben: [{ label: 'Saldo', amount: 10 }],
+      sollSum: 10,
+      habenSum: 10,
+      control: 0,
+    };
+    const buy: KundengelderSheet = {
+      key: 'CH9300762011623852957|CHF',
+      name: 'Maerki Baumann CHF',
+      iban: 'CH9300762011623852957',
+      currency: 'CHF',
+      soll: [
+        { label: 'BuyCrypto Fee', amount: 11, lineKey: 'BuyCrypto Fee' },
+        { label: 'BuyCrypto after Fee', amount: 90, lineKey: 'BuyCrypto after Fee' },
+      ],
+      haben: [
+        { label: 'Charge', amount: 1 },
+        { label: 'Saldo', amount: 100 },
+      ],
+      sollSum: 101,
+      habenSum: 101,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [kaleido, buy] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Kaleido CHF' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
+    expect(screen.getAllByText('Soll').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Haben').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Summe').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Kontrolle/).length).toBeGreaterThan(0);
+    expect(screen.queryByText('No movements')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Test CHF Account' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Live vs booked' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('BuyCrypto after Fee'));
+    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'CH9300762011623852957', 'BuyCrypto after Fee');
+    expect(await screen.findByText('No transactions')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Kontrolle'));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Kaleido CHF'));
+  });
+});

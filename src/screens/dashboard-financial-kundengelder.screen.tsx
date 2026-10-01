@@ -8,7 +8,12 @@ import {
 } from '@dfx.swiss/react-components';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
-import { KundengelderAccount, KundengelderExtract, KundengelderLine, KundengelderTxList } from 'src/dto/dashboard.dto';
+import {
+  KundengelderExtract,
+  KundengelderSheet,
+  KundengelderSheetLine,
+  KundengelderTxList,
+} from 'src/dto/dashboard.dto';
 import { useDashboard } from 'src/hooks/dashboard.hook';
 import { useAdminGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
@@ -16,18 +21,20 @@ import { withEveryBankAccount } from 'src/util/kundengelder-accounts';
 import { downloadCsv, toSemicolonCsv } from 'src/util/semicolon-csv';
 
 const CSV_HEADERS = ['Account', 'AccountKey', 'Line', 'Currency', 'Count', 'Amount', 'AmountChf'];
+const SHEET_CSV_HEADERS = ['Account', 'Side', 'Label', 'Amount', 'Kontrolle'];
 
 interface OpenedLine {
+  viewKey: string;
   accountKey: string;
   lineKey: string;
   list?: KundengelderTxList;
   error?: string;
 }
 
-function utcYearsFrom2022(): number[] {
+function utcYearsFrom2020(): number[] {
   const end = new Date().getUTCFullYear();
   const years: number[] = [];
-  for (let year = 2022; year <= end; year++) {
+  for (let year = 2020; year <= end; year++) {
     years.push(year);
   }
   return years;
@@ -83,7 +90,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
   function onYearChange(value: string): void {
     const next = Number(value);
     const maxYear = new Date().getUTCFullYear();
-    if (!Number.isInteger(next) || next < 2022 || next > maxYear) return;
+    if (!Number.isInteger(next) || next < 2020 || next > maxYear) return;
     if (next === year) return;
     lineRequestId.current += 1;
     setIsLoading(true);
@@ -93,32 +100,42 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
     setYear(next);
   }
 
-  function onLineClick(account: KundengelderAccount, line: KundengelderLine): void {
+  function onLineClick(viewKey: string, accountKey: string, lineKey: string): void {
     const currentOpened = opened;
-    if (currentOpened && currentOpened.accountKey === account.key && currentOpened.lineKey === line.key) {
+    if (currentOpened && currentOpened.viewKey === viewKey && currentOpened.lineKey === lineKey) {
       lineRequestId.current += 1;
       setOpened(undefined);
       return;
     }
 
-    const accountKey = account.key;
-    const lineKey = line.key;
     const requestId = lineRequestId.current + 1;
     lineRequestId.current = requestId;
-    setOpened({ accountKey, lineKey });
+    setOpened({ viewKey, accountKey, lineKey });
 
     getKundengelderLines(year, accountKey, lineKey)
       .then((list) => {
         if (lineRequestId.current !== requestId) return;
-        setOpened({ accountKey, lineKey, list });
+        setOpened({ viewKey, accountKey, lineKey, list });
       })
       .catch((err: unknown) => {
         if (lineRequestId.current !== requestId) return;
-        setOpened({ accountKey, lineKey, error: errorMessage(err) });
+        setOpened({ viewKey, accountKey, lineKey, error: errorMessage(err) });
       });
   }
 
   function exportCsv(data: KundengelderExtract): void {
+    if (data.sheets && data.sheets.length > 0) {
+      const rows = data.sheets.flatMap((sheet) => [
+        ...sheet.soll.map((line) => [sheet.name, 'Soll', line.label, line.amount, '']),
+        [sheet.name, 'Soll', 'Summe', sheet.sollSum, ''],
+        ...sheet.haben.map((line) => [sheet.name, 'Haben', line.label, line.amount, '']),
+        [sheet.name, 'Haben', 'Summe', sheet.habenSum, ''],
+        [sheet.name, 'Kontrolle', '', '', sheet.control],
+      ]);
+      downloadCsv(`kundengelder-${year}.csv`, toSemicolonCsv(SHEET_CSV_HEADERS, rows));
+      return;
+    }
+
     const rows = data.accounts.flatMap((account) => {
       if (account.lines.length === 0) {
         return [[account.name, account.key, '', account.currency, 0, 0, 0]];
@@ -145,7 +162,9 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
     );
   }
 
-  const years = utcYearsFrom2022();
+  const years = utcYearsFrom2020();
+  const sheets = extract?.sheets ?? [];
+  const showSheets = sheets.length > 0;
 
   return (
     <div className="space-y-4 p-4 w-full self-stretch" style={{ color: '#111827' }}>
@@ -173,7 +192,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
               label="Export CSV"
               width={StyledButtonWidth.MIN}
               color={StyledButtonColor.STURDY_WHITE}
-              disabled={extract.accounts.length === 0}
+              disabled={extract.accounts.length === 0 && sheets.length === 0}
               onClick={() => exportCsv(extract)}
             />
           )}
@@ -182,60 +201,73 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
 
       {error && <ErrorHint message={error} />}
 
-      {extract?.accounts.map((account) => (
-        <div key={account.key} className="bg-white rounded-lg shadow p-4">
-          <h2 className="text-lg font-semibold">{account.name}</h2>
-          <div className="text-sm mb-3" style={{ color: '#6b7280' }}>
-            {account.iban ?? account.key}
-          </div>
-          <div className="overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 px-3 font-semibold">Label</th>
-                  <th className="text-right py-2 px-3 font-semibold">Count</th>
-                  <th className="text-right py-2 px-3 font-semibold">Amount</th>
-                  <th className="text-right py-2 px-3 font-semibold">Amount CHF</th>
-                </tr>
-              </thead>
-              <tbody>
-                {account.lines.length === 0 && (
-                  <tr>
-                    <td className="py-1.5 px-3" colSpan={4}>
-                      No movements
-                    </td>
+      {showSheets &&
+        sheets.map((sheet) => (
+          <KontenblattCard
+            key={sheet.key}
+            sheet={sheet}
+            opened={opened}
+            onLine={(line) => {
+              if (line.lineKey) onLineClick(sheet.key, sheet.iban ?? sheet.key, line.lineKey);
+            }}
+          />
+        ))}
+
+      {!showSheets &&
+        extract?.accounts.map((account) => (
+          <div key={account.key} className="bg-white rounded-lg shadow p-4">
+            <h2 className="text-lg font-semibold">{account.name}</h2>
+            <div className="text-sm mb-3" style={{ color: '#6b7280' }}>
+              {account.iban ?? account.key}
+            </div>
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-3 font-semibold">Label</th>
+                    <th className="text-right py-2 px-3 font-semibold">Count</th>
+                    <th className="text-right py-2 px-3 font-semibold">Amount</th>
+                    <th className="text-right py-2 px-3 font-semibold">Amount CHF</th>
                   </tr>
-                )}
-                {account.lines.map((line) => {
-                  return (
-                    <Fragment key={line.key}>
-                      <tr
-                        className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                        onClick={() => onLineClick(account, line)}
-                      >
-                        <td className="py-1.5 px-3">{line.label}</td>
-                        <td className="py-1.5 px-3 text-right">{line.count}</td>
-                        <td className="py-1.5 px-3 text-right">
-                          {line.amount.toLocaleString('de-CH')} {line.currency}
-                        </td>
-                        <td className="py-1.5 px-3 text-right font-medium">{formatChf(line.amountChf)}</td>
-                      </tr>
-                      {opened && opened.accountKey === account.key && opened.lineKey === line.key && (
-                        <tr>
-                          <td colSpan={4} className="py-2 px-3 bg-gray-50">
-                            {opened.error && <ErrorHint message={opened.error} />}
-                            {opened.list && <TxTable list={opened.list} />}
+                </thead>
+                <tbody>
+                  {account.lines.length === 0 && (
+                    <tr>
+                      <td className="py-1.5 px-3" colSpan={4}>
+                        No movements
+                      </td>
+                    </tr>
+                  )}
+                  {account.lines.map((line) => {
+                    return (
+                      <Fragment key={line.key}>
+                        <tr
+                          className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                          onClick={() => onLineClick(account.key, account.key, line.key)}
+                        >
+                          <td className="py-1.5 px-3">{line.label}</td>
+                          <td className="py-1.5 px-3 text-right">{line.count}</td>
+                          <td className="py-1.5 px-3 text-right">
+                            {line.amount.toLocaleString('de-CH')} {line.currency}
                           </td>
+                          <td className="py-1.5 px-3 text-right font-medium">{formatChf(line.amountChf)}</td>
                         </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
+                        {opened && opened.viewKey === account.key && opened.lineKey === line.key && (
+                          <tr>
+                            <td colSpan={4} className="py-2 px-3 bg-gray-50">
+                              {opened.error && <ErrorHint message={opened.error} />}
+                              {opened.list && <TxTable list={opened.list} />}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
 
       {extract !== undefined && (
         <div className="bg-white rounded-lg shadow p-4">
@@ -268,6 +300,111 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
         </div>
       )}
     </div>
+  );
+}
+
+function KontenblattCard({
+  sheet,
+  opened,
+  onLine,
+}: {
+  sheet: KundengelderSheet;
+  opened?: OpenedLine;
+  onLine: (line: KundengelderSheetLine) => void;
+}): JSX.Element {
+  return (
+    <div className="bg-white rounded-lg shadow p-4">
+      <h2 className="text-lg font-semibold">{sheet.name}</h2>
+      {sheet.iban && (
+        <div className="text-sm mb-3" style={{ color: '#6b7280' }}>
+          {sheet.iban}
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <SheetSide
+          title="Soll"
+          lines={sheet.soll}
+          sum={sheet.sollSum}
+          currency={sheet.currency}
+          sheetKey={sheet.key}
+          opened={opened}
+          onLine={onLine}
+        />
+        <SheetSide
+          title="Haben"
+          lines={sheet.haben}
+          sum={sheet.habenSum}
+          currency={sheet.currency}
+          sheetKey={sheet.key}
+          opened={opened}
+          onLine={onLine}
+        />
+      </div>
+      <div className={`mt-3 text-sm font-medium ${sheet.control !== 0 ? 'text-dfxRed-100' : ''}`}>
+        Kontrolle {sheet.control.toLocaleString('de-CH')} {sheet.currency}
+      </div>
+    </div>
+  );
+}
+
+function SheetSide({
+  title,
+  lines,
+  sum,
+  currency,
+  sheetKey,
+  opened,
+  onLine,
+}: {
+  title: string;
+  lines: KundengelderSheetLine[];
+  sum: number;
+  currency: string;
+  sheetKey: string;
+  opened?: OpenedLine;
+  onLine: (line: KundengelderSheetLine) => void;
+}): JSX.Element {
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b border-gray-200">
+          <th className="text-left py-2 px-3 font-semibold">{title}</th>
+          <th className="text-right py-2 px-3 font-semibold">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {lines.map((line) => {
+          const open = opened && opened.viewKey === sheetKey && opened.lineKey === line.lineKey;
+          return (
+            <Fragment key={line.label}>
+              <tr
+                className={`border-b border-gray-100 ${line.lineKey ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
+                onClick={() => line.lineKey && onLine(line)}
+              >
+                <td className="py-1.5 px-3">{line.label}</td>
+                <td className="py-1.5 px-3 text-right">
+                  {line.amount.toLocaleString('de-CH')} {currency}
+                </td>
+              </tr>
+              {open && (
+                <tr>
+                  <td colSpan={2} className="py-2 px-3 bg-gray-50">
+                    {opened?.error && <ErrorHint message={opened.error} />}
+                    {opened?.list && <TxTable list={opened.list} />}
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        })}
+        <tr className="border-t border-gray-300">
+          <td className="py-1.5 px-3 font-semibold">Summe</td>
+          <td className="py-1.5 px-3 text-right font-semibold">
+            {sum.toLocaleString('de-CH')} {currency}
+          </td>
+        </tr>
+      </tbody>
+    </table>
   );
 }
 
