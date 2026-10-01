@@ -114,6 +114,12 @@ export default function ComplianceReviewScreen(): JSX.Element {
     };
   }, [preview]);
 
+  if (isLoading && !data) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
+  if (error && !data) return <ErrorHint message={error} />;
+  if (!data) return <ErrorHint message="No data" />;
+
+  const account = data;
+
   async function openFile(file: KycFile): Promise<void> {
     try {
       const { content, contentType } = await getKycFile(file.uid, 'View');
@@ -227,7 +233,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
       const results: KycLogResult[] = [{ table: 'kycStep', column: 'status', value: status }];
 
       if (effectiveTab === 'operationalActivity' && userDataId) {
-        const step = findLatestStep(data?.kycSteps ?? [], 'OperationalActivity');
+        const step = findLatestStep(account.kycSteps, 'OperationalActivity');
         const amlAccountType = deriveAmlAccountType(step);
         if (amlAccountType) {
           await updateUserData(+userDataId, { amlAccountType });
@@ -302,7 +308,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
   }
 
   async function handleSetKycStatusCheck(): Promise<void> {
-    const currentKycStatus = data?.userData.kycStatus;
+    const currentKycStatus = account.userData.kycStatus;
     if (!userDataId || !currentKycStatus || currentKycStatus === KycStatus.CHECK) return;
 
     setIsSaving(true);
@@ -448,30 +454,29 @@ export default function ComplianceReviewScreen(): JSX.Element {
 
   function getTabBadge(tab: ReviewTabConfig): JSX.Element | null {
     if (tab.key === 'bankDataReview') {
-      const count = data?.bankDatas.filter((b) => b.status === 'ManualReview').length ?? 0;
+      const count = account.bankDatas.filter((b) => b.status === 'ManualReview').length;
       return count > 0 ? (
         <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-dfxBlue-800 text-white">{count}</span>
       ) : null;
     }
     if (tab.key === 'amlPending') {
-      const count =
-        data?.transactions.filter(
-          (tx) => tx.type != null && tx.amlCheck === 'Pending' && tx.amlReason === 'ManualCheck',
-        ).length ?? 0;
+      const count = account.transactions.filter(
+        (tx) => tx.type != null && tx.amlCheck === 'Pending' && tx.amlReason === 'ManualCheck',
+      ).length;
       return count > 0 ? (
         <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-dfxBlue-800 text-white">{count}</span>
       ) : null;
     }
     if (tab.key === 'stammdaten') {
       const changeSteps = ['NameChange', 'AddressChange'];
-      const hasChanges = data?.kycSteps.some(
+      const hasChanges = account.kycSteps.some(
         (s) => changeSteps.includes(s.name) && !['Completed', 'Failed'].includes(s.status),
       );
       return hasChanges ? <span className="ml-1 inline-block w-2 h-2 rounded-full bg-dfxYellow-500" /> : null;
     }
     // KYC step-based tabs
     if (tab.stepName) {
-      const step = findLatestStep(data?.kycSteps ?? [], tab.stepName);
+      const step = findLatestStep(account.kycSteps, tab.stepName);
       return step ? (
         <span
           className={`ml-1 inline-block w-2 h-2 rounded-full ${
@@ -494,7 +499,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
 
     if (tab.key === 'stammdaten') {
       const changeSteps = ['NameChange', 'AddressChange'];
-      const steps = data?.kycSteps.filter((s) => changeSteps.includes(s.name)) ?? [];
+      const steps = account.kycSteps.filter((s) => changeSteps.includes(s.name));
       if (steps.length === 0) return gray;
       if (steps.some((s) => s.status === 'Failed')) return red;
       if (steps.every((s) => s.status === 'Completed')) return green;
@@ -502,7 +507,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
     }
 
     if (tab.key === 'bankDataReview') {
-      const entries = data?.bankDatas ?? [];
+      const entries = account.bankDatas;
       if (entries.some((b) => b.status === 'Failed')) return red;
       const pending = entries.filter((b) => b.status === 'ManualReview');
       if (entries.length > 0 && pending.length === 0) return green;
@@ -510,7 +515,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
     }
 
     if (tab.key === 'amlPending') {
-      const txs = data?.transactions.filter((tx) => tx.type != null && tx.amlReason === 'ManualCheck') ?? [];
+      const txs = account.transactions.filter((tx) => tx.type != null && tx.amlReason === 'ManualCheck');
       if (txs.some((tx) => tx.amlCheck === 'Fail')) return red;
       const hasPending = txs.some((tx) => tx.amlCheck === 'Pending');
       if (txs.length > 0 && !hasPending) return green;
@@ -518,7 +523,7 @@ export default function ComplianceReviewScreen(): JSX.Element {
     }
 
     if (tab.stepName) {
-      const step = findLatestStep(data?.kycSteps ?? [], tab.stepName);
+      const step = findLatestStep(account.kycSteps, tab.stepName);
       if (step?.status === 'Completed') return green;
       if (step?.status === 'Failed') return red;
     }
@@ -526,17 +531,13 @@ export default function ComplianceReviewScreen(): JSX.Element {
     return gray;
   }
 
-  if (isLoading && !data) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
-  if (error && !data) return <ErrorHint message={error} />;
-  if (!data) return <ErrorHint message="No data" />;
-
   const accountType = String(data.userData.accountType ?? '');
   const visibleTabs = reviewTabs.filter((t) => !t.accountTypes || t.accountTypes.includes(accountType));
 
-  const effectiveTab = activeTab && visibleTabs.some((t) => t.key === activeTab) ? activeTab : visibleTabs[0]?.key;
+  const effectiveTab = activeTab && visibleTabs.some((t) => t.key === activeTab) ? activeTab : visibleTabs[0].key;
   if (effectiveTab && effectiveTab !== activeTab) setActiveTab(effectiveTab);
 
-  const activeConfig = visibleTabs.find((t) => t.key === effectiveTab) ?? visibleTabs[0];
+  const activeConfig = visibleTabs.find((t) => t.key === effectiveTab) as ReviewTabConfig;
 
   return (
     <div className="w-full flex flex-col gap-4">

@@ -343,4 +343,53 @@ test.describe('Compliance review KYC and AML actions', () => {
 
     expect(unexpectedRequests).toEqual([]);
   });
+
+  test('shows the Scorechain acknowledgement row for an unavailable result', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1200 });
+
+    const pendingFixture = structuredClone(complianceFixture);
+    pendingFixture.transactions = [
+      {
+        id: 336963,
+        uid: 'synthetic-buy-crypto-136855',
+        buyCryptoId: 136855,
+        type: 'Buy',
+        sourceType: 'BuyCrypto',
+        inputAmount: 11.2,
+        inputAsset: 'EUR',
+        outputAsset: 'WBTC',
+        amountInChf: 10.45,
+        amlCheck: 'Pending',
+        amlReason: 'ManualCheck',
+        isCompleted: false,
+        buyCryptoIsComplete: false,
+        buyCryptoStatus: 'Created',
+        buyCryptoHasBatch: false,
+        buyCryptoHasChargeback: false,
+        buyCryptoReviewResetBlocked: false,
+        created: '2026-09-28T07:32:35.000Z',
+        comment: 'ScorechainUnavailable',
+      },
+    ];
+
+    const { unexpectedRequests } = await installSyntheticApi(page, pendingFixture);
+
+    await page.goto(`/compliance/user/${USER_DATA_ID}/kyc?session=${jwt()}&tab=amlPending`);
+
+    await expect(page.getByText('AmlCheck', { exact: true })).toBeVisible();
+    await expect(page.getByText('Scorechain-Prüfung ohne Ergebnis')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Scorechain quittieren' })).toBeVisible();
+    await expect(
+      page.getByText(/Reset hilft hier nicht: Die Scorechain-Warnung kommt bei jeder Prüfung wieder/),
+    ).toHaveCount(0);
+
+    await page.getByText('Scorechain-Prüfung ohne Ergebnis').scrollIntoViewIfNeeded();
+
+    await expect(page).toHaveScreenshot('compliance-review-aml-pending-scorechain-unavailable.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+
+    expect(unexpectedRequests).toEqual([]);
+  });
 });
