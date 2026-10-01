@@ -1,12 +1,15 @@
 import { expect, Page, Route, test } from '@playwright/test';
 
 /**
- * Visual variant of a rejected automatic address switch on /connect: the rejected automatic switch
- * is sent exactly once, the translated rejection sentence is shown above the address selection
- * (without the API's text or the generic ErrorHint), one `KnownRejection` report reaches the
- * client-error endpoint (including when the same rejection is shown again after re-selection,
- * because the reporter drops an identical report within 60 s), and selecting the address again
- * sends exactly one new attempt.
+ * Visual variants of address-switch / custody failures on /connect:
+ * (1) a rejected automatic switch is sent exactly once, the translated rejection sentence is shown
+ * above the address selection (without the API's text or the generic ErrorHint), one `KnownRejection`
+ * POST is observed on the intercepted client-error route (including when the same rejection is shown
+ * again after re-selection, because the reporter drops an identical report within 60 s), and selecting
+ * the address again sends exactly one new attempt;
+ * (2) a generic (non-rejection) switch failure keeps the generic hint above the address selection;
+ * (3) a custody sign-up failure without a message shows the generic hint with «Unknown error»
+ * instead of an endless spinner.
  *
  * Auth is a synthetic unsigned JWT WITHOUT `address` (a mail-login session); all `/v1/**` and
  * `/v2/**` calls are intercepted via page.route(...).
@@ -34,6 +37,11 @@ const USER = {
 
 const REJECTION_TEXT = 'This address could not be selected. Please use another address or contact our support.';
 
+const DEFAULT_SWITCH_ERROR = {
+  status: 403,
+  body: { statusCode: 403, message: 'Forbidden resource', error: 'Forbidden' },
+};
+
 function jwt(): string {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
   return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
@@ -57,9 +65,15 @@ function knownRejectionReports(reports: unknown[]): unknown[] {
 
 async function installSyntheticApi(
   page: Page,
-): Promise<{ unexpectedRequests: string[]; changeCalls: number; reports: unknown[] }> {
+  options: {
+    user?: typeof USER;
+    switchError?: { status: number; body: object };
+    custodyError?: { status: number; body: object };
+  } = {},
+): Promise<{ unexpectedRequests: string[]; changeCalls: number; custodyCalls: number; reports: unknown[] }> {
+  const { user = USER, switchError = DEFAULT_SWITCH_ERROR, custodyError } = options;
   const unexpectedRequests: string[] = [];
-  const state = { changeCalls: 0, unexpectedRequests, reports: [] as unknown[] };
+  const state = { changeCalls: 0, custodyCalls: 0, unexpectedRequests, reports: [] as unknown[] };
 
   await page.route('**/v1/**', async (route) => {
     const request = route.request();
@@ -94,7 +108,13 @@ async function installSyntheticApi(
 
     if (method === 'POST' && path === '/v1/user/change') {
       state.changeCalls++;
-      await fulfillJson(route, { statusCode: 403, message: 'Forbidden resource', error: 'Forbidden' }, 403);
+      await fulfillJson(route, switchError.body, switchError.status);
+      return;
+    }
+
+    if (method === 'POST' && path === '/v1/custody' && custodyError) {
+      state.custodyCalls++;
+      await fulfillJson(route, custodyError.body, custodyError.status);
       return;
     }
 
@@ -112,7 +132,7 @@ async function installSyntheticApi(
     const method = request.method();
 
     if (method === 'GET' && path === '/v2/user') {
-      await fulfillJson(route, USER);
+      await fulfillJson(route, user);
       return;
     }
 
@@ -156,5 +176,47 @@ test.describe('Connect address switch', () => {
     await expect(page.getByText(REJECTION_TEXT)).toBeVisible();
     // The client-error reporter drops an identical report within 60 s, so the repeated rejection is logged once.
     expect(knownRejectionReports(api.reports)).toHaveLength(1);
+  });
+
+  test('generic switch failure keeps the generic hint above the address selection', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const api = await installSyntheticApi(page, {
+      switchError: { status: 500, body: { statusCode: 500, message: 'Internal server error' } },
+    });
+
+    await page.goto(`/connect?session=${encodeURIComponent(jwt())}&lang=en`);
+
+    await expect(page.getByText('Please select an address or add a new one to continue.')).toBeVisible();
+    await expect(page.getByText(/Something went wrong/)).toBeVisible();
+    await expect(page.getByText('Internal server error')).toBeVisible();
+    await expect(page.getByText(REJECTION_TEXT)).toHaveCount(0);
+
+    // A looping screen would keep calling during the wait.
+    await page.waitForTimeout(2000);
+    expect(api.changeCalls).toBe(1);
+    expect(knownRejectionReports(api.reports)).toHaveLength(0);
+    expect(api.unexpectedRequests).toEqual([]);
+
+    await expect(page).toHaveScreenshot('connect-address-switch-02-generic-error.png', { fullPage: true });
+  });
+
+  test('custody sign-up failure without a message shows the generic hint', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const api = await installSyntheticApi(page, {
+      user: { ...USER, addresses: [] },
+      custodyError: { status: 500, body: { statusCode: 500, message: '' } },
+    });
+
+    await page.goto(`/connect?session=${encodeURIComponent(jwt())}&lang=en&asset-out=ZCHF`);
+
+    await expect(page.getByText(/Something went wrong/)).toBeVisible();
+    await expect(page.getByText('Unknown error')).toBeVisible();
+
+    // A looping screen would keep calling during the wait.
+    await page.waitForTimeout(2000);
+    expect(api.custodyCalls).toBe(1);
+    expect(api.unexpectedRequests).toEqual([]);
+
+    await expect(page).toHaveScreenshot('connect-address-switch-03-custody-error.png', { fullPage: true });
   });
 });

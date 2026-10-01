@@ -441,16 +441,19 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the real `url()` treats those arguments identically; no assertion pins the outer host.
 - **The rejected address switch visual spec answers the user and the switch itself.**
   `e2e/connect-address-switch.spec.ts` authenticates with a synthetic unsigned JWT without an address, fulfils
-  `GET /v2/user` with one synthetic address and the bootstrap GETs, answers `POST /v1/user/change` with a 403
-  and fulfils the client-error POST. A green run proves that the screen sends the rejected switch once, shows
-  the translated rejection sentence above the selection without the API's text, and sends exactly one new
-  attempt when the address is selected again; the client-error endpoint receives one `KnownRejection` report,
-  including when the same rejection is shown again after re-selection, because the reporter drops an identical
-  report within 60 s. It does not prove when or why the API rejects the switch, or that login or token
-  verification works. It does not prove that the screen itself reports only once: it reports each displayed
-  rejection, which the unit test covers.
-- **The rejected address switch full-stack case deactivates the account with SQL.**
-  In `e2e-stack/specs/auth.spec.ts`, the `/connect` mail-session case sets `user_data.status` to `Deactivated`
+  `GET /v2/user` with one synthetic address (and with none in the custody case) and the bootstrap GETs,
+  answers `POST /v1/user/change` with a 403 (and with a 500 in one case), answers `POST /v1/custody` with a
+  500 without message in another, and fulfils the client-error POST. A green run proves that the screen sends
+  the rejected switch once, shows the translated rejection sentence above the selection without the API's
+  text, and sends exactly one new attempt when the address is selected again; the intercepted client-error
+  route observes one `KnownRejection` POST, including when the same rejection is shown again after
+  re-selection, because the reporter drops an identical report within 60 s; a server error on the switch keeps
+  the generic hint and a custody failure without a message shows the generic hint with "Unknown error" instead
+  of an endless spinner. It does not prove when or why the API rejects the switch, or that login or token
+  verification works, or that the real client-error endpoint receives or stores the report. It does not prove
+  that the screen itself reports only once: it reports each displayed rejection, which the unit test covers.
+- **The rejected address switch full-stack case deactivates the account with SQL.** In
+  `e2e-stack/specs/auth.spec.ts`, the `/connect` mail-session case sets `user_data.status` to `Deactivated`
   after the mail login, so the API rejects the automatic address switch. A green run proves that the screen
   sends the rejected switch once and shows the translated rejection sentence instead of the API's text. It
   does not prove how an account reaches that state in production or any other reason the API may reject the
@@ -459,12 +462,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `src/__tests__/address-switch.test.tsx` transpiles `UserContextProvider` from the installed
   `@dfx.swiss/react` build and wires it to hand-written `useUser` and `useApiSession` replacements; the
   dropdown, `ErrorHint`, labels, the app contexts and the client-error reporter are stubbed as well. A green
-  run proves, against that harness, that `ConnectAddress` and `AccountScreen` each send a switch only once
-  and that `ConnectAddress` shows the translated rejection sentence instead of the API's text for
-  400/401/403/404, keeps the generic hint for other failures, reports each displayed rejection once to the
-  client-error reporter (so again after re-selection), and retries only after re-selection. It does not prove
-  the real session or token handling, the rendered dropdown, that the API returns those statuses, or the
-  reporter's 60 s deduplication of identical reports, since the reporter is replaced.
+  run proves, against that harness, that `ConnectAddress` and `AccountScreen` each send a switch only once and
+  that `ConnectAddress` shows the translated rejection sentence instead of the API's text for 400/401/403/404
+  (for 401 the app's SDK also clears the session, which this harness does not model), keeps the generic hint
+  for other failures, reports each displayed rejection once to the client-error reporter (so again after
+  re-selection), and retries only after re-selection. It does not prove the real session or token handling,
+  the rendered dropdown, that the API returns those statuses, or the reporter's 60 s deduplication of
+  identical reports, since the reporter is replaced.
 
 ## Known gaps
 
