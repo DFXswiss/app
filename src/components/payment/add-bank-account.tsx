@@ -1,29 +1,19 @@
-import {
-  ApiError,
-  BankAccount,
-  CreateBankAccount,
-  SupportIssueType,
-  Utils,
-  Validations,
-  useBankAccountContext,
-} from '@dfx.swiss/react';
+import { ApiError, BankAccount, CreateBankAccount, Utils, Validations, useBankAccountContext } from '@dfx.swiss/react';
 import {
   Form,
   StyledButton,
   StyledButtonColor,
   StyledButtonWidth,
-  StyledInfoText,
   StyledInput,
-  StyledLink,
   StyledSpacer,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Trans } from 'react-i18next';
 import { useSettingsContext } from '../../contexts/settings.context';
-import { useNavigation } from '../../hooks/navigation.hook';
 import { ErrorHint } from '../error-hint';
+import { BankAccountFailureKind, bankAccountFailureKind } from './bank-account-create-failure';
+import { BankAccountCreateHint } from './bank-account-create-hint';
 
 interface AddBankAccountProps {
   onSubmit: (bankAccount: BankAccount) => void;
@@ -32,10 +22,9 @@ interface AddBankAccountProps {
 
 export function AddBankAccount({ onSubmit, confirmationText }: AddBankAccountProps): JSX.Element {
   const { translate, translateError } = useSettingsContext();
-  const { navigate } = useNavigation();
 
   const [error, setError] = useState<string>();
-  const [customError, setCustomError] = useState<React.ReactNode>();
+  const [failureKind, setFailureKind] = useState<Exclude<BankAccountFailureKind, 'other'>>();
   const [confirmBankAccount, setConfirmBankAccount] = useState<BankAccount>();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -49,39 +38,19 @@ export function AddBankAccount({ onSubmit, confirmationText }: AddBankAccountPro
 
   async function createBankAccount(newAccount: CreateBankAccount): Promise<void> {
     setError(undefined);
-    setCustomError(undefined);
+    setFailureKind(undefined);
     setConfirmBankAccount(undefined);
 
     setIsLoading(true);
     createAccount(newAccount)
       .then(!confirmationText ? onSubmit : setConfirmBankAccount)
       .catch((e: ApiError) => {
-        if (e.statusCode === 400 && e.message?.includes('Multi-account IBAN')) {
-          setCustomError(
-            <Trans i18nKey="general/errors.iban">
-              {`This is a multi-account IBAN and cannot be added as a personal account. Please open a support ticket at `}
-              <StyledLink
-                label={new URL('support', process.env.REACT_APP_PUBLIC_URL).href}
-                onClick={() => navigate(`/support/issue?issue-type=${SupportIssueType.GENERIC_ISSUE}`)}
-                dark
-              />
-              {` and attach the bank transaction confirmation as a PDF.`}
-            </Trans>,
-          );
-        } else if (e.statusCode === 400 && e.message?.includes('KYC only account')) {
-          setCustomError(
-            <Trans i18nKey="general/errors.ibanKycOnly">
-              {`A bank account can only be added once a wallet is linked to this account. `}
-              <StyledLink
-                label={translate('screens/home', 'Connect your wallet')}
-                onClick={() => navigate('/connect', { setRedirect: true })}
-                dark
-              />
-            </Trans>,
-          );
-        } else {
+        const kind = bankAccountFailureKind(e);
+        if (kind === 'other') {
           setError(e.message ?? 'Unknown error');
+          return;
         }
+        setFailureKind(kind);
       })
       .finally(() => setIsLoading(false));
   }
@@ -129,9 +98,9 @@ export function AddBankAccount({ onSubmit, confirmationText }: AddBankAccountPro
           </div>
         )}
 
-        {customError && (
+        {failureKind && (
           <div className="text-left">
-            <StyledInfoText invertedIcon>{customError}</StyledInfoText>
+            <BankAccountCreateHint kind={failureKind} />
           </div>
         )}
 
