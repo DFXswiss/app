@@ -1,4 +1,5 @@
 import { expect, Page, Route, test } from '@playwright/test';
+import { captureExpandedPage } from './helpers/full-page-png';
 
 /**
  * Visual regression for the Kundengelder year extract (/dashboard/financial/kundengelder):
@@ -6,11 +7,22 @@ import { expect, Page, Route, test } from '@playwright/test';
  * booked-diff table, and one opened statement line.
  *
  * Auth is a synthetic Admin JWT. Shell reads and the extract are mocked, the same way as
- * the Log Validity spec. Figures and account numbers are fictional. A green run does not
- * prove production auth or that the API returns this extract.
+ * the Log Validity spec. Figures and account numbers are fictional. The opened buy-crypto
+ * line has one row per completed 2024 voucher. A green run does not prove production auth
+ * or that the API returns this extract.
  *
  * The clock is pinned so the year list does not grow when the calendar year changes.
  */
+
+/** Completed buy-crypto vouchers in 2024. Amounts below are not those vouchers. */
+const BUY_CRYPTO_BELEGE_2024 = 4023;
+const AFTER_FEE_EACH = 1;
+const BUY_CRYPTO_AFTER_FEE = BUY_CRYPTO_BELEGE_2024 * AFTER_FEE_EACH;
+const OPENING = 1000;
+const BUY_CRYPTO_FEE = 2;
+const BANK_FEE = 4.5;
+const SOLL_SUM = OPENING + BUY_CRYPTO_AFTER_FEE + BUY_CRYPTO_FEE;
+const SALDO = SOLL_SUM - BANK_FEE;
 
 const SAMPLE_IBAN = 'CH9300762011623852957';
 const QUIET_IBAN = 'CH2100000000000000002';
@@ -48,7 +60,12 @@ const EXTRACT = {
     },
   ],
   diffs: [
-    { key: `${SAMPLE_IBAN}|BuyCrypto after Fee|CHF`, live: 200, booked: 200, delta: 0 },
+    {
+      key: `${SAMPLE_IBAN}|BuyCrypto after Fee|CHF`,
+      live: BUY_CRYPTO_AFTER_FEE,
+      booked: BUY_CRYPTO_AFTER_FEE,
+      delta: 0,
+    },
     { key: 'CheckoutLtdCHF|Checkout', live: 40, booked: 40, delta: 0 },
   ],
   sheets: [
@@ -63,10 +80,10 @@ const EXTRACT = {
       soll: [],
       haben: [],
       rows: [
-        { sollLabel: 'Anfangsbestand', sollAmount: 1000 },
+        { sollLabel: 'Anfangsbestand', sollAmount: OPENING },
         { sollLabel: 'Zahlungseingänge', habenLabel: 'Zahlungsausgänge', section: true },
-        { sollLabel: 'BuyCrypto after Fee', sollAmount: 200, sollLineKey: 'buy-after-fee' },
-        { sollLabel: 'BuyCrypto Fee', sollAmount: 2 },
+        { sollLabel: 'BuyCrypto after Fee', sollAmount: BUY_CRYPTO_AFTER_FEE, sollLineKey: 'buy-after-fee' },
+        { sollLabel: 'BuyCrypto Fee', sollAmount: BUY_CRYPTO_FEE },
         { sollLabel: 'FiatFiat after Fee', sollAmount: 0, habenLabel: 'BuyFiat after Fee', habenAmount: 0 },
         { sollLabel: 'FiatFiat Fee', sollAmount: 0, habenLabel: 'FiatFiat', habenAmount: 0 },
         { sollLabel: 'BuyCryptoReturn', sollAmount: 0 },
@@ -101,16 +118,16 @@ const EXTRACT = {
         { sollLabel: 'Unknown', sollAmount: 0, habenLabel: 'Unknown', habenAmount: 0 },
         { habenLabel: '% Gebühren Bank', habenAmount: 0 },
         { habenLabel: 'Gebühr Checkout', habenAmount: 0 },
-        { sollLabel: 'Storno Gebühren Bank', sollAmount: 0, habenLabel: 'BankAccountFee', habenAmount: 4.5 },
+        { sollLabel: 'Storno Gebühren Bank', sollAmount: 0, habenLabel: 'BankAccountFee', habenAmount: BANK_FEE },
         { habenLabel: 'Kommission Gebühren', habenAmount: 0 },
-        { habenLabel: 'Saldo', habenAmount: 1197.5 },
+        { habenLabel: 'Saldo', habenAmount: SALDO },
       ],
-      sollSum: 1202,
-      habenSum: 1202,
+      sollSum: SOLL_SUM,
+      habenSum: SOLL_SUM,
       control: 0,
-      closingBalance: 1197.5,
-      openingBalance: 1000,
-      nextOpeningBalance: 1197.5,
+      closingBalance: SALDO,
+      openingBalance: OPENING,
+      nextOpeningBalance: SALDO,
       openingCheck: 'verified',
     },
     {
@@ -140,17 +157,20 @@ const LINES = {
   year: 2026,
   accountKey: SAMPLE_IBAN,
   line: 'buy-after-fee',
-  rows: [
-    {
-      id: 9001,
-      bookingDate: '2026-03-02',
+  rows: Array.from({ length: BUY_CRYPTO_BELEGE_2024 }, (_, index) => {
+    const n = index + 1;
+    const month = ((index % 12) + 1).toString().padStart(2, '0');
+    const day = ((index % 28) + 1).toString().padStart(2, '0');
+    return {
+      id: 10000 + n,
+      bookingDate: `2026-${month}-${day}`,
       type: 'BuyCrypto',
       currency: 'CHF',
-      amount: 200.2,
-      afterFee: 200,
-      instructionId: 'SAMPLE-1',
-    },
-  ],
+      amount: 1.25,
+      afterFee: AFTER_FEE_EACH,
+      instructionId: `SAMPLE-${n.toString().padStart(4, '0')}`,
+    };
+  }),
 };
 
 async function installRoutes(page: Page): Promise<void> {
@@ -196,6 +216,7 @@ test.describe('Kundengelder year extract', () => {
   test.use({ timezoneId: 'Europe/Zurich', locale: 'de-CH' });
 
   test('visual regression - kundengelder extract', async ({ page }) => {
+    test.setTimeout(300_000);
     await page.setViewportSize({ width: 1440, height: 1520 });
     await page.clock.install({ time: new Date('2026-10-02T12:00:00Z') });
     await page.clock.resume();
@@ -214,9 +235,13 @@ test.describe('Kundengelder year extract', () => {
 
     await page.setViewportSize({ width: 1440, height: 1680 });
     await page.getByRole('cell', { name: 'BuyCrypto after Fee' }).first().click();
-    await expect(page.getByText('SAMPLE-1')).toBeVisible();
+    const bookings = page.locator('table', { has: page.getByRole('columnheader', { name: 'Instruktion' }) });
+    await expect(bookings.locator('tbody tr')).toHaveCount(BUY_CRYPTO_BELEGE_2024);
+    await expect(page.getByText('SAMPLE-0001', { exact: true })).toBeVisible();
     await page.waitForTimeout(500);
 
-    await expect(page).toHaveScreenshot('dashboard-financial-kundengelder-line.png', shot);
+    await expect(await captureExpandedPage(page)).toMatchSnapshot('dashboard-financial-kundengelder-line.png', {
+      maxDiffPixels: 1000,
+    });
   });
 });
