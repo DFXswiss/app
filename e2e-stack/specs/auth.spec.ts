@@ -132,6 +132,71 @@ test.describe('Auth area e2e', () => {
     await expect(page.locator('img[src*="walletconnect"]')).toBeVisible();
   });
 
+  // Web3 sees only the request adapter, and register() catches the throwing `.on`
+  // read. Without that, the missing-provider hint or `Provider not set or invalid`
+  // would show instead of the later signature check.
+  // The mock does not answer personal_sign, so login deliberately does not complete.
+  test('/login/wallet MetaMask tile with a Brave-like provider does not show the install hint', async ({ page }) => {
+    await page.addInitScript((address: string) => {
+      const target: Record<string, unknown> = {};
+      Object.defineProperty(target, 'on', {
+        value: () => undefined,
+        writable: false,
+        configurable: false,
+      });
+      target.isMetaMask = true;
+      target.request = async (payload: { method?: string }) => {
+        const method = payload?.method;
+        if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [address];
+        if (method === 'eth_chainId') return '0x1';
+        return null;
+      };
+      (window as any).ethereum = new Proxy(target, {
+        get(t, prop) {
+          // Return a different function than the target's non-configurable `on` so the
+          // engine throws on read, matching the proxy invariant error observed in
+          // one clean Brave profile. This fake does not identify the throwing layer.
+          if (prop === 'on') return () => undefined;
+          return t[prop as string];
+        },
+      });
+    }, '0x1111111111111111111111111111111111111111');
+
+    await page.goto('/login/wallet');
+    await page.waitForLoadState('networkidle');
+
+    expect(normPath(new URL(page.url()).pathname)).toBe('/login/wallet');
+    expect(
+      await page.evaluate(() => {
+        try {
+          void (window as any).ethereum.on;
+          return false;
+        } catch (error) {
+          return error instanceof TypeError;
+        }
+      }),
+    ).toBe(true);
+    const metamaskTile = page.locator('img[src*="metamask"]');
+    await expect(metamaskTile).toBeVisible({ timeout: 15000 });
+    await metamaskTile.click();
+
+    // ConnectError is the end state for this mock. Its heading and the signature
+    // validation land in one commit; the confirm copy and the install hint are earlier frames.
+    const errorHeading = page.getByRole('heading', { name: 'Connection failed!', exact: true, level: 2 });
+    await expect(errorHeading).toBeVisible({ timeout: 15000 });
+    await expect(errorHeading.locator('xpath=following-sibling::p[1]')).toContainText('signature', {
+      timeout: 15000,
+    });
+
+    await expect(page.getByText('Please install MetaMask or Rabby!', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Provider not set or invalid')).toHaveCount(0);
+    await expect(
+      page.getByText('No wallet found. Please check your wallet extension or set one up, then reload this page.', {
+        exact: true,
+      }),
+    ).toHaveCount(0);
+  });
+
   // ---------------------------------------------------------------------------
   // /connect — same wallets page id when logged out; address widget only when
   // logged in without session.address

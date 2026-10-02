@@ -110,6 +110,26 @@ This section lists the fakes introduced by this repository's own suites and stat
 run does not prove for each one; the taxonomy and cross-repository entries live in
 `DFXswiss/backend` under `docs/test-architecture.md`.
 
+- **The injected-wallet tests fabricate providers with broken or missing methods.**
+  `src/hooks/wallets/__tests__/metamask.hook.test.ts` and `e2e-stack/specs/auth.spec.ts`
+  use a JavaScript proxy that throws when `on` is read. The unit tests also pass that
+  request adapter through the real Web3 request manager, including a provider injected
+  after the hook has rendered, and check that method and parameters arrive unchanged.
+  They replace `window.ethereum` after `eth_sendTransaction` and after
+  `wallet_sendCalls` with a second provider that rejects every request, then check
+  that `eth_getTransactionReceipt` and `wallet_getCallsStatus` stay on the provider
+  that accepted the send. A green run of that replacement does not prove a real
+  extension swap still confirms a payment that was already broadcast. The token
+  receipt case stubs `sha3` in `web3-utils` with SHA-256 and returns the address
+  from `toChecksumAddress` unchanged, so it checks provider routing and receipt
+  polling, not cryptographic encoding.
+  The full-stack fake returns fixed accounts and chain data and does not produce a valid signature.
+  The visual spec
+  `e2e/wallet-missing-provider.spec.ts` supplies a detectable wallet that disappears after its
+  first account RPC and mocks the login bootstrap API responses. A green visual run proves the
+  translated missing-provider error renders for that synthetic disappearance, not that
+  Web3 failed to bind a real provider, the live API returns the mocked data, every Brave version
+  has the same failure, or a real wallet login completes.
 - **The buy-process specs answer the quote endpoint themselves.** `e2e/buy-process.spec.ts` fulfils
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
   payloads, not that the API produces them. Unit tests against the utility pin the payload shapes
