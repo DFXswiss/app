@@ -1,14 +1,15 @@
 import { SpinnerSize, StyledButton, StyledButtonWidth, StyledLoadingSpinner } from '@dfx.swiss/react-components';
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { ErrorHint } from 'src/components/error-hint';
 import { ConfirmationOverlay } from 'src/components/overlay/confirmation-overlay';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { RealUnitManualReviewStatus, RealUnitReferralRelation } from 'src/dto/realunit-referral.dto';
+import { RealUnitCodeKind, RealUnitManualReviewStatus, RealUnitReferralRelation } from 'src/dto/realunit-referral.dto';
 import { useRealunitGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { useRealunitReferral } from 'src/hooks/realunit-referral.hook';
+import { CODE_KIND_LABEL, REVIEW_STATUS_LABEL } from 'src/util/referral-labels';
 import { formatSwissDateTimeWithSeconds } from 'src/util/utils';
 
 type ReferralAction = 'approve' | 'reject' | 'manualPrize';
@@ -29,7 +30,12 @@ export default function RealunitReferralDetailScreen(): JSX.Element {
   const [actionInFlight, setActionInFlight] = useState(false);
   const [reason, setReason] = useState('');
 
-  useLayoutOptions({ title: translate('screens/referral', 'Referral Detail'), backButton: true });
+  // The route decides the context (promo or referral), so title and back target are right before the
+  // relation has loaded.
+  const isPromo = useLocation().pathname.startsWith('/realunit/promo/');
+  const detailTitle = translate('screens/referral', isPromo ? 'Promo redemption' : 'Referral Detail');
+
+  useLayoutOptions({ title: detailTitle, backButton: true });
 
   useEffect(() => {
     setIsLoading(true);
@@ -57,16 +63,24 @@ export default function RealunitReferralDetailScreen(): JSX.Element {
   const canManualPrize = relation.reviewStatus === RealUnitManualReviewStatus.APPROVED && !relation.credited;
 
   const rows: [string, string][] = [
-    [translate('screens/referral', 'Kind'), relation.kind],
+    [translate('screens/referral', 'Kind'), translate('screens/referral', CODE_KIND_LABEL[relation.kind])],
     [translate('screens/referral', 'Code'), relation.code],
     ['ID', String(relation.id)],
     [translate('screens/referral', 'User ID'), String(relation.userId)],
     [translate('screens/referral', 'Guest account'), relation.guestAccountId != null ? String(relation.guestAccountId) : '-'],
+    // A promo code has no referrer, so the row would always be empty there.
+    ...(relation.kind === RealUnitCodeKind.PROMO
+      ? []
+      : ([
+          [
+            translate('screens/referral', 'Referrer account'),
+            relation.referrerAccountId != null ? String(relation.referrerAccountId) : '-',
+          ],
+        ] as [string, string][])),
     [
-      translate('screens/referral', 'Referrer account'),
-      relation.referrerAccountId != null ? String(relation.referrerAccountId) : '-',
+      translate('screens/referral', 'Review Status'),
+      relation.reviewStatus ? translate('screens/referral', REVIEW_STATUS_LABEL[relation.reviewStatus]) : '-',
     ],
-    [translate('screens/referral', 'Review Status'), relation.reviewStatus ?? '-'],
     [
       translate('screens/referral', 'Credited'),
       relation.credited ? translate('general/actions', 'Yes') : translate('general/actions', 'No'),
@@ -112,8 +126,9 @@ export default function RealunitReferralDetailScreen(): JSX.Element {
       ? translate('screens/referral', 'Reject')
       : translate('screens/referral', 'Award manual prize');
 
-  async function runAction(action: ReferralAction): Promise<void> {
-    if (!relation) return;
+  // An arrow function keeps the narrowing of `relation` from the early returns above (TS 5.4+), so
+  // no unreachable guard is needed: the overlay that calls this only renders with a loaded relation.
+  const runAction = async (action: ReferralAction): Promise<void> => {
     const trimmed = reason.trim();
     if (!trimmed) throw new Error(translate('screens/referral', 'Enter a reason'));
     setActionInFlight(true);
@@ -130,11 +145,11 @@ export default function RealunitReferralDetailScreen(): JSX.Element {
     } finally {
       setActionInFlight(false);
     }
-  }
+  };
 
   return (
     <div className="w-full">
-      {renderTable(translate('screens/referral', 'Referral Detail'), rows)}
+      {renderTable(detailTitle, rows)}
       {renderTable(translate('screens/referral', 'Review history'), historyRows)}
 
       {canReview && (
@@ -204,7 +219,7 @@ export default function RealunitReferralDetailScreen(): JSX.Element {
       <div className="mt-6">
         <StyledButton
           label={translate('general/actions', 'Back')}
-          onClick={() => navigate('/realunit/referral')}
+          onClick={() => navigate(isPromo ? '/realunit/promo' : '/realunit/referral')}
           disabled={actionInFlight}
           width={StyledButtonWidth.FULL}
         />

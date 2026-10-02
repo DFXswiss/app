@@ -25,6 +25,7 @@ function renderAt(path: string) {
         <Route path="/realunit" element={<RealunitWorkspace />}>
           <Route index element={<div>index</div>} />
           <Route path="quotes/:id" element={<div>quote</div>} />
+          <Route path="promo/:id" element={<div>promo</div>} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -37,7 +38,7 @@ describe('RealunitSectionNav', () => {
     mockAuth.signedIn = true;
   });
 
-  it('renders nine section links and marks Overview current on /realunit', () => {
+  it('renders ten section links and marks Overview current on /realunit', () => {
     renderAt('/realunit');
     expect(screen.getByRole('link', { name: 'Overview' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Treasury' })).toBeInTheDocument();
@@ -47,7 +48,9 @@ describe('RealunitSectionNav', () => {
     expect(screen.getByRole('link', { name: 'Received Transactions' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'RealUnit Support' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'RealUnit Compliance' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'RealUnit Referral' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Promo codes' })).toHaveAttribute('href', '/realunit/promo');
+    expect(screen.getByRole('link', { name: 'Referrals' })).toHaveAttribute('href', '/realunit/referral');
+    expect(screen.getAllByRole('link')).toHaveLength(10);
     expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Treasury' })).toHaveAttribute('href', '/realunit/treasury');
   });
@@ -59,7 +62,8 @@ describe('RealunitSectionNav', () => {
     expect(screen.queryByRole('link', { name: 'Overview' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Treasury' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'RealUnit Support' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'RealUnit Referral' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Promo codes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Referrals' })).not.toBeInTheDocument();
   });
 
   it('hides every link when there is no session', () => {
@@ -74,6 +78,12 @@ describe('RealunitSectionNav', () => {
     renderAt('/realunit');
     expect(screen.queryByRole('link', { name: 'Pending Transactions' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Overview' })).not.toBeInTheDocument();
+  });
+
+  it('marks Promo codes, not Referrals, current on a promo redemption detail', () => {
+    renderAt('/realunit/promo/7');
+    expect(screen.getByRole('link', { name: 'Promo codes' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Referrals' })).not.toHaveAttribute('aria-current', 'page');
   });
 
   it('marks Pending Transactions current on a nested quotes route', () => {

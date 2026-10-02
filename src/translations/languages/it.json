@@ -1238,7 +1238,6 @@
     "Complete verification": "Completare la verifica"
   },
   "screens/referral": {
-    "RealUnit Referral": "Referral RealUnit",
     "Relations": "Relazioni",
     "Held for review only": "Solo da esaminare",
     "No entries found": "Nessuna voce trovata",
@@ -1313,6 +1312,23 @@
     "Threshold": "Soglia",
     "Mail": "E-mail",
     "Submit": "Invia",
-    "Loading": "Caricamento"
+    "Loading": "Caricamento",
+    "Active": "Attivo",
+    "Planned": "Pianificato",
+    "Exhausted": "Esaurito",
+    "Expired": "Scaduto",
+    "Hide deactivated": "Nascondi disattivati",
+    "Hide expired": "Nascondi scaduti",
+    "Referrals": "Raccomandazioni",
+    "Open": "Aperto",
+    "Approved": "Approvato",
+    "Rejected": "Respinto",
+    "Redemptions": "Utilizzi",
+    "Redeemed promo codes": "Codici promo utilizzati",
+    "of": "di",
+    "shown": "visualizzati",
+    "Promo redemption": "Utilizzo codice promo",
+    "Invite": "Invito",
+    "Promo": "Promo"
   }
 }

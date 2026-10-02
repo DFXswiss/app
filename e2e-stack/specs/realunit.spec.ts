@@ -16,7 +16,7 @@ import type { Locator, Page } from '@playwright/test';
 import { apiGet, expect, gotoWithSession, loginAs, normPath, openScreen, queryOne, required, test } from './fixtures';
 import { cleanupCreatedData, createSupportIssue, createUser, trackRow } from './fixtures/factories';
 
-/** Routes owned by this lane's RealUnit half (15 paths). */
+/** Routes owned by this lane's RealUnit half (17 paths). */
 const REALUNIT_ROUTES = [
   '/realunit',
   '/realunit/treasury',
@@ -31,6 +31,8 @@ const REALUNIT_ROUTES = [
   '/realunit/support/issue/:id',
   '/realunit/compliance',
   '/realunit/compliance/user/:id',
+  '/realunit/promo',
+  '/realunit/promo/:id',
   '/realunit/referral',
   '/realunit/referral/:id',
 ] as const;
@@ -163,7 +165,8 @@ test.describe('RealUnit area', () => {
 
       await expect(page.getByRole('link', { name: 'RealUnit Support' })).toBeVisible();
       await expect(page.getByRole('link', { name: 'RealUnit Compliance' })).toBeVisible();
-      await expect(page.getByRole('link', { name: 'RealUnit Referral' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Promo codes' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Referrals' })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Top Holders' })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Pending Transactions' })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Received Transactions' })).toBeVisible();
@@ -197,8 +200,14 @@ test.describe('RealUnit area', () => {
     ).toBeVisible();
     await expect(page.getByRole('link', { name: 'Treasury' })).toHaveAttribute('aria-current', 'page');
 
-    await page.getByRole('link', { name: 'RealUnit Referral' }).click();
+    await page.getByRole('link', { name: 'Promo codes' }).click();
+    await expect(page.getByRole('heading', { name: 'Start promo code' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Redeemed promo codes' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Promo codes' })).toHaveAttribute('aria-current', 'page');
+
+    await page.getByRole('link', { name: 'Referrals' }).click();
     await expect(page.getByRole('checkbox', { name: /Held for review only/ })).not.toBeChecked();
+    await expect(page.getByRole('link', { name: 'Referrals' })).toHaveAttribute('aria-current', 'page');
 
     await page.getByRole('link', { name: 'Insights' }).click();
     await expect(page.getByRole('heading', { name: 'Price History' })).toBeVisible();

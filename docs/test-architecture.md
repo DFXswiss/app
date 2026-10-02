@@ -159,16 +159,28 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   that sending a message reaches the server.
 - **The RealUnit referral visual spec answers the relation list and promo list itself.**
   `e2e/realunit-referral.spec.ts` fulfils `GET /v1/realunit/referral/admin/relations` and
-  `GET /v1/realunit/referral/promo` with synthetic fixtures: an empty promo list on the
-  original list screenshot, and one shareable campaign code on the landing-link, QR-dialog
-  and inline-edit variants, plus one deactivated code on the activate variant, plus a
-  synthetic unsigned Admin JWT and staff/bootstrap GETs (`/v1/language`, `/v1/fiat`,
-  `/v1/asset`, `/v1/bankAccount`, `/v1/country`, `/v1/setting/infoBanner`, `/v2/user`).
-  A green run proves the start-promo form, empty promo list, filled promo row with
-  `realunit.app/promo/{code}` and QR overlay, an inline edit (Save/Cancel), a deactivated
-  row with Activate, held-for-review relation table and detail fixtures render. It does not
-  prove that the live promo or relations API returns those payloads, that login or token
-  verification works, or that create/deactivate succeed against the server.
+  `GET /v1/realunit/referral/promo` with synthetic fixtures: no promo codes for the referral
+  list screenshots (that page does not show them), one shareable campaign code on the
+  landing-link, QR-dialog and inline-edit variants, plus one deactivated code on the activate
+  variant, five codes covering every derived status on the overview, expired-hidden and
+  deactivated-this-visit variants, and one invite per review status (Open, Approved,
+  Rejected) on the referral list. It also answers the deactivate call
+  (`PUT /v1/realunit/referral/promo/:id/deactivate`) with an empty success, plus a synthetic
+  unsigned Admin JWT and staff/bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`,
+  `/v1/bankAccount`, `/v1/country`, `/v1/setting/infoBanner`, `/v2/user`). The five-code
+  variants fix the page clock to 2026-10-02 08:00 UTC with `page.clock.setFixedTime`, because
+  the status (Active, Planned, Exhausted, Expired, Deactivated) is derived in the browser from
+  the current time. The German variant also answers `GET /v1/language` and gives the user
+  German, because the UI only switches language when that language is in the list.
+  A green run proves the start-promo form, the promo code list with status, both filters and
+  both sort orders, a filled promo row with `realunit.app/promo/{code}` and QR overlay, an
+  inline edit (Save/Cancel), a deactivated row with Activate after turning off the filter, a
+  row deactivated in the visit that stays visible, the redeemed promo codes, the invite-only
+  referral table with and without the review filter, and the referral and promo redemption
+  detail fixtures render, in English and with the German labels. It does not prove that the
+  live promo or relations API returns those payloads, that login or token verification works,
+  that create/deactivate succeed against the server, or how the status reads at another time of
+  day than the fixed clock.
 - **The RealUnit compliance visual spec answers the customer list, Dilisense actions, dossier, and insider mark itself.**
   `e2e/realunit-compliance.spec.ts` fulfils `GET /v1/realunit/compliance/customers`,
   `GET /v1/realunit/compliance/customers/:id`, `PUT /v1/realunit/compliance/customers/:id/insider`,

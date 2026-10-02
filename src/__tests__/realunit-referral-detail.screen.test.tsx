@@ -4,7 +4,11 @@
 // the screen's own action logic can be driven directly.
 
 let mockId = '1';
-jest.mock('react-router-dom', () => ({ useParams: () => ({ id: mockId }) }));
+let mockPathname = '/realunit/referral/1';
+jest.mock('react-router-dom', () => ({
+  useParams: () => ({ id: mockId }),
+  useLocation: () => ({ pathname: mockPathname }),
+}));
 
 jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', LG: 'lg' },
@@ -16,7 +20,9 @@ jest.mock('@dfx.swiss/react-components', () => ({
     </button>
   ),
 }));
-jest.mock('src/components/error-hint', () => ({ ErrorHint: ({ message }: { message: string }) => <div>{message}</div> }));
+jest.mock('src/components/error-hint', () => ({
+  ErrorHint: ({ message }: { message: string }) => <div>{message}</div>,
+}));
 jest.mock('src/components/overlay/confirmation-overlay', () => ({
   ConfirmationOverlay: ({
     messageContent,
@@ -42,7 +48,10 @@ jest.mock('src/hooks/guard.hook', () => ({ useRealunitGuard: () => undefined }))
 jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_ns: string, key: string) => key }),
 }));
-jest.mock('src/hooks/layout-config.hook', () => ({ useLayoutOptions: () => undefined }));
+const mockLayoutOptions = jest.fn();
+jest.mock('src/hooks/layout-config.hook', () => ({
+  useLayoutOptions: (options: unknown) => mockLayoutOptions(options),
+}));
 
 const mockNavigate = jest.fn();
 jest.mock('src/hooks/navigation.hook', () => ({ useNavigation: () => ({ navigate: mockNavigate }) }));
@@ -80,6 +89,7 @@ describe('RealunitReferralDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockId = '1';
+    mockPathname = '/realunit/referral/1';
   });
 
   it('shows Approve/Reject (not manual prize) for a pending, uncredited relation', async () => {
@@ -87,6 +97,10 @@ describe('RealunitReferralDetailScreen', () => {
     render(<RealunitReferralDetailScreen />);
 
     await waitFor(() => expect(screen.getByText('AB12CD')).toBeInTheDocument());
+    expect(screen.getByText('Invite')).toBeInTheDocument();
+    expect(screen.getByText('Open')).toBeInTheDocument();
+    expect(screen.getByText('Referrer account')).toBeInTheDocument();
+    expect(mockLayoutOptions).toHaveBeenCalledWith({ title: 'Referral Detail', backButton: true });
     expect(screen.getByText('Approve')).toBeInTheDocument();
     expect(screen.getByText('Reject')).toBeInTheDocument();
     expect(screen.queryByText('Award manual prize')).not.toBeInTheDocument();
@@ -208,11 +222,67 @@ describe('RealunitReferralDetailScreen', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/realunit/referral');
   });
 
+  it('shows a promo redemption with its own title, no referrer row and back to the promo list', async () => {
+    mockId = '3';
+    mockPathname = '/realunit/promo/3';
+    mockGetRelations.mockResolvedValue([
+      {
+        id: 3,
+        kind: RealUnitCodeKind.PROMO,
+        userId: 20,
+        code: 'WOV2026',
+        credited: true,
+        created: '2026-10-01T10:00:00Z',
+      },
+    ]);
+    render(<RealunitReferralDetailScreen />);
+
+    await waitFor(() => expect(screen.getByText('WOV2026')).toBeInTheDocument());
+    expect(mockLayoutOptions).toHaveBeenCalledWith({ title: 'Promo redemption', backButton: true });
+    expect(screen.getAllByText('Promo redemption').length).toBeGreaterThan(0);
+    expect(screen.getByText('Promo')).toBeInTheDocument();
+    expect(screen.queryByText('Referrer account')).not.toBeInTheDocument();
+    expect(screen.queryByText('Approve')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Back'));
+    expect(mockNavigate).toHaveBeenCalledWith('/realunit/promo');
+  });
+
+  it('translates a rejected review status', async () => {
+    mockGetRelations.mockResolvedValue([{ ...PENDING, reviewStatus: RealUnitManualReviewStatus.REJECTED }]);
+    render(<RealunitReferralDetailScreen />);
+
+    await waitFor(() => expect(screen.getByText('Rejected')).toBeInTheDocument());
+  });
+
   it('shows an error when the list load fails', async () => {
     mockGetRelations.mockRejectedValue(new Error('boom'));
     render(<RealunitReferralDetailScreen />);
 
     await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
+  });
+
+  it('falls back to Unknown error when the list load rejects without a message', async () => {
+    mockGetRelations.mockRejectedValue({ message: undefined });
+    render(<RealunitReferralDetailScreen />);
+
+    await waitFor(() => expect(screen.getByText('Unknown error')).toBeInTheDocument());
+  });
+
+  it('keeps the overlay open when cancel is pressed while the action is still running', async () => {
+    mockGetRelations.mockResolvedValue([PENDING]);
+    mockApprove.mockReturnValue(new Promise(() => undefined));
+    render(<RealunitReferralDetailScreen />);
+    await waitFor(() => expect(screen.getByText('Approve')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Approve'));
+    fireEvent.change(screen.getByPlaceholderText('Enter a reason'), { target: { value: 'looks legit' } });
+    fireEvent.click(screen.getByText('confirm:Approve'));
+    await waitFor(() => expect(mockApprove).toHaveBeenCalledWith(1, 'looks legit'));
+
+    fireEvent.click(screen.getByText('cancel:Cancel'));
+
+    expect(screen.getByText('cancel:Cancel')).toBeInTheDocument();
   });
 
   it('shows a not-found message when the id is absent from the list', async () => {

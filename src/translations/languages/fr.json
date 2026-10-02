@@ -1238,7 +1238,6 @@
     "Complete verification": "Compléter la vérification"
   },
   "screens/referral": {
-    "RealUnit Referral": "Parrainage RealUnit",
     "Relations": "Relations",
     "Held for review only": "À examiner uniquement",
     "No entries found": "Aucune entrée trouvée",
@@ -1313,6 +1312,23 @@
     "Threshold": "Seuil",
     "Mail": "E-mail",
     "Submit": "Envoyer",
-    "Loading": "Chargement"
+    "Loading": "Chargement",
+    "Active": "Actif",
+    "Planned": "Planifié",
+    "Exhausted": "Épuisé",
+    "Expired": "Expiré",
+    "Hide deactivated": "Masquer les désactivés",
+    "Hide expired": "Masquer les expirés",
+    "Referrals": "Recommandations",
+    "Open": "Ouvert",
+    "Approved": "Approuvé",
+    "Rejected": "Refusé",
+    "Redemptions": "Utilisations",
+    "Redeemed promo codes": "Codes promo utilisés",
+    "of": "sur",
+    "shown": "affichés",
+    "Promo redemption": "Utilisation de code promo",
+    "Invite": "Invitation",
+    "Promo": "Promo"
   }
 }
