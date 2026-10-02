@@ -114,17 +114,22 @@ jest.mock('src/hooks/guard.hook', () => ({
   useSupportDashboardGuard: (...args: unknown[]) => mockUseSupportDashboardGuard(...args),
 }));
 
-jest.mock('src/hooks/support-dashboard.hook', () => ({
-  ASSIGNABLE_DEPARTMENTS: ['Support', 'Compliance'],
-  useSupportDashboard: () => ({
-    getIssueData: mockGetIssueData,
-    getIssueMessages: mockGetIssueMessages,
-    getClerks: mockGetClerks,
-    updateIssue: mockUpdateIssue,
-    sendMessage: mockSendMessage,
-    getMessageFile: mockGetMessageFile,
-  }),
-}));
+jest.mock('src/hooks/support-dashboard.hook', () => {
+  const actual = jest.requireActual(
+    'src/hooks/support-dashboard.hook',
+  ) as typeof import('src/hooks/support-dashboard.hook');
+  return {
+    ...actual,
+    useSupportDashboard: () => ({
+      getIssueData: mockGetIssueData,
+      getIssueMessages: mockGetIssueMessages,
+      getClerks: mockGetClerks,
+      updateIssue: mockUpdateIssue,
+      sendMessage: mockSendMessage,
+      getMessageFile: mockGetMessageFile,
+    }),
+  };
+});
 
 jest.mock('src/hooks/compliance.hook', () => ({
   LimitRequestFinalDecisions: [],
@@ -247,7 +252,7 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
     mockListMounts = 0;
     mockGetIssueData.mockImplementation((id: number) => Promise.resolve(issue(id)));
     mockGetIssueMessages.mockImplementation((uid: string) => Promise.resolve([{ id: 1, message: `body-${uid}` }]));
-    mockGetClerks.mockResolvedValue([]);
+    mockGetClerks.mockResolvedValue([{ clerkUserDataId: 7, clerk: 'Rita' }]);
     mockUpdateIssue.mockResolvedValue(undefined);
     mockSendMessage.mockResolvedValue(undefined);
     mockGetUserData.mockResolvedValue({ userData: { id: 8 }, transactions: [] });
@@ -283,6 +288,62 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
 
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('ticket B exploded');
     expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
+  });
+
+  it('shows an unresolved assigned clerk id as the selected fallback option', async () => {
+    mockGetIssueData.mockResolvedValue(issue(1, { clerkUserDataId: 99 }));
+
+    render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByDisplayValue('#99')).toHaveValue('99');
+  });
+
+  it('keeps the empty clerk-list hint across a ticket switch and update', async () => {
+    const hint = 'Clerk list is empty. Assign after the API update is live.';
+    mockGetClerks.mockResolvedValue([]);
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText(hint)).toBeInTheDocument();
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+    expect(screen.getByText(hint)).toBeInTheDocument();
+
+    const ticketLoadsBeforeUpdate = mockGetIssueData.mock.calls.filter((call) => call[0] === 2).length;
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    await waitFor(() => {
+      expect(mockGetIssueData.mock.calls.filter((call) => call[0] === 2).length).toBeGreaterThan(
+        ticketLoadsBeforeUpdate,
+      );
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Update' })).toBeEnabled());
+    expect(screen.getByText(hint)).toBeInTheDocument();
+    expect(mockGetClerks).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the clerk-list load error across a ticket switch and update', async () => {
+    const hint = 'Clerk service unavailable';
+    mockGetClerks.mockRejectedValue(new Error(hint));
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText(hint)).toBeInTheDocument();
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+    expect(screen.getByText(hint)).toBeInTheDocument();
+
+    const ticketLoadsBeforeUpdate = mockGetIssueData.mock.calls.filter((call) => call[0] === 2).length;
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    await waitFor(() => {
+      expect(mockGetIssueData.mock.calls.filter((call) => call[0] === 2).length).toBeGreaterThan(
+        ticketLoadsBeforeUpdate,
+      );
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Update' })).toBeEnabled());
+    expect(screen.getByText(hint)).toBeInTheDocument();
+    expect(mockGetClerks).toHaveBeenCalledTimes(1);
   });
 
   it('remounts the message list and removes ticket A messages when switching to ticket B', async () => {
@@ -590,5 +651,56 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
     });
 
     expect(await screen.findByDisplayValue('FreshClerk')).toBeInTheDocument();
+  });
+
+  it('keeps the rendered post-PUT payload when the stale loadIssue finishes last', async () => {
+    const update = createDeferred<void>();
+    mockUpdateIssue.mockReturnValue(update.promise);
+    const { rerender } = render(<SupportDashboardIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    const pendingGets: { id: number; deferred: Deferred<ReturnType<typeof issue>> }[] = [];
+    mockGetIssueData.mockImplementation((id: number) => {
+      const deferred = createDeferred<ReturnType<typeof issue>>();
+      pendingGets.push({ id, deferred });
+      return deferred.promise;
+    });
+
+    navigateTo('2', rerender);
+    navigateTo('1', rerender);
+
+    await waitFor(() => {
+      expect(pendingGets.filter((call) => call.id === 1).length).toBe(1);
+    });
+
+    await act(async () => {
+      update.resolve();
+      await update.promise;
+    });
+
+    await waitFor(() => {
+      expect(pendingGets.filter((call) => call.id === 1).length).toBe(2);
+    });
+
+    const ticketAGets = pendingGets.filter((call) => call.id === 1);
+    const staleGet = ticketAGets[0];
+    const postPutGet = ticketAGets[1];
+
+    await act(async () => {
+      postPutGet.deferred.resolve(issue(1, { clerk: 'FreshClerk' }));
+      await postPutGet.deferred.promise;
+    });
+
+    expect(await screen.findByDisplayValue('FreshClerk')).toBeInTheDocument();
+
+    await act(async () => {
+      staleGet.deferred.resolve(issue(1, { clerk: 'StaleClerk' }));
+      await staleGet.deferred.promise;
+    });
+
+    expect(screen.getByDisplayValue('FreshClerk')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('StaleClerk')).not.toBeInTheDocument();
   });
 });

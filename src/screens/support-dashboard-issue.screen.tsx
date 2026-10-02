@@ -17,6 +17,9 @@ import { useNavigation } from 'src/hooks/navigation.hook';
 import { useSplitPane } from 'src/hooks/split-pane.hook';
 import {
   ASSIGNABLE_DEPARTMENTS,
+  clerkAssignmentPayload,
+  LEFTOVER_CLERK_VALUE,
+  SupportClerk,
   SupportIssueInternalData,
   SupportMessageInfo,
   useSupportDashboard,
@@ -46,11 +49,12 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const [loadError, setLoadError] = useState<string>();
   const loadErrorTicketIdRef = useRef<string>();
   const [actionError, setActionError] = useState<string>();
+  const [clerkListError, setClerkListError] = useState<string>();
   const [issueData, setIssueData] = useState<SupportIssueInternalData>();
   const [messages, setMessages] = useState<SupportMessageInfo[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const visibleIdsRef = useRef<Set<number>>(new Set());
-  const [clerks, setClerks] = useState<string[]>([]);
+  const [clerks, setClerks] = useState<SupportClerk[]>([]);
 
   // Update form state
   const [updateState, setUpdateState] = useState('');
@@ -110,11 +114,13 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   });
 
   useEffect(() => {
+    setClerkListError(undefined);
     getClerks()
       .then((list) => {
         setClerks(list);
+        setClerkListError(list.length === 0 ? 'Clerk list is empty. Assign after the API update is live.' : undefined);
       })
-      .catch(() => undefined);
+      .catch((e: unknown) => setClerkListError(e instanceof Error ? e.message : 'Failed to load clerks'));
   }, [getClerks]);
 
   const loadIssue = useCallback((): void => {
@@ -130,7 +136,9 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
-        setUpdateClerk(data.clerk ?? '');
+        setUpdateClerk(
+          data.clerkUserDataId != null ? String(data.clerkUserDataId) : data.clerk ? LEFTOVER_CLERK_VALUE : '',
+        );
       })
       .catch((e: Error) => {
         if (idRef.current !== requestId || requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
@@ -280,7 +288,10 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
       await updateIssue(+requestId, {
         state: updateState || undefined,
         department: updateDepartment || undefined,
-        clerk: updateClerk || undefined,
+        ...clerkAssignmentPayload(updateClerk, issueData?.clerkUserDataId, {
+          leftover: !!issueData?.clerk,
+          allowedIds: clerks.map((c) => c.clerkUserDataId),
+        }),
       });
       if (idRef.current !== requestId) return;
       loadIssue();
@@ -428,6 +439,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   return (
     <div ref={containerRef} className="w-full flex text-left">
       <div style={{ width: `${splitPercent}%` }} className="flex flex-col gap-6 min-w-0 pr-2">
+        {clerkListError && <ErrorHint message={clerkListError} />}
         {actionError && <ErrorHint message={actionError} />}
         {/* Info Panels - Row 1: Issue + Account */}
         <div className="flex gap-4 flex-wrap">
@@ -622,15 +634,20 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
                 value={updateClerk}
                 onChange={(e) => setUpdateClerk(e.target.value)}
               >
-                {!issueData?.clerk && <option value="">-</option>}
-                {updateClerk && !clerks.includes(updateClerk) && (
-                  <option key={updateClerk} value={updateClerk}>
-                    {updateClerk}
-                  </option>
+                <option value="">-</option>
+                {updateClerk === LEFTOVER_CLERK_VALUE && issueData?.clerk && (
+                  <option value={LEFTOVER_CLERK_VALUE}>{issueData.clerk}</option>
                 )}
+                {updateClerk &&
+                  Number.isFinite(Number(updateClerk)) &&
+                  !clerks.some((c) => String(c.clerkUserDataId) === updateClerk) && (
+                    <option key={updateClerk} value={updateClerk}>
+                      {issueData.clerk || `#${updateClerk}`}
+                    </option>
+                  )}
                 {clerks.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                  <option key={c.clerkUserDataId} value={String(c.clerkUserDataId)}>
+                    {c.clerk}
                   </option>
                 ))}
               </select>

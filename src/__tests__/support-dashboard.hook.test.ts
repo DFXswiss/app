@@ -40,14 +40,29 @@ describe('useSupportDashboard', () => {
   });
 
   it('getIssueCounts, getClerks and getIssueStatistics are plain GETs', async () => {
+    mockCall
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce([{ clerkUserDataId: 3, clerk: 'Alex' }])
+      .mockResolvedValueOnce(undefined);
     await hook().getIssueCounts();
-    await hook().getClerks();
+    await expect(hook().getClerks()).resolves.toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
     await hook().getIssueStatistics(30);
     expect(mockCall.mock.calls).toEqual([
       [{ url: 'support/issue/counts', method: 'GET' }],
       [{ url: 'support/issue/clerks', method: 'GET' }],
       [{ url: 'support/issue/statistics?days=30', method: 'GET' }],
     ]);
+  });
+
+  it('getClerks drops entries without a finite clerkUserDataId or a clerk name', async () => {
+    mockCall.mockResolvedValue([
+      { clerkUserDataId: 3, clerk: 'Alex' },
+      { clerkUserDataId: Number.NaN, clerk: 'Broken' },
+      { clerk: 'No id' },
+      { clerkUserDataId: 4, clerk: '' },
+    ]);
+
+    await expect(hook().getClerks()).resolves.toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
   });
 
   it('getIssueActivity passes the since timestamp only when given', async () => {
@@ -63,24 +78,24 @@ describe('useSupportDashboard', () => {
   });
 
   it.each([
-    ['  Fixture Clerk  ', 'Fixture Clerk'],
+    ['  Fixture Clerk  ', { clerkUserDataId: 7, clerk: 'Fixture Clerk' }],
     ['', undefined],
     ['   ', undefined],
     [null, undefined],
   ])('getMyClerk trims %p to %p', async (clerk, expected) => {
-    mockCall.mockResolvedValue({ clerk });
-    await expect(hook().getMyClerk()).resolves.toBe(expected);
+    mockCall.mockResolvedValue({ clerkUserDataId: 7, clerk });
+    await expect(hook().getMyClerk()).resolves.toEqual(expected);
     expect(mockCall).toHaveBeenCalledWith({ url: 'support/issue/clerk', method: 'GET' });
   });
 
   it('getIssueData, updateIssue, sendMessage and createIssue address the issue routes', async () => {
     await hook().getIssueData(42);
-    await hook().updateIssue(42, { state: 'Closed', clerk: 'Fixture Clerk' });
+    await hook().updateIssue(42, { state: 'Closed', clerkUserDataId: 9 });
     await hook().sendMessage(42, { author: 'Fixture Clerk', message: 'Hallo' });
     await hook().createIssue(7, { type: 'GenericIssue', reason: 'Other', name: 'Frage', author: 'Fixture Clerk' });
     expect(mockCall.mock.calls).toEqual([
       [{ url: 'support/issue/42/data', method: 'GET' }],
-      [{ url: 'support/issue/42', method: 'PUT', data: { state: 'Closed', clerk: 'Fixture Clerk' } }],
+      [{ url: 'support/issue/42', method: 'PUT', data: { state: 'Closed', clerkUserDataId: 9 } }],
       [{ url: 'support/issue/42/message', method: 'POST', data: { author: 'Fixture Clerk', message: 'Hallo' } }],
       [
         {
@@ -90,6 +105,16 @@ describe('useSupportDashboard', () => {
         },
       ],
     ]);
+  });
+
+  it('updateIssue PUTs null to unassign', async () => {
+    await hook().updateIssue(42, { clerkUserDataId: null });
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'support/issue/42',
+      method: 'PUT',
+      data: { clerkUserDataId: null },
+    });
   });
 
   it('searchUsers encodes the key and answers an empty list when the API has none', async () => {

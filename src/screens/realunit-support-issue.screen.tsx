@@ -13,7 +13,14 @@ import { useRealunitSupport } from 'src/hooks/realunit-support.hook';
 import { STAFF_NAME_MISSING, staffNameLoadError } from 'src/components/compliance/staff-identity';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { useSplitPane } from 'src/hooks/split-pane.hook';
-import { ASSIGNABLE_DEPARTMENTS, SupportIssueInternalData, SupportMessageInfo } from 'src/hooks/support-dashboard.hook';
+import {
+  ASSIGNABLE_DEPARTMENTS,
+  clerkAssignmentPayload,
+  LEFTOVER_CLERK_VALUE,
+  SupportClerk,
+  SupportIssueInternalData,
+  SupportMessageInfo,
+} from 'src/hooks/support-dashboard.hook';
 import { useSupportDraft } from 'src/hooks/support-draft.hook';
 import { formatDateTime, statusBadge } from 'src/util/compliance-helpers';
 import { isSendShortcut } from 'src/util/message-composer';
@@ -31,18 +38,23 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string>();
+  const loadErrorTicketIdRef = useRef<string>();
   const [actionError, setActionError] = useState<string>();
+  const [clerkListError, setClerkListError] = useState<string>();
   const [issueData, setIssueData] = useState<SupportIssueInternalData>();
   const [messages, setMessages] = useState<SupportMessageInfo[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const visibleIdsRef = useRef<Set<number>>(new Set());
-  const [clerks, setClerks] = useState<string[]>([]);
+  const [clerks, setClerks] = useState<SupportClerk[]>([]);
 
   // Update form state
   const [updateState, setUpdateState] = useState('');
   const [updateDepartment, setUpdateDepartment] = useState('');
   const [updateClerk, setUpdateClerk] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const updatingIssueIdsRef = useRef(new Set<string>());
+  const messageLoadSeqRef = useRef(0);
+  const issueLoadSeqRef = useRef(0);
 
   // Message form state
   // Draft persisted per ticket, so a detour to the customer profile does not lose the text.
@@ -53,7 +65,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   const { name: messageAuthor, isLoading: isLoadingAuthor, error: authorError } = useStaffVerifiedName();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isSending, setIsSending] = useState(false);
-  const sendInFlight = useRef(false);
+  const sendingIssueIdsRef = useRef(new Set<string>());
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -64,6 +76,8 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
     name: string;
     messageId: number;
   }>();
+  // A route round-trip A→B→A must also invalidate work started during the first visit to A.
+  const requestGenRef = useRef(0);
   const { containerRef, splitPercent, handleSplitDrag } = useSplitPane();
 
   useLayoutOptions({
@@ -74,46 +88,92 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   });
 
   useEffect(() => {
+    setClerkListError(undefined);
     getClerks()
       .then((list) => {
         setClerks(list);
+        setClerkListError(list.length === 0 ? 'Clerk list is empty. Assign after the API update is live.' : undefined);
       })
-      .catch(() => undefined);
+      .catch((e: unknown) => setClerkListError(e instanceof Error ? e.message : 'Failed to load clerks'));
   }, [getClerks]);
 
   const loadIssue = useCallback((): void => {
-    if (!id) return;
+    if (!id || idRef.current !== id) return;
+    const requestId = id;
+    const gen = requestGenRef.current;
+    const seq = ++issueLoadSeqRef.current;
+    setLoadError(undefined);
     setIsLoading(true);
-    getIssueData(+id)
+    getIssueData(+requestId)
       .then((data) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
         setIssueData(data);
         setUpdateState(data.state);
         setUpdateDepartment(data.department ?? '');
-        setUpdateClerk(data.clerk ?? '');
+        setUpdateClerk(
+          data.clerkUserDataId != null ? String(data.clerkUserDataId) : data.clerk ? LEFTOVER_CLERK_VALUE : '',
+        );
       })
-      .catch((e: Error) => setLoadError(e.message ?? 'Unknown error'))
-      .finally(() => setIsLoading(false));
+      .catch((e: Error) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || issueLoadSeqRef.current !== seq) return;
+        loadErrorTicketIdRef.current = requestId;
+        setLoadError(e.message ?? 'Unknown error');
+      })
+      .finally(() => {
+        if (idRef.current === requestId && requestGenRef.current === gen && issueLoadSeqRef.current === seq) {
+          setIsLoading(false);
+        }
+      });
   }, [id, getIssueData]);
 
   const loadMessages = useCallback((): void => {
-    if (!issueData?.id) return;
+    if (!issueData?.id || !id || issueData.id !== +id) return;
+    const requestId = id;
+    const gen = requestGenRef.current;
+    const seq = ++messageLoadSeqRef.current;
     getIssueMessages(issueData.id)
       .then((fetched) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
         setMessages(fetched);
         setPendingCount(0);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
-  }, [issueData?.id, getIssueMessages]);
+      .catch((e: Error) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
+        setActionError(e.message ?? 'Failed to load messages');
+      });
+  }, [issueData?.id, id, getIssueMessages]);
 
   const pollForNewMessages = useCallback((): void => {
-    if (!issueData?.id) return;
+    if (!issueData?.id || !id || issueData.id !== +id) return;
+    const requestId = id;
+    const gen = requestGenRef.current;
+    const seq = messageLoadSeqRef.current;
     getIssueMessages(issueData.id)
       .then((fetched) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
         const newCount = fetched.filter((m) => !visibleIdsRef.current.has(m.id)).length;
         if (newCount > 0) setPendingCount(newCount);
       })
-      .catch((e: Error) => setActionError(e.message ?? 'Failed to load messages'));
-  }, [issueData?.id, getIssueMessages]);
+      .catch((e: Error) => {
+        if (idRef.current !== requestId || requestGenRef.current !== gen || messageLoadSeqRef.current !== seq) return;
+        setActionError(e.message ?? 'Failed to load messages');
+      });
+  }, [issueData?.id, id, getIssueMessages]);
+
+  // Invalidate in-flight work and clear ticket-local UI before loading the next ticket.
+  useEffect(() => {
+    setIsSending(id != null && sendingIssueIdsRef.current.has(id));
+    setIsUpdating(id != null && updatingIssueIdsRef.current.has(id));
+    messageLoadSeqRef.current += 1;
+    issueLoadSeqRef.current += 1;
+    setSelectedFiles([]);
+    setActionError(undefined);
+    setLoadError(undefined);
+    setIssueData(undefined);
+    requestGenRef.current += 1;
+    setMessages([]);
+    setPendingCount(0);
+  }, [id]);
 
   useEffect(() => {
     loadIssue();
@@ -122,14 +182,6 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
-
-  // Clear send UI state when navigating to a different ticket
-  useEffect(() => {
-    sendInFlight.current = false;
-    setIsSending(false);
-    setSelectedFiles([]);
-    setActionError(undefined);
-  }, [id]);
 
   useEffect(() => {
     visibleIdsRef.current = new Set(messages.map((m) => m.id));
@@ -146,72 +198,82 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   }, [messages]);
 
   async function handleUpdate(): Promise<void> {
-    if (!id) return;
+    if (!id || updatingIssueIdsRef.current.has(id)) return;
+    const requestId = id;
+    updatingIssueIdsRef.current.add(requestId);
     setIsUpdating(true);
     setActionError(undefined);
     try {
-      await updateIssue(+id, {
+      await updateIssue(+requestId, {
         state: updateState || undefined,
         department: updateDepartment || undefined,
-        clerk: updateClerk || undefined,
+        ...clerkAssignmentPayload(updateClerk, issueData?.clerkUserDataId, {
+          leftover: !!issueData?.clerk,
+          allowedIds: clerks.map((c) => c.clerkUserDataId),
+        }),
       });
+      if (idRef.current !== requestId) return;
       loadIssue();
     } catch (e: unknown) {
+      if (idRef.current !== requestId) return;
       setActionError(e instanceof Error ? e.message : 'Update failed');
     } finally {
-      setIsUpdating(false);
+      updatingIssueIdsRef.current.delete(requestId);
+      if (idRef.current === requestId) setIsUpdating(false);
     }
   }
 
   async function handleSendMessage(): Promise<void> {
-    if (isSending || sendInFlight.current) return;
-    if (!id || (!messageText.trim() && selectedFiles.length === 0)) return;
+    if (!id || sendingIssueIdsRef.current.has(id)) return;
+    if (!messageText.trim() && selectedFiles.length === 0) return;
     if (isLoadingAuthor) return;
     if (!messageAuthor) {
       setActionError(authorError ? staffNameLoadError(authorError) : STAFF_NAME_MISSING);
       return;
     }
-    sendInFlight.current = true;
+    sendingIssueIdsRef.current.add(id);
     setIsSending(true);
     setActionError(undefined);
     // The draft is dropped before the request, so a detour during the send cannot bring back text
-    // that is already on its way. On failure, storage is restored for the ticket that was sending;
-    // the composer is only updated if the clerk is still on that same ticket.
+    // that is already on its way. On failure, storage is always restored for this ticket; the
+    // composer and error are restored only if the clerk is still on it.
     const sendIssueId = id;
     const draft = messageText;
+    const files = selectedFiles;
     clearDraft();
+    let sent = 0;
     try {
       const author = messageAuthor;
       const text = draft.trim() || undefined;
 
-      if (selectedFiles.length > 0) {
-        for (let i = 0; i < selectedFiles.length; i++) {
-          const fileData = await toBase64(selectedFiles[i]);
-          const isLast = i === selectedFiles.length - 1;
+      if (files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const fileData = await toBase64(files[i]);
+          const isLast = i === files.length - 1;
           await createMessage(+sendIssueId, {
             author,
             message: isLast ? text : undefined,
             file: fileData,
-            fileName: selectedFiles[i].name,
+            fileName: files[i].name,
           });
+          sent += 1;
         }
       } else {
         await createMessage(+sendIssueId, { author, message: text });
       }
 
-      if (idRef.current === sendIssueId) {
-        setSelectedFiles([]);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        loadMessages();
-      }
+      if (idRef.current !== sendIssueId) return;
+      setSelectedFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      loadMessages();
     } catch (e: unknown) {
       writeDraft(sendIssueId, draft);
-      if (idRef.current === sendIssueId) {
-        setMessageText(draft);
-        setActionError(e instanceof Error ? e.message : 'Send failed');
-      }
+      if (idRef.current !== sendIssueId) return;
+      if (files.length > 0) setSelectedFiles(files.slice(sent));
+      setMessageText(draft);
+      setActionError(e instanceof Error ? e.message : 'Send failed');
     } finally {
-      sendInFlight.current = false;
+      sendingIssueIdsRef.current.delete(sendIssueId);
       if (idRef.current === sendIssueId) setIsSending(false);
     }
   }
@@ -253,12 +315,14 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
     };
   }, [filePreview]);
 
-  if (loadError) return <ErrorHint message={loadError} />;
-  if (isLoading || !issueData) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
+  if (id && issueData && issueData.id !== +id) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
+  if (loadError && loadErrorTicketIdRef.current === id) return <ErrorHint message={loadError} />;
+  if (isLoading || !issueData || !id) return <StyledLoadingSpinner size={SpinnerSize.LG} />;
 
   return (
     <div ref={containerRef} className="w-full flex text-left">
       <div style={{ width: `${splitPercent}%` }} className="flex flex-col gap-6 min-w-0 pr-2">
+        {clerkListError && <ErrorHint message={clerkListError} />}
         {actionError && <ErrorHint message={actionError} />}
 
         {/* Info Panels */}
@@ -343,15 +407,20 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
                 value={updateClerk}
                 onChange={(e) => setUpdateClerk(e.target.value)}
               >
-                {!issueData?.clerk && <option value="">-</option>}
-                {updateClerk && !clerks.includes(updateClerk) && (
-                  <option key={updateClerk} value={updateClerk}>
-                    {updateClerk}
-                  </option>
+                <option value="">-</option>
+                {updateClerk === LEFTOVER_CLERK_VALUE && issueData?.clerk && (
+                  <option value={LEFTOVER_CLERK_VALUE}>{issueData.clerk}</option>
                 )}
+                {updateClerk &&
+                  Number.isFinite(Number(updateClerk)) &&
+                  !clerks.some((c) => String(c.clerkUserDataId) === updateClerk) && (
+                    <option key={updateClerk} value={updateClerk}>
+                      {issueData.clerk || `#${updateClerk}`}
+                    </option>
+                  )}
                 {clerks.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                  <option key={c.clerkUserDataId} value={String(c.clerkUserDataId)}>
+                    {c.clerk}
                   </option>
                 ))}
               </select>
@@ -450,10 +519,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
               className="px-4 py-2 bg-dfxBlue-400 text-white rounded text-sm hover:bg-dfxBlue-800 transition-colors disabled:opacity-50"
               onClick={() => handleSendMessage()}
               disabled={
-                isSending ||
-                isLoadingAuthor ||
-                !messageAuthor ||
-                (!messageText.trim() && selectedFiles.length === 0)
+                isSending || isLoadingAuthor || !messageAuthor || (!messageText.trim() && selectedFiles.length === 0)
               }
             >
               {isSending ? '...' : 'Send'}

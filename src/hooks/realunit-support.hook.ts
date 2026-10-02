@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
 import { useGuardedApi } from './guarded-api.hook';
 import {
+  SupportClerk,
   SupportIssueInternalData,
   SupportIssueListItem,
   SupportMessageInfo,
+  usableClerks,
 } from './support-dashboard.hook';
 
 // RealUnit tenant support dashboard hook. Thin wrapper over the strictly customer-scoped `/v1/realunit/support/*`
@@ -46,20 +48,21 @@ export function useRealunitSupport() {
     });
   }
 
-  async function getClerks(): Promise<string[]> {
-    return call<string[]>({
+  async function getClerks(): Promise<SupportClerk[]> {
+    const list = await call<SupportClerk[]>({
       url: 'realunit/support/clerks',
       method: 'GET',
     });
+    return usableClerks(list);
   }
 
-  // the clerk name mapped to the logged-in RealUnit support account (null if unmapped)
-  async function getMyClerk(): Promise<string | undefined> {
-    const result = await call<{ clerk: string | null }>({
+  async function getMyClerk(): Promise<{ clerkUserDataId: number; clerk: string } | undefined> {
+    const result = await call<{ clerkUserDataId: number; clerk: string | null }>({
       url: 'realunit/support/clerk',
       method: 'GET',
     });
-    return result.clerk?.trim() || undefined;
+    const clerk = result.clerk?.trim();
+    return clerk ? { clerkUserDataId: result.clerkUserDataId, clerk } : undefined;
   }
 
   async function getIssueData(issueId: number): Promise<SupportIssueInternalData> {
@@ -71,7 +74,7 @@ export function useRealunitSupport() {
 
   async function updateIssue(
     issueId: number,
-    data: { state?: string; clerk?: string; department?: string },
+    data: { state?: string; clerkUserDataId?: number | null; department?: string },
   ): Promise<void> {
     return call<void>({
       url: `realunit/support/${issueId}`,

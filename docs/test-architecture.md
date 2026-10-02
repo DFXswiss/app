@@ -152,11 +152,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   prize-wallet, alert, payout, buy-limit or account endpoints return real data.
 - **The RealUnit support visual spec answers the issue list and thread itself.**
   `e2e/realunit-support.spec.ts` fulfils the RealUnit support list, counts, activity, clerks,
-  issue data and messages with synthetic fixtures. Auth is a synthetic unsigned Admin JWT.
+  issue data and messages with synthetic fixtures; the clerks carry the `{ clerkUserDataId, clerk }`
+  shape and the issue fixture a `clerkUserDataId`. Further variants answer the clerks list empty,
+  with HTTP 500, or leave the assigned id off the list. Auth is a synthetic unsigned Admin JWT.
   Staff bootstrap GETs and `GET /v2/user` are fulfilled, unmatched `GET /v1/**` returns `[]`,
   and other unmatched `/v1/**` methods return `{}`. A green run proves those list and issue
-  fixtures render. It does not prove production auth, that the API returns those issues, or
-  that sending a message reaches the server.
+  fixtures render. It does not prove production auth, that the API returns those issues or
+  answers the clerk endpoints in that shape, that assignment writes `clerkUserDataId`, or that
+  sending a message reaches the server, or that the API fails the clerks list the way the 500 fixture does.
 - **The RealUnit referral visual spec answers the relation list and promo list itself.**
   `e2e/realunit-referral.spec.ts` fulfils `GET /v1/realunit/referral/admin/relations` and
   `GET /v1/realunit/referral/promo` with synthetic fixtures: an empty promo list on the
@@ -201,19 +204,23 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   mapping pins the token contract instead.
 - **The staff ticket customer-note visual spec answers the issue payload itself.**
   `e2e/support-ticket-note.spec.ts` fulfils `GET /v1/support/issue/:id/data`, the message thread
-  for that uid, clerks, clerk mapping and activity with synthetic fixtures. A green run proves
-  that the Kundennotiz composer renders those fixtures. It does not prove that the API returns
-  that issue or that `createSupportNote` persists a note.
+  for that uid, clerks, clerk mapping and activity with synthetic fixtures; the clerk fixtures carry
+  the `{ clerkUserDataId, clerk }` shape. A green run proves that the Kundennotiz composer renders
+  those fixtures. It does not prove that the API returns that issue, that it answers the clerk
+  endpoints in that shape, or that `createSupportNote` persists a note.
 - **The staff ticket KYC-file-transfer visual spec answers the issue payload itself.**
   `e2e/support-kyc-file-transfer.spec.ts` answers the issue payload, messages, clerks, clerk mapping
-  and activity with fixtures. A green run proves those fixtures render. It does not prove that the
-  API returns them or that PUT kycFile persists.
+  and activity with fixtures; the clerk fixtures carry the `{ clerkUserDataId, clerk }` shape. A
+  green run proves those fixtures render. It does not prove that the API returns them, that it
+  answers the clerk endpoints in that shape, or that PUT kycFile persists.
 - **The staff message-origin visual spec answers boot and the issue thread itself.**
   `e2e/support-message-origin.spec.ts` fulfils the staff session's user, languages and the issue,
-  messages, clerks, clerk mapping and activity with fixtures, including one customer mail tag, one
+  messages, clerks (in the `{ clerkUserDataId, clerk }` shape), clerk mapping and activity with
+  fixtures, including one customer mail tag, one
   in-app tag, a customer message without an origin and a staff reply that carries an origin. A green
-  run proves the messages panel renders those tags. It does not prove that the API stores `origin`,
-  that a mail opened the ticket, or that the session is a real staff login.
+  run proves the messages panel renders those tags. It does not prove that the API answers the clerk
+  endpoints in that shape, that it stores `origin`, that a mail opened the ticket, or that the session
+  is a real staff login.
 - **The support-issue receiver-IBAN spec pins KYC level and account mail on GET /v2/user.**
   `e2e/support-issue-receiver-iban.spec.ts` rewrites that response so `kyc.level` is high enough for
   the screen guard and `mail` is present if the cached wallet session has none. A green visual run
@@ -243,7 +250,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   real invoice route.
 - **The compliance-review KYC-status spec answers staff identity itself.**
   `e2e/compliance-review-kyc-status.spec.ts` fulfils `GET /v1/support/issue/clerk` with
-  `{ clerk }` and, as fallback, `GET /v1/support/{id}` for any account other than the customer
+  `{ clerkUserDataId, clerk }` and, as fallback, `GET /v1/support/{id}` for any account other than the customer
   fixture with `{ userData: { verifiedName } }`. A green run proves that the review screen
   accepts that name, not that the API returns the logged-in staff member's `verifiedName`.
   The spec covers the resettable AML-reset path, the pending ManualCheck decision form
@@ -254,7 +261,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   holds, or that the Editor label is the logged-in staff member's `verifiedName`.
 - **The call-queue outcome spec answers staff identity and the dossier itself.**
   `e2e/compliance-call-queue-outcome.spec.ts` fulfils `GET /v1/support/issue/clerk` with
-  `{ clerk }`, a differently named fallback on `GET /v1/support/{staffAccount}`,
+  `{ clerkUserDataId, clerk }`, a differently named fallback on `GET /v1/support/{staffAccount}`,
   `GET /v1/support/{customer}` with a synthetic dossier, empty lookup lists, a null
   info banner, and `GET /v2/user` with a synthetic account. A green run proves the
   outcome form renders that clerk name as a read-only signature and does not request a
@@ -281,6 +288,21 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `phoneCallStatusDate` (where the column exists) and `phoneCallCheckDate`. A green run does
   **not** prove that the AML pipeline parks a transaction in the Callback queue or that a clerk's
   Unavailable outcome stamps the mark date through the product path.
+- **The DFX support issue visual spec answers the issue endpoints itself.**
+  `e2e/support-dashboard-issue.spec.ts` uses a synthetic unsigned Admin JWT and fulfils
+  `GET /v1/support/issue/clerks`, `GET /v1/support/issue/clerk` (the acting staff identity),
+  `/v1/support/issue/:id/data`, `/v1/support/issue/:uid` (message thread) and staff bootstrap GETs;
+  further variants answer the clerks list empty, with HTTP 500, or leave the assigned id off the list.
+  A green run proves the issue screen renders those fixtures, not that the API returns them, not that
+  the logged-in account really resolves to that clerk identity, and not that login works.
+- **The full-stack clerk-assignment spec SQL-writes `user_data.verifiedName` and `setting.supportClerks`.**
+  `e2e-stack/specs/support-dashboard.spec.ts` (`assigns a clerk from the resolved list`) gives the Support
+  account a unique `verifiedName` and configures the clerk list directly, because `loginAs` gives every role
+  the same name and the API refuses a name that resolves to more than one account. In production both come
+  from identity verification and the settings table. A green run does **not** prove that a real staff
+  account resolves to exactly one clerk entry, nor that the clerk list is configured in any
+  environment, nor that the overview read path lists the ticket under My tickets — the test asserts
+  the database column, not the list.
 - **Full-stack guest assign/refund specs SQL-write `transaction.actionSecretHash`.**
   `e2e-stack/specs/transactions.spec.ts` (`seedActionSecret`) updates the hash directly. A green run
   does **not** prove that the mail/API path creates, hashes, or delivers the action secret.
