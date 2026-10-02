@@ -1,17 +1,6 @@
-import { Asset, Blockchain, useApi } from '@dfx.swiss/react';
+import { Asset, Blockchain, useBlockchain } from '@dfx.swiss/react';
 import * as Solana from '@solana/web3.js';
 import { useMemo } from 'react';
-
-interface UnsignedTransactionDto {
-  rawTransaction: string;
-  encoding: 'base64' | 'hex';
-  recentBlockhash?: string;
-  expiration?: number;
-}
-
-interface BroadcastResultDto {
-  txHash: string;
-}
 
 export interface BlockchainTransactionInterface {
   createSolanaTransaction: (
@@ -30,7 +19,7 @@ export interface BlockchainTransactionInterface {
 }
 
 export function useBlockchainTransaction(): BlockchainTransactionInterface {
-  const { call } = useApi();
+  const { createTransaction, broadcastTransaction: broadcast } = useBlockchain();
 
   async function createSolanaTransaction(
     fromAddress: string,
@@ -38,16 +27,12 @@ export function useBlockchainTransaction(): BlockchainTransactionInterface {
     amount: number,
     asset?: Asset,
   ): Promise<Solana.Transaction> {
-    const response = await call<UnsignedTransactionDto>({
-      url: 'blockchain/transaction',
-      method: 'POST',
-      data: {
-        blockchain: Blockchain.SOLANA,
-        fromAddress,
-        toAddress,
-        amount,
-        assetId: asset?.id,
-      },
+    const response = await createTransaction({
+      blockchain: Blockchain.SOLANA,
+      fromAddress,
+      toAddress,
+      amount,
+      assetId: asset?.id,
     });
 
     // Deserialize the transaction from base64
@@ -61,16 +46,12 @@ export function useBlockchainTransaction(): BlockchainTransactionInterface {
     amount: number,
     asset?: Asset,
   ): Promise<object> {
-    const response = await call<UnsignedTransactionDto>({
-      url: 'blockchain/transaction',
-      method: 'POST',
-      data: {
-        blockchain: Blockchain.TRON,
-        fromAddress,
-        toAddress,
-        amount,
-        assetId: asset?.id,
-      },
+    const response = await createTransaction({
+      blockchain: Blockchain.TRON,
+      fromAddress,
+      toAddress,
+      amount,
+      assetId: asset?.id,
     });
 
     // Parse the transaction JSON
@@ -78,17 +59,12 @@ export function useBlockchainTransaction(): BlockchainTransactionInterface {
   }
 
   async function broadcastTransaction(blockchain: Blockchain, signedTransaction: string): Promise<string> {
-    const response = await call<BroadcastResultDto>({
-      url: 'blockchain/broadcast',
-      method: 'POST',
-      data: {
-        blockchain,
-        signedTransaction,
-      },
-    });
-
-    return response.txHash;
+    const { txHash } = await broadcast({ blockchain, signedTransaction });
+    return txHash;
   }
 
-  return useMemo(() => ({ createSolanaTransaction, createTronTransaction, broadcastTransaction }), [call]);
+  return useMemo(
+    () => ({ createSolanaTransaction, createTronTransaction, broadcastTransaction }),
+    [createTransaction, broadcast],
+  );
 }
