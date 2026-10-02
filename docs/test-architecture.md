@@ -190,6 +190,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   success-state clock frozen.
   It does not prove production auth, that the API accepts `reference` or `auditAll`, or that it returns
   `{ affected, audited }`.
+- **The Kundengelder visual spec answers the extract and the bookings itself.**
+  `e2e/dashboard-financial-kundengelder.spec.ts` uses a synthetic unsigned Admin JWT and fulfils
+  `/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`, `/v1/setting/infoBanner`,
+  `/v2/user`, `GET /v1/bank`, the year extract and the bookings list with fictional fixtures.
+  Other `/v1/**` and `/v2/**` calls return `{}`. A green run proves the T-account, an empty bank,
+  the booked comparison and the bookings page render those fixtures. It does not prove production
+  auth, that the API returns this extract, or that the figures are booked balances.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for

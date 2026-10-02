@@ -173,10 +173,35 @@ function sideAmount(label: string, amount: number | undefined): string {
   return formatAmount(amount);
 }
 
-/** A sheet the response left without template rows is still the T-account. */
-function kontenblattRows(sheet: KundengelderSheet): KundengelderSheetRow[] {
-  if (sheet.rows && sheet.rows.length > 0) return sheet.rows;
-  return [{ sollLabel: 'Anfangsbestand' }, { habenLabel: 'Saldo', habenAmount: 0 }];
+interface KontenblattDisplayRow extends KundengelderSheetRow {
+  sollDate?: string;
+  habenDate?: string;
+}
+
+/**
+ * A sheet without template rows is still the T-account.
+ * Stored side lines stay on it. A bank with neither gets the empty opening and a zero balance.
+ */
+function kontenblattRows(sheet: KundengelderSheet): KontenblattDisplayRow[] {
+  if (sheet.rows && sheet.rows.length > 0) return sheet.rows.map((row) => ({ ...row }));
+  if (sheet.soll.length === 0 && sheet.haben.length === 0) {
+    return [{ sollLabel: 'Anfangsbestand' }, { habenLabel: 'Saldo', habenAmount: 0 }];
+  }
+  const count = Math.max(sheet.soll.length, sheet.haben.length);
+  const rows: KontenblattDisplayRow[] = [];
+  for (let index = 0; index < count; index++) {
+    const left = sheet.soll[index];
+    const right = sheet.haben[index];
+    rows.push({
+      ...(left
+        ? { sollLabel: left.label, sollAmount: left.amount, sollLineKey: left.lineKey, sollDate: left.date }
+        : {}),
+      ...(right
+        ? { habenLabel: right.label, habenAmount: right.amount, habenLineKey: right.lineKey, habenDate: right.date }
+        : {}),
+    });
+  }
+  return rows;
 }
 
 function movementDate(lines: KundengelderSheetLine[], lineKey: string | undefined): string {
@@ -310,7 +335,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
               sheet.name,
               sheet.accountNo ?? '',
               'Soll',
-              movementDate(sheet.soll, row.sollLineKey),
+              row.sollDate ?? movementDate(sheet.soll, row.sollLineKey),
               row.sollLabel ?? '',
               row.sollAmount ?? '',
               sheet.currency,
@@ -322,7 +347,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
               sheet.name,
               sheet.accountNo ?? '',
               'Haben',
-              movementDate(sheet.haben, row.habenLineKey),
+              row.habenDate ?? movementDate(sheet.haben, row.habenLineKey),
               row.habenLabel ?? '',
               row.habenAmount ?? '',
               sheet.currency,

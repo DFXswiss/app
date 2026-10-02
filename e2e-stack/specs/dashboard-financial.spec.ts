@@ -20,7 +20,7 @@ import {
   waitForFinancialDestinationRequests,
 } from './fixtures';
 
-/** Routes owned by this lane's dashboard half (9 paths). */
+/** Routes owned by this lane's dashboard half (10 paths). */
 const DASHBOARD_ROUTES = [
   '/dashboard',
   '/dashboard/financial',
@@ -31,6 +31,7 @@ const DASHBOARD_ROUTES = [
   '/dashboard/financial/liquidity',
   '/dashboard/financial/log-validity',
   '/dashboard/financial/kundengelder',
+  '/dashboard/financial/kundengelder/lines',
 ] as const;
 
 const FINANCIAL_HUB_TILES: { title: string; path: string }[] = [
@@ -328,6 +329,17 @@ test.describe('Financial dashboard', () => {
     expect(responses.every((r) => r.ok())).toBeTruthy();
     await expect(page.getByRole('heading', { name: 'Kundengelder' })).toBeVisible();
     await expect(page.getByLabel('Jahr')).toBeVisible();
+
+    assertNoErrors(pageErrors, consoleErrors);
+  });
+
+  test('/dashboard/financial/kundengelder/lines opens the bookings page', async ({ page }) => {
+    const { jwt } = await loginAs('Admin');
+    const { pageErrors, consoleErrors } = attachErrorListeners(page);
+
+    await openScreen(page, '/dashboard/financial/kundengelder/lines', jwt);
+    await expect(page.getByRole('heading', { name: 'Buchungen' })).toBeVisible();
+    await expect(page.getByText('Die Buchung fehlt.')).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);
   });

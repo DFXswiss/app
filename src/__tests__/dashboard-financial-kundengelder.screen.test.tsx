@@ -474,7 +474,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(await screen.findByRole('heading', { name: 'Kaleido Privatbank CHF' })).toBeInTheDocument();
     expect(screen.getByText('10037')).toBeInTheDocument();
     expect(screen.getAllByText('Intern')).toHaveLength(2);
-    expect(screen.getByText('2024-08-16')).toBeInTheDocument();
+    expect(screen.queryByText('2024-08-16')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Maerki Baumann CHF' })).not.toBeInTheDocument();
     expect(screen.getByText(/kein Anfangsbestand des Folgejahres/)).toBeInTheDocument();
 
