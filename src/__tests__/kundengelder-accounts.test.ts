@@ -147,6 +147,34 @@ describe('withEveryBankAccount', () => {
     expect(merged.sheets).toEqual([]);
   });
 
+  it('drops a CryptoCrypto sheet and still appends a bank that has none', () => {
+    const checkout: KundengelderSheet = {
+      key: 'CheckoutLtdCHF',
+      name: 'Checkout Ltd CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    const crypto: KundengelderSheet = {
+      key: 'CryptoCrypto',
+      name: 'Crypto-Crypto',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 1,
+      habenSum: 1,
+      control: 0,
+    };
+    const merged = withEveryBankAccount({ ...extract, sheets: [crypto, checkout] }, [
+      { name: 'Quiet Bank', iban: 'CH2100000000000000002', currency: 'EUR' },
+    ]);
+
+    expect(merged.sheets?.map((sheet) => sheet.key)).toEqual(['CheckoutLtdCHF', 'CH2100000000000000002|EUR']);
+  });
+
   it('keeps the extract sheets when every bank already has a sheet', () => {
     const sheets: KundengelderSheet[] = [
       {

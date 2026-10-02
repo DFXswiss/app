@@ -117,6 +117,10 @@ function formatAmount(value: number): string {
   return value.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function csvAmount(value: number): string {
+  return value.toFixed(2);
+}
+
 function balanceText(signed: number, currency: string): string {
   const amount = formatAmount(Math.abs(signed));
   if (signed > 0) return `Soll ${amount} ${currency}`;
@@ -323,18 +327,36 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
   function exportCsv(data: KundengelderExtract): void {
     if (data.sheets && data.sheets.length > 0) {
       const rows = data.sheets.flatMap((sheet) => {
-        const summeSoll = [sheet.name, sheet.accountNo ?? '', 'Soll', '', 'Summe', sheet.sollSum, sheet.currency, ''];
+        const summeSoll = [
+          sheet.name,
+          sheet.accountNo ?? '',
+          'Soll',
+          '',
+          'Summe',
+          csvAmount(sheet.sollSum),
+          sheet.currency,
+          '',
+        ];
         const summeHaben = [
           sheet.name,
           sheet.accountNo ?? '',
           'Haben',
           '',
           'Summe',
-          sheet.habenSum,
+          csvAmount(sheet.habenSum),
           sheet.currency,
           '',
         ];
-        const kontrolle = [sheet.name, sheet.accountNo ?? '', 'Kontrolle', '', '', '', sheet.currency, sheet.control];
+        const kontrolle = [
+          sheet.name,
+          sheet.accountNo ?? '',
+          'Kontrolle',
+          '',
+          '',
+          '',
+          sheet.currency,
+          csvAmount(sheet.control),
+        ];
         const pruefung = sheet.openingCheck
           ? [[sheet.name, sheet.accountNo ?? '', 'Prüfung', '', openingCheckText(sheet), '', sheet.currency, '']]
           : [];

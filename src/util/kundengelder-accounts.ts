@@ -65,6 +65,7 @@ function emptyBankSheet(bank: DfxBankAccount, iban: string, currency: string, ye
  * Every DFX bank account stays on the extract, including a year with no movements.
  * Checkout stays, and Crypto-Crypto is not an account option.
  * When sheets are present, banks without a matching sheet are appended as empty sheets.
+ * A CryptoCrypto sheet is not a Kontenblatt. An empty sheet list stays the legacy cards.
  */
 export function withEveryBankAccount(extract: KundengelderExtract, banks: DfxBankAccount[]): KundengelderExtract {
   const accounts: KundengelderAccount[] = [];
@@ -110,7 +111,8 @@ export function withEveryBankAccount(extract: KundengelderExtract, banks: DfxBan
     return { ...extract, accounts };
   }
 
-  const sheets = sourceSheets.map((sheet) => withBankIban(sheet, sorted));
+  const keptSheets = sourceSheets.filter((sheet) => sheet.key !== 'CryptoCrypto');
+  const sheets = keptSheets.map((sheet) => withBankIban(sheet, sorted));
   const extraSheets: KundengelderSheet[] = [];
   const seenSheetPairs = new Set<string>();
   for (const bank of sorted) {
@@ -124,7 +126,8 @@ export function withEveryBankAccount(extract: KundengelderExtract, banks: DfxBan
     extraSheets.push(emptyBankSheet(bank, iban, currency, extract.year));
   }
 
-  const changed = sheets.some((sheet, index) => sheet !== sourceSheets[index]);
+  const changed =
+    keptSheets.length !== sourceSheets.length || sheets.some((sheet, index) => sheet !== keptSheets[index]);
   if (extraSheets.length === 0 && !changed) {
     return { ...extract, accounts };
   }

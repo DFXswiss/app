@@ -504,6 +504,13 @@ describe('DashboardFinancialKundengelderScreen', () => {
     );
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('2024-08-16'));
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('90001'));
+    const csv = String(mockDownloadCsv.mock.calls[0][1]);
+    expect(csv).toContain('Summe;10000.00;CHF');
+    expect(csv).toContain('Summe;101.00;CHF');
+    expect(csv).toContain('Kontrolle;;;;CHF;0.00');
+    expect(csv).toContain('Intern;10000;CHF');
+    expect(csv).not.toContain('Intern;10000.00');
+    expect(csv).toContain('BuyCrypto Fee;11;CHF');
   });
 
   it('shows every PDF row and the three opening checks', async () => {
@@ -934,7 +941,10 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(button).not.toBeDisabled();
     fireEvent.click(button);
 
-    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Ledger Bank CHF'));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(
+      `kundengelder-${YEAR}.csv`,
+      expect.stringContaining('Ledger Bank CHF'),
+    );
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('0'));
   });
 
