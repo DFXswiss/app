@@ -58,9 +58,12 @@ const money = (value: number): string =>
   value.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function cardByHeading(name: string): HTMLElement {
-  const card = screen.getByRole('heading', { name }).parentElement;
-  if (!card) throw new Error(`missing card for ${name}`);
-  return card;
+  const heading = screen.getByRole('heading', { name });
+  const card = heading.closest('[data-sheet]');
+  if (card instanceof HTMLElement) return card;
+  const parent = heading.parentElement;
+  if (!parent) throw new Error(`missing card for ${name}`);
+  return parent;
 }
 
 function clickLine(accountName: string, label: string): void {
@@ -1085,7 +1088,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     clickLine('Line Cells CHF', 'Ohne');
     expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'line-cells', 'ohne');
 
-    const table = within(cardByHeading('Line Cells CHF')).getByRole('table');
+    const table = within(cardByHeading('Line Cells CHF')).getByRole('table', { name: 'Kontenblatt' });
     const emptyRow = within(table)
       .getAllByRole('row')
       .find((row) => {
@@ -1146,6 +1149,8 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(await screen.findByRole('heading', { name: 'Row List CHF' })).toBeInTheDocument();
     clickLine('Row List CHF', 'Buy');
     expect(await screen.findByText('501')).toBeInTheDocument();
+    const ledger = within(cardByHeading('Row List CHF')).getByRole('table', { name: 'Kontenblatt' });
+    expect(within(ledger).queryByText('501')).not.toBeInTheDocument();
   });
 
   it('shows ErrorHint when a sheet side line rejects', async () => {
@@ -1224,7 +1229,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     render(<DashboardFinancialKundengelderScreen />);
 
     expect(await screen.findByRole('heading', { name: 'Bare Amount CHF' })).toBeInTheDocument();
-    const table = within(cardByHeading('Bare Amount CHF')).getByRole('table');
+    const table = within(cardByHeading('Bare Amount CHF')).getByRole('table', { name: 'Kontenblatt' });
     const dataRow = within(table)
       .getAllByRole('row')
       .find((row) => within(row).queryAllByRole('cell').length === 4);

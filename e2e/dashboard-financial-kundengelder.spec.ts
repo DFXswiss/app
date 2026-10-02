@@ -64,20 +64,53 @@ const EXTRACT = {
       haben: [],
       rows: [
         { sollLabel: 'Anfangsbestand', sollAmount: 1000 },
+        { sollLabel: 'Zahlungseingänge', habenLabel: 'Zahlungsausgänge', section: true },
+        { sollLabel: 'BuyCrypto after Fee', sollAmount: 200, sollLineKey: 'buy-after-fee' },
+        { sollLabel: 'BuyCrypto Fee', sollAmount: 2 },
+        { sollLabel: 'FiatFiat after Fee', sollAmount: 0, habenLabel: 'BuyFiat after Fee', habenAmount: 0 },
+        { sollLabel: 'FiatFiat Fee', sollAmount: 0, habenLabel: 'FiatFiat', habenAmount: 0 },
+        { sollLabel: 'BuyCryptoReturn', sollAmount: 0 },
+        { habenLabel: 'BuyCryptoReturn-Chargeback', habenAmount: 0 },
+        { sollLabel: 'BankTxReturn', sollAmount: 0 },
+        { habenLabel: 'BankTxReturn-Chargeback', habenAmount: 0 },
+        { sollLabel: 'BankTxRepeat', sollAmount: 0 },
+        { habenLabel: 'BankTxRepeat-Chargeback', habenAmount: 0 },
+        { sollLabel: 'Kraken', sollAmount: 0, habenLabel: 'Kraken', habenAmount: 0 },
+        { sollLabel: 'Internal von Checkout', sollAmount: 0 },
+        { sollLabel: 'Internal', sollAmount: 0, habenLabel: 'Internal', habenAmount: 0 },
+        { sollLabel: 'Internal von LI00000000000000TEST', sollAmount: 0 },
+        { sollLabel: 'Internal von LU000000000000000000', sollAmount: 0 },
         {
-          sollLabel: 'BuyCrypto after Fee',
-          sollAmount: 200,
-          sollLineKey: 'buy-after-fee',
+          sollLabel: 'Internal von CH2100000000000000002',
+          sollAmount: 0,
+          habenLabel: 'Internal an CH2100000000000000002',
+          habenAmount: 0,
         },
-        { habenLabel: 'SellFiat', habenAmount: 50, habenLineKey: 'sell-fiat' },
-        { sollLabel: 'Saldo', sollAmount: 1150 },
+        {
+          sollLabel: 'Internal von CH0000000000000000003',
+          sollAmount: 0,
+          habenLabel: 'Internal an CH0000000000000000003',
+          habenAmount: 0,
+        },
+        {
+          sollLabel: 'Internal von CH0000000000000000004',
+          sollAmount: 0,
+          habenLabel: 'Internal an CH0000000000000000004',
+          habenAmount: 0,
+        },
+        { sollLabel: 'Unknown', sollAmount: 0, habenLabel: 'Unknown', habenAmount: 0 },
+        { habenLabel: '% Gebühren Bank', habenAmount: 0 },
+        { habenLabel: 'Gebühr Checkout', habenAmount: 0 },
+        { sollLabel: 'Storno Gebühren Bank', sollAmount: 0, habenLabel: 'BankAccountFee', habenAmount: 4.5 },
+        { habenLabel: 'Kommission Gebühren', habenAmount: 0 },
+        { habenLabel: 'Saldo', habenAmount: 1197.5 },
       ],
-      sollSum: 1200,
-      habenSum: 1200,
+      sollSum: 1202,
+      habenSum: 1202,
       control: 0,
-      closingBalance: 1150,
+      closingBalance: 1197.5,
       openingBalance: 1000,
-      nextOpeningBalance: 1150,
+      nextOpeningBalance: 1197.5,
       openingCheck: 'verified',
     },
     {
@@ -163,7 +196,7 @@ test.describe('Kundengelder year extract', () => {
   test.use({ timezoneId: 'Europe/Zurich', locale: 'de-CH' });
 
   test('visual regression - kundengelder extract', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 1500 });
+    await page.setViewportSize({ width: 1440, height: 1520 });
     await page.clock.install({ time: new Date('2026-10-02T12:00:00Z') });
     await page.clock.resume();
     await installRoutes(page);
@@ -179,6 +212,7 @@ test.describe('Kundengelder year extract', () => {
 
     await expect(page).toHaveScreenshot('dashboard-financial-kundengelder.png', shot);
 
+    await page.setViewportSize({ width: 1440, height: 1680 });
     await page.getByRole('cell', { name: 'BuyCrypto after Fee' }).first().click();
     await expect(page.getByText('SAMPLE-1')).toBeVisible();
     await page.waitForTimeout(500);
