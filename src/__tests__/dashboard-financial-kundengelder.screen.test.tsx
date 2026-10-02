@@ -49,9 +49,32 @@ jest.mock('src/util/semicolon-csv', () => {
   };
 });
 
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
+import { ReactElement } from 'react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { KundengelderExtract, KundengelderSheet, KundengelderTx, KundengelderTxList } from 'src/dto/dashboard.dto';
-import DashboardFinancialKundengelderScreen from 'src/screens/dashboard-financial-kundengelder.screen';
+import DashboardFinancialKundengelderScreen, {
+  DashboardFinancialKundengelderLinesScreen,
+} from 'src/screens/dashboard-financial-kundengelder.screen';
+
+function LocationProbe(): ReactElement {
+  const location = useLocation();
+  return <div data-testid="location">{`${location.pathname}${location.search}`}</div>;
+}
+
+function render(ui: ReactElement, path = '/'): ReturnType<typeof rtlRender> {
+  return rtlRender(
+    <MemoryRouter initialEntries={[path]}>
+      <LocationProbe />
+      {ui}
+    </MemoryRouter>,
+  );
+}
+
+function currentLocation(): string {
+  const raw = screen.getByTestId('location').textContent ?? '';
+  return decodeURIComponent(raw.replace(/\+/g, ' '));
+}
 
 const chf = (value: number): string => `${value.toLocaleString('de-CH')} CHF`;
 const money = (value: number): string =>
@@ -71,6 +94,16 @@ function clickLine(accountName: string, label: string): void {
 }
 
 const YEAR = new Date().getUTCFullYear();
+
+function linesPath(account: string, line: string, label = line, year = YEAR, sheet = account): string {
+  const params = new URLSearchParams();
+  params.set('year', String(year));
+  params.set('sheet', sheet);
+  params.set('account', account);
+  params.set('line', line);
+  params.set('label', label);
+  return `/dashboard/financial/kundengelder/lines?${params.toString()}`;
+}
 
 const EXTRACT: KundengelderExtract = {
   year: YEAR,
@@ -154,54 +187,55 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(within(diffRow).getByText(money(10))).toBeInTheDocument();
   });
 
-  it('refetches extract when the year changes and closes opened lines', async () => {
-    mockGetKundengelderLines.mockResolvedValue({
-      year: YEAR,
-      accountKey: EXTRACT.accounts[0].key,
-      line: EXTRACT.accounts[0].lines[0].key,
-      rows: [{ id: 99, type: 'BuyCrypto', amount: 1 }],
-    });
-
+  it('refetches extract when the year changes and opens bookings for that year', async () => {
     render(<DashboardFinancialKundengelderScreen />);
 
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
-    clickLine('Test CHF Account', 'BuyCrypto after Fee');
-    expect(await screen.findByText('99')).toBeInTheDocument();
-
     fireEvent.change(screen.getByLabelText('Jahr'), { target: { value: '2022' } });
 
     await waitFor(() => expect(mockGetKundengelderExtract).toHaveBeenCalledWith(2022));
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
-    expect(screen.queryByText('99')).not.toBeInTheDocument();
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
+
+    expect(currentLocation()).toContain('/dashboard/financial/kundengelder/lines?');
+    expect(currentLocation()).toContain('year=2022');
+    expect(currentLocation()).toContain('line=BuyCrypto after Fee');
+    expect(screen.queryByText('Keine Buchungen')).not.toBeInTheDocument();
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
   });
 
-  it('loads line transactions on row click and shows an empty list when rows are empty', async () => {
-    mockGetKundengelderLines
-      .mockResolvedValueOnce({
-        year: YEAR,
-        accountKey: EXTRACT.accounts[0].key,
-        line: EXTRACT.accounts[0].lines[0].key,
-        rows: [{ id: 99, type: 'BuyCrypto', amount: 1 }],
-      })
-      .mockResolvedValueOnce({
-        year: YEAR,
-        accountKey: EXTRACT.accounts[0].key,
-        line: EXTRACT.accounts[0].lines[1].key,
-        rows: [],
-      });
-
+  it('navigates to the bookings subpage for the clicked line', async () => {
     render(<DashboardFinancialKundengelderScreen />);
 
     const chfAccount = EXTRACT.accounts[0];
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
     clickLine('Test CHF Account', 'BuyCrypto after Fee');
 
-    expect(await screen.findByText('99')).toBeInTheDocument();
-    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, chfAccount.key, chfAccount.lines[0].key);
+    expect(currentLocation()).toContain('/dashboard/financial/kundengelder/lines?');
+    expect(currentLocation()).toContain(`year=${YEAR}`);
+    expect(currentLocation()).toContain(`sheet=${chfAccount.key}`);
+    expect(currentLocation()).toContain(`account=${chfAccount.key}`);
+    expect(currentLocation()).toContain(`line=${chfAccount.lines[0].key}`);
+    expect(currentLocation()).toContain('label=BuyCrypto after Fee');
+    expect(screen.getByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    expect(screen.queryByText('Keine Buchungen')).not.toBeInTheDocument();
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('SellFiat'));
-    expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
-    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, chfAccount.key, chfAccount.lines[1].key);
+    expect(currentLocation()).toContain('line=SellFiat');
+    expect(currentLocation()).toContain('label=SellFiat');
+  });
+
+  it('keeps the session on the bookings address', async () => {
+    render(<DashboardFinancialKundengelderScreen />, '/dashboard/financial/kundengelder?session=abc&lang=de');
+
+    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    clickLine('Test CHF Account', 'BuyCrypto after Fee');
+
+    expect(currentLocation()).toContain('/dashboard/financial/kundengelder/lines?');
+    expect(currentLocation()).toContain('session=abc');
+    expect(currentLocation()).toContain('lang=de');
+    expect(currentLocation()).toContain('line=BuyCrypto after Fee');
   });
 
   it('exports CSV with the selected year in the filename', async () => {
@@ -229,13 +263,15 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument();
   });
 
-  it('shows ErrorHint after a rejected getKundengelderLines path', async () => {
+  it('does not show a line error on the sheet when a row is clicked', async () => {
     render(<DashboardFinancialKundengelderScreen />);
 
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
     mockGetKundengelderLines.mockRejectedValueOnce(new Error('line boom'));
     clickLine('Test CHF Account', 'BuyCrypto after Fee');
-    expect(await screen.findByTestId('error-hint')).toHaveTextContent('line boom');
+    expect(currentLocation()).toContain('line=BuyCrypto after Fee');
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
   });
 
   it('disables Export CSV when the extract has no accounts', async () => {
@@ -257,78 +293,25 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.getByRole('heading', { name: 'Kundengelder' })).toBeInTheDocument();
   });
 
-  it('closes an opened empty line on a second click and hides the empty list', async () => {
-    mockGetKundengelderLines.mockResolvedValueOnce({
-      year: YEAR,
-      accountKey: EXTRACT.accounts[0].key,
-      line: EXTRACT.accounts[0].lines[0].key,
-      rows: [],
-    });
-
+  it('leaves the booking list off the sheet after a line click', async () => {
     render(<DashboardFinancialKundengelderScreen />);
 
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
     clickLine('Test CHF Account', 'BuyCrypto after Fee');
-    expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
-
-    clickLine('Test CHF Account', 'BuyCrypto after Fee');
+    expect(currentLocation()).toContain('/dashboard/financial/kundengelder/lines?');
     expect(screen.queryByText('Keine Buchungen')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
   });
 
-  it('ignores a line response that resolves after the row is closed', async () => {
-    let resolveLines: (value: KundengelderTxList) => void = () => undefined;
-    mockGetKundengelderLines.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveLines = resolve;
-        }),
-    );
-
+  it('navigates to the bookings of the clicked account', async () => {
     render(<DashboardFinancialKundengelderScreen />);
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
     clickLine('Test CHF Account', 'BuyCrypto after Fee');
-    clickLine('Test CHF Account', 'BuyCrypto after Fee');
-
-    await act(async () => {
-      resolveLines({
-        year: YEAR,
-        accountKey: EXTRACT.accounts[0].key,
-        line: EXTRACT.accounts[0].lines[0].key,
-        rows: [{ id: 99, type: 'BuyCrypto' }],
-      });
-    });
-
-    expect(screen.queryByText('99')).not.toBeInTheDocument();
-  });
-
-  it('ignores a line reject that arrives after the row is closed', async () => {
-    let rejectLines: (reason: Error) => void = () => undefined;
-    mockGetKundengelderLines.mockImplementation(
-      () =>
-        new Promise((_, reject) => {
-          rejectLines = reject;
-        }),
-    );
-
-    render(<DashboardFinancialKundengelderScreen />);
-    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
-    clickLine('Test CHF Account', 'BuyCrypto after Fee');
-    clickLine('Test CHF Account', 'BuyCrypto after Fee');
-
-    await act(async () => {
-      rejectLines(new Error('late line boom'));
-    });
-
-    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
-  });
-
-  it('opens a line on the second account without treating it as a toggle', async () => {
-    render(<DashboardFinancialKundengelderScreen />);
-    expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
-    clickLine('Test CHF Account', 'BuyCrypto after Fee');
-    expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Checkout'));
-    await waitFor(() => expect(mockGetKundengelderLines).toHaveBeenLastCalledWith(YEAR, 'CheckoutLtdEUR', 'Checkout'));
+    expect(currentLocation()).toContain('sheet=CheckoutLtdEUR');
+    expect(currentLocation()).toContain('account=CheckoutLtdEUR');
+    expect(currentLocation()).toContain('line=Checkout');
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
   });
 
   it('does not download CSV when Export is clicked after an extract error', async () => {
@@ -424,28 +407,29 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 
-  it('renders optional TxTable cells for a full row and an id-and-type-only row', async () => {
-    const rows: KundengelderTx[] = [
-      { id: 101, type: 'BuyCrypto', bookingDate: '2026-01-15', amount: 12.5, afterFee: 11, instructionId: 'instr-101' },
-      { id: 102, type: 'SellFiat' },
-    ];
+  it('does not render booking rows on the sheet', async () => {
     mockGetKundengelderLines.mockResolvedValue({
       year: YEAR,
       accountKey: EXTRACT.accounts[0].key,
       line: EXTRACT.accounts[0].lines[0].key,
-      rows,
+      rows: [
+        {
+          id: 101,
+          type: 'BuyCrypto',
+          bookingDate: '2026-01-15',
+          amount: 12.5,
+          afterFee: 11,
+          instructionId: 'instr-101',
+        },
+      ],
     });
 
     render(<DashboardFinancialKundengelderScreen />);
 
     expect(await screen.findByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
     clickLine('Test CHF Account', 'BuyCrypto after Fee');
-
-    expect(await screen.findByText('instr-101')).toBeInTheDocument();
-    expect(screen.getByText('101')).toBeInTheDocument();
-    expect(screen.getByText('102')).toBeInTheDocument();
-    expect(screen.getByText('2026-01-15')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
+    expect(screen.queryByText('instr-101')).not.toBeInTheDocument();
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
   });
 
   it('renders a Kontenblatt for every sheet and exports that sheet', async () => {
@@ -507,8 +491,10 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.getByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toBeInTheDocument();
 
     clickLine('Maerki Baumann CHF', 'BuyCrypto after Fee');
-    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'CH9300762011623852957', 'BuyCrypto after Fee');
-    expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
+    expect(currentLocation()).toContain('account=CH9300762011623852957');
+    expect(currentLocation()).toContain('line=BuyCrypto after Fee');
+    expect(screen.queryByText('Keine Buchungen')).not.toBeInTheDocument();
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Kontrolle'));
@@ -885,10 +871,13 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
     clickLine('Maerki Baumann CHF', 'BuyCrypto after Fee');
-    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'CH9300762011623852957', 'BuyCrypto after Fee');
+    expect(currentLocation()).toContain('account=CH9300762011623852957');
+    expect(currentLocation()).toContain('line=BuyCrypto after Fee');
 
     clickLine('Maerki Baumann CHF', 'Charge');
-    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'CH9300762011623852957', 'Charge');
+    expect(currentLocation()).toContain('line=Charge');
+    expect(currentLocation()).toContain('label=Charge');
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
     expect(mockDownloadCsv).toHaveBeenCalledWith(
@@ -1065,7 +1054,11 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Checkout CHF' })).toBeInTheDocument();
     fireEvent.click(within(cardByHeading('Checkout CHF')).getByText(money(5)));
-    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'CheckoutLtdCHF', 'after');
+    expect(currentLocation()).toContain('sheet=CheckoutLtdCHF');
+    expect(currentLocation()).toContain('account=CheckoutLtdCHF');
+    expect(currentLocation()).toContain('line=after');
+    expect(currentLocation()).toContain('label=Nach Gebühr');
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
   });
 
   it('requests sheet row lines from empty amount and haben-only cells', async () => {
@@ -1086,7 +1079,8 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Line Cells CHF' })).toBeInTheDocument();
     clickLine('Line Cells CHF', 'Ohne');
-    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'line-cells', 'ohne');
+    expect(currentLocation()).toContain('account=line-cells');
+    expect(currentLocation()).toContain('line=ohne');
 
     const table = within(cardByHeading('Line Cells CHF')).getByRole('table', { name: 'Kontenblatt' });
     const emptyRow = within(table)
@@ -1097,10 +1091,11 @@ describe('DashboardFinancialKundengelderScreen', () => {
       });
     if (!emptyRow) throw new Error('missing haben-only row');
     fireEvent.click(within(emptyRow).getAllByRole('cell')[2]);
-    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'line-cells', 'haben-only');
+    expect(currentLocation()).toContain('line=haben-only');
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
   });
 
-  it('shows ErrorHint when a sheet row line rejects', async () => {
+  it('navigates from a sheet row without showing the line error on the sheet', async () => {
     const sheet: KundengelderSheet = {
       key: 'row-err',
       name: 'Row Error CHF',
@@ -1120,10 +1115,13 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(await screen.findByRole('heading', { name: 'Row Error CHF' })).toBeInTheDocument();
     mockGetKundengelderLines.mockRejectedValueOnce(new Error('row boom'));
     clickLine('Row Error CHF', 'Buy');
-    expect(await screen.findByTestId('error-hint')).toHaveTextContent('row boom');
+    expect(currentLocation()).toContain('account=CH-ROW');
+    expect(currentLocation()).toContain('line=Buy');
+    expect(screen.queryByText('row boom')).not.toBeInTheDocument();
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
   });
 
-  it('shows sheet row transactions after a successful line load', async () => {
+  it('keeps loaded booking rows off the Kontenblatt', async () => {
     const sheet: KundengelderSheet = {
       key: 'row-list',
       name: 'Row List CHF',
@@ -1148,12 +1146,14 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Row List CHF' })).toBeInTheDocument();
     clickLine('Row List CHF', 'Buy');
-    expect(await screen.findByText('501')).toBeInTheDocument();
+    expect(currentLocation()).toContain('account=CH-LIST');
+    expect(currentLocation()).toContain('line=Buy');
     const ledger = within(cardByHeading('Row List CHF')).getByRole('table', { name: 'Kontenblatt' });
     expect(within(ledger).queryByText('501')).not.toBeInTheDocument();
+    expect(screen.queryByText('501')).not.toBeInTheDocument();
   });
 
-  it('shows ErrorHint when a sheet side line rejects', async () => {
+  it('navigates from a sheet side without showing the line error on the sheet', async () => {
     const sheet: KundengelderSheet = {
       key: 'side-err',
       name: 'Side Error CHF',
@@ -1172,7 +1172,10 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(await screen.findByRole('heading', { name: 'Side Error CHF' })).toBeInTheDocument();
     mockGetKundengelderLines.mockRejectedValueOnce(new Error('side boom'));
     clickLine('Side Error CHF', 'Buy');
-    expect(await screen.findByTestId('error-hint')).toHaveTextContent('side boom');
+    expect(currentLocation()).toContain('account=CH-SIDE');
+    expect(currentLocation()).toContain('line=Buy');
+    expect(screen.queryByText('side boom')).not.toBeInTheDocument();
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
   });
 
   it('does not show missing-opening text for a non-opening label without amount', async () => {
@@ -1235,7 +1238,9 @@ describe('DashboardFinancialKundengelderScreen', () => {
       .find((row) => within(row).queryAllByRole('cell').length === 4);
     if (!dataRow) throw new Error('missing bare row');
     fireEvent.click(within(dataRow).getAllByRole('cell')[1]);
-    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, 'bare-amount', 'bare');
+    expect(currentLocation()).toContain('account=bare-amount');
+    expect(currentLocation()).toContain('line=bare');
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
   });
 
   it('does not request lines when a sheet side row has no lineKey', async () => {
@@ -1255,6 +1260,240 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Side No Key CHF' })).toBeInTheDocument();
     clickLine('Side No Key CHF', 'Anfangsbestand');
+    expect(currentLocation()).toBe('/');
     expect(mockGetKundengelderLines).not.toHaveBeenCalled();
+  });
+
+  it('restores the year and the selected sheet from the address', async () => {
+    const kaleido: KundengelderSheet = {
+      key: '10037',
+      name: 'Kaleido Privatbank CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    const buy: KundengelderSheet = {
+      key: 'CH9300762011623852957|CHF',
+      name: 'Maerki Baumann CHF',
+      iban: 'CH9300762011623852957',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [kaleido, buy] });
+
+    render(
+      <DashboardFinancialKundengelderScreen />,
+      `/dashboard/financial/kundengelder?year=2022&sheet=${encodeURIComponent(buy.key)}`,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Kaleido Privatbank CHF' })).not.toBeInTheDocument();
+    expect(mockGetKundengelderExtract).toHaveBeenCalledWith(2022);
+  });
+});
+
+describe('DashboardFinancialKundengelderLinesScreen', () => {
+  const account = 'CH9300762011623852957';
+  const line = 'BuyCrypto after Fee';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: true });
+    mockGetKundengelderLines.mockResolvedValue({ year: YEAR, accountKey: account, line, rows: [] });
+  });
+
+  function layoutOnBack(): () => void {
+    const calls = mockUseLayoutOptions.mock.calls as Array<[{ onBack?: () => void }]>;
+    const onBack = calls[calls.length - 1]?.[0]?.onBack;
+    if (!onBack) throw new Error('missing back handler');
+    return onBack;
+  }
+
+  it('guards the page and keeps the spinner while logged out', () => {
+    mockUseSessionContext.mockReturnValue({ isLoggedIn: false });
+
+    render(<DashboardFinancialKundengelderLinesScreen />, linesPath(account, line));
+
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    expect(mockUseAdminGuard).toHaveBeenCalled();
+    expect(mockUseLayoutOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Kundengelder', backButton: true, noMaxWidth: true }),
+    );
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
+  });
+
+  it('shows an empty booking list for the requested line', async () => {
+    render(<DashboardFinancialKundengelderLinesScreen />, linesPath(account, line));
+
+    expect(await screen.findByRole('heading', { name: 'Buchungen · BuyCrypto after Fee' })).toBeInTheDocument();
+    expect(screen.getByText('Keine Buchungen')).toBeInTheDocument();
+    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, account, line);
+    expect(screen.queryByRole('heading', { name: 'Abweichung zur Buchhaltung' })).not.toBeInTheDocument();
+  });
+
+  it('renders optional booking cells for a full row and an id-and-type-only row', async () => {
+    const rows: KundengelderTx[] = [
+      { id: 101, type: 'BuyCrypto', bookingDate: '2026-01-15', amount: 12.5, afterFee: 11, instructionId: 'instr-101' },
+      { id: 102, type: 'SellFiat' },
+    ];
+    mockGetKundengelderLines.mockResolvedValue({ year: YEAR, accountKey: account, line, rows });
+
+    render(<DashboardFinancialKundengelderLinesScreen />, linesPath(account, line));
+
+    expect(await screen.findByText('instr-101')).toBeInTheDocument();
+    expect(screen.getByText('101')).toBeInTheDocument();
+    expect(screen.getByText('102')).toBeInTheDocument();
+    expect(screen.getByText('2026-01-15')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Instruktion' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Test CHF Account' })).not.toBeInTheDocument();
+  });
+
+  it('shows ErrorHint when the booking request fails', async () => {
+    mockGetKundengelderLines.mockRejectedValueOnce(new Error('line boom'));
+
+    render(<DashboardFinancialKundengelderLinesScreen />, linesPath(account, line));
+
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('line boom');
+    expect(screen.getByRole('heading', { name: 'Buchungen · BuyCrypto after Fee' })).toBeInTheDocument();
+    expect(screen.queryByText('Keine Buchungen')).not.toBeInTheDocument();
+  });
+
+  it('shows Unknown error when the booking request rejects with a non-Error', async () => {
+    mockGetKundengelderLines.mockRejectedValueOnce('not-an-error');
+
+    render(<DashboardFinancialKundengelderLinesScreen />, linesPath(account, line));
+
+    expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('shows a booking from the line response', async () => {
+    mockGetKundengelderLines.mockResolvedValue({
+      year: YEAR,
+      accountKey: 'CH-LIST',
+      line: 'Buy',
+      rows: [{ id: 501, type: 'BuyCrypto', amount: 1, bookingDate: '2024-08-16' }],
+    });
+
+    render(<DashboardFinancialKundengelderLinesScreen />, linesPath('CH-LIST', 'Buy', 'Buy'));
+
+    expect(await screen.findByText('501')).toBeInTheDocument();
+    expect(screen.getByText('2024-08-16')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Buchungen · Buy' })).toBeInTheDocument();
+  });
+
+  it('says the booking is missing when the address has no line', async () => {
+    render(<DashboardFinancialKundengelderLinesScreen />, '/dashboard/financial/kundengelder/lines');
+
+    expect(await screen.findByText('Die Buchung fehlt.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Buchungen' })).toBeInTheDocument();
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
+  });
+
+  it('says the booking is missing when the year is outside the open range', async () => {
+    render(
+      <DashboardFinancialKundengelderLinesScreen />,
+      '/dashboard/financial/kundengelder/lines?year=2019&account=a&line=b',
+    );
+
+    expect(await screen.findByText('Die Buchung fehlt.')).toBeInTheDocument();
+    expect(mockGetKundengelderLines).not.toHaveBeenCalled();
+  });
+
+  it('uses the line key as the title when the label is empty', async () => {
+    render(<DashboardFinancialKundengelderLinesScreen />, linesPath(account, 'haben-only', ''));
+
+    expect(await screen.findByRole('heading', { name: 'Buchungen · haben-only' })).toBeInTheDocument();
+    expect(mockGetKundengelderLines).toHaveBeenCalledWith(YEAR, account, 'haben-only');
+  });
+
+  it('returns to the same year and sheet', async () => {
+    render(
+      <DashboardFinancialKundengelderLinesScreen />,
+      linesPath('CheckoutLtdEUR', 'Checkout', 'Checkout', 2022, 'CheckoutLtdEUR'),
+    );
+
+    expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
+    act(() => layoutOnBack()());
+
+    expect(currentLocation()).toBe('/dashboard/financial/kundengelder?year=2022&sheet=CheckoutLtdEUR');
+  });
+
+  it('keeps the session when returning to the sheet', async () => {
+    render(
+      <DashboardFinancialKundengelderLinesScreen />,
+      `${linesPath('CheckoutLtdEUR', 'Checkout', 'Checkout', 2022, 'CheckoutLtdEUR')}&session=abc&lang=de`,
+    );
+
+    expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
+    act(() => layoutOnBack()());
+
+    expect(currentLocation()).toContain('year=2022');
+    expect(currentLocation()).toContain('sheet=CheckoutLtdEUR');
+    expect(currentLocation()).toContain('session=abc');
+    expect(currentLocation()).toContain('lang=de');
+    expect(currentLocation()).not.toContain('line=');
+    expect(currentLocation()).not.toContain('account=');
+    expect(currentLocation()).not.toContain('label=');
+  });
+
+  it('returns to the sheet when the booking address is incomplete', async () => {
+    render(<DashboardFinancialKundengelderLinesScreen />, '/dashboard/financial/kundengelder/lines');
+
+    expect(await screen.findByText('Die Buchung fehlt.')).toBeInTheDocument();
+    act(() => layoutOnBack()());
+
+    expect(currentLocation()).toBe('/dashboard/financial/kundengelder');
+  });
+
+  it('ignores a booking response that resolves after the page is left', async () => {
+    let resolveLines: (value: KundengelderTxList) => void = () => undefined;
+    mockGetKundengelderLines.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLines = resolve;
+        }),
+    );
+
+    const { unmount } = render(<DashboardFinancialKundengelderLinesScreen />, linesPath(account, line));
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    unmount();
+
+    await act(async () => {
+      resolveLines({
+        year: YEAR,
+        accountKey: account,
+        line,
+        rows: [{ id: 99, type: 'BuyCrypto' }],
+      });
+    });
+
+    expect(screen.queryByText('99')).not.toBeInTheDocument();
+  });
+
+  it('ignores a booking rejection that arrives after the page is left', async () => {
+    let rejectLines: (reason: Error) => void = () => undefined;
+    mockGetKundengelderLines.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectLines = reject;
+        }),
+    );
+
+    const { unmount } = render(<DashboardFinancialKundengelderLinesScreen />, linesPath(account, line));
+    expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    unmount();
+
+    await act(async () => {
+      rejectLines(new Error('late line boom'));
+    });
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 });

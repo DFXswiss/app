@@ -4,11 +4,11 @@ import { captureExpandedPage } from './helpers/full-page-png';
 /**
  * Visual regression for the Kundengelder year extract (/dashboard/financial/kundengelder):
  * the T-account for one sample bank, an empty bank with no movements, Checkout, the
- * booked-diff table, and one opened statement line.
+ * booked-diff table, and the bookings subpage for one statement line.
  *
  * Auth is a synthetic Admin JWT. Shell reads and the extract are mocked, the same way as
- * the Log Validity spec. Figures and account numbers are fictional. The opened buy-crypto
- * line has one row per completed 2024 voucher. A green run does not prove production auth
+ * the Log Validity spec. Figures and account numbers are fictional. The buy-crypto
+ * bookings page has one row per completed 2024 voucher. A green run does not prove production auth
  * or that the API returns this extract.
  *
  * The clock is pinned so the year list does not grow when the calendar year changes.
@@ -235,6 +235,10 @@ test.describe('Kundengelder year extract', () => {
 
     await page.setViewportSize({ width: 1440, height: 1680 });
     await page.getByRole('cell', { name: 'BuyCrypto after Fee' }).first().click();
+    await expect(page).toHaveURL(/\/dashboard\/financial\/kundengelder\/lines\?/);
+    await expect(page.getByRole('heading', { name: 'Buchungen · BuyCrypto after Fee' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sample Bank CHF' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toHaveCount(0);
     const bookings = page.locator('table', { has: page.getByRole('columnheader', { name: 'Instruktion' }) });
     await expect(bookings.locator('tbody tr')).toHaveCount(BUY_CRYPTO_BELEGE_2024);
     await expect(page.getByText('SAMPLE-0001', { exact: true })).toBeVisible();
