@@ -1,85 +1,185 @@
-import { test, expect, APIRequestContext } from '@playwright/test';
-import * as fs from 'fs';
-import * as path from 'path';
-import { createTestCredentials } from './test-wallet';
+import { expect, Page, Route, test } from '@playwright/test';
 
 /**
- * E2E Visual Regression Tests: Kundengelder year extract
+ * Visual regression for the Kundengelder year extract (/dashboard/financial/kundengelder):
+ * the T-account for one sample bank, an empty bank with no movements, Checkout, the
+ * booked-diff table, and one opened statement line.
  *
- * Renders the admin financial dashboard year extract at /dashboard/financial/kundengelder.
+ * Auth is a synthetic Admin JWT. Shell reads and the extract are mocked, the same way as
+ * the Log Validity spec. Figures and account numbers are fictional. A green run does not
+ * prove production auth or that the API returns this extract.
  *
- * Like the support-dashboard specs, this authenticates with the ADMIN_SEED from the API
- * .env file and opens the page with a real session token (?session=).
- * Run `npm run setup` in the API directory first to create the admin user.
- *
- * Per CONTRIBUTING these visual-regression specs are a local review aid and do not
- * run in CI.
+ * The clock is pinned so the year list does not grow when the calendar year changes.
  */
 
-const API_URL = process.env.REACT_APP_API_URL! + '/v1';
+const SAMPLE_IBAN = 'CH9300762011623852957';
+const QUIET_IBAN = 'CH2100000000000000002';
 
-/**
- * Read ADMIN_SEED from the API .env file
- */
-function getAdminSeed(): string {
-  const apiEnvPath = path.join(__dirname, '../../api/.env');
-  if (!fs.existsSync(apiEnvPath)) {
-    throw new Error(`API .env file not found at ${apiEnvPath}. Run 'npm run setup' in the API directory first.`);
-  }
-  const content = fs.readFileSync(apiEnvPath, 'utf8');
-  const match = content.match(/^ADMIN_SEED=(.*)$/m);
-  if (!match || !match[1]) {
-    throw new Error('ADMIN_SEED not found in API .env file. Run "npm run setup" in the API directory first.');
-  }
-  return match[1];
+function jwt(): string {
+  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+    account: 1,
+    user: 1,
+    role: 'Admin',
+    exp: 2000000000,
+  })}.synthetic`;
 }
 
-/**
- * Authenticate with admin credentials
- */
-async function getAdminAuth(request: APIRequestContext): Promise<string> {
-  const adminSeed = getAdminSeed();
-  const credentials = await createTestCredentials(adminSeed);
-
-  const response = await request.post(`${API_URL}/auth`, {
-    data: credentials,
-  });
-
-  if (!response.ok()) {
-    const body = await response.text().catch(() => 'unknown');
-    throw new Error(`Admin auth failed: ${response.status()} - ${body}`);
-  }
-
-  const data = await response.json();
-  return data.accessToken;
+async function json(route: Route, body: unknown): Promise<void> {
+  await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
-test.describe('Kundengelder year extract', () => {
-  let token: string;
+const EXTRACT = {
+  year: 2026,
+  eurRate: 0.95,
+  accounts: [
+    {
+      key: SAMPLE_IBAN,
+      name: 'Sample Bank CHF',
+      iban: SAMPLE_IBAN,
+      currency: 'CHF',
+      lines: [],
+    },
+    {
+      key: 'CheckoutLtdCHF',
+      name: 'Checkout CHF',
+      currency: 'CHF',
+      lines: [],
+    },
+  ],
+  diffs: [
+    { key: `${SAMPLE_IBAN}|BuyCrypto after Fee|CHF`, live: 200, booked: 200, delta: 0 },
+    { key: 'CheckoutLtdCHF|Checkout', live: 40, booked: 40, delta: 0 },
+  ],
+  sheets: [
+    {
+      key: `${SAMPLE_IBAN}|CHF`,
+      accountNo: '90001',
+      name: 'Sample Bank CHF',
+      iban: SAMPLE_IBAN,
+      currency: 'CHF',
+      periodStart: '2026-01-01',
+      periodEnd: '2026-12-31',
+      soll: [],
+      haben: [],
+      rows: [
+        { sollLabel: 'Anfangsbestand', sollAmount: 1000 },
+        {
+          sollLabel: 'BuyCrypto after Fee',
+          sollAmount: 200,
+          sollLineKey: 'buy-after-fee',
+        },
+        { habenLabel: 'SellFiat', habenAmount: 50, habenLineKey: 'sell-fiat' },
+        { sollLabel: 'Saldo', sollAmount: 1150 },
+      ],
+      sollSum: 1200,
+      habenSum: 1200,
+      control: 0,
+      closingBalance: 1150,
+      openingBalance: 1000,
+      nextOpeningBalance: 1150,
+      openingCheck: 'verified',
+    },
+    {
+      key: 'CheckoutLtdCHF',
+      name: 'Checkout CHF',
+      currency: 'CHF',
+      periodStart: '2026-01-01',
+      periodEnd: '2026-12-31',
+      soll: [],
+      haben: [],
+      rows: [{ sollLabel: 'Checkout', sollAmount: 40, sollLineKey: 'checkout' }],
+      sollSum: 40,
+      habenSum: 40,
+      control: 0,
+      closingBalance: 40,
+      openingCheck: 'unchecked',
+    },
+  ],
+};
 
-  test.beforeAll(async ({ request }) => {
-    token = await getAdminAuth(request);
+const BANKS = [
+  { name: 'Quiet Bank', iban: QUIET_IBAN, currency: 'EUR' },
+  { name: 'Sample Bank', iban: SAMPLE_IBAN, currency: 'CHF' },
+];
+
+const LINES = {
+  year: 2026,
+  accountKey: SAMPLE_IBAN,
+  line: 'buy-after-fee',
+  rows: [
+    {
+      id: 9001,
+      bookingDate: '2026-03-02',
+      type: 'BuyCrypto',
+      currency: 'CHF',
+      amount: 200.2,
+      afterFee: 200,
+      instructionId: 'SAMPLE-1',
+    },
+  ],
+};
+
+async function installRoutes(page: Page): Promise<void> {
+  await page.route('**/v1/**', async (route: Route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (
+      request.method() === 'GET' &&
+      ['/v1/language', '/v1/fiat', '/v1/asset', '/v1/bankAccount', '/v1/country'].includes(path)
+    ) {
+      return json(route, []);
+    }
+    if (request.method() === 'GET' && path === '/v1/setting/infoBanner') return json(route, null);
+    if (request.method() === 'GET' && path === '/v1/bank') return json(route, BANKS);
+    if (request.method() === 'GET' && path.startsWith('/v1/dashboard/financial/kundengelder/lines')) {
+      return json(route, LINES);
+    }
+    if (request.method() === 'GET' && path.startsWith('/v1/dashboard/financial/kundengelder')) {
+      return json(route, EXTRACT);
+    }
+    return json(route, {});
   });
 
-  test('visual regression - kundengelder extract', async ({ page }) => {
-    await page.goto(`/dashboard/financial/kundengelder?session=${token}`);
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByRole('heading', { name: 'Kundengelder' })).toBeVisible();
-    await page.waitForTimeout(500);
-
-    await expect(page).toHaveScreenshot('dashboard-financial-kundengelder.png', {
-      fullPage: true,
-      maxDiffPixels: 1000,
-    });
-
-    const firstLine = page.getByRole('row').nth(1);
-    if ((await firstLine.count()) > 0) {
-      await firstLine.click();
-      await page.waitForTimeout(500);
-      await expect(page).toHaveScreenshot('dashboard-financial-kundengelder-line.png', {
-        fullPage: true,
-        maxDiffPixels: 1000,
+  await page.route('**/v2/**', async (route: Route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET' && path === '/v2/user') {
+      return json(route, {
+        id: 1,
+        activeAddress: { address: '0x0000000000000000000000000000000000000001', wallet: 'DFX' },
+        addresses: [],
+        kyc: { level: 50, status: 'Completed' },
+        language: { id: 1, name: 'Deutsch', symbol: 'DE' },
       });
     }
+    return json(route, {});
+  });
+}
+
+const shot = { fullPage: true, maxDiffPixels: 1000, animations: 'disabled' as const };
+
+test.describe('Kundengelder year extract', () => {
+  test.use({ timezoneId: 'Europe/Zurich', locale: 'de-CH' });
+
+  test('visual regression - kundengelder extract', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 2400 });
+    await page.clock.install({ time: new Date('2026-10-02T12:00:00Z') });
+    await page.clock.resume();
+    await installRoutes(page);
+    await page.goto(`/dashboard/financial/kundengelder?session=${encodeURIComponent(jwt())}&lang=de`);
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: 'Kundengelder' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sample Bank CHF' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Quiet Bank EUR' })).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page).toHaveScreenshot('dashboard-financial-kundengelder.png', shot);
+
+    await page.getByRole('cell', { name: 'BuyCrypto after Fee' }).first().click();
+    await expect(page.getByText('SAMPLE-1')).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page).toHaveScreenshot('dashboard-financial-kundengelder-line.png', shot);
   });
 });
