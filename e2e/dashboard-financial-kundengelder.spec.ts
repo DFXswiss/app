@@ -163,7 +163,7 @@ test.describe('Kundengelder year extract', () => {
   test.use({ timezoneId: 'Europe/Zurich', locale: 'de-CH' });
 
   test('visual regression - kundengelder extract', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 2400 });
+    await page.setViewportSize({ width: 1440, height: 1500 });
     await page.clock.install({ time: new Date('2026-10-02T12:00:00Z') });
     await page.clock.resume();
     await installRoutes(page);
@@ -171,7 +171,10 @@ test.describe('Kundengelder year extract', () => {
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('heading', { name: 'Kundengelder' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Sample Bank CHF' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Quiet Bank EUR' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Checkout CHF' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Quiet Bank EUR' })).toHaveCount(0);
+    await expect(page.getByRole('option', { name: 'Alle' })).toHaveCount(0);
+    await expect(page.getByRole('option', { name: 'Quiet Bank EUR · CH2100000000000000002' })).toHaveCount(1);
     await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot('dashboard-financial-kundengelder.png', shot);

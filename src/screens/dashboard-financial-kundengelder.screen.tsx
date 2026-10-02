@@ -135,7 +135,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
   const { getKundengelderExtract, getDfxBanks, getKundengelderLines } = useDashboard();
 
   const [year, setYear] = useState(() => new Date().getUTCFullYear());
-  const [accountKey, setAccountKey] = useState('all');
+  const [accountKey, setAccountKey] = useState('');
   const [extract, setExtract] = useState<KundengelderExtract>();
   const [error, setError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
@@ -314,6 +314,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
   const years = utcYearsFrom2020();
   const sheets = extract?.sheets ?? [];
   const showSheets = sheets.length > 0;
+  const selectedKey = sheets.some((sheet) => sheet.key === accountKey) ? accountKey : (sheets[0]?.key ?? '');
 
   return (
     <div className="space-y-4 p-4 w-full self-stretch" style={{ color: '#111827' }}>
@@ -325,11 +326,10 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
           </label>
           <select
             id="kundengelder-account"
-            value={accountKey}
+            value={selectedKey}
             onChange={(event) => setAccountKey(event.target.value)}
             className="border border-gray-300 rounded px-2 py-1"
           >
-            <option value="all">Alle</option>
             {sheets.map((sheet) => (
               <option key={sheet.key} value={sheet.key}>
                 {accountOptionLabel(sheet)}
@@ -368,10 +368,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
 
       {showSheets &&
         sheets
-          .filter(
-            (sheet) =>
-              accountKey === 'all' || sheet.key === accountKey || !sheets.some((item) => item.key === accountKey),
-          )
+          .filter((sheet) => sheet.key === selectedKey)
           .map((sheet) => (
             <KontenblattCard
               key={sheet.key}

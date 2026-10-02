@@ -488,7 +488,13 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.getByText('10037')).toBeInTheDocument();
     expect(screen.getAllByText('Intern')).toHaveLength(2);
     expect(screen.getByText('2024-08-16')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Maerki Baumann CHF' })).not.toBeInTheDocument();
+    expect(screen.getByText(/kein Anfangsbestand des Folgejahres/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: buy.key } });
+
     expect(screen.getByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Kaleido Privatbank CHF' })).not.toBeInTheDocument();
     expect(screen.getAllByText('Soll').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Haben').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Summe').length).toBeGreaterThan(0);
@@ -509,7 +515,6 @@ describe('DashboardFinancialKundengelderScreen', () => {
     );
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('2024-08-16'));
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('10037'));
-    expect(screen.getByText(/kein Anfangsbestand des Folgejahres/)).toBeInTheDocument();
   });
 
   it('shows every PDF row and the three opening checks', async () => {
@@ -560,11 +565,17 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
     expect(within(cardByHeading('Maerki Baumann CHF')).getByText('BuyCrypto after Fee')).toBeInTheDocument();
-    expect(screen.getByText('nicht abgelegt')).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Maerki Baumann CHF · CH3408573177975200001' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Maerki Baumann EUR · CH6808573177975201814' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Alle' })).not.toBeInTheDocument();
     expect(screen.getByText(/Verifiziert/)).toBeInTheDocument();
+    expect(screen.queryByText(/stimmt nicht/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: mismatch.key } });
+
     expect(screen.getByText(/stimmt nicht/)).toBeInTheDocument();
+    expect(screen.getByText('nicht abgelegt')).toBeInTheDocument();
+    expect(screen.queryByText(/Verifiziert/)).not.toBeInTheDocument();
     expect(screen.getAllByText('Bankkonto').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Startdatum').length).toBeGreaterThan(0);
     expect(screen.getAllByText('2024-01-01').length).toBeGreaterThan(0);
@@ -611,7 +622,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(within(diffRow).queryByText('Revolut EUR')).not.toBeInTheDocument();
   });
 
-  it('keeps only the selected sheet heading when Konto changes from all to one key', async () => {
+  it('shows one sheet and switches the heading when Konto changes', async () => {
     const kaleido: KundengelderSheet = {
       key: '10037',
       name: 'Kaleido Privatbank CHF',
@@ -639,12 +650,13 @@ describe('DashboardFinancialKundengelderScreen', () => {
     render(<DashboardFinancialKundengelderScreen />);
 
     expect(await screen.findByRole('heading', { name: 'Kaleido Privatbank CHF' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: kaleido.key } });
-
-    expect(screen.getByRole('heading', { name: 'Kaleido Privatbank CHF' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Maerki Baumann CHF' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Alle' })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: maerki.key } });
+
+    expect(screen.getByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Kaleido Privatbank CHF' })).not.toBeInTheDocument();
   });
 
   it('shows a sheet without iban as the name alone in the Konto options', async () => {
@@ -683,8 +695,14 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Kaleido CHF' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Kaleido CHF' })).not.toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Kaleido CHF · CH6008245111962200001' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: 'CH6008245111962200001|CHF' } });
+
+    expect(screen.getByRole('heading', { name: 'Kaleido CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Maerki Baumann CHF' })).not.toBeInTheDocument();
   });
 
   it('shows the second currency of the same IBAN as its own card and option', async () => {
@@ -709,9 +727,14 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     expect(await screen.findByRole('heading', { name: 'Revolut CHF' })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { name: 'Revolut CHF' })).toHaveLength(1);
-    expect(screen.getByRole('heading', { name: 'Revolut EUR' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Revolut EUR' })).not.toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Revolut CHF · GB77REVO00996972945099' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Revolut EUR · GB77REVO00996972945099' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: 'GB77REVO00996972945099|EUR' } });
+
+    expect(screen.getByRole('heading', { name: 'Revolut EUR' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Revolut CHF' })).not.toBeInTheDocument();
   });
 
   it('does not duplicate a sheet that already matches the bank IBAN and currency', async () => {
