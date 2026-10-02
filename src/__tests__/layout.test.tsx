@@ -1,5 +1,10 @@
 const mockClearParams = jest.fn();
 const mockAppParams: { borderless?: boolean } = {};
+const mockReactivateAddress = jest.fn();
+let mockAddressReactivation: { deactivatedAddress?: string; reactivateAddress: typeof mockReactivateAddress } = {
+  deactivatedAddress: undefined,
+  reactivateAddress: mockReactivateAddress,
+};
 let mockAttachNavRef = true;
 
 jest.mock('../App', () => ({
@@ -22,6 +27,14 @@ jest.mock('src/hooks/app-params.hook', () => ({
   useAppParams: () => mockAppParams,
 }));
 
+// The real requiresSessionAddress is used below; the SDK import behind the hook is not needed here.
+jest.mock('@dfx.swiss/react', () => ({}));
+
+jest.mock('src/hooks/address-reactivation.hook', () => ({
+  ...jest.requireActual('src/hooks/address-reactivation.hook'),
+  useAddressReactivation: () => mockAddressReactivation,
+}));
+
 jest.mock('src/util/utils', () => ({
   isNode: (e: EventTarget | null) => mockIsNode(e),
 }));
@@ -30,6 +43,14 @@ const mockIsNode = jest.fn((e: EventTarget | null) => e != null && 'nodeType' in
 
 jest.mock('src/components/info-banner', () => ({
   InfoBannerComponent: () => <div data-testid="info-banner" />,
+}));
+
+jest.mock('src/components/deactivated-address', () => ({
+  DeactivatedAddress: ({ address, onReactivate }: { address: string; onReactivate: (value: string) => void }) => (
+    <button data-testid="deactivated-address" onClick={() => onReactivate(address)}>
+      {address}
+    </button>
+  ),
 }));
 
 jest.mock('src/components/navigation', () => {
@@ -140,6 +161,11 @@ describe('Layout', () => {
     mockClearParams.mockReset();
     mockAppParams.borderless = undefined;
     mockAttachNavRef = true;
+    mockReactivateAddress.mockReset();
+    mockAddressReactivation = {
+      deactivatedAddress: undefined,
+      reactivateAddress: mockReactivateAddress,
+    };
     mockIsNode.mockReset();
     mockIsNode.mockImplementation((e: EventTarget | null) => e != null && 'nodeType' in e);
     Routes[0].children = [...defaultRouteChildren];
@@ -293,5 +319,45 @@ describe('Layout', () => {
 
     renderLayout({ path: '/account' });
     expect(contentColumn().className.split(/\s+/)).toContain('max-w-screen-md');
+  });
+
+  it('replaces a session page for a deactivated address while keeping navigation available', () => {
+    mockAddressReactivation.deactivatedAddress = '0xdeleted';
+    renderLayout({ path: '/buy' });
+
+    expect(screen.getByTestId('deactivated-address')).toHaveTextContent('0xdeleted');
+    expect(screen.queryByTestId('page-content')).not.toBeInTheDocument();
+    expect(screen.getByTestId('navigation')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('deactivated-address'));
+    expect(mockReactivateAddress).toHaveBeenCalledWith('0xdeleted');
+  });
+
+  it.each(['/login', '/'])('keeps public page content on %s for a deactivated address', (path) => {
+    mockAddressReactivation.deactivatedAddress = '0xdeleted';
+    renderLayout({ path });
+
+    expect(screen.getByTestId('page-content')).toBeInTheDocument();
+    expect(screen.queryByTestId('deactivated-address')).not.toBeInTheDocument();
+  });
+
+  it('keeps KYC code content but replaces KYC content without a code', () => {
+    mockAddressReactivation.deactivatedAddress = '0xdeleted';
+    const { unmount } = renderLayout({ path: '/kyc?code=abc' });
+
+    expect(screen.getByTestId('page-content')).toBeInTheDocument();
+    expect(screen.queryByTestId('deactivated-address')).not.toBeInTheDocument();
+    unmount();
+
+    renderLayout({ path: '/kyc' });
+    expect(screen.getByTestId('deactivated-address')).toBeInTheDocument();
+    expect(screen.queryByTestId('page-content')).not.toBeInTheDocument();
+  });
+
+  it('renders a session page when the address is not deactivated', () => {
+    renderLayout({ path: '/buy' });
+
+    expect(screen.getByTestId('page-content')).toBeInTheDocument();
+    expect(screen.queryByTestId('deactivated-address')).not.toBeInTheDocument();
   });
 });
