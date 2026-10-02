@@ -25,6 +25,7 @@ const claims: RouteClaim[] = [
   { path: '/dashboard/financial/liquidity', spec: 'dashboard-financial.spec.ts' },
   { path: '/dashboard/financial/log-validity', spec: 'dashboard-financial.spec.ts' },
   { path: '/dashboard/financial/kundengelder', spec: 'dashboard-financial.spec.ts' },
+  { path: '/dashboard/financial/kundengelder/lines', spec: 'dashboard-financial.spec.ts' },
 ];
 
 export default claims;

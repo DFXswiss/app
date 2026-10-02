@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import {
+  DfxBankAccount,
   FinancialChangesEntry,
   FinancialChangesResponse,
   FinancialLogChartResponse,
@@ -82,6 +83,13 @@ export function useDashboard() {
     });
   }
 
+  async function getDfxBanks(): Promise<DfxBankAccount[]> {
+    return call<DfxBankAccount[]>({
+      url: 'bank',
+      method: 'GET',
+    });
+  }
+
   async function getKundengelderLines(year: number, iban: string, line: string): Promise<KundengelderTxList> {
     const params = new URLSearchParams();
     params.set('year', String(year));
@@ -102,6 +110,7 @@ export function useDashboard() {
       getLatestChanges,
       getRefRecipients,
       getKundengelderExtract,
+      getDfxBanks,
       getKundengelderLines,
     }),
     [call],
