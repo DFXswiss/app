@@ -187,6 +187,36 @@ test.describe('Call-queue outcome form signature', () => {
       page.getByRole('combobox').filter({ has: page.locator('option', { hasText: SIGNATURE }) }),
     ).toHaveCount(0);
 
+    await expect(page.getByRole('heading', { name: 'User Info' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Save Outcome' })).toBeVisible();
+    // The app scroller is overflow-auto inside a h-full root, so Playwright fullPage
+    // would otherwise clip at the 1400px viewport and drop Save Outcome.
+    await page.evaluate(() => {
+      const root = document.getElementById('app-root');
+      const scroller = root && root.querySelector('.overflow-auto');
+      if (scroller instanceof HTMLElement) {
+        scroller.style.overflow = 'visible';
+        scroller.style.flexGrow = '0';
+        scroller.style.height = 'auto';
+      }
+      if (root instanceof HTMLElement) {
+        root.style.height = 'auto';
+        root.style.overflow = 'visible';
+      }
+      document.documentElement.style.height = 'auto';
+      document.body.style.height = 'auto';
+      document.documentElement.style.overflow = 'visible';
+      document.body.style.overflow = 'visible';
+    });
+    const pageHeight = await page.evaluate(() =>
+      Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+    );
+    await page.setViewportSize({ width: 1280, height: Math.min(Math.max(pageHeight, 1400), 5000) });
+    await expect(page).toHaveScreenshot('compliance-call-queue-outcome-fullpage.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+
     const form = signatureBlock.locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]');
     await form.scrollIntoViewIfNeeded();
     await expect(form).toHaveScreenshot('compliance-call-queue-outcome-signature.png', {

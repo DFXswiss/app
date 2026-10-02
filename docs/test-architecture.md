@@ -259,7 +259,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   info banner, and `GET /v2/user` with a synthetic account. A green run proves the
   outcome form renders that clerk name as a read-only signature and does not request a
   clerks list, not that the API returns those records or the logged-in staff member's
-  `verifiedName`. The session is a synthetic unsigned JWT, so a green run also does not
+  `verifiedName`. The full-page snapshot is the same synthetic dossier. The session is a
+  synthetic unsigned JWT, so a green run also does not
   prove login or token verification.
 - **The call-queue list spec answers the queue items itself.**
   `e2e/compliance-call-queue-list.spec.ts` fulfils
