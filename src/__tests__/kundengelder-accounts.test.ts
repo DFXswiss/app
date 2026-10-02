@@ -240,12 +240,15 @@ describe('withEveryBankAccount', () => {
       name: 'New Bank EUR',
       iban: newIban,
       currency: 'EUR',
+      periodStart: '2024-01-01',
+      periodEnd: '2024-12-31',
       soll: [],
       haben: [],
       rows: [],
       sollSum: 0,
       habenSum: 0,
       control: 0,
+      openingCheck: 'unchecked',
     });
     expect(merged.sheets?.[4]).not.toHaveProperty('accountNo');
     expect(merged.sheets?.map((sheet) => sheet.key)).not.toContain('CheckoutLtdCHF');

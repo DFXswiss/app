@@ -31,18 +31,21 @@ function sheetMatchesBank(sheet: KundengelderSheet, iban: string, currency: stri
   );
 }
 
-function emptyBankSheet(bank: DfxBankAccount, iban: string, currency: string): KundengelderSheet {
+function emptyBankSheet(bank: DfxBankAccount, iban: string, currency: string, year: number): KundengelderSheet {
   return {
     key: pairKey(iban, currency),
     name: bankTitle(bank),
     iban,
     currency,
+    periodStart: `${year}-01-01`,
+    periodEnd: `${year}-12-31`,
     soll: [],
     haben: [],
     rows: [],
     sollSum: 0,
     habenSum: 0,
     control: 0,
+    openingCheck: 'unchecked',
   };
 }
 
@@ -105,7 +108,7 @@ export function withEveryBankAccount(extract: KundengelderExtract, banks: DfxBan
     if (seenSheetPairs.has(pair)) continue;
     seenSheetPairs.add(pair);
     if (sourceSheets.some((sheet) => sheetMatchesBank(sheet, iban, currency))) continue;
-    extraSheets.push(emptyBankSheet(bank, iban, currency));
+    extraSheets.push(emptyBankSheet(bank, iban, currency, extract.year));
   }
 
   if (extraSheets.length === 0) {

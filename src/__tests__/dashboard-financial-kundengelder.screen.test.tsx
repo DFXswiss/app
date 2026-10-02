@@ -904,7 +904,54 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByText(`Kontrolle ${money(3)} CHF`)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Kaleido Privatbank CHF' })).toBeInTheDocument();
+    const card = cardByHeading('Kaleido Privatbank CHF');
+    expect(within(card).getByText('Kontrolle')).toBeInTheDocument();
+    expect(within(card).getByText(money(3))).toHaveClass('text-dfxRed-100');
+    expect(within(card).getByText('nicht abgelegt')).toBeInTheDocument();
+    expect(within(card).queryByText('Datum')).not.toBeInTheDocument();
+  });
+
+  it('draws an omitted current bank as the same T-account', async () => {
+    const iban = 'CH9300762011623852957';
+    const present: KundengelderSheet = {
+      key: `${iban}|CHF`,
+      name: 'Sample Bank CHF',
+      iban,
+      currency: 'CHF',
+      periodStart: `${YEAR}-01-01`,
+      periodEnd: `${YEAR}-12-31`,
+      soll: [],
+      haben: [],
+      rows: [
+        { sollLabel: 'Anfangsbestand', sollAmount: 1 },
+        { habenLabel: 'Saldo', habenAmount: 1 },
+      ],
+      sollSum: 1,
+      habenSum: 1,
+      control: 0,
+    };
+    mockGetDfxBanks.mockResolvedValue([
+      { name: 'Sample Bank', iban, currency: 'CHF' },
+      { name: 'Quiet Bank', iban, currency: 'EUR' },
+    ]);
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [present] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Sample Bank CHF' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: `${iban}|EUR` } });
+
+    const card = cardByHeading('Quiet Bank EUR');
+    expect(within(card).getByText('Anfangsbestand')).toBeInTheDocument();
+    expect(within(card).getByText('nicht abgelegt')).toBeInTheDocument();
+    expect(within(card).getByText('Saldo')).toBeInTheDocument();
+    expect(within(card).getAllByText(money(0)).length).toBeGreaterThan(0);
+    expect(within(card).getByText(`${YEAR}-01-01`)).toBeInTheDocument();
+    expect(within(card).getByText(`${YEAR}-12-31`)).toBeInTheDocument();
+    expect(within(card).getByText(/Nicht überprüft/)).toBeInTheDocument();
+    expect(within(card).queryByText('Datum')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Keine Bewegungen')).not.toBeInTheDocument();
   });
 
   it('shows verified opening check without a period-end year', async () => {
