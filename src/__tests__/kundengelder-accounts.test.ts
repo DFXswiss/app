@@ -6,9 +6,9 @@ const extract: KundengelderExtract = {
   eurRate: 1,
   accounts: [
     {
-      key: 'CH3408573177975200001',
+      key: 'CH2100000000000000005',
       name: 'Raw IBAN',
-      iban: 'CH3408573177975200001',
+      iban: 'CH2100000000000000005',
       currency: 'CHF',
       lines: [
         {
@@ -34,22 +34,22 @@ const extract: KundengelderExtract = {
 describe('withEveryBankAccount', () => {
   it('lists every bank, keeps movements, and leaves non-bank accounts in place', () => {
     const merged = withEveryBankAccount(extract, [
-      { name: 'Kaleido', iban: ' CH6008245111962200001 ', currency: 'CHF' },
-      { name: 'Maerki Baumann', iban: 'CH3408573177975200001', currency: 'CHF' },
-      { name: 'Kaleido', iban: 'CH6008245111962200001', currency: 'CHF' },
-      { name: 'Yapeal', iban: '', currency: 'EUR' },
+      { name: 'Ledger Bank', iban: ' CH2100000000000000003 ', currency: 'CHF' },
+      { name: 'Sample Bank', iban: 'CH2100000000000000005', currency: 'CHF' },
+      { name: 'Ledger Bank', iban: 'CH2100000000000000003', currency: 'CHF' },
+      { name: 'Zed Blank', iban: '', currency: 'EUR' },
     ]);
 
     expect(merged.accounts.map((account) => account.name)).toEqual([
-      'Kaleido CHF',
-      'Maerki Baumann CHF',
+      'Ledger Bank CHF',
+      'Sample Bank CHF',
       'Checkout Ltd CHF',
     ]);
     expect(merged.accounts[0].lines).toEqual([]);
-    expect(merged.accounts[0].key).toBe('CH6008245111962200001|CHF');
-    expect(merged.accounts[0].iban).toBe('CH6008245111962200001');
-    expect(merged.accounts[1].key).toBe('CH3408573177975200001');
-    expect(merged.accounts[1].iban).toBe('CH3408573177975200001');
+    expect(merged.accounts[0].key).toBe('CH2100000000000000003|CHF');
+    expect(merged.accounts[0].iban).toBe('CH2100000000000000003');
+    expect(merged.accounts[1].key).toBe('CH2100000000000000005');
+    expect(merged.accounts[1].iban).toBe('CH2100000000000000005');
     expect(merged.accounts[1].lines).toHaveLength(1);
     expect(merged.diffs).toBe(extract.diffs);
     expect(merged.sheets).toBeUndefined();
@@ -67,7 +67,7 @@ describe('withEveryBankAccount', () => {
         ],
       },
       [
-        { name: 'Maerki Baumann', iban: 'CH3408573177975200001', currency: 'CHF' },
+        { name: 'Sample Bank', iban: 'CH2100000000000000005', currency: 'CHF' },
         { name: 'Blank FX', iban: 'CH0000000000000000000', currency: '  ' },
       ],
     );
@@ -81,15 +81,15 @@ describe('withEveryBankAccount', () => {
   });
 
   it('keeps both currencies of the same IBAN as separate accounts', () => {
-    const iban = 'CH3408573177975200001';
+    const iban = 'CH2100000000000000005';
     const merged = withEveryBankAccount(
       {
         ...extract,
         accounts: [...extract.accounts, { key: 'alias', name: 'Alias', iban, currency: 'CHF', lines: [] }],
       },
       [
-        { name: 'Maerki Baumann', iban, currency: 'CHF' },
-        { name: 'Maerki Baumann', iban, currency: 'EUR' },
+        { name: 'Sample Bank', iban, currency: 'CHF' },
+        { name: 'Sample Bank', iban, currency: 'EUR' },
       ],
     );
 
@@ -105,7 +105,7 @@ describe('withEveryBankAccount', () => {
   });
 
   it('prefers the composite key when an extract account already uses IBAN and currency', () => {
-    const iban = 'CH3408573177975200001';
+    const iban = 'CH2100000000000000005';
     const { lines } = extract.accounts[0];
     const merged = withEveryBankAccount(
       {
@@ -116,12 +116,12 @@ describe('withEveryBankAccount', () => {
           { key: 'CheckoutLtdCHF', name: 'Checkout Ltd CHF', currency: 'CHF', lines: [] },
         ],
       },
-      [{ name: 'Maerki Baumann', iban, currency: 'CHF' }],
+      [{ name: 'Sample Bank', iban, currency: 'CHF' }],
     );
 
     expect(merged.accounts.map((account) => account.key)).toEqual([`${iban}|CHF`, 'CheckoutLtdCHF']);
     expect(merged.accounts[0].lines).toBe(lines);
-    expect(merged.accounts[0].name).toBe('Maerki Baumann CHF');
+    expect(merged.accounts[0].name).toBe('Sample Bank CHF');
   });
 
   it('takes an existing account whose key is the IBAN when iban is absent', () => {
@@ -142,7 +142,7 @@ describe('withEveryBankAccount', () => {
 
   it('does not invent sheets when the extract sheet list is empty', () => {
     const merged = withEveryBankAccount({ ...extract, sheets: [] }, [
-      { name: 'Kaleido', iban: 'CH6008245111962200001', currency: 'CHF' },
+      { name: 'Ledger Bank', iban: 'CH2100000000000000003', currency: 'CHF' },
     ]);
     expect(merged.sheets).toEqual([]);
   });
@@ -150,9 +150,9 @@ describe('withEveryBankAccount', () => {
   it('keeps the extract sheets when every bank already has a sheet', () => {
     const sheets: KundengelderSheet[] = [
       {
-        key: 'CH3408573177975200001',
-        name: 'Maerki Baumann CHF',
-        iban: 'CH3408573177975200001',
+        key: 'CH2100000000000000005',
+        name: 'Sample Bank CHF',
+        iban: 'CH2100000000000000005',
         currency: 'CHF',
         soll: [],
         haben: [],
@@ -162,21 +162,21 @@ describe('withEveryBankAccount', () => {
       },
     ];
     const merged = withEveryBankAccount({ ...extract, sheets }, [
-      { name: 'Maerki Baumann', iban: 'CH3408573177975200001', currency: 'CHF' },
+      { name: 'Sample Bank', iban: 'CH2100000000000000005', currency: 'CHF' },
     ]);
     expect(merged.sheets).toBe(sheets);
   });
 
   it('appends empty sheets for missing banks and does not duplicate matches', () => {
-    const kaleidoIban = 'CH6008245111962200001';
-    const maerkiIban = 'CH3408573177975200001';
+    const ledgerIban = 'CH2100000000000000003';
+    const sampleIban = 'CH2100000000000000005';
     const bareIban = 'CH1111111111111111111';
     const newIban = 'CH9999999999999999999';
     const sheets: KundengelderSheet[] = [
       {
-        key: '10037',
-        name: 'Kaleido Privatbank CHF',
-        iban: kaleidoIban,
+        key: '90001',
+        name: 'Sample Ledger CHF',
+        iban: ledgerIban,
         currency: 'CHF',
         soll: [],
         haben: [],
@@ -185,8 +185,8 @@ describe('withEveryBankAccount', () => {
         control: 0,
       },
       {
-        key: `${maerkiIban}|CHF`,
-        name: 'Maerki Baumann CHF',
+        key: `${sampleIban}|CHF`,
+        name: 'Sample Bank CHF',
         currency: 'CHF',
         soll: [],
         haben: [],
@@ -217,24 +217,27 @@ describe('withEveryBankAccount', () => {
       },
     ];
     const merged = withEveryBankAccount({ ...extract, sheets }, [
-      { name: 'Kaleido', iban: kaleidoIban, currency: 'CHF' },
-      { name: 'Maerki Baumann', iban: maerkiIban, currency: 'CHF' },
+      { name: 'Ledger Bank', iban: ledgerIban, currency: 'CHF' },
+      { name: 'Sample Bank', iban: sampleIban, currency: 'CHF' },
       { name: 'Bare', iban: bareIban, currency: 'CHF' },
       { name: 'New Bank', iban: ` ${newIban} `, currency: ' EUR ' },
       { name: 'New Bank', iban: newIban, currency: 'EUR' },
-      { name: 'Yapeal', iban: '', currency: 'EUR' },
+      { name: 'Zed Blank', iban: '', currency: 'EUR' },
       { name: 'Blank FX', iban: 'CH0000000000000000000', currency: '  ' },
     ]);
 
     expect(merged.sheets).toHaveLength(5);
     expect(merged.sheets?.map((sheet) => sheet.key)).toEqual([
-      '10037',
-      `${maerkiIban}|CHF`,
+      '90001',
+      `${sampleIban}|CHF`,
       bareIban,
       newIban,
       `${newIban}|EUR`,
     ]);
     expect(merged.sheets?.[0]).toBe(sheets[0]);
+    expect(merged.sheets?.[1]?.iban).toBe(sampleIban);
+    expect(merged.sheets?.[1]).not.toBe(sheets[1]);
+    expect(merged.sheets?.[2]?.iban).toBe(bareIban);
     expect(merged.sheets?.[4]).toEqual({
       key: `${newIban}|EUR`,
       name: 'New Bank EUR',
@@ -252,5 +255,35 @@ describe('withEveryBankAccount', () => {
     });
     expect(merged.sheets?.[4]).not.toHaveProperty('accountNo');
     expect(merged.sheets?.map((sheet) => sheet.key)).not.toContain('CheckoutLtdCHF');
+  });
+
+  it('copies the bare IBAN onto a matched bank sheet and leaves Checkout unchanged', () => {
+    const iban = 'CH2100000000000000008';
+    const bankSheet: KundengelderSheet = {
+      key: `${iban}|CHF`,
+      name: 'Sample Pair CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    const checkout: KundengelderSheet = {
+      key: 'CheckoutLtdCHF',
+      name: 'Checkout CHF',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    const merged = withEveryBankAccount({ ...extract, sheets: [bankSheet, checkout] }, [
+      { name: 'Sample Pair', iban, currency: 'CHF' },
+    ]);
+
+    expect(merged.sheets?.[0]).toMatchObject({ key: bankSheet.key, iban });
+    expect(merged.sheets?.[1]).toBe(checkout);
   });
 });

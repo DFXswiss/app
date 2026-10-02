@@ -209,7 +209,7 @@
   },
   "dashboard-financial-kundengelder": {
     "title": "Kundengelder-Jahresauszug",
-    "description": "Admin-Financial-Dashboard: pro Konto und Jahr ein Kontenblatt, auch für ein laufendes Bankkonto ohne Bewegung. Eine Kontenzeile öffnet ihre Buchungen auf einer eigenen Seite. Darunter die Abweichung zur Buchhaltung und der CSV-Export."
+    "description": "Admin-Financial-Dashboard: pro Konto und Jahr ein Kontenblatt, auch für ein laufendes Bankkonto ohne Bewegung, und die Prüfung wenn der Folge-Anfangsbestand abweicht. Eine Kontenzeile öffnet ihre Buchungen auf einer eigenen Seite. Darunter die Abweichung zur Buchhaltung und der CSV-Export."
   },
   "dashboard-financial-log-validity": {
     "title": "Financial-Log-Gültigkeit",

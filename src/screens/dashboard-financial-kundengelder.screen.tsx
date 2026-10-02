@@ -34,6 +34,17 @@ function initialYear(params: URLSearchParams): number {
   return year;
 }
 
+function lineAccount(key: string, iban: string | undefined, currency: string): string {
+  const bare = iban?.trim();
+  if (bare) return bare;
+  const suffix = `|${currency.trim()}`;
+  if (currency.trim() && key.endsWith(suffix)) {
+    const head = key.slice(0, -suffix.length);
+    if (head.length > 0 && !head.includes('|')) return head;
+  }
+  return key;
+}
+
 function linesSearch(
   current: URLSearchParams,
   year: number,
@@ -450,7 +461,9 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
             <KontenblattCard
               key={sheet.key}
               sheet={sheet}
-              onLine={(line) => onLineClick(sheet.key, sheet.iban ?? sheet.key, line.lineKey, line.label)}
+              onLine={(line) =>
+                onLineClick(sheet.key, lineAccount(sheet.key, sheet.iban, sheet.currency), line.lineKey, line.label)
+              }
             />
           ))}
 
@@ -483,7 +496,14 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
                     <tr
                       key={line.key}
                       className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                      onClick={() => onLineClick(account.key, account.iban ?? account.key, line.key, line.label)}
+                      onClick={() =>
+                        onLineClick(
+                          account.key,
+                          lineAccount(account.key, account.iban, account.currency),
+                          line.key,
+                          line.label,
+                        )
+                      }
                     >
                       <td className="py-1.5 px-3">{line.label}</td>
                       <td className="py-1.5 px-3 text-right">{line.count}</td>

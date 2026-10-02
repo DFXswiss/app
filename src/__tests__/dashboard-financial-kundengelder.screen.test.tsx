@@ -158,13 +158,13 @@ describe('DashboardFinancialKundengelderScreen', () => {
   });
 
   it('shows every bank account, including one with no movements', async () => {
-    mockGetDfxBanks.mockResolvedValue([{ name: 'Kaleido', iban: 'CH6008245111962200001', currency: 'CHF' }]);
+    mockGetDfxBanks.mockResolvedValue([{ name: 'Ledger Bank', iban: 'CH2100000000000000003', currency: 'CHF' }]);
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Kaleido CHF' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Ledger Bank CHF' })).toBeInTheDocument();
     expect(screen.getByText('Keine Bewegungen')).toBeInTheDocument();
-    expect(screen.getByText('CH6008245111962200001')).toBeInTheDocument();
+    expect(screen.getByText('CH2100000000000000003')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Test CHF Account' })).toBeInTheDocument();
   });
 
@@ -433,11 +433,11 @@ describe('DashboardFinancialKundengelderScreen', () => {
   });
 
   it('renders a Kontenblatt for every sheet and exports that sheet', async () => {
-    const kaleido: KundengelderSheet = {
-      key: '10037',
-      accountNo: '10037',
-      name: 'Kaleido Privatbank CHF',
-      iban: 'CH6008245111962200001',
+    const ledger: KundengelderSheet = {
+      key: '90001',
+      accountNo: '90001',
+      name: 'Sample Ledger CHF',
+      iban: 'CH2100000000000000003',
       currency: 'CHF',
       soll: [
         { label: 'Anfangsbestand', amount: 0 },
@@ -452,7 +452,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     };
     const buy: KundengelderSheet = {
       key: 'CH9300762011623852957|CHF',
-      name: 'Maerki Baumann CHF',
+      name: 'Sample Bank CHF',
       iban: 'CH9300762011623852957',
       currency: 'CHF',
       soll: [
@@ -467,21 +467,21 @@ describe('DashboardFinancialKundengelderScreen', () => {
       habenSum: 101,
       control: 0,
     };
-    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [kaleido, buy] });
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [ledger, buy] });
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Kaleido Privatbank CHF' })).toBeInTheDocument();
-    expect(screen.getByText('10037')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sample Ledger CHF' })).toBeInTheDocument();
+    expect(screen.getByText('90001')).toBeInTheDocument();
     expect(screen.getAllByText('Intern')).toHaveLength(2);
     expect(screen.queryByText('2024-08-16')).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Maerki Baumann CHF' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sample Bank CHF' })).not.toBeInTheDocument();
     expect(screen.getByText(/kein Anfangsbestand des Folgejahres/)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Konto'), { target: { value: buy.key } });
 
-    expect(screen.getByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Kaleido Privatbank CHF' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sample Bank CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sample Ledger CHF' })).not.toBeInTheDocument();
     expect(screen.getAllByText('Soll').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Haben').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Summe').length).toBeGreaterThan(0);
@@ -490,7 +490,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.queryByRole('heading', { name: 'Test CHF Account' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toBeInTheDocument();
 
-    clickLine('Maerki Baumann CHF', 'BuyCrypto after Fee');
+    clickLine('Sample Bank CHF', 'BuyCrypto after Fee');
     expect(currentLocation()).toContain('account=CH9300762011623852957');
     expect(currentLocation()).toContain('line=BuyCrypto after Fee');
     expect(screen.queryByText('Keine Buchungen')).not.toBeInTheDocument();
@@ -500,17 +500,17 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Kontrolle'));
     expect(mockDownloadCsv).toHaveBeenCalledWith(
       `kundengelder-${YEAR}.csv`,
-      expect.stringContaining('Kaleido Privatbank CHF'),
+      expect.stringContaining('Sample Ledger CHF'),
     );
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('2024-08-16'));
-    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('10037'));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('90001'));
   });
 
   it('shows every PDF row and the three opening checks', async () => {
     const verified: KundengelderSheet = {
-      key: 'CH3408573177975200001|CHF',
-      name: 'Maerki Baumann CHF',
-      iban: 'CH3408573177975200001',
+      key: 'CH2100000000000000005|CHF',
+      name: 'Sample Bank CHF',
+      iban: 'CH2100000000000000005',
       currency: 'CHF',
       periodStart: '2024-01-01',
       periodEnd: '2024-12-31',
@@ -531,9 +531,9 @@ describe('DashboardFinancialKundengelderScreen', () => {
     };
     const mismatch: KundengelderSheet = {
       ...verified,
-      key: 'CH6808573177975201814|EUR',
-      name: 'Maerki Baumann EUR',
-      iban: 'CH6808573177975201814',
+      key: 'CH2100000000000000006|EUR',
+      name: 'Sample Bank EUR',
+      iban: 'CH2100000000000000006',
       currency: 'EUR',
       rows: [{ sollLabel: 'Anfangsbestand' }, { habenLabel: 'Saldo', habenAmount: 40 }],
       closingBalance: 40,
@@ -542,9 +542,9 @@ describe('DashboardFinancialKundengelderScreen', () => {
     };
     const unnamed: KundengelderSheet = {
       ...verified,
-      key: 'CH8383019496938261612|EUR',
-      name: 'CH8383019496938261612 EUR',
-      iban: 'CH8383019496938261612',
+      key: 'CH2100000000000000007|EUR',
+      name: 'CH2100000000000000007 EUR',
+      iban: 'CH2100000000000000007',
       currency: 'EUR',
       openingCheck: 'unchecked',
     };
@@ -552,10 +552,10 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
-    expect(within(cardByHeading('Maerki Baumann CHF')).getByText('BuyCrypto after Fee')).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Maerki Baumann CHF · CH3408573177975200001' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Maerki Baumann EUR · CH6808573177975201814' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sample Bank CHF' })).toBeInTheDocument();
+    expect(within(cardByHeading('Sample Bank CHF')).getByText('BuyCrypto after Fee')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Sample Bank CHF · CH2100000000000000005' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Sample Bank EUR · CH2100000000000000006' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Alle' })).not.toBeInTheDocument();
     expect(screen.getByText(/Verifiziert/)).toBeInTheDocument();
     expect(screen.queryByText(/stimmt nicht/)).not.toBeInTheDocument();
@@ -570,17 +570,106 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.getAllByText('2024-01-01').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Enddatum').length).toBeGreaterThan(0);
     expect(screen.getAllByText('2024-12-31').length).toBeGreaterThan(0);
-    expect(screen.getByRole('option', { name: 'CH8383019496938261612 EUR' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'CH2100000000000000007 EUR' })).toBeInTheDocument();
     expect(
-      screen.queryByRole('option', { name: 'CH8383019496938261612 EUR · CH8383019496938261612' }),
+      screen.queryByRole('option', { name: 'CH2100000000000000007 EUR · CH2100000000000000007' }),
     ).not.toBeInTheDocument();
   });
 
-  it('names a Revolut difference after the currency of that sheet', async () => {
-    const revolutChf: KundengelderSheet = {
-      key: 'GB77REVO00996972945099|CHF',
-      name: 'Revolut CHF',
-      iban: 'GB77REVO00996972945099',
+  it('requests the bare IBAN when the sheet key is the bank pair', async () => {
+    const iban = 'CH2100000000000000008';
+    const sheet: KundengelderSheet = {
+      key: `${iban}|CHF`,
+      name: 'Sample Pair CHF',
+      currency: 'CHF',
+      soll: [{ label: 'BuyCrypto after Fee', amount: 1, lineKey: 'buy-after-fee' }],
+      haben: [],
+      sollSum: 1,
+      habenSum: 1,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+    mockGetDfxBanks.mockResolvedValue([{ name: 'Sample Pair', iban, currency: 'CHF' }]);
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Sample Pair CHF' })).toBeInTheDocument();
+    clickLine('Sample Pair CHF', 'BuyCrypto after Fee');
+    expect(currentLocation()).toContain(`account=${iban}&`);
+    expect(currentLocation()).not.toContain(`account=${iban}|`);
+  });
+
+  it('uses the pair key itself when it is not a single bare IBAN', async () => {
+    const cases = [
+      { key: 'CH2100000000000000008|CHF', currency: 'CHF', label: 'Pair CHF', account: 'CH2100000000000000008' },
+      { key: 'CheckoutLtdCHF', currency: 'CHF', label: 'Checkout CHF', account: 'CheckoutLtdCHF' },
+      { key: '|CHF', currency: 'CHF', label: 'Empty Head CHF', account: '|CHF' },
+      { key: 'A|B|CHF', currency: 'CHF', label: 'Nested CHF', account: 'A|B|CHF' },
+      { key: 'NoCurrency', currency: ' ', label: 'No Currency', account: 'NoCurrency' },
+    ];
+    for (const item of cases) {
+      const sheet: KundengelderSheet = {
+        key: item.key,
+        name: item.label,
+        currency: item.currency,
+        soll: [{ label: 'BuyCrypto after Fee', amount: 1, lineKey: 'buy-after-fee' }],
+        haben: [],
+        sollSum: 1,
+        habenSum: 1,
+        control: 0,
+      };
+      mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+      mockGetDfxBanks.mockResolvedValue([]);
+      const view = render(<DashboardFinancialKundengelderScreen />);
+      expect(await screen.findByRole('heading', { name: item.label })).toBeInTheDocument();
+      clickLine(item.label, 'BuyCrypto after Fee');
+      expect(currentLocation()).toContain(`account=${item.account}&`);
+      view.unmount();
+    }
+  });
+
+  it('paints internal rows and a haben line that has no soll entry', async () => {
+    const sheet: KundengelderSheet = {
+      key: 'CH2100000000000000002|CHF',
+      name: 'Quiet Bank CHF',
+      iban: 'CH2100000000000000002',
+      currency: 'CHF',
+      soll: [
+        { label: 'Internal', amount: 0 },
+        { label: 'Internal von CH2100000000000000002', amount: 0 },
+      ],
+      haben: [
+        { label: 'Saldo', amount: 0 },
+        { label: 'BuyFiat after Fee', amount: 0 },
+        { label: 'Internal an CH2100000000000000002', amount: 0 },
+      ],
+      rows: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [sheet] });
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Quiet Bank CHF' })).toBeInTheDocument();
+    const row = (label: string): HTMLElement => {
+      const cell = within(cardByHeading('Quiet Bank CHF')).getByText(label, { exact: true });
+      const line = cell.closest('tr');
+      if (!(line instanceof HTMLElement)) throw new Error(`missing row for ${label}`);
+      return line;
+    };
+    const internal = 'rgb(255, 242, 204)';
+    expect(row('Internal').style.backgroundColor).toBe(internal);
+    expect(row('Internal von CH2100000000000000002').style.backgroundColor).toBe(internal);
+    expect(row('Internal an CH2100000000000000002').style.backgroundColor).toBe(internal);
+  });
+
+  it('names a difference after the currency of that sheet', async () => {
+    const exchangeChf: KundengelderSheet = {
+      key: 'GB00SAMP00000000000001|CHF',
+      name: 'Sample Exchange CHF',
+      iban: 'GB00SAMP00000000000001',
       currency: 'CHF',
       soll: [],
       haben: [],
@@ -589,16 +678,16 @@ describe('DashboardFinancialKundengelderScreen', () => {
       habenSum: 0,
       control: 0,
     };
-    const revolutEur: KundengelderSheet = {
-      ...revolutChf,
-      key: 'GB77REVO00996972945099|EUR',
-      name: 'Revolut EUR',
+    const exchangeEur: KundengelderSheet = {
+      ...exchangeChf,
+      key: 'GB00SAMP00000000000001|EUR',
+      name: 'Sample Exchange EUR',
       currency: 'EUR',
     };
     mockGetKundengelderExtract.mockResolvedValue({
       ...EXTRACT,
-      sheets: [revolutChf, revolutEur],
-      diffs: [{ key: 'GB77REVO00996972945099|BuyCrypto after Fee|CHF', live: 2227.5, booked: 2227.5, delta: 0 }],
+      sheets: [exchangeChf, exchangeEur],
+      diffs: [{ key: 'GB00SAMP00000000000001|BuyCrypto after Fee|CHF', live: 2227.5, booked: 2227.5, delta: 0 }],
     });
 
     render(<DashboardFinancialKundengelderScreen />);
@@ -606,16 +695,16 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(await screen.findByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toBeInTheDocument();
     const diffRow = screen.getAllByText(money(2227.5))[0].closest('tr');
     if (!diffRow) throw new Error('expected diff row');
-    expect(within(diffRow).getByText('Revolut CHF')).toBeInTheDocument();
+    expect(within(diffRow).getByText('Sample Exchange CHF')).toBeInTheDocument();
     expect(within(diffRow).getByText('BuyCrypto after Fee')).toBeInTheDocument();
-    expect(within(diffRow).queryByText('Revolut EUR')).not.toBeInTheDocument();
+    expect(within(diffRow).queryByText('Sample Exchange EUR')).not.toBeInTheDocument();
   });
 
   it('shows one sheet and switches the heading when Konto changes', async () => {
-    const kaleido: KundengelderSheet = {
-      key: '10037',
-      name: 'Kaleido Privatbank CHF',
-      iban: 'CH6008245111962200001',
+    const ledger: KundengelderSheet = {
+      key: '90001',
+      name: 'Sample Ledger CHF',
+      iban: 'CH2100000000000000003',
       currency: 'CHF',
       soll: [],
       haben: [],
@@ -623,9 +712,9 @@ describe('DashboardFinancialKundengelderScreen', () => {
       habenSum: 0,
       control: 0,
     };
-    const maerki: KundengelderSheet = {
+    const sampleSheet: KundengelderSheet = {
       key: 'CH9300762011623852957|CHF',
-      name: 'Maerki Baumann CHF',
+      name: 'Sample Bank CHF',
       iban: 'CH9300762011623852957',
       currency: 'CHF',
       soll: [],
@@ -634,18 +723,18 @@ describe('DashboardFinancialKundengelderScreen', () => {
       habenSum: 0,
       control: 0,
     };
-    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [kaleido, maerki] });
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [ledger, sampleSheet] });
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Kaleido Privatbank CHF' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Maerki Baumann CHF' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sample Ledger CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sample Bank CHF' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Alle' })).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: maerki.key } });
+    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: sampleSheet.key } });
 
-    expect(screen.getByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Kaleido Privatbank CHF' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sample Bank CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sample Ledger CHF' })).not.toBeInTheDocument();
   });
 
   it('shows a sheet without iban as the name alone in the Konto options', async () => {
@@ -670,7 +759,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
   it('shows a bank without a sheet as a card and a Konto option', async () => {
     const existing: KundengelderSheet = {
       key: 'CH9300762011623852957|CHF',
-      name: 'Maerki Baumann CHF',
+      name: 'Sample Bank CHF',
       iban: 'CH9300762011623852957',
       currency: 'CHF',
       soll: [],
@@ -680,25 +769,25 @@ describe('DashboardFinancialKundengelderScreen', () => {
       control: 0,
     };
     mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [existing] });
-    mockGetDfxBanks.mockResolvedValue([{ name: 'Kaleido', iban: 'CH6008245111962200001', currency: 'CHF' }]);
+    mockGetDfxBanks.mockResolvedValue([{ name: 'Ledger Bank', iban: 'CH2100000000000000003', currency: 'CHF' }]);
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Kaleido CHF' })).not.toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Kaleido CHF · CH6008245111962200001' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sample Bank CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Ledger Bank CHF' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Ledger Bank CHF · CH2100000000000000003' })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: 'CH6008245111962200001|CHF' } });
+    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: 'CH2100000000000000003|CHF' } });
 
-    expect(screen.getByRole('heading', { name: 'Kaleido CHF' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Maerki Baumann CHF' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ledger Bank CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sample Bank CHF' })).not.toBeInTheDocument();
   });
 
   it('shows the second currency of the same IBAN as its own card and option', async () => {
-    const revolutChf: KundengelderSheet = {
-      key: 'GB77REVO00996972945099|CHF',
-      name: 'Revolut CHF',
-      iban: 'GB77REVO00996972945099',
+    const exchangeChf: KundengelderSheet = {
+      key: 'GB00SAMP00000000000001|CHF',
+      name: 'Sample Exchange CHF',
+      iban: 'GB00SAMP00000000000001',
       currency: 'CHF',
       soll: [],
       haben: [],
@@ -706,31 +795,31 @@ describe('DashboardFinancialKundengelderScreen', () => {
       habenSum: 0,
       control: 0,
     };
-    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [revolutChf] });
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [exchangeChf] });
     mockGetDfxBanks.mockResolvedValue([
-      { name: 'Revolut', iban: 'GB77REVO00996972945099', currency: 'CHF' },
-      { name: 'Revolut', iban: 'GB77REVO00996972945099', currency: 'EUR' },
+      { name: 'Sample Exchange', iban: 'GB00SAMP00000000000001', currency: 'CHF' },
+      { name: 'Sample Exchange', iban: 'GB00SAMP00000000000001', currency: 'EUR' },
     ]);
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Revolut CHF' })).toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { name: 'Revolut CHF' })).toHaveLength(1);
-    expect(screen.queryByRole('heading', { name: 'Revolut EUR' })).not.toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Revolut CHF · GB77REVO00996972945099' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Revolut EUR · GB77REVO00996972945099' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sample Exchange CHF' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: 'Sample Exchange CHF' })).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'Sample Exchange EUR' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Sample Exchange CHF · GB00SAMP00000000000001' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Sample Exchange EUR · GB00SAMP00000000000001' })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: 'GB77REVO00996972945099|EUR' } });
+    fireEvent.change(screen.getByLabelText('Konto'), { target: { value: 'GB00SAMP00000000000001|EUR' } });
 
-    expect(screen.getByRole('heading', { name: 'Revolut EUR' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Revolut CHF' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sample Exchange EUR' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sample Exchange CHF' })).not.toBeInTheDocument();
   });
 
   it('does not duplicate a sheet that already matches the bank IBAN and currency', async () => {
-    const kaleido: KundengelderSheet = {
-      key: '10037',
-      name: 'Kaleido Privatbank CHF',
-      iban: 'CH6008245111962200001',
+    const ledger: KundengelderSheet = {
+      key: '90001',
+      name: 'Sample Ledger CHF',
+      iban: 'CH2100000000000000003',
       currency: 'CHF',
       soll: [],
       haben: [],
@@ -738,21 +827,21 @@ describe('DashboardFinancialKundengelderScreen', () => {
       habenSum: 0,
       control: 0,
     };
-    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [kaleido] });
-    mockGetDfxBanks.mockResolvedValue([{ name: 'Kaleido', iban: 'CH6008245111962200001', currency: 'CHF' }]);
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [ledger] });
+    mockGetDfxBanks.mockResolvedValue([{ name: 'Ledger Bank', iban: 'CH2100000000000000003', currency: 'CHF' }]);
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findAllByRole('heading', { name: 'Kaleido Privatbank CHF' })).toHaveLength(1);
-    expect(screen.getAllByRole('option', { name: 'Kaleido Privatbank CHF · CH6008245111962200001' })).toHaveLength(1);
-    expect(screen.queryByRole('heading', { name: 'Kaleido CHF' })).not.toBeInTheDocument();
+    expect(await screen.findAllByRole('heading', { name: 'Sample Ledger CHF' })).toHaveLength(1);
+    expect(screen.getAllByRole('option', { name: 'Sample Ledger CHF · CH2100000000000000003' })).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'Ledger Bank CHF' })).not.toBeInTheDocument();
   });
 
   it('renders Haben for a negative opening-check balance and omits Soll or Haben at zero', async () => {
     const sheet: KundengelderSheet = {
-      key: 'CH3408573177975200001|CHF',
-      name: 'Maerki Baumann CHF',
-      iban: 'CH3408573177975200001',
+      key: 'CH2100000000000000005|CHF',
+      name: 'Sample Bank CHF',
+      iban: 'CH2100000000000000005',
       currency: 'CHF',
       periodEnd: '2024-12-31',
       soll: [],
@@ -829,9 +918,9 @@ describe('DashboardFinancialKundengelderScreen', () => {
       eurRate: 1,
       accounts: [
         {
-          key: 'CH6008245111962200001',
-          name: 'Kaleido CHF',
-          iban: 'CH6008245111962200001',
+          key: 'CH2100000000000000003',
+          name: 'Ledger Bank CHF',
+          iban: 'CH2100000000000000003',
           currency: 'CHF',
           lines: [],
         },
@@ -845,14 +934,14 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(button).not.toBeDisabled();
     fireEvent.click(button);
 
-    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Kaleido CHF'));
+    expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('Ledger Bank CHF'));
     expect(mockDownloadCsv).toHaveBeenCalledWith(`kundengelder-${YEAR}.csv`, expect.stringContaining('0'));
   });
 
   it('requests a sheet row line from sollLineKey and from habenLineKey', async () => {
     const sheet: KundengelderSheet = {
       key: 'CH9300762011623852957|CHF',
-      name: 'Maerki Baumann CHF',
+      name: 'Sample Bank CHF',
       iban: 'CH9300762011623852957',
       currency: 'CHF',
       soll: [{ label: 'BuyCrypto after Fee', amount: 90, lineKey: 'BuyCrypto after Fee', date: '2024-12-31' }],
@@ -869,12 +958,12 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
-    clickLine('Maerki Baumann CHF', 'BuyCrypto after Fee');
+    expect(await screen.findByRole('heading', { name: 'Sample Bank CHF' })).toBeInTheDocument();
+    clickLine('Sample Bank CHF', 'BuyCrypto after Fee');
     expect(currentLocation()).toContain('account=CH9300762011623852957');
     expect(currentLocation()).toContain('line=BuyCrypto after Fee');
 
-    clickLine('Maerki Baumann CHF', 'Charge');
+    clickLine('Sample Bank CHF', 'Charge');
     expect(currentLocation()).toContain('line=Charge');
     expect(currentLocation()).toContain('label=Charge');
     expect(mockGetKundengelderLines).not.toHaveBeenCalled();
@@ -890,9 +979,9 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
   it('renders Kontrolle with a non-zero control amount', async () => {
     const sheet: KundengelderSheet = {
-      key: '10037',
-      name: 'Kaleido Privatbank CHF',
-      iban: 'CH6008245111962200001',
+      key: '90001',
+      name: 'Sample Ledger CHF',
+      iban: 'CH2100000000000000003',
       currency: 'CHF',
       soll: [],
       haben: [],
@@ -904,8 +993,8 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Kaleido Privatbank CHF' })).toBeInTheDocument();
-    const card = cardByHeading('Kaleido Privatbank CHF');
+    expect(await screen.findByRole('heading', { name: 'Sample Ledger CHF' })).toBeInTheDocument();
+    const card = cardByHeading('Sample Ledger CHF');
     expect(within(card).getByText('Kontrolle')).toBeInTheDocument();
     expect(within(card).getByText(money(3))).toHaveClass('text-dfxRed-100');
     expect(within(card).getByText('nicht abgelegt')).toBeInTheDocument();
@@ -977,9 +1066,9 @@ describe('DashboardFinancialKundengelderScreen', () => {
   });
 
   it('labels unmatched diff keys from prefix, plain key, currency suffix and iban fallback', async () => {
-    const maerki: KundengelderSheet = {
+    const sample: KundengelderSheet = {
       key: 'CH1|EUR',
-      name: 'Maerki EUR',
+      name: 'Sample EUR',
       iban: 'CH1',
       currency: 'EUR',
       soll: [],
@@ -990,7 +1079,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     };
     mockGetKundengelderExtract.mockResolvedValue({
       ...EXTRACT,
-      sheets: [maerki],
+      sheets: [sample],
       diffs: [
         { key: 'CheckoutLtdCHF|Fee', live: 1, booked: 1, delta: 0 },
         { key: 'PLAIN', live: 2, booked: 2, delta: 0 },
@@ -1001,7 +1090,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     render(<DashboardFinancialKundengelderScreen />);
 
-    expect(await screen.findByRole('heading', { name: 'Maerki EUR' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sample EUR' })).toBeInTheDocument();
     const comparison = cardByHeading('Abweichung zur Buchhaltung');
 
     const feeRow = within(comparison).getByText('Fee').closest('tr');
@@ -1018,7 +1107,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
 
     const lineRow = within(comparison).getByText('Line').closest('tr');
     if (!lineRow) throw new Error('expected line row');
-    expect(within(lineRow).getByText('Maerki EUR')).toBeInTheDocument();
+    expect(within(lineRow).getByText('Sample EUR')).toBeInTheDocument();
   });
 
   it('exports sparse sheet rows without a movement date', async () => {
@@ -1312,9 +1401,9 @@ describe('DashboardFinancialKundengelderScreen', () => {
   });
 
   it('restores the year and the selected sheet from the address', async () => {
-    const kaleido: KundengelderSheet = {
-      key: '10037',
-      name: 'Kaleido Privatbank CHF',
+    const ledger: KundengelderSheet = {
+      key: '90001',
+      name: 'Sample Ledger CHF',
       currency: 'CHF',
       soll: [],
       haben: [],
@@ -1324,7 +1413,7 @@ describe('DashboardFinancialKundengelderScreen', () => {
     };
     const buy: KundengelderSheet = {
       key: 'CH9300762011623852957|CHF',
-      name: 'Maerki Baumann CHF',
+      name: 'Sample Bank CHF',
       iban: 'CH9300762011623852957',
       currency: 'CHF',
       soll: [],
@@ -1333,15 +1422,15 @@ describe('DashboardFinancialKundengelderScreen', () => {
       habenSum: 0,
       control: 0,
     };
-    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [kaleido, buy] });
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [ledger, buy] });
 
     render(
       <DashboardFinancialKundengelderScreen />,
       `/dashboard/financial/kundengelder?year=2022&sheet=${encodeURIComponent(buy.key)}`,
     );
 
-    expect(await screen.findByRole('heading', { name: 'Maerki Baumann CHF' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Kaleido Privatbank CHF' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sample Bank CHF' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sample Ledger CHF' })).not.toBeInTheDocument();
     expect(mockGetKundengelderExtract).toHaveBeenCalledWith(2022);
   });
 });
@@ -1470,6 +1559,22 @@ describe('DashboardFinancialKundengelderLinesScreen', () => {
     act(() => layoutOnBack()());
 
     expect(currentLocation()).toBe('/dashboard/financial/kundengelder?year=2022&sheet=CheckoutLtdEUR');
+  });
+
+  it('uses the account as the sheet when the booking address has none', async () => {
+    const params = new URLSearchParams();
+    params.set('year', String(YEAR));
+    params.set('account', account);
+    params.set('line', line);
+    render(
+      <DashboardFinancialKundengelderLinesScreen />,
+      `/dashboard/financial/kundengelder/lines?${params.toString()}`,
+    );
+
+    expect(await screen.findByText('Keine Buchungen')).toBeInTheDocument();
+    act(() => layoutOnBack()());
+
+    expect(currentLocation()).toBe(`/dashboard/financial/kundengelder?year=${YEAR}&sheet=${account}`);
   });
 
   it('keeps the session when returning to the sheet', async () => {

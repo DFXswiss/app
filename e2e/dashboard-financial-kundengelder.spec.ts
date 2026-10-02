@@ -8,16 +8,16 @@ import { captureExpandedPage } from './helpers/full-page-png';
  *
  * Auth is a synthetic Admin JWT. Shell reads and the extract are mocked, the same way as
  * the Log Validity spec. Figures and account numbers are fictional. The buy-crypto
- * bookings page has one row per completed 2024 voucher. A green run does not prove production auth
- * or that the API returns this extract.
+ * bookings page has 4023 fictional rows dated in the fixture year. A green run does not prove
+ * production auth or that the API returns this extract.
  *
  * The clock is pinned so the year list does not grow when the calendar year changes.
  */
 
-/** Completed buy-crypto vouchers in 2024. Amounts below are not those vouchers. */
-const BUY_CRYPTO_BELEGE_2024 = 4023;
+/** Fictional booking count. Amounts below are not production vouchers. */
+const BOOKING_COUNT = 4023;
 const AFTER_FEE_EACH = 1;
-const BUY_CRYPTO_AFTER_FEE = BUY_CRYPTO_BELEGE_2024 * AFTER_FEE_EACH;
+const BUY_CRYPTO_AFTER_FEE = BOOKING_COUNT * AFTER_FEE_EACH;
 const OPENING = 1000;
 const BUY_CRYPTO_FEE = 2;
 const BANK_FEE = 4.5;
@@ -157,7 +157,7 @@ const LINES = {
   year: 2026,
   accountKey: SAMPLE_IBAN,
   line: 'buy-after-fee',
-  rows: Array.from({ length: BUY_CRYPTO_BELEGE_2024 }, (_, index) => {
+  rows: Array.from({ length: BOOKING_COUNT }, (_, index) => {
     const n = index + 1;
     const month = ((index % 12) + 1).toString().padStart(2, '0');
     const day = ((index % 28) + 1).toString().padStart(2, '0');
@@ -173,7 +173,7 @@ const LINES = {
   }),
 };
 
-async function installRoutes(page: Page): Promise<void> {
+async function installRoutes(page: Page, extract: unknown = EXTRACT, banks: unknown = BANKS): Promise<void> {
   await page.route('**/v1/**', async (route: Route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -184,12 +184,12 @@ async function installRoutes(page: Page): Promise<void> {
       return json(route, []);
     }
     if (request.method() === 'GET' && path === '/v1/setting/infoBanner') return json(route, null);
-    if (request.method() === 'GET' && path === '/v1/bank') return json(route, BANKS);
+    if (request.method() === 'GET' && path === '/v1/bank') return json(route, banks);
     if (request.method() === 'GET' && path.startsWith('/v1/dashboard/financial/kundengelder/lines')) {
       return json(route, LINES);
     }
     if (request.method() === 'GET' && path.startsWith('/v1/dashboard/financial/kundengelder')) {
-      return json(route, EXTRACT);
+      return json(route, extract);
     }
     return json(route, {});
   });
@@ -233,6 +233,14 @@ test.describe('Kundengelder year extract', () => {
 
     await expect(page).toHaveScreenshot('dashboard-financial-kundengelder.png', shot);
 
+    await page.locator('#kundengelder-account').selectOption('CH2100000000000000002|EUR');
+    await expect(page.getByRole('heading', { name: 'Quiet Bank EUR' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sample Bank CHF' })).toHaveCount(0);
+    await page.waitForTimeout(500);
+    await expect(page).toHaveScreenshot('dashboard-financial-kundengelder-empty.png', shot);
+
+    await page.locator('#kundengelder-account').selectOption(`${SAMPLE_IBAN}|CHF`);
+    await expect(page.getByRole('heading', { name: 'Sample Bank CHF' })).toBeVisible();
     await page.setViewportSize({ width: 1440, height: 1680 });
     await page.getByRole('cell', { name: 'BuyCrypto after Fee' }).first().click();
     await expect(page).toHaveURL(/\/dashboard\/financial\/kundengelder\/lines\?/);
@@ -240,12 +248,54 @@ test.describe('Kundengelder year extract', () => {
     await expect(page.getByRole('heading', { name: 'Sample Bank CHF' })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Abweichung zur Buchhaltung' })).toHaveCount(0);
     const bookings = page.locator('table', { has: page.getByRole('columnheader', { name: 'Instruktion' }) });
-    await expect(bookings.locator('tbody tr')).toHaveCount(BUY_CRYPTO_BELEGE_2024);
+    await expect(bookings.locator('tbody tr')).toHaveCount(BOOKING_COUNT);
     await expect(page.getByText('SAMPLE-0001', { exact: true })).toBeVisible();
     await page.waitForTimeout(500);
 
     await expect(await captureExpandedPage(page)).toMatchSnapshot('dashboard-financial-kundengelder-line.png', {
       maxDiffPixels: 1000,
     });
+  });
+
+  test('visual regression - kundengelder opening mismatch', async ({ page }) => {
+    const iban = 'CH2100000000000000009';
+    const extract = {
+      year: 2026,
+      eurRate: 0.95,
+      accounts: [],
+      diffs: [],
+      sheets: [
+        {
+          key: `${iban}|EUR`,
+          name: 'Sample Mismatch EUR',
+          iban,
+          currency: 'EUR',
+          periodStart: '2026-01-01',
+          periodEnd: '2026-12-31',
+          soll: [],
+          haben: [],
+          rows: [
+            { sollLabel: 'Anfangsbestand', sollAmount: 40 },
+            { habenLabel: 'Saldo', habenAmount: 40 },
+          ],
+          sollSum: 40,
+          habenSum: 40,
+          control: 0,
+          closingBalance: 40,
+          nextOpeningBalance: 10,
+          openingCheck: 'mismatch',
+        },
+      ],
+    };
+    await page.setViewportSize({ width: 1440, height: 1520 });
+    await page.clock.install({ time: new Date('2026-10-02T12:00:00Z') });
+    await page.clock.resume();
+    await installRoutes(page, extract, [{ name: 'Sample Mismatch', iban, currency: 'EUR' }]);
+    await page.goto(`/dashboard/financial/kundengelder?session=${encodeURIComponent(jwt())}&lang=de`);
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: 'Sample Mismatch EUR' })).toBeVisible();
+    await expect(page.getByText(/stimmt nicht/)).toBeVisible();
+    await page.waitForTimeout(500);
+    await expect(page).toHaveScreenshot('dashboard-financial-kundengelder-mismatch.png', shot);
   });
 });

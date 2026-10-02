@@ -31,6 +31,18 @@ function sheetMatchesBank(sheet: KundengelderSheet, iban: string, currency: stri
   );
 }
 
+function withBankIban(sheet: KundengelderSheet, banks: DfxBankAccount[]): KundengelderSheet {
+  for (const bank of banks) {
+    const iban = bank.iban.trim();
+    const currency = bank.currency.trim();
+    if (!iban || !currency) continue;
+    if (!sheetMatchesBank(sheet, iban, currency)) continue;
+    if (sheet.iban?.trim() === iban) return sheet;
+    return { ...sheet, iban };
+  }
+  return sheet;
+}
+
 function emptyBankSheet(bank: DfxBankAccount, iban: string, currency: string, year: number): KundengelderSheet {
   return {
     key: pairKey(iban, currency),
@@ -98,6 +110,7 @@ export function withEveryBankAccount(extract: KundengelderExtract, banks: DfxBan
     return { ...extract, accounts };
   }
 
+  const sheets = sourceSheets.map((sheet) => withBankIban(sheet, sorted));
   const extraSheets: KundengelderSheet[] = [];
   const seenSheetPairs = new Set<string>();
   for (const bank of sorted) {
@@ -107,12 +120,13 @@ export function withEveryBankAccount(extract: KundengelderExtract, banks: DfxBan
     const pair = pairKey(iban, currency);
     if (seenSheetPairs.has(pair)) continue;
     seenSheetPairs.add(pair);
-    if (sourceSheets.some((sheet) => sheetMatchesBank(sheet, iban, currency))) continue;
+    if (sheets.some((sheet) => sheetMatchesBank(sheet, iban, currency))) continue;
     extraSheets.push(emptyBankSheet(bank, iban, currency, extract.year));
   }
 
-  if (extraSheets.length === 0) {
+  const changed = sheets.some((sheet, index) => sheet !== sourceSheets[index]);
+  if (extraSheets.length === 0 && !changed) {
     return { ...extract, accounts };
   }
-  return { ...extract, accounts, sheets: [...sourceSheets, ...extraSheets] };
+  return { ...extract, accounts, sheets: [...sheets, ...extraSheets] };
 }

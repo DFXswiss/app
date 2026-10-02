@@ -86,7 +86,7 @@ export interface KundengelderAccount {
 }
 
 export interface KundengelderDiff {
-  key: string; // e.g. `${iban}|BuyCrypto after Fee` or with `|CHF`/`|EUR` suffix for Revolut
+  key: string; // e.g. `${iban}|BuyCrypto after Fee`, or with `|CHF`/`|EUR` when one IBAN is held in two currencies
   live: number;
   booked: number;
   delta: number;

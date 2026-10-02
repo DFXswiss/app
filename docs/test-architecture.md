@@ -195,8 +195,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`, `/v1/setting/infoBanner`,
   `/v2/user`, `GET /v1/bank`, the year extract and the bookings list with fictional fixtures.
   Other `/v1/**` and `/v2/**` calls return `{}`. A green run proves the T-account, an empty bank,
-  the booked comparison and the bookings page render those fixtures. It does not prove production
-  auth, that the API returns this extract, or that the figures are booked balances.
+  a mismatched next-year opening, the booked comparison and the bookings page render those fixtures.
+  It does not prove production auth, that the API returns this extract, or that the figures are booked
+  balances. The clock is pinned, so a green run does not prove that the year list rolls over. The
+  bookings capture expands the page with injected CSS and stitches viewport slices, so a green run
+  does not prove native scrolling or an unmodified screenshot.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for
