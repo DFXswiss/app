@@ -23,14 +23,34 @@ export function isSentinelSeverity(severity?: string): boolean {
 // screening flagged the transaction as high risk. The manual-check UI turns it into a deep-link.
 export const SCORECHAIN_HIGH_RISK_TOKEN = 'ScorechainHighRisk';
 
-// True iff the comment carries the ScorechainHighRisk token as one of its ';'-joined members. Membership
-// (not substring) so a longer token that merely contains the string is not a false positive.
-export function hasScorechainHighRisk(comment?: string): boolean {
+// Internal AML-error token the api writes when a Scorechain screening produced no usable verdict (provider
+// down, transaction not analysable). Like HighRisk it parks the transaction in the manual check.
+export const SCORECHAIN_UNAVAILABLE_TOKEN = 'ScorechainUnavailable';
+
+// The two Scorechain holds compliance may acknowledge for one transaction (PUT :id/scorechainCleared).
+// A Sanction hit is a Fail and is never acknowledged this way.
+export type ScorechainHold = 'HighRisk' | 'Unavailable';
+
+function hasCommentToken(comment: string | undefined, token: string): boolean {
   if (!comment) return false;
   return comment
     .split(';')
-    .map((token) => token.trim())
-    .includes(SCORECHAIN_HIGH_RISK_TOKEN);
+    .map((t) => t.trim())
+    .includes(token);
+}
+
+// True iff the comment carries the ScorechainHighRisk token as one of its ';'-joined members. Membership
+// (not substring) so a longer token that merely contains the string is not a false positive.
+export function hasScorechainHighRisk(comment?: string): boolean {
+  return hasCommentToken(comment, SCORECHAIN_HIGH_RISK_TOKEN);
+}
+
+// The Scorechain hold a transaction comment carries, if any. HighRisk wins over Unavailable: it is the
+// finding the clerk has to review, and one acknowledgement covers both.
+export function scorechainHold(comment?: string): ScorechainHold | undefined {
+  if (hasScorechainHighRisk(comment)) return 'HighRisk';
+  if (hasCommentToken(comment, SCORECHAIN_UNAVAILABLE_TOKEN)) return 'Unavailable';
+  return undefined;
 }
 
 // --- deep-link (highlight) plumbing shared by the link call-sites and the screen --- //

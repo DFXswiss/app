@@ -3,13 +3,15 @@ import { useState } from 'react';
 import type { ComplianceUserData, TransactionInfo } from 'src/hooks/compliance.hook';
 import { useStaffVerifiedName } from 'src/hooks/staff-verified-name.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
-import { RefUserKycClearRow } from './ref-user-kyc-clear-row';
+import type { ScorechainClearTarget } from 'src/hooks/scorechain-clear.hook';
+import { REF_USER_KYC_CLEAR_LABEL, RefUserKycClearRow } from './ref-user-kyc-clear-row';
+import { SCORECHAIN_CLEAR_LABEL, ScorechainClearRow } from './scorechain-clear-row';
 import { StaffIdentityBlock } from './staff-identity';
 import { canManuallySetAmlPass } from 'src/util/aml-pass.util';
 import { canResetBuyCryptoAmlForReview, hasBuyCryptoReviewResetEligibleState } from 'src/util/buy-crypto-reset.util';
 import { statusBadge } from 'src/util/compliance-helpers';
 import { hasRefUserKycHold } from 'src/util/ref-user-kyc.util';
-import { hasScorechainHighRisk, scorechainHighlightValue } from 'src/util/scorechain.util';
+import { hasScorechainHighRisk, scorechainHighlightValue, scorechainHold } from 'src/util/scorechain.util';
 import { formatSwissDate } from 'src/util/utils';
 
 function callQueueForReason(reason: string | undefined): CallQueue | undefined {
@@ -32,7 +34,15 @@ interface AmlCheckPendingPanelProps {
   // Reloads the account after the referrer hold was waived for it (the parked transaction is reset by
   // the API and leaves this panel). The clearance stays even if the referrer's KYC status changes later.
   onRefUserKycCleared?: () => Promise<void>;
+  // Reloads the account after compliance acknowledged a transaction's Scorechain hold (the API resets that
+  // transaction, so it leaves this panel unless another error parks it again).
+  onScorechainCleared?: () => Promise<void>;
 }
+
+// Shown under the Reset hint when the transaction carries a hold that Reset cannot resolve: the automatic
+// AML run finds the same reason again and parks the transaction right back here.
+export const RESET_REF_USER_KYC_HOLD_HINT = `Reset hilft hier nicht: Der Empfehler blockiert die Zahlung bei jeder Prüfung wieder. Verwende «${REF_USER_KYC_CLEAR_LABEL}».`;
+export const RESET_SCORECHAIN_HOLD_HINT = `Reset hilft hier nicht: Die Scorechain-Warnung kommt bei jeder Prüfung wieder. Verwende «${SCORECHAIN_CLEAR_LABEL}».`;
 
 const AML_CHECK_OPTIONS = [CheckStatus.PASS, CheckStatus.FAIL, CheckStatus.PENDING, 'Reset'] as const;
 
@@ -54,6 +64,7 @@ function TransactionEntry({
   userDataId,
   canResetBuyCrypto,
   onRefUserKycCleared,
+  onScorechainCleared,
 }: {
   tx: PendingTransaction;
   onUpdate: (data: AmlCheckUpdate, clerk: string) => Promise<void>;
@@ -62,6 +73,7 @@ function TransactionEntry({
   userDataId?: number;
   canResetBuyCrypto: boolean;
   onRefUserKycCleared?: () => Promise<void>;
+  onScorechainCleared?: () => Promise<void>;
 }): JSX.Element {
   const { navigate } = useNavigation();
   const { session } = useAuthContext();
@@ -77,6 +89,14 @@ function TransactionEntry({
   // Fail never sets priceDefinitionAllowedDate (backend uses that field for Pass / payout price definition).
   const isReset = amlCheck === 'Reset';
   const isFail = amlCheck === CheckStatus.FAIL;
+  const hasRefUserHold = userDataId != null && hasRefUserKycHold(tx.comment);
+  const scorechainHoldKind = scorechainHold(tx.comment);
+  const scorechainTarget: ScorechainClearTarget | undefined =
+    tx.buyCryptoId != null
+      ? { kind: 'buyCrypto', id: tx.buyCryptoId }
+      : tx.buyFiatId != null
+        ? { kind: 'buyFiat', id: tx.buyFiatId }
+        : undefined;
 
   async function handleSave(signedBy: string): Promise<void> {
     // Fail-closed client guard; API rejects Pass for non-Admin regardless.
@@ -208,14 +228,28 @@ function TransactionEntry({
               Reset ist erst verfügbar, wenn der BuyCrypto noch unvollständig ist und kein Payout/Refund/Batch läuft.
             </p>
           )}
-          {userDataId != null && hasRefUserKycHold(tx.comment) && (
+          {hasRefUserHold && userDataId != null && (
             <RefUserKycClearRow userDataId={userDataId} disabled={isSaving} onCleared={onRefUserKycCleared} />
           )}
+          {scorechainHoldKind && scorechainTarget && (
+            <ScorechainClearRow
+              target={scorechainTarget}
+              hold={scorechainHoldKind}
+              disabled={isSaving}
+              onCleared={onScorechainCleared}
+            />
+          )}
           {isReset ? (
-            <p className="px-3 py-2 text-xs text-dfxGray-700">
-              Reset entfernt AmlCheck, AmlReason und priceDefinitionAllowedDate. Die automatische AML-Prüfung
-              entscheidet neu.
-            </p>
+            <div className="px-3 py-2 flex flex-col gap-1">
+              <p className="text-xs text-dfxGray-700">
+                Reset entfernt AmlCheck, AmlReason und priceDefinitionAllowedDate. Die automatische AML-Prüfung
+                entscheidet neu.
+              </p>
+              {hasRefUserHold && <p className="text-xs text-dfxRed-100">{RESET_REF_USER_KYC_HOLD_HINT}</p>}
+              {scorechainHoldKind === 'HighRisk' && scorechainTarget && (
+                <p className="text-xs text-dfxRed-100">{RESET_SCORECHAIN_HOLD_HINT}</p>
+              )}
+            </div>
           ) : (
             <>
               <div className="flex items-center justify-between px-3 py-2 border-b border-dfxGray-300">
@@ -327,6 +361,7 @@ export function AmlCheckPendingPanel({
   onReset,
   onReviewReset,
   onRefUserKycCleared,
+  onScorechainCleared,
 }: AmlCheckPendingPanelProps): JSX.Element {
   const { navigate } = useNavigation();
 
@@ -487,6 +522,7 @@ export function AmlCheckPendingPanel({
             userDataId={ud.id}
             canResetBuyCrypto={canResetBuyCryptoAmlForReview(tx)}
             onRefUserKycCleared={onRefUserKycCleared}
+            onScorechainCleared={onScorechainCleared}
           />
         </div>
       ))}

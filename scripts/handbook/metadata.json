@@ -81,7 +81,7 @@
   },
   "compliance-review-kyc-status": {
     "title": "Compliance KYC-Status",
-    "description": "KYC-Status und AML-Reset in der Compliance-Review sowie das ausstehende ManualCheck-Entscheidungsformular. Liegt InvalidKycStatusRefUser im Kommentar, zeigt die Zeile Empfehler blockiert die Zahlung mit Empfehler-Check aufheben. Fail zeigt AmlReason ohne priceDefinitionAllowedDate; Reset zeigt den Hinweis ohne diese Felder."
+    "description": "KYC-Status und AML-Reset in der Compliance-Review sowie das ausstehende ManualCheck-Entscheidungsformular. Liegt InvalidKycStatusRefUser im Kommentar, zeigt die Zeile Empfehler blockiert die Zahlung mit Empfehler-Check aufheben. Liegt ScorechainHighRisk im Kommentar, zeigt die Zeile Scorechain-Warnung blockiert die Zahlung mit Scorechain quittieren. ScorechainUnavailable zeigt Scorechain-Prüfung ohne Ergebnis mit demselben Button. Fail zeigt AmlReason ohne priceDefinitionAllowedDate; Reset zeigt den Hinweis ohne diese Felder und warnt, wenn Reset den Grund nicht lösen kann."
   },
   "compliance-bank-tx-unassigned": {
     "title": "Compliance: Unzugeordnete Bankeingänge",
@@ -210,6 +210,10 @@
   "dashboard-financial-kundengelder": {
     "title": "Kundengelder-Jahresauszug",
     "description": "Admin-Financial-Dashboard: Jahresauszug der Kundengelder, Kontokarten, Live-gegen-Buchwert-Diffs und CSV-Export."
+  },
+  "dashboard-financial-log-validity": {
+    "title": "Financial-Log-Gültigkeit",
+    "description": "Admin-Screen: Gültigkeit einzelner Logs per ID oder von Financial-Logs per Zeitraum/Schwelle setzen, mit Pflicht-Begründung und Info-Punkt für den Treasury-Chart; Bestätigung vor dem Info-Punkt und Erfolgsmeldung danach."
   },
   "support-ticket-note": {
     "title": "Support-Ticket Kundennotiz",

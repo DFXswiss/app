@@ -10,13 +10,14 @@ import {
   StyledInput,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { ErrorHint } from 'src/components/error-hint';
 import { ConfirmationOverlay } from 'src/components/overlay/confirmation-overlay';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useAdminGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
+import { parseLocalDateTime } from 'src/util/local-date-time.util';
 import { useGuardedApi } from '../hooks/guarded-api.hook';
 
 interface IdFormData {
@@ -28,6 +29,7 @@ interface RangeFormData {
   to: string;
   min: string;
   max: string;
+  reference: string;
 }
 
 interface LogValidityResponse {
@@ -41,6 +43,13 @@ interface FinancialValidityRequest {
   min?: number;
   max?: number;
   valid: boolean;
+  reference: string;
+  auditAll?: boolean;
+}
+
+interface FinancialValidityResponse {
+  affected: number;
+  audited: number;
 }
 
 interface PendingConfirmation {
@@ -67,6 +76,8 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
   const [idLoading, setIdLoading] = useState(false);
   const [idError, setIdError] = useState<string>();
   const [idSuccess, setIdSuccess] = useState<string>();
+  const idSuccessTimeout = useRef<ReturnType<typeof setTimeout> | undefined>();
+  const mountedRef = useRef(false);
 
   const idRules = Utils.createRules({
     id: [Validations.Required, Validations.Custom((value) => (/^\d+$/.test(String(value)) ? true : 'pattern'))],
@@ -77,20 +88,29 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
     setIdError(undefined);
     setIdSuccess(undefined);
 
+    let response: LogValidityResponse | undefined;
+    let callError: unknown = undefined;
     try {
-      const response = await call<LogValidityResponse>({
+      response = await call<LogValidityResponse>({
         url: `log/${data.id}`,
         method: 'PUT',
         data: { valid },
       });
-      setIdSuccess(`Saved: log #${response.id} set to valid = ${valid}`);
-      setTimeout(() => setIdSuccess(undefined), 4000);
-      resetId();
     } catch (e) {
-      setIdError(e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setIdLoading(false);
+      callError = e;
     }
+
+    if (mountedRef.current === false) return;
+
+    if (response === undefined) {
+      setIdError(callError instanceof Error ? callError.message : 'Unknown error');
+    } else {
+      setIdSuccess(`Saved: log #${response.id} set to valid = ${valid}`);
+      if (idSuccessTimeout.current !== undefined) clearTimeout(idSuccessTimeout.current);
+      idSuccessTimeout.current = setTimeout(() => setIdSuccess(undefined), 4000);
+      resetId();
+    }
+    setIdLoading(false);
   }
 
   function requestIdConfirmation(data: IdFormData, valid: boolean) {
@@ -114,16 +134,30 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
     reset: resetRange,
   } = useForm<RangeFormData>({
     mode: 'onTouched',
-    defaultValues: { from: '', to: '', min: '', max: '' },
+    defaultValues: { from: '', to: '', min: '', max: '', reference: '' },
   });
 
   const [rangeLoading, setRangeLoading] = useState(false);
   const [rangeError, setRangeError] = useState<string>();
   const [rangeSuccess, setRangeSuccess] = useState<string>();
+  const rangeSuccessTimeout = useRef<ReturnType<typeof setTimeout> | undefined>();
 
-  // Validate the range form against the backend rules and build the request payload.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (idSuccessTimeout.current !== undefined) clearTimeout(idSuccessTimeout.current);
+      if (rangeSuccessTimeout.current !== undefined) clearTimeout(rangeSuccessTimeout.current);
+    };
+  }, []);
+
+  // Validate the range form against the API rules and build the request payload.
   // Returns undefined (and sets an error) when the input is invalid.
-  function buildRangePayload(data: RangeFormData, valid: boolean): FinancialValidityRequest | undefined {
+  function buildRangePayload(
+    data: RangeFormData,
+    valid: boolean,
+    auditAll: boolean,
+  ): FinancialValidityRequest | undefined {
     const minStr = data.min.trim();
     const maxStr = data.max.trim();
 
@@ -137,73 +171,123 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
       return undefined;
     }
 
-    // The datetime-local field holds local wall-clock time; new Date() reads it as local,
-    // toISOString() then sends the unambiguous UTC instant the backend expects.
-    const fromDate = hasFrom ? new Date(data.from) : undefined;
-    const toDate = hasTo ? new Date(data.to) : undefined;
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const fromResult = hasFrom ? parseLocalDateTime(data.from, timeZone) : undefined;
+    const toResult = hasTo ? parseLocalDateTime(data.to, timeZone) : undefined;
 
-    if (fromDate && isNaN(fromDate.getTime())) {
+    if (fromResult?.status === 'invalid') {
       setRangeError("Invalid 'from' date.");
       return undefined;
     }
-    if (toDate && isNaN(toDate.getTime())) {
+
+    if (toResult?.status === 'invalid') {
       setRangeError("Invalid 'to' date.");
       return undefined;
     }
+
+    if (fromResult?.status === 'ambiguous') {
+      setRangeError("Ambiguous 'from' time (daylight saving change).");
+      return undefined;
+    }
+
+    if (toResult?.status === 'ambiguous') {
+      setRangeError("Ambiguous 'to' time (daylight saving change).");
+      return undefined;
+    }
+
+    const fromDate = fromResult?.status === 'valid' ? fromResult.date : undefined;
+    const toDate = toResult?.status === 'valid' ? toResult.date : undefined;
+
     if (fromDate && toDate && fromDate.getTime() > toDate.getTime()) {
       setRangeError("'from' must be earlier than or equal to 'to'.");
+      return undefined;
+    }
+
+    const numberPattern = /^-?\d+(\.\d+)?$/;
+    if (hasMin && numberPattern.test(minStr) === false) {
+      setRangeError("'min' must be a number.");
+      return undefined;
+    }
+    if (hasMax && numberPattern.test(maxStr) === false) {
+      setRangeError("'max' must be a number.");
       return undefined;
     }
 
     const min = hasMin ? Number(minStr) : undefined;
     const max = hasMax ? Number(maxStr) : undefined;
 
-    if (min !== undefined && isNaN(min)) {
+    if (min !== undefined && Number.isFinite(min) === false) {
       setRangeError("'min' must be a number.");
       return undefined;
     }
-    if (max !== undefined && isNaN(max)) {
+    if (max !== undefined && Number.isFinite(max) === false) {
       setRangeError("'max' must be a number.");
       return undefined;
     }
+
     if (min !== undefined && max !== undefined && min >= max) {
       setRangeError("'min' must be less than 'max'.");
       return undefined;
     }
 
-    const payload: FinancialValidityRequest = { valid };
+    const reference = data.reference.trim();
+    if (!reference) {
+      setRangeError('A reason is required.');
+      return undefined;
+    }
+    if (reference.length > 1024) {
+      setRangeError('The reason must be at most 1024 characters.');
+      return undefined;
+    }
+
+    const payload: FinancialValidityRequest = { valid, reference };
     if (fromDate) payload.from = fromDate.toISOString();
     if (toDate) payload.to = toDate.toISOString();
     if (min !== undefined) payload.min = min;
     if (max !== undefined) payload.max = max;
+    if (auditAll) payload.auditAll = true;
     return payload;
   }
 
   async function executeRange(payload: FinancialValidityRequest) {
     setRangeLoading(true);
+
+    let response: FinancialValidityResponse | undefined;
+    let callError: unknown = undefined;
     try {
-      const response = await call<{ affected: number }>({
+      response = await call<FinancialValidityResponse>({
         url: 'log/financial/validity',
         method: 'PUT',
         data: payload,
       });
-      setRangeSuccess(
-        `Updated ${response.affected} ${response.affected === 1 ? 'entry' : 'entries'} to valid = ${payload.valid}.`,
-      );
-      setTimeout(() => setRangeSuccess(undefined), 4000);
-      resetRange();
     } catch (e) {
-      setRangeError(e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setRangeLoading(false);
+      callError = e;
     }
+
+    if (mountedRef.current === false) return;
+
+    if (response === undefined) {
+      setRangeError(callError instanceof Error ? callError.message : 'Unknown error');
+    } else {
+      setRangeSuccess(
+        payload.auditAll
+          ? response.audited === 0
+            ? 'No matching entries; no info point was recorded.'
+            : `Recorded an info point for ${response.audited} ${response.audited === 1 ? 'entry' : 'entries'} (${response.affected} changed to valid = true).`
+          : `Updated ${response.affected} ${response.affected === 1 ? 'entry' : 'entries'} to valid = ${payload.valid}.`,
+      );
+      if (rangeSuccessTimeout.current !== undefined) clearTimeout(rangeSuccessTimeout.current);
+      rangeSuccessTimeout.current = setTimeout(() => setRangeSuccess(undefined), 4000);
+      resetRange();
+    }
+    setRangeLoading(false);
   }
 
-  function requestRangeConfirmation(data: RangeFormData, valid: boolean) {
+  function requestRangeConfirmation(data: RangeFormData, valid: boolean, auditAll: boolean) {
     setRangeError(undefined);
     setRangeSuccess(undefined);
 
-    const payload = buildRangePayload(data, valid);
+    const payload = buildRangePayload(data, valid, auditAll);
     if (!payload) return;
 
     const filters: string[] = [];
@@ -215,8 +299,17 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
     setConfirmation({
       content: (
         <p className="text-dfxBlue-800 mb-2 text-center">
-          Update all financial data logs matching <strong>{filters.join(', ')}</strong> to valid ={' '}
-          <strong>{String(valid)}</strong>?
+          {auditAll ? (
+            <>
+              Record an info point for all financial data logs matching <strong>{filters.join(', ')}</strong>? Entries
+              that are not valid yet are set to valid = <strong>true</strong>.
+            </>
+          ) : (
+            <>
+              Update all financial data logs matching <strong>{filters.join(', ')}</strong> to valid ={' '}
+              <strong>{String(valid)}</strong>?
+            </>
+          )}
         </p>
       ),
       run: () => executeRange(payload),
@@ -236,6 +329,7 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
             onCancel={() => setConfirmation(undefined)}
             onConfirm={async () => {
               await confirmation.run();
+              if (mountedRef.current === false) return;
               setConfirmation(undefined);
             }}
           />
@@ -290,6 +384,8 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
         <p className="text-sm text-gray-500 mb-4">
           Bulk-update the validity of financial data logs. At least one filter is required. Dates are picked in your
           local time and sent as UTC; from is inclusive, to is exclusive. min/max apply exclusively to totalBalanceChf.
+          A reason is required and is shown on the treasury chart. 'Add info point' records the matched entries on the
+          chart and sets any of them that are not valid to valid = true.
         </p>
 
         <Form control={rangeControl} errors={rangeErrors} translate={translateError} hasFormElement={false}>
@@ -298,7 +394,7 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
             <StyledInput name="to" type="datetime-local" label="To (created <)" full smallLabel />
             <StyledInput
               name="min"
-              type="number"
+              type="text"
               label="Min totalBalanceChf (exclusive)"
               placeholder="0"
               full
@@ -306,19 +402,20 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
             />
             <StyledInput
               name="max"
-              type="number"
+              type="text"
               label="Max totalBalanceChf (exclusive)"
               placeholder="0"
               full
               smallLabel
             />
+            <StyledInput name="reference" label="Reason (shown on the chart)" placeholder="Reason" full smallLabel />
 
             {rangeError && <ErrorHint message={rangeError} />}
 
             <StyledButton
               label="Set valid = true"
               color={StyledButtonColor.GREEN}
-              onClick={handleRangeSubmit((data) => requestRangeConfirmation(data, true))}
+              onClick={handleRangeSubmit((data) => requestRangeConfirmation(data, true, false))}
               width={StyledButtonWidth.FULL}
               isLoading={rangeLoading}
               disabled={rangeLoading}
@@ -326,7 +423,15 @@ export default function DashboardFinancialLogValidityScreen(): JSX.Element {
             <StyledButton
               label="Set valid = false"
               color={StyledButtonColor.RED}
-              onClick={handleRangeSubmit((data) => requestRangeConfirmation(data, false))}
+              onClick={handleRangeSubmit((data) => requestRangeConfirmation(data, false, false))}
+              width={StyledButtonWidth.FULL}
+              isLoading={rangeLoading}
+              disabled={rangeLoading}
+            />
+            <StyledButton
+              label="Add info point (set valid)"
+              color={StyledButtonColor.BLUE}
+              onClick={handleRangeSubmit((data) => requestRangeConfirmation(data, true, true))}
               width={StyledButtonWidth.FULL}
               isLoading={rangeLoading}
               disabled={rangeLoading}

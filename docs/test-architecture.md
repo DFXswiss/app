@@ -180,6 +180,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   screen calls. A green run proves those fixtures render, including the Screen / Screen-all confirm
   dialogs, the insider confirm dialog, a marked-insider dossier, and a running-batch state. It does not prove that the API returns that payload, that login
   works, that the server filters to RealUnit wallets, or that `PUT …/insider` persists `realUnitInsider`.
+- **The Log Validity visual spec answers the app shell itself.**
+  `e2e/dashboard-financial-log-validity.spec.ts` uses a synthetic unsigned Admin JWT and fulfils
+  `/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
+  `/v1/setting/infoBanner` and `/v2/user` with synthetic fixtures, and answers
+  `PUT /v1/log/financial/validity` with a synthetic `{ affected: 1, audited: 3 }`. The screen fetches
+  nothing on mount; other `/v1/**` and `/v2/**` requests are passed through unchanged (`route.continue()`).
+  A green run proves the form, the info-point confirmation and the success message render with the
+  success-state clock frozen.
+  It does not prove production auth, that the API accepts `reference` or `auditAll`, or that it returns
+  `{ affected, audited }`.
 - **Two specs force KYC completeness.** Both collection-invoice cases — the refused QR and the
   stored-detail error — override `**/v2/user` so that `kyc.dataComplete` is read as `true`, because
   the invoice button is gated on that value. A green run therefore proves nothing about the gate for
@@ -236,10 +246,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `{ clerk }` and, as fallback, `GET /v1/support/{id}` for any account other than the customer
   fixture with `{ userData: { verifiedName } }`. A green run proves that the review screen
   accepts that name, not that the API returns the logged-in staff member's `verifiedName`.
-  The spec covers the resettable AML-reset path and the pending ManualCheck decision form
+  The spec covers the resettable AML-reset path, the pending ManualCheck decision form
   in the Fail (AmlReason visible, priceDefinitionAllowedDate hidden) and Reset (hint, both
-  hidden) variants. A green run does not prove live API payloads or that the Editor label
-  is the logged-in staff member's `verifiedName`.
+  hidden) variants, and two synthetic transaction comments, `ScorechainHighRisk` and
+  `ScorechainUnavailable`, that are placeholder hold tokens rather than a screening result.
+  A green run does not prove live API payloads, that Scorechain or the API produced those
+  holds, or that the Editor label is the logged-in staff member's `verifiedName`.
 - **The call-queue outcome spec answers staff identity and the dossier itself.**
   `e2e/compliance-call-queue-outcome.spec.ts` fulfils `GET /v1/support/issue/clerk` with
   `{ clerk }`, a differently named fallback on `GET /v1/support/{staffAccount}`,

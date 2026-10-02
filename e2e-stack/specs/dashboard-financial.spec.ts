@@ -277,7 +277,7 @@ test.describe('Financial dashboard', () => {
     assertNoErrors(pageErrors, consoleErrors);
   });
 
-  test('/dashboard/financial/log-validity: forms render; non-existent log ID yields handled ErrorHint', async ({
+  test('/dashboard/financial/log-validity: ID error, empty range sweep and info point are handled', async ({
     page,
   }) => {
     const { jwt } = await loginAs('Admin');
@@ -289,7 +289,7 @@ test.describe('Financial dashboard', () => {
     await expect(page.getByRole('heading', { name: 'By financial range / threshold' })).toBeVisible();
     await expect(page.getByPlaceholder('1234')).toBeVisible();
 
-    // No financial_log rows in this stack — do not seed via SQL; error path is the reliable write check.
+    // No financial_log rows in this stack — do not seed via SQL. A missing ID exercises the handled error path.
     await page.getByPlaceholder('1234').fill('999999999');
     await page.getByRole('button', { name: 'Set valid = true' }).first().click();
     await expect(page.getByText(/Set validity of log/)).toBeVisible();
@@ -298,6 +298,22 @@ test.describe('Financial dashboard', () => {
     await expect(
       page.getByText('Something went wrong. Please try again. If the issue persists please reach out to our support.'),
     ).toBeVisible();
+
+    // The empty dataset exercises the real range API and deterministically affects zero entries.
+    const rangeSection = page.getByRole('heading', { name: 'By financial range / threshold' }).locator('..');
+    await rangeSection.locator('input[type="datetime-local"]').first().fill('2026-01-01T00:00');
+    await rangeSection.getByPlaceholder('Reason').fill('E2E empty range sweep');
+    await rangeSection.getByRole('button', { name: 'Set valid = false' }).click();
+    await page.getByRole('button', { name: 'Confirm' }).click();
+
+    await expect(page.getByText('Updated 0 entries to valid = false.')).toBeVisible();
+
+    await rangeSection.locator('input[type="datetime-local"]').first().fill('2026-01-01T00:00');
+    await rangeSection.getByPlaceholder('Reason').fill('E2E empty info point');
+    await rangeSection.getByRole('button', { name: 'Add info point (set valid)' }).click();
+    await page.getByRole('button', { name: 'Confirm' }).click();
+
+    await expect(page.getByText('No matching entries; no info point was recorded.')).toBeVisible();
 
     assertNoErrors(pageErrors, consoleErrors);
   });

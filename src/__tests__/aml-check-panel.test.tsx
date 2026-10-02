@@ -30,8 +30,19 @@ jest.mock('src/hooks/staff-verified-name.hook', () => ({
 const mockClearRow = jest.fn();
 
 jest.mock('src/components/compliance/ref-user-kyc-clear-row', () => ({
+  REF_USER_KYC_CLEAR_LABEL: 'Empfehler-Check aufheben',
   RefUserKycClearRow: (props: unknown) => {
     mockClearRow(props);
+    return null;
+  },
+}));
+
+const mockScorechainClearRow = jest.fn();
+
+jest.mock('src/components/compliance/scorechain-clear-row', () => ({
+  SCORECHAIN_CLEAR_LABEL: 'Scorechain quittieren',
+  ScorechainClearRow: (props: unknown) => {
+    mockScorechainClearRow(props);
     return null;
   },
 }));
@@ -46,7 +57,11 @@ jest.mock('src/components/error-hint', () => {
 });
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { AmlCheckPendingPanel } from 'src/components/compliance/aml-check-panel';
+import {
+  AmlCheckPendingPanel,
+  RESET_REF_USER_KYC_HOLD_HINT,
+  RESET_SCORECHAIN_HOLD_HINT,
+} from 'src/components/compliance/aml-check-panel';
 import { ComplianceUserData, TransactionInfo } from 'src/hooks/compliance.hook';
 
 const mockNavigate = jest.fn();
@@ -720,5 +735,122 @@ describe('AmlCheckPendingPanel referrer waiver row', () => {
     });
 
     expect(mockClearRow).not.toHaveBeenCalled();
+  });
+});
+
+describe('AmlCheckPendingPanel Scorechain acknowledgement row', () => {
+  beforeEach(() => {
+    mockAuth.session = { role: 'Compliance' };
+    mockClearRow.mockReset();
+    mockScorechainClearRow.mockReset();
+  });
+
+  it('offers the row for a pending BuyCrypto held by ScorechainHighRisk', () => {
+    const onScorechainCleared = jest.fn().mockResolvedValue(undefined);
+    render(
+      <AmlCheckPendingPanel
+        data={{ ...data, transactions: [pendingTx] }}
+        isSaving={true}
+        onUpdate={jest.fn()}
+        onReset={jest.fn()}
+        onReviewReset={jest.fn()}
+        onScorechainCleared={onScorechainCleared}
+      />,
+    );
+
+    expect(mockScorechainClearRow).toHaveBeenCalledWith({
+      target: { kind: 'buyCrypto', id: 130504 },
+      hold: 'HighRisk',
+      disabled: true,
+      onCleared: onScorechainCleared,
+    });
+  });
+
+  it('offers the row for a pending BuyFiat held by ScorechainUnavailable', () => {
+    renderPanel({
+      transactions: [
+        {
+          ...pendingTx,
+          buyCryptoId: undefined,
+          buyFiatId: 88,
+          sourceType: 'BuyFiat',
+          comment: 'ScorechainUnavailable',
+        },
+      ],
+    });
+
+    expect(mockScorechainClearRow).toHaveBeenCalledWith({
+      target: { kind: 'buyFiat', id: 88 },
+      hold: 'Unavailable',
+      disabled: false,
+      onCleared: undefined,
+    });
+  });
+
+  it('hides the row for any other comment', () => {
+    renderPanel({ transactions: [{ ...pendingTx, comment: 'InvalidKycStatusRefUser' }] });
+
+    expect(mockScorechainClearRow).not.toHaveBeenCalled();
+  });
+
+  it('hides the row when the transaction has neither a BuyCrypto nor a BuyFiat id', () => {
+    renderPanel({ transactions: [{ ...pendingTx, buyCryptoId: undefined }] });
+
+    expect(mockScorechainClearRow).not.toHaveBeenCalled();
+  });
+
+  it('warns that Reset does not resolve a Scorechain high-risk hold', () => {
+    renderPanel();
+
+    expect(screen.queryByText(RESET_SCORECHAIN_HOLD_HINT)).not.toBeInTheDocument();
+    fireEvent.change(amlCheckSelect(), { target: { value: 'Reset' } });
+
+    expect(screen.getByText(RESET_SCORECHAIN_HOLD_HINT)).toBeInTheDocument();
+    expect(screen.queryByText(RESET_REF_USER_KYC_HOLD_HINT)).not.toBeInTheDocument();
+  });
+
+  it('does not warn on Reset for an unavailable screening, which Reset may resolve', () => {
+    renderPanel({ transactions: [{ ...pendingTx, comment: 'ScorechainUnavailable' }] });
+
+    fireEvent.change(amlCheckSelect(), { target: { value: 'Reset' } });
+
+    expect(screen.queryByText(RESET_SCORECHAIN_HOLD_HINT)).not.toBeInTheDocument();
+  });
+
+  it('does not warn on Reset for a high-risk hold it cannot acknowledge', () => {
+    renderPanel({ transactions: [{ ...pendingTx, buyCryptoId: undefined }] });
+
+    fireEvent.change(amlCheckSelect(), { target: { value: 'Reset' } });
+
+    expect(screen.queryByText(RESET_SCORECHAIN_HOLD_HINT)).not.toBeInTheDocument();
+  });
+
+  it('warns that Reset does not resolve a referrer hold', () => {
+    renderPanel({ transactions: [{ ...pendingTx, comment: 'InvalidKycStatusRefUser' }] });
+
+    fireEvent.change(amlCheckSelect(), { target: { value: 'Reset' } });
+
+    expect(screen.getByText(RESET_REF_USER_KYC_HOLD_HINT)).toBeInTheDocument();
+    expect(screen.queryByText(RESET_SCORECHAIN_HOLD_HINT)).not.toBeInTheDocument();
+  });
+
+  it('does not warn on Reset for a referrer hold without a user data id', () => {
+    renderPanel({
+      userData: { kycStatus: 'Check', kycLevel: 50 } as ComplianceUserData['userData'],
+      transactions: [{ ...pendingTx, comment: 'InvalidKycStatusRefUser' }],
+    });
+
+    fireEvent.change(amlCheckSelect(), { target: { value: 'Reset' } });
+
+    expect(screen.queryByText(RESET_REF_USER_KYC_HOLD_HINT)).not.toBeInTheDocument();
+  });
+
+  it('names the action the clerk has to use instead of Reset', () => {
+    expect(RESET_SCORECHAIN_HOLD_HINT).toBe(
+      'Reset hilft hier nicht: Die Scorechain-Warnung kommt bei jeder Prüfung wieder. Verwende «Scorechain quittieren».',
+    );
+    expect(RESET_REF_USER_KYC_HOLD_HINT).toBe(
+      'Reset hilft hier nicht: Der Empfehler blockiert die Zahlung bei jeder Prüfung wieder. Verwende «Empfehler-Check aufheben».',
+    );
   });
 });
