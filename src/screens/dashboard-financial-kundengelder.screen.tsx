@@ -411,7 +411,7 @@ export default function DashboardFinancialKundengelderScreen(): JSX.Element {
                       <Fragment key={line.key}>
                         <tr
                           className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
-                          onClick={() => onLineClick(account.key, account.key, line.key)}
+                          onClick={() => onLineClick(account.key, account.iban ?? account.key, line.key)}
                         >
                           <td className="py-1.5 px-3">{line.label}</td>
                           <td className="py-1.5 px-3 text-right">{line.count}</td>
@@ -711,7 +711,7 @@ function SheetSide({
                 <td className="py-1.5 px-3">{line.date ?? ''}</td>
                 <td className="py-1.5 px-3">{line.label}</td>
                 <td className="py-1.5 px-3 text-right">
-                  {line.amount.toLocaleString('de-CH')} {currency}
+                  {formatAmount(line.amount)} {currency}
                 </td>
               </tr>
               {open && (
@@ -729,7 +729,7 @@ function SheetSide({
           <td className="py-1.5 px-3" />
           <td className="py-1.5 px-3 font-semibold">Summe</td>
           <td className="py-1.5 px-3 text-right font-semibold">
-            {sum.toLocaleString('de-CH')} {currency}
+            {formatAmount(sum)} {currency}
           </td>
         </tr>
       </tbody>

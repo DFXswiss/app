@@ -666,6 +666,76 @@ describe('DashboardFinancialKundengelderScreen', () => {
     expect(screen.queryByRole('option', { name: 'Checkout Ltd CHF ·' })).not.toBeInTheDocument();
   });
 
+  it('shows a bank without a sheet as a card and a Konto option', async () => {
+    const existing: KundengelderSheet = {
+      key: 'CH9300762011623852957|CHF',
+      name: 'Maerki Baumann CHF',
+      iban: 'CH9300762011623852957',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [existing] });
+    mockGetDfxBanks.mockResolvedValue([{ name: 'Kaleido', iban: 'CH6008245111962200001', currency: 'CHF' }]);
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Kaleido CHF' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Kaleido CHF · CH6008245111962200001' })).toBeInTheDocument();
+  });
+
+  it('shows the second currency of the same IBAN as its own card and option', async () => {
+    const revolutChf: KundengelderSheet = {
+      key: 'GB77REVO00996972945099|CHF',
+      name: 'Revolut CHF',
+      iban: 'GB77REVO00996972945099',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [revolutChf] });
+    mockGetDfxBanks.mockResolvedValue([
+      { name: 'Revolut', iban: 'GB77REVO00996972945099', currency: 'CHF' },
+      { name: 'Revolut', iban: 'GB77REVO00996972945099', currency: 'EUR' },
+    ]);
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findByRole('heading', { name: 'Revolut CHF' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: 'Revolut CHF' })).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'Revolut EUR' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Revolut CHF · GB77REVO00996972945099' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Revolut EUR · GB77REVO00996972945099' })).toBeInTheDocument();
+  });
+
+  it('does not duplicate a sheet that already matches the bank IBAN and currency', async () => {
+    const kaleido: KundengelderSheet = {
+      key: '10037',
+      name: 'Kaleido Privatbank CHF',
+      iban: 'CH6008245111962200001',
+      currency: 'CHF',
+      soll: [],
+      haben: [],
+      sollSum: 0,
+      habenSum: 0,
+      control: 0,
+    };
+    mockGetKundengelderExtract.mockResolvedValue({ ...EXTRACT, sheets: [kaleido] });
+    mockGetDfxBanks.mockResolvedValue([{ name: 'Kaleido', iban: 'CH6008245111962200001', currency: 'CHF' }]);
+
+    render(<DashboardFinancialKundengelderScreen />);
+
+    expect(await screen.findAllByRole('heading', { name: 'Kaleido Privatbank CHF' })).toHaveLength(1);
+    expect(screen.getAllByRole('option', { name: 'Kaleido Privatbank CHF · CH6008245111962200001' })).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'Kaleido CHF' })).not.toBeInTheDocument();
+  });
+
   it('renders Haben for a negative opening-check balance and omits Soll or Haben at zero', async () => {
     const sheet: KundengelderSheet = {
       key: 'CH3408573177975200001|CHF',

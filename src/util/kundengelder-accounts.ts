@@ -1,43 +1,115 @@
-import { DfxBankAccount, KundengelderAccount, KundengelderExtract } from 'src/dto/dashboard.dto';
+import { DfxBankAccount, KundengelderAccount, KundengelderExtract, KundengelderSheet } from 'src/dto/dashboard.dto';
 
 function bankTitle(bank: DfxBankAccount): string {
-  return `${bank.name} ${bank.currency}`.trim();
+  return `${bank.name} ${bank.currency.trim()}`.trim();
+}
+
+function pairKey(iban: string, currency: string): string {
+  return `${iban}|${currency}`;
+}
+
+function findExistingAccount(
+  accounts: KundengelderAccount[],
+  iban: string,
+  currency: string,
+): KundengelderAccount | undefined {
+  const composite = pairKey(iban, currency);
+  return (
+    accounts.find((account) => account.key === composite) ??
+    accounts.find(
+      (account) => account.currency.trim() === currency && (account.iban?.trim() === iban || account.key === iban),
+    )
+  );
+}
+
+function sheetMatchesBank(sheet: KundengelderSheet, iban: string, currency: string): boolean {
+  const sheetCurrency = sheet.currency.trim();
+  return (
+    (sheet.iban?.trim() === iban && sheetCurrency === currency) ||
+    sheet.key === pairKey(iban, currency) ||
+    (sheet.key === iban && sheetCurrency === currency)
+  );
+}
+
+function emptyBankSheet(bank: DfxBankAccount, iban: string, currency: string): KundengelderSheet {
+  return {
+    key: pairKey(iban, currency),
+    name: bankTitle(bank),
+    iban,
+    currency,
+    soll: [],
+    haben: [],
+    rows: [],
+    sollSum: 0,
+    habenSum: 0,
+    control: 0,
+  };
 }
 
 /**
  * Every DFX bank account stays on the extract, including a year with no movements.
  * Checkout stays, and Crypto-Crypto is not an account option.
+ * When sheets are present, banks without a matching sheet are appended as empty sheets.
  */
 export function withEveryBankAccount(extract: KundengelderExtract, banks: DfxBankAccount[]): KundengelderExtract {
-  const byKey = new Map(extract.accounts.map((account) => [account.key, account]));
-  const seen = new Set<string>();
   const accounts: KundengelderAccount[] = [];
+  const seen = new Set<string>();
   const sorted = [...banks].sort(
     (a, b) => a.name.localeCompare(b.name) || a.currency.localeCompare(b.currency) || a.iban.localeCompare(b.iban),
   );
 
   for (const bank of sorted) {
     const iban = bank.iban.trim();
-    if (!iban || !bank.currency.trim() || seen.has(iban)) continue;
-    seen.add(iban);
-    const existing = byKey.get(iban);
+    const currency = bank.currency.trim();
+    if (!iban || !currency) continue;
+    const pair = pairKey(iban, currency);
+    if (seen.has(pair)) continue;
+    seen.add(pair);
+
+    const existing = findExistingAccount(extract.accounts, iban, currency);
     if (existing) {
+      seen.add(existing.key);
       accounts.push({ ...existing, name: bankTitle(bank), iban });
       continue;
     }
     accounts.push({
-      key: iban,
+      key: pair,
       name: bankTitle(bank),
       iban,
-      currency: bank.currency,
+      currency,
       lines: [],
     });
   }
 
   for (const account of extract.accounts) {
     if (account.key === 'CryptoCrypto') continue;
-    if (!seen.has(account.key)) accounts.push(account);
+    if (seen.has(account.key)) continue;
+    const iban = account.iban?.trim();
+    const currency = account.currency.trim();
+    if (iban && currency && seen.has(pairKey(iban, currency))) continue;
+    accounts.push(account);
   }
 
-  return { ...extract, accounts };
+  const sourceSheets = extract.sheets;
+  if (!sourceSheets || sourceSheets.length === 0) {
+    return { ...extract, accounts };
+  }
+
+  const extraSheets: KundengelderSheet[] = [];
+  const seenSheetPairs = new Set<string>();
+  for (const bank of sorted) {
+    const iban = bank.iban.trim();
+    const currency = bank.currency.trim();
+    if (!iban || !currency) continue;
+    const pair = pairKey(iban, currency);
+    if (seenSheetPairs.has(pair)) continue;
+    seenSheetPairs.add(pair);
+    if (sourceSheets.some((sheet) => sheetMatchesBank(sheet, iban, currency))) continue;
+    extraSheets.push(emptyBankSheet(bank, iban, currency));
+  }
+
+  if (extraSheets.length === 0) {
+    return { ...extract, accounts };
+  }
+  return { ...extract, accounts, sheets: [...sourceSheets, ...extraSheets] };
 }
