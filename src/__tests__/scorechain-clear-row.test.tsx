@@ -67,6 +67,16 @@ describe('ScorechainClearRow', () => {
     expect(screen.getByText(SCORECHAIN_CLEAR_HINT.Unavailable)).toBeInTheDocument();
   });
 
+  // Acknowledging a high-risk hold on a payout exempts the payout address on the API side; the clerk
+  // has to read that before clicking, and an unavailable result must not promise it.
+  it('tells the clerk that a high-risk acknowledgement also covers the payout address', () => {
+    expect(SCORECHAIN_CLEAR_HINT.HighRisk).toContain(
+      'Bei einem Kauf per Banküberweisung gilt zusätzlich die Auszahlungsadresse 180 Tage als geprüft',
+    );
+    expect(SCORECHAIN_CLEAR_HINT.HighRisk).toContain('ein Sanktionstreffer führt weiterhin zur Ablehnung');
+    expect(SCORECHAIN_CLEAR_HINT.Unavailable).not.toContain('Auszahlungsadresse');
+  });
+
   it('asks for confirmation, calls the API, shows the summary and reloads the owner', async () => {
     const call = pending();
     mockClear.mockReturnValue(call.promise);

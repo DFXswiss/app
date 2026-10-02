@@ -21,10 +21,11 @@ export const SCORECHAIN_CLEAR_TITLE: Record<ScorechainHold, string> = {
 
 export const SCORECHAIN_CLEAR_HINT: Record<ScorechainHold, string> = {
   HighRisk:
-    'Scorechain hat bei dieser Zahlung ein hohes Risiko gemeldet. Prüfe zuerst die Scorechain-Ansicht ' +
-    '(Link im Kommentar). Quittieren heisst: Du hast die Warnung geprüft, für diese Zahlung gilt sie als ' +
-    'erledigt. Die Zahlung wird danach automatisch neu geprüft und freigegeben, wenn kein weiterer Fehler ' +
-    'offen ist. Wird im Support-Log mit deinem Namen festgehalten.',
+    'Quittieren heisst: Du hast die Warnung geprüft, für diese Zahlung gilt sie als erledigt. Bei einem Kauf ' +
+    'per Banküberweisung gilt zusätzlich die Auszahlungsadresse 180 Tage als geprüft: Weitere Auszahlungen ' +
+    'an diese Adresse werden wegen derselben Warnung nicht mehr angehalten, ein Sanktionstreffer führt ' +
+    'weiterhin zur Ablehnung. Die Zahlung wird danach automatisch neu geprüft und freigegeben, wenn kein ' +
+    'weiterer Fehler offen ist. Wird im Support-Log mit deinem Namen festgehalten.',
   Unavailable:
     'Scorechain hat für diese Zahlung kein Ergebnis geliefert. Quittieren heisst: Du hast die Zahlung ohne ' +
     'Scorechain-Ergebnis geprüft, für diese Zahlung gilt der Fehler als erledigt. Die Zahlung wird danach ' +
@@ -44,6 +45,8 @@ function targetKey(target: ScorechainClearTarget): string {
 // One row inside the AML decision box, shown only while the transaction carries ScorechainHighRisk or
 // ScorechainUnavailable: the per-transaction acknowledgement of that hold. Reset alone runs into the same
 // hold again. Not a Pass — the API resets the transaction and the automatic AML run decides again.
+// Acknowledging a HighRisk hold on a payout also makes the API exempt the reviewed payout address
+// (DFXswiss/backend SCORECHAIN-RISK-POLICY.md), which the HighRisk hint tells the clerk.
 export function ScorechainClearRow({ target, hold, disabled, onCleared }: Readonly<Props>): JSX.Element {
   const { clearScorechain } = useScorechainClear();
 
