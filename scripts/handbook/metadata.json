@@ -81,7 +81,7 @@
   },
   "compliance-review-kyc-status": {
     "title": "Compliance KYC-Status",
-    "description": "KYC-Status und AML-Reset in der Compliance-Review sowie das ausstehende ManualCheck-Entscheidungsformular. Liegt InvalidKycStatusRefUser im Kommentar, zeigt die Zeile Empfehler blockiert die Zahlung mit Empfehler-Check aufheben. Liegt ScorechainHighRisk im Kommentar, zeigt die Zeile Scorechain-Warnung blockiert die Zahlung mit Scorechain quittieren. ScorechainUnavailable zeigt Scorechain-Prüfung ohne Ergebnis mit demselben Button. Fail zeigt AmlReason ohne priceDefinitionAllowedDate; Reset zeigt den Hinweis ohne diese Felder und warnt, wenn Reset den Grund nicht lösen kann."
+    "description": "KYC-Status und AML-Reset in der Compliance-Review sowie das ausstehende ManualCheck-Entscheidungsformular. Liegt InvalidKycStatusRefUser im Kommentar, zeigt die Zeile Empfehler blockiert die Zahlung mit Empfehler-Check aufheben. Liegt ScorechainHighRisk im Kommentar, zeigt die Zeile Scorechain-Warnung blockiert die Zahlung mit Scorechain quittieren. ScorechainUnavailable zeigt Scorechain-Prüfung ohne Ergebnis mit demselben Button. Liegt NameCheckUnavailable im Kommentar, sagt ein Hinweis, dass der Namenscheck nicht ausgeführt werden konnte, kein Treffer ist und Reset ihn wiederholt. Fail zeigt AmlReason ohne priceDefinitionAllowedDate; Reset zeigt den Hinweis ohne diese Felder und warnt, wenn Reset den Grund nicht lösen kann."
   },
   "compliance-bank-tx-unassigned": {
     "title": "Compliance: Unzugeordnete Bankeingänge",

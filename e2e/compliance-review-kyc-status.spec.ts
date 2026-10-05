@@ -392,4 +392,53 @@ test.describe('Compliance review KYC and AML actions', () => {
 
     expect(unexpectedRequests).toEqual([]);
   });
+
+  test('shows the Reset hint for a name check that could not be completed', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1200 });
+
+    const pendingFixture = structuredClone(complianceFixture);
+    pendingFixture.transactions = [
+      {
+        id: 400001,
+        uid: 'synthetic-buy-crypto-150001',
+        buyCryptoId: 150001,
+        type: 'Buy',
+        sourceType: 'BuyCrypto',
+        inputAmount: 100,
+        inputAsset: 'EUR',
+        outputAsset: 'BTC',
+        amountInChf: 93.5,
+        amlCheck: 'Pending',
+        amlReason: 'ManualCheck',
+        isCompleted: false,
+        buyCryptoIsComplete: false,
+        buyCryptoStatus: 'Created',
+        buyCryptoHasBatch: false,
+        buyCryptoHasChargeback: false,
+        buyCryptoReviewResetBlocked: false,
+        created: '2026-10-01T09:00:00.000Z',
+        comment: 'NameCheckUnavailable',
+      },
+    ];
+
+    const { unexpectedRequests } = await installSyntheticApi(page, pendingFixture);
+
+    await page.goto(`/compliance/user/${USER_DATA_ID}/kyc?session=${jwt()}&tab=amlPending`);
+
+    await expect(page.getByText('AmlCheck', { exact: true })).toBeVisible();
+    const hint = page.getByText(
+      'Der Namenscheck konnte nicht ausgeführt werden. Das ist kein Treffer. Reset wiederholt ihn.',
+    );
+    await expect(hint).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Scorechain quittieren' })).toHaveCount(0);
+
+    await hint.scrollIntoViewIfNeeded();
+
+    await expect(page).toHaveScreenshot('compliance-review-aml-pending-name-check-unavailable.png', {
+      fullPage: true,
+      maxDiffPixels: 5000,
+    });
+
+    expect(unexpectedRequests).toEqual([]);
+  });
 });

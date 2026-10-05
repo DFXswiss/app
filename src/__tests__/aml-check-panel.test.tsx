@@ -59,6 +59,7 @@ jest.mock('src/components/error-hint', () => {
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   AmlCheckPendingPanel,
+  NAME_CHECK_UNAVAILABLE_HINT,
   RESET_REF_USER_KYC_HOLD_HINT,
   RESET_SCORECHAIN_HOLD_HINT,
 } from 'src/components/compliance/aml-check-panel';
@@ -843,6 +844,41 @@ describe('AmlCheckPendingPanel Scorechain acknowledgement row', () => {
     fireEvent.change(amlCheckSelect(), { target: { value: 'Reset' } });
 
     expect(screen.queryByText(RESET_REF_USER_KYC_HOLD_HINT)).not.toBeInTheDocument();
+  });
+
+  it('tells the clerk that a failed name check is no hit and that Reset repeats it', () => {
+    renderPanel({ transactions: [{ ...pendingTx, comment: 'NameCheckUnavailable' }] });
+
+    expect(screen.getByText(NAME_CHECK_UNAVAILABLE_HINT)).toBeInTheDocument();
+  });
+
+  it('shows the name-check hint next to another error in the comment', () => {
+    renderPanel({ transactions: [{ ...pendingTx, comment: 'UserDataBlocked;NameCheckUnavailable' }] });
+
+    expect(screen.getByText(NAME_CHECK_UNAVAILABLE_HINT)).toBeInTheDocument();
+  });
+
+  it('keeps the name-check hint visible when Reset is chosen', () => {
+    renderPanel({ transactions: [{ ...pendingTx, comment: 'NameCheckUnavailable' }] });
+
+    fireEvent.change(amlCheckSelect(), { target: { value: 'Reset' } });
+
+    expect(screen.getByText(NAME_CHECK_UNAVAILABLE_HINT)).toBeInTheDocument();
+  });
+
+  it.each(['ScorechainHighRisk', 'NameCheckWithBirthday', 'NameCheckWithoutKYC'])(
+    'shows no name-check hint for the comment %s',
+    (comment) => {
+      renderPanel({ transactions: [{ ...pendingTx, comment }] });
+
+      expect(screen.queryByText(NAME_CHECK_UNAVAILABLE_HINT)).not.toBeInTheDocument();
+    },
+  );
+
+  it('words the name-check hint so that it is not read as a sanction finding', () => {
+    expect(NAME_CHECK_UNAVAILABLE_HINT).toBe(
+      'Der Namenscheck konnte nicht ausgeführt werden. Das ist kein Treffer. Reset wiederholt ihn.',
+    );
   });
 
   it('names the action the clerk has to use instead of Reset', () => {
