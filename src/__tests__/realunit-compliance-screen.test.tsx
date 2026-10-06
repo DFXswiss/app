@@ -154,6 +154,12 @@ describe('RealunitComplianceScreen on-demand load and filters', () => {
     await loadAll();
     expect(mockSearchCustomers).toHaveBeenCalledWith(undefined);
     expect(screen.getByText('Alice Muster')).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('row', { name: /Alice Muster/ })).getByRole('cell', { name: 'No', exact: true }),
+    ).toBeInTheDocument();
+    const emptyRow = screen.getByRole('cell', { name: '2' }).closest('tr');
+    if (emptyRow == null) throw new Error('expected empty-account row');
+    expect(within(emptyRow).getByRole('cell', { name: 'Yes', exact: true })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();
   });
 
