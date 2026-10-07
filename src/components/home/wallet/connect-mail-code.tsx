@@ -100,10 +100,10 @@ export default function ConnectMailCode({
       if (apiError.statusCode === 401) {
         const nextAttempts = attempts + 1;
         setAttempts(nextAttempts);
-        if (nextAttempts >= MAX_CODE_ATTEMPTS) {
-          setStatus('locked');
-        } else if (Date.now() - requestedAt >= CODE_VALIDITY_MS) {
+        if (Date.now() - requestedAt >= CODE_VALIDITY_MS) {
           setStatus('expired');
+        } else if (nextAttempts >= MAX_CODE_ATTEMPTS) {
+          setStatus('locked');
         } else {
           setStatus('invalid');
           resetField('code');

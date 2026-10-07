@@ -261,19 +261,50 @@ describe('ConnectMailCode', () => {
     expect(screen.getByText('This code has expired. Please request a new code.')).toBeInTheDocument();
   });
 
+  it('reports an expired code rather than a lockout when the last attempt fails after the validity', async () => {
+    mockSignInWithMailCode.mockRejectedValue({ statusCode: 401 });
+    renderCode();
+
+    for (let attempt = 1; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
+      await submitCode();
+    }
+
+    const exchange = deferred<{ accessToken: string }>();
+    mockSignInWithMailCode.mockReturnValueOnce(exchange.promise);
+    enterCode();
+    fireEvent.submit(screen.getByTestId('form'));
+    await waitFor(() => expect(mockSignInWithMailCode).toHaveBeenCalledTimes(MAX_CODE_ATTEMPTS));
+
+    now += CODE_VALIDITY_MS;
+    await act(async () => exchange.reject({ statusCode: 401 }));
+
+    expect(screen.getByText('This code has expired. Please request a new code.')).toBeInTheDocument();
+    expect(screen.queryByText('Too many incorrect attempts. Please request a new code.')).not.toBeInTheDocument();
+  });
+
   it.each([
     [429, 'Too many attempts. Please wait a moment and try again.'],
     [500, 'Something went wrong. Please try again.'],
   ])('maps exchange error %s to a generic message without counting an attempt', async (statusCode, message) => {
-    mockSignInWithMailCode.mockRejectedValueOnce({ statusCode });
+    mockSignInWithMailCode.mockRejectedValue({ statusCode: 401 });
     renderCode();
 
+    // Three incorrect attempts, then the failure under test, then a fourth incorrect attempt: had the failure been
+    // counted, that last attempt would be the fifth and lock the code.
+    for (let attempt = 1; attempt < MAX_CODE_ATTEMPTS - 1; attempt += 1) {
+      await submitCode();
+    }
+
+    mockSignInWithMailCode.mockRejectedValueOnce({ statusCode });
     await submitCode();
     expect(screen.getByText(message)).toBeInTheDocument();
 
-    mockSignInWithMailCode.mockRejectedValueOnce({ statusCode: 401 });
     await submitCode();
     expect(screen.getByText('The code is incorrect. Please check it and try again.')).toBeInTheDocument();
+    expect(screen.getByLabelText('6-digit code')).toBeInTheDocument();
+
+    await submitCode();
+    expect(screen.getByText('Too many incorrect attempts. Please request a new code.')).toBeInTheDocument();
   });
 
   it('resends, clears the current status and resets incorrect attempts', async () => {
