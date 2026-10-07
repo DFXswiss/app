@@ -263,4 +263,192 @@ describe('SparPlaceMap', () => {
     expect(placesCalls()[0][0]).toBe(SPAR_PLACES_URL);
     expect(mockSetLngLat).not.toHaveBeenCalled();
   });
+
+  it('aborts the open SPAR request when the country changes and does not show a load error', async () => {
+    const pending: Array<() => void> = [];
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url === FILTERS_URL) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => FILTERS,
+        });
+      }
+      if (url === SPAR_PLACES_URL) {
+        return new Promise<void>((resolve) => {
+          pending.push(resolve);
+        }).then(() => ({
+          ok: true,
+          json: async () => PLACES_FIXTURE,
+        }));
+      }
+      if (typeof url === 'string' && url.startsWith(`${PLACES_PREFIX}?`)) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => PLACES_FIXTURE,
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+
+    render(<SparPlaceMap />);
+
+    await screen.findByLabelText('Country');
+    await waitFor(() => {
+      expect(placesUrls()).toContain(SPAR_PLACES_URL);
+    });
+
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'CH' } });
+
+    await waitFor(() => {
+      const openSpar = placesCalls().filter(([url]) => url === SPAR_PLACES_URL);
+      expect(openSpar.length).toBeGreaterThan(0);
+      expect(openSpar.every(([, init]) => init.signal instanceof AbortSignal && init.signal.aborted)).toBe(true);
+    });
+
+    for (const resolve of pending) resolve();
+
+    await waitFor(() => {
+      expect(placesUrls()).toContain(SPAR_CH_PLACES_URL);
+    });
+    expect(screen.queryByText('The place list could not be loaded.')).not.toBeInTheDocument();
+    expectNoOriginAndNoUnfilteredPlaces();
+  });
+
+  it('aborts the open SPAR request when the shop changes and does not show a load error', async () => {
+    const pending: Array<() => void> = [];
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url === FILTERS_URL) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => FILTERS,
+        });
+      }
+      if (url === SPAR_PLACES_URL) {
+        return new Promise<void>((resolve) => {
+          pending.push(resolve);
+        }).then(() => ({
+          ok: true,
+          json: async () => PLACES_FIXTURE,
+        }));
+      }
+      if (typeof url === 'string' && url.startsWith(`${PLACES_PREFIX}?`)) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => PLACES_FIXTURE,
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+
+    render(<SparPlaceMap />);
+
+    await screen.findByLabelText('Shop');
+    await waitFor(() => {
+      expect(placesUrls()).toContain(SPAR_PLACES_URL);
+    });
+
+    fireEvent.change(screen.getByLabelText('Shop'), { target: { value: 'others' } });
+
+    await waitFor(() => {
+      const openSpar = placesCalls().filter(([url]) => url === SPAR_PLACES_URL);
+      expect(openSpar.length).toBeGreaterThan(0);
+      expect(openSpar.every(([, init]) => init.signal instanceof AbortSignal && init.signal.aborted)).toBe(true);
+    });
+
+    for (const resolve of pending) resolve();
+
+    await waitFor(() => {
+      expect(placesUrls()).toContain(OTHERS_PLACES_URL);
+    });
+    expect(screen.queryByText('The place list could not be loaded.')).not.toBeInTheDocument();
+    expectNoOriginAndNoUnfilteredPlaces();
+  });
+
+  it('shows the load error and does not fetch places when filters are not ok', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url === FILTERS_URL) {
+        return Promise.resolve({
+          ok: false,
+          json: async () => FILTERS,
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+
+    render(<SparPlaceMap />);
+
+    expect(await screen.findByText('The place list could not be loaded.')).toBeInTheDocument();
+    expect(placesCalls()).toHaveLength(0);
+    expect(fetchCalls().map(([url]) => url)).not.toContain(UNFILTERED_PLACES_URL);
+    expect(mockMap).not.toHaveBeenCalled();
+  });
+
+  it('shows the load error and does not fetch places when the filters body has no country list', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url === FILTERS_URL) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({}),
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+
+    render(<SparPlaceMap />);
+
+    expect(await screen.findByText('The place list could not be loaded.')).toBeInTheDocument();
+    expect(placesCalls()).toHaveLength(0);
+    expect(fetchCalls().map(([url]) => url)).not.toContain(UNFILTERED_PLACES_URL);
+    expect(mockMap).not.toHaveBeenCalled();
+  });
+
+  it('shows the load error and does not construct a map when the places response is not ok', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url === FILTERS_URL) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => FILTERS,
+        });
+      }
+      if (typeof url === 'string' && url.startsWith(`${PLACES_PREFIX}?`)) {
+        return Promise.resolve({
+          ok: false,
+          json: async () => PLACES_FIXTURE,
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+
+    render(<SparPlaceMap />);
+
+    expect(await screen.findByText('The place list could not be loaded.')).toBeInTheDocument();
+    expect(placesCalls()[0][0]).toBe(SPAR_PLACES_URL);
+    expectNoOriginAndNoUnfilteredPlaces();
+    expect(mockMap).not.toHaveBeenCalled();
+  });
+
+  it('shows the load error and does not construct a map when the places body has no place list', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url === FILTERS_URL) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => FILTERS,
+        });
+      }
+      if (typeof url === 'string' && url.startsWith(`${PLACES_PREFIX}?`)) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({}),
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch ${url}`));
+    });
+
+    render(<SparPlaceMap />);
+
+    expect(await screen.findByText('The place list could not be loaded.')).toBeInTheDocument();
+    expect(placesCalls()[0][0]).toBe(SPAR_PLACES_URL);
+    expectNoOriginAndNoUnfilteredPlaces();
+    expect(mockMap).not.toHaveBeenCalled();
+  });
 });
