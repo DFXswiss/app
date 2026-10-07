@@ -1496,7 +1496,7 @@ function BeneficialOwner({ rootRef, code, isLoading, step, onDone }: EditProps):
 
       case BeneficialDataStep.CONTACT_DATA:
         if (ownerIndex + 1 < requiredOwnerCount) {
-          setOwnerIndex((i) => (i ?? -1) + 1);
+          setOwnerIndex((i) => i + 1);
           clearInputs();
           return;
         }
