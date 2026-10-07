@@ -405,14 +405,14 @@ export function useMetaMask(): MetaMaskInterface {
 
       // Check if wallet supports paymaster
       const supported = await supportsEip5792Paymaster(chainId);
+      const provider = ethereum();
+      if (!provider) throw new TranslatedError(PROVIDER_MISSING_HINT);
+
       if (!supported) {
         throw new TranslatedError(
           'Your wallet does not support gasless transactions. Please update MetaMask to v12.20+ and enable Smart Account.',
         );
       }
-
-      const provider = ethereum();
-      if (!provider) throw new TranslatedError(PROVIDER_MISSING_HINT);
 
       // Send calls with paymaster capability
       const result = await provider.request({

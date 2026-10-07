@@ -1235,6 +1235,26 @@ describe('useMetaMask', () => {
       );
     });
 
+    it('reports a missing wallet when it disappears during the paymaster support check', async () => {
+      let accountRequests = 0;
+      const request = mockRequest(async ({ method }) => {
+        if (method === 'eth_accounts') {
+          accountRequests += 1;
+          if (accountRequests === 2) (window as any).ethereum = undefined;
+          return [TEST_ACCOUNT];
+        }
+        return null;
+      });
+      installedProvider(request);
+
+      const { result } = renderHook(() => useMetaMask());
+
+      await expect(result.current.sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow(
+        MISSING_PROVIDER,
+      );
+      expect(request).toHaveBeenCalledTimes(2);
+    });
+
     it('rejects when the provider disappears before the gasless calls are sent', async () => {
       const request = mockRequest(async ({ method }) => {
         if (method === 'eth_accounts') return [TEST_ACCOUNT];
