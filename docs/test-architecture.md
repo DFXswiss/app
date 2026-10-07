@@ -352,6 +352,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   fixtures render. It does not prove that those bootstrap endpoints return real data,
   that a live account has that kyc status, or that `deleteAccount` persists against
   the API.
+- **The mail deep-link visual spec answers POST /v1/auth/mail itself.**
+  `e2e/mail-deeplink-call-anchor.spec.ts` fulfils that request with an empty success response after
+  capturing its `redirectUri`. A green run does not prove that the API accepts the mail address,
+  sends a mail or builds the magic link correctly.
 - **The info-banner layout visual spec answers GET /v1/setting/infoBanner itself.**
   `e2e/info-banner-layout.spec.ts` fulfils `/v1/setting/infoBanner` with synthetic
   multilingual copy, fulfils `GET /v1/support/issue` with one fixture ticket, and

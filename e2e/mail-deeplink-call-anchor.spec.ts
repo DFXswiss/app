@@ -25,7 +25,7 @@ test.describe('Mail deep-link a=call survives login redirect memory', () => {
   test('unauthenticated /settings?a=call → /login keeps a=call in redirectPath', async ({ page }) => {
     let capturedRedirectUri: string | undefined;
 
-    await page.route('**/*', async (route) => {
+    await page.route('**/v1/auth/mail', async (route) => {
       const request = route.request();
       if (request.method() === 'POST') {
         try {
