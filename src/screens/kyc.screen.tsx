@@ -1891,7 +1891,7 @@ function Ident({ code, step, lang, onDone, onBack, onError }: EditProps): JSX.El
               return Promise.resolve('');
             }}
             config={{ lang: lang.symbol.toLowerCase() }}
-            onMessage={(type: string, payload?: Partial<Pick<SumsubMessage, 'reviewResult'>>) => {
+            onMessage={(type: string, payload?: { reviewResult?: Partial<SumsubMessage['reviewResult']> }) => {
               switch (type) {
                 case 'idCheck.onApplicantStatusChanged':
                   if (
