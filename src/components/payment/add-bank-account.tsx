@@ -12,7 +12,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useSettingsContext } from '../../contexts/settings.context';
 import { ErrorHint } from '../error-hint';
-import { BankAccountFailureKind, bankAccountFailureKind } from './bank-account-create-failure';
+import { BankAccountFailureKind, getBankAccountFailureKind } from './bank-account-create-failure';
 import { BankAccountCreateHint } from './bank-account-create-hint';
 
 interface AddBankAccountProps {
@@ -45,7 +45,7 @@ export function AddBankAccount({ onSubmit, confirmationText }: AddBankAccountPro
     createAccount(newAccount)
       .then(!confirmationText ? onSubmit : setConfirmBankAccount)
       .catch((e: ApiError) => {
-        const kind = bankAccountFailureKind(e);
+        const kind = getBankAccountFailureKind(e);
         if (kind === 'other') {
           setError(e.message ?? 'Unknown error');
           return;

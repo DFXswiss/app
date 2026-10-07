@@ -362,13 +362,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e/sell-bank-account-kyc-only.spec.ts` fulfils that POST with a `400` and
   `You cannot add an IBAN to a KYC only account`, and fulfils the sell bootstrap
   GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`, `/v1/country`,
-  `/v1/setting/infoBanner`, `/v2/user`). Unmatched `/v1/**` and `/v2/**` calls get
-  `501`. The session is a synthetic unsigned JWT that carries an address, so the
-  address guard stays on `/sell` and `/sell/info`. The `/safe` cases additionally
-  mock a writable legacy custody account, an empty portfolio and order history.
+  `/v1/setting/infoBanner`, `/v2/user`), answers `GET /v1/blockchain` and
+  `GET /v1/price` with `[]`, and answers user `PUT`/`PATCH` requests under `/v1/user`
+  and `/v2/user` with `{}`. Unmatched `/v1/**` and `/v2/**` calls get `501`. The
+  session is a synthetic unsigned JWT that carries an address, so the address guard
+  stays on `/sell` and `/sell/info`. The `/safe` cases additionally mock a writable
+  legacy custody account, an empty portfolio and order history.
   A green run proves all three screens render the rejection and the wallet link
   where applicable. It does not prove that the API emits the rejection, or that
-  a live account reaches the screen this way.
+  a live account reaches the screen this way. It also does not prove that user
+  updates persist or that the blockchain and price endpoints return production data.
   Two further cases fulfil the same POST with `Multi-account IBAN cannot be added`
   and prove the support-ticket hint renders on all three screens. A green run does not prove the API
   emits that sentence either.

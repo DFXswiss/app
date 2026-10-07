@@ -795,6 +795,34 @@ describe('SellInfoScreen', () => {
       expect(screen.queryByTestId('quote-error')).not.toBeInTheDocument();
     });
 
+    it('replaces a prior amount validation error with a later KYC error', async () => {
+      mockReceiveFor
+        .mockResolvedValueOnce(makeSell({ error: mockTransactionError.AMOUNT_TOO_LOW }))
+        .mockResolvedValueOnce(makeSell({ error: mockTransactionError.KYC_REQUIRED }));
+      const { rerender } = render(<SellInfoScreen />);
+      expect(await screen.findByText(/below minimum/)).toBeInTheDocument();
+
+      mockAppParams.amountIn = '0.2';
+      rerender(<SellInfoScreen />);
+
+      expect(await screen.findByTestId('quote-error')).toHaveTextContent(mockTransactionError.KYC_REQUIRED);
+      expect(screen.queryByText(/below minimum/)).not.toBeInTheDocument();
+    });
+
+    it('replaces a prior KYC validation error with a later amount error', async () => {
+      mockReceiveFor
+        .mockResolvedValueOnce(makeSell({ error: mockTransactionError.KYC_REQUIRED }))
+        .mockResolvedValueOnce(makeSell({ error: mockTransactionError.AMOUNT_TOO_LOW }));
+      const { rerender } = render(<SellInfoScreen />);
+      expect(await screen.findByTestId('quote-error')).toHaveTextContent(mockTransactionError.KYC_REQUIRED);
+
+      mockAppParams.amountIn = '0.2';
+      rerender(<SellInfoScreen />);
+
+      expect(await screen.findByText(/below minimum/)).toBeInTheDocument();
+      expect(screen.queryByTestId('quote-error')).not.toBeInTheDocument();
+    });
+
     it('closes a custom amount error with the cancel result', async () => {
       mockReceiveFor.mockResolvedValueOnce(makeSell()).mockImplementationOnce(() => ({
         then: (validate: (sell: ReturnType<typeof makeSell>) => void) => {

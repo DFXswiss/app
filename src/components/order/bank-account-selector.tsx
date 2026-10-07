@@ -2,7 +2,7 @@ import { BankAccount, useBankAccount, useBankAccountContext, Utils, Validations 
 import { StyledModalButton, StyledVerticalStack } from '@dfx.swiss/react-components';
 import React, { useEffect, useRef, useState } from 'react';
 import { AddBankAccount } from 'src/components/payment/add-bank-account';
-import { BankAccountFailureKind, bankAccountFailureKind } from 'src/components/payment/bank-account-create-failure';
+import { BankAccountFailureKind, getBankAccountFailureKind } from 'src/components/payment/bank-account-create-failure';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import { useAppParams } from 'src/hooks/app-params.hook';
@@ -118,7 +118,7 @@ export const BankAccountSelector: React.FC<BankAccountSelectorProps> = ({
             return;
           requestedCreateIbanRef.current = undefined;
           failedCreateIbanRef.current = requestedIban;
-          onError?.(e.message ?? 'Unknown error', bankAccountFailureKind(e));
+          onError?.(e.message ?? 'Unknown error', getBankAccountFailureKind(e));
         });
     }
   }, [

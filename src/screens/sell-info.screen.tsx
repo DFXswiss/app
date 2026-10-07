@@ -35,7 +35,7 @@ import {
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
 import { useEffect, useRef, useState } from 'react';
-import { BankAccountFailureKind, bankAccountFailureKind } from 'src/components/payment/bank-account-create-failure';
+import { BankAccountFailureKind, getBankAccountFailureKind } from 'src/components/payment/bank-account-create-failure';
 import { BankAccountCreateHint } from 'src/components/payment/bank-account-create-hint';
 import { PaymentInformationContent } from 'src/components/payment/payment-info-sell';
 import { useWalletContext } from 'src/contexts/wallet.context';
@@ -185,7 +185,7 @@ export default function SellInfoScreen(): JSX.Element {
             )
               return;
 
-            const kind = bankAccountFailureKind(error);
+            const kind = getBankAccountFailureKind(error);
             if (kind === 'other') {
               setBankAccountFailure(undefined);
               setErrorMessage(translate('screens/sell', 'The bank account could not be added.'));
@@ -334,6 +334,9 @@ export default function SellInfoScreen(): JSX.Element {
   }
 
   function validateSell(sell: Sell): Sell | undefined {
+    setCustomAmountError(undefined);
+    setKycError(undefined);
+
     switch (sell.error) {
       case TransactionError.AMOUNT_TOO_LOW:
         setCustomAmountError(
@@ -369,9 +372,6 @@ export default function SellInfoScreen(): JSX.Element {
         setKycError(sell.error);
         return undefined;
     }
-
-    setCustomAmountError(undefined);
-    setKycError(undefined);
 
     return sell;
   }
