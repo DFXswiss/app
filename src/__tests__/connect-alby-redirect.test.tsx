@@ -290,6 +290,29 @@ describe('ConnectAlby login redirect', () => {
     expect(returnUrl.searchParams.get('lang')).toBe('de');
   });
 
+  it('uses the app root when the widget is embedded on a page with the app origin', async () => {
+    process.env.REACT_APP_PUBLIC_URL = 'http://localhost';
+    locationStub.href = 'http://localhost/embedding/page?foo=bar';
+    locationStub.origin = 'http://localhost';
+    locationStub.search = '?foo=bar';
+    locationStub.pathname = '/embedding/page';
+    mockIsWidget.mockReturnValue(true);
+    mockRedirectPath.mockReturnValue('/buy');
+
+    await act(async () => {
+      renderConnectAlby();
+    });
+
+    await waitFor(() => expect(capturedLocation).toBeDefined());
+
+    const returnUrl = getReturnUrlFromCapturedLocation();
+    expect(returnUrl.origin).toBe('http://localhost');
+    expect(returnUrl.pathname).toBe('/');
+    expect(returnUrl.searchParams.get('type')).toBe('Alby');
+    expect(returnUrl.searchParams.get('redirect')).toBe('/buy');
+    expect(returnUrl.searchParams.get('foo')).toBeNull();
+  });
+
   it('falls back to the current location when the env var is unset', async () => {
     locationStub.href = 'http://localhost/connect';
     locationStub.origin = 'http://localhost';
