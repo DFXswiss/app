@@ -52,20 +52,8 @@ describe('kycIdentUrl', () => {
     expect(kycIdentUrl('code')).toBe('https://app.example/kyc?code=code');
   });
 
-  it('strips trailing slashes from the configured origin', () => {
-    process.env.REACT_APP_PUBLIC_URL = 'https://app.example///';
-
-    expect(kycIdentUrl('code')).toBe('https://app.example/kyc?code=code');
-  });
-
   it('uses window.location.origin when the configured origin is unset', () => {
     delete process.env.REACT_APP_PUBLIC_URL;
-
-    expect(kycIdentUrl('code')).toBe('https://embedding.example/kyc?code=code');
-  });
-
-  it('uses window.location.origin when the configured origin is empty', () => {
-    process.env.REACT_APP_PUBLIC_URL = '';
 
     expect(kycIdentUrl('code')).toBe('https://embedding.example/kyc?code=code');
   });

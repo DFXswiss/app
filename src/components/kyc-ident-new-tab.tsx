@@ -1,11 +1,9 @@
 import { StyledButton, StyledButtonColor, StyledButtonWidth, StyledVerticalStack } from '@dfx.swiss/react-components';
 import { useSettingsContext } from '../contexts/settings.context';
+import { appOrigin } from '../util/app-origin';
 
-// Embedded as a Web Component, window.location belongs to the embedding page, and the identification provider only
-// accepts the app's own origin.
 export function kycIdentUrl(code: string): string {
-  const origin = (process.env.REACT_APP_PUBLIC_URL || window.location.origin).replace(/\/+$/, '');
-  return `${origin}/kyc?${new URLSearchParams({ code })}`;
+  return `${appOrigin()}/kyc?${new URLSearchParams({ code })}`;
 }
 
 interface KycIdentNewTabProps {
