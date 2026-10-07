@@ -12,8 +12,8 @@ import { useForm } from 'react-hook-form';
 import { useSettingsContext } from '../../../contexts/settings.context';
 import { ConnectError } from '../connect-shared';
 
-export const MAX_CODE_ATTEMPTS = 5;
-export const CODE_VALIDITY_MS = 10 * 60 * 1000;
+const MAX_CODE_ATTEMPTS = 5;
+const CODE_VALIDITY_MS = 10 * 60 * 1000;
 
 const TOO_MANY_ATTEMPTS = 'Too many attempts. Please wait a moment and try again.';
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
@@ -95,8 +95,6 @@ export default function ConnectMailCode({
 
       await onSuccess(accessToken);
     } catch (caughtError) {
-      if (!isMounted.current) return;
-
       const apiError = caughtError as ApiError;
       if (apiError.statusCode === 401) {
         const nextAttempts = attempts + 1;
@@ -123,8 +121,6 @@ export default function ConnectMailCode({
 
     try {
       const newRequestedAt = await onResend();
-      if (!isMounted.current) return;
-
       setAttempts(0);
       setRequestedAt(newRequestedAt);
       setStatus('idle');
@@ -132,8 +128,6 @@ export default function ConnectMailCode({
       setInfo('We have sent you a new code.');
       setIsResending(false);
     } catch (caughtError) {
-      if (!isMounted.current) return;
-
       setError(genericError(caughtError as ApiError));
       setIsResending(false);
     }

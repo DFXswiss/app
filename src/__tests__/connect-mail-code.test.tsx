@@ -124,7 +124,11 @@ jest.mock('../hooks/navigation.hook', () => ({
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createRef } from 'react';
-import ConnectMailCode, { CODE_VALIDITY_MS, MAX_CODE_ATTEMPTS } from '../components/home/wallet/connect-mail-code';
+import ConnectMailCode from '../components/home/wallet/connect-mail-code';
+
+// Test-owned limits: the API allows 5 attempts per code and 10 minutes of validity.
+const MAX_CODE_ATTEMPTS = 5;
+const CODE_VALIDITY_MS = 10 * 60 * 1000;
 import ConnectMail from '../components/home/wallet/connect-mail';
 import type { WalletType } from '../contexts/wallet.context';
 
@@ -225,15 +229,29 @@ describe('ConnectMailCode', () => {
     mockSignInWithMailCode.mockRejectedValue({ statusCode: 401 });
     renderCode();
 
-    for (let attempt = 1; attempt <= MAX_CODE_ATTEMPTS; attempt += 1) {
+    for (let attempt = 1; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
       await submitCode();
       await waitFor(() => expect(mockSignInWithMailCode).toHaveBeenCalledTimes(attempt));
     }
+    expect(screen.getByText('The code is incorrect. Please check it and try again.')).toBeInTheDocument();
+    expect(screen.getByLabelText('6-digit code')).toBeInTheDocument();
+
+    await submitCode();
+    await waitFor(() => expect(mockSignInWithMailCode).toHaveBeenCalledTimes(MAX_CODE_ATTEMPTS));
 
     expect(screen.getByText('Too many incorrect attempts. Please request a new code.')).toBeInTheDocument();
     expect(screen.queryByLabelText('6-digit code')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send new code' })).toBeInTheDocument();
+  });
+
+  it('still accepts a code one millisecond before the validity ends', async () => {
+    renderCode();
+    now += CODE_VALIDITY_MS - 1;
+
+    await submitCode();
+
+    expect(mockSignInWithMailCode).toHaveBeenCalledWith('secret', '123456');
   });
 
   it('expires before submit without calling the API', async () => {
@@ -358,18 +376,6 @@ describe('ConnectMailCode', () => {
     expect(onBack).toHaveBeenCalled();
   });
 
-  it('does not update state after unmounting during an exchange', async () => {
-    const exchange = deferred<{ accessToken: string }>();
-    mockSignInWithMailCode.mockReturnValue(exchange.promise);
-    const { unmount } = renderCode();
-    enterCode();
-    fireEvent.submit(screen.getByTestId('form'));
-    await waitFor(() => expect(mockSignInWithMailCode).toHaveBeenCalled());
-
-    unmount();
-    await act(async () => exchange.reject({ statusCode: 401 }));
-  });
-
   it('does not complete the login when the step is left before the exchange succeeds', async () => {
     const exchange = deferred<{ accessToken: string }>();
     mockSignInWithMailCode.mockReturnValue(exchange.promise);
@@ -418,17 +424,6 @@ describe('ConnectMailCode', () => {
     expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Send new code' })).toBeEnabled();
   });
-
-  it('does not update state after unmounting during a resend', async () => {
-    const resend = deferred<number>();
-    onResend.mockReturnValue(resend.promise);
-    const { unmount } = renderCode();
-    fireEvent.click(screen.getByRole('button', { name: 'Send new code' }));
-    await waitFor(() => expect(onResend).toHaveBeenCalled());
-
-    unmount();
-    await act(async () => resend.reject({ statusCode: 429 }));
-  });
 });
 
 describe('ConnectMail widget code login', () => {
@@ -446,6 +441,10 @@ describe('ConnectMail widget code login', () => {
     mockSignInWithMail.mockResolvedValue(undefined);
     mockSignInWithMailCode.mockResolvedValue({ accessToken: 'widget-token' });
     mockSetSession.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   afterAll(() => {
@@ -520,7 +519,7 @@ describe('ConnectMail widget code login', () => {
 
   it('counts the code validity from the moment the code was requested', async () => {
     let now = 1_000_000;
-    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
     const request = deferred<{ secret: string }>();
     mockRequestMailLoginCode.mockReturnValue(request.promise);
     renderMail();
@@ -536,12 +535,11 @@ describe('ConnectMail widget code login', () => {
 
     expect(mockSignInWithMailCode).not.toHaveBeenCalled();
     expect(screen.getByText('This code has expired. Please request a new code.')).toBeInTheDocument();
-    nowSpy.mockRestore();
   });
 
   it('counts the validity of a resent code from the moment it was requested', async () => {
     let now = 1_000_000;
-    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
     renderMail();
     await requestCode();
 
@@ -559,7 +557,6 @@ describe('ConnectMail widget code login', () => {
 
     expect(mockSignInWithMailCode).not.toHaveBeenCalled();
     expect(screen.getByText('This code has expired. Please request a new code.')).toBeInTheDocument();
-    nowSpy.mockRestore();
   });
 
   it('returns to the prefilled mail form and drops the current code step', async () => {
@@ -600,39 +597,5 @@ describe('ConnectMail widget code login', () => {
     expect(
       await screen.findByText('We have sent an email with further instructions to the address provided.'),
     ).toBeInTheDocument();
-  });
-
-  it('does not update state after unmounting during the initial request', async () => {
-    const request = deferred<{ secret: string }>();
-    mockRequestMailLoginCode.mockReturnValue(request.promise);
-    const { unmount } = renderMail();
-    fireEvent.submit(screen.getByTestId('form'));
-    await waitFor(() => expect(mockRequestMailLoginCode).toHaveBeenCalled());
-
-    unmount();
-    await act(async () => request.resolve({ secret: 'unused-secret' }));
-  });
-
-  it('does not render a request error after unmounting', async () => {
-    const request = deferred<{ secret: string }>();
-    mockRequestMailLoginCode.mockReturnValue(request.promise);
-    const { unmount } = renderMail();
-    fireEvent.submit(screen.getByTestId('form'));
-    await waitFor(() => expect(mockRequestMailLoginCode).toHaveBeenCalled());
-
-    unmount();
-    await act(async () => request.reject({ statusCode: 429, message: 'server text' }));
-  });
-
-  it('does not update state after unmounting during resend', async () => {
-    const { unmount } = renderMail();
-    await requestCode();
-    const request = deferred<{ secret: string }>();
-    mockRequestMailLoginCode.mockReturnValueOnce(request.promise);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Send new code' }));
-    await waitFor(() => expect(mockRequestMailLoginCode).toHaveBeenCalledTimes(2));
-    unmount();
-    await act(async () => request.resolve({ secret: 'unused-secret' }));
   });
 });

@@ -7,7 +7,7 @@ import {
   StyledInput,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useLocation } from 'react-router-dom';
 import { useAppParams } from 'src/hooks/app-params.hook';
@@ -47,14 +47,6 @@ export default function ConnectMail({ onLogin, onCancel }: ConnectProps): JSX.El
   const [mailSent, setMailSent] = useState(false);
   const [codeMode, setCodeMode] = useState<CodeMode>();
   const [error, setError] = useState<string>();
-  const isMounted = useRef(true);
-
-  useEffect(() => {
-    isMounted.current = true;
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
 
   const mail = new URLSearchParams(search).get('user') || undefined;
 
@@ -89,15 +81,9 @@ export default function ConnectMail({ onLogin, onCancel }: ConnectProps): JSX.El
       // The code's validity starts when it is requested, not when the response arrives.
       const requestedAt = Date.now();
       requestMailLoginCode(mail, redirectUri, recommendationCode, wallet)
-        .then(({ secret }) => {
-          if (isMounted.current) setCodeMode({ mail, secret, requestedAt });
-        })
-        .catch((error: ApiError) => {
-          if (isMounted.current) setError(error.statusCode === 429 ? TOO_MANY_ATTEMPTS : GENERIC_ERROR);
-        })
-        .finally(() => {
-          if (isMounted.current) setIsLoading(false);
-        });
+        .then(({ secret }) => setCodeMode({ mail, secret, requestedAt }))
+        .catch((error: ApiError) => setError(error.statusCode === 429 ? TOO_MANY_ATTEMPTS : GENERIC_ERROR))
+        .finally(() => setIsLoading(false));
       return;
     }
 
@@ -110,7 +96,7 @@ export default function ConnectMail({ onLogin, onCancel }: ConnectProps): JSX.El
   async function resendCode(mail: string): Promise<number> {
     const requestedAt = Date.now();
     const { secret } = await requestMailLoginCode(mail, redirectUri, recommendationCode, wallet);
-    if (isMounted.current) setCodeMode({ mail, secret, requestedAt });
+    setCodeMode({ mail, secret, requestedAt });
     return requestedAt;
   }
 
