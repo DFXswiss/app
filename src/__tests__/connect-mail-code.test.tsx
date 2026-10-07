@@ -298,6 +298,7 @@ describe('ConnectMailCode', () => {
     mockSignInWithMailCode.mockRejectedValueOnce({ statusCode });
     await submitCode();
     expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.queryByText('The code is incorrect. Please check it and try again.')).not.toBeInTheDocument();
 
     await submitCode();
     expect(screen.getByText('The code is incorrect. Please check it and try again.')).toBeInTheDocument();

@@ -87,6 +87,7 @@ export default function ConnectMailCode({
       return;
     }
 
+    setStatus('idle');
     setIsSubmitting(true);
     try {
       const { accessToken } = await signInWithMailCode(secret, code.trim());
