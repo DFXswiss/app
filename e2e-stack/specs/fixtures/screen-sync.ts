@@ -74,7 +74,9 @@ export function financialDestinationGetUrlParts(path: string): string[] {
     case '/dashboard/financial/log-validity':
       return [];
     case '/dashboard/financial/kundengelder':
-      return ['/dashboard/financial/kundengelder'];
+      return ['/dashboard/financial/kundengelder', '/bank'];
+    case '/dashboard/financial/kundengelder/lines':
+      return ['/dashboard/financial/kundengelder/lines'];
     default:
       throw new Error(`financialDestinationGetUrlParts: unknown path ${path}`);
   }
@@ -129,6 +131,9 @@ export async function waitForFinancialDestinationReady(page: Page, path: string)
       return;
     case '/dashboard/financial/kundengelder':
       await expect(page.getByRole('heading', { name: 'Kundengelder' })).toBeVisible();
+      return;
+    case '/dashboard/financial/kundengelder/lines':
+      await expect(page.getByRole('heading', { name: 'Buchungen' })).toBeVisible();
       return;
     default:
       throw new Error(`waitForFinancialDestinationReady: unknown path ${path}`);

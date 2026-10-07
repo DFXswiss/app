@@ -242,14 +242,7 @@ export default function RealunitComplianceUserScreen(): JSX.Element {
           <InfoRow label="ID" value={String(customer.id)} mono />
           <InfoRow label="Created" value={formatDate(customer.created)} />
           <InfoRow label="Account Type" value={customer.accountType ?? '-'} />
-          <InfoRow
-            label={translate('screens/compliance', 'Insider')}
-            value={
-              customer.realUnitInsider
-                ? translate('screens/compliance', 'Internal shareholders (insider)')
-                : translate('screens/compliance', 'Not internal shareholders (normal)')
-            }
-          />
+          <InfoRow label={translate('screens/compliance', 'Insider')} value={bool(customer.realUnitInsider)} />
           <InfoRow label="Email" value={customer.mail ?? '-'} />
           <InfoRow label="First Name" value={customer.firstname ?? '-'} />
           <InfoRow label="Surname" value={customer.surname ?? '-'} />

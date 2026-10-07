@@ -360,9 +360,7 @@ export default function RealunitComplianceScreen(): JSX.Element {
                       {u.balance != null ? u.balance.toLocaleString('de-CH') : '-'}
                     </td>
                     <td className="px-3 py-2 text-dfxBlue-800 group-hover:text-white">
-                      {u.realUnitInsider
-                        ? translate('screens/compliance', 'Internal shareholders (insider)')
-                        : translate('screens/compliance', 'Not internal shareholders (normal)')}
+                      {u.realUnitInsider ? 'Yes' : 'No'}
                     </td>
                     <td className="px-3 py-2 text-dfxBlue-800 group-hover:text-white">
                       {u.lastNameCheckDate ? formatDate(u.lastNameCheckDate) : '-'}

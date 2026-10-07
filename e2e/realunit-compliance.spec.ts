@@ -458,7 +458,7 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await expect(page.getByText('ACME Example AG')).toBeVisible();
     await expect(page.getByText('bob@example.com')).toBeVisible();
     await expect(
-      page.getByRole('row', { name: /Bob Beispiel/ }).getByText('Internal shareholders (insider)', { exact: true }),
+      page.getByRole('row', { name: /Bob Beispiel/ }).getByText('Yes', { exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Last Dilisense check' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Result' })).toBeVisible();
@@ -582,7 +582,7 @@ test.describe('RealUnit Compliance dashboards - Visual Regression Tests', () => 
     await page.waitForTimeout(1500);
 
     await expect(page.getByRole('button', { name: 'Remove insider mark' })).toBeVisible();
-    await expect(page.getByText('Internal shareholders (insider)')).toBeVisible();
+    await expect(page.getByRole('row', { name: /Insider:\s*Yes/ })).toBeVisible();
     await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot('realunit-compliance-07-dossier-insider.png', {

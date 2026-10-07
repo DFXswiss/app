@@ -111,6 +111,11 @@ const DashboardFinancialExpensesScreen = lazy(() => import('./screens/dashboard-
 const DashboardFinancialLiquidityScreen = lazy(() => import('./screens/dashboard-financial-liquidity.screen'));
 const DashboardFinancialLogValidityScreen = lazy(() => import('./screens/dashboard-financial-log-validity.screen'));
 const DashboardFinancialKundengelderScreen = lazy(() => import('./screens/dashboard-financial-kundengelder.screen'));
+const DashboardFinancialKundengelderLinesScreen = lazy(() =>
+  import('./screens/dashboard-financial-kundengelder.screen').then((module) => ({
+    default: module.DashboardFinancialKundengelderLinesScreen,
+  })),
+);
 const SitemapScreen = lazy(() => import('./screens/sitemap.screen'));
 
 setupLanguages();
@@ -635,7 +640,16 @@ export const Routes = [
               },
               {
                 path: 'kundengelder',
-                element: withSuspense(<DashboardFinancialKundengelderScreen />),
+                children: [
+                  {
+                    index: true,
+                    element: withSuspense(<DashboardFinancialKundengelderScreen />),
+                  },
+                  {
+                    path: 'lines',
+                    element: withSuspense(<DashboardFinancialKundengelderLinesScreen />),
+                  },
+                ],
               },
             ],
           },

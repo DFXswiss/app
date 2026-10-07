@@ -10,6 +10,7 @@ import { StaffIdentityBlock } from './staff-identity';
 import { canManuallySetAmlPass } from 'src/util/aml-pass.util';
 import { canResetBuyCryptoAmlForReview, hasBuyCryptoReviewResetEligibleState } from 'src/util/buy-crypto-reset.util';
 import { statusBadge } from 'src/util/compliance-helpers';
+import { hasNameCheckUnavailable } from 'src/util/name-check.util';
 import { hasRefUserKycHold } from 'src/util/ref-user-kyc.util';
 import { hasScorechainHighRisk, scorechainHighlightValue, scorechainHold } from 'src/util/scorechain.util';
 import { formatSwissDate } from 'src/util/utils';
@@ -43,6 +44,11 @@ interface AmlCheckPendingPanelProps {
 // AML run finds the same reason again and parks the transaction right back here.
 export const RESET_REF_USER_KYC_HOLD_HINT = `Reset hilft hier nicht: Der Empfehler blockiert die Zahlung bei jeder Prüfung wieder. Verwende «${REF_USER_KYC_CLEAR_LABEL}».`;
 export const RESET_SCORECHAIN_HOLD_HINT = `Reset hilft hier nicht: Die Scorechain-Warnung kommt bei jeder Prüfung wieder. Verwende «${SCORECHAIN_CLEAR_LABEL}».`;
+
+// Shown for a transaction parked because the name-check refresh could not be completed. Here Reset is the
+// way out: the automatic AML run repeats the refresh.
+export const NAME_CHECK_UNAVAILABLE_HINT =
+  'Der Namenscheck konnte nicht ausgeführt werden. Das ist kein Treffer. Reset wiederholt ihn.';
 
 const AML_CHECK_OPTIONS = [CheckStatus.PASS, CheckStatus.FAIL, CheckStatus.PENDING, 'Reset'] as const;
 
@@ -226,6 +232,11 @@ function TransactionEntry({
           {tx.buyCryptoId != null && !canResetBuyCrypto && (
             <p className="px-3 py-2 text-xs text-dfxGray-700 border-b border-dfxGray-300">
               Reset ist erst verfügbar, wenn der BuyCrypto noch unvollständig ist und kein Payout/Refund/Batch läuft.
+            </p>
+          )}
+          {hasNameCheckUnavailable(tx.comment) && (
+            <p className="px-3 py-2 text-xs text-dfxGray-700 border-b border-dfxGray-300">
+              {NAME_CHECK_UNAVAILABLE_HINT}
             </p>
           )}
           {hasRefUserHold && userDataId != null && (

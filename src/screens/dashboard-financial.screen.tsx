@@ -16,7 +16,7 @@ const pages = [
   {
     path: '/dashboard/financial/kundengelder',
     title: 'Kundengelder',
-    description: 'Year extract of customer funds as booked into the ledger import',
+    description: 'Year extract of every DFX bank account, including accounts with no movements',
   },
 ];
 

@@ -86,10 +86,54 @@ export interface KundengelderAccount {
 }
 
 export interface KundengelderDiff {
-  key: string; // e.g. `${iban}|BuyCrypto after Fee` or with `|CHF`/`|EUR` suffix for Revolut
+  key: string; // e.g. `${iban}|BuyCrypto after Fee`, or with `|CHF`/`|EUR` when one IBAN is held in two currencies
   live: number;
   booked: number;
   delta: number;
+}
+
+export interface KundengelderSheetLine {
+  label: string;
+  amount: number;
+  /** Booking date, YYYY-MM-DD. Absent on Saldo. */
+  date?: string;
+  lineKey?: string;
+}
+
+export interface KundengelderSheetRow {
+  sollLabel?: string;
+  sollAmount?: number;
+  sollLineKey?: string;
+  habenLabel?: string;
+  habenAmount?: number;
+  habenLineKey?: string;
+  section?: boolean;
+}
+
+/** verified matches, mismatch was checked and differs, unchecked has no next opening. */
+export type KundengelderOpeningCheck = 'verified' | 'mismatch' | 'unchecked';
+
+/** T-account for one client-money account and one year. */
+export interface KundengelderSheet {
+  key: string;
+  /** Ledger account number. */
+  accountNo?: string;
+  name: string;
+  iban?: string;
+  currency: string;
+  periodStart?: string;
+  periodEnd?: string;
+  soll: KundengelderSheetLine[];
+  haben: KundengelderSheetLine[];
+  rows?: KundengelderSheetRow[];
+  sollSum: number;
+  habenSum: number;
+  control: number;
+  /** Signed end balance. Positive is Soll, negative is Haben. */
+  closingBalance?: number;
+  openingBalance?: number;
+  nextOpeningBalance?: number;
+  openingCheck?: KundengelderOpeningCheck;
 }
 
 export interface KundengelderExtract {
@@ -97,6 +141,14 @@ export interface KundengelderExtract {
   eurRate: number;
   accounts: KundengelderAccount[];
   diffs: KundengelderDiff[];
+  sheets?: KundengelderSheet[];
+}
+
+/** One row of GET /v1/bank: a DFX account of record, not a customer IBAN. */
+export interface DfxBankAccount {
+  name: string;
+  iban: string;
+  currency: string;
 }
 
 export interface KundengelderTx {

@@ -101,9 +101,21 @@ function wallet(overrides: Partial<UserInfo> = {}): UserInfo {
 }
 
 async function fillOpenedRefForm(code: string, reason: string): Promise<void> {
-  fireEvent.click(screen.getByRole('button', { name: /^Set$/ }));
-  const codeField = await screen.findByRole('textbox', { name: 'Ref-Code' });
-  fireEvent.change(codeField, { target: { value: code } });
+  // UsedRefEditor's mount effect always closes the form. Under a full suite that effect can
+  // flush after the click, so the fields disappear again while Set is still there. Open once
+  // more after that flush; the effect does not run a second time for the same account.
+  await waitFor(() => {
+    const opener = screen.queryByRole('button', { name: /^Set$/ });
+    if (opener) fireEvent.click(opener);
+    expect(screen.getByRole('textbox', { name: 'Ref-Code' })).toBeInTheDocument();
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  if (!screen.queryByRole('textbox', { name: 'Ref-Code' })) {
+    fireEvent.click(screen.getByRole('button', { name: /^Set$/ }));
+  }
+  fireEvent.change(screen.getByRole('textbox', { name: 'Ref-Code' }), { target: { value: code } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Reason' }), { target: { value: reason } });
 }
 
