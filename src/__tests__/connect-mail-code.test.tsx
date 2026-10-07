@@ -2,6 +2,7 @@ const mockRequestMailLoginCode = jest.fn();
 const mockSignInWithMail = jest.fn();
 const mockSignInWithMailCode = jest.fn();
 const mockSetSession = jest.fn();
+const mockLogout = jest.fn();
 const mockIsWidget = jest.fn();
 const mockUseLocation = jest.fn();
 const mockUseAppParams = jest.fn();
@@ -30,6 +31,7 @@ jest.mock('@dfx.swiss/react', () => ({
     Mail: (value: string) => (value?.includes('@') ? true : 'mail'),
     Custom: (validator: (value: string) => true | string) => validator,
   },
+  useSessionContext: () => ({ logout: mockLogout }),
   useAuth: () => ({
     requestMailLoginCode: mockRequestMailLoginCode,
     signInWithMail: mockSignInWithMail,
@@ -441,6 +443,7 @@ describe('ConnectMail widget code login', () => {
     mockSignInWithMail.mockResolvedValue(undefined);
     mockSignInWithMailCode.mockResolvedValue({ accessToken: 'widget-token' });
     mockSetSession.mockResolvedValue(undefined);
+    mockLogout.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -455,13 +458,13 @@ describe('ConnectMail widget code login', () => {
     }
   });
 
-  function renderMail() {
+  function renderMail(isConnect = false) {
     return render(
       <ConnectMail
         rootRef={createRef<HTMLDivElement>()}
         wallet={'Mail' as WalletType}
         blockchain={undefined}
-        isConnect={false}
+        isConnect={isConnect}
         onLogin={onLogin}
         onCancel={onCancel}
         onSwitch={jest.fn()}
@@ -489,6 +492,22 @@ describe('ConnectMail widget code login', () => {
     });
 
     expect(mockSignInWithMailCode).toHaveBeenCalledWith('first-secret', '123456');
+    expect(mockLogout).toHaveBeenCalled();
+    expect(mockSetSession).toHaveBeenCalledWith('widget-token');
+    expect(mockLogout.mock.invocationCallOrder[0]).toBeLessThan(mockSetSession.mock.invocationCallOrder[0]);
+    expect(onLogin).toHaveBeenCalled();
+  });
+
+  it('keeps the current session when the code login connects an additional account', async () => {
+    renderMail(true);
+    await requestCode();
+
+    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '123456' } });
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('form'));
+    });
+
+    expect(mockLogout).not.toHaveBeenCalled();
     expect(mockSetSession).toHaveBeenCalledWith('widget-token');
     expect(onLogin).toHaveBeenCalled();
   });

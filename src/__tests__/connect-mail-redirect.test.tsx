@@ -14,6 +14,7 @@ const mockUseLocation = jest.fn();
 jest.mock('@dfx.swiss/react', () => ({
   Utils: { createRules: () => ({}) },
   Validations: { Required: undefined, Mail: undefined, Custom: () => undefined },
+  useSessionContext: () => ({ logout: jest.fn() }),
   useAuth: () => ({
     requestMailLoginCode: mockRequestMailLoginCode,
     signInWithMail: mockSignInWithMail,

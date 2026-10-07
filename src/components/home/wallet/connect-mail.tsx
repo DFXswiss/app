@@ -1,4 +1,4 @@
-import { ApiError, Utils, Validations, useAuth } from '@dfx.swiss/react';
+import { ApiError, Utils, Validations, useAuth, useSessionContext } from '@dfx.swiss/react';
 import {
   Form,
   StyledButton,
@@ -34,10 +34,11 @@ interface CodeMode {
 const TOO_MANY_ATTEMPTS = 'Too many attempts. Please wait a moment and try again.';
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
 
-export default function ConnectMail({ onLogin, onCancel }: ConnectProps): JSX.Element {
+export default function ConnectMail({ isConnect, onLogin, onCancel }: ConnectProps): JSX.Element {
   const { translate, translateError } = useSettingsContext();
   const { requestMailLoginCode, signInWithMail } = useAuth();
   const { setSession } = useWalletContext();
+  const { logout } = useSessionContext();
   const { navigate } = useNavigation();
   const { redirectPath, isWidget, widgetPersonalIban } = useAppHandlingContext();
   const { search } = useLocation();
@@ -101,6 +102,7 @@ export default function ConnectMail({ onLogin, onCancel }: ConnectProps): JSX.El
   }
 
   async function completeLogin(accessToken: string): Promise<void> {
+    if (!isConnect) await logout();
     await setSession(accessToken);
     onLogin();
   }
