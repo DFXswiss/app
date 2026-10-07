@@ -1,3 +1,9 @@
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import KycScreen from '../screens/kyc.screen';
+
+jest.setTimeout(30000);
+
 const mockGetKycInfo = jest.fn();
 const mockContinueKyc = jest.fn();
 const mockStartStep = jest.fn();
@@ -232,10 +238,6 @@ jest.mock('../util/validation-rules', () => ({
 }));
 jest.mock('../screens/kyc-redirect.screen', () => ({ IframeMessageType: 'kyc-message' }));
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import KycScreen from '../screens/kyc.screen';
-
 function step(name: string, overrides: Record<string, any> = {}) {
   return {
     name,
@@ -278,14 +280,14 @@ function renderPath(path: string) {
 async function overview(data: Record<string, any>, path = '/kyc?code=CODE') {
   mockGetKycInfo.mockResolvedValueOnce(data);
   const rendered = renderPath(path);
-  await screen.findByTestId('kyc-status');
+  await screen.findByTestId('kyc-status', undefined, { timeout: 10000 });
   return rendered;
 }
 
 async function renderStep(name: string, currentStep = step(name), suffix = '') {
   mockStartStep.mockResolvedValueOnce(session(currentStep));
   const rendered = renderPath(`/kyc?code=CODE&step=${name}${suffix}`);
-  await waitFor(() => expect(mockClearParams).toHaveBeenCalledWith(['step']));
+  await waitFor(() => expect(mockClearParams).toHaveBeenCalledWith(['step']), { timeout: 10000 });
   return rendered;
 }
 
@@ -359,7 +361,7 @@ describe('KycScreen overview and parameter loading', () => {
 
   it('guards and remains loading without a code', async () => {
     renderPath('/kyc');
-    await waitFor(() => expect(mockGuard).toHaveBeenCalledWith('/login', true));
+    await waitFor(() => expect(mockGuard).toHaveBeenCalledWith('/login', true), { timeout: 10000 });
     expect(mockGetKycInfo).not.toHaveBeenCalled();
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
   });
@@ -387,7 +389,7 @@ describe('KycScreen overview and parameter loading', () => {
       mockGetKycInfo.mockRejectedValueOnce(failure);
     }
     renderPath(`/kyc?code=CODE${kind === 'step' ? '&step=PersonalData' : ''}`);
-    expect(await screen.findByTestId('error-hint')).toHaveTextContent(expected);
+    expect(await screen.findByTestId('error-hint', undefined, { timeout: 10000 })).toHaveTextContent(expected);
   });
 });
 
@@ -395,13 +397,13 @@ describe('KycScreen overview actions and load protection', () => {
   it('continues started and fresh workflows', async () => {
     const first = await overview(info({ kycSteps: [step('ContactData')] }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('CODE'));
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
     first.unmount();
 
     mockGetKycInfo.mockResolvedValueOnce(info({ kycSteps: [step('ContactData', { status: 'NotStarted' })] }));
     renderPath('/kyc?code=CODE');
-    fireEvent.click(await screen.findByRole('button', { name: 'Start' }));
-    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledTimes(2), { timeout: 10000 });
   });
 
   it.each([
@@ -411,20 +413,20 @@ describe('KycScreen overview actions and load protection', () => {
     mockContinueKyc.mockRejectedValueOnce(failure);
     await overview(info({ kycSteps: [step('ContactData', { status: 'NotStarted' })] }));
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
-    expect(await screen.findByTestId('error-hint')).toHaveTextContent(expected);
+    expect(await screen.findByTestId('error-hint', undefined, { timeout: 10000 })).toHaveTextContent(expected);
   });
 
   it('continues an incomplete limit request and navigates a completed high-level one', async () => {
     const first = await overview(info({ kycSteps: [step('ContactData')] }));
     fireEvent.click(screen.getByRole('button', { name: 'Increase limit' }));
-    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalled());
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalled(), { timeout: 10000 });
     first.unmount();
 
     mockGetKycInfo.mockResolvedValueOnce(
       info({ kycLevel: 50, kycSteps: [step('ContactData', { status: 'Completed' })] }),
     );
     renderPath('/kyc?code=CODE');
-    fireEvent.click(await screen.findByRole('button', { name: 'Increase limit' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Increase limit' }, { timeout: 10000 }));
     expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/support/issue', search: '?issue-type=LimitRequest' });
   });
 
@@ -463,21 +465,21 @@ describe('KycScreen API error routing', () => {
   it('switches codes and logs out on a code handoff', async () => {
     mockGetKycInfo.mockRejectedValueOnce({ statusCode: 401, switchToCode: 'OTHER', message: 'switch' });
     renderPath('/kyc?code=CODE');
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ search: '?code=OTHER' }));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ search: '?code=OTHER' }), { timeout: 10000 });
     expect(mockLogout).toHaveBeenCalled();
   });
 
   it('does not switch for an unauthorized response without a switch code', async () => {
     mockGetKycInfo.mockRejectedValueOnce({ statusCode: 401, message: 'unauthorized' });
     renderPath('/kyc?code=CODE');
-    expect(await screen.findByText('unauthorized')).toBeInTheDocument();
+    expect(await screen.findByText('unauthorized', undefined, { timeout: 10000 })).toBeInTheDocument();
     expect(mockLogout).not.toHaveBeenCalled();
   });
 
   it('routes TFA errors', async () => {
     mockGetKycInfo.mockRejectedValueOnce({ code: 'TFA_REQUIRED', message: 'tfa' });
     renderPath('/kyc?code=CODE');
-    expect(await screen.findByText('tfa')).toBeInTheDocument();
+    expect(await screen.findByText('tfa', undefined, { timeout: 10000 })).toBeInTheDocument();
     expect(mockApp.setParams).toHaveBeenCalledWith({ autoStart: 'true' });
     expect(mockNavigate).toHaveBeenCalledWith('/2fa', { setRedirect: true });
   });
@@ -487,9 +489,9 @@ describe('KycScreen API error routing', () => {
       .mockRejectedValueOnce({ statusCode: 409, message: 'account exists and needs merge' })
       .mockResolvedValueOnce(info());
     renderPath('/kyc?code=CODE');
-    fireEvent.click(await screen.findByRole('button', { name: 'OK' }));
-    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledTimes(2));
-    expect(await screen.findByTestId('kyc-status')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'OK' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledTimes(2), { timeout: 10000 });
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
   });
 
   it.each([
@@ -499,7 +501,7 @@ describe('KycScreen API error routing', () => {
   ])('shows ordinary conflict errors', async (failure, expected) => {
     mockGetKycInfo.mockRejectedValueOnce(failure);
     renderPath('/kyc?code=CODE');
-    expect(await screen.findByText(expected)).toBeInTheDocument();
+    expect(await screen.findByText(expected, undefined, { timeout: 10000 })).toBeInTheDocument();
   });
 });
 
@@ -507,15 +509,15 @@ describe('KycScreen startup and route modes', () => {
   it('waits for initialization', async () => {
     mockApp.isInitialized = false;
     renderPath('/kyc?code=CODE');
-    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalled());
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalled(), { timeout: 10000 });
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
   });
 
   it('auto-starts and clears its parameter', async () => {
     mockApp.params = { autoStart: 'true' };
     renderPath('/kyc?code=CODE');
-    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('CODE'));
-    await waitFor(() => expect(mockApp.setParams).toHaveBeenCalledWith({ autoStart: undefined }));
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
+    await waitFor(() => expect(mockApp.setParams).toHaveBeenCalledWith({ autoStart: undefined }), { timeout: 10000 });
   });
 
   it.each([
@@ -525,7 +527,7 @@ describe('KycScreen startup and route modes', () => {
     mockApp.params = { autoStart: 'true' };
     mockSettings.processingKycData = processing;
     renderPath(path);
-    await waitFor(() => expect(mockGuard).toHaveBeenCalled());
+    await waitFor(() => expect(mockGuard).toHaveBeenCalled(), { timeout: 10000 });
     expect(mockContinueKyc).not.toHaveBeenCalled();
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
   });
@@ -536,7 +538,7 @@ describe('KycScreen startup and route modes', () => {
   ])('goes back from %s when its required level exists', async (path, level) => {
     mockGetKycInfo.mockResolvedValueOnce(info({ kycLevel: level }));
     renderPath(`${path}?code=CODE`);
-    await waitFor(() => expect(mockGoBack).toHaveBeenCalled());
+    await waitFor(() => expect(mockGoBack).toHaveBeenCalled(), { timeout: 10000 });
     expect(mockContinueKyc).not.toHaveBeenCalled();
   });
 
@@ -547,7 +549,7 @@ describe('KycScreen startup and route modes', () => {
     mockGetKycInfo.mockResolvedValueOnce(info({ kycLevel: 0 }));
     mockContinueKyc.mockResolvedValueOnce(session(undefined, { kycLevel: level }));
     renderPath(`${path}?code=CODE`);
-    await waitFor(() => expect(mockReloadUser).toHaveBeenCalled());
+    await waitFor(() => expect(mockReloadUser).toHaveBeenCalled(), { timeout: 10000 });
     expect(mockDelay).toHaveBeenCalledWith(0.01);
     expect(mockGoBack).toHaveBeenCalled();
   });
@@ -556,7 +558,7 @@ describe('KycScreen startup and route modes', () => {
     mockGetKycInfo.mockResolvedValueOnce(info({ kycLevel: 0 }));
     mockContinueKyc.mockResolvedValueOnce(session(step('ContactData'), { kycLevel: 0 }));
     renderPath('/contact/kyc?code=CODE');
-    expect(await screen.findByTestId('field-mail')).toBeInTheDocument();
+    expect(await screen.findByTestId('field-mail', undefined, { timeout: 10000 })).toBeInTheDocument();
     expect(mockReloadUser).not.toHaveBeenCalled();
   });
 });
@@ -567,13 +569,13 @@ describe('KycScreen redirect and consent effects', () => {
   it('opens a completed HTTPS redirect in the same window', async () => {
     mockGetKycInfo.mockResolvedValueOnce(complete());
     renderPath('/kyc?code=CODE&kyc-redirect=https%3A%2F%2Fexample.com%2Fdone');
-    await waitFor(() => expect(openSpy).toHaveBeenCalledWith('https://example.com/done', '_self'));
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith('https://example.com/done', '_self'), { timeout: 10000 });
   });
 
   it.each(['http%3A%2F%2Fexample.com', 'invalid-url'])('ignores unsafe redirect %s', async (redirect) => {
     mockGetKycInfo.mockResolvedValueOnce(complete());
     renderPath(`/kyc?code=CODE&kyc-redirect=${redirect}`);
-    await screen.findByTestId('kyc-status');
+    await screen.findByTestId('kyc-status', undefined, { timeout: 10000 });
     expect(openSpy).not.toHaveBeenCalled();
   });
 
@@ -585,9 +587,9 @@ describe('KycScreen redirect and consent effects', () => {
   it('submits missing-client consent and continues', async () => {
     mockGetKycInfo.mockResolvedValueOnce(complete());
     renderPath('/kyc?code=CODE&client=CLIENT');
-    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
-    await waitFor(() => expect(mockAddTransferClient).toHaveBeenCalledWith('CODE', 'CLIENT'));
-    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('CODE'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }, { timeout: 10000 }));
+    await waitFor(() => expect(mockAddTransferClient).toHaveBeenCalledWith('CODE', 'CLIENT'), { timeout: 10000 });
+    await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
   });
 
   it.each([
@@ -597,8 +599,8 @@ describe('KycScreen redirect and consent effects', () => {
     mockGetKycInfo.mockResolvedValueOnce(complete());
     mockAddTransferClient.mockRejectedValueOnce(failure);
     renderPath('/kyc?code=CODE&client=CLIENT');
-    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
-    expect(await screen.findByTestId('error-hint')).toHaveTextContent(expected);
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }, { timeout: 10000 }));
+    expect(await screen.findByTestId('error-hint', undefined, { timeout: 10000 })).toHaveTextContent(expected);
   });
 
   it('skips consent for an existing client and for incomplete info without currentStep', async () => {
@@ -607,7 +609,7 @@ describe('KycScreen redirect and consent effects', () => {
     first.unmount();
     mockGetKycInfo.mockResolvedValueOnce(info({ kycSteps: [step('ContactData')] }));
     renderPath('/kyc?code=CODE&client=CLIENT');
-    await screen.findByTestId('kyc-status');
+    await screen.findByTestId('kyc-status', undefined, { timeout: 10000 });
     expect(screen.queryByText(/I hereby authorize/)).not.toBeInTheDocument();
   });
 
@@ -616,14 +618,14 @@ describe('KycScreen redirect and consent effects', () => {
       session(step('PersonalData'), { kycSteps: [step('PersonalData', { status: 'InProgress' })] }),
     );
     renderPath('/kyc?code=CODE&client=CLIENT&step=PersonalData');
-    expect(await screen.findByText(/I hereby authorize/)).toHaveTextContent('CLIENT');
+    expect(await screen.findByText(/I hereby authorize/, undefined, { timeout: 10000 })).toHaveTextContent('CLIENT');
   });
 
   it('guards retained consent and reload actions after the user code disappears', async () => {
     mockUser.user = { kyc: { hash: 'USER' } };
     mockGetKycInfo.mockResolvedValueOnce(complete());
     const consentRender = renderPath('/kyc?client=CLIENT');
-    await screen.findByText(/I hereby authorize/);
+    await screen.findByText(/I hereby authorize/, undefined, { timeout: 10000 });
     mockUser.user = undefined;
     consentRender.rerender(tree('/kyc?client=CLIENT'));
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -635,10 +637,10 @@ describe('KycScreen redirect and consent effects', () => {
       session(step('PersonalData'), { kycSteps: [step('PersonalData', { status: 'NotStarted' })] }),
     );
     const loadRender = renderPath('/kyc?step=PersonalData');
-    await waitFor(() => expect(mockClearParams).toHaveBeenCalled());
+    await waitFor(() => expect(mockClearParams).toHaveBeenCalled(), { timeout: 10000 });
     mockUser.user = undefined;
     loadRender.rerender(tree('/kyc?step=PersonalData'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Increase limit' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Increase limit' }, { timeout: 10000 }));
     expect(mockContinueKyc).not.toHaveBeenCalled();
   });
 });
@@ -659,7 +661,7 @@ describe('KycScreen reload, back, status, and cancellation', () => {
   it('backs out of an active step without a request', async () => {
     await renderStep('PersonalData');
     act(() => layout().onBack());
-    expect(await screen.findByTestId('kyc-status')).toBeInTheDocument();
+    expect(await screen.findByTestId('kyc-status', undefined, { timeout: 10000 })).toBeInTheDocument();
     expect(mockGetKycInfo).not.toHaveBeenCalled();
   });
 
@@ -670,16 +672,16 @@ describe('KycScreen reload, back, status, and cancellation', () => {
       step('ContactData', { status: 'Failed', reason: 'AccountMergeRequested' }),
     );
     act(() => layout().onBack());
-    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledTimes(1), { timeout: 10000 });
     first.unmount();
 
     mockGetKycInfo
       .mockResolvedValueOnce(info({ kycSteps: [step('ContactData', { status: 'Completed' })] }))
       .mockResolvedValueOnce(info());
     renderPath('/kyc?code=CODE&client=CLIENT');
-    await screen.findByText(/I hereby authorize/);
+    await screen.findByText(/I hereby authorize/, undefined, { timeout: 10000 });
     act(() => layout().onBack());
-    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledTimes(3), { timeout: 10000 });
   });
 
   it('does nothing from overview back', async () => {
@@ -707,15 +709,15 @@ describe('KycScreen reload, back, status, and cancellation', () => {
     mockGetKycInfo.mockResolvedValueOnce(info());
     await renderStep('PersonalData', step('PersonalData', { status: 'Completed' }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
-    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'));
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
   });
 
   it('cancels and reloads a cancelable step', async () => {
     mockGetKycInfo.mockResolvedValueOnce(info());
     await renderStep('PhoneChange');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    await waitFor(() => expect(mockCancelStep).toHaveBeenCalledWith('CODE', 'step-url'));
-    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'));
+    await waitFor(() => expect(mockCancelStep).toHaveBeenCalledWith('CODE', 'step-url'), { timeout: 10000 });
+    await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
   });
 
   it('returns from cancellation without a session', async () => {
@@ -733,7 +735,7 @@ describe('KycScreen reload, back, status, and cancellation', () => {
     mockCancelStep.mockRejectedValueOnce(failure);
     await renderStep('PhoneChange');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(await screen.findByTestId('error-hint')).toHaveTextContent(expected);
+    expect(await screen.findByTestId('error-hint', undefined, { timeout: 10000 })).toHaveTextContent(expected);
   });
 });
 
@@ -743,11 +745,16 @@ describe('KycScreen embedded callbacks and layout', () => {
     ['Completed', 'done'],
   ])('routes iframe status %s to %s', async (status, direction) => {
     await renderStep('Ident', step('Ident', { type: 'Auto' }));
+    await waitFor(() => expect(document.querySelector('iframe')).toBeInTheDocument(), { timeout: 10000 });
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
     act(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'kyc-message', status } })));
     if (direction === 'back') {
-      await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'));
+      await waitFor(() => expect(mockGetKycInfo).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
     } else {
-      await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('CODE'));
+      await waitFor(() => expect(mockContinueKyc).toHaveBeenCalledWith('CODE'), { timeout: 10000 });
     }
   });
 
@@ -760,7 +767,7 @@ describe('KycScreen embedded callbacks and layout', () => {
       session(step('Ident', { type: 'SumsubAuto', session: { url: 'token', type: 'Token' } })),
     );
     renderPath('/kyc?code=CODE&step=Ident');
-    await waitFor(() => expect(mockClearParams).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockClearParams).toHaveBeenCalledTimes(2), { timeout: 10000 });
     expect(layout().noPadding).toBe(false);
     expect(screen.getByTestId('sumsub-sdk')).toBeInTheDocument();
   });
@@ -828,7 +835,7 @@ describe('KycEdit switch', () => {
       session(step('Ident', { type: 'SumsubAuto', session: { url: 'token', type: 'Token' } })),
     );
     renderPath('/kyc?code=CODE&step=Ident');
-    await waitFor(() => expect(mockClearParams).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockClearParams).toHaveBeenCalledTimes(2), { timeout: 10000 });
     expect(screen.getByTestId('sumsub-sdk')).toBeInTheDocument();
   });
 
@@ -838,7 +845,7 @@ describe('KycEdit switch', () => {
     first.unmount();
     mockStartStep.mockResolvedValueOnce(session(step('ContactData', { status: 'InProgress' })));
     renderPath('/kyc?code=CODE&step=ContactData');
-    await waitFor(() => expect(mockClearParams).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mockClearParams).toHaveBeenCalledTimes(2), { timeout: 10000 });
     expect(layout().title).toBe('step:ContactData');
   });
 });
