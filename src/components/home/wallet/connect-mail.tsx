@@ -28,6 +28,7 @@ interface FormData {
 interface CodeMode {
   mail: string;
   secret: string;
+  requestedAt: number;
 }
 
 const TOO_MANY_ATTEMPTS = 'Too many attempts. Please wait a moment and try again.';
@@ -85,9 +86,11 @@ export default function ConnectMail({ onLogin, onCancel }: ConnectProps): JSX.El
     setIsLoading(true);
     setError(undefined);
     if (isWidget) {
+      // The code's validity starts when it is requested, not when the response arrives.
+      const requestedAt = Date.now();
       requestMailLoginCode(mail, redirectUri, recommendationCode, wallet)
         .then(({ secret }) => {
-          if (isMounted.current) setCodeMode({ mail, secret });
+          if (isMounted.current) setCodeMode({ mail, secret, requestedAt });
         })
         .catch((error: ApiError) => {
           if (isMounted.current) setError(error.statusCode === 429 ? TOO_MANY_ATTEMPTS : GENERIC_ERROR);
@@ -104,10 +107,11 @@ export default function ConnectMail({ onLogin, onCancel }: ConnectProps): JSX.El
       .finally(() => setIsLoading(false));
   }
 
-  async function resendCode(mail: string): Promise<string> {
+  async function resendCode(mail: string): Promise<number> {
+    const requestedAt = Date.now();
     const { secret } = await requestMailLoginCode(mail, redirectUri, recommendationCode, wallet);
-    if (isMounted.current) setCodeMode({ mail, secret });
-    return secret;
+    if (isMounted.current) setCodeMode({ mail, secret, requestedAt });
+    return requestedAt;
   }
 
   async function completeLogin(accessToken: string): Promise<void> {
@@ -123,6 +127,7 @@ export default function ConnectMail({ onLogin, onCancel }: ConnectProps): JSX.El
   return codeMode ? (
     <ConnectMailCode
       secret={codeMode.secret}
+      requestedAt={codeMode.requestedAt}
       onResend={() => resendCode(codeMode.mail)}
       onSuccess={completeLogin}
       onBack={() => setCodeMode(undefined)}

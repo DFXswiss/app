@@ -155,7 +155,7 @@ describe('ConnectMailCode', () => {
     now = 1_000_000;
     jest.spyOn(Date, 'now').mockImplementation(() => now);
     mockSignInWithMailCode.mockResolvedValue({ accessToken: 'access-token' });
-    onResend = jest.fn().mockResolvedValue('new-secret');
+    onResend = jest.fn().mockImplementation(() => Promise.resolve(now));
     onSuccess = jest.fn().mockResolvedValue(undefined);
     onBack = jest.fn();
   });
@@ -165,7 +165,9 @@ describe('ConnectMailCode', () => {
   });
 
   function renderCode() {
-    return render(<ConnectMailCode secret="secret" onResend={onResend} onSuccess={onSuccess} onBack={onBack} />);
+    return render(
+      <ConnectMailCode secret="secret" requestedAt={now} onResend={onResend} onSuccess={onSuccess} onBack={onBack} />,
+    );
   }
 
   function enterCode(code = '123456'): void {
@@ -368,7 +370,7 @@ describe('ConnectMailCode', () => {
   });
 
   it('disables Back, Confirm and Send new code while a resend is pending', async () => {
-    const resend = deferred<string>();
+    const resend = deferred<number>();
     onResend.mockReturnValue(resend.promise);
     renderCode();
     enterCode();
@@ -379,14 +381,14 @@ describe('ConnectMailCode', () => {
     expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Send new code' })).toBeDisabled();
 
-    await act(async () => resend.resolve('new-secret'));
+    await act(async () => resend.resolve(now));
 
     expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Send new code' })).toBeEnabled();
   });
 
   it('does not update state after unmounting during a resend', async () => {
-    const resend = deferred<string>();
+    const resend = deferred<number>();
     onResend.mockReturnValue(resend.promise);
     const { unmount } = renderCode();
     fireEvent.click(screen.getByRole('button', { name: 'Send new code' }));
@@ -482,6 +484,50 @@ describe('ConnectMail widget code login', () => {
       'Mail',
     );
     expect(mockSignInWithMailCode).toHaveBeenCalledWith('second-secret', '123456');
+  });
+
+  it('counts the code validity from the moment the code was requested', async () => {
+    let now = 1_000_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    const request = deferred<{ secret: string }>();
+    mockRequestMailLoginCode.mockReturnValue(request.promise);
+    renderMail();
+    fireEvent.submit(screen.getByTestId('form'));
+    await waitFor(() => expect(mockRequestMailLoginCode).toHaveBeenCalled());
+
+    now += CODE_VALIDITY_MS;
+    await act(async () => request.resolve({ secret: 'first-secret' }));
+    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '123456' } });
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('form'));
+    });
+
+    expect(mockSignInWithMailCode).not.toHaveBeenCalled();
+    expect(screen.getByText('This code has expired. Please request a new code.')).toBeInTheDocument();
+    nowSpy.mockRestore();
+  });
+
+  it('counts the validity of a resent code from the moment it was requested', async () => {
+    let now = 1_000_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    renderMail();
+    await requestCode();
+
+    const resend = deferred<{ secret: string }>();
+    mockRequestMailLoginCode.mockReturnValue(resend.promise);
+    fireEvent.click(screen.getByRole('button', { name: 'Send new code' }));
+    await waitFor(() => expect(mockRequestMailLoginCode).toHaveBeenCalledTimes(2));
+
+    now += CODE_VALIDITY_MS;
+    await act(async () => resend.resolve({ secret: 'second-secret' }));
+    fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: '123456' } });
+    await act(async () => {
+      fireEvent.submit(screen.getByTestId('form'));
+    });
+
+    expect(mockSignInWithMailCode).not.toHaveBeenCalled();
+    expect(screen.getByText('This code has expired. Please request a new code.')).toBeInTheDocument();
+    nowSpy.mockRestore();
   });
 
   it('returns to the prefilled mail form and drops the current code step', async () => {

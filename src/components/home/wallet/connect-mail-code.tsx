@@ -29,7 +29,8 @@ interface FormData {
 
 export interface ConnectMailCodeProps {
   secret: string;
-  onResend: () => Promise<string>;
+  requestedAt: number;
+  onResend: () => Promise<number>;
   onSuccess: (accessToken: string) => Promise<void> | void;
   onBack: () => void;
 }
@@ -38,11 +39,17 @@ function genericError(error: ApiError): string {
   return error.statusCode === 429 ? TOO_MANY_ATTEMPTS : GENERIC_ERROR;
 }
 
-export default function ConnectMailCode({ secret, onResend, onSuccess, onBack }: ConnectMailCodeProps): JSX.Element {
+export default function ConnectMailCode({
+  secret,
+  requestedAt: initialRequestedAt,
+  onResend,
+  onSuccess,
+  onBack,
+}: ConnectMailCodeProps): JSX.Element {
   const { translate, translateError } = useSettingsContext();
   const { signInWithMailCode } = useAuth();
   const [attempts, setAttempts] = useState(0);
-  const [requestedAt, setRequestedAt] = useState(Date.now);
+  const [requestedAt, setRequestedAt] = useState(initialRequestedAt);
   const [status, setStatus] = useState<CodeStatus>('idle');
   const [error, setError] = useState<string>();
   const [info, setInfo] = useState<string>();
@@ -114,11 +121,11 @@ export default function ConnectMailCode({ secret, onResend, onSuccess, onBack }:
     setIsResending(true);
 
     try {
-      await onResend();
+      const newRequestedAt = await onResend();
       if (!isMounted.current) return;
 
       setAttempts(0);
-      setRequestedAt(Date.now());
+      setRequestedAt(newRequestedAt);
       setStatus('idle');
       resetField('code');
       setInfo('We have sent you a new code.');
