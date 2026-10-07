@@ -7,25 +7,36 @@ import {
   StyledInput,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useLocation } from 'react-router-dom';
 import { useAppParams } from 'src/hooks/app-params.hook';
 import { useAppHandlingContext } from '../../../contexts/app-handling.context';
 import { useSettingsContext } from '../../../contexts/settings.context';
+import { useWalletContext } from '../../../contexts/wallet.context';
 import { useNavigation } from '../../../hooks/navigation.hook';
 import { appOrigin } from '../../../util/app-origin';
 import { loginRedirectParams } from '../../../util/login-redirect';
 import { relativeUrl } from '../../../util/utils';
 import { ConnectError, ConnectProps } from '../connect-shared';
+import ConnectMailCode from './connect-mail-code';
 
 interface FormData {
   mail: string;
 }
 
-export default function ConnectMail({ onCancel }: ConnectProps): JSX.Element {
+interface CodeMode {
+  mail: string;
+  secret: string;
+}
+
+const TOO_MANY_ATTEMPTS = 'Too many attempts. Please wait a moment and try again.';
+const GENERIC_ERROR = 'Something went wrong. Please try again.';
+
+export default function ConnectMail({ onLogin, onCancel }: ConnectProps): JSX.Element {
   const { translate, translateError } = useSettingsContext();
-  const { signInWithMail } = useAuth();
+  const { requestMailLoginCode, signInWithMail } = useAuth();
+  const { setSession } = useWalletContext();
   const { navigate } = useNavigation();
   const { redirectPath, isWidget, widgetPersonalIban } = useAppHandlingContext();
   const { search } = useLocation();
@@ -33,7 +44,16 @@ export default function ConnectMail({ onCancel }: ConnectProps): JSX.Element {
 
   const [isLoading, setIsLoading] = useState(false);
   const [mailSent, setMailSent] = useState(false);
+  const [codeMode, setCodeMode] = useState<CodeMode>();
   const [error, setError] = useState<string>();
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   const mail = new URLSearchParams(search).get('user') || undefined;
 
@@ -64,10 +84,35 @@ export default function ConnectMail({ onCancel }: ConnectProps): JSX.Element {
   async function submit({ mail }: FormData): Promise<void> {
     setIsLoading(true);
     setError(undefined);
+    if (isWidget) {
+      requestMailLoginCode(mail, redirectUri, recommendationCode, wallet)
+        .then(({ secret }) => {
+          if (isMounted.current) setCodeMode({ mail, secret });
+        })
+        .catch((error: ApiError) => {
+          if (isMounted.current) setError(error.statusCode === 429 ? TOO_MANY_ATTEMPTS : GENERIC_ERROR);
+        })
+        .finally(() => {
+          if (isMounted.current) setIsLoading(false);
+        });
+      return;
+    }
+
     signInWithMail(mail, redirectUri, recommendationCode, wallet)
       .then(() => setMailSent(true))
       .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
       .finally(() => setIsLoading(false));
+  }
+
+  async function resendCode(mail: string): Promise<string> {
+    const { secret } = await requestMailLoginCode(mail, redirectUri, recommendationCode, wallet);
+    if (isMounted.current) setCodeMode({ mail, secret });
+    return secret;
+  }
+
+  async function completeLogin(accessToken: string): Promise<void> {
+    await setSession(accessToken);
+    onLogin();
   }
 
   function goBack() {
@@ -75,7 +120,14 @@ export default function ConnectMail({ onCancel }: ConnectProps): JSX.Element {
     navigate({ pathname: '/' }, { clearParams: ['user'] });
   }
 
-  return (
+  return codeMode ? (
+    <ConnectMailCode
+      secret={codeMode.secret}
+      onResend={() => resendCode(codeMode.mail)}
+      onSuccess={completeLogin}
+      onBack={() => setCodeMode(undefined)}
+    />
+  ) : (
     <Form control={control} rules={rules} errors={errors} onSubmit={handleSubmit(submit)} translate={translateError}>
       <StyledVerticalStack gap={6} full center>
         {mailSent ? (
