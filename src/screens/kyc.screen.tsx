@@ -82,6 +82,7 @@ import { useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { SumsubMessage, SumsubReviewAnswer, SumsubReviewRejectType } from 'src/dto/sumsub.dto';
 import { useAppParams } from 'src/hooks/app-params.hook';
+import { isWebComponent } from 'src/util/web-component-mode';
 import { ErrorHint } from '../components/error-hint';
 import { KycIdentNewTab } from '../components/kyc-ident-new-tab';
 import { KycStatusTable } from '../components/kyc-status';
@@ -1831,7 +1832,6 @@ function OperationalActivity({ rootRef, code, isLoading, step, onDone }: EditPro
 
 function Ident({ code, step, lang, onDone, onBack, onError }: EditProps): JSX.Element {
   const { translate } = useSettingsContext();
-  const { isWidget } = useAppHandlingContext();
 
   const [isDone, setIsDone] = useState(false);
   const [error, setError] = useState<string>();
@@ -1878,7 +1878,7 @@ function Ident({ code, step, lang, onDone, onBack, onError }: EditProps): JSX.El
       </div>
     ) : isDone ? (
       <StyledLoadingSpinner size={SpinnerSize.LG} />
-    ) : isWidget && step.session.type === UrlType.TOKEN ? (
+    ) : isWebComponent() && step.session.type === UrlType.TOKEN ? (
       <KycIdentNewTab code={code} onBack={onBack} />
     ) : (
       <>

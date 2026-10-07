@@ -1,6 +1,7 @@
 const mockStartStep = jest.fn();
 const mockGetKycInfo = jest.fn();
 const mockContinueKyc = jest.fn();
+let mockIsWebComponent = false;
 
 jest.mock('@dfx.swiss/react', () => ({
   KycLevel: { Link: 10, Sell: 30, Completed: 50 },
@@ -66,6 +67,8 @@ jest.mock('src/hooks/app-params.hook', () => ({
   useAppParams: () => ({ lang: 'EN' }),
 }));
 
+jest.mock('src/util/web-component-mode', () => ({ isWebComponent: () => mockIsWebComponent }));
+
 const mockSettings = {
   translate: (_namespace: string, text: string) => text,
   changeLanguage: jest.fn(),
@@ -109,9 +112,8 @@ function kycSession(sessionType: 'Token' | 'Browser') {
   };
 }
 
-function renderIdent(sessionType: 'Token' | 'Browser', isWidget: boolean) {
+function renderIdent(sessionType: 'Token' | 'Browser') {
   const session = kycSession(sessionType);
-  mockAppHandling.isWidget = isWidget;
   mockStartStep.mockResolvedValue(session);
   mockGetKycInfo.mockResolvedValue(session);
 
@@ -126,6 +128,8 @@ function renderIdent(sessionType: 'Token' | 'Browser', isWidget: boolean) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockAppHandling.isWidget = false;
+  mockIsWebComponent = false;
   process.env.REACT_APP_PUBLIC_URL = 'https://app.example/';
   openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
 });
@@ -140,8 +144,9 @@ afterEach(() => {
   }
 });
 
-it('shows the new-tab identification flow for a token session in widget mode', async () => {
-  renderIdent('Token', true);
+it('shows the new-tab identification flow for a token session in the Web Component', async () => {
+  mockIsWebComponent = true;
+  renderIdent('Token');
 
   expect(await screen.findByText('Identification continues in a new tab')).toBeInTheDocument();
   expect(screen.queryByTestId('sumsub-sdk')).not.toBeInTheDocument();
@@ -150,8 +155,9 @@ it('shows the new-tab identification flow for a token session in widget mode', a
   expect(openSpy).toHaveBeenCalledWith('https://app.example/kyc?code=TESTCODE', '_blank', 'noopener,noreferrer');
 });
 
-it('keeps browser sessions in an iframe in widget mode', async () => {
-  const { container } = renderIdent('Browser', true);
+it('keeps browser sessions in an iframe in the Web Component', async () => {
+  mockIsWebComponent = true;
+  const { container } = renderIdent('Browser');
 
   await waitFor(() =>
     expect(container.querySelector('iframe')).toHaveAttribute('src', 'https://provider.example/session'),
@@ -159,15 +165,24 @@ it('keeps browser sessions in an iframe in widget mode', async () => {
   expect(screen.queryByText('Identification continues in a new tab')).not.toBeInTheDocument();
 });
 
-it('keeps token sessions in Sumsub outside widget mode', async () => {
-  renderIdent('Token', false);
+it('keeps token sessions in Sumsub outside the Web Component', async () => {
+  renderIdent('Token');
 
   expect(await screen.findByTestId('sumsub-sdk')).toBeInTheDocument();
   expect(screen.queryByText('Identification continues in a new tab')).not.toBeInTheDocument();
 });
 
-it('reloads KYC information when Continue is clicked in widget mode', async () => {
-  renderIdent('Token', true);
+it('keeps token sessions in Sumsub for React package integrations', async () => {
+  mockAppHandling.isWidget = true;
+  renderIdent('Token');
+
+  expect(await screen.findByTestId('sumsub-sdk')).toBeInTheDocument();
+  expect(screen.queryByText('Identification continues in a new tab')).not.toBeInTheDocument();
+});
+
+it('reloads KYC information when Continue is clicked in the Web Component', async () => {
+  mockIsWebComponent = true;
+  renderIdent('Token');
 
   expect(mockGetKycInfo).not.toHaveBeenCalled();
   fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));

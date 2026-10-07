@@ -33,10 +33,13 @@ jest.mock('react-router-dom', () => ({
 
 import { render, screen, within } from '@testing-library/react';
 import MainWidget from '../Main.widget';
+import { isWebComponent } from '../util/web-component-mode';
 
 describe('MainWidget', () => {
   it('renders banner and App inside the boundary and keeps stylesheet links', () => {
     const { container } = render(<MainWidget />);
+
+    expect(isWebComponent()).toBe(true);
 
     const boundary = screen.getByTestId('boot-boundary');
     expect(within(boundary).getByTestId('storage-banner')).toBeInTheDocument();
@@ -44,8 +47,8 @@ describe('MainWidget', () => {
 
     const links = container.querySelectorAll('link');
     expect(Array.from(links).some((link) => link.getAttribute('href') === 'main-widget.css')).toBe(true);
-    expect(
-      Array.from(links).some((link) => (link.getAttribute('href') ?? '').includes('fonts.googleapis.com')),
-    ).toBe(true);
+    expect(Array.from(links).some((link) => (link.getAttribute('href') ?? '').includes('fonts.googleapis.com'))).toBe(
+      true,
+    );
   });
 });
