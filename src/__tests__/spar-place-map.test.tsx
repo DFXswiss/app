@@ -225,7 +225,7 @@ describe('SparPlaceMap', () => {
 
     render(<SparPlaceMap />);
 
-    expect(await screen.findByText('The place list could not be loaded.')).toBeInTheDocument();
+    expect(await screen.findByText('The location list could not be loaded.')).toBeInTheDocument();
     expect(global.fetch).toHaveBeenCalledWith(FILTERS_URL, expect.objectContaining({ credentials: 'omit' }));
     expect(placesCalls()).toHaveLength(0);
     expect(mockMap).not.toHaveBeenCalled();
@@ -248,7 +248,7 @@ describe('SparPlaceMap', () => {
 
     render(<SparPlaceMap />);
 
-    expect(await screen.findByText('The place list could not be loaded.')).toBeInTheDocument();
+    expect(await screen.findByText('The location list could not be loaded.')).toBeInTheDocument();
     expect(placesCalls()[0][0]).toBe(SPAR_PLACES_URL);
     expect(mockMap).not.toHaveBeenCalled();
     expect(mockSetLngLat).not.toHaveBeenCalled();
@@ -310,7 +310,7 @@ describe('SparPlaceMap', () => {
     await waitFor(() => {
       expect(placesUrls()).toContain(SPAR_CH_PLACES_URL);
     });
-    expect(screen.queryByText('The place list could not be loaded.')).not.toBeInTheDocument();
+    expect(screen.queryByText('The location list could not be loaded.')).not.toBeInTheDocument();
     expectNoOriginAndNoUnfilteredPlaces();
   });
 
@@ -360,7 +360,7 @@ describe('SparPlaceMap', () => {
     await waitFor(() => {
       expect(placesUrls()).toContain(OTHERS_PLACES_URL);
     });
-    expect(screen.queryByText('The place list could not be loaded.')).not.toBeInTheDocument();
+    expect(screen.queryByText('The location list could not be loaded.')).not.toBeInTheDocument();
     expectNoOriginAndNoUnfilteredPlaces();
   });
 
@@ -377,7 +377,7 @@ describe('SparPlaceMap', () => {
 
     render(<SparPlaceMap />);
 
-    expect(await screen.findByText('The place list could not be loaded.')).toBeInTheDocument();
+    expect(await screen.findByText('The location list could not be loaded.')).toBeInTheDocument();
     expect(placesCalls()).toHaveLength(0);
     expect(fetchCalls().map(([url]) => url)).not.toContain(UNFILTERED_PLACES_URL);
     expect(mockMap).not.toHaveBeenCalled();
@@ -396,7 +396,7 @@ describe('SparPlaceMap', () => {
 
     render(<SparPlaceMap />);
 
-    expect(await screen.findByText('The place list could not be loaded.')).toBeInTheDocument();
+    expect(await screen.findByText('The location list could not be loaded.')).toBeInTheDocument();
     expect(placesCalls()).toHaveLength(0);
     expect(fetchCalls().map(([url]) => url)).not.toContain(UNFILTERED_PLACES_URL);
     expect(mockMap).not.toHaveBeenCalled();
@@ -421,7 +421,7 @@ describe('SparPlaceMap', () => {
 
     render(<SparPlaceMap />);
 
-    expect(await screen.findByText('The place list could not be loaded.')).toBeInTheDocument();
+    expect(await screen.findByText('The location list could not be loaded.')).toBeInTheDocument();
     expect(placesCalls()[0][0]).toBe(SPAR_PLACES_URL);
     expectNoOriginAndNoUnfilteredPlaces();
     expect(mockMap).not.toHaveBeenCalled();
@@ -446,7 +446,7 @@ describe('SparPlaceMap', () => {
 
     render(<SparPlaceMap />);
 
-    expect(await screen.findByText('The place list could not be loaded.')).toBeInTheDocument();
+    expect(await screen.findByText('The location list could not be loaded.')).toBeInTheDocument();
     expect(placesCalls()[0][0]).toBe(SPAR_PLACES_URL);
     expectNoOriginAndNoUnfilteredPlaces();
     expect(mockMap).not.toHaveBeenCalled();

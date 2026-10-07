@@ -245,7 +245,7 @@ export function SparPlaceMap(): JSX.Element {
   if (state.kind === 'error') {
     return (
       <p className="text-dfxGray-800 text-sm p-4">
-        {translate('screens/payment', 'The place list could not be loaded.')}
+        {translate('screens/payment', 'The location list could not be loaded.')}
       </p>
     );
   }

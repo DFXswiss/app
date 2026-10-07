@@ -235,6 +235,10 @@
     "title": "Session-Wechsel (Debug)",
     "description": "Debug-Screenshots zum Session-/Account-Wechsel."
   },
+  "spar-place-map": {
+    "title": "SPAR-Standorte",
+    "description": "Zahlungslink mit Händler SPAR: Standortkarte, leere Liste und der Fehler, wenn die Standortliste nicht geladen werden kann."
+  },
   "docs": {
     "docs/EIP7702-Implementierungsplan.md": {
       "title": "EIP-7702 Implementierungsplan"
