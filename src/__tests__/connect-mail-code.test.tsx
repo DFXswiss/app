@@ -336,6 +336,55 @@ describe('ConnectMailCode', () => {
     await act(async () => exchange.reject({ statusCode: 401 }));
   });
 
+  it('does not complete the login when the step is left before the exchange succeeds', async () => {
+    const exchange = deferred<{ accessToken: string }>();
+    mockSignInWithMailCode.mockReturnValue(exchange.promise);
+    const { unmount } = renderCode();
+    enterCode();
+    fireEvent.submit(screen.getByTestId('form'));
+    await waitFor(() => expect(mockSignInWithMailCode).toHaveBeenCalled());
+
+    unmount();
+    await act(async () => exchange.resolve({ accessToken: 'access-token' }));
+
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it('disables Back and Send new code while an exchange is pending', async () => {
+    const exchange = deferred<{ accessToken: string }>();
+    mockSignInWithMailCode.mockReturnValue(exchange.promise);
+    renderCode();
+    enterCode();
+    fireEvent.submit(screen.getByTestId('form'));
+    await waitFor(() => expect(mockSignInWithMailCode).toHaveBeenCalled());
+
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send new code' })).toBeDisabled();
+
+    await act(async () => exchange.reject({ statusCode: 401 }));
+
+    expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Send new code' })).toBeEnabled();
+  });
+
+  it('disables Back, Confirm and Send new code while a resend is pending', async () => {
+    const resend = deferred<string>();
+    onResend.mockReturnValue(resend.promise);
+    renderCode();
+    enterCode();
+    fireEvent.click(screen.getByRole('button', { name: 'Send new code' }));
+    await waitFor(() => expect(onResend).toHaveBeenCalled());
+
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send new code' })).toBeDisabled();
+
+    await act(async () => resend.resolve('new-secret'));
+
+    expect(screen.getByRole('button', { name: 'Back' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Send new code' })).toBeEnabled();
+  });
+
   it('does not update state after unmounting during a resend', async () => {
     const resend = deferred<string>();
     onResend.mockReturnValue(resend.promise);
@@ -349,11 +398,13 @@ describe('ConnectMailCode', () => {
 });
 
 describe('ConnectMail widget code login', () => {
+  const originalPublicUrl = process.env.REACT_APP_PUBLIC_URL;
   const onLogin = jest.fn();
   const onCancel = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.REACT_APP_PUBLIC_URL;
     mockIsWidget.mockReturnValue(true);
     mockUseLocation.mockReturnValue({ search: '?user=user@example.com' });
     mockUseAppParams.mockReturnValue({ recommendationCode: 'REC1', wallet: 'Mail' });
@@ -361,6 +412,14 @@ describe('ConnectMail widget code login', () => {
     mockSignInWithMail.mockResolvedValue(undefined);
     mockSignInWithMailCode.mockResolvedValue({ accessToken: 'widget-token' });
     mockSetSession.mockResolvedValue(undefined);
+  });
+
+  afterAll(() => {
+    if (originalPublicUrl === undefined) {
+      delete process.env.REACT_APP_PUBLIC_URL;
+    } else {
+      process.env.REACT_APP_PUBLIC_URL = originalPublicUrl;
+    }
   });
 
   function renderMail() {

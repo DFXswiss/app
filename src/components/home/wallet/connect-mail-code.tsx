@@ -83,6 +83,8 @@ export default function ConnectMailCode({ secret, onResend, onSuccess, onBack }:
     setIsSubmitting(true);
     try {
       const { accessToken } = await signInWithMailCode(secret, code.trim());
+      if (!isMounted.current) return;
+
       await onSuccess(accessToken);
     } catch (caughtError) {
       if (!isMounted.current) return;
@@ -172,7 +174,7 @@ export default function ConnectMailCode({ secret, onResend, onSuccess, onBack }:
         <StyledButton
           label={translate('screens/home', 'Send new code')}
           onClick={resend}
-          disabled={isSubmitting}
+          disabled={isSubmitting || isResending}
           width={StyledButtonWidth.MIN}
           color={StyledButtonColor.STURDY_WHITE}
           isLoading={isResending}
@@ -181,6 +183,7 @@ export default function ConnectMailCode({ secret, onResend, onSuccess, onBack }:
         <StyledButton
           label={translate('general/actions', 'Back')}
           onClick={onBack}
+          disabled={isSubmitting || isResending}
           width={StyledButtonWidth.MIN}
           color={StyledButtonColor.STURDY_WHITE}
         />
