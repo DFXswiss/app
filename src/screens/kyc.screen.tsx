@@ -83,6 +83,7 @@ import { useLayoutContext } from 'src/contexts/layout.context';
 import { SumsubReviewAnswer, SumsubReviewRejectType } from 'src/dto/sumsub.dto';
 import { useAppParams } from 'src/hooks/app-params.hook';
 import { ErrorHint } from '../components/error-hint';
+import { KycIdentNewTab } from '../components/kyc-ident-new-tab';
 import { KycStatusTable } from '../components/kyc-status';
 import { useSettingsContext } from '../contexts/settings.context';
 import { useGeoLocation } from '../hooks/geo-location.hook';
@@ -1828,8 +1829,9 @@ function OperationalActivity({ rootRef, code, isLoading, step, onDone }: EditPro
   );
 }
 
-function Ident({ step, lang, onDone, onBack, onError }: EditProps): JSX.Element {
+function Ident({ code, step, lang, onDone, onBack, onError }: EditProps): JSX.Element {
   const { translate } = useSettingsContext();
+  const { isWidget } = useAppHandlingContext();
 
   const [isDone, setIsDone] = useState(false);
   const [error, setError] = useState<string>();
@@ -1876,6 +1878,8 @@ function Ident({ step, lang, onDone, onBack, onError }: EditProps): JSX.Element 
       </div>
     ) : isDone ? (
       <StyledLoadingSpinner size={SpinnerSize.LG} />
+    ) : isWidget && step.session.type === UrlType.TOKEN ? (
+      <KycIdentNewTab code={code} onBack={onBack} />
     ) : (
       <>
         {step.session.type === UrlType.TOKEN ? (

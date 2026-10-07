@@ -366,7 +366,10 @@
     "What happens if the referral is not confirmed?": "Was passiert, wenn die Empfehlung nicht bestätigt wird?",
     "If your referral is not confirmed by your contact person, your onboarding is considered incomplete and an account cannot be set up.": "Wenn Deine Empfehlung nicht von Deiner Ansprechperson bestätigt wird, gilt Dein Onboarding als nicht abgeschlossen und ein Konto kann nicht eingerichtet werden.",
     "Can I complete the onboarding without a referral?": "Kann ich das Onboarding ohne Empfehlung abschliessen?",
-    "No. Onboarding at DFX is only possible through a referral. You need the ref code, ref link, or email address of an existing customer who confirms your registration.": "Nein. Das Onboarding bei DFX ist ausschliesslich über eine Empfehlung möglich. Du benötigst dafür den Ref-Code, Ref-Link oder die E-Mail-Adresse eines Bestandskunden, der Deine Registrierung bestätigt."
+    "No. Onboarding at DFX is only possible through a referral. You need the ref code, ref link, or email address of an existing customer who confirms your registration.": "Nein. Das Onboarding bei DFX ist ausschliesslich über eine Empfehlung möglich. Du benötigst dafür den Ref-Code, Ref-Link oder die E-Mail-Adresse eines Bestandskunden, der Deine Registrierung bestätigt.",
+    "Identification continues in a new tab": "Die Identifikation wird in einem neuen Tab fortgesetzt",
+    "The identification cannot be started inside this page. Open it in a new tab and come back here once you have finished.": "Die Identifikation kann nicht innerhalb dieser Seite gestartet werden. Öffne sie in einem neuen Tab und kehre hierher zurück, sobald Du fertig bist.",
+    "Open identification": "Identifikation öffnen"
   },
   "screens/compliance": {
     "Compliance": "Compliance",
