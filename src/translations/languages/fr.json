@@ -368,7 +368,7 @@
     "Can I complete the onboarding without a referral?": "Puis-je terminer l'inscription sans parrainage ?",
     "No. Onboarding at DFX is only possible through a referral. You need the ref code, ref link, or email address of an existing customer who confirms your registration.": "Non. L'inscription chez DFX n'est possible que par parrainage. Vous avez besoin du code de parrainage, du lien de parrainage ou de l'adresse e-mail d'un client existant qui confirme votre inscription.",
     "Identification continues in a new tab": "L'identification se poursuit dans un nouvel onglet",
-    "The identification cannot be started inside this page. Open it in a new tab and come back here once you have finished.": "L'identification ne peut pas être lancée dans cette page. Ouvrez-la dans un nouvel onglet et revenez ici une fois terminé.",
+    "The identification cannot be started inside this page. Open it in a new tab and come back here once you have finished.": "L'identification ne peut pas être lancée dans cette page. Ouvrez-la dans un nouvel onglet et revenez ici une fois que vous avez terminé.",
     "Open identification": "Ouvrir l'identification"
   },
   "screens/compliance": {

@@ -80,7 +80,7 @@ import { DefaultFileTypes } from 'src/config/file-types';
 import { Urls } from 'src/config/urls';
 import { useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { useLayoutContext } from 'src/contexts/layout.context';
-import { SumsubReviewAnswer, SumsubReviewRejectType } from 'src/dto/sumsub.dto';
+import { SumsubMessage, SumsubReviewAnswer, SumsubReviewRejectType } from 'src/dto/sumsub.dto';
 import { useAppParams } from 'src/hooks/app-params.hook';
 import { ErrorHint } from '../components/error-hint';
 import { KycIdentNewTab } from '../components/kyc-ident-new-tab';
@@ -1891,7 +1891,7 @@ function Ident({ code, step, lang, onDone, onBack, onError }: EditProps): JSX.El
               return Promise.resolve('');
             }}
             config={{ lang: lang.symbol.toLowerCase() }}
-            onMessage={(type: string, payload: any) => {
+            onMessage={(type: string, payload?: Partial<Pick<SumsubMessage, 'reviewResult'>>) => {
               switch (type) {
                 case 'idCheck.onApplicantStatusChanged':
                   if (
