@@ -439,6 +439,26 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   results. It does not prove the exact `pl?lightning=…` link or the exact
   decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
   the real `url()` treats those arguments identically; no assertion pins the outer host.
+- **The SPAR location pictures answer the OpenCryptoPay place API themselves.**
+  `e2e/spar-place-map.spec.ts` fulfils `https://api.opencryptopay.io/map/filters` and
+  `https://api.opencryptopay.io/map/places` with synthetic SPAR and Volg shops at fixed coordinates,
+  and it fulfils `**/v1/**`, `**/v2/**` and `**/paymentLink/**` so `/pl?merchant=SPAR` renders
+  without a live DFX API. Map tiles are the live OpenFreeMap Liberty style, not a fixture. A green
+  run proves those fixtures render: a labeled map of Switzerland, an open shop, a country filter,
+  other shops, an empty list, and the load error. It does not prove that the place API returns
+  those shops, countries or coordinates, that those shops exist, or that the DFX payment-link API
+  returns the stubbed merchant.
+- **The payment-link stack spec answers the place API itself for the SPAR merchant.**
+  `e2e-stack/specs/payment-links.spec.ts` fulfils the same two place routes with one synthetic SPAR
+  shop while the rest of that spec talks to the local API. A green run proves the locations block
+  appears for `merchant=SPAR` and does not show the load error or the empty sentence. It does not
+  prove that the place API returns that shop.
+- **The SPAR place-map unit test replaces fetch and MapLibre.**
+  `src/__tests__/spar-place-map.test.tsx` stubs `global.fetch` for the place API and replaces
+  `maplibre-gl` with a fake map that records markers. A green run proves the component asks for
+  `shopName=SPAR` or `shopName=others`, adds `country` only when one is chosen, drops pins that do
+  not match or are out of range, and shows the empty and error states. It does not prove that a
+  real map draws those pins, that OpenFreeMap serves tiles, or that the place API returns that JSON.
 
 ## Known gaps
 

@@ -388,6 +388,7 @@ test.describe('Payment links / routes / invoice', () => {
     }
   });
 
+  // The place API is stubbed. A green run does not prove that the place API returns this shop.
   test('/pl: merchant SPAR shows the location list from the place API', async ({ page }) => {
     await page.route('https://api.opencryptopay.io/map/**', (route) => {
       const url = route.request().url();
@@ -412,9 +413,7 @@ test.describe('Payment links / routes / invoice', () => {
       });
     });
 
-    const places = page.waitForResponse(
-      (response) => response.url().includes('/map/places') && response.ok(),
-    );
+    const places = page.waitForResponse((response) => response.url().includes('/map/places') && response.ok());
     await page.goto('/pl?merchant=SPAR&lang=en');
     await waitForPublicPath(page, '/pl');
     await places;

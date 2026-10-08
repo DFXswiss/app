@@ -5,10 +5,15 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 
 // Webpack rewrites MapLibre's default worker URL to a chunk that never loads,
 // so vector tiles never arrive. The file is copied into public/ at startup.
-if (typeof setWorkerUrl === 'function') {
-  const publicUrl = process.env.PUBLIC_URL ?? '';
-  setWorkerUrl(`${publicUrl}/maplibre-gl-worker.mjs`);
+export function publishMapLibreWorker(
+  setWorker: ((url: string) => void) | undefined,
+  publicUrl: string | undefined,
+): void {
+  if (typeof setWorker !== 'function') return;
+  setWorker(`${publicUrl ?? ''}/maplibre-gl-worker.mjs`);
 }
+
+publishMapLibreWorker(setWorkerUrl, process.env.PUBLIC_URL);
 
 const FILTERS_URL = 'https://api.opencryptopay.io/map/filters';
 const PLACES_URL = 'https://api.opencryptopay.io/map/places';
@@ -199,8 +204,8 @@ export function SparPlaceMap(): JSX.Element {
 
   useEffect(() => {
     if (state.kind !== 'ready') return;
-    const container = containerRef.current;
-    if (!container) return;
+    // the ready render commits this div before the effect
+    const container = containerRef.current as HTMLDivElement;
 
     const epoch = String(++mapEpoch.current);
     delete container.dataset.mapReady;

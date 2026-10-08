@@ -11,6 +11,8 @@ test.use({
  * These specs are a local review aid and do not run in CI.
  * The map uses the live Liberty style so the pictures show Switzerland,
  * not an empty canvas.
+ * A green run does not prove that the place API returns these shops or that those shops exist.
+ * Map tiles are the live OpenFreeMap style.
  */
 
 const FILTERS = { countries: ['CH', 'LI'], shopNames: ['SPAR', 'others'] };
