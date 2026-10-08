@@ -32,6 +32,7 @@ describe('QrBasic', () => {
     const { container } = render(<QrBasic data="https://pay.example/invoice" isLoading />);
 
     expect(screen.getByTestId('qr-code')).toHaveAttribute('data-value', 'https://pay.example/invoice');
+    expect(screen.getByTestId('qr-code')).toHaveAttribute('data-fg', '#0000000A');
     expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
     expect(container.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument();
   });
