@@ -260,7 +260,7 @@ export function SparPlaceMap(): JSX.Element {
           [west, south],
           [east, north],
         ],
-        { padding: { top: 72, right: 56, bottom: 40, left: 40 }, maxZoom: 12, animate: false },
+        { padding: { top: 72, right: 56, bottom: 112, left: 40 }, maxZoom: 12, animate: false },
       );
     } else {
       for (const place of state.places) {
@@ -350,6 +350,24 @@ export function SparPlaceMap(): JSX.Element {
         </div>
       )}
       <div ref={containerRef} className="w-full h-full" />
+      {state.kind === 'ready' && state.places.length > 0 && (
+        <ul
+          className="absolute bottom-8 left-2 z-20 flex max-w-[68%] flex-wrap gap-1"
+          aria-label={translate('screens/payment', 'Locations')}
+        >
+          {state.places.map((place) => {
+            const label = placeLabel(place.name, translate('screens/payment', 'Location'));
+            return (
+              <li
+                key={`${label}${place.lon}${place.lat}`}
+                className="rounded bg-white/95 px-1.5 py-0.5 text-xs text-dfxGray-800 shadow"
+              >
+                {label}
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {state.kind === 'ready' && state.places.length === 0 && (
         <p
           className={

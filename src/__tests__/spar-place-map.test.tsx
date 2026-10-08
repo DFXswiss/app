@@ -723,6 +723,9 @@ describe('SparPlaceMap', () => {
     );
     expect(labels).toContain('SPAR Beispiel');
     expect(labels).toContain('Location');
+    expect(screen.getByRole('list', { name: 'Locations' })).toBeInTheDocument();
+    expect(screen.getByText('SPAR Beispiel')).toBeInTheDocument();
+    expect(screen.getAllByText('Location')).toHaveLength(2);
 
     const container = (mockMap.mock.calls[0][0] as { container: HTMLDivElement }).container;
     const epoch = container.dataset.mapEpoch;

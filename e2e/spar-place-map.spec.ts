@@ -164,8 +164,8 @@ test.describe('SPAR locations', () => {
     await openLocations(page);
     await waitForMap(page);
     await page.getByRole('button', { name: 'SPAR Bern Marktgasse' }).click();
-    await expect(page.getByText('SPAR Bern Marktgasse', { exact: true })).toBeVisible();
-    await expect(page.getByText('Grocery', { exact: true })).toBeVisible();
+    await expect(page.locator('.maplibregl-popup').getByText('SPAR Bern Marktgasse', { exact: true })).toBeVisible();
+    await expect(page.locator('.maplibregl-popup').getByText('Grocery', { exact: true })).toBeVisible();
     await shoot(page, 'spar-locations-popup.png');
   });
 
