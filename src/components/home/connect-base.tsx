@@ -88,30 +88,44 @@ export function ConnectBase({
 
     if (!usedChain) throw new Error('No blockchain');
 
-    await getAccount(wallet, usedChain, activeWallet === wallet)
-      .then((a) => (isMounted.current ? doLogin({ ...a, blockchain: usedChain }) : undefined))
-      .then(() => {
-        if (isMounted.current) onLogin();
-      })
-      .catch((e) => {
-        if (!isMounted.current) return;
-
-        setIsConnecting(false);
-
-        if (e instanceof AbortError) {
-          onCancel();
-        } else if (e instanceof WalletSwitchError) {
-          onSwitch(e.wallet);
-          return getAccount(e.wallet, usedChain, activeWallet === e.wallet);
-        } else {
-          setConnectError(e.message);
-        }
-      });
+    await connectWallet(wallet, usedChain);
   }
 
-  async function doLogin(account: Account & { blockchain: Blockchain }) {
+  async function connectWallet(usedWallet: WalletType, usedChain: Blockchain): Promise<void> {
+    try {
+      const account = await getAccount(usedWallet, usedChain, activeWallet === usedWallet);
+      if (!isMounted.current) return;
+
+      await doLogin({ ...account, blockchain: usedChain }, usedWallet);
+      if (isMounted.current) onLogin();
+    } catch (e) {
+      if (!isMounted.current) return;
+
+      if (e instanceof AbortError) {
+        setIsConnecting(false);
+        onCancel();
+      } else if (e instanceof WalletSwitchError) {
+        onSwitch(e.wallet);
+
+        let switchedChain = usedChain;
+        if (!supportsBlockchain(e.wallet, switchedChain)) switchedChain = WalletBlockchains[e.wallet]?.[0];
+
+        if (switchedChain) {
+          await connectWallet(e.wallet, switchedChain);
+        } else {
+          setIsConnecting(false);
+          setConnectError('No blockchain');
+        }
+      } else {
+        setIsConnecting(false);
+        setConnectError(e.message);
+      }
+    }
+  }
+
+  async function doLogin(account: Account & { blockchain: Blockchain }, usedWallet: WalletType) {
     const isSwitchingBlockchain =
-      activeWallet === wallet &&
+      activeWallet === usedWallet &&
       'address' in account &&
       account.address.toLowerCase() === session?.address?.toLowerCase() &&
       !isConnect;
@@ -125,11 +139,11 @@ export function ConnectBase({
     }
 
     if ('session' in account) {
-      return setSession(account.session, wallet, account.blockchain);
+      return setSession(account.session, usedWallet, account.blockchain);
     }
 
     return login(
-      wallet,
+      usedWallet,
       account.address,
       account.blockchain,
       (a, m) =>

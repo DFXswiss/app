@@ -279,7 +279,12 @@ test.describe('Auth area e2e', () => {
     const jwt = await completeMailLogin(email);
     expect(jwt).toBeTruthy();
 
-    await waitForRow<{ id: number; mail: string }>(`SELECT id, mail FROM user_data WHERE mail = $1`, [email], 20000);
+    const userData = await waitForRow<{ id: number; mail: string }>(
+      `SELECT id, mail FROM user_data WHERE mail = $1`,
+      [email],
+      20000,
+    );
+    trackRow('user_data', userData.id);
 
     await gotoWithSession(page, '/', jwt);
     await page.waitForLoadState('networkidle');
@@ -351,7 +356,8 @@ test.describe('Auth area e2e', () => {
       })
       .toBeTruthy();
 
-    await waitForRow<{ id: number }>(`SELECT id FROM user_data WHERE mail = $1`, [email], 15000);
+    const userData = await waitForRow<{ id: number }>(`SELECT id FROM user_data WHERE mail = $1`, [email], 15000);
+    trackRow('user_data', userData.id);
   });
 
   // ---------------------------------------------------------------------------

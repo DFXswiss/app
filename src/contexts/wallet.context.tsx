@@ -1,4 +1,12 @@
-import { Blockchain, Utils, useApiSession, useAuth, useSessionContext, useUserContext } from '@dfx.swiss/react';
+import {
+  Blockchain,
+  Utils,
+  useApiSession,
+  useAuth,
+  useAuthContext,
+  useSessionContext,
+  useUserContext,
+} from '@dfx.swiss/react';
 import { AuthWalletType } from '@dfx.swiss/react/dist/definitions/auth';
 import { Router } from '@remix-run/router';
 import browserLang from 'browser-lang';
@@ -178,6 +186,7 @@ export function useWalletContext(): WalletInterface {
 
 export function WalletContextProvider(props: WalletContextProps): JSX.Element {
   const { isInitialized: isSessionInitialized, isLoggedIn, logout } = useSessionContext();
+  const { session } = useAuthContext();
   const { updateSession } = useApiSession();
   const api = useSessionContext();
   const {
@@ -285,7 +294,7 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
       const signature = await onSignMessage(address, message);
       await createSession(address, signature, key, wallet);
     } catch (e) {
-      api.logout();
+      if (!session || session.address) api.logout();
       setWallet();
 
       throw e;
@@ -350,7 +359,16 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
       setWallet,
       activeWallet,
     }),
-    [isInitialized, isSessionInitialized, isParamsInitialized, activeWallet, activeBlockchain, api, appParams],
+    [
+      isInitialized,
+      isSessionInitialized,
+      isParamsInitialized,
+      activeWallet,
+      activeBlockchain,
+      api,
+      appParams,
+      session,
+    ],
   );
 
   return <WalletContext.Provider value={context}>{props.children}</WalletContext.Provider>;
