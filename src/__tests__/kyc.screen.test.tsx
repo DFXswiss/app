@@ -1141,7 +1141,7 @@ describe('KycEdit routing', () => {
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
     expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
     expect(screen.queryByTestId('file')).toBeNull();
-    expect(screen.queryByTestId('result-hint')).toBeNull();
+    expect(screen.queryByText('This step has already been finished.')).not.toBeInTheDocument();
   });
 
   it('opens FileUpload with a hint for sole-proprietorship confirmation', async () => {
