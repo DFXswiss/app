@@ -1126,6 +1126,25 @@ describe('BuyScreen cleared amount protection', () => {
     await settle(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error'));
   });
 
+  it('asks the customer to sign in again instead of retrying when the quote is rejected with 401', async () => {
+    mockPersonalIban.mockReturnValue(undefined);
+    mockUseAppParams.mockReturnValue(baseAppParams());
+    mockReceiveFor.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' });
+    render(<BuyScreen />);
+    await settle(() =>
+      expect(screen.getByText('Your login has expired. Please sign in again.')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unauthorized')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Login' }).click();
+    });
+    expect(mockLogout).toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith('/login', { setRedirect: true });
+  });
+
   it('filters assets when an asset filter is set', async () => {
     mockPersonalIban.mockReturnValue(undefined);
     mockUseAppParams.mockReturnValue(baseAppParams({ assets: 'BTC', assetOut: 'BTC' }));

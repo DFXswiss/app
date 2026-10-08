@@ -24,7 +24,6 @@ import {
   Form,
   SpinnerSize,
   StyledButton,
-  StyledButtonColor,
   StyledButtonWidth,
   StyledDropdown,
   StyledHorizontalStack,
@@ -45,10 +44,10 @@ import { Urls } from 'src/config/urls';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
-import { ErrorHint } from '../components/error-hint';
 import { ExchangeRate } from '../components/exchange-rate';
 import { SellCompletion } from '../components/payment/sell-completion';
 import { QuoteErrorHint } from '../components/quote-error-hint';
+import { QuoteRequestError, SESSION_EXPIRED_ERROR } from '../components/quote-request-error';
 import { SanctionHint } from '../components/sanction-hint';
 import { CloseType, useAppHandlingContext } from '../contexts/app-handling.context';
 import { AssetBalance } from '../contexts/balance.context';
@@ -431,7 +430,10 @@ export default function SellScreen(): JSX.Element {
           setPaymentInfo(undefined);
           setIsQuoteFinal(false);
           const kycErrorFromMessage = getKycErrorFromMessage(error.message);
-          if (kycErrorFromMessage) {
+          if (error.statusCode === 401) {
+            // The login was rejected: a retry would resend the same request, so ask for a new sign-in.
+            setErrorMessage(SESSION_EXPIRED_ERROR);
+          } else if (kycErrorFromMessage) {
             setKycError(kycErrorFromMessage);
           } else {
             setErrorMessage(error.message ?? 'Unknown error');
@@ -762,17 +764,7 @@ export default function SellScreen(): JSX.Element {
                   {kycError && !customAmountError && <QuoteErrorHint type={TransactionType.SELL} error={kycError} />}
 
                   {errorMessage && (
-                    <StyledVerticalStack center className="text-center">
-                      <ErrorHint message={errorMessage} />
-
-                      <StyledButton
-                        width={StyledButtonWidth.MIN}
-                        label={translate('general/actions', 'Retry')}
-                        onClick={() => setRetryToken((token) => token + 1)}
-                        className="mt-4"
-                        color={StyledButtonColor.STURDY_WHITE}
-                      />
-                    </StyledVerticalStack>
+                    <QuoteRequestError message={errorMessage} onRetry={() => setRetryToken((token) => token + 1)} />
                   )}
 
                   {paymentInfo &&

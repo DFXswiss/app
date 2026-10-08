@@ -51,6 +51,7 @@ import { AddressSwitch } from '../components/payment/address-switch';
 import { BuyCompletion } from '../components/payment/buy-completion';
 import { PrivateAssetHint } from '../components/private-asset-hint';
 import { QuoteErrorHint } from '../components/quote-error-hint';
+import { QuoteRequestError, SESSION_EXPIRED_ERROR } from '../components/quote-request-error';
 import { SanctionHint } from '../components/sanction-hint';
 import { addressLabel } from '../config/labels';
 import { useAppHandlingContext } from '../contexts/app-handling.context';
@@ -803,6 +804,12 @@ export default function BuyScreen(): JSX.Element {
           return;
         setPaymentInfoState(undefined);
 
+        // The login was rejected: a retry would resend the same request, so ask for a new sign-in.
+        if (error.statusCode === 401) {
+          setErrorMessage(SESSION_EXPIRED_ERROR);
+          return;
+        }
+
         // The client snapshot allowed the automatic Frick default (KYC >= 50), but the
         // authoritative server-side check rejected it with KycRequired. Do not show the blocking
         // KYC screen for a choice the customer never made themselves: retry without a selector
@@ -1260,9 +1267,7 @@ export default function BuyScreen(): JSX.Element {
                     )}
 
                     {errorMessage && !isUnrecognizedBlocked && (
-                      <StyledVerticalStack center className="text-center">
-                        <ErrorHint message={errorMessage} />
-
+                      <QuoteRequestError message={errorMessage} onRetry={() => setRetryToken((token) => token + 1)}>
                         {activePersonalIbanProviderUnavailable && (
                           <StyledButton
                             width={StyledButtonWidth.FULL}
@@ -1271,15 +1276,7 @@ export default function BuyScreen(): JSX.Element {
                             color={StyledButtonColor.STURDY_WHITE}
                           />
                         )}
-
-                        <StyledButton
-                          width={StyledButtonWidth.MIN}
-                          label={translate('general/actions', 'Retry')}
-                          onClick={() => setRetryToken((token) => token + 1)}
-                          className="mt-4"
-                          color={StyledButtonColor.STURDY_WHITE}
-                        />
-                      </StyledVerticalStack>
+                      </QuoteRequestError>
                     )}
 
                     {paymentInfo &&

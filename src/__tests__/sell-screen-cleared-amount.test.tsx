@@ -829,6 +829,22 @@ describe('SellScreen', () => {
     expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
   });
 
+  it('asks the customer to sign in again instead of retrying when the quote is rejected with 401', async () => {
+    mockReceiveFor.mockRejectedValue({ statusCode: 401, message: 'Unauthorized' });
+    render(<SellScreen />);
+    await flushQuote();
+    expect(screen.getByText('Your login has expired. Please sign in again.')).toBeInTheDocument();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unauthorized')).not.toBeInTheDocument();
+    expect(screen.queryByText('Retry')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByText('Login'));
+    });
+    expect(mockLogout).toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith('/login', { setRedirect: true });
+  });
+
   it('fills MAX from the available balance', async () => {
     render(<SellScreen />);
     await flushQuote();
