@@ -173,7 +173,7 @@
   },
   "widget-mail-code-login": {
     "title": "Mail-Login mit Code (eingebettet)",
-    "description": "Eingebettete App als Web Component: Menü → Login → E-Mail. Statt eines Links kommt ein 6-stelliger Code, den der Kunde im Widget eingibt. Varianten: Mail-Eingabe, Code-Eingabe, falscher Code, abgelaufener Code, zu viele Fehlversuche und neuer Code gesendet. Der erfolgreiche Login ist nicht abgebildet, weil die lokale API den Code weder speichert noch protokolliert."
+    "description": "Eingebettete App als Web Component: Menü → Login → E-Mail. Zusätzlich zum Login-Link enthält die Mail einen 6-stelligen Code, den der Kunde im Widget eingibt. Varianten: Mail-Eingabe, Code-Eingabe, falscher Code, abgelaufener Code, zu viele Fehlversuche und neuer Code gesendet. Der erfolgreiche Login ist nicht abgebildet, weil die lokale API den Code weder speichert noch protokolliert."
   },
   "signature-login": {
     "title": "Signatur-Login",

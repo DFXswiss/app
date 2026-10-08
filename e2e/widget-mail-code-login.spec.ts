@@ -1,6 +1,8 @@
 import { test, expect, Locator, Page } from '@playwright/test';
 import { randomBytes } from 'crypto';
 import * as fs from 'fs';
+import * as http from 'http';
+import type { AddressInfo } from 'net';
 import * as path from 'path';
 import { forceOpenShadowRoots } from '../e2e-stack/specs/fixtures/shadow-root';
 
@@ -21,18 +23,16 @@ import { forceOpenShadowRoots } from '../e2e-stack/specs/fixtures/shadow-root';
  *
  * The widget is the real widget build, not the dev server: build it first with
  *   npm run widget:loc
- * (API http://localhost:3000, output `widget/`, chunks under http://localhost:3001/widget/). The
- * spec serves that build and a minimal host page on http://localhost:3001 itself, so it does not
- * depend on what the configured web server answers there. The widget stylesheet is served under
+ * (API http://localhost:3000, output `widget/`, lazy chunks under http://localhost:3001/widget/).
+ * The spec serves a minimal host page, the bundle and the widget stylesheet from its own HTTP
+ * server on 127.0.0.1, so the page is a real loopback document that may call the API on localhost.
+ * The lazy chunks are fulfilled from the same build via `page.route`, so the spec does not depend on
+ * what the configured web server answers on port 3001. The stylesheet is served as
  * `main-widget.css`, the name the deploy workflows rewrite to the published stylesheet.
  *
- * Two test-only measures make this possible; neither changes product code:
- *   - the closed shadow root is forced open (`forceOpenShadowRoots`), so locators reach the widget;
- *   - Chromium's local-network-access check is off for this file: a host page fulfilled by
- *     `page.route` has no address space of its own, so Chromium would block its requests to the API
- *     on localhost as a public page calling a local one.
- * The expired variant moves the browser clock past the code's validity; the API's own expiry is
- * not exercised by it.
+ * The closed shadow root is forced open (`forceOpenShadowRoots`), so locators reach the widget;
+ * product code is unchanged. The expired variant moves the browser clock past the code's validity;
+ * the API's own expiry is not exercised by it.
  *
  * The API limits code requests to 10 per IP and hour (in memory); one run makes 4. Restart the API
  * container if repeated local runs hit the limit (the code step then shows "Too many attempts").
@@ -40,7 +40,7 @@ import { forceOpenShadowRoots } from '../e2e-stack/specs/fixtures/shadow-root';
  * Synthetic data only: random example.invalid addresses (not shown in any screenshot).
  */
 
-const ORIGIN = 'http://localhost:3001';
+const CHUNK_ORIGIN = 'http://localhost:3001';
 const WIDGET_DIR = path.join(__dirname, '..', 'widget');
 
 const INVALID = 'The code is incorrect. Please check it and try again.';
@@ -54,7 +54,8 @@ const MAX_ATTEMPTS = 5;
 // one in a million per request.
 const WRONG_CODE = '000000';
 
-test.use({ launchOptions: { args: ['--disable-features=LocalNetworkAccessChecks'] } });
+let hostServer: http.Server;
+let hostUrl: string;
 
 function widgetBundle(dir: string, pattern: RegExp): string {
   const matches = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => pattern.test(f)) : [];
@@ -66,7 +67,14 @@ function widgetBundle(dir: string, pattern: RegExp): string {
   return matches[0];
 }
 
-async function serveWidgetHost(page: Page): Promise<void> {
+/** A file of the widget build for a `/widget/...` path, or undefined if there is none. */
+function widgetFile(pathname: string): string | undefined {
+  if (!pathname.startsWith('/widget/')) return undefined;
+  const file = path.join(WIDGET_DIR, pathname.slice('/widget/'.length));
+  return file.startsWith(WIDGET_DIR + path.sep) && fs.existsSync(file) ? file : undefined;
+}
+
+test.beforeAll(async () => {
   const js = widgetBundle(path.join(WIDGET_DIR, 'static/js'), /^main\.[0-9a-f]+\.js$/);
   const css = widgetBundle(path.join(WIDGET_DIR, 'static/css'), /^main\.[0-9a-f]+\.css$/);
   const host = `<!DOCTYPE html>
@@ -80,22 +88,38 @@ async function serveWidgetHost(page: Page): Promise<void> {
   </body>
 </html>`;
 
-  await page.route(`${ORIGIN}/**`, async (route) => {
-    const { pathname } = new URL(route.request().url());
-    if (pathname === '/main-widget.css') return route.fulfill({ path: path.join(WIDGET_DIR, 'static/css', css) });
-    if (pathname.startsWith('/widget/')) {
-      const file = path.join(WIDGET_DIR, pathname.slice('/widget/'.length));
-      if (file.startsWith(WIDGET_DIR + path.sep) && fs.existsSync(file)) return route.fulfill({ path: file });
-      return route.fulfill({ status: 404 });
+  hostServer = http.createServer((req, res) => {
+    const pathname = new URL(req.url ?? '/', 'http://host').pathname;
+    const file = pathname === '/main-widget.css' ? path.join(WIDGET_DIR, 'static/css', css) : widgetFile(pathname);
+    if (file) {
+      res.writeHead(200, { 'content-type': file.endsWith('.css') ? 'text/css' : 'application/javascript' });
+      fs.createReadStream(file).pipe(res);
+    } else if (pathname === '/') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(host);
+    } else {
+      res.writeHead(404).end();
     }
-    return route.fulfill({ contentType: 'text/html', body: host });
+  });
+  await new Promise<void>((resolve) => hostServer.listen(0, '127.0.0.1', resolve));
+  hostUrl = `http://127.0.0.1:${(hostServer.address() as AddressInfo).port}/`;
+});
+
+test.afterAll(async () => {
+  await new Promise((resolve) => hostServer.close(resolve));
+});
+
+async function serveWidgetChunks(page: Page): Promise<void> {
+  await page.route(`${CHUNK_ORIGIN}/widget/**`, async (route) => {
+    const file = widgetFile(new URL(route.request().url()).pathname);
+    return file ? route.fulfill({ path: file }) : route.fulfill({ status: 404 });
   });
 }
 
 async function openMailEntry(page: Page): Promise<Locator> {
   await forceOpenShadowRoots(page);
-  await serveWidgetHost(page);
-  await page.goto(`${ORIGIN}/widget-host`);
+  await serveWidgetChunks(page);
+  await page.goto(hostUrl);
 
   const widget = page.locator('dfx-services');
   await widget.locator('div.cursor-pointer').first().click(); // menu icon

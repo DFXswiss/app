@@ -489,14 +489,14 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   it. A green run does not prove that a mail-code request carrying a redirect URI for a pending
   service is accepted; that depends on the deployed public URL.
 - **The widget mail-code visual spec serves its own host page and moves the browser clock.**
-  `e2e/widget-mail-code-login.spec.ts` fulfils a minimal host page and the local widget build
-  (`npm run widget:loc`) via `page.route`, serves the widget stylesheet as `main-widget.css` (the
-  name the deploy workflows rewrite), and turns off Chromium's `LocalNetworkAccessChecks` so that
-  route-fulfilled page may call the API on localhost. Every API answer is real. The expired variant
-  advances the page clock by the code's ten-minute validity. A green run does not prove that the
-  published widget script and stylesheet load on a third-party page, that Chromium's
-  local-network rules allow a real host page to reach the API, or that the API itself treats the
-  code as expired at the same moment.
+  `e2e/widget-mail-code-login.spec.ts` serves a minimal host page, the local widget build
+  (`npm run widget:loc`) and the widget stylesheet as `main-widget.css` (the name the deploy
+  workflows rewrite) from its own HTTP server on 127.0.0.1, and fulfils the widget's lazy chunks
+  from the same build via `page.route`. Every API answer is real: the code request, the 401 for
+  each wrong code and the resend. The expired variant advances the page clock by the code's
+  ten-minute validity. A green run does not prove that the published widget script, chunks and
+  stylesheet load on a third-party page, or that the API itself treats the code as expired at the
+  same moment.
 
 ## Known gaps
 

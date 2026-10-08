@@ -352,7 +352,12 @@ test.describe('Widget mode — mail login by code', () => {
       (res) => res.url().endsWith('/v1/auth/mail') && res.request().method() === 'POST',
     );
     await widget.getByRole('button', { name: 'Send new code' }).click();
-    expect((await resend).ok(), 'resend is accepted by the API').toBe(true);
+    const resendResponse = await resend;
+    expect(resendResponse.request().postDataJSON(), 'resend asks for a code for the same address').toMatchObject({
+      mail,
+      withCode: true,
+    });
+    expect(resendResponse.ok(), 'resend is accepted by the API').toBe(true);
     await expect(widget.getByText('We have sent you a new code.')).toBeVisible();
     await expect(widget.getByText('The code is incorrect. Please check it and try again.')).toHaveCount(0);
 
