@@ -158,13 +158,16 @@ describe('ConnectAlby login redirect', () => {
     );
   }
 
-  function getRedirectParamFromCapturedLocation(): string | null {
+  function getReturnUrlFromCapturedLocation(): URL {
     expect(capturedLocation).toBeDefined();
     const albyUrl = new URL(capturedLocation as string);
     const redirectUri = albyUrl.searchParams.get('redirectUri');
     expect(redirectUri).toBeTruthy();
-    const returnUrl = new URL(redirectUri as string);
-    return returnUrl.searchParams.get('redirect');
+    return new URL(redirectUri as string);
+  }
+
+  function getRedirectParamFromCapturedLocation(): string | null {
+    return getReturnUrlFromCapturedLocation().searchParams.get('redirect');
   }
 
   function getReturnUrlFromCapturedLocation(): URL {
@@ -201,10 +204,11 @@ describe('ConnectAlby login redirect', () => {
 
     await waitFor(() => expect(capturedLocation).toBeDefined());
 
-    const redirect = getRedirectParamFromCapturedLocation();
-    expect(redirect).toContain('personal-iban=frick');
-    expect(redirect).not.toContain('user=');
-    expect(redirect).not.toContain('arbitrary=');
+    const returnUrl = getReturnUrlFromCapturedLocation();
+    expect([...returnUrl.searchParams.entries()]).toEqual([
+      ['type', WalletType.ALBY],
+      ['redirect', '/buy?personal-iban=frick'],
+    ]);
   });
 
   it('does not append a query string when redirectPath has no extra params', async () => {

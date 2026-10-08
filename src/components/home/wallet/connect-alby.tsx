@@ -37,9 +37,9 @@ export default function ConnectAlby(props: ConnectProps): JSX.Element {
       // log in with Alby
       const win: Window = window;
       const origin = appOrigin();
-      // The login returns to the app, never to an embedding page: the page's path and query only carry over
-      // when the page is the app itself, not when the widget is embedded on a page that shares the app's origin.
-      const redirectUrl = new URL(!isWidget && win.location.origin === origin ? win.location.href : origin);
+      // The login returns to the app, never to an embedding page: the page's path only carries over when
+      // the page is the app itself, not when the widget is embedded on a page that shares the app's origin.
+      const redirectUrl = new URL(!isWidget && win.location.origin === origin ? win.location.pathname : origin, origin);
       redirectUrl.searchParams.set('type', WalletType.ALBY);
       // Merge redirectPath with an allowlisted callback param set (only personal-iban when present).
       // Do not copy the entire live search into the Alby redirect.
