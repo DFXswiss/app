@@ -13,7 +13,8 @@ import { forceOpenShadowRoots } from '../e2e-stack/specs/fixtures/shadow-root';
  *
  * Runs against a real local API (see CONTRIBUTING.md, "Visual regression tests"); `npm run
  * e2e:stack:up` provides one on http://localhost:3000. Every response comes from that API: the code
- * request, the 401 for a wrong code, the lockout after the fifth attempt and the resend. The API
+ * request, the 401 for each wrong code and the resend. The lockout after the fifth 401 and the
+ * expiry are the code step's own state (it counts attempts and validity itself). The API
  * neither stores nor logs the code it mails (the mail text is marked sensitive), so no variant can
  * show a successful code login — the full-stack spec `e2e-stack/specs/widget.spec.ts` documents the
  * same limit.
@@ -117,7 +118,9 @@ async function openCodeStep(page: Page): Promise<Locator> {
 /** Submits a wrong code and waits for the API's answer, so a message left from the previous attempt cannot pass for this one. */
 async function submitWrongCode(widget: Locator): Promise<void> {
   await widget.getByPlaceholder('6-digit code').fill(WRONG_CODE);
-  const answer = widget.page().waitForResponse((res) => res.url().endsWith('/v1/auth/mail/code'));
+  const answer = widget
+    .page()
+    .waitForResponse((res) => res.url().endsWith('/v1/auth/mail/code') && res.request().method() === 'POST');
   await widget.getByRole('button', { name: 'Confirm' }).click();
   expect((await answer).status()).toBe(401);
 }
@@ -161,8 +164,13 @@ test.describe('Widget - mail login by code', () => {
     const widget = await openCodeStep(page);
 
     await page.clock.fastForward(CODE_VALIDITY);
+    const exchanges: string[] = [];
+    page.on('request', (req) => {
+      if (req.url().endsWith('/v1/auth/mail/code')) exchanges.push(req.method());
+    });
     await submitExpiredCode(widget);
     await expect(widget.getByText(EXPIRED)).toBeVisible();
+    expect(exchanges, 'an expired code is rejected without calling the API').toEqual([]);
     await expect(widget.getByPlaceholder('6-digit code')).toHaveCount(0);
     await expectScreenshot(widget, 'widget-mail-code-04-expired.png');
   });

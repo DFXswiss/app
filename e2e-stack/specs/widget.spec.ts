@@ -339,7 +339,9 @@ test.describe('Widget mode — mail login by code', () => {
 
     // Wrong code: the API rejects it (401) and the step asks again.
     await widget.getByPlaceholder('6-digit code').fill(WRONG_CODE);
-    const exchange = page.waitForResponse((res) => res.url().endsWith('/v1/auth/mail/code'));
+    const exchange = page.waitForResponse(
+      (res) => res.url().endsWith('/v1/auth/mail/code') && res.request().method() === 'POST',
+    );
     await widget.getByRole('button', { name: 'Confirm' }).click();
     expect((await exchange).status(), 'wrong code is rejected by the API').toBe(401);
     await expect(widget.getByText('The code is incorrect. Please check it and try again.')).toBeVisible();
