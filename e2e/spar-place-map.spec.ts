@@ -127,6 +127,64 @@ async function shoot(page: Page, name: string): Promise<void> {
 test.describe('SPAR locations', () => {
   test.describe.configure({ timeout: 120000 });
 
+  test('visual regression - locations loading filters', async ({ page }) => {
+    let resolveFilters: (() => void) | undefined;
+    const filtersHeld = new Promise<void>((resolve) => {
+      resolveFilters = resolve;
+    });
+    await page.route('https://api.opencryptopay.io/map/**', async (route) => {
+      const url = route.request().url();
+      if (url.includes('/map/filters')) {
+        await filtersHeld;
+        return fulfillJson(route, 200, FILTERS);
+      }
+      return fulfillJson(route, 200, { places: [] });
+    });
+    await stubAppApi(page);
+    await stubPayment(page);
+    await openLocations(page);
+    await expect(page.getByTestId('spar-locations')).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Country' })).toHaveCount(0);
+    await expect(page.getByText('No locations published yet.', { exact: true })).toHaveCount(0);
+    await shoot(page, 'spar-locations-loading-filters.png');
+    const filtersDone = page.waitForResponse((response) => response.url().includes('/map/filters'));
+    if (resolveFilters === undefined) {
+      throw new Error('resolveFilters was not assigned');
+    }
+    resolveFilters();
+    await filtersDone;
+  });
+
+  test('visual regression - locations loading places', async ({ page }) => {
+    let resolvePlaces: (() => void) | undefined;
+    const placesHeld = new Promise<void>((resolve) => {
+      resolvePlaces = resolve;
+    });
+    await page.route('https://api.opencryptopay.io/map/**', async (route) => {
+      const url = route.request().url();
+      if (url.includes('/map/filters')) return fulfillJson(route, 200, FILTERS);
+      if (url.includes('/map/places')) {
+        await placesHeld;
+        return fulfillJson(route, 200, { places: [] });
+      }
+      return fulfillJson(route, 200, { places: [] });
+    });
+    await stubAppApi(page);
+    await stubPayment(page);
+    await openLocations(page);
+    await expect(page.getByRole('combobox', { name: 'Country' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Shop' })).toHaveValue('SPAR');
+    await expect(page.getByText('No locations published yet.', { exact: true })).toHaveCount(0);
+    await expect(page.locator('[data-testid="spar-locations"] [data-map-ready="true"]')).toHaveCount(0);
+    await shoot(page, 'spar-locations-loading-places.png');
+    const placesDone = page.waitForResponse((response) => response.url().includes('/map/places'));
+    if (resolvePlaces === undefined) {
+      throw new Error('resolvePlaces was not assigned');
+    }
+    resolvePlaces();
+    await placesDone;
+  });
+
   test('visual regression - location list error', async ({ page }) => {
     await stubAppApi(page);
     await stubPayment(page);
