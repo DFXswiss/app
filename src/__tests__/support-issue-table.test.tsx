@@ -132,13 +132,14 @@ describe('IssueTable', () => {
     expect(within(rowOf('Specific reason')).getByText('Transaction missing')).toBeInTheDocument();
   });
 
-  it('marks tickets without a clerk (or with only the bot) as Unassigned', () => {
+  it('marks unassigned tickets and shows an assigned clerk id when the name is missing', () => {
     render(
       <IssueTable
         issues={[
           issue({ id: 1, name: 'No clerk', clerk: undefined }),
           issue({ id: 2, name: 'Bot clerk', clerk: 'AutoResponder' }),
           issue({ id: 3, name: 'Has clerk', clerk: 'Jana' }),
+          issue({ id: 4, name: 'Clerk id only', clerk: undefined, clerkUserDataId: 42 }),
         ]}
         showDepartment={false}
         onRowClick={jest.fn()}
@@ -149,6 +150,8 @@ describe('IssueTable', () => {
     expect(within(rowOf('Bot clerk')).getByText('Unassigned')).toBeInTheDocument();
     expect(within(rowOf('Has clerk')).getByText('Jana')).toBeInTheDocument();
     expect(within(rowOf('Has clerk')).queryByText('Unassigned')).not.toBeInTheDocument();
+    expect(within(rowOf('Clerk id only')).getByText('#42')).toBeInTheDocument();
+    expect(within(rowOf('Clerk id only')).queryByText('Unassigned')).not.toBeInTheDocument();
   });
 
   it('renders the department or a dash, the state badge and the message count', () => {

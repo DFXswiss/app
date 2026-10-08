@@ -139,7 +139,7 @@ function IssueRow({
         {isUnassigned(issue) ? (
           <span className="italic text-dfxGray-700 group-hover:text-white">Unassigned</span>
         ) : (
-          issue.clerk
+          issue.clerk || (issue.clerkUserDataId != null ? `#${issue.clerkUserDataId}` : '')
         )}
       </td>
       {showDepartment && (

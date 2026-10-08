@@ -8,6 +8,7 @@ const mockGetIssueList = jest.fn();
 const mockGetIssueStatistics = jest.fn();
 const mockStorageGet = jest.fn();
 const mockStorageSet = jest.fn();
+const mockReportClientError = jest.fn();
 const mockAuth = { account: 7 };
 let mockCurrentGetIssueList: typeof mockGetIssueList = mockGetIssueList;
 const mockStaffName: { name?: string; isLoading: boolean; error?: string } = {
@@ -50,15 +51,22 @@ jest.mock('@dfx.swiss/react', () => ({
     CUSTODY: 'Custody',
   },
   useAuthContext: () => ({ session: { account: mockAuth.account } }),
+  useUserContext: () => ({ user: undefined }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', LG: 'lg' },
   StyledLoadingSpinner: ({ size }: { size?: string }) => <div data-testid="loading-spinner" data-size={size} />,
+  StyledButtonColor: { GRAY_OUTLINE: 'gray' },
+  StyledButton: ({ label, onClick }: { label: string; onClick?: () => void }) => (
+    <button onClick={onClick}>{label}</button>
+  ),
 }));
 
-jest.mock('src/components/error-hint', () => ({
-  ErrorHint: ({ message }: { message: string }) => <div data-testid="error-hint">{message}</div>,
+jest.mock('react-router-dom', () => ({ useLocation: () => ({ pathname: '/support/dashboard' }) }));
+
+jest.mock('src/util/client-error', () => ({
+  reportClientError: (...args: unknown[]) => mockReportClientError(...args),
 }));
 
 jest.mock('src/hooks/guard.hook', () => ({
@@ -130,6 +138,7 @@ import type { TicketStatistics } from 'src/util/support-helpers';
 import { WAIT_TIERS } from 'src/util/support-stats';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
+const GENERIC_ERROR = 'Something went wrong. Please try again. If the issue persists please reach out to our support.';
 const originalScrollIntoView = Element.prototype.scrollIntoView;
 
 function minutesAgo(minutes: number): string {
@@ -422,14 +431,14 @@ describe('SupportDashboardOverviewScreen overview chrome', () => {
     mockGetIssueList.mockRejectedValue(new Error('List failed'));
     await renderLoaded();
 
-    expect(screen.getByTestId('error-hint')).toHaveTextContent('List failed');
+    expect(screen.getByText('List failed')).toBeInTheDocument();
   });
 
   it('falls back to Unknown error when getIssueList rejects without a message', async () => {
     mockGetIssueList.mockRejectedValue({});
     await renderLoaded();
 
-    expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
+    expect(screen.getByText('Unknown error')).toBeInTheDocument();
   });
 
   it('navigates to the full ticket list from View all tickets', async () => {
@@ -651,9 +660,14 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     await renderLoaded();
 
     const mine = section('my-tickets');
-    const hint = within(mine).getByTestId('error-hint');
-    expect(hint).toHaveTextContent('Could not load your verified name: ldap down');
-    expect(hint).toHaveTextContent('Tickets assigned only by name may be missing from this list.');
+    expect(within(mine).getByText('Could not load your verified name: ldap down')).toBeInTheDocument();
+    expect(within(mine).getByText(GENERIC_ERROR)).toBeInTheDocument();
+    expect(within(mine).getByText(/Tickets assigned only by name may be missing from this list\./)).toBeInTheDocument();
+    expect(mockReportClientError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Could not load your verified name: ldap down' }),
+      '/support/dashboard',
+      undefined,
+    );
     expect(within(mine).getByText('Assigned by id')).toBeInTheDocument();
     expect(within(mine).queryByText('Assigned by name only')).not.toBeInTheDocument();
     expect(within(mine).queryByText('Someone else')).not.toBeInTheDocument();
@@ -672,10 +686,11 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     await renderLoaded();
 
     const mine = section('my-tickets');
-    const hint = within(mine).getByTestId('error-hint');
-    expect(hint).toHaveTextContent('Staff identification requires a verified name on this account.');
+    const hint = within(mine).getByText(/Staff identification requires a verified name on this account\./);
     expect(hint).toHaveTextContent('Tickets assigned only by name may be missing from this list.');
-    expect(hint).not.toHaveTextContent('Could not load your verified name');
+    expect(within(mine).queryByText(GENERIC_ERROR)).not.toBeInTheDocument();
+    expect(within(mine).queryByText(/Could not load your verified name/)).not.toBeInTheDocument();
+    expect(mockReportClientError).not.toHaveBeenCalled();
     expect(within(mine).getByText('Assigned by id')).toBeInTheDocument();
     expect(within(mine).queryByText('Assigned by name only')).not.toBeInTheDocument();
     expect(within(mine).queryByText('Someone else')).not.toBeInTheDocument();
@@ -686,7 +701,7 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     expect(screen.getByText('No tickets assigned to you')).toBeInTheDocument();
   });
 
-  it('still lists name-only tickets and warns when a clerk-name error arrives together with a name', async () => {
+  it('still lists name-only tickets without the missing-name hint when an error arrives together with a name', async () => {
     mockStaffName.error = 'ignored';
     mockGetIssueList.mockResolvedValue({
       data: [issue({ id: 7, name: 'Still mine', clerk: 'Josh', lastMessageAuthor: 'Josh' })],
@@ -696,6 +711,18 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
 
     expect(within(section('my-tickets')).getByText('Still mine')).toBeInTheDocument();
     expect(screen.getByText(/Could not load your verified name: ignored/)).toBeInTheDocument();
+    expect(screen.queryByText(/Tickets assigned only by name may be missing from this list\./)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Staff identification requires a verified name on this account\./)).not.toBeInTheDocument();
+  });
+
+  it('shows the clerk id when an assigned ticket has no clerk name', async () => {
+    mockGetIssueList.mockResolvedValue({
+      data: [issue({ id: 7, name: 'Assigned without name', clerkUserDataId: 7 })],
+      total: 1,
+    });
+    await renderLoaded();
+
+    expect(within(section('my-tickets')).getByText(/· #7$/)).toBeInTheDocument();
   });
 
   it('lists my tickets oldest first and navigates on row click', async () => {
@@ -949,7 +976,7 @@ describe('SupportDashboardOverviewScreen statistics', () => {
 
     await openStatistics();
 
-    expect(screen.getByTestId('error-hint')).toHaveTextContent('list down');
+    expect(screen.getByText('list down')).toBeInTheDocument();
   });
 
   it('shows Unknown error when the fallback list fails without a message', async () => {
@@ -961,7 +988,7 @@ describe('SupportDashboardOverviewScreen statistics', () => {
 
     await openStatistics();
 
-    expect(screen.getByTestId('error-hint')).toHaveTextContent('Unknown error');
+    expect(screen.getByText('Unknown error')).toBeInTheDocument();
   });
 
   it('keeps newer statistics when an older success arrives last', async () => {
@@ -1053,7 +1080,7 @@ describe('SupportDashboardOverviewScreen statistics', () => {
       await Promise.resolve();
     });
 
-    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.queryByText('stale list')).not.toBeInTheDocument();
     expect(statCardValue('New tickets')).toBe('7');
   });
 

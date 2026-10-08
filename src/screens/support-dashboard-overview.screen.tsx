@@ -370,21 +370,21 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
                 </div>
               ) : (
                 <>
-                  {(nameError || !verifiedName) && (
+                  {nameError && (
                     <div className="px-4 pt-4">
                       <ErrorHint
-                        message={[
-                          nameError
-                            ? translate('screens/support', 'Could not load your verified name: {{error}}', {
-                                error: nameError,
-                              })
-                            : translate('screens/support', STAFF_NAME_MISSING),
-                          translate(
-                            'screens/support',
-                            'Tickets assigned only by name may be missing from this list.',
-                          ),
-                        ].join(' ')}
+                        message={translate('screens/support', 'Could not load your verified name: {{error}}', {
+                          error: nameError,
+                        })}
                       />
+                    </div>
+                  )}
+                  {!verifiedName && (
+                    <div className="mx-4 mt-4 rounded-lg border border-dfxGray-400 bg-dfxGray-300/40 p-4 text-sm text-dfxBlue-800">
+                      {[
+                        translate('screens/support', STAFF_NAME_MISSING),
+                        translate('screens/support', 'Tickets assigned only by name may be missing from this list.'),
+                      ].join(' ')}
                     </div>
                   )}
                   {stats.mine.length === 0 ? (
@@ -660,6 +660,8 @@ function IssueList({
               ? 'bg-dfxYellow-500/20 text-dfxYellow-700'
               : 'bg-dfxGray-300 text-dfxGray-800';
 
+        const clerk = issue.clerk || (issue.clerkUserDataId != null ? `#${issue.clerkUserDataId}` : '');
+
         return (
           <li
             key={issue.id}
@@ -684,7 +686,7 @@ function IssueList({
               <div className="text-xs text-dfxGray-700 truncate">
                 {translate('screens/support', typeLabel(issue.type))} ·{' '}
                 {translate('screens/support', reasonLabel(issue.reason))}
-                {issue.clerk ? ` · ${issue.clerk}` : ''}
+                {clerk ? ` · ${clerk}` : ''}
               </div>
             </div>
 

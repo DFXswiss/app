@@ -330,6 +330,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the generic error sentence and raw message. A green empty-list test proves that those screens do not
   select the error path; it does **not** prove the real hint's styling, translation, rejection mapping or
   error reporting.
+- **The support-overview unit tests suppress client-error delivery.**
+  `src/__tests__/support-dashboard-overview.screen.test.tsx` renders the real shared error hint but replaces
+  `reportClientError` with a spy and fixes the route and signed-in user. A green run proves which overview
+  states select the error-reporting path; it does **not** prove that a report reaches the API or carries the
+  live route and account.
 - **The full-stack clerk-assignment spec SQL-writes `user_data.verifiedName` and `setting.supportClerks`.**
   `e2e-stack/specs/support-dashboard.spec.ts` (`assigns a clerk from the resolved list`) gives the Support
   account a unique `verifiedName` and configures the clerk list directly, because `loginAs` gives every role
