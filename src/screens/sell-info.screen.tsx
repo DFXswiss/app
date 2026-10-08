@@ -79,6 +79,7 @@ export default function SellInfoScreen(): JSX.Element {
   const [paymentInfo, setPaymentInfo] = useState<Sell>();
   const [quotedBankAccountId, setQuotedBankAccountId] = useState<number>();
   const [showsCompletion, setShowsCompletion] = useState(false);
+  const [completedPaymentInfo, setCompletedPaymentInfo] = useState<Sell>();
   const [asset, setAsset] = useState<Asset>();
   const [currency, setCurrency] = useState<Fiat>();
   const [bankAccount, setBankAccount] = useState<BankAccount>();
@@ -123,6 +124,7 @@ export default function SellInfoScreen(): JSX.Element {
     setPaymentInfo(undefined);
     setQuotedBankAccountId(undefined);
     setShowsCompletion(false);
+    setCompletedPaymentInfo(undefined);
     setSellTxId(undefined);
     setIsProcessing(pendingSendRef.current);
     setErrorMessage(undefined);
@@ -232,6 +234,7 @@ export default function SellInfoScreen(): JSX.Element {
         .then((tx) => {
           if (!isCurrent()) return;
           setSellTxId(tx.inputTxId);
+          setCompletedPaymentInfo(activePaymentInfo);
           setShowsCompletion(true);
           clearInterval(checkTransactionInterval);
         })
@@ -252,10 +255,10 @@ export default function SellInfoScreen(): JSX.Element {
 
   useEffect(() => {
     if (isProcessing || refreshAfterSendAccountIdRef.current === undefined || !activeBankAccount) return;
-    const shouldRefresh = refreshAfterSendAccountIdRef.current === activeBankAccount.id && !showsCompletion;
+    const shouldRefresh = refreshAfterSendAccountIdRef.current === activeBankAccount.id && !completedPaymentInfo;
     refreshAfterSendAccountIdRef.current = undefined;
     if (shouldRefresh) fetchData();
-  }, [isProcessing, activeBankAccount, showsCompletion]);
+  }, [isProcessing, activeBankAccount, completedPaymentInfo]);
 
   useEffect(() => fetchData(), [asset, currency, activeBankAccount, amountIn, amountOut]);
 
@@ -384,12 +387,6 @@ export default function SellInfoScreen(): JSX.Element {
       latestBankAccountParamRef.current !== bankAccountParam
     )
       return;
-    const actionGeneration = quoteRequestGenerationRef.current;
-    const actionParam = bankAccountParam;
-    const isCurrent = () =>
-      mountedRef.current &&
-      quoteRequestGenerationRef.current === actionGeneration &&
-      latestBankAccountParamRef.current === actionParam;
     setIsProcessing(true);
 
     if (canSendTransaction() && !activeWallet) {
@@ -402,8 +399,9 @@ export default function SellInfoScreen(): JSX.Element {
         pendingSendRef.current = true;
         pendingSendAccountIdRef.current = activeBankAccount.id;
         const txId = await sendTransaction(paymentInfo);
-        if (!isCurrent()) return;
+        if (!mountedRef.current) return;
         setSellTxId(txId);
+        setCompletedPaymentInfo(paymentInfo);
       }
       setShowsCompletion(true);
     } finally {
@@ -423,10 +421,12 @@ export default function SellInfoScreen(): JSX.Element {
 
   useLayoutOptions({ textStart: true, backButton: false });
 
+  const completionPaymentInfo = completedPaymentInfo ?? activePaymentInfo;
+
   return (
     <>
-      {showsCompletion && activePaymentInfo ? (
-        <SellCompletion paymentInfo={activePaymentInfo} navigateOnClose={false} txId={sellTxId} />
+      {showsCompletion && completionPaymentInfo ? (
+        <SellCompletion paymentInfo={completionPaymentInfo} navigateOnClose={false} txId={sellTxId} />
       ) : bankAccountFailure ? (
         <BankAccountCreateHint kind={bankAccountFailure} />
       ) : errorMessage ? (

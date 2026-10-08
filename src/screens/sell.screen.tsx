@@ -142,7 +142,7 @@ export default function SellScreen(): JSX.Element {
   const [isQuoteFinal, setIsQuoteFinal] = useState(false);
   const [balances, setBalances] = useState<AssetBalance[]>();
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isTxDone, setTxDone] = useState<boolean>(false);
+  const [completedPaymentInfo, setCompletedPaymentInfo] = useState<Sell>();
   const [sellTxId, setSellTxId] = useState<string>();
   const [bankAccountSelection, setBankAccountSelection] = useState(false);
   const [showsSwitchScreen, setShowsSwitchScreen] = useState(false);
@@ -613,7 +613,7 @@ export default function SellScreen(): JSX.Element {
       if (canSendTransaction()) {
         await sendTransaction(paymentInfo).then(setSellTxId);
       }
-      setTxDone(true);
+      setCompletedPaymentInfo(paymentInfo);
     } catch (error: any) {
       // User rejected in wallet - silently return, user stays on form
       if (error.code === 4001) return;
@@ -647,8 +647,8 @@ export default function SellScreen(): JSX.Element {
     <>
       {showsSwitchScreen ? (
         <AddressSwitch onClose={(r) => (r ? onAddressSwitch() : setShowsSwitchScreen(false))} />
-      ) : paymentInfo && isTxDone ? (
-        <SellCompletion paymentInfo={paymentInfo} navigateOnClose={true} txId={sellTxId} />
+      ) : completedPaymentInfo ? (
+        <SellCompletion paymentInfo={completedPaymentInfo} navigateOnClose={true} txId={sellTxId} />
       ) : (
         <form
           className="w-full"
@@ -761,37 +761,39 @@ export default function SellScreen(): JSX.Element {
                     />
                   </div>
                 </StyledHorizontalStack>
-                <BankAccountSelector
-                  value={selectedBankAccount}
-                  onChange={(account) => {
-                    bankAccountFailureRef.current = undefined;
-                    setBankAccountFailure(undefined);
-                    setErrorSource(undefined);
-                    setErrorMessage(undefined);
-                    setVal('bankAccount', account);
-                  }}
-                  onError={(message, kind) => {
-                    if (kind === 'kyc-only' || kind === 'multi-account') {
-                      bankAccountFailureRef.current = kind;
-                      setErrorMessage(undefined);
+                <fieldset disabled={isProcessing} className="m-0 min-w-0 w-full border-0 p-0">
+                  <BankAccountSelector
+                    value={selectedBankAccount}
+                    onChange={(account) => {
+                      bankAccountFailureRef.current = undefined;
+                      setBankAccountFailure(undefined);
                       setErrorSource(undefined);
-                      setBankAccountFailure(kind);
-                      return;
-                    }
-                    bankAccountFailureRef.current = undefined;
-                    setBankAccountFailure(undefined);
-                    setErrorSource('bank');
-                    setErrorMessage(message);
-                  }}
-                  onCreateStart={() => {
-                    setErrorSource(undefined);
-                    setErrorMessage(undefined);
-                  }}
-                  retryToken={bankAccountRetryToken}
-                  placeholder={translate('screens/sell', 'Add or select your IBAN')}
-                  isModalOpen={bankAccountSelection}
-                  onModalToggle={setBankAccountSelection}
-                />
+                      setErrorMessage(undefined);
+                      setVal('bankAccount', account);
+                    }}
+                    onError={(message, kind) => {
+                      if (kind === 'kyc-only' || kind === 'multi-account') {
+                        bankAccountFailureRef.current = kind;
+                        setErrorMessage(undefined);
+                        setErrorSource(undefined);
+                        setBankAccountFailure(kind);
+                        return;
+                      }
+                      bankAccountFailureRef.current = undefined;
+                      setBankAccountFailure(undefined);
+                      setErrorSource('bank');
+                      setErrorMessage(message);
+                    }}
+                    onCreateStart={() => {
+                      setErrorSource(undefined);
+                      setErrorMessage(undefined);
+                    }}
+                    retryToken={bankAccountRetryToken}
+                    placeholder={translate('screens/sell', 'Add or select your IBAN')}
+                    isModalOpen={bankAccountSelection}
+                    onModalToggle={setBankAccountSelection}
+                  />
+                </fieldset>
               </StyledVerticalStack>
 
               {bankAccountFailure && <BankAccountCreateHint kind={bankAccountFailure} />}

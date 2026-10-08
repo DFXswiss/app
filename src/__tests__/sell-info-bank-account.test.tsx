@@ -224,7 +224,9 @@ jest.mock('../components/error-hint', () => ({
   ErrorHint: ({ message }: any) => <div data-testid="error-hint">{message}</div>,
 }));
 jest.mock('../components/payment/sell-completion', () => ({
-  SellCompletion: ({ txId }: any) => <div data-testid="sell-completion">{txId}</div>,
+  SellCompletion: ({ paymentInfo, txId }: any) => (
+    <div data-testid="sell-completion">{txId && `${paymentInfo.id}:${txId}`}</div>
+  ),
 }));
 jest.mock('../components/quote-error-hint', () => ({
   QuoteErrorHint: ({ error }: any) => <div data-testid="quote-error">{error}</div>,
@@ -1028,7 +1030,7 @@ describe('SellInfoScreen', () => {
       expect(mockCloseServices).not.toHaveBeenCalled();
     });
 
-    it('ignores an old wallet send that resolves after a new IBAN quote loads', async () => {
+    it('completes the sent quote when an old wallet send resolves after a new IBAN quote loads', async () => {
       let finishOldSend: (txId: string) => void = () => undefined;
       mockActiveWallet = mockWallet;
       mockCanSendTransaction.mockReturnValue(true);
@@ -1056,7 +1058,9 @@ describe('SellInfoScreen', () => {
         finishOldSend('old-account-tx');
         await mockLastButtonAction;
       });
-      expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
+      expect(screen.getByTestId('sell-completion')).toHaveTextContent('42:old-account-tx');
+      expect(screen.queryByRole('button', { name: 'Complete transaction in your wallet' })).not.toBeInTheDocument();
+      expect(mockSendTransaction).toHaveBeenCalledTimes(1);
     });
 
     it('renders all complete quote details and hides wallet completion when sending is unavailable', async () => {
@@ -1209,6 +1213,28 @@ describe('SellInfoScreen', () => {
       expect(mockSendTransaction).not.toHaveBeenCalled();
       expect(mockCloseServices).not.toHaveBeenCalled();
       expect(screen.getByTestId('sell-completion')).toBeEmptyDOMElement();
+    });
+
+    it('does not keep an unsent completion bound after the bank account changes', async () => {
+      mockActiveWallet = mockWallet;
+      mockCanSendTransaction.mockReturnValue(true);
+      mockReceiveFor
+        .mockResolvedValueOnce(makeSell())
+        .mockResolvedValueOnce(makeSell({ id: 43, estimatedAmount: 246.9 }));
+      const nextAccount = { ...mockBankAccount, id: 2, iban: 'FR1420041010050500013M02606' };
+      mockCreateAccount.mockResolvedValue(nextAccount);
+      const { rerender } = await renderHappyPath();
+
+      mockCanSendTransaction.mockReturnValue(false);
+      screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
+      await settle();
+
+      mockAppParams.bankAccount = nextAccount.iban;
+      rerender(<SellInfoScreen />);
+
+      expect(await screen.findByText('246.90 CHF')).toBeInTheDocument();
+      expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
+      expect(mockSendTransaction).not.toHaveBeenCalled();
     });
   });
 });

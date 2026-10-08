@@ -319,7 +319,7 @@ jest.mock('../components/payment/address-switch', () => ({
   ),
 }));
 jest.mock('../components/payment/sell-completion', () => ({
-  SellCompletion: () => <div data-testid="sell-completion" />,
+  SellCompletion: ({ paymentInfo }: any) => <div data-testid="sell-completion">{paymentInfo.id}</div>,
 }));
 jest.mock('../components/private-asset-hint', () => ({
   PrivateAssetHint: () => <div data-testid="private-asset-hint" />,
@@ -932,6 +932,43 @@ describe('SellScreen', () => {
       await Promise.resolve();
     });
     expect(screen.getByTestId('sell-completion')).toBeInTheDocument();
+  });
+
+  it('locks the bank-account selector and completes the quote passed to the wallet send', async () => {
+    let resolveSend: (txId: string) => void = () => undefined;
+    mockCanSendTransaction.mockReturnValue(true);
+    mockActiveWallet = 'mm';
+    mockSendTransaction.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    mockReceiveFor.mockImplementation((req: any) =>
+      Promise.resolve({ ...quoteFor(req), id: Number(req.amount) === 0.2 ? 20 : 10 }),
+    );
+    render(<SellScreen />);
+    await flushQuote();
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click();
+      await Promise.resolve();
+    });
+
+    expect(mockSendTransaction).toHaveBeenCalledWith(expect.objectContaining({ id: 10 }));
+    expect(screen.getByTestId('bank-account-alt')).toBeDisabled();
+
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('input-amount'), { target: { value: '0.2' } });
+    });
+    await flushQuote();
+
+    await act(async () => {
+      resolveSend('0xtx');
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId('sell-completion')).toHaveTextContent('10');
   });
 
   it('swallows a wallet rejection (4001)', async () => {

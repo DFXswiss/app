@@ -57,6 +57,7 @@ const ETH = {
 
 const KYC_REJECTION = 'You cannot add an IBAN to a KYC only account';
 const MULTI_REJECTION = 'Multi-account IBAN cannot be added';
+const GENERIC_ERROR = /Something went wrong|Irgendwas hat nicht funktioniert/;
 
 const HINT = {
   de: 'Ein Bankkonto kann erst hinzugefügt werden, wenn eine Wallet mit diesem Konto verknüpft ist.',
@@ -238,7 +239,7 @@ test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
     await page.goto(sellUrl('de'));
 
     await expect(page.getByText(HINT.de)).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText('Something went wrong')).toHaveCount(0);
+    await expect(page.getByText(GENERIC_ERROR)).toHaveCount(0);
     await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot('sell-kyc-only-de.png', { fullPage: true, maxDiffPixels: 5000 });
@@ -252,7 +253,7 @@ test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
     await page.goto(sellUrl('en'));
 
     await expect(page.getByText(HINT.en)).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/Something went wrong/)).toHaveCount(0);
+    await expect(page.getByText(GENERIC_ERROR)).toHaveCount(0);
     await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot('sell-kyc-only-en.png', { fullPage: true, maxDiffPixels: 5000 });
@@ -266,7 +267,7 @@ test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
     await page.goto(sellInfoUrl('de'));
 
     await expect(page.getByText(HINT.de)).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText('Something went wrong')).toHaveCount(0);
+    await expect(page.getByText(GENERIC_ERROR)).toHaveCount(0);
     await page.waitForTimeout(1000);
 
     await expect(page).toHaveScreenshot('sell-info-kyc-only-de.png', { fullPage: true, maxDiffPixels: 5000 });
