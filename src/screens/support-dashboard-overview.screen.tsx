@@ -279,7 +279,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
                 label={translate('screens/support', 'My tickets')}
                 value={
                   <span title={translate('screens/support', '{{count}} open tickets total', { count: issues.length })}>
-                    {stats.mine.length}
+                    {mineLoading ? '–' : stats.mine.length}
                     <span className="text-lg font-semibold text-dfxGray-700 ml-2">/ {issues.length}</span>
                   </span>
                 }
@@ -361,7 +361,7 @@ export default function SupportDashboardOverviewScreen(): JSX.Element {
               anchorId="my-tickets"
               title={translate('screens/support', 'My tickets')}
               subtitle={translate('screens/support', 'Tickets assigned to me')}
-              count={stats.mine.length}
+              count={mineLoading ? undefined : stats.mine.length}
               accent="neutral"
             >
               {mineLoading ? (

@@ -50,6 +50,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const loadErrorTicketIdRef = useRef<string>();
   const [actionError, setActionError] = useState<string>();
   const [clerkListError, setClerkListError] = useState<string>();
+  const [isClerkListEmpty, setIsClerkListEmpty] = useState(false);
   const [issueData, setIssueData] = useState<SupportIssueInternalData>();
   const [messages, setMessages] = useState<SupportMessageInfo[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -103,6 +104,7 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   const requestGenRef = useRef(0);
   const noteGenAtRender = noteGenRef.current;
   const { containerRef, splitPercent, handleSplitDrag } = useSplitPane();
+  const noClerksAvailable = translate('screens/support', 'No support clerks are available.');
 
   const isComplianceDept = issueData?.department === Department.COMPLIANCE;
 
@@ -115,10 +117,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
 
   useEffect(() => {
     setClerkListError(undefined);
+    setIsClerkListEmpty(false);
     getClerks()
       .then((list) => {
         setClerks(list);
-        setClerkListError(list.length === 0 ? 'Clerk list is empty. Assign after the API update is live.' : undefined);
+        setIsClerkListEmpty(list.length === 0);
       })
       .catch((e: unknown) => setClerkListError(e instanceof Error ? e.message : 'Failed to load clerks'));
   }, [getClerks]);
@@ -439,6 +442,11 @@ export default function SupportDashboardIssueScreen(): JSX.Element {
   return (
     <div ref={containerRef} className="w-full flex text-left">
       <div style={{ width: `${splitPercent}%` }} className="flex flex-col gap-6 min-w-0 pr-2">
+        {isClerkListEmpty && (
+          <div className="rounded-lg border border-dfxGray-400 bg-dfxGray-300/40 p-4 text-sm text-dfxBlue-800">
+            {noClerksAvailable}
+          </div>
+        )}
         {clerkListError && <ErrorHint message={clerkListError} />}
         {actionError && <ErrorHint message={actionError} />}
         {/* Info Panels - Row 1: Issue + Account */}

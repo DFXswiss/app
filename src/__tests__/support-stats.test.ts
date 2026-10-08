@@ -272,6 +272,11 @@ describe('isUnassigned', () => {
     expect(isUnassigned(issue({ clerk: 'AutoResponder' }))).toBe(true);
     expect(isUnassigned(issue({ clerk: 'Jana' }))).toBe(false);
   });
+
+  it('treats a clerkUserDataId as assigned even when the clerk name is missing', () => {
+    expect(isUnassigned(issue({ clerkUserDataId: 7, clerk: undefined }))).toBe(false);
+    expect(isUnassigned(issue({ clerkUserDataId: undefined, clerk: undefined }))).toBe(true);
+  });
 });
 
 describe('groupOpenIssues', () => {

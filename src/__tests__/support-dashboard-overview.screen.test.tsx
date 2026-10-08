@@ -631,7 +631,10 @@ describe('SupportDashboardOverviewScreen limit requests and my tickets', () => {
     mockStaffName.name = undefined;
     await renderLoaded();
 
-    expect(within(section('my-tickets')).getByTestId('loading-spinner')).toBeInTheDocument();
+    const mine = section('my-tickets');
+    expect(statCardValue('My tickets')).toContain('–');
+    expect(within(mine).getByRole('heading', { name: 'My tickets' }).nextElementSibling).toBeNull();
+    expect(within(mine).getByTestId('loading-spinner')).toBeInTheDocument();
   });
 
   it('shows the verified-name error when loading the clerk name failed', async () => {

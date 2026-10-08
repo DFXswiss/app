@@ -1,5 +1,5 @@
 // Unit tests for RealunitSupportIssueScreen ticket switches. Heavy dependencies are mocked so the
-// tests focus on stale issue/message state, ticket-bound updates, and clerk-list fallbacks.
+// tests focus on stale issue/message/file state, ticket-bound updates, and clerk-list fallbacks.
 
 const mockUseRealunitGuard = jest.fn();
 const mockGetIssueData = jest.fn();
@@ -35,23 +35,62 @@ jest.mock('@dfx.swiss/react-components', () => ({
 }));
 
 jest.mock('src/components/error-hint', () => ({
-  ErrorHint: ({ message }: { message: string }) => <div data-testid="error-hint">{message}</div>,
+  ErrorHint: ({ message }: { message: string }) => (
+    <div data-testid="error-hint">
+      <span>Something went wrong. Please try again. If the issue persists please reach out to our support.</span>
+      <span>{message}</span>
+    </div>
+  ),
 }));
 
 jest.mock('src/components/support/info-panel', () => ({
   InfoPanel: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
   InfoRow: ({ value }: { value?: React.ReactNode }) => <div>{value}</div>,
-  SupportMessageList: ({ messages }: { messages?: { id?: number; message?: string }[] }) => (
+  SupportMessageList: ({
+    messages,
+    onOpenFile,
+  }: {
+    messages?: { id?: number; message?: string; fileName?: string }[];
+    onOpenFile?: (msg: unknown) => void;
+  }) => (
     <div data-testid="message-list">
       {messages?.map((message, index) => (
         <div key={index}>{message.message}</div>
       ))}
+      <button
+        type="button"
+        data-testid="open-file"
+        onClick={() =>
+          onOpenFile?.({
+            id: 99,
+            fileName: 'a.pdf',
+            author: 'Customer',
+            created: '2026-01-01T00:00:00Z',
+          })
+        }
+      >
+        Open
+      </button>
     </div>
   ),
 }));
 
 jest.mock('src/components/compliance/file-preview-panel', () => ({
-  FilePreviewPanel: () => null,
+  FilePreviewPanel: ({
+    preview,
+    onDownload,
+  }: {
+    preview?: { name: string };
+    onDownload: () => void;
+  }) =>
+    preview ? (
+      <div data-testid="file-preview">
+        {preview.name}
+        <button type="button" data-testid="download-preview" onClick={onDownload}>
+          Download preview
+        </button>
+      </div>
+    ) : null,
 }));
 
 jest.mock('src/components/compliance/staff-identity', () => ({
@@ -146,6 +185,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import React from 'react';
 import RealunitSupportIssueScreen from 'src/screens/realunit-support-issue.screen';
 import { writeDraft } from 'src/util/support-draft';
+import { saveBufferedFile } from 'src/util/utils';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -199,6 +239,7 @@ describe('RealunitSupportIssueScreen ticket switches', () => {
     mockGetClerks.mockResolvedValue([{ clerkUserDataId: 7, clerk: 'Rita' }]);
     mockUpdateIssue.mockResolvedValue(undefined);
     mockCreateMessage.mockResolvedValue(undefined);
+    mockGetFile.mockReset();
     mockToBase64.mockReset();
     mockToBase64.mockImplementation(async (file: File) => `data:${file.name}`);
   });
@@ -249,6 +290,92 @@ describe('RealunitSupportIssueScreen ticket switches', () => {
 
     expect(screen.queryByText('Stale A')).not.toBeInTheDocument();
     expect(screen.getByText('Ticket 1')).toBeInTheDocument();
+  });
+
+  it('revokes the open file preview URL when switching tickets', async () => {
+    if (typeof URL.createObjectURL !== 'function') {
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: jest.fn() });
+    }
+    if (typeof URL.revokeObjectURL !== 'function') {
+      Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() });
+    }
+    const createObjectURL = jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:ticket-preview');
+    const revokeObjectURL = jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    mockGetFile.mockResolvedValue({
+      data: { type: 'Buffer', data: [1, 2, 3] },
+      contentType: 'application/pdf',
+    });
+    const { rerender } = render(<RealunitSupportIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('open-file'));
+    });
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+
+    navigateTo('2', rerender);
+
+    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:ticket-preview'));
+    expect(screen.queryByTestId('file-preview')).not.toBeInTheDocument();
+  });
+
+  it('ignores a file preview that finishes loading after switching tickets', async () => {
+    if (typeof URL.createObjectURL !== 'function') {
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: jest.fn() });
+    }
+    const createObjectURL = jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:stale-preview');
+    const file = createDeferred<{ data: { type: string; data: number[] }; contentType: string }>();
+    mockGetFile.mockReturnValue(file.promise);
+    const { rerender } = render(<RealunitSupportIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('open-file'));
+    await waitFor(() => expect(mockGetFile).toHaveBeenCalledWith(1, 99, 'View'));
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+
+    await act(async () => {
+      file.resolve({ data: { type: 'Buffer', data: [1, 2, 3] }, contentType: 'application/pdf' });
+      await file.promise;
+    });
+
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('file-preview')).not.toBeInTheDocument();
+  });
+
+  it('does not save a preview download that finishes after switching tickets', async () => {
+    if (typeof URL.createObjectURL !== 'function') {
+      Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: jest.fn() });
+    }
+    if (typeof URL.revokeObjectURL !== 'function') {
+      Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() });
+    }
+    jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:ticket-preview');
+    jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const download = createDeferred<{ data: { type: string; data: number[] }; contentType: string }>();
+    mockGetFile.mockImplementation((_issueId: number, _messageId: number, access: string) =>
+      access === 'Download'
+        ? download.promise
+        : Promise.resolve({ data: { type: 'Buffer', data: [1, 2, 3] }, contentType: 'application/pdf' }),
+    );
+    const { rerender } = render(<RealunitSupportIssueScreen />);
+
+    expect(await screen.findByText('Ticket 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('open-file'));
+    expect(await screen.findByTestId('file-preview')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('download-preview'));
+    await waitFor(() => expect(mockGetFile).toHaveBeenCalledWith(1, 99, 'Download'));
+
+    navigateTo('2', rerender);
+    expect(await screen.findByText('Ticket 2')).toBeInTheDocument();
+
+    await act(async () => {
+      download.resolve({ data: { type: 'Buffer', data: [4, 5, 6] }, contentType: 'application/pdf' });
+      await download.promise;
+    });
+
+    expect(saveBufferedFile).not.toHaveBeenCalled();
   });
 
   it('ignores late ticket A messages after switching to ticket B', async () => {
@@ -549,11 +676,16 @@ describe('RealunitSupportIssueScreen ticket switches', () => {
   });
 
   it('keeps the empty clerk-list hint after switching tickets', async () => {
-    const hint = 'Clerk list is empty. Assign after the API update is live.';
+    const hint = 'No support clerks are available.';
     mockGetClerks.mockResolvedValue([]);
     const { rerender } = render(<RealunitSupportIssueScreen />);
 
     expect(await screen.findByText(hint)).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'Something went wrong. Please try again. If the issue persists please reach out to our support.',
+      ),
+    ).not.toBeInTheDocument();
 
     navigateTo('2', rerender);
     expect(await screen.findByText('Ticket 2')).toBeInTheDocument();

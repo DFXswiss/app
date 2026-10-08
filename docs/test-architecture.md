@@ -319,6 +319,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   further variants answer the clerks list empty, with HTTP 500, or leave the assigned id off the list.
   A green run proves the issue screen renders those fixtures, not that the API returns them, not that
   the logged-in account really resolves to that clerk identity, and not that login works.
+- **The RealUnit issue-preview unit tests replace the message list, file API and browser file handling.**
+  `src/__tests__/realunit-support-issue.screen.test.tsx` triggers file actions through component mocks,
+  resolves synthetic buffers from `getFile`, and replaces object-URL creation, revocation and file saving.
+  A green run does **not** prove that a real file request is cancelled, that the browser renders the blob,
+  or that a downloaded file reaches the user's filesystem.
+- **The issue-screen unit tests replace the shared error hint.**
+  `src/__tests__/support-dashboard-issue.screen.test.tsx` and
+  `src/__tests__/realunit-support-issue.screen.test.tsx` use a deterministic renderer that always includes
+  the generic error sentence and raw message. A green empty-list test proves that those screens do not
+  select the error path; it does **not** prove the real hint's styling, translation, rejection mapping or
+  error reporting.
 - **The full-stack clerk-assignment spec SQL-writes `user_data.verifiedName` and `setting.supportClerks`.**
   `e2e-stack/specs/support-dashboard.spec.ts` (`assigns a clerk from the resolved list`) gives the Support
   account a unique `verifiedName` and configures the clerk list directly, because `loginAs` gives every role

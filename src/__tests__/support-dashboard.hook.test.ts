@@ -12,7 +12,13 @@ jest.mock('@dfx.swiss/react', () => ({
 }));
 
 import { renderHook } from '@testing-library/react';
-import { useSupportDashboard } from 'src/hooks/support-dashboard.hook';
+import {
+  clerkAssignmentPayload,
+  isAssignedToMe,
+  LEFTOVER_CLERK_VALUE,
+  usableClerks,
+  useSupportDashboard,
+} from 'src/hooks/support-dashboard.hook';
 
 function hook(): ReturnType<typeof useSupportDashboard> {
   return renderHook(() => useSupportDashboard()).result.current;
@@ -88,6 +94,15 @@ describe('useSupportDashboard', () => {
     expect(mockCall).toHaveBeenCalledWith({ url: 'support/issue/clerk', method: 'GET' });
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY])(
+    'getMyClerk rejects non-finite clerkUserDataId %p',
+    async (clerkUserDataId) => {
+      mockCall.mockResolvedValue({ clerkUserDataId, clerk: 'Fixture Clerk' });
+
+      await expect(hook().getMyClerk()).resolves.toBeUndefined();
+    },
+  );
+
   it('getIssueData, updateIssue, sendMessage and createIssue address the issue routes', async () => {
     await hook().getIssueData(42);
     await hook().updateIssue(42, { state: 'Closed', clerkUserDataId: 9 });
@@ -162,5 +177,68 @@ describe('useSupportDashboard', () => {
       method: 'PUT',
       data: { title: 'Gesellschafterliste' },
     });
+  });
+});
+
+describe('clerkAssignmentPayload', () => {
+  it('omits the field when the selected clerk is unchanged', () => {
+    expect(clerkAssignmentPayload('101', 101)).toEqual({});
+  });
+
+  it('sends the id when assigning a different clerk', () => {
+    expect(clerkAssignmentPayload('102', 101)).toEqual({ clerkUserDataId: 102 });
+  });
+
+  it('sends null when clearing an existing assignment', () => {
+    expect(clerkAssignmentPayload('', 101)).toEqual({ clerkUserDataId: null });
+  });
+
+  it('omits the field when already unassigned and the select is empty', () => {
+    expect(clerkAssignmentPayload('', null)).toEqual({});
+    expect(clerkAssignmentPayload('')).toEqual({});
+  });
+
+  it('sends null when the leftover name is still set and the select is empty', () => {
+    expect(clerkAssignmentPayload('', null, { leftover: true })).toEqual({ clerkUserDataId: null });
+  });
+
+  it('omits the field while the leftover name is still selected', () => {
+    expect(clerkAssignmentPayload(LEFTOVER_CLERK_VALUE, null, { leftover: true })).toEqual({});
+  });
+
+  it('omits the field when the selected value is not a finite id', () => {
+    expect(clerkAssignmentPayload('undefined', 101)).toEqual({});
+    expect(clerkAssignmentPayload('NaN', 101)).toEqual({});
+  });
+
+  it('omits the field when the id is not on the allow list', () => {
+    expect(clerkAssignmentPayload('99', null, { allowedIds: [101, 102] })).toEqual({});
+    expect(clerkAssignmentPayload('101', null, { allowedIds: [101, 102] })).toEqual({ clerkUserDataId: 101 });
+  });
+});
+
+describe('isAssignedToMe', () => {
+  it('matches the JWT account even when the leftover name differs', () => {
+    expect(isAssignedToMe({ clerkUserDataId: 7, clerk: 'Josh' }, 7, 'JOSHUA BEN KRUEGER')).toBe(true);
+  });
+
+  it('matches a leftover name when the id is still missing', () => {
+    expect(isAssignedToMe({ clerk: 'Ada' }, 7, 'Ada')).toBe(true);
+  });
+
+  it('does not match a leftover name against a different session', () => {
+    expect(isAssignedToMe({ clerkUserDataId: 9, clerk: 'Ada' }, 7, 'Ada')).toBe(false);
+  });
+});
+
+describe('usableClerks', () => {
+  it('keeps only entries with a finite clerkUserDataId and a clerk', () => {
+    expect(
+      usableClerks([
+        { clerkUserDataId: 1, clerk: 'Ada' },
+        { clerkUserDataId: Number.NaN, clerk: 'Bad' },
+        { clerkUserDataId: 2, clerk: '' },
+      ]),
+    ).toEqual([{ clerkUserDataId: 1, clerk: 'Ada' }]);
   });
 });

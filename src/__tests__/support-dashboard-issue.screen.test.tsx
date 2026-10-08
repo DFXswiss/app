@@ -42,7 +42,12 @@ jest.mock('@dfx.swiss/react-components', () => ({
 }));
 
 jest.mock('src/components/error-hint', () => ({
-  ErrorHint: ({ message }: { message: string }) => <div data-testid="error-hint">{message}</div>,
+  ErrorHint: ({ message }: { message: string }) => (
+    <div data-testid="error-hint">
+      <span>Something went wrong. Please try again. If the issue persists please reach out to our support.</span>
+      <span>{message}</span>
+    </div>
+  ),
 }));
 
 jest.mock('src/components/support/info-panel', () => {
@@ -299,11 +304,16 @@ describe('SupportDashboardIssueScreen ticket switches', () => {
   });
 
   it('keeps the empty clerk-list hint across a ticket switch and update', async () => {
-    const hint = 'Clerk list is empty. Assign after the API update is live.';
+    const hint = 'No support clerks are available.';
     mockGetClerks.mockResolvedValue([]);
     const { rerender } = render(<SupportDashboardIssueScreen />);
 
     expect(await screen.findByText(hint)).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'Something went wrong. Please try again. If the issue persists please reach out to our support.',
+      ),
+    ).not.toBeInTheDocument();
 
     navigateTo('2', rerender);
     expect(await screen.findByText('Ticket 2')).toBeInTheDocument();

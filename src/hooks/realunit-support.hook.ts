@@ -62,7 +62,9 @@ export function useRealunitSupport() {
       method: 'GET',
     });
     const clerk = result.clerk?.trim();
-    return clerk ? { clerkUserDataId: result.clerkUserDataId, clerk } : undefined;
+    return Number.isFinite(result.clerkUserDataId) && clerk
+      ? { clerkUserDataId: result.clerkUserDataId, clerk }
+      : undefined;
   }
 
   async function getIssueData(issueId: number): Promise<SupportIssueInternalData> {

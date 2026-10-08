@@ -172,7 +172,7 @@ test.describe('Support Dashboard - issue detail', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1500);
 
-    await expect(page.getByText('Clerk list is empty. Assign after the API update is live.')).toBeVisible();
+    await expect(page.getByText('No support clerks are available.')).toBeVisible();
     await prepareIssueScreenshot(page);
 
     await expect(page).toHaveScreenshot('support-dashboard-03-issue-empty-clerks.png', {

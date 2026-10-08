@@ -41,6 +41,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   const loadErrorTicketIdRef = useRef<string>();
   const [actionError, setActionError] = useState<string>();
   const [clerkListError, setClerkListError] = useState<string>();
+  const [isClerkListEmpty, setIsClerkListEmpty] = useState(false);
   const [issueData, setIssueData] = useState<SupportIssueInternalData>();
   const [messages, setMessages] = useState<SupportMessageInfo[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -55,6 +56,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   const updatingIssueIdsRef = useRef(new Set<string>());
   const messageLoadSeqRef = useRef(0);
   const issueLoadSeqRef = useRef(0);
+  const filePreviewSeqRef = useRef(0);
 
   // Message form state
   // Draft persisted per ticket, so a detour to the customer profile does not lose the text.
@@ -79,6 +81,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   // A route round-trip A→B→A must also invalidate work started during the first visit to A.
   const requestGenRef = useRef(0);
   const { containerRef, splitPercent, handleSplitDrag } = useSplitPane();
+  const noClerksAvailable = translate('screens/support', 'No support clerks are available.');
 
   useLayoutOptions({
     title: translate('screens/support', 'RealUnit Support Issue'),
@@ -89,10 +92,11 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
 
   useEffect(() => {
     setClerkListError(undefined);
+    setIsClerkListEmpty(false);
     getClerks()
       .then((list) => {
         setClerks(list);
-        setClerkListError(list.length === 0 ? 'Clerk list is empty. Assign after the API update is live.' : undefined);
+        setIsClerkListEmpty(list.length === 0);
       })
       .catch((e: unknown) => setClerkListError(e instanceof Error ? e.message : 'Failed to load clerks'));
   }, [getClerks]);
@@ -166,6 +170,7 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
     setIsUpdating(id != null && updatingIssueIdsRef.current.has(id));
     messageLoadSeqRef.current += 1;
     issueLoadSeqRef.current += 1;
+    filePreviewSeqRef.current += 1;
     setSelectedFiles([]);
     setActionError(undefined);
     setLoadError(undefined);
@@ -173,6 +178,10 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
     requestGenRef.current += 1;
     setMessages([]);
     setPendingCount(0);
+    setFilePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return undefined;
+    });
   }, [id]);
 
   useEffect(() => {
@@ -280,31 +289,41 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
 
   async function openFile(msg: SupportMessageInfo): Promise<void> {
     if (!issueData || !msg.fileName) return;
+    const gen = requestGenRef.current;
+    const seq = ++filePreviewSeqRef.current;
     try {
       const { data, contentType } = await getFile(issueData.id, msg.id, 'View');
+      if (requestGenRef.current !== gen || filePreviewSeqRef.current !== seq) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
       }
-      if (filePreview) URL.revokeObjectURL(filePreview.url);
+      setFilePreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return undefined;
+      });
       const blob = new Blob([new Uint8Array(data.data)], { type: contentType });
       const url = URL.createObjectURL(blob);
       setFilePreview({ url, contentType, name: msg.fileName, messageId: msg.id });
     } catch (e: unknown) {
+      if (requestGenRef.current !== gen || filePreviewSeqRef.current !== seq) return;
       setActionError(e instanceof Error ? e.message : 'Error loading file');
     }
   }
 
   async function downloadPreview(): Promise<void> {
     if (!issueData || !filePreview) return;
+    const gen = requestGenRef.current;
     try {
       const { data, contentType } = await getFile(issueData.id, filePreview.messageId, 'Download');
+      if (requestGenRef.current !== gen) return;
       if (!data || data.type !== 'Buffer' || !Array.isArray(data.data)) {
         setActionError('Invalid file type');
         return;
       }
       saveBufferedFile(data, contentType, filePreview.name);
     } catch (e: unknown) {
+      if (requestGenRef.current !== gen) return;
       setActionError(e instanceof Error ? e.message : 'Error downloading file');
     }
   }
@@ -322,6 +341,11 @@ export default function RealunitSupportIssueScreen(): JSX.Element {
   return (
     <div ref={containerRef} className="w-full flex text-left">
       <div style={{ width: `${splitPercent}%` }} className="flex flex-col gap-6 min-w-0 pr-2">
+        {isClerkListEmpty && (
+          <div className="rounded-lg border border-dfxGray-400 bg-dfxGray-300/40 p-4 text-sm text-dfxBlue-800">
+            {noClerksAvailable}
+          </div>
+        )}
         {clerkListError && <ErrorHint message={clerkListError} />}
         {actionError && <ErrorHint message={actionError} />}
 
