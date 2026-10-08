@@ -35,6 +35,7 @@ const mockSumsub = {
   onError: undefined as ((err: { error: string }) => void) | undefined,
   expirationHandler: undefined as (() => Promise<string>) | undefined,
 };
+const mockLoadSerial = { concurrent: false };
 
 const mockDevice = { isMobile: false };
 const mockApp = {
@@ -219,12 +220,20 @@ jest.mock('@dfx.swiss/react-components', () => {
       label,
       onClick,
       disabled,
+      isLoading,
     }: {
       label: string;
       onClick?: () => void;
       disabled?: boolean;
+      isLoading?: boolean;
     }) => (
-      <button type="button" onClick={onClick} disabled={false} data-would-disable={disabled ? 'yes' : 'no'}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={false}
+        data-would-disable={disabled ? 'yes' : 'no'}
+        data-is-loading={isLoading ? 'yes' : 'no'}
+      >
         {label}
       </button>
     ),
@@ -596,6 +605,17 @@ jest.mock('../util/utils', () => {
   };
 });
 
+jest.mock('../util/single-flight', () => {
+  const actual = jest.requireActual('../util/single-flight');
+  return {
+    ...actual,
+    createKeyedSerial: () => {
+      const serial = actual.createKeyedSerial();
+      return (key: string, fn: () => Promise<unknown>) => (mockLoadSerial.concurrent ? fn() : serial(key, fn));
+    },
+  };
+});
+
 process.env.REACT_APP_PUBLIC_URL = 'https://app.dfx.swiss';
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -624,6 +644,26 @@ function step(name: string, status = 'InProgress', extra: Record<string, unknown
     sequenceNumber: 0,
     session: { url: 'https://api.dfx.swiss/step', type: 'API' },
     ...extra,
+  };
+}
+
+function createDeferred<T>() {
+  let resolvePromise: ((value: T) => void) | undefined;
+  let rejectPromise: ((reason?: unknown) => void) | undefined;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return {
+    promise,
+    resolve: (value: T) => {
+      if (resolvePromise === undefined) throw new Error('Deferred resolve was not registered');
+      resolvePromise(value);
+    },
+    reject: (reason?: unknown) => {
+      if (rejectPromise === undefined) throw new Error('Deferred reject was not registered');
+      rejectPromise(reason);
+    },
   };
 }
 
@@ -670,6 +710,7 @@ beforeEach(() => {
   mockApp.params = {};
   mockApp.processingKycData = false;
   mockApp.lang = undefined;
+  mockLoadSerial.concurrent = false;
   mockAuth.user = { kyc: { hash: 'user-hash' } };
   mockNationalityCountries = [CH, DE];
   mockLanguage = LANG;
@@ -731,6 +772,62 @@ describe('KycScreen shell', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     });
     expect(await screen.findByTestId('error-hint')).toHaveTextContent('Unknown error');
+  });
+
+  it('ignores an older load that resolves after the newer load', async () => {
+    mockLoadSerial.concurrent = true;
+    const older = createDeferred<ReturnType<typeof session>>();
+    const newer = createDeferred<ReturnType<typeof session>>();
+    mockContinueKyc.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+    renderAt('/kyc?code=abc');
+    await screen.findByRole('button', { name: 'Start' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(mockContinueKyc).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: 'Start' })).toHaveAttribute('data-is-loading', 'yes');
+
+    await act(async () => {
+      newer.resolve(session(step('ContactData')));
+      await newer.promise;
+    });
+    expect(await screen.findByText('Email address')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toHaveAttribute('data-is-loading', 'no');
+
+    await act(async () => {
+      older.resolve(session(step('PersonalData')));
+      await older.promise;
+    });
+    expect(screen.getByText('Email address')).toBeInTheDocument();
+    expect(screen.queryByText('Account Type')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+  });
+
+  it('keeps submitting when an older load rejects before the newer load settles', async () => {
+    mockLoadSerial.concurrent = true;
+    const older = createDeferred<ReturnType<typeof info>>();
+    const newer = createDeferred<ReturnType<typeof info>>();
+    mockContinueKyc.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+    renderAt('/kyc?code=abc');
+    await screen.findByRole('button', { name: 'Start' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(mockContinueKyc).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      older.reject({ message: 'stale error' });
+      await older.promise.catch(() => undefined);
+    });
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start' })).toHaveAttribute('data-is-loading', 'yes');
+
+    await act(async () => {
+      newer.resolve(info());
+      await newer.promise;
+    });
+    expect(screen.getByRole('button', { name: 'Start' })).toHaveAttribute('data-is-loading', 'no');
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 
   it('shows the pending-result panel for a Recommendation in review', async () => {
