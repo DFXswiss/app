@@ -136,10 +136,12 @@ function IssueRow({
         {issue.name}
       </td>
       <td className="px-2 py-1.5 text-xs text-dfxBlue-800 text-left group-hover:text-white">
-        {isUnassigned(issue) ? (
+        {issue.clerkUserDataId != null ? (
+          issue.clerk || `#${issue.clerkUserDataId}`
+        ) : isUnassigned(issue) ? (
           <span className="italic text-dfxGray-700 group-hover:text-white">Unassigned</span>
         ) : (
-          issue.clerk || (issue.clerkUserDataId != null ? `#${issue.clerkUserDataId}` : '')
+          issue.clerk
         )}
       </td>
       {showDepartment && (
