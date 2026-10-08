@@ -9,6 +9,7 @@ export * from './factories';
 export * from './mail';
 export * from './routes';
 export * from './screen-sync';
+export * from './shadow-root';
 export * from './test-data';
 export { expect };
 

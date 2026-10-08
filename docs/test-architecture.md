@@ -477,10 +477,30 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   block. It does not prove that the DFX payment-link API returns those payloads, that a wallet
   deeplink opens, that the asset catalog matches production, or that the SPAR map draws the
   place list.
+- **The widget tests force the closed shadow root open.** `forceOpenShadowRoots`
+  (`e2e-stack/specs/fixtures/shadow-root.ts`) patches `Element.prototype.attachShadow` in the test
+  browser so every root is attached open; `e2e-stack/specs/widget.spec.ts` (mail login by code) and
+  `e2e/widget-mail-code-login.spec.ts` use it to reach inside `<dfx-services>`. The shipped widget
+  keeps `shadow: 'closed'`. A green run does not prove anything that depends on the root being
+  closed, such as the host page being unable to read or restyle the widget's content.
+- **The full-stack widget mail-code test drops the host page's `service` attribute.**
+  `e2e-stack/specs/widget.spec.ts` removes `service` before the widget mounts, because the stack's
+  widget origin `http://frontend-widget` has no TLD and the API rejects the redirect URI built from
+  it. A green run does not prove that a mail-code request carrying a redirect URI for a pending
+  service is accepted; that depends on the deployed public URL.
+- **The widget mail-code visual spec serves its own host page and moves the browser clock.**
+  `e2e/widget-mail-code-login.spec.ts` fulfils a minimal host page and the local widget build
+  (`npm run widget:loc`) via `page.route`, serves the widget stylesheet as `main-widget.css` (the
+  name the deploy workflows rewrite), and turns off Chromium's `LocalNetworkAccessChecks` so that
+  route-fulfilled page may call the API on localhost. Every API answer is real. The expired variant
+  advances the page clock by the code's ten-minute validity. A green run does not prove that the
+  published widget script and stylesheet load on a third-party page, that Chromium's
+  local-network rules allow a real host page to reach the API, or that the API itself treats the
+  code as expired at the same moment.
 
 ## Known gaps
 
-All four points below concern the full-stack harness.
+All five points below concern the full-stack harness.
 
 - **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*`
   (`e2e-stack/env/api.env`); what that switches off in the API is described in the companion document
@@ -498,6 +518,11 @@ All four points below concern the full-stack harness.
   worker with retries disabled (`workers: 1` and `retries: 0` in `e2e-stack/playwright.config.ts`, whose
   comment states the reason): a retry would mask exactly the order-dependent failure this arrangement
   produces. It bounds how far the suite can grow.
+- **The embedded mail login by code cannot be completed.** The API neither stores nor logs the
+  6-digit code it mails (the mail text is marked sensitive, and under `loc` no mail leaves the API),
+  so `e2e-stack/specs/widget.spec.ts` drives the code step only as far as a wrong code, a resend and
+  back. Entering the correct code and the logged-in state that follows are covered by the unit tests
+  in `src/__tests__/connect-mail-code.test.tsx` only.
 
 ## Target architecture
 
