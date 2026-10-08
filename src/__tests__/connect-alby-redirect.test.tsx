@@ -158,14 +158,6 @@ describe('ConnectAlby login redirect', () => {
     );
   }
 
-  function getReturnUrlFromCapturedLocation(): URL {
-    expect(capturedLocation).toBeDefined();
-    const albyUrl = new URL(capturedLocation as string);
-    const redirectUri = albyUrl.searchParams.get('redirectUri');
-    expect(redirectUri).toBeTruthy();
-    return new URL(redirectUri as string);
-  }
-
   function getRedirectParamFromCapturedLocation(): string | null {
     return getReturnUrlFromCapturedLocation().searchParams.get('redirect');
   }
