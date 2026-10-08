@@ -1,7 +1,14 @@
-import { Map, Marker, NavigationControl, Popup } from 'maplibre-gl';
+import { Map, Marker, NavigationControl, Popup, setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import { useSettingsContext } from 'src/contexts/settings.context';
+
+// Webpack rewrites MapLibre's default worker URL to a chunk that never loads,
+// so vector tiles never arrive. The file is copied into public/ at startup.
+if (typeof setWorkerUrl === 'function') {
+  const publicUrl = process.env.PUBLIC_URL ?? '';
+  setWorkerUrl(`${publicUrl}/maplibre-gl-worker.mjs`);
+}
 
 const FILTERS_URL = 'https://api.opencryptopay.io/map/filters';
 const PLACES_URL = 'https://api.opencryptopay.io/map/places';
@@ -90,20 +97,29 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError';
 }
 
-function markerElement(): HTMLDivElement {
-  const element = document.createElement('div');
-  element.style.width = '14px';
-  element.style.height = '14px';
-  element.style.borderRadius = '50%';
-  element.style.border = '2px solid white';
-  element.style.background = '#d23b3b';
-  element.style.boxShadow = '0 0 0 1px rgba(0, 0, 0, 0.25)';
+function markerElement(label: string): HTMLButtonElement {
+  const element = document.createElement('button');
+  element.type = 'button';
+  element.className = 'spar-place-marker';
+  element.setAttribute('aria-label', label);
+  element.style.cssText =
+    'width:28px;height:36px;padding:0;border:0;background:transparent;cursor:pointer;display:block;line-height:0;';
+  element.innerHTML =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36" ' +
+    'aria-hidden="true" focusable="false">' +
+    '<path fill="#C8102E" d="M14 34.5S26 23.2 26 14.2C26 7.4 20.6 2 14 2S2 7.4 2 14.2C2 23.2 14 34.5 14 34.5z"/>' +
+    '<circle cx="14" cy="14" r="4.2" fill="#fff"/></svg>';
   return element;
+}
+
+function placeLabel(name: unknown, fallback: string): string {
+  return typeof name === 'string' && name.length > 0 ? name : fallback;
 }
 
 export function SparPlaceMap(): JSX.Element {
   const { translate } = useSettingsContext();
   const containerRef = useRef<HTMLDivElement>(null);
+  const mapEpoch = useRef(0);
   const [filters, setFilters] = useState<MapFilters | undefined>(undefined);
   const [shopName, setShopName] = useState<ShopName>(SHOP_SPAR);
   const [country, setCountry] = useState<string | undefined>(undefined);
@@ -186,30 +202,41 @@ export function SparPlaceMap(): JSX.Element {
     const container = containerRef.current;
     if (!container) return;
 
+    const epoch = String(++mapEpoch.current);
+    delete container.dataset.mapReady;
+    container.dataset.mapEpoch = epoch;
+
     const map = new Map({
       container,
       style: 'https://tiles.openfreemap.org/styles/liberty',
       center: [8.23, 46.8],
       zoom: 7,
+      fadeDuration: 0,
+      canvasContextAttributes: { preserveDrawingBuffer: true },
     });
 
     map.addControl(new NavigationControl(), 'top-right');
 
     for (const place of state.places) {
-      const popup = new Popup({ offset: 16 });
+      const popup = new Popup({ offset: 18, closeButton: true, maxWidth: '240px' });
       const content = document.createElement('div');
+      content.style.cssText = 'font-size:14px;line-height:1.35;color:#072440;';
       const title = document.createElement('strong');
-      title.textContent =
-        typeof place.name === 'string' && place.name.length > 0 ? place.name : translate('screens/payment', 'Location');
+      const label = placeLabel(place.name, translate('screens/payment', 'Location'));
+      title.textContent = label;
       content.appendChild(title);
       if (typeof place.category === 'string' && place.category.length > 0) {
         const category = document.createElement('div');
         category.textContent = place.category;
+        category.style.cssText = 'margin-top:2px;color:#65728A;';
         content.appendChild(category);
       }
       popup.setDOMContent(content);
 
-      new Marker({ element: markerElement() }).setLngLat([place.lon, place.lat]).setPopup(popup).addTo(map);
+      new Marker({ element: markerElement(label), anchor: 'bottom' })
+        .setLngLat([place.lon, place.lat])
+        .setPopup(popup)
+        .addTo(map);
     }
 
     if (state.places.length > 1) {
@@ -228,7 +255,7 @@ export function SparPlaceMap(): JSX.Element {
           [west, south],
           [east, north],
         ],
-        { padding: 48, maxZoom: 12 },
+        { padding: { top: 72, right: 56, bottom: 40, left: 40 }, maxZoom: 12, animate: false },
       );
     } else {
       for (const place of state.places) {
@@ -237,27 +264,45 @@ export function SparPlaceMap(): JSX.Element {
       }
     }
 
+    map.once('idle', () => {
+      if (container.dataset.mapEpoch === epoch) container.dataset.mapReady = 'true';
+    });
+
     return () => {
+      delete container.dataset.mapReady;
       map.remove();
     };
   }, [state, translate]);
 
   if (state.kind === 'error') {
     return (
-      <p className="text-dfxGray-800 text-sm p-4">
-        {translate('screens/payment', 'The location list could not be loaded.')}
-      </p>
+      <div className="flex h-full w-full items-center justify-center bg-dfxGray-300 px-6">
+        <p className="max-w-sm rounded-md bg-white px-4 py-3 text-center text-sm text-dfxGray-800 shadow">
+          {translate('screens/payment', 'The location list could not be loaded.')}
+        </p>
+      </div>
     );
   }
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full bg-dfxGray-300">
+      <style>
+        {'.spar-place-marker:focus{outline:none}' +
+          '.spar-place-marker:focus-visible{outline:2px solid #072440;outline-offset:2px}' +
+          '.maplibregl-popup-close-button{color:#072440;font-size:18px;line-height:18px;width:22px;height:22px;padding:0}' +
+          '.maplibregl-popup-close-button:focus,.maplibregl-popup-close-button:focus-visible{outline:none}'}
+      </style>
       {filters !== undefined && (
-        <div className="absolute left-0 top-0 z-20 flex flex-wrap gap-2 p-2 text-sm text-dfxGray-800">
+        <div
+          className={
+            'absolute left-2 top-2 z-20 flex flex-wrap items-center gap-2 rounded-md bg-white/95 ' +
+            'px-2.5 py-1.5 text-sm text-dfxGray-800 shadow'
+          }
+        >
           <label className="flex items-center gap-1.5">
             {translate('screens/payment', 'Country')}
             <select
-              className="text-sm"
+              className="rounded border border-dfxGray-500 bg-white px-1.5 py-0.5 text-sm text-dfxGray-800"
               value={country === undefined ? '' : country}
               onChange={(event) => {
                 const value = event.target.value;
@@ -281,7 +326,7 @@ export function SparPlaceMap(): JSX.Element {
           <label className="flex items-center gap-1.5">
             {translate('screens/payment', 'Shop')}
             <select
-              className="text-sm"
+              className="rounded border border-dfxGray-500 bg-white px-1.5 py-0.5 text-sm text-dfxGray-800"
               value={shopName}
               onChange={(event) => {
                 const value = event.target.value;
@@ -301,7 +346,12 @@ export function SparPlaceMap(): JSX.Element {
       )}
       <div ref={containerRef} className="w-full h-full" />
       {state.kind === 'ready' && state.places.length === 0 && (
-        <p className="absolute inset-x-0 top-12 z-10 text-center text-dfxGray-800 text-sm p-3">
+        <p
+          className={
+            'pointer-events-none absolute left-1/2 top-1/2 z-10 max-w-sm -translate-x-1/2 -translate-y-1/2 ' +
+            'rounded-md bg-white/95 px-4 py-3 text-center text-sm text-dfxGray-800 shadow'
+          }
+        >
           {translate('screens/payment', 'No locations published yet.')}
         </p>
       )}

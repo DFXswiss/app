@@ -23,6 +23,7 @@ jest.mock('maplibre-gl', () => {
     mockMap(...args);
     return {
       addControl: mockMapAddControl,
+      once: jest.fn(),
       setCenter: mockMapSetCenter,
       setZoom: mockMapSetZoom,
       fitBounds: mockMapFitBounds,

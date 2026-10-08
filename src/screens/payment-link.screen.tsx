@@ -735,14 +735,14 @@ export default function PaymentLinkScreen(): JSX.Element {
             </>
           )}
           {merchant === 'SPAR' && (
-            <>
-              {<DividerWithHeader header={translate('screens/payment', 'Locations').toUpperCase()} />}
+            <div data-testid="spar-locations" className="flex w-full flex-col">
+              <DividerWithHeader header={translate('screens/payment', 'Locations').toUpperCase()} />
               <div ref={mapRef} className="flex flex-col gap-4 w-full">
                 <div className="w-full h-96 rounded-md overflow-clip">
                   <SparPlaceMap />
                 </div>
               </div>
-            </>
+            </div>
           )}
 
           <div className="p-1 w-full leading-none">
