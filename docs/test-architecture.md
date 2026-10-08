@@ -488,12 +488,6 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `AuthWalletType` values used while loading the provider. A green run proves the provider's
   login-error handling against those values, not that Jest can execute the SDK's ESM auth module
   or that the SDK performs authentication.
-- **The ConnectBase unit spec models wallets without a usable supported-chain mapping.**
-  `src/__tests__/connect-base.test.tsx` gives the mocked Cake wallet an empty supported-chain list
-  and makes the mocked `supportsBlockchain` reject a chain for the unmapped Mail wallet to exercise
-  both defensive wallet-switch error paths. A green run does not prove that any production wallet
-  has an empty or missing mapping, or that the production helper rejects a chain for an unmapped
-  wallet.
 
 ## Known gaps
 
