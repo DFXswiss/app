@@ -1,4 +1,5 @@
 import {
+  ALBY_RETURN_ALLOWED_PARAMS,
   allowedParamsOnly,
   EXTERNAL_LOGIN_ALLOWED_PARAMS,
   LOGIN_RETURN_ALLOWED_PARAMS,
@@ -59,6 +60,10 @@ describe('allowedParamsOnly', () => {
 describe('named allowlist subsets', () => {
   it('LOGIN_RETURN_ALLOWED_PARAMS is only a', () => {
     expect([...LOGIN_RETURN_ALLOWED_PARAMS]).toEqual(['a']);
+  });
+
+  it('ALBY_RETURN_ALLOWED_PARAMS is only lang', () => {
+    expect([...ALBY_RETURN_ALLOWED_PARAMS]).toEqual(['lang']);
   });
 
   it('EXTERNAL_LOGIN_ALLOWED_PARAMS is only personal-iban', () => {

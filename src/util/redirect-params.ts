@@ -32,6 +32,12 @@ export function allowedParamsOnly(search: string, allowed: readonly string[]): U
 export const LOGIN_RETURN_ALLOWED_PARAMS = ['a'] as const;
 
 /**
+ * Alby return URL on the app itself: `lang` preserves the selected interface language after authentication.
+ * All other live query parameters stay out of the outbound redirect URI.
+ */
+export const ALBY_RETURN_ALLOWED_PARAMS = ['lang'] as const;
+
+/**
  * External login callbacks (magic-link mail, Alby): only an explicitly present `personal-iban`.
  * Do not copy the entire live search (would leak `user`, `arbitrary`, etc.).
  */
