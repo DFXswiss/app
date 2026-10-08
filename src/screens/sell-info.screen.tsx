@@ -94,6 +94,7 @@ export default function SellInfoScreen(): JSX.Element {
   const isCreatingAccountRef = useRef(false);
   const bankAccountRequestGenerationRef = useRef(0);
   const requestedCreateIbanRef = useRef<string>();
+  const failedCreateIbanRef = useRef<string>();
   const latestBankAccountParamRef = useRef(bankAccountParam);
   const previousBankAccountParamRef = useRef(bankAccountParam);
   const quoteRequestGenerationRef = useRef(0);
@@ -120,6 +121,7 @@ export default function SellInfoScreen(): JSX.Element {
     quoteRequestGenerationRef.current += 1;
     isCreatingAccountRef.current = false;
     requestedCreateIbanRef.current = undefined;
+    failedCreateIbanRef.current = undefined;
     setBankAccount(undefined);
     setPaymentInfo(undefined);
     setQuotedBankAccountId(undefined);
@@ -152,10 +154,15 @@ export default function SellInfoScreen(): JSX.Element {
         bankAccountRequestGenerationRef.current += 1;
         isCreatingAccountRef.current = false;
         requestedCreateIbanRef.current = undefined;
+        failedCreateIbanRef.current = undefined;
         setErrorMessage(undefined);
         setBankAccountFailure(undefined);
         setBankAccount(account);
-      } else if (!isCreatingAccountRef.current && requestedCreateIbanRef.current !== bankAccountParam) {
+      } else if (
+        !isCreatingAccountRef.current &&
+        requestedCreateIbanRef.current !== bankAccountParam &&
+        failedCreateIbanRef.current !== bankAccountParam
+      ) {
         const ibanIsValid = Validations.Iban(allowedCountries).validate(bankAccountParam);
         if (ibanIsValid !== true) {
           setBankAccountFailure(undefined);
@@ -166,6 +173,7 @@ export default function SellInfoScreen(): JSX.Element {
         const requestGeneration = ++bankAccountRequestGenerationRef.current;
         isCreatingAccountRef.current = true;
         requestedCreateIbanRef.current = bankAccountParam;
+        failedCreateIbanRef.current = undefined;
         setErrorMessage(undefined);
         createAccount({ iban: bankAccountParam })
           .then((account) => {
@@ -187,6 +195,8 @@ export default function SellInfoScreen(): JSX.Element {
             )
               return;
 
+            requestedCreateIbanRef.current = undefined;
+            failedCreateIbanRef.current = bankAccountParam;
             const kind = getBankAccountFailureKind(error);
             if (kind === 'other') {
               setBankAccountFailure(undefined);
@@ -324,10 +334,11 @@ export default function SellInfoScreen(): JSX.Element {
   }
 
   function handleRetry() {
-    if (bankAccountParam && !bankAccount) {
+    if (bankAccountParam && !bankAccount && failedCreateIbanRef.current === bankAccountParam) {
       bankAccountRequestGenerationRef.current += 1;
       isCreatingAccountRef.current = false;
       requestedCreateIbanRef.current = undefined;
+      failedCreateIbanRef.current = undefined;
       setErrorMessage(undefined);
       setBankAccountRetryGeneration((generation) => generation + 1);
       return;
@@ -388,6 +399,7 @@ export default function SellInfoScreen(): JSX.Element {
     )
       return;
     setIsProcessing(true);
+    setErrorMessage(undefined);
 
     if (canSendTransaction() && !activeWallet) {
       closeServices({ type: CloseType.SELL, isComplete: false, sell: paymentInfo }, false);
@@ -404,6 +416,14 @@ export default function SellInfoScreen(): JSX.Element {
         setCompletedPaymentInfo(paymentInfo);
       }
       setShowsCompletion(true);
+    } catch (error: any) {
+      // User rejected in wallet - silently return, user stays on form
+      if (error.code === 4001) return;
+      // Other errors - show message, user can click Retry to see deposit address for manual transfer
+      setBankAccountFailure(undefined);
+      setErrorMessage(
+        translate('screens/sell', 'Transaction failed. Click Retry to see the deposit address for manual transfer.'),
+      );
     } finally {
       pendingSendRef.current = false;
       pendingSendAccountIdRef.current = undefined;

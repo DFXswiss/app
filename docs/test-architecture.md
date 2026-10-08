@@ -372,9 +372,11 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   where applicable. It does not prove that the API emits the rejection, or that
   a live account reaches the screen this way. It also does not prove that user
   updates persist or that the blockchain and price endpoints return production data.
-  Two further cases fulfil the same POST with `Multi-account IBAN cannot be added`
+  Three further cases fulfil the same POST with `Multi-account IBAN cannot be added`
   and prove the support-ticket hint renders on all three screens. A green run does not prove the API
-  emits that sentence either.
+  emits that sentence either. Three general-error cases fulfil the POST with
+  `Bank account service unavailable` and prove the retryable creation error renders on sell, sell
+  confirmation and Safe withdrawal. A green run does not prove the API emits that response either.
 - **The sell KYC-only full-stack case writes `user_data.status` with SQL.**
   `e2e-stack/specs/sell-swap.spec.ts` creates a wallet-backed user and then sets
   `user_data.status` to `KycOnly`. A green run proves `/sell` and `/sell/info`

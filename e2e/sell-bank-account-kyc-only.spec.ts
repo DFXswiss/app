@@ -10,7 +10,7 @@ import { test, expect, Page, Route } from '@playwright/test';
  *
  * Auth is a synthetic unsigned JWT with an address, so the address guard stays on the
  * screen. Bootstrap GETs, Safe data and POST /v1/bankAccount are mocked. A green
- * run proves the screens render the hint, not that a live API emits the rejection.
+ * run proves the screens render the expected error state, not that a live API emits the rejection.
  */
 
 async function json(route: Route, body: unknown): Promise<void> {
@@ -57,7 +57,9 @@ const ETH = {
 
 const KYC_REJECTION = 'You cannot add an IBAN to a KYC only account';
 const MULTI_REJECTION = 'Multi-account IBAN cannot be added';
+const CREATE_REJECTION = 'Bank account service unavailable';
 const GENERIC_ERROR = /Something went wrong|Irgendwas hat nicht funktioniert/;
+const CREATE_ERROR_DE = 'Die Bankverbindung konnte nicht hinzugefügt werden.';
 
 const HINT = {
   de: 'Ein Bankkonto kann erst hinzugefügt werden, wenn eine Wallet mit diesem Konto verknüpft ist.',
@@ -234,6 +236,18 @@ test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
     await expect(page).toHaveScreenshot('safe-withdraw-multi-account-de.png', { fullPage: true, maxDiffPixels: 5000 });
   });
 
+  test('German error on Safe fiat withdrawal after a general IBAN creation failure', async ({ page }) => {
+    await installRoutes(page, CREATE_REJECTION, true);
+    await page.setViewportSize({ width: 1280, height: 1800 });
+    await page.goto(safeUrl());
+    await page.getByRole('button', { name: 'Auszahlung', exact: true }).click();
+    await page.getByRole('button', { name: 'Fiat', exact: true }).click();
+
+    await expect(page.getByText(CREATE_REJECTION)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('button', { name: 'Erneut versuchen' })).toBeVisible();
+    await expect(page).toHaveScreenshot('safe-withdraw-create-error-de.png', { fullPage: true, maxDiffPixels: 5000 });
+  });
+
   test('German hint on sell after a KYC-only IBAN rejection', async ({ page }) => {
     await installRoutes(page, KYC_REJECTION);
     await page.goto(sellUrl('de'));
@@ -285,6 +299,16 @@ test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
     await expect(page).toHaveScreenshot('sell-multi-account-de.png', { fullPage: true, maxDiffPixels: 5000 });
   });
 
+  test('German error on sell after a general IBAN creation failure', async ({ page }) => {
+    await installRoutes(page, CREATE_REJECTION);
+    await page.goto(sellUrl('de'));
+
+    await expect(page.getByText(CREATE_REJECTION)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('button', { name: 'Erneut versuchen' })).toBeVisible();
+    await page.waitForTimeout(1000);
+    await expect(page).toHaveScreenshot('sell-create-error-de.png', { fullPage: true, maxDiffPixels: 5000 });
+  });
+
   test('German multi-account hint on sell confirmation', async ({ page }) => {
     await installRoutes(page, MULTI_REJECTION);
     await page.goto(sellInfoUrl('de'));
@@ -292,5 +316,15 @@ test.describe('Sell bank account KycOnly - Visual Regression Tests', () => {
     await expect(page.getByText(MULTI.de)).toBeVisible({ timeout: 20_000 });
     await page.waitForTimeout(1000);
     await expect(page).toHaveScreenshot('sell-info-multi-account-de.png', { fullPage: true, maxDiffPixels: 5000 });
+  });
+
+  test('German error on sell confirmation after a general IBAN creation failure', async ({ page }) => {
+    await installRoutes(page, CREATE_REJECTION);
+    await page.goto(sellInfoUrl('de'));
+
+    await expect(page.getByText(CREATE_ERROR_DE)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('button', { name: 'Erneut versuchen' })).toBeVisible();
+    await page.waitForTimeout(1000);
+    await expect(page).toHaveScreenshot('sell-info-create-error-de.png', { fullPage: true, maxDiffPixels: 5000 });
   });
 });

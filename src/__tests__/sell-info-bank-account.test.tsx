@@ -596,7 +596,7 @@ describe('SellInfoScreen', () => {
       expect(mockGetAssets).toHaveBeenCalledWith([], { sellable: true, comingSoon: false });
     });
 
-    it('does not let a finished create start another one after retry', async () => {
+    it('does not start a duplicate create when retry is clicked while the first create is pending', async () => {
       let finishFirst: (value?: unknown) => void = () => undefined;
       mockAppParams.amountIn = undefined;
       mockAppParams.amountOut = undefined;
@@ -617,13 +617,13 @@ describe('SellInfoScreen', () => {
         screen.getByRole('button', { name: 'Retry' }).click();
       });
       await settle();
-      expect(mockCreateAccount).toHaveBeenCalledTimes(2);
+      expect(mockCreateAccount).toHaveBeenCalledTimes(1);
 
       await act(async () => {
         finishFirst(mockBankAccount);
       });
       await settle();
-      expect(mockCreateAccount).toHaveBeenCalledTimes(2);
+      expect(mockCreateAccount).toHaveBeenCalledTimes(1);
     });
 
     it('shows a missing-information error when the external input is incomplete', async () => {
@@ -994,8 +994,6 @@ describe('SellInfoScreen', () => {
       act(() => screen.getByRole('button', { name: 'Complete transaction in your wallet' }).click());
       const action = mockLastButtonAction;
       if (!action) throw new Error('Expected a pending wallet send');
-      const rejection = expect(action).rejects.toThrow('Wallet rejected');
-
       mockCountdownState = { ...mockCountdownState, remainingSeconds: 1 };
       rerender(<SellInfoScreen />);
       await settle();
@@ -1003,7 +1001,7 @@ describe('SellInfoScreen', () => {
 
       await act(async () => {
         rejectSend(new Error('Wallet rejected'));
-        await rejection;
+        await action;
       });
       expect(await screen.findByText('246.90 CHF')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Complete transaction in your wallet' })).not.toBeDisabled();
@@ -1172,7 +1170,7 @@ describe('SellInfoScreen', () => {
       expect(mockCloseServices).not.toHaveBeenCalled();
     });
 
-    it('clears processing in finally when wallet sending rejects', async () => {
+    it('handles a wallet send failure and shows the retryable transaction error', async () => {
       let rejectSend: (error: Error) => void = () => undefined;
       mockActiveWallet = mockWallet;
       mockCanSendTransaction.mockReturnValue(true);
@@ -1190,13 +1188,35 @@ describe('SellInfoScreen', () => {
 
       const action = mockLastButtonAction;
       if (!action) throw new Error('Expected the button to retain the async click action');
-      const rejection = expect(action).rejects.toThrow('Wallet rejected');
       await act(async () => {
         rejectSend(new Error('Wallet rejected'));
-        await rejection;
+        await action;
+      });
+
+      expect(screen.getByTestId('error-hint')).toHaveTextContent(
+        'Transaction failed. Click Retry to see the deposit address for manual transfer.',
+      );
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+      expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
+    });
+
+    it('silently handles a wallet rejection and clears processing', async () => {
+      mockActiveWallet = mockWallet;
+      mockCanSendTransaction.mockReturnValue(true);
+      mockSendTransaction.mockRejectedValue({ code: 4001 });
+      await renderHappyPath();
+
+      const completeButton = screen.getByRole('button', { name: 'Complete transaction in your wallet' });
+      act(() => completeButton.click());
+      const action = mockLastButtonAction;
+      if (!action) throw new Error('Expected the button to retain the async click action');
+      await act(async () => {
+        await action;
       });
 
       expect(completeButton).toHaveAttribute('data-loading', 'false');
+      expect(screen.getByTestId('payment-info')).toBeInTheDocument();
+      expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
       expect(screen.queryByTestId('sell-completion')).not.toBeInTheDocument();
     });
 
