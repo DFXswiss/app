@@ -28,8 +28,18 @@ beforeEach(() => {
 });
 
 describe('QrBasic', () => {
-  it('renders a non-scannable skeleton while loading', () => {
+  it('keeps rendering the QR while loading when no skeleton is requested', () => {
     const { container } = render(<QrBasic data="https://pay.example/invoice" isLoading />);
+
+    expect(screen.getByTestId('qr-code')).toHaveAttribute('data-value', 'https://pay.example/invoice');
+    expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
+    expect(container.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument();
+  });
+
+  it('renders a non-scannable skeleton while loading when requested', () => {
+    const { container } = render(
+      <QrBasic data="https://pay.example/invoice" isLoading showLoadingSkeleton />,
+    );
 
     expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
     expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
@@ -40,7 +50,7 @@ describe('QrBasic', () => {
 
   it('renders a non-scannable skeleton while loading even when data is SVG markup', () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>';
-    const { container } = render(<QrBasic data={svg} isLoading />);
+    const { container } = render(<QrBasic data={svg} isLoading showLoadingSkeleton />);
 
     expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
     expect(container.querySelector('.animate-pulse')).toBeInTheDocument();

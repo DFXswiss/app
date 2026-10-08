@@ -7,6 +7,10 @@ interface QrCopyProps {
   isLoading?: boolean;
 }
 
+interface QrBasicProps extends QrCopyProps {
+  showLoadingSkeleton?: boolean;
+}
+
 export function QrCopy({ data }: QrCopyProps): JSX.Element {
   return (
     <div className="relative flex justify-center w-full max-w-[20rem]">
@@ -28,7 +32,7 @@ function stringIsSVG(value: string): boolean {
   return svgElement !== undefined && svgElement.nodeName === 'svg';
 }
 
-export function QrBasic({ data, isLoading }: QrCopyProps): JSX.Element {
+export function QrBasic({ data, isLoading, showLoadingSkeleton }: QrBasicProps): JSX.Element {
   const isSVG = stringIsSVG(data);
 
   return (
@@ -37,7 +41,7 @@ export function QrBasic({ data, isLoading }: QrCopyProps): JSX.Element {
         isLoading ? 'animate-pulse border-dfxGray-300' : ''
       }`}
     >
-      {isLoading ? (
+      {isLoading && showLoadingSkeleton ? (
         // Static skeleton: never encode a scannable URL in the loading placeholder.
         <div className="h-full w-full min-h-[10rem] rounded-sm bg-dfxGray-300/40" aria-hidden="true" />
       ) : isSVG ? (

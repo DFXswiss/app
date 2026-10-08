@@ -201,7 +201,7 @@ export default function InvoiceScreen(): JSX.Element {
     <StyledVerticalStack gap={6} full center>
       {!isPayerMode && (
         <div className="flex flex-col gap-2 w-48 my-3">
-          <QrBasic data={url({ path: callback })} isLoading={!callback} />
+          <QrBasic data={url({ path: callback })} isLoading={!callback} showLoadingSkeleton />
           <StyledButton
             label={translate('general/actions', 'Copy Link')}
             onClick={() => copy(url({ path: callback }))}

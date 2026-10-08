@@ -12,7 +12,11 @@ function recipientInput(page: Page) {
   return page.locator('input[name="name"], input[autocomplete="name"]');
 }
 
-async function installRecipientRoute(page: Page, mock: { ok: true; currency?: string } | { ok: false }): Promise<void> {
+type RecipientMock =
+  | { ok: true; currency?: string }
+  | { ok: false; status: 404 | 500; message: string };
+
+async function installRecipientRoute(page: Page, mock: RecipientMock): Promise<void> {
   await page.route(RECIPIENT_RE, async (route: Route) => {
     if (route.request().method() !== 'GET') {
       await route.continue();
@@ -20,9 +24,9 @@ async function installRecipientRoute(page: Page, mock: { ok: true; currency?: st
     }
     if (!mock.ok) {
       await route.fulfill({
-        status: 404,
+        status: mock.status,
         contentType: 'application/json',
-        body: JSON.stringify({ message: 'Not found' }),
+        body: JSON.stringify({ message: mock.message }),
       });
       return;
     }
@@ -101,7 +105,7 @@ test.describe('Invoice Screen', () => {
   });
 
   test('payer mode: prefilled payee display and unknown-recipient error', async ({ page }) => {
-    await installRecipientRoute(page, { ok: false });
+    await installRecipientRoute(page, { ok: false, status: 404, message: 'Not found' });
 
     await page.goto('/invoice?recipient=Foo&pay=1');
     await page.waitForLoadState('networkidle');
@@ -138,6 +142,28 @@ test.describe('Invoice Screen', () => {
     expect(hasMerchantWording).toBeFalsy();
 
     await expect(page).toHaveScreenshot('invoice-payer-prefilled.png', {
+      maxDiffPixels: 10000,
+    });
+  });
+
+  test('payer mode: recipient lookup server error shows a retryable technical error', async ({ page }) => {
+    await installRecipientRoute(page, {
+      ok: false,
+      status: 500,
+      message: 'Recipient service unavailable',
+    });
+
+    await page.goto('/invoice?recipient=AcmeCorp&pay=1');
+    await page.waitForLoadState('networkidle');
+
+    await expect(
+      page.getByText(/Something went wrong\. Please try again|Irgendwas hat nicht funktioniert, bitte versuche/i),
+    ).toBeVisible();
+    await expect(page.getByText('Recipient service unavailable', { exact: true })).toBeVisible();
+    await expect(page.locator('input[name="invoice-id"], input[autocomplete="invoice-id"]')).toBeDisabled();
+    await expect(page.getByPlaceholder(/Invoice amount|Rechnungsbetrag/i)).toBeDisabled();
+
+    await expect(page).toHaveScreenshot('invoice-payer-technical-error.png', {
       maxDiffPixels: 10000,
     });
   });

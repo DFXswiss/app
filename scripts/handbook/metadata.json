@@ -133,7 +133,7 @@
   },
   "invoice-screen": {
     "title": "Rechnung (Invoice)",
-    "description": "Invoice-Screen in fünf Varianten: Händler (ohne Query) mit leeren Feldern und QR-Ladeskelett; Zahler mit leerem Empfängerfeld (?pay=1); Zahler mit vorbefülltem Empfänger als Anzeige und Fehlerhinweis (unbekannt); Zahler mit bestätigtem Empfänger und Haken (gestubbte API); Zahler mit getipptem, bestätigtem Empfänger im Eingabe-Zweig (Haken, aktivierte Felder, Währungs-Prefix)."
+    "description": "Invoice-Screen in sechs Varianten: Händler (ohne Query) mit leeren Feldern und QR-Ladeskelett; Zahler mit leerem Empfängerfeld (?pay=1); Zahler mit vorbefülltem Empfänger als Anzeige und Fehlerhinweis (unbekannt); Zahler bei technischem 500-Fehler mit „Something went wrong. Please try again. If the issue persists please reach out to our support.“ und „Recipient service unavailable“ (Felder gesperrt); Zahler mit bestätigtem Empfänger und Haken (gestubbte API); Zahler mit getipptem, bestätigtem Empfänger im Eingabe-Zweig (Haken, aktivierte Felder, Währungs-Prefix)."
   },
   "user-flows": {
     "title": "User-Flows",
