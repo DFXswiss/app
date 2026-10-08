@@ -16,7 +16,7 @@ function isValidLimit(raw: string, maxFractionDigits: number): boolean {
   if (!LIMIT_PATTERN.test(trimmed)) return false;
   const dotIndex = trimmed.indexOf('.');
   if (dotIndex !== -1 && trimmed.length - dotIndex - 1 > maxFractionDigits) return false;
-  return Number(trimmed) >= 0;
+  return true;
 }
 
 function displayAmount(value: string | null): string {
