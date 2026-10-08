@@ -247,8 +247,9 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
     isSessionInitialized && init();
   }, [isSessionInitialized]);
 
+  // runs once on mount, when redirectUri is still unset
   useEffect(() => {
-    if (!redirectUri) setRedirectUri(storeRedirectUri.get());
+    setRedirectUri(storeRedirectUri.get());
   }, []);
 
   // parameters
@@ -259,7 +260,9 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
   function clearCustomerSessionState() {
     storeQueryParams.remove();
     storeRedirectUri.remove();
-    setParams({});
+    // The widget's attributes are the host page's configuration, not customer session state: keep
+    // them (minus the one-shot credentials) so a forced logout returns to the configured flow.
+    setParams(props.params ? removeNonStorageParams(extractWidgetParams(props.params)) : {});
     setRedirectUri(undefined);
   }
 
@@ -319,16 +322,7 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
           session: getParameter(query, 'session'),
           redirect: getParameter(query, 'redirect'),
           type: getParameter(query, 'type'),
-          ...Object.entries(params)
-            // personalIban stays live and is read by usePersonalIbanSelection (src/hooks/personal-iban.hook.ts).
-            .filter(([key, val]) => typeof val === 'string' && key !== 'personalIban')
-            .reduce(
-              (prev, [key, val]) => {
-                prev[key] = val;
-                return prev;
-              },
-              {} as { [key: string]: string },
-            ),
+          ...extractWidgetParams(params),
         }
       : {
           headless: getParameter(query, 'headless'),
@@ -380,6 +374,21 @@ export function AppHandlingContextProvider(props: AppHandlingContextProps): JSX.
           bankAccount: getParameter(query, 'bank-account'),
           externalTransactionId: getParameter(query, 'external-transaction-id'),
         };
+  }
+
+  function extractWidgetParams(params: AppParams): AppParams {
+    return (
+      Object.entries(params)
+        // personalIban stays live and is read by usePersonalIbanSelection (src/hooks/personal-iban.hook.ts).
+        .filter(([key, val]) => typeof val === 'string' && key !== 'personalIban')
+        .reduce(
+          (prev, [key, val]) => {
+            prev[key] = val;
+            return prev;
+          },
+          {} as { [key: string]: string },
+        )
+    );
   }
 
   function removeUrlParams(query: URLSearchParams) {
