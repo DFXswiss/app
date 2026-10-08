@@ -1,21 +1,21 @@
 import { Component, ReactNode } from 'react';
 
-var mockCall = jest.fn();
-var mockAssetsGet = jest.fn();
-var mockNavigate = jest.fn();
-var mockToBlockchain = jest.fn();
-var mockSetSearchParams = jest.fn();
-var mockSetValue = jest.fn();
-var mockTranslate = jest.fn((_ns: string, key: string) => key);
-var mockTranslateError = jest.fn((key: string) => key);
-var mockUseLayoutOptions = jest.fn();
+const mockCall = jest.fn();
+const mockAssetsGet = jest.fn();
+const mockNavigate = jest.fn();
+const mockToBlockchain = jest.fn();
+const mockSetSearchParams = jest.fn();
+const mockSetValue = jest.fn();
+const mockTranslate = jest.fn((_ns: string, key: string) => key);
+const mockTranslateError = jest.fn((key: string) => key);
+const mockUseLayoutOptions = jest.fn();
 const mockGetDeeplinkByWalletId = jest.fn();
 const mockSetSessionApiUrl = jest.fn();
 const mockSetPaymentIdentifier = jest.fn();
 const mockFetchPayRequest = jest.fn();
 const mockFetchPaymentIdentifier = jest.fn();
 const mockPayWithMetaMask = jest.fn();
-var mockCopy: jest.Mock<unknown, unknown[]> = jest.fn();
+const mockCopy: jest.Mock<unknown, unknown[]> = jest.fn();
 const mockOpen = jest.fn();
 const mockScrollIntoView = jest.fn();
 
@@ -47,11 +47,11 @@ type WalletLike = {
   appStoreUrl?: string;
 };
 
-var mockSearchParams = new URLSearchParams();
-var mockFormData: { amount?: number | string } = { amount: 10 };
-var mockWatchValues: { paymentStandard?: PaymentStandardLike; asset?: string } = {};
+let mockSearchParams = new URLSearchParams();
+let mockFormData: { amount?: number | string } = { amount: 10 };
+let mockWatchValues: { paymentStandard?: PaymentStandardLike; asset?: string } = {};
 let mockAssetsList: AssetLike[] = [];
-var mockWindowWidth = 800;
+let mockWindowWidth = 800;
 
 function paymentHasQuote(request: unknown): boolean {
   return typeof request === 'object' && request !== null && 'quote' in request;
@@ -97,8 +97,8 @@ interface MockWalletsHook {
   error: string | undefined;
 }
 
-var mockPaymentLinkContext = {} as MockPaymentLinkContext;
-var mockWalletsHook = {} as MockWalletsHook;
+const mockPaymentLinkContext = {} as MockPaymentLinkContext;
+const mockWalletsHook = {} as MockWalletsHook;
 
 jest.mock('@dfx.swiss/react', () => ({
   Asset: {},
