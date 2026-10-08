@@ -424,7 +424,7 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=USD&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     const paymentDetails = page.getByRole('heading', { name: 'Payment Information' }).locator('..');
@@ -732,7 +732,7 @@ test.describe('Buy Process - UI Flow', () => {
     });
 
     await page.goto(
-      `/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick`,
+      `/buy?session=${token}&blockchain=Ethereum&asset-in=GBP&asset-out=ETH&amount-in=100&personal-iban=frick&lang=en`,
     );
 
     await expect(
