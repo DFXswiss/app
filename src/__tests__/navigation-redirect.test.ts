@@ -109,6 +109,21 @@ describe('useNavigation setRedirect query survival', () => {
     expect(stored).not.toContain('user');
   });
 
+  it('keeps currency for a guarded personal-IBAN return and drops user', () => {
+    mockPathname = '/buy/personal-iban';
+    mockSearch = '?currency=CHF&user=alice@example.com';
+
+    const { result } = renderHook(() => useNavigation());
+
+    act(() => {
+      result.current.navigate('/login', { setRedirect: true });
+    });
+
+    expect(mockSetRedirectPath).toHaveBeenCalledTimes(1);
+    expect(mockSetRedirectPath).toHaveBeenCalledWith('/buy/personal-iban?currency=CHF');
+    expect(mockSetRedirectPath.mock.calls[0][0]).not.toContain('user');
+  });
+
   it('navigateTo receives the merged relative target (not the bare path)', () => {
     mockPathname = '/settings';
     mockSearch = '?a=call';

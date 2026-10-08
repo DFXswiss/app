@@ -58,8 +58,8 @@ describe('allowedParamsOnly', () => {
 });
 
 describe('named allowlist subsets', () => {
-  it('LOGIN_RETURN_ALLOWED_PARAMS is only a', () => {
-    expect([...LOGIN_RETURN_ALLOWED_PARAMS]).toEqual(['a']);
+  it('LOGIN_RETURN_ALLOWED_PARAMS contains only reviewed return keys', () => {
+    expect([...LOGIN_RETURN_ALLOWED_PARAMS]).toEqual(['a', 'currency']);
   });
 
   it('ALBY_RETURN_ALLOWED_PARAMS is only lang', () => {

@@ -21,7 +21,10 @@ export function allowedParamsOnly(search: string, allowed: readonly string[]): U
 }
 
 /**
- * Login-return path (`setRedirect`): only `a` (mail section anchor, see useAnchor).
+ * Login-return path (`setRedirect`): `a` keeps the mail section anchor (see useAnchor),
+ * and `currency` keeps the currency code required by guarded personal-IBAN creation.
+ * `currency` is only a currency code, not identity or secret data, so it is safe when the
+ * stored path is embedded in magic-link mail or Alby redirect URIs.
  * Note that `a` is double-booked: payment-link routes read it as the `amount` shorthand
  * (payment-link.context.tsx). Those routes are unguarded and never reach setRedirect,
  * so the two uses do not collide today — but check both before adding a key here.
@@ -29,7 +32,7 @@ export function allowedParamsOnly(search: string, allowed: readonly string[]): U
  * outbound link.
  * Explicit options.redirectPath is not filtered by this helper.
  */
-export const LOGIN_RETURN_ALLOWED_PARAMS = ['a'] as const;
+export const LOGIN_RETURN_ALLOWED_PARAMS = ['a', 'currency'] as const;
 
 /**
  * Alby return URL on the app itself: `lang` preserves the selected interface language after authentication.
