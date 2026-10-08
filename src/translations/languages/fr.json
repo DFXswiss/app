@@ -621,7 +621,16 @@
     "Change name": "Modifier le nom",
     "Do you really want to change your phone number?": "Voulez-vous vraiment modifier votre numéro de téléphone ?",
     "Do you really want to change your address?": "Voulez-vous vraiment modifier votre adresse ?",
-    "Do you really want to change your name?": "Voulez-vous vraiment modifier votre nom ?"
+    "Do you really want to change your name?": "Voulez-vous vraiment modifier votre nom ?",
+    "We have sent you an email with a 6-digit code. Please enter it here to log in.": "Nous vous avons envoyé un e-mail avec un code à 6 chiffres. Saisissez-le ici pour vous connecter.",
+    "6-digit code": "Code à 6 chiffres",
+    "Send new code": "Envoyer un nouveau code",
+    "The code is incorrect. Please check it and try again.": "Le code est incorrect. Vérifiez-le et réessayez.",
+    "This code has expired. Please request a new code.": "Ce code a expiré. Demandez un nouveau code.",
+    "Too many incorrect attempts. Please request a new code.": "Trop de tentatives incorrectes. Demandez un nouveau code.",
+    "We have sent you a new code.": "Nous vous avons envoyé un nouveau code.",
+    "Too many attempts. Please wait a moment and try again.": "Trop de tentatives. Attendez un instant et réessayez.",
+    "Something went wrong. Please try again.": "Une erreur s'est produite. Réessayez."
   },
   "screens/buy": {
     "You spend": "Vous dépensez",

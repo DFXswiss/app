@@ -65,7 +65,7 @@
   },
   "compliance": {
     "title": "Compliance",
-    "description": "Compliance-Suche, Trefferliste und Nutzerdossier mit Tabs (KYC, Transaktionen, Bankdaten, Routen)."
+    "description": "Compliance-Suche mit Quick-Links (Aktennotiz, unzugeordnete Bankeingänge, offene Chargebacks), Trefferliste und Nutzerdossier mit Tabs (KYC, Transaktionen, Bankdaten, Routen)."
   },
   "compliance-recommendation-graph": {
     "title": "Compliance-Empfehlungsgraph",
