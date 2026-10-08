@@ -1208,6 +1208,12 @@
     "Save": "Salva",
     "Loading": "Caricamento",
     "Failed to load buy limit.": "Impossibile caricare il limite di acquisto.",
+    "Max ETH per transfer": "ETH max. per trasferimento",
+    "If the current Ethereum fee is higher, the transfer is refused.": "Se la commissione Ethereum attuale è più alta, il trasferimento viene rifiutato.",
+    "Max CHF per customer per month": "CHF max. per cliente al mese",
+    "Cap on what transfer gas may cost this customer in a calendar month. Pay is not included.": "Tetto al costo del gas dei trasferimenti di questo cliente in un mese di calendario. Pay non è incluso.",
+    "Both values are required. Until they are saved, transfers are not possible.": "Entrambi i valori sono obbligatori. Finché non sono salvati, i trasferimenti non sono possibili.",
+    "Failed to load transfer cost limits.": "Impossibile caricare i limiti di costo dei trasferimenti.",
     "Unknown error": "Errore sconosciuto"
   },
   "screens/blockchain": {
