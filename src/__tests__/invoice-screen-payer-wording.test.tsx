@@ -527,12 +527,13 @@ describe('InvoiceScreen payer wording (?pay)', () => {
   });
 
   it('payer mode with unknown recipient from URL does not show verification', async () => {
-    mockGetPaymentRecipient.mockRejectedValue(new Error('not found'));
+    mockGetPaymentRecipient.mockRejectedValue(Object.assign(new Error('not found'), { statusCode: 404 }));
     renderAt('/invoice?recipient=Unknown&pay=1');
 
     await waitFor(() => {
       expect(screen.getByTestId('recipient-error')).toBeInTheDocument();
     });
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
 
     const payeeGroup = screen.getByRole('group', { name: 'Payee' });
     expect(payeeGroup).toHaveTextContent('Unknown');
@@ -547,6 +548,27 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(description).toContainElement(screen.getByTestId('recipient-error'));
     expect(within(payeeGroup).queryByRole('img', { name: 'Recipient verified' })).not.toBeInTheDocument();
   });
+
+  it.each([
+    ['server failure', { statusCode: 500, message: 'Recipient service failed' }, 'Recipient service failed'],
+    ['network failure', new Error('Network down'), 'Network down'],
+    ['unauthorized response', { statusCode: 401 }, 'Unknown Error'],
+  ] as const)(
+    'shows a technical error for a recipient lookup %s and keeps invoice fields locked',
+    async (_, error, message) => {
+      mockGetPaymentRecipient.mockRejectedValue(error);
+      renderAt('/invoice?recipient=Known&pay=1');
+
+      await waitFor(() => {
+        expect(screen.getByTestId('error-hint')).toHaveTextContent(message);
+      });
+
+      expect(screen.queryByTestId('recipient-error')).not.toBeInTheDocument();
+      expect(screen.getByRole('group', { name: 'Payee' })).toHaveAttribute('aria-invalid', 'false');
+      expect(screen.getByPlaceholderText('Invoice number')).toBeDisabled();
+      expect(screen.getByPlaceholderText('Invoice amount')).toBeDisabled();
+    },
+  );
 
   it('payer mode without recipient leaves the field editable (no empty locked field)', async () => {
     renderAt('/invoice?pay=1');
@@ -1232,8 +1254,8 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     });
   });
 
-  it('failed recipient validation shows the invoice error hint', async () => {
-    mockGetPaymentRecipient.mockRejectedValue(new Error('not found'));
+  it('404 recipient validation shows the invoice error hint', async () => {
+    mockGetPaymentRecipient.mockRejectedValue(Object.assign(new Error('not found'), { statusCode: 404 }));
 
     renderAt('/invoice?recipient=Unknown&pay=1');
 

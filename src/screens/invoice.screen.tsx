@@ -132,7 +132,13 @@ export default function InvoiceScreen(): JSX.Element {
         setCurrency(currency.name);
         setValidatedRecipient(recipient);
       })
-      .catch((_) => setErrorRecipient(recipient))
+      .catch((error: ApiError) => {
+        if (error.statusCode === 404) {
+          setErrorRecipient(recipient);
+        } else {
+          setErrorPayment(error.message ?? 'Unknown Error');
+        }
+      })
       .finally(() => setIsLoadingRecipient(false));
   }
 
