@@ -2,6 +2,8 @@
 // keeps personal-iban and other query params from redirectPath / current search.
 
 const mockSignInWithMail = jest.fn();
+const mockRequestMailLoginCode = jest.fn();
+const mockSignInWithMailCode = jest.fn();
 const mockRedirectPath = jest.fn();
 const mockIsWidget = jest.fn();
 const mockWidgetPersonalIban = jest.fn();
@@ -11,8 +13,13 @@ const mockUseLocation = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
   Utils: { createRules: () => ({}) },
-  Validations: { Required: undefined, Mail: undefined },
-  useAuth: () => ({ signInWithMail: mockSignInWithMail }),
+  Validations: { Required: undefined, Mail: undefined, Custom: () => undefined },
+  useSessionContext: () => ({ logout: jest.fn() }),
+  useAuth: () => ({
+    requestMailLoginCode: mockRequestMailLoginCode,
+    signInWithMail: mockSignInWithMail,
+    signInWithMailCode: mockSignInWithMailCode,
+  }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -56,6 +63,10 @@ jest.mock('../contexts/settings.context', () => ({
   }),
 }));
 
+jest.mock('../contexts/wallet.context', () => ({
+  useWalletContext: () => ({ setSession: jest.fn() }),
+}));
+
 jest.mock('../hooks/app-params.hook', () => ({
   useAppParams: () => mockUseAppParams(),
 }));
@@ -79,6 +90,7 @@ describe('ConnectMail login redirect', () => {
     jest.clearAllMocks();
     delete process.env.REACT_APP_PUBLIC_URL;
     mockSignInWithMail.mockResolvedValue(undefined);
+    mockRequestMailLoginCode.mockResolvedValue({ secret: 'secret' });
     mockIsWidget.mockReturnValue(false);
     mockWidgetPersonalIban.mockReturnValue(undefined);
     mockUseAppParams.mockReturnValue({ wallet: undefined, recommendationCode: undefined });
@@ -126,11 +138,11 @@ describe('ConnectMail login redirect', () => {
     );
   }
 
-  async function submitNext() {
+  async function submitNext(request: jest.Mock = mockSignInWithMail) {
     await act(async () => {
       screen.getByRole('button', { name: 'Next' }).click();
     });
-    await waitFor(() => expect(mockSignInWithMail).toHaveBeenCalled());
+    await waitFor(() => expect(request).toHaveBeenCalled());
   }
 
   it('includes personal-iban in redirectUri when redirectPath carries it', async () => {
@@ -178,9 +190,10 @@ describe('ConnectMail login redirect', () => {
     mockRedirectPath.mockReturnValue('/buy');
 
     renderConnectMail();
-    await submitNext();
+    await submitNext(mockRequestMailLoginCode);
 
-    expect(mockSignInWithMail.mock.calls[0][1]).toBe('https://app.example.com/buy?personal-iban=frick');
+    expect(mockRequestMailLoginCode.mock.calls[0][1]).toBe('https://app.example.com/buy?personal-iban=frick');
+    expect(mockSignInWithMail).not.toHaveBeenCalled();
   });
 
   it('uses the app origin when embedded without a personal-iban attribute', async () => {
@@ -192,9 +205,10 @@ describe('ConnectMail login redirect', () => {
     mockRedirectPath.mockReturnValue('/buy');
 
     renderConnectMail();
-    await submitNext();
+    await submitNext(mockRequestMailLoginCode);
 
-    expect(mockSignInWithMail.mock.calls[0][1]).toBe('https://app.example.com/buy');
+    expect(mockRequestMailLoginCode.mock.calls[0][1]).toBe('https://app.example.com/buy');
+    expect(mockSignInWithMail).not.toHaveBeenCalled();
   });
 
   it('falls back to window.location.origin when the env var is unset', async () => {

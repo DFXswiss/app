@@ -1,4 +1,4 @@
-import { ApiError, Utils, Validations, useAuth } from '@dfx.swiss/react';
+import { ApiError, Utils, Validations, useAuth, useSessionContext } from '@dfx.swiss/react';
 import {
   Form,
   StyledButton,
@@ -13,19 +13,32 @@ import { useLocation } from 'react-router-dom';
 import { useAppParams } from 'src/hooks/app-params.hook';
 import { useAppHandlingContext } from '../../../contexts/app-handling.context';
 import { useSettingsContext } from '../../../contexts/settings.context';
+import { useWalletContext } from '../../../contexts/wallet.context';
 import { useNavigation } from '../../../hooks/navigation.hook';
 import { appOrigin } from '../../../util/app-origin';
 import { loginRedirectParams } from '../../../util/login-redirect';
 import { relativeUrl } from '../../../util/utils';
 import { ConnectError, ConnectProps } from '../connect-shared';
+import ConnectMailCode from './connect-mail-code';
 
 interface FormData {
   mail: string;
 }
 
-export default function ConnectMail({ onCancel }: ConnectProps): JSX.Element {
+interface CodeMode {
+  mail: string;
+  secret: string;
+  requestedAt: number;
+}
+
+const TOO_MANY_ATTEMPTS = 'Too many attempts. Please wait a moment and try again.';
+const GENERIC_ERROR = 'Something went wrong. Please try again.';
+
+export default function ConnectMail({ isConnect, onLogin, onCancel }: ConnectProps): JSX.Element {
   const { translate, translateError } = useSettingsContext();
-  const { signInWithMail } = useAuth();
+  const { requestMailLoginCode, signInWithMail } = useAuth();
+  const { setSession } = useWalletContext();
+  const { logout } = useSessionContext();
   const { navigate } = useNavigation();
   const { redirectPath, isWidget, widgetPersonalIban } = useAppHandlingContext();
   const { search } = useLocation();
@@ -33,6 +46,7 @@ export default function ConnectMail({ onCancel }: ConnectProps): JSX.Element {
 
   const [isLoading, setIsLoading] = useState(false);
   const [mailSent, setMailSent] = useState(false);
+  const [codeMode, setCodeMode] = useState<CodeMode>();
   const [error, setError] = useState<string>();
 
   const mail = new URLSearchParams(search).get('user') || undefined;
@@ -64,10 +78,35 @@ export default function ConnectMail({ onCancel }: ConnectProps): JSX.Element {
   async function submit({ mail }: FormData): Promise<void> {
     setIsLoading(true);
     setError(undefined);
+    if (isWidget) {
+      // The code's validity starts when it is requested, not when the response arrives.
+      const requestedAt = Date.now();
+      requestMailLoginCode(mail, redirectUri, recommendationCode, wallet)
+        .then(({ secret }) => setCodeMode({ mail, secret, requestedAt }))
+        .catch((error: ApiError) => setError(error.statusCode === 429 ? TOO_MANY_ATTEMPTS : GENERIC_ERROR))
+        .finally(() => setIsLoading(false));
+      return;
+    }
+
     signInWithMail(mail, redirectUri, recommendationCode, wallet)
       .then(() => setMailSent(true))
       .catch((error: ApiError) => setError(error.message ?? 'Unknown error'))
       .finally(() => setIsLoading(false));
+  }
+
+  async function resendCode(mail: string): Promise<number> {
+    const requestedAt = Date.now();
+    const { secret } = await requestMailLoginCode(mail, redirectUri, recommendationCode, wallet);
+    setCodeMode({ mail, secret, requestedAt });
+    return requestedAt;
+  }
+
+  async function completeLogin(accessToken: string): Promise<void> {
+    if (!isConnect) await logout();
+    await setSession(accessToken);
+    onLogin();
+    // Unlike the mail link, the code login completes without a page load, so the connect step has to be left here.
+    onCancel();
   }
 
   function goBack() {
@@ -75,7 +114,15 @@ export default function ConnectMail({ onCancel }: ConnectProps): JSX.Element {
     navigate({ pathname: '/' }, { clearParams: ['user'] });
   }
 
-  return (
+  return codeMode ? (
+    <ConnectMailCode
+      secret={codeMode.secret}
+      requestedAt={codeMode.requestedAt}
+      onResend={() => resendCode(codeMode.mail)}
+      onSuccess={completeLogin}
+      onBack={() => setCodeMode(undefined)}
+    />
+  ) : (
     <Form control={control} rules={rules} errors={errors} onSubmit={handleSubmit(submit)} translate={translateError}>
       <StyledVerticalStack gap={6} full center>
         {mailSent ? (
