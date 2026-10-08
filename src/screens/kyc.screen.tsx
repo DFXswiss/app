@@ -80,9 +80,11 @@ import { DefaultFileTypes } from 'src/config/file-types';
 import { Urls } from 'src/config/urls';
 import { useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { useLayoutContext } from 'src/contexts/layout.context';
-import { SumsubReviewAnswer, SumsubReviewRejectType } from 'src/dto/sumsub.dto';
+import { SumsubMessage, SumsubReviewAnswer, SumsubReviewRejectType } from 'src/dto/sumsub.dto';
 import { useAppParams } from 'src/hooks/app-params.hook';
+import { isWebComponent } from 'src/util/web-component-mode';
 import { ErrorHint } from '../components/error-hint';
+import { KycIdentNewTab } from '../components/kyc-ident-new-tab';
 import { KycStatusTable } from '../components/kyc-status';
 import { useSettingsContext } from '../contexts/settings.context';
 import { useGeoLocation } from '../hooks/geo-location.hook';
@@ -1495,7 +1497,7 @@ function BeneficialOwner({ rootRef, code, isLoading, step, onDone }: EditProps):
 
       case BeneficialDataStep.CONTACT_DATA:
         if (ownerIndex + 1 < requiredOwnerCount) {
-          setOwnerIndex((i) => (i ?? -1) + 1);
+          setOwnerIndex((i) => i + 1);
           clearInputs();
           return;
         }
@@ -1828,7 +1830,7 @@ function OperationalActivity({ rootRef, code, isLoading, step, onDone }: EditPro
   );
 }
 
-function Ident({ step, lang, onDone, onBack, onError }: EditProps): JSX.Element {
+function Ident({ code, step, lang, onDone, onBack, onError }: EditProps): JSX.Element {
   const { translate } = useSettingsContext();
 
   const [isDone, setIsDone] = useState(false);
@@ -1876,6 +1878,8 @@ function Ident({ step, lang, onDone, onBack, onError }: EditProps): JSX.Element 
       </div>
     ) : isDone ? (
       <StyledLoadingSpinner size={SpinnerSize.LG} />
+    ) : isWebComponent() && step.session.type === UrlType.TOKEN ? (
+      <KycIdentNewTab code={code} onBack={onBack} />
     ) : (
       <>
         {step.session.type === UrlType.TOKEN ? (
@@ -1887,7 +1891,7 @@ function Ident({ step, lang, onDone, onBack, onError }: EditProps): JSX.Element 
               return Promise.resolve('');
             }}
             config={{ lang: lang.symbol.toLowerCase() }}
-            onMessage={(type: string, payload: any) => {
+            onMessage={(type: string, payload?: { reviewResult?: Partial<SumsubMessage['reviewResult']> }) => {
               switch (type) {
                 case 'idCheck.onApplicantStatusChanged':
                   if (

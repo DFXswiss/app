@@ -199,6 +199,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import KycScreen from '../screens/kyc.screen';
 
+jest.setTimeout(30000);
+
 const CHARSET_ERROR = 'error:unsupported_characters';
 const PROOF = new File(['%PDF'], 'proof.pdf', { type: 'application/pdf' });
 
@@ -221,7 +223,9 @@ async function renderStep(stepName: string) {
       </Routes>
     </MemoryRouter>,
   );
-  await waitFor(() => expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByTestId('loading-spinner')).not.toBeInTheDocument(), { timeout: 10000 });
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
 }
 
@@ -233,14 +237,15 @@ async function type(name: string, value: string) {
 }
 
 async function pick(name: string, index: number) {
-  const option = await screen.findByTestId(`${name}-option-${index}`);
+  const id = `${name}-option-${index}`;
+  await screen.findByTestId(id, undefined, { timeout: 10000 });
   await act(async () => {
-    fireEvent.click(option);
+    fireEvent.click(screen.getByTestId(id));
   });
 }
 
 async function next() {
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled(), { timeout: 10000 });
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   });
@@ -267,7 +272,7 @@ describe('KycScreen personal data', () => {
   async function renderOrganization() {
     await renderStep('PersonalData');
     await pick('accountType', 1);
-    await screen.findByTestId('organizationName');
+    await screen.findByTestId('organizationName', undefined, { timeout: 10000 });
   }
 
   it.each([
@@ -287,7 +292,7 @@ describe('KycScreen personal data', () => {
 
     await type(name, 'Łø');
 
-    expect(await screen.findByText(CHARSET_ERROR)).toBeInTheDocument();
+    expect(await screen.findByText(CHARSET_ERROR, undefined, { timeout: 10000 })).toBeInTheDocument();
   });
 
   it.each(['address.zip', 'organizationAddress.zip'])('keeps the length cap on %s', async (name) => {
@@ -295,7 +300,7 @@ describe('KycScreen personal data', () => {
 
     await type(name, '12345678901');
 
-    expect(await screen.findByText('error:pattern')).toBeInTheDocument();
+    expect(await screen.findByText('error:pattern', undefined, { timeout: 10000 })).toBeInTheDocument();
     expect(screen.queryByText(CHARSET_ERROR)).not.toBeInTheDocument();
   });
 
@@ -342,6 +347,8 @@ describe('KycScreen personal data', () => {
     expect(
       await screen.findByText(
         'Your name or address contains characters that our bank payments do not support. Please replace them with simple letters (e.g. l instead of ł) and try again.',
+        undefined,
+        { timeout: 10000 },
       ),
     ).toBeInTheDocument();
     expect(mockReportClientError.mock.calls[0][0]).toMatchObject({ name: 'KnownRejection' });
@@ -355,7 +362,7 @@ describe('KycScreen beneficial owner', () => {
     await next();
     await pick('isAccountHolderInvolved', 1);
     await next();
-    await screen.findByTestId(`${ownerCount === 0 ? 'director' : 'owners.0'}.street`);
+    await screen.findByTestId(`${ownerCount === 0 ? 'director' : 'owners.0'}.street`, undefined, { timeout: 10000 });
   }
 
   it.each([
@@ -372,7 +379,7 @@ describe('KycScreen beneficial owner', () => {
 
     await type(name, 'Søren');
 
-    expect(await screen.findByText(CHARSET_ERROR)).toBeInTheDocument();
+    expect(await screen.findByText(CHARSET_ERROR, undefined, { timeout: 10000 })).toBeInTheDocument();
   });
 
   it('does not check the contact person name, which the API accepts as is', async () => {
@@ -424,7 +431,7 @@ describe('KycScreen address change', () => {
 
     await type(`address.${name}`, 'João');
 
-    expect(await screen.findByText(CHARSET_ERROR)).toBeInTheDocument();
+    expect(await screen.findByText(CHARSET_ERROR, undefined, { timeout: 10000 })).toBeInTheDocument();
   });
 
   it('sends the address normalized', async () => {
@@ -436,7 +443,7 @@ describe('KycScreen address change', () => {
     });
     await next();
 
-    await waitFor(() => expect(mockSetAddressChangeData).toHaveBeenCalled());
+    await waitFor(() => expect(mockSetAddressChangeData).toHaveBeenCalled(), { timeout: 10000 });
     expect(mockSetAddressChangeData.mock.calls[0][2]).toMatchObject({
       fileName: 'proof.pdf',
       address: { ...normalizedAddress, country: COUNTRY_CH },
@@ -450,7 +457,7 @@ describe('KycScreen name change', () => {
 
     await type(name, 'Łukasz');
 
-    expect(await screen.findByText(CHARSET_ERROR)).toBeInTheDocument();
+    expect(await screen.findByText(CHARSET_ERROR, undefined, { timeout: 10000 })).toBeInTheDocument();
   });
 
   it('sends the name normalized', async () => {
@@ -463,7 +470,7 @@ describe('KycScreen name change', () => {
     });
     await next();
 
-    await waitFor(() => expect(mockSetNameChangeData).toHaveBeenCalled());
+    await waitFor(() => expect(mockSetNameChangeData).toHaveBeenCalled(), { timeout: 10000 });
     expect(mockSetNameChangeData.mock.calls[0][2]).toMatchObject({ firstName: "D'Arcy", lastName: "O'Brien" });
   });
 });

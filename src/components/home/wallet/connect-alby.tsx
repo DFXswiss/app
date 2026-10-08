@@ -12,13 +12,14 @@ import { useSettingsContext } from '../../../contexts/settings.context';
 import { WalletType } from '../../../contexts/wallet.context';
 import { useAlby } from '../../../hooks/wallets/alby.hook';
 import { AbortError } from '../../../util/abort-error';
-import { personalIbanOnlyParams } from '../../../util/personal-iban';
+import { appOrigin } from '../../../util/app-origin';
+import { loginRedirectParams } from '../../../util/login-redirect';
 import { delay, relativeUrl, url } from '../../../util/utils';
 import { ConnectBase } from '../connect-base';
 import { Account, ConnectContentProps, ConnectError, ConnectProps } from '../connect-shared';
 
 export default function ConnectAlby(props: ConnectProps): JSX.Element {
-  const { redirectPath, params: appParams } = useAppHandlingContext();
+  const { redirectPath, params: appParams, isWidget, widgetPersonalIban } = useAppHandlingContext();
   const { isAvailable, enable, signMessage } = useAlby();
 
   async function getAccount(): Promise<Account> {
@@ -35,14 +36,20 @@ export default function ConnectAlby(props: ConnectProps): JSX.Element {
     } else if (account.node?.alias === 'getalby.com' || account.node?.alias?.endsWith('.getalby.com')) {
       // log in with Alby
       const win: Window = window;
-      const redirectUrl = new URL(win.location.href);
+      const origin = appOrigin();
+      // The login returns to the app, never to an embedding page: the page's path and query only carry over
+      // when the page is the app itself, not when the widget is embedded on a page that shares the app's origin.
+      const redirectUrl = new URL(!isWidget && win.location.origin === origin ? win.location.href : origin);
       redirectUrl.searchParams.set('type', WalletType.ALBY);
       // Merge redirectPath with an allowlisted callback param set (only personal-iban when present).
       // Do not copy the entire live search into the Alby redirect.
       redirectPath &&
         redirectUrl.searchParams.set(
           'redirect',
-          relativeUrl({ path: redirectPath, params: personalIbanOnlyParams(win.location.search) }),
+          relativeUrl({
+            path: redirectPath,
+            params: loginRedirectParams({ isWidget, widgetPersonalIban }, win.location.search),
+          }),
         );
 
       const params = new URLSearchParams({ redirectUri: redirectUrl.toString() });

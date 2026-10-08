@@ -1,5 +1,6 @@
 import { TransactionInfo, UserDataDetail } from 'src/hooks/compliance.hook';
 import { SupportIssueInternalData } from 'src/hooks/support-dashboard.hook';
+import { appOrigin } from 'src/util/app-origin';
 
 export type TokenSource = 'userData' | 'transaction' | 'issue';
 
@@ -184,8 +185,7 @@ export const TOKEN_REGISTRY: TokenDef[] = [
     resolve: (ctx, sel, selector) => {
       const tx = findSelectedTransaction(ctx, sel, selector);
       if (!tx) return undefined;
-      const base = process.env.REACT_APP_PUBLIC_URL ?? window.location.origin;
-      return `${base.replace(/\/+$/, '')}/tx/${tx.id}`;
+      return `${appOrigin()}/tx/${tx.id}`;
     },
   },
   {

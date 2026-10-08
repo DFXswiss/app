@@ -6,6 +6,8 @@ const mockEnable = jest.fn();
 const mockSignMessage = jest.fn();
 const mockIsAvailable = jest.fn();
 const mockRedirectPath = jest.fn();
+const mockIsWidget = jest.fn();
+const mockWidgetPersonalIban = jest.fn();
 const mockAppParams = jest.fn();
 const mockOnCancel = jest.fn();
 const mockOnLogin = jest.fn();
@@ -49,6 +51,8 @@ jest.mock('../contexts/app-handling.context', () => ({
   useAppHandlingContext: () => ({
     redirectPath: mockRedirectPath(),
     params: mockAppParams(),
+    isWidget: mockIsWidget(),
+    widgetPersonalIban: mockWidgetPersonalIban(),
   }),
 }));
 
@@ -92,14 +96,19 @@ import ConnectAlby from '../components/home/wallet/connect-alby';
 import { WalletType } from '../contexts/wallet.context';
 
 describe('ConnectAlby login redirect', () => {
+  const originalEnv = process.env.REACT_APP_PUBLIC_URL;
+  const originalLocation = window.location;
   let capturedLocation: string | undefined;
   let locationStub: { href: string; search: string; origin: string; pathname: string };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.REACT_APP_PUBLIC_URL;
     capturedLocation = undefined;
     mockIsAvailable.mockResolvedValue(true);
     mockEnable.mockResolvedValue({ node: { alias: 'getalby.com' } });
+    mockIsWidget.mockReturnValue(false);
+    mockWidgetPersonalIban.mockReturnValue(undefined);
     mockAppParams.mockReturnValue({});
     mockOnCancel.mockClear();
     mockLogin.mockResolvedValue(undefined);
@@ -119,6 +128,19 @@ describe('ConnectAlby login redirect', () => {
       set(value: string) {
         capturedLocation = value;
       },
+    });
+  });
+
+  afterAll(() => {
+    if (originalEnv === undefined) {
+      delete process.env.REACT_APP_PUBLIC_URL;
+    } else {
+      process.env.REACT_APP_PUBLIC_URL = originalEnv;
+    }
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
     });
   });
 
@@ -143,6 +165,14 @@ describe('ConnectAlby login redirect', () => {
     expect(redirectUri).toBeTruthy();
     const returnUrl = new URL(redirectUri as string);
     return returnUrl.searchParams.get('redirect');
+  }
+
+  function getReturnUrlFromCapturedLocation(): URL {
+    expect(capturedLocation).toBeDefined();
+    const albyUrl = new URL(capturedLocation as string);
+    const redirectUri = albyUrl.searchParams.get('redirectUri');
+    expect(redirectUri).toBeTruthy();
+    return new URL(redirectUri as string);
   }
 
   it('includes personal-iban in the Alby redirect when redirectPath carries it', async () => {
@@ -192,17 +222,147 @@ describe('ConnectAlby login redirect', () => {
     expect(redirect).toBe('/buy');
     expect(redirect).not.toContain('?');
   });
+
+  it('uses the app origin when embedded on another site', async () => {
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
+    locationStub.href = 'https://embedding.example.org/some/page?foo=bar&personal-iban=yapeal';
+    locationStub.origin = 'https://embedding.example.org';
+    locationStub.search = '?foo=bar&personal-iban=yapeal';
+    locationStub.pathname = '/some/page';
+    mockIsWidget.mockReturnValue(true);
+    mockWidgetPersonalIban.mockReturnValue('frick');
+    mockRedirectPath.mockReturnValue('/buy');
+
+    await act(async () => {
+      renderConnectAlby();
+    });
+
+    await waitFor(() => expect(capturedLocation).toBeDefined());
+
+    const returnUrl = getReturnUrlFromCapturedLocation();
+    expect(returnUrl.origin).toBe('https://app.example.com');
+    expect(returnUrl.pathname).toBe('/');
+    expect(returnUrl.searchParams.get('type')).toBe('Alby');
+    expect(returnUrl.searchParams.get('redirect')).toBe('/buy?personal-iban=frick');
+    expect(returnUrl.searchParams.get('foo')).toBeNull();
+  });
+
+  it('uses the app origin when embedded without a personal-iban attribute', async () => {
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
+    locationStub.href = 'https://embedding.example.org/some/page?foo=bar&personal-iban=yapeal';
+    locationStub.origin = 'https://embedding.example.org';
+    locationStub.search = '?foo=bar&personal-iban=yapeal';
+    locationStub.pathname = '/some/page';
+    mockIsWidget.mockReturnValue(true);
+    mockWidgetPersonalIban.mockReturnValue(undefined);
+    mockRedirectPath.mockReturnValue('/buy');
+
+    await act(async () => {
+      renderConnectAlby();
+    });
+
+    await waitFor(() => expect(capturedLocation).toBeDefined());
+
+    const returnUrl = getReturnUrlFromCapturedLocation();
+    expect(returnUrl.origin).toBe('https://app.example.com');
+    expect(returnUrl.pathname).toBe('/');
+    expect(returnUrl.searchParams.get('type')).toBe('Alby');
+    expect(returnUrl.searchParams.get('redirect')).toBe('/buy');
+    expect(returnUrl.searchParams.get('foo')).toBeNull();
+  });
+
+  it('keeps the current path and query when the page origin matches the app origin', async () => {
+    process.env.REACT_APP_PUBLIC_URL = 'http://localhost';
+    locationStub.href = 'http://localhost/connect?lang=de';
+    locationStub.origin = 'http://localhost';
+    locationStub.search = '?lang=de';
+    locationStub.pathname = '/connect';
+    mockRedirectPath.mockReturnValue('/buy');
+
+    await act(async () => {
+      renderConnectAlby();
+    });
+
+    await waitFor(() => expect(capturedLocation).toBeDefined());
+
+    const returnUrl = getReturnUrlFromCapturedLocation();
+    expect(returnUrl.pathname).toBe('/connect');
+    expect(returnUrl.searchParams.get('lang')).toBe('de');
+  });
+
+  it('uses the app root when the widget is embedded on a page with the app origin', async () => {
+    process.env.REACT_APP_PUBLIC_URL = 'http://localhost';
+    locationStub.href = 'http://localhost/embedding/page?foo=bar';
+    locationStub.origin = 'http://localhost';
+    locationStub.search = '?foo=bar';
+    locationStub.pathname = '/embedding/page';
+    mockIsWidget.mockReturnValue(true);
+    mockRedirectPath.mockReturnValue('/buy');
+
+    await act(async () => {
+      renderConnectAlby();
+    });
+
+    await waitFor(() => expect(capturedLocation).toBeDefined());
+
+    const returnUrl = getReturnUrlFromCapturedLocation();
+    expect(returnUrl.origin).toBe('http://localhost');
+    expect(returnUrl.pathname).toBe('/');
+    expect(returnUrl.searchParams.get('type')).toBe('Alby');
+    expect(returnUrl.searchParams.get('redirect')).toBe('/buy');
+    expect(returnUrl.searchParams.get('foo')).toBeNull();
+  });
+
+  it('falls back to the current location when the env var is unset', async () => {
+    locationStub.href = 'http://localhost/connect';
+    locationStub.origin = 'http://localhost';
+    locationStub.pathname = '/connect';
+    mockRedirectPath.mockReturnValue('/buy');
+
+    await act(async () => {
+      renderConnectAlby();
+    });
+
+    await waitFor(() => expect(capturedLocation).toBeDefined());
+
+    const returnUrl = getReturnUrlFromCapturedLocation();
+    expect(returnUrl.href.startsWith('http://localhost/connect')).toBe(true);
+  });
+
+  it('uses the app origin and omits redirect when embedded without redirectPath', async () => {
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
+    locationStub.href = 'https://embedding.example.org/some/page?foo=bar';
+    locationStub.origin = 'https://embedding.example.org';
+    locationStub.search = '?foo=bar';
+    locationStub.pathname = '/some/page';
+    mockRedirectPath.mockReturnValue(undefined);
+
+    await act(async () => {
+      renderConnectAlby();
+    });
+
+    await waitFor(() => expect(capturedLocation).toBeDefined());
+
+    const returnUrl = getReturnUrlFromCapturedLocation();
+    expect(returnUrl.origin).toBe('https://app.example.com');
+    expect(returnUrl.searchParams.get('redirect')).toBeNull();
+  });
 });
 
 describe('ConnectAlby', () => {
+  const originalEnv = process.env.REACT_APP_PUBLIC_URL;
+  const originalLocation = window.location;
   let capturedLocation: string | undefined;
   let locationStub: { href: string; search: string; origin: string; pathname: string };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.REACT_APP_PUBLIC_URL;
     capturedLocation = undefined;
     mockIsAvailable.mockResolvedValue(true);
     mockEnable.mockResolvedValue({ node: { alias: 'getalby.com' } });
+    mockIsWidget.mockReturnValue(false);
+    mockWidgetPersonalIban.mockReturnValue(undefined);
     mockAppParams.mockReturnValue({});
     mockRedirectPath.mockReturnValue('/buy');
     mockLogin.mockResolvedValue(undefined);
@@ -223,6 +383,19 @@ describe('ConnectAlby', () => {
       set(value: string) {
         capturedLocation = value;
       },
+    });
+  });
+
+  afterAll(() => {
+    if (originalEnv === undefined) {
+      delete process.env.REACT_APP_PUBLIC_URL;
+    } else {
+      process.env.REACT_APP_PUBLIC_URL = originalEnv;
+    }
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
     });
   });
 

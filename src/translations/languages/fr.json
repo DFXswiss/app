@@ -78,6 +78,7 @@
     "Maximum allowed characters: 4000": "Nombre maximum de caractères autorisés : 4000",
     "No entries yet": "Aucune entrée pour le moment",
     "Something went wrong. Please try again. If the issue persists please reach out to our support.": "Un problème s'est produit. Veuillez réessayer. Si le problème persiste, veuillez contacter notre service d'assistance.",
+    "Your login has expired. Please sign in again.": "Votre connexion a expiré. Veuillez vous reconnecter.",
     "invoice": "DFX ne reconnaît pas un destinataire nommé <strong>{{recipient}}</strong>. Ce service ne peut être utilisé que pour des destinataires ayant un compte actif chez DFX et activés pour le service de facturation. Si vous souhaitez vous inscrire en tant que destinataire chez DFX, veuillez contacter le support à <link>{{supportLink}}</link>.",
     "iban": "Il s'agit d'un IBAN multi-comptes qui ne peut pas être ajouté en tant que compte personnel. Veuillez ouvrir un ticket de support sur <1></1> et joindre la confirmation de la transaction bancaire au format PDF.",
     "ibanKycOnly": "Un compte bancaire ne peut être ajouté qu'une fois qu'un portefeuille est lié à ce compte. <1></1>"
@@ -366,7 +367,10 @@
     "What happens if the referral is not confirmed?": "Que se passe-t-il si le parrainage n'est pas confirmé ?",
     "If your referral is not confirmed by your contact person, your onboarding is considered incomplete and an account cannot be set up.": "Si votre parrainage n'est pas confirmé par votre personne de contact, votre inscription est considérée comme incomplète et un compte ne peut pas être créé.",
     "Can I complete the onboarding without a referral?": "Puis-je terminer l'inscription sans parrainage ?",
-    "No. Onboarding at DFX is only possible through a referral. You need the ref code, ref link, or email address of an existing customer who confirms your registration.": "Non. L'inscription chez DFX n'est possible que par parrainage. Vous avez besoin du code de parrainage, du lien de parrainage ou de l'adresse e-mail d'un client existant qui confirme votre inscription."
+    "No. Onboarding at DFX is only possible through a referral. You need the ref code, ref link, or email address of an existing customer who confirms your registration.": "Non. L'inscription chez DFX n'est possible que par parrainage. Vous avez besoin du code de parrainage, du lien de parrainage ou de l'adresse e-mail d'un client existant qui confirme votre inscription.",
+    "Identification continues in a new tab": "L'identification se poursuit dans un nouvel onglet",
+    "The identification cannot be started inside this page. Open it in a new tab and come back here once you have finished.": "L'identification ne peut pas être lancée dans cette page. Ouvrez-la dans un nouvel onglet et revenez ici une fois que vous avez terminé.",
+    "Open identification": "Ouvrir l'identification"
   },
   "screens/compliance": {
     "Compliance": "Compliance",
@@ -1238,8 +1242,6 @@
     "Complete verification": "Compléter la vérification"
   },
   "screens/referral": {
-    "RealUnit Referral": "Parrainage RealUnit",
-    "Relations": "Relations",
     "Held for review only": "À examiner uniquement",
     "No entries found": "Aucune entrée trouvée",
     "Kind": "Type",
@@ -1286,6 +1288,7 @@
     "Redeemed": "Utilisations",
     "Deactivated": "Désactivé",
     "No promo codes yet": "Pas encore de codes promo",
+    "No promo codes match the filters": "Aucun code promo ne correspond aux filtres",
     "Landing link": "Lien direct",
     "QR code": "QR code",
     "View QR code": "Afficher le QR code",
@@ -1313,6 +1316,23 @@
     "Threshold": "Seuil",
     "Mail": "E-mail",
     "Submit": "Envoyer",
-    "Loading": "Chargement"
+    "Loading": "Chargement",
+    "Active": "Actif",
+    "Planned": "Planifié",
+    "Exhausted": "Épuisé",
+    "Expired": "Expiré",
+    "Hide deactivated": "Masquer les désactivés",
+    "Hide expired": "Masquer les expirés",
+    "Referrals": "Recommandations",
+    "Open": "Ouvert",
+    "Approved": "Approuvé",
+    "Rejected": "Refusé",
+    "Redemptions": "Utilisations",
+    "Redeemed promo codes": "Codes promo utilisés",
+    "of": "sur",
+    "shown": "affichés",
+    "Promo redemption": "Utilisation de code promo",
+    "Invite": "Invitation",
+    "Promo": "Promo"
   }
 }

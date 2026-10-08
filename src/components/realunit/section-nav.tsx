@@ -8,7 +8,7 @@ const WIDE_ROLES = [UserRole.ADMIN, UserRole.REALUNIT, UserRole.COMPLIANCE];
 const QUOTES_ROLES = [UserRole.ADMIN, UserRole.REALUNIT, UserRole.COMPLIANCE, UserRole.SUPPORT];
 
 function navClass({ isActive }: { isActive: boolean }): string {
-  return `shrink-0 px-3 py-2.5 text-sm whitespace-nowrap border-b-2 ${
+  return `shrink-0 px-2 py-2.5 text-sm whitespace-nowrap border-b-2 ${
     isActive
       ? 'border-dfxBlue-800 text-dfxBlue-800 font-semibold'
       : 'border-transparent text-dfxGray-700 hover:text-dfxBlue-800'
@@ -66,8 +66,13 @@ export function RealunitSectionNav(): JSX.Element {
         </NavLink>
       )}
       {wide && (
+        <NavLink to="/realunit/promo" className={navClass}>
+          {translate('screens/referral', 'Promo codes')}
+        </NavLink>
+      )}
+      {wide && (
         <NavLink to="/realunit/referral" className={navClass}>
-          {translate('screens/referral', 'RealUnit Referral')}
+          {translate('screens/referral', 'Referrals')}
         </NavLink>
       )}
     </nav>

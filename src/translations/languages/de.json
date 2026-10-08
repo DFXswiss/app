@@ -78,6 +78,7 @@
     "Maximum allowed characters: 4000": "Maximal erlaubte Zeichen: 4000",
     "No entries yet": "Noch keine Einträge vorhanden",
     "Something went wrong. Please try again. If the issue persists please reach out to our support.": "Irgendwas hat nicht funktioniert, bitte versuche es noch einmal. Wenn das Problem weiterhin besteht, wende Dich bitte an unseren Support.",
+    "Your login has expired. Please sign in again.": "Deine Anmeldung ist abgelaufen. Bitte melde Dich erneut an.",
     "invoice": "DFX kennt keinen Empfänger mit dem Namen <strong>{{recipient}}</strong>. Dieser Service kann nur für Empfänger verwendet werden, die ein aktives Konto bei DFX haben und für den Rechnungsservice aktiviert sind. Solltest Du Dich als Empfänger bei DFX registrieren wollen, dann melde Dich beim Support unter <link>{{supportLink}}</link>.",
     "iban": "Dies ist eine Multi-Account-IBAN und kann nicht als persönliches Konto hinzugefügt werden. Bitte öffne ein Support-Ticket auf <1></1> und füge die Bestätigung der Banktransaktion als PDF bei.",
     "ibanKycOnly": "Ein Bankkonto kann erst hinzugefügt werden, wenn eine Wallet mit diesem Konto verknüpft ist. <1></1>"
@@ -366,7 +367,10 @@
     "What happens if the referral is not confirmed?": "Was passiert, wenn die Empfehlung nicht bestätigt wird?",
     "If your referral is not confirmed by your contact person, your onboarding is considered incomplete and an account cannot be set up.": "Wenn Deine Empfehlung nicht von Deiner Ansprechperson bestätigt wird, gilt Dein Onboarding als nicht abgeschlossen und ein Konto kann nicht eingerichtet werden.",
     "Can I complete the onboarding without a referral?": "Kann ich das Onboarding ohne Empfehlung abschliessen?",
-    "No. Onboarding at DFX is only possible through a referral. You need the ref code, ref link, or email address of an existing customer who confirms your registration.": "Nein. Das Onboarding bei DFX ist ausschliesslich über eine Empfehlung möglich. Du benötigst dafür den Ref-Code, Ref-Link oder die E-Mail-Adresse eines Bestandskunden, der Deine Registrierung bestätigt."
+    "No. Onboarding at DFX is only possible through a referral. You need the ref code, ref link, or email address of an existing customer who confirms your registration.": "Nein. Das Onboarding bei DFX ist ausschliesslich über eine Empfehlung möglich. Du benötigst dafür den Ref-Code, Ref-Link oder die E-Mail-Adresse eines Bestandskunden, der Deine Registrierung bestätigt.",
+    "Identification continues in a new tab": "Die Identifikation wird in einem neuen Tab fortgesetzt",
+    "The identification cannot be started inside this page. Open it in a new tab and come back here once you have finished.": "Die Identifikation kann nicht innerhalb dieser Seite gestartet werden. Öffne sie in einem neuen Tab und kehre hierher zurück, sobald Du fertig bist.",
+    "Open identification": "Identifikation öffnen"
   },
   "screens/compliance": {
     "Compliance": "Compliance",
@@ -1239,8 +1243,6 @@
     "Complete verification": "Verifizierung abschliessen"
   },
   "screens/referral": {
-    "RealUnit Referral": "RealUnit Empfehlungen",
-    "Relations": "Beziehungen",
     "Held for review only": "Nur zu prüfende",
     "No entries found": "Keine Einträge gefunden",
     "Kind": "Typ",
@@ -1287,6 +1289,7 @@
     "Redeemed": "Eingelöst",
     "Deactivated": "Deaktiviert",
     "No promo codes yet": "Noch keine Promo-Codes",
+    "No promo codes match the filters": "Kein Promo-Code passt zu den Filtern",
     "Landing link": "Direktlink",
     "QR code": "QR-Code",
     "View QR code": "QR-Code anzeigen",
@@ -1314,6 +1317,23 @@
     "Threshold": "Schwelle",
     "Mail": "E-Mail",
     "Submit": "Absenden",
-    "Loading": "Laden"
+    "Loading": "Laden",
+    "Active": "Aktiv",
+    "Planned": "Geplant",
+    "Exhausted": "Ausgeschöpft",
+    "Expired": "Abgelaufen",
+    "Hide deactivated": "Deaktivierte ausblenden",
+    "Hide expired": "Abgelaufene ausblenden",
+    "Referrals": "Empfehlungen",
+    "Open": "Offen",
+    "Approved": "Genehmigt",
+    "Rejected": "Abgelehnt",
+    "Redemptions": "Einlösungen",
+    "Redeemed promo codes": "Eingelöste Promo-Codes",
+    "of": "von",
+    "shown": "angezeigt",
+    "Promo redemption": "Promo-Einlösung",
+    "Invite": "Einladung",
+    "Promo": "Promo"
   }
 }

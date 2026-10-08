@@ -3,8 +3,11 @@
 
 const mockSignInWithMail = jest.fn();
 const mockRedirectPath = jest.fn();
+const mockIsWidget = jest.fn();
+const mockWidgetPersonalIban = jest.fn();
 const mockNavigate = jest.fn();
 const mockUseAppParams = jest.fn();
+const mockUseLocation = jest.fn();
 
 jest.mock('@dfx.swiss/react', () => ({
   Utils: { createRules: () => ({}) },
@@ -26,13 +29,23 @@ jest.mock('@dfx.swiss/react-components', () => ({
   StyledVerticalStack: ({ children }: any) => <div>{children}</div>,
 }));
 
+jest.mock('react-i18next', () => ({
+  Trans: ({ children }: any) => <>{children}</>,
+}));
+
+jest.mock('../hooks/report-displayed-error.hook', () => ({
+  useReportDisplayedError: () => undefined,
+}));
+
 jest.mock('react-router-dom', () => ({
-  useLocation: () => ({ search: '?user=user@example.com' }),
+  useLocation: () => mockUseLocation(),
 }));
 
 jest.mock('../contexts/app-handling.context', () => ({
   useAppHandlingContext: () => ({
     redirectPath: mockRedirectPath(),
+    isWidget: mockIsWidget(),
+    widgetPersonalIban: mockWidgetPersonalIban(),
   }),
 }));
 
@@ -57,12 +70,20 @@ import ConnectMail from '../components/home/wallet/connect-mail';
 import type { WalletType } from '../contexts/wallet.context';
 
 describe('ConnectMail login redirect', () => {
+  const originalEnv = process.env.REACT_APP_PUBLIC_URL;
+  const originalLocation = window.location;
   let locationStub: { href: string; search: string; origin: string; pathname: string };
+  let onCancel: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.REACT_APP_PUBLIC_URL;
     mockSignInWithMail.mockResolvedValue(undefined);
+    mockIsWidget.mockReturnValue(false);
+    mockWidgetPersonalIban.mockReturnValue(undefined);
     mockUseAppParams.mockReturnValue({ wallet: undefined, recommendationCode: undefined });
+    mockUseLocation.mockReturnValue({ search: '?user=user@example.com' });
+    onCancel = jest.fn();
 
     locationStub = {
       href: 'http://localhost/login',
@@ -78,6 +99,19 @@ describe('ConnectMail login redirect', () => {
     });
   });
 
+  afterAll(() => {
+    if (originalEnv === undefined) {
+      delete process.env.REACT_APP_PUBLIC_URL;
+    } else {
+      process.env.REACT_APP_PUBLIC_URL = originalEnv;
+    }
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
+  });
+
   function renderConnectMail() {
     return render(
       <ConnectMail
@@ -86,22 +120,24 @@ describe('ConnectMail login redirect', () => {
         blockchain={undefined}
         isConnect={false}
         onLogin={jest.fn()}
-        onCancel={jest.fn()}
+        onCancel={onCancel}
         onSwitch={jest.fn()}
       />,
     );
+  }
+
+  async function submitNext() {
+    await act(async () => {
+      screen.getByRole('button', { name: 'Next' }).click();
+    });
+    await waitFor(() => expect(mockSignInWithMail).toHaveBeenCalled());
   }
 
   it('includes personal-iban in redirectUri when redirectPath carries it', async () => {
     mockRedirectPath.mockReturnValue('/buy?personal-iban=frick');
 
     renderConnectMail();
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Next' }).click();
-    });
-
-    await waitFor(() => expect(mockSignInWithMail).toHaveBeenCalled());
+    await submitNext();
 
     const redirectUri = mockSignInWithMail.mock.calls[0][1] as string;
     expect(redirectUri).toContain('personal-iban=frick');
@@ -113,12 +149,7 @@ describe('ConnectMail login redirect', () => {
     locationStub.search = '?user=alice@example.com&personal-iban=frick&arbitrary=value';
 
     renderConnectMail();
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Next' }).click();
-    });
-
-    await waitFor(() => expect(mockSignInWithMail).toHaveBeenCalled());
+    await submitNext();
 
     const redirectUri = mockSignInWithMail.mock.calls[0][1] as string;
     expect(redirectUri).toContain('personal-iban=frick');
@@ -131,15 +162,144 @@ describe('ConnectMail login redirect', () => {
     locationStub.search = '';
 
     renderConnectMail();
-
-    await act(async () => {
-      screen.getByRole('button', { name: 'Next' }).click();
-    });
-
-    await waitFor(() => expect(mockSignInWithMail).toHaveBeenCalled());
+    await submitNext();
 
     const redirectUri = mockSignInWithMail.mock.calls[0][1] as string;
     expect(redirectUri).toBe('http://localhost/buy');
     expect(redirectUri).not.toContain('?');
+  });
+
+  it('uses the app origin from the env when embedded on another site', async () => {
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
+    locationStub.origin = 'https://embedding.example.org';
+    locationStub.search = '?foo=bar&personal-iban=yapeal';
+    mockIsWidget.mockReturnValue(true);
+    mockWidgetPersonalIban.mockReturnValue('frick');
+    mockRedirectPath.mockReturnValue('/buy');
+
+    renderConnectMail();
+    await submitNext();
+
+    expect(mockSignInWithMail.mock.calls[0][1]).toBe('https://app.example.com/buy?personal-iban=frick');
+  });
+
+  it('uses the app origin when embedded without a personal-iban attribute', async () => {
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
+    locationStub.origin = 'https://embedding.example.org';
+    locationStub.search = '?foo=bar&personal-iban=yapeal';
+    mockIsWidget.mockReturnValue(true);
+    mockWidgetPersonalIban.mockReturnValue(undefined);
+    mockRedirectPath.mockReturnValue('/buy');
+
+    renderConnectMail();
+    await submitNext();
+
+    expect(mockSignInWithMail.mock.calls[0][1]).toBe('https://app.example.com/buy');
+  });
+
+  it('falls back to window.location.origin when the env var is unset', async () => {
+    locationStub.origin = 'https://embedding.example.org';
+    locationStub.search = '?foo=bar&personal-iban=frick';
+    mockRedirectPath.mockReturnValue('/buy');
+
+    renderConnectMail();
+    await submitNext();
+
+    expect(mockSignInWithMail.mock.calls[0][1]).toBe('https://embedding.example.org/buy?personal-iban=frick');
+  });
+
+  it('keeps the path and params after the origin identical with and without the env var', async () => {
+    locationStub.origin = 'https://embedding.example.org';
+    locationStub.search = '?foo=bar&personal-iban=frick';
+    mockRedirectPath.mockReturnValue('/buy');
+
+    const { unmount } = renderConnectMail();
+    await submitNext();
+    const withoutEnv = mockSignInWithMail.mock.calls[0][1] as string;
+
+    unmount();
+    jest.clearAllMocks();
+    mockSignInWithMail.mockResolvedValue(undefined);
+    process.env.REACT_APP_PUBLIC_URL = 'https://app.example.com';
+
+    renderConnectMail();
+    await submitNext();
+    const withEnv = mockSignInWithMail.mock.calls[0][1] as string;
+
+    expect(withoutEnv.slice('https://embedding.example.org'.length)).toBe(
+      withEnv.slice('https://app.example.com'.length),
+    );
+  });
+
+  it('passes undefined as redirectUri when redirectPath is undefined', async () => {
+    mockRedirectPath.mockReturnValue(undefined);
+
+    renderConnectMail();
+    await submitNext();
+
+    expect(mockSignInWithMail.mock.calls[0][1]).toBeUndefined();
+  });
+
+  it('passes recommendationCode and wallet from useAppParams as third/fourth arguments', async () => {
+    mockRedirectPath.mockReturnValue('/buy');
+    mockUseAppParams.mockReturnValue({ wallet: 'DFX', recommendationCode: 'REC1' });
+
+    renderConnectMail();
+    await submitNext();
+
+    expect(mockSignInWithMail.mock.calls[0][2]).toBe('REC1');
+    expect(mockSignInWithMail.mock.calls[0][3]).toBe('DFX');
+  });
+
+  it('shows the confirmation and Back navigates home clearing user', async () => {
+    mockRedirectPath.mockReturnValue('/buy');
+
+    renderConnectMail();
+    await submitNext();
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('We have sent an email with further instructions to the address provided.'),
+      ).toBeInTheDocument(),
+    );
+
+    screen.getByRole('button', { name: 'Back' }).click();
+    expect(onCancel).toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith({ pathname: '/' }, { clearParams: ['user'] });
+  });
+
+  it('shows the API error message when signInWithMail rejects with a message', async () => {
+    mockRedirectPath.mockReturnValue('/buy');
+    mockSignInWithMail.mockRejectedValue({ message: 'boom' });
+
+    renderConnectMail();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Next' }).click();
+    });
+
+    await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
+    expect(screen.getByText('Connection failed!')).toBeInTheDocument();
+  });
+
+  it('shows Unknown error when signInWithMail rejects without a message', async () => {
+    mockRedirectPath.mockReturnValue('/buy');
+    mockSignInWithMail.mockRejectedValue({});
+
+    renderConnectMail();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Next' }).click();
+    });
+
+    await waitFor(() => expect(screen.getByText('Unknown error')).toBeInTheDocument());
+  });
+
+  it('treats a missing user query param as undefined mail default', async () => {
+    mockUseLocation.mockReturnValue({ search: '' });
+    mockRedirectPath.mockReturnValue('/buy');
+
+    renderConnectMail();
+    await submitNext();
+
+    expect(mockSignInWithMail.mock.calls[0][0]).toBeUndefined();
   });
 });

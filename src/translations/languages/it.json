@@ -78,6 +78,7 @@
     "Maximum allowed characters: 4000": "Caratteri massimi consentiti: 4000",
     "No entries yet": "Nessuna voce ancora",
     "Something went wrong. Please try again. If the issue persists please reach out to our support.": "Qualcosa è andato storto. Riprovare. Se il problema persiste, contattate il nostro supporto.",
+    "Your login has expired. Please sign in again.": "Il tuo accesso è scaduto. Effettua di nuovo l'accesso.",
     "invoice": "DFX non riconosce un destinatario con il nome <strong>{{recipient}}</strong>. Questo servizio può essere utilizzato solo per i destinatari che hanno un account attivo con DFX e sono attivati per il servizio di fatturazione. Se desideri registrarti come destinatario presso DFX, contatta l’assistenza all’indirizzo <link>{{supportLink}}</link>.",
     "iban": "Questo è un IBAN multi-account e non può essere aggiunto come conto personale. Aprire un ticket di supporto a <1></1> e allegare la conferma della transazione bancaria come PDF.",
     "ibanKycOnly": "È possibile aggiungere un conto bancario solo dopo aver collegato un portafoglio a questo account. <1></1>"
@@ -366,7 +367,10 @@
     "What happens if the referral is not confirmed?": "Cosa succede se il referral non viene confermato?",
     "If your referral is not confirmed by your contact person, your onboarding is considered incomplete and an account cannot be set up.": "Se il tuo referral non viene confermato dalla tua persona di contatto, il tuo onboarding è considerato incompleto e non è possibile creare un account.",
     "Can I complete the onboarding without a referral?": "Posso completare l'onboarding senza un referral?",
-    "No. Onboarding at DFX is only possible through a referral. You need the ref code, ref link, or email address of an existing customer who confirms your registration.": "No. L'onboarding presso DFX è possibile solo tramite referral. Hai bisogno del codice referral, del link referral o dell'indirizzo e-mail di un cliente esistente che confermi la tua registrazione."
+    "No. Onboarding at DFX is only possible through a referral. You need the ref code, ref link, or email address of an existing customer who confirms your registration.": "No. L'onboarding presso DFX è possibile solo tramite referral. Hai bisogno del codice referral, del link referral o dell'indirizzo e-mail di un cliente esistente che confermi la tua registrazione.",
+    "Identification continues in a new tab": "L'identificazione prosegue in una nuova scheda",
+    "The identification cannot be started inside this page. Open it in a new tab and come back here once you have finished.": "L'identificazione non può essere avviata all'interno di questa pagina. Aprila in una nuova scheda e torna qui una volta che hai finito.",
+    "Open identification": "Apri l'identificazione"
   },
   "screens/compliance": {
     "Compliance": "Compliance",
@@ -1238,8 +1242,6 @@
     "Complete verification": "Completare la verifica"
   },
   "screens/referral": {
-    "RealUnit Referral": "Referral RealUnit",
-    "Relations": "Relazioni",
     "Held for review only": "Solo da esaminare",
     "No entries found": "Nessuna voce trovata",
     "Kind": "Tipo",
@@ -1286,6 +1288,7 @@
     "Redeemed": "Riscatti",
     "Deactivated": "Disattivato",
     "No promo codes yet": "Nessun codice promo",
+    "No promo codes match the filters": "Nessun codice promo corrisponde ai filtri",
     "Landing link": "Link diretto",
     "QR code": "QR code",
     "View QR code": "Mostra QR code",
@@ -1313,6 +1316,23 @@
     "Threshold": "Soglia",
     "Mail": "E-mail",
     "Submit": "Invia",
-    "Loading": "Caricamento"
+    "Loading": "Caricamento",
+    "Active": "Attivo",
+    "Planned": "Pianificato",
+    "Exhausted": "Esaurito",
+    "Expired": "Scaduto",
+    "Hide deactivated": "Nascondi disattivati",
+    "Hide expired": "Nascondi scaduti",
+    "Referrals": "Raccomandazioni",
+    "Open": "Aperto",
+    "Approved": "Approvato",
+    "Rejected": "Respinto",
+    "Redemptions": "Utilizzi",
+    "Redeemed promo codes": "Codici promo utilizzati",
+    "of": "di",
+    "shown": "visualizzati",
+    "Promo redemption": "Utilizzo codice promo",
+    "Invite": "Invito",
+    "Promo": "Promo"
   }
 }

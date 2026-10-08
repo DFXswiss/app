@@ -4,7 +4,18 @@ import { ErrorHint } from 'src/components/error-hint';
 import { PromoQrDialog } from 'src/components/realunit/promo-qr-dialog';
 import { RealUnitPromoCode } from 'src/dto/realunit-referral.dto';
 import { useRealunitReferral } from 'src/hooks/realunit-referral.hook';
+import { formatPromoDate, promoCodeList, promoCodeStatus, PromoCodeStatus } from 'src/util/promo-code-status';
 import { promoLandingUrl } from 'src/util/promo-landing-url';
+
+const STATUS_BADGE: Record<PromoCodeStatus, string> = {
+  [PromoCodeStatus.ACTIVE]: 'bg-dfxGreen-100/20 text-dfxGreen-300',
+  [PromoCodeStatus.PLANNED]: 'bg-dfxBlue-300/20 text-dfxBlue-800',
+  [PromoCodeStatus.EXHAUSTED]: 'bg-dfxYellow-500/20 text-dfxYellow-700',
+  [PromoCodeStatus.EXPIRED]: 'bg-dfxYellow-500/20 text-dfxYellow-700',
+  [PromoCodeStatus.DEACTIVATED]: 'bg-dfxGray-400 text-dfxGray-800',
+};
+
+const DIMMED_STATUSES = [PromoCodeStatus.EXHAUSTED, PromoCodeStatus.EXPIRED, PromoCodeStatus.DEACTIVATED];
 
 interface PromoPanelProps {
   translate: (ns: string, key: string) => string;
@@ -35,6 +46,10 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
   const [validFrom, setValidFrom] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [qrCode, setQrCode] = useState<string>();
+  const [hideDeactivated, setHideDeactivated] = useState(true);
+  const [hideExpired, setHideExpired] = useState(false);
+  const [newestFirst, setNewestFirst] = useState(true);
+  const [deactivatedThisVisit, setDeactivatedThisVisit] = useState<Set<number>>(new Set());
 
   const [editingId, setEditingId] = useState<number>();
   const [editCode, setEditCode] = useState('');
@@ -46,6 +61,15 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
   useEffect(() => {
     loadCodes();
   }, []);
+
+  // One clock per render, so the filter and the status badges always agree.
+  const now = new Date();
+  const visibleCodes = promoCodeList(codes, now, {
+    hideDeactivated,
+    hideExpired,
+    newestFirst,
+    keepVisibleIds: deactivatedThisVisit,
+  });
 
   function loadCodes(): void {
     setIsLoading(true);
@@ -138,11 +162,12 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
     setDeactivatingIds(new Set(deactivatingIdsRef.current));
     setActionError(undefined);
     deactivatePromoCode(id)
-      .then(() =>
+      .then(() => {
+        setDeactivatedThisVisit((prev) => new Set(prev).add(id));
         setCodes((prev) =>
           prev.map((row) => (row.id === id ? { ...row, deactivatedAt: new Date().toISOString() } : row)),
-        ),
-      )
+        );
+      })
       .catch((e: Error) => setActionError(e.message ?? 'Unknown error'))
       .finally(() => {
         deactivatingIdsRef.current.delete(id);
@@ -179,7 +204,6 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
 
   function onSave(row: RealUnitPromoCode): void {
     if (savingIdsRef.current.has(row.id)) return;
-    if (!canSaveRow(row)) return;
     savingIdsRef.current.add(row.id);
     setSavingIds(new Set(savingIdsRef.current));
     setActionError(undefined);
@@ -285,12 +309,34 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
         <p className="text-sm text-dfxGray-700">{translate('screens/referral', 'No promo codes yet')}</p>
       )}
       {codes.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-dfxBlue-800">
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked={hideDeactivated} onChange={(e) => setHideDeactivated(e.target.checked)} />
+            {translate('screens/referral', 'Hide deactivated')}
+          </label>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked={hideExpired} onChange={(e) => setHideExpired(e.target.checked)} />
+            {translate('screens/referral', 'Hide expired')}
+          </label>
+          <span className="text-dfxGray-700">
+            {visibleCodes.length} {translate('screens/referral', 'of')} {codes.length}{' '}
+            {translate('screens/referral', 'shown')}
+          </span>
+        </div>
+      )}
+      {codes.length > 0 && visibleCodes.length === 0 && (
+        <p className="text-sm text-dfxGray-700">{translate('screens/referral', 'No promo codes match the filters')}</p>
+      )}
+      {visibleCodes.length > 0 && (
         <div className="overflow-auto">
           <table className="w-full border-collapse text-sm">
             <thead className="bg-dfxGray-300">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
                   {translate('screens/referral', 'Code')}
+                </th>
+                <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
+                  {translate('screens/referral', 'Status')}
                 </th>
                 <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
                   {translate('screens/referral', 'Redemption cap')}
@@ -304,8 +350,17 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
                 <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
                   {translate('screens/referral', 'Valid from')}
                 </th>
-                <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
-                  {translate('screens/referral', 'Valid until')}
+                <th
+                  className="px-3 py-2 text-left font-semibold text-dfxBlue-800"
+                  aria-sort={newestFirst ? 'descending' : 'ascending'}
+                >
+                  <button
+                    type="button"
+                    className="font-semibold whitespace-nowrap hover:underline"
+                    onClick={() => setNewestFirst((v) => !v)}
+                  >
+                    {translate('screens/referral', 'Valid until')} {newestFirst ? '▼' : '▲'}
+                  </button>
                 </th>
                 <th className="px-3 py-2 text-left font-semibold text-dfxBlue-800">
                   {translate('screens/referral', 'Landing link')}
@@ -317,11 +372,13 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
               </tr>
             </thead>
             <tbody>
-              {codes.map((row) => {
+              {visibleCodes.map((row) => {
                 const isEditing = editingId === row.id;
+                const status = promoCodeStatus(row, now);
+                const dimmed = !isEditing && DIMMED_STATUSES.includes(status);
                 return (
-                  <tr key={row.id} className="border-b border-dfxGray-300">
-                    <td className="px-3 py-2 text-dfxBlue-800 break-all">
+                  <tr key={row.id} className={`border-b border-dfxGray-300${dimmed ? ' opacity-60' : ''}`}>
+                    <td className="px-3 py-2 text-dfxBlue-800 whitespace-nowrap">
                       {isEditing ? (
                         <input
                           className="border border-dfxGray-400 rounded px-2 py-1"
@@ -333,6 +390,13 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
                       ) : (
                         row.code
                       )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap ${STATUS_BADGE[status]}`}
+                      >
+                        {translate('screens/referral', status)}
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-dfxBlue-800">
                       {isEditing ? (
@@ -363,7 +427,7 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
                         row.minBuyRealu
                       )}
                     </td>
-                    <td className="px-3 py-2 text-dfxBlue-800">
+                    <td className="px-3 py-2 text-dfxBlue-800 whitespace-nowrap">
                       {isEditing ? (
                         <input
                           className="border border-dfxGray-400 rounded px-2 py-1"
@@ -372,10 +436,10 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
                           onChange={(e) => setEditValidFrom(e.target.value)}
                         />
                       ) : (
-                        row.validFrom.slice(0, 10)
+                        formatPromoDate(row.validFrom)
                       )}
                     </td>
-                    <td className="px-3 py-2 text-dfxBlue-800">
+                    <td className="px-3 py-2 text-dfxBlue-800 whitespace-nowrap">
                       {isEditing ? (
                         <input
                           className="border border-dfxGray-400 rounded px-2 py-1"
@@ -384,7 +448,7 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
                           onChange={(e) => setEditValidUntil(e.target.value)}
                         />
                       ) : (
-                        row.validUntil.slice(0, 10)
+                        formatPromoDate(row.validUntil)
                       )}
                     </td>
                     <td className="px-3 py-2">
@@ -407,37 +471,32 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
                       </button>
                     </td>
                     <td className="px-3 py-2">
-                      {isEditing ? (
-                        <>
-                          <button
-                            type="button"
-                            className={`text-dfxBlue-800 underline text-sm${savingIds.has(row.id) ? ' opacity-50' : ''}`}
-                            disabled={!canSaveRow(row)}
-                            aria-disabled={savingIds.has(row.id) || !canSaveRow(row)}
-                            onClick={() => onSave(row)}
-                          >
-                            {translate('screens/referral', 'Save')}
-                          </button>
-                          <button
-                            type="button"
-                            className="text-dfxBlue-800 underline text-sm"
-                            onClick={onCancel}
-                          >
-                            {translate('screens/referral', 'Cancel')}
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            className="text-dfxBlue-800 underline text-sm"
-                            onClick={() => onEdit(row)}
-                          >
-                            {translate('screens/referral', 'Edit')}
-                          </button>
-                          {row.deactivatedAt ? (
-                            <>
-                              <span className="text-dfxGray-700">{translate('screens/referral', 'Deactivated')}</span>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        {isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              className={`text-dfxBlue-800 underline text-sm${savingIds.has(row.id) ? ' opacity-50' : ''}`}
+                              disabled={!canSaveRow(row)}
+                              aria-disabled={savingIds.has(row.id) || !canSaveRow(row)}
+                              onClick={() => onSave(row)}
+                            >
+                              {translate('screens/referral', 'Save')}
+                            </button>
+                            <button type="button" className="text-dfxBlue-800 underline text-sm" onClick={onCancel}>
+                              {translate('screens/referral', 'Cancel')}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="text-dfxBlue-800 underline text-sm"
+                              onClick={() => onEdit(row)}
+                            >
+                              {translate('screens/referral', 'Edit')}
+                            </button>
+                            {row.deactivatedAt ? (
                               <button
                                 type="button"
                                 className={`text-dfxBlue-800 underline text-sm${activatingIds.has(row.id) ? ' opacity-50' : ''}`}
@@ -446,19 +505,19 @@ export function RealunitPromoPanel({ translate }: PromoPanelProps): JSX.Element 
                               >
                                 {translate('screens/referral', 'Activate')}
                               </button>
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              className={`text-dfxRed-100 underline text-sm${deactivatingIds.has(row.id) ? ' opacity-50' : ''}`}
-                              aria-disabled={deactivatingIds.has(row.id)}
-                              onClick={() => onDeactivate(row.id)}
-                            >
-                              {translate('screens/referral', 'Deactivate')}
-                            </button>
-                          )}
-                        </>
-                      )}
+                            ) : (
+                              <button
+                                type="button"
+                                className={`text-dfxRed-100 underline text-sm${deactivatingIds.has(row.id) ? ' opacity-50' : ''}`}
+                                aria-disabled={deactivatingIds.has(row.id)}
+                                onClick={() => onDeactivate(row.id)}
+                              >
+                                {translate('screens/referral', 'Deactivate')}
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
