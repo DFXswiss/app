@@ -7,7 +7,7 @@
  *   /compliance/kyc-files, /compliance/kyc-files/details, /compliance/kyc-stats,
  *   /compliance/transactions, /compliance/custody-orders,
  *   /compliance/mros, /compliance/mros/:id, /compliance/recalls,
- *   /compliance/call-queues, /sitemap
+ *   /compliance/pending-chargebacks, /compliance/call-queues, /compliance/*, /sitemap
  *
  * Write/decision routes live in compliance-cases.spec.ts.
  */
@@ -562,6 +562,24 @@ test.describe('Compliance area (overview)', () => {
     await expect(page.getByText('Block reasons', { exact: true })).toBeVisible();
 
     expect(pageErrors, `uncaught pageerror on pending-chargebacks: ${pageErrors.join('; ')}`).toEqual([]);
+  });
+
+  test('/compliance quick link opens /compliance/pending-chargebacks', async ({ page }) => {
+    const { jwt, userId } = await loginAs('Compliance');
+    await ensureStaffKycComplete(userId);
+
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+
+    await openScreen(page, '/compliance', jwt);
+
+    await expect(page.getByText('Quick links', { exact: true })).toBeVisible({ timeout: 15000 });
+    await page.getByText('Pending Chargebacks', { exact: true }).click();
+
+    await expect(page).toHaveURL(/\/compliance\/pending-chargebacks(\?|$)/);
+    await expect(page.getByText('Block reasons', { exact: true })).toBeVisible({ timeout: 15000 });
+
+    expect(pageErrors, `uncaught pageerror on pending-chargebacks quick link: ${pageErrors.join('; ')}`).toEqual([]);
   });
 
   // -------------------------------------------------------------------------

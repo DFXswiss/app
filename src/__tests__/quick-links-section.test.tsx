@@ -1,5 +1,5 @@
-// Unit tests for QuickLinksSection: both quick-link rows render and the unassigned bank-tx
-// entry navigates to the compliance route.
+// Unit tests for QuickLinksSection: all quick-link rows render and the unassigned bank-tx and
+// pending chargebacks entries navigate to their compliance routes.
 
 const mockNavigate = jest.fn();
 
@@ -26,11 +26,12 @@ describe('QuickLinksSection', () => {
     mockNavigate.mockClear();
   });
 
-  it('renders both quick-link entries', () => {
+  it('renders all quick-link entries', () => {
     render(<QuickLinksSection />);
 
     expect(screen.getByText('Aktennotiz erstellen')).toBeInTheDocument();
     expect(screen.getByText('Unzugeordnete Bankeingänge')).toBeInTheDocument();
+    expect(screen.getByText('Pending Chargebacks')).toBeInTheDocument();
     expect(screen.getByText('Quick links')).toBeInTheDocument();
   });
 
@@ -41,5 +42,14 @@ describe('QuickLinksSection', () => {
 
     expect(mockNavigate).toHaveBeenCalledTimes(1);
     expect(mockNavigate).toHaveBeenCalledWith('compliance/bank-tx/unassigned');
+  });
+
+  it('navigates to compliance/pending-chargebacks when Pending Chargebacks is clicked', () => {
+    render(<QuickLinksSection />);
+
+    fireEvent.click(screen.getByText('Pending Chargebacks'));
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith('compliance/pending-chargebacks');
   });
 });
