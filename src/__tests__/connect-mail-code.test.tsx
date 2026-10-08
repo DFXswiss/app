@@ -3,6 +3,7 @@ const mockSignInWithMail = jest.fn();
 const mockSignInWithMailCode = jest.fn();
 const mockSetSession = jest.fn();
 const mockLogout = jest.fn();
+const mockNavigate = jest.fn();
 const mockIsWidget = jest.fn();
 const mockUseLocation = jest.fn();
 const mockUseAppParams = jest.fn();
@@ -121,7 +122,7 @@ jest.mock('../hooks/app-params.hook', () => ({
 }));
 
 jest.mock('../hooks/navigation.hook', () => ({
-  useNavigation: () => ({ navigate: jest.fn() }),
+  useNavigation: () => ({ navigate: mockNavigate }),
 }));
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -496,6 +497,9 @@ describe('ConnectMail widget code login', () => {
     expect(mockSetSession).toHaveBeenCalledWith('widget-token');
     expect(mockLogout.mock.invocationCallOrder[0]).toBeLessThan(mockSetSession.mock.invocationCallOrder[0]);
     expect(onLogin).toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalled();
+    expect(onLogin.mock.invocationCallOrder[0]).toBeLessThan(onCancel.mock.invocationCallOrder[0]);
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('keeps the current session when the code login connects an additional account', async () => {

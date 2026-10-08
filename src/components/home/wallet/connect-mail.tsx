@@ -105,6 +105,8 @@ export default function ConnectMail({ isConnect, onLogin, onCancel }: ConnectPro
     if (!isConnect) await logout();
     await setSession(accessToken);
     onLogin();
+    // Unlike the mail link, the code login completes without a page load, so the connect step has to be left here.
+    onCancel();
   }
 
   function goBack() {
