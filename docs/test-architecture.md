@@ -479,8 +479,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   place list.
 - **The widget tests force the closed shadow root open.** `forceOpenShadowRoots`
   (`e2e-stack/specs/fixtures/shadow-root.ts`) patches `Element.prototype.attachShadow` in the test
-  browser so every root is attached open; `e2e-stack/specs/widget.spec.ts` (mail login by code) and
-  `e2e/widget-mail-code-login.spec.ts` use it to reach inside `<dfx-services>`. The shipped widget
+  browser so every root is attached open; `e2e-stack/specs/widget.spec.ts` (mail login by code),
+  `e2e/widget-mail-code-login.spec.ts` and `e2e/widget-navigation-menu.spec.ts` use it to reach
+  inside `<dfx-services>`. The shipped widget
   keeps `shadow: 'closed'`. A green run does not prove anything that depends on the root being
   closed, such as the host page being unable to read or restyle the widget's content.
 - **The full-stack widget mail-code test drops the host page's `service` attribute.**
