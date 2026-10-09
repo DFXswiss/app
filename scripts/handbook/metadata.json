@@ -237,7 +237,7 @@
   },
   "spar-place-map": {
     "title": "SPAR-Standorte",
-    "description": "Zahlungslink mit Händler SPAR, jeweils die ganze Seite: Standortkarte über die Schweiz, geöffneter Standort, Länderfilter, andere Shops, leere Liste und der Fehler, wenn die Standortliste nicht geladen werden kann. Dazu die zwei Ladebilder, bevor die Filter und bevor die Orte da sind."
+    "description": "Zahlungslink mit Händler SPAR, jeweils die ganze Seite und fest nur SPAR-Läden in der Schweiz, ohne Länder- oder Shop-Auswahl: Standortkarte, geöffneter Standort, leere Liste, der Fehler wenn die Standortliste nicht geladen werden kann, und das Ladebild bevor die Orte da sind."
   },
   "docs": {
     "docs/EIP7702-Implementierungsplan.md": {

@@ -390,11 +390,13 @@ test.describe('Payment links / routes / invoice', () => {
 
   // The place API is stubbed. A green run does not prove that the place API returns this shop.
   test('/pl: merchant SPAR shows the location list from the place API', async ({ page }) => {
+    const seen: string[] = [];
     await page.route('https://api.opencryptopay.io/map/**', (route) => {
       const url = route.request().url();
-      const body = url.includes('/map/filters')
-        ? { countries: ['CH'], shopNames: ['SPAR', 'others'] }
-        : {
+      seen.push(url);
+      const swissSpar = url.includes('/map/places?shopName=SPAR&country=CH');
+      const body = swissSpar
+        ? {
             places: [
               {
                 name: 'SPAR Zürich',
@@ -405,23 +407,29 @@ test.describe('Payment links / routes / invoice', () => {
                 lon: 8.54,
               },
             ],
-          };
+          }
+        : {};
       return route.fulfill({
-        status: 200,
+        status: swissSpar ? 200 : 500,
         contentType: 'application/json',
         body: JSON.stringify(body),
       });
     });
 
-    const places = page.waitForResponse((response) => response.url().includes('/map/places') && response.ok());
+    const places = page.waitForResponse(
+      (response) => response.url().includes('/map/places?shopName=SPAR&country=CH') && response.ok(),
+    );
     await page.goto('/pl?merchant=SPAR&lang=en');
     await waitForPublicPath(page, '/pl');
     await places;
 
     await expect(page.getByText('LOCATIONS', { exact: true })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Shop' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Country' })).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Shop' })).toHaveCount(0);
     await expect(page.getByText('The location list could not be loaded.', { exact: true })).toHaveCount(0);
     await expect(page.getByText('No locations published yet.', { exact: true })).toHaveCount(0);
+    expect(seen.some((url) => url.includes('/map/filters'))).toBe(false);
+    expect(seen.some((url) => url.includes('/map/places?shopName=SPAR&country=CH'))).toBe(true);
   });
 
   // =========================================================================

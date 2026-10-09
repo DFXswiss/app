@@ -15,17 +15,9 @@ export function publishMapLibreWorker(
 
 publishMapLibreWorker(setWorkerUrl, process.env.PUBLIC_URL);
 
-const FILTERS_URL = 'https://api.opencryptopay.io/map/filters';
-const PLACES_URL = 'https://api.opencryptopay.io/map/places';
+const PLACES_URL = 'https://api.opencryptopay.io/map/places?shopName=SPAR&country=CH';
 const SHOP_SPAR = 'SPAR';
-const SHOP_OTHERS = 'others';
-
-type ShopName = typeof SHOP_SPAR | typeof SHOP_OTHERS;
-
-interface MapFilters {
-  shops: [ShopName, ShopName];
-  countries: string[];
-}
+const COUNTRY_CH = 'CH';
 
 interface KeptPlace {
   lat: number;
@@ -36,61 +28,17 @@ interface KeptPlace {
 
 type SparPlaceMapState = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; places: KeptPlace[] };
 
-function isShopName(value: string): value is ShopName {
-  return value === SHOP_SPAR || value === SHOP_OTHERS;
-}
-
-function placesUrl(shopName: ShopName, country: string | undefined): string {
-  const url = `${PLACES_URL}?shopName=${encodeURIComponent(shopName)}`;
-  if (country === undefined) return url;
-  return `${url}&country=${encodeURIComponent(country)}`;
-}
-
-function parseCountries(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const countries: string[] = [];
-  for (const item of value) {
-    if (typeof item !== 'string') return undefined;
-    countries.push(item);
-  }
-  return countries;
-}
-
-function parseShopNames(shopNames: unknown): [ShopName, ShopName] {
-  if (Array.isArray(shopNames)) {
-    const spar = shopNames.find((item): item is typeof SHOP_SPAR => item === SHOP_SPAR);
-    const others = shopNames.find((item): item is typeof SHOP_OTHERS => item === SHOP_OTHERS);
-    if (spar !== undefined && others !== undefined) {
-      return [spar, others];
-    }
-  }
-  return [SHOP_SPAR, SHOP_OTHERS];
-}
-
-function parseFilters(value: unknown): MapFilters | undefined {
-  if (typeof value !== 'object' || value === null) return undefined;
-  const body = value as { countries?: unknown; shopNames?: unknown };
-  const countries = parseCountries(body.countries);
-  if (countries === undefined) return undefined;
-  return { countries, shops: parseShopNames(body.shopNames) };
-}
-
 function isPlacesResponse(value: unknown): value is { places: unknown[] } {
   if (typeof value !== 'object' || value === null) return false;
   const places = (value as { places?: unknown }).places;
   return Array.isArray(places);
 }
 
-function shopNameMatches(placeShopName: string, selected: ShopName): boolean {
-  if (selected === SHOP_SPAR) return placeShopName === SHOP_SPAR;
-  return placeShopName.length > 0 && placeShopName !== SHOP_SPAR;
-}
-
-function isKeptPlace(value: unknown, shopName: ShopName, country: string | undefined): value is KeptPlace {
+function isKeptPlace(value: unknown): value is KeptPlace {
   if (typeof value !== 'object' || value === null) return false;
   const place = value as { shopName?: unknown; country?: unknown; lat?: unknown; lon?: unknown };
-  if (typeof place.shopName !== 'string' || !shopNameMatches(place.shopName, shopName)) return false;
-  if (country !== undefined && place.country !== country) return false;
+  if (place.shopName !== SHOP_SPAR) return false;
+  if (place.country !== COUNTRY_CH) return false;
   if (typeof place.lat !== 'number' || !Number.isFinite(place.lat) || place.lat < -90 || place.lat > 90) return false;
   if (typeof place.lon !== 'number' || !Number.isFinite(place.lon) || place.lon < -180 || place.lon > 180) {
     return false;
@@ -125,51 +73,15 @@ export function SparPlaceMap(): JSX.Element {
   const { translate } = useSettingsContext();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapEpoch = useRef(0);
-  const [filters, setFilters] = useState<MapFilters | undefined>(undefined);
-  const [shopName, setShopName] = useState<ShopName>(SHOP_SPAR);
-  const [country, setCountry] = useState<string | undefined>(undefined);
   const [state, setState] = useState<SparPlaceMapState>({ kind: 'loading' });
 
   useEffect(() => {
-    const controller = new AbortController();
-
-    const loadFilters = async (): Promise<void> => {
-      try {
-        const response = await fetch(FILTERS_URL, { credentials: 'omit', signal: controller.signal });
-        if (controller.signal.aborted) return;
-        if (!response.ok) {
-          setState({ kind: 'error' });
-          return;
-        }
-        const body: unknown = await response.json();
-        if (controller.signal.aborted) return;
-        const parsed = parseFilters(body);
-        if (parsed === undefined) {
-          setState({ kind: 'error' });
-          return;
-        }
-        setFilters(parsed);
-      } catch (error) {
-        if (controller.signal.aborted || isAbortError(error)) return;
-        setState({ kind: 'error' });
-      }
-    };
-
-    void loadFilters();
-
-    return () => {
-      controller.abort();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (filters === undefined) return;
     const controller = new AbortController();
     setState({ kind: 'loading' });
 
     const loadPlaces = async (): Promise<void> => {
       try {
-        const response = await fetch(placesUrl(shopName, country), {
+        const response = await fetch(PLACES_URL, {
           credentials: 'omit',
           signal: controller.signal,
         });
@@ -186,7 +98,7 @@ export function SparPlaceMap(): JSX.Element {
         }
         const places: KeptPlace[] = [];
         for (const place of body.places) {
-          if (isKeptPlace(place, shopName, country)) places.push(place);
+          if (isKeptPlace(place)) places.push(place);
         }
         setState({ kind: 'ready', places });
       } catch (error) {
@@ -200,7 +112,7 @@ export function SparPlaceMap(): JSX.Element {
     return () => {
       controller.abort();
     };
-  }, [filters, shopName, country]);
+  }, []);
 
   useEffect(() => {
     if (state.kind !== 'ready') return;
@@ -297,58 +209,6 @@ export function SparPlaceMap(): JSX.Element {
           '.maplibregl-popup-close-button{color:#072440;font-size:18px;line-height:18px;width:22px;height:22px;padding:0}' +
           '.maplibregl-popup-close-button:focus,.maplibregl-popup-close-button:focus-visible{outline:none}'}
       </style>
-      {filters !== undefined && (
-        <div
-          className={
-            'absolute left-2 top-2 z-20 flex flex-wrap items-center gap-2 rounded-md bg-white/95 ' +
-            'px-2.5 py-1.5 text-sm text-dfxGray-800 shadow'
-          }
-        >
-          <label className="flex items-center gap-1.5">
-            {translate('screens/payment', 'Country')}
-            <select
-              className="rounded border border-dfxGray-500 bg-white px-1.5 py-0.5 text-sm text-dfxGray-800"
-              value={country === undefined ? '' : country}
-              onChange={(event) => {
-                const value = event.target.value;
-                if (value === '') {
-                  setCountry(undefined);
-                  return;
-                }
-                if (filters.countries.includes(value)) {
-                  setCountry(value);
-                }
-              }}
-            >
-              <option value="">{translate('screens/payment', 'All countries')}</option>
-              {filters.countries.map((code) => (
-                <option key={code} value={code}>
-                  {code}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-1.5">
-            {translate('screens/payment', 'Shop')}
-            <select
-              className="rounded border border-dfxGray-500 bg-white px-1.5 py-0.5 text-sm text-dfxGray-800"
-              value={shopName}
-              onChange={(event) => {
-                const value = event.target.value;
-                if (isShopName(value)) {
-                  setShopName(value);
-                }
-              }}
-            >
-              {filters.shops.map((shop) => (
-                <option key={shop} value={shop}>
-                  {shop === SHOP_OTHERS ? translate('screens/payment', 'Others') : shop}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
       <div ref={containerRef} className="w-full h-full" />
       {state.kind === 'ready' && state.places.length > 0 && (
         <ul

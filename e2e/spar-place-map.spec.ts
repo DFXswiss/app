@@ -9,14 +9,13 @@ test.use({
 /**
  * Visual baselines for the SPAR payment page on /pl?merchant=SPAR.
  * Each picture is the whole page, not only the locations block.
+ * The page always asks for SPAR shops in Switzerland and shows no country or shop control.
  * These specs are a local review aid and do not run in CI.
  * The map uses the live Liberty style so the pictures show Switzerland,
  * not an empty canvas.
  * A green run does not prove that the place API returns these shops or that those shops exist.
  * Map tiles are the live OpenFreeMap style.
  */
-
-const FILTERS = { countries: ['CH', 'LI'], shopNames: ['SPAR', 'others'] };
 
 const SPAR_PLACES = [
   { name: 'SPAR Zürich Oerlikon', shopName: 'SPAR', country: 'CH', category: 'Grocery', lat: 47.411, lon: 8.544 },
@@ -27,11 +26,8 @@ const SPAR_PLACES = [
   { name: 'SPAR St. Gallen Marktplatz', shopName: 'SPAR', country: 'CH', category: 'Grocery', lat: 47.424, lon: 9.376 },
   { name: 'SPAR Luzern Bahnhof', shopName: 'SPAR', country: 'CH', category: 'Grocery', lat: 47.05, lon: 8.31 },
   { name: 'SPAR Chur Postplatz', shopName: 'SPAR', country: 'CH', category: 'Grocery', lat: 46.85, lon: 9.53 },
-];
-
-const OTHER_PLACES = [
+  { name: 'SPAR Vaduz', shopName: 'SPAR', country: 'LI', category: 'Grocery', lat: 47.141, lon: 9.521 },
   { name: 'Volg Samedan', shopName: 'Volg', country: 'CH', category: 'Grocery', lat: 46.534, lon: 9.872 },
-  { name: 'Volg Vaduz', shopName: 'Volg', country: 'LI', category: 'Grocery', lat: 47.141, lon: 9.521 },
 ];
 
 async function fulfillJson(route: Route, status: number, body: unknown): Promise<void> {
@@ -69,23 +65,24 @@ async function stubPayment(page: Page): Promise<void> {
   });
 }
 
-async function stubPlaces(
-  page: Page,
-  places: { status: number; body: unknown } | 'by-shop',
-  filters: { status: number; body: unknown } = { status: 200, body: FILTERS },
-): Promise<void> {
+function watchMap(page: Page): string[] {
+  const seen: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('api.opencryptopay.io/map')) seen.push(request.url());
+  });
+  return seen;
+}
+
+async function expectSwissSparOnly(seen: string[]): Promise<void> {
+  await expect.poll(() => seen.length).toBeGreaterThan(0);
+  expect(seen.every((url) => url.includes('/map/places?shopName=SPAR&country=CH'))).toBe(true);
+  expect(seen.some((url) => url.includes('/map/filters'))).toBe(false);
+}
+
+async function stubPlaces(page: Page, places: { status: number; body: unknown }): Promise<void> {
   await page.route('https://api.opencryptopay.io/map/**', (route) => {
     const url = route.request().url();
-    if (url.includes('/map/filters')) return fulfillJson(route, filters.status, filters.body);
-    if (places === 'by-shop') {
-      const shopName = new URL(url).searchParams.get('shopName');
-      const country = new URL(url).searchParams.get('country');
-      const source = shopName === 'others' ? OTHER_PLACES : SPAR_PLACES;
-      const body = {
-        places: country === null ? source : source.filter((place) => place.country === country),
-      };
-      return fulfillJson(route, 200, body);
-    }
+    if (!url.includes('/map/places?shopName=SPAR&country=CH')) return fulfillJson(route, 500, {});
     return fulfillJson(route, places.status, places.body);
   });
 }
@@ -99,27 +96,10 @@ async function openLocations(page: Page): Promise<void> {
   await expect(page.locator('img[alt="logo"]')).toBeVisible();
 }
 
-async function mapEpoch(page: Page): Promise<string | null> {
-  return page.locator('[data-testid="spar-locations"] [data-map-epoch]').getAttribute('data-map-epoch');
-}
-
 async function waitForMap(page: Page): Promise<void> {
   await expect(page.locator('[data-testid="spar-locations"] [data-map-ready="true"]')).toBeVisible({
     timeout: 60000,
   });
-}
-
-async function waitForNextMap(page: Page, previousEpoch: string | null): Promise<void> {
-  await page.waitForFunction(
-    (previous) => {
-      const ready = document.querySelector('[data-testid="spar-locations"] [data-map-ready="true"]');
-      if (ready === null) return false;
-      const epoch = ready.getAttribute('data-map-epoch');
-      return epoch !== null && epoch !== previous;
-    },
-    previousEpoch,
-    { timeout: 60000 },
-  );
 }
 
 async function shoot(page: Page, name: string): Promise<void> {
@@ -144,53 +124,24 @@ async function shoot(page: Page, name: string): Promise<void> {
 test.describe('SPAR locations', () => {
   test.describe.configure({ timeout: 120000 });
 
-  test('visual regression - locations loading filters', async ({ page }) => {
-    let resolveFilters: (() => void) | undefined;
-    const filtersHeld = new Promise<void>((resolve) => {
-      resolveFilters = resolve;
-    });
-    await page.route('https://api.opencryptopay.io/map/**', async (route) => {
-      const url = route.request().url();
-      if (url.includes('/map/filters')) {
-        await filtersHeld;
-        return fulfillJson(route, 200, FILTERS);
-      }
-      return fulfillJson(route, 200, { places: [] });
-    });
-    await stubAppApi(page);
-    await stubPayment(page);
-    await openLocations(page);
-    await expect(page.getByTestId('spar-locations')).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Country' })).toHaveCount(0);
-    await expect(page.getByText('No locations published yet.', { exact: true })).toHaveCount(0);
-    await shoot(page, 'spar-locations-loading-filters.png');
-    const filtersDone = page.waitForResponse((response) => response.url().includes('/map/filters'));
-    if (resolveFilters === undefined) {
-      throw new Error('resolveFilters was not assigned');
-    }
-    resolveFilters();
-    await filtersDone;
-  });
-
   test('visual regression - locations loading places', async ({ page }) => {
+    const seen = watchMap(page);
     let resolvePlaces: (() => void) | undefined;
     const placesHeld = new Promise<void>((resolve) => {
       resolvePlaces = resolve;
     });
     await page.route('https://api.opencryptopay.io/map/**', async (route) => {
       const url = route.request().url();
-      if (url.includes('/map/filters')) return fulfillJson(route, 200, FILTERS);
-      if (url.includes('/map/places')) {
-        await placesHeld;
-        return fulfillJson(route, 200, { places: [] });
-      }
+      if (!url.includes('/map/places?shopName=SPAR&country=CH')) return fulfillJson(route, 500, {});
+      await placesHeld;
       return fulfillJson(route, 200, { places: [] });
     });
     await stubAppApi(page);
     await stubPayment(page);
     await openLocations(page);
-    await expect(page.getByRole('combobox', { name: 'Country' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Shop' })).toHaveValue('SPAR');
+    await expectSwissSparOnly(seen);
+    await expect(page.getByRole('combobox', { name: 'Country' })).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Shop' })).toHaveCount(0);
     await expect(page.getByText('No locations published yet.', { exact: true })).toHaveCount(0);
     await expect(page.locator('[data-testid="spar-locations"] [data-map-ready="true"]')).toHaveCount(0);
     await shoot(page, 'spar-locations-loading-places.png');
@@ -203,90 +154,62 @@ test.describe('SPAR locations', () => {
   });
 
   test('visual regression - location list error', async ({ page }) => {
+    const seen = watchMap(page);
     await stubAppApi(page);
     await stubPayment(page);
-    await stubPlaces(page, { status: 500, body: {} }, { status: 500, body: {} });
+    await stubPlaces(page, { status: 500, body: {} });
     await openLocations(page);
     await expect(page.getByText('The location list could not be loaded.', { exact: true })).toBeVisible();
+    await expectSwissSparOnly(seen);
+    await expect(page.getByRole('combobox', { name: 'Country' })).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Shop' })).toHaveCount(0);
     await shoot(page, 'spar-locations-error.png');
   });
 
   test('visual regression - no locations published', async ({ page }) => {
+    const seen = watchMap(page);
     await stubAppApi(page);
     await stubPayment(page);
     await stubPlaces(page, { status: 200, body: { places: [] } });
     await openLocations(page);
     await expect(page.getByText('No locations published yet.', { exact: true })).toBeVisible();
     await waitForMap(page);
+    await expectSwissSparOnly(seen);
+    await expect(page.getByRole('combobox', { name: 'Country' })).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Shop' })).toHaveCount(0);
     await shoot(page, 'spar-locations-empty.png');
   });
 
   test('visual regression - locations across Switzerland', async ({ page }) => {
+    const seen = watchMap(page);
     await stubAppApi(page);
     await stubPayment(page);
-    await stubPlaces(page, 'by-shop');
+    await stubPlaces(page, { status: 200, body: { places: SPAR_PLACES } });
     await openLocations(page);
     await waitForMap(page);
+    await expectSwissSparOnly(seen);
     await expect(page.getByRole('button', { name: 'SPAR Genève Cornavin' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'SPAR St. Gallen Marktplatz' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'SPAR Vaduz' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Volg Samedan' })).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Country' })).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Shop' })).toHaveCount(0);
     await shoot(page, 'spar-locations-map.png');
   });
 
   test('visual regression - open location', async ({ page }) => {
+    const seen = watchMap(page);
     await stubAppApi(page);
     await stubPayment(page);
-    await stubPlaces(page, 'by-shop');
+    await stubPlaces(page, { status: 200, body: { places: SPAR_PLACES } });
     await openLocations(page);
     await waitForMap(page);
+    await expectSwissSparOnly(seen);
     await page.getByRole('button', { name: 'SPAR Bern Marktgasse' }).click();
     await expect(page.locator('.maplibregl-popup').getByText('SPAR Bern Marktgasse', { exact: true })).toBeVisible();
     await expect(page.locator('.maplibregl-popup').getByText('Grocery', { exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Country' })).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Shop' })).toHaveCount(0);
     await shoot(page, 'spar-locations-popup.png');
-  });
-
-  test('visual regression - Switzerland only', async ({ page }) => {
-    await stubAppApi(page);
-    await stubPayment(page);
-    await stubPlaces(page, 'by-shop');
-    await openLocations(page);
-    await waitForMap(page);
-    const beforeShop = await mapEpoch(page);
-    const others = page.waitForResponse(
-      (response) =>
-        response.url().includes('/map/places') && response.url().includes('shopName=others') && response.ok(),
-    );
-    await page.getByRole('combobox', { name: 'Shop' }).selectOption('others');
-    await others;
-    await waitForNextMap(page, beforeShop);
-    const beforeCountry = await mapEpoch(page);
-    const filtered = page.waitForResponse(
-      (response) => response.url().includes('/map/places') && response.url().includes('country=CH') && response.ok(),
-    );
-    await page.getByRole('combobox', { name: 'Country' }).selectOption('CH');
-    await filtered;
-    await waitForNextMap(page, beforeCountry);
-    await expect(page.getByRole('combobox', { name: 'Country' })).toHaveValue('CH');
-    await expect(page.getByRole('button', { name: 'Volg Samedan' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Volg Vaduz' })).toHaveCount(0);
-    await shoot(page, 'spar-locations-country.png');
-  });
-
-  test('visual regression - other shops', async ({ page }) => {
-    await stubAppApi(page);
-    await stubPayment(page);
-    await stubPlaces(page, 'by-shop');
-    await openLocations(page);
-    await waitForMap(page);
-    const beforeShop = await mapEpoch(page);
-    const others = page.waitForResponse(
-      (response) =>
-        response.url().includes('/map/places') && response.url().includes('shopName=others') && response.ok(),
-    );
-    await page.getByRole('combobox', { name: 'Shop' }).selectOption('others');
-    await others;
-    await waitForNextMap(page, beforeShop);
-    await expect(page.getByRole('button', { name: 'Volg Samedan' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Volg Vaduz' })).toBeVisible();
-    await shoot(page, 'spar-locations-others.png');
   });
 });
