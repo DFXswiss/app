@@ -494,6 +494,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   failure against the supplied session and auth values. It does not prove the real SDK, including
   its ESM auth module, the store, wallet detection, app parameters, balance reads, browser-language
   detection or user reload.
+- **The ConnectBase unit spec replaces SDK, wallet-context and hint modules.**
+  `src/__tests__/connect-base.test.tsx` replaces `@dfx.swiss/react` exports `Blockchain`,
+  `useAuthContext` with a supplied session and `useSessionContext` with supplied `isLoggedIn` and
+  `logout`, `@dfx.swiss/react-components` with a fake spinner, `../contexts/wallet.context`,
+  `../components/home/install-hint` and `../components/home/sign-hint`. A green run proves
+  ConnectBase's logout, blockchain-switch and login decisions against the supplied session,
+  login-state and wallet values. It does not prove that the real SDK supplies `isLoggedIn` and
+  `session` that way, that the real wallet integration connects and signs, or that the real hint
+  components render.
 
 ## Known gaps
 
