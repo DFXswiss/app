@@ -71,7 +71,7 @@ export const Navigation = forwardRef<HTMLDivElement, NavigationIframeProps>(
 
         {isOpen && (
           <>
-            {/* On a host page, fixed elements cover the host's viewport; outside clicks are handled by the layout */}
+            {/* On a host page, fixed elements cover the host's viewport; the layout renders a widget-scoped backdrop */}
             {!webComponent && <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />}
             <NavigationMenu setIsNavigationOpen={setIsOpen} small={small} />
           </>

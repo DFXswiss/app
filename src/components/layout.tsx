@@ -6,6 +6,7 @@ import { Routes } from '../App';
 import { useAppParams } from '../hooks/app-params.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import { isNode } from '../util/utils';
+import { isWebComponent } from '../util/web-component-mode';
 import { InfoBannerComponent } from './info-banner';
 import { Navigation } from './navigation';
 
@@ -22,6 +23,7 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
   const isRealunitWorkspace = pathname === '/realunit' || pathname.startsWith('/realunit/');
   const { clearParams } = useNavigation();
   const { borderless } = useAppParams();
+  const webComponent = isWebComponent();
 
   useEffect(() => {
     const kycRoutes = Routes[0].children?.filter((r) => r.isKycScreen) || [];
@@ -35,7 +37,12 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
   }
 
   return (
-    <div id="app-root" className="h-full flex flex-col" ref={rootRef} onClick={onClick}>
+    <div
+      id="app-root"
+      className={`h-full flex flex-col ${webComponent ? 'relative' : ''}`}
+      ref={rootRef}
+      onClick={onClick}
+    >
       <Navigation
         ref={navRef}
         title={title}
@@ -45,6 +52,11 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
         setIsOpen={setIsNavigationOpen}
         small={smallMenu}
       />
+
+      {/* Widget-scoped stand-in for the navigation's page-wide backdrop */}
+      {webComponent && isNavigationOpen && (
+        <div className="absolute inset-0 z-40" onClick={() => setIsNavigationOpen(false)} />
+      )}
 
       <div
         className="relative flex flex-col flex-grow overflow-auto"
