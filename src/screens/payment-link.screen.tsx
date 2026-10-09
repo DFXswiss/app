@@ -54,12 +54,12 @@ import { usePaymentLinkContext } from 'src/contexts/payment-link.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import {
-  NoPaymentLinkPaymentStatus,
   PaymentLinkPayRequest,
-  PaymentLinkPayTerminal,
+  PaymentLinkPayResponse,
   PaymentStandard,
-  WalletInfo,
-} from 'src/dto/payment-link.dto';
+  hasPaymentQuote,
+} from '@dfx.swiss/react';
+import { NoPaymentLinkPaymentStatus, WalletInfo } from 'src/dto/payment-link.dto';
 import { useNavigation } from 'src/hooks/navigation.hook';
 import { usePaymentLinkWallets } from 'src/hooks/payment-link-wallets.hook';
 import { useWeb3 } from 'src/hooks/web3.hook';
@@ -365,10 +365,14 @@ export default function PaymentLinkScreen(): JSX.Element {
                                 label: translate('screens/home', 'Mode'),
                                 text: payRequest.mode,
                               },
-                              {
-                                label: translate('screens/payment', 'Tag'),
-                                text: payRequest.tag,
-                              },
+                              ...(hasPaymentQuote(payRequest)
+                                ? [
+                                    {
+                                      label: translate('screens/payment', 'Tag'),
+                                      text: payRequest.tag,
+                                    },
+                                  ]
+                                : []),
                               {
                                 label: translate('screens/payment', 'Route'),
                                 text: payRequest.route,
@@ -879,7 +883,7 @@ function WalletLogo({ wallet, size }: { wallet: WalletInfo; size: number }): JSX
   );
 }
 
-function CreatePublicPaymentForm({ paymentRequest }: { paymentRequest: PaymentLinkPayTerminal }): JSX.Element {
+function CreatePublicPaymentForm({ paymentRequest }: { paymentRequest: PaymentLinkPayResponse }): JSX.Element {
   const { call } = useApi();
   const { translate, translateError } = useSettingsContext();
   const [isActivating, setIsActivating] = useState(false);
@@ -901,7 +905,7 @@ function CreatePublicPaymentForm({ paymentRequest }: { paymentRequest: PaymentLi
     setIsActivating(true);
     const params = new URLSearchParams({
       externalLinkId: paymentRequest.externalId as string,
-      route: paymentRequest.route,
+      ...(paymentRequest.route ? { route: paymentRequest.route } : {}),
     });
 
     return call<PaymentLink>({
@@ -932,7 +936,7 @@ function CreatePublicPaymentForm({ paymentRequest }: { paymentRequest: PaymentLi
           </p>
           <StyledInput
             label={translate('screens/payment', 'Amount in {{currencyName}}', {
-              currencyName: paymentRequest.currency,
+              currencyName: paymentRequest.currency ?? '',
             })}
             name="amount"
             control={control}
@@ -956,7 +960,7 @@ function CreatePublicPaymentForm({ paymentRequest }: { paymentRequest: PaymentLi
   );
 }
 
-function EditPublicPaymentForm({ paymentRequest }: { paymentRequest: PaymentLinkPayTerminal }): JSX.Element {
+function EditPublicPaymentForm({ paymentRequest }: { paymentRequest: PaymentLinkPayResponse }): JSX.Element {
   const { call } = useApi();
   const { translate, translateError } = useSettingsContext();
   const [isEditing, setIsEditing] = useState(false);
@@ -970,7 +974,7 @@ function EditPublicPaymentForm({ paymentRequest }: { paymentRequest: PaymentLink
     setIsEditing(true);
     const params = new URLSearchParams({
       externalLinkId: paymentRequest.externalId as string,
-      route: paymentRequest.route,
+      ...(paymentRequest.route ? { route: paymentRequest.route } : {}),
     });
 
     return call<PaymentLink>({
