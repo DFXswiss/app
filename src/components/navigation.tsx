@@ -9,13 +9,15 @@ import {
   StyledButtonColor,
   StyledButtonWidth,
 } from '@dfx.swiss/react-components';
-import { forwardRef, PropsWithChildren, SetStateAction } from 'react';
+import { forwardRef, PropsWithChildren, SetStateAction, useLayoutEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { REACT_APP_BUILD_ID } from 'src/version';
 import { Urls } from '../config/urls';
 import { CloseType, useAppHandlingContext } from '../contexts/app-handling.context';
+import { useLayoutContext } from '../contexts/layout.context';
 import { useSettingsContext } from '../contexts/settings.context';
 import { useNavigation } from '../hooks/navigation.hook';
+import { isWebComponent } from '../util/web-component-mode';
 import { NavigationLink } from './navigation-link';
 
 interface BackButtonProps extends PropsWithChildren {
@@ -43,11 +45,12 @@ interface NavigationMenuContentProps {
 export const Navigation = forwardRef<HTMLDivElement, NavigationIframeProps>(
   ({ title, backButton = true, onBack, isOpen, setIsOpen, small = false }: NavigationIframeProps, ref): JSX.Element => {
     const { params, isEmbedded } = useAppHandlingContext();
+    const webComponent = isWebComponent();
 
     return title || !isEmbedded ? (
       <div
         className={`flex w-full h-14 shrink-0 px-4 items-center justify-center ${
-          params.headless !== 'true' ? 'relative bg-dfxGray-300' : ''
+          params.headless !== 'true' ? 'relative bg-dfxGray-300' : webComponent ? 'relative' : ''
         }`}
         ref={ref}
       >
@@ -68,7 +71,8 @@ export const Navigation = forwardRef<HTMLDivElement, NavigationIframeProps>(
 
         {isOpen && (
           <>
-            <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+            {/* On a host page, fixed elements cover the host's viewport; outside clicks are handled by the layout */}
+            {!webComponent && <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />}
             <NavigationMenu setIsNavigationOpen={setIsOpen} small={small} />
           </>
         )}
@@ -121,6 +125,19 @@ function NavigationMenu({ setIsNavigationOpen, small = false }: NavigationMenuCo
   const { hasCustody } = useUserContext();
   const { isLoggedIn, logout: apiLogout } = useSessionContext();
   const { session } = useAuthContext();
+  const { rootRef } = useLayoutContext();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const webComponent = isWebComponent();
+
+  // Keep the menu inside the widget, so neighbouring host elements can neither cover nor clip it
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const menu = menuRef.current;
+    if (!webComponent || !root || !menu) return;
+
+    const available = root.getBoundingClientRect().bottom - menu.getBoundingClientRect().top - 8;
+    if (available > 0) menu.style.maxHeight = `${available}px`;
+  }, []);
 
   async function login() {
     navigate('/login');
@@ -134,7 +151,12 @@ function NavigationMenu({ setIsNavigationOpen, small = false }: NavigationMenuCo
 
   return (
     <nav onClick={(e) => e.stopPropagation()}>
-      <div className="fixed top-14 right-2 border border-dfxGray-400 shadow-lg w-64 z-50 flex flex-col bg-dfxGray-300 rounded-lg">
+      <div
+        ref={menuRef}
+        className={`${
+          webComponent ? 'absolute top-full mt-1 overflow-y-auto' : 'fixed top-14'
+        } right-2 border border-dfxGray-400 shadow-lg w-64 z-50 flex flex-col bg-dfxGray-300 rounded-lg`}
+      >
         <div className="mx-4 py-4 text-dfxGray-800">
           {!small && (
             <>
