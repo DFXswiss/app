@@ -403,12 +403,9 @@ describe('ConnectBase login', () => {
     expect(mockOnLogin).toHaveBeenCalled();
   });
 
-  it.each([
-    ['the session has no address', WalletType.META_MASK, {}],
-    ['there is no session', WalletType.META_MASK, undefined],
-  ])('keeps an address-less session and logs in when %s', async (_case, activeWallet, session) => {
-    mockActiveWallet = activeWallet;
-    mockSession = session;
+  it('keeps an address-less session and logs in', async () => {
+    mockActiveWallet = WalletType.META_MASK;
+    mockSession = {};
     await renderReady();
 
     await act(() => content().connect());
@@ -422,6 +419,27 @@ describe('ConnectBase login', () => {
       expect.any(Function),
       undefined,
     );
+    expect(mockOnLogin).toHaveBeenCalled();
+  });
+
+  it('logs out before logging in when there is no session', async () => {
+    mockActiveWallet = WalletType.META_MASK;
+    mockSession = undefined;
+    mockIsLoggedIn = false;
+    await renderReady();
+
+    await act(() => content().connect());
+
+    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
+    expect(mockLogout).toHaveBeenCalled();
+    expect(mockLogin).toHaveBeenCalledWith(
+      WalletType.META_MASK,
+      '0xabc',
+      Blockchain.ETHEREUM,
+      expect.any(Function),
+      undefined,
+    );
+    expect(mockLogout.mock.invocationCallOrder[0]).toBeLessThan(mockLogin.mock.invocationCallOrder[0]);
     expect(mockOnLogin).toHaveBeenCalled();
   });
 

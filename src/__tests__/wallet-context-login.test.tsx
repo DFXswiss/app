@@ -81,7 +81,7 @@ describe('WalletContextProvider login errors', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSession = undefined;
-    mockIsLoggedIn = true;
+    mockIsLoggedIn = false;
     mockGetSignMessage.mockResolvedValue('message');
     mockAuthenticate.mockRejectedValue(new Error('Authentication failed'));
   });
@@ -90,6 +90,7 @@ describe('WalletContextProvider login errors', () => {
     const { result, rerender } = renderHook(() => useWalletContext(), { wrapper });
 
     mockSession = {};
+    mockIsLoggedIn = true;
     rerender();
 
     await act(async () => {
@@ -125,11 +126,28 @@ describe('WalletContextProvider login errors', () => {
     expect(mockLogout).toHaveBeenCalled();
   });
 
-  it.each<[string, { address?: string } | undefined]>([
-    ['an addressed session', { address: '0xexisting' }],
-    ['no existing session', undefined],
-  ])('logs out after wallet login fails with %s', async (_case, session) => {
-    mockSession = session;
+  it('logs out an addressed session after wallet login fails', async () => {
+    mockSession = { address: '0xexisting' };
+    mockIsLoggedIn = true;
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+    await act(async () => {
+      await expect(
+        result.current.login(
+          WalletType.META_MASK,
+          '0xabc',
+          Blockchain.ETHEREUM,
+          jest.fn().mockResolvedValue('signature'),
+        ),
+      ).rejects.toThrow('Authentication failed');
+    });
+
+    expect(mockLogout).toHaveBeenCalled();
+  });
+
+  it('logs out after wallet login fails with no existing session', async () => {
+    mockSession = undefined;
+    mockIsLoggedIn = false;
     const { result } = renderHook(() => useWalletContext(), { wrapper });
 
     await act(async () => {
