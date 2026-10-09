@@ -483,11 +483,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   block. It does not prove that the DFX payment-link API returns those payloads, that a wallet
   deeplink opens, that the asset catalog matches production, or that the SPAR map draws the
   place list.
-- **The wallet-context login unit spec replaces the SDK auth exports.**
-  `src/__tests__/wallet-context-login.test.tsx` supplies the session hooks and the
-  `AuthWalletType` values used while loading the provider. A green run proves the provider's
-  login-error handling against those values, not that Jest can execute the SDK's ESM auth module
-  or that the SDK performs authentication.
+- **The wallet-context login unit spec replaces SDK, browser and application modules.**
+  `src/__tests__/wallet-context-login.test.tsx` replaces `@dfx.swiss/react` exports
+  `Blockchain`, `Utils.isJwt`, `useApiSession`, `useAuth`, `useAuthContext`,
+  `useSessionContext` and `useUserContext`, and replaces
+  `@dfx.swiss/react/dist/definitions/auth` with fake `AuthWalletType` values. It also replaces
+  `browser-lang`, `../hooks/store.hook`,
+  `../hooks/wallets/metamask.hook`, `../contexts/app-handling.context` and
+  `../contexts/balance.context`. A green run proves the provider's logout decision after a login
+  failure against the supplied session and auth values. It does not prove the real SDK, including
+  its ESM auth module, the store, wallet detection, app parameters, balance reads, browser-language
+  detection or user reload.
 
 ## Known gaps
 
