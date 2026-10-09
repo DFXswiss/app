@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { PUBLISHED_SPARS } from './spar-published-places';
 
 test.use({
   launchOptions: {
@@ -10,77 +11,26 @@ test.use({
  * Visual baselines for the SPAR payment page on /pl?merchant=SPAR.
  * Each picture is the whole page, not only the locations block.
  * The page always asks for SPAR shops in Switzerland and shows no country or shop control.
- * The map picture uses more than 100 pins and does not list shop names.
- * A short named list would claim a store count, and the published set is larger than 100.
- * The pins sit on a grid inside a rough Switzerland outline. That outline only
- * places the fixture. It is not a country check and not a store census.
+ * The map picture uses the published SPAR shop locations, not a grid and not a
+ * short list of city names. It does not list those names on the map.
+ * Country is CH on the fixture because the page draws a pin only when country is CH.
+ * The published rows have no stored country, so the picture is the shop locations.
  * These specs are a local review aid and do not run in CI.
  * The map uses the live Liberty style so the pictures show Switzerland,
  * not an empty canvas.
- * A green run does not prove that the place API returns these shops or that those shops exist.
+ * A green run does not prove that the place API still returns this set, or that country is stored.
  * Map tiles are the live OpenFreeMap style.
  */
 
-// Rough outline so the fixture cloud stays on the Swiss map. Not a border
-// and not a filter: the page still keeps a pin only when country is CH.
-const SWISS_OUTLINE: ReadonlyArray<readonly [number, number]> = [
-  [5.96, 46.2],
-  [6.1, 46.45],
-  [6.55, 46.85],
-  [6.8, 47.3],
-  [7.05, 47.55],
-  [7.62, 47.59],
-  [8.25, 47.6],
-  [8.65, 47.75],
-  [9.35, 47.65],
-  [9.68, 47.5],
-  [9.6, 47.1],
-  [10.15, 46.95],
-  [10.48, 46.62],
-  [10.15, 46.35],
-  [9.55, 46.15],
-  [9.05, 45.85],
-  [8.55, 46.1],
-  [8.0, 46.0],
-  [7.4, 45.92],
-  [6.85, 45.95],
-  [6.15, 46.05],
-  [5.96, 46.2],
-];
-
-function insideSwissOutline(lon: number, lat: number): boolean {
-  let inside = false;
-  for (let index = 0, previous = SWISS_OUTLINE.length - 1; index < SWISS_OUTLINE.length; previous = index++) {
-    const [currentLon, currentLat] = SWISS_OUTLINE[index];
-    const [previousLon, previousLat] = SWISS_OUTLINE[previous];
-    const crossesLatitude = currentLat > lat !== previousLat > lat;
-    const intersection = ((previousLon - currentLon) * (lat - currentLat)) / (previousLat - currentLat) + currentLon;
-    if (crossesLatitude && lon < intersection) inside = !inside;
-  }
-  return inside;
-}
-
-const SWISS_SPARS: Array<{
-  name: string;
-  shopName: string;
-  country: string;
-  category: string;
-  lat: number;
-  lon: number;
-}> = [];
-for (let row = 0; row <= 14; row += 1) {
-  for (let column = 0; column <= 14; column += 1) {
-    const lat = Number((45.85 + row * 0.14).toFixed(5));
-    const lon = Number((5.95 + column * 0.32).toFixed(5));
-    if (!insideSwissOutline(lon, lat)) continue;
-    SWISS_SPARS.push({ name: 'SPAR', shopName: 'SPAR', country: 'CH', category: 'Grocery', lat, lon });
-  }
+const OPENED_SHOP = PUBLISHED_SPARS.find((place) => place.name.includes('6900 Lugano'));
+if (OPENED_SHOP === undefined) {
+  throw new Error('published SPAR fixture has no Lugano shop');
 }
 
 const PLACES = [
-  ...SWISS_SPARS,
-  { name: 'SPAR Vaduz', shopName: 'SPAR', country: 'LI', category: 'Grocery', lat: 47.141, lon: 9.521 },
-  { name: 'Volg Samedan', shopName: 'Volg', country: 'CH', category: 'Grocery', lat: 46.534, lon: 9.872 },
+  ...PUBLISHED_SPARS,
+  { name: 'SPAR Vaduz', shopName: 'SPAR', country: 'LI', category: 'shopping', lat: 47.141, lon: 9.521 },
+  { name: 'Volg Samedan', shopName: 'Volg', country: 'CH', category: 'shopping', lat: 46.534, lon: 9.872 },
 ];
 
 async function fulfillJson(route: Route, status: number, body: unknown): Promise<void> {
@@ -241,8 +191,8 @@ test.describe('SPAR locations', () => {
     await openLocations(page);
     await waitForMap(page);
     await expectSwissSparOnly(seen);
-    expect(SWISS_SPARS.length).toBeGreaterThan(100);
-    await expect(page.locator('.spar-place-marker')).toHaveCount(SWISS_SPARS.length);
+    expect(PUBLISHED_SPARS.length).toBe(170);
+    await expect(page.locator('.spar-place-marker')).toHaveCount(PUBLISHED_SPARS.length);
     await expect(page.getByRole('list', { name: 'Locations' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'SPAR Vaduz' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Volg Samedan' })).toHaveCount(0);
@@ -259,10 +209,9 @@ test.describe('SPAR locations', () => {
     await openLocations(page);
     await waitForMap(page);
     await expectSwissSparOnly(seen);
-    // Later markers sit on top of the grid, so the last one receives the click.
-    await page.locator('.spar-place-marker').last().click();
-    await expect(page.locator('.maplibregl-popup').getByText('SPAR', { exact: true })).toBeVisible();
-    await expect(page.locator('.maplibregl-popup').getByText('Grocery', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: OPENED_SHOP.name, exact: true }).click();
+    await expect(page.locator('.maplibregl-popup').getByText(OPENED_SHOP.name, { exact: true })).toBeVisible();
+    await expect(page.locator('.maplibregl-popup').getByText(OPENED_SHOP.category, { exact: true })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Country' })).toHaveCount(0);
     await expect(page.getByRole('combobox', { name: 'Shop' })).toHaveCount(0);
     await shoot(page, 'spar-locations-popup.png');

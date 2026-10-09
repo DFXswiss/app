@@ -441,16 +441,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the real `url()` treats those arguments identically; no assertion pins the outer host.
 - **The SPAR location pictures answer the OpenCryptoPay place API themselves.**
   `e2e/spar-place-map.spec.ts` fulfils `https://api.opencryptopay.io/map/places?shopName=SPAR&country=CH`
-  with more than 100 synthetic SPAR pins across Switzerland, plus one Liechtenstein SPAR pin and one
-  Volg pin that the page must not plot. The map does not list shop names: a fixed list cannot be the
-  published set, which is larger than 100. Any other place URL, including `/map/filters`, is answered
+  with the published SPAR shop locations, plus one Liechtenstein SPAR pin and one
+  Volg pin that the page must not plot. Names and coordinates are that published list.
+  Country is CH on the fixture because the page draws a pin only when country is CH.
+  The map does not list shop names. Any other place URL, including `/map/filters`, is answered
   with HTTP 500. It also fulfils `**/v1/**`, `**/v2/**` and `**/paymentLink/**` so `/pl?merchant=SPAR`
   renders without a live DFX API. Map tiles are the live OpenFreeMap Liberty style, not a fixture.
   A green run proves those fixtures render on the whole payment page, with no country or shop
   control and no shop-name list: a map of the Swiss pins, an open shop, an empty list, the load
-  error, and the loading state before the places arrive. It does not prove how many SPAR shops
-  exist, that the place API returns those pins, or that the DFX payment-link API returns the
-  stubbed merchant.
+  error, and the loading state before the places arrive. It does not prove that the
+  place API still returns this set, that those rows are stored with country CH, or that the
+  DFX payment-link API returns the stubbed merchant.
 - **The payment-link stack spec answers the place API itself for the SPAR merchant.**
   `e2e-stack/specs/payment-links.spec.ts` fulfils that same SPAR-Switzerland place URL with one
   synthetic SPAR shop, and answers every other place URL with HTTP 500, while the rest of that
