@@ -455,10 +455,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The payment-link stack spec answers the place API itself for the SPAR merchant.**
   `e2e-stack/specs/payment-links.spec.ts` fulfils that same SPAR-Switzerland place URL with one
   synthetic SPAR shop, and answers every other place URL with HTTP 500, while the rest of that
-  spec talks to the local API. A green run proves the locations block appears for `merchant=SPAR`,
+  spec talks to the local API. It also fulfils `https://tiles.openfreemap.org/**` with an empty
+  map style, because this harness never reaches that host and an open style request keeps the
+  network from going idle. A green run proves the locations block appears for `merchant=SPAR`,
   the request is `shopName=SPAR` and `country=CH`, and the page shows neither a country control,
   a shop control, the load error, nor the empty sentence. It does not prove that the place API
-  returns that shop.
+  returns that shop, that OpenFreeMap serves tiles, or that a real map draws the pin.
 - **The SPAR place-map unit test replaces fetch and MapLibre.**
   `src/__tests__/spar-place-map.test.tsx` stubs `global.fetch` for the place API and replaces
   `maplibre-gl` with a fake map that records markers. A green run proves the component asks only
