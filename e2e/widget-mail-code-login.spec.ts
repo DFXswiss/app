@@ -54,7 +54,7 @@ const MAX_ATTEMPTS = 5;
 // one in a million per request.
 const WRONG_CODE = '000000';
 
-let hostServer: http.Server;
+let hostServer: http.Server | undefined;
 let hostUrl: string;
 
 function widgetBundle(dir: string, pattern: RegExp): string {
@@ -88,7 +88,7 @@ test.beforeAll(async () => {
   </body>
 </html>`;
 
-  hostServer = http.createServer((req, res) => {
+  const server = http.createServer((req, res) => {
     const pathname = new URL(req.url ?? '/', 'http://host').pathname;
     const file = pathname === '/main-widget.css' ? path.join(WIDGET_DIR, 'static/css', css) : widgetFile(pathname);
     if (file) {
@@ -101,12 +101,16 @@ test.beforeAll(async () => {
       res.writeHead(404).end();
     }
   });
-  await new Promise<void>((resolve) => hostServer.listen(0, '127.0.0.1', resolve));
-  hostUrl = `http://127.0.0.1:${(hostServer.address() as AddressInfo).port}/`;
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  hostServer = server;
+  hostUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
 });
 
 test.afterAll(async () => {
-  await new Promise((resolve) => hostServer.close(resolve));
+  // beforeAll throws before the server exists when the widget build is missing; keep that error.
+  const server = hostServer;
+  if (!server) return;
+  await new Promise((resolve) => server.close(resolve));
 });
 
 async function serveWidgetChunks(page: Page): Promise<void> {
