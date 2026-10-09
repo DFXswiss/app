@@ -1,15 +1,13 @@
 const mockClearParams = jest.fn();
 const mockAppParams: { borderless?: boolean } = {};
 let mockAttachNavRef = true;
+let mockWebComponent = false;
 
 jest.mock('../App', () => ({
   __esModule: true,
   Routes: [
     {
-      children: [
-        { path: 'kyc', isKycScreen: true },
-        { path: 'account' },
-      ],
+      children: [{ path: 'kyc', isKycScreen: true }, { path: 'account' }],
     },
   ],
 }));
@@ -20,6 +18,10 @@ jest.mock('src/hooks/navigation.hook', () => ({
 
 jest.mock('src/hooks/app-params.hook', () => ({
   useAppParams: () => mockAppParams,
+}));
+
+jest.mock('src/util/web-component-mode', () => ({
+  isWebComponent: () => mockWebComponent,
 }));
 
 jest.mock('src/util/utils', () => ({
@@ -78,10 +80,7 @@ import { LayoutConfig, LayoutConfigProvider, useLayoutConfigContext } from 'src/
 import { LayoutContextProvider } from 'src/contexts/layout.context';
 import { Routes } from '../App';
 
-const defaultRouteChildren = [
-  { path: 'kyc', isKycScreen: true },
-  { path: 'account' },
-];
+const defaultRouteChildren = [{ path: 'kyc', isKycScreen: true }, { path: 'account' }];
 
 function ApplyLayoutConfig({ config }: { config: LayoutConfig }): null {
   const { setConfig } = useLayoutConfigContext();
@@ -140,6 +139,7 @@ describe('Layout', () => {
     mockClearParams.mockReset();
     mockAppParams.borderless = undefined;
     mockAttachNavRef = true;
+    mockWebComponent = false;
     mockIsNode.mockReset();
     mockIsNode.mockImplementation((e: EventTarget | null) => e != null && 'nodeType' in e);
     Routes[0].children = [...defaultRouteChildren];
@@ -160,7 +160,9 @@ describe('Layout', () => {
     expect(column.firstElementChild).toBe(banner);
     expect(column.children[1]).toBe(page);
     expect(banner.parentElement).toBe(column);
-    expect(nav.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(nav.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(column.className.split(/\s+/)).toEqual(
       expect.arrayContaining(['relative', 'w-full', 'max-w-screen-md', 'text-center', 'p-5', 'gap-2']),
     );
@@ -215,6 +217,29 @@ describe('Layout', () => {
 
     fireEvent.click(screen.getByTestId('page-content'));
     expect(screen.getByTestId('navigation')).toHaveAttribute('data-open', 'false');
+  });
+
+  it('renders no widget backdrop in the standalone app', () => {
+    renderLayout();
+    fireEvent.click(screen.getByTestId('open-nav'));
+
+    expect(appRoot().className.split(/\s+/)).not.toContain('relative');
+    expect(appRoot().querySelector('.absolute.inset-0')).toBeNull();
+  });
+
+  it('covers the widget with a backdrop that closes the navigation in web component mode', () => {
+    mockWebComponent = true;
+    renderLayout();
+    expect(appRoot().className.split(/\s+/)).toContain('relative');
+    expect(appRoot().querySelector('.absolute.inset-0')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('open-nav'));
+    const backdrop = appRoot().querySelector(':scope > .absolute.inset-0.z-40');
+    expect(backdrop).not.toBeNull();
+
+    fireEvent.click(backdrop as Element);
+    expect(screen.getByTestId('navigation')).toHaveAttribute('data-open', 'false');
+    expect(appRoot().querySelector('.absolute.inset-0')).toBeNull();
   });
 
   it('ignores outside clicks while the navigation is closed', () => {
