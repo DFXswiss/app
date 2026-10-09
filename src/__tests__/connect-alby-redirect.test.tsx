@@ -159,12 +159,7 @@ describe('ConnectAlby login redirect', () => {
   }
 
   function getRedirectParamFromCapturedLocation(): string | null {
-    expect(capturedLocation).toBeDefined();
-    const albyUrl = new URL(capturedLocation as string);
-    const redirectUri = albyUrl.searchParams.get('redirectUri');
-    expect(redirectUri).toBeTruthy();
-    const returnUrl = new URL(redirectUri as string);
-    return returnUrl.searchParams.get('redirect');
+    return getReturnUrlFromCapturedLocation().searchParams.get('redirect');
   }
 
   function getReturnUrlFromCapturedLocation(): URL {
@@ -190,10 +185,11 @@ describe('ConnectAlby login redirect', () => {
     expect(redirect?.startsWith('/buy')).toBe(true);
   });
 
-  it('copies personal-iban from the live search when present, but no other query keys (A4)', async () => {
+  it('keeps allowed live query keys in their targets and drops arbitrary keys (A4)', async () => {
     mockRedirectPath.mockReturnValue('/buy');
-    locationStub.search = '?user=alice@example.com&personal-iban=frick&arbitrary=value';
-    locationStub.href = 'http://localhost/connect?user=alice@example.com&personal-iban=frick&arbitrary=value';
+    locationStub.search = '?user=alice@example.com&personal-iban=frick&arbitrary=value&lang=de';
+    locationStub.href =
+      'http://localhost/connect?user=alice@example.com&personal-iban=frick&arbitrary=value&lang=de';
 
     await act(async () => {
       renderConnectAlby();
@@ -201,10 +197,12 @@ describe('ConnectAlby login redirect', () => {
 
     await waitFor(() => expect(capturedLocation).toBeDefined());
 
-    const redirect = getRedirectParamFromCapturedLocation();
-    expect(redirect).toContain('personal-iban=frick');
-    expect(redirect).not.toContain('user=');
-    expect(redirect).not.toContain('arbitrary=');
+    const returnUrl = getReturnUrlFromCapturedLocation();
+    expect([...returnUrl.searchParams.entries()]).toEqual([
+      ['lang', 'de'],
+      ['type', WalletType.ALBY],
+      ['redirect', '/buy?personal-iban=frick'],
+    ]);
   });
 
   it('does not append a query string when redirectPath has no extra params', async () => {
