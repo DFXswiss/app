@@ -113,7 +113,7 @@
   },
   "realunit-dashboard": {
     "title": "RealUnit Dashboard",
-    "description": "RealUnit-Arbeitsbereich mit Abschnittsnavigation. Übersicht: gefüllte Kennzahlen und Tabellen, Prämien-Buchungen mit Empfehler und Eingeladenem, leere Listen, sowie More bei mehr als drei Zeilen. Kasse: Kauflimit leer, gesetzt, ungültig und Ladefehler; Prize-Wallet mit QR, fehlend und Fehler; Prize-payouts gefüllt (mit Empfehler und Eingeladenem) und leer; Bestandswarnung als Liste und Formular. Kennzahlen: Preisverlauf, Kaufvolumen in CHF und Shares, Holder, Registrierung, Zeitrahmen 1M und die vier Fehlerzustände. Dazu Holder-Liste, leere Liste und nächste Seite, erhaltene Transaktionen, Detail, leer, Fehler und nicht gefunden, sowie Konto in CHF, REALU und ohne Daten."
+    "description": "RealUnit-Arbeitsbereich mit Abschnittsnavigation. Übersicht: gefüllte Kennzahlen und Tabellen, Prämien-Buchungen mit Empfehler und Eingeladenem, leere Listen, sowie More bei mehr als drei Zeilen. Kasse: Kauflimit leer, gesetzt, ungültig und Ladefehler; Transfer-Deckel leer, gesetzt, ungültig und Ladefehler (maximal ETH pro Transfer und maximal CHF pro Kunde und Monat; Pay ist nicht enthalten); Prize-Wallet mit QR, fehlend und Fehler; Prize-payouts gefüllt (mit Empfehler und Eingeladenem) und leer; Bestandswarnung als Liste und Formular. Kennzahlen: Preisverlauf, Kaufvolumen in CHF und Shares, Holder, Registrierung, Zeitrahmen 1M und die vier Fehlerzustände. Dazu Holder-Liste, leere Liste und nächste Seite, erhaltene Transaktionen, Detail, leer, Fehler und nicht gefunden, sowie Konto in CHF, REALU und ohne Daten."
   },
   "responsive": {
     "title": "Responsive Layout",

@@ -197,4 +197,20 @@ describe('useRealunitApi', () => {
       data: { maxTokensPerTx: 20000 },
     });
   });
+
+  it('getTransferCostLimit GETs realunit/admin/transfer-cost-limit', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.getTransferCostLimit();
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/admin/transfer-cost-limit', method: 'GET' });
+  });
+
+  it('updateTransferCostLimit PUTs the two strings', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.updateTransferCostLimit({ maxEthPerTransfer: '0.02', maxChfPerCustomerMonth: '25.00' });
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'realunit/admin/transfer-cost-limit',
+      method: 'PUT',
+      data: { maxEthPerTransfer: '0.02', maxChfPerCustomerMonth: '25.00' },
+    });
+  });
 });

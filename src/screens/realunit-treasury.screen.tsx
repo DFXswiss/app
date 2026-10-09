@@ -5,6 +5,7 @@ import { RealunitBuyLimitPanel } from 'src/components/realunit/buy-limit-panel';
 import { CopyableAddress } from 'src/components/realunit/copyable-address';
 import { PayoutsPanel } from 'src/components/realunit/payouts-panel';
 import { RealunitPrizeWalletAlertPanel } from 'src/components/realunit/prize-wallet-alert-panel';
+import { RealunitTransferCostLimitPanel } from 'src/components/realunit/transfer-cost-limit-panel';
 import { useSettingsContext } from 'src/contexts/settings.context';
 import { RealUnitPrizeWallet } from 'src/dto/realunit-referral.dto';
 import { useRealunitGuard } from 'src/hooks/guard.hook';
@@ -42,6 +43,7 @@ export default function RealunitTreasuryScreen(): JSX.Element {
   return (
     <div className="flex flex-col gap-6">
       <RealunitBuyLimitPanel translate={translate} />
+      <RealunitTransferCostLimitPanel translate={translate} />
       <div>
         <h2 className="text-base font-semibold text-dfxBlue-800 mb-3">
           {translate('screens/referral', 'Bonus and Referral')}
