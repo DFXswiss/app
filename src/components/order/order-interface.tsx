@@ -15,9 +15,11 @@ import {
   StyledDropdown,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { PaymentMethodDescriptions, PaymentMethodLabels } from 'src/config/labels';
+import { BankAccountFailureKind } from 'src/components/payment/bank-account-create-failure';
+import { BankAccountCreateHint } from 'src/components/payment/bank-account-create-hint';
 import { useAppHandlingContext } from 'src/contexts/app-handling.context';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { useOrderUIContext } from 'src/contexts/order-ui.context';
@@ -107,6 +109,9 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
 
   const data = watch();
   const debouncedData = useDebounce(data, 500);
+  const [bankAccountError, setBankAccountError] = useState<string>();
+  const [bankAccountFailure, setBankAccountFailure] = useState<Exclude<BankAccountFailureKind, 'other'>>();
+  const [bankAccountRetryToken, setBankAccountRetryToken] = useState(0);
 
   const availablePaymentMethods: FiatPaymentMethod[] = useMemo(
     () => getAvailablePaymentMethods(data.targetAsset as Asset),
@@ -146,9 +151,12 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
     }
   }, [sourceAssets, targetAssets, availableCurrencies, orderType, setValue, getDefaultCurrency]);
 
+  const bankAccountBlocksQuote = Boolean(bankAccountFailure) && !data.bankAccount;
+
   useEffect(() => {
-    if (debouncedData) handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue);
-  }, [debouncedData, onFetchPaymentInfo, setValue, handlePaymentInfoFetch]);
+    if (bankAccountBlocksQuote || !debouncedData) return;
+    return handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue);
+  }, [debouncedData, onFetchPaymentInfo, setValue, handlePaymentInfoFetch, bankAccountBlocksQuote]);
 
   useEffect(() => {
     if (!isSell && data.sourceAsset) {
@@ -215,7 +223,7 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
               label={targetInputLabel}
               placeholder="0.00"
               isColoredBackground
-              availableItems={targetAssets ?? []}
+              availableItems={targetAssets}
               selectedItem={data.targetAsset}
               assetRules={rules.targetAsset}
               amountRules={rules.targetAmount}
@@ -243,7 +251,24 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
         {isSell && (
           <BankAccountSelector
             value={data.bankAccount}
-            onChange={(account) => setValue('bankAccount', account)}
+            onChange={(account) => {
+              setBankAccountError(undefined);
+              setBankAccountFailure(undefined);
+              setValue('bankAccount', account);
+            }}
+            onError={(message, kind) => {
+              if (kind === 'kyc-only' || kind === 'multi-account') {
+                setBankAccountError(undefined);
+                setBankAccountFailure(kind);
+                return;
+              }
+              setBankAccountFailure(undefined);
+              setBankAccountError(message);
+            }}
+            onCreateStart={() => {
+              setBankAccountError(undefined);
+            }}
+            retryToken={bankAccountRetryToken}
             placeholder={translate('screens/sell', 'Add or select your IBAN')}
             isModalOpen={bankAccountSelection}
             onModalToggle={setBankAccountSelection}
@@ -260,20 +285,45 @@ export const OrderInterface: React.FC<OrderInterfaceProps> = ({
             onClick={() => debouncedData && handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue)}
           />
         </div>
+        {bankAccountFailure && <BankAccountCreateHint kind={bankAccountFailure} />}
+        {data.bankAccount && bankAccountError && (
+          <StyledVerticalStack center className="text-center">
+            <p className="text-dfxGray-800 text-sm">{bankAccountError}</p>
+            <StyledButton
+              type="button"
+              width={StyledButtonWidth.MIN}
+              label={translate('general/actions', 'Retry')}
+              onClick={() => {
+                setBankAccountError(undefined);
+                setBankAccountRetryToken((token) => token + 1);
+              }}
+            />
+          </StyledVerticalStack>
+        )}
         <PaymentInfo
           className="pt-4"
           isLoading={false}
           orderType={orderType}
-          paymentInfo={paymentInfo?.paymentInfo}
+          paymentInfo={bankAccountBlocksQuote ? undefined : paymentInfo?.paymentInfo}
           paymentMethod={data?.paymentMethod}
           sourceAsset={data?.sourceAsset ?? pairMap?.(data?.targetAsset?.name)}
           targetAsset={data?.targetAsset ?? pairMap?.(data?.sourceAsset?.name)}
           amountError={amountError}
           kycError={kycError}
-          errorMessage={paymentInfoError}
+          errorMessage={
+            bankAccountBlocksQuote ? undefined : data.bankAccount ? paymentInfoError : bankAccountError ?? paymentInfoError
+          }
           confirmPayment={confirmPayment}
           confirmButtonLabel={confirmButtonLabel}
-          retry={() => debouncedData && handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue)}
+          retry={() => {
+            if (bankAccountBlocksQuote) return;
+            if (!data.bankAccount && bankAccountError) {
+              setBankAccountError(undefined);
+              setBankAccountRetryToken((token) => token + 1);
+              return;
+            }
+            if (debouncedData) handlePaymentInfoFetch(debouncedData, onFetchPaymentInfo, setValue);
+          }}
         />
       </StyledVerticalStack>
     </Form>
