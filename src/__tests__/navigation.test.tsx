@@ -240,6 +240,8 @@ describe('Navigation', () => {
       const menu = openMenu();
 
       expect(classes(menu)).toEqual(expect.arrayContaining(['absolute', 'top-full', 'right-2', 'overflow-y-auto']));
+      // Must stay above the layout's z-40 widget backdrop
+      expect(classes(menu)).toContain('z-50');
       expect(classes(menu)).not.toContain('fixed');
       expect(menu.style.maxHeight).toBe('528px');
       expect(document.querySelector('.fixed')).toBeNull();
