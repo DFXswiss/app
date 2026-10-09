@@ -332,6 +332,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `e2e-stack/specs/compliance.spec.ts` inserts a `kyc_step` named `Recommendation` in status
   `InternalReview`, on a synthetic account at KYC level 30 with completed personal data. A green run
   does **not** prove that the customer KYC flow creates that open step.
+- **The full-stack pending-recommendation case SQL-inserts its KYC state.**
+  `e2e-stack/specs/kyc.spec.ts` creates the `Recommendation` step with `InternalReview` directly
+  through SQL. A green run does **not** prove that the product creates or sends the recommendation
+  request, reaches this status through the real flow, or that the recommendation is actually still
+  unconfirmed.
+- **The KYC step-result visual spec answers GET /v2/kyc itself.**
+  `e2e/kyc-screen.spec.ts` fulfils `/v2/kyc` and its sub-paths with synthetic InReview and Failed
+  sessions. A green run does not prove that the API returns those payloads or that `startStep`
+  produced them.
 - **The settings verification-call visual spec answers GET /v2/user itself.**
   `e2e/settings-verification-call.spec.ts` fulfils `/v2/user` with three synthetic kyc payloads
   (`phoneCallAccepted` unset / true / false) and fulfils the Settings bootstrap GETs
