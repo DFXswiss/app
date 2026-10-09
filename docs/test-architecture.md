@@ -444,10 +444,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `https://api.opencryptopay.io/map/places` with synthetic SPAR and Volg shops at fixed coordinates,
   and it fulfils `**/v1/**`, `**/v2/**` and `**/paymentLink/**` so `/pl?merchant=SPAR` renders
   without a live DFX API. Map tiles are the live OpenFreeMap Liberty style, not a fixture. A green
-  run proves those fixtures render: a labeled map of Switzerland, an open shop, a country filter,
-  other shops, an empty list, and the load error. It does not prove that the place API returns
-  those shops, countries or coordinates, that those shops exist, or that the DFX payment-link API
-  returns the stubbed merchant.
+  run proves those fixtures render on the whole payment page: a labeled map of Switzerland,
+  an open shop, a country filter, other shops, an empty list, the load error, and both loading
+  states. It does not prove that the place API returns those shops, countries or coordinates,
+  that those shops exist, or that the DFX payment-link API returns the stubbed merchant.
 - **The payment-link stack spec answers the place API itself for the SPAR merchant.**
   `e2e-stack/specs/payment-links.spec.ts` fulfils the same two place routes with one synthetic SPAR
   shop while the rest of that spec talks to the local API. A green run proves the locations block

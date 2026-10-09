@@ -7,7 +7,8 @@ test.use({
 });
 
 /**
- * Visual baselines for the SPAR location block on /pl?merchant=SPAR.
+ * Visual baselines for the SPAR payment page on /pl?merchant=SPAR.
+ * Each picture is the whole page, not only the locations block.
  * These specs are a local review aid and do not run in CI.
  * The map uses the live Liberty style so the pictures show Switzerland,
  * not an empty canvas.
@@ -90,9 +91,12 @@ async function stubPlaces(
 }
 
 async function openLocations(page: Page): Promise<void> {
-  await page.setViewportSize({ width: 1280, height: 900 });
+  // The payment page scrolls inside the layout, so a short viewport would clip the
+  // locations block. Start tall enough that the map is on screen while it draws.
+  await page.setViewportSize({ width: 1280, height: 1600 });
   await page.goto('/pl?merchant=SPAR&lang=en');
   await expect(page.getByTestId('spar-locations')).toBeVisible();
+  await expect(page.locator('img[alt="logo"]')).toBeVisible();
 }
 
 async function mapEpoch(page: Page): Promise<string | null> {
@@ -121,7 +125,20 @@ async function waitForNextMap(page: Page, previousEpoch: string | null): Promise
 async function shoot(page: Page, name: string): Promise<void> {
   const section = page.getByTestId('spar-locations');
   await section.scrollIntoViewIfNeeded();
-  await expect(section).toHaveScreenshot(name, { animations: 'disabled' });
+  const height = await page.evaluate(async () => {
+    const root = document.getElementById('app-root');
+    const scroller = root?.querySelector('.overflow-auto');
+    if (scroller instanceof HTMLElement) scroller.scrollTop = 0;
+    await document.fonts.ready;
+    const column = root?.querySelector('.max-w-screen-md');
+    const last = column?.lastElementChild;
+    if (!(column instanceof HTMLElement) || !(last instanceof HTMLElement)) return 900;
+    const pad = Number.parseFloat(getComputedStyle(column).paddingBottom) || 0;
+    return Math.ceil(last.getBoundingClientRect().bottom + pad);
+  });
+  await page.setViewportSize({ width: 1280, height });
+  await expect(section).toBeInViewport();
+  await expect(page).toHaveScreenshot(name, { animations: 'disabled', fullPage: true });
 }
 
 test.describe('SPAR locations', () => {
