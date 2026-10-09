@@ -50,6 +50,7 @@
     "jwt-decode": "^4.0.0",
     "ledger-bitcoin": "^0.2.3",
     "libphonenumber-js": "^1.12.33",
+    "maplibre-gl": "^6.13.0",
     "process": "^0.11.10",
     "react": "18.2.0",
     "react-apexcharts": "^1.7.0",
@@ -184,7 +185,8 @@
   },
   "jest": {
     "moduleNameMapper": {
-      "^src/(.*)$": "<rootDir>/src/$1"
+      "^src/(.*)$": "<rootDir>/src/$1",
+      "^maplibre-gl$": "<rootDir>/src/__mocks__/maplibre-gl.ts"
     },
     "collectCoverageFrom": [
       "src/**/*.{ts,tsx,js,jsx}",

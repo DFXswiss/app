@@ -235,6 +235,10 @@
     "title": "Session-Wechsel (Debug)",
     "description": "Debug-Screenshots zum Session-/Account-Wechsel."
   },
+  "spar-place-map": {
+    "title": "SPAR-Standorte",
+    "description": "Zahlungslink mit Händler SPAR, jeweils die ganze Seite und fest nur SPAR-Läden in der Schweiz, ohne Länder- oder Shop-Auswahl: Standortkarte, geöffneter Standort, leere Liste, der Fehler wenn die Standortliste nicht geladen werden kann, und das Ladebild bevor die Orte da sind."
+  },
   "docs": {
     "docs/EIP7702-Implementierungsplan.md": {
       "title": "EIP-7702 Implementierungsplan"
