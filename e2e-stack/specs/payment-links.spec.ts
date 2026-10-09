@@ -416,11 +416,27 @@ test.describe('Payment links / routes / invoice', () => {
       });
     });
 
+    // Outbound HTTP in this harness never reaches the map style host, so that
+    // request stays open and networkidle waits out the test timeout. The
+    // location list does not depend on tiles.
+    await page.route('https://tiles.openfreemap.org/**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ version: 8, sources: {}, layers: [] }),
+      }),
+    );
+
     const places = page.waitForResponse(
       (response) => response.url().includes('/map/places?shopName=SPAR&country=CH') && response.ok(),
     );
     await page.goto('/pl?merchant=SPAR&lang=en');
-    await waitForPublicPath(page, '/pl');
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), {
+        message: 'expected pathname /pl',
+        timeout: 20000,
+      })
+      .toBe('/pl');
     await places;
 
     await expect(page.getByText('LOCATIONS', { exact: true })).toBeVisible();
