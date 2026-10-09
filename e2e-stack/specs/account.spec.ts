@@ -13,6 +13,8 @@
 
 import type { Page } from '@playwright/test';
 import {
+  apiDelete,
+  apiGet,
   completeMailLogin,
   expect,
   gotoWithSession,
@@ -21,6 +23,7 @@ import {
   queryOne,
   required,
   requestMailLogin,
+  signatureLogin,
   TEST_IBAN,
   test,
   testEmail,
@@ -311,6 +314,53 @@ test.describe('Account area e2e', () => {
     await expect
       .poll(() => normPath(new URL(page.url()).pathname), { message: 'hint link should open /connect', timeout: 15000 })
       .toBe('/connect');
+  });
+
+  // The isDeleted field and POST /v2/user/addresses/{address}/reactivate ship separately.
+  // Skip until GET /v2/user reports the deleted session address.
+  test('/settings with a deleted session address shows the notice and reactivates the address', async ({ page }) => {
+    test.setTimeout(90000);
+
+    const user = await createUser({ tag: 'acct-reactivate' });
+    await apiDelete(`/user/addresses/${encodeURIComponent(user.address)}`, { jwt: user.jwt, version: 'v2' });
+
+    // Signing in again with the deleted address is accepted; whether the session can see the deletion
+    // depends on the API.
+    const deletedSessionJwt = await signatureLogin(user.wallet);
+    let status = 0;
+    const me = await apiGet<{ activeAddress?: { isDeleted?: boolean } }>('/user', {
+      jwt: deletedSessionJwt,
+      version: 'v2',
+      expectOk: false,
+      onStatus: (s) => (status = s),
+    });
+    test.skip(
+      status !== 200 || me.activeAddress?.isDeleted !== true,
+      'the API does not report the deleted session address yet',
+    );
+
+    await gotoWithSession(page, '/settings', deletedSessionJwt);
+    await expect(page.getByText('This address is deactivated in DFX.', { exact: true })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByRole('button', { name: 'Danger Zone' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Reactivate address' }).click();
+
+    await expect(page.getByRole('button', { name: 'Danger Zone' })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('heading', { name: 'Your Bank Accounts' })).toBeVisible();
+    await expect(page.getByText('This address is deactivated in DFX.', { exact: true })).toHaveCount(0);
+    expect(normPath(new URL(page.url()).pathname)).toBe('/settings');
+
+    const reactivatedJwt = await page.evaluate(() => window.localStorage.getItem('dfx.authenticationToken'));
+    expect(reactivatedJwt).toBeTruthy();
+    expect(reactivatedJwt).not.toBe(deletedSessionJwt);
+    const reactivated = await apiGet<{ activeAddress?: { address?: string; isDeleted?: boolean } }>('/user', {
+      jwt: required(reactivatedJwt, 'reactivated session token'),
+      version: 'v2',
+    });
+    expect(reactivated.activeAddress?.address).toBe(user.address);
+    expect(reactivated.activeAddress?.isDeleted).toBe(false);
   });
 
   // ---------------------------------------------------------------------------

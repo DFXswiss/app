@@ -34,6 +34,7 @@
     "Browse": "Sfogliare",
     "Rename address": "Rinominare l'indirizzo",
     "Delete address": "Elimina l'indirizzo",
+    "Reactivate address": "Riattiva l'indirizzo",
     "Add new address": "Aggiungere indirizzo",
     "Delete account": "Elimina l'account",
     "Add bank account": "Aggiungi conto bancario",
@@ -630,7 +631,8 @@
     "Too many incorrect attempts. Please request a new code.": "Troppi tentativi errati. Richiedi un nuovo codice.",
     "We have sent you a new code.": "Ti abbiamo inviato un nuovo codice.",
     "Too many attempts. Please wait a moment and try again.": "Troppi tentativi. Attendi un momento e riprova.",
-    "Something went wrong. Please try again.": "Si è verificato un errore. Riprova."
+    "Something went wrong. Please try again.": "Si è verificato un errore. Riprova.",
+    "This address is deactivated in DFX.": "Questo indirizzo è disattivato presso DFX."
   },
   "screens/buy": {
     "You spend": "Si spende",
@@ -1094,7 +1096,7 @@
     "Default": "Predefinito",
     "Show deleted addresses": "Mostra indirizzi eliminati",
     "Hide deleted addresses": "Nascondi indirizzi eliminati",
-    "delete": "Siete sicuri di voler eliminare l'indirizzo <1>{{address}}</1> dal vostro account DFX? Questa azione è irreversibile.",
+    "delete": "Siete sicuri di voler eliminare l'indirizzo <1>{{address}}</1> dal vostro account DFX? Potete riattivarlo accedendo nuovamente con questo indirizzo.",
     "delete_iban": "Siete sicuri di voler eliminare il conto bancario <1>{{address}}</1> dal vostro account DFX?",
     "Deleting your account ends our business relationship. Under Swiss law we are required to retain all data for 10 years and then permanently delete it.": "Cancellando l'account terminiamo il rapporto commerciale. Secondo il diritto svizzero siamo obbligati a conservare tutti i dati per 10 anni e poi a cancellarli definitivamente.",
     "Verification Call": "Chiamata di verifica",

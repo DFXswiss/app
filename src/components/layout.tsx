@@ -3,9 +3,11 @@ import { useLocation } from 'react-router-dom';
 import { useLayoutConfigContext } from 'src/contexts/layout-config.context';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { Routes } from '../App';
+import { requiresSessionAddress, useAddressReactivation } from '../hooks/address-reactivation.hook';
 import { useAppParams } from '../hooks/app-params.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import { isNode } from '../util/utils';
+import { DeactivatedAddress } from './deactivated-address';
 import { InfoBannerComponent } from './info-banner';
 import { Navigation } from './navigation';
 
@@ -18,7 +20,8 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
   const { modalRootRef, scrollRef, rootRef } = useLayoutContext();
 
   const [isNavigationOpen, setIsNavigationOpen] = useState(false);
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  const { deactivatedAddress, reactivateAddress } = useAddressReactivation();
   const isRealunitWorkspace = pathname === '/realunit' || pathname.startsWith('/realunit/');
   const { clearParams } = useNavigation();
   const { borderless } = useAppParams();
@@ -62,7 +65,13 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
             } ${!(noPadding || borderless) && 'p-5'} gap-2`}
           >
             {pathname.startsWith('/support') && <InfoBannerComponent />}
-            {children}
+            {/* These pages reject every call for a deleted session address, so replace the page until reactivation.
+                Keeping the page unmounted also ensures it mounts fresh after reactivation. */}
+            {deactivatedAddress && requiresSessionAddress(pathname, search) ? (
+              <DeactivatedAddress address={deactivatedAddress} onReactivate={reactivateAddress} />
+            ) : (
+              children
+            )}
           </div>
         </div>
       </div>
