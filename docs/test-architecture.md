@@ -488,15 +488,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   widget origin `http://frontend-widget` has no TLD and the API rejects the redirect URI built from
   it. A green run does not prove that a mail-code request carrying a redirect URI for a pending
   service is accepted; that depends on the deployed public URL.
-- **The widget mail-code visual spec serves its own host page and moves the browser clock.**
-  `e2e/widget-mail-code-login.spec.ts` serves a minimal host page, the local widget build
+- **The widget visual specs serve their own host page; the mail-code spec moves the browser clock.**
+  `e2e/widget-mail-code-login.spec.ts` and `e2e/widget-navigation-menu.spec.ts` use
+  `e2e/helpers/widget-host.ts`, which serves a minimal host page, the local widget build
   (`npm run widget:loc`) and the widget stylesheet as `main-widget.css` (the name the deploy
   workflows rewrite) from its own HTTP server on 127.0.0.1, and fulfils the widget's lazy chunks
-  from the same build via `page.route`. Every API answer is real: the code request, the 401 for
-  each wrong code and the resend. The expired variant advances the page clock by the code's
-  ten-minute validity. A green run does not prove that the published widget script, chunks and
-  stylesheet load on a third-party page, or that the API itself treats the code as expired at the
-  same moment.
+  from the same build via `page.route`. The navigation-menu host page surrounds the widget with
+  plain host blocks; it contains no real third-party content. Every API answer is real: the code
+  request, the 401 for each wrong code and the resend. The expired variant advances the page clock
+  by the code's ten-minute validity. A green run does not prove that the published widget script,
+  chunks and stylesheet load on a third-party page, how the menu behaves next to a real host
+  page's own positioned or stacked elements, or that the API itself treats the code as expired at
+  the same moment.
 
 ## Known gaps
 

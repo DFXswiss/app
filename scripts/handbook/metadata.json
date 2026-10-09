@@ -171,6 +171,10 @@
     "title": "Login-Prozess",
     "description": "Login und Home-Seite nach Authentifizierung."
   },
+  "widget-navigation-menu": {
+    "title": "Navigationsmenü (eingebettet)",
+    "description": "Eingebettete App als Web Component auf einer Host-Seite, Startseite als Gast mit geöffnetem Navigationsmenü. Das Widget sitzt mit Abstand zum oberen und linken Rand zwischen Host-Inhalten; das Menü öffnet direkt unter der eigenen Navigationsleiste des Widgets und bleibt innerhalb des Widgets, nicht in der rechten oberen Ecke des Browserfensters."
+  },
   "widget-mail-code-login": {
     "title": "Mail-Login mit Code (eingebettet)",
     "description": "Eingebettete App als Web Component: Menü → Login → E-Mail. Zusätzlich zum Login-Link enthält die Mail einen 6-stelligen Code, den der Kunde im Widget eingibt. Varianten: Mail-Eingabe, Code-Eingabe, falscher Code, abgelaufener Code, zu viele Fehlversuche und neuer Code gesendet. Der erfolgreiche Login ist nicht abgebildet, weil die lokale API den Code weder speichert noch protokolliert."
