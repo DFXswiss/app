@@ -12,7 +12,13 @@ jest.mock('@dfx.swiss/react', () => ({
 }));
 
 import { renderHook } from '@testing-library/react';
-import { useSupportDashboard } from 'src/hooks/support-dashboard.hook';
+import {
+  clerkAssignmentPayload,
+  isAssignedToMe,
+  LEFTOVER_CLERK_VALUE,
+  usableClerks,
+  useSupportDashboard,
+} from 'src/hooks/support-dashboard.hook';
 
 function hook(): ReturnType<typeof useSupportDashboard> {
   return renderHook(() => useSupportDashboard()).result.current;
@@ -40,14 +46,29 @@ describe('useSupportDashboard', () => {
   });
 
   it('getIssueCounts, getClerks and getIssueStatistics are plain GETs', async () => {
+    mockCall
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce([{ clerkUserDataId: 3, clerk: 'Alex' }])
+      .mockResolvedValueOnce(undefined);
     await hook().getIssueCounts();
-    await hook().getClerks();
+    await expect(hook().getClerks()).resolves.toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
     await hook().getIssueStatistics(30);
     expect(mockCall.mock.calls).toEqual([
       [{ url: 'support/issue/counts', method: 'GET' }],
       [{ url: 'support/issue/clerks', method: 'GET' }],
       [{ url: 'support/issue/statistics?days=30', method: 'GET' }],
     ]);
+  });
+
+  it('getClerks drops entries without a finite clerkUserDataId or a clerk name', async () => {
+    mockCall.mockResolvedValue([
+      { clerkUserDataId: 3, clerk: 'Alex' },
+      { clerkUserDataId: Number.NaN, clerk: 'Broken' },
+      { clerk: 'No id' },
+      { clerkUserDataId: 4, clerk: '' },
+    ]);
+
+    await expect(hook().getClerks()).resolves.toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
   });
 
   it('getIssueActivity passes the since timestamp only when given', async () => {
@@ -63,24 +84,33 @@ describe('useSupportDashboard', () => {
   });
 
   it.each([
-    ['  Fixture Clerk  ', 'Fixture Clerk'],
+    ['  Fixture Clerk  ', { clerkUserDataId: 7, clerk: 'Fixture Clerk' }],
     ['', undefined],
     ['   ', undefined],
     [null, undefined],
   ])('getMyClerk trims %p to %p', async (clerk, expected) => {
-    mockCall.mockResolvedValue({ clerk });
-    await expect(hook().getMyClerk()).resolves.toBe(expected);
+    mockCall.mockResolvedValue({ clerkUserDataId: 7, clerk });
+    await expect(hook().getMyClerk()).resolves.toEqual(expected);
     expect(mockCall).toHaveBeenCalledWith({ url: 'support/issue/clerk', method: 'GET' });
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY])(
+    'getMyClerk rejects non-finite clerkUserDataId %p',
+    async (clerkUserDataId) => {
+      mockCall.mockResolvedValue({ clerkUserDataId, clerk: 'Fixture Clerk' });
+
+      await expect(hook().getMyClerk()).resolves.toBeUndefined();
+    },
+  );
+
   it('getIssueData, updateIssue, sendMessage and createIssue address the issue routes', async () => {
     await hook().getIssueData(42);
-    await hook().updateIssue(42, { state: 'Closed', clerk: 'Fixture Clerk' });
+    await hook().updateIssue(42, { state: 'Closed', clerkUserDataId: 9 });
     await hook().sendMessage(42, { author: 'Fixture Clerk', message: 'Hallo' });
     await hook().createIssue(7, { type: 'GenericIssue', reason: 'Other', name: 'Frage', author: 'Fixture Clerk' });
     expect(mockCall.mock.calls).toEqual([
       [{ url: 'support/issue/42/data', method: 'GET' }],
-      [{ url: 'support/issue/42', method: 'PUT', data: { state: 'Closed', clerk: 'Fixture Clerk' } }],
+      [{ url: 'support/issue/42', method: 'PUT', data: { state: 'Closed', clerkUserDataId: 9 } }],
       [{ url: 'support/issue/42/message', method: 'POST', data: { author: 'Fixture Clerk', message: 'Hallo' } }],
       [
         {
@@ -90,6 +120,16 @@ describe('useSupportDashboard', () => {
         },
       ],
     ]);
+  });
+
+  it('updateIssue PUTs null to unassign', async () => {
+    await hook().updateIssue(42, { clerkUserDataId: null });
+
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'support/issue/42',
+      method: 'PUT',
+      data: { clerkUserDataId: null },
+    });
   });
 
   it('searchUsers encodes the key and answers an empty list when the API has none', async () => {
@@ -137,5 +177,68 @@ describe('useSupportDashboard', () => {
       method: 'PUT',
       data: { title: 'Gesellschafterliste' },
     });
+  });
+});
+
+describe('clerkAssignmentPayload', () => {
+  it('omits the field when the selected clerk is unchanged', () => {
+    expect(clerkAssignmentPayload('101', 101)).toEqual({});
+  });
+
+  it('sends the id when assigning a different clerk', () => {
+    expect(clerkAssignmentPayload('102', 101)).toEqual({ clerkUserDataId: 102 });
+  });
+
+  it('sends null when clearing an existing assignment', () => {
+    expect(clerkAssignmentPayload('', 101)).toEqual({ clerkUserDataId: null });
+  });
+
+  it('omits the field when already unassigned and the select is empty', () => {
+    expect(clerkAssignmentPayload('', null)).toEqual({});
+    expect(clerkAssignmentPayload('')).toEqual({});
+  });
+
+  it('sends null when the leftover name is still set and the select is empty', () => {
+    expect(clerkAssignmentPayload('', null, { leftover: true })).toEqual({ clerkUserDataId: null });
+  });
+
+  it('omits the field while the leftover name is still selected', () => {
+    expect(clerkAssignmentPayload(LEFTOVER_CLERK_VALUE, null, { leftover: true })).toEqual({});
+  });
+
+  it('omits the field when the selected value is not a finite id', () => {
+    expect(clerkAssignmentPayload('undefined', 101)).toEqual({});
+    expect(clerkAssignmentPayload('NaN', 101)).toEqual({});
+  });
+
+  it('omits the field when the id is not on the allow list', () => {
+    expect(clerkAssignmentPayload('99', null, { allowedIds: [101, 102] })).toEqual({});
+    expect(clerkAssignmentPayload('101', null, { allowedIds: [101, 102] })).toEqual({ clerkUserDataId: 101 });
+  });
+});
+
+describe('isAssignedToMe', () => {
+  it('matches the JWT account even when the leftover name differs', () => {
+    expect(isAssignedToMe({ clerkUserDataId: 7, clerk: 'Josh' }, 7, 'JOSHUA BEN KRUEGER')).toBe(true);
+  });
+
+  it('matches a leftover name when the id is still missing', () => {
+    expect(isAssignedToMe({ clerk: 'Ada' }, 7, 'Ada')).toBe(true);
+  });
+
+  it('does not match a leftover name against a different session', () => {
+    expect(isAssignedToMe({ clerkUserDataId: 9, clerk: 'Ada' }, 7, 'Ada')).toBe(false);
+  });
+});
+
+describe('usableClerks', () => {
+  it('keeps only entries with a finite clerkUserDataId and a clerk', () => {
+    expect(
+      usableClerks([
+        { clerkUserDataId: 1, clerk: 'Ada' },
+        { clerkUserDataId: Number.NaN, clerk: 'Bad' },
+        { clerkUserDataId: 2, clerk: '' },
+      ]),
+    ).toEqual([{ clerkUserDataId: 1, clerk: 'Ada' }]);
   });
 });

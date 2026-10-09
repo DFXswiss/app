@@ -90,9 +90,10 @@ export function needsReply(issue: SupportIssueListItem): boolean {
   return !issue.lastMessageAuthor || issue.lastMessageAuthor === CustomerAuthor;
 }
 
-// A ticket nobody has picked up yet: no clerk, or only the bot (the backend stamps the bot as
-// clerk after an auto-response and clears it again on the next customer message).
+// A ticket nobody has picked up yet: no clerk id and no clerk name, or only the bot name (the backend
+// stamps the bot as clerk after an auto-response and clears it again on the next customer message).
 export function isUnassigned(issue: SupportIssueListItem): boolean {
+  if (issue.clerkUserDataId != null) return false;
   return !issue.clerk || issue.clerk === AutoResponderAuthor;
 }
 

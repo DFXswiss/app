@@ -60,11 +60,11 @@ describe('useRealunitSupport', () => {
     await result.current.getIssueData(42);
     expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/42/data', method: 'GET' });
 
-    await result.current.updateIssue(42, { state: 'Completed', clerk: 'Alice' });
+    await result.current.updateIssue(42, { state: 'Completed', clerkUserDataId: 9 });
     expect(mockCall).toHaveBeenCalledWith({
       url: 'realunit/support/42',
       method: 'PUT',
-      data: { state: 'Completed', clerk: 'Alice' },
+      data: { state: 'Completed', clerkUserDataId: 9 },
     });
 
     await result.current.createMessage(42, { author: 'Alice', message: 'hi' });
@@ -97,14 +97,35 @@ describe('useRealunitSupport', () => {
     expect(messages).toEqual([{ id: 1, author: 'Alice', created: 'now' }]);
   });
 
+  it('getClerks returns { clerkUserDataId, clerk }[] from GET realunit/support/clerks', async () => {
+    mockCall.mockResolvedValue([{ clerkUserDataId: 3, clerk: 'Alex' }]);
+    const { result } = renderHook(() => useRealunitSupport());
+
+    const clerks = await result.current.getClerks();
+
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/clerks', method: 'GET' });
+    expect(clerks).toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
+  });
+
+  it('getClerks drops entries without a finite clerkUserDataId', async () => {
+    mockCall.mockResolvedValue([
+      { clerkUserDataId: 3, clerk: 'Alex' },
+      { clerkUserDataId: Number.NaN, clerk: 'Broken' },
+      { clerk: 'NoId' },
+    ]);
+    const { result } = renderHook(() => useRealunitSupport());
+
+    await expect(result.current.getClerks()).resolves.toEqual([{ clerkUserDataId: 3, clerk: 'Alex' }]);
+  });
+
   it('getMyClerk GETs realunit/support/clerk and trims the clerk name', async () => {
-    mockCall.mockResolvedValue({ clerk: '  Ada  ' });
+    mockCall.mockResolvedValue({ clerkUserDataId: 7, clerk: '  Ada  ' });
     const { result } = renderHook(() => useRealunitSupport());
 
     const clerk = await result.current.getMyClerk();
 
     expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/support/clerk', method: 'GET' });
-    expect(clerk).toBe('Ada');
+    expect(clerk).toEqual({ clerkUserDataId: 7, clerk: 'Ada' });
   });
 
   it('getMyClerk returns undefined when clerk is null or blank', async () => {
@@ -116,6 +137,16 @@ describe('useRealunitSupport', () => {
     mockCall.mockResolvedValue({ clerk: '   ' });
     await expect(result.current.getMyClerk()).resolves.toBeUndefined();
   });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY])(
+    'getMyClerk returns undefined for non-finite clerkUserDataId %p',
+    async (clerkUserDataId) => {
+      mockCall.mockResolvedValue({ clerkUserDataId, clerk: 'Ada' });
+      const { result } = renderHook(() => useRealunitSupport());
+
+      await expect(result.current.getMyClerk()).resolves.toBeUndefined();
+    },
+  );
 });
 
 describe('useRealunitCompliance', () => {
