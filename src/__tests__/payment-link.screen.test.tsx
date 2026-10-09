@@ -1,4 +1,4 @@
-import { Component, ReactNode } from 'react';
+import { ReactNode } from 'react';
 
 const mockCall = jest.fn();
 const mockAssetsGet = jest.fn();
@@ -500,37 +500,6 @@ function renderScreen() {
 
 function clickCopyInRow(label: string): void {
   fireEvent.click(within(screen.getByTestId(`row-${label}`)).getByTestId('copy'));
-}
-
-interface TransferMethodsErrorBoundaryProps {
-  children?: ReactNode;
-  onError: (error: Error) => void;
-}
-
-interface TransferMethodsErrorBoundaryState {
-  error: Error | undefined;
-}
-
-class TransferMethodsErrorBoundary extends Component<
-  TransferMethodsErrorBoundaryProps,
-  TransferMethodsErrorBoundaryState
-> {
-  state: TransferMethodsErrorBoundaryState = { error: undefined };
-
-  static getDerivedStateFromError(error: Error): TransferMethodsErrorBoundaryState {
-    return { error };
-  }
-
-  componentDidCatch(error: Error): void {
-    this.props.onError(error);
-  }
-
-  render(): ReactNode {
-    if (this.state.error) {
-      return <div data-testid="transfer-methods-error">{this.state.error.message}</div>;
-    }
-    return this.props.children;
-  }
 }
 
 const originalOpen = window.open;
@@ -1329,7 +1298,7 @@ describe('PaymentLinkScreen', () => {
       expect(screen.queryByTestId('expand-Payment Methods')).not.toBeInTheDocument();
     });
 
-    it('reaches payment methods in the details table when the key is missing in merchant mode', () => {
+    it('shows an empty payment-methods row when the key is missing in merchant mode', () => {
       const request = terminalPayRequest({
         mode: PaymentLinkMode.SINGLE,
         recipient: { name: 'Bob' },
@@ -1339,26 +1308,14 @@ describe('PaymentLinkScreen', () => {
       mockPaymentLinkContext.isMerchantMode = true;
       mockPaymentLinkContext.paymentStatus = PaymentLinkPaymentStatus.PENDING;
 
-      const errors: Error[] = [];
-      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      renderScreen();
 
-      try {
-        render(
-          <TransferMethodsErrorBoundary onError={(error) => errors.push(error)}>
-            <PaymentLinkScreen />
-          </TransferMethodsErrorBoundary>,
-        );
-
-        expect(screen.getByTestId('transfer-methods-error')).toBeInTheDocument();
-        expect(errors).toHaveLength(1);
-        expect(errors[0]).toBeInstanceOf(TypeError);
-        expect(errors[0].message).toMatch(/filter/);
-      } finally {
-        consoleError.mockRestore();
-      }
+      expect(screen.getByTestId('expand-Payment Methods')).toBeInTheDocument();
+      expect(screen.queryByText('USDC')).not.toBeInTheDocument();
+      expect(screen.queryByText('Ethereum')).not.toBeInTheDocument();
     });
 
-    it('reaches payment methods in the wallet branch when the key is missing in merchant mode', async () => {
+    it('shows an empty payment-methods row in the wallet branch when the key is missing in merchant mode', async () => {
       const request = terminalPayRequest({
         mode: PaymentLinkMode.SINGLE,
         recipient: undefined,
@@ -1370,25 +1327,12 @@ describe('PaymentLinkScreen', () => {
       mockWalletsHook.recommendedWallets = [wallet({ id: 7 })];
       mockSearchParams = new URLSearchParams('wallet-id=7');
 
-      const errors: Error[] = [];
-      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      renderScreen();
 
-      try {
-        render(
-          <TransferMethodsErrorBoundary onError={(error) => errors.push(error)}>
-            <PaymentLinkScreen />
-          </TransferMethodsErrorBoundary>,
-        );
-
-        await waitFor(() => {
-          expect(screen.getByTestId('transfer-methods-error')).toBeInTheDocument();
-        });
-        expect(errors).toHaveLength(1);
-        expect(errors[0]).toBeInstanceOf(TypeError);
-        expect(errors[0].message).toMatch(/map/);
-      } finally {
-        consoleError.mockRestore();
-      }
+      expect(await screen.findByText('Frankenwallet')).toBeInTheDocument();
+      expect(screen.getByText('Payment Methods')).toBeInTheDocument();
+      expect(screen.queryByText('USDC')).not.toBeInTheDocument();
+      expect(screen.queryByText('Ethereum')).not.toBeInTheDocument();
     });
   });
 

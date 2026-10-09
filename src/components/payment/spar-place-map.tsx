@@ -15,6 +15,7 @@ export function publishMapLibreWorker(
 
 publishMapLibreWorker(setWorkerUrl, process.env.PUBLIC_URL);
 
+// OpenCryptoPay's place list. @dfx.swiss/react does not encapsulate this call.
 const PLACES_URL = 'https://api.opencryptopay.io/map/places?shopName=SPAR&country=CH';
 const SHOP_SPAR = 'SPAR';
 const COUNTRY_CH = 'CH';

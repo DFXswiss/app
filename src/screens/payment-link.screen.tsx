@@ -772,9 +772,12 @@ interface TransferMethodsContentProps {
 function TransferMethodsContent({ payRequest, walletData }: TransferMethodsContentProps) {
   const { isMerchantMode } = usePaymentLinkContext();
 
+  // Merchant mode still opens this row when the key is absent. The type says the
+  // list is present; a missing list used to throw on filter or map.
+  const transferAmounts = Array.isArray(payRequest.transferAmounts) ? payRequest.transferAmounts : [];
   const filteredTransferAmounts = walletData
-    ? Wallet.filterTransferInfoByWallet(walletData, payRequest.transferAmounts)
-    : payRequest.transferAmounts;
+    ? Wallet.filterTransferInfoByWallet(walletData, transferAmounts)
+    : transferAmounts;
   const supportedMethods = filteredTransferAmounts.filter((ta) => ta.available !== false);
 
   const assetMap = new Map<string, { amount?: string; methods: string[] }>();

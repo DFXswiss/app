@@ -466,6 +466,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   that are not SPAR in CH or are out of range, and shows the empty and error states with no
   country or shop control. It does not prove that a real map draws those pins, that OpenFreeMap
   serves tiles, or that the place API returns that JSON.
+- **The payment-link screen unit test replaces the SDK, the context, wallets and the SPAR map.**
+  `src/__tests__/payment-link.screen.test.tsx` replaces `useApi` with `mockCall`, the asset
+  catalog with `useAssetContext`, the payment-link context and the wallet hook with in-memory
+  objects, wallet deeplinks with `mockGetDeeplinkByWalletId`, and `SparPlaceMap` with an empty
+  marker. Styled controls, the QR code and `window.open` are fakes too. A green run proves those
+  objects render the quote rows, the payment methods, the wallet block and the SPAR locations
+  block. It does not prove that the DFX payment-link API returns those payloads, that a wallet
+  deeplink opens, that the asset catalog matches production, or that the SPAR map draws the
+  place list.
 
 ## Known gaps
 
