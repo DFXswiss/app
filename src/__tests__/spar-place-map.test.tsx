@@ -311,9 +311,9 @@ describe('SparPlaceMap', () => {
     );
     expect(labels).toContain('SPAR Beispiel');
     expect(labels).toContain('Location');
-    expect(screen.getByRole('list', { name: 'Locations' })).toBeInTheDocument();
-    expect(screen.getByText('SPAR Beispiel')).toBeInTheDocument();
-    expect(screen.getAllByText('Location')).toHaveLength(2);
+    expect(screen.queryByRole('list', { name: 'Locations' })).not.toBeInTheDocument();
+    expect(screen.queryByText('SPAR Beispiel')).not.toBeInTheDocument();
+    expect(screen.queryByText('Location')).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
 
     const container = (mockMap.mock.calls[0][0] as { container: HTMLDivElement }).container;
