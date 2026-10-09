@@ -12,11 +12,12 @@ const mockOnCancel = jest.fn();
 const mockOnSwitch = jest.fn();
 let mockActiveWallet: string | undefined;
 let mockSession: { address?: string } | undefined;
+let mockIsLoggedIn = true;
 
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: { ETHEREUM: 'Ethereum', POLYGON: 'Polygon', BITCOIN: 'Bitcoin' },
   useAuthContext: () => ({ session: mockSession }),
-  useSessionContext: () => ({ logout: mockLogout }),
+  useSessionContext: () => ({ isLoggedIn: mockIsLoggedIn, logout: mockLogout }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -114,6 +115,7 @@ beforeEach(() => {
   contentProps = undefined;
   mockActiveWallet = undefined;
   mockSession = undefined;
+  mockIsLoggedIn = true;
   mockGetAccount.mockResolvedValue({ address: '0xabc' });
   mockLogin.mockResolvedValue(undefined);
   mockSetSession.mockResolvedValue(undefined);
@@ -382,11 +384,69 @@ describe('ConnectBase login', () => {
   it.each([
     ['another wallet is active', WalletType.ALBY, { address: '0xabc' }],
     ['the address differs from the session', WalletType.META_MASK, { address: '0xdef' }],
-    ['the session has no address', WalletType.META_MASK, {}],
-    ['there is no session', WalletType.META_MASK, undefined],
   ])('logs out and logs in again when %s', async (_case, activeWallet, session) => {
     mockActiveWallet = activeWallet;
     mockSession = session;
+    await renderReady();
+
+    await act(() => content().connect());
+
+    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
+    expect(mockLogout).toHaveBeenCalled();
+    expect(mockLogin).toHaveBeenCalledWith(
+      WalletType.META_MASK,
+      '0xabc',
+      Blockchain.ETHEREUM,
+      expect.any(Function),
+      undefined,
+    );
+    expect(mockOnLogin).toHaveBeenCalled();
+  });
+
+  it('keeps an address-less session and logs in', async () => {
+    mockActiveWallet = WalletType.META_MASK;
+    mockSession = {};
+    await renderReady();
+
+    await act(() => content().connect());
+
+    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(mockLogin).toHaveBeenCalledWith(
+      WalletType.META_MASK,
+      '0xabc',
+      Blockchain.ETHEREUM,
+      expect.any(Function),
+      undefined,
+    );
+    expect(mockOnLogin).toHaveBeenCalled();
+  });
+
+  it('logs out before logging in when there is no session', async () => {
+    mockActiveWallet = WalletType.META_MASK;
+    mockSession = undefined;
+    mockIsLoggedIn = false;
+    await renderReady();
+
+    await act(() => content().connect());
+
+    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
+    expect(mockLogout).toHaveBeenCalled();
+    expect(mockLogin).toHaveBeenCalledWith(
+      WalletType.META_MASK,
+      '0xabc',
+      Blockchain.ETHEREUM,
+      expect.any(Function),
+      undefined,
+    );
+    expect(mockLogout.mock.invocationCallOrder[0]).toBeLessThan(mockLogin.mock.invocationCallOrder[0]);
+    expect(mockOnLogin).toHaveBeenCalled();
+  });
+
+  it('logs out an address-less session when the SDK reports logged out', async () => {
+    mockActiveWallet = WalletType.META_MASK;
+    mockSession = {};
+    mockIsLoggedIn = false;
     await renderReady();
 
     await act(() => content().connect());
@@ -424,6 +484,21 @@ describe('ConnectBase login', () => {
 
   it('sets the session when the wallet returns a session', async () => {
     mockActiveWallet = WalletType.META_MASK;
+    mockGetAccount.mockResolvedValue({ session: 'access-token' });
+    await renderReady();
+
+    await act(() => content().connect());
+
+    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
+    expect(mockLogout).not.toHaveBeenCalled();
+    expect(mockSetSession).toHaveBeenCalledWith('access-token', WalletType.META_MASK, Blockchain.ETHEREUM);
+    expect(mockLogin).not.toHaveBeenCalled();
+    expect(mockOnLogin).toHaveBeenCalled();
+  });
+
+  it('logs out before setting the session when the wallet returns a session and one already exists', async () => {
+    mockActiveWallet = WalletType.META_MASK;
+    mockSession = { address: '0xabc' };
     mockGetAccount.mockResolvedValue({ session: 'access-token' });
     await renderReady();
 

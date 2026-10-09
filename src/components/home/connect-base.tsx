@@ -41,7 +41,7 @@ export function ConnectBase({
   autoConnect,
 }: Props): JSX.Element {
   const { login, setSession, switchBlockchain, activeWallet } = useWalletContext();
-  const { logout } = useSessionContext();
+  const { isLoggedIn, logout } = useSessionContext();
   const { session } = useAuthContext();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -120,7 +120,7 @@ export function ConnectBase({
       return switchBlockchain(account.blockchain);
     }
 
-    if (!isConnect) {
+    if (!isConnect && (!isLoggedIn || session?.address)) {
       await logout();
     }
 

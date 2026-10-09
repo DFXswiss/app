@@ -54,10 +54,18 @@ Basic Auth.
 
 This layer arrived with #1288 and lives in `e2e-stack/`.
 
-Measured on the head of that pull request, `acb6814a`, in CI: 223 tests, of which 219 passed, 3 were
-skipped and 1 failed, in 9.6 minutes on a single worker. The failure was the route gate doing its job —
-the merge target had gained a route the registry did not claim yet. Re-measure after any change to the
-suite; the number of tests is not pinned anywhere.
+Counted after rebasing `f9a59c58`, 2026-10-09, from the declarations under `e2e-stack/specs/`: 271 tests. The
+reproducible count is the sum of these three searches:
+
+```
+rg -n '^\s*test\(' e2e-stack/specs --glob '*.spec.ts' | wc -l
+rg -n "^\s*test\.fixme\('" e2e-stack/specs --glob '*.spec.ts' | wc -l
+rg -U -n "^\s*test\.fail\(\n\s*'" e2e-stack/specs --glob '*.spec.ts' | rg 'test\.fail\($' | wc -l
+```
+
+They find 266 `test(...)` declarations, 2 declarative `test.fixme(...)` calls and 3 declarative
+`test.fail(...)` calls. Runtime `test.fixme(true, ...)` and `test.fail(true, ...)` annotations are not
+separate tests. Re-count after any change to the suite; the number of tests is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every
 external provider through two independent mechanisms: the API mocks its own outbound calls, and the
@@ -475,6 +483,26 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   block. It does not prove that the DFX payment-link API returns those payloads, that a wallet
   deeplink opens, that the asset catalog matches production, or that the SPAR map draws the
   place list.
+- **The wallet-context login unit spec replaces SDK, browser and application modules.**
+  `src/__tests__/wallet-context-login.test.tsx` replaces `@dfx.swiss/react` exports
+  `Blockchain`, `Utils.isJwt`, `useApiSession`, `useAuth`, `useAuthContext`,
+  `useSessionContext` and `useUserContext`, and replaces
+  `@dfx.swiss/react/dist/definitions/auth` with fake `AuthWalletType` values. It also replaces
+  `browser-lang`, `../hooks/store.hook`,
+  `../hooks/wallets/metamask.hook`, `../contexts/app-handling.context` and
+  `../contexts/balance.context`. A green run proves the provider's logout decision after a login
+  failure against the supplied session and auth values. It does not prove the real SDK, including
+  its ESM auth module, the store, wallet detection, app parameters, balance reads, browser-language
+  detection or user reload.
+- **The ConnectBase unit spec replaces SDK, wallet-context and hint modules.**
+  `src/__tests__/connect-base.test.tsx` replaces `@dfx.swiss/react` exports `Blockchain`,
+  `useAuthContext` with a supplied session and `useSessionContext` with supplied `isLoggedIn` and
+  `logout`, `@dfx.swiss/react-components` with a fake spinner, `../contexts/wallet.context`,
+  `../components/home/install-hint` and `../components/home/sign-hint`. A green run proves
+  ConnectBase's logout, blockchain-switch and login decisions against the supplied session,
+  login-state and wallet values. It does not prove that the real SDK supplies `isLoggedIn` and
+  `session` that way, that the real wallet integration connects and signs, or that the real hint
+  components render.
 
 ## Known gaps
 
