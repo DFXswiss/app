@@ -294,7 +294,7 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
       const signature = await onSignMessage(address, message);
       await createSession(address, signature, key, wallet);
     } catch (e) {
-      if (!session || session.address) api.logout();
+      if (!isLoggedIn || !session || session.address) api.logout();
       setWallet();
 
       throw e;
@@ -365,6 +365,7 @@ export function WalletContextProvider(props: WalletContextProps): JSX.Element {
       isParamsInitialized,
       activeWallet,
       activeBlockchain,
+      isLoggedIn,
       api,
       appParams,
       session,

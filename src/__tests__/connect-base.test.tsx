@@ -12,11 +12,12 @@ const mockOnCancel = jest.fn();
 const mockOnSwitch = jest.fn();
 let mockActiveWallet: string | undefined;
 let mockSession: { address?: string } | undefined;
+let mockIsLoggedIn = true;
 
 jest.mock('@dfx.swiss/react', () => ({
   Blockchain: { ETHEREUM: 'Ethereum', POLYGON: 'Polygon', BITCOIN: 'Bitcoin' },
   useAuthContext: () => ({ session: mockSession }),
-  useSessionContext: () => ({ logout: mockLogout }),
+  useSessionContext: () => ({ isLoggedIn: mockIsLoggedIn, logout: mockLogout }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -114,6 +115,7 @@ beforeEach(() => {
   contentProps = undefined;
   mockActiveWallet = undefined;
   mockSession = undefined;
+  mockIsLoggedIn = true;
   mockGetAccount.mockResolvedValue({ address: '0xabc' });
   mockLogin.mockResolvedValue(undefined);
   mockSetSession.mockResolvedValue(undefined);
@@ -413,6 +415,26 @@ describe('ConnectBase login', () => {
 
     expect(mockSwitchBlockchain).not.toHaveBeenCalled();
     expect(mockLogout).not.toHaveBeenCalled();
+    expect(mockLogin).toHaveBeenCalledWith(
+      WalletType.META_MASK,
+      '0xabc',
+      Blockchain.ETHEREUM,
+      expect.any(Function),
+      undefined,
+    );
+    expect(mockOnLogin).toHaveBeenCalled();
+  });
+
+  it('logs out an address-less session when the SDK reports logged out', async () => {
+    mockActiveWallet = WalletType.META_MASK;
+    mockSession = {};
+    mockIsLoggedIn = false;
+    await renderReady();
+
+    await act(() => content().connect());
+
+    expect(mockSwitchBlockchain).not.toHaveBeenCalled();
+    expect(mockLogout).toHaveBeenCalled();
     expect(mockLogin).toHaveBeenCalledWith(
       WalletType.META_MASK,
       '0xabc',

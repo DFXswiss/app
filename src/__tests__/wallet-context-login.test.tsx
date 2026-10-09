@@ -7,10 +7,11 @@ const mockStoreSet = jest.fn();
 const mockStoreRemove = jest.fn();
 const mockAppParams = {};
 let mockSession: { address?: string } | undefined;
+let mockIsLoggedIn = true;
 const mockSessionContext = {
   isInitialized: false,
   get isLoggedIn() {
-    return Boolean(mockSession);
+    return mockIsLoggedIn;
   },
   authenticate: mockAuthenticate,
   logout: mockLogout,
@@ -80,6 +81,7 @@ describe('WalletContextProvider login errors', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSession = undefined;
+    mockIsLoggedIn = true;
     mockGetSignMessage.mockResolvedValue('message');
     mockAuthenticate.mockRejectedValue(new Error('Authentication failed'));
   });
@@ -102,6 +104,25 @@ describe('WalletContextProvider login errors', () => {
     });
 
     expect(mockLogout).not.toHaveBeenCalled();
+  });
+
+  it('logs out an address-less session after login fails when the SDK reports logged out', async () => {
+    mockSession = {};
+    mockIsLoggedIn = false;
+    const { result } = renderHook(() => useWalletContext(), { wrapper });
+
+    await act(async () => {
+      await expect(
+        result.current.login(
+          WalletType.META_MASK,
+          '0xabc',
+          Blockchain.ETHEREUM,
+          jest.fn().mockResolvedValue('signature'),
+        ),
+      ).rejects.toThrow('Authentication failed');
+    });
+
+    expect(mockLogout).toHaveBeenCalled();
   });
 
   it.each<[string, { address?: string } | undefined]>([
