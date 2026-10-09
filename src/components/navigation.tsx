@@ -60,7 +60,7 @@ export const Navigation = forwardRef<HTMLDivElement, NavigationIframeProps>(
             {title ? (
               <div className="text-dfxBlue-800 font-bold text-lg mx-8 line-clamp-1 select-none">{title}</div>
             ) : (
-              !isEmbedded && <DfxLogo />
+              <DfxLogo />
             )}
           </>
         )}
@@ -119,7 +119,7 @@ function MenuIcon({ icon, setIsNavigationOpen }: IconContentProps): JSX.Element 
   );
 }
 
-function NavigationMenu({ setIsNavigationOpen, small = false }: NavigationMenuContentProps): JSX.Element {
+function NavigationMenu({ setIsNavigationOpen, small }: NavigationMenuContentProps): JSX.Element {
   const { navigate } = useNavigation();
   const { translate } = useSettingsContext();
   const { hasCustody } = useUserContext();
