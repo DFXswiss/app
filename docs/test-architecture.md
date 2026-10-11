@@ -477,10 +477,40 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   block. It does not prove that the DFX payment-link API returns those payloads, that a wallet
   deeplink opens, that the asset catalog matches production, or that the SPAR map draws the
   place list.
+- **The widget tests force the closed shadow root open.** `forceOpenShadowRoots`
+  (`e2e-stack/specs/fixtures/shadow-root.ts`) patches `Element.prototype.attachShadow` in the test
+  browser so every root is attached open; `e2e-stack/specs/widget.spec.ts` (mail login by code),
+  `e2e/widget-mail-code-login.spec.ts` and `e2e/widget-navigation-menu.spec.ts` use it to reach
+  inside `<dfx-services>`. The shipped widget
+  keeps `shadow: 'closed'`. A green run does not prove anything that depends on the root being
+  closed, such as the host page being unable to read or restyle the widget's content.
+- **The full-stack widget mail-code test drops the host page's `service` attribute.**
+  `e2e-stack/specs/widget.spec.ts` removes `service` before the widget mounts, because the stack's
+  widget origin `http://frontend-widget` has no TLD and the API rejects the redirect URI built from
+  it. A green run does not prove that a mail-code request carrying a redirect URI for a pending
+  service is accepted; that depends on the deployed public URL.
+- **The widget mail-code tests submit `000000` as the wrong code.** `e2e-stack/specs/widget.spec.ts`
+  and `e2e/widget-mail-code-login.spec.ts` cannot know the mailed code, so they send the fixed value
+  `000000` and expect the API's 401. The API draws each code uniformly from `000000` to `999999`, so
+  a green run does not prove that `000000` is always rejected: it equals the mailed code with a
+  probability of one in a million per request, and such a run would log in instead of failing the
+  attempt.
+- **The widget visual specs serve their own host page; the mail-code spec moves the browser clock.**
+  `e2e/widget-mail-code-login.spec.ts` and `e2e/widget-navigation-menu.spec.ts` use
+  `e2e/helpers/widget-host.ts`, which serves a minimal host page, the local widget build
+  (`npm run widget:loc`) and the widget stylesheet as `main-widget.css` (the name the deploy
+  workflows rewrite) from its own HTTP server on 127.0.0.1, and fulfils the widget's lazy chunks
+  from the same build via `page.route`. The navigation-menu host page surrounds the widget with
+  plain host blocks; it contains no real third-party content. Every API answer is real: the code
+  request, the 401 for each wrong code and the resend. The expired variant advances the page clock
+  by the code's ten-minute validity. A green run does not prove that the published widget script,
+  chunks and stylesheet load on a third-party page, how the menu behaves next to a real host
+  page's own positioned or stacked elements, or that the API itself treats the code as expired at
+  the same moment.
 
 ## Known gaps
 
-All four points below concern the full-stack harness.
+All five points below concern the full-stack harness.
 
 - **No layer here verifies a payment end to end.** The harness sets `DISABLED_PROCESSES=*`
   (`e2e-stack/env/api.env`); what that switches off in the API is described in the companion document
@@ -498,6 +528,11 @@ All four points below concern the full-stack harness.
   worker with retries disabled (`workers: 1` and `retries: 0` in `e2e-stack/playwright.config.ts`, whose
   comment states the reason): a retry would mask exactly the order-dependent failure this arrangement
   produces. It bounds how far the suite can grow.
+- **The embedded mail login by code cannot be completed.** The API neither stores nor logs the
+  6-digit code it mails (the mail text is marked sensitive, and under `loc` no mail leaves the API),
+  so `e2e-stack/specs/widget.spec.ts` drives the code step only as far as a wrong code, a resend and
+  back. Entering the correct code and the logged-in state that follows are covered by the unit tests
+  in `src/__tests__/connect-mail-code.test.tsx` only.
 
 ## Target architecture
 

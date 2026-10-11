@@ -107,7 +107,7 @@ The harness also builds a separate `frontend-widget` image: an isolated build of
 
 `frontend-widget` is declared only in `compose.tests.yml`, as a dependency of the `tests` service — it is not part of `compose.yml`. That means `npm run e2e:stack:up` (which brings up only `compose.yml`) does **not** start it; only a full `npm run e2e:stack` / `docker compose ... run --rm tests` invocation does. If you are following "Manual exploration" above and expect to find `frontend-widget` running, you will not — bring up the `tests` service (or extend your manual `compose up` with `-f compose.tests.yml frontend-widget`) if you need it standalone.
 
-Because the widget uses a closed shadow root (`shadow: 'closed'`), inspection from tests is limited to the outside view — custom element registration, element presence/size, and absence of uncaught exceptions. Shadow DOM internals are not reachable from outside the component by design.
+The widget uses a closed shadow root (`shadow: 'closed'`), so as shipped, tests only see the outside view — custom element registration, element presence/size, and absence of uncaught exceptions. To reach the inside, a test calls `forceOpenShadowRoots(page)` (from `specs/fixtures/shadow-root.ts`) before navigating to the widget host; it attaches every shadow root open in the test browser only and leaves the product code unchanged. `specs/widget.spec.ts` uses it for the embedded mail login by code. That test stops at the code step, because the API neither stores nor logs the code it mails.
 
 ## Writing tests
 

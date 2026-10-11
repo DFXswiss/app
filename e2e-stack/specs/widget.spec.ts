@@ -7,13 +7,20 @@
  * frontend-widget build" are therefore real, passing, browser-executed tests against
  * `E2E_WIDGET_URL` (default `http://frontend-widget`).
  *
- * Coverage is deliberately limited to the OUTSIDE view of `<dfx-services>`: custom-element
- * registration, mounting/rendering (presence + non-zero size), reaction to HTML-attribute
- * changes on the light-DOM host, and absence of uncaught exceptions. The widget defines
- * its custom element with `shadow: 'closed'` (see `src/Main.widget.tsx`), so Playwright
- * cannot reach inside the shadow tree — proven earlier in this file with a synthetic
- * closed-shadow page, and re-confirmed against the real component below. That is a
- * property of the component's design, not a testing shortcut left for later.
+ * The widget defines its custom element with `shadow: 'closed'` (see `src/index-widget.tsx`), so
+ * Playwright cannot reach inside the shadow tree as shipped — proven below with a synthetic
+ * closed-shadow page and re-confirmed against the real component. The first three widget tests
+ * therefore cover the OUTSIDE view of `<dfx-services>`: custom-element registration,
+ * mounting/rendering (presence + non-zero size), reaction to HTML-attribute changes on the
+ * light-DOM host, and absence of uncaught exceptions.
+ *
+ * The inside is reachable in a test that forces shadow roots open before the bundle loads
+ * (`forceOpenShadowRoots` in `fixtures/shadow-root.ts`, test-only; product code keeps the closed
+ * root). "Widget mode — mail login by code" uses it to drive the embedded mail login against the
+ * real API. Its limit: the API neither stores nor logs the 6-digit code it mails (the mail text is
+ * marked sensitive and, under `loc`, no mail leaves the API), so the harness cannot read the code
+ * and the test stops at the code step — request, wrong code, resend and back are real; entering
+ * the correct code and the logged-in state are not covered here.
  *
  * Observation (unchanged gap): repo-root `widget.html` is a DIFFERENT file from the new,
  * correctly-pathed `e2e-stack/images/frontend-widget/host.html` that `frontend-widget`
@@ -24,7 +31,8 @@
  */
 
 import type { Page } from '@playwright/test';
-import { expect, required, test } from './fixtures';
+import { randomBytes } from 'crypto';
+import { expect, forceOpenShadowRoots, required, test, waitForRow } from './fixtures';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -195,14 +203,14 @@ test.describe('Widget mode — frontend-widget build', () => {
 
     const urlBefore = page.url();
 
-    // Only the light-DOM attributes are externally observable at all (closed shadow root, proven
-    // above). Even that is limited: App.tsx's `hasNavigatedHomeRef` only reads `params.service` on
+    // Only the light-DOM attributes are externally observable with the shipped closed shadow root
+    // (proven above). Even that is limited: App.tsx's `hasNavigatedHomeRef` only reads `params.service` on
     // the FIRST render and never re-navigates afterwards, so a `service` change after mount cannot
     // be proven to have any internal effect either from out here. What this test can honestly
     // assert: setting all three attributes after mount does not throw, does not navigate the host
     // page (MemoryRouter), and the widget stays mounted with a non-zero box. It intentionally does
     // NOT claim these attributes are "reactive" -- that would require reading rendered content
-    // inside the closed shadow root, which Playwright cannot do.
+    // inside the closed shadow root, which Playwright cannot do without forceOpenShadowRoots.
     await page.evaluate(() => {
       const el = document.querySelector('dfx-services');
       if (!el) throw new Error('dfx-services host missing');
@@ -265,5 +273,108 @@ test.describe('Widget mode — frontend-widget build', () => {
     expect(shadowBox.height).toBeGreaterThan(0);
 
     expect(pageErrors, `uncaught pageerror on closed-shadow widget: ${pageErrors.join('; ')}`).toEqual([]);
+  });
+});
+
+/**
+ * Removes the host page's `service` attribute before the widget mounts. With `service` set, the
+ * mail login sends a redirect URI built from the widget's public URL — in this stack
+ * `http://frontend-widget/<service>`, which the API rejects with 400 "redirectUri must be a URL
+ * address" because the host name has no TLD. That is a property of the stack's host name, not of
+ * the product (deployed builds use the app's public domain), so the login is driven without a
+ * pending service instead. `readyState` turns `interactive` after parsing and before deferred
+ * scripts run, so the real host document is kept and only the attribute is gone when the bundle
+ * defines `<dfx-services>`.
+ */
+async function dropServiceAttribute(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    document.addEventListener('readystatechange', () => {
+      if (document.readyState === 'interactive') document.querySelector('dfx-services')?.removeAttribute('service');
+    });
+  });
+}
+
+test.describe('Widget mode — mail login by code', () => {
+  const CODE_TEXT = 'We have sent you an email with a 6-digit code. Please enter it here to log in.';
+  // Any six digits other than the mailed code; collides with a chance of one in a million.
+  const WRONG_CODE = '000000';
+
+  test('menu → Login → E-Mail requests a code; wrong code, resend and back run against the real API', async ({
+    page,
+  }) => {
+    await forceOpenShadowRoots(page);
+    await dropServiceAttribute(page);
+    await allowWidgetHost(page);
+
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+
+    await page.goto(widgetUrl(), { waitUntil: 'domcontentloaded' });
+
+    const shadowRoot = await page.evaluate(() => document.querySelector('dfx-services')?.shadowRoot != null);
+    expect(shadowRoot, 'forceOpenShadowRoots must make the widget root reachable').toBe(true);
+
+    const widget = page.locator('dfx-services');
+    await widget.locator('div.cursor-pointer').first().click({ timeout: 15000 }); // menu icon
+    await widget.getByRole('button', { name: 'Login' }).click();
+    await widget.locator('img[src*="mail"]').click();
+
+    const mail = `e2e+widget-code-${randomBytes(4).toString('hex')}@example.invalid`;
+    await widget.getByPlaceholder('example@mail.com').fill(mail);
+
+    const codeRequest = page.waitForResponse(
+      (res) => res.url().endsWith('/v1/auth/mail') && res.request().method() === 'POST',
+    );
+    await widget.getByRole('button', { name: 'Next' }).click();
+    const requestBody = (await codeRequest).request().postDataJSON() as { mail: string; withCode?: boolean };
+    expect(requestBody, 'the embedded app asks for a code instead of a link').toMatchObject({ mail, withCode: true });
+    expect((await codeRequest).ok(), 'the API accepts the code request').toBe(true);
+    const { secret } = (await (await codeRequest).json()) as { secret: string };
+    expect(secret, 'the API answers the code request with a secret').toBeTruthy();
+
+    await expect(widget.getByText(CODE_TEXT, { exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(widget.getByPlaceholder('6-digit code')).toBeVisible();
+
+    // The request reached the API's mail login: the account and its login mail exist.
+    const userData = await waitForRow<{ id: number }>(`SELECT id FROM user_data WHERE mail = $1`, [mail], 15000);
+    await waitForRow(`SELECT id FROM notification WHERE "userDataId" = $1 AND context = 'Login'`, [userData.id], 15000);
+
+    // Wrong code: the API rejects it (401) and the step asks again.
+    await widget.getByPlaceholder('6-digit code').fill(WRONG_CODE);
+    const exchange = page.waitForResponse(
+      (res) => res.url().endsWith('/v1/auth/mail/code') && res.request().method() === 'POST',
+    );
+    await widget.getByRole('button', { name: 'Confirm' }).click();
+    expect((await exchange).request().postDataJSON(), 'the typed code goes out with the request secret').toEqual({
+      secret,
+      code: WRONG_CODE,
+    });
+    expect((await exchange).status(), 'wrong code is rejected by the API').toBe(401);
+    await expect(widget.getByText('The code is incorrect. Please check it and try again.')).toBeVisible();
+    await expect(widget.getByPlaceholder('6-digit code')).toHaveValue('');
+
+    // Resend: a new code request for the same address.
+    const resend = page.waitForResponse(
+      (res) => res.url().endsWith('/v1/auth/mail') && res.request().method() === 'POST',
+    );
+    await widget.getByRole('button', { name: 'Send new code' }).click();
+    const resendResponse = await resend;
+    expect(resendResponse.request().postDataJSON(), 'resend asks for a code for the same address').toMatchObject({
+      mail,
+      withCode: true,
+    });
+    expect(resendResponse.ok(), 'resend is accepted by the API').toBe(true);
+    await expect(widget.getByText('We have sent you a new code.')).toBeVisible();
+    await expect(widget.getByText('The code is incorrect. Please check it and try again.')).toHaveCount(0);
+
+    // Back: the mail form returns with the address kept.
+    await widget.getByRole('button', { name: 'Back' }).click();
+    await expect(widget.getByPlaceholder('example@mail.com')).toHaveValue(mail);
+
+    // No code was accepted, so no session exists.
+    const token = await page.evaluate(() => localStorage.getItem('dfx.authenticationToken'));
+    expect(token, 'no session without a correct code').toBeNull();
+
+    expect(pageErrors, `uncaught pageerror in the mail-code flow: ${pageErrors.join('; ')}`).toEqual([]);
   });
 });
