@@ -329,6 +329,8 @@ test.describe('Widget mode — mail login by code', () => {
     const requestBody = (await codeRequest).request().postDataJSON() as { mail: string; withCode?: boolean };
     expect(requestBody, 'the embedded app asks for a code instead of a link').toMatchObject({ mail, withCode: true });
     expect((await codeRequest).ok(), 'the API accepts the code request').toBe(true);
+    const { secret } = (await (await codeRequest).json()) as { secret: string };
+    expect(secret, 'the API answers the code request with a secret').toBeTruthy();
 
     await expect(widget.getByText(CODE_TEXT, { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(widget.getByPlaceholder('6-digit code')).toBeVisible();
@@ -343,6 +345,10 @@ test.describe('Widget mode — mail login by code', () => {
       (res) => res.url().endsWith('/v1/auth/mail/code') && res.request().method() === 'POST',
     );
     await widget.getByRole('button', { name: 'Confirm' }).click();
+    expect((await exchange).request().postDataJSON(), 'the typed code goes out with the request secret').toEqual({
+      secret,
+      code: WRONG_CODE,
+    });
     expect((await exchange).status(), 'wrong code is rejected by the API').toBe(401);
     await expect(widget.getByText('The code is incorrect. Please check it and try again.')).toBeVisible();
     await expect(widget.getByPlaceholder('6-digit code')).toHaveValue('');

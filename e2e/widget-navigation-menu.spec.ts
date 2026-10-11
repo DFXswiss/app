@@ -11,7 +11,8 @@ import { serveWidgetChunks, startWidgetHost, WidgetHost } from './helpers/widget
  * The host page places the widget away from the viewport's top-right corner, between host content
  * above and below it, so the screenshot shows where the menu opens relative to the widget and not
  * relative to the viewport. The spec also asserts that the panel lies inside the widget and below
- * its nav bar.
+ * its nav bar, that the backdrop covers the widget only (a click on host content outside the widget
+ * leaves the menu open), and that a click on the backdrop inside the widget closes the menu.
  *
  * Runs against a real local API (see CONTRIBUTING.md, "Visual regression tests"); `npm run
  * e2e:stack:up` provides one on http://localhost:3000. The widget is the real widget build, served
@@ -21,7 +22,7 @@ import { serveWidgetChunks, startWidgetHost, WidgetHost } from './helpers/widget
  */
 
 const HOST_BODY = `
-  <div style="height: 120px; padding: 16px; box-sizing: border-box; background: #e5e7eb; font: 16px sans-serif">
+  <div id="host-above" style="height: 120px; padding: 16px; box-sizing: border-box; background: #e5e7eb; font: 16px sans-serif">
     Host page content above the widget
   </div>
   <div style="margin: 24px 0 0 160px; width: 600px; height: 700px"><dfx-services></dfx-services></div>
@@ -69,7 +70,26 @@ test.describe('Widget - navigation menu', () => {
     // Under the widget's own nav bar.
     expect(panelBox.y).toBeGreaterThanOrEqual(navBox.y + navBox.height);
 
+    // The backdrop is the widget's own, not one over the host page's viewport.
+    const backdrop = widget.locator('#app-root > div.absolute.inset-0.z-40');
+    await expect(backdrop).toHaveCount(1);
+    const backdropBox = await backdrop.boundingBox();
+    if (!backdropBox) throw new Error('the widget backdrop has no bounding box');
+    expect(backdropBox.x).toBeGreaterThanOrEqual(widgetBox.x);
+    expect(backdropBox.y).toBeGreaterThanOrEqual(widgetBox.y);
+    expect(backdropBox.x + backdropBox.width).toBeLessThanOrEqual(widgetBox.x + widgetBox.width);
+    expect(backdropBox.y + backdropBox.height).toBeLessThanOrEqual(widgetBox.y + widgetBox.height);
+
     await page.waitForTimeout(500);
     await expect(page).toHaveScreenshot('widget-navigation-menu-01-open.png', { maxDiffPixels: 2000 });
+
+    // A click on host content outside the widget does not reach a backdrop, so the menu stays open.
+    await page.locator('#host-above').click();
+    await expect(panel).toBeVisible();
+
+    // A click on the backdrop inside the widget closes the menu.
+    await backdrop.click({ position: { x: 20, y: backdropBox.height - 20 } });
+    await expect(panel).toHaveCount(0);
+    await expect(backdrop).toHaveCount(0);
   });
 });

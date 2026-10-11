@@ -67,23 +67,38 @@ async function openMailEntry(page: Page): Promise<Locator> {
   return widget;
 }
 
-async function openCodeStep(page: Page): Promise<Locator> {
+interface CodeStep {
+  widget: Locator;
+  /** The secret the API returned for the code request; the exchange must send it with the code. */
+  secret: string;
+}
+
+async function openCodeStep(page: Page): Promise<CodeStep> {
   const widget = await openMailEntry(page);
   await widget
     .getByPlaceholder('example@mail.com')
     .fill(`widget-code-${randomBytes(4).toString('hex')}@example.invalid`);
+  const codeRequest = page.waitForResponse(
+    (res) => res.url().endsWith('/v1/auth/mail') && res.request().method() === 'POST',
+  );
   await widget.getByRole('button', { name: 'Next' }).click();
+  const { secret } = (await (await codeRequest).json()) as { secret: string };
+  expect(secret, 'the API answers the code request with a secret').toBeTruthy();
   await expect(widget.getByPlaceholder('6-digit code')).toBeVisible({ timeout: 15_000 });
-  return widget;
+  return { widget, secret };
 }
 
-/** Submits a wrong code and waits for the API's answer, so a message left from the previous attempt cannot pass for this one. */
-async function submitWrongCode(widget: Locator): Promise<void> {
+/**
+ * Submits a wrong code and waits for the API's answer, so a message left from the previous attempt
+ * cannot pass for this one. The request must carry the typed code with the request's secret.
+ */
+async function submitWrongCode({ widget, secret }: CodeStep): Promise<void> {
   await widget.getByPlaceholder('6-digit code').fill(WRONG_CODE);
   const answer = widget
     .page()
     .waitForResponse((res) => res.url().endsWith('/v1/auth/mail/code') && res.request().method() === 'POST');
   await widget.getByRole('button', { name: 'Confirm' }).click();
+  expect((await answer).request().postDataJSON()).toEqual({ secret, code: WRONG_CODE });
   expect((await answer).status()).toBe(401);
 }
 
@@ -105,13 +120,14 @@ test.describe('Widget - mail login by code', () => {
   });
 
   test('code entry, wrong code and new code sent', async ({ page }) => {
-    const widget = await openCodeStep(page);
+    const step = await openCodeStep(page);
+    const { widget } = step;
     await expect(
       widget.getByText('We have sent you an email with a 6-digit code. Please enter it here to log in.'),
     ).toBeVisible();
     await expectScreenshot(widget, 'widget-mail-code-02-code-entry.png');
 
-    await submitWrongCode(widget);
+    await submitWrongCode(step);
     await expect(widget.getByText(INVALID)).toBeVisible();
     await expectScreenshot(widget, 'widget-mail-code-03-wrong-code.png');
 
@@ -123,7 +139,7 @@ test.describe('Widget - mail login by code', () => {
 
   test('expired code', async ({ page }) => {
     await page.clock.install();
-    const widget = await openCodeStep(page);
+    const { widget } = await openCodeStep(page);
 
     await page.clock.fastForward(CODE_VALIDITY);
     const exchanges: string[] = [];
@@ -138,13 +154,14 @@ test.describe('Widget - mail login by code', () => {
   });
 
   test('too many wrong attempts', async ({ page }) => {
-    const widget = await openCodeStep(page);
+    const step = await openCodeStep(page);
+    const { widget } = step;
 
     for (let attempt = 1; attempt < MAX_ATTEMPTS; attempt++) {
-      await submitWrongCode(widget);
+      await submitWrongCode(step);
       await expect(widget.getByText(INVALID)).toBeVisible();
     }
-    await submitWrongCode(widget);
+    await submitWrongCode(step);
     await expect(widget.getByText(LOCKED)).toBeVisible();
     await expect(widget.getByPlaceholder('6-digit code')).toHaveCount(0);
     await expectScreenshot(widget, 'widget-mail-code-05-locked.png');

@@ -489,6 +489,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   widget origin `http://frontend-widget` has no TLD and the API rejects the redirect URI built from
   it. A green run does not prove that a mail-code request carrying a redirect URI for a pending
   service is accepted; that depends on the deployed public URL.
+- **The widget mail-code tests submit `000000` as the wrong code.** `e2e-stack/specs/widget.spec.ts`
+  and `e2e/widget-mail-code-login.spec.ts` cannot know the mailed code, so they send the fixed value
+  `000000` and expect the API's 401. The API draws each code uniformly from `000000` to `999999`, so
+  a green run does not prove that `000000` is always rejected: it equals the mailed code with a
+  probability of one in a million per request, and such a run would log in instead of failing the
+  attempt.
 - **The widget visual specs serve their own host page; the mail-code spec moves the browser clock.**
   `e2e/widget-mail-code-login.spec.ts` and `e2e/widget-navigation-menu.spec.ts` use
   `e2e/helpers/widget-host.ts`, which serves a minimal host page, the local widget build
