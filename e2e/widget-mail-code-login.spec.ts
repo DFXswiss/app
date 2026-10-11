@@ -25,8 +25,9 @@ import { serveWidgetChunks, startWidgetHost, WidgetHost } from './helpers/widget
  * product code is unchanged. The expired variant moves the browser clock past the code's validity;
  * the API's own expiry is not exercised by it.
  *
- * The API limits code requests to 10 per IP and hour (in memory); one run makes 4. Restart the API
- * container if repeated local runs hit the limit (the code step then shows "Too many attempts").
+ * The API limits code requests to 10 per IP and hour (in memory); one run makes 4. Retries are off
+ * for this describe, so CI retries cannot push a failing run past the limit and hide the original
+ * failure behind "Too many attempts". Restart the API container if repeated local runs hit the limit.
  *
  * Synthetic data only: random example.invalid addresses (not shown in any screenshot).
  */
@@ -114,6 +115,8 @@ async function expectScreenshot(widget: Locator, name: string): Promise<void> {
 }
 
 test.describe('Widget - mail login by code', () => {
+  test.describe.configure({ retries: 0 });
+
   test('mail entry', async ({ page }) => {
     const widget = await openMailEntry(page);
     await expectScreenshot(widget, 'widget-mail-code-01-mail-entry.png');

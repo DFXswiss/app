@@ -70,15 +70,15 @@ test.describe('Widget - navigation menu', () => {
     // Under the widget's own nav bar.
     expect(panelBox.y).toBeGreaterThanOrEqual(navBox.y + navBox.height);
 
-    // The backdrop is the widget's own, not one over the host page's viewport.
+    // The backdrop covers exactly the widget, not the host page's viewport.
     const backdrop = widget.locator('#app-root > div.absolute.inset-0.z-40');
     await expect(backdrop).toHaveCount(1);
     const backdropBox = await backdrop.boundingBox();
     if (!backdropBox) throw new Error('the widget backdrop has no bounding box');
-    expect(backdropBox.x).toBeGreaterThanOrEqual(widgetBox.x);
-    expect(backdropBox.y).toBeGreaterThanOrEqual(widgetBox.y);
-    expect(backdropBox.x + backdropBox.width).toBeLessThanOrEqual(widgetBox.x + widgetBox.width);
-    expect(backdropBox.y + backdropBox.height).toBeLessThanOrEqual(widgetBox.y + widgetBox.height);
+    expect(backdropBox.x).toBeCloseTo(widgetBox.x, 0);
+    expect(backdropBox.y).toBeCloseTo(widgetBox.y, 0);
+    expect(backdropBox.width).toBeCloseTo(widgetBox.width, 0);
+    expect(backdropBox.height).toBeCloseTo(widgetBox.height, 0);
 
     await page.waitForTimeout(500);
     await expect(page).toHaveScreenshot('widget-navigation-menu-01-open.png', { maxDiffPixels: 2000 });
