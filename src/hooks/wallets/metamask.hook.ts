@@ -8,9 +8,8 @@ import { TransactionConfig } from 'web3-core';
 import { Contract } from 'web3-eth-contract';
 import { AssetBalance } from '../../contexts/balance.context';
 import ERC20_ABI from '../../static/erc20.abi.json';
-import { AbortError } from '../../util/abort-error';
 import { TranslatedError } from '../../util/translated-error';
-import { USER_REJECTED_CODE } from '../../util/user-rejection';
+import { USER_REJECTED_CODE, UserRejectedError } from '../../util/user-rejection';
 import { timeout } from '../../util/utils';
 import { useWeb3 } from '../web3.hook';
 
@@ -428,8 +427,9 @@ export function useMetaMask(): MetaMaskInterface {
 
   function handleError(e: MetaMaskError): never {
     switch (e.code) {
-      case 4001:
-        throw new AbortError('User cancelled');
+      // carries the code, which the transaction screens check to keep the user on the form
+      case USER_REJECTED_CODE:
+        throw new UserRejectedError();
 
       case -32002:
         throw new TranslatedError('There is already a request pending. Please confirm it in your MetaMask and retry.');

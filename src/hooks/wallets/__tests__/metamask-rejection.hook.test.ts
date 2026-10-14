@@ -145,10 +145,20 @@ describe('requestChangeToBlockchain', () => {
     await expect(setup().requestChangeToBlockchain(Blockchain.POLYGON)).resolves.toBeNull();
   });
 
-  it('cancels when the user rejects adding the chain', async () => {
+  it('cancels with the code when the user rejects the switch, which keeps the user on the form', async () => {
+    handlers.wallet_switchEthereumChain = rejectWith(4001, 'User rejected the request.');
+
+    const change = setup().requestChangeToBlockchain(Blockchain.POLYGON);
+    await expect(change).rejects.toBeInstanceOf(AbortError);
+    await expect(change).rejects.toHaveProperty('code', 4001);
+  });
+
+  it('cancels with the code when the user rejects adding the chain', async () => {
     handlers.wallet_addEthereumChain = rejectWith(4001, 'User rejected the request.');
 
-    await expect(setup().requestChangeToBlockchain(Blockchain.POLYGON)).rejects.toBeInstanceOf(AbortError);
+    const change = setup().requestChangeToBlockchain(Blockchain.POLYGON);
+    await expect(change).rejects.toBeInstanceOf(AbortError);
+    await expect(change).rejects.toHaveProperty('code', 4001);
   });
 
   it('passes on another failure to add the chain', async () => {

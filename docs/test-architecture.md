@@ -692,10 +692,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   with an object that rejects the way an injected wallet does, `@wagmi/core` with functions that throw the real
   viem `UserRejectedRequestError`, and the Solana and Tron wallet adapters with objects that throw the real
   adapter error classes. The wallet context, the session contexts, translation, styled controls and the
-  client-error reporter are replaced as well. A green run proves that a cancel shaped that way shows and
-  reports nothing and goes back to the wallet selection, and that other failures on the same paths are still
-  shown and reported. It does not prove that a real wallet, extension or app rejects with exactly that shape or
-  code, that the real reporter sends the report, or that a real login completes.
+  client-error reporter are replaced as well, `global.fetch` rejects the WalletConnect wallet list, and web3's
+  address checksum, which jsdom's `Uint8Array` breaks, returns the address unchanged. A green run proves that a
+  cancel shaped that way shows and reports nothing and goes back to the wallet selection, and that other
+  failures on the same paths are still shown and reported. It does not prove that a real wallet, extension or
+  app rejects with exactly that shape or code, that the real reporter sends the report, that the wallet list
+  loads, that the checksum is computed, or that a real login completes.
 - **The MetaMask rejection hook test replaces the injected provider.**
   `src/hooks/wallets/__tests__/metamask-rejection.hook.test.ts` runs `useMetaMask` against the real web3 with
   an in-memory EIP-1193 provider (and a legacy `sendAsync` provider) that answers or rejects each method, and
