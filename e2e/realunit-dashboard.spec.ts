@@ -3,7 +3,8 @@ import { test, expect, Page, Route } from '@playwright/test';
 /**
  * Visual regression for every RealUnit workspace function and scenario:
  * overview (populated, empty lists, overflow More), treasury (buy limit empty /
- * set / invalid / load error, prize wallet, missing wallet, wallet error,
+ * set / invalid / load error, transfer cost limit empty / set / invalid / load error,
+ * prize wallet, missing wallet, wallet error,
  * payouts, empty payouts, balance alerts, alert form), insights (charts, share
  * mode, 1M timeframe, each chart error), holders (list, empty, next page),
  * received transactions (list, empty, error, detail, missing), and the holder
@@ -156,6 +157,7 @@ type World = {
   transactions: ListMode | 'error';
   holders: ListMode | 'paged';
   buyLimit: 'empty' | 'set' | 'error';
+  transferCostLimit: 'empty' | 'set' | 'error';
   wallet: 'ok' | 'missing' | 'error';
   alerts: 'empty' | 'one' | 'error';
   payouts: 'one' | 'empty';
@@ -171,6 +173,7 @@ const defaults: World = {
   transactions: 'one',
   holders: 'one',
   buyLimit: 'empty',
+  transferCostLimit: 'empty',
   wallet: 'ok',
   alerts: 'empty',
   payouts: 'one',
@@ -289,6 +292,15 @@ async function installDashboardRoutes(page: Page): Promise<void> {
       if (world.buyLimit === 'error' && request.method() === 'GET') return fail(route, 'Failed to load buy limit.');
       return json(route, { maxTokensPerTx: world.buyLimit === 'set' ? 20000 : null });
     }
+    if (path === '/v1/realunit/admin/transfer-cost-limit') {
+      if (request.method() === 'GET' && world.transferCostLimit === 'error') {
+        return fail(route, 'Failed to load transfer cost limits.');
+      }
+      if (world.transferCostLimit === 'set') {
+        return json(route, { maxEthPerTransfer: '0.02', maxChfPerCustomerMonth: '25.00' });
+      }
+      return json(route, { maxEthPerTransfer: null, maxChfPerCustomerMonth: null });
+    }
     if (path.includes('/prize-wallet/alerts')) {
       if (world.alerts === 'error' && request.method() === 'GET') return fail(route, 'alerts down');
       if (request.method() === 'GET') return json(route, world.alerts === 'one' ? [ALERT] : []);
@@ -393,6 +405,13 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
     await page.waitForTimeout(800);
     const buyLimit = section(page, 'Max tokens per buy');
     await expect(buyLimit).toHaveScreenshot('realunit-dashboard-08-buy-limit.png', shot);
+    const panel = page.getByTestId('transfer-cost-limit-panel');
+    await expect(panel.getByRole('heading', { name: 'Max ETH per transfer' })).toBeVisible();
+    await expect(panel.locator('input')).toHaveCount(2);
+    await expect(panel.locator('input').nth(0)).toHaveValue('');
+    await expect(panel.locator('input').nth(1)).toHaveValue('');
+    await expect(panel.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await expect(panel).toHaveScreenshot('realunit-dashboard-39-transfer-cost-empty.png', shot);
     const bonus = section(page, 'Bonus and Referral');
     await expect(bonus.getByText(/ETH:/)).toBeVisible();
     await expect(bonus.getByText(/REALU:/)).toBeVisible();
@@ -479,6 +498,29 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
     await page.getByRole('button', { name: 'Notify on low balance' }).click();
     await expect(page.getByRole('button', { name: 'Submit' })).toBeVisible();
     await expect(section(page, 'Bonus and Referral')).toHaveScreenshot('realunit-dashboard-19-alert-form.png', shot);
+  });
+
+  test('treasury transfer cost limit scenarios', async ({ page }) => {
+    world.transferCostLimit = 'set';
+    await open(page, '/realunit/treasury');
+    const setLimit = page.getByTestId('transfer-cost-limit-panel');
+    await expect(setLimit.locator('input').nth(0)).toHaveValue('0.02');
+    await expect(setLimit.locator('input').nth(1)).toHaveValue('25.00');
+    await expect(setLimit.getByRole('button', { name: 'Save' })).toBeEnabled();
+    await expect(setLimit).toHaveScreenshot('realunit-dashboard-40-transfer-cost-set.png', shot);
+
+    world.transferCostLimit = 'empty';
+    await open(page, '/realunit/treasury');
+    const limit = page.getByTestId('transfer-cost-limit-panel');
+    await limit.locator('input').nth(0).fill('0.02');
+    await limit.locator('input').nth(1).fill('1.234');
+    await expect(limit.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await expect(limit).toHaveScreenshot('realunit-dashboard-41-transfer-cost-invalid.png', shot);
+
+    world.transferCostLimit = 'error';
+    await open(page, '/realunit/treasury');
+    await expect(page.getByText('Failed to load transfer cost limits.')).toBeVisible();
+    await expect(page.getByTestId('transfer-cost-limit-panel')).toHaveScreenshot('realunit-dashboard-42-transfer-cost-error.png', shot);
   });
 
   test('insights error states', async ({ page }) => {

@@ -185,14 +185,22 @@ test.describe('RealUnit area', () => {
     const { pageErrors, consoleErrors } = attachErrorListeners(page);
 
     let holderStats503 = 0;
+    let transferCostLimit404 = 0;
     page.on('response', (response) => {
       if (response.status() === 503 && response.url().includes('/v1/realunit/admin/stats/holders')) {
         holderStats503 += 1;
+      }
+      if (response.status() === 404 && response.url().includes('/v1/realunit/admin/transfer-cost-limit')) {
+        transferCostLimit404 += 1;
       }
     });
 
     await openScreen(page, '/realunit/treasury', jwt);
     await expect(page.getByRole('heading', { name: 'Max tokens per buy' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Max ETH per transfer' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Max CHF per customer per month' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Max ETH per transfer' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Max CHF per customer per month' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Prize payouts' })).toBeVisible();
     const payouts = page.getByTestId('payouts-panel');
     await expect(
@@ -216,12 +224,19 @@ test.describe('RealUnit area', () => {
 
     const holderStats503Line =
       'Failed to load resource: the server responded with a status of 503 (Service Unavailable)';
+    const transferCostLimit404Line =
+      'Failed to load resource: the server responded with a status of 404 (Not Found)';
     let remainingHolderStats503 = holderStats503;
+    let remainingTransferCostLimit404 = transferCostLimit404;
     assertNoErrors(
       pageErrors,
       consoleErrors.filter((msg) => {
         if (msg === holderStats503Line && remainingHolderStats503 > 0) {
           remainingHolderStats503 -= 1;
+          return false;
+        }
+        if (msg === transferCostLimit404Line && remainingTransferCostLimit404 > 0) {
+          remainingTransferCostLimit404 -= 1;
           return false;
         }
         return true;

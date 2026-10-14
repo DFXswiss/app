@@ -12,6 +12,7 @@ import {
   RealUnitQuote,
   RealUnitRegistrationStats,
   RealUnitTransaction,
+  RealUnitTransferCostLimit,
   TokenInfo,
   TokenPrice,
 } from 'src/dto/realunit.dto';
@@ -154,6 +155,24 @@ export function useRealunitApi() {
     });
   }
 
+  async function getTransferCostLimit(): Promise<RealUnitTransferCostLimit> {
+    return call<RealUnitTransferCostLimit>({
+      url: 'realunit/admin/transfer-cost-limit',
+      method: 'GET',
+    });
+  }
+
+  async function updateTransferCostLimit(body: {
+    maxEthPerTransfer: string;
+    maxChfPerCustomerMonth: string;
+  }): Promise<RealUnitTransferCostLimit> {
+    return call<RealUnitTransferCostLimit>({
+      url: 'realunit/admin/transfer-cost-limit',
+      method: 'PUT',
+      data: body,
+    });
+  }
+
   return useMemo(
     () => ({
       getAccountSummary,
@@ -171,6 +190,8 @@ export function useRealunitApi() {
       getHolderCount,
       getBuyLimit,
       updateBuyLimit,
+      getTransferCostLimit,
+      updateTransferCostLimit,
     }),
     [call],
   );

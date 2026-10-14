@@ -31,6 +31,10 @@ jest.mock('src/components/realunit/payouts-panel', () => ({
   PayoutsPanel: () => <div data-testid="payouts-panel" />,
 }));
 
+jest.mock('src/components/realunit/transfer-cost-limit-panel', () => ({
+  RealunitTransferCostLimitPanel: () => <div data-testid="transfer-cost-limit-panel" />,
+}));
+
 jest.mock('src/components/payment/qr-code', () => ({
   QrCopy: ({ data }: { data: string }) => <div data-testid="prize-qr">{data}</div>,
 }));
@@ -124,6 +128,11 @@ describe('RealunitTreasuryScreen', () => {
   it('shows the buy limit panel with dashboard content', async () => {
     await renderScreen();
     expect(screen.getByTestId('buy-limit-panel')).toBeInTheDocument();
+  });
+
+  it('shows the transfer cost limit panel with dashboard content', async () => {
+    await renderScreen();
+    expect(screen.getByTestId('transfer-cost-limit-panel')).toBeInTheDocument();
   });
 
   it('shows the low-balance notify button when the prize wallet loaded', async () => {

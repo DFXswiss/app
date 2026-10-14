@@ -116,6 +116,11 @@ export interface RealUnitBuyLimit {
   maxTokensPerTx: number | null;
 }
 
+export interface RealUnitTransferCostLimit {
+  maxEthPerTransfer: string | null;
+  maxChfPerCustomerMonth: string | null;
+}
+
 export interface RealUnitTransaction {
   id: number;
   uid: string;
