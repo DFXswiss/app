@@ -17,10 +17,14 @@ import {
 import BigNumber from 'bignumber.js';
 import { useEffect, useMemo, useState } from 'react';
 import { isMobile } from 'react-device-detect';
-import { parseEther, parseUnits } from 'viem';
+import { parseEther, parseUnits, UserRejectedRequestError } from 'viem';
 import ERC20_ABI from '../../static/erc20.abi.json';
+import { hasUserRejectedCode, USER_REJECTED_CODE, UserRejectedError } from '../../util/user-rejection';
 import { config, WALLET_CONNECT_PROJECT_ID } from '../../wagmi.config';
 import { useWeb3 } from '../web3.hook';
+
+// WalletConnect answers a request the user rejected with code 5000 (CAIP-25), which viem also counts as a rejection
+const WALLET_CONNECT_REJECTED_CODE = 5000;
 
 export interface WalletConnectInterface {
   connect: (blockchain: Blockchain, onConnectUri: (uri: string) => void) => Promise<string>;
@@ -148,7 +152,18 @@ export function useWalletConnect(): WalletConnectInterface {
         await new Promise((resolve) => setTimeout(resolve, 5000)); // delay to allow chain switch in wallet
       }
     } catch (error) {
-      handleError(error);
+      if (!(error instanceof UserRejectedRequestError)) handleError(error);
+
+      // wagmi reports any failure to add the chain as a rejection, so only the wallet's own answer tells a cancel
+      // apart: its code, or without one the message wagmi itself checks for a rejected switch
+      const { code, message } = (error.cause ?? {}) as { code?: unknown; message?: unknown };
+      const isRejection =
+        typeof code === 'number'
+          ? code === USER_REJECTED_CODE || code === WALLET_CONNECT_REJECTED_CODE
+          : /user rejected/i.test(String(message));
+      if (isRejection) throw new UserRejectedError();
+
+      throw new Error(typeof message === 'string' && message ? message : 'An unexpected error occurred.');
     }
   }
 
@@ -188,6 +203,9 @@ export function useWalletConnect(): WalletConnectInterface {
   }
 
   function handleError(error: unknown): never {
+    // viem raises UserRejectedRequestError for a request the user rejected in the wallet, wagmi for a rejected session
+    if (hasUserRejectedCode(error)) throw new UserRejectedError();
+
     throw new Error((error as BaseError).shortMessage || (error as Error).message || 'An unexpected error occurred.');
   }
 

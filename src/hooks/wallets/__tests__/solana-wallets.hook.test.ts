@@ -57,6 +57,7 @@ import { WalletReadyState } from '@solana/wallet-adapter-base';
 import { renderHook } from '@testing-library/react';
 import BigNumber from 'bignumber.js';
 import { AbortError } from '../../../util/abort-error';
+import { UserRejectedError } from '../../../util/user-rejection';
 import { usePhantom } from '../phantom.hook';
 import { useTrustSol } from '../trust-sol.hook';
 
@@ -169,6 +170,12 @@ describe.each([
       await expect(setup().connect()).rejects.toThrow('User rejected the request.');
     });
 
+    it('cancels when the wallet error the adapter keeps has code 4001', async () => {
+      adapter.connect.mockRejectedValue(Object.assign(new Error('Rejected'), { error: { code: 4001 } }));
+
+      await expect(setup().connect()).rejects.toBeInstanceOf(UserRejectedError);
+    });
+
     it('uses a generic message when the wallet error has none', async () => {
       adapter.connect.mockRejectedValue({});
 
@@ -182,6 +189,12 @@ describe.each([
 
       await expect(setup().signMessage('SolanaAddress', 'hi')).resolves.toBe('base58(1,2,3)');
       expect(Array.from(adapter.signMessage.mock.calls[0][0])).toEqual([104, 105]);
+    });
+
+    it('cancels when the wallet rejected the signature with code 4001', async () => {
+      adapter.signMessage.mockRejectedValue(Object.assign(new Error('Rejected'), { error: { code: 4001 } }));
+
+      await expect(setup().signMessage('SolanaAddress', 'hi')).rejects.toBeInstanceOf(UserRejectedError);
     });
 
     it('rethrows the signing error message', async () => {
@@ -219,6 +232,14 @@ describe.each([
       expect(mockCreateTokenTransaction).toHaveBeenCalledWith('from', 'to', asset, amount);
       expect(mockCreateCoinTransaction).not.toHaveBeenCalled();
       expect(mockBroadcastTransaction).toHaveBeenCalledWith('signed-token-transaction');
+    });
+
+    it('cancels with code 4001 when the wallet rejected the transaction, which keeps the user on the form', async () => {
+      adapter.signTransaction.mockRejectedValue(Object.assign(new Error('Rejected'), { error: { code: 4001 } }));
+
+      const transaction = setup().createTransaction(amount, { type: AssetType.COIN } as Asset, 'from', 'to');
+      await expect(transaction).rejects.toBeInstanceOf(UserRejectedError);
+      await expect(transaction).rejects.toHaveProperty('code', 4001);
     });
 
     it('rethrows the transaction error message', async () => {

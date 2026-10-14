@@ -8,8 +8,8 @@ import { TransactionConfig } from 'web3-core';
 import { Contract } from 'web3-eth-contract';
 import { AssetBalance } from '../../contexts/balance.context';
 import ERC20_ABI from '../../static/erc20.abi.json';
-import { AbortError } from '../../util/abort-error';
 import { TranslatedError } from '../../util/translated-error';
+import { USER_REJECTED_CODE, UserRejectedError } from '../../util/user-rejection';
 import { timeout } from '../../util/utils';
 import { useWeb3 } from '../web3.hook';
 
@@ -72,10 +72,26 @@ interface MetaMaskError {
   message: string;
 }
 
+// web3 rewrites a rejection that is not an Error but carries data into a new Error, with the data appended to the
+// message and without the code. Injected wallets reject that way, so a cancel would no longer be recognised as one.
+// web3 only uses request and on of an EIP-1193 provider, so it gets a plain object that passes both on.
+function keepUserRejection(provider: any): any {
+  if (typeof provider?.request !== 'function') return provider;
+
+  return {
+    request: (args: unknown) =>
+      provider.request(args).catch((e: MetaMaskError) => {
+        const isPlainRejection = !(e instanceof Error) && e?.code === USER_REJECTED_CODE;
+        throw isPlainRejection ? Object.assign(new Error(e.message), e) : e;
+      }),
+    on: (...args: unknown[]) => provider.on?.(...args),
+  };
+}
+
 export function useMetaMask(): MetaMaskInterface {
   const web3 = useMemo(() => {
     try {
-      return new Web3(Web3.givenProvider);
+      return new Web3(keepUserRejection(Web3.givenProvider));
     } catch {
       // conflicting wallet extensions may inject a provider proxy that throws on access
       return new Web3();
@@ -167,10 +183,16 @@ export function useMetaMask(): MetaMaskInterface {
   async function requestAddChainId(blockchain: Blockchain): Promise<void> {
     const chain = toChainObject(blockchain);
 
-    return ethereum().request({
-      method: 'wallet_addEthereumChain',
-      params: [chain],
-    });
+    return ethereum()
+      .request({
+        method: 'wallet_addEthereumChain',
+        params: [chain],
+      })
+      .catch((e: MetaMaskError) => {
+        if (e?.code === USER_REJECTED_CODE) handleError(e);
+
+        throw e;
+      });
   }
 
   async function requestBalance(account: string): Promise<string | undefined> {
@@ -405,8 +427,9 @@ export function useMetaMask(): MetaMaskInterface {
 
   function handleError(e: MetaMaskError): never {
     switch (e.code) {
-      case 4001:
-        throw new AbortError('User cancelled');
+      // carries the code, which the transaction screens check to keep the user on the form
+      case USER_REJECTED_CODE:
+        throw new UserRejectedError();
 
       case -32002:
         throw new TranslatedError('There is already a request pending. Please confirm it in your MetaMask and retry.');
