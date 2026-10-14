@@ -147,6 +147,10 @@
     "title": "Gefahrenzone (Settings)",
     "description": "Settings-Sektion Gefahrenzone: zugeklappt bleibt Konto löschen verborgen; aufgeklappt erscheinen der Hinweis zur zehnjährigen Aufbewahrung nach Schweizer Recht und der Lösch-Button; die Bestätigung zeigt denselben Hinweis."
   },
+  "deactivated-address": {
+    "title": "Deaktivierte Adresse",
+    "description": "Eine Sitzung, deren Adresse gelöscht wurde, sieht auf den Seiten, die eine Adresse brauchen (Kaufen, Verkaufen, Tauschen, Konto, Einstellungen, KYC, Zahlungsrouten, Safe, Transaktionsliste), statt des Seiteninhalts den Hinweis, dass die Adresse bei DFX deaktiviert ist, mit dem Button «Adresse reaktivieren»; das Menü mit Logout bleibt erreichbar. Varianten: Hinweis auf Englisch und Deutsch, Fehlermeldung nach abgelehnter Reaktivierung sowie der Lösch-Dialog in den Settings mit dem Hinweis, dass die Adresse durch erneutes Anmelden reaktiviert werden kann."
+  },
   "settings-add-bank-account-kyc-only": {
     "title": "Bankkonto hinzufügen ohne Wallet (Settings)",
     "description": "Ein Konto ohne verknüpfte Wallet (Mail-Login) versucht in den Settings eine IBAN hinzuzufügen. Statt des generischen Fehlers erscheint der Hinweis, dass zuerst eine Wallet verknüpft werden muss, mit Link in den Connect-Flow. Varianten: Englisch und Deutsch."
