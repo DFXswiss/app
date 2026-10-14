@@ -686,6 +686,34 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   sell form shows its normal exchange rate and payment information. A green run proves how the sell page renders
   the banner and its absence for those answers. It does not prove production auth, that the API answers
   `LikelyReturn` for a real address, or that the API returns that quote.
+- **The wallet rejection unit test answers for the wallets and their SDKs.**
+  `src/__tests__/connect-wallet-rejection.test.tsx` renders the real connect components, wallet hooks,
+  `ConnectBase` and `ConnectError` with the real web3 and viem, but replaces the injected EIP-1193 provider
+  with an object that rejects the way an injected wallet does, `@wagmi/core` with functions that throw the real
+  viem `UserRejectedRequestError`, and the Solana and Tron wallet adapters with objects that throw the real
+  adapter error classes. The wallet context, the session contexts, translation, styled controls and the
+  client-error reporter are replaced as well. A green run proves that a cancel shaped that way shows and
+  reports nothing and goes back to the wallet selection, and that other failures on the same paths are still
+  shown and reported. It does not prove that a real wallet, extension or app rejects with exactly that shape or
+  code, that the real reporter sends the report, or that a real login completes.
+- **The MetaMask rejection hook test replaces the injected provider.**
+  `src/hooks/wallets/__tests__/metamask-rejection.hook.test.ts` runs `useMetaMask` against the real web3 with
+  an in-memory EIP-1193 provider (and a legacy `sendAsync` provider) that answers or rejects each method, and
+  replaces web3's address checksum, which jsdom's `Uint8Array` breaks. A green run proves that web3 keeps the
+  EIP-1193 code of a rejection that is not an Error, while other failures keep the message web3 builds for
+  them. It does not prove that a real wallet rejects with that shape, that the checksum is computed, or that a
+  transaction reaches a chain.
+- **The MetaMask calls hook test replaces web3 and the injected provider.**
+  `src/hooks/wallets/__tests__/metamask-calls.hook.test.ts` runs `useMetaMask` against a hand-written web3
+  object, an in-memory `window.ethereum`, a replaced `timeout` and a replaced `window.location`. A green run
+  proves which web3 and wallet calls the hook makes and how it treats their answers. It does not prove that web3
+  or a real wallet behaves like those objects, or that a page reload happens.
+- **The WalletConnect hook test replaces the wagmi actions and the wallet list.**
+  `src/hooks/wallets/__tests__/wallet-connect.hook.test.ts` replaces `@wagmi/core`, the wagmi config and
+  `global.fetch` for the WalletConnect wallet list, and keeps the real viem. A green run proves which wagmi
+  actions the hook calls and how it maps their results and errors. It does not prove that a WalletConnect
+  session is established, that a wallet answers or rejects that way, or that the wallet list API returns that
+  JSON.
 
 ## Known gaps
 

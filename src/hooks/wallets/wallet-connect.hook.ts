@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { isMobile } from 'react-device-detect';
 import { parseEther, parseUnits } from 'viem';
 import ERC20_ABI from '../../static/erc20.abi.json';
+import { hasUserRejectedCode, UserRejectedError } from '../../util/user-rejection';
 import { config, WALLET_CONNECT_PROJECT_ID } from '../../wagmi.config';
 import { useWeb3 } from '../web3.hook';
 
@@ -188,6 +189,9 @@ export function useWalletConnect(): WalletConnectInterface {
   }
 
   function handleError(error: unknown): never {
+    // viem raises UserRejectedRequestError for a request the user rejected in the wallet, wagmi for a rejected session
+    if (hasUserRejectedCode(error)) throw new UserRejectedError();
+
     throw new Error((error as BaseError).shortMessage || (error as Error).message || 'An unexpected error occurred.');
   }
 
