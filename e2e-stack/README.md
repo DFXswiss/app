@@ -89,17 +89,17 @@ port conflict when you are not doing so.
 - Node 20
 - Either:
   - the API repository checked out as a sibling directory (default `../api`, overridable via `E2E_API_REPO`), or
-  - `E2E_API_IMAGE` set to a pre-built API image (skips building from a local checkout)
+  - `E2E_API_IMAGE` set to a pre-built API image (skips building from a local checkout; an API source checkout is still used for provenance classification when available)
 
 Relevant environment variables:
 
-| Variable            | Role                                                                                   |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| `E2E_API_IMAGE`     | If set, use this pre-built API image instead of building one                           |
-| `E2E_API_REPO`      | Path to a checked-out API repo; default `../api` (ignored when `E2E_API_IMAGE` is set) |
-| `E2E_PORT_API`      | Host port for the API (default `3000`) — debugging only                                |
-| `E2E_PORT_FRONTEND` | Host port for the frontend (default `3001`) — debugging only                           |
-| `E2E_WIDGET_URL`    | Internal URL of the widget host (default `http://frontend-widget`)                     |
+| Variable            | Role                                                                                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `E2E_API_IMAGE`     | If set, use this pre-built API image instead of building one                                                               |
+| `E2E_API_REPO`      | Path to a checked-out API repo; default `../api`; used for commit and KYC guard classification even with a pre-built image |
+| `E2E_PORT_API`      | Host port for the API (default `3000`) — debugging only                                                                    |
+| `E2E_PORT_FRONTEND` | Host port for the frontend (default `3001`) — debugging only                                                               |
+| `E2E_WIDGET_URL`    | Internal URL of the widget host (default `http://frontend-widget`)                                                         |
 
 ## Frontend widget service
 
@@ -115,7 +115,7 @@ Specs live under `e2e-stack/specs/`.
 
 Fixtures cover common setup needs such as signature login, email login, and database queries. For the authoritative, up-to-date list of fixtures (names, signatures, import paths), see `e2e-stack/specs/fixtures/` — that directory is the source of truth and may grow as the harness matures.
 
-The harness does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` otherwise requires for API access: the SDK is a React hooks package built around the component lifecycle and cannot run outside a mounted component tree, while this code runs as plain Node.js in the Playwright test process. It builds requests with raw `fetch` instead. That reasoning covers the whole harness, and the harness uses it accordingly: `fetch` is called from 13 places across 8 files — `fixtures/api-client.ts`, `fixtures/auth.ts`, `fixtures/mail.ts`, `global.setup.ts`, `cross-cutting.spec.ts`, `kyc.spec.ts`, `sell-swap.spec.ts` and `smoke.spec.ts`. `fixtures/api-client.ts` is the preferred entry point for authenticated calls, not the only permitted one; the exception to the SDK rule is scoped to `e2e-stack/` and does not extend to application code under `src/`.
+The harness does not use the `@dfx.swiss/react` SDK that `CONTRIBUTING.md` otherwise requires for API access: the SDK is a React hooks package built around the component lifecycle and cannot run outside a mounted component tree, while this code runs as plain Node.js in the Playwright test process. It builds requests with raw `fetch` instead. That reasoning covers the whole harness, and raw `fetch` is used across its fixtures, global setup, and specs. `fixtures/api-client.ts` is the preferred entry point for authenticated calls, not the only permitted one; the exception to the SDK rule is scoped to `e2e-stack/` and does not extend to application code under `src/`.
 
 The tests container starts a `socat`-based TCP forwarder on `127.0.0.1:3000` (override listen port with `E2E_LOOPBACK_PORT`, upstream with `E2E_API_URL`) that relays to the real API service. Under `Environment.LOC` the API builds some URLs (notably KYC-step endpoints) as `http://localhost:3000/...` because it assumes frontend and API share a host; without the forwarder, the browser inside the Playwright container would hit itself and fail with `net::ERR_CONNECTION_REFUSED`.
 
@@ -136,9 +136,12 @@ run. Both suites exist side by side and serve different purposes.
 
 The API repository has its own workflow that checks out this repository (`DFXswiss/app`)
 to obtain `e2e-stack/`. Conversely, this harness builds the API image from a checked-out API
-repo (`E2E_API_REPO`, default `../api`) or uses a pre-built image (`E2E_API_IMAGE`). The two
-repos therefore depend on each other for full-stack CI: the harness lives here; the API image
-and the workflow that drives the stack against API changes live in the API repository.
+repo (`E2E_API_REPO`, default `../api`) or uses a pre-built image (`E2E_API_IMAGE`). When an API
+checkout is available, `up.sh` requires it to be clean, derives the owner-guard rollout state from
+its source and history, and the KYC spec verifies that the running image's `/version.commit` matches
+that checkout. Without source provenance, KYC checks stay strict. The two repos therefore depend on
+each other for full-stack CI: the harness lives here; the API image and the workflow that drives the
+stack against API changes live in the API repository.
 
 ## Troubleshooting
 

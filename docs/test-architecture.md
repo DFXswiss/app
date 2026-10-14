@@ -68,6 +68,17 @@ API sits on". Any call that reaches out without going through that wrapper is th
 mock's scope. Which calls those are, and how many, is a property of the API and not verifiable from this
 repository.
 
+The KYC file authorization E2E executes a real foreign-user metadata GET and checks its response and
+settled page state. During rollout, only a clean, full-history pre-guard `develop` checkout or the
+immutable old-image control is marked legacy and reports an executed expected failure on HTTP 200.
+The harness verifies that `/version.commit` matches the classified API checkout; guarded, unknown, or
+unverifiable API images must return 404. When no source checkout is available, the classifier stays
+strict and cannot opt into the legacy exception. This proves the selected image's behavior, not the
+backend's production deployment or every future authorization implementation.
+
+On the legacy 200 path, the expected-failure assertion stops that test at the foreign-user status
+check. Anonymous response, body, audit, and UI assertions are reached only on the strict 404 path.
+
 The details — the factories and the states that are deliberately not achievable — are in
 `e2e-stack/README.md` and `e2e-stack/docs/test-data.md`.
 

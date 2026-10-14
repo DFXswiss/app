@@ -23,6 +23,10 @@ services:
     environment:
       E2E_FRONTEND_URL: ${E2E_FRONTEND_URL:-http://frontend}
       E2E_API_URL: ${E2E_API_URL:-http://api:3000}
+      # Stamped by scripts/up.sh from the checkout that built or supplied the API image.
+      # Missing source provenance defaults to strict KYC authorization assertions.
+      E2E_API_SOURCE_COMMIT: ${E2E_API_SOURCE_COMMIT:-}
+      E2E_KYC_FILE_GUARD_STATE: ${E2E_KYC_FILE_GUARD_STATE:-strict}
       # images/playwright/entrypoint.sh reads this to pick the socat listen port; without the
       # passthrough the variable never reaches the container and an override is silently ignored.
       # It must stay 3000 unless the frontend image is rebuilt with a matching
