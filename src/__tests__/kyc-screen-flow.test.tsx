@@ -484,6 +484,8 @@ describe('KycScreen API error routing', () => {
     renderPath('/kyc?code=CODE');
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ search: '?code=OTHER' }), { timeout: 10000 });
     expect(mockLogout).toHaveBeenCalled();
+    await settle();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 
   it('does not switch for an unauthorized response without a switch code', async () => {
@@ -493,12 +495,13 @@ describe('KycScreen API error routing', () => {
     expect(mockLogout).not.toHaveBeenCalled();
   });
 
-  it('routes TFA errors', async () => {
+  it('routes TFA errors without showing them', async () => {
     mockGetKycInfo.mockRejectedValueOnce({ code: 'TFA_REQUIRED', message: 'tfa' });
     renderPath('/kyc?code=CODE');
-    expect(await screen.findByText('tfa', undefined, { timeout: 10000 })).toBeInTheDocument();
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/2fa', { setRedirect: true }), { timeout: 10000 });
     expect(mockApp.setParams).toHaveBeenCalledWith({ autoStart: 'true' });
-    expect(mockNavigate).toHaveBeenCalledWith('/2fa', { setRedirect: true });
+    await settle();
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
   });
 
   it('shows and retries the merge hint', async () => {

@@ -114,6 +114,9 @@ const RequiredKycLevel = {
   [Mode.PROFILE]: KycLevel.Sell,
 };
 
+// errors callKyc has already answered with a redirect; the callers neither show nor report them
+const redirectedKycErrors = new WeakSet<ApiError>();
+
 export default function KycScreen(): JSX.Element {
   const { clearParams } = useNavigation();
   const { translate, changeLanguage, processingKycData } = useSettingsContext();
@@ -220,7 +223,7 @@ export default function KycScreen(): JSX.Element {
           await handleInitial(info);
         });
 
-    request.catch((error: ApiError) => setError(error.message ?? 'Unknown error')).finally(() => setIsLoading(false));
+    request.catch(showKycError).finally(() => setIsLoading(false));
   }, [kycCode, stepName, stepType]);
 
   async function onLoad(next: boolean): Promise<void> {
@@ -239,7 +242,7 @@ export default function KycScreen(): JSX.Element {
         })
         .catch((error: ApiError) => {
           if (gen !== loadGen.current) return;
-          setError(error.message ?? 'Unknown error');
+          showKycError(error);
         })
         .finally(() => {
           if (gen === loadGen.current) setIsSubmitting(false);
@@ -283,12 +286,16 @@ export default function KycScreen(): JSX.Element {
         setIsLoading(true);
         navigate({ search: `?code=${e.switchToCode}` });
         logout();
+        // the SDK sets switchToCode on every 401, only a main account code is a handled redirect
+        if (e.switchToCode) redirectedKycErrors.add(e);
       } else if (e.code === 'TFA_REQUIRED') {
         setParams({ autoStart: 'true' });
         navigate('/2fa', { setRedirect: true });
+        redirectedKycErrors.add(e);
       } else if (e.statusCode === 409 && e.message?.includes('exists')) {
         if (e.message.includes('merge')) {
           onLink();
+          redirectedKycErrors.add(e);
         } else {
           setError(e.message);
         }
@@ -296,6 +303,10 @@ export default function KycScreen(): JSX.Element {
 
       throw e;
     });
+  }
+
+  function showKycError(error: ApiError) {
+    if (!redirectedKycErrors.has(error)) setError(error.message ?? 'Unknown error');
   }
 
   function onLink() {
