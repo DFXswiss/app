@@ -252,13 +252,36 @@ describe('requestChangeToBlockchain', () => {
     expect(timeout).toHaveBeenCalledWith(expect.any(Function), 5000);
   });
 
-  it('cancels when the user rejects the switch', async () => {
-    mockSwitchChain.mockRejectedValue(new UserRejectedRequestError(new Error('User rejected.')));
+  // the connector wraps the wallet's answer in UserRejectedRequestError, also when adding the chain failed otherwise
+  it.each([
+    ['the WalletConnect code', 5000],
+    ['the EIP-1193 code', 4001],
+  ])('cancels with the code when the wallet rejects the switch with %s', async (_case, code) => {
+    mockSwitchChain.mockRejectedValue(
+      new UserRejectedRequestError(Object.assign(new Error('User rejected.'), { code })),
+    );
     const { result } = await setup();
 
-    await expect(result.current.requestChangeToBlockchain(Blockchain.POLYGON)).rejects.toBeInstanceOf(
-      UserRejectedError,
-    );
+    const change = result.current.requestChangeToBlockchain(Blockchain.POLYGON);
+    await expect(change).rejects.toBeInstanceOf(UserRejectedError);
+    await expect(change).rejects.toHaveProperty('code', 4001);
+  });
+
+  it('fails with the answer of the wallet when adding the chain failed', async () => {
+    const answer = Object.assign(new Error('Method not supported'), { code: -32601 });
+    mockSwitchChain.mockRejectedValue(new UserRejectedRequestError(answer));
+    const { result } = await setup();
+
+    const change = result.current.requestChangeToBlockchain(Blockchain.POLYGON);
+    await expect(change).rejects.not.toBeInstanceOf(UserRejectedError);
+    await expect(change).rejects.toThrow('Method not supported');
+  });
+
+  it('fails with the message of another switch failure', async () => {
+    mockSwitchChain.mockRejectedValue(Object.assign(new Error('long'), { shortMessage: 'Chain not configured.' }));
+    const { result } = await setup();
+
+    await expect(result.current.requestChangeToBlockchain(Blockchain.POLYGON)).rejects.toThrow('Chain not configured.');
   });
 });
 
