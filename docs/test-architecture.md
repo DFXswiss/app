@@ -710,7 +710,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   replaces web3's address checksum, which jsdom's `Uint8Array` breaks, the app's web3 hook with a fixed chain
   mapping, device detection, and `@dfx.swiss/react` with copies of its `AssetType` and `Blockchain` values. A green run proves that web3 keeps the EIP-1193 code of a rejection that is not
   an Error, while other failures keep the message web3 builds for them. It does not prove that a real wallet
-  rejects with that shape, the chain mapping, that the checksum is computed, or that a transaction reaches a
+  rejects with that shape, the chain mapping, the SDK's enum values, that the checksum is computed, or that a transaction reaches a
   chain.
 - **The MetaMask calls hook test replaces web3 and the injected provider.**
   `src/hooks/wallets/__tests__/metamask-calls.hook.test.ts` runs `useMetaMask` against a hand-written web3
@@ -719,7 +719,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `AssetType` and `Blockchain` values, and a `setTimeout` that fires at once
   so the two-minute status poll ends immediately. A green run proves which web3 and wallet calls the hook makes
   and how it treats their answers. It does not prove that web3 or a real wallet behaves like those objects, the
-  chain mapping, the real poll timing, the detection of a wallet app by its user agent, or that a page reload
+  chain mapping, the SDK's enum values, the real poll timing, the detection of a wallet app by its user agent, or that a page reload
   happens.
 - **The WalletConnect hook test replaces the wagmi actions and the wallet list.**
   `src/hooks/wallets/__tests__/wallet-connect.hook.test.ts` replaces `@wagmi/core`, the wagmi config,
@@ -728,7 +728,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   and replaces `setTimeout` so the wait after a chain switch ends at once;
   it keeps the real viem. A green run proves which wagmi actions the hook calls and how it maps their results and
   errors. It does not prove that a WalletConnect session is established, that a wallet answers or rejects that
-  way, that the wallet list API returns that JSON, the chain-id mapping, or the real wait after a switch.
+  way, that the wallet list API returns that JSON, the chain-id mapping, the SDK's enum values, or the real wait after a switch.
 
 ## Known gaps
 
