@@ -692,8 +692,9 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   with an object that rejects the way an injected wallet does, `@wagmi/core` with functions that throw the real
   viem `UserRejectedRequestError` with a fixed connected account and one WalletConnect connector, the wagmi
   config with a placeholder project id, and the Solana and Tron wallet adapters with objects that throw the real
-  adapter error classes. The wallet context, the session contexts, translation, styled controls, `SignHint` and
-  the client-error reporter are replaced as well; the app's web3 hook has a fixed chain mapping, the Solana and
+  adapter error classes. The wallet context, `@dfx.swiss/react` with its session contexts and copies of its
+  `AssetType` and `Blockchain` values, translation, styled controls, `SignHint` and the client-error reporter
+  are replaced as well; the app's web3 hook has a fixed chain mapping, the Solana and
   Tron hooks are empty, `ethers.encodeBase58` returns a placeholder, device detection and the Tron wallet and
   in-app detection are fixed, `global.fetch` rejects the WalletConnect wallet list, `console.warn` is silenced,
   and web3's address checksum, which jsdom's `Uint8Array` breaks, returns the address unchanged. A green run
@@ -701,8 +702,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   other failures on the same paths are still shown and reported. It does not prove that a real wallet,
   extension or app rejects with exactly that shape or code, that the real reporter sends the report, that the
   wallet list loads, that a real WalletConnect connector or session is used, the chain mapping, the signature
-  encoding, the wallet and mobile detection, that the
-  checksum is computed, or that a real login completes.
+  encoding, the wallet and mobile detection, the SDK's enum values, that the checksum is computed, or that a
+  real login completes.
 - **The MetaMask rejection hook test replaces the injected provider.**
   `src/hooks/wallets/__tests__/metamask-rejection.hook.test.ts` runs `useMetaMask` against the real web3 with
   an in-memory EIP-1193 provider (and a legacy `sendAsync` provider) that answers or rejects each method, and

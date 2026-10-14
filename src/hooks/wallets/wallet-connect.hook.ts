@@ -155,10 +155,12 @@ export function useWalletConnect(): WalletConnectInterface {
       if (!(error instanceof UserRejectedRequestError)) handleError(error);
 
       // wagmi reports any failure to add the chain as a rejection, so only the wallet's own answer tells a cancel
-      // apart: its code, or the message wagmi itself checks for a rejected switch
+      // apart: its code, or without one the message wagmi itself checks for a rejected switch
       const { code, message } = (error.cause ?? {}) as { code?: unknown; message?: unknown };
       const isRejection =
-        code === USER_REJECTED_CODE || code === WALLET_CONNECT_REJECTED_CODE || /user rejected/i.test(String(message));
+        typeof code === 'number'
+          ? code === USER_REJECTED_CODE || code === WALLET_CONNECT_REJECTED_CODE
+          : /user rejected/i.test(String(message));
       if (isRejection) throw new UserRejectedError();
 
       throw new Error(typeof message === 'string' && message ? message : 'An unexpected error occurred.');

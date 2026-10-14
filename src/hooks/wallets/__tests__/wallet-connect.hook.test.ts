@@ -72,6 +72,7 @@ const listing = (id: string, desktop: string, mobile: string) => ({
   image_url: { md: `${id}.png` },
 });
 
+const originalFetch = global.fetch;
 let fetchMock: jest.Mock;
 
 async function setup() {
@@ -94,6 +95,7 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.restoreAllMocks();
+  global.fetch = originalFetch;
 });
 
 describe('wallets', () => {
@@ -258,7 +260,7 @@ describe('requestChangeToBlockchain', () => {
     ['the EIP-1193 code', 4001],
   ])('cancels with the code when the wallet rejects the switch with %s', async (_case, code) => {
     mockSwitchChain.mockRejectedValue(
-      new UserRejectedRequestError(Object.assign(new Error('User rejected.'), { code })),
+      new UserRejectedRequestError(Object.assign(new Error('Request denied.'), { code })),
     );
     const { result } = await setup();
 
@@ -267,14 +269,23 @@ describe('requestChangeToBlockchain', () => {
     await expect(change).rejects.toHaveProperty('code', 4001);
   });
 
-  it('cancels when the wallet rejects the switch with another code, as wagmi recognises it by the message', async () => {
-    const answer = Object.assign(new Error('User rejected methods.'), { code: 5002 });
-    mockSwitchChain.mockRejectedValue(new UserRejectedRequestError(answer));
+  it('cancels when the wallet rejects the switch without a code, as wagmi recognises it by the message', async () => {
+    mockSwitchChain.mockRejectedValue(new UserRejectedRequestError(new Error('User rejected the switch.')));
     const { result } = await setup();
 
     await expect(result.current.requestChangeToBlockchain(Blockchain.POLYGON)).rejects.toBeInstanceOf(
       UserRejectedError,
     );
+  });
+
+  it('fails when the wallet answers the switch with another code, even with a rejection message', async () => {
+    const answer = Object.assign(new Error('User rejected methods.'), { code: 5002 });
+    mockSwitchChain.mockRejectedValue(new UserRejectedRequestError(answer));
+    const { result } = await setup();
+
+    const change = result.current.requestChangeToBlockchain(Blockchain.POLYGON);
+    await expect(change).rejects.not.toBeInstanceOf(UserRejectedError);
+    await expect(change).rejects.toThrow('User rejected methods.');
   });
 
   it.each([

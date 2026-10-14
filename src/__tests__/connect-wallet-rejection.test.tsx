@@ -223,6 +223,8 @@ function loginSigns() {
   );
 }
 
+const originalFetch = global.fetch;
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockLogin.mockResolvedValue(undefined);
@@ -240,6 +242,7 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.restoreAllMocks();
+  global.fetch = originalFetch;
 });
 
 describe('MetaMask and other injected EVM wallets (through web3)', () => {
