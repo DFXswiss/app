@@ -5,7 +5,7 @@
 
 const mockUseComplianceGuard = jest.fn();
 const mockNavigate = jest.fn();
-const mockSearch = jest.fn();
+let mockSearch = jest.fn();
 const mockDownloadUserFiles = jest.fn();
 const mockGetPendingReviews = jest.fn();
 const mockGetPendingTransactions = jest.fn();
@@ -139,7 +139,7 @@ jest.mock('src/util/bank-tx-cache', () => ({
   cacheBankTx: (...args: unknown[]) => mockCacheBankTx(...args),
 }));
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { BankTxSearchResult, ComplianceSearchResult, UserSearchResult } from 'src/hooks/compliance.hook';
 import ComplianceScreen from 'src/screens/compliance.screen';
 
@@ -161,6 +161,16 @@ function rowOf(text: string): HTMLElement {
   return row;
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 // Renders the screen and lets the dashboard sections finish loading, so their state updates do
 // not land outside act() later in a test.
 async function renderScreen(): Promise<void> {
@@ -179,6 +189,7 @@ describe('ComplianceScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLocation.search = '';
+    mockSearch = jest.fn();
     mockSearch.mockResolvedValue(result());
     mockDownloadUserFiles.mockResolvedValue(undefined);
     mockGetPendingReviews.mockResolvedValue([{ id: 1 }]);
@@ -305,5 +316,53 @@ describe('ComplianceScreen', () => {
     await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('338759'));
     await waitFor(() => expect(screen.getByText('Jana')).toBeInTheDocument());
     expect(screen.getByPlaceholderText('example@mail.com')).toHaveValue('338759');
+  });
+
+  it('does not apply a stale search response after a later search', async () => {
+    mockLocation.search = '?search=first';
+    const first = createDeferred<ComplianceSearchResult>();
+    const second = createDeferred<ComplianceSearchResult>();
+    mockSearch.mockImplementation((key: string) => (key === 'first' ? first.promise : second.promise));
+
+    const { rerender } = render(<ComplianceScreen />);
+    await waitFor(() => expect(screen.getByTestId('pending-reviews')).toHaveTextContent('1'));
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('first'));
+
+    mockLocation.search = '?search=second';
+    rerender(<ComplianceScreen />);
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('second'));
+
+    await act(async () => {
+      second.resolve(result({ userDatas: [user({ id: 2, name: 'New Name' })] }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByText('New Name')).toBeInTheDocument());
+
+    await act(async () => {
+      first.resolve(result({ userDatas: [user({ id: 1, name: 'Old Name' })] }));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('New Name')).toBeInTheDocument();
+    expect(screen.queryByText('Old Name')).not.toBeInTheDocument();
+  });
+
+  it('does not rerun the URL search when the search function identity changes', async () => {
+    mockLocation.search = '?search=foo';
+    mockSearch.mockResolvedValue(result({ type: 'Name', userDatas: [user({ id: 1, name: 'Fay F' })] }));
+
+    const { rerender } = render(<ComplianceScreen />);
+    await waitFor(() => expect(screen.getByTestId('pending-reviews')).toHaveTextContent('1'));
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('foo'));
+    await waitFor(() => expect(screen.getByText('Fay F')).toBeInTheDocument());
+    expect(mockSearch).toHaveBeenCalledTimes(1);
+
+    const originalSearch = mockSearch;
+    mockSearch = jest.fn().mockResolvedValue(result({ type: 'Name', userDatas: [user({ id: 1, name: 'Fay F' })] }));
+    rerender(<ComplianceScreen />);
+
+    expect(originalSearch).toHaveBeenCalledTimes(1);
+    expect(mockSearch).not.toHaveBeenCalled();
+    expect(screen.getByText('Fay F')).toBeInTheDocument();
   });
 });

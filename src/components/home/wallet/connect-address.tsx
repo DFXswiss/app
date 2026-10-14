@@ -8,7 +8,7 @@ import {
   StyledLoadingSpinner,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { ErrorHint } from 'src/components/error-hint';
 import { ConnectProps } from 'src/components/home/connect-shared';
@@ -18,9 +18,14 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { useWalletContext } from 'src/contexts/wallet.context';
 import { useWindowContext } from 'src/contexts/window.context';
 import { useAppParams } from 'src/hooks/app-params.hook';
+import { useReportDisplayedError } from 'src/hooks/report-displayed-error.hook';
+import { KnownRejectionType } from 'src/util/known-rejections';
 import { blankedAddress, sortAddressesByBlockchain } from 'src/util/utils';
 
 export const CustodyAssets = ['ZCHF', 'FPS', 'DEPSPresale'];
+
+// The API rejected the switch for this session, so another attempt cannot succeed.
+const SwitchRejectionStatusCodes = [400, 401, 403, 404];
 
 interface FormData {
   address: UserAddress;
@@ -41,6 +46,9 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [switchError, setSwitchError] = useState<{ message: string; isRejection: boolean }>();
+  useReportDisplayedError(switchError?.isRejection ? switchError.message : undefined, KnownRejectionType);
+  const attemptedAddress = useRef<string>();
 
   const isCustodySignup = !hasAddress && CustodyAssets.includes(assetOut ?? '');
 
@@ -48,30 +56,41 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
     control,
     formState: { errors },
     setValue,
+    resetField,
   } = useForm<FormData>();
 
   const selectedAddress = useWatch({ control, name: 'address' });
 
-  useEffect(() => {
-    const preselectedAddress = user?.activeAddress ?? (userAddresses.length === 1 ? userAddresses[0] : undefined);
-    if (preselectedAddress) {
-      setValue('address', preselectedAddress);
-    }
-  }, [user?.activeAddress, userAddresses]);
+  const preselectedAddress = user?.activeAddress ?? (userAddresses.length === 1 ? userAddresses[0] : undefined);
 
   useEffect(() => {
-    const isAddressChange = user?.activeAddress?.address !== selectedAddress?.address;
-    const needsSessionUpdate = sessionHasNoAddress && selectedAddress?.address;
+    if (preselectedAddress) setValue('address', preselectedAddress);
+  }, [preselectedAddress?.address]);
 
-    if (selectedAddress?.address && (isAddressChange || needsSessionUpdate) && !isUserLoading) {
-      setIsLoading(true);
-      changeAddress(selectedAddress.address)
-        .then(() => {
-          setWallet();
-          onLogin();
-        })
-        .catch(() => setIsLoading(false));
-    }
+  useEffect(() => {
+    const address = selectedAddress?.address;
+    const isAddressChange = user?.activeAddress?.address !== address;
+    if (!address || !(isAddressChange || sessionHasNoAddress) || isUserLoading) return;
+    if (attemptedAddress.current === address) return;
+
+    attemptedAddress.current = address;
+    setSwitchError(undefined);
+    setIsLoading(true);
+    changeAddress(address)
+      .then(() => {
+        setWallet();
+        onLogin();
+      })
+      .catch((e: ApiError) => {
+        // wait for the user to select an address again instead of retrying
+        attemptedAddress.current = undefined;
+        resetField('address');
+        setSwitchError({
+          message: e.message || 'Unknown error',
+          isRejection: SwitchRejectionStatusCodes.includes(e.statusCode),
+        });
+        setIsLoading(false);
+      });
   }, [selectedAddress, user?.activeAddress, isUserLoading, sessionHasNoAddress]);
 
   useEffect(() => {
@@ -87,7 +106,7 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
           setSession(accessToken);
           onLogin();
         })
-        .catch((error: ApiError) => setError(error.message ?? 'Unknown error'));
+        .catch((error: ApiError) => setError(error.message || 'Unknown error'));
     }
   }, [assetOut, hasAddress, isUserLoading]);
 
@@ -99,7 +118,18 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
     </div>
   ) : (
     <StyledVerticalStack gap={4} center full marginY={4} className="z-10">
-      {userAddresses.length && (
+      {switchError &&
+        (switchError.isRejection ? (
+          <p className="text-dfxRed-100">
+            {translate(
+              'screens/home',
+              'This address could not be selected. Please use another address or contact our support.',
+            )}
+          </p>
+        ) : (
+          <ErrorHint message={switchError.message} />
+        ))}
+      {userAddresses.length > 0 && (
         <>
           <p className="text-dfxGray-700">
             {translate('screens/home', 'Please select an address or add a new one to continue.')}

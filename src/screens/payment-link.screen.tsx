@@ -47,6 +47,7 @@ import 'react-lazy-load-image-component/src/effects/opacity.css';
 import { useSearchParams } from 'react-router-dom';
 import { ErrorHint } from 'src/components/error-hint';
 import { QrBasic } from 'src/components/payment/qr-code';
+import { SparPlaceMap } from 'src/components/payment/spar-place-map';
 import PaymentStatusTile from 'src/components/pl/payment-status-tile';
 import { useLayoutContext } from 'src/contexts/layout.context';
 import { usePaymentLinkContext } from 'src/contexts/payment-link.context';
@@ -253,7 +254,7 @@ export default function PaymentLinkScreen(): JSX.Element {
       ) : (
         <StyledVerticalStack full gap={4} center className="pt-8">
           <div className="flex flex-col w-full gap-6 justify-center">
-            <p className="text-dfxBlue-800 font-bold text-xl">{payRequest?.displayName ?? merchant}</p>
+            <p className="text-dfxBlue-800 font-bold text-xl">{payRequest.displayName ?? merchant}</p>
             <div className="w-full h-[1px] bg-gradient-to-r bg-dfxGray-500 from-white via-dfxGray-500 to-white" />
             {!merchant && (
               <>
@@ -263,12 +264,12 @@ export default function PaymentLinkScreen(): JSX.Element {
                       <span className="text-[18px]">{payRequest.requestedAmount.asset} </span>
                       {formatAmountForDisplay(payRequest.requestedAmount.amount)}
                     </p>
-                    {payRequest?.mode === PaymentLinkMode.PUBLIC &&
+                    {payRequest.mode === PaymentLinkMode.PUBLIC &&
                       ![PaymentLinkPaymentStatus.COMPLETED, PaymentLinkPaymentStatus.EXPIRED].includes(
                         paymentStatus as PaymentLinkPaymentStatus,
                       ) && <EditPublicPaymentForm paymentRequest={payRequest} />}
                   </>
-                ) : payRequest?.mode === PaymentLinkMode.PUBLIC &&
+                ) : payRequest.mode === PaymentLinkMode.PUBLIC &&
                   paymentStatus === NoPaymentLinkPaymentStatus.NO_PAYMENT ? (
                   <CreatePublicPaymentForm paymentRequest={payRequest} />
                 ) : [PaymentLinkPaymentStatus.PENDING, NoPaymentLinkPaymentStatus.NO_PAYMENT].includes(
@@ -284,16 +285,16 @@ export default function PaymentLinkScreen(): JSX.Element {
           <PaymentStatusTile
             status={paymentStatus}
             filterStatuses={
-              payRequest?.mode === PaymentLinkMode.PUBLIC
+              payRequest.mode === PaymentLinkMode.PUBLIC
                 ? [PaymentLinkPaymentStatus.CANCELLED, NoPaymentLinkPaymentStatus.NO_PAYMENT]
                 : []
             }
           />
 
           {([PaymentLinkPaymentStatus.PENDING, NoPaymentLinkPaymentStatus.NO_PAYMENT].includes(paymentStatus) ||
-            payRequest?.mode === PaymentLinkMode.PUBLIC) && (
+            payRequest.mode === PaymentLinkMode.PUBLIC) && (
             <>
-              {payRequest && (paymentHasQuote(payRequest) || payRequest.recipient) && (
+              {(paymentHasQuote(payRequest) || payRequest.recipient) && (
                 <StyledCollapsible
                   full
                   titleContent={
@@ -340,7 +341,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                               <StyledDropdown<string>
                                 rootRef={rootRef}
                                 name="asset"
-                                items={assetsList?.map((item) => item.asset) ?? []}
+                                items={assetsList.map((item) => item.asset)}
                                 labelFunc={(item) => item}
                                 descriptionFunc={() => selectedPaymentStandard?.blockchain ?? ''}
                                 full
@@ -381,20 +382,20 @@ export default function PaymentLinkScreen(): JSX.Element {
                             ].filter((item) => item.text) as any
                           }
                         >
-                          <p>{blankedAddress(payRequest.externalId ?? payRequest.id, { width, scale: 0.9 })}</p>
+                          <p>{blankedAddress(payRequest.externalId, { width, scale: 0.9 })}</p>
                         </StyledDataTableExpandableRow>
                       )}
                       {paymentHasQuote(payRequest) && (
                         <>
-                          {parsedEvmUri && paymentIdentifier && (
+                          {parsedEvmUri && (
                             <>
                               {parsedEvmUri.amount && (
                                 <StyledDataTableRow
                                   label={translate('screens/payment', 'Amount')}
-                                  isLoading={isLoadingPaymentIdentifier || !paymentIdentifier}
+                                  isLoading={isLoadingPaymentIdentifier}
                                 >
                                   <p>{formatUnits(parsedEvmUri.amount, assetObject?.decimals)}</p>
-                                  <CopyButton onCopy={() => copy(parsedEvmUri.amount ?? '')} />
+                                  <CopyButton onCopy={() => copy(parsedEvmUri.amount as string)} />
                                 </StyledDataTableRow>
                               )}
 
@@ -402,10 +403,10 @@ export default function PaymentLinkScreen(): JSX.Element {
                                 <StyledDataTableRow label={translate('screens/sell', 'Asset')}>
                                   {showContract && assetObject.chainId ? (
                                     <StyledHorizontalStack gap={2}>
-                                      <span>{blankedAddress(assetObject.chainId ?? '', { width, scale: 0.75 })}</span>
+                                      <span>{blankedAddress(assetObject.chainId, { width, scale: 0.75 })}</span>
                                       <StyledIconButton
                                         icon={IconVariant.COPY}
-                                        onClick={() => copy(assetObject.chainId ?? '')}
+                                        onClick={() => copy(assetObject.chainId as string)}
                                         size={IconSize.SM}
                                       />
                                       {assetObject.explorerUrl && (
@@ -432,20 +433,22 @@ export default function PaymentLinkScreen(): JSX.Element {
                               {parsedEvmUri.address && (
                                 <StyledDataTableRow
                                   label={translate('screens/home', 'Address')}
-                                  isLoading={isLoadingPaymentIdentifier || !paymentIdentifier}
+                                  isLoading={isLoadingPaymentIdentifier}
                                 >
-                                  <p>{blankedAddress(parsedEvmUri.address ?? '', { width, scale: 0.8 })}</p>
-                                  <CopyButton onCopy={() => copy(parsedEvmUri.address ?? '')} />
+                                  <p>{blankedAddress(parsedEvmUri.address, { width, scale: 0.8 })}</p>
+                                  <CopyButton onCopy={() => copy(parsedEvmUri.address as string)} />
                                 </StyledDataTableRow>
                               )}
 
-                              {toBlockchain(parsedEvmUri.chainId ?? '') && (
+                              {toBlockchain(parsedEvmUri.chainId as string) && (
                                 <StyledDataTableRow
                                   label={translate('screens/home', 'Blockchain')}
-                                  isLoading={isLoadingPaymentIdentifier || !paymentIdentifier}
+                                  isLoading={isLoadingPaymentIdentifier}
                                 >
-                                  <p>{toBlockchain(parsedEvmUri.chainId ?? '')}</p>
-                                  <CopyButton onCopy={() => copy(toBlockchain(parsedEvmUri.chainId ?? '') ?? '')} />
+                                  <p>{toBlockchain(parsedEvmUri.chainId as string)}</p>
+                                  <CopyButton
+                                    onCopy={() => copy(toBlockchain(parsedEvmUri.chainId as string) as string)}
+                                  />
                                 </StyledDataTableRow>
                               )}
                             </>
@@ -623,7 +626,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                           )}
                         </p>
                       </div>
-                    ) : payRequest?.mode === PaymentLinkMode.PUBLIC ? (
+                    ) : payRequest.mode === PaymentLinkMode.PUBLIC ? (
                       <p className="text-base pt-3 text-dfxGray-700" />
                     ) : (
                       <p className="text-base pt-3 text-dfxGray-700">
@@ -696,7 +699,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                               onClick={() => window.open(walletData.websiteUrl, '_blank')}
                               color={StyledButtonColor.STURDY_WHITE}
                               width={StyledButtonWidth.FULL}
-                              hidden={!walletData.websiteUrl || payRequest?.mode === PaymentLinkMode.PUBLIC}
+                              hidden={!walletData.websiteUrl || payRequest.mode === PaymentLinkMode.PUBLIC}
                             />
                             <div
                               className="flex flex-row gap-3 w-full justify-center pt-5 pb-2"
@@ -710,7 +713,7 @@ export default function PaymentLinkScreen(): JSX.Element {
                       </StyledVerticalStack>
                     ) : (
                       <>
-                        {(payRequest?.mode !== PaymentLinkMode.PUBLIC || paymentHasQuote(payRequest)) && (
+                        {(payRequest.mode !== PaymentLinkMode.PUBLIC || paymentHasQuote(payRequest)) && (
                           <>
                             <WalletGrid
                               wallets={recommendedWallets}
@@ -734,18 +737,14 @@ export default function PaymentLinkScreen(): JSX.Element {
             </>
           )}
           {merchant === 'SPAR' && (
-            <>
-              {<DividerWithHeader header={translate('screens/payment', 'Locations').toUpperCase()} />}
+            <div data-testid="spar-locations" className="flex w-full flex-col">
+              <DividerWithHeader header={translate('screens/payment', 'Locations').toUpperCase()} />
               <div ref={mapRef} className="flex flex-col gap-4 w-full">
                 <div className="w-full h-96 rounded-md overflow-clip">
-                  <iframe
-                    src="https://www.google.com/maps/d/embed?mid=1DzX6z5tnUqn1zlzFnL6G58xREItorRM&ehbc=2E312F&noprof=1"
-                    width="100%"
-                    height="100%"
-                  ></iframe>
+                  <SparPlaceMap />
                 </div>
               </div>
-            </>
+            </div>
           )}
 
           <div className="p-1 w-full leading-none">
@@ -773,22 +772,26 @@ interface TransferMethodsContentProps {
 function TransferMethodsContent({ payRequest, walletData }: TransferMethodsContentProps) {
   const { isMerchantMode } = usePaymentLinkContext();
 
+  // Merchant mode still opens this row when the key is absent. The type says the
+  // list is present; a missing list used to throw on filter or map.
+  const transferAmounts = Array.isArray(payRequest.transferAmounts) ? payRequest.transferAmounts : [];
   const filteredTransferAmounts = walletData
-    ? Wallet.filterTransferInfoByWallet(walletData, payRequest.transferAmounts)
-    : payRequest.transferAmounts;
+    ? Wallet.filterTransferInfoByWallet(walletData, transferAmounts)
+    : transferAmounts;
   const supportedMethods = filteredTransferAmounts.filter((ta) => ta.available !== false);
 
   const assetMap = new Map<string, { amount?: string; methods: string[] }>();
   supportedMethods.forEach((transferMethod) => {
     transferMethod.assets.forEach((asset) => {
-      if (!assetMap.has(asset.asset)) {
-        assetMap.set(asset.asset, {
+      let data = assetMap.get(asset.asset);
+      if (!data) {
+        data = {
           amount: asset.amount != null ? String(asset.amount) : undefined,
           methods: [],
-        });
+        };
+        assetMap.set(asset.asset, data);
       }
-      const data = assetMap.get(asset.asset);
-      data?.methods.push(transferMethod.method);
+      data.methods.push(transferMethod.method);
     });
   });
 
@@ -852,11 +855,9 @@ function WalletGrid({ wallets, header }: WalletGridProps): JSX.Element {
   );
 }
 
-function DividerWithHeader({ header, py }: { header: string; py?: number }): JSX.Element {
-  const pyClass = py === 4 ? 'py-4' : py === 2 ? 'py-2' : py === 1 ? 'py-1' : '';
-
+function DividerWithHeader({ header }: { header: string }): JSX.Element {
   return (
-    <div className={`flex flex-row items-center gap-2 ${pyClass} w-full`}>
+    <div className="flex flex-row items-center gap-2 w-full">
       <div className="flex-grow bg-gradient-to-r from-white to-dfxGray-600 h-[1px]" />
       <p className="text-xs font-medium text-dfxGray-600 whitespace-nowrap">{header}</p>
       <div className="flex-grow bg-gradient-to-r from-dfxGray-600 to-white h-[1px]" />

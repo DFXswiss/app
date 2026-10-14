@@ -388,6 +388,66 @@ test.describe('Payment links / routes / invoice', () => {
     }
   });
 
+  // The place API is stubbed. A green run does not prove that the place API returns this shop.
+  test('/pl: merchant SPAR shows the location list from the place API', async ({ page }) => {
+    const seen: string[] = [];
+    await page.route('https://api.opencryptopay.io/map/**', (route) => {
+      const url = route.request().url();
+      seen.push(url);
+      const swissSpar = url.includes('/map/places?shopName=SPAR&country=CH');
+      const body = swissSpar
+        ? {
+            places: [
+              {
+                name: 'SPAR Zürich',
+                shopName: 'SPAR',
+                country: 'CH',
+                category: 'grocery',
+                lat: 47.37,
+                lon: 8.54,
+              },
+            ],
+          }
+        : {};
+      return route.fulfill({
+        status: swissSpar ? 200 : 500,
+        contentType: 'application/json',
+        body: JSON.stringify(body),
+      });
+    });
+
+    // Outbound HTTP in this harness never reaches the map style host, so that
+    // request stays open and networkidle waits out the test timeout. The
+    // location list does not depend on tiles.
+    await page.route('https://tiles.openfreemap.org/**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ version: 8, sources: {}, layers: [] }),
+      }),
+    );
+
+    const places = page.waitForResponse(
+      (response) => response.url().includes('/map/places?shopName=SPAR&country=CH') && response.ok(),
+    );
+    await page.goto('/pl?merchant=SPAR&lang=en');
+    await expect
+      .poll(() => normPath(new URL(page.url()).pathname), {
+        message: 'expected pathname /pl',
+        timeout: 20000,
+      })
+      .toBe('/pl');
+    await places;
+
+    await expect(page.getByText('LOCATIONS', { exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Country' })).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Shop' })).toHaveCount(0);
+    await expect(page.getByText('The location list could not be loaded.', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('No locations published yet.', { exact: true })).toHaveCount(0);
+    expect(seen.some((url) => url.includes('/map/filters'))).toBe(false);
+    expect(seen.some((url) => url.includes('/map/places?shopName=SPAR&country=CH'))).toBe(true);
+  });
+
   // =========================================================================
   // /pl/assign
   // =========================================================================

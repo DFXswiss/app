@@ -30,6 +30,7 @@ test-results/
 
 # generated at build time
 public/version.json
+public/maplibre-gl-worker.mjs
 
 # debug
 npm-debug.log*

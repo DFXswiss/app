@@ -299,6 +299,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   a past deadline in red. It does not prove that the API returns those rows,
   that the mark date is the account's phone-call date, or that login and
   token verification succeed.
+- **The compliance tag-list spec answers the tag list itself.**
+  `e2e/compliance-tag-list.spec.ts` fulfils `GET /v1/support/tag/example` with
+  synthetic fixtures: four customer rows, an empty `userDatas`, and a 404 with
+  the message `Tag not found`. It answers the pending-reviews,
+  pending-transactions and call-queues lists with empty arrays, fulfils
+  `/v2/user`, returns empty lists for `/v1/language`, `/v1/fiat`, `/v1/asset`,
+  `/v1/bankAccount` and `/v1/country` plus a null info banner, and answers every
+  other `/v1` or `/v2` request with 501. The session is a synthetic unsigned
+  JWT. A green run proves that `/compliance?tag=…` renders the tagged customers
+  in the existing customer table, the empty state and the not-found error. It
+  does not prove that the API returns those rows for a tag, that a tag setting
+  exists, or that login and token verification succeed.
 - **Full-stack compliance specs SQL-seed a call-queue case.**
   `e2e-stack/specs/fixtures/factories.ts` (`createCallQueueEntry`) inserts a pending `buy_crypto`
   with AML reason `ManualCheckPhone` and SQL-writes `user_data.phoneCallStatus`,
@@ -439,6 +451,79 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   results. It does not prove the exact `pl?lightning=…` link or the exact
   decoded API URL, which host the real `url()` or `Api` resolve to in any deployment, or that
   the real `url()` treats those arguments identically; no assertion pins the outer host.
+- **The SPAR location pictures answer the OpenCryptoPay place API themselves.**
+  `e2e/spar-place-map.spec.ts` fulfils `https://api.opencryptopay.io/map/places?shopName=SPAR&country=CH`
+  with the published SPAR shop locations, plus one Liechtenstein SPAR pin and one
+  Volg pin that the page must not plot. Names and coordinates are that published list.
+  Country is CH on the fixture because the page draws a pin only when country is CH.
+  The map does not list shop names. Any other place URL, including `/map/filters`, is answered
+  with HTTP 500. It also fulfils `**/v1/**`, `**/v2/**` and `**/paymentLink/**` so `/pl?merchant=SPAR`
+  renders without a live DFX API. Map tiles are the live OpenFreeMap Liberty style, not a fixture.
+  A green run proves those fixtures render on the whole payment page, with no country or shop
+  control and no shop-name list: a map of the Swiss pins, an open shop, an empty list, the load
+  error, and the loading state before the places arrive. It does not prove that the
+  place API still returns this set, that those rows are stored with country CH, or that the
+  DFX payment-link API returns the stubbed merchant.
+- **The payment-link stack spec answers the place API itself for the SPAR merchant.**
+  `e2e-stack/specs/payment-links.spec.ts` fulfils that same SPAR-Switzerland place URL with one
+  synthetic SPAR shop, and answers every other place URL with HTTP 500, while the rest of that
+  spec talks to the local API. It also fulfils `https://tiles.openfreemap.org/**` with an empty
+  map style, because this harness never reaches that host and an open style request keeps the
+  network from going idle. A green run proves the locations block appears for `merchant=SPAR`,
+  the request is `shopName=SPAR` and `country=CH`, and the page shows neither a country control,
+  a shop control, the load error, nor the empty sentence. It does not prove that the place API
+  returns that shop, that OpenFreeMap serves tiles, or that a real map draws the pin.
+- **The SPAR place-map unit test replaces fetch and MapLibre.**
+  `src/__tests__/spar-place-map.test.tsx` stubs `global.fetch` for the place API and replaces
+  `maplibre-gl` with a fake map that records markers. A green run proves the component asks only
+  for `shopName=SPAR&country=CH`, never for `/map/filters` or an unfiltered place list, drops pins
+  that are not SPAR in CH or are out of range, and shows the empty and error states with no
+  country or shop control. It does not prove that a real map draws those pins, that OpenFreeMap
+  serves tiles, or that the place API returns that JSON.
+- **The payment-link screen unit test replaces the SDK, the context, wallets and the SPAR map.**
+  `src/__tests__/payment-link.screen.test.tsx` replaces `useApi` with `mockCall`, the asset
+  catalog with `useAssetContext`, the payment-link context and the wallet hook with in-memory
+  objects, wallet deeplinks with `mockGetDeeplinkByWalletId`, and `SparPlaceMap` with an empty
+  marker. Styled controls, the QR code and `window.open` are fakes too. A green run proves those
+  objects render the quote rows, the payment methods, the wallet block and the SPAR locations
+  block. It does not prove that the DFX payment-link API returns those payloads, that a wallet
+  deeplink opens, that the asset catalog matches production, or that the SPAR map draws the
+  place list.
+- **The rejected address switch visual spec answers the user and the switch itself.**
+  `e2e/connect-address-switch.spec.ts` authenticates with a synthetic unsigned JWT without an address, fulfils
+  `GET /v2/user` with one synthetic address (and with none in the custody case) and the bootstrap GETs,
+  answers `POST /v1/user/change` with a 403 (and with a 500 in one case), answers `POST /v1/custody` with a
+  500 without message in another, and fulfils the client-error POST. Unmatched `/v1/**` and `/v2/**` calls get
+  `501`. A green run proves that the screen sends the rejected switch once, shows the translated rejection
+  sentence above the selection without the API's text, and sends exactly one new attempt when the address is
+  selected again; the intercepted client-error route observes one `KnownRejection` POST, including when the
+  same rejection is shown again after re-selection, because the reporter drops an identical report within
+  60 s; a server error on the switch keeps the generic hint and a custody failure without a message shows the
+  generic hint with "Unknown error" instead of an endless spinner. It does not prove when or why the API
+  rejects the switch, or that login or token verification works, or that the real client-error endpoint
+  receives or stores the report. It does not prove that the screen itself reports only once: it reports each
+  displayed rejection, which the unit test covers. It does not prove that the real API answers the switch with
+  a 500 or rejects the custody sign-up with an empty message. It does not prove that a live account has that
+  address (or none), or that the bootstrap endpoints return real data.
+- **The rejected address switch full-stack case deactivates the account with SQL.** In
+  `e2e-stack/specs/auth.spec.ts`, the `/connect` mail-session case sets `user_data.status` to `Deactivated`
+  after the mail login, so the API rejects the automatic address switch. A green run proves that the screen
+  sends the rejected switch once and shows the translated rejection sentence instead of the API's text. It
+  does not prove how an account reaches that state in production or any other reason the API may reject the
+  switch.
+- **The address-switch unit test runs the SDK user context against replaced HTTP and session hooks.**
+  `src/__tests__/address-switch.test.tsx` transpiles `UserContextProvider` from the installed
+  `@dfx.swiss/react` build and wires it to hand-written `useUser` and `useApiSession` replacements, and
+  `useApi` (the custody sign-up call) is replaced too; the dropdown, `ErrorHint`, labels, the app contexts and
+  the client-error reporter are stubbed as well. A green run proves, against that harness, that
+  `ConnectAddress` and `AccountScreen` each send a switch only once and that `ConnectAddress` shows the
+  translated rejection sentence instead of the API's text for 400/401/403/404 (for 401 the app's SDK also
+  clears the session, which this harness does not model), keeps the generic hint for other failures, reports
+  each displayed rejection once to the client-error reporter (so again after re-selection), and retries only
+  after re-selection. It does not prove the real session or token handling, the rendered dropdown, the real
+  `ErrorHint`, labels and app contexts (translation returns the key), that the API returns those statuses,
+  that the custody sign-up call reaches the real API, or the reporter's 60 s deduplication of identical
+  reports, since the reporter is replaced.
 
 ## Known gaps
 

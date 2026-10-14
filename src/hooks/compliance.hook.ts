@@ -84,6 +84,7 @@ export enum ComplianceSearchType {
   IP = 'IP',
   PHONE = 'Phone',
   NAME = 'Name',
+  TAG = 'Tag',
 }
 
 export interface ComplianceSearchResult {
@@ -788,6 +789,13 @@ export function useCompliance() {
     const normalizedKey = normalizeSearchKey(key);
     return call<ComplianceSearchResult>({
       url: `support?key=${encodeURIComponent(normalizedKey)}`,
+      method: 'GET',
+    });
+  }
+
+  async function getTaggedUsers(tag: string): Promise<ComplianceSearchResult> {
+    return call<ComplianceSearchResult>({
+      url: `support/tag/${encodeURIComponent(tag)}`,
       method: 'GET',
     });
   }
@@ -1595,6 +1603,7 @@ export function useCompliance() {
   return useMemo(
     () => ({
       search,
+      getTaggedUsers,
       getUserData,
       setKycStatusCheck,
       getPendingTransactions,

@@ -11,7 +11,7 @@ import {
   StyledInput,
   StyledVerticalStack,
 } from '@dfx.swiss/react-components';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useLocation } from 'react-router-dom';
 import { CallQueuesSection } from 'src/components/compliance/call-queues-section';
@@ -41,7 +41,8 @@ export default function ComplianceScreen(): JSX.Element {
   useComplianceGuard();
 
   const { translate, translateError } = useSettingsContext();
-  const { search, downloadUserFiles, getPendingReviews, getPendingTransactions, getCallQueues } = useCompliance();
+  const { search, downloadUserFiles, getPendingReviews, getPendingTransactions, getCallQueues, getTaggedUsers } =
+    useCompliance();
   const { navigate } = useNavigation();
   const { search: query } = useLocation();
 
@@ -54,8 +55,12 @@ export default function ComplianceScreen(): JSX.Element {
   const [pendingReviews, setPendingReviews] = useState<PendingReviewSummaryEntry[]>([]);
   const [pendingTransactions, setPendingTransactions] = useState<PendingTransactionInfo[]>([]);
   const [callQueues, setCallQueues] = useState<CallQueueSummaryEntry[]>([]);
+  const latestRequest = useRef(0);
+  const getTaggedUsersRef = useRef(getTaggedUsers);
+  getTaggedUsersRef.current = getTaggedUsers;
 
   const paramSearch = new URLSearchParams(query).get('search') || undefined;
+  const paramTag = new URLSearchParams(query).get('tag') || undefined;
 
   useEffect(() => {
     Promise.all([getPendingReviews(), getPendingTransactions(), getCallQueues()])
@@ -77,21 +82,47 @@ export default function ComplianceScreen(): JSX.Element {
     (data: FormData) => {
       navigate({ search: `search=${data.key}` });
 
+      const request = ++latestRequest.current;
       setIsLoading(true);
       setError(undefined);
       setSearchResult(undefined);
 
       search(data.key)
-        .then(setSearchResult)
-        .catch((e) => setError(e.message))
-        .finally(() => setIsLoading(false));
+        .then((result) => request === latestRequest.current && setSearchResult(result))
+        .catch((e) => request === latestRequest.current && setError(e.message))
+        .finally(() => request === latestRequest.current && setIsLoading(false));
     },
     [navigate, search],
   );
 
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
+
   useEffect(() => {
-    if (paramSearch) onSubmit({ key: paramSearch });
-  }, [paramSearch, onSubmit]);
+    if (paramSearch) onSubmitRef.current({ key: paramSearch });
+  }, [paramSearch]);
+
+  useEffect(() => {
+    if (paramSearch) return;
+
+    const request = ++latestRequest.current;
+    if (!paramTag) {
+      setIsLoading(false);
+      setError(undefined);
+      setSearchResult(undefined);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(undefined);
+    setSearchResult(undefined);
+
+    getTaggedUsersRef
+      .current(paramTag)
+      .then((result) => request === latestRequest.current && setSearchResult(result))
+      .catch((e) => request === latestRequest.current && setError(e.message))
+      .finally(() => request === latestRequest.current && setIsLoading(false));
+  }, [paramTag, paramSearch]);
 
   function handleDownloadUserData(userId: number) {
     setDownloadingUserId(userId);

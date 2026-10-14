@@ -75,6 +75,10 @@
     "title": "Compliance: Offene Chargebacks",
     "description": "Liste offener Chargebacks mit Blockgründen, Namensvergleich und Leerzustand."
   },
+  "compliance-tag-list": {
+    "title": "Compliance: Tag-Liste",
+    "description": "Versteckte Kundenliste über /compliance?tag=…: Trefferliste mit Kunden des Tags, Leerzustand und unbekannter Tag."
+  },
   "compliance-bank-tx-return": {
     "title": "Compliance: Bank-Tx-Rückzahlung freigeben",
     "description": "Rückzahlungsformular mit Banner für manuelle Freigabe und klarer Meldung wenn die Rückzahlung bereits freigegeben/ausgezahlt ist."
@@ -183,6 +187,10 @@
     "title": "Bekannte API-Ablehnungen",
     "description": "Nicht unterstützte Zeichen im KYC-Formular als Feldfehler; lehnt die API Name oder Adresse trotzdem ab, erscheint ein übersetzter Hinweis statt «Something went wrong»; eine gesperrte Bank im Rückerstattungsformular zeigt einen Hinweis, das Formular bleibt sichtbar."
   },
+  "connect-address-switch": {
+    "title": "Abgelehnter Adresswechsel",
+    "description": "Eine Sitzung ohne Adresse (z. B. nach Mail-Login) öffnet /connect; die App wechselt automatisch auf die einzige Adresse des Kontos. Lehnt die API den Wechsel ab, wird er nicht wiederholt: über der Adressauswahl erscheint ein übersetzter Hinweis, dass diese Adresse nicht ausgewählt werden konnte (ohne den Text der API), die Auswahl ist leer und bleibt bedienbar. Weitere Varianten: ein anderer Fehler beim Wechsel (z. B. ein Serverfehler) zeigt nun den allgemeinen Fehlerhinweis über der Adressauswahl; schlägt die Safe-Eröffnung ohne Fehlertext fehl, erscheint der allgemeine Hinweis mit «Unknown error» statt eines endlosen Ladekreises."
+  },
   "tfa-merged-redirect": {
     "title": "2FA-Screen: Weiterleitung bei zusammengeführtem Account",
     "description": "/2fa-Screen für einen Account, der zu einem anderen zusammengeführt wurde: statt des rohen Backend-Fehlertexts landet die Nutzerin auf dem KYC-Screen des Hauptaccounts."
@@ -234,6 +242,10 @@
   "bug-session": {
     "title": "Session-Wechsel (Debug)",
     "description": "Debug-Screenshots zum Session-/Account-Wechsel."
+  },
+  "spar-place-map": {
+    "title": "SPAR-Standorte",
+    "description": "Zahlungslink mit Händler SPAR, jeweils die ganze Seite und fest nur SPAR-Läden in der Schweiz, ohne Länder- oder Shop-Auswahl: Standortkarte, geöffneter Standort, leere Liste, der Fehler wenn die Standortliste nicht geladen werden kann, und das Ladebild bevor die Orte da sind."
   },
   "docs": {
     "docs/EIP7702-Implementierungsplan.md": {

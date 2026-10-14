@@ -1,9 +1,17 @@
+const fs = require('fs');
 const path = require('path');
 const webpack = require('webpack');
 const version = require('./package.json').version;
 const widgetVersion = version.split('.').slice(0, 2).join('.');
 
+function publishMapWorker() {
+  const source = path.join(__dirname, 'node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs');
+  const target = path.join(__dirname, 'public/maplibre-gl-worker.mjs');
+  fs.copyFileSync(source, target);
+}
+
 module.exports = function override(config, env) {
+  publishMapWorker();
   config.resolve.fallback = {
     ...config.resolve.fallback,
     stream: require.resolve('stream-browserify'),

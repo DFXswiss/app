@@ -266,6 +266,11 @@ describe('useCompliance API wrappers', () => {
     expect(lastCall()).toEqual({ url: 'support?key=CH9300762011623852957', method: 'GET' });
   });
 
+  it('getTaggedUsers encodes the tag in the URL', async () => {
+    await api().getTaggedUsers('a b');
+    expect(lastCall()).toEqual({ url: 'support/tag/a%20b', method: 'GET' });
+  });
+
   it('downloads the user files as zip and the check-only variant under a different name', async () => {
     const headers = { 'content-type': 'application/zip' };
     mockCall.mockResolvedValue({ data: 'blob', headers });
