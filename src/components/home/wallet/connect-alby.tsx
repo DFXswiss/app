@@ -14,6 +14,7 @@ import { useAlby } from '../../../hooks/wallets/alby.hook';
 import { AbortError } from '../../../util/abort-error';
 import { appOrigin } from '../../../util/app-origin';
 import { loginRedirectParams } from '../../../util/login-redirect';
+import { allowedParamsOnly, ALBY_RETURN_ALLOWED_PARAMS } from '../../../util/redirect-params';
 import { delay, relativeUrl, url } from '../../../util/utils';
 import { ConnectBase } from '../connect-base';
 import { Account, ConnectContentProps, ConnectError, ConnectProps } from '../connect-shared';
@@ -37,9 +38,17 @@ export default function ConnectAlby(props: ConnectProps): JSX.Element {
       // log in with Alby
       const win: Window = window;
       const origin = appOrigin();
-      // The login returns to the app, never to an embedding page: the page's path and query only carry over
-      // when the page is the app itself, not when the widget is embedded on a page that shares the app's origin.
-      const redirectUrl = new URL(!isWidget && win.location.origin === origin ? win.location.href : origin);
+      // The login returns to the app, never to an embedding page. The app itself keeps its path and
+      // allowlisted query; a widget returns to the app root even when its host shares the app's origin.
+      const redirectUrl = new URL(
+        !isWidget && win.location.origin === origin
+          ? relativeUrl({
+              path: win.location.pathname,
+              params: allowedParamsOnly(win.location.search, ALBY_RETURN_ALLOWED_PARAMS),
+            })
+          : origin,
+        origin,
+      );
       redirectUrl.searchParams.set('type', WalletType.ALBY);
       // Merge redirectPath with an allowlisted callback param set (only personal-iban when present).
       // Do not copy the entire live search into the Alby redirect.

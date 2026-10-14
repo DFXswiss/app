@@ -1,5 +1,6 @@
 import { Asset, Fiat, KycFile, UserAddress, Utils } from '@dfx.swiss/react';
 import { CustodyAsset, CustodyAssetBalance } from 'src/dto/safe.dto';
+import { allowedParamsOnly, LOGIN_RETURN_ALLOWED_PARAMS } from './redirect-params';
 
 export function isDefined<T>(item: T | undefined): item is T {
   return item != null;
@@ -78,6 +79,11 @@ export function relativeUrl({ path, params }: { path: string; params?: URLSearch
 
   const query = merged.toString();
   return query ? `${pathname}?${query}` : pathname;
+}
+
+/** Login-return allowlist; see LOGIN_RETURN_ALLOWED_PARAMS in redirect-params.ts. */
+export function redirectAllowedParams(search: string): URLSearchParams {
+  return allowedParamsOnly(search, LOGIN_RETURN_ALLOWED_PARAMS);
 }
 
 // SDK call path (DfxHttpClient config.url): the leading slash is FORBIDDEN because the client joins
