@@ -36,6 +36,8 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FieldPath, FieldPathValue, useForm, useWatch } from 'react-hook-form';
 import { BankAccountSelector } from 'src/components/order/bank-account-selector';
+import { BankAccountFailureKind } from 'src/components/payment/bank-account-create-failure';
+import { BankAccountCreateHint } from 'src/components/payment/bank-account-create-hint';
 import { AddressSwitch } from 'src/components/payment/address-switch';
 import { PaymentInformationContent } from 'src/components/payment/payment-info-sell';
 import { PrivateAssetHint } from 'src/components/private-asset-hint';
@@ -129,13 +131,18 @@ export default function SellScreen(): JSX.Element {
   const [availableAssets, setAvailableAssets] = useState<Asset[]>();
   const [customAmountError, setCustomAmountError] = useState<CustomAmountError>();
   const [errorMessage, setErrorMessage] = useState<string>();
+  const [errorSource, setErrorSource] = useState<'bank' | 'quote'>();
+  const [bankAccountFailure, setBankAccountFailure] = useState<Exclude<BankAccountFailureKind, 'other'>>();
+  const bankAccountFailureRef = useRef(bankAccountFailure);
+  bankAccountFailureRef.current = bankAccountFailure;
+  const [bankAccountRetryToken, setBankAccountRetryToken] = useState(0);
   const [kycError, setKycError] = useState<TransactionError>();
   const [isLoading, setIsLoading] = useState<Side>();
   const [paymentInfo, setPaymentInfo] = useState<Sell>();
   const [isQuoteFinal, setIsQuoteFinal] = useState(false);
   const [balances, setBalances] = useState<AssetBalance[]>();
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isTxDone, setTxDone] = useState<boolean>(false);
+  const [completedPaymentInfo, setCompletedPaymentInfo] = useState<Sell>();
   const [sellTxId, setSellTxId] = useState<string>();
   const [bankAccountSelection, setBankAccountSelection] = useState(false);
   const [showsSwitchScreen, setShowsSwitchScreen] = useState(false);
@@ -379,6 +386,8 @@ export default function SellScreen(): JSX.Element {
   useEffect(() => {
     let isRunning = true;
 
+    if (bankAccountFailureRef.current && !validatedData?.iban) return;
+
     setErrorMessage(undefined);
     setKycError(undefined);
     setPaymentInfo(undefined);
@@ -436,6 +445,7 @@ export default function SellScreen(): JSX.Element {
           } else if (kycErrorFromMessage) {
             setKycError(kycErrorFromMessage);
           } else {
+            setErrorSource('quote');
             setErrorMessage(error.message ?? 'Unknown error');
           }
         }
@@ -569,8 +579,9 @@ export default function SellScreen(): JSX.Element {
 
   function onSubmit(_data?: FormData) {
     if (spendClearedByUserRef.current || targetClearedByUserRef.current) return;
-    if (!paymentInfo || !isQuoteFinal || kycError || errorMessage || customAmountError?.hideInfos || isProcessing)
-      return;
+    if (bankAccountFailure && !selectedBankAccount) return;
+    if (errorMessage && !(errorSource === 'bank' && selectedBankAccount)) return;
+    if (!paymentInfo || !isQuoteFinal || kycError || customAmountError?.hideInfos || isProcessing) return;
     if (selectedAsset?.category === AssetCategory.PRIVATE && !flags?.includes('private')) return;
     void handleNext(paymentInfo);
   }
@@ -602,12 +613,16 @@ export default function SellScreen(): JSX.Element {
       if (canSendTransaction()) {
         await sendTransaction(paymentInfo).then(setSellTxId);
       }
-      setTxDone(true);
+      setCompletedPaymentInfo(paymentInfo);
     } catch (error: any) {
       // User rejected in wallet - silently return, user stays on form
       if (error.code === 4001) return;
       // Other errors - show message, user can click Retry to see deposit address for manual transfer
-      setErrorMessage(translate('screens/sell', 'Transaction failed. Click Retry to see the deposit address for manual transfer.'));
+      setBankAccountFailure(undefined);
+      setErrorSource('quote');
+      setErrorMessage(
+        translate('screens/sell', 'Transaction failed. Click Retry to see the deposit address for manual transfer.'),
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -632,8 +647,8 @@ export default function SellScreen(): JSX.Element {
     <>
       {showsSwitchScreen ? (
         <AddressSwitch onClose={(r) => (r ? onAddressSwitch() : setShowsSwitchScreen(false))} />
-      ) : paymentInfo && isTxDone ? (
-        <SellCompletion paymentInfo={paymentInfo} navigateOnClose={true} txId={sellTxId} />
+      ) : completedPaymentInfo ? (
+        <SellCompletion paymentInfo={completedPaymentInfo} navigateOnClose={true} txId={sellTxId} />
       ) : (
         <form
           className="w-full"
@@ -746,14 +761,42 @@ export default function SellScreen(): JSX.Element {
                     />
                   </div>
                 </StyledHorizontalStack>
-                <BankAccountSelector
-                  value={selectedBankAccount}
-                  onChange={(account) => setVal('bankAccount', account)}
-                  placeholder={translate('screens/sell', 'Add or select your IBAN')}
-                  isModalOpen={bankAccountSelection}
-                  onModalToggle={setBankAccountSelection}
-                />
+                <fieldset disabled={isProcessing} className="m-0 min-w-0 w-full border-0 p-0">
+                  <BankAccountSelector
+                    value={selectedBankAccount}
+                    onChange={(account) => {
+                      bankAccountFailureRef.current = undefined;
+                      setBankAccountFailure(undefined);
+                      setErrorSource(undefined);
+                      setErrorMessage(undefined);
+                      setVal('bankAccount', account);
+                    }}
+                    onError={(message, kind) => {
+                      if (kind === 'kyc-only' || kind === 'multi-account') {
+                        bankAccountFailureRef.current = kind;
+                        setErrorMessage(undefined);
+                        setErrorSource(undefined);
+                        setBankAccountFailure(kind);
+                        return;
+                      }
+                      bankAccountFailureRef.current = undefined;
+                      setBankAccountFailure(undefined);
+                      setErrorSource('bank');
+                      setErrorMessage(message);
+                    }}
+                    onCreateStart={() => {
+                      setErrorSource(undefined);
+                      setErrorMessage(undefined);
+                    }}
+                    retryToken={bankAccountRetryToken}
+                    placeholder={translate('screens/sell', 'Add or select your IBAN')}
+                    isModalOpen={bankAccountSelection}
+                    onModalToggle={setBankAccountSelection}
+                  />
+                </fieldset>
               </StyledVerticalStack>
+
+              {bankAccountFailure && <BankAccountCreateHint kind={bankAccountFailure} />}
 
               {isLoading && !paymentInfo ? (
                 <StyledVerticalStack center>
@@ -764,12 +807,20 @@ export default function SellScreen(): JSX.Element {
                   {kycError && !customAmountError && <QuoteErrorHint type={TransactionType.SELL} error={kycError} />}
 
                   {errorMessage && (
-                    <QuoteRequestError message={errorMessage} onRetry={() => setRetryToken((token) => token + 1)} />
+                    <QuoteRequestError
+                      message={errorMessage}
+                      onRetry={() =>
+                        errorSource === 'bank'
+                          ? setBankAccountRetryToken((token) => token + 1)
+                          : setRetryToken((token) => token + 1)
+                      }
+                    />
                   )}
 
                   {paymentInfo &&
                     !kycError &&
-                    !errorMessage &&
+                    !(errorMessage && !(errorSource === 'bank' && selectedBankAccount)) &&
+                    !(bankAccountFailure && !selectedBankAccount) &&
                     !customAmountError?.hideInfos &&
                     (selectedAsset?.category === AssetCategory.PRIVATE && !flags?.includes('private') ? (
                       <PrivateAssetHint asset={selectedAsset} />
