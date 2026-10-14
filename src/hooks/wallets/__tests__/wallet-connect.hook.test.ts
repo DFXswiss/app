@@ -267,6 +267,30 @@ describe('requestChangeToBlockchain', () => {
     await expect(change).rejects.toHaveProperty('code', 4001);
   });
 
+  it('cancels when the wallet rejects the switch with another code, as wagmi recognises it by the message', async () => {
+    const answer = Object.assign(new Error('User rejected methods.'), { code: 5002 });
+    mockSwitchChain.mockRejectedValue(new UserRejectedRequestError(answer));
+    const { result } = await setup();
+
+    await expect(result.current.requestChangeToBlockchain(Blockchain.POLYGON)).rejects.toBeInstanceOf(
+      UserRejectedError,
+    );
+  });
+
+  it.each([
+    ['without an answer', undefined],
+    ['with an answer that is no object', 'failed'],
+  ])('fails with a generic message when adding the chain failed %s', async (_case, answer) => {
+    const error = new UserRejectedRequestError(new Error('placeholder'));
+    Object.defineProperty(error, 'cause', { value: answer });
+    mockSwitchChain.mockRejectedValue(error);
+    const { result } = await setup();
+
+    const change = result.current.requestChangeToBlockchain(Blockchain.POLYGON);
+    await expect(change).rejects.not.toBeInstanceOf(UserRejectedError);
+    await expect(change).rejects.toThrow('An unexpected error occurred.');
+  });
+
   it('fails with the answer of the wallet when adding the chain failed', async () => {
     const answer = Object.assign(new Error('Method not supported'), { code: -32601 });
     mockSwitchChain.mockRejectedValue(new UserRejectedRequestError(answer));

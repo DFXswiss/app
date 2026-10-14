@@ -19,7 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { isMobile } from 'react-device-detect';
 import { parseEther, parseUnits, UserRejectedRequestError } from 'viem';
 import ERC20_ABI from '../../static/erc20.abi.json';
-import { hasUserRejectedCode, UserRejectedError } from '../../util/user-rejection';
+import { hasUserRejectedCode, USER_REJECTED_CODE, UserRejectedError } from '../../util/user-rejection';
 import { config, WALLET_CONNECT_PROJECT_ID } from '../../wagmi.config';
 import { useWeb3 } from '../web3.hook';
 
@@ -152,11 +152,16 @@ export function useWalletConnect(): WalletConnectInterface {
         await new Promise((resolve) => setTimeout(resolve, 5000)); // delay to allow chain switch in wallet
       }
     } catch (error) {
-      // wagmi reports any failure to add the chain as a rejection, so only the wallet's own answer tells a cancel apart
-      const answer = error instanceof UserRejectedRequestError ? error.cause : error;
-      if ((answer as { code?: unknown })?.code === WALLET_CONNECT_REJECTED_CODE) throw new UserRejectedError();
+      if (!(error instanceof UserRejectedRequestError)) handleError(error);
 
-      handleError(answer);
+      // wagmi reports any failure to add the chain as a rejection, so only the wallet's own answer tells a cancel
+      // apart: its code, or the message wagmi itself checks for a rejected switch
+      const { code, message } = (error.cause ?? {}) as { code?: unknown; message?: unknown };
+      const isRejection =
+        code === USER_REJECTED_CODE || code === WALLET_CONNECT_REJECTED_CODE || /user rejected/i.test(String(message));
+      if (isRejection) throw new UserRejectedError();
+
+      throw new Error(typeof message === 'string' && message ? message : 'An unexpected error occurred.');
     }
   }
 

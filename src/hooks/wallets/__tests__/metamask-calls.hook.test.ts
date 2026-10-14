@@ -482,11 +482,14 @@ describe('EIP-5792 calls', () => {
       return 0 as unknown as NodeJS.Timeout;
     });
 
-    await expect(sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow(
-      'Transaction timeout - please check your wallet',
-    );
-    expect(wait).toHaveBeenCalledTimes(120);
-    wait.mockRestore();
+    try {
+      await expect(sendCallsWithPaymaster(calls, 'https://paymaster', 1)).rejects.toThrow(
+        'Transaction timeout - please check your wallet',
+      );
+      expect(wait).toHaveBeenCalledTimes(120);
+    } finally {
+      wait.mockRestore();
+    }
     expect(ethereum.request).toHaveBeenCalledTimes(122);
   });
 });
