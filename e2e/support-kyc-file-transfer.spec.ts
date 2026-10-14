@@ -97,8 +97,12 @@ async function installIssueRoutes(page: Page, messages: unknown = MESSAGES): Pro
     const url = route.request().url();
     if (DATA_RE.test(url)) return json(route, ISSUE_DATA);
     if (MESSAGES_RE.test(url)) return json(route, messages);
-    if (CLERKS_RE.test(url)) return json(route, ['Rita Clerk', 'Tom Support']);
-    if (CLERK_RE.test(url)) return json(route, { clerk: 'Rita Clerk' });
+    if (CLERKS_RE.test(url))
+      return json(route, [
+        { clerkUserDataId: 101, clerk: 'Rita Clerk' },
+        { clerkUserDataId: 102, clerk: 'Tom Support' },
+      ]);
+    if (CLERK_RE.test(url)) return json(route, { clerkUserDataId: 101, clerk: 'Rita Clerk' });
     if (ACTIVITY_RE.test(url)) return json(route, { count: 0 });
     await route.continue();
   });
