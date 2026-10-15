@@ -41,6 +41,9 @@ export function usePolling({ timeInterval = 3 * 1000 }: { timeInterval?: number 
 
   const stop = () => {
     if (internalId.current) clearInterval(internalId.current);
+    // release the URL as well: init() skips a call for the URL it is already polling, so
+    // keeping it would make a later restart on the same URL a silent no-op
+    url.current = undefined;
     setIsPolling(false);
   };
 
