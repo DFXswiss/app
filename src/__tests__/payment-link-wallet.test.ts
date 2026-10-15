@@ -2,7 +2,8 @@
 jest.mock('src/dto/payment-link.dto', () => ({}));
 
 import { Wallet } from '../util/payment-link-wallet';
-import { TransferInfo, WalletInfo } from 'src/dto/payment-link.dto';
+import { TransferAmount } from '@dfx.swiss/react';
+import { WalletInfo } from 'src/dto/payment-link.dto';
 
 describe('Wallet', () => {
   // Test data
@@ -11,11 +12,11 @@ describe('Wallet', () => {
     supportedAssets: assets,
   } as WalletInfo);
 
-  const createTransferInfo = (method: string, assets: string[], available = true): TransferInfo => ({
+  const createTransferInfo = (method: string, assets: string[], available = true): TransferAmount => ({
     method,
     assets: assets.map(name => ({ asset: name })),
     available,
-  } as TransferInfo);
+  } as TransferAmount);
 
   describe('filterTransferInfoByWallet', () => {
     it('should return empty array if no methods match', () => {

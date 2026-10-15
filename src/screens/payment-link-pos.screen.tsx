@@ -21,7 +21,7 @@ import { Modal } from 'src/components/modal';
 import { QrBasic } from 'src/components/payment/qr-code';
 import { usePaymentPosContext } from 'src/contexts/payment-link-pos.context';
 import { useSettingsContext } from 'src/contexts/settings.context';
-import { PaymentLinkHistory } from 'src/dto/payment-link.dto';
+import { PaymentLinkHistory } from '@dfx.swiss/react';
 import { useClipboard } from 'src/hooks/clipboard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
