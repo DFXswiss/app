@@ -2,6 +2,7 @@ const mockMap = jest.fn();
 const mockMarker = jest.fn();
 const mockSetLngLat = jest.fn();
 const mockPopup = jest.fn();
+const mockSetDOMContent = jest.fn();
 const mockNavigationControl = jest.fn();
 const mockLngLatBounds = jest.fn();
 const mockMapAddControl = jest.fn();
@@ -57,7 +58,10 @@ jest.mock('maplibre-gl', () => {
   function Popup(...args: unknown[]) {
     mockPopup(...args);
     return {
-      setDOMContent: () => ({}),
+      setDOMContent: (content: unknown) => {
+        mockSetDOMContent(content);
+        return {};
+      },
     };
   }
   function NavigationControl(...args: unknown[]) {
@@ -90,11 +94,11 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { publishMapLibreWorker, SparPlaceMap } from 'src/components/payment/spar-place-map';
 
 const FILTERS_URL = 'https://api.opencryptopay.io/map/filters';
-const PLACES_URL = 'https://api.opencryptopay.io/map/places?shopName=SPAR&country=CH';
+const PLACES_URL = 'https://api.opencryptopay.io/map/places?shopType=SPAR&country=CH';
 const UNFILTERED_PLACES_URL = 'https://api.opencryptopay.io/map/places';
 
 const SWISS_SPAR = {
-  shopName: 'SPAR',
+  shopType: 'SPAR',
   name: 'SPAR Beispiel',
   lat: 47.37,
   lon: 8.54,
@@ -105,21 +109,22 @@ const SWISS_SPAR = {
 const DROPPED_PLACES = [
   null,
   1,
-  { shopName: 1, country: 'CH', name: 'x', lat: 47.37, lon: 8.54 },
-  { shopName: '', country: 'CH', name: 'x', lat: 47.37, lon: 8.54 },
+  { shopType: 1, country: 'CH', name: 'x', lat: 47.37, lon: 8.54 },
+  { shopType: '', country: 'CH', name: 'x', lat: 47.37, lon: 8.54 },
+  { shopType: 'Others', country: 'CH', name: 'Migros', lat: 47.37, lon: 8.54, category: 'shopping' },
   { shopName: 'Migros', country: 'CH', name: 'Migros', lat: 47.37, lon: 8.54, category: 'shopping' },
-  { shopName: 'SPAR', name: 'no country', lat: 47.37, lon: 8.54 },
-  { shopName: 'SPAR', country: 'LI', name: 'SPAR Vaduz', lat: 47.14, lon: 9.52 },
-  { shopName: 'SPAR', country: 'ch', name: 'lower', lat: 47.37, lon: 8.54 },
-  { shopName: 'SPAR', country: 'CH', name: 'x', lat: 'x', lon: 8.54 },
-  { shopName: 'SPAR', country: 'CH', name: 'x', lat: Number.NaN, lon: 8.54 },
-  { shopName: 'SPAR', country: 'CH', name: 'x', lat: -91, lon: 8.54 },
-  { shopName: 'SPAR', country: 'CH', name: 'x', lat: 91, lon: 8.54 },
-  { shopName: 'SPAR', country: 'CH', name: 'x', lat: 47.37, lon: 'x' },
-  { shopName: 'SPAR', country: 'CH', name: 'x', lat: 47.37, lon: Number.NaN },
-  { shopName: 'SPAR', country: 'CH', name: 'x', lat: 47.37, lon: -181 },
-  { shopName: 'SPAR', country: 'CH', name: 'x', lat: 47.37, lon: 181 },
-  { shopName: 'SPAR', country: 'CH', name: 'Out of range', lat: 99, lon: 8.54 },
+  { shopType: 'SPAR', name: 'no country', lat: 47.37, lon: 8.54 },
+  { shopType: 'SPAR', country: 'LI', name: 'SPAR Vaduz', lat: 47.14, lon: 9.52 },
+  { shopType: 'SPAR', country: 'ch', name: 'lower', lat: 47.37, lon: 8.54 },
+  { shopType: 'SPAR', country: 'CH', name: 'x', lat: 'x', lon: 8.54 },
+  { shopType: 'SPAR', country: 'CH', name: 'x', lat: Number.NaN, lon: 8.54 },
+  { shopType: 'SPAR', country: 'CH', name: 'x', lat: -91, lon: 8.54 },
+  { shopType: 'SPAR', country: 'CH', name: 'x', lat: 91, lon: 8.54 },
+  { shopType: 'SPAR', country: 'CH', name: 'x', lat: 47.37, lon: 'x' },
+  { shopType: 'SPAR', country: 'CH', name: 'x', lat: 47.37, lon: Number.NaN },
+  { shopType: 'SPAR', country: 'CH', name: 'x', lat: 47.37, lon: -181 },
+  { shopType: 'SPAR', country: 'CH', name: 'x', lat: 47.37, lon: 181 },
+  { shopType: 'SPAR', country: 'CH', name: 'Out of range', lat: 99, lon: 8.54 },
 ];
 
 function fetchCalls(): [string, RequestInit][] {
@@ -142,6 +147,7 @@ function expectOnlySwissSparRequest() {
   for (const url of urls) {
     expect(url).not.toContain('origin=');
     expect(url).not.toContain('shopName=others');
+    expect(url).not.toContain('shopName=SPAR');
   }
   expect(placesCalls()[0][1]).toEqual(expect.objectContaining({ credentials: 'omit' }));
   expect(placesCalls()[0][1].signal).toBeInstanceOf(AbortSignal);
@@ -196,6 +202,93 @@ describe('SparPlaceMap', () => {
     expect(mockMap).toHaveBeenCalledTimes(1);
     expect(mockSetLngLat).not.toHaveBeenCalledWith([9.52, 47.14]);
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
+  it('keeps a Swiss SPAR pin from the old shopName field when shopType is absent', async () => {
+    mockMapApis({
+      places: [
+        ...DROPPED_PLACES,
+        { shopName: 'SPAR', country: 'CH', name: 'SPAR Alt', lat: 47.37, lon: 8.54, category: 'shopping' },
+      ],
+    });
+
+    render(<SparPlaceMap />);
+
+    await waitFor(() => {
+      expect(mockSetLngLat).toHaveBeenCalledWith([8.54, 47.37]);
+    });
+
+    expectOnlySwissSparRequest();
+    expect(mockSetLngLat).toHaveBeenCalledTimes(1);
+    expect(mockSetLngLat).not.toHaveBeenCalledWith([9.52, 47.14]);
+  });
+
+  it('renders the address line and description in the popup', async () => {
+    mockMapApis({
+      places: [
+        {
+          ...SWISS_SPAR,
+          street: 'Bahnhofstrasse',
+          houseNumber: '1',
+          postalCode: '8001',
+          city: 'Zürich',
+          description: 'Pay with Bitcoin at the checkout.',
+        },
+        {
+          shopType: 'SPAR',
+          country: 'CH',
+          name: 'SPAR Teil',
+          lat: 47.05,
+          lon: 8.31,
+          street: 'Hauptstrasse',
+          houseNumber: '',
+          postalCode: 8000,
+          city: '',
+          description: '',
+          category: 'shopping',
+        },
+        {
+          shopType: 'SPAR',
+          country: 'CH',
+          name: 'SPAR Stadt',
+          lat: 47.5,
+          lon: 8.7,
+          street: '',
+          houseNumber: '',
+          postalCode: '',
+          city: 'Bern',
+          description: 1,
+          category: 'shopping',
+        },
+      ],
+    });
+
+    render(<SparPlaceMap />);
+
+    await waitFor(() => {
+      expect(mockSetDOMContent).toHaveBeenCalledTimes(3);
+    });
+
+    const popupLines = mockSetDOMContent.mock.calls.map(([node]) =>
+      Array.from((node as HTMLElement).children).map((child) => child.textContent),
+    );
+    expect(popupLines[0]).toEqual([
+      'SPAR Beispiel',
+      'Bahnhofstrasse 1, 8001 Zürich',
+      'Pay with Bitcoin at the checkout.',
+      'shopping',
+    ]);
+    expect(popupLines[1]).toEqual(['SPAR Teil', 'Hauptstrasse', 'shopping']);
+    expect(popupLines[2]).toEqual(['SPAR Stadt', 'Bern', 'shopping']);
+    const labels = mockMarker.mock.calls.map(([options]) =>
+      (options as { element: HTMLElement }).element.getAttribute('aria-label'),
+    );
+    expect(labels).toEqual([
+      'SPAR Beispiel, Bahnhofstrasse 1, 8001 Zürich',
+      'SPAR Teil, Hauptstrasse',
+      'SPAR Stadt, Bern',
+    ]);
+    expectOnlySwissSparRequest();
   });
 
   it('shows the load error and does not construct a map when the place request fails', async () => {
@@ -293,8 +386,8 @@ describe('SparPlaceMap', () => {
     mockMapApis({
       places: [
         SWISS_SPAR,
-        { shopName: 'SPAR', country: 'CH', name: '', lat: 47.05, lon: 8.31, category: '' },
-        { shopName: 'SPAR', country: 'CH', name: 1, lat: 47.5, lon: 8.7, category: 1 },
+        { shopType: 'SPAR', country: 'CH', name: '', lat: 47.05, lon: 8.31, category: '' },
+        { shopType: 'SPAR', country: 'CH', name: 1, lat: 47.5, lon: 8.7, category: 1 },
       ],
     });
 
