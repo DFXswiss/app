@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DeletedAddressGate } from 'src/components/deleted-address-notice';
 import { isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-address';
@@ -96,8 +96,10 @@ describe('deleted session address', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
 
+    await waitFor(() => {
+      expect(mockUpdateSession).toHaveBeenCalledWith('next-token');
+    });
     expect(mockCall).toHaveBeenCalledWith({ url: 'user/reactivate', version: 'v2', method: 'PUT' });
-    expect(mockUpdateSession).toHaveBeenCalledWith('next-token');
     expect(mockReloadUser).toHaveBeenCalled();
   });
 
