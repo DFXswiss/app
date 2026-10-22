@@ -65,6 +65,10 @@ jest.mock('../contexts/wallet.context', () => ({
   useWalletContext: () => ({}),
 }));
 
+jest.mock('../components/deleted-address-notice', () => ({
+  DeletedAddressGate: ({ children }: any) => children,
+}));
+
 jest.mock('../components/layout-wrapper', () => ({
   LayoutWrapper: ({ children }: any) => children,
 }));
