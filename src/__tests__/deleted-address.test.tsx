@@ -90,6 +90,9 @@ describe('deleted session address', () => {
     expect(
       shouldHoldForUser({ isInitialized: true, isLoggedIn: true, hasUser: true, isUserLoading: false, sawLoad: true }),
     ).toBe(false);
+    expect(
+      shouldHoldForUser({ isInitialized: true, isLoggedIn: true, hasUser: false, isUserLoading: false, sawLoad: true }),
+    ).toBe(false);
   });
 
   it('shows the deleted-address notice and activates the address through the user context', async () => {
