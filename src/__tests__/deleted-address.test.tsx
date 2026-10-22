@@ -1,20 +1,25 @@
+import { User, UserStatus } from '@dfx.swiss/react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DeletedAddressGate } from 'src/components/deleted-address-notice';
 import { isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-address';
 
-const mockCall = jest.fn();
-const mockUpdateSession = jest.fn();
+const mockReactivateAddress = jest.fn();
 const mockReloadUser = jest.fn();
-let mockUser: { activeAddress?: { status?: string } } | undefined;
+let mockUser: User | undefined;
 let mockLoading = false;
 let mockLoggedIn = true;
 let mockInitialized = true;
 
 jest.mock('@dfx.swiss/react', () => ({
-  useUserContext: () => ({ user: mockUser, isUserLoading: mockLoading, reloadUser: mockReloadUser }),
-  useApiSession: () => ({ isInitialized: mockInitialized, isLoggedIn: mockLoggedIn, updateSession: mockUpdateSession }),
-  useApi: () => ({ call: mockCall }),
+  UserStatus: { NA: 'NA', ACTIVE: 'Active', BLOCKED: 'Blocked', DELETED: 'Deleted' },
+  useUserContext: () => ({
+    user: mockUser,
+    isUserLoading: mockLoading,
+    reactivateAddress: mockReactivateAddress,
+    reloadUser: mockReloadUser,
+  }),
+  useApiSession: () => ({ isInitialized: mockInitialized, isLoggedIn: mockLoggedIn }),
 }));
 
 jest.mock('@dfx.swiss/react-components', () => ({
@@ -31,6 +36,10 @@ jest.mock('src/contexts/settings.context', () => ({
   useSettingsContext: () => ({ translate: (_key: string, value: string) => value }),
 }));
 
+function userWithActiveAddress(status: UserStatus): User {
+  return { activeAddress: { status } } as User;
+}
+
 describe('deleted session address', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -38,14 +47,16 @@ describe('deleted session address', () => {
     mockLoading = false;
     mockLoggedIn = true;
     mockInitialized = true;
+    mockReactivateAddress.mockResolvedValue(undefined);
     mockReloadUser.mockResolvedValue(undefined);
   });
 
   it('recognises only the signed-in address when its status is Deleted', () => {
     expect(isDeletedSessionAddress(undefined)).toBe(false);
-    expect(isDeletedSessionAddress({ activeAddress: { status: 'Active' } })).toBe(false);
-    expect(isDeletedSessionAddress({ activeAddress: { status: 'Blocked' } })).toBe(false);
-    expect(isDeletedSessionAddress({ activeAddress: { status: 'Deleted' } })).toBe(true);
+    expect(isDeletedSessionAddress({} as User)).toBe(false);
+    expect(isDeletedSessionAddress(userWithActiveAddress(UserStatus.ACTIVE))).toBe(false);
+    expect(isDeletedSessionAddress(userWithActiveAddress(UserStatus.BLOCKED))).toBe(false);
+    expect(isDeletedSessionAddress(userWithActiveAddress(UserStatus.DELETED))).toBe(true);
   });
 
   it('holds the app until a signed-in user record has been loaded', () => {
@@ -81,9 +92,8 @@ describe('deleted session address', () => {
     ).toBe(false);
   });
 
-  it('shows the deleted-address notice and activates the address', async () => {
-    mockUser = { activeAddress: { status: 'Deleted' } };
-    mockCall.mockResolvedValue({ accessToken: 'next-token' });
+  it('shows the deleted-address notice and activates the address through the user context', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
 
     render(
       <DeletedAddressGate>
@@ -96,15 +106,42 @@ describe('deleted session address', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
 
-    await waitFor(() => {
-      expect(mockUpdateSession).toHaveBeenCalledWith('next-token');
-    });
-    expect(mockCall).toHaveBeenCalledWith({ url: 'user/reactivate', version: 'v2', method: 'PUT' });
-    expect(mockReloadUser).toHaveBeenCalled();
+    expect(mockReactivateAddress).toHaveBeenCalledTimes(1);
+    expect(mockReloadUser).not.toHaveBeenCalled();
+  });
+
+  it('shows the error and loads the user again when the activation fails', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+    mockReactivateAddress.mockRejectedValue({ statusCode: 400, message: 'Account is deactivated or blocked' });
+
+    render(
+      <DeletedAddressGate>
+        <div>app</div>
+      </DeletedAddressGate>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+
+    await waitFor(() => expect(screen.getByText('Account is deactivated or blocked')).toBeInTheDocument());
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('app')).not.toBeInTheDocument();
+  });
+
+  it('holds the app with a spinner while the signed-in user is loading', () => {
+    mockLoading = true;
+
+    render(
+      <DeletedAddressGate>
+        <div>app</div>
+      </DeletedAddressGate>,
+    );
+
+    expect(screen.getByText('loading')).toBeInTheDocument();
+    expect(screen.queryByText('app')).not.toBeInTheDocument();
   });
 
   it('renders the app when the signed-in address is active', () => {
-    mockUser = { activeAddress: { status: 'Active' } };
+    mockUser = userWithActiveAddress(UserStatus.ACTIVE);
 
     render(
       <DeletedAddressGate>

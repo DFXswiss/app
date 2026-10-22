@@ -73,6 +73,12 @@ function mockLoadUserContext(): MockUserContextModule {
           };
         },
       },
+      './auth.context': {
+        useAuthContext: () => {
+          const { session } = mockUseSession();
+          return { getAuthToken: () => session.address };
+        },
+      },
     };
     const module = { exports: {} as MockUserContextModule };
     new Function('require', 'module', 'exports', code)(

@@ -1,4 +1,4 @@
-import { useApi, useApiSession, useUserContext } from '@dfx.swiss/react';
+import { ApiError, useApiSession, useUserContext } from '@dfx.swiss/react';
 import {
   SpinnerSize,
   StyledButton,
@@ -11,8 +11,8 @@ import { useSettingsContext } from 'src/contexts/settings.context';
 import { isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-address';
 
 export function DeletedAddressGate({ children }: PropsWithChildren): JSX.Element {
-  const { user, isUserLoading, reloadUser } = useUserContext();
-  const { isInitialized, isLoggedIn, updateSession } = useApiSession();
+  const { user, isUserLoading } = useUserContext();
+  const { isInitialized, isLoggedIn } = useApiSession();
   const sawLoad = useRef(false);
   if (isUserLoading) sawLoad.current = true;
 
@@ -30,34 +30,27 @@ export function DeletedAddressGate({ children }: PropsWithChildren): JSX.Element
 
   if (!isDeletedSessionAddress(user)) return <>{children}</>;
 
-  return (
-    <DeletedAddressNotice
-      onActivated={async (token) => {
-        updateSession(token);
-        await reloadUser();
-      }}
-    />
-  );
+  return <DeletedAddressNotice />;
 }
 
-function DeletedAddressNotice({ onActivated }: { onActivated: (token: string) => Promise<void> }): JSX.Element {
+function DeletedAddressNotice(): JSX.Element {
   const { translate } = useSettingsContext();
-  const { call } = useApi();
+  const { reactivateAddress, reloadUser } = useUserContext();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
 
-  async function activate() {
+  // The user context swaps in the returned session token and reloads the user. With the
+  // address active again, the gate renders the app. After an error the user is loaded again:
+  // when only the reload failed, the address is already active and a second attempt would be refused.
+  function activate() {
     setIsLoading(true);
     setError(undefined);
-    try {
-      const result = await call<{ accessToken: string }>({ url: 'user/reactivate', version: 'v2', method: 'PUT' });
-      if (!result?.accessToken) throw new Error('Activation failed');
-      await onActivated(result.accessToken);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Activation failed');
-    } finally {
-      setIsLoading(false);
-    }
+    reactivateAddress()
+      .catch((e: ApiError) => {
+        setError(e.message ?? 'Unknown error');
+        return reloadUser();
+      })
+      .finally(() => setIsLoading(false));
   }
 
   return (
@@ -69,7 +62,7 @@ function DeletedAddressNotice({ onActivated }: { onActivated: (token: string) =>
       <StyledButton
         type="button"
         label={translate('screens/home', 'Activate address')}
-        onClick={() => void activate()}
+        onClick={activate}
         width={StyledButtonWidth.MIN}
         className="self-center"
         isLoading={isLoading}

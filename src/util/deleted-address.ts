@@ -1,9 +1,7 @@
-export interface SessionAddressUser {
-  activeAddress?: { status?: string };
-}
+import { User, UserStatus } from '@dfx.swiss/react';
 
-export function isDeletedSessionAddress(user?: SessionAddressUser): boolean {
-  return user?.activeAddress?.status === 'Deleted';
+export function isDeletedSessionAddress(user?: User): boolean {
+  return user?.activeAddress?.status === UserStatus.DELETED;
 }
 
 // Hold the iframe until the signed-in user record is known. Otherwise buy and sell
