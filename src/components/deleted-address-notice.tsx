@@ -56,7 +56,7 @@ function DeletedAddressNotice(): JSX.Element {
   }
 
   return (
-    <StyledVerticalStack full center gap={6}>
+    <StyledVerticalStack full center gap={6} className="p-6">
       <p className="text-dfxGray-700">
         {translate('screens/home', 'This address was deleted. You can activate it again.')}
       </p>
