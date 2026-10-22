@@ -13,7 +13,9 @@ import { isDeletedSessionAddress, shouldHoldForUser } from 'src/util/deleted-add
 export function DeletedAddressGate({ children }: PropsWithChildren): JSX.Element {
   const { user, isUserLoading } = useUserContext();
   const { isInitialized, isLoggedIn } = useApiSession();
+  // A load seen before a logout must not release the app after the next login.
   const sawLoad = useRef(false);
+  if (!isLoggedIn) sawLoad.current = false;
   if (isUserLoading) sawLoad.current = true;
 
   if (
@@ -28,7 +30,7 @@ export function DeletedAddressGate({ children }: PropsWithChildren): JSX.Element
     return <StyledLoadingSpinner size={SpinnerSize.LG} />;
   }
 
-  if (!isDeletedSessionAddress(user)) return <>{children}</>;
+  if (!isLoggedIn || !isDeletedSessionAddress(user)) return <>{children}</>;
 
   return <DeletedAddressNotice />;
 }

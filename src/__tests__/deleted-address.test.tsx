@@ -159,6 +159,45 @@ describe('deleted session address', () => {
     expect(screen.queryByText('app')).not.toBeInTheDocument();
   });
 
+  it('holds the app again after a logout until the next user has been loaded', () => {
+    const gate = (): JSX.Element => (
+      <DeletedAddressGate>
+        <div>app</div>
+      </DeletedAddressGate>
+    );
+    const { rerender } = render(gate());
+
+    mockLoading = true;
+    rerender(gate());
+    mockLoading = false;
+    mockUser = userWithActiveAddress(UserStatus.ACTIVE);
+    rerender(gate());
+    expect(screen.getByText('app')).toBeInTheDocument();
+
+    mockLoggedIn = false;
+    mockUser = undefined;
+    rerender(gate());
+    mockLoggedIn = true;
+    rerender(gate());
+
+    expect(screen.getByText('loading')).toBeInTheDocument();
+    expect(screen.queryByText('app')).not.toBeInTheDocument();
+  });
+
+  it('renders the app instead of the notice when a deleted user remains after a logout', () => {
+    mockLoggedIn = false;
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+
+    render(
+      <DeletedAddressGate>
+        <div>app</div>
+      </DeletedAddressGate>,
+    );
+
+    expect(screen.getByText('app')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Activate address' })).not.toBeInTheDocument();
+  });
+
   it('renders the app when the signed-in address is active', () => {
     mockUser = userWithActiveAddress(UserStatus.ACTIVE);
 
