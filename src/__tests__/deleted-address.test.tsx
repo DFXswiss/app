@@ -127,6 +127,22 @@ describe('deleted session address', () => {
     expect(screen.queryByText('app')).not.toBeInTheDocument();
   });
 
+  it('shows a fallback error when the failed activation has no message', async () => {
+    mockUser = userWithActiveAddress(UserStatus.DELETED);
+    mockReactivateAddress.mockRejectedValue({ statusCode: 400 });
+
+    render(
+      <DeletedAddressGate>
+        <div>app</div>
+      </DeletedAddressGate>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Activate address' }));
+
+    await waitFor(() => expect(screen.getByText('Unknown error')).toBeInTheDocument());
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+  });
+
   it('holds the app with a spinner while the signed-in user is loading', () => {
     mockLoading = true;
 
