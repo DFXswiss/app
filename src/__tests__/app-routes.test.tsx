@@ -1,6 +1,6 @@
 // Covers the route table in App.tsx: every lazily loaded screen import, the redirect loaders
 // and the Suspense fallback. The providers and statically imported screens are stubbed as in
-// app-widget-rerender.test.tsx, and every lazily imported screen module is replaced by a stub
+// app-widget-rerender.test.tsx, and every lazily imported screen module is replaced by stubs
 // before App is required, so the test checks App.tsx's own wiring, not the screens.
 
 import { render, screen } from '@testing-library/react';
@@ -10,8 +10,6 @@ import { PropsWithChildren } from 'react';
 import { LoaderFunctionArgs, RouteObject } from 'react-router-dom';
 
 type AppModule = typeof import('../App');
-
-const passThrough = ({ children }: PropsWithChildren): JSX.Element => <>{children}</>;
 
 jest.mock('@dfx.swiss/react', () => ({
   DfxContextProvider: ({ children }: PropsWithChildren) => children,
@@ -66,21 +64,23 @@ jest.mock('../screens/home.screen', () => ({ __esModule: true, default: () => nu
 jest.mock('../screens/error.screen', () => ({ __esModule: true, default: () => null }));
 jest.mock('../screens/compliance-user.screen', () => ({ __esModule: true, default: () => null }));
 
-// Each lazily imported screen resolves to a module whose default and named exports are stub components.
-const lazyScreenPaths = Array.from(
-  readFileSync(join(__dirname, '../App.tsx'), 'utf8').matchAll(/import\('\.\/(screens\/[^']+)'\)/g),
-  (match) => match[1],
+// Each lazily imported screen is replaced by a module with the screen file's real export names,
+// every export a distinct stub component, so a loader that picks the wrong export fails.
+const appSource = readFileSync(join(__dirname, '../App.tsx'), 'utf8');
+const lazyScreenLoads = Array.from(
+  appSource.matchAll(
+    /import\('\.\/(screens\/[^']+)'\)(?:\.then\(\(module\) => \(\{\s*default: module\.(\w+),?\s*\}\)\))?/g,
+  ),
+  (match) => ({ path: match[1], exportName: match[2] ?? 'default' }),
 );
-for (const screenPath of lazyScreenPaths) {
-  jest.doMock(
-    `../${screenPath}`,
-    () =>
-      new Proxy(
-        { __esModule: true },
-        // `then` stays undefined so the module object is not mistaken for a promise.
-        { get: (target, key) => (key === '__esModule' ? true : key === 'then' ? undefined : passThrough) },
-      ),
-  );
+const screenStubs = new Map<string, Record<string, () => null>>();
+for (const { path } of lazyScreenLoads) {
+  if (screenStubs.has(path)) continue;
+  const source = readFileSync(join(__dirname, `../${path}.tsx`), 'utf8');
+  const names = Array.from(source.matchAll(/^export (?:function|const|class) (\w+)/gm), (match) => match[1]);
+  const stubs = Object.fromEntries(['default', ...names].map((name) => [name, () => null]));
+  screenStubs.set(path, stubs);
+  jest.doMock(`../${path}`, () => ({ __esModule: true, ...stubs }));
 }
 
 // App is required after the screen stubs above are registered.
@@ -107,15 +107,30 @@ async function load(path: string, url: string): Promise<Response> {
 }
 
 describe('App routes', () => {
-  it('loads a component for every lazily loaded screen', async () => {
-    expect(lazyScreenPaths.length).toBeGreaterThan(0);
-    expect(lazyScreenImports).toHaveLength(lazyScreenPaths.length);
+  it('loads the intended export for every lazily loaded screen', async () => {
+    expect(lazyScreenLoads.length).toBeGreaterThan(0);
+    expect(lazyScreenImports).toHaveLength(lazyScreenLoads.length);
 
     const modules = await Promise.all(lazyScreenImports.map((loadScreen) => loadScreen()));
 
-    for (const module of modules) {
-      expect(module.default).toBe(passThrough);
-    }
+    modules.forEach((module, index) => {
+      const { path, exportName } = lazyScreenLoads[index];
+      const stub = screenStubs.get(path)?.[exportName];
+      expect(stub).toBeDefined();
+      expect(module.default).toBe(stub);
+    });
+  });
+
+  it('loads the Kundengelder lines screen from its named export, not the default', async () => {
+    const index = lazyScreenLoads.findIndex(
+      ({ exportName }) => exportName === 'DashboardFinancialKundengelderLinesScreen',
+    );
+    const stubs = screenStubs.get('screens/dashboard-financial-kundengelder.screen');
+
+    expect(index).toBeGreaterThanOrEqual(0);
+    const module = await lazyScreenImports[index]();
+    expect(module.default).toBe(stubs?.DashboardFinancialKundengelderLinesScreen);
+    expect(module.default).not.toBe(stubs?.default);
   });
 
   it('redirects the old payment link path to /pl and keeps the query', async () => {
