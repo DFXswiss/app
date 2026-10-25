@@ -29,6 +29,12 @@ export function useComplianceGuard(redirectPath = '/', isActive = true) {
   useUserRoleGuard([UserRole.ADMIN, UserRole.COMPLIANCE], redirectPath, isActive);
 }
 
+// 'Partner' is exported as UserRole.PARTNER in @dfx.swiss/react >= 1.4.0-beta.2.
+// Cast keeps this PR independent of the packages publish; switch to UserRole.PARTNER once consumed.
+export function usePartnerGuard(redirectPath = '/', isActive = true) {
+  useUserRoleGuard([UserRole.ADMIN, 'Partner' as UserRole], redirectPath, isActive);
+}
+
 export const SUPPORT_DASHBOARD_ROLES = [UserRole.ADMIN, UserRole.COMPLIANCE, UserRole.SUPPORT, UserRole.MARKETING];
 
 export function useSupportDashboardGuard(redirectPath = '/', isActive = true) {
