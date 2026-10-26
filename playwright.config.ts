@@ -41,6 +41,7 @@ export default defineConfig({
     // Pin API base URL so QR matrix (and any code reading REACT_APP_API_URL) is baseline-stable.
     // Same default as scripts/e2e-test.sh; E2E_API_URL wins, then an explicit
     // REACT_APP_API_URL — the local run documented in CONTRIBUTING sets that one.
+    // An already running local server is reused without this pin (reuseExistingServer when CI is unset), so baselines are only reproducible with a freshly started server.
     env: {
       ...process.env,
       REACT_APP_API_URL: process.env.E2E_API_URL ?? process.env.REACT_APP_API_URL ?? 'https://dev.api.dfx.swiss',
