@@ -12,9 +12,7 @@ function recipientInput(page: Page) {
   return page.locator('input[name="name"], input[autocomplete="name"]');
 }
 
-type RecipientMock =
-  | { ok: true; currency?: string }
-  | { ok: false; status: 404 | 500; message: string };
+type RecipientMock = { ok: true; currency?: string } | { ok: false; status: 404 | 500; message: string };
 
 async function installRecipientRoute(page: Page, mock: RecipientMock): Promise<void> {
   await page.route(RECIPIENT_RE, async (route: Route) => {
@@ -164,6 +162,41 @@ test.describe('Invoice Screen', () => {
     await expect(page.getByPlaceholder(/Invoice amount|Rechnungsbetrag/i)).toBeDisabled();
 
     await expect(page).toHaveScreenshot('invoice-payer-technical-error.png', {
+      maxDiffPixels: 10000,
+    });
+  });
+
+  test('merchant mode: recipient lookup server error shows a retryable technical error', async ({ page }) => {
+    await installRecipientRoute(page, {
+      ok: false,
+      status: 500,
+      message: 'Recipient service unavailable',
+    });
+
+    // QR and Copy Link sit above the form, so the error texts fall below a 720px viewport.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/invoice?recipient=AcmeCorp');
+    await page.waitForLoadState('networkidle');
+    // Focus is applied after 200ms on the recipient field; wait so the ring is stable.
+    await page.waitForTimeout(500);
+
+    const pageContent = await page.textContent('body');
+    const hasMerchantWording =
+      pageContent?.includes('Create Invoice') ||
+      pageContent?.includes('Rechnung erstellen') ||
+      pageContent?.includes('Invoice ID') ||
+      pageContent?.includes('Rechnungs-ID');
+    expect(hasMerchantWording).toBeTruthy();
+
+    await expect(
+      page.getByText(/Something went wrong\. Please try again|Irgendwas hat nicht funktioniert, bitte versuche/i),
+    ).toBeVisible();
+    await expect(page.getByText('Recipient service unavailable', { exact: true })).toBeVisible();
+    await expect(page.locator('input[name="invoice-id"], input[autocomplete="invoice-id"]')).toBeDisabled();
+    await expect(page.getByPlaceholder(/^(Amount|Betrag)$/i)).toBeDisabled();
+    await expect(recipientInput(page)).toHaveCount(1);
+
+    await expect(page).toHaveScreenshot('invoice-merchant-technical-error.png', {
       maxDiffPixels: 10000,
     });
   });
