@@ -38,9 +38,7 @@ describe('QrBasic', () => {
   });
 
   it('renders a non-scannable skeleton while loading when requested', () => {
-    const { container } = render(
-      <QrBasic data="https://pay.example/invoice" isLoading showLoadingSkeleton />,
-    );
+    const { container } = render(<QrBasic data="https://pay.example/invoice" isLoading showLoadingSkeleton />);
 
     expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
     expect(container.querySelector('.animate-pulse')).toBeInTheDocument();

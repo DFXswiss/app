@@ -62,11 +62,7 @@ export function useNavigation(): NavigationInterface {
     return navigateTo(relativeUrl({ path: pathname, params }));
   }
 
-  function addParams(
-    newParams: URLSearchParams,
-    clearParams?: string[],
-    replaceParams?: boolean,
-  ): URLSearchParams {
+  function addParams(newParams: URLSearchParams, clearParams?: string[], replaceParams?: boolean): URLSearchParams {
     const params = replaceParams ? new URLSearchParams() : new URLSearchParams(search);
     newParams.forEach((val, key) => params.set(key, val));
     clearParams?.forEach((s) => params.delete(s));

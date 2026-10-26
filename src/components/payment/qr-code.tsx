@@ -51,11 +51,7 @@ export function QrBasic({ data, isLoading, showLoadingSkeleton }: QrBasicProps):
           alt="Swiss QR Bill"
         />
       ) : (
-        <QRCode
-          className="h-full w-full rounded-sm"
-          value={data}
-          fgColor={isLoading ? '#0000000A' : '#072440'}
-        />
+        <QRCode className="h-full w-full rounded-sm" value={data} fgColor={isLoading ? '#0000000A' : '#072440'} />
       )}
     </div>
   );
