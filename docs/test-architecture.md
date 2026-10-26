@@ -56,8 +56,10 @@ This layer arrived with #1288 and lives in `e2e-stack/`.
 
 Measured on the head of that pull request, `acb6814a`, in CI: 223 tests, of which 219 passed, 3 were
 skipped and 1 failed, in 9.6 minutes on a single worker. The failure was the route gate doing its job —
-the merge target had gained a route the registry did not claim yet. Re-measure after any change to the
-suite; the number of tests is not pinned anywhere.
+the merge target had gained a route the registry did not claim yet. Last re-measured on 26 October 2026
+for #1595 (its head `4a785aad` merged into develop `30d49063`, on the build host): 277 tests, of which 274
+passed and 3 were skipped, in 11.4 minutes. Re-measure after any change to the suite; the number of tests
+is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every
 external provider through two independent mechanisms: the API mocks its own outbound calls, and the
@@ -506,7 +508,7 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   those answers. It does not prove that a real injected wallet answers the same way, signs a
   transfer, or submits it to a chain.
 - **The MetaMask no-native-gas full-stack tests inject a wallet provider.**
-  `e2e-stack/specs/fixtures/injected-wallet.ts:1` records requests, returns a zero native balance,
+  `e2e-stack/specs/fixtures/injected-wallet.ts:30-37` records requests, returns a zero native balance,
   simulates token reads and accepts one ERC-20 transfer. A green run proves the app requests no
   native balance or fee data before sending, and sends the API's deposit address and quoted amount
   through `eth_sendTransaction`; it does not prove that MetaMask pays the fee from tokens, that

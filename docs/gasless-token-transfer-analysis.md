@@ -683,12 +683,7 @@ const result = await ethereum().request({
 
 ---
 
-_Dokument erstellt am 8. Januar 2026_
-_Letzte Aktualisierung: 8. Januar 2026_
-_Verifizierung hinzugefügt: 8. Januar 2026_
-_Implementierung dokumentiert: 8. Januar 2026_
-
-## 12. Stand nach #307
+## 12. Stand nach der Umstellung auf den regulären ERC-20-Transfer
 
 Die App nutzt für MetaMask ausschließlich `eth_sendTransaction` mit einem ERC-20-`transfer`.
 Laut MetaMask-Quellcode lädt `TransactionController#updateSimulationData` für jede hinzugefügte
@@ -703,8 +698,15 @@ Wallet prüft, dass die App ohne Abfrage von nativem Guthaben oder Gebührendate
 ERC-20-Transaktion an die Deposit-Adresse aus der API an die Wallet übergibt. Er prüft nicht die
 Gebührendeckung durch MetaMask.
 
-Die in §11.2 aufgeführte Real-Hook-Testdatei beschreibt den früheren Stand; sie wurde mit #307
-gelöscht.
+Die in §11.2 aufgeführte Real-Hook-Testdatei beschreibt den früheren Stand; sie ist mit
+dieser Umstellung gelöscht.
 
 Offen bleibt der Praxistest auf Mainnet: ein normaler ERC-20-Verkauf aus der App mit einer
 MetaMask-Wallet, die Token, aber kein natives Guthaben hält, auf einem der Gas-Station-Netzwerke.
+
+---
+
+_Dokument erstellt am 8. Januar 2026_
+_Verifizierung hinzugefügt: 8. Januar 2026_
+_Implementierung dokumentiert: 8. Januar 2026_
+_Letzte Aktualisierung: 26. Oktober 2026 (Abschnitt 12)_
