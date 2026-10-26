@@ -19,6 +19,8 @@ const mockRoutesState: {
   userOverrides: Record<string, unknown>;
 } = { overrides: {}, userOverrides: {} };
 
+const mockWalletState = { isInitialized: true };
+
 // Stable fixtures (mock-prefix for jest hoist). PaymentLinkForm's useMemo/useEffect
 // re-run on reference change and infinite-loop if context returns new objects each render.
 const mockStablePaymentRoutes = {
@@ -584,7 +586,7 @@ jest.mock('../contexts/settings.context', () => ({
   }),
 }));
 jest.mock('../contexts/wallet.context', () => ({
-  useWalletContext: () => ({ isInitialized: true }),
+  useWalletContext: () => ({ isInitialized: mockWalletState.isInitialized }),
 }));
 jest.mock('../contexts/window.context', () => ({
   useWindowContext: () => ({ width: 1024 }),
@@ -641,6 +643,7 @@ describe('PaymentRoutesScreen actions', () => {
     jest.clearAllMocks();
     mockRoutesState.overrides = {};
     mockRoutesState.userOverrides = {};
+    mockWalletState.isInitialized = true;
     mockUpdatePaymentLink.mockResolvedValue(undefined);
     mockUpdateUserPaymentLinksConfig.mockResolvedValue(undefined);
     mockCancelPaymentLinkPayment.mockResolvedValue(undefined);
@@ -1003,11 +1006,7 @@ describe('PaymentRoutesScreen actions', () => {
   });
 
   it('shows loading spinner while wallet is not initialized', () => {
-    jest.doMock('../contexts/wallet.context', () => ({
-      useWalletContext: () => ({ isInitialized: false }),
-    }));
-    // Override via re-mock is hard mid-file; instead use user loading:
-    mockRoutesState.userOverrides = { isUserLoading: true };
+    mockWalletState.isInitialized = false;
     renderScreen();
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
   });
