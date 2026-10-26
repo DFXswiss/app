@@ -477,7 +477,7 @@ test.describe('Payment links / routes / invoice', () => {
         hasTouch: true,
       });
 
-      test('/pl: handheld with a quote shows wallet copy and the collapsed QR row', async ({ page }) => {
+      test('/pl: handheld with a quote shows wallet copy and no large QR', async ({ page }) => {
         const user = await createUser({
           tag: 'pl-qr-handheld',
           language: 'EN',
