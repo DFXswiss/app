@@ -528,7 +528,8 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   wallet context, the component library, overlays, the QR code and the LNURL helpers. A green run
   proves the stubbed wizard shows "Always show QR code", walks the create and edit steps, and
   surfaces the stubbed save errors. It does not prove that the API accepts those payloads or that
-  a production form control validates them.
+  a production form control validates them. The address helper stub returns no text when every
+  address part is empty, so a green run does not prove the real address formatter.
 - **The payment-routes screen unit test replaces the SDK, the wallet context and the controls.**
   `src/__tests__/payment-routes.screen.test.tsx` replaces the payment-route and user hooks, the
   wallet context (`isInitialized` fixed true), the component library, overlays, the QR code and

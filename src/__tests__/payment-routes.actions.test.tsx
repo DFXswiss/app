@@ -296,13 +296,15 @@ jest.mock('@dfx.swiss/react-components', () => {
       expansionItems,
       expansionContent,
       children,
+      isExpanded,
     }: {
       label: string;
       expansionItems?: { label: string; text?: string; onClick?: () => void }[];
       expansionContent?: React.ReactNode;
       children?: React.ReactNode;
+      isExpanded?: boolean;
     }) => (
-      <div data-testid={`expandable-${label}`}>
+      <div data-testid={`expandable-${label}`} data-expanded={String(isExpanded)}>
         <span>{label}</span>
         {children}
         {expansionItems?.map((item) => (
@@ -843,6 +845,20 @@ describe('PaymentRoutesScreen actions', () => {
     expect(mockLayoutOptions).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Default configuration' }),
     );
+  });
+
+  it('expands the payment row when the label editor closes on a link that has a payment', async () => {
+    mockRoutesState.overrides = { paymentLinks: [mockLinkPending] };
+    renderScreen();
+
+    const labelButtons = screen.getAllByText('N/A');
+    fireEvent.click(labelButtons[labelButtons.length - 1]);
+    expect(screen.getByTestId('edit-overlay')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('cancel-edit'));
+    await waitFor(() => {
+      expect(screen.getByTestId('expandable-Payment')).toHaveAttribute('data-expanded', 'true');
+    });
   });
 
   it('opens label rename overlay, cancels, then saves a new label', async () => {

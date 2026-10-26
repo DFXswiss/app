@@ -285,6 +285,7 @@ jest.mock('@dfx.swiss/react-components', () => {
       labelFunc,
       descriptionFunc,
       rules,
+      error,
     }: {
       name: string;
       control?: unknown;
@@ -293,6 +294,7 @@ jest.mock('@dfx.swiss/react-components', () => {
       labelFunc?: (item: unknown) => string;
       descriptionFunc?: (item: unknown) => string;
       rules?: { validate?: (v: unknown) => unknown; required?: boolean };
+      error?: { message?: string };
     }) => (
       <Controller
         name={name}
@@ -318,6 +320,7 @@ jest.mock('@dfx.swiss/react-components', () => {
             <span data-testid={`value-${name}`}>
               {field.value != null && labelFunc ? labelFunc(field.value) : String(field.value ?? '')}
             </span>
+            {error?.message ? <span data-testid={`error-${name}`}>{error.message}</span> : null}
           </div>
         )}
       />
@@ -512,8 +515,10 @@ jest.mock('../util/lnurl', () => ({
 }));
 jest.mock('../util/utils', () => ({
   blankedAddress: (v: string) => v,
-  formatLocationAddress: (a: Record<string, unknown>) =>
-    [a.street, a.houseNumber, a.zip, a.city, a.country].filter(Boolean).join(' '),
+  formatLocationAddress: (a: Record<string, unknown>) => {
+    const text = [a.street, a.houseNumber, a.zip, a.city, a.country].filter(Boolean).join(' ');
+    return text || undefined;
+  },
   isEmpty: (v: unknown) => v == null || v === '' || (Array.isArray(v) && v.length === 0),
   removeNullFields: (o?: Record<string, unknown>) => {
     if (!o) return o;
@@ -642,6 +647,8 @@ describe('PaymentLinkForm labels and steps', () => {
     });
     // Summary shows No from default config displayQr:false
     expect(screen.getByTestId('summary-Configuration-Always show QR code')).toHaveTextContent(/No/);
+    // Skipped recipient has no address parts, so the summary shows N/A
+    expect(screen.getByTestId('summary-Recipient-Address')).toHaveTextContent('Address: N/A');
   });
 
   it('saves global default configuration via onSubmitForm path', async () => {
@@ -809,6 +816,59 @@ describe('PaymentLinkForm labels and steps', () => {
     expect(screen.getByTestId('dropdown-routeId')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Next'));
     await waitFor(() => expect(screen.getByText('Skip')).toBeInTheDocument());
+  });
+
+  it('shows QR config errors and does not save when the user config is missing', async () => {
+    mockRoutesState.overrides = { userPaymentLinksConfig: undefined };
+    renderScreen();
+    fireEvent.click(screen.getAllByText('Edit configuration')[0]);
+    await waitFor(() => expect(screen.getByTestId('dropdown-configDisplayQr')).toBeInTheDocument());
+
+    expect(screen.getByTestId('value-configDisplayQr').textContent?.trim()).toBe('');
+    expect(screen.getByTestId('value-configCancellable').textContent?.trim()).toBe('');
+
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(screen.getByTestId('error-configDisplayQr')).toHaveTextContent('invalid configDisplayQr');
+    });
+    expect(screen.getByTestId('error-configCancellable')).toHaveTextContent('invalid configCancellable');
+    expect(mockUpdateUserPaymentLinksConfig).not.toHaveBeenCalled();
+    expect(mockUpdatePaymentLink).not.toHaveBeenCalled();
+  });
+
+  it('saves a link configuration without a route when payment routes are missing', async () => {
+    mockRoutesState.overrides = { paymentRoutes: undefined };
+    renderScreen();
+    fireEvent.click(screen.getAllByText('Edit configuration')[1]);
+    await waitFor(() => expect(screen.getByTestId('dropdown-configDisplayQr')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(mockUpdatePaymentLink).toHaveBeenCalled();
+    });
+    const [request, id] = mockUpdatePaymentLink.mock.calls[0];
+    expect(id).toBe('pl-1');
+    expect(request.routeId).toBeUndefined();
+    expect(request.externalId).toBeUndefined();
+    expect(request.label).toBeUndefined();
+    expect(request.config.displayQr).toBe(true);
+  });
+
+  it('omits the recipient when saving a link that has none', async () => {
+    mockRoutesState.overrides = {
+      paymentLinks: [{ ...mockStablePaymentLinks[0], recipient: undefined }],
+    };
+    renderScreen();
+    fireEvent.click(screen.getAllByText('Edit configuration')[1]);
+    await waitFor(() => expect(screen.getByTestId('dropdown-configDisplayQr')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(mockUpdatePaymentLink).toHaveBeenCalled();
+    });
+    const [request, id] = mockUpdatePaymentLink.mock.calls[0];
+    expect(id).toBe('pl-1');
+    expect(request.config.recipient).toBeUndefined();
   });
 
   it('surfaces Unknown error when a global config save fails without a message', async () => {
