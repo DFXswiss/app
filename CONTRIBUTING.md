@@ -51,13 +51,13 @@ Compliance and lower. Prefer Fail or Reset so the automatic AML pipeline can re-
 ### A38
 
 This repository requires A38 according to the canonical A38 standard in
-[DFXswiss/agent](https://github.com/DFXswiss/agent/blob/bf9763f8d59285aa542f5dc22cbdbf451618c5f5/docs/a38.md)
-at commit `bf9763f8d59285aa542f5dc22cbdbf451618c5f5`. Repo job selection:
+[DFXswiss/agent](https://github.com/DFXswiss/agent/blob/e63980625f5b778c5a93104b0bf5de7fb5e379a8/docs/a38.md)
+at commit `e63980625f5b778c5a93104b0bf5de7fb5e379a8`. Repo job selection:
 `.github/a38.json`. Target-branch applicability and fork workflow approval:
 `.github/pr-guard.json`. `workflow_approval.workflows` stays a required field
 there but no longer filters: after a fresh enforce pass the guard approves
 every initial held fork `pull_request` run. `dfx pr guard` is
-[wired in](https://github.com/DFXswiss/agent/blob/bf9763f8d59285aa542f5dc22cbdbf451618c5f5/docs/a38-guard.md#how-fork-github-actions-are-meant-to-work).
+[wired in](https://github.com/DFXswiss/agent/blob/e63980625f5b778c5a93104b0bf5de7fb5e379a8/docs/a38-guard.md#how-fork-github-actions-are-meant-to-work).
 
 This is a **public** repository. GitHub-hosted runners execute the heavy suite
 (Jest, `build:dev`, `widget:dev`, handbook smoke, full-stack E2E, CodeQL).
