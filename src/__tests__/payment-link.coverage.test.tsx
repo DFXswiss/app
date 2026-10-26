@@ -232,6 +232,10 @@ jest.mock('../components/error-hint', () => ({
 jest.mock('../components/payment/qr-code', () => ({
   QrBasic: () => <div data-testid="payment-qr">QR</div>,
 }));
+
+jest.mock('src/components/payment/spar-place-map', () => ({
+  SparPlaceMap: () => <div data-testid="spar-place-map" />,
+}));
 jest.mock('../components/pl/payment-status-tile', () => ({
   __esModule: true,
   default: () => null,
