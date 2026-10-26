@@ -39,6 +39,22 @@ function paymentFormKey(recipient?: string, invoiceId?: string, amount?: string 
   return `${recipient}\0${invoiceId}\0${amount}`;
 }
 
+type PaymentResult =
+  | { key: string; kind: 'link'; callback: string; callbackSearch: string }
+  | { key: string; kind: 'error'; message: string };
+
+// The answer belongs to the values that were asked. Show it only while those values are on screen.
+function paymentView(
+  result: PaymentResult | null,
+  liveKey: string,
+): { callback?: string; callbackSearch?: string; error?: string } {
+  if (result !== null && result.key === liveKey) {
+    if (result.kind === 'error') return { error: result.message };
+    return { callback: result.callback, callbackSearch: result.callbackSearch };
+  }
+  return {};
+}
+
 const baseUrl = url({ base: Api.url, path: `/${Api.version}/paymentLink/payment` });
 const relativeBaseUrl = '/pl';
 
@@ -51,7 +67,7 @@ export default function InvoiceScreen(): JSX.Element {
 
   const recipientFieldRef = useRef<HTMLInputElement>(null);
   const paymentGeneration = useRef(0);
-  const issuedPayment = useRef<{ key: string; callback: string; callbackSearch: string } | null>(null);
+  const paymentResult = useRef<PaymentResult | null>(null);
   const reactId = useId();
   const payeeLabelId = `invoice-payee-${reactId.replace(/[^A-Za-z0-9_-]/g, '')}`;
   const payeeErrorId = `${payeeLabelId}-error`;
@@ -118,18 +134,12 @@ export default function InvoiceScreen(): JSX.Element {
   }, [data?.recipient, data?.invoiceId, data?.amount, validatedRecipient]);
 
   useEffect(() => {
-    const issued = issuedPayment.current;
-    const liveKey = paymentFormKey(liveRecipient, liveInvoiceId, liveAmount);
     // useDebounce does not emit when the form returns to the last emitted values,
-    // so a detour back to them never re-runs payment validation. Put that link back.
-    if (issued !== null && issued.key === liveKey) {
-      setCallback(issued.callback);
-      setCallbackSearch(issued.callbackSearch);
-    } else {
-      setCallback(undefined);
-      setCallbackSearch(undefined);
-    }
-    setErrorPayment(undefined);
+    // so a detour back to them never re-runs payment validation. Put that result back.
+    const view = paymentView(paymentResult.current, paymentFormKey(liveRecipient, liveInvoiceId, liveAmount));
+    setCallback(view.callback);
+    setCallbackSearch(view.callbackSearch);
+    setErrorPayment(view.error);
     setIsLoadingPayment(false);
   }, [liveRecipient, liveInvoiceId, liveAmount]);
 
@@ -159,10 +169,10 @@ export default function InvoiceScreen(): JSX.Element {
   async function validatePayment(data: FormData) {
     const generation = ++paymentGeneration.current;
     const requestKey = paymentFormKey(data.recipient, data.invoiceId, data.amount);
-    // These values are being checked again. Drop the remembered link first so a
+    // These values are being checked again. Drop the remembered result first so a
     // rejection cannot be put back by the live restore of that same key.
-    if (issuedPayment.current !== null && issuedPayment.current.key === requestKey) {
-      issuedPayment.current = null;
+    if (paymentResult.current !== null && paymentResult.current.key === requestKey) {
+      paymentResult.current = null;
     }
     setErrorPayment(undefined);
     setErrorRecipient(undefined);
@@ -177,36 +187,33 @@ export default function InvoiceScreen(): JSX.Element {
       expiryDate: addYears(new Date(), 1).toISOString(),
     });
 
-    const isStaleForm = () => {
+    const remember = (result: PaymentResult) => {
+      if (generation !== paymentGeneration.current) return;
+      paymentResult.current = result;
       const live = liveFormRef.current;
-      return (
-        `${live.recipient}\0${live.invoiceId}\0${live.amount}` !==
-        `${data.recipient}\0${data.invoiceId}\0${data.amount}`
-      );
+      const liveKey = paymentFormKey(live.recipient, live.invoiceId, live.amount);
+      if (liveKey !== result.key) return;
+      const view = paymentView(result, liveKey);
+      setCallback(view.callback);
+      setCallbackSearch(view.callbackSearch);
+      setErrorPayment(view.error);
     };
 
     fetchJson(url({ base: baseUrl, params: searchParams }))
       .then((response) => {
-        if (generation !== paymentGeneration.current) return;
-        if (isStaleForm()) return;
         if (response.error) {
-          setErrorPayment(response.message ?? 'Unknown Error');
+          remember({ key: requestKey, kind: 'error', message: response.message ?? 'Unknown Error' });
         } else {
-          const nextCallback = relativeUrl({ path: relativeBaseUrl, params: searchParams });
-          const nextSearch = searchParams.toString();
-          issuedPayment.current = {
-            key: paymentFormKey(data.recipient, data.invoiceId, data.amount),
-            callback: nextCallback,
-            callbackSearch: nextSearch,
-          };
-          setCallback(nextCallback);
-          setCallbackSearch(nextSearch);
+          remember({
+            key: requestKey,
+            kind: 'link',
+            callback: relativeUrl({ path: relativeBaseUrl, params: searchParams }),
+            callbackSearch: searchParams.toString(),
+          });
         }
       })
       .catch((error: ApiError) => {
-        if (generation !== paymentGeneration.current) return;
-        if (isStaleForm()) return;
-        setErrorPayment(error.message ?? 'Unknown Error');
+        remember({ key: requestKey, kind: 'error', message: error.message ?? 'Unknown Error' });
       })
       .finally(() => {
         if (generation !== paymentGeneration.current) return;

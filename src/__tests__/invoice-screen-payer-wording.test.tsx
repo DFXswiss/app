@@ -825,6 +825,121 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(options).toEqual({ replaceParams: true });
   });
 
+  it('restores continue when the payment link arrives during a detour and the amount returns', async () => {
+    let resolvePayment: ((value: { json: () => Promise<unknown> }) => void) | undefined;
+    (global.fetch as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePayment = resolve;
+        }),
+    );
+
+    renderAt('/invoice?recipient=42&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    // Hold the debounced form so the return to 10 does not ask again.
+    mockDebounceHold.active = true;
+    const amountInput = getAmountInput();
+    await act(async () => {
+      flushSync(() => {
+        fireEvent.change(amountInput, { target: { value: '20' } });
+      });
+    });
+
+    expect(resolvePayment).toBeDefined();
+    if (resolvePayment === undefined) return;
+    await act(async () => {
+      resolvePayment({ json: async () => ({}) });
+    });
+
+    expect(screen.getByRole('button', { name: 'Continue to payment' })).toBeDisabled();
+
+    await act(async () => {
+      flushSync(() => {
+        fireEvent.change(amountInput, { target: { value: '10' } });
+      });
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const button = screen.getByRole('button', { name: 'Continue to payment' });
+    expect(button).not.toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    const [to, options] = mockNavigate.mock.calls[0];
+    expect(to).toEqual(expect.objectContaining({ pathname: '/pl' }));
+    const search = new URLSearchParams(to.search);
+    expect(search.get('amount')).toBe('10');
+    expect(options).toEqual({ replaceParams: true });
+  });
+
+  it('shows the payment error when a rejection arrives during a detour and the amount returns', async () => {
+    let resolvePayment: ((value: { json: () => Promise<unknown> }) => void) | undefined;
+    (global.fetch as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePayment = resolve;
+        }),
+    );
+
+    renderAt('/invoice?recipient=42&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    mockDebounceHold.active = true;
+    const amountInput = getAmountInput();
+    await act(async () => {
+      flushSync(() => {
+        fireEvent.change(amountInput, { target: { value: '20' } });
+      });
+    });
+
+    expect(resolvePayment).toBeDefined();
+    if (resolvePayment === undefined) return;
+    await act(async () => {
+      resolvePayment({ json: async () => ({ error: true, message: 'Payment failed' }) });
+    });
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+
+    await act(async () => {
+      flushSync(() => {
+        fireEvent.change(amountInput, { target: { value: '10' } });
+      });
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('error-hint')).toHaveTextContent('Payment failed');
+    const button = screen.getByRole('button', { name: 'Continue to payment' });
+    expect(button).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('does not restore continue after a later rejection of the same values', async () => {
     // Empty amount emits, but the validation effect does not request while it is empty.
     // The link for 10 therefore stays until those same values are checked again. A
