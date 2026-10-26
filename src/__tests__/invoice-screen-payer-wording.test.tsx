@@ -712,6 +712,119 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(button).toBeDisabled();
   });
 
+  it('disables continue while the amount differs from the validated value before debounce', async () => {
+    renderAt('/invoice?recipient=42&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+
+    const button = await screen.findByRole('button', { name: 'Continue to payment' });
+    await waitFor(() => {
+      expect(button).not.toBeDisabled();
+    });
+
+    // Debounced form stays on the validated values, as it does before the debounce delay elapses.
+    mockDebounceHold.active = true;
+    const amountInput = getAmountInput();
+    await act(async () => {
+      fireEvent.change(amountInput, { target: { value: '20' } });
+    });
+
+    expect(button).toBeDisabled();
+  });
+
+  it('enables continue again when the amount returns to the validated value before debounce', async () => {
+    renderAt('/invoice?recipient=42&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+
+    const button = await screen.findByRole('button', { name: 'Continue to payment' });
+    await waitFor(() => {
+      expect(button).not.toBeDisabled();
+    });
+
+    // Hold the debounced form. A return to those values does not emit again.
+    // flushSync commits each keystroke inside the one act; a bare pair of changes
+    // would batch into the final value and the detour would never run.
+    mockDebounceHold.active = true;
+    const amountInput = getAmountInput();
+    await act(async () => {
+      flushSync(() => {
+        fireEvent.change(amountInput, { target: { value: '20' } });
+      });
+      flushSync(() => {
+        fireEvent.change(amountInput, { target: { value: '10' } });
+      });
+    });
+
+    expect(button).not.toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    const [to, options] = mockNavigate.mock.calls[0];
+    expect(to).toEqual(expect.objectContaining({ pathname: '/pl' }));
+    const search = new URLSearchParams(to.search);
+    expect(search.get('amount')).toBe('10');
+    expect(search.get('message')).toBe('INV-1');
+    expect(options).toEqual({ replaceParams: true });
+  });
+
+  it('enables continue again when the invoice number returns to the validated value before debounce', async () => {
+    renderAt('/invoice?recipient=42&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+
+    const button = await screen.findByRole('button', { name: 'Continue to payment' });
+    await waitFor(() => {
+      expect(button).not.toBeDisabled();
+    });
+
+    mockDebounceHold.active = true;
+    const invoiceInput = getInvoiceIdInput();
+    await act(async () => {
+      flushSync(() => {
+        fireEvent.change(invoiceInput, { target: { value: 'INV-2' } });
+      });
+      flushSync(() => {
+        fireEvent.change(invoiceInput, { target: { value: 'INV-1' } });
+      });
+    });
+
+    expect(button).not.toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    const [to, options] = mockNavigate.mock.calls[0];
+    expect(to).toEqual(expect.objectContaining({ pathname: '/pl' }));
+    const search = new URLSearchParams(to.search);
+    expect(search.get('amount')).toBe('10');
+    expect(search.get('message')).toBe('INV-1');
+    expect(options).toEqual({ replaceParams: true });
+  });
+
   it('disables continue when the recipient changes to a different non-empty value', async () => {
     renderAt('/invoice?pay=1');
 

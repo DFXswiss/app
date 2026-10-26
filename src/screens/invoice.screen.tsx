@@ -35,6 +35,10 @@ interface FormData {
   amount: number;
 }
 
+function paymentFormKey(recipient?: string, invoiceId?: string, amount?: string | number): string {
+  return `${recipient}\0${invoiceId}\0${amount}`;
+}
+
 const baseUrl = url({ base: Api.url, path: `/${Api.version}/paymentLink/payment` });
 const relativeBaseUrl = '/pl';
 
@@ -47,6 +51,7 @@ export default function InvoiceScreen(): JSX.Element {
 
   const recipientFieldRef = useRef<HTMLInputElement>(null);
   const paymentGeneration = useRef(0);
+  const issuedPayment = useRef<{ key: string; callback: string; callbackSearch: string } | null>(null);
   const reactId = useId();
   const payeeLabelId = `invoice-payee-${reactId.replace(/[^A-Za-z0-9_-]/g, '')}`;
   const payeeErrorId = `${payeeLabelId}-error`;
@@ -113,8 +118,17 @@ export default function InvoiceScreen(): JSX.Element {
   }, [data?.recipient, data?.invoiceId, data?.amount, validatedRecipient]);
 
   useEffect(() => {
-    setCallback(undefined);
-    setCallbackSearch(undefined);
+    const issued = issuedPayment.current;
+    const liveKey = paymentFormKey(liveRecipient, liveInvoiceId, liveAmount);
+    // useDebounce does not emit when the form returns to the last emitted values,
+    // so a detour back to them never re-runs payment validation. Put that link back.
+    if (issued !== null && issued.key === liveKey) {
+      setCallback(issued.callback);
+      setCallbackSearch(issued.callbackSearch);
+    } else {
+      setCallback(undefined);
+      setCallbackSearch(undefined);
+    }
     setErrorPayment(undefined);
     setIsLoadingPayment(false);
   }, [liveRecipient, liveInvoiceId, liveAmount]);
@@ -172,8 +186,15 @@ export default function InvoiceScreen(): JSX.Element {
         if (response.error) {
           setErrorPayment(response.message ?? 'Unknown Error');
         } else {
-          setCallback(relativeUrl({ path: relativeBaseUrl, params: searchParams }));
-          setCallbackSearch(searchParams.toString());
+          const nextCallback = relativeUrl({ path: relativeBaseUrl, params: searchParams });
+          const nextSearch = searchParams.toString();
+          issuedPayment.current = {
+            key: paymentFormKey(data.recipient, data.invoiceId, data.amount),
+            callback: nextCallback,
+            callbackSearch: nextSearch,
+          };
+          setCallback(nextCallback);
+          setCallbackSearch(nextSearch);
         }
       })
       .catch((error: ApiError) => {
