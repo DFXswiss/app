@@ -158,6 +158,12 @@ export default function InvoiceScreen(): JSX.Element {
 
   async function validatePayment(data: FormData) {
     const generation = ++paymentGeneration.current;
+    const requestKey = paymentFormKey(data.recipient, data.invoiceId, data.amount);
+    // These values are being checked again. Drop the remembered link first so a
+    // rejection cannot be put back by the live restore of that same key.
+    if (issuedPayment.current !== null && issuedPayment.current.key === requestKey) {
+      issuedPayment.current = null;
+    }
     setErrorPayment(undefined);
     setErrorRecipient(undefined);
     setCallback(undefined);

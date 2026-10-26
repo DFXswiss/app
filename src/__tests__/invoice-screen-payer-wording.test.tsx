@@ -825,6 +825,64 @@ describe('InvoiceScreen payer wording (?pay)', () => {
     expect(options).toEqual({ replaceParams: true });
   });
 
+  it('does not restore continue after a later rejection of the same values', async () => {
+    // Empty amount emits, but the validation effect does not request while it is empty.
+    // The link for 10 therefore stays until those same values are checked again. A
+    // non-empty in-between amount would request and drop the link even if the discard
+    // compared the wrong key.
+    (global.fetch as jest.Mock).mockResolvedValueOnce({ json: async () => ({}) }).mockResolvedValueOnce({
+      json: async () => ({ error: true, message: 'Payment failed' }),
+    });
+
+    renderAt('/invoice?recipient=42&pay=1');
+
+    await waitFor(() => {
+      expect(mockGetPaymentRecipient).toHaveBeenCalledWith('42');
+    });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Invoice number')).not.toBeDisabled();
+    });
+    await fillInvoiceFields('INV-1', '10');
+
+    const button = await screen.findByRole('button', { name: 'Continue to payment' });
+    await waitFor(() => {
+      expect(button).not.toBeDisabled();
+    });
+
+    const amountInput = getAmountInput();
+    await act(async () => {
+      fireEvent.change(amountInput, { target: { value: '' } });
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.change(amountInput, { target: { value: '10' } });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('error-hint')).toHaveTextContent('Payment failed');
+    });
+    expect(button).toBeDisabled();
+
+    // Hold the debounced form. A return to those values does not emit again.
+    // flushSync commits each keystroke inside the one act; a bare pair of changes
+    // would batch into the final value and the detour would never run.
+    mockDebounceHold.active = true;
+    await act(async () => {
+      flushSync(() => {
+        fireEvent.change(amountInput, { target: { value: '20' } });
+      });
+      flushSync(() => {
+        fireEvent.change(amountInput, { target: { value: '10' } });
+      });
+    });
+
+    expect(button).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('disables continue when the recipient changes to a different non-empty value', async () => {
     renderAt('/invoice?pay=1');
 
