@@ -1,5 +1,6 @@
 import { renderHook } from '@testing-library/react';
 import BigNumber from 'bignumber.js';
+import { AbortError } from 'src/util/abort-error';
 
 const web3Instances: any[] = [];
 const mockTimeout = jest.fn();
@@ -164,7 +165,9 @@ describe('useMetaMask', () => {
   it('maps account errors and recovers from a connection timeout', async () => {
     const { result, web3 } = setup();
     web3.eth.requestAccounts.mockRejectedValueOnce({ code: 4001, message: 'Rejected' });
-    await expect(result.current.requestAccount()).rejects.toMatchObject({ message: 'User cancelled', code: 4001 });
+    const accountRejection = result.current.requestAccount();
+    await expect(accountRejection).rejects.toBeInstanceOf(AbortError);
+    await expect(accountRejection).rejects.toMatchObject({ message: 'User cancelled', code: 4001 });
     web3.eth.requestAccounts.mockRejectedValueOnce({ code: -32002, message: 'Pending' });
     await expect(result.current.requestAccount()).rejects.toThrow('There is already a request pending');
     const unexpected = { code: -32603, message: 'RPC failure' };
@@ -200,7 +203,9 @@ describe('useMetaMask', () => {
       params: [expect.objectContaining({ chainId: '0x1' })],
     });
     provider.request.mockRejectedValueOnce({ code: 4001, message: 'Rejected' });
-    await expect(result.current.requestChangeToBlockchain('Ethereum' as any)).rejects.toMatchObject({ code: 4001 });
+    const chainRejection = result.current.requestChangeToBlockchain('Ethereum' as any);
+    await expect(chainRejection).rejects.toBeInstanceOf(AbortError);
+    await expect(chainRejection).rejects.toMatchObject({ message: 'User cancelled', code: 4001 });
     web3.eth.personal.sign.mockRejectedValueOnce({ code: -32002, message: 'Pending' });
     await expect(result.current.sign(account, 'hello')).rejects.toThrow('There is already a request pending');
     const rpcError = { code: -32603, message: 'RPC error' };
@@ -208,7 +213,9 @@ describe('useMetaMask', () => {
     await expect(result.current.requestChangeToBlockchain('Ethereum' as any)).rejects.toBe(rpcError);
     await expect(result.current.sign(account, 'hello')).resolves.toBe('signed');
     web3.eth.personal.sign.mockRejectedValueOnce({ code: 4001, message: 'Rejected' });
-    await expect(result.current.sign(account, 'hello')).rejects.toMatchObject({ code: 4001 });
+    const signRejection = result.current.sign(account, 'hello');
+    await expect(signRejection).rejects.toBeInstanceOf(AbortError);
+    await expect(signRejection).rejects.toMatchObject({ message: 'User cancelled', code: 4001 });
   });
 
   it('adds token metadata and reads coin and token balances', async () => {

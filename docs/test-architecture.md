@@ -56,9 +56,9 @@ This layer arrived with #1288 and lives in `e2e-stack/`.
 
 Measured on the head of that pull request, `acb6814a`, in CI: 223 tests, of which 219 passed, 3 were
 skipped and 1 failed, in 9.6 minutes on a single worker. The failure was the route gate doing its job —
-the merge target had gained a route the registry did not claim yet. Last re-measured on 26 October 2026
-for #1595 (its head `4a785aad` merged into develop `30d49063`, on the build host): 277 tests, of which 274
-passed and 3 were skipped, in 11.4 minutes. Re-measure after any change to the suite; the number of tests
+the merge target had gained a route the registry did not claim yet. Last re-measured on 27 October 2026
+for #1595 with its twelve MetaMask full-stack tests, on the build host: 287 tests, of which 284 passed and 3
+were skipped, in 15.6 minutes. Re-measure after any change to the suite; the number of tests
 is not pinned anywhere.
 
 The harness runs the following for real: Postgres, the API, this frontend, a browser. It fakes every
@@ -508,15 +508,16 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   those answers. It does not prove that a real injected wallet answers the same way, signs a
   transfer, or submits it to a chain.
 - **The MetaMask full-stack tests inject a wallet provider.**
-  `e2e-stack/specs/fixtures/injected-wallet.ts:3-14` defines options for rejected methods, an
-  injected native balance and RPC failures. `e2e-stack/specs/fixtures/injected-wallet.ts:35-51`
-  records each request before applying those options; unimplemented methods such as
-  `eth_signTypedData_v4` and `wallet_sendCalls` return error 4200, while the default balance is zero.
-  `e2e-stack/specs/fixtures/injected-wallet.ts:52-130` simulates token reads, chain changes, a
-  configurable native balance and a successful transaction with a fixed receipt and hash.
-  `e2e-stack/specs/sell-swap.spec.ts:189-426` amends the real payment-info
-  response in selected cases, and `e2e-stack/specs/sell-swap.spec.ts:1282-1312` checks the transfer
-  request, rejection handling and completion screen. A green run does not prove that a real wallet
+  `e2e-stack/specs/fixtures/injected-wallet.ts:3-11` defines the wallet address, chain, token data,
+  transaction hash, rejected methods and optional native balance. The request wrapper at
+  `e2e-stack/specs/fixtures/injected-wallet.ts:44-48` records every request and can reject configured
+  methods with code 4001. The `switch` at `e2e-stack/specs/fixtures/injected-wallet.ts:49-122`
+  defines chain and token reads, the configurable native balance (zero by default), transaction
+  responses, and error 4200 for unsupported methods. `e2e-stack/specs/sell-swap.spec.ts:283-330`
+  modifies selected real
+  payment-info responses. Assertions at `e2e-stack/specs/sell-swap.spec.ts:341-433` check the
+  requested transfer, wallet rejection handling, and completion screen; the scenarios are registered
+  in `e2e-stack/specs/sell-swap.spec.ts:1275-1309`. A green run does not prove that a real wallet
   accepts those responses, that a paymaster sponsors a transaction, that a transaction lands
   on-chain, or that the backend recognizes the pay-in.
 - **The rejected address switch visual spec answers the user and the switch itself.**

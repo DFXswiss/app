@@ -8,7 +8,6 @@ export interface InjectedMetaMaskOptions {
   txHash: string;
   rejectMethods?: string[];
   nativeBalance?: string;
-  failMethods?: string[];
 }
 
 export interface WalletRequest {
@@ -46,9 +45,6 @@ export async function installInjectedMetaMask(page: Page, options: InjectedMetaM
         requests.push({ method, params });
         if (wallet.rejectMethods?.includes(method)) {
           throw { code: 4001, message: 'User rejected the request.' };
-        }
-        if (wallet.failMethods?.includes(method)) {
-          throw { code: -32603, message: 'Internal error' };
         }
         switch (method) {
           case 'eth_chainId':

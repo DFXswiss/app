@@ -219,8 +219,21 @@ async function runMetaMaskTransferFlow(
       : 'GET /v1/asset must include sellable Base USDC with its contract address',
   ).toBeTruthy();
   const target = assets
-    .filter((asset) => asset.blockchain === 'Base' && asset.id !== source?.id && asset.buyable)
-    .sort((left, right) => left.id - right.id)[0];
+    .filter(
+      (asset) =>
+        asset.blockchain === 'Base' &&
+        asset.id !== source?.id &&
+        asset.buyable &&
+        (!options.nativeCoin || (asset.type === 'Token' && Boolean(asset.chainId))),
+    )
+    .sort((left, right) => {
+      if (options.nativeCoin) {
+        const leftIsUsdc = left.name === 'USDC';
+        const rightIsUsdc = right.name === 'USDC';
+        if (leftIsUsdc !== rightIsUsdc) return leftIsUsdc ? -1 : 1;
+      }
+      return left.id - right.id;
+    })[0];
   if (kind === 'swap') {
     expect(target, 'GET /v1/asset must include another buyable Base asset for the swap target').toBeTruthy();
   }
@@ -1288,5 +1301,9 @@ test.describe('MetaMask transfer request', () => {
 
   test('/sell sends a native ETH transfer equal to the quoted amount', async ({ page }) => {
     await runMetaMaskTransferFlow(page, 'sell', { nativeCoin: true });
+  });
+
+  test('/swap sends a native ETH transfer equal to the quoted amount', async ({ page }) => {
+    await runMetaMaskTransferFlow(page, 'swap', { nativeCoin: true });
   });
 });
