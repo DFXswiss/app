@@ -185,20 +185,28 @@ describe('Layout', () => {
   });
 
   it('does not show the banner on a KYC route', () => {
-    renderLayout({ path: '/kyc' });
+    renderLayout({ path: '/kyc?code=abc' });
     expect(screen.queryByTestId('info-banner')).not.toBeInTheDocument();
     expect(mockClearParams).not.toHaveBeenCalled();
   });
 
   it('clears the code param on non-KYC routes', () => {
-    renderLayout({ path: '/support' });
+    renderLayout({ path: '/support?code=abc' });
     expect(mockClearParams).toHaveBeenCalledWith(['code']);
   });
 
   it('clears the code param when KYC children are missing', () => {
     Routes[0].children = undefined;
-    renderLayout({ path: '/account' });
+    renderLayout({ path: '/account?code=abc' });
     expect(mockClearParams).toHaveBeenCalledWith(['code']);
+  });
+
+  // The layout's effect runs after the effects of a screen mounted in the same commit, and
+  // clearParams replaces the URL with the layout's render-time pathname. Navigating without a code
+  // to drop would undo that screen's redirect (e.g. /support/chat -> /support/issue).
+  it('leaves the URL alone on non-KYC routes without a code param', () => {
+    renderLayout({ path: '/support/chat?session=abc' });
+    expect(mockClearParams).not.toHaveBeenCalled();
   });
 
   it('does not close the navigation when the click is inside it', () => {

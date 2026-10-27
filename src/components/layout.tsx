@@ -19,15 +19,20 @@ export function Layout({ children }: PropsWithChildren): JSX.Element {
   const { modalRootRef, scrollRef, rootRef } = useLayoutContext();
 
   const [isNavigationOpen, setIsNavigationOpen] = useState(false);
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const isRealunitWorkspace = pathname === '/realunit' || pathname.startsWith('/realunit/');
   const { clearParams } = useNavigation();
   const { borderless } = useAppParams();
   const webComponent = isWebComponent();
 
+  // Only navigate when there is a code to drop. This effect runs after the effects of the screen
+  // mounted in the same commit (e.g. when the whole tree mounts at once after the deleted-address
+  // gate releases it), and clearParams replaces the URL with this render's pathname — an
+  // unconditional call would undo a redirect that screen just made.
   useEffect(() => {
     const kycRoutes = Routes[0].children?.filter((r) => r.isKycScreen) || [];
-    if (!kycRoutes.some((r) => pathname === `/${r.path}`)) clearParams(['code']);
+    const hasCode = new URLSearchParams(search).has('code');
+    if (hasCode && !kycRoutes.some((r) => pathname === `/${r.path}`)) clearParams(['code']);
   }, [pathname]);
 
   function onClick(e: React.MouseEvent<HTMLDivElement, MouseEvent>) {
