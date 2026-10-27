@@ -486,12 +486,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The payment-link screen unit test replaces the SDK, the context, wallets and the SPAR map.**
   `src/__tests__/payment-link.screen.test.tsx` replaces `useApi` with `mockCall`, the asset
   catalog with `useAssetContext`, the payment-link context and the wallet hook with in-memory
-  objects, wallet deeplinks with `mockGetDeeplinkByWalletId`, and `SparPlaceMap` with an empty
-  marker. Styled controls, the QR code and `window.open` are fakes too. A green run proves those
-  objects render the quote rows, the payment methods, the wallet block and the SPAR locations
-  block. It does not prove that the DFX payment-link API returns those payloads, that a wallet
-  deeplink opens, that the asset catalog matches production, or that the SPAR map draws the
-  place list.
+  objects, wallet deeplinks with `mockGetDeeplinkByWalletId`, `SparPlaceMap` with an empty marker, and
+  `useIsHandheld` with a fixed flag. Styled controls, the QR code and `window.open` are fakes too.
+  A green run proves those objects render the quote rows, the payment methods, the wallet block,
+  the SPAR locations block, and the large QR or the collapsed QR row for the flag it sets. It does
+  not prove that the DFX payment-link API returns those payloads, that a wallet deeplink opens,
+  that the asset catalog matches production, that the SPAR map draws the place list, or that a
+  real device reports that flag.
 - **The payment-link device unit test replaces the SDK, the contexts and the device signals.**
   `src/__tests__/payment-link.device.test.tsx` replaces `react-device-detect`, `useApi` and
   `useAssetContext`, the component library, the payment-link context and the wallet hook, the QR
@@ -504,11 +505,12 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
 - **The payment-link coverage unit test replaces the SDK, the form controls and the SPAR map.**
   `src/__tests__/payment-link.coverage.test.tsx` replaces `useApi` and `useAssetContext`, the
   component library including dropdowns wired through `react-hook-form`, the payment-link context
-  and the wallet hook, `Evm.decodeUri`, `toBlockchain`, navigation, `window.open`, and
-  `SparPlaceMap` with an empty marker. A green run proves those stubs switch payment standard,
-  render the EVM amount, address and blockchain rows, open wallet deeplinks, and show transfer
-  methods and public create or edit errors. It does not prove a live payment-link API, a real
-  wallet deeplink, a real block explorer, or that the SPAR map draws a place.
+  and the wallet hook, `Evm.decodeUri`, `toBlockchain`, navigation, `window.open`,
+  `react-device-detect`, `SparPlaceMap` with an empty marker, and it installs or removes
+  `window.matchMedia`. A green run proves those stubs switch payment standard, render the EVM
+  amount, address and blockchain rows, open wallet deeplinks, and show transfer methods and public
+  create or edit errors. It does not prove a live payment-link API, a real wallet deeplink, a real
+  block explorer, a real device signal, or that the SPAR map draws a place.
 - **The handheld hook unit test replaces `matchMedia` and `isMobile`.**
   `src/__tests__/device.hook.test.ts` replaces `react-device-detect`'s `isMobile` and installs a
   fake `window.matchMedia`. A green run proves `useIsHandheld` is true when `isMobile` is true or
