@@ -509,13 +509,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   transfer, or submits it to a chain.
 - **The MetaMask full-stack tests inject a wallet provider.**
   `e2e-stack/specs/fixtures/injected-wallet.ts:3-11` defines the wallet address, chain, token data,
-  transaction hash, rejected methods and optional native balance. The request wrapper at
-  `e2e-stack/specs/fixtures/injected-wallet.ts:44-48` records every request and can reject configured
-  methods with code 4001. The `switch` at `e2e-stack/specs/fixtures/injected-wallet.ts:49-122`
+  transaction hash, rejected methods and optional native balance. The request callback at
+  `e2e-stack/specs/fixtures/injected-wallet.ts:44-123` records every request and rejects configured
+  methods with code 4001 before answering. The `switch` at `e2e-stack/specs/fixtures/injected-wallet.ts:49-122`
   defines chain and token reads, the configurable native balance (zero by default), transaction
   responses, and error 4200 for unsupported methods. `e2e-stack/specs/sell-swap.spec.ts:283-330`
   modifies selected real
-  payment-info responses. Assertions at `e2e-stack/specs/sell-swap.spec.ts:341-433` check the
+  payment-info responses. `runMetaMaskTransferFlow` at `e2e-stack/specs/sell-swap.spec.ts:189-433` checks the
   requested transfer, wallet rejection handling, and completion screen; the scenarios are registered
   in `e2e-stack/specs/sell-swap.spec.ts:1275-1309`. A green run does not prove that a real wallet
   accepts those responses, that a paymaster sponsors a transaction, that a transaction lands

@@ -685,7 +685,8 @@ const result = await ethereum().request({
 
 ## 12. Stand nach der Umstellung auf den regulären ERC-20-Transfer
 
-Die App nutzt für MetaMask ausschließlich `eth_sendTransaction` mit einem ERC-20-`transfer`.
+Die App nutzt für MetaMask ausschließlich `eth_sendTransaction`: für Token einen ERC-20-`transfer`,
+für native Coins einen Value-Transfer an die Deposit-Adresse.
 Laut MetaMask-Quellcode lädt `TransactionController#updateSimulationData` für jede hinzugefügte
 Transaktion die verfügbaren `gasFeeTokens`; `useIsGaslessSupported` berücksichtigt Smart
 Transactions (`sendBundle`) und den 7702-Relay. Laut MetaMask kann die Gas Station damit auch eine
@@ -693,10 +694,11 @@ normale dApp-Transaktion abdecken, sofern Netzwerk und Gebühren-Token unterstü
 Transactions“ sowie „Estimate balance changes“ aktiv sind. Die offene Frage aus §10.2 Punkt 1 (Gas
 Station mit `wallet_sendCalls`) stellt sich nicht mehr, weil die App diesen Weg nicht mehr nutzt.
 
-Der `wallet_sendCalls`-Weg aus §5 und §11 wurde entfernt. Der Full-Stack-Test mit injiziertem
-Wallet prüft, dass die App ohne Abfrage von nativem Guthaben oder Gebührendaten eine normale
-ERC-20-Transaktion an die Deposit-Adresse aus der API an die Wallet übergibt. Er prüft nicht die
-Gebührendeckung durch MetaMask.
+Der `wallet_sendCalls`-Weg aus §5 und §11 wurde entfernt. Die Full-Stack-Tests mit injiziertem
+Wallet prüfen für Verkauf und Swap, dass die App eine normale ERC-20-Transaktion bzw. bei nativem ETH
+einen Value-Transfer an die Deposit-Adresse aus der API an die Wallet übergibt, auch wenn die
+Payment-Info noch alte Gasless- oder EIP-5792-Felder enthält, und dass ein Abbruch in der Wallet das
+Formular ohne Fehlermeldung offen lässt. Sie prüfen nicht die Gebührendeckung durch MetaMask.
 
 Die in §11.2 aufgeführte Real-Hook-Testdatei beschreibt den früheren Stand; sie ist mit
 dieser Umstellung gelöscht.
