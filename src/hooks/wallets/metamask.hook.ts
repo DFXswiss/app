@@ -201,9 +201,7 @@ export function useMetaMask(): MetaMaskInterface {
 
     try {
       if (asset.type === AssetType.COIN) {
-        return await web3.eth
-          .getBalance(address)
-          .then((balance) => ({ asset, amount: toUsableNumber(balance).toNumber() }));
+        return web3.eth.getBalance(address).then((balance) => ({ asset, amount: toUsableNumber(balance).toNumber() }));
       }
 
       const tokenContract = createContract(asset.chainId);

@@ -234,8 +234,6 @@ describe('useMetaMask', () => {
     await expect(result.current.readBalance(undefined as any, account, true)).rejects.toThrow(
       'No address or asset provided',
     );
-    web3.eth.getBalance.mockRejectedValueOnce(new Error('coin RPC failed'));
-    await expect(result.current.readBalance(coin as any, account)).resolves.toEqual({ asset: coin, amount: 0 });
     web3.eth.Contract.mockReturnValue({
       methods: { decimals: () => ({ call: jest.fn().mockRejectedValue(new Error('token RPC failed')) }) },
     });

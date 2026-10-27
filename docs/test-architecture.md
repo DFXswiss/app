@@ -507,12 +507,18 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the hook's standard wallet requests, error mapping and ERC-20 transfer construction against
   those answers. It does not prove that a real injected wallet answers the same way, signs a
   transfer, or submits it to a chain.
-- **The MetaMask no-native-gas full-stack tests inject a wallet provider.**
-  `e2e-stack/specs/fixtures/injected-wallet.ts:30-37` records requests, returns a zero native balance,
-  simulates token reads and accepts one ERC-20 transfer. A green run proves the app requests no
-  native balance or fee data before sending, and sends the API's deposit address and quoted amount
-  through `eth_sendTransaction`; it does not prove that MetaMask pays the fee from tokens, that
-  the transaction lands on-chain, or that the backend recognizes the pay-in.
+- **The MetaMask full-stack tests inject a wallet provider.**
+  `e2e-stack/specs/fixtures/injected-wallet.ts:3-14` defines options for rejected methods, an
+  injected native balance and RPC failures. `e2e-stack/specs/fixtures/injected-wallet.ts:35-51`
+  records each request before applying those options; unimplemented methods such as
+  `eth_signTypedData_v4` and `wallet_sendCalls` return error 4200, while the default balance is zero.
+  `e2e-stack/specs/fixtures/injected-wallet.ts:52-130` simulates token reads, chain changes, a
+  configurable native balance and a successful transaction with a fixed receipt and hash.
+  `e2e-stack/specs/sell-swap.spec.ts:189-426` amends the real payment-info
+  response in selected cases, and `e2e-stack/specs/sell-swap.spec.ts:1282-1312` checks the transfer
+  request, rejection handling and completion screen. A green run does not prove that a real wallet
+  accepts those responses, that a paymaster sponsors a transaction, that a transaction lands
+  on-chain, or that the backend recognizes the pay-in.
 - **The rejected address switch visual spec answers the user and the switch itself.**
   `e2e/connect-address-switch.spec.ts` authenticates with a synthetic unsigned JWT without an address, fulfils
   `GET /v2/user` with one synthetic address (and with none in the custody case) and the bootstrap GETs,

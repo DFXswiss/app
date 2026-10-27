@@ -104,6 +104,7 @@ function apiBase(): string {
 interface AssetDto {
   id: number;
   name: string;
+  type?: string;
   uniqueName?: string;
   blockchain?: string;
   chainId?: string;
@@ -179,24 +180,67 @@ function toTokenUnits(amount: string, decimals: number): bigint {
   return BigInt(`${whole}${fraction.padEnd(decimals, '0')}`);
 }
 
-async function runMetaMaskNoNativeGasFlow(page: Page, kind: 'sell' | 'swap'): Promise<void> {
+interface MetaMaskFlowOptions {
+  paymentInfoVariant?: 'legacy-7702' | 'eip-5792';
+  rejectMethod?: 'wallet_switchEthereumChain' | 'eth_sendTransaction';
+  nativeCoin?: boolean;
+}
+
+async function runMetaMaskTransferFlow(
+  page: Page,
+  kind: 'sell' | 'swap',
+  options: MetaMaskFlowOptions = {},
+): Promise<void> {
   // The first quote on a fresh stack takes about 20 s with cold caches and offline outbound calls;
-  // host load can extend that wait further.
-  test.setTimeout(180000);
+  // the first crypto-to-crypto swap quote was measured at 70-100 s, so the wait allows for that.
+  test.setTimeout(240000);
   const assets = await fetchAssets();
-  const source = assets
-    .filter((asset) => asset.blockchain === 'Base' && asset.name === 'USDC' && asset.sellable && asset.chainId)
-    .sort((left, right) => left.id - right.id)[0];
-  expect(source, 'GET /v1/asset must include sellable Base USDC with its contract address').toBeTruthy();
+  const source = options.nativeCoin
+    ? assets
+        .filter(
+          (asset) =>
+            asset.name === 'ETH' &&
+            asset.type === 'Coin' &&
+            asset.sellable &&
+            !asset.comingSoon &&
+            (asset.blockchain === 'Base' || asset.blockchain === 'Ethereum'),
+        )
+        .sort((left, right) => {
+          if (left.blockchain === right.blockchain) return left.id - right.id;
+          return left.blockchain === 'Base' ? -1 : 1;
+        })[0]
+    : assets
+        .filter((asset) => asset.blockchain === 'Base' && asset.name === 'USDC' && asset.sellable && asset.chainId)
+        .sort((left, right) => left.id - right.id)[0];
+  expect(
+    source,
+    options.nativeCoin
+      ? 'GET /v1/asset must include a sellable Base or Ethereum ETH coin'
+      : 'GET /v1/asset must include sellable Base USDC with its contract address',
+  ).toBeTruthy();
   const target = assets
     .filter((asset) => asset.blockchain === 'Base' && asset.id !== source?.id && asset.buyable)
     .sort((left, right) => left.id - right.id)[0];
-  expect(target, 'GET /v1/asset must include another buyable Base asset for the swap target').toBeTruthy();
-  expect(source?.decimals, 'Base USDC decimals must be present in GET /v1/asset').toEqual(expect.any(Number));
+  if (kind === 'swap') {
+    expect(target, 'GET /v1/asset must include another buyable Base asset for the swap target').toBeTruthy();
+  }
+  const decimals = source?.decimals ?? 18;
+  if (!options.nativeCoin) {
+    expect(source?.decimals, 'Base USDC decimals must be present in GET /v1/asset').toEqual(expect.any(Number));
+  }
 
+  const scenarioTag =
+    options.paymentInfoVariant ??
+    (options.rejectMethod === 'wallet_switchEthereumChain'
+      ? 'reject-switch'
+      : options.rejectMethod
+        ? 'reject-transfer'
+        : options.nativeCoin
+          ? 'native'
+          : 'transfer');
   const user = await createUser({
     walletIndex: nextWalletIndex(),
-    tag: `metamask-${kind}-no-gas`,
+    tag: `metamask-${kind}-${scenarioTag}`,
     kycLevel: 30,
     completePersonalData: true,
     language: 'EN',
@@ -204,23 +248,77 @@ async function runMetaMaskNoNativeGasFlow(page: Page, kind: 'sell' | 'swap'): Pr
   if (kind === 'sell') await createBankAccount(user.jwt, { iban: TEST_IBAN, label: 'MetaMask sell' });
 
   const txHash = `0x${'a'.repeat(64)}`;
+  const chainIdHex = source!.blockchain === 'Base' ? '0x2105' : '0x1';
   await installInjectedMetaMask(page, {
     address: user.address,
-    chainIdHex: '0x2105',
-    tokenDecimals: source!.decimals!,
+    chainIdHex,
+    tokenDecimals: decimals,
     tokenBalance: '1000000000000',
     txHash,
+    rejectMethods: options.rejectMethod ? [options.rejectMethod] : undefined,
+    nativeBalance: options.nativeCoin ? '0x0de0b6b3a7640000' : undefined,
   });
   const path = kind === 'sell' ? '/sell/paymentInfos' : '/swap/paymentInfos';
-  const paymentInfos = trackPaymentInfoPayloads(page, path, source!.decimals!);
+  const paymentInfos = trackPaymentInfoPayloads(page, path, decimals);
   const pimlicoRequests: string[] = [];
+  const confirmRequests: string[] = [];
+  let modifiedPaymentInfoResponses = 0;
   page.on('request', (request) => {
     if (/pimlico/i.test(request.url())) pimlicoRequests.push(request.url());
+    if (new URL(request.url()).pathname.includes('/confirm')) confirmRequests.push(request.url());
   });
+  if (options.paymentInfoVariant) {
+    const apiPath = `/v1${path}`;
+    await page.route('**/v1/**/paymentInfos**', async (route) => {
+      const requestUrl = new URL(route.request().url());
+      if (requestUrl.pathname !== apiPath || route.request().method() !== 'PUT') return route.continue();
+
+      const response = await route.fetch();
+      const original = (await response.json()) as Record<string, unknown>;
+      const eip5792CallTo =
+        typeof original.depositAddress === 'string'
+          ? original.depositAddress
+          : '0x0000000000000000000000000000000000000001';
+      const depositTx =
+        original.depositTx && typeof original.depositTx === 'object' && !Array.isArray(original.depositTx)
+          ? (original.depositTx as Record<string, unknown>)
+          : {};
+      const modified =
+        options.paymentInfoVariant === 'legacy-7702'
+          ? {
+              ...original,
+              gaslessAvailable: true,
+              eip7702Authorization: {
+                contractAddress: '0x0000000000000000000000000000000000007702',
+                chainId: '0x2105',
+                nonce: '0x0',
+                typedData: {
+                  domain: { name: 'DFX', version: '1', chainId: 8453 },
+                  types: { Authorization: [{ name: 'chainId', type: 'uint256' }] },
+                  primaryType: 'Authorization',
+                  message: { chainId: 8453 },
+                },
+              },
+            }
+          : {
+              ...original,
+              depositTx: {
+                ...depositTx,
+                eip5792: {
+                  paymasterUrl: 'https://paymaster.invalid',
+                  calls: [{ to: eip5792CallTo, data: '0x', value: '0x0' }],
+                  chainId: 8453,
+                },
+              },
+            };
+      modifiedPaymentInfoResponses += 1;
+      await route.fulfill({ response, json: modified });
+    });
+  }
   const query = new URLSearchParams({
     'asset-in': String(source!.id),
-    'amount-in': '1',
-    blockchain: kind === 'swap' ? target!.blockchain! : 'Base',
+    'amount-in': options.nativeCoin ? '0.01' : '1',
+    blockchain: kind === 'swap' ? target!.blockchain! : source!.blockchain!,
     type: 'MetaMask',
   });
   if (kind === 'sell') query.set('asset-out', 'CHF');
@@ -228,9 +326,9 @@ async function runMetaMaskNoNativeGasFlow(page: Page, kind: 'sell' | 'swap'): Pr
   await gotoWithSession(page, `${kind === 'sell' ? '/sell' : '/swap'}?${query}`, user.jwt);
 
   const paymentButton = page.getByRole('button', { name: 'Complete transaction in your wallet' });
-  await expect(paymentButton).toBeVisible({ timeout: 90000 });
+  await expect(paymentButton).toBeVisible({ timeout: 150000 });
   const spendArea = page.getByRole('heading', { name: 'You spend' }).locator('..');
-  await expect(spendArea).toContainText('Base');
+  await expect(spendArea).toContainText(source!.blockchain!);
   const beforeClickBody = await page.locator('body').innerText();
   expect(beforeClickBody).not.toMatch(
     /insufficient|not enough.*(?:native|fee|fund|gas|ETH)|gas required exceeds allowance/i,
@@ -242,8 +340,31 @@ async function runMetaMaskNoNativeGasFlow(page: Page, kind: 'sell' | 'swap'): Pr
   const exactQuotes = paymentInfos.all.filter((info) => info.exactPrice === true);
   const paymentInfo = exactQuotes[exactQuotes.length - 1];
   expect(paymentInfo?.depositAddress).toBeTruthy();
-  expect(toTokenUnits(paymentInfo!.amount, source!.decimals!)).toBe(10n ** BigInt(source!.decimals!));
+  expect(toTokenUnits(paymentInfo!.amount, decimals)).toBe(
+    options.nativeCoin ? toTokenUnits('0.01', decimals) : 10n ** BigInt(decimals),
+  );
   await paymentButton.click();
+  if (options.paymentInfoVariant) expect(modifiedPaymentInfoResponses).toBeGreaterThan(0);
+
+  if (options.rejectMethod) {
+    await expect
+      .poll(async () => (await readWalletRequests(page)).some((request) => request.method === options.rejectMethod), {
+        timeout: 30000,
+      })
+      .toBe(true);
+    await expect(paymentButton).toBeVisible({ timeout: 30000 });
+    await expect(paymentButton).toBeEnabled({ timeout: 30000 });
+
+    const requests = await readWalletRequests(page);
+    const sends = requests.filter((request) => request.method === 'eth_sendTransaction');
+    expect(sends).toHaveLength(options.rejectMethod === 'eth_sendTransaction' ? 1 : 0);
+    expect(confirmRequests).toEqual([]);
+    await expect(page.locator('form').first()).toBeVisible();
+    await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toHaveCount(0);
+    expect(await page.locator('body').innerText()).not.toMatch(/Transaction failed/i);
+    return;
+  }
+
   await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toBeVisible({
     timeout: 30000,
   });
@@ -255,28 +376,36 @@ async function runMetaMaskNoNativeGasFlow(page: Page, kind: 'sell' | 'swap'): Pr
   const methods = requests.map((request) => request.method);
   const sends = requests.filter((request) => request.method === 'eth_sendTransaction');
   expect(sends).toHaveLength(1);
-  // Before sending, the app makes no native balance or fee request to the wallet; eth_call reads decimals.
-  expect(methods).toEqual([
-    'wallet_switchEthereumChain',
-    'eth_call',
-    'eth_sendTransaction',
-    'eth_getTransactionReceipt',
-  ]);
-  const tokenRead = requests.find((request) => request.method === 'eth_call');
-  const call = tokenRead?.params?.[0] as { to?: string; data?: string } | undefined;
-  expect(call?.to?.toLowerCase()).toBe(source!.chainId!.toLowerCase());
-  expect(call?.data?.toLowerCase()).toBe('0x313ce567');
+  expect(confirmRequests).toEqual([]);
+  expect(methods).not.toContain('eth_signTypedData_v4');
+  expect(methods).not.toContain('wallet_sendCalls');
   expect(pimlicoRequests).toEqual([]);
 
-  const tx = sends[0].params?.[0] as { from: string; to: string; data: string; value?: string };
+  const tx = sends[0].params?.[0] as { from: string; to: string; data?: string; value?: string };
   expect(tx.from.toLowerCase()).toBe(user.address.toLowerCase());
-  expect(tx.to.toLowerCase()).toBe(source!.chainId!.toLowerCase());
-  expect(tx.value == null || BigInt(tx.value) === 0n).toBe(true);
-  expect(tx.data).toMatch(/^0xa9059cbb[0-9a-f]{128}$/i);
-  const recipient = `0x${tx.data.slice(34, 74)}`;
-  const amount = BigInt(`0x${tx.data.slice(74, 138)}`);
-  expect(recipient.toLowerCase()).toBe(paymentInfo!.depositAddress.toLowerCase());
-  expect(amount).toBe(toTokenUnits(paymentInfo!.amount, source!.decimals!));
+  if (options.nativeCoin) {
+    expect(tx.to.toLowerCase()).toBe(paymentInfo!.depositAddress.toLowerCase());
+    expect(tx.data == null || tx.data === '0x').toBe(true);
+    expect(BigInt(tx.value ?? '0x0')).toBe(toTokenUnits(paymentInfo!.amount, decimals));
+  } else {
+    expect(methods).toEqual([
+      'wallet_switchEthereumChain',
+      'eth_call',
+      'eth_sendTransaction',
+      'eth_getTransactionReceipt',
+    ]);
+    const tokenRead = requests.find((request) => request.method === 'eth_call');
+    const call = tokenRead?.params?.[0] as { to?: string; data?: string } | undefined;
+    expect(call?.to?.toLowerCase()).toBe(source!.chainId!.toLowerCase());
+    expect(call?.data?.toLowerCase()).toBe('0x313ce567');
+    expect(tx.to.toLowerCase()).toBe(source!.chainId!.toLowerCase());
+    expect(tx.value == null || BigInt(tx.value) === 0n).toBe(true);
+    expect(tx.data).toMatch(/^0xa9059cbb[0-9a-f]{128}$/i);
+    const recipient = `0x${tx.data!.slice(34, 74)}`;
+    const amount = BigInt(`0x${tx.data!.slice(74, 138)}`);
+    expect(recipient.toLowerCase()).toBe(paymentInfo!.depositAddress.toLowerCase());
+    expect(amount).toBe(toTokenUnits(paymentInfo!.amount, decimals));
+  }
 
   const route = await waitForRow<{ address: string; type: string }>(
     `SELECT d.address, r.type FROM deposit_route r
@@ -621,9 +750,7 @@ test.describe('Sell + Swap e2e', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('/sell currency dropdown only offers sellable fiats', async ({
-    page,
-  }) => {
+  test('/sell currency dropdown only offers sellable fiats', async ({ page }) => {
     const user = await createUser({
       walletIndex: nextWalletIndex(),
       tag: 'sell-fiat',
@@ -700,10 +827,7 @@ test.describe('Sell + Swap e2e', () => {
     const apiDetail = paymentInfos.last
       ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
       : 'no PUT paymentInfos response captured';
-    expect(
-      outcome.kind,
-      `expected payment_info panel (${outcome.detail}); ${apiDetail}`,
-    ).toBe('payment_info');
+    expect(outcome.kind, `expected payment_info panel (${outcome.detail}); ${apiDetail}`).toBe('payment_info');
 
     const completeBtn = page.getByRole('button', {
       name: /Click here once you have issued the transaction/i,
@@ -714,9 +838,9 @@ test.describe('Sell + Swap e2e', () => {
     // When the complete CTA is the visible panel path, click through and assert success hard.
     if (await completeBtn.isVisible()) {
       await completeBtn.click();
-      await expect(
-        page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
-      ).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toBeVisible({
+        timeout: 15000,
+      });
     }
   });
 
@@ -734,9 +858,9 @@ test.describe('Sell + Swap e2e', () => {
     const form = page.locator('form').first();
     await expect(form).toBeVisible();
     await form.evaluate((el) => (el as HTMLFormElement).requestSubmit());
-    await expect(
-      page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toBeVisible({
+      timeout: 15000,
+    });
   });
 
   test('/sell: native form submit does not complete after spend is cleared', async ({ page }) => {
@@ -830,9 +954,7 @@ test.describe('Sell + Swap e2e', () => {
     expect(route.type).toBe('Sell');
   });
 
-  test('/sell/info with valid query params: renders Transaction Details / Payment Information', async ({
-    page,
-  }) => {
+  test('/sell/info with valid query params: renders Transaction Details / Payment Information', async ({ page }) => {
     test.setTimeout(75000);
     const { paymentInfos } = await setupSellInfoUiFlow(page, 'sell-info-panel');
 
@@ -840,18 +962,13 @@ test.describe('Sell + Swap e2e', () => {
     const apiDetail = paymentInfos.last
       ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
       : 'no PUT paymentInfos response captured';
-    expect(
-      outcome.kind,
-      `expected payment_info panel (${outcome.detail}); ${apiDetail}`,
-    ).toBe('payment_info');
+    expect(outcome.kind, `expected payment_info panel (${outcome.detail}); ${apiDetail}`).toBe('payment_info');
 
     // Both "Transaction Details" and the "Payment Information" heading can be visible at once
     // (they are not mutually exclusive sections of the same successful panel) — `.first()` keeps
     // this a single-element assertion regardless of how many of the two are present.
     const txDetails = page.getByText('Transaction Details', { exact: true });
-    await expect(
-      txDetails.or(page.getByRole('heading', { name: 'Payment Information' })).first(),
-    ).toBeVisible();
+    await expect(txDetails.or(page.getByRole('heading', { name: 'Payment Information' })).first()).toBeVisible();
   });
 
   // ---------------------------------------------------------------------------
@@ -983,10 +1100,7 @@ test.describe('Sell + Swap e2e', () => {
     const apiDetail = paymentInfos.last
       ? `PUT paymentInfos HTTP ${paymentInfos.last.status}: ${paymentInfos.last.body}`
       : 'no PUT paymentInfos response captured';
-    expect(
-      outcome.kind,
-      `expected payment_info panel (${outcome.detail}); ${apiDetail}`,
-    ).toBe('payment_info');
+    expect(outcome.kind, `expected payment_info panel (${outcome.detail}); ${apiDetail}`).toBe('payment_info');
 
     const completeBtn = page.getByRole('button', {
       name: /Click here once you have issued the transaction/i,
@@ -997,9 +1111,9 @@ test.describe('Sell + Swap e2e', () => {
     // When the complete CTA is the visible panel path, click through and assert success hard.
     if (await completeBtn.isVisible()) {
       await completeBtn.click();
-      await expect(
-        page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
-      ).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toBeVisible({
+        timeout: 15000,
+      });
     }
   });
 
@@ -1015,9 +1129,9 @@ test.describe('Sell + Swap e2e', () => {
     const form = page.locator('form').first();
     await expect(form).toBeVisible();
     await form.evaluate((el) => (el as HTMLFormElement).requestSubmit());
-    await expect(
-      page.getByText('Nice! You are all set! Give us a minute to handle your transaction.'),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Nice! You are all set! Give us a minute to handle your transaction.')).toBeVisible({
+      timeout: 15000,
+    });
   });
 
   test('/swap: native form submit does not complete after spend is cleared', async ({ page }) => {
@@ -1079,11 +1193,7 @@ test.describe('Sell + Swap e2e', () => {
       /* bank account may still succeed without complete personal data */
     });
 
-    await gotoWithSession(
-      page,
-      `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1`,
-      user.jwt,
-    );
+    await gotoWithSession(page, `/sell?asset-in=ETH&asset-out=CHF&amount-in=0.1`, user.jwt);
 
     // The screen either sends the user to /profile or keeps them on /sell behind an "Enter user
     // data" call to action. Staying on /sell with neither — and therefore with a payment panel
@@ -1092,7 +1202,12 @@ test.describe('Sell + Swap e2e', () => {
       .poll(
         async () => {
           if (normPath(new URL(page.url()).pathname) === '/profile') return 'profile';
-          if (await page.getByRole('button', { name: 'Enter user data' }).isVisible().catch(() => false)) {
+          if (
+            await page
+              .getByRole('button', { name: 'Enter user data' })
+              .isVisible()
+              .catch(() => false)
+          ) {
             return 'cta';
           }
           return 'pending';
@@ -1107,9 +1222,9 @@ test.describe('Sell + Swap e2e', () => {
     if (normPath(new URL(page.url()).pathname) !== '/profile') {
       await expect(page.getByRole('button', { name: 'Enter user data' })).toBeVisible();
       // Whichever way it goes, the account must not be handed a panel to pay into.
-      await expect(
-        page.getByRole('button', { name: /Click here once you have issued the transaction/i }),
-      ).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /Click here once you have issued the transaction/i })).toHaveCount(
+        0,
+      );
     }
   });
 
@@ -1149,15 +1264,29 @@ test.describe('MetaMask transfer request', () => {
     await cleanupCreatedData();
   });
 
-  test('/sell with MetaMask hands one ERC-20 transfer to the API deposit address to the wallet without a native balance or fee request to the wallet', async ({
-    page,
-  }) => {
-    await runMetaMaskNoNativeGasFlow(page, 'sell');
-  });
+  for (const kind of ['sell', 'swap'] as const) {
+    test(`/${kind} sends one ERC-20 transfer without wallet balance or fee requests`, async ({ page }) => {
+      await runMetaMaskTransferFlow(page, kind);
+    });
 
-  test('/swap with MetaMask hands one ERC-20 transfer to the API deposit address to the wallet without a native balance or fee request to the wallet', async ({
-    page,
-  }) => {
-    await runMetaMaskNoNativeGasFlow(page, 'swap');
+    test(`/${kind} ignores legacy gasless fields and sends a standard ERC-20 transfer`, async ({ page }) => {
+      await runMetaMaskTransferFlow(page, kind, { paymentInfoVariant: 'legacy-7702' });
+    });
+
+    test(`/${kind} ignores EIP-5792 payment data and sends a standard ERC-20 transfer`, async ({ page }) => {
+      await runMetaMaskTransferFlow(page, kind, { paymentInfoVariant: 'eip-5792' });
+    });
+
+    test(`/${kind} remains open after the wallet rejects a chain switch`, async ({ page }) => {
+      await runMetaMaskTransferFlow(page, kind, { rejectMethod: 'wallet_switchEthereumChain' });
+    });
+
+    test(`/${kind} remains open after the wallet rejects a token transfer`, async ({ page }) => {
+      await runMetaMaskTransferFlow(page, kind, { rejectMethod: 'eth_sendTransaction' });
+    });
+  }
+
+  test('/sell sends a native ETH transfer equal to the quoted amount', async ({ page }) => {
+    await runMetaMaskTransferFlow(page, 'sell', { nativeCoin: true });
   });
 });

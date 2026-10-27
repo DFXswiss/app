@@ -6,6 +6,9 @@ export interface InjectedMetaMaskOptions {
   tokenDecimals: number;
   tokenBalance: string;
   txHash: string;
+  rejectMethods?: string[];
+  nativeBalance?: string;
+  failMethods?: string[];
 }
 
 export interface WalletRequest {
@@ -41,6 +44,12 @@ export async function installInjectedMetaMask(page: Page, options: InjectedMetaM
       removeListener: () => undefined,
       request: async ({ method, params }: { method: string; params?: unknown[] }) => {
         requests.push({ method, params });
+        if (wallet.rejectMethods?.includes(method)) {
+          throw { code: 4001, message: 'User rejected the request.' };
+        }
+        if (wallet.failMethods?.includes(method)) {
+          throw { code: -32603, message: 'Internal error' };
+        }
         switch (method) {
           case 'eth_chainId':
             return chainId;
@@ -53,7 +62,7 @@ export async function installInjectedMetaMask(page: Page, options: InjectedMetaM
             chainId = (params?.[0] as { chainId: string }).chainId;
             return null;
           case 'eth_getBalance':
-            return '0x0';
+            return wallet.nativeBalance ?? '0x0';
           case 'eth_call': {
             const data = (params?.[0] as { data?: string } | undefined)?.data ?? '';
             if (data.startsWith('0x313ce567')) return `0x${word(wallet.tokenDecimals)}`;
