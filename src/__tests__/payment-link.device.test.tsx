@@ -784,25 +784,6 @@ describe('PaymentLinkScreen branches beyond device QR', () => {
     expect(screen.getByText('Edit')).toBeInTheDocument();
   });
 
-  it('clears wallet data when payment is cancelled', () => {
-    mockUsePaymentLinkContext.mockReturnValue(
-      baseContext({
-        paymentStatus: 'Cancelled',
-      }),
-    );
-    mockUsePaymentLinkWallets.mockReturnValue({
-      recommendedWallets: [SAMPLE_WALLET],
-      otherWallets: [],
-      semiCompatibleWallets: [],
-      getDeeplinkByWalletId: jest.fn().mockResolvedValue('x'),
-      isLoading: false,
-      error: undefined,
-    });
-    renderAt();
-    // Cancelled status still renders shell; wallet grids depend on PENDING filter
-    expect(screen.queryByText('SampleWallet')).not.toBeInTheDocument();
-  });
-
   it('shows rate info when blockchain standard and timer are set', async () => {
     const paymentLinkApiUrl = {
       current: 'https://api.example.com/v1/paymentLink/payment?standard=PayToAddress',

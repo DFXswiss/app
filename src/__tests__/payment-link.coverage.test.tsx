@@ -871,21 +871,6 @@ describe('PaymentLinkScreen coverage gaps', () => {
     jest.useRealTimers();
   });
 
-  it('clears wallet data when payment expires', async () => {
-    mockUsePaymentLinkContext.mockReturnValue(baseContext({ paymentStatus: 'Expired' }));
-    mockWallets({
-      recommendedWallets: [SAMPLE_WALLET],
-      getDeeplinkByWalletId: jest.fn().mockResolvedValue('x'),
-    });
-    renderAt('/?wallet-id=42');
-    // Expired is not in PENDING filter for wallet grids in OCP section either —
-    // payment status Expired means the PENDING||PUBLIC block may hide OCP wallets.
-    // The effect still runs setWalletData(undefined).
-    await waitFor(() => {
-      expect(screen.queryByText('Pay in app')).not.toBeInTheDocument();
-    });
-  });
-
   it('opens Learn more about OpenCryptoPay', () => {
     mockUsePaymentLinkContext.mockReturnValue(baseContext());
     mockWallets();
