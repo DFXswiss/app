@@ -1,4 +1,4 @@
-import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
+import { SpinnerSize, StyledLoadingSpinner, StyledSearchInput } from '@dfx.swiss/react-components';
 import { useEffect, useMemo, useState } from 'react';
 import { ErrorHint } from 'src/components/error-hint';
 import { RealUnitCodeKind, RealUnitManualReviewStatus, RealUnitReferralRelation } from 'src/dto/realunit-referral.dto';
@@ -15,6 +15,22 @@ interface ReferralRelationsProps {
   translate: (ns: string, key: string) => string;
 }
 
+// Case-insensitive substring match on the columns staff search by: guest name, guest account id and
+// the remittance info of the qualifying buy. An empty or blank query matches every row.
+export function matchesRelationSearch(relation: RealUnitReferralRelation, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+
+  const haystack = [relation.guestName, relation.guestAccountId?.toString(), relation.qualifyingBuyReference];
+  return haystack.some((value) => value != null && value.toLowerCase().includes(needle));
+}
+
+// A redemption whose guest has no name has not finished the process (the account was never identified).
+// The table hides these rows by default and shows them on request.
+export function isIncompleteRelation(relation: RealUnitReferralRelation): boolean {
+  return !relation.guestName?.trim();
+}
+
 // Redemptions of one code kind (promo codes or referral invites). Both screens load the same
 // relation list; the kind only decides which rows are shown here.
 export function RealunitReferralRelations({ kind, title, withReview, translate }: ReferralRelationsProps): JSX.Element {
@@ -26,6 +42,12 @@ export function RealunitReferralRelations({ kind, title, withReview, translate }
   const [error, setError] = useState<string>();
   // presentation-only default filter; the loaded list always stays complete
   const [reviewOnly, setReviewOnly] = useState(false);
+  // presentation-only filter: redemptions whose reward has already been credited
+  const [creditedOnly, setCreditedOnly] = useState(false);
+  // presentation-only filter, off by default: redemptions whose guest never finished the process
+  const [showIncomplete, setShowIncomplete] = useState(false);
+  // presentation-only search over the loaded list; the API is not queried again
+  const [search, setSearch] = useState('');
 
   useEffect(() => loadRelations(), []);
 
@@ -46,14 +68,25 @@ export function RealunitReferralRelations({ kind, title, withReview, translate }
     [ofKind],
   );
 
+  const creditedCount = useMemo(() => (ofKind ?? []).filter((r) => r.credited).length, [ofKind]);
+
+  const incompleteCount = useMemo(() => (ofKind ?? []).filter(isIncompleteRelation).length, [ofKind]);
+
   const displayed = useMemo(
-    () => ofKind && (reviewOnly ? ofKind.filter((r) => r.reviewStatus === RealUnitManualReviewStatus.PENDING) : ofKind),
-    [ofKind, reviewOnly],
+    () =>
+      ofKind
+        ?.filter((r) => showIncomplete || !isIncompleteRelation(r))
+        .filter((r) => !reviewOnly || r.reviewStatus === RealUnitManualReviewStatus.PENDING)
+        .filter((r) => !creditedOnly || r.credited)
+        .filter((r) => matchesRelationSearch(r, search)),
+    [ofKind, showIncomplete, reviewOnly, creditedOnly, search],
   );
+
+  const isFiltered = Boolean(ofKind && displayed && displayed.length !== ofKind.length);
 
   return (
     <div className="w-full flex flex-col gap-3 text-left">
-      <div className="bg-white rounded-lg shadow-sm p-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-dfxBlue-800">
+      <div className="bg-white rounded-lg shadow-sm p-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-dfxBlue-800">
         <span className="font-semibold">
           {title}: {ofKind ? ofKind.length : '…'}
         </span>
@@ -62,6 +95,26 @@ export function RealunitReferralRelations({ kind, title, withReview, translate }
             <input type="checkbox" checked={reviewOnly} onChange={(e) => setReviewOnly(e.target.checked)} />
             {translate('screens/referral', 'Held for review only')} ({pendingCount})
           </label>
+        )}
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={creditedOnly} onChange={(e) => setCreditedOnly(e.target.checked)} />
+          {translate('screens/referral', 'Credited only')} ({creditedCount})
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={showIncomplete} onChange={(e) => setShowIncomplete(e.target.checked)} />
+          {translate('screens/referral', 'Show incomplete')} ({incompleteCount})
+        </label>
+        <div className="w-full sm:w-[30rem]">
+          <StyledSearchInput
+            placeholder={translate('screens/referral', 'Search name, guest account or remittance info')}
+            onChange={setSearch}
+          />
+        </div>
+        {isFiltered && (
+          <span>
+            {displayed?.length} {translate('screens/referral', 'of')} {ofKind?.length}{' '}
+            {translate('screens/referral', 'shown')}
+          </span>
         )}
         {error && <ErrorHint message={error} />}
       </div>

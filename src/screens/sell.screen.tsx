@@ -60,7 +60,7 @@ import { useAddressGuard } from '../hooks/guard.hook';
 import { useNavigation } from '../hooks/navigation.hook';
 import { useTxHelper } from '../hooks/tx-helper.hook';
 import { getKycErrorFromMessage } from '../util/api-error';
-import { blankedAddress } from '../util/utils';
+import { displayWalletAddress } from '../util/lnurl';
 
 enum Side {
   SPEND = 'SPEND',
@@ -712,7 +712,7 @@ export default function SellScreen(): JSX.Element {
                     rootRef={rootRef}
                     name="address"
                     items={addressItems}
-                    labelFunc={(item) => blankedAddress(item.address, { width })}
+                    labelFunc={(item) => displayWalletAddress(item.address, { width })}
                     descriptionFunc={(item) => item.label}
                     full
                     forceEnable

@@ -20,7 +20,8 @@ import { useWindowContext } from 'src/contexts/window.context';
 import { useAppParams } from 'src/hooks/app-params.hook';
 import { useReportDisplayedError } from 'src/hooks/report-displayed-error.hook';
 import { KnownRejectionType } from 'src/util/known-rejections';
-import { blankedAddress, sortAddressesByBlockchain } from 'src/util/utils';
+import { displayWalletAddress } from 'src/util/lnurl';
+import { sortAddressesByBlockchain } from 'src/util/utils';
 
 export const CustodyAssets = ['ZCHF', 'FPS', 'DEPSPresale'];
 
@@ -141,7 +142,7 @@ export default function ConnectAddress({ onLogin, onCancel }: ConnectProps): JSX
               name="address"
               placeholder={translate('general/actions', 'Select') + '...'}
               items={userAddresses.sort(sortAddressesByBlockchain)}
-              labelFunc={(item) => blankedAddress(addressLabel(item), { width })}
+              labelFunc={(item) => displayWalletAddress(addressLabel(item), { width })}
               descriptionFunc={(item) => item.label ?? item.wallet}
               forceEnable={user?.activeAddress === undefined || sessionHasNoAddress}
             />

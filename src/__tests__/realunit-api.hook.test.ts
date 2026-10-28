@@ -71,6 +71,82 @@ describe('useRealunitApi', () => {
     expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/holders?after=h2', method: 'GET' });
   });
 
+  it('getAdminHolders GETs realunit/admin/holders', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.getAdminHolders();
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/admin/holders', method: 'GET' });
+  });
+
+  it('getAdminHolders maps prev to before and other directions to after', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+
+    await result.current.getAdminHolders('h1', PaginationDirection.PREV);
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/admin/holders?before=h1', method: 'GET' });
+
+    mockCall.mockClear();
+    await result.current.getAdminHolders('h2', PaginationDirection.NEXT);
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/admin/holders?after=h2', method: 'GET' });
+  });
+
+  it('getAdminHolders omits before and after when called with a cursor and no direction', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.getAdminHolders('only-cursor');
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/admin/holders', method: 'GET' });
+    const url = String(mockCall.mock.calls[0][0].url);
+    expect(url).not.toContain('before');
+    expect(url).not.toContain('after');
+  });
+
+  it('getAdminHolders sets registration only for registered and unregistered', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+
+    await result.current.getAdminHolders(undefined, undefined, 'registered');
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'realunit/admin/holders?registration=registered',
+      method: 'GET',
+    });
+    expect(String(mockCall.mock.calls[0][0].url)).not.toContain('before');
+    expect(String(mockCall.mock.calls[0][0].url)).not.toContain('after');
+
+    mockCall.mockClear();
+    await result.current.getAdminHolders(undefined, undefined, 'unregistered');
+    expect(mockCall).toHaveBeenCalledWith({
+      url: 'realunit/admin/holders?registration=unregistered',
+      method: 'GET',
+    });
+
+    mockCall.mockClear();
+    await result.current.getAdminHolders(undefined, undefined, 'all');
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/admin/holders', method: 'GET' });
+    expect(String(mockCall.mock.calls[0][0].url)).not.toContain('registration');
+
+    mockCall.mockClear();
+    await result.current.getAdminHolders();
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/admin/holders', method: 'GET' });
+    expect(String(mockCall.mock.calls[0][0].url)).not.toContain('registration');
+  });
+
+  it('getAccountHistory omits before and after when called with a cursor and no direction', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.getAccountHistory('0xabc', 'only-cursor');
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/account/0xabc/history', method: 'GET' });
+    const url = String(mockCall.mock.calls[0][0].url);
+    expect(url).not.toContain('before');
+    expect(url).not.toContain('after');
+  });
+
+  it('getHolders omits before and after when called with a cursor and no direction', async () => {
+    const { result } = renderHook(() => useRealunitApi());
+    await result.current.getHolders('only-cursor');
+    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockCall).toHaveBeenCalledWith({ url: 'realunit/holders', method: 'GET' });
+    const url = String(mockCall.mock.calls[0][0].url);
+    expect(url).not.toContain('before');
+    expect(url).not.toContain('after');
+  });
+
   it('getTokenInfo GETs realunit/tokenInfo', async () => {
     const { result } = renderHook(() => useRealunitApi());
     await result.current.getTokenInfo();

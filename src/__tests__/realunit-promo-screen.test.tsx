@@ -6,6 +6,9 @@ jest.mock('@dfx.swiss/react', () => ({}));
 jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', LG: 'lg' },
   StyledLoadingSpinner: () => <div data-testid="spinner" />,
+  StyledSearchInput: ({ placeholder, onChange }: { placeholder: string; onChange: (value: string) => void }) => (
+    <input aria-label={placeholder} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+  ),
 }));
 jest.mock('src/components/error-hint', () => ({
   ErrorHint: ({ message }: { message: string }) => <div data-testid="error-hint">{message}</div>,
@@ -40,6 +43,7 @@ const PROMO = {
   id: 5,
   kind: RealUnitCodeKind.PROMO,
   userId: 14,
+  guestName: 'Promo Guest',
   code: 'WOV2026',
   credited: true,
   created: '2026-10-01T10:00:00Z',
@@ -48,6 +52,7 @@ const INVITE = {
   id: 1,
   kind: RealUnitCodeKind.INVITE,
   userId: 10,
+  guestName: 'Invite Guest',
   code: 'AB12CD',
   credited: false,
   created: '2026-09-01T10:00:00Z',
@@ -70,7 +75,9 @@ describe('RealunitPromoScreen', () => {
     expect(screen.getByRole('heading', { name: 'Redeemed promo codes' })).toBeInTheDocument();
     expect(screen.getByText(/Redemptions/)).toHaveTextContent('Redemptions: 1');
     expect(screen.queryByText('AB12CD')).not.toBeInTheDocument();
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Held for review only/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Credited only/)).not.toBeChecked();
+    expect(screen.getByLabelText(/Show incomplete/)).not.toBeChecked();
     expect(screen.queryByRole('columnheader', { name: 'Review Status' })).not.toBeInTheDocument();
   });
 

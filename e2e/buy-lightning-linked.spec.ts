@@ -19,7 +19,7 @@ test.describe('Buy Process - Lightning Linked to Bitcoin Account', () => {
     console.log(`Linked Lightning address: ${lightningAddress}`);
     console.log(`From Bitcoin Wallet 2: ${btcAddress}`);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(500);
 
@@ -35,6 +35,8 @@ test.describe('Buy Process - Lightning Linked to Bitcoin Account', () => {
 
     expect(hasBuyContent).toBeTruthy();
 
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
+
     await expect(page).toHaveScreenshot('buy-lightning-linked-page-loaded.png', {
       maxDiffPixels: 10000,
     });
@@ -43,7 +45,7 @@ test.describe('Buy Process - Lightning Linked to Bitcoin Account', () => {
   test('should show BTC as the asset to buy with linked Lightning account', async ({ page, request }) => {
     const { token } = await getLinkedLightningAuth(request);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -57,7 +59,7 @@ test.describe('Buy Process - Lightning Linked to Bitcoin Account', () => {
   test('should display amount input with linked Lightning account', async ({ page, request }) => {
     const { token } = await getLinkedLightningAuth(request);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -71,7 +73,7 @@ test.describe('Buy Process - Lightning Linked to Bitcoin Account', () => {
   test('should handle buy flow with pre-filled amount for linked Lightning', async ({ page, request }) => {
     const { token } = await getLinkedLightningAuth(request);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -89,6 +91,8 @@ test.describe('Buy Process - Lightning Linked to Bitcoin Account', () => {
     const pageContent = await page.textContent('body');
     expect(pageContent).toBeTruthy();
 
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
+
     await expect(page).toHaveScreenshot('buy-lightning-linked-with-amount.png', {
       maxDiffPixels: 10000,
     });
@@ -97,7 +101,7 @@ test.describe('Buy Process - Lightning Linked to Bitcoin Account', () => {
   test('should display exchange rate for linked Lightning purchase', async ({ page, request }) => {
     const { token } = await getLinkedLightningAuth(request);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -111,22 +115,10 @@ test.describe('Buy Process - Lightning Linked to Bitcoin Account', () => {
       }
     });
 
-    // Wait for exchange rate to load
-    try {
-      await page.waitForSelector('text=Wechselkurs', { timeout: 10000 });
-    } catch {
-      await page.waitForSelector('text=Exchange rate', { timeout: 5000 }).catch(() => {});
-    }
-
-    await page.waitForTimeout(1000);
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
 
     const pageContent = await page.textContent('body');
-
-    const hasExchangeInfo =
-      pageContent?.includes('Wechselkurs') ||
-      pageContent?.includes('Exchange rate') ||
-      pageContent?.includes('BTC') ||
-      pageContent?.includes('CHF');
+    const hasExchangeInfo = pageContent?.includes('Wechselkurs') || pageContent?.includes('Exchange rate');
 
     expect(hasExchangeInfo).toBeTruthy();
 
@@ -138,7 +130,7 @@ test.describe('Buy Process - Lightning Linked to Bitcoin Account', () => {
   test('should show same KYC status as Bitcoin primary wallet', async ({ page, request }) => {
     const { token } = await getLinkedLightningAuth(request);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -150,7 +142,8 @@ test.describe('Buy Process - Lightning Linked to Bitcoin Account', () => {
       pageContent?.includes('Exchange rate') ||
       pageContent?.includes('BTC') ||
       pageContent?.includes('Zahlungsinformation') ||
-      pageContent?.includes('Payment');
+      pageContent?.includes('Payment') ||
+      pageContent?.includes('E-Mail');
 
     expect(hasContent).toBeTruthy();
   });
@@ -166,9 +159,11 @@ test.describe('Buy Process - Lightning Linked Full UI Flow', () => {
     console.log(`From Bitcoin Wallet 2: ${btcAddress}`);
 
     // Step 1: Navigate to buy page
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
+
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
 
     await expect(page).toHaveScreenshot('lightning-linked-buy-01-initial.png', {
       maxDiffPixels: 10000,
@@ -185,12 +180,7 @@ test.describe('Buy Process - Lightning Linked Full UI Flow', () => {
     });
     await page.waitForTimeout(1500);
 
-    // Step 3: Wait for exchange rate
-    try {
-      await page.waitForSelector('text=/Wechselkurs|Zahlungsinformation/i', { timeout: 10000 });
-    } catch {
-      // Continue even if not found
-    }
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
     await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot('lightning-linked-buy-02-form-filled.png', {

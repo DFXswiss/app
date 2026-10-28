@@ -43,7 +43,7 @@ import { useWindowContext } from 'src/contexts/window.context';
 import useDebounce from 'src/hooks/debounce.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { getKycErrorFromMessage } from 'src/util/api-error';
-import { blankedAddress } from 'src/util/utils';
+import { displayWalletAddress } from 'src/util/lnurl';
 import { ExchangeRate } from '../components/exchange-rate';
 import { AddressSwitch } from '../components/payment/address-switch';
 import { SwapCompletion } from '../components/payment/swap-completion';
@@ -809,7 +809,7 @@ export default function SwapScreen(): JSX.Element {
                     rootRef={rootRef}
                     name="address"
                     items={addressItems}
-                    labelFunc={(item) => blankedAddress(item.addressLabel, { width })}
+                    labelFunc={(item) => displayWalletAddress(item.addressLabel, { width })}
                     descriptionFunc={(item) => item.label}
                     full
                     forceEnable

@@ -73,6 +73,13 @@ function mockLoadUserContext(): MockUserContextModule {
           };
         },
       },
+      '../definitions/user': { UserStatus: { NA: 'NA', ACTIVE: 'Active', BLOCKED: 'Blocked', DELETED: 'Deleted' } },
+      './auth.context': {
+        useAuthContext: () => {
+          const { session } = mockUseSession();
+          return { getAuthToken: () => session.address };
+        },
+      },
     };
     const module = { exports: {} as MockUserContextModule };
     new Function('require', 'module', 'exports', code)(

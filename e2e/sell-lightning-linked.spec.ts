@@ -16,7 +16,7 @@ test.describe('Sell Process - Lightning Linked to Bitcoin Account', () => {
     console.log(`Linked Lightning address: ${lightningAddress}`);
     console.log(`From Bitcoin Wallet 2: ${btcAddress}`);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(500);
 
@@ -32,6 +32,8 @@ test.describe('Sell Process - Lightning Linked to Bitcoin Account', () => {
 
     expect(hasSellContent).toBeTruthy();
 
+    await page.locator('text=/CH93/').first().waitFor({ timeout: 15000 });
+
     await expect(page).toHaveScreenshot('sell-lightning-linked-page-loaded.png', {
       maxDiffPixels: 10000,
     });
@@ -40,7 +42,7 @@ test.describe('Sell Process - Lightning Linked to Bitcoin Account', () => {
   test('should show BTC as the asset to sell with linked Lightning account', async ({ page, request }) => {
     const { token } = await getLinkedLightningAuth(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -54,7 +56,7 @@ test.describe('Sell Process - Lightning Linked to Bitcoin Account', () => {
   test('should display amount input for linked Lightning sell', async ({ page, request }) => {
     const { token } = await getLinkedLightningAuth(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -68,7 +70,7 @@ test.describe('Sell Process - Lightning Linked to Bitcoin Account', () => {
   test('should show IBAN selector for linked Lightning sell', async ({ page, request }) => {
     const { token } = await getLinkedLightningAuth(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(3000);
 
@@ -88,7 +90,7 @@ test.describe('Sell Process - Lightning Linked to Bitcoin Account', () => {
   test('should handle sell flow with pre-filled amount for linked Lightning', async ({ page, request }) => {
     const { token } = await getLinkedLightningAuth(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -106,6 +108,8 @@ test.describe('Sell Process - Lightning Linked to Bitcoin Account', () => {
     const pageContent = await page.textContent('body');
     expect(pageContent).toBeTruthy();
 
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
+
     await expect(page).toHaveScreenshot('sell-lightning-linked-with-amount.png', {
       maxDiffPixels: 10000,
     });
@@ -114,7 +118,7 @@ test.describe('Sell Process - Lightning Linked to Bitcoin Account', () => {
   test('should display exchange rate for linked Lightning sell', async ({ page, request }) => {
     const { token } = await getLinkedLightningAuth(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -128,23 +132,10 @@ test.describe('Sell Process - Lightning Linked to Bitcoin Account', () => {
       }
     });
 
-    // Wait for exchange rate or IBAN selector
-    try {
-      await page.waitForSelector('text=/Wechselkurs|IBAN|erhältst/i', { timeout: 10000 });
-    } catch {
-      // Continue even if not found
-    }
-
-    await page.waitForTimeout(1000);
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
 
     const pageContent = await page.textContent('body');
-
-    const hasExchangeInfo =
-      pageContent?.includes('Wechselkurs') ||
-      pageContent?.includes('Exchange rate') ||
-      pageContent?.includes('CHF') ||
-      pageContent?.includes('EUR') ||
-      pageContent?.includes('IBAN');
+    const hasExchangeInfo = pageContent?.includes('Wechselkurs') || pageContent?.includes('Exchange rate');
 
     expect(hasExchangeInfo).toBeTruthy();
 
@@ -164,9 +155,11 @@ test.describe('Sell Process - Lightning Linked Full UI Flow', () => {
     console.log(`From Bitcoin Wallet 2: ${btcAddress}`);
 
     // Step 1: Navigate to sell page
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
+
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
 
     await expect(page).toHaveScreenshot('lightning-linked-sell-01-initial.png', {
       maxDiffPixels: 10000,
@@ -183,12 +176,7 @@ test.describe('Sell Process - Lightning Linked Full UI Flow', () => {
     });
     await page.waitForTimeout(1500);
 
-    // Step 3: Wait for exchange rate or IBAN
-    try {
-      await page.waitForSelector('text=/Wechselkurs|IBAN|Zahlungsinformation/i', { timeout: 10000 });
-    } catch {
-      // Continue even if not found
-    }
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
     await page.waitForTimeout(500);
 
     await expect(page).toHaveScreenshot('lightning-linked-sell-02-form-filled.png', {

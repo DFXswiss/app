@@ -5,7 +5,7 @@ import { test, expect, Page, Route } from '@playwright/test';
  * overview (populated, empty lists, overflow More), treasury (buy limit empty /
  * set / invalid / load error, prize wallet, missing wallet, wallet error,
  * payouts, empty payouts, balance alerts, alert form), insights (charts, share
- * mode, 1M timeframe, each chart error), holders (list, empty, next page),
+ * mode, 1M timeframe, each chart error), holders (list, empty, next page, load error),
  * received transactions (list, empty, error, detail, missing), and the holder
  * account (CHF, REALU, missing).
  *
@@ -154,7 +154,7 @@ type ListMode = 'one' | 'empty' | 'many';
 type World = {
   quotes: 'mixed' | 'empty' | 'many';
   transactions: ListMode | 'error';
-  holders: ListMode | 'paged';
+  holders: ListMode | 'paged' | 'error' | 'mixed';
   buyLimit: 'empty' | 'set' | 'error';
   wallet: 'ok' | 'missing' | 'error';
   alerts: 'empty' | 'one' | 'error';
@@ -210,6 +210,16 @@ function holdersBody(page: 1 | 2) {
       totalCount: 4,
     };
   }
+  if (world.holders === 'mixed') {
+    return {
+      holders: [
+        holder(ADDRESS, '100', 1.5),
+        holder('0xabc0000000000000000000000000000000008002', '40', 0.8),
+      ],
+      pageInfo: { ...pageInfo, hasNextPage: false, hasPreviousPage: false },
+      totalCount: 2,
+    };
+  }
   if (world.holders === 'paged' && page === 2) {
     return {
       holders: [holder('0xabc0000000000000000000000000000000008019', '19', 4)],
@@ -222,6 +232,21 @@ function holdersBody(page: 1 | 2) {
     pageInfo,
     totalCount: world.holders === 'paged' ? 8 : 1,
   };
+}
+
+function adminHoldersBody(page: 1 | 2, registration: string | null) {
+  const body = holdersBody(page);
+  const holders = body.holders.map((entry, index) => ({
+    ...entry,
+    mail: index === 0 ? 'holder@example.com' : null,
+  }));
+  if (registration !== 'registered' && registration !== 'unregistered') {
+    return { ...body, holders };
+  }
+  const filtered = holders.filter((entry) =>
+    registration === 'registered' ? entry.mail !== null && entry.mail.trim() !== '' : entry.mail === null || entry.mail.trim() === '',
+  );
+  return { ...body, holders: filtered, totalCount: filtered.length };
 }
 
 function quotesBody() {
@@ -266,6 +291,13 @@ async function installDashboardRoutes(page: Page): Promise<void> {
       holderCalls += 1;
       const pageNo = world.holders === 'paged' && holderCalls > 1 ? 2 : 1;
       return json(route, holdersBody(pageNo));
+    }
+    if (path === '/v1/realunit/admin/holders') {
+      if (world.holders === 'error') return fail(route, 'holders down');
+      holderCalls += 1;
+      const pageNo = world.holders === 'paged' && holderCalls > 1 ? 2 : 1;
+      const registration = new URL(url).searchParams.get('registration');
+      return json(route, adminHoldersBody(pageNo, registration));
     }
     if (path === '/v1/realunit/tokenInfo') return json(route, TOKEN);
     if (path === '/v1/realunit/price/history') {
@@ -525,6 +557,29 @@ test.describe('RealUnit workspace - Visual Regression Tests', () => {
     await page.getByRole('button', { name: 'Next' }).click();
     await expect(page.getByText('19', { exact: true })).toBeVisible();
     await shootPage(page, 'realunit-dashboard-38-holders-page-two.png');
+
+    world.holders = 'mixed';
+    await open(page, '/realunit/holders');
+    await expect(page.getByText('holder@example.com')).toBeVisible();
+    await expect(page.getByText('40', { exact: true })).toBeVisible();
+    await page.locator('select').selectOption('registered');
+    await expect(page.getByRole('heading', { name: 'All Holders (1)' })).toBeVisible();
+    await expect(page.getByText('holder@example.com')).toBeVisible();
+    await expect(page.getByText('40', { exact: true })).toHaveCount(0);
+    await shootPage(page, 'realunit-dashboard-40-holders-registered.png');
+    await page.locator('select').selectOption({ label: 'Not registered' });
+    await expect(page.getByRole('heading', { name: 'All Holders (1)' })).toBeVisible();
+    await expect(page.getByText('holder@example.com')).toHaveCount(0);
+    await expect(page.getByText('40', { exact: true })).toBeVisible();
+    await shootPage(page, 'realunit-dashboard-41-holders-unregistered.png');
+  });
+
+  test('holders load error', async ({ page }) => {
+    world.holders = 'error';
+    await open(page, '/realunit/holders');
+    await expect(page.getByText('Failed to load holders.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'All Holders (0)' })).toBeVisible();
+    await shootPage(page, 'realunit-dashboard-39-holders-load-error.png');
   });
 
   test('received transactions, detail, empty, error and missing', async ({ page }) => {

@@ -18,7 +18,7 @@ test.describe('Sell Process - Lightning Wallet', () => {
   test('should load sell page with Lightning blockchain', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(500);
 
@@ -43,7 +43,7 @@ test.describe('Sell Process - Lightning Wallet', () => {
   test('should show BTC/Lightning as the asset to sell', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -61,7 +61,7 @@ test.describe('Sell Process - Lightning Wallet', () => {
   test('should display amount input for Lightning sell', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -84,7 +84,7 @@ test.describe('Sell Process - Lightning Wallet', () => {
   test('should show bank account selector or IBAN input for Lightning sell', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(3000);
 
@@ -106,7 +106,7 @@ test.describe('Sell Process - Lightning Wallet', () => {
   test('should show trading restriction or successful load for Lightning sell', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(3000);
 
@@ -138,7 +138,7 @@ test.describe('Sell Process - Lightning Wallet', () => {
   test('should handle sell flow with pre-filled amount for Lightning', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -164,7 +164,7 @@ test.describe('Sell Process - Lightning Wallet', () => {
   test('should display exchange rate or IBAN selector for Lightning sell', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
 
     // Wait for page to fully load - IBAN selector or exchange rate
@@ -211,7 +211,7 @@ test.describe('Sell Process - Lightning Wallet', () => {
   test('should show Lightning invoice info or deposit address', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(3000);
 
@@ -248,7 +248,7 @@ test.describe('Sell Process - Lightning Full UI Flow', () => {
     const token = await getLightningToken(request);
 
     // Step 1: Navigate to sell page with Lightning blockchain
-    await page.goto(`/sell?session=${token}&blockchain=Lightning`);
+    await page.goto(`/sell?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 

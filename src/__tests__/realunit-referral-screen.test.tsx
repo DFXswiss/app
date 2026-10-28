@@ -7,6 +7,9 @@ jest.mock('@dfx.swiss/react', () => ({}));
 jest.mock('@dfx.swiss/react-components', () => ({
   SpinnerSize: { SM: 'sm', LG: 'lg' },
   StyledLoadingSpinner: () => <div data-testid="spinner" />,
+  StyledSearchInput: ({ placeholder, onChange }: { placeholder: string; onChange: (value: string) => void }) => (
+    <input aria-label={placeholder} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+  ),
 }));
 jest.mock('src/components/error-hint', () => ({
   ErrorHint: ({ message }: { message: string }) => <div data-testid="error-hint">{message}</div>,
@@ -38,6 +41,7 @@ const PENDING = {
   id: 1,
   kind: RealUnitCodeKind.INVITE,
   userId: 10,
+  guestName: 'Pending Guest',
   code: 'AB12CD',
   credited: false,
   created: '2026-09-01T10:00:00Z',
@@ -47,6 +51,7 @@ const APPROVED = {
   id: 2,
   kind: RealUnitCodeKind.INVITE,
   userId: 11,
+  guestName: 'Approved Guest',
   code: 'OK1234',
   credited: true,
   created: '2026-09-02T10:00:00Z',
@@ -56,6 +61,7 @@ const REJECTED = {
   id: 4,
   kind: RealUnitCodeKind.INVITE,
   userId: 13,
+  guestName: 'Rejected Guest',
   code: 'NO5678',
   credited: false,
   created: '2026-09-04T10:00:00Z',
@@ -65,6 +71,7 @@ const NO_STATUS = {
   id: 3,
   kind: RealUnitCodeKind.INVITE,
   userId: 12,
+  guestName: 'Unreviewed Guest',
   code: 'NOSTAT',
   credited: false,
   created: '2026-09-03T10:00:00Z',
@@ -73,6 +80,7 @@ const PROMO = {
   id: 5,
   kind: RealUnitCodeKind.PROMO,
   userId: 14,
+  guestName: 'Promo Guest',
   code: 'PROMO9',
   credited: true,
   created: '2026-09-05T10:00:00Z',
@@ -99,7 +107,9 @@ describe('RealunitReferralScreen', () => {
     expect(screen.queryByText('PROMO9')).not.toBeInTheDocument();
     expect(screen.getByText(/Redemptions/)).toHaveTextContent('Redemptions: 3');
     expect(screen.getByText(/Held for review only/)).toHaveTextContent('Held for review only (1)');
-    expect(screen.getByRole('checkbox')).not.toBeChecked();
+    expect(screen.getByLabelText(/Held for review only/)).not.toBeChecked();
+    expect(screen.getByLabelText(/Credited only/)).not.toBeChecked();
+    expect(screen.getByLabelText(/Show incomplete/)).not.toBeChecked();
     expect(screen.getByRole('columnheader', { name: 'Review Status' })).toBeInTheDocument();
     expect(within(screen.getByText('AB12CD').closest('tr') as HTMLElement).getByText('Open')).toBeInTheDocument();
     expect(within(screen.getByText('OK1234').closest('tr') as HTMLElement).getByText('Approved')).toBeInTheDocument();
@@ -112,7 +122,7 @@ describe('RealunitReferralScreen', () => {
     render(<RealunitReferralScreen />);
     await waitFor(() => expect(screen.getByText('AB12CD')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByLabelText(/Held for review only/));
 
     expect(screen.queryByText('OK1234')).not.toBeInTheDocument();
     expect(screen.getByText('AB12CD')).toBeInTheDocument();
@@ -129,10 +139,13 @@ describe('RealunitReferralScreen', () => {
   it('shows the guest account, the name and the remittance info of the qualifying buy', async () => {
     mockGetRelations.mockResolvedValue([
       { ...APPROVED, guestAccountId: 501, guestName: 'Test Guest', qualifyingBuyReference: 'REALU-100001' },
-      PENDING,
+      { ...PENDING, guestName: undefined },
     ]);
     render(<RealunitReferralScreen />);
     await waitFor(() => expect(screen.getByText('OK1234')).toBeInTheDocument());
+    // the guest without a name has not finished the process and is hidden until shown on request
+    expect(screen.queryByText('AB12CD')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Show incomplete (1)'));
 
     expect(screen.getByRole('columnheader', { name: 'Guest account' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Name' })).toBeInTheDocument();
@@ -163,7 +176,7 @@ describe('RealunitReferralScreen', () => {
     render(<RealunitReferralScreen />);
     await waitFor(() => expect(screen.getByText('OK1234')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByLabelText(/Held for review only/));
 
     expect(screen.getByText('No entries found')).toBeInTheDocument();
   });

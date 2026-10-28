@@ -44,7 +44,7 @@ import { FieldPath, FieldPathValue, useForm, useWatch } from 'react-hook-form';
 import { PaymentInformationContent } from 'src/components/payment/payment-info-buy';
 import { useWindowContext } from 'src/contexts/window.context';
 import { getKycErrorFromMessage } from 'src/util/api-error';
-import { blankedAddress } from 'src/util/utils';
+import { displayWalletAddress } from 'src/util/lnurl';
 import { ErrorHint } from '../components/error-hint';
 import { ExchangeRate } from '../components/exchange-rate';
 import { AddressSwitch } from '../components/payment/address-switch';
@@ -1234,7 +1234,7 @@ export default function BuyScreen(): JSX.Element {
                       rootRef={rootRef}
                       name="address"
                       items={addressItems}
-                      labelFunc={(item) => blankedAddress(item.address, { width })}
+                      labelFunc={(item) => displayWalletAddress(item.address, { width })}
                       descriptionFunc={(item) => item.label}
                       full
                       forceEnable

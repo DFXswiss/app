@@ -41,6 +41,7 @@ import { useAnchor } from 'src/hooks/anchor.hook';
 import { useUserGuard } from 'src/hooks/guard.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { displayWalletAddress } from 'src/util/lnurl';
 import { blankedAddress, sortAddressesByBlockchain } from 'src/util/utils';
 
 interface FormData {
@@ -309,7 +310,7 @@ export default function SettingsScreen(): JSX.Element {
                 return {
                   key: address.address,
                   label: address.label ?? address.wallet,
-                  subLabel: blankedAddress(address.address, { width }),
+                  subLabel: displayWalletAddress(address.address, { width }),
                   isDisabled,
                   tag:
                     address.address === user?.activeAddress?.address
@@ -445,7 +446,7 @@ export function SettingsOverlay({ type, data, onClose }: SettingsOverlayProps): 
 
   switch (type) {
     case OverlayType.DELETE_ADDRESS:
-      const formattedAddress = blankedAddress(data ? addressLabel(data as UserAddress) : '', { width });
+      const formattedAddress = displayWalletAddress(data ? addressLabel(data as UserAddress) : '', { width });
 
       return (
         <ConfirmationOverlay

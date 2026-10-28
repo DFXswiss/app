@@ -146,10 +146,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `GET /v1/realunit/account/:address` and `GET /v1/realunit/account/:address/history`,
   and it answers price history, buy volume, holder count, registration, the prize wallet
   and the buy limit with HTTP errors when a scenario asks for the error state.
+  The dashboard answers `GET /v1/realunit/admin/holders` itself. Fixture rows carry `mail`
+  or null, and the spec also requests `registration=registered` and `registration=unregistered`.
   A green run proves the overview, treasury, insights, holder, transaction and account
   fixtures render, including those error states. It does not prove that the API returns
-  those payloads, that login or token verification works, or that the staff, stats,
-  prize-wallet, alert, payout, buy-limit or account endpoints return real data.
+  those payloads, that the API attaches UserData to the address, that login or token
+  verification works, or that the staff, stats, prize-wallet, alert, payout, buy-limit
+  or account endpoints return real data.
 - **The RealUnit support visual spec answers the issue list and thread itself.**
   `e2e/realunit-support.spec.ts` fulfils the RealUnit support list, counts, activity, clerks,
   issue data and messages with synthetic fixtures. Auth is a synthetic unsigned Admin JWT.
@@ -163,8 +166,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   list screenshots (that page does not show them) and for the empty promo list, one shareable
   campaign code on the landing-link, QR-dialog and inline-edit variants, plus one deactivated
   code on the activate and no-match variants, five codes covering every derived status on the overview, expired-hidden and
-  deactivated-this-visit variants, and one invite per review status (Open, Approved,
-  Rejected) on the referral list. It also answers the deactivate call
+  deactivated-this-visit variants, two promo redemptions of one code (one credited with a
+  guest name and a remittance reference, one not credited without a guest name) for the
+  redemption search, the credited filter and the incomplete rows hidden by default, and one
+  invite with a guest name per review status (Open, Approved, Rejected) on the referral list. It also answers the deactivate call
   (`PUT /v1/realunit/referral/promo/:id/deactivate`) with an empty success, plus a synthetic
   unsigned Admin JWT and staff/bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`,
   `/v1/bankAccount`, `/v1/country`, `/v1/setting/infoBanner`, `/v2/user`). The five-code
@@ -175,7 +180,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   A green run proves the start-promo form, the empty promo list, the hint when the filters hide
   every code, the promo code list with status, both filters and both sort orders, a filled promo row with `realunit.app/promo/{code}` and QR overlay, an
   inline edit (Save/Cancel), a deactivated row with Activate after turning off the filter, a
-  row deactivated in the visit that stays visible, the redeemed promo codes, the invite-only
+  row deactivated in the visit that stays visible, the redeemed promo codes with the search
+  over guest name, guest account and remittance info, the credited filter, the redemptions
+  without a guest name hidden until "Show incomplete" is ticked, and the
+  "x of y shown" counter, the invite-only
   referral table with and without the review filter, and the referral and promo redemption
   detail fixtures render, in English and with the German labels. It does not prove that the
   live promo or relations API returns those payloads, that login or token verification works,
@@ -374,6 +382,15 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   the header on `/support` and `/support/tickets`. It does not prove that the API
   returns that banner copy, that those bootstrap endpoints return real data, or
   that a live account has that ticket.
+- **The deleted-address visual spec answers GET /v2/user and PUT /v2/user/reactivate itself.**
+  `e2e/deleted-address.spec.ts` fulfils `/v2/user` with a synthetic user whose active address
+  has status `Deleted`, fulfils `PUT /v2/user/reactivate` with a synthetic 400 error, and
+  fulfils the bootstrap GETs (`/v1/language`, `/v1/fiat`, `/v1/asset`, `/v1/bankAccount`,
+  `/v1/country`, `/v1/setting/infoBanner`). Unmatched `/v1/**` and `/v2/**` calls get `501`.
+  The session is a synthetic unsigned JWT, so a green run does not prove login or token
+  verification. A green run proves the notice replaces the app and shows the API error after
+  a failed activation. It does not prove that the API marks a deleted address that way, that
+  it rejects or accepts a real reactivation, or that a successful activation opens the app.
 - **Full-stack screen-sync regressions hold delivery of real API responses.**
   `e2e-stack/specs/screen-sync.spec.ts` intercepts `GET /v2/kyc/file/:id` and
   `GET /v1/dashboard/financial/latest`, calls `route.fetch()` against the real API, then
@@ -529,6 +546,17 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   address `0x1111111111111111111111111111111111111111`, and does not call a live API. A green run
   proves the mismatch hint renders for that fixture. It does not prove that the hint comes from a
   real session or a real API response.
+- **The account screen coverage test replaces the SDK and the component library.**
+  `src/__tests__/account-screen-coverage.test.tsx` replaces the user, auth, session, API and
+  transaction hooks with in-memory stubs, and replaces the styled components with passthrough
+  markup. A green run proves those stubs exercise the profile, address, referral and PDF branches.
+  It does not prove a live user, a live transaction list, a real address switch, or that the
+  production components render.
+- **The order form coverage test replaces the order hook and the SDK.**
+  `src/__tests__/order-interface.test.tsx` supplies a hand-built order state and replaces the SDK
+  enums, the order hook, the debounce hook and the payment-info component. A green run proves the
+  form follows that stub, including which address label it shows. It does not prove a live quote,
+  a live balance lookup, or a real payment-info request.
 
 ## Known gaps
 

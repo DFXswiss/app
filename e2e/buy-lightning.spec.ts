@@ -19,7 +19,7 @@ test.describe('Buy Process - Lightning Wallet', () => {
   test('should load buy page with Lightning blockchain', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
 
     // Wait for amount field to have default value (300)
@@ -56,7 +56,7 @@ test.describe('Buy Process - Lightning Wallet', () => {
   test('should display amount input for Lightning purchase', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -75,7 +75,7 @@ test.describe('Buy Process - Lightning Wallet', () => {
   test('should show Lightning or BTC as target asset', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -94,7 +94,7 @@ test.describe('Buy Process - Lightning Wallet', () => {
   test('should show trading restriction or successful load for Lightning', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(3000);
 
@@ -125,7 +125,7 @@ test.describe('Buy Process - Lightning Wallet', () => {
   test('should handle buy flow with pre-filled amount for Lightning', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
 
@@ -151,7 +151,7 @@ test.describe('Buy Process - Lightning Wallet', () => {
   test('should display exchange rate or KYC requirement for Lightning purchase', async ({ page, request }) => {
     const token = await getLightningToken(request);
 
-    await page.goto(`/buy?session=${token}&blockchain=Lightning`);
+    await page.goto(`/buy?session=${token}&blockchain=Lightning&lang=de`);
     await page.waitForLoadState('networkidle');
 
     // Wait for page to fully load - either KYC message or exchange rate

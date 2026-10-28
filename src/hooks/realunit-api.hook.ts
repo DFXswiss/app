@@ -3,6 +3,8 @@ import { useGuardedApi } from './guarded-api.hook';
 import {
   AccountHistory,
   AccountSummary,
+  AdminHoldersResponse,
+  HolderRegistration,
   HoldersResponse,
   PaginationDirection,
   PriceHistoryEntry,
@@ -48,6 +50,21 @@ export function useRealunitApi() {
 
     return call<HoldersResponse>({
       url: apiUrl({ path: 'realunit/holders', params }),
+      method: 'GET',
+    });
+  }
+
+  async function getAdminHolders(
+    cursor?: string,
+    direction?: PaginationDirection,
+    registration?: HolderRegistration,
+  ): Promise<AdminHoldersResponse> {
+    const params = new URLSearchParams();
+    cursor && direction && params.set(String(direction) === 'prev' ? 'before' : 'after', cursor);
+    if (registration === 'registered' || registration === 'unregistered') params.set('registration', registration);
+
+    return call<AdminHoldersResponse>({
+      url: apiUrl({ path: 'realunit/admin/holders', params }),
       method: 'GET',
     });
   }
@@ -159,6 +176,7 @@ export function useRealunitApi() {
       getAccountSummary,
       getAccountHistory,
       getHolders,
+      getAdminHolders,
       getTokenInfo,
       getTokenPrice,
       getPriceHistory,

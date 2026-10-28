@@ -13,11 +13,11 @@ test.describe('Swap Bitcoin to Lightning', () => {
 
     // Navigate to swap with Bitcoin as source and Lightning as target
     const baseUrl = process.env.REACT_APP_PUBLIC_URL!;
-    const url = `${baseUrl}/swap?session=${bitcoinAuth.token}&asset-in=Bitcoin/BTC&asset-out=Lightning/BTC&amount-in=0.001`;
+    const url = `${baseUrl}/swap?session=${bitcoinAuth.token}&asset-in=Bitcoin/BTC&asset-out=Lightning/BTC&amount-in=0.001&lang=de`;
     await page.goto(url);
 
     // Wait for page to load and exchange rate to appear
-    await page.waitForSelector('text=Wechselkurs', { timeout: 15000 });
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
     // Take screenshot after full load
@@ -34,9 +34,9 @@ test.describe('Swap Bitcoin to Lightning', () => {
     const hasLightningTarget = pageContent?.includes('Lightning');
     console.log('Page contains Lightning:', hasLightningTarget);
 
-    // Verify LNURL address is shown (Lightning deposit address format)
-    const hasLnurl = pageContent?.match(/LNURL[A-Z0-9]+/i) || pageContent?.match(/lnbc[a-z0-9]+/i);
-    console.log('Has LNURL/Lightning address:', !!hasLnurl);
+    const showsLightningAddress =
+      pageContent?.includes('@') || pageContent?.includes('LNURL') || pageContent?.includes('lnbc');
+    console.log('Has Lightning address:', !!showsLightningAddress);
 
     // Verify the info text shows correct swap direction (Bitcoin -> Lightning)
     const hasSwapInfo = pageContent?.includes('Bitcoin') && pageContent?.includes('Lightning');

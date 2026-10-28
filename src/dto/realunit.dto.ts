@@ -82,6 +82,18 @@ export interface HoldersResponse {
   totalCount: number;
 }
 
+export type HolderRegistration = 'all' | 'registered' | 'unregistered';
+
+export interface AdminHolder extends Holder {
+  mail: string | null;
+}
+
+export interface AdminHoldersResponse {
+  holders: AdminHolder[];
+  pageInfo: PageInfo;
+  totalCount: number;
+}
+
 export interface PriceHistoryEntry {
   timestamp: string;
   chf: number;

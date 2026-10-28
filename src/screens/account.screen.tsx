@@ -48,8 +48,8 @@ import { useUserGuard } from 'src/hooks/guard.hook';
 import { useKycHelper } from 'src/hooks/kyc-helper.hook';
 import { useLayoutOptions } from 'src/hooks/layout-config.hook';
 import { useNavigation } from 'src/hooks/navigation.hook';
+import { displayWalletAddress } from 'src/util/lnurl';
 import {
-  blankedAddress,
   downloadPdfFromString,
   formatSwissDateTimeWithSeconds,
   sortAddressesByBlockchain,
@@ -59,8 +59,7 @@ import { useAppHandlingContext } from '../contexts/app-handling.context';
 import { useSettingsContext } from '../contexts/settings.context';
 import { useWalletContext } from '../contexts/wallet.context';
 
-function formatAddress(address: UserProfile['address']): string {
-  if (!address) return '';
+function formatAddress(address: NonNullable<UserProfile['address']>): string {
   return [
     [address.street, address.houseNumber].filter(Boolean).join(' '),
     [address.zip, address.city].filter(Boolean).join(' '),
@@ -158,8 +157,9 @@ export default function AccountScreen(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (selectedAddress?.address && user?.activeAddress?.address !== selectedAddress?.address && !isUserLoading) {
-      changeAddress(selectedAddress.address)
+    const nextAddress = selectedAddress?.address;
+    if (nextAddress && user?.activeAddress?.address !== nextAddress && !isUserLoading) {
+      changeAddress(nextAddress)
         .then(() => setWallet())
         .catch(() => {
           // ignore errors
@@ -228,8 +228,7 @@ export default function AccountScreen(): JSX.Element {
   function openPdfModal(): void {
     setPdfError(undefined);
 
-    // Set defaults
-    if (supportedBlockchains.length > 0) setPdfValue('blockchain', supportedBlockchains[0]);
+    setPdfValue('blockchain', supportedBlockchains[0]);
     setPdfValue('currency', FiatCurrency.CHF);
     setPdfValue('date', new Date().toISOString().split('T')[0]);
 
@@ -284,6 +283,7 @@ export default function AccountScreen(): JSX.Element {
     onClick: () => navigate(`/tx/${t.id ?? t.uid}`),
   }));
 
+  const referralCode = referral?.code ?? '';
   const referralItems = referral?.code
     ? [
         { label: translate('screens/home', 'Volume'), text: Utils.formatAmount(referral.volume) + ' EUR' },
@@ -476,7 +476,7 @@ export default function AccountScreen(): JSX.Element {
                   rootRef={rootRef}
                   placeholder={translate('general/actions', 'Select') + '...'}
                   items={userAddresses.sort(sortAddressesByBlockchain)}
-                  labelFunc={(item) => blankedAddress(addressLabel(item), { width })}
+                  labelFunc={(item) => displayWalletAddress(addressLabel(item), { width })}
                   descriptionFunc={(item) => item.label ?? item.wallet}
                   forceEnable={user?.activeAddress === undefined}
                 />
@@ -505,7 +505,7 @@ export default function AccountScreen(): JSX.Element {
                         copy(
                           url({
                             base: Urls.referral,
-                            params: new URLSearchParams({ code: referral.code ?? '' }),
+                            params: new URLSearchParams({ code: referralCode }),
                           }),
                         )
                       }
@@ -516,7 +516,7 @@ export default function AccountScreen(): JSX.Element {
                   </StyledDataTableRow>
                   <StyledDataTableExpandableRow
                     label={translate('screens/home', 'Your referral stats')}
-                    expansionItems={referralItems ?? []}
+                    expansionItems={referralItems}
                   />
                 </StyledDataTable>
               )}
@@ -542,11 +542,9 @@ export default function AccountScreen(): JSX.Element {
           <div className="h-32" />
         </StyledVerticalStack>
       )}
-      {image && (
-        <div className="absolute bottom-0 w-full pointer-events-none">
-          <img src={image} className="w-full" />
-        </div>
-      )}
+      <div className="absolute bottom-0 w-full pointer-events-none">
+        <img src={image} className="w-full" />
+      </div>
 
       {/* PDF Download Modal */}
       <Modal isOpen={showPdfModal} onClose={closePdfModal}>

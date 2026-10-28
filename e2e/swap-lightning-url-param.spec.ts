@@ -14,13 +14,13 @@ test.describe('Swap with Lightning URL Parameter', () => {
     console.log('Lightning address linked');
 
     // Navigate to swap with Lightning as target
-    const url = `https://dev.app.dfx.swiss/swap?session=${bitcoinAuth.token}&asset-out=Lightning/BTC&amount-in=0.001`;
+    const baseUrl = process.env.REACT_APP_PUBLIC_URL!;
+    const url = `${baseUrl}/swap?session=${bitcoinAuth.token}&asset-out=Lightning/BTC&amount-in=0.001&lang=de`;
     await page.goto(url);
 
-    // Wait for page to load completely
-    await page.waitForTimeout(5000);
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
+    await page.waitForTimeout(2000);
 
-    // Take screenshot before checking
     await page.screenshot({ path: 'e2e/screenshots/baseline/swap-lightning-url-param-01-loaded.png' });
 
     // Check that Lightning is displayed as target
@@ -28,8 +28,7 @@ test.describe('Swap with Lightning URL Parameter', () => {
     const hasLightning = pageContent?.includes('Lightning');
     console.log('Page contains Lightning:', hasLightning);
 
-    // Wait for exchange rate to load
-    await page.waitForSelector('text=Wechselkurs', { timeout: 10000 }).catch(() => {});
+    await page.locator('text=/Wechselkurs|Exchange rate/').first().waitFor({ timeout: 15000 });
     await page.waitForTimeout(2000);
 
     // Take final screenshot
