@@ -11,6 +11,9 @@ export function canManageAccountAccess(role: UserRole | undefined): boolean {
   return role === UserRole.SUPPORT || role === UserRole.COMPLIANCE || role === UserRole.ADMIN;
 }
 
+// Same window the API honours a provisional approval in: KYC level 0 to 40. Terminated (-10) and rejected
+// (-20) accounts are not onboarding.
 export function isOnboardingIncomplete(kycLevel: number | undefined): boolean {
-  return (kycLevel ?? 0) < ONBOARDING_COMPLETE_KYC_LEVEL;
+  const level = kycLevel ?? 0;
+  return level >= 0 && level < ONBOARDING_COMPLETE_KYC_LEVEL;
 }

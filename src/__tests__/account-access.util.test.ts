@@ -25,6 +25,8 @@ describe('account access rules', () => {
     [49, true],
     [50, false],
     [51, false],
+    [-10, false],
+    [-20, false],
   ])('classifies KYC level %s as incomplete=%s', (level, expected) => {
     expect(isOnboardingIncomplete(level)).toBe(expected);
   });
