@@ -293,13 +293,14 @@ describe('ComplianceUserScreen', () => {
     expect(mockUserDataPanelRender).toHaveBeenCalledTimes(rendersBeforeRejection);
   });
 
-  it('returns to the spinner if the route id disappears after data loaded', async () => {
+  it('shows the missing-id error if the route id disappears after data loaded', async () => {
     const { rerender } = await renderDossier();
 
     mockUserDataId = undefined;
     rerender(<ComplianceUserScreen />);
 
-    await waitFor(() => expect(screen.getByTestId('loading-spinner')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent('No ID provided'));
+    expect(screen.queryByTestId('user-data-panel')).not.toBeInTheDocument();
   });
 
   it('drops the previous dossier while loading a new route id', async () => {
