@@ -157,7 +157,7 @@ jest.mock('src/hooks/split-pane.hook', () => ({
 }));
 jest.mock('src/util/utils', () => ({ saveBufferedFile: (...args: unknown[]) => mockSaveBufferedFile(...args) }));
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComplianceUserData } from 'src/hooks/compliance.hook';
 import ComplianceUserScreen from 'src/screens/compliance-user.screen';
 
@@ -240,6 +240,61 @@ describe('ComplianceUserScreen', () => {
     render(<ComplianceUserScreen />);
 
     await waitFor(() => expect(screen.getByTestId('error-hint')).toHaveTextContent(expectedMessage));
+  });
+
+  it('keeps the later dossier when account-access reloads resolve in reverse order', async () => {
+    let resolveOlder!: (value: ComplianceUserData) => void;
+    const olderRequest = new Promise<ComplianceUserData>((resolve) => {
+      resolveOlder = resolve;
+    });
+    mockGetUserData
+      .mockResolvedValueOnce(dossier())
+      .mockReturnValueOnce(olderRequest)
+      .mockResolvedValueOnce(dossier({ users: [{}, {}] }));
+
+    render(<ComplianceUserScreen />);
+    await waitFor(() => expect(screen.getByTestId('user-data-panel')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'refresh account access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'refresh account access' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Users (2)' })).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      resolveOlder(dossier({ users: [{}, {}, {}] }));
+    });
+
+    expect(screen.getByRole('button', { name: 'Users (2)' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Users (3)' })).not.toBeInTheDocument();
+  });
+
+  it('ignores an older account-access reload rejection after a newer success', async () => {
+    let rejectOlder!: (reason?: unknown) => void;
+    const olderRequest = new Promise<ComplianceUserData>((_resolve, reject) => {
+      rejectOlder = reject;
+    });
+    mockGetUserData
+      .mockResolvedValueOnce(dossier())
+      .mockReturnValueOnce(olderRequest)
+      .mockResolvedValueOnce(dossier({ users: [{}, {}] }));
+
+    render(<ComplianceUserScreen />);
+    await waitFor(() => expect(screen.getByTestId('user-data-panel')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'refresh account access' }));
+    fireEvent.click(screen.getByRole('button', { name: 'refresh account access' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Users (2)' })).toBeInTheDocument(),
+    );
+    const rendersBeforeRejection = mockUserDataPanelRender.mock.calls.length;
+
+    await act(async () => {
+      rejectOlder(new Error('Older request failed'));
+    });
+
+    expect(screen.queryByTestId('error-hint')).not.toBeInTheDocument();
+    expect(mockUserDataPanelRender).toHaveBeenCalledTimes(rendersBeforeRejection);
   });
 
   it('returns to the spinner if the route id disappears after data loaded', async () => {

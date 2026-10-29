@@ -1,6 +1,6 @@
 import { useAuthContext, UserRole } from '@dfx.swiss/react';
 import { SpinnerSize, StyledLoadingSpinner } from '@dfx.swiss/react-components';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   BankDatasTable,
@@ -70,6 +70,7 @@ export default function ComplianceUserScreen(): JSX.Element {
   const [expandedBankDataId, setExpandedBankDataId] = useState<number>();
   const [expandedFiatOutputId, setExpandedFiatOutputId] = useState<number>();
   const [expandedTxUid, setExpandedTxUid] = useState<string>();
+  const latestRequestRef = useRef<number>(0);
   const { containerRef, splitPercent, setSplitPercent, handleSplitDrag } = useSplitPane();
 
   function handleExpandBankTx(id: number | undefined): void {
@@ -144,13 +145,20 @@ export default function ComplianceUserScreen(): JSX.Element {
   }
 
   const loadData = useCallback(() => {
+    const request = ++latestRequestRef.current;
     if (!userDataId) {
       setError('No ID provided');
       return;
     }
     getUserData(+userDataId)
-      .then(setData)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Unknown error'));
+      .then((response) => {
+        if (request === latestRequestRef.current) setData(response);
+      })
+      .catch((e: unknown) => {
+        if (request === latestRequestRef.current) {
+          setError(e instanceof Error ? e.message : 'Unknown error');
+        }
+      });
   }, [userDataId, getUserData]);
 
   useEffect(() => {

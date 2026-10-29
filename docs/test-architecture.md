@@ -119,7 +119,10 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `provisionalApproval: true`, so a green run proves the screens render that state, not that the API
   returns it for a given account.
 - **The account-access toggle visuals rewrite the fetched customer dossier.** `e2e/compliance.spec.ts`
-  supplies KYC level 10, a provisional date and user roles for those cases, so a green run proves the
+  sets `kycLevel` to 10, `provisionalApprovalDate` to `2026-10-29T10:00:00.000Z`, and role `VIP`
+  on the first user in the "on" variant (or supplies a synthetic single VIP user if none exists).
+  The "off" variant sets `kycLevel` to 10, removes `provisionalApprovalDate` (`undefined`), and
+  sets all users to role `User` (or supplies a synthetic single User). A green run proves the
   toggles render for those values, not that the API stores or returns them.
 - **The non-Frick buy screens inject a currency list.** `e2e/buy-process.spec.ts` and
   `e2e/buy-info.spec.ts` fulfil `**/v1/fiat` with CHF, EUR, and one buyable row outside the
