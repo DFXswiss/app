@@ -127,7 +127,8 @@ describe('useIsHandheld', () => {
     mockDevice.isMobile = false;
     const { result, unmount } = renderHook(() => useIsHandheld());
     expect(result.current).toBe(false);
-    expect(mediaQuery.addListener).toHaveBeenCalledWith(expect.any(Function));
+    const subscribed = listeners[0];
+    expect(mediaQuery.addListener).toHaveBeenCalledWith(subscribed);
     expect(mediaQuery.addEventListener).toBeUndefined();
 
     act(() => {
@@ -137,14 +138,39 @@ describe('useIsHandheld', () => {
     expect(result.current).toBe(true);
 
     unmount();
-    expect(mediaQuery.removeListener).toHaveBeenCalled();
+    expect(mediaQuery.removeListener).toHaveBeenCalledWith(subscribed);
+    expect(listeners).not.toContain(subscribed);
+
+    act(() => {
+      (mediaQuery as unknown as { matches: boolean }).matches = false;
+      listeners.forEach((l) => l());
+    });
+    expect(result.current).toBe(true);
   });
 
   it('cleans up the modern change listener on unmount', () => {
-    const { mediaQuery } = installMatchMedia({ matches: false, modern: true });
-    const { unmount } = renderHook(() => useIsHandheld());
+    const { listeners, mediaQuery } = installMatchMedia({ matches: false, modern: true });
+    mockDevice.isMobile = false;
+    const { result, unmount } = renderHook(() => useIsHandheld());
+    expect(result.current).toBe(false);
+    const subscribed = listeners[0];
+    expect(mediaQuery.addEventListener).toHaveBeenCalledWith('change', subscribed);
+
+    act(() => {
+      (mediaQuery as unknown as { matches: boolean }).matches = true;
+      listeners.forEach((l) => l());
+    });
+    expect(result.current).toBe(true);
+
     unmount();
-    expect(mediaQuery.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function));
+    expect(mediaQuery.removeEventListener).toHaveBeenCalledWith('change', subscribed);
+    expect(listeners).not.toContain(subscribed);
+
+    act(() => {
+      (mediaQuery as unknown as { matches: boolean }).matches = false;
+      listeners.forEach((l) => l());
+    });
+    expect(result.current).toBe(true);
   });
 
   it('subscribes to nothing when neither addEventListener nor addListener exist', () => {

@@ -994,6 +994,9 @@ describe('PaymentLinkScreen coverage gaps', () => {
     );
     mockWallets();
     renderAt();
+    const spinner = screen.getByTestId('loading-spinner');
+    expect(spinner).toBeInTheDocument();
+    expect(spinner.parentElement).not.toHaveAttribute('hidden');
     // Cashier copy without quote
     expect(
       screen.getByText('Tell the cashier that you want to pay with crypto to start the payment.'),
@@ -1110,7 +1113,10 @@ describe('PaymentLinkScreen coverage gaps', () => {
     await waitFor(() => {
       expect(screen.getByText('Open website')).toBeInTheDocument();
     });
-    expect(screen.queryByText(/Play Store|App Store/i)).not.toBeInTheDocument();
+    const playBadge = screen.getByTestId('badge-play');
+    const appBadge = screen.getByTestId('badge-app');
+    expect(playBadge.parentElement).toBe(appBadge.parentElement);
+    expect(playBadge.parentElement).toHaveAttribute('hidden');
   });
 });
 
