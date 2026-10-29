@@ -218,7 +218,7 @@ export function UserDataPanel({
   onLimitRequestCreated,
   onCreateNote,
   users = [],
-  onAccountAccessChanged = () => undefined,
+  onAccountAccessChanged,
 }: Readonly<UserDataPanelProps>): JSX.Element {
   const [showLimitRequestModal, setShowLimitRequestModal] = useState(false);
   const { session } = useAuthContext();
@@ -282,7 +282,7 @@ export function UserDataPanel({
         <div className="bg-white rounded-lg shadow-sm divide-y divide-dfxGray-300">
           <CollapsibleSection title="UserData" initiallyOpen>
             <SectionTable rows={userDataRows(current, depositLimitNode, idNode, statusNode)} />
-            {userDataId !== undefined && rowIsThisAccount && (
+            {userDataId !== undefined && rowIsThisAccount && onAccountAccessChanged && (
               <AccountAccessToggles
                 userDataId={userDataId}
                 provisionalApprovalDate={current.provisionalApprovalDate}

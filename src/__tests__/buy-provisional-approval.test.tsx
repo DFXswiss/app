@@ -223,7 +223,7 @@ jest.mock('src/hooks/personal-iban.hook', () => ({
   }),
 }));
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import BuyInfoScreen from 'src/screens/buy-info.screen';
 import BuyScreen from 'src/screens/buy.screen';
 
@@ -369,5 +369,38 @@ describe('buy provisional approval restrictions', () => {
     expect(screen.queryByTestId('payment-info')).not.toBeInTheDocument();
     expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: CONFIRM })).not.toBeInTheDocument();
+  });
+
+  it('does not confirm a provisional quote submitted through the buy form', async () => {
+    mockReceiveFor.mockReset();
+    mockReceiveFor
+      .mockResolvedValueOnce(
+        offer({
+          id: 88001,
+          remittanceInfo: 'BUY-88001',
+          isValid: false,
+          error: 'KycRequired',
+          provisionalApproval: true,
+        }),
+      )
+      .mockResolvedValueOnce(
+        offer({
+          id: 88002,
+          remittanceInfo: 'BUY-88002',
+          estimatedAmount: 0.02,
+          isValid: false,
+          error: 'KycRequired',
+          provisionalApproval: true,
+        }),
+      );
+    const { container } = render(<BuyScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('payment-info')).toHaveTextContent('BUY-88002'));
+    expect(mockReceiveFor).toHaveBeenCalledTimes(2);
+
+    const form = container.querySelector('form') as HTMLFormElement;
+    fireEvent.submit(form);
+
+    expect(mockConfirmFor).not.toHaveBeenCalled();
   });
 });

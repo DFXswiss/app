@@ -184,6 +184,12 @@ describe('UserDataPanel', () => {
     expect(screen.queryByTestId('account-access-toggles')).not.toBeInTheDocument();
   });
 
+  it('does not render account access toggles without a reload handler', () => {
+    render(<UserDataPanel userData={detail()} userDataId={88001} />);
+
+    expect(screen.queryByTestId('account-access-toggles')).not.toBeInTheDocument();
+  });
+
   it('renders the organization rows when the account has one and hides the birthday without a value', () => {
     render(
       <UserDataPanel

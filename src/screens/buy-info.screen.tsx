@@ -328,15 +328,13 @@ export default function BuyInfoScreen(): JSX.Element {
         'PersonalIbanProviderUnsupported',
         activeFiatNames,
       );
-      if (generation === quoteGeneration.current) {
-        setPaymentInfoState(undefined);
-        setErrorMessage(
-          personalIbanErrorText
-            ? translate('screens/payment', personalIbanErrorText, { currencies: displayedFrickCurrencyList })
-            : translate('screens/payment', 'The requested personal IBAN provider is not recognized.'),
-        );
-        setIsLoading(false);
-      }
+      setPaymentInfoState(undefined);
+      setErrorMessage(
+        personalIbanErrorText
+          ? translate('screens/payment', personalIbanErrorText, { currencies: displayedFrickCurrencyList })
+          : translate('screens/payment', 'The requested personal IBAN provider is not recognized.'),
+      );
+      setIsLoading(false);
       return () => {
         isRunning = false;
       };
@@ -352,8 +350,8 @@ export default function BuyInfoScreen(): JSX.Element {
     };
     if (amountIn) {
       request.amount = +amountIn;
-    } else if (amountOut) {
-      request.targetAmount = +amountOut;
+    } else {
+      request.targetAmount = Number(amountOut);
     }
 
     setIsLoading(true);
@@ -519,9 +517,8 @@ export default function BuyInfoScreen(): JSX.Element {
     }
   }
 
-  function onSubmit(): void {
-    if (!paymentInfo || isProvisionalApproval(paymentInfo)) return;
-    setCompletedPaymentInfo({ info: paymentInfo, identity: customerIdentity });
+  function onSubmit(info: Buy): void {
+    setCompletedPaymentInfo({ info, identity: customerIdentity });
     setShowsCompletion(true);
     scrollToTop();
   }
@@ -741,7 +738,7 @@ export default function BuyInfoScreen(): JSX.Element {
               <StyledButton
                 width={StyledButtonWidth.FULL}
                 label={translate('screens/buy', 'Click here once you have issued the transfer')}
-                onClick={onSubmit}
+                onClick={() => onSubmit(paymentInfo)}
                 caps={false}
                 className="mt-4"
               />

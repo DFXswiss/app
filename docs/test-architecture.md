@@ -114,6 +114,13 @@ run does not prove for each one; the taxonomy and cross-repository entries live 
   `**/v1/buy/paymentInfos` with static payloads, so a green run proves that the screen renders those
   payloads, not that the API produces them. Unit tests against the utility pin the payload shapes
   instead.
+- **The provisional-approval buy visuals fulfil the quote themselves.** `e2e/buy-process.spec.ts`
+  and `e2e/buy-info.spec.ts` provide an invalid quote with an onboarding error and
+  `provisionalApproval: true`, so a green run proves the screens render that state, not that the API
+  returns it for a given account.
+- **The account-access toggle visuals rewrite the fetched customer dossier.** `e2e/compliance.spec.ts`
+  supplies KYC level 10, a provisional date and user roles for those cases, so a green run proves the
+  toggles render for those values, not that the API stores or returns them.
 - **The non-Frick buy screens inject a currency list.** `e2e/buy-process.spec.ts` and
   `e2e/buy-info.spec.ts` fulfil `**/v1/fiat` with CHF, EUR, and one buyable row outside the
   Bank Frick set, and they fulfil the quote in that currency. The product does not offer that
